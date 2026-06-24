@@ -1,9 +1,9 @@
 export const siteConfig = {
   name: "Travel Business Agency",
   shortName: "TBA",
-  url: "https://travelba.com",
+  url: "https://travelba.fr",
   // Adresse e-mail qui reçoit les demandes du formulaire de contact.
-  contactEmail: "contact@travelba.com",
+  contactEmail: "contact@travelba.fr",
   // Numéro WhatsApp Business au format international SANS le "+" ni espaces.
   // Remplacez par le vrai numéro. Placeholder pour l'instant.
   whatsappNumber: "33600000000",
