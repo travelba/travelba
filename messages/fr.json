@@ -55,9 +55,21 @@
       "title": "Événements sur mesure",
       "description": "Conception et production d'événements privés et corporate à la hauteur de vos ambitions."
     },
+    "prestige": {
+      "title": "Événements de prestige",
+      "description": "Accès VIP aux plus grands rendez-vous : Roland-Garros, Formule 1, Coupe du monde, festivals et galas."
+    },
     "hotels": {
       "title": "Hôtels & hébergements",
       "description": "Accès privilégié aux meilleurs palaces, villas et adresses confidentielles partout dans le monde."
+    },
+    "restaurants": {
+      "title": "Restaurants & tables",
+      "description": "Réservations dans les meilleures tables et adresses étoilées, même complètes, partout dans le monde."
+    },
+    "clubs": {
+      "title": "Clubs & vie nocturne",
+      "description": "Accès aux clubs les plus privés, tables VIP et soirées d'exception, sans file d'attente."
     },
     "chauffeur": {
       "title": "Chauffeur privé",

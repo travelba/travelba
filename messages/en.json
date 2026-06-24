@@ -55,9 +55,21 @@
       "title": "Bespoke events",
       "description": "Design and production of private and corporate events that match your ambitions."
     },
+    "prestige": {
+      "title": "Prestige events",
+      "description": "VIP access to the greatest occasions: Roland-Garros, Formula 1, World Cup, festivals and galas."
+    },
     "hotels": {
       "title": "Hotels & stays",
       "description": "Privileged access to the finest palaces, villas and confidential addresses worldwide."
+    },
+    "restaurants": {
+      "title": "Restaurants & tables",
+      "description": "Bookings at the finest tables and Michelin-starred addresses, even when fully booked, worldwide."
+    },
+    "clubs": {
+      "title": "Clubs & nightlife",
+      "description": "Access to the most private clubs, VIP tables and exceptional nights out, skipping the queue."
     },
     "chauffeur": {
       "title": "Private chauffeur",
