@@ -5,10 +5,9 @@ export const siteConfig = {
   // Adresse e-mail qui reçoit les demandes du formulaire de contact.
   contactEmail: "contact@travelba.fr",
   // Numéro WhatsApp Business au format international SANS le "+" ni espaces.
-  // Remplacez par le vrai numéro. Placeholder pour l'instant.
-  whatsappNumber: "33600000000",
-  whatsappDisplay: "+33 6 00 00 00 00",
-  phoneDisplay: "+33 1 00 00 00 00",
+  whatsappNumber: "33756841315",
+  whatsappDisplay: "+33 7 56 84 13 15",
+  phoneDisplay: "+33 7 56 84 13 15",
   address: {
     line1: "9 rue Greffulhe",
     postalCode: "92300",
