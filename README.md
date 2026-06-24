@@ -53,6 +53,13 @@ messages/          # traductions FR / EN
 proxy.ts           # middleware next-intl (routage des locales)
 ```
 
+## Crédits médias
+
+- Photos des prestations : [Unsplash](https://unsplash.com) (licence Unsplash, usage commercial libre).
+- Vidéo du header (`public/videos/hero-jet.mp4`) : [Pexels](https://www.pexels.com/video/businesspeople-in-private-jet-5778842/) (licence Pexels, usage commercial libre, sans attribution requise).
+
+Ces médias sont des placeholders de qualité ; ils peuvent être remplacés par vos propres visuels/vidéos.
+
 ## Build & déploiement
 
 ```bash

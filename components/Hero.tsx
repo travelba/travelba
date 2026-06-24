@@ -33,17 +33,31 @@ export function Hero() {
   return (
     <section
       id="top"
-      className="relative overflow-hidden px-5 pb-20 pt-32 sm:px-8 sm:pt-40"
+      className="relative flex min-h-[92vh] items-center overflow-hidden px-5 pb-20 pt-28 sm:px-8"
     >
-      <div className="bg-grid absolute inset-0 [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]" />
-      <div className="pointer-events-none absolute -left-32 top-10 h-96 w-96 rounded-full bg-accent/25 blur-[120px]" />
-      <div className="pointer-events-none absolute -right-24 top-40 h-96 w-96 rounded-full bg-accent-2/20 blur-[120px]" />
+      <video
+        className="absolute inset-0 h-full w-full object-cover"
+        autoPlay
+        muted
+        loop
+        playsInline
+        poster="/videos/hero-jet.jpg"
+        aria-hidden="true"
+      >
+        <source src="/videos/hero-jet.mp4" type="video/mp4" />
+      </video>
+
+      <div className="absolute inset-0 bg-background/72" />
+      <div className="absolute inset-0 bg-gradient-to-b from-background/70 via-background/35 to-background" />
+      <div className="bg-grid absolute inset-0 opacity-30 [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]" />
+      <div className="pointer-events-none absolute -left-32 top-10 h-96 w-96 rounded-full bg-accent/20 blur-[120px]" />
+      <div className="pointer-events-none absolute -right-24 top-40 h-96 w-96 rounded-full bg-accent-2/15 blur-[120px]" />
 
       <motion.div
         variants={container}
         initial="hidden"
         animate="show"
-        className="relative mx-auto max-w-4xl text-center"
+        className="relative z-10 mx-auto max-w-4xl text-center"
       >
         <motion.div variants={item} className="flex justify-center">
           <span className="inline-flex items-center gap-2 rounded-full border border-border bg-surface/60 px-4 py-1.5 text-xs font-medium text-muted">
