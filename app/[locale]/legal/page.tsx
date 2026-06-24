@@ -41,6 +41,8 @@ function LegalContent() {
     { label: t("fields.rcs"), value: legal.rcs },
     { label: t("fields.vat"), value: legal.vat },
     { label: t("fields.ape"), value: legal.ape },
+    { label: t("fields.accreditation"), value: legal.accreditation },
+    { label: t("fields.garantie"), value: legal.garantieFinanciere },
     { label: t("fields.email"), value: siteConfig.contactEmail },
   ];
 

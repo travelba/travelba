@@ -26,6 +26,14 @@
     "stat3Value": "1 h",
     "stat3Label": "Délai de réponse"
   },
+  "Credentials": {
+    "eyebrow": "Accréditations & garanties",
+    "reassurance": "Voyagez l'esprit tranquille : une agence accréditée et vos paiements protégés.",
+    "iataTitle": "Agence accréditée IATA",
+    "iataDesc": "Émission de billets et accès aux meilleurs tarifs aériens.",
+    "apstTitle": "Membre APST",
+    "apstDesc": "Garantie financière de vos acomptes et règlements."
+  },
   "About": {
     "eyebrow": "À propos",
     "title": "Une conciergerie de voyage agile, au service de vos ambitions",
@@ -183,7 +191,8 @@
     "contactTitle": "Contact",
     "rights": "Tous droits réservés.",
     "madeWith": "Voyages d'exception, partout dans le monde.",
-    "legalLink": "Mentions légales"
+    "legalLink": "Mentions légales",
+    "accreditations": "Accréditée IATA · Membre APST"
   },
   "Legal": {
     "title": "Mentions légales",
@@ -207,6 +216,8 @@
       "vat": "N° TVA intracommunautaire",
       "ape": "Code APE",
       "president": "Président",
+      "accreditation": "Accréditation",
+      "garantie": "Garantie financière",
       "email": "E-mail",
       "phone": "Téléphone"
     }

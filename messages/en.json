@@ -26,6 +26,14 @@
     "stat3Value": "1 h",
     "stat3Label": "Response time"
   },
+  "Credentials": {
+    "eyebrow": "Accreditations & guarantees",
+    "reassurance": "Travel with peace of mind: an accredited agency and protected payments.",
+    "iataTitle": "IATA-accredited agency",
+    "iataDesc": "Ticket issuance and access to the best airfares.",
+    "apstTitle": "APST member",
+    "apstDesc": "Financial guarantee for your deposits and payments."
+  },
   "About": {
     "eyebrow": "About",
     "title": "An agile travel concierge, built around your ambitions",
@@ -183,7 +191,8 @@
     "contactTitle": "Contact",
     "rights": "All rights reserved.",
     "madeWith": "Exceptional journeys, anywhere in the world.",
-    "legalLink": "Legal notice"
+    "legalLink": "Legal notice",
+    "accreditations": "IATA-accredited · APST member"
   },
   "Legal": {
     "title": "Legal notice",
@@ -207,6 +216,8 @@
       "vat": "VAT number",
       "ape": "Activity code",
       "president": "President",
+      "accreditation": "Accreditation",
+      "garantie": "Financial guarantee",
       "email": "Email",
       "phone": "Phone"
     }

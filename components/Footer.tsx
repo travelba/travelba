@@ -1,5 +1,5 @@
 import { useTranslations } from "next-intl";
-import { MapPin } from "lucide-react";
+import { MapPin, ShieldCheck } from "lucide-react";
 import { Link } from "@/i18n/navigation";
 import { siteConfig, SERVICE_KEYS } from "@/lib/site";
 
@@ -40,6 +40,10 @@ export function Footer() {
             </div>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted">
               {t("tagline")}
+            </p>
+            <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-border bg-surface/60 px-3 py-1.5 text-xs font-medium text-foreground/90">
+              <ShieldCheck className="h-3.5 w-3.5 text-accent-2" />
+              {t("accreditations")}
             </p>
             <div className="mt-5 flex gap-3">
               <a
