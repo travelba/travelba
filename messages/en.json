@@ -1,0 +1,167 @@
+{
+  "Meta": {
+    "title": "Travel Business Agency — High-end travel concierge",
+    "description": "An agile international travel concierge: private jets, seminars, bespoke events, hotels, chauffeurs, VIP airport assistance and exceptional tailor-made journeys."
+  },
+  "Nav": {
+    "services": "Services",
+    "why": "Why us",
+    "process": "Method",
+    "testimonials": "Reviews",
+    "contact": "Contact",
+    "cta": "Request a quote"
+  },
+  "Hero": {
+    "badge": "Travel concierge · International",
+    "title": "Your business and luxury travel,",
+    "titleAccent": "orchestrated to perfection.",
+    "subtitle": "An agile concierge that designs, coordinates and executes every detail of your journeys: private jets, seminars, events and bespoke experiences, anywhere in the world.",
+    "ctaPrimary": "Request a quote",
+    "ctaSecondary": "Chat on WhatsApp",
+    "stat1Value": "24/7",
+    "stat1Label": "Availability",
+    "stat2Value": "+80",
+    "stat2Label": "Destinations",
+    "stat3Value": "1 h",
+    "stat3Label": "Response time"
+  },
+  "Services": {
+    "eyebrow": "Our services",
+    "title": "One team for your entire journey",
+    "subtitle": "From the first idea to the last mile, we manage the whole chain with precision and responsiveness.",
+    "jet": {
+      "title": "Private jet",
+      "description": "Private aircraft charter, optimised routing and absolute comfort, from takeoff to landing."
+    },
+    "seminars": {
+      "title": "Seminars",
+      "description": "Full organisation of your corporate seminars: exceptional venues, logistics and programming."
+    },
+    "events": {
+      "title": "Bespoke events",
+      "description": "Design and production of private and corporate events that match your ambitions."
+    },
+    "hotels": {
+      "title": "Hotels & stays",
+      "description": "Privileged access to the finest palaces, villas and confidential addresses worldwide."
+    },
+    "chauffeur": {
+      "title": "Private chauffeur",
+      "description": "Premium fleet and experienced chauffeurs for every transfer, with total discretion."
+    },
+    "vip": {
+      "title": "VIP airport assistance",
+      "description": "Fast-track, private lounges and dedicated support for a frictionless airport experience."
+    },
+    "bespoke": {
+      "title": "Tailor-made travel",
+      "description": "Fully personalised exceptional itineraries, built around your wishes and your schedule."
+    }
+  },
+  "WhyUs": {
+    "eyebrow": "Why us",
+    "title": "The standards of a maison, the agility of a startup",
+    "subtitle": "We combine an international network of premium partners with a responsive team, without needless intermediaries.",
+    "items": {
+      "agile": {
+        "title": "Total responsiveness",
+        "description": "A single point of contact who replies within the hour and acts immediately."
+      },
+      "network": {
+        "title": "Global network",
+        "description": "Trusted partners across more than 80 destinations on every continent."
+      },
+      "tailored": {
+        "title": "100% bespoke",
+        "description": "No off-the-shelf packages: every journey is designed specifically for you."
+      },
+      "discretion": {
+        "title": "Absolute discretion",
+        "description": "Confidentiality and security at the heart of every service we deliver."
+      }
+    }
+  },
+  "Process": {
+    "eyebrow": "Our method",
+    "title": "From brief to experience, in four steps",
+    "subtitle": "A clear, transparent process to turn your needs into a perfectly orchestrated journey.",
+    "steps": {
+      "brief": {
+        "title": "Brief",
+        "description": "We listen to your needs, constraints and wishes to scope your project precisely."
+      },
+      "proposal": {
+        "title": "Proposal",
+        "description": "You receive a detailed, costed proposal, usually within 24 hours."
+      },
+      "organization": {
+        "title": "Organisation",
+        "description": "We coordinate every provider and handle the entire logistics."
+      },
+      "experience": {
+        "title": "Experience",
+        "description": "You simply enjoy. We stay available 24/7 to adjust the smallest detail."
+      }
+    }
+  },
+  "Testimonials": {
+    "eyebrow": "They trust us",
+    "title": "Demanding clients, fully satisfied",
+    "items": {
+      "one": {
+        "quote": "Flawless organisation for our executive seminar in Geneva. Exceptional responsiveness and attention to detail.",
+        "author": "Chief Executive Officer",
+        "role": "Industrial group"
+      },
+      "two": {
+        "quote": "Private jet chartered within hours, perfect VIP welcome. Exactly the level of service we expected.",
+        "author": "Family Office",
+        "role": "Private client"
+      },
+      "three": {
+        "quote": "An unforgettable tailor-made trip, from the first exchange to the return. A team that is both pro and human.",
+        "author": "Founder",
+        "role": "Tech scale-up"
+      }
+    }
+  },
+  "Contact": {
+    "eyebrow": "Let's talk about your project",
+    "title": "Request your bespoke quote",
+    "subtitle": "Describe your needs: we get back to you within the hour during business hours.",
+    "form": {
+      "name": "Full name",
+      "namePlaceholder": "Your name",
+      "email": "Email",
+      "emailPlaceholder": "you@example.com",
+      "phone": "Phone",
+      "phonePlaceholder": "+33 6 00 00 00 00",
+      "service": "Service of interest",
+      "servicePlaceholder": "Select a service",
+      "serviceOther": "Other / Several services",
+      "message": "Your project",
+      "messagePlaceholder": "Dates, destinations, number of people, special requirements...",
+      "submit": "Send my request",
+      "submitting": "Sending...",
+      "success": "Thank you! Your request has been sent. We'll reply very soon.",
+      "error": "Something went wrong. Please retry or contact us directly on WhatsApp.",
+      "orWhatsapp": "or message us directly on WhatsApp"
+    },
+    "infoTitle": "Contact details",
+    "responseTime": "Reply within the hour (business days)"
+  },
+  "Footer": {
+    "tagline": "International travel concierge. Agile, discreet, bespoke.",
+    "servicesTitle": "Services",
+    "companyTitle": "Agency",
+    "contactTitle": "Contact",
+    "rights": "All rights reserved.",
+    "madeWith": "Exceptional journeys, anywhere in the world."
+  },
+  "Common": {
+    "whatsapp": "WhatsApp",
+    "menu": "Menu",
+    "close": "Close",
+    "backHome": "Back to home"
+  }
+}

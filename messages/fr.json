@@ -1,0 +1,167 @@
+{
+  "Meta": {
+    "title": "Travel Business Agency — Conciergerie de voyage haut de gamme",
+    "description": "Conciergerie de voyage internationale et agile : jet privé, séminaires, événements sur mesure, hôtels, chauffeur, accueil VIP aéroport et voyages d'exception."
+  },
+  "Nav": {
+    "services": "Services",
+    "why": "Pourquoi nous",
+    "process": "Méthode",
+    "testimonials": "Avis",
+    "contact": "Contact",
+    "cta": "Demander un devis"
+  },
+  "Hero": {
+    "badge": "Conciergerie de voyage · International",
+    "title": "Vos voyages d'affaires et d'exception,",
+    "titleAccent": "orchestrés à la perfection.",
+    "subtitle": "Une conciergerie agile qui conçoit, coordonne et exécute chaque détail de vos déplacements : jet privé, séminaires, événements et expériences sur mesure, partout dans le monde.",
+    "ctaPrimary": "Demander un devis",
+    "ctaSecondary": "Discuter sur WhatsApp",
+    "stat1Value": "24/7",
+    "stat1Label": "Disponibilité",
+    "stat2Value": "+80",
+    "stat2Label": "Destinations",
+    "stat3Value": "1 h",
+    "stat3Label": "Délai de réponse"
+  },
+  "Services": {
+    "eyebrow": "Nos services",
+    "title": "Une seule équipe pour tout votre voyage",
+    "subtitle": "De la première idée au dernier kilomètre, nous gérons l'ensemble de la chaîne avec exigence et réactivité.",
+    "jet": {
+      "title": "Jet privé",
+      "description": "Affrètement d'avions privés, optimisation des itinéraires et confort absolu, du décollage à l'atterrissage."
+    },
+    "seminars": {
+      "title": "Séminaires",
+      "description": "Organisation complète de vos séminaires d'entreprise : lieux d'exception, logistique et animation."
+    },
+    "events": {
+      "title": "Événements sur mesure",
+      "description": "Conception et production d'événements privés et corporate à la hauteur de vos ambitions."
+    },
+    "hotels": {
+      "title": "Hôtels & hébergements",
+      "description": "Accès privilégié aux meilleurs palaces, villas et adresses confidentielles partout dans le monde."
+    },
+    "chauffeur": {
+      "title": "Chauffeur privé",
+      "description": "Flotte premium et chauffeurs d'expérience pour tous vos trajets, en toute discrétion."
+    },
+    "vip": {
+      "title": "Accueil VIP aéroport",
+      "description": "Fast-track, salons privés et assistance dédiée pour un passage en aéroport sans friction."
+    },
+    "bespoke": {
+      "title": "Voyages sur mesure",
+      "description": "Itinéraires d'exception entièrement personnalisés, pensés autour de vos envies et de votre agenda."
+    }
+  },
+  "WhyUs": {
+    "eyebrow": "Pourquoi nous",
+    "title": "L'exigence d'une maison, l'agilité d'une startup",
+    "subtitle": "Nous combinons un réseau international de partenaires premium avec une équipe réactive, sans intermédiaires inutiles.",
+    "items": {
+      "agile": {
+        "title": "Réactivité totale",
+        "description": "Un interlocuteur unique qui répond en moins d'une heure et agit immédiatement."
+      },
+      "network": {
+        "title": "Réseau mondial",
+        "description": "Des partenaires de confiance dans plus de 80 destinations sur tous les continents."
+      },
+      "tailored": {
+        "title": "100 % sur mesure",
+        "description": "Aucune offre standardisée : chaque voyage est conçu spécifiquement pour vous."
+      },
+      "discretion": {
+        "title": "Discrétion absolue",
+        "description": "Confidentialité et sécurité au cœur de chacune de nos prestations."
+      }
+    }
+  },
+  "Process": {
+    "eyebrow": "Notre méthode",
+    "title": "Du brief à l'expérience, en quatre temps",
+    "subtitle": "Un processus clair et transparent pour transformer vos besoins en voyage parfaitement orchestré.",
+    "steps": {
+      "brief": {
+        "title": "Brief",
+        "description": "Nous écoutons vos besoins, contraintes et envies pour cerner précisément votre projet."
+      },
+      "proposal": {
+        "title": "Proposition",
+        "description": "Vous recevez une proposition détaillée et chiffrée, généralement sous 24 heures."
+      },
+      "organization": {
+        "title": "Organisation",
+        "description": "Nous coordonnons tous les prestataires et gérons l'intégralité de la logistique."
+      },
+      "experience": {
+        "title": "Expérience",
+        "description": "Vous profitez. Nous restons disponibles 24/7 pour ajuster le moindre détail."
+      }
+    }
+  },
+  "Testimonials": {
+    "eyebrow": "Ils nous font confiance",
+    "title": "Des clients exigeants, pleinement satisfaits",
+    "items": {
+      "one": {
+        "quote": "Une organisation irréprochable pour notre séminaire de direction à Genève. Réactivité et sens du détail exceptionnels.",
+        "author": "Directrice Générale",
+        "role": "Groupe industriel"
+      },
+      "two": {
+        "quote": "Jet privé affrété en quelques heures, accueil VIP parfait. Exactement le niveau de service que nous attendions.",
+        "author": "Family Office",
+        "role": "Client privé"
+      },
+      "three": {
+        "quote": "Un voyage sur mesure inoubliable, du premier échange jusqu'au retour. Une équipe à la fois pro et humaine.",
+        "author": "Fondateur",
+        "role": "Scale-up tech"
+      }
+    }
+  },
+  "Contact": {
+    "eyebrow": "Parlons de votre projet",
+    "title": "Demandez votre devis sur mesure",
+    "subtitle": "Décrivez votre besoin : nous revenons vers vous en moins d'une heure pendant les heures ouvrées.",
+    "form": {
+      "name": "Nom complet",
+      "namePlaceholder": "Votre nom",
+      "email": "E-mail",
+      "emailPlaceholder": "vous@exemple.com",
+      "phone": "Téléphone",
+      "phonePlaceholder": "+33 6 00 00 00 00",
+      "service": "Service souhaité",
+      "servicePlaceholder": "Sélectionnez un service",
+      "serviceOther": "Autre / Plusieurs services",
+      "message": "Votre projet",
+      "messagePlaceholder": "Dates, destinations, nombre de personnes, attentes particulières...",
+      "submit": "Envoyer ma demande",
+      "submitting": "Envoi en cours...",
+      "success": "Merci ! Votre demande a bien été envoyée. Nous vous répondons très vite.",
+      "error": "Une erreur est survenue. Réessayez ou contactez-nous directement sur WhatsApp.",
+      "orWhatsapp": "ou écrivez-nous directement sur WhatsApp"
+    },
+    "infoTitle": "Coordonnées",
+    "responseTime": "Réponse en moins d'une heure (jours ouvrés)"
+  },
+  "Footer": {
+    "tagline": "Conciergerie de voyage internationale. Agile, discrète, sur mesure.",
+    "servicesTitle": "Services",
+    "companyTitle": "Agence",
+    "contactTitle": "Contact",
+    "rights": "Tous droits réservés.",
+    "madeWith": "Voyages d'exception, partout dans le monde."
+  },
+  "Common": {
+    "whatsapp": "WhatsApp",
+    "menu": "Menu",
+    "close": "Fermer",
+    "backHome": "Retour à l'accueil"
+  }
+}
