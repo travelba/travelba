@@ -4,6 +4,7 @@
     "description": "An agile international travel concierge: private jets, seminars, bespoke events, hotels, chauffeurs, VIP airport assistance and exceptional tailor-made journeys."
   },
   "Nav": {
+    "about": "About",
     "services": "Services",
     "why": "Why us",
     "process": "Method",
@@ -24,6 +25,19 @@
     "stat2Label": "Destinations",
     "stat3Value": "1 h",
     "stat3Label": "Response time"
+  },
+  "About": {
+    "eyebrow": "About",
+    "title": "An agile travel concierge, built around your ambitions",
+    "p1": "Based in Levallois-Perret, Travel Business Agency designs and orchestrates high-end travel experiences for companies and discerning individuals alike.",
+    "p2": "From chartering a private jet to organising a seminar, an event or a fully bespoke journey, we handle every detail with the responsiveness of an agile team and the standards of a true service house.",
+    "factsTitle": "At a glance",
+    "fact1Label": "Based in",
+    "fact1Value": "Levallois-Perret, France",
+    "fact2Label": "Availability",
+    "fact2Value": "24/7, worldwide",
+    "fact3Label": "Approach",
+    "fact3Value": "100% bespoke"
   },
   "Services": {
     "eyebrow": "Our services",

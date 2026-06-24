@@ -4,6 +4,7 @@
     "description": "Conciergerie de voyage internationale et agile : jet privé, séminaires, événements sur mesure, hôtels, chauffeur, accueil VIP aéroport et voyages d'exception."
   },
   "Nav": {
+    "about": "À propos",
     "services": "Services",
     "why": "Pourquoi nous",
     "process": "Méthode",
@@ -24,6 +25,19 @@
     "stat2Label": "Destinations",
     "stat3Value": "1 h",
     "stat3Label": "Délai de réponse"
+  },
+  "About": {
+    "eyebrow": "À propos",
+    "title": "Une conciergerie de voyage agile, au service de vos ambitions",
+    "p1": "Basée à Levallois-Perret, Travel Business Agency conçoit et orchestre des expériences de voyage haut de gamme pour les entreprises comme pour les particuliers exigeants.",
+    "p2": "De l'affrètement d'un jet privé à l'organisation d'un séminaire, d'un événement ou d'un voyage entièrement sur mesure, nous prenons en charge chaque détail avec la réactivité d'une équipe agile et l'exigence d'une véritable maison de service.",
+    "factsTitle": "En bref",
+    "fact1Label": "Basée à",
+    "fact1Value": "Levallois-Perret, France",
+    "fact2Label": "Disponibilité",
+    "fact2Value": "24/7, partout dans le monde",
+    "fact3Label": "Approche",
+    "fact3Value": "100 % sur mesure"
   },
   "Services": {
     "eyebrow": "Nos services",

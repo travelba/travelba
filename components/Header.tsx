@@ -7,6 +7,7 @@ import { LanguageSwitcher } from "./LanguageSwitcher";
 import { siteConfig } from "@/lib/site";
 
 const NAV_ITEMS = [
+  { key: "about", href: "#about" },
   { key: "services", href: "#services" },
   { key: "why", href: "#why" },
   { key: "process", href: "#process" },

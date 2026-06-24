@@ -47,3 +47,16 @@ export const SERVICE_KEYS = [
 ] as const;
 
 export type ServiceKey = (typeof SERVICE_KEYS)[number];
+
+const UNSPLASH = (id: string) =>
+  `https://images.unsplash.com/${id}?q=80&w=1100&auto=format&fit=crop`;
+
+export const SERVICE_IMAGES: Record<ServiceKey, string> = {
+  jet: UNSPLASH("photo-1540962351504-03099e0a754b"),
+  seminars: UNSPLASH("photo-1540575467063-178a50c2df87"),
+  events: UNSPLASH("photo-1511795409834-ef04bbd61622"),
+  hotels: UNSPLASH("photo-1566073771259-6a8506099945"),
+  chauffeur: UNSPLASH("photo-1503376780353-7e6692767b70"),
+  vip: UNSPLASH("photo-1556388158-158ea5ccacbd"),
+  bespoke: UNSPLASH("photo-1488646953014-85cb44e25828"),
+};
