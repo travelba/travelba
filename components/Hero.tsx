@@ -47,11 +47,9 @@ export function Hero() {
         <source src="/videos/hero-jet.mp4" type="video/mp4" />
       </video>
 
-      <div className="absolute inset-0 bg-background/72" />
-      <div className="absolute inset-0 bg-gradient-to-b from-background/70 via-background/35 to-background" />
-      <div className="bg-grid absolute inset-0 opacity-30 [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]" />
-      <div className="pointer-events-none absolute -left-32 top-10 h-96 w-96 rounded-full bg-accent/20 blur-[120px]" />
-      <div className="pointer-events-none absolute -right-24 top-40 h-96 w-96 rounded-full bg-accent-2/15 blur-[120px]" />
+      <div className="absolute inset-0 bg-background/25" />
+      <div className="absolute inset-0 bg-gradient-to-b from-background/35 via-transparent to-background" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-background via-background/40 to-transparent" />
 
       <motion.div
         variants={container}
@@ -68,7 +66,7 @@ export function Hero() {
 
         <motion.h1
           variants={item}
-          className="mt-7 font-display text-4xl font-bold leading-[1.05] tracking-tight sm:text-6xl"
+          className="mt-6 font-display text-3xl font-semibold leading-[1.1] tracking-tight [text-shadow:_0_2px_24px_rgba(0,0,0,0.55)] sm:text-5xl"
         >
           {t("title")}{" "}
           <span className="text-gradient">{t("titleAccent")}</span>
@@ -76,7 +74,7 @@ export function Hero() {
 
         <motion.p
           variants={item}
-          className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-muted sm:text-lg"
+          className="mx-auto mt-5 max-w-xl text-sm leading-relaxed text-foreground/80 [text-shadow:_0_1px_16px_rgba(0,0,0,0.6)] sm:text-base"
         >
           {t("subtitle")}
         </motion.p>
@@ -108,11 +106,16 @@ export function Hero() {
           className="mx-auto mt-14 grid max-w-lg grid-cols-3 gap-4"
         >
           {stats.map((s) => (
-            <div key={s.label} className="text-center">
+            <div
+              key={s.label}
+              className="text-center [text-shadow:_0_1px_16px_rgba(0,0,0,0.6)]"
+            >
               <div className="font-display text-2xl font-bold sm:text-3xl">
                 {s.value}
               </div>
-              <div className="mt-1 text-xs text-muted sm:text-sm">{s.label}</div>
+              <div className="mt-1 text-xs text-foreground/70 sm:text-sm">
+                {s.label}
+              </div>
             </div>
           ))}
         </motion.div>
