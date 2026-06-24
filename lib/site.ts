@@ -9,9 +9,31 @@ export const siteConfig = {
   whatsappNumber: "33600000000",
   whatsappDisplay: "+33 6 00 00 00 00",
   phoneDisplay: "+33 1 00 00 00 00",
+  address: {
+    line1: "9 rue Greffulhe",
+    postalCode: "92300",
+    city: "Levallois-Perret",
+    country: "France",
+    full: "9 rue Greffulhe, 92300 Levallois-Perret, France",
+  },
   social: {
     instagram: "https://instagram.com/",
     linkedin: "https://linkedin.com/",
+  },
+  // Données légales officielles (source : RCS Nanterre / RNE / INSEE).
+  legal: {
+    legalName: "TRAVEL BUSINESS AGENCY",
+    legalForm: "SASU (société par actions simplifiée unipersonnelle)",
+    capital: "20 000 €",
+    siren: "991 614 694",
+    siret: "991 614 694 00016",
+    vat: "FR79991614694",
+    rcs: "991 614 694 R.C.S. Nanterre",
+    ape: "79.12Z — Activités des voyagistes",
+    president: "RZ INVEST",
+    // À compléter : immatriculation Atout France (IM0xxxxxxxx) et garantie
+    // financière, obligatoires pour l'exercice de l'activité de voyagiste.
+    atoutFrance: "",
   },
 } as const;
 

@@ -1,5 +1,5 @@
 import { useTranslations } from "next-intl";
-import { Mail, Phone, Clock, MessageCircle } from "lucide-react";
+import { Mail, Phone, Clock, MessageCircle, MapPin } from "lucide-react";
 import { SectionHeading } from "./SectionHeading";
 import { Reveal } from "./Reveal";
 import { ContactForm } from "./ContactForm";
@@ -49,6 +49,13 @@ export function Contact() {
                       <MessageCircle className="h-4 w-4 text-accent-2" />
                       {siteConfig.whatsappDisplay}
                     </a>
+                  </li>
+                  <li className="flex items-start gap-3 text-foreground/90">
+                    <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-accent-2" />
+                    <span>
+                      {siteConfig.address.line1}, {siteConfig.address.postalCode}{" "}
+                      {siteConfig.address.city}
+                    </span>
                   </li>
                 </ul>
               </div>

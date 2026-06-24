@@ -1,4 +1,6 @@
 import { useTranslations } from "next-intl";
+import { MapPin } from "lucide-react";
+import { Link } from "@/i18n/navigation";
 import { siteConfig, SERVICE_KEYS } from "@/lib/site";
 
 function InstagramIcon({ className }: { className?: string }) {
@@ -125,6 +127,14 @@ export function Footer() {
                   {siteConfig.whatsappDisplay}
                 </a>
               </li>
+              <li className="flex items-start gap-2 pt-1">
+                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-accent-2" />
+                <span>
+                  {siteConfig.address.line1}
+                  <br />
+                  {siteConfig.address.postalCode} {siteConfig.address.city}
+                </span>
+              </li>
             </ul>
           </div>
         </div>
@@ -133,7 +143,16 @@ export function Footer() {
           <p>
             © {year} {siteConfig.name}. {t("rights")}
           </p>
-          <p>{t("madeWith")}</p>
+          <div className="flex items-center gap-4">
+            <Link
+              href="/legal"
+              className="transition-colors hover:text-foreground"
+            >
+              {t("legalLink")}
+            </Link>
+            <span className="hidden sm:inline">·</span>
+            <p>{t("madeWith")}</p>
+          </div>
         </div>
       </div>
     </footer>

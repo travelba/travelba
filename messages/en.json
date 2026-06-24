@@ -156,7 +156,34 @@
     "companyTitle": "Agency",
     "contactTitle": "Contact",
     "rights": "All rights reserved.",
-    "madeWith": "Exceptional journeys, anywhere in the world."
+    "madeWith": "Exceptional journeys, anywhere in the world.",
+    "legalLink": "Legal notice"
+  },
+  "Legal": {
+    "title": "Legal notice",
+    "intro": "In accordance with applicable law, here is the information about the publisher and operation of this website.",
+    "editorTitle": "Website publisher",
+    "companyTitle": "Company information",
+    "hostingTitle": "Hosting",
+    "hostingText": "This website is hosted by Vercel Inc., 340 S Lemon Ave #4133, Walnut, CA 91789, USA — vercel.com.",
+    "ipTitle": "Intellectual property",
+    "ipText": "All content on this website (text, visuals, logo, graphic identity) is protected by intellectual property law. Any reproduction, in whole or in part, without prior authorisation is prohibited.",
+    "dataTitle": "Personal data",
+    "dataText": "Information submitted through the contact form is used solely to process your request. Under the GDPR, you have the right to access, rectify and delete your data by writing to {email}.",
+    "fields": {
+      "legalName": "Company name",
+      "legalForm": "Legal form",
+      "capital": "Share capital",
+      "address": "Registered office",
+      "siren": "SIREN",
+      "siret": "SIRET (head office)",
+      "rcs": "Trade register",
+      "vat": "VAT number",
+      "ape": "Activity code",
+      "president": "President",
+      "email": "Email",
+      "phone": "Phone"
+    }
   },
   "Common": {
     "whatsapp": "WhatsApp",

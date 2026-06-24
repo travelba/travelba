@@ -156,7 +156,34 @@
     "companyTitle": "Agence",
     "contactTitle": "Contact",
     "rights": "Tous droits réservés.",
-    "madeWith": "Voyages d'exception, partout dans le monde."
+    "madeWith": "Voyages d'exception, partout dans le monde.",
+    "legalLink": "Mentions légales"
+  },
+  "Legal": {
+    "title": "Mentions légales",
+    "intro": "Conformément aux dispositions légales, voici les informations relatives à l'éditeur et à l'exploitation du présent site.",
+    "editorTitle": "Éditeur du site",
+    "companyTitle": "Informations sur la société",
+    "hostingTitle": "Hébergement",
+    "hostingText": "Ce site est hébergé par Vercel Inc., 340 S Lemon Ave #4133, Walnut, CA 91789, États-Unis — vercel.com.",
+    "ipTitle": "Propriété intellectuelle",
+    "ipText": "L'ensemble des contenus de ce site (textes, visuels, logo, identité graphique) est protégé par le droit de la propriété intellectuelle. Toute reproduction, totale ou partielle, sans autorisation préalable est interdite.",
+    "dataTitle": "Données personnelles",
+    "dataText": "Les informations transmises via le formulaire de contact sont utilisées uniquement pour traiter votre demande. Conformément au RGPD, vous disposez d'un droit d'accès, de rectification et de suppression de vos données en écrivant à {email}.",
+    "fields": {
+      "legalName": "Dénomination sociale",
+      "legalForm": "Forme juridique",
+      "capital": "Capital social",
+      "address": "Siège social",
+      "siren": "SIREN",
+      "siret": "SIRET (siège)",
+      "rcs": "RCS",
+      "vat": "N° TVA intracommunautaire",
+      "ape": "Code APE",
+      "president": "Président",
+      "email": "E-mail",
+      "phone": "Téléphone"
+    }
   },
   "Common": {
     "whatsapp": "WhatsApp",
