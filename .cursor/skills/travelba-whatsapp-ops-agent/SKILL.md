@@ -8,46 +8,41 @@ description: >-
   créer un voyage sans se connecter.
 ---
 
-# Travelba — agent ops WhatsApp → CRM
+# Travelba — collègue WhatsApp → CRM
 
 ## Produit
 
 Même numéro Concierge (`+33 7 56 84 13 15`). **Staff only** (liste blanche).
-Le client continue d’utiliser Le Concierge (opt-in → dossier). L’agent ops
-reçoit passeports + confirmations + consignes et crée `agency_mtrip_guides`.
+Le client continue d’utiliser Le Concierge (opt-in → dossier).
+
+Le staff **transfère comme à un collègue** : pièces + 2–3 phrases. Pas de
+menu de commandes. L’agent ouvre un brouillon CRM, pose **une** question s’il
+manque un truc, envoie un récap, puis le conseiller dit « ok » / « envoie »
+en français.
 
 Webhook : `POST /api/webhooks/twilio/whatsapp`  
-Twilio console → ce URL (méthode POST). Réponse TwiML vide, traitement via `after()`.
+TwiML vide, travail dans `after()`. Album WhatsApp : debounce ~4 s, un seul
+« Reçu », un seul récap.
 
 ## Règles absolues
 
 1. **Allowlist** `AGENCY_STAFF_WHATSAPP` — jamais créer un voyage depuis un numéro hors liste.
 2. Opt-in client **puis** dossier (pas de fusion). Pas de `/v/` sans publish mTrip réussi.
-3. Confirmation staff **« Envoyer »** avant publish + opt-in (filet OCR).
+3. Confirmation staff en langage naturel avant publish + opt-in (filet OCR).
 4. Titres devis métier — jamais `Capture…` / `Screenshot…`.
 5. Secrets (`TWILIO_*`, `SUPABASE_SERVICE_ROLE_KEY`) uniquement en env.
+6. Copy staff = tutoiement, phrases courtes. Ne pas changer la copy Concierge client.
 
-## Commandes staff
+## Geste staff (pas des commandes à retenir)
 
-- `nouveau` — nouveau brouillon
-- `c'est tout` — récap + lien CRM
-- `envoyer` / `oui` (après récap) — publish mTrip + opt-in client
-- `annuler` — ferme la session (le brouillon CRM reste)
-- `lien` — URL `/admin/mtrip/{id}`
-- `aide`
+- Photos / PDFs + « Panama 10–18 oct, Marie 06… marie@… »
+- Ack immédiat : « Reçu, je m'en occupe. »
+- Puis récap + « Je peux envoyer à Marie ? »
+- « oui » / « ok envoie » → publish mTrip + opt-in client
+- S’il manque le WhatsApp : **une** question
+- « autre voyage » / « autre client » → nouveau dossier (il demande si un brouillon est déjà ouvert)
 
-Session ouverte ~45 min par numéro staff. Médias suivants = même voyage.
-
-## Flux
-
-```
-Staff WA → webhook → allowlist
-  médias → parsePassportFile (MRZ) sinon ingest-documents (devis)
-  consigne → titre / dates / WA + email lead
-  « c'est tout » → récap
-  « Envoyer » → publish → opt-in client
-Client « Oui » → dossier /d/ + /v/
-```
+Client « Oui » → dossier `/d/` + `/v/`.
 
 Inconnu → ack Concierge, **pas** de voyage.
 
@@ -59,10 +54,11 @@ AGENCY_OWNER_USER_ID=          # UUID compte CRM
 AGENCY_STAFF_WHATSAPP=336…,337…
 TWILIO_WEBHOOK_URL=https://travelba.fr/api/webhooks/twilio/whatsapp
 # TWILIO_WEBHOOK_VALIDATE=0   # local
-# OPENAI_API_KEY= ou AI_GATEWAY_API_KEY=  # consignes FR
+# OPENAI_API_KEY= ou AI_GATEWAY_API_KEY=
+# AGENCY_WA_DEBOUNCE_MS=4000
 ```
 
-Table : `agency_wa_ops_sessions` (service role, RLS sans policy anon).
+Table : `agency_wa_ops_sessions` (`notes` JSON : awaiting, history, pending, contact).
 
 ## Fichiers
 
@@ -70,9 +66,9 @@ Table : `agency_wa_ops_sessions` (service role, RLS sans policy anon).
 |---------|------|
 | `app/api/webhooks/twilio/whatsapp/route.ts` | Webhook Twilio |
 | `lib/agency/twilio-inbound.ts` | Signature + médias |
-| `lib/agency/wa-ops-agent.ts` | Routeur staff / client |
-| `lib/agency/wa-ops-intent.ts` | Intent + consigne |
-| `lib/agency/wa-ops-session.ts` | Sessions |
+| `lib/agency/wa-ops-agent.ts` | Collègue staff / client |
+| `lib/agency/wa-ops-intent.ts` | Extraction + tour LLM |
+| `lib/agency/wa-ops-session.ts` | Sessions + debounce album |
 | `lib/mtrip/ingest-passports.ts` | Import passeports (aussi admin) |
 | `lib/mtrip/ingest-documents.ts` | Import résas / devis |
 | `lib/agency/send-voyage.ts` | Publish / opt-in / dossier |
@@ -82,4 +78,5 @@ Table : `agency_wa_ops_sessions` (service role, RLS sans policy anon).
 - Traiter un client comme staff
 - Envoyer le dossier sans opt-in Oui
 - Envoyer `/v/` si publish a échoué
+- Remettre un menu `nouveau · c'est tout · envoyer`
 - Changer la copy Concierge (`travelba-concierge-whatsapp`)
