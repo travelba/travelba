@@ -26,6 +26,7 @@ export async function POST(request: Request) {
   }
 
   const inbound = parsed.inbound;
+  console.info("[wa-webhook] inbound", inbound.fromDigits, inbound.body.slice(0, 40));
   after(async () => {
     try {
       await handleTwilioWhatsAppInbound(inbound);

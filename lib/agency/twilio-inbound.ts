@@ -21,10 +21,17 @@ export type TwilioInbound = {
   raw: Record<string, string>;
 };
 
-function formToParams(form: FormData): Record<string, string> {
+function parseTwilioFormBody(raw: string): Record<string, string> {
   const params: Record<string, string> = {};
-  for (const [key, value] of form.entries()) {
-    if (typeof value === "string") params[key] = value;
+  for (const part of raw.split("&")) {
+    if (!part) continue;
+    const eq = part.indexOf("=");
+    const encKey = eq === -1 ? part : part.slice(0, eq);
+    const encVal = eq === -1 ? "" : part.slice(eq + 1);
+    const key = decodeURIComponent(encKey.replace(/\+/g, " "));
+    // Twilio signe `whatsapp:+33…` avec le « + ». FormData le transforme en espace.
+    const value = decodeURIComponent(encVal.replace(/\+/g, "%2B"));
+    params[key] = value;
   }
   return params;
 }
@@ -38,7 +45,9 @@ export function validateTwilioSignature(
   const data = Object.keys(params)
     .sort()
     .reduce((acc, key) => acc + key + params[key], url);
-  const expected = createHmac("sha1", authToken).update(data, "utf8").digest("base64");
+  const expected = createHmac("sha1", authToken)
+    .update(data, "utf8")
+    .digest("base64");
   try {
     const a = Buffer.from(signature);
     const b = Buffer.from(expected);
@@ -49,19 +58,40 @@ export function validateTwilioSignature(
   }
 }
 
-function webhookPublicUrl(request: Request) {
-  const configured = (process.env.TWILIO_WEBHOOK_URL || "").trim();
-  if (configured) return configured.replace(/\/$/, "");
+function webhookUrlCandidates(request: Request): string[] {
+  const urls = new Set<string>();
+  const configured = (process.env.TWILIO_WEBHOOK_URL || "").trim().replace(
+    /\/$/,
+    ""
+  );
+  if (configured) urls.add(configured);
+
   const site = (
     process.env.NEXT_PUBLIC_SITE_URL ||
     process.env.NEXT_PUBLIC_APP_URL ||
     ""
-  ).replace(/\/$/, "");
+  )
+    .trim()
+    .replace(/\/$/, "");
   if (site) {
     const origin = site.startsWith("http") ? site : `https://${site}`;
-    return `${origin}/api/webhooks/twilio/whatsapp`;
+    urls.add(`${origin}/api/webhooks/twilio/whatsapp`);
   }
-  return request.url.split("?")[0];
+
+  try {
+    const u = new URL(request.url);
+    urls.add(`${u.origin}${u.pathname}`);
+    urls.add(request.url);
+    if (u.host.startsWith("www.")) {
+      urls.add(`${u.protocol}//${u.host.slice(4)}${u.pathname}`);
+    } else {
+      urls.add(`${u.protocol}//www.${u.host}${u.pathname}`);
+    }
+  } catch {
+    // ignore
+  }
+
+  return [...urls].filter(Boolean);
 }
 
 export async function parseTwilioInbound(request: Request): Promise<{
@@ -69,19 +99,29 @@ export async function parseTwilioInbound(request: Request): Promise<{
   params: Record<string, string>;
   signatureOk: boolean;
 }> {
-  const form = await request.formData();
-  const params = formToParams(form);
+  const raw = await request.text();
+  const params = parseTwilioFormBody(raw);
   const cfg = getWhatsAppBusinessConfig();
   const signature = request.headers.get("x-twilio-signature") || "";
   const skip =
     process.env.TWILIO_WEBHOOK_VALIDATE === "0" ||
     process.env.TWILIO_WEBHOOK_VALIDATE === "false";
-  const url = webhookPublicUrl(request);
+  const urls = webhookUrlCandidates(request);
   const signatureOk = skip
     ? true
     : Boolean(cfg.authToken) &&
       Boolean(signature) &&
-      validateTwilioSignature(cfg.authToken, signature, url, params);
+      urls.some((url) =>
+        validateTwilioSignature(cfg.authToken, signature, url, params)
+      );
+
+  if (!signatureOk && !skip) {
+    console.warn("[wa-webhook] signature invalide", {
+      urls,
+      from: params.From || "",
+      hasSig: Boolean(signature),
+    });
+  }
 
   const from = params.From || "";
   const fromDigits =
