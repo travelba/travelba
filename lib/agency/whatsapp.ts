@@ -52,31 +52,38 @@ function toWhatsAppAddress(phoneOrWa: string): string {
   return `whatsapp:+${digits}`;
 }
 
+/** Vercel paste sometimes stores `NAME=value` as the value. */
+export function readEnv(name: string, fallback = ""): string {
+  let v = (process.env[name] || fallback || "").trim();
+  if (
+    (v.startsWith('"') && v.endsWith('"')) ||
+    (v.startsWith("'") && v.endsWith("'"))
+  ) {
+    v = v.slice(1, -1).trim();
+  }
+  const prefix = `${name}=`;
+  if (v.startsWith(prefix)) v = v.slice(prefix.length).trim();
+  return v;
+}
+
 export function getWhatsAppBusinessConfig() {
-  const accountSid = (process.env.TWILIO_ACCOUNT_SID || "").trim();
-  const authToken = (process.env.TWILIO_AUTH_TOKEN || "").trim();
+  let accountSid = readEnv("TWILIO_ACCOUNT_SID");
+  const sidMatch = accountSid.match(/AC[0-9a-f]{32}/i);
+  if (sidMatch) accountSid = sidMatch[0];
+  const authToken = readEnv("TWILIO_AUTH_TOKEN");
   const fromRaw =
-    process.env.TWILIO_WHATSAPP_FROM ||
-    process.env.TWILIO_WHATSAPP_NUMBER ||
-    "";
-  const messagingServiceSid = (
-    process.env.TWILIO_MESSAGING_SERVICE_SID || ""
-  ).trim();
-  const contentSid = (
-    process.env.TWILIO_WHATSAPP_CONTENT_SID ||
-    DEFAULT_TWILIO_CONTENT_SID
-  ).trim();
-  const optinContentSid = (
-    process.env.TWILIO_WHATSAPP_OPTIN_CONTENT_SID ||
-    DEFAULT_TWILIO_OPTIN_CONTENT_SID
-  ).trim();
-  const dossierContentSid = (
-    process.env.TWILIO_WHATSAPP_DOSSIER_CONTENT_SID ||
-    ""
-  ).trim();
+    readEnv("TWILIO_WHATSAPP_FROM") ||
+    readEnv("TWILIO_WHATSAPP_NUMBER");
+  const messagingServiceSid = readEnv("TWILIO_MESSAGING_SERVICE_SID");
+  const contentSid =
+    readEnv("TWILIO_WHATSAPP_CONTENT_SID") || DEFAULT_TWILIO_CONTENT_SID;
+  const optinContentSid =
+    readEnv("TWILIO_WHATSAPP_OPTIN_CONTENT_SID") ||
+    DEFAULT_TWILIO_OPTIN_CONTENT_SID;
+  const dossierContentSid = readEnv("TWILIO_WHATSAPP_DOSSIER_CONTENT_SID");
   const displayNumber = (
-    process.env.TWILIO_WHATSAPP_DISPLAY_NUMBER ||
-    process.env.WHATSAPP_DISPLAY_NUMBER ||
+    readEnv("TWILIO_WHATSAPP_DISPLAY_NUMBER") ||
+    readEnv("WHATSAPP_DISPLAY_NUMBER") ||
     siteConfig.whatsappNumber
   ).replace(/\D/g, "");
 
@@ -210,6 +217,12 @@ async function twilioCreateMessage(
       (raw as { message?: string })?.message ||
       (raw as { error_message?: string })?.error_message ||
       `Twilio WhatsApp ${res.status}`;
+    const sid = cfg.accountSid || "";
+    console.error("[twilio] send failed", {
+      status: res.status,
+      sidLen: sid.length,
+      sidPrefix: sid.slice(0, 2),
+    });
     throw new Error(apiMsg);
   }
 

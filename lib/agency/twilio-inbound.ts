@@ -1,6 +1,9 @@
 import { createHmac, timingSafeEqual } from "crypto";
-import { normalizeWhatsAppDigits } from "@/lib/agency/whatsapp";
-import { getWhatsAppBusinessConfig } from "@/lib/agency/whatsapp";
+import {
+  getWhatsAppBusinessConfig,
+  normalizeWhatsAppDigits,
+  readEnv,
+} from "@/lib/agency/whatsapp";
 
 export type TwilioInboundMedia = {
   url: string;
@@ -20,12 +23,6 @@ export type TwilioInbound = {
   profileName: string | null;
   raw: Record<string, string>;
 };
-
-function envUnprefixed(name: string, value: string) {
-  const trimmed = value.trim();
-  const prefix = `${name}=`;
-  return trimmed.startsWith(prefix) ? trimmed.slice(prefix.length).trim() : trimmed;
-}
 
 function restoreWhatsAppPluses(params: Record<string, string>) {
   const next: Record<string, string> = { ...params };
@@ -99,15 +96,12 @@ function expandWebhookUrls(url: string): string[] {
 
 function webhookUrlCandidates(request: Request): string[] {
   const urls = new Set<string>();
-  const configured = envUnprefixed(
-    "TWILIO_WEBHOOK_URL",
-    process.env.TWILIO_WEBHOOK_URL || ""
-  ).replace(/\/$/, "");
+  const configured = readEnv("TWILIO_WEBHOOK_URL").replace(/\/$/, "");
   if (configured) expandWebhookUrls(configured).forEach((u) => urls.add(u));
 
-  const site = envUnprefixed(
-    "NEXT_PUBLIC_SITE_URL",
-    process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || ""
+  const site = (
+    readEnv("NEXT_PUBLIC_SITE_URL") ||
+    readEnv("NEXT_PUBLIC_APP_URL")
   ).replace(/\/$/, "");
   if (site) {
     const origin = site.startsWith("http") ? site : `https://${site}`;
@@ -147,7 +141,7 @@ export async function parseTwilioInbound(request: Request): Promise<{
   const params = parseTwilioFormBody(raw);
   const paramsPlus = parseTwilioFormBodyPlusPreserving(raw);
   const cfg = getWhatsAppBusinessConfig();
-  const authToken = envUnprefixed("TWILIO_AUTH_TOKEN", cfg.authToken);
+  const authToken = cfg.authToken;
   const signature = request.headers.get("x-twilio-signature") || "";
   const skip =
     process.env.TWILIO_WEBHOOK_VALIDATE === "0" ||
