@@ -1,4 +1,6 @@
+import { sanitizeProductBrief } from "@/lib/agency/cursor-cloud";
 import { normalizeWhatsAppDigits, readEnv } from "@/lib/agency/whatsapp";
+import type { WaOpsAwaiting } from "@/lib/agency/wa-ops-session";
 import { parseLooseDate } from "@/lib/mtrip/quote-lines";
 
 export type ConsigneFields = {
@@ -19,13 +21,20 @@ export type StaffAction =
   | "new_draft"
   | "same_trip"
   | "cancel"
-  | "help";
+  | "help"
+  | "ask_cursor"
+  | "launch_cursor"
+  | "cancel_cursor";
+
+export type IntentKind = "voyage" | "product" | "both";
 
 export type ColleagueTurn = {
   action: StaffAction;
-  awaiting: "contact" | "send_confirm" | "new_or_same" | null;
+  awaiting: WaOpsAwaiting;
   consigne: ConsigneFields;
   reply: string | null;
+  intentKind: IntentKind;
+  productBrief: string | null;
 };
 
 const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
@@ -176,7 +185,23 @@ export function colleagueHelpCopy() {
   return [
     "Envoie-moi les passeports et les PDFs / captures, avec 2 phrases : destination, dates, WhatsApp et email du client.",
     "Je crée le voyage, je te fais un récap, tu me dis d’envoyer.",
+    "Si un truc cloche dans l’outil, dis-le : je te propose de lancer une PR.",
   ].join("\n");
+}
+
+export function looksLikeProductFeedback(text: string) {
+  const f = fold(text);
+  if (!f || f.length < 6) return false;
+  return /\b(recap|recapit|trop long|trop court|bug|ca marche pas|ca ne marche pas|il se passe rien|j.ai rien recu|repond pas|amelior|ameliore|ajoute |change |le bot|l.agent|cursor|interface|bouton|pas pratique|c.est pas bien|t.as rien compris|pr\b)\b/.test(
+    f
+  );
+}
+
+export function looksLikeVoyageWork(text: string, hasMedia: boolean) {
+  if (hasMedia) return true;
+  if (extractPhone(text) || extractEmail(text)) return true;
+  const { start } = extractDates(text);
+  return Boolean(start);
 }
 
 function mergeConsigne(a: ConsigneFields, b: ConsigneFields): ConsigneFields {
@@ -193,7 +218,7 @@ function mergeConsigne(a: ConsigneFields, b: ConsigneFields): ConsigneFields {
 
 export type ColleagueContext = {
   staffText: string;
-  awaiting: "contact" | "send_confirm" | "new_or_same" | null;
+  awaiting: WaOpsAwaiting;
   snapshot: string;
   history: Array<{ role: "staff" | "agent"; text: string }>;
   ingestParts: string[];
@@ -204,10 +229,17 @@ export type ColleagueContext = {
 
 export function decideStaffAction(input: {
   text: string;
-  awaiting: "contact" | "send_confirm" | "new_or_same" | null;
+  awaiting: WaOpsAwaiting;
   hasOpenDraftWithData: boolean;
+  hasMedia?: boolean;
 }): StaffAction {
   const text = (input.text || "").trim();
+  if (input.awaiting === "cursor_confirm") {
+    if (isNoText(text) || isCancelText(text)) return "cancel_cursor";
+    if (isYesText(text) || isSendConfirmText(text)) return "launch_cursor";
+    if (looksLikeProductFeedback(text)) return "ask_cursor";
+    return "continue";
+  }
   if (isHelpText(text) && !input.hasOpenDraftWithData) return "help";
   if (isCancelText(text)) return "cancel";
   if (input.awaiting === "new_or_same") {
@@ -219,6 +251,12 @@ export function decideStaffAction(input: {
   if (input.awaiting === "send_confirm" && isSendConfirmText(text)) return "send";
   if (isSendConfirmText(text) && input.awaiting !== "contact") return "send";
   if (isHelpText(text)) return "help";
+  if (
+    looksLikeProductFeedback(text) &&
+    !looksLikeVoyageWork(text, Boolean(input.hasMedia))
+  ) {
+    return "ask_cursor";
+  }
   return "continue";
 }
 
@@ -229,15 +267,25 @@ export async function runColleagueTurn(
   const key =
     readEnv("AI_GATEWAY_API_KEY") || readEnv("OPENAI_API_KEY");
   if (!key) {
-    return {
-      action: decideStaffAction({
-        text: ctx.staffText,
-        awaiting: ctx.awaiting,
-        hasOpenDraftWithData: ctx.hasPassengers,
-      }),
+    const action = decideStaffAction({
+      text: ctx.staffText,
       awaiting: ctx.awaiting,
+      hasOpenDraftWithData: ctx.hasPassengers,
+      hasMedia: ctx.hasMedia,
+    });
+    const product =
+      action === "ask_cursor" || looksLikeProductFeedback(ctx.staffText);
+    return {
+      action,
+      awaiting: action === "ask_cursor" ? "cursor_confirm" : ctx.awaiting,
       consigne: heuristic,
       reply: null,
+      intentKind: product
+        ? looksLikeVoyageWork(ctx.staffText, ctx.hasMedia)
+          ? "both"
+          : "product"
+        : "voyage",
+      productBrief: product ? sanitizeProductBrief(ctx.staffText) : null,
     };
   }
 
@@ -268,16 +316,18 @@ export async function runColleagueTurn(
             content: `Tu es l’assistant ops WhatsApp de Travel Business Agency. Tu parles à un conseiller agence (tutoiement, phrases courtes, français). Tu n’es PAS un bot à commandes : jamais de menu (nouveau / c'est tout / envoyer).
 
 Réponds JSON :
-{"action":"continue|ask|propose_send|send|new_draft|same_trip|cancel|help","awaiting":"contact|send_confirm|new_or_same"|null,"title":string|null,"destination":string|null,"start_date":"YYYY-MM-DD"|null,"end_date":"YYYY-MM-DD"|null,"client_phone":string|null,"client_email":string|null,"notes":string|null,"reply":string}
+{"intent_kind":"voyage|product|both","action":"continue|ask|propose_send|send|new_draft|same_trip|cancel|help|ask_cursor|launch_cursor|cancel_cursor","awaiting":"contact|send_confirm|new_or_same|cursor_confirm"|null,"title":string|null,"destination":string|null,"start_date":"YYYY-MM-DD"|null,"end_date":"YYYY-MM-DD"|null,"client_phone":string|null,"client_email":string|null,"notes":string|null,"product_brief":string|null,"reply":string}
 
 Règles :
 - reply = message WhatsApp au conseiller, max 8 lignes, sans markdown.
-- UNE question max. WhatsApp client obligatoire pour envoyer. Email utile pour le dossier.
+- intent_kind=voyage si pièces / consigne / envoi client. product si bug ou idée produit (récap trop long, bot, CRM). both si les deux.
+- product_brief = demande technique SANS téléphone, email, nom client, numéro de passeport.
+- ask_cursor : une phrase + « Je lance une PR pour ça ? ». launch_cursor seulement si awaiting=cursor_confirm et le conseiller confirme.
+- Si both : d’abord le voyage (récap / question contact), product_brief en réserve.
+- UNE question max. WhatsApp client obligatoire pour envoyer.
 - propose_send si passagers + WhatsApp : récap court + « Je peux envoyer à {prénom} ? »
-- send seulement si le conseiller vient de confirmer l’envoi (ok, oui, vas-y, envoie…).
-- ask si un trou bloquant (surtout WhatsApp).
-- new_draft si autre voyage / autre client. same_trip si on continue le dossier ouvert.
-- help : 2-3 phrases sur le geste (pièces + 2 phrases), pas de liste de commandes.
+- send seulement si le conseiller vient de confirmer l’envoi (ok, oui, vas-y, envoie…) ET awaiting=send_confirm.
+- help : geste pièces + 2 phrases, pas de menu de commandes.
 - Téléphone en chiffres internationaux sans +. Dates ISO.`,
           },
           {
@@ -314,14 +364,28 @@ Règles :
       "same_trip",
       "cancel",
       "help",
+      "ask_cursor",
+      "launch_cursor",
+      "cancel_cursor",
     ];
     const awaitingRaw = parsed.awaiting;
-    const awaiting =
+    const awaiting: WaOpsAwaiting =
       awaitingRaw === "contact" ||
       awaitingRaw === "send_confirm" ||
-      awaitingRaw === "new_or_same"
+      awaitingRaw === "new_or_same" ||
+      awaitingRaw === "cursor_confirm"
         ? awaitingRaw
         : null;
+    const kindRaw = String(parsed.intent_kind || "voyage");
+    const intentKind: IntentKind =
+      kindRaw === "product" || kindRaw === "both" ? kindRaw : "voyage";
+    const productBrief = sanitizeProductBrief(
+      typeof parsed.product_brief === "string"
+        ? parsed.product_brief
+        : intentKind !== "voyage"
+          ? ctx.staffText
+          : ""
+    );
     const llmConsigne: ConsigneFields = {
       title: typeof parsed.title === "string" ? parsed.title : null,
       destination:
@@ -343,6 +407,8 @@ Règles :
       awaiting,
       consigne: mergeConsigne(heuristic, llmConsigne),
       reply: typeof parsed.reply === "string" ? parsed.reply.trim() : null,
+      intentKind,
+      productBrief: productBrief || null,
     };
   } catch {
     return null;

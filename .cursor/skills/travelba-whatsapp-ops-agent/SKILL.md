@@ -3,12 +3,12 @@ name: travelba-whatsapp-ops-agent
 description: >-
   Staff WhatsApp inbound agent on the Concierge number: allowlist, create CRM
   voyage from passports/PDFs/consignes, recap, publish mTrip, opt-in then
-  dossier. Use when editing the Twilio webhook, wa-ops-*, ingest from WhatsApp,
-  or when the user mentions agent WhatsApp CRM, transférer passeports, ou
-  créer un voyage sans se connecter.
+  dossier. Can also launch a Cursor Cloud Agent PR after staff confirms a
+  product/bug remark. Use when editing the Twilio webhook, wa-ops-*, Cursor
+  webhook, ingest from WhatsApp, or when the user mentions agent WhatsApp CRM.
 ---
 
-# Travelba — collègue WhatsApp → CRM
+# Travelba — collègue WhatsApp → CRM (+ Cursor)
 
 ## Produit
 
@@ -20,9 +20,12 @@ menu de commandes. L’agent ouvre un brouillon CRM, pose **une** question s’i
 manque un truc, envoie un récap, puis le conseiller dit « ok » / « envoie »
 en français.
 
-Webhook : `POST /api/webhooks/twilio/whatsapp`  
-TwiML vide, travail dans `after()`. Album WhatsApp : debounce ~4 s, un seul
-« Reçu », un seul récap.
+Sur le **même fil**, un bug ou une idée produit (« le récap est trop long »)
+n’est pas une consigne voyage : l’agent propose une PR Cursor, **demande
+avant** de lancer, puis envoie le lien.
+
+Webhook voyage : `POST /api/webhooks/twilio/whatsapp`  
+Webhook Cursor : `POST /api/webhooks/cursor/agents`
 
 ## Règles absolues
 
@@ -30,8 +33,11 @@ TwiML vide, travail dans `after()`. Album WhatsApp : debounce ~4 s, un seul
 2. Opt-in client **puis** dossier (pas de fusion). Pas de `/v/` sans publish mTrip réussi.
 3. Confirmation staff en langage naturel avant publish + opt-in (filet OCR).
 4. Titres devis métier — jamais `Capture…` / `Screenshot…`.
-5. Secrets (`TWILIO_*`, `SUPABASE_SERVICE_ROLE_KEY`) uniquement en env.
+5. Secrets (`TWILIO_*`, `SUPABASE_SERVICE_ROLE_KEY`, `CURSOR_API_KEY`) uniquement en env.
 6. Copy staff = tutoiement, phrases courtes. Ne pas changer la copy Concierge client.
+7. **Zéro PII** dans un prompt Cursor (pas de passeport, WhatsApp client, email).
+8. 1 agent Cursor à la fois par numéro. PR, pas de merge auto.
+9. `awaiting=send_confirm` → « oui » = envoi client. `awaiting=cursor_confirm` → « oui » = lancer Cursor.
 
 ## Geste staff (pas des commandes à retenir)
 
@@ -39,10 +45,8 @@ TwiML vide, travail dans `after()`. Album WhatsApp : debounce ~4 s, un seul
 - Ack immédiat : « Reçu, je m'en occupe. »
 - Puis récap + « Je peux envoyer à Marie ? »
 - « oui » / « ok envoie » → publish mTrip + opt-in client
-- S’il manque le WhatsApp : **une** question
-- « autre voyage » / « autre client » → nouveau dossier (il demande si un brouillon est déjà ouvert)
-
-Client « Oui » → dossier `/d/` + `/v/`.
+- « le récap est trop long » → « Je lance une PR pour ça ? » → oui → Cloud Agent
+- Client « Oui » → dossier `/d/` + `/v/`
 
 Inconnu → ack Concierge, **pas** de voyage.
 
@@ -50,24 +54,30 @@ Inconnu → ack Concierge, **pas** de voyage.
 
 ```
 SUPABASE_SERVICE_ROLE_KEY=
-AGENCY_OWNER_USER_ID=          # UUID compte CRM
+AGENCY_OWNER_USER_ID=
 AGENCY_STAFF_WHATSAPP=336…,337…
 TWILIO_WEBHOOK_URL=https://travelba.fr/api/webhooks/twilio/whatsapp
-# TWILIO_WEBHOOK_VALIDATE=0   # local
+CURSOR_API_KEY=                 # Cursor Dashboard → API Keys
+CURSOR_WEBHOOK_SECRET=          # ≥ 32 caractères
+CURSOR_AGENT_REPO=https://github.com/travelba/travelba
+# CURSOR_WEBHOOK_URL=https://travelba.fr/api/webhooks/cursor/agents
+# CURSOR_WEBHOOK_VALIDATE=0
 # OPENAI_API_KEY= ou AI_GATEWAY_API_KEY=
 # AGENCY_WA_DEBOUNCE_MS=4000
 ```
 
-Table : `agency_wa_ops_sessions` (`notes` JSON : awaiting, history, pending, contact).
+Table : `agency_wa_ops_sessions` (`notes` JSON : awaiting, history, pending, contact, productBrief, cursorAgentId).
 
 ## Fichiers
 
 | Fichier | Rôle |
 |---------|------|
 | `app/api/webhooks/twilio/whatsapp/route.ts` | Webhook Twilio |
+| `app/api/webhooks/cursor/agents/route.ts` | Webhook agent Cursor |
+| `lib/agency/cursor-cloud.ts` | API Cursor + sanitize PII |
 | `lib/agency/twilio-inbound.ts` | Signature + médias |
 | `lib/agency/wa-ops-agent.ts` | Collègue staff / client |
-| `lib/agency/wa-ops-intent.ts` | Extraction + tour LLM |
+| `lib/agency/wa-ops-intent.ts` | Voyage vs produit + tour LLM |
 | `lib/agency/wa-ops-session.ts` | Sessions + debounce album |
 | `lib/mtrip/ingest-passports.ts` | Import passeports (aussi admin) |
 | `lib/mtrip/ingest-documents.ts` | Import résas / devis |
@@ -78,5 +88,7 @@ Table : `agency_wa_ops_sessions` (`notes` JSON : awaiting, history, pending, con
 - Traiter un client comme staff
 - Envoyer le dossier sans opt-in Oui
 - Envoyer `/v/` si publish a échoué
+- Envoyer un passeport / numéro client à Cursor
+- Merger une PR Cursor sans relecture
 - Remettre un menu `nouveau · c'est tout · envoyer`
 - Changer la copy Concierge (`travelba-concierge-whatsapp`)

@@ -20,7 +20,7 @@ Lire **ce skill en premier** pour choisir le bon skill ciblé, puis coder.
 | Traveler View `/v/` + titres | `travelba-my-trip` |
 | Suivi dépenses `/d/` + devis public | `travelba-suivi-depenses` |
 | WhatsApp opt-in → dossier | `travelba-concierge-whatsapp` |
-| WhatsApp staff → créer voyage CRM | `travelba-whatsapp-ops-agent` |
+| WhatsApp staff → créer voyage CRM (+ PR Cursor) | `travelba-whatsapp-ops-agent` |
 
 Rules always-on : `.cursor/rules/travelba-core.mdc`  
 Docs/import : `.cursor/rules/travelba-voyage-docs.mdc`

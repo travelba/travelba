@@ -9,7 +9,12 @@ export type WaOpsSessionStatus =
   | "sent"
   | "cancelled";
 
-export type WaOpsAwaiting = "contact" | "send_confirm" | "new_or_same" | null;
+export type WaOpsAwaiting =
+  | "contact"
+  | "send_confirm"
+  | "new_or_same"
+  | "cursor_confirm"
+  | null;
 
 export type WaOpsHistoryTurn = {
   role: "staff" | "agent";
@@ -34,6 +39,10 @@ export type WaOpsSessionNotes = {
   seenSids: string[];
   contact: WaOpsContact;
   ackedBatchAt?: string | null;
+  productBrief?: string | null;
+  pendingProductBrief?: string | null;
+  cursorAgentId?: string | null;
+  cursorStatus?: "running" | "finished" | "error" | null;
 };
 
 export type WaOpsSession = {
@@ -78,9 +87,12 @@ export function parseSessionNotes(raw: string | null | undefined): WaOpsSessionN
     const awaitingOk: WaOpsAwaiting =
       awaiting === "contact" ||
       awaiting === "send_confirm" ||
-      awaiting === "new_or_same"
+      awaiting === "new_or_same" ||
+      awaiting === "cursor_confirm"
         ? awaiting
         : null;
+
+    const cursorStatus = parsed.cursorStatus;
 
     return {
       awaiting: awaitingOk,
@@ -99,6 +111,20 @@ export function parseSessionNotes(raw: string | null | undefined): WaOpsSessionN
       },
       ackedBatchAt:
         typeof parsed.ackedBatchAt === "string" ? parsed.ackedBatchAt : null,
+      productBrief:
+        typeof parsed.productBrief === "string" ? parsed.productBrief : null,
+      pendingProductBrief:
+        typeof parsed.pendingProductBrief === "string"
+          ? parsed.pendingProductBrief
+          : null,
+      cursorAgentId:
+        typeof parsed.cursorAgentId === "string" ? parsed.cursorAgentId : null,
+      cursorStatus:
+        cursorStatus === "running" ||
+        cursorStatus === "finished" ||
+        cursorStatus === "error"
+          ? cursorStatus
+          : null,
     };
   } catch {
     return base;
@@ -116,6 +142,10 @@ export function stringifySessionNotes(notes: WaOpsSessionNotes): string {
     seenSids: (notes.seenSids || []).slice(-80),
     contact: notes.contact || {},
     ackedBatchAt: notes.ackedBatchAt || null,
+    productBrief: notes.productBrief || null,
+    pendingProductBrief: notes.pendingProductBrief || null,
+    cursorAgentId: notes.cursorAgentId || null,
+    cursorStatus: notes.cursorStatus || null,
   };
   return JSON.stringify(compact);
 }
@@ -236,4 +266,22 @@ export async function wasMessageProcessed(
       notes.pending.some((p) => p.sid === messageSid)
     );
   });
+}
+
+export async function findSessionByCursorAgentId(
+  supabase: SupabaseClient,
+  agentId: string
+): Promise<WaOpsSession | null> {
+  if (!agentId) return null;
+  const { data, error } = await supabase
+    .from("agency_wa_ops_sessions")
+    .select("*")
+    .order("updated_at", { ascending: false })
+    .limit(80);
+  if (error) throw new Error(error.message);
+  const rows = (data || []) as WaOpsSession[];
+  return (
+    rows.find((row) => parseSessionNotes(row.notes).cursorAgentId === agentId) ||
+    null
+  );
 }

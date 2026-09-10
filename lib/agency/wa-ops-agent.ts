@@ -20,6 +20,11 @@ import {
   isStaffSender,
 } from "@/lib/agency/wa-ops-config";
 import {
+  cursorCloudConfigured,
+  launchCursorAgent,
+  sanitizeProductBrief,
+} from "@/lib/agency/cursor-cloud";
+import {
   colleagueHelpCopy,
   decideStaffAction,
   extractConsigne,
@@ -28,6 +33,7 @@ import {
   isNoText,
   isSendConfirmText,
   isYesText,
+  looksLikeProductFeedback,
   runColleagueTurn,
   type ConsigneFields,
 } from "@/lib/agency/wa-ops-intent";
@@ -572,6 +578,49 @@ function fallbackReply(input: {
   };
 }
 
+function cursorAskCopy(brief: string) {
+  const short = brief.slice(0, 160);
+  return `Je lance une PR pour : ${short}${brief.length > 160 ? "…" : ""} ?`;
+}
+
+async function persistCursorNotes(
+  supabase: SupabaseClient,
+  session: WaOpsSession,
+  notes: WaOpsSessionNotes
+) {
+  return saveSessionNotes(supabase, session, notes, {
+    status: notes.awaiting === "send_confirm" ? "ready" : "collecting",
+  });
+}
+
+async function launchCursorFromNotes(
+  supabase: SupabaseClient,
+  session: WaOpsSession,
+  notes: WaOpsSessionNotes
+) {
+  if (notes.cursorAgentId && notes.cursorStatus === "running") {
+    return "Je finis déjà une PR. Je te préviens quand c’est prêt.";
+  }
+  const brief = sanitizeProductBrief(
+    notes.productBrief || notes.pendingProductBrief || ""
+  );
+  if (!brief) {
+    return "Reformule ce que tu veux changer dans l’outil — sans les infos client.";
+  }
+  if (!cursorCloudConfigured()) {
+    return "Je ne peux pas lancer Cursor : il manque CURSOR_API_KEY sur Vercel.";
+  }
+  const launched = await launchCursorAgent({ brief });
+  notes.cursorAgentId = launched.id;
+  notes.cursorStatus = "running";
+  notes.awaiting = null;
+  notes.pendingProductBrief = null;
+  notes.productBrief = brief;
+  pushHistory(notes, "agent", "PR Cursor lancée");
+  await persistCursorNotes(supabase, session, notes);
+  return "C’est lancé. Je t’envoie le lien de la PR dès que c’est prêt.";
+}
+
 async function handleStaff(supabase: SupabaseClient, inbound: TwilioInbound) {
   const ownerId = getAgencyOwnerUserId();
   const staffText = [inbound.buttonPayload, inbound.body]
@@ -635,7 +684,22 @@ async function handleStaff(supabase: SupabaseClient, inbound: TwilioInbound) {
     text: merged.body,
     awaiting: notes.awaiting,
     hasOpenDraftWithData: hasData,
+    hasMedia: merged.media.length > 0,
   });
+
+  if (action === "launch_cursor") {
+    const msg = await launchCursorFromNotes(supabase, session, notes);
+    await reply(inbound.fromDigits, msg);
+    return;
+  }
+  if (action === "cancel_cursor") {
+    notes.awaiting = null;
+    notes.pendingProductBrief = null;
+    pushHistory(notes, "agent", "Pas de PR.");
+    await persistCursorNotes(supabase, session, notes);
+    await reply(inbound.fromDigits, "OK, pas de PR.");
+    return;
+  }
 
   if (
     action === "new_draft" &&
@@ -676,7 +740,10 @@ async function handleStaff(supabase: SupabaseClient, inbound: TwilioInbound) {
     action === "send" ||
     action === "cancel" ||
     action === "help" ||
-    action === "same_trip"
+    action === "same_trip" ||
+    action === "ask_cursor" ||
+    action === "launch_cursor" ||
+    action === "cancel_cursor"
   ) {
     consigne.title = null;
     consigne.destination = null;
@@ -736,7 +803,12 @@ async function handleStaff(supabase: SupabaseClient, inbound: TwilioInbound) {
     hasMedia: merged.media.length > 0,
   });
 
-  if (turn?.consigne) {
+  if (
+    turn?.consigne &&
+    turn.action !== "ask_cursor" &&
+    turn.action !== "launch_cursor" &&
+    turn.action !== "cancel_cursor"
+  ) {
     const c = turn.consigne;
     if (
       c.client_phone ||
@@ -761,6 +833,29 @@ async function handleStaff(supabase: SupabaseClient, inbound: TwilioInbound) {
     action = turn.action;
   }
 
+  const productBrief = sanitizeProductBrief(
+    turn?.productBrief ||
+      (action === "ask_cursor" || looksLikeProductFeedback(merged.body)
+        ? merged.body
+        : notes.pendingProductBrief || notes.productBrief || "")
+  );
+  const intentKind =
+    turn?.intentKind ||
+    (action === "ask_cursor"
+      ? ingestParts.length || hasData
+        ? "both"
+        : "product"
+      : "voyage");
+  if (
+    productBrief &&
+    (intentKind === "product" ||
+      intentKind === "both" ||
+      action === "ask_cursor")
+  ) {
+    notes.productBrief = productBrief;
+    notes.pendingProductBrief = productBrief;
+  }
+
   if (action === "send" || turn?.action === "send") {
     const { gaps } = blockingGaps(guide);
     if (
@@ -769,6 +864,29 @@ async function handleStaff(supabase: SupabaseClient, inbound: TwilioInbound) {
         (notes.awaiting !== "contact" && isSendConfirmText(merged.body)))
     ) {
       const sent = await sendVoyageFromStaff(supabase, ownerId, session, guide);
+      const leftover = sanitizeProductBrief(
+        notes.pendingProductBrief || notes.productBrief || ""
+      );
+      if (leftover) {
+        const fresh = parseSessionNotes(
+          ((await findOpenSession(supabase, inbound.fromDigits)) || session)
+            .notes
+        );
+        fresh.productBrief = leftover;
+        fresh.pendingProductBrief = leftover;
+        fresh.awaiting = "cursor_confirm";
+        pushHistory(fresh, "agent", cursorAskCopy(leftover));
+        await persistCursorNotes(
+          supabase,
+          (await findOpenSession(supabase, inbound.fromDigits)) || session,
+          fresh
+        );
+        await reply(
+          inbound.fromDigits,
+          `${sent.message}\n\nAussi : ${cursorAskCopy(leftover)}`
+        );
+        return;
+      }
       await reply(inbound.fromDigits, sent.message);
       return;
     }
@@ -776,14 +894,41 @@ async function handleStaff(supabase: SupabaseClient, inbound: TwilioInbound) {
   }
 
   const { gaps } = blockingGaps(guide);
-  if (!gaps.length && (action === "propose_send" || action === "continue" || action === "ask")) {
-    notes.awaiting = "send_confirm";
-    await updateSession(supabase, session.id, { status: "ready" });
-  } else if (gaps.includes("WhatsApp client")) {
-    notes.awaiting = "contact";
-    await updateSession(supabase, session.id, { status: "collecting" });
-  } else {
-    notes.awaiting = turn?.awaiting || notes.awaiting;
+  if (intentKind !== "product") {
+    if (!gaps.length && (action === "propose_send" || action === "continue" || action === "ask")) {
+      notes.awaiting = "send_confirm";
+      await updateSession(supabase, session.id, { status: "ready" });
+    } else if (gaps.includes("WhatsApp client")) {
+      notes.awaiting = "contact";
+      await updateSession(supabase, session.id, { status: "collecting" });
+    } else if (turn?.awaiting && turn.awaiting !== "cursor_confirm") {
+      notes.awaiting = turn.awaiting;
+    }
+  }
+
+  const canAskCursorNow =
+    Boolean(productBrief) &&
+    (action === "ask_cursor" || intentKind === "product") &&
+    notes.awaiting !== "send_confirm" &&
+    notes.awaiting !== "contact" &&
+    notes.awaiting !== "new_or_same";
+
+  if (canAskCursorNow) {
+    if (notes.cursorAgentId && notes.cursorStatus === "running") {
+      await persistCursorNotes(supabase, session, notes);
+      await reply(
+        inbound.fromDigits,
+        "Je finis déjà une PR. Je te préviens quand c’est prêt."
+      );
+      return;
+    }
+    notes.awaiting = "cursor_confirm";
+    notes.productBrief = productBrief;
+    const text = turn?.reply || cursorAskCopy(productBrief);
+    pushHistory(notes, "agent", text);
+    await persistCursorNotes(supabase, session, notes);
+    await reply(inbound.fromDigits, text);
+    return;
   }
 
   const fallback = fallbackReply({
