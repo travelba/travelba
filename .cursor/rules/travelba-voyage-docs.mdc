@@ -1,0 +1,28 @@
+---
+description: Voyage CRM — documents persistés, preview, import résas/billets
+globs: lib/mtrip/**,components/admin/MtripGuideWorkspace.tsx,components/admin/QuoteLinesEditor.tsx,components/admin/VoyageFilesPanel.tsx,app/api/admin/mtrip/**
+alwaysApply: false
+---
+
+# Documents & devis voyage
+
+## Upload = persistance immédiate
+
+1. Storage `agency-mtrip` (`{userId}/{guideId}/…`)
+2. Métadonnées dans `agency_mtrip_guides.documents` ou `passport_files`
+3. OCR/parse → `quote_lines` + `extraction`
+4. UI : `VoyageFilesPanel` + modal preview (URL signée 30 min)
+
+Ne jamais laisser un upload « en mémoire » sans UPDATE guide.
+
+## Preview
+
+- API : `GET /api/admin/mtrip/guides/[id]/files/[fileId]`
+- Ligne devis → `document_id` → bouton **Voir doc**
+- Pas d’exposition publique des confirmations sur `/devis`
+
+## Import (détail skill `travelba-confirmation-import`)
+
+- Hôtel : nom · `10 juin - 11 juin` · `room_type` · `room_details`
+- Vol AF : `Vol Air France SJO–CDG` · dates · `AF0431 · Business` · détails
+- Titres métier uniquement — jamais filename Capture…

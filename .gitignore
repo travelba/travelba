@@ -43,3 +43,9 @@ dev-out.log
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+.vercel
+.env*
+
+tmp_mtrip_extract/
+mtrip_pdf_list.json

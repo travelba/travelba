@@ -13,6 +13,106 @@
   --accent-3: #ff8a5b;
 }
 
+/**
+ * Back-office — palette inspirée Air France (navy + rouge + light)
+ * Scoped : n’altère pas le site public.
+ */
+.admin-af {
+  --background: #f2f4f8;
+  --surface: #ffffff;
+  --surface-2: #e8ecf2;
+  --foreground: #002157;
+  --muted: #5a6b82;
+  --border: rgba(0, 33, 87, 0.12);
+
+  --accent: #e81932;
+  --accent-2: #002157;
+  --accent-3: #c8102e;
+
+  --admin-navy: #002157;
+  --admin-navy-deep: #00153a;
+  --admin-red: #e81932;
+  --admin-sky: #dce6f5;
+
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-admin-sans), var(--font-sans), system-ui, sans-serif;
+}
+
+.admin-af .font-display {
+  font-family: var(--font-admin-display), var(--font-display), system-ui,
+    sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.admin-af ::selection {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.admin-af .text-gradient {
+  background: none;
+  -webkit-background-clip: unset;
+  background-clip: unset;
+  color: var(--admin-navy);
+}
+
+.admin-af-header {
+  background: #ffffff;
+  border-bottom: 3px solid var(--admin-red);
+  box-shadow: 0 1px 0 rgba(0, 33, 87, 0.04);
+}
+
+.admin-af-hero-band {
+  background: linear-gradient(135deg, #00153a 0%, #002157 48%, #0a3a7a 100%);
+  color: #ffffff;
+}
+
+.admin-af-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 28px -18px rgba(0, 33, 87, 0.35);
+}
+
+.admin-af-btn {
+  background: var(--admin-red);
+  color: #ffffff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.admin-af-btn:hover {
+  background: #c8102e;
+}
+
+.admin-af-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Curseur main sur tout élément cliquable du back-office / devis */
+.admin-af a[href],
+.admin-af button:not(:disabled),
+.admin-af [role="button"]:not([aria-disabled="true"]),
+.admin-af label[for],
+.admin-af summary,
+.admin-af input[type="submit"],
+.admin-af input[type="button"],
+.admin-af input[type="file"] + *,
+.admin-af .cursor-pointer {
+  cursor: pointer;
+}
+
+.admin-af a[href]:hover {
+  cursor: pointer;
+}
+
+.admin-af button:disabled,
+.admin-af [aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
@@ -45,6 +145,18 @@ body {
   overflow-x: hidden;
 }
 
+a[href],
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+summary {
+  cursor: pointer;
+}
+
+button:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
 ::selection {
   background: var(--accent);
   color: #07090f;
@@ -59,7 +171,12 @@ body {
 }
 
 .text-gradient {
-  background: linear-gradient(110deg, var(--accent-2), var(--accent), var(--accent-3));
+  background: linear-gradient(
+    110deg,
+    var(--accent-2),
+    var(--accent),
+    var(--accent-3)
+  );
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -68,6 +185,11 @@ body {
 .glass {
   background: rgba(255, 255, 255, 0.03);
   backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+}
+
+.admin-af .glass {
+  background: rgba(255, 255, 255, 0.85);
   border: 1px solid var(--border);
 }
 
@@ -84,4 +206,8 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #232a3d;
+}
+
+.admin-af ::-webkit-scrollbar-thumb:hover {
+  background: #9aa8bc;
 }

@@ -2,22 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { NextIntlClientProvider, hasLocale } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
-import { Space_Grotesk, Inter } from "next/font/google";
 import { routing } from "@/i18n/routing";
 import { siteConfig } from "@/lib/site";
-import "../globals.css";
-
-const spaceGrotesk = Space_Grotesk({
-  subsets: ["latin"],
-  variable: "--font-space-grotesk",
-  display: "swap",
-});
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap",
-});
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
@@ -35,16 +21,21 @@ export async function generateMetadata({
     metadataBase: new URL(siteConfig.url),
     title: t("title"),
     description: t("description"),
+    robots: { index: true, follow: true },
     openGraph: {
       title: t("title"),
       description: t("description"),
       siteName: siteConfig.name,
+      locale,
       type: "website",
+      url: locale === "en" ? "/en" : "/fr",
     },
     alternates: {
+      canonical: locale === "en" ? "/en" : "/fr",
       languages: {
         fr: "/fr",
         en: "/en",
+        "x-default": "/fr",
       },
     },
   };
@@ -65,10 +56,8 @@ export default async function LocaleLayout({
   setRequestLocale(locale);
 
   return (
-    <html lang={locale} className={`${spaceGrotesk.variable} ${inter.variable}`}>
-      <body className="bg-background text-foreground antialiased">
-        <NextIntlClientProvider>{children}</NextIntlClientProvider>
-      </body>
-    </html>
+    <NextIntlClientProvider>
+      <div lang={locale}>{children}</div>
+    </NextIntlClientProvider>
   );
 }

@@ -22,35 +22,51 @@ npm run dev
 
 Le site est servi sur `http://localhost:3000` et redirige vers la langue par défaut (`/fr`).
 
+## Back-office agent (`/admin`)
+
+Espace privé pour gérer le flux Little Emperors : dossiers clients, recherche dispo, PDF devis, réservation, suivi paiement hôtel.
+
+1. Renseignez dans `.env.local` : `NEXT_PUBLIC_SUPABASE_*`, `LITTLE_EMPERORS_API_KEY`, et Resend pour les mails hôtel.
+2. Créez un utilisateur dans Supabase Auth (email/mot de passe).
+3. Ouvrez `http://localhost:3000/admin/login`.
+
+Tables Supabase : `agency_*` (clients, dossiers, quotes, bookings, hotel_contacts, payment_followups). Bucket Storage : `agency-quotes`.
+
 ## Configuration
 
 Copiez `.env.example` vers `.env.local` et renseignez les variables :
 
-| Variable             | Description                                                              |
-| -------------------- | ------------------------------------------------------------------------ |
-| `RESEND_API_KEY`     | Clé API Resend. Sans elle, les demandes sont seulement loggées.          |
-| `CONTACT_FROM_EMAIL` | Adresse expéditrice vérifiée sur Resend.                                 |
-| `CONTACT_TO_EMAIL`   | Adresse de réception des demandes.                                       |
+| Variable | Description |
+| -------- | ----------- |
+| `RESEND_API_KEY` | Clé API Resend (contact + emails hôtel). |
+| `CONTACT_FROM_EMAIL` | Adresse expéditrice vérifiée sur Resend. |
+| `CONTACT_TO_EMAIL` | Adresse de réception des demandes. |
+| `NEXT_PUBLIC_SUPABASE_URL` | URL projet Supabase. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Clé anon / publishable Supabase. |
+| `LITTLE_EMPERORS_API_URL` | Base API LE (`…/v2`). Staging par défaut. |
+| `LITTLE_EMPERORS_API_KEY` | Bearer token LE (serveur uniquement). |
+| `LITTLE_EMPERORS_WIDGET_URL` | Base URL du widget carte bancaire. |
+| `LITTLE_EMPERORS_WEBHOOK_KEY` | (Optionnel) clé d’auth webhook LE. |
 
 Les informations de contact (email, téléphone, **numéro WhatsApp Business**) et les liens réseaux sociaux se configurent dans [`lib/site.ts`](lib/site.ts).
 
-> Pensez à remplacer le numéro WhatsApp placeholder (`33600000000`) par le vrai numéro.
-
 ## Contenus
 
-Tous les textes sont centralisés dans [`messages/fr.json`](messages/fr.json) et [`messages/en.json`](messages/en.json).
+Tous les textes marketing sont centralisés dans [`messages/fr.json`](messages/fr.json) et [`messages/en.json`](messages/en.json).
 
 ## Structure
 
 ```
 app/
-  [locale]/        # layout + page d'accueil localisés
-  api/contact/     # endpoint d'envoi d'email (Resend)
-components/        # Header, Hero, Services, WhyUs, Process, Testimonials, Contact, Footer, ...
-i18n/              # configuration next-intl (routing, navigation, request)
-lib/site.ts        # constantes du site (contact, WhatsApp, services)
-messages/          # traductions FR / EN
-proxy.ts           # middleware next-intl (routage des locales)
+  [locale]/              # site vitrine localisé
+  admin/                  # back-office agent
+  api/admin/              # API dossiers + proxy Little Emperors
+  api/webhooks/           # webhooks LE
+components/admin/         # UI back-office
+lib/agency/               # types, PDF, templates email
+lib/little-emperors/      # client API LE
+lib/supabase/             # clients auth SSR
+proxy.ts                  # next-intl + protection /admin
 ```
 
 ## Crédits médias
