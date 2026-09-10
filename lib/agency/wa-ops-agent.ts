@@ -11,6 +11,7 @@ import {
 import {
   downloadTwilioMedia,
   type TwilioInbound,
+  type TwilioInboundMedia,
 } from "@/lib/agency/twilio-inbound";
 import {
   adminGuideUrl,
@@ -19,17 +20,34 @@ import {
   isStaffSender,
 } from "@/lib/agency/wa-ops-config";
 import {
+  cursorCloudConfigured,
+  launchCursorAgent,
+  sanitizeProductBrief,
+} from "@/lib/agency/cursor-cloud";
+import {
+  colleagueHelpCopy,
+  decideStaffAction,
+  extractConsigne,
+  extractPhone,
+  isHelpText,
   isNoText,
+  isSendConfirmText,
   isYesText,
-  parseOpsMessage,
+  looksLikeProductFeedback,
+  runColleagueTurn,
   type ConsigneFields,
 } from "@/lib/agency/wa-ops-intent";
 import {
   createSession,
   findOpenSession,
+  parseSessionNotes,
+  saveSessionNotes,
   updateSession,
   wasMessageProcessed,
+  type WaOpsAwaiting,
+  type WaOpsPendingInbound,
   type WaOpsSession,
+  type WaOpsSessionNotes,
 } from "@/lib/agency/wa-ops-session";
 import { sendWhatsAppReply } from "@/lib/agency/whatsapp";
 import { createDraftGuide, loadGuideForUser } from "@/lib/mtrip/create-guide";
@@ -41,21 +59,35 @@ import type { IngestFile } from "@/lib/mtrip/ingest-types";
 import { passengerCompleteness } from "@/lib/mtrip/passenger-schema";
 import { createServiceClient } from "@/lib/supabase/admin";
 
-const HELP = [
-  "Je crée le voyage CRM à ta place.",
-  "Envoie les passeports, les PDFs / captures de résa, puis la consigne (destination, dates, WhatsApp + email client).",
-  "Commandes : nouveau · c'est tout · envoyer · annuler · lien",
-].join("\n");
-
 const UNKNOWN_ACK =
   "Bonjour, je suis Le Concierge de Travel Business Agency. Pour un dossier voyage, contactez votre conseiller.";
+
+function debounceMs() {
+  const n = Number(process.env.AGENCY_WA_DEBOUNCE_MS || 4000);
+  return Number.isFinite(n) && n >= 0 ? Math.min(n, 15000) : 4000;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function phoneTail(value: string | null | undefined) {
   return (value || "").replace(/\D/g, "").slice(-9);
 }
 
+function guideHasData(guide: AgencyMtripGuide | null | undefined) {
+  if (!guide) return false;
+  return Boolean(
+    (guide.passengers || []).length ||
+      (guide.quote_lines || []).length ||
+      (guide.documents || []).length
+  );
+}
+
 async function reply(toDigits: string, body: string) {
-  await sendWhatsAppReply({ toPhone: toDigits, body });
+  const text = body.trim();
+  if (!text) return;
+  await sendWhatsAppReply({ toPhone: toDigits, body: text.slice(0, 1600) });
 }
 
 async function loadOwnerGuide(
@@ -109,22 +141,9 @@ function applyConsigneToGuide(
   };
 }
 
-type PendingContact = { phone?: string; email?: string };
-
-function parseSessionContact(notes: string | null): PendingContact {
-  if (!notes) return {};
-  try {
-    const parsed = JSON.parse(notes) as PendingContact;
-    if (parsed && typeof parsed === "object") return parsed;
-  } catch {
-    // ignore
-  }
-  return {};
-}
-
 function withPendingContact(
   guide: AgencyMtripGuide,
-  pending: PendingContact
+  pending: { phone?: string; email?: string }
 ): Partial<AgencyMtripGuide> | null {
   if (!pending.phone && !pending.email) return null;
   if (!(guide.passengers || []).length) return null;
@@ -137,12 +156,12 @@ function withPendingContact(
 export function buildVoyageRecap(guide: AgencyMtripGuide) {
   const pax = guide.passengers || [];
   const lines = guide.quote_lines || [];
-  const { lead, gaps } = requireLeadContact(guide);
+  const { lead } = requireLeadContact(guide);
   const paxLines = pax.length
     ? pax
         .map((p) => {
           const { complete, label } = passengerCompleteness(p);
-          return `• ${p.first_name} ${p.last_name} (${complete ? "MRZ OK" : label})`;
+          return `• ${p.first_name} ${p.last_name} (${complete ? "OK" : label})`;
         })
         .join("\n")
     : "• aucun passager";
@@ -151,28 +170,104 @@ export function buildVoyageRecap(guide: AgencyMtripGuide) {
         .slice(0, 8)
         .map((l) => `• ${l.title}`)
         .join("\n")
-    : "• aucune résa";
-  const missing = [
-    ...gaps,
-    pax.length ? null : "passeports",
-    lines.length ? null : "confirmations",
-  ].filter(Boolean);
+    : "• aucune résa pour l’instant";
+  const firstName = lead?.first_name || "le client";
+  const missing: string[] = [];
+  if (!pax.length) missing.push("passeports");
+  if (!lead?.phone) missing.push("WhatsApp client");
+  if (!lead?.email) missing.push("email client");
+
+  const tail = missing.length
+    ? `Il me manque : ${missing.join(", ")}.`
+    : `Je peux envoyer à ${firstName} ?`;
 
   return [
-    `Voyage : ${guide.title}`,
+    `${guide.title}`,
     guide.start_date || guide.end_date
       ? `Dates : ${guide.start_date || "?"} → ${guide.end_date || "?"}`
-      : "Dates : à préciser",
+      : null,
     `Passagers (${pax.length}) :`,
     paxLines,
     `Résas (${lines.length}) :`,
     devis,
-    `Contact client : ${lead?.phone || "manquant"} / ${lead?.email || "manquant"}`,
-    missing.length ? `À compléter : ${missing.join(", ")}` : "Prêt à envoyer.",
-    `CRM : ${adminGuideUrl(guide.id)}`,
-    "",
-    "Réponds « Envoyer » pour publier mTrip et envoyer l’opt-in au client.",
+    `Contact : ${lead?.phone || "pas de WhatsApp"} / ${lead?.email || "pas d’email"}`,
+    tail,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function blockingGaps(guide: AgencyMtripGuide) {
+  const { lead } = requireLeadContact(guide);
+  const gaps: string[] = [];
+  if (!(guide.passengers || []).length) gaps.push("passeports");
+  if (!lead?.phone?.trim()) gaps.push("WhatsApp client");
+  return { lead, gaps };
+}
+
+function snapshotForLlm(guide: AgencyMtripGuide) {
+  const { lead, gaps } = requireLeadContact(guide);
+  return [
+    `titre=${guide.title}`,
+    `dates=${guide.start_date || "?"} → ${guide.end_date || "?"}`,
+    `passagers=${(guide.passengers || [])
+      .map((p) => `${p.first_name} ${p.last_name}`)
+      .join(", ") || "aucun"}`,
+    `resas=${(guide.quote_lines || []).map((l) => l.title).join(" | ") || "aucune"}`,
+    `wa=${lead?.phone || "manquant"}`,
+    `email=${lead?.email || "manquant"}`,
+    `trous=${gaps.join(",") || "aucun"}`,
   ].join("\n");
+}
+
+function pushHistory(
+  notes: WaOpsSessionNotes,
+  role: "staff" | "agent",
+  text: string
+) {
+  const trimmed = text.trim();
+  if (!trimmed) return;
+  notes.history = [
+    ...(notes.history || []),
+    { role, text: trimmed.slice(0, 400), at: new Date().toISOString() },
+  ].slice(-8);
+}
+
+function mergeBatch(pending: WaOpsPendingInbound[]): {
+  body: string;
+  media: TwilioInboundMedia[];
+  sids: string[];
+} {
+  const bodies: string[] = [];
+  const media: TwilioInboundMedia[] = [];
+  const sids: string[] = [];
+  for (const item of pending) {
+    if (item.sid) sids.push(item.sid);
+    const text = [item.buttonPayload, item.body].filter(Boolean).join(" ").trim();
+    if (text) bodies.push(text);
+    media.push(...(item.media || []));
+  }
+  return { body: bodies.join("\n"), media, sids };
+}
+
+async function persistGuidePatch(
+  supabase: SupabaseClient,
+  ownerId: string,
+  guideId: string,
+  patch: Partial<AgencyMtripGuide>
+) {
+  const { data, error } = await supabase
+    .from("agency_mtrip_guides")
+    .update({
+      ...patch,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", guideId)
+    .eq("user_id", ownerId)
+    .select("*")
+    .single();
+  if (error || !data) throw new Error(error?.message || "MAJ voyage impossible");
+  return data as AgencyMtripGuide;
 }
 
 async function ensureStaffSession(
@@ -211,11 +306,11 @@ async function ensureStaffSession(
   return { session, guide };
 }
 
-async function ingestInboundMedia(
+async function ingestMediaList(
   supabase: SupabaseClient,
   ownerId: string,
   guide: AgencyMtripGuide,
-  inbound: TwilioInbound
+  media: TwilioInboundMedia[]
 ) {
   const passportFiles: IngestFile[] = [];
   const parsedByName = new Map<
@@ -225,8 +320,8 @@ async function ingestInboundMedia(
   const docFiles: IngestFile[] = [];
   const skipped: string[] = [];
 
-  for (let i = 0; i < inbound.media.length; i++) {
-    const item = inbound.media[i];
+  for (let i = 0; i < media.length; i++) {
+    const item = media[i];
     try {
       const file = await downloadTwilioMedia(item.url, item.contentType, i);
       const isPdf = file.type.includes("pdf") || file.name.endsWith(".pdf");
@@ -299,227 +394,577 @@ async function ingestInboundMedia(
   return { guide: next, parts };
 }
 
-async function persistGuidePatch(
+async function enqueueInbound(
+  supabase: SupabaseClient,
+  session: WaOpsSession,
+  inbound: TwilioInbound
+): Promise<{ notes: WaOpsSessionNotes; isFirstOfBatch: boolean }> {
+  for (let i = 0; i < 5; i++) {
+    const fresh =
+      (await findOpenSession(supabase, inbound.fromDigits)) || session;
+    const notes = parseSessionNotes(fresh.notes);
+    const already = notes.pending.some((p) => p.sid === inbound.messageSid);
+    const isFirstOfBatch = notes.pending.length === 0 && !already;
+    if (!already) {
+      notes.pending.push({
+        sid: inbound.messageSid,
+        body: inbound.body || "",
+        buttonPayload: inbound.buttonPayload,
+        media: inbound.media || [],
+        at: new Date().toISOString(),
+      });
+      notes.seenSids = [...notes.seenSids, inbound.messageSid].slice(-80);
+      await saveSessionNotes(supabase, fresh, notes, {
+        last_inbound_sid: inbound.messageSid,
+      });
+    }
+    const reloaded =
+      (await findOpenSession(supabase, inbound.fromDigits)) || fresh;
+    const next = parseSessionNotes(reloaded.notes);
+    if (next.pending.some((p) => p.sid === inbound.messageSid)) {
+      return { notes: next, isFirstOfBatch };
+    }
+  }
+  return {
+    notes: parseSessionNotes(session.notes),
+    isFirstOfBatch: false,
+  };
+}
+
+async function drainIfLeader(
+  supabase: SupabaseClient,
+  fromDigits: string,
+  messageSid: string
+): Promise<WaOpsPendingInbound[] | null> {
+  const session = await findOpenSession(supabase, fromDigits);
+  if (!session) return null;
+  const notes = parseSessionNotes(session.notes);
+  const last = notes.pending[notes.pending.length - 1];
+  if (!last || last.sid !== messageSid) return null;
+  const batch = [...notes.pending];
+  notes.pending = [];
+  await saveSessionNotes(supabase, session, notes);
+  return batch;
+}
+
+async function sendVoyageFromStaff(
   supabase: SupabaseClient,
   ownerId: string,
-  guideId: string,
-  patch: Partial<AgencyMtripGuide>
+  session: WaOpsSession,
+  guideInput: AgencyMtripGuide
 ) {
-  const { data, error } = await supabase
-    .from("agency_mtrip_guides")
-    .update({
-      ...patch,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", guideId)
-    .eq("user_id", ownerId)
-    .select("*")
-    .single();
-  if (error || !data) throw new Error(error?.message || "MAJ voyage impossible");
-  return data as AgencyMtripGuide;
+  let guide = guideInput;
+  const notes = parseSessionNotes(session.notes);
+  const contactPatch = withPendingContact(guide, notes.contact);
+  if (contactPatch) {
+    guide = await persistGuidePatch(supabase, ownerId, guide.id, contactPatch);
+  }
+  const { gaps } = blockingGaps(guide);
+  if (gaps.length) {
+    notes.awaiting = "contact";
+    await saveSessionNotes(supabase, session, notes, { status: "collecting" });
+    return {
+      guide,
+      notes,
+      ok: false as const,
+      message: `Je ne peux pas encore envoyer : il me manque ${gaps.join(" et ")}.`,
+    };
+  }
+
+  await updateSession(supabase, session.id, { status: "sending" });
+  const ack: string[] = [];
+  try {
+    if (guide.status !== "published") {
+      guide = await publishGuideRecord(supabase, ownerId, guide);
+      ack.push("mTrip est publié.");
+    }
+    if (!hasOptInSend(guide)) {
+      const opt = await sendOptInToLead(supabase, ownerId, guide);
+      guide = opt.guide;
+      ack.push(
+        `Opt-in envoyé à ${leadPassenger(guide.passengers)?.first_name || "le client"} (${leadPassenger(guide.passengers)?.phone}). Le dossier partira quand iel répondra Oui.`
+      );
+    } else if (!hasDossierSend(guide)) {
+      const dossier = await sendDossierToLead(supabase, ownerId, guide);
+      guide = dossier.guide;
+      ack.push("Dossier client envoyé.");
+    } else {
+      ack.push("Dossier déjà envoyé au client.");
+    }
+    notes.awaiting = null;
+    pushHistory(notes, "agent", ack.join(" "));
+    await saveSessionNotes(supabase, session, notes, {
+      status: hasDossierSend(guide) ? "sent" : "ready",
+    });
+    return {
+      guide,
+      notes,
+      ok: true as const,
+      message: `${ack.join("\n")}\nCRM : ${adminGuideUrl(guide.id)}`,
+    };
+  } catch (err) {
+    notes.awaiting = "send_confirm";
+    await saveSessionNotes(supabase, session, notes, { status: "ready" });
+    return {
+      guide,
+      notes,
+      ok: false as const,
+      message: `Échec envoi : ${err instanceof Error ? err.message : "erreur"}. Le lien /v/ n’a pas été envoyé.\n${adminGuideUrl(guide.id)}`,
+    };
+  }
+}
+
+async function startNewDraft(
+  supabase: SupabaseClient,
+  ownerId: string,
+  inbound: TwilioInbound,
+  previous: WaOpsSession | null
+) {
+  if (previous) {
+    await updateSession(supabase, previous.id, { status: "cancelled" });
+  }
+  const guide = await createDraftGuide(supabase, ownerId);
+  const session = await createSession(supabase, {
+    fromDigits: inbound.fromDigits,
+    ownerUserId: ownerId,
+    guideId: guide.id,
+    inboundSid: inbound.messageSid,
+  });
+  return { session, guide };
+}
+
+function fallbackReply(input: {
+  guide: AgencyMtripGuide;
+  ingestParts: string[];
+  awaiting: WaOpsAwaiting;
+  action: string;
+}): { text: string; awaiting: WaOpsAwaiting } {
+  const { lead, gaps } = blockingGaps(input.guide);
+  const recap = buildVoyageRecap(input.guide);
+  const ingest = input.ingestParts.length
+    ? `${input.ingestParts.join("\n")}\n\n`
+    : "";
+
+  if (input.action === "help") {
+    return { text: colleagueHelpCopy(), awaiting: input.awaiting };
+  }
+  if (input.action === "cancel") {
+    return {
+      text: "OK, j’arrête. Le brouillon reste dans le CRM.",
+      awaiting: null,
+    };
+  }
+  if (input.action === "new_draft") {
+    return {
+      text: "OK, nouveau dossier. Envoie les pièces et 2 phrases.",
+      awaiting: null,
+    };
+  }
+  if (gaps.includes("passeports") && !input.ingestParts.length) {
+    return {
+      text: `${ingest}Envoie-moi les passeports (et les PDFs si tu les as).`,
+      awaiting: input.awaiting,
+    };
+  }
+  if (gaps.includes("WhatsApp client")) {
+    return {
+      text: `${ingest}${recap}\n\nIl me manque le WhatsApp du client.`,
+      awaiting: "contact",
+    };
+  }
+  return {
+    text: `${ingest}${recap}\n\nJe peux envoyer à ${lead?.first_name || "le client"} ?`,
+    awaiting: "send_confirm",
+  };
+}
+
+function cursorAskCopy(brief: string) {
+  const short = brief.slice(0, 160);
+  return `Je lance une PR pour : ${short}${brief.length > 160 ? "…" : ""} ?`;
+}
+
+async function persistCursorNotes(
+  supabase: SupabaseClient,
+  session: WaOpsSession,
+  notes: WaOpsSessionNotes
+) {
+  return saveSessionNotes(supabase, session, notes, {
+    status: notes.awaiting === "send_confirm" ? "ready" : "collecting",
+  });
+}
+
+async function launchCursorFromNotes(
+  supabase: SupabaseClient,
+  session: WaOpsSession,
+  notes: WaOpsSessionNotes
+) {
+  if (notes.cursorAgentId && notes.cursorStatus === "running") {
+    return "Je finis déjà une PR. Je te préviens quand c’est prêt.";
+  }
+  const brief = sanitizeProductBrief(
+    notes.productBrief || notes.pendingProductBrief || ""
+  );
+  if (!brief) {
+    return "Reformule ce que tu veux changer dans l’outil — sans les infos client.";
+  }
+  if (!cursorCloudConfigured()) {
+    return "Je ne peux pas lancer Cursor : il manque CURSOR_API_KEY sur Vercel.";
+  }
+  const launched = await launchCursorAgent({ brief });
+  notes.cursorAgentId = launched.id;
+  notes.cursorStatus = "running";
+  notes.awaiting = null;
+  notes.pendingProductBrief = null;
+  notes.productBrief = brief;
+  pushHistory(notes, "agent", "PR Cursor lancée");
+  await persistCursorNotes(supabase, session, notes);
+  return "C’est lancé. Je t’envoie le lien de la PR dès que c’est prêt.";
 }
 
 async function handleStaff(supabase: SupabaseClient, inbound: TwilioInbound) {
   const ownerId = getAgencyOwnerUserId();
-  const parsed = await parseOpsMessage({
-    body: inbound.body,
-    buttonPayload: inbound.buttonPayload,
+  const staffText = [inbound.buttonPayload, inbound.body]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  const helpOnly =
+    isHelpText(staffText) && !inbound.media.length && !extractPhone(staffText);
+
+  let session = await findOpenSession(supabase, inbound.fromDigits);
+  if (helpOnly && !guideHasData(session ? await loadOwnerGuide(supabase, ownerId, session.guide_id) : null)) {
+    await reply(inbound.fromDigits, colleagueHelpCopy());
+    return;
+  }
+
+  const ensured = await ensureStaffSession(supabase, ownerId, inbound);
+  session = ensured.session;
+  let guide = ensured.guide;
+  let notes = parseSessionNotes(session.notes);
+
+  const queued = await enqueueInbound(supabase, session, inbound);
+  notes = queued.notes;
+  const batchHasMedia =
+    queued.notes.pending.some((p) => (p.media || []).length > 0) ||
+    inbound.media.length > 0;
+
+  if (queued.isFirstOfBatch && batchHasMedia) {
+    try {
+      await reply(inbound.fromDigits, "Reçu, je m'en occupe.");
+      notes.ackedBatchAt = new Date().toISOString();
+      await saveSessionNotes(supabase, session, notes);
+    } catch (err) {
+      console.error("[wa-ops] ack", err);
+    }
+  }
+
+  if (batchHasMedia) {
+    const wait = debounceMs();
+    if (wait > 0) await sleep(wait);
+  }
+
+  const batch = await drainIfLeader(
+    supabase,
+    inbound.fromDigits,
+    inbound.messageSid
+  );
+  if (!batch) return;
+
+  const merged = mergeBatch(batch);
+  session = (await findOpenSession(supabase, inbound.fromDigits)) || session;
+  notes = parseSessionNotes(session.notes);
+  if (session.guide_id) {
+    guide =
+      (await loadOwnerGuide(supabase, ownerId, session.guide_id)) || guide;
+  }
+
+  pushHistory(notes, "staff", merged.body || `(${merged.media.length} fichier(s))`);
+
+  const hasData = guideHasData(guide);
+  let action = decideStaffAction({
+    text: merged.body,
+    awaiting: notes.awaiting,
+    hasOpenDraftWithData: hasData,
+    hasMedia: merged.media.length > 0,
   });
 
-  if (parsed.intent === "aide" && !inbound.media.length) {
-    await reply(inbound.fromDigits, HELP);
+  if (action === "launch_cursor") {
+    const msg = await launchCursorFromNotes(supabase, session, notes);
+    await reply(inbound.fromDigits, msg);
+    return;
+  }
+  if (action === "cancel_cursor") {
+    notes.awaiting = null;
+    notes.pendingProductBrief = null;
+    pushHistory(notes, "agent", "Pas de PR.");
+    await persistCursorNotes(supabase, session, notes);
+    await reply(inbound.fromDigits, "OK, pas de PR.");
     return;
   }
 
-  if (parsed.intent === "nouveau") {
-    const open = await findOpenSession(supabase, inbound.fromDigits);
-    if (open) await updateSession(supabase, open.id, { status: "cancelled" });
-    const guide = await createDraftGuide(supabase, ownerId);
-    await createSession(supabase, {
-      fromDigits: inbound.fromDigits,
-      ownerUserId: ownerId,
-      guideId: guide.id,
-      inboundSid: inbound.messageSid,
-    });
-    await reply(
-      inbound.fromDigits,
-      `Nouveau voyage créé.\n${HELP}\n\nCRM : ${adminGuideUrl(guide.id)}`
-    );
+  if (
+    action === "new_draft" &&
+    hasData &&
+    notes.awaiting !== "new_or_same" &&
+    !merged.media.length &&
+    merged.body.length < 80
+  ) {
+    notes.awaiting = "new_or_same";
+    const question = "C’est un autre voyage, ou je continue sur celui-ci ?";
+    pushHistory(notes, "agent", question);
+    await saveSessionNotes(supabase, session, notes, { status: "collecting" });
+    await reply(inbound.fromDigits, question);
     return;
   }
 
-  if (parsed.intent === "annuler") {
-    const open = await findOpenSession(supabase, inbound.fromDigits);
-    if (open) await updateSession(supabase, open.id, { status: "cancelled" });
-    await reply(inbound.fromDigits, "Voyage WhatsApp annulé. Le brouillon CRM est conservé. Envoie « nouveau » pour recommencer.");
-    return;
+  if (action === "new_draft") {
+    const started = await startNewDraft(supabase, ownerId, inbound, session);
+    session = started.session;
+    guide = started.guide;
+    notes = parseSessionNotes(session.notes);
   }
 
-  const { session, guide: initial } = await ensureStaffSession(
-    supabase,
-    ownerId,
-    inbound
-  );
-  let guide = initial;
-
-  if (parsed.intent === "lien") {
-    await reply(inbound.fromDigits, `CRM : ${adminGuideUrl(guide.id)}`);
-    return;
-  }
-
-  const ack: string[] = [];
-
-  if (inbound.media.length) {
-    const ingested = await ingestInboundMedia(
+  const ingestParts: string[] = [];
+  if (merged.media.length) {
+    const ingested = await ingestMediaList(
       supabase,
       ownerId,
       guide,
-      inbound
+      merged.media
     );
     guide = ingested.guide;
-    ack.push(...ingested.parts);
-    const pending = parseSessionContact(session.notes);
-    const contactPatch = withPendingContact(guide, pending);
-    if (contactPatch) {
-      guide = await persistGuidePatch(supabase, ownerId, guide.id, contactPatch);
-    }
-    if (session.status === "ready") {
-      await updateSession(supabase, session.id, { status: "collecting" });
-    }
+    ingestParts.push(...ingested.parts);
   }
 
-  if (parsed.intent === "consigne" && inbound.body.trim()) {
-    const patch = applyConsigneToGuide(guide, parsed.consigne);
-    guide = await persistGuidePatch(supabase, ownerId, guide.id, patch);
-    if (
-      !(guide.passengers || []).length &&
-      (parsed.consigne.client_phone || parsed.consigne.client_email)
-    ) {
-      const prev = parseSessionContact(session.notes);
-      await updateSession(supabase, session.id, {
-        notes: JSON.stringify({
-          phone: parsed.consigne.client_phone || prev.phone,
-          email: parsed.consigne.client_email || prev.email,
-        }),
-      });
-    }
-    const bits = [];
-    if (parsed.consigne.title) bits.push(`titre « ${guide.title} »`);
-    if (parsed.consigne.start_date || parsed.consigne.end_date)
-      bits.push(`dates ${guide.start_date || "?"} → ${guide.end_date || "?"}`);
-    if (parsed.consigne.client_phone) bits.push(`WA ${parsed.consigne.client_phone}`);
-    if (parsed.consigne.client_email) bits.push(parsed.consigne.client_email);
-    ack.push(
-      bits.length ? `Consigne enregistrée (${bits.join(", ")}).` : "Consigne notée."
+  const consigne = extractConsigne(merged.body);
+  if (
+    action === "send" ||
+    action === "cancel" ||
+    action === "help" ||
+    action === "same_trip" ||
+    action === "ask_cursor"
+  ) {
+    consigne.title = null;
+    consigne.destination = null;
+    consigne.notes = null;
+  }
+  if (
+    consigne.client_phone ||
+    consigne.client_email ||
+    consigne.title ||
+    consigne.start_date ||
+    consigne.end_date ||
+    consigne.notes
+  ) {
+    const patch = applyConsigneToGuide(
+      guide,
+      action === "new_draft"
+        ? {
+            ...consigne,
+            title: null,
+            destination: null,
+            notes: null,
+          }
+        : consigne
     );
+    guide = await persistGuidePatch(supabase, ownerId, guide.id, patch);
+    if (consigne.client_phone) notes.contact.phone = consigne.client_phone;
+    if (consigne.client_email) notes.contact.email = consigne.client_email;
   }
 
-  if (parsed.intent === "recap") {
-    await updateSession(supabase, session.id, { status: "ready" });
-    await reply(inbound.fromDigits, buildVoyageRecap(guide));
-    return;
+  const contactPatch = withPendingContact(guide, notes.contact);
+  if (contactPatch) {
+    guide = await persistGuidePatch(supabase, ownerId, guide.id, contactPatch);
   }
 
-  const wantSend =
-    parsed.intent === "envoyer" ||
-    (parsed.intent === "oui" && session.status === "ready");
-
-  if (parsed.intent === "non" && session.status === "ready") {
-    await updateSession(supabase, session.id, { status: "collecting" });
+  if (action === "cancel") {
+    notes.awaiting = null;
+    await saveSessionNotes(supabase, session, notes, { status: "cancelled" });
     await reply(
       inbound.fromDigits,
-      "OK, j’attends encore des docs ou une consigne. « c'est tout » pour le récap."
+      `OK, j’arrête. Le brouillon reste dans le CRM.\n${adminGuideUrl(guide.id)}`
     );
     return;
   }
 
-  if (wantSend) {
-    const pending = parseSessionContact(session.notes);
-    const contactPatch = withPendingContact(guide, pending);
-    if (contactPatch) {
-      guide = await persistGuidePatch(supabase, ownerId, guide.id, contactPatch);
-    }
-    const { gaps } = requireLeadContact(guide);
-    if (!guide.passengers?.length) {
-      await reply(
-        inbound.fromDigits,
-        "Il manque les passeports. Envoie-les puis « Envoyer »."
-      );
-      return;
-    }
-    if (gaps.length) {
-      await updateSession(supabase, session.id, { status: "ready" });
-      await reply(
-        inbound.fromDigits,
-        `Impossible d’envoyer : ${gaps.join(" et ")} manquant(s).\nIndique le WhatsApp et l’email du client, puis « Envoyer ».\n\n${buildVoyageRecap(guide)}`
-      );
-      return;
-    }
+  if (action === "same_trip") {
+    notes.awaiting = null;
+  }
 
-    await updateSession(supabase, session.id, { status: "sending" });
-    try {
-      if (guide.status !== "published") {
-        guide = await publishGuideRecord(supabase, ownerId, guide);
-        ack.push("mTrip publié.");
+  const turn = await runColleagueTurn({
+    staffText: merged.body,
+    awaiting: notes.awaiting,
+    snapshot: snapshotForLlm(guide),
+    history: notes.history,
+    ingestParts,
+    hasPassengers: Boolean((guide.passengers || []).length),
+    hasClientPhone: Boolean(requireLeadContact(guide).lead?.phone),
+    hasMedia: merged.media.length > 0,
+  });
+
+  if (
+    turn?.consigne &&
+    turn.action !== "ask_cursor" &&
+    turn.action !== "launch_cursor" &&
+    turn.action !== "cancel_cursor"
+  ) {
+    const c = turn.consigne;
+    if (
+      c.client_phone ||
+      c.client_email ||
+      c.title ||
+      c.start_date ||
+      c.end_date ||
+      c.notes
+    ) {
+      const patch = applyConsigneToGuide(guide, c);
+      guide = await persistGuidePatch(supabase, ownerId, guide.id, patch);
+      if (c.client_phone) notes.contact.phone = c.client_phone;
+      if (c.client_email) notes.contact.email = c.client_email;
+      const again = withPendingContact(guide, notes.contact);
+      if (again) {
+        guide = await persistGuidePatch(supabase, ownerId, guide.id, again);
       }
-      if (!hasOptInSend(guide)) {
-        const opt = await sendOptInToLead(supabase, ownerId, guide);
-        guide = opt.guide;
-        ack.push(
-          `Opt-in envoyé à ${leadPassenger(guide.passengers)?.first_name || "le client"} (${leadPassenger(guide.passengers)?.phone}). Le dossier partira quand iel répondra Oui.`
-        );
-      } else if (!hasDossierSend(guide)) {
-        const dossier = await sendDossierToLead(supabase, ownerId, guide);
-        guide = dossier.guide;
-        ack.push("Dossier client envoyé (/d/ + /v/).");
-        await updateSession(supabase, session.id, { status: "sent" });
-        await reply(inbound.fromDigits, ack.join("\n"));
-        return;
-      } else {
-        ack.push("Dossier déjà envoyé au client.");
-      }
-      await updateSession(supabase, session.id, {
-        status: hasDossierSend(guide) ? "sent" : "ready",
-      });
-      await reply(
-        inbound.fromDigits,
-        `${ack.join("\n")}\n\nCRM : ${adminGuideUrl(guide.id)}`
-      );
-    } catch (err) {
-      await updateSession(supabase, session.id, { status: "ready" });
-      await reply(
-        inbound.fromDigits,
-        `Échec envoi : ${err instanceof Error ? err.message : "erreur"}. Le lien /v/ n’a pas été envoyé.\n${adminGuideUrl(guide.id)}`
-      );
     }
+  }
+
+  if (turn?.action && action === "continue") {
+    action = turn.action;
+  }
+  if (action === "launch_cursor") {
+    const msg = await launchCursorFromNotes(supabase, session, notes);
+    await reply(inbound.fromDigits, msg);
+    return;
+  }
+  if (action === "cancel_cursor") {
+    notes.awaiting = null;
+    notes.pendingProductBrief = null;
+    pushHistory(notes, "agent", "Pas de PR.");
+    await persistCursorNotes(supabase, session, notes);
+    await reply(inbound.fromDigits, "OK, pas de PR.");
     return;
   }
 
-  if (!ack.length && !inbound.media.length && parsed.intent === "ignore") {
-    await reply(inbound.fromDigits, HELP);
-    return;
-  }
-
-  if (!ack.length && parsed.intent === "consigne" && !inbound.body.trim()) {
-    await reply(inbound.fromDigits, HELP);
-    return;
-  }
-
-  const created = (guide.passengers || []).length && ack.some((a) => /Passeports/i.test(a));
-  const prefix =
-    created && (guide.passengers || []).length
-      ? `Voyage créé — ${(guide.passengers || []).length} passager(s). `
-      : "";
-  await reply(
-    inbound.fromDigits,
-    [
-      prefix + (ack.join("\n") || "OK."),
-      "Envoie les résas ou la consigne (destination, dates, WhatsApp client). Écris « c'est tout » quand tu as fini.",
-      `CRM : ${adminGuideUrl(guide.id)}`,
-    ]
-      .filter(Boolean)
-      .join("\n")
+  const productBrief = sanitizeProductBrief(
+    turn?.productBrief ||
+      (action === "ask_cursor" || looksLikeProductFeedback(merged.body)
+        ? merged.body
+        : notes.pendingProductBrief || notes.productBrief || "")
   );
+  const intentKind =
+    turn?.intentKind ||
+    (action === "ask_cursor"
+      ? ingestParts.length || hasData
+        ? "both"
+        : "product"
+      : "voyage");
+  if (
+    productBrief &&
+    (intentKind === "product" ||
+      intentKind === "both" ||
+      action === "ask_cursor")
+  ) {
+    notes.productBrief = productBrief;
+    notes.pendingProductBrief = productBrief;
+  }
+
+  if (action === "send" || turn?.action === "send") {
+    const { gaps } = blockingGaps(guide);
+    if (
+      !gaps.length &&
+      (notes.awaiting === "send_confirm" ||
+        (notes.awaiting !== "contact" && isSendConfirmText(merged.body)))
+    ) {
+      const sent = await sendVoyageFromStaff(supabase, ownerId, session, guide);
+      const leftover = sanitizeProductBrief(
+        notes.pendingProductBrief || notes.productBrief || ""
+      );
+      if (leftover) {
+        const fresh = parseSessionNotes(
+          ((await findOpenSession(supabase, inbound.fromDigits)) || session)
+            .notes
+        );
+        fresh.productBrief = leftover;
+        fresh.pendingProductBrief = leftover;
+        fresh.awaiting = "cursor_confirm";
+        pushHistory(fresh, "agent", cursorAskCopy(leftover));
+        await persistCursorNotes(
+          supabase,
+          (await findOpenSession(supabase, inbound.fromDigits)) || session,
+          fresh
+        );
+        await reply(
+          inbound.fromDigits,
+          `${sent.message}\n\nAussi : ${cursorAskCopy(leftover)}`
+        );
+        return;
+      }
+      await reply(inbound.fromDigits, sent.message);
+      return;
+    }
+    action = "propose_send";
+  }
+
+  const { gaps } = blockingGaps(guide);
+  if (intentKind !== "product") {
+    if (!gaps.length && (action === "propose_send" || action === "continue" || action === "ask")) {
+      notes.awaiting = "send_confirm";
+      await updateSession(supabase, session.id, { status: "ready" });
+    } else if (gaps.includes("WhatsApp client")) {
+      notes.awaiting = "contact";
+      await updateSession(supabase, session.id, { status: "collecting" });
+    } else if (turn?.awaiting && turn.awaiting !== "cursor_confirm") {
+      notes.awaiting = turn.awaiting;
+    }
+  }
+
+  const canAskCursorNow =
+    Boolean(productBrief) &&
+    (action === "ask_cursor" || intentKind === "product") &&
+    notes.awaiting !== "send_confirm" &&
+    notes.awaiting !== "contact" &&
+    notes.awaiting !== "new_or_same";
+
+  if (canAskCursorNow) {
+    if (notes.cursorAgentId && notes.cursorStatus === "running") {
+      await persistCursorNotes(supabase, session, notes);
+      await reply(
+        inbound.fromDigits,
+        "Je finis déjà une PR. Je te préviens quand c’est prêt."
+      );
+      return;
+    }
+    notes.awaiting = "cursor_confirm";
+    notes.productBrief = productBrief;
+    const text = turn?.reply || cursorAskCopy(productBrief);
+    pushHistory(notes, "agent", text);
+    await persistCursorNotes(supabase, session, notes);
+    await reply(inbound.fromDigits, text);
+    return;
+  }
+
+  const fallback = fallbackReply({
+    guide,
+    ingestParts,
+    awaiting: notes.awaiting,
+    action,
+  });
+  if (action === "help") {
+    notes.awaiting = fallback.awaiting;
+  } else if (fallback.awaiting) {
+    notes.awaiting = fallback.awaiting;
+  }
+
+  const text = turn?.reply || fallback.text;
+  const withCrm =
+    text.includes("CRM :") || action === "help"
+      ? text
+      : `${text}\nCRM : ${adminGuideUrl(guide.id)}`;
+
+  pushHistory(notes, "agent", withCrm);
+  await saveSessionNotes(supabase, session, notes, {
+    status: notes.awaiting === "send_confirm" ? "ready" : "collecting",
+  });
+  await reply(inbound.fromDigits, withCrm);
 }
 
 async function findPendingClientGuide(
@@ -620,7 +1065,19 @@ export async function handleTwilioWhatsAppInbound(inbound: TwilioInbound) {
   }
 
   if (isStaffSender(inbound.fromDigits)) {
-    await handleStaff(supabase, inbound);
+    try {
+      await handleStaff(supabase, inbound);
+    } catch (err) {
+      console.error("[wa-ops] staff inbound", err);
+      try {
+        await reply(
+          inbound.fromDigits,
+          "J’ai un souci pour traiter ça. Réessaie dans un instant, ou ouvre le CRM."
+        );
+      } catch (sendErr) {
+        console.error("[wa-ops] staff error reply", sendErr);
+      }
+    }
     return;
   }
 
