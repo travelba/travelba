@@ -741,9 +741,7 @@ async function handleStaff(supabase: SupabaseClient, inbound: TwilioInbound) {
     action === "cancel" ||
     action === "help" ||
     action === "same_trip" ||
-    action === "ask_cursor" ||
-    action === "launch_cursor" ||
-    action === "cancel_cursor"
+    action === "ask_cursor"
   ) {
     consigne.title = null;
     consigne.destination = null;
@@ -831,6 +829,19 @@ async function handleStaff(supabase: SupabaseClient, inbound: TwilioInbound) {
 
   if (turn?.action && action === "continue") {
     action = turn.action;
+  }
+  if (action === "launch_cursor") {
+    const msg = await launchCursorFromNotes(supabase, session, notes);
+    await reply(inbound.fromDigits, msg);
+    return;
+  }
+  if (action === "cancel_cursor") {
+    notes.awaiting = null;
+    notes.pendingProductBrief = null;
+    pushHistory(notes, "agent", "Pas de PR.");
+    await persistCursorNotes(supabase, session, notes);
+    await reply(inbound.fromDigits, "OK, pas de PR.");
+    return;
   }
 
   const productBrief = sanitizeProductBrief(
@@ -943,8 +954,7 @@ async function handleStaff(supabase: SupabaseClient, inbound: TwilioInbound) {
     notes.awaiting = fallback.awaiting;
   }
 
-  const text =
-    (turn?.reply && action !== "send" ? turn.reply : "") || fallback.text;
+  const text = turn?.reply || fallback.text;
   const withCrm =
     text.includes("CRM :") || action === "help"
       ? text
