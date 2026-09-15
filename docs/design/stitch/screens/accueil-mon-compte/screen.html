@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+
+<html class="h-full bg-[#F2F4F8]" lang="fr"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Travelba — Espace Client</title>
+<!-- Google Fonts: Montserrat & Source Sans 3 -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&amp;family=Source+Sans+3:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {},
+          borderRadius: {
+            "DEFAULT": "0.5rem",
+            "lg": "1rem",
+            "xl": "1.5rem",
+            "full": "9999px"
+          },
+          spacing: {},
+          fontFamily: {
+            headline: ["Montserrat", "sans-serif"],
+            display: ["Montserrat", "sans-serif"],
+            body: ["\"Source Sans 3\"", "sans-serif"],
+            label: ["Public Sans", "sans-serif"]
+          },
+          fontSize: {}
+        },
+      },
+    }
+  </script>
+</head>
+<body class="min-h-full flex flex-col font-body bg-[#F2F4F8] text-slate-800 antialiased selection:bg-[#E81932] selection:text-white">
+<!-- ==================== HEADER (TOPNAVBAR) ==================== -->
+<header class="sticky top-0 z-50 w-full border-t-[3px] border-[#E81932] bg-white border-b border-slate-200/80 shadow-sm">
+<div class="max-w-[960px] mx-auto px-6 h-20 flex items-center justify-between w-full">
+<!-- Brand & TBA Monogram -->
+<div class="flex items-center gap-8">
+<a class="font-headline text-xl font-extrabold tracking-tight text-[#002157] flex items-center gap-2 group transition-opacity hover:opacity-90" href="#">
+<span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[#002157] text-white font-headline font-extrabold text-xs tracking-wider shadow-sm">
+            TBA
+          </span>
+<span class="tracking-tight text-xl text-[#002157]">Travelba</span>
+</a>
+<!-- Desktop Navigation -->
+<nav class="hidden md:flex items-center gap-7 pt-1">
+<!-- Active link: Accueil -->
+<a class="text-[#002157] font-headline font-bold border-b-2 border-[#E81932] pb-1 text-sm tracking-wide" href="#">
+            Accueil
+          </a>
+<a class="text-slate-600 font-headline font-medium hover:text-[#002157] transition-colors pb-1 text-sm tracking-wide" href="#">
+            Réservations
+          </a>
+<a class="text-slate-600 font-headline font-medium hover:text-[#002157] transition-colors pb-1 text-sm tracking-wide" href="#">
+            Transactions
+          </a>
+<a class="text-slate-600 font-headline font-medium hover:text-[#002157] transition-colors pb-1 text-sm tracking-wide" href="#">
+            Compte
+          </a>
+</nav>
+</div>
+<!-- Right Action & Profile -->
+<div class="flex items-center gap-5">
+<!-- Notification Button -->
+<button aria-label="Notifications" class="relative p-2 text-slate-500 hover:text-[#002157] transition-colors rounded-full hover:bg-slate-100" type="button">
+<span class="material-symbols-outlined text-[22px] leading-none">notifications</span>
+<span class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#E81932]"></span>
+</button>
+<!-- Divider -->
+<div class="h-5 w-[1px] bg-slate-200"></div>
+<!-- User Profile Avatar & Badge -->
+<div class="flex items-center gap-3 pl-1">
+<div class="relative">
+<div class="w-10 h-10 rounded-full bg-[#002157] text-white font-headline font-bold text-xs flex items-center justify-center tracking-wider ring-2 ring-white shadow-sm" title="Marie Dupont">
+              MD
+            </div>
+<span class="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full" title="Compte Actif"></span>
+</div>
+<div class="hidden sm:flex flex-col text-left">
+<span class="font-headline font-bold text-xs text-[#002157] leading-tight">Marie Dupont</span>
+<span class="text-[11px] text-slate-500 font-medium">Membre Privilège</span>
+</div>
+</div>
+</div>
+</div>
+</header>
+<!-- ==================== MAIN CONTENT ==================== -->
+<main class="flex-1 w-full">
+<div class="max-w-[960px] mx-auto px-6 py-10 w-full space-y-8">
+<!-- Welcome Header -->
+<section class="space-y-1.5">
+<div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-[#DCE6F5]/60 text-[#002157] text-xs font-semibold tracking-wide">
+<span class="w-1.5 h-1.5 rounded-full bg-[#002157]"></span>
+          Espace Privilège Voyageur
+        </div>
+<h1 class="font-headline text-3xl sm:text-4xl font-extrabold tracking-tight text-[#002157]">
+          Bonjour, Marie
+        </h1>
+<p class="text-slate-600 text-base sm:text-lg max-w-2xl font-normal leading-relaxed">
+          Heureux de vous retrouver dans votre espace personnel Travelba. Voici le résumé exclusif de vos séjours et de vos engagements.
+        </p>
+</section>
+<!-- Grid Bento / Primary Cards (Prochain Voyage & Encours) -->
+<section class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+<!-- CARD A: PROCHAIN VOYAGE (span 8 cols) -->
+<div class="lg:col-span-8 bg-white rounded-2xl border border-slate-200/80 shadow-sm p-7 sm:p-8 flex flex-col justify-between relative overflow-hidden transition-all duration-200 hover:shadow-md">
+<!-- Top subtle accent line on card -->
+<div class="absolute top-0 left-0 right-0 h-[2px] bg-slate-100"></div>
+<div>
+<!-- Header of the Card -->
+<div class="flex items-start justify-between gap-4 mb-6">
+<div>
+<span class="text-xs font-semibold tracking-wider text-slate-400 uppercase font-headline">Votre prochaine destination</span>
+<h2 class="font-headline text-2xl sm:text-3xl font-extrabold text-[#002157] tracking-tight mt-1">
+                  Bali, Indonésie
+                </h2>
+</div>
+<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold tracking-wide bg-sky-50 text-sky-800 border border-sky-200/80 uppercase">
+                Confirmé
+              </span>
+</div>
+<!-- Image visual banner of destination -->
+<div class="relative w-full h-44 rounded-xl overflow-hidden mb-6 group">
+<div class="w-full h-full bg-cover bg-center transform group-hover:scale-105 transition-transform duration-700 ease-out" data-alt="A luxurious private villa sanctuary in Uluwatu Bali overlooking the serene azure Indian ocean during golden hour. The architecture combines pristine teak wood and modern white limestone with a peaceful infinity pool mirroring the warm sky. Sunlight creates soft reflections on the calm water surface, capturing the ultra-refined aesthetic and calm sophistication of bespoke luxury travel." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBpgEV2EdIXht7rvgjWWrHhOvWxWWHfiR57exjxg44eRNl9jGMlGXTVzZk8Otz01rPmcC-IJlFPMcU6TjNPPWd8lXzhAxJU0Zmf3whBkgL7_vZ_EdEvC_91keNccA2klFZ97uZfV6_7Vi66KZs8bPsGf6eTFoK6D5Tvr9BzkyVwI8EBMOWQZZsDsLDxG2-aC2EW4A5TbqBZ4LrxGZdowzIN3lyJYUkqdVyprSZG_lvb6p1d__rpl-AHnPJ43UPaccdKG6vXrOD5HGko')">
+</div>
+<div class="absolute inset-0 bg-gradient-to-t from-[#002157]/70 via-transparent to-transparent"></div>
+<!-- Floating info overlay -->
+<div class="absolute bottom-3 left-4 right-4 flex items-center justify-between text-white text-xs">
+<span class="flex items-center gap-1.5 font-medium backdrop-blur-md bg-black/25 px-2.5 py-1 rounded-md">
+<span class="material-symbols-outlined text-[16px]">calendar_today</span>
+                  12 – 24 oct. 2026
+                </span>
+<span class="font-mono text-slate-200 tracking-wider backdrop-blur-md bg-black/25 px-2.5 py-1 rounded-md">
+                  Réf. TBA-2026-0142
+                </span>
+</div>
+</div>
+<!-- Key Itinerary Highlights -->
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1 pb-6 border-b border-slate-100">
+<div class="flex items-start gap-3">
+<div class="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center text-[#002157] shrink-0 border border-slate-100">
+<span class="material-symbols-outlined text-[19px]">flight_takeoff</span>
+</div>
+<div>
+<div class="text-xs text-slate-400 font-medium">Vol Affaires A/R</div>
+<div class="text-sm font-semibold text-slate-800">Singapour Airlines (Business)</div>
+<div class="text-xs text-slate-500">Paris CDG ➔ Denpasar DPS</div>
+</div>
+</div>
+<div class="flex items-start gap-3">
+<div class="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center text-[#002157] shrink-0 border border-slate-100">
+<span class="material-symbols-outlined text-[19px]">hotel</span>
+</div>
+<div>
+<div class="text-xs text-slate-400 font-medium">Hébergement d'exception</div>
+<div class="text-sm font-semibold text-slate-800">Villa Privée Mandapa, Ritz-Carlton</div>
+<div class="text-xs text-slate-500">12 nuits avec majordome dédié</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Card Actions -->
+<div class="mt-6 flex flex-wrap items-center justify-between gap-4">
+<div class="flex items-center gap-2 text-xs text-slate-500">
+<span class="material-symbols-outlined text-[17px] text-[#002157]">support_agent</span>
+<span>Concierge référent : <strong>M. Alexandre Laurent</strong></span>
+</div>
+<a class="inline-flex items-center justify-center gap-2 bg-[#E81932] hover:bg-[#c91428] text-white rounded-xl px-6 py-3 font-headline font-bold text-sm tracking-wide transition-all shadow-sm active:scale-[0.98]" href="#">
+<span>Voir le dossier</span>
+<span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</a>
+</div>
+</div>
+<!-- CARD B: ENCOURS / SITUATION FINANCIÈRE (span 4 cols) -->
+<div class="lg:col-span-4 bg-white rounded-2xl border border-slate-200/80 shadow-sm p-7 sm:p-8 flex flex-col justify-between relative overflow-hidden transition-all duration-200 hover:shadow-md h-full">
+<div class="absolute top-0 left-0 right-0 h-[2px] bg-slate-100"></div>
+<div>
+<!-- Header -->
+<div class="flex items-center justify-between pb-4 border-b border-slate-100">
+<span class="text-xs font-semibold tracking-wider text-slate-400 uppercase font-headline">Situation du compte</span>
+<span class="w-7 h-7 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center text-[#002157]">
+<span class="material-symbols-outlined text-[17px]">account_balance_wallet</span>
+</span>
+</div>
+<!-- Financial Callout -->
+<div class="my-6">
+<div class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">
+                Reste à payer
+              </div>
+<div class="font-headline text-3xl sm:text-4xl font-extrabold text-[#002157] tracking-tight">
+                −1 240,00 €
+              </div>
+<p class="text-xs text-slate-500 mt-2">
+                Échéance de solde fixée au <strong>15 septembre 2026</strong>.
+              </p>
+</div>
+<!-- Breakdown info -->
+<div class="bg-slate-50/80 rounded-xl p-4 border border-slate-100 space-y-2.5 mb-6 text-xs">
+<div class="flex justify-between items-center text-slate-600">
+<span>Total séjour engagé</span>
+<span class="font-semibold text-slate-800">8 450,00 €</span>
+</div>
+<div class="flex justify-between items-center text-slate-600">
+<span>Acomptes validés (Revolut)</span>
+<span class="font-semibold text-emerald-600">+ 7 210,00 €</span>
+</div>
+<div class="h-[1px] bg-slate-200/70 pt-0"></div>
+<div class="flex justify-between items-center text-[#002157] font-bold">
+<span>Solde à régulariser</span>
+<span class="text-[#E81932]">1 240,00 €</span>
+</div>
+</div>
+</div>
+<!-- Bottom Action Buttons -->
+<div class="space-y-2.5 pt-2">
+<button class="w-full flex items-center justify-center gap-2 bg-[#002157] hover:bg-[#00173d] text-white rounded-xl py-3 px-4 font-headline font-semibold text-xs tracking-wide transition-all shadow-sm active:scale-[0.98]" type="button">
+<span class="material-symbols-outlined text-[16px]">credit_card</span>
+<span>Régler le solde en ligne</span>
+</button>
+<a class="w-full flex items-center justify-center gap-1.5 text-xs text-slate-600 hover:text-[#002157] font-semibold py-2 transition-colors" href="#">
+<span>Consulter l'historique des transactions</span>
+<span class="material-symbols-outlined text-[14px]">chevron_right</span>
+</a>
+</div>
+</div>
+</section>
+<!-- Concierge & Quick Contact Bar (Complimentary high-end luxury touch) -->
+<section class="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 flex flex-col md:flex-row items-center justify-between gap-4">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-2xl bg-[#DCE6F5]/50 border border-slate-200 flex items-center justify-center text-[#002157] shrink-0">
+<span class="material-symbols-outlined text-[24px]">workspace_premium</span>
+</div>
+<div>
+<h3 class="font-headline font-bold text-sm text-[#002157]">Ligne Privée Conciergerie 24/7</h3>
+<p class="text-xs text-slate-500">Un changement d'horaire, une table d'exception ou un transfert en hélicoptère ? Votre attaché de voyage vous répond sans délai.</p>
+</div>
+</div>
+<div class="flex items-center gap-3 shrink-0 w-full md:w-auto">
+<a class="flex-1 md:flex-initial text-center px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 hover:border-[#002157] hover:text-[#002157] transition-colors" href="tel:+33180000000">
+            +33 1 89 20 00 TBA
+          </a>
+<button class="flex-1 md:flex-initial px-4 py-2.5 bg-[#DCE6F5] hover:bg-[#c9d8ee] text-[#002157] font-semibold text-xs rounded-xl transition-colors" type="button">
+            Écrire à Alexandre
+          </button>
+</div>
+</section>
+</div>
+</main>
+<!-- ==================== FOOTER ==================== -->
+<footer class="w-full mt-auto bg-white border-t border-slate-200">
+<div class="max-w-[960px] mx-auto px-6 py-10 flex flex-col md:flex-row items-center justify-between gap-4 w-full">
+<!-- Brand & Copyright -->
+<div class="flex flex-col sm:flex-row items-center gap-2 sm:gap-4 text-center sm:text-left">
+<span class="font-headline text-lg font-extrabold text-[#002157]">Travelba</span>
+<span class="hidden sm:inline text-slate-300">|</span>
+<p class="font-body text-sm text-slate-500">
+          © 2025 Travelba — Agence de voyage d'affaires d'exception. Tous droits réservés.
+        </p>
+</div>
+<!-- Footer Navigation Links -->
+<div class="flex flex-wrap items-center justify-center gap-6 font-body text-sm">
+<a class="text-slate-500 hover:text-[#E81932] transition-colors duration-150" href="#">
+          Mentions légales
+        </a>
+<a class="text-slate-500 hover:text-[#E81932] transition-colors duration-150" href="#">
+          Confidentialité
+        </a>
+<a class="text-slate-500 hover:text-[#E81932] transition-colors duration-150" href="#">
+          Assistance dédiée
+        </a>
+<a class="text-slate-500 hover:text-[#E81932] transition-colors duration-150" href="#">
+          Conciergerie
+        </a>
+</div>
+</div>
+</footer>
+</body></html>

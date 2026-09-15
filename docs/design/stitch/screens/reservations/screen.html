@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+
+<html class="h-full" lang="fr"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Travelba — Mes réservations</title>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&amp;family=Public+Sans:wght@400;500;600;700&amp;family=Source+Sans+3:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {},
+          borderRadius: {
+            "DEFAULT": "0.5rem",
+            "lg": "1rem",
+            "xl": "1.5rem",
+            "full": "9999px"
+          },
+          spacing: {},
+          fontFamily: {
+            headline: ["Montserrat", "sans-serif"],
+            display: ["Montserrat", "sans-serif"],
+            body: ["\"Source Sans 3\"", "sans-serif"],
+            label: ["\"Public Sans\"", "sans-serif"]
+          },
+          fontSize: {}
+        },
+      },
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      display: inline-block;
+      vertical-align: middle;
+      line-height: 1;
+    }
+    .material-symbols-outlined.fill {
+      font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }
+  </style>
+</head>
+<body class="bg-[#F2F4F8] text-slate-800 font-body min-h-full flex flex-col antialiased selection:bg-[#E81932] selection:text-white">
+<!-- TopNavBar (Shared Component exact execution) -->
+<header class="sticky top-0 z-50 w-full border-t-[3px] border-[#E81932] bg-white dark:bg-slate-900 border-b border-slate-200/80 dark:border-slate-800 shadow-sm">
+<div class="max-w-[960px] mx-auto px-6 h-20 flex items-center justify-between w-full">
+<!-- Brand Logo -->
+<div class="flex items-center gap-3">
+<a class="font-headline text-xl font-extrabold tracking-tight text-[#002157] dark:text-white flex items-center gap-3 group" href="#">
+<div class="w-10 h-10 rounded-full bg-[#002157] text-white flex items-center justify-center font-bold text-xs tracking-wider shadow-sm transition-transform duration-200 group-hover:scale-105">
+            TBA
+          </div>
+<span class="tracking-tight font-extrabold text-lg">Travelba</span>
+</a>
+</div>
+<!-- Navigation Links -->
+<nav class="hidden md:flex items-center gap-8 font-headline text-sm">
+<a class="text-slate-600 dark:text-slate-300 font-medium hover:text-[#002157] dark:hover:text-white transition-colors pb-1" href="#">
+          Accueil
+        </a>
+<!-- ACTIVE ITEM: Réservations -->
+<a class="text-[#002157] dark:text-white font-bold border-b-2 border-[#E81932] pb-1" href="#">
+          Réservations
+        </a>
+<a class="text-slate-600 dark:text-slate-300 font-medium hover:text-[#002157] dark:hover:text-white transition-colors pb-1" href="#">
+          Transactions
+        </a>
+<a class="text-slate-600 dark:text-slate-300 font-medium hover:text-[#002157] dark:hover:text-white transition-colors pb-1" href="#">
+          Compte
+        </a>
+</nav>
+<!-- Trailing Action & Profile -->
+<div class="flex items-center gap-4">
+<!-- Notification Icon with Badge -->
+<button aria-label="Notifications" class="relative p-2 text-slate-600 hover:text-[#002157] transition-colors rounded-full hover:bg-slate-100 dark:hover:bg-slate-800">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+<span class="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-[#E81932] rounded-full ring-2 ring-white dark:ring-slate-900"></span>
+</button>
+<!-- Mon voyage CTA -->
+<button class="hidden lg:flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[#002157] bg-[#DCE6F5] hover:bg-[#c9daf1] px-3.5 py-2 rounded-lg transition-all duration-150">
+<span class="material-symbols-outlined text-base">flight_takeoff</span>
+<span>Mon voyage</span>
+</button>
+<!-- User Profile Pill -->
+<div class="flex items-center gap-2.5 pl-2 border-l border-slate-200">
+<div class="w-9 h-9 rounded-full bg-[#002157] text-white flex items-center justify-center font-bold text-xs shadow-sm ring-2 ring-slate-100">
+            MD
+          </div>
+<div class="hidden sm:flex flex-col text-left">
+<span class="text-xs font-bold text-[#002157] leading-none">Marie Dupont</span>
+<span class="text-[10px] text-slate-500 font-medium">Membre Privilège</span>
+</div>
+</div>
+</div>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="flex-grow w-full max-w-[960px] mx-auto px-6 py-8 md:py-10 space-y-8">
+<!-- En-tête de page -->
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-2 border-b border-slate-200/80">
+<div class="space-y-1.5 max-w-2xl">
+<div class="inline-flex items-center gap-2 text-xs uppercase tracking-wider font-bold text-[#E81932]">
+<span class="w-2 h-2 rounded-full bg-[#E81932]"></span>
+<span>Espace Privilège Voyageur</span>
+</div>
+<h1 class="font-headline text-3xl md:text-4xl font-extrabold text-[#002157] tracking-tight">
+          Mes réservations
+        </h1>
+<p class="text-slate-600 text-sm md:text-base leading-relaxed">
+          Consultez le détail de vos séjours d'affaires et loisirs d'exception, vos confirmations et vos documents de voyage.
+        </p>
+</div>
+<!-- Action conciergerie -->
+<div class="flex items-center gap-3 shrink-0">
+<button class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-300 hover:border-[#002157] bg-white text-[#002157] font-semibold text-sm shadow-sm transition-all duration-150 hover:bg-slate-50 active:scale-[0.98]">
+<span class="material-symbols-outlined text-lg" data-icon="support_agent">support_agent</span>
+<span>Contacter ma conciergerie</span>
+</button>
+</div>
+</div>
+<!-- Onglets et Filtres de recherche -->
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+<!-- Tabs -->
+<div class="inline-flex p-1 bg-white border border-slate-200/80 rounded-xl shadow-sm">
+<button class="px-5 py-2 rounded-lg text-xs md:text-sm font-bold bg-[#002157] text-white shadow-sm transition-all">
+          À venir (3)
+        </button>
+<button class="px-5 py-2 rounded-lg text-xs md:text-sm font-semibold text-slate-600 hover:text-[#002157] transition-all">
+          Passés (8)
+        </button>
+</div>
+<!-- Barre d'outils secondaire -->
+<div class="flex items-center gap-2.5 w-full md:w-auto">
+<div class="relative flex-grow md:w-64">
+<span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
+<span class="material-symbols-outlined text-lg" data-icon="search">search</span>
+</span>
+<input class="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#002157] focus:border-[#002157] shadow-sm" placeholder="Référence, ville..." type="text"/>
+</div>
+<button class="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 hover:border-slate-300 shadow-sm transition-all">
+<span class="material-symbols-outlined text-base" data-icon="filter_list">filter_list</span>
+<span class="hidden sm:inline">Statut</span>
+</button>
+</div>
+</div>
+<!-- Liste de réservations à venir -->
+<div class="space-y-6">
+<!-- Carte 1: Bali, Indonésie -->
+<article class="bg-white rounded-2xl border border-slate-200/70 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md hover:border-slate-300">
+<div class="grid grid-cols-1 md:grid-cols-12">
+<!-- Image -->
+<div class="md:col-span-4 relative min-h-[220px] md:min-h-full">
+<img class="w-full h-full object-cover" data-alt="A luxurious private villa sanctuary in Mandapa Ritz-Carlton Bali with pristine infinity pool overflowing toward emerald tropical rainforest and misty river valley. High-end architectural photography, warm natural morning sunlight casting soft geometric shadows on dark teak wood and natural stone terrace. Ultra luxury travel magazine style." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBSww5uzDhAVqC_0jhgCMaP6-4hBXWZhydCwNm1kr5bAhzEzlHOO64tJQFN-OUKk1hNoXrjpFGBVCveblZSg4BnkMs1zuXFsny5RmT2gfJbXBgrxOwYVBbHOOViuPaWWzWUpvLgP2Entej_XKysg98oKOAck4fP0NRiZL8sIdJ8iCKXpNGv_cVDVFCwyhsRVpIny021z5JBQgWILTkERMhCMEAPqOpJuK63frYQV-y3suNwHO26UNHDFVXcFB8aWZS5CyRRjD7r8ywY"/>
+<div class="absolute top-3 left-3">
+<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/80 shadow-xs">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                Confirmé
+              </span>
+</div>
+</div>
+<!-- Content -->
+<div class="md:col-span-8 p-6 flex flex-col justify-between space-y-5">
+<div>
+<div class="flex items-start justify-between gap-2 mb-1">
+<div>
+<span class="text-xs font-mono font-medium text-slate-500">Réf. TBA-2026-0142</span>
+<h3 class="font-headline text-xl font-bold text-[#002157]">Bali, Indonésie</h3>
+</div>
+<div class="text-right shrink-0">
+<div class="text-xs text-slate-500">Montant total</div>
+<div class="font-headline text-lg font-bold text-[#002157]">8 450,00 €</div>
+</div>
+</div>
+<!-- Dates & Durée -->
+<div class="flex items-center gap-2 text-sm font-semibold text-slate-700 mt-2">
+<span class="material-symbols-outlined text-[#E81932] text-lg" data-icon="calendar_today">calendar_today</span>
+<span>12 – 24 oct. 2026</span>
+<span class="text-slate-300">•</span>
+<span class="text-slate-500 font-normal">12 nuits</span>
+</div>
+<!-- Puces descriptives -->
+<div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-slate-600 bg-slate-50/70 p-3 rounded-xl border border-slate-100">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-slate-500 text-sm" data-icon="flight">flight</span>
+<span class="truncate">Singapore Airlines Affaires</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-slate-500 text-sm" data-icon="hotel">hotel</span>
+<span class="truncate">Mandapa Ritz-Carlton</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-slate-500 text-sm" data-icon="room_service">room_service</span>
+<span class="truncate">Majordome dédié 24h</span>
+</div>
+</div>
+</div>
+<!-- Footer Card: Statut financier & Boutons -->
+<div class="pt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+<div class="text-xs">
+<span class="text-slate-500">Acompte réglé (7 210,00 €) • </span>
+<span class="font-semibold text-amber-700">Reste à régler : 1 240,00 €</span>
+</div>
+<div class="flex items-center gap-2 self-end sm:self-auto">
+<button class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-[#002157] hover:bg-slate-100 border border-slate-200 transition-all flex items-center gap-1">
+<span class="material-symbols-outlined text-sm" data-icon="description">description</span>
+<span>Documents</span>
+</button>
+<button class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#E81932] hover:bg-[#c91227] shadow-sm transition-all duration-150 flex items-center gap-1.5 active:scale-95">
+<span>Voir le dossier</span>
+<span class="material-symbols-outlined text-sm" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</article>
+<!-- Carte 2: Tokyo & Kyoto, Japon -->
+<article class="bg-white rounded-2xl border border-slate-200/70 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md hover:border-slate-300">
+<div class="grid grid-cols-1 md:grid-cols-12">
+<!-- Image -->
+<div class="md:col-span-4 relative min-h-[220px] md:min-h-full">
+<img class="w-full h-full object-cover" data-alt="An exquisite high-rise luxury hotel suite overlooking Tokyo skyline at dusk with Mount Fuji silhouetted in the distance, juxtaposed with minimalist Japanese architectural elements, warm washi paper lanterns, and elegant dark oak woodwork. Crisp evening lighting with deep blues and subtle red warm accents. Elite bespoke travel aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBMPaV4v68EG1yWrdQjBz-mu6D-zBo0bTA9FNkq_crM1af_1ZtIKib6KSKVty4dC3hyBfUIF48YWFVw2W6rn53WN0oWbC_FSDeVfNElMThW3pwMjEtrrnM2EdW5G3IUkQrb2Kf6THQ7UeVwc7yBkb8HR7WRbCXoqtDQbKA0ss03l-U0lVvs8L7MaRSbUFk96Gh567F6jyVPQy-rrNGLPCIWdT6g1PyjcNXesk85pKzCQ8ubJM9izMeHunVpHftzcTILDawcAY8Gzq6m"/>
+<div class="absolute top-3 left-3">
+<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/80 shadow-xs">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                Confirmé
+              </span>
+</div>
+</div>
+<!-- Content -->
+<div class="md:col-span-8 p-6 flex flex-col justify-between space-y-5">
+<div>
+<div class="flex items-start justify-between gap-2 mb-1">
+<div>
+<span class="text-xs font-mono font-medium text-slate-500">Réf. TBA-2027-0058</span>
+<h3 class="font-headline text-xl font-bold text-[#002157]">Tokyo &amp; Kyoto, Japon</h3>
+</div>
+<div class="text-right shrink-0">
+<div class="text-xs text-slate-500">Montant total</div>
+<div class="font-headline text-lg font-bold text-[#002157]">14 200,00 €</div>
+</div>
+</div>
+<!-- Dates & Durée -->
+<div class="flex items-center gap-2 text-sm font-semibold text-slate-700 mt-2">
+<span class="material-symbols-outlined text-[#E81932] text-lg" data-icon="calendar_today">calendar_today</span>
+<span>15 – 28 janv. 2027</span>
+<span class="text-slate-300">•</span>
+<span class="text-slate-500 font-normal">13 nuits</span>
+</div>
+<!-- Puces descriptives -->
+<div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-slate-600 bg-slate-50/70 p-3 rounded-xl border border-slate-100">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-slate-500 text-sm" data-icon="flight">flight</span>
+<span class="truncate">Air France La Première</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-slate-500 text-sm" data-icon="apartment">apartment</span>
+<span class="truncate">Hoshinoya Tokyo &amp; Ryokan</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-slate-500 text-sm" data-icon="translate">translate</span>
+<span class="truncate">Guide conférencier bilingue</span>
+</div>
+</div>
+</div>
+<!-- Footer Card -->
+<div class="pt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+<div class="text-xs flex items-center gap-1.5 text-emerald-700 font-medium">
+<span class="material-symbols-outlined text-sm" data-icon="check_circle">check_circle</span>
+<span>Solde intégral réglé</span>
+</div>
+<div class="flex items-center gap-2 self-end sm:self-auto">
+<button class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-[#002157] hover:bg-slate-100 border border-slate-200 transition-all flex items-center gap-1">
+<span class="material-symbols-outlined text-sm" data-icon="description">description</span>
+<span>Documents</span>
+</button>
+<button class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#E81932] hover:bg-[#c91227] shadow-sm transition-all duration-150 flex items-center gap-1.5 active:scale-95">
+<span>Voir le dossier</span>
+<span class="material-symbols-outlined text-sm" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</article>
+<!-- Carte 3: Marrakech, Maroc -->
+<article class="bg-white rounded-2xl border border-slate-200/70 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md hover:border-slate-300">
+<div class="grid grid-cols-1 md:grid-cols-12">
+<!-- Image -->
+<div class="md:col-span-4 relative min-h-[220px] md:min-h-full">
+<img class="w-full h-full object-cover" data-alt="An exclusive royal riad courtyard in Marrakech with sparkling turquoise tiled reflection pool surrounded by fragrant orange blossom trees and handcrafted zellige mosaics. Soft golden late afternoon sun glowing against terracotta clay arches. Sophisticated warm palette with pristine luxury hospitality atmosphere." src="https://lh3.googleusercontent.com/aida-public/AB6AXuB7eSza8K_DlkHZvggmKjkgUgaegZZ4eBmBsEygcUlPp-q8acffbemAqsTLDYq6rdUdL3LIHa8qdcgEsSdSEi03hakx7wxho6J9iunektq5FT2YJL_EAaOYPXf6_mO-BPZtMTWQwz9w1So7lCeNl4mZe_JVjP463NuIrWh9IjPQtOsrx3rB0SMa5H2edyQq0fWSuPU1QiCrFtknAC6BrLeucfAbX8DLEePMq9fXTBJJOH80xb4Vyc39SNfhE_MgkCmrtFXIE9XjlL0t"/>
+<div class="absolute top-3 left-3">
+<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 shadow-xs">
+<span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                En attente de confirmation
+              </span>
+</div>
+</div>
+<!-- Content -->
+<div class="md:col-span-8 p-6 flex flex-col justify-between space-y-5">
+<div>
+<div class="flex items-start justify-between gap-2 mb-1">
+<div>
+<span class="text-xs font-mono font-medium text-slate-500">Réf. TBA-2027-0104</span>
+<h3 class="font-headline text-xl font-bold text-[#002157]">Marrakech, Maroc</h3>
+</div>
+<div class="text-right shrink-0">
+<div class="text-xs text-slate-500">Montant indicatif</div>
+<div class="font-headline text-lg font-bold text-[#002157]">9 800,00 €</div>
+</div>
+</div>
+<!-- Dates & Durée -->
+<div class="flex items-center gap-2 text-sm font-semibold text-slate-700 mt-2">
+<span class="material-symbols-outlined text-[#E81932] text-lg" data-icon="calendar_today">calendar_today</span>
+<span>04 – 09 mai 2027</span>
+<span class="text-slate-300">•</span>
+<span class="text-slate-500 font-normal">5 nuits</span>
+</div>
+<!-- Puces descriptives -->
+<div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-slate-600 bg-slate-50/70 p-3 rounded-xl border border-slate-100">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-slate-500 text-sm" data-icon="flight_takeoff">flight_takeoff</span>
+<span class="truncate">Jet Privé Falcon 2000</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-slate-500 text-sm" data-icon="villa">villa</span>
+<span class="truncate">Riad Royal Privatif</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-slate-500 text-sm" data-icon="restaurant">restaurant</span>
+<span class="truncate">Chef privé à discrétion</span>
+</div>
+</div>
+</div>
+<!-- Footer Card -->
+<div class="pt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+<div class="text-xs flex items-center gap-1.5 text-amber-700 font-medium">
+<span class="material-symbols-outlined text-sm" data-icon="hourglass_top">hourglass_top</span>
+<span>Devis en cours de validation par votre conseiller</span>
+</div>
+<div class="flex items-center gap-2 self-end sm:self-auto">
+<button class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#002157] hover:bg-[#082e6d] shadow-sm transition-all duration-150 flex items-center gap-1.5 active:scale-95">
+<span>Consulter le devis</span>
+<span class="material-symbols-outlined text-sm" data-icon="open_in_new">open_in_new</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</article>
+</div>
+<!-- Assistance Box / Conciergerie 24/7 -->
+<div class="mt-12 bg-white rounded-2xl p-6 md:p-8 border border-slate-200/80 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+<div class="flex items-start gap-4">
+<div class="w-12 h-12 rounded-xl bg-[#DCE6F5] text-[#002157] flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-2xl" data-icon="headset_mic">headset_mic</span>
+</div>
+<div>
+<span class="inline-block text-[11px] font-bold uppercase tracking-wider text-[#E81932]">Assistance Personnalisée</span>
+<h4 class="font-headline text-lg font-bold text-[#002157]">Ligne Privée Conciergerie 24/7</h4>
+<p class="text-slate-500 text-xs md:text-sm mt-0.5">Votre référent voyage Alexandre est disponible en direct pour tout ajustement d'itinéraire.</p>
+</div>
+</div>
+<div class="flex flex-wrap items-center gap-3 shrink-0 w-full md:w-auto">
+<a class="flex-1 md:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-[#002157] transition-colors" href="tel:+33189200000">
+<span class="material-symbols-outlined text-base" data-icon="phone_in_talk">phone_in_talk</span>
+<span>+33 1 89 20 00 TBA</span>
+</a>
+<a class="flex-1 md:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#002157] hover:bg-[#072f70] text-xs font-bold text-white transition-colors" href="mailto:alexandre@travelba.fr">
+<span class="material-symbols-outlined text-base" data-icon="mail">mail</span>
+<span>Écrire à Alexandre</span>
+</a>
+</div>
+</div>
+</main>
+<!-- Footer (Shared Component exact execution) -->
+<footer class="w-full mt-auto bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
+<div class="max-w-[960px] mx-auto px-6 py-10 flex flex-col md:flex-row items-center justify-between gap-4 w-full">
+<div class="flex flex-col sm:flex-row items-center gap-2 sm:gap-4 text-center sm:text-left">
+<span class="font-headline text-lg font-extrabold text-[#002157] dark:text-white">Travelba</span>
+<span class="hidden sm:inline text-slate-300">|</span>
+<p class="font-body text-sm text-slate-500 dark:text-slate-400">
+          © 2025 Travelba — Agence de voyage d'affaires d'exception. Tous droits réservés.
+        </p>
+</div>
+<div class="flex items-center gap-6 font-body text-sm">
+<a class="text-slate-500 dark:text-slate-400 hover:text-[#002157] dark:hover:text-white hover:text-[#E81932] transition-colors duration-150" href="#">
+          Mentions légales
+        </a>
+<a class="text-slate-500 dark:text-slate-400 hover:text-[#002157] dark:hover:text-white hover:text-[#E81932] transition-colors duration-150" href="#">
+          Confidentialité
+        </a>
+<a class="text-slate-500 dark:text-slate-400 hover:text-[#002157] dark:hover:text-white hover:text-[#E81932] transition-colors duration-150" href="#">
+          Assistance dédiée
+        </a>
+<a class="text-slate-500 dark:text-slate-400 hover:text-[#002157] dark:hover:text-white hover:text-[#E81932] transition-colors duration-150" href="#">
+          Conciergerie
+        </a>
+</div>
+</div>
+</footer>
+</body></html>

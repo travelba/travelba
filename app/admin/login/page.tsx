@@ -3,6 +3,7 @@
 import { FormEvent, Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { BrandMark } from "@/components/crm/ui";
 
 function LoginForm() {
   const router = useRouter();
@@ -39,32 +40,36 @@ function LoginForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="mt-8 space-y-4">
+    <form onSubmit={onSubmit} className="mt-6 space-y-4">
       <label className="block space-y-1.5 text-sm">
-        <span className="font-medium text-muted">Email</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted">
+          Email agent
+        </span>
         <input
           type="email"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full rounded-xl border border-border bg-white px-3.5 py-2.5 text-foreground outline-none ring-accent/40 focus:ring-2"
+          className="w-full rounded-xl border border-[var(--border)] bg-white px-3.5 py-3 outline-none focus:border-[var(--admin-navy)] focus:ring-2 focus:ring-[var(--admin-sky)]"
         />
       </label>
       <label className="block space-y-1.5 text-sm">
-        <span className="font-medium text-muted">Mot de passe</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted">
+          Mot de passe
+        </span>
         <input
           type="password"
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full rounded-xl border border-border bg-white px-3.5 py-2.5 text-foreground outline-none ring-accent/40 focus:ring-2"
+          className="w-full rounded-xl border border-[var(--border)] bg-white px-3.5 py-3 outline-none focus:border-[var(--admin-navy)] focus:ring-2 focus:ring-[var(--admin-sky)]"
         />
       </label>
-      {error ? <p className="text-sm text-accent">{error}</p> : null}
+      {error ? <p className="text-sm text-[var(--admin-red)]">{error}</p> : null}
       <button
         type="submit"
         disabled={loading}
-        className="admin-af-btn w-full rounded-full px-4 py-3 text-sm disabled:opacity-60"
+        className="admin-af-btn w-full rounded-xl px-4 py-3.5 text-sm disabled:opacity-60"
       >
         {loading ? "Connexion…" : "Se connecter"}
       </button>
@@ -74,16 +79,19 @@ function LoginForm() {
 
 export default function AdminLoginPage() {
   return (
-    <div className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center">
-      <div className="admin-af-card rounded-3xl p-8 sm:p-10">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">
+    <div className="mx-auto flex min-h-[80vh] max-w-md flex-col justify-center">
+      <div className="mb-6">
+        <BrandMark href="/" subtitle="Back-office" />
+      </div>
+      <div className="admin-af-card rounded-2xl border-t-[3px] border-t-[var(--admin-red)] p-8 sm:p-10">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--admin-red)]">
           Accès agent
         </p>
         <h1 className="mt-2 font-display text-3xl font-extrabold tracking-tight text-[var(--admin-navy)]">
           Connexion
         </h1>
         <p className="mt-2 text-sm text-muted">
-          Réservé à Travel Business Agency.
+          Réservé à l’équipe Travel Business Agency.
         </p>
         <Suspense fallback={<p className="mt-8 text-sm text-muted">Chargement…</p>}>
           <LoginForm />

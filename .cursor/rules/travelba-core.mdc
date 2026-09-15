@@ -5,29 +5,28 @@ alwaysApply: true
 
 # Travelba — avance rapide
 
-Produit FR pour agence de voyage : CRM admin (`/admin/mtrip`) → import passeports/résas → devis → publish mTrip → WhatsApp Concierge.
+Produit FR pour agence de voyage : back-office `/admin` (clients, réservations, grand livre, Revolut) + espace client `/mon-compte` (lien magique email).
 
 ## Comment travailler
 
-- **Ship** : implémenter, tester sur PDF/échantillon réel, pas de long plan ni de docs non demandés.
+- **Ship** : implémenter, tester, pas de long plan ni de docs non demandés.
 - **Langue UI / copy client** : français.
 - **Secrets** : `.env.local` seulement — jamais commit.
 - **Next.js** : lire `node_modules/next/dist/docs/` avant APIs nouvelles (voir `AGENTS.md`).
-- **Skills projet** : lire le skill pertinent dans `.cursor/skills/` **avant** de coder (liste dans skill `travelba-voyage-crm`).
+- **Skills projet** : `.cursor/skills/travelba-voyage-crm/SKILL.md`
 
 ## Stack clé
 
 | Zone | Où |
 |------|-----|
-| Guides voyage | `agency_mtrip_guides` (Supabase `fsmfozxgujskluxakeoq`) |
-| Fichiers | bucket privé `agency-mtrip` |
-| Extract résas | `lib/mtrip/extract-pdf.ts` |
-| Devis CRM | `quote_lines` + `QuoteLinesEditor` |
-| Preview docs | `VoyageFilesPanel` + `GET .../files/[fileId]` |
+| Clients / résas / ledger | tables `crm_*` (Supabase `fsmfozxgujskluxakeoq`) |
+| Fichiers | bucket privé `crm-files` via `/api/files` |
+| Encours | vue `crm_customer_balances` (crédits − débits `posted`) |
+| Cartes | Stripe SetupIntent + `crm_payment_methods` |
+| Virements | API Revolut → `crm_revolut_transactions` → rapprochement |
 
 ## Interdits récurrents
 
-- Titre devis = nom de Capture/Screenshot
-- URL signed Supabase longues dans `documents.url` mTrip
-- Publish mTrip sans geo cohérente (skill `travelba-mtrip-max-publish`)
-- Envoyer `/v/` avant publish réussi
+- URL signed Supabase longues côté client — signed URL courte via `/api/files`
+- Créditer un client Revolut sans rapprochement agent
+- Stocker un PAN / CVC — références Stripe uniquement

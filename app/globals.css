@@ -91,6 +91,18 @@
   cursor: not-allowed;
 }
 
+.admin-af-btn-navy {
+  background: var(--admin-navy);
+  color: #ffffff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.admin-af-btn-navy:hover {
+  background: var(--admin-navy-deep);
+}
+
 /* Curseur main sur tout élément cliquable du back-office / devis */
 .admin-af a[href],
 .admin-af button:not(:disabled),

@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+
+<html class="h-full" lang="fr"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Travelba — Connexion Espace Membre Privilège</title>
+<!-- Google Fonts: Montserrat (display/headlines), Source Sans 3 (body), Public Sans (labels) -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&amp;family=Public+Sans:wght@400;500;600&amp;family=Source+Sans+3:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            navy: {
+              DEFAULT: "#002157",
+              900: "#00163b",
+              800: "#002157",
+              700: "#0b2e6e"
+            },
+            accent: {
+              DEFAULT: "#E81932",
+              hover: "#c91227",
+              light: "#fde8eb"
+            },
+            canvas: "#F2F4F8",
+            softsky: "#DCE6F5"
+          },
+          borderRadius: {
+            "DEFAULT": "0.5rem",
+            "lg": "1rem",
+            "xl": "1.5rem",
+            "2xl": "1.75rem",
+            "full": "9999px"
+          },
+          fontFamily: {
+            headline: ["Montserrat", "sans-serif"],
+            display: ["Montserrat", "sans-serif"],
+            body: ["\"Source Sans 3\"", "sans-serif"],
+            label: ["Public Sans", "sans-serif"]
+          }
+        },
+      },
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      display: inline-block;
+      vertical-align: middle;
+      line-height: 1;
+    }
+    .material-symbols-outlined.fill-icon {
+      font-variation-settings: 'FILL' 1;
+    }
+    /* Subtle luxury radial atmosphere */
+    .travelba-bg-gradient {
+      background-color: #F2F4F8;
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(220, 230, 245, 0.6) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(0, 33, 87, 0.05) 0px, transparent 60%),
+        radial-gradient(at 50% 15%, rgba(232, 25, 50, 0.03) 0px, transparent 40%);
+    }
+    /* Elegant card shadow without harsh glow */
+    .card-prestige {
+      box-shadow: 0 20px 45px -15px rgba(0, 33, 87, 0.07), 0 0 1px 1px rgba(0, 33, 87, 0.03);
+    }
+    /* OTP Input step styling */
+    .otp-field:focus {
+      border-color: #002157;
+      box-shadow: 0 0 0 3px rgba(220, 230, 245, 0.85);
+    }
+  </style>
+</head>
+<body class="h-full font-body text-slate-800 antialiased travelba-bg-gradient selection:bg-[#DCE6F5] selection:text-[#002157] flex flex-col justify-between min-h-screen">
+<!-- Top Brand Accent Bar (Red 3px signature) -->
+<div class="h-[3px] w-full bg-[#E81932] fixed top-0 left-0 z-50"></div>
+<!-- Minimal Brand Header for Transactional / Login Canvas -->
+<header class="w-full pt-8 pb-4 px-6">
+<div class="max-w-5xl mx-auto flex items-center justify-between">
+<a class="flex items-center gap-3 group focus:outline-none focus:ring-2 focus:ring-[#002157] rounded-lg p-1" href="/connexion">
+<div class="w-10 h-10 rounded-xl bg-[#002157] text-white flex items-center justify-center font-headline font-extrabold text-sm tracking-wider shadow-sm">
+          TBA
+        </div>
+<div class="flex flex-col leading-none">
+<span class="font-headline font-extrabold text-xl text-[#002157] tracking-tight">Travelba</span>
+<span class="text-[10px] uppercase font-label tracking-widest text-slate-500 font-medium mt-0.5">Voyage d'Affaires</span>
+</div>
+</a>
+<!-- Security Trust Pill -->
+<div class="hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/80 border border-slate-200/80 text-xs font-label text-slate-600 shadow-xs backdrop-blur-xs">
+<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+<span class="material-symbols-outlined text-[15px] text-slate-500" data-icon="lock">lock</span>
+<span>Environnement sécurisé 256-bit</span>
+</div>
+</div>
+</header>
+<!-- Main Centered Canvas -->
+<main class="flex-1 flex items-center justify-center px-4 sm:px-6 py-6 sm:py-10">
+<div class="w-full max-w-[440px]">
+<!-- Prestige Login Card -->
+<div class="bg-white rounded-2xl p-8 sm:p-10 border border-slate-200/70 card-prestige relative overflow-hidden transition-all duration-300">
+<!-- Subtle Top Accent Detail -->
+<div class="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-[2px] bg-gradient-to-r from-transparent via-[#E81932] to-transparent"></div>
+<!-- Header Card: Badge, Title & Context -->
+<div class="text-center mb-8">
+<!-- Member Privilege Badge -->
+<div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#DCE6F5]/80 text-[#002157] text-xs font-label font-semibold tracking-wide mb-4">
+<span class="material-symbols-outlined text-sm fill-icon" data-icon="stars" data-weight="fill">stars</span>
+<span>Espace Membre Privilège</span>
+</div>
+<h1 class="font-headline text-3xl font-extrabold text-[#002157] tracking-tight">
+            Connexion
+          </h1>
+<p class="text-slate-500 text-sm mt-2.5 font-body leading-relaxed" id="step-description">
+            Entrez votre e-mail professionnel pour recevoir un code à 6 chiffres.
+          </p>
+</div>
+<!-- Step Indicator Toggle (Micro UX for Demo or Direct Switch) -->
+<div class="flex items-center justify-center gap-2 mb-6">
+<button aria-label="Étape 1 : Saisie de l'adresse e-mail" class="h-1.5 rounded-full transition-all duration-300 bg-[#E81932] w-8" id="tab-step-1" onclick="switchStep(1)" type="button"></button>
+<button aria-label="Étape 2 : Vérification du code OTP" class="h-1.5 rounded-full transition-all duration-300 bg-slate-200 w-3 hover:bg-slate-300" id="tab-step-2" onclick="switchStep(2)" type="button"></button>
+</div>
+<!-- ============================================== -->
+<!-- ÉTAPE 1 : Saisie de l'E-mail (Passwordless)     -->
+<!-- ============================================== -->
+<form class="space-y-5 transition-opacity duration-200" id="form-step-1" onsubmit="event.preventDefault(); goToStepTwo();">
+<div>
+<label class="block text-xs font-label font-semibold text-slate-700 uppercase tracking-wider mb-2" for="user-email">
+              Adresse e-mail professionnelle
+            </label>
+<div class="relative rounded-xl shadow-xs">
+<div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+<span class="material-symbols-outlined text-[20px]" data-icon="mail">mail</span>
+</div>
+<input class="block w-full pl-11 pr-4 py-3.5 bg-slate-50/60 border border-slate-200 rounded-xl text-slate-900 text-sm placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-[#002157] focus:ring-2 focus:ring-[#DCE6F5] transition-all" id="user-email" name="email" placeholder="ex: marie.dupont@societe.com" required="" type="email" value="marie.dupont@societe.com"/>
+</div>
+<p class="text-[11px] text-slate-400 mt-2 flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[14px] text-slate-400" data-icon="info">info</span>
+              Accès réservé aux collaborateurs et dirigeants habilités TBA.
+            </p>
+</div>
+<!-- CTA Étape 1 -->
+<button class="w-full py-3.5 px-5 bg-[#E81932] hover:bg-[#c91227] text-white font-headline font-bold text-sm rounded-xl flex items-center justify-center gap-2 shadow-sm shadow-[#E81932]/20 hover:shadow-[#E81932]/35 transition-all duration-200 active:scale-[0.99] focus:outline-none focus:ring-3 focus:ring-[#E81932]/30" type="submit">
+<span>Recevoir le code</span>
+<span class="material-symbols-outlined text-lg transition-transform group-hover:translate-x-0.5" data-icon="arrow_forward">arrow_forward</span>
+</button>
+<!-- Réassurance Passwordless -->
+<div class="pt-2 flex items-center justify-center gap-2 text-xs font-label text-slate-500">
+<span class="material-symbols-outlined text-slate-400 text-sm fill-icon" data-icon="verified_user" data-weight="fill">verified_user</span>
+<span>Connexion sécurisée sans mot de passe</span>
+</div>
+</form>
+<!-- ============================================== -->
+<!-- ÉTAPE 2 : Saisie OTP (6 chiffres)             -->
+<!-- ============================================== -->
+<form class="space-y-6 hidden transition-opacity duration-200" id="form-step-2" onsubmit="event.preventDefault(); handleOtpSubmit();">
+<!-- Recipient info box with quick change link -->
+<div class="p-3 bg-[#F2F4F8] rounded-xl border border-slate-200/80 flex items-center justify-between text-xs font-body">
+<div class="flex items-center gap-2.5 overflow-hidden">
+<span class="material-symbols-outlined text-[#002157] text-base shrink-0" data-icon="mark_email_read">mark_email_read</span>
+<span class="text-slate-600 truncate">Envoyé à <strong class="text-[#002157] font-semibold" id="display-recipient-email">marie.dupont@societe.com</strong></span>
+</div>
+<button class="text-[#E81932] font-label font-medium hover:underline ml-2 shrink-0 cursor-pointer text-xs" onclick="switchStep(1)" type="button">
+              Modifier
+            </button>
+</div>
+<!-- 6-digit OTP Inputs -->
+<div>
+<label class="block text-xs font-label font-semibold text-slate-700 uppercase tracking-wider mb-3 text-center">
+              Code de vérification à 6 chiffres
+            </label>
+<div class="flex justify-between items-center gap-2 sm:gap-2.5" id="otp-container">
+<input autofocus="" class="otp-field w-12 h-14 text-center font-headline font-extrabold text-xl text-[#002157] bg-slate-50/50 border border-slate-200 rounded-xl transition-all outline-none" inputmode="numeric" maxlength="1" pattern="[0-9]*" type="text" value="7"/>
+<input class="otp-field w-12 h-14 text-center font-headline font-extrabold text-xl text-[#002157] bg-slate-50/50 border border-slate-200 rounded-xl transition-all outline-none" inputmode="numeric" maxlength="1" pattern="[0-9]*" type="text" value="2"/>
+<input class="otp-field w-12 h-14 text-center font-headline font-extrabold text-xl text-[#002157] bg-slate-50/50 border border-slate-200 rounded-xl transition-all outline-none" inputmode="numeric" maxlength="1" pattern="[0-9]*" type="text" value="8"/>
+<input class="otp-field w-12 h-14 text-center font-headline font-extrabold text-xl text-[#002157] bg-white border border-[#002157] ring-2 ring-[#DCE6F5] rounded-xl transition-all outline-none" inputmode="numeric" maxlength="1" pattern="[0-9]*" placeholder="•" type="text"/>
+<input class="otp-field w-12 h-14 text-center font-headline font-extrabold text-xl text-[#002157] bg-slate-50/50 border border-slate-200 rounded-xl transition-all outline-none" inputmode="numeric" maxlength="1" pattern="[0-9]*" placeholder="•" type="text"/>
+<input class="otp-field w-12 h-14 text-center font-headline font-extrabold text-xl text-[#002157] bg-slate-50/50 border border-slate-200 rounded-xl transition-all outline-none" inputmode="numeric" maxlength="1" pattern="[0-9]*" placeholder="•" type="text"/>
+</div>
+</div>
+<!-- CTA Étape 2 -->
+<button class="w-full py-3.5 px-5 bg-[#002157] hover:bg-[#00163b] text-white font-headline font-bold text-sm rounded-xl flex items-center justify-center gap-2 shadow-sm shadow-[#002157]/20 hover:shadow-[#002157]/30 transition-all duration-200 active:scale-[0.99] focus:outline-none focus:ring-3 focus:ring-[#002157]/25" type="submit">
+<span>Vérifier le code</span>
+<span class="material-symbols-outlined text-lg" data-icon="check_circle">check_circle</span>
+</button>
+<!-- Resend action + Timer -->
+<div class="text-center pt-1">
+<p class="text-xs text-slate-500 font-label">
+              Vous n'avez pas reçu le message ?
+            </p>
+<button class="mt-1.5 inline-flex items-center gap-1.5 text-xs font-semibold text-[#002157] hover:text-[#E81932] transition-colors cursor-pointer" id="resend-btn" onclick="handleResend()" type="button">
+<span class="material-symbols-outlined text-sm" data-icon="refresh">refresh</span>
+<span id="resend-text">Renvoyer un nouveau code (45s)</span>
+</button>
+</div>
+</form>
+<!-- Quick Switch Demo Pill for Evaluator -->
+<div class="mt-6 pt-5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400 font-label">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-xs" data-icon="hub">hub</span>
+<span>Flux OTP Travelba</span>
+</span>
+<button class="text-slate-500 hover:text-[#002157] font-medium underline underline-offset-2 transition-colors cursor-pointer" onclick="toggleDemoStep()" type="button">
+            Aperçu de l'autre étape
+          </button>
+</div>
+</div>
+<!-- Trust Credentials under Card -->
+<div class="mt-6 text-center">
+<div class="inline-flex items-center gap-4 text-xs text-slate-500 font-label">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[15px] text-slate-400" data-icon="workspace_premium">workspace_premium</span>
+<span>Conciergerie Dédiée 24/7</span>
+</span>
+<span class="text-slate-300">•</span>
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[15px] text-slate-400" data-icon="shield">shield</span>
+<span>Conforme RGPD</span>
+</span>
+</div>
+</div>
+</div>
+</main>
+<!-- Discret Footer as per specification -->
+<footer class="w-full pb-8 pt-4 px-6 mt-auto">
+<div class="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-body text-center sm:text-left">
+<!-- Concierge Line -->
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-sm text-[#E81932]" data-icon="support_agent">support_agent</span>
+<span>
+          Besoin d'aide ? Contactez votre Conciergerie Privée Travelba au 
+          <a class="font-semibold text-[#002157] hover:underline" href="tel:+33189200000">+33 1 89 20 00 TBA</a>
+</span>
+</div>
+<!-- Legal Links -->
+<div class="flex items-center gap-4 text-[11px] font-label text-slate-400">
+<a class="hover:text-[#002157] transition-colors" href="#mentions-legales">Mentions légales</a>
+<span>·</span>
+<a class="hover:text-[#002157] transition-colors" href="#confidentialite">Confidentialité</a>
+<span>·</span>
+<span>© 2025 Travelba</span>
+</div>
+</div>
+</footer>
+<!-- Interactive JavaScript for OTP step handling & micro-interactions -->
+<script>
+    let currentStep = 1;
+    let countdown = 45;
+    let timerInterval = null;
+
+    function switchStep(step) {
+      currentStep = step;
+      const step1Form = document.getElementById('form-step-1');
+      const step2Form = document.getElementById('form-step-2');
+      const stepDesc = document.getElementById('step-description');
+      const tab1 = document.getElementById('tab-step-1');
+      const tab2 = document.getElementById('tab-step-2');
+      const emailVal = document.getElementById('user-email').value.trim() || 'marie.dupont@societe.com';
+
+      if (step === 1) {
+        step1Form.classList.remove('hidden');
+        step2Form.classList.add('hidden');
+        stepDesc.innerText = "Entrez votre e-mail professionnel pour recevoir un code à 6 chiffres.";
+        tab1.className = "h-1.5 rounded-full transition-all duration-300 bg-[#E81932] w-8";
+        tab2.className = "h-1.5 rounded-full transition-all duration-300 bg-slate-200 w-3 hover:bg-slate-300";
+      } else {
+        step1Form.classList.add('hidden');
+        step2Form.classList.remove('hidden');
+        document.getElementById('display-recipient-email').innerText = emailVal;
+        stepDesc.innerText = "Saisissez le code de validation reçu dans votre boîte de messagerie.";
+        tab1.className = "h-1.5 rounded-full transition-all duration-300 bg-slate-200 w-3 hover:bg-slate-300";
+        tab2.className = "h-1.5 rounded-full transition-all duration-300 bg-[#002157] w-8";
+        startResendTimer();
+      }
+    }
+
+    function goToStepTwo() {
+      switchStep(2);
+      // Auto-focus 4th field in demo or 1st field
+      const fields = document.querySelectorAll('.otp-field');
+      if (fields[3]) fields[3].focus();
+    }
+
+    function toggleDemoStep() {
+      switchStep(currentStep === 1 ? 2 : 1);
+    }
+
+    function startResendTimer() {
+      clearInterval(timerInterval);
+      countdown = 45;
+      const resendBtn = document.getElementById('resend-btn');
+      const resendText = document.getElementById('resend-text');
+      resendBtn.disabled = true;
+      resendBtn.classList.add('opacity-60', 'cursor-not-allowed');
+
+      timerInterval = setInterval(() => {
+        countdown--;
+        if (countdown > 0) {
+          resendText.innerText = `Renvoyer un nouveau code (${countdown}s)`;
+        } else {
+          clearInterval(timerInterval);
+          resendBtn.disabled = false;
+          resendBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+          resendText.innerText = "Renvoyer le code maintenant";
+        }
+      }, 1000);
+    }
+
+    function handleResend() {
+      if (countdown <= 0) {
+        alert("Un nouveau code à 6 chiffres vient d'être expédié.");
+        startResendTimer();
+      }
+    }
+
+    function handleOtpSubmit() {
+      const btn = document.querySelector('#form-step-2 button[type="submit"]');
+      const originalContent = btn.innerHTML;
+      btn.innerHTML = `<span class="inline-block animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2"></span> Authentification...`;
+      btn.disabled = true;
+
+      setTimeout(() => {
+        btn.innerHTML = `<span class="material-symbols-outlined text-lg mr-1">check</span> Session autorisée`;
+        btn.classList.remove('bg-[#002157]');
+        btn.classList.add('bg-emerald-700');
+        setTimeout(() => {
+          window.location.href = '/mon-compte';
+        }, 800);
+      }, 900);
+    }
+
+    // Auto-advance OTP inputs
+    document.querySelectorAll('.otp-field').forEach((input, index, list) => {
+      input.addEventListener('input', (e) => {
+        if (e.target.value.length === 1 && index < list.length - 1) {
+          list[index + 1].focus();
+          list[index + 1].select();
+        }
+      });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && !e.target.value && index > 0) {
+          list[index - 1].focus();
+        }
+      });
+    });
+  </script>
+</body></html>

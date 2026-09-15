@@ -7,5 +7,5 @@ This version has breaking changes — APIs, conventions, and file structure may 
 # Travelba agent notes
 
 - Always-on rules: `.cursor/rules/travelba-core.mdc`
-- Start voyage/CRM work with skill `.cursor/skills/travelba-voyage-crm/SKILL.md` then the domain skill it points to.
+- Start CRM work with skill `.cursor/skills/travelba-voyage-crm/SKILL.md`
 - Prefer shipping working CRM flows over speculative refactors.

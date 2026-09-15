@@ -30,22 +30,44 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const pathname = request.nextUrl.pathname;
-  const isLogin = pathname === "/admin/login";
+  const isAdmin = pathname.startsWith("/admin");
+  const isAdminLogin = pathname === "/admin/login";
+  const isClient = pathname.startsWith("/mon-compte");
+  const isConnexion = pathname === "/connexion";
 
-  if (!user && !isLogin) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/admin/login";
-    url.searchParams.set("next", pathname);
-    return NextResponse.redirect(url);
+  if (isAdmin) {
+    if (!user && !isAdminLogin) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/admin/login";
+      url.searchParams.set("next", pathname);
+      return NextResponse.redirect(url);
+    }
+    if (user && isAdminLogin) {
+      const url = request.nextUrl.clone();
+      const next = request.nextUrl.searchParams.get("next");
+      url.pathname =
+        next && next.startsWith("/admin") && !next.startsWith("/admin/login")
+          ? next
+          : "/admin";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+    return supabaseResponse;
   }
 
-  if (user && isLogin) {
+  if (isClient) {
+    if (!user) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/connexion";
+      url.searchParams.set("next", pathname);
+      return NextResponse.redirect(url);
+    }
+    return supabaseResponse;
+  }
+
+  if (isConnexion && user) {
     const url = request.nextUrl.clone();
-    const next = request.nextUrl.searchParams.get("next");
-    url.pathname =
-      next && next.startsWith("/admin") && !next.startsWith("/admin/login")
-        ? next
-        : "/admin";
+    url.pathname = "/mon-compte";
     url.search = "";
     return NextResponse.redirect(url);
   }
