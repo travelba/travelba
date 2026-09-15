@@ -191,7 +191,14 @@ export async function upsertRevolutInbox(txs: RevolutTx[]) {
   for (const tx of txs) {
     const leg = tx.legs?.[0];
     const amount = Number(leg?.amount || 0);
-    if (!tx.id || amount <= 0) continue;
+    if (
+      !tx.id ||
+      tx.state?.toLowerCase() !== "completed" ||
+      amount <= 0 ||
+      !leg?.counterparty
+    ) {
+      continue;
+    }
     const { error, data } = await supabase
       .from("crm_revolut_transactions")
       .upsert(
@@ -217,10 +224,23 @@ export async function upsertRevolutInbox(txs: RevolutTx[]) {
 export function verifyRevolutWebhook(rawBody: string, timestamp: string, signatureHeader: string) {
   const secret = process.env.REVOLUT_WEBHOOK_SECRET?.trim();
   if (!secret) throw new Error("REVOLUT_WEBHOOK_SECRET manquant");
+  const rawTimestamp = Number(timestamp);
+  const timestampMs = rawTimestamp < 1_000_000_000_000
+    ? rawTimestamp * 1000
+    : rawTimestamp;
+  if (
+    !Number.isFinite(timestampMs) ||
+    Math.abs(Date.now() - timestampMs) > 5 * 60 * 1000
+  ) {
+    return false;
+  }
   const payloadToSign = `v1.${timestamp}.${rawBody}`;
   const digest = createHmac("sha256", secret).update(payloadToSign).digest("hex");
   const expected = `v1=${digest}`;
-  const candidates = signatureHeader.split(" ").filter(Boolean);
+  const candidates = signatureHeader
+    .split(",")
+    .map((signature) => signature.trim())
+    .filter(Boolean);
   return candidates.some((sig) => {
     const a = Buffer.from(sig);
     const b = Buffer.from(expected);
