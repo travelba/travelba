@@ -12,7 +12,7 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  serverExternalPackages: ["sharp"],
+  serverExternalPackages: ["sharp", "@napi-rs/canvas"],
 };
 
 export default withNextIntl(nextConfig);
