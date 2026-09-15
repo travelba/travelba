@@ -3,7 +3,9 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 type PdfLine = { label: string; detail?: string; amount?: number };
 
 function safeText(value: unknown) {
-  return String(value ?? "").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");
+  return String(value ?? "")
+    .replace(/[\u202f\u2007]/g, " ")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");
 }
 
 export async function createBusinessPdf({
