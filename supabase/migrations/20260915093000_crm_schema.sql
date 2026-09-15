@@ -220,7 +220,6 @@ end;
 $$;
 
 revoke all on function public.crm_next_booking_reference() from public;
-grant execute on function public.crm_next_booking_reference() to authenticated;
 grant execute on function public.crm_next_booking_reference() to service_role;
 
 create or replace view public.crm_customer_balances
