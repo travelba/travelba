@@ -192,6 +192,21 @@ export default function ConnexionPage() {
             <LoginForm />
           </Suspense>
         </div>
+        <a
+          href="/demo/aura-accueil.html"
+          className="mt-5 block rounded-2xl border border-[var(--border)] bg-white px-4 py-3.5 text-center shadow-sm transition hover:border-[var(--admin-navy)]"
+        >
+          <span className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--admin-red)]">
+            Aperçu sans connexion
+          </span>
+          <span className="mt-0.5 block font-display text-sm font-bold text-[var(--admin-navy)]">
+            Voir l&apos;Accueil Aura (maquette live)
+          </span>
+          <span className="mt-1 block text-xs text-muted">
+            La page Connexion n&apos;est pas le design Accueil — le portail
+            s&apos;affiche après le code e-mail.
+          </span>
+        </a>
         <p className="mt-6 text-center text-xs text-muted">
           Besoin d&apos;aide ? {siteConfig.phoneDisplay} · {siteConfig.contactEmail}
         </p>
