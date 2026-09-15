@@ -194,7 +194,7 @@ export async function upsertRevolutInbox(txs: RevolutTx[]) {
     if (
       !tx.id ||
       tx.state?.toLowerCase() !== "completed" ||
-      amount <= 0 ||
+      amount === 0 ||
       !leg?.counterparty
     ) {
       continue;

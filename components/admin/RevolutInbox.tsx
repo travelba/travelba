@@ -67,6 +67,13 @@ export function RevolutInbox({
     });
   }
 
+  async function unmatch(id: string) {
+    if (!window.confirm("Annuler ce rapprochement ? L’écriture comptable liée sera annulée.")) return;
+    await request(`unmatch-${id}`, "Rapprochement annulé.", async () => {
+      await post(`/api/admin/revolut/${id}`, { action: "unmatch" });
+    });
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
@@ -122,7 +129,7 @@ export function RevolutInbox({
                     ))}
                   </select>
                   <button disabled={pending !== null} className="admin-af-btn rounded-full px-3 py-1 text-sm disabled:opacity-50">
-                    {pending === `match-${r.id}` ? "Crédit…" : "Créditer"}
+                    {pending === `match-${r.id}` ? "Rapprochement…" : Number(r.amount) >= 0 ? "Créditer" : "Débiter (renversement)"}
                   </button>
                   <button
                     type="button"
@@ -133,6 +140,10 @@ export function RevolutInbox({
                     {pending === `ignore-${r.id}` ? "Traitement…" : "Ignorer"}
                   </button>
                 </form>
+              ) : r.status === "matched" ? (
+                <button type="button" disabled={pending !== null} onClick={() => void unmatch(r.id)} className="rounded-full border border-border px-3 py-1 text-xs font-semibold disabled:opacity-50">
+                  {pending === `unmatch-${r.id}` ? "Annulation…" : "Annuler le rapprochement"}
+                </button>
               ) : null}
             </div>
           </li>

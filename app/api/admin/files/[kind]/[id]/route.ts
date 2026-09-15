@@ -8,12 +8,14 @@ export async function GET(_request: Request, ctx: Ctx) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
   const { kind, id } = await ctx.params;
-  const table = kind === "identity" ? "crm_travel_documents" : kind === "booking" ? "crm_booking_documents" : null;
+  const table = kind === "identity" ? "crm_travel_documents" : kind === "booking" ? "crm_booking_documents" : kind === "transaction" ? "crm_transactions" : null;
   if (!table) return NextResponse.json({ error: "Type inconnu" }, { status: 404 });
-  const { data } = await auth.supabase.from(table).select("storage_path").eq("id", id).maybeSingle();
-  if (!data?.storage_path) return NextResponse.json({ error: "Fichier introuvable" }, { status: 404 });
+  const pathColumn = kind === "transaction" ? "receipt_storage_path" : "storage_path";
+  const { data } = await auth.supabase.from(table).select(pathColumn).eq("id", id).maybeSingle();
+  const path = data?.[pathColumn];
+  if (!path) return NextResponse.json({ error: "Fichier introuvable" }, { status: 404 });
   try {
-    return NextResponse.redirect(await signedCrmUrl(data.storage_path, 90));
+    return NextResponse.redirect(await signedCrmUrl(String(path), 90));
   } catch {
     return NextResponse.json({ error: "Prévisualisation indisponible" }, { status: 502 });
   }

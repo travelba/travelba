@@ -85,7 +85,8 @@ export async function POST(request: Request, ctx: Ctx) {
   if (!body) return jsonError("Corps JSON invalide");
   const payload = cleanBody(body, config.fields);
   if (resource === "quotes") payload.created_by = auth.staff.id;
-  const { data, error } = await auth.supabase.from(config.table).insert(payload).select("*").single();
+  const database = resource === "notifications" ? createServiceClient() : auth.supabase;
+  const { data, error } = await database.from(config.table).insert(payload).select("*").single();
   if (error) return jsonError(error.message, 400);
   await audit(auth, resource, String(data.id), "created");
   return NextResponse.json({ item: data });
@@ -128,7 +129,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
   }
   if (resource === "requests" && payload.staff_response) payload.responded_at = new Date().toISOString();
   if (resource === "tasks" && payload.status === "done") payload.completed_at = new Date().toISOString();
-  const { data, error } = await auth.supabase.from(config.table).update(payload).eq("id", id).select("*").single();
+  const database = resource === "notifications" ? createServiceClient() : auth.supabase;
+  const { data, error } = await database.from(config.table).update(payload).eq("id", id).select("*").single();
   if (error) return jsonError(error.message, 400);
   await audit(auth, resource, id, "updated");
   let delivery: "not_requested" | "portal" | "email" = "not_requested";
@@ -169,7 +171,8 @@ export async function DELETE(request: Request, ctx: Ctx) {
   if (!canMutate(auth, resource)) return jsonError("Permission insuffisante", 403);
   const id = new URL(request.url).searchParams.get("id");
   if (!id) return jsonError("id requis");
-  const { error } = await auth.supabase.from(config.table).delete().eq("id", id);
+  const database = resource === "notifications" ? createServiceClient() : auth.supabase;
+  const { error } = await database.from(config.table).delete().eq("id", id);
   if (error) return jsonError(error.message, 400);
   await audit(auth, resource, id, "deleted");
   return NextResponse.json({ ok: true });
