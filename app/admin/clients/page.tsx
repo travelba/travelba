@@ -1,7 +1,6 @@
 import { NewCustomerForm } from "@/components/admin/NewCustomerForm";
 import { ClientsTable } from "@/components/admin/ClientsTable";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
-import { createClient } from "@/lib/supabase/server";
 import { requireStaffPage } from "@/lib/crm/auth";
 import type { CrmBalance, CrmCustomer } from "@/lib/crm/types";
 

@@ -19,17 +19,30 @@ function LoginForm() {
     setError(null);
 
     const supabase = createClient();
-    const { error: signError } = await supabase.auth.signInWithPassword({
+    const { data: signData, error: signError } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
-    setLoading(false);
     if (signError) {
+      setLoading(false);
       setError(signError.message);
       return;
     }
 
+    const { data: staff } = await supabase
+      .from("crm_staff")
+      .select("id")
+      .eq("auth_user_id", signData.user.id)
+      .maybeSingle();
+    if (!staff) {
+      await supabase.auth.signOut();
+      setLoading(false);
+      setError("Ce compte n’a pas accès au back-office agence.");
+      return;
+    }
+
+    setLoading(false);
     const next = searchParams.get("next");
     const destination =
       next && next.startsWith("/admin") && !next.startsWith("/admin/login")

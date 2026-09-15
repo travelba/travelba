@@ -1,7 +1,6 @@
 import { NewBookingForm } from "@/components/admin/NewBookingForm";
 import { BookingsTable } from "@/components/admin/BookingsTable";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
-import { createClient } from "@/lib/supabase/server";
 import { requireStaffPage } from "@/lib/crm/auth";
 import type { CrmBooking, CrmCustomer } from "@/lib/crm/types";
 

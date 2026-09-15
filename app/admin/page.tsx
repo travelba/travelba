@@ -99,13 +99,9 @@ export default async function AdminHomePage() {
       </div>
 
       <div className="rounded-2xl border border-[var(--aura-blue-soft)] bg-[var(--aura-blue-soft)]/40 px-4 py-3 text-sm text-[var(--admin-navy)]">
-        <strong>Client démo Aura :</strong>{" "}
-        <code className="rounded bg-white px-1.5 py-0.5 text-xs">client.demo@travelba.fr</code>
-        {" — "}connexion OTP sur{" "}
-        <Link href="/connexion" className="font-semibold underline">
-          /connexion
-        </Link>
-        , aperçu sans login sur{" "}
+        <strong>Espace client exemple Aura :</strong>{" "}
+        la fiche « Marie Dupont » et son dossier Kyoto sont disponibles dans
+        ce back-office. Aperçu public sur{" "}
         <Link href="/demo/espace-client" className="font-semibold underline">
           /demo/espace-client
         </Link>

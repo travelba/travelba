@@ -1,4 +1,3 @@
-import { createClient } from "@/lib/supabase/server";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { RevolutInbox } from "@/components/admin/RevolutInbox";

@@ -48,8 +48,22 @@
 
 /* Portail client — composition mobile Aura Voyage */
 .account-app {
-  --background: var(--aura-surface);
+  --aura-surface: #f7f9fb;
+  --aura-blue: #006398;
+  --aura-blue-soft: #cce5ff;
+  --aura-navy-card: #131b2e;
+  --aura-success: #009668;
+  --admin-navy: #002157;
+  --admin-navy-deep: #00153a;
+  --admin-red: #e81932;
+  --admin-sky: #dce6f5;
+  --foreground: #002157;
+  --muted: #5a6b82;
+  --border: rgba(0, 33, 87, 0.12);
+  --background: #f7f9fb;
+  color: var(--foreground);
   background: var(--aura-surface);
+  font-family: var(--font-admin-sans), var(--font-sans), system-ui, sans-serif;
 }
 
 .account-app .font-display {

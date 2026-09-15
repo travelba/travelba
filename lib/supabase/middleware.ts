@@ -42,16 +42,9 @@ export async function updateSession(request: NextRequest) {
       url.searchParams.set("next", pathname);
       return NextResponse.redirect(url);
     }
-    if (user && isAdminLogin) {
-      const url = request.nextUrl.clone();
-      const next = request.nextUrl.searchParams.get("next");
-      url.pathname =
-        next && next.startsWith("/admin") && !next.startsWith("/admin/login")
-          ? next
-          : "/admin";
-      url.search = "";
-      return NextResponse.redirect(url);
-    }
+    // Keep /admin/login reachable even with an existing client session.
+    // Redirecting every authenticated user to /admin caused a loop for
+    // authenticated customers who are not members of crm_staff.
     return supabaseResponse;
   }
 

@@ -1,6 +1,5 @@
 import { Ledger } from "@/components/admin/Ledger";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
-import { createClient } from "@/lib/supabase/server";
 import { requireStaffPage } from "@/lib/crm/auth";
 import type { CrmCustomer, CrmTransaction } from "@/lib/crm/types";
 
