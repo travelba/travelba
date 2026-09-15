@@ -34,7 +34,7 @@ export async function POST(request: Request, ctx: Ctx) {
 export async function PATCH(request: Request, ctx: Ctx) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
-  await ctx.params;
+  const { id } = await ctx.params;
   const body = await request.json().catch(() => null);
   const itemId = String(body?.id || "");
   if (!itemId) return jsonError("id requis");
@@ -51,6 +51,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
       sort_order: body.sort_order,
     })
     .eq("id", itemId)
+    .eq("booking_id", id)
     .select("*")
     .single();
   if (error) return jsonError(error.message, 400);
@@ -60,14 +61,15 @@ export async function PATCH(request: Request, ctx: Ctx) {
 export async function DELETE(request: Request, ctx: Ctx) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
-  await ctx.params;
+  const { id } = await ctx.params;
   const url = new URL(request.url);
   const itemId = url.searchParams.get("itemId");
   if (!itemId) return jsonError("itemId requis");
   const { error } = await auth.supabase
     .from("crm_booking_items")
     .delete()
-    .eq("id", itemId);
+    .eq("id", itemId)
+    .eq("booking_id", id);
   if (error) return jsonError(error.message, 400);
   return NextResponse.json({ ok: true });
 }
