@@ -12,7 +12,14 @@ export async function GET(_request: Request, ctx: Ctx) {
   if (!table) return NextResponse.json({ error: "Type inconnu" }, { status: 404 });
   const pathColumn = kind === "transaction" ? "receipt_storage_path" : "storage_path";
   const { data } = await auth.supabase.from(table).select(pathColumn).eq("id", id).maybeSingle();
-  const path = data?.[pathColumn];
+  const path =
+    kind === "transaction"
+      ? data && "receipt_storage_path" in data
+        ? data.receipt_storage_path
+        : null
+      : data && "storage_path" in data
+        ? data.storage_path
+        : null;
   if (!path) return NextResponse.json({ error: "Fichier introuvable" }, { status: 404 });
   try {
     return NextResponse.redirect(await signedCrmUrl(String(path), 90));
