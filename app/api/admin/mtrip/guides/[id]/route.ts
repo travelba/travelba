@@ -35,7 +35,7 @@ const patchSchema = z.object({
   end_date: z.string().nullable().optional(),
   dossier_id: z.string().uuid().nullable().optional(),
   passengers: z.array(passengerSchema).optional(),
-  status: z.enum(["draft", "ready", "published", "error"]).optional(),
+  status: z.enum(["draft", "ready", "error"]).optional(),
   quote_lines: z.array(quoteLineSchema).optional(),
 });
 
@@ -167,7 +167,7 @@ export async function DELETE(_request: Request, { params }: Params) {
 
   const { data: guide, error: fetchError } = await supabase
     .from("agency_mtrip_guides")
-    .select("id, mtrip_identifier")
+    .select("id, mtrip_identifier, documents, passport_files")
     .eq("id", id)
     .eq("user_id", user.id)
     .maybeSingle();
@@ -187,7 +187,29 @@ export async function DELETE(_request: Request, { params }: Params) {
       const status = err instanceof MtripError ? err.status : 0;
       if (status !== 404) {
         console.warn("[mtrip] delete trip failed:", identifier, err);
+        return jsonError(
+          "Suppression mTrip non confirmée. Le dossier CRM est conservé pour permettre une nouvelle tentative.",
+          502
+        );
       }
+    }
+  }
+
+  const paths = [
+    ...((guide.documents || []) as Array<{ storage_path?: string }>),
+    ...((guide.passport_files || []) as Array<{ storage_path?: string }>),
+  ]
+    .map((file) => file.storage_path)
+    .filter((path): path is string => Boolean(path));
+  if (paths.length) {
+    const { error: storageError } = await supabase.storage
+      .from("agency-mtrip")
+      .remove(paths);
+    if (storageError) {
+      return jsonError(
+        "Suppression des fichiers impossible. Le dossier CRM est conservé.",
+        502
+      );
     }
   }
 
