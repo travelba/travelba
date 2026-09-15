@@ -267,11 +267,31 @@ export function BookingEditor({
 
       <section className="admin-af-card rounded-3xl p-5">
         <h2 className="font-display text-lg font-bold">Voyageurs</h2>
-        <ul className="mt-2 space-y-2 text-sm">
+        <ul className="mt-2 space-y-3 text-sm">
           {travelers.map((traveler) => (
-            <li key={traveler.id} className="flex items-center justify-between gap-3">
-              <span>{[traveler.first_name, traveler.last_name].filter(Boolean).join(" ")}{traveler.is_account_holder ? " (titulaire)" : ""}</span>
-              <button type="button" disabled={disabled} onClick={() => remove("traveler", traveler.id)} className="text-xs font-semibold text-accent">Supprimer</button>
+            <li key={traveler.id} className="rounded-2xl border border-border p-3">
+              <form
+                onSubmit={(event) =>
+                  submitJson(
+                    event,
+                    `traveler-save-${traveler.id}`,
+                    `/api/admin/bookings/${booking.id}/travelers`,
+                    "PATCH",
+                    "Voyageur enregistré.",
+                    { id: traveler.id }
+                  )
+                }
+                className="flex flex-wrap items-center gap-2"
+              >
+                <input name="first_name" required defaultValue={traveler.first_name || ""} placeholder="Prénom" className={fieldClass} />
+                <input name="last_name" required defaultValue={traveler.last_name || ""} placeholder="Nom" className={fieldClass} />
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" name="is_account_holder" defaultChecked={traveler.is_account_holder} />
+                  Titulaire
+                </label>
+                <button disabled={disabled} className="text-xs font-semibold disabled:opacity-50">Modifier</button>
+                <button type="button" disabled={disabled} onClick={() => remove("traveler", traveler.id)} className="text-xs font-semibold text-accent">Supprimer</button>
+              </form>
             </li>
           ))}
         </ul>

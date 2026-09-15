@@ -66,6 +66,78 @@ export async function POST(request: Request) {
     }
   }
 
+  if (event.type === "refund.created" || event.type === "refund.updated") {
+    const refund = event.data.object as Stripe.Refund;
+    if (refund.status === "succeeded" && refund.amount > 0) {
+      const paymentIntentId =
+        typeof refund.payment_intent === "string"
+          ? refund.payment_intent
+          : refund.payment_intent?.id;
+      let originalTransactionId = "";
+      if (paymentIntentId) {
+        const { data: original } = await admin
+          .from("crm_transactions")
+          .select("id")
+          .eq("source", "stripe")
+          .eq("external_id", paymentIntentId)
+          .eq("direction", "credit")
+          .maybeSingle();
+        originalTransactionId = original?.id || "";
+      }
+      const metadataTransactionId = refund.metadata.crm_transaction_id;
+      if (
+        metadataTransactionId &&
+        originalTransactionId &&
+        metadataTransactionId !== originalTransactionId
+      ) {
+        console.error("Stripe refund metadata mismatch", {
+          eventId: event.id,
+          refundId: refund.id,
+          paymentIntentId,
+        });
+        return NextResponse.json({ error: "Métadonnées de remboursement incohérentes" }, { status: 400 });
+      }
+      if (!originalTransactionId) {
+        const { error: auditError } = await admin.from("crm_audit_events").insert({
+          customer_id: refund.metadata.crm_customer_id || null,
+          entity_type: "stripe_refund",
+          entity_id: refund.id,
+          action: metadataTransactionId
+            ? "stripe_refund_reconciliation_failed"
+            : "stripe_refund_unmatched",
+          metadata: {
+            payment_intent_id: paymentIntentId,
+            metadata_transaction_id: metadataTransactionId || null,
+            amount: refund.amount / 100,
+          },
+        });
+        if (auditError || metadataTransactionId) {
+          return NextResponse.json(
+            { error: "Paiement local du remboursement introuvable" },
+            { status: 500 }
+          );
+        }
+      }
+      if (originalTransactionId) {
+        const { error } = await admin.rpc("crm_record_schedule_refund", {
+          p_transaction_id: originalTransactionId,
+          p_payment_intent_id: paymentIntentId,
+          p_external_id: refund.id,
+          p_amount: refund.amount / 100,
+          p_occurred_on: new Date(refund.created * 1000).toISOString().slice(0, 10),
+        });
+        if (error) {
+          console.error("Stripe refund reconciliation failed", {
+            eventId: event.id,
+            refundId: refund.id,
+            error: error.message,
+          });
+          return NextResponse.json({ error: "Rapprochement du remboursement impossible" }, { status: 500 });
+        }
+      }
+    }
+  }
+
   if (event.type === "payment_method.detached") {
     const paymentMethod = event.data.object as Stripe.PaymentMethod;
     const { error } = await admin.from("crm_payment_methods").delete().eq("stripe_payment_method_id", paymentMethod.id);

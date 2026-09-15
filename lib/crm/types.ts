@@ -201,6 +201,8 @@ export type CrmTransaction = {
   label: string;
   source: "manual" | "revolut" | "stripe";
   external_id: string | null;
+  related_transaction_id?: string | null;
+  payment_schedule_id?: string | null;
   status: "pending" | "posted" | "void";
   receipt_storage_path?: string | null;
   receipt_file_name?: string | null;
