@@ -28,11 +28,52 @@ export function requireLeadContact(guide: AgencyMtripGuide) {
   return { lead, gaps };
 }
 
+export function publicationReviewErrors(guide: AgencyMtripGuide) {
+  const errors: string[] = [];
+  const passengers = guide.passengers || [];
+  const leads = passengers.filter((passenger) => passenger.role === "lead_traveler");
+  if (!guide.start_date || !guide.end_date) {
+    errors.push("dates de voyage à confirmer");
+  }
+  if (!passengers.length) {
+    errors.push("au moins un voyageur requis");
+  }
+  if (leads.length !== 1) {
+    errors.push("désigner exactement un voyageur principal");
+  }
+  for (const passenger of passengers) {
+    const label =
+      [passenger.first_name, passenger.last_name].filter(Boolean).join(" ") ||
+      "Voyageur";
+    if (!passenger.first_name?.trim() || !passenger.last_name?.trim()) {
+      errors.push(`${label} : identité incomplète`);
+    }
+    if (
+      passenger.import_status === "review" ||
+      (passenger.import_warnings || []).length > 0
+    ) {
+      errors.push(`${label} : import passeport à valider`);
+    }
+  }
+  const { lead, gaps } = requireLeadContact(guide);
+  if (!lead || gaps.length) errors.push(...gaps);
+  if (!(guide.documents || []).length && !(guide.quote_lines || []).length) {
+    errors.push("au moins une réservation ou prestation requise");
+  }
+  return [...new Set(errors)];
+}
+
 export async function publishGuideRecord(
   supabase: SupabaseClient,
   userId: string,
   guide: AgencyMtripGuide
 ): Promise<AgencyMtripGuide> {
+  const reviewErrors = publicationReviewErrors(guide);
+  if (reviewErrors.length) {
+    throw new Error(
+      `Revue humaine requise avant publication : ${reviewErrors.join(" ; ")}.`
+    );
+  }
   const docsWithUrls = [];
   for (const doc of guide.documents || []) {
     const { data: signed } = await supabase.storage
@@ -56,6 +97,7 @@ export async function publishGuideRecord(
         status: "published",
         title: result.title || guide.title,
         mtrip_identifier: result.identifier,
+        mtrip_trip_id: result.trip_id,
         payload: {
           trip: result.payload,
           traveler_passwords: result.travelers,
@@ -161,7 +203,6 @@ export async function sendDossierToLead(
   if (!lead.email?.trim()) {
     throw new Error("Email du voyageur principal requis");
   }
-
   let passwords: Array<{
     identifier?: string;
     password?: string;
@@ -183,6 +224,15 @@ export async function sendDossierToLead(
       traveler_passwords?: Array<{ identifier?: string; password?: string }>;
     };
     passwords = p.traveler_passwords || [];
+  }
+  if (
+    guide.status !== "published" ||
+    !guide.mtrip_identifier ||
+    !Object.keys(appLinks).length
+  ) {
+    throw new Error(
+      "Publiez et vérifiez le voyage mTrip avant d’envoyer le dossier au client."
+    );
   }
 
   const leadPwd =

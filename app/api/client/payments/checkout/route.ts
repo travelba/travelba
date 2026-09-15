@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireCustomer } from "@/lib/crm/auth";
 import { getStripe } from "@/lib/crm/stripe";
+import { createServiceClient } from "@/lib/supabase/admin";
 
 export async function POST(request: Request) {
   const auth = await requireCustomer();
@@ -24,14 +25,33 @@ export async function POST(request: Request) {
   const remaining = Math.max(0, Number(schedule.amount) - Number(schedule.paid_amount));
   if (remaining <= 0) return jsonError("Cette échéance est déjà réglée", 409);
 
+  let stripeCustomerId = auth.customer.stripe_customer_id;
+  if (!stripeCustomerId) {
+    const stripeCustomer = await stripe.customers.create(
+      {
+        email: auth.customer.email,
+        name: [auth.customer.first_name, auth.customer.last_name]
+          .filter(Boolean)
+          .join(" "),
+        metadata: { crm_customer_id: auth.customer.id },
+      },
+      { idempotencyKey: `crm-customer/${auth.customer.id}` }
+    );
+    stripeCustomerId = stripeCustomer.id;
+    const { error: customerError } = await createServiceClient()
+      .from("crm_customers")
+      .update({ stripe_customer_id: stripeCustomerId })
+      .eq("id", auth.customer.id);
+    if (customerError) return jsonError(customerError.message, 500);
+  }
+
   const origin = new URL(request.url).origin;
   const suffix = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
   const fiveMinuteBucket = Math.floor(Date.now() / (5 * 60 * 1000));
   const session = await stripe.checkout.sessions.create(
     {
       mode: "payment",
-      customer: auth.customer.stripe_customer_id || undefined,
-      customer_email: auth.customer.stripe_customer_id ? undefined : auth.customer.email,
+      customer: stripeCustomerId,
       line_items: [{
         quantity: 1,
         price_data: {

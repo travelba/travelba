@@ -24,20 +24,30 @@ export default async function TransactionsPage({
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");
 
-  const [{ data: txs }, { data: balances }] = await Promise.all([
+  const [{ data: txs }, { data: balances }, { data: invoices }] = await Promise.all([
     supabase
       .from("crm_transactions")
       .select("*")
       .eq("customer_id", customer.id)
-      .eq("status", "posted")
       .order("occurred_on", { ascending: false }),
     supabase
       .from("crm_customer_balances")
       .select("*")
       .eq("customer_id", customer.id),
+    supabase
+      .from("crm_invoices")
+      .select("id,transaction_id")
+      .eq("customer_id", customer.id)
+      .in("kind", ["receipt", "credit_note"])
+      .neq("status", "draft"),
   ]);
 
   const rows = (txs || []) as CrmTransaction[];
+  const documentByTransaction = new Map(
+    (invoices || [])
+      .filter((invoice) => invoice.transaction_id)
+      .map((invoice) => [invoice.transaction_id as string, invoice.id])
+  );
   const bal = ((balances || []) as CrmBalance[])[0];
   const balanceValue = bal ? Number(bal.balance) : 0;
   const currency = bal?.currency || "EUR";
@@ -127,6 +137,13 @@ export default async function TransactionsPage({
         <ul className="space-y-2">
           {filtered.map((t) => {
             const credit = t.direction === "credit";
+            const invoiceId = documentByTransaction.get(t.id);
+            const statusLabel =
+              t.status === "posted"
+                ? "Confirmé"
+                : t.status === "pending"
+                  ? "En attente"
+                  : "Annulé";
             return (
               <li
                 key={t.id}
@@ -162,7 +179,29 @@ export default async function TransactionsPage({
                     {credit ? "+" : "−"}
                     {formatMoney(Number(t.amount), t.currency)}
                   </p>
-                  <StatusChip tone={credit ? "green" : "sky"}>Reçu</StatusChip>
+                  <div className="mt-1 flex items-center justify-end gap-2">
+                    <StatusChip
+                      tone={
+                        t.status === "void"
+                          ? "red"
+                          : t.status === "pending"
+                            ? "amber"
+                            : credit
+                              ? "green"
+                              : "sky"
+                      }
+                    >
+                      {statusLabel}
+                    </StatusChip>
+                    {invoiceId ? (
+                      <a
+                        href={`/api/client/files/invoice/${invoiceId}`}
+                        className="text-xs font-semibold text-[var(--aura-blue)]"
+                      >
+                        PDF
+                      </a>
+                    ) : null}
+                  </div>
                 </div>
               </li>
             );

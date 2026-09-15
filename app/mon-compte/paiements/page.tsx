@@ -12,11 +12,20 @@ export default async function PaymentsPage({ searchParams }: Props) {
   if (!user) redirect("/connexion?next=/mon-compte/paiements");
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion?error=account");
-  const { data } = await supabase
-    .from("crm_payment_schedules")
-    .select("*")
-    .eq("customer_id", customer.id)
-    .order("due_on");
+  const [{ data }, { data: invoices }] = await Promise.all([
+    supabase
+      .from("crm_payment_schedules")
+      .select("*")
+      .eq("customer_id", customer.id)
+      .order("due_on"),
+    supabase
+      .from("crm_invoices")
+      .select("id,number,kind,issued_on,amount,currency")
+      .eq("customer_id", customer.id)
+      .in("kind", ["receipt", "credit_note"])
+      .neq("status", "draft")
+      .order("issued_on", { ascending: false }),
+  ]);
   const schedules = (data || []) as CrmPaymentSchedule[];
   const due = schedules.reduce((sum, item) => sum + Math.max(0, Number(item.amount) - Number(item.paid_amount)), 0);
   const currency = schedules[0]?.currency || "EUR";
@@ -52,6 +61,37 @@ export default async function PaymentsPage({ searchParams }: Props) {
           );
         }) : <div className="account-card p-8 text-center text-sm text-muted">Aucune échéance active.</div>}
       </div>
+      {(invoices || []).length ? (
+        <section className="account-card overflow-hidden">
+          <h2 className="border-b border-border p-5 font-display text-lg font-bold">
+            Reçus et avoirs
+          </h2>
+          <div className="divide-y divide-border">
+            {(invoices || []).map((invoice) => (
+              <div key={invoice.id} className="flex items-center justify-between gap-3 p-4">
+                <div>
+                  <p className="font-semibold">
+                    {invoice.kind === "credit_note" ? "Avoir" : "Reçu"} {invoice.number}
+                  </p>
+                  <p className="text-xs text-muted">
+                    {new Date(invoice.issued_on).toLocaleDateString("fr-FR")} ·{" "}
+                    {Number(invoice.amount).toLocaleString("fr-FR", {
+                      style: "currency",
+                      currency: invoice.currency,
+                    })}
+                  </p>
+                </div>
+                <a
+                  href={`/api/client/files/invoice/${invoice.id}`}
+                  className="rounded-full border border-border px-3 py-1.5 text-xs font-bold"
+                >
+                  Télécharger
+                </a>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

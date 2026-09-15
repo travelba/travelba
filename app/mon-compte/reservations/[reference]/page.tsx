@@ -165,7 +165,7 @@ export default async function ReservationDetailPage({ params }: Props) {
             <li key={d.id}>
               <a
                 className="inline-flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-3.5 py-3 text-sm font-semibold text-[var(--admin-navy)]"
-                href={`/api/files?path=${encodeURIComponent(d.storage_path)}`}
+                href={`/api/client/files/booking/${d.id}`}
               >
                 <span>{d.file_name || d.kind}</span>
                 <span className="text-[var(--aura-blue)]">Télécharger</span>

@@ -16,7 +16,7 @@ const RESOURCES = {
   },
   schedules: {
     table: "crm_payment_schedules",
-    fields: ["customer_id", "booking_id", "quote_id", "label", "amount", "currency", "due_on", "status", "paid_amount", "paid_at"],
+    fields: ["customer_id", "booking_id", "quote_id", "label", "amount", "currency", "due_on"],
   },
   invoices: {
     table: "crm_invoices",
@@ -77,6 +77,18 @@ async function audit(
     entity_id: entityId,
     action,
   });
+}
+
+async function quoteIsDraft(
+  auth: Exclude<Awaited<ReturnType<typeof requireStaff>>, NextResponse>,
+  quoteId: string
+) {
+  const { data } = await auth.supabase
+    .from("crm_quotes")
+    .select("status")
+    .eq("id", quoteId)
+    .maybeSingle();
+  return data?.status === "draft";
 }
 
 function safeActionUrl(value: unknown) {
@@ -162,6 +174,15 @@ export async function POST(request: Request, ctx: Ctx) {
   if (!body) return jsonError("Corps JSON invalide");
   const payload = cleanBody(body, config.fields);
   const operationKey = requestKey(body);
+  if (
+    resource === "quote_lines" &&
+    !(await quoteIsDraft(auth, String(payload.quote_id || "")))
+  ) {
+    return jsonError(
+      "Repassez le devis en brouillon avant de modifier ses prestations.",
+      409
+    );
+  }
   if (resource === "notifications") {
     try {
       payload.action_url = safeActionUrl(payload.action_url);
@@ -204,6 +225,45 @@ export async function PATCH(request: Request, ctx: Ctx) {
   if (!body || !id) return jsonError("id requis");
   const payload = cleanBody(body, config.fields);
   const operationKey = requestKey(body);
+  if (
+    resource === "quotes" &&
+    (payload.status === "accepted" || payload.status === "declined")
+  ) {
+    return jsonError(
+      "L’acceptation et le refus sont réservés au parcours client signé.",
+      409
+    );
+  }
+  if (resource === "quotes") {
+    const { data: currentQuote } = await auth.supabase
+      .from("crm_quotes")
+      .select("status")
+      .eq("id", id)
+      .maybeSingle();
+    if (
+      !currentQuote ||
+      currentQuote.status === "accepted" ||
+      currentQuote.status === "declined"
+    ) {
+      return jsonError(
+        "Ce devis est verrouillé par la décision du client.",
+        409
+      );
+    }
+  }
+  if (resource === "quote_lines") {
+    const { data: line } = await auth.supabase
+      .from("crm_quote_lines")
+      .select("quote_id")
+      .eq("id", id)
+      .maybeSingle();
+    if (!line || !(await quoteIsDraft(auth, line.quote_id))) {
+      return jsonError(
+        "Repassez le devis en brouillon avant de modifier ses prestations.",
+        409
+      );
+    }
+  }
   if (resource === "notifications" && "action_url" in payload) {
     try {
       payload.action_url = safeActionUrl(payload.action_url);
@@ -244,9 +304,9 @@ export async function PATCH(request: Request, ctx: Ctx) {
       current.delivery_idempotency_key === `quote:${operationKey}`;
     const nextVersion = deliveryRetry
       ? current.version
-      : current.status === "draft"
-        ? current.version
-        : Number(current.version) + 1;
+      : current.sent_at
+        ? Number(current.version) + 1
+        : current.version;
     payload.version = nextVersion;
     payload.sent_at = deliveryRetry ? current.sent_at : new Date().toISOString();
     if (operationKey) payload.delivery_idempotency_key = `quote:${operationKey}`;
@@ -340,6 +400,47 @@ export async function DELETE(request: Request, ctx: Ctx) {
   if (!canMutate(auth, resource)) return jsonError("Permission insuffisante", 403);
   const id = new URL(request.url).searchParams.get("id");
   if (!id) return jsonError("id requis");
+  if (resource === "quote_lines") {
+    const { data: line } = await auth.supabase
+      .from("crm_quote_lines")
+      .select("quote_id")
+      .eq("id", id)
+      .maybeSingle();
+    if (!line || !(await quoteIsDraft(auth, line.quote_id))) {
+      return jsonError(
+        "Repassez le devis en brouillon avant de supprimer une prestation.",
+        409
+      );
+    }
+  }
+  if (resource === "quotes") {
+    const { data: quote } = await auth.supabase
+      .from("crm_quotes")
+      .select("status")
+      .eq("id", id)
+      .maybeSingle();
+    if (quote?.status !== "draft") {
+      return jsonError("Seul un devis brouillon peut être supprimé.", 409);
+    }
+  }
+  if (resource === "schedules") {
+    const { data: schedule } = await auth.supabase
+      .from("crm_payment_schedules")
+      .select("paid_amount,transaction_id,status")
+      .eq("id", id)
+      .maybeSingle();
+    if (
+      !schedule ||
+      Number(schedule.paid_amount) > 0 ||
+      schedule.transaction_id ||
+      !["pending", "cancelled"].includes(schedule.status)
+    ) {
+      return jsonError(
+        "Une échéance encaissée ou rapprochée ne peut pas être supprimée.",
+        409
+      );
+    }
+  }
   const database = resource === "notifications" ? createServiceClient() : auth.supabase;
   const { error } = await database.from(config.table).delete().eq("id", id);
   if (error) return jsonError(error.message, 400);

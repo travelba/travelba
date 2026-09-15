@@ -357,8 +357,11 @@ export async function publishGuideToMtrip(guide: AgencyMtripGuide) {
   await upsertTrip(trip);
 
   // mTrip peut répondre 200/201 alors que le trip n’est pas créé (ex. email déjà pris)
+  let verifiedTripId: number | null = null;
   try {
-    await checkTripIdentifier(identifier);
+    const verified = await checkTripIdentifier(identifier);
+    verifiedTripId =
+      typeof verified.trip_id === "number" ? verified.trip_id : null;
   } catch (err) {
     throw new MtripError(
       "mTrip a accepté la requête mais le voyage est introuvable. Réessayez ou changez l’email voyageur.",
@@ -394,6 +397,7 @@ export async function publishGuideToMtrip(guide: AgencyMtripGuide) {
 
   return {
     identifier,
+    trip_id: verifiedTripId,
     title: voyageTitle,
     payload: trip,
     app_links,

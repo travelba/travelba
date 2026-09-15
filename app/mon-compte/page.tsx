@@ -134,7 +134,9 @@ export default async function AccountHomePage() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1 text-[11px] font-semibold text-[var(--admin-navy)]">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                Départ imminent
+                {jMinus != null && jMinus <= 30
+                  ? "Départ imminent"
+                  : "Prochain voyage"}
               </span>
               {jMinus != null && jMinus >= 0 ? (
                 <span className="rounded-full bg-black/40 px-3 py-1 text-[11px] font-bold backdrop-blur">
@@ -152,7 +154,7 @@ export default async function AccountHomePage() {
               <p className="mt-1.5 text-sm text-white/75">
                 {formatDateFr(nextTrip.start_date)} —{" "}
                 {formatDateFr(nextTrip.end_date)}
-                {nights ? ` (${nights} j)` : null}
+                {nights ? ` (${nights} nuit${nights > 1 ? "s" : ""})` : null}
               </p>
             </div>
             <div className="grid grid-cols-2 gap-2 rounded-2xl bg-black/25 p-3 backdrop-blur-md">
@@ -217,7 +219,7 @@ export default async function AccountHomePage() {
 
       <div className="grid grid-cols-3 gap-2.5">
         <Link
-          href="/mon-compte/reservations"
+          href="/mon-compte/documents"
           className="flex flex-col items-center rounded-2xl bg-white px-2 py-3.5 text-center shadow-[0_6px_18px_rgba(15,23,42,0.04)]"
         >
           <span className="mb-2 inline-flex h-11 w-11 items-center justify-center rounded-full bg-[var(--aura-blue-soft)] text-base">
@@ -228,7 +230,7 @@ export default async function AccountHomePage() {
           </span>
         </Link>
         <Link
-          href="/mon-compte/transactions"
+          href="/mon-compte/paiements"
           className="flex flex-col items-center rounded-2xl bg-white px-2 py-3.5 text-center shadow-[0_6px_18px_rgba(15,23,42,0.04)]"
         >
           <span className="mb-2 inline-flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-base font-bold text-[var(--admin-navy)]">

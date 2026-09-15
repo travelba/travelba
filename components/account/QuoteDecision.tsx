@@ -3,17 +3,35 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function QuoteDecision({ quoteId }: { quoteId: string }) {
+type OptionalLine = {
+  id: string;
+  title: string;
+  selected: boolean;
+  amount: number;
+};
+
+export function QuoteDecision({
+  quoteId,
+  optionalLines,
+  currency,
+}: {
+  quoteId: string;
+  optionalLines: OptionalLine[];
+  currency: string;
+}) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [signature, setSignature] = useState("");
+  const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>(
+    optionalLines.filter((line) => line.selected).map((line) => line.id)
+  );
   const [pending, setPending] = useState<"accept" | "decline" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   async function accept() {
-    if (!name.trim() || !termsAccepted) {
-      setMessage("Saisissez votre nom et acceptez les CGV.");
+    if (!name.trim() || !signature.trim() || !termsAccepted) {
+      setMessage("Saisissez votre nom, votre signature et acceptez les CGV.");
       return;
     }
     setPending("accept");
@@ -25,7 +43,8 @@ export function QuoteDecision({ quoteId }: { quoteId: string }) {
         decision: "accept",
         acceptance_name: name.trim(),
         terms_accepted: true,
-        signature_data: signature.trim() || null,
+        signature_data: signature.trim(),
+        selected_option_ids: selectedOptionIds,
       }),
     });
     const data = await response.json().catch(() => ({}));
@@ -62,6 +81,38 @@ export function QuoteDecision({ quoteId }: { quoteId: string }) {
       <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">
         Décision et signature
       </h2>
+      {optionalLines.length ? (
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-semibold">Options à retenir</legend>
+          {optionalLines.map((line) => (
+            <label
+              key={line.id}
+              className="flex items-center justify-between gap-3 rounded-xl border border-border p-3 text-sm"
+            >
+              <span className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={selectedOptionIds.includes(line.id)}
+                  onChange={(event) =>
+                    setSelectedOptionIds((current) =>
+                      event.target.checked
+                        ? [...current, line.id]
+                        : current.filter((id) => id !== line.id)
+                    )
+                  }
+                />
+                {line.title}
+              </span>
+              <strong>
+                {line.amount.toLocaleString("fr-FR", {
+                  style: "currency",
+                  currency,
+                })}
+              </strong>
+            </label>
+          ))}
+        </fieldset>
+      ) : null}
       <label className="block text-sm font-semibold">
         Nom du signataire
         <input

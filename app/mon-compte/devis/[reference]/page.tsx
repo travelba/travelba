@@ -57,7 +57,23 @@ export default async function QuoteDetailPage({ params }: Props) {
         </div>
       </section>
       {quote.terms ? <section className="account-card p-5"><h2 className="font-bold">Conditions</h2><p className="mt-2 whitespace-pre-wrap text-sm text-muted">{quote.terms}</p></section> : null}
-      {quote.status === "sent" ? <QuoteDecision quoteId={quote.id} /> : (
+      {quote.status === "sent" ? (
+        <QuoteDecision
+          quoteId={quote.id}
+          currency={quote.currency}
+          optionalLines={lines
+            .filter((line) => line.optional)
+            .map((line) => ({
+              id: line.id,
+              title: line.title,
+              selected: line.selected,
+              amount:
+                Number(line.quantity) *
+                Number(line.unit_price) *
+                (1 + Number(line.tax_rate) / 100),
+            }))}
+        />
+      ) : (
         <div className="account-card p-5 text-sm">
           Statut : <strong>{quote.status === "accepted" ? "Accepté" : quote.status === "declined" ? "Refusé" : quote.status}</strong>
           {quote.accepted_at ? ` le ${new Date(quote.accepted_at).toLocaleString("fr-FR")}` : ""}

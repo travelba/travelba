@@ -49,6 +49,26 @@ export async function POST(request: Request) {
     const payment = event.data.object as Stripe.PaymentIntent;
     const scheduleId = payment.metadata.crm_schedule_id;
     if (scheduleId && payment.amount_received > 0) {
+      const { data: schedule } = await admin
+        .from("crm_payment_schedules")
+        .select("customer_id,currency")
+        .eq("id", scheduleId)
+        .maybeSingle();
+      if (
+        !schedule ||
+        schedule.customer_id !== payment.metadata.crm_customer_id ||
+        schedule.currency.toLowerCase() !== payment.currency.toLowerCase()
+      ) {
+        console.error("Stripe payment metadata mismatch", {
+          eventId: event.id,
+          paymentIntentId: payment.id,
+          scheduleId,
+        });
+        return NextResponse.json(
+          { error: "Métadonnées de paiement incohérentes" },
+          { status: 400 }
+        );
+      }
       const { error } = await admin.rpc("crm_record_schedule_payment", {
         p_schedule_id: scheduleId,
         p_external_id: payment.id,

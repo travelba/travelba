@@ -19,16 +19,28 @@ export async function POST(request: Request, ctx: Ctx) {
 
   const name = String(body?.acceptance_name || "").trim();
   const signature = String(body?.signature_data || "").trim();
-  if (!name || body?.terms_accepted !== true) return jsonError("Nom et acceptation des CGV requis");
+  const selectedOptionIds = Array.isArray(body?.selected_option_ids)
+    ? body.selected_option_ids.filter(
+        (value: unknown): value is string =>
+          typeof value === "string" &&
+          /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(value)
+      )
+    : [];
+  if (!name || !signature || body?.terms_accepted !== true) {
+    return jsonError("Nom, signature et acceptation des CGV requis");
+  }
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "unknown";
-  const salt = process.env.OTP_RATE_LIMIT_SALT || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-  const ipHash = createHash("sha256").update(`${salt}:${ip}`).digest("hex");
-  const { data, error } = await auth.supabase.rpc("crm_accept_quote", {
+  const salt = process.env.CRM_IP_HASH_SALT?.trim();
+  const ipHash = salt
+    ? createHash("sha256").update(`${salt}:${ip}`).digest("hex")
+    : null;
+  const { data, error } = await auth.supabase.rpc("crm_accept_quote_with_options", {
     p_quote_id: id,
     p_acceptance_name: name,
     p_terms_accepted: true,
-    p_signature_data: signature || null,
+    p_signature_data: signature,
     p_ip_hash: ipHash,
+    p_selected_option_ids: selectedOptionIds,
   });
   if (error) return jsonError(error.message, 400);
   return NextResponse.json({ quote: data });

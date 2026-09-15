@@ -28,8 +28,6 @@ export default async function AdminPaymentsPage() {
           { name: "amount", label: "Montant", type: "number", required: true },
           { name: "currency", label: "Devise", type: "select", options: [{ value: "EUR", label: "EUR" }, { value: "USD", label: "USD" }, { value: "GBP", label: "GBP" }] },
           { name: "due_on", label: "Échéance", type: "date", required: true },
-          { name: "status", label: "Statut", type: "select", options: [{ value: "pending", label: "À payer" }, { value: "paid", label: "Payée" }, { value: "overdue", label: "Impayée" }, { value: "cancelled", label: "Annulée" }, { value: "refunded", label: "Remboursée" }] },
-          { name: "paid_amount", label: "Montant encaissé", type: "number" },
         ]} />
       </section>
       <section className="space-y-4">

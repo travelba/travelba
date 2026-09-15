@@ -12,6 +12,8 @@ export function QuoteEditor({ initialQuote, initialLines }: { initialQuote: Quot
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const deliveryRequestId = useRef<string | null>(null);
+  const legallyLocked = quote.status === "accepted" || quote.status === "declined";
+  const lineEditingLocked = quote.status !== "draft";
   const totals = useMemo(() => lines.reduce((result, line) => {
     const sell = Number(line.quantity) * Number(line.unit_price);
     const cost = Number(line.quantity) * Number(line.supplier_cost || 0);
@@ -108,24 +110,36 @@ export function QuoteEditor({ initialQuote, initialLines }: { initialQuote: Quot
 
   return (
     <div className="space-y-6">
+      {legallyLocked ? (
+        <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
+          Ce devis {quote.status === "accepted" ? "accepté" : "refusé"} est
+          verrouillé afin de préserver sa version et sa preuve de décision.
+        </p>
+      ) : null}
+      {!legallyLocked && lineEditingLocked ? (
+        <p className="rounded-xl bg-sky-50 p-4 text-sm text-sky-900">
+          Repassez le devis en brouillon avant de modifier ses prestations,
+          puis envoyez-le à nouveau pour créer une nouvelle version.
+        </p>
+      ) : null}
       <form onSubmit={saveQuote} className="admin-af-card grid gap-4 p-5 md:grid-cols-2">
         <label className="text-sm font-semibold">Titre<input name="title" defaultValue={quote.title} required className="mt-1 w-full rounded-xl border border-border px-3 py-2 font-normal" /></label>
         <label className="text-sm font-semibold">Validité<input name="valid_until" type="date" defaultValue={quote.valid_until || ""} className="mt-1 w-full rounded-xl border border-border px-3 py-2 font-normal" /></label>
-        <label className="text-sm font-semibold">Statut<select name="status" defaultValue={quote.status} className="mt-1 w-full rounded-xl border border-border px-3 py-2 font-normal"><option value="draft">Brouillon</option><option value="sent">Envoyer au client</option><option value="expired">Expiré</option></select></label>
+        <label className="text-sm font-semibold">Statut<select name="status" defaultValue={quote.status} disabled={legallyLocked} className="mt-1 w-full rounded-xl border border-border px-3 py-2 font-normal"><option value="draft">Brouillon</option><option value="sent">Envoyer au client</option><option value="expired">Expiré</option>{legallyLocked ? <option value={quote.status}>{quote.status === "accepted" ? "Accepté" : "Refusé"}</option> : null}</select></label>
         <a href={`/api/admin/quotes/${quote.id}/pdf`} className="self-end rounded-full border border-border px-4 py-2 text-center text-sm font-bold">Aperçu PDF</a>
         <label className="text-sm font-semibold md:col-span-2">Conditions<textarea name="terms" defaultValue={quote.terms || ""} className="mt-1 min-h-24 w-full rounded-xl border border-border px-3 py-2 font-normal" /></label>
         <label className="text-sm font-semibold md:col-span-2">Note client<textarea name="client_note" defaultValue={quote.client_note || ""} className="mt-1 min-h-20 w-full rounded-xl border border-border px-3 py-2 font-normal" /></label>
-        <button disabled={pending} className="admin-af-btn rounded-full px-4 py-2.5 text-sm disabled:opacity-50">Enregistrer le devis</button>
+        <button disabled={pending || legallyLocked} className="admin-af-btn rounded-full px-4 py-2.5 text-sm disabled:opacity-50">Enregistrer le devis</button>
       </form>
 
       <section className="admin-af-card overflow-hidden">
         <div className="flex justify-between border-b border-border p-5"><h2 className="font-display text-xl font-bold">Prestations</h2><div className="text-right text-sm"><p>Total TTC <strong>{totals.total.toLocaleString("fr-FR", { style: "currency", currency: quote.currency })}</strong></p><p className="text-muted">Marge brute {totals.margin.toLocaleString("fr-FR", { style: "currency", currency: quote.currency })}</p></div></div>
         <div className="divide-y divide-border">
-          {lines.map((line) => <div key={line.id} className="flex items-center justify-between gap-3 p-4"><div><p className="font-semibold">{line.title}</p><p className="text-xs text-muted">{line.quantity} × {line.unit_price} · TVA {line.tax_rate}%{line.optional ? " · Option" : ""}</p></div><div className="flex gap-2"><button onClick={() => setEditingLine(line)} className="text-xs font-semibold">Modifier</button><button onClick={() => void deleteLine(line)} className="text-xs font-semibold text-red-700">Supprimer</button></div></div>)}
+          {lines.map((line) => <div key={line.id} className="flex items-center justify-between gap-3 p-4"><div><p className="font-semibold">{line.title}</p><p className="text-xs text-muted">{line.quantity} × {line.unit_price} · TVA {line.tax_rate}%{line.optional ? " · Option" : ""}</p></div>{!lineEditingLocked ? <div className="flex gap-2"><button onClick={() => setEditingLine(line)} className="text-xs font-semibold">Modifier</button><button onClick={() => void deleteLine(line)} className="text-xs font-semibold text-red-700">Supprimer</button></div> : null}</div>)}
         </div>
       </section>
 
-      <form key={editingLine?.id || "new"} onSubmit={saveLine} className="admin-af-card grid gap-3 p-5 md:grid-cols-3">
+      {!lineEditingLocked ? <form key={editingLine?.id || "new"} onSubmit={saveLine} className="admin-af-card grid gap-3 p-5 md:grid-cols-3">
         <h2 className="font-display text-lg font-bold md:col-span-3">{editingLine ? "Modifier la ligne" : "Ajouter une ligne"}</h2>
         <input name="title" defaultValue={editingLine?.title || ""} required placeholder="Prestation" className="rounded-xl border border-border px-3 py-2" />
         <input name="description" defaultValue={editingLine?.description || ""} placeholder="Description" className="rounded-xl border border-border px-3 py-2" />
@@ -136,7 +150,7 @@ export function QuoteEditor({ initialQuote, initialLines }: { initialQuote: Quot
         <label className="text-sm"><input name="optional" type="checkbox" defaultChecked={editingLine?.optional} className="mr-2" />Optionnelle</label>
         <label className="text-sm"><input name="selected" type="checkbox" defaultChecked={editingLine?.selected ?? true} className="mr-2" />Retenue</label>
         <div className="flex gap-2"><button disabled={pending} className="admin-af-btn rounded-full px-4 py-2 text-sm">Enregistrer</button>{editingLine ? <button type="button" onClick={() => setEditingLine(null)} className="text-sm">Annuler</button> : null}</div>
-      </form>
+      </form> : null}
       {message ? <p role="status" className="text-sm text-muted">{message}</p> : null}
     </div>
   );

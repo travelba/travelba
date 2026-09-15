@@ -66,6 +66,20 @@ export function MtripGuideWorkspace({ initialGuide }: Props) {
   );
   const hasBookings =
     (guide.documents || []).length > 0 || (guide.quote_lines || []).length > 0;
+  const reviewIssue = useMemo(() => {
+    const leads = passengers.filter((p) => p.role === "lead_traveler");
+    if (!guide.start_date || !guide.end_date) return "Dates de voyage à confirmer";
+    if (leads.length !== 1) return "Désignez exactement un voyageur principal";
+    const pending = passengers.find(
+      (p) =>
+        !p.first_name.trim() ||
+        !p.last_name.trim() ||
+        p.import_status === "review" ||
+        Boolean(p.import_warnings?.length)
+    );
+    if (pending) return "Validez les identités et alertes d’import passeport";
+    return null;
+  }, [guide.end_date, guide.start_date, passengers]);
   const quoteTotal = (guide.quote_lines || []).reduce(
     (s, l) => s + (typeof l.amount === "number" ? l.amount : 0),
     0
@@ -83,9 +97,10 @@ export function MtripGuideWorkspace({ initialGuide }: Props) {
       if (!hasPax) return "Aucun passager";
       if (!leadContactOk) return "Contact incomplet";
       if (!hasBookings) return "Devis / résa manquant";
+      if (reviewIssue) return reviewIssue;
     }
     return null;
-  }, [step, hasPax, leadContactOk, hasBookings]);
+  }, [step, hasPax, leadContactOk, hasBookings, reviewIssue]);
 
   useEffect(() => {
     if (passBoot.current) {
@@ -328,7 +343,10 @@ export function MtripGuideWorkspace({ initialGuide }: Props) {
     if (prev) setStep(prev.id);
   }
 
-  const isPublished = guide.status === "published" || Boolean(guide.mtrip_identifier);
+  const isPublished =
+    guide.status === "published" &&
+    Boolean(guide.mtrip_identifier) &&
+    Object.keys(guide.app_links || {}).length > 0;
   const hasOptInSend = (guide.sends || []).some((s) => s.kind === "optin");
   const hasDossierSend = (guide.sends || []).some(
     (s) => s.kind === "dossier" || (!s.kind && s.channel !== "email")
@@ -659,7 +677,7 @@ export function MtripGuideWorkspace({ initialGuide }: Props) {
               Publier mTrip, puis WhatsApp en deux temps : opt-in Concierge,
               ensuite dossier voyage.
             </p>
-            {guide.short_code && (
+            {isPublished && guide.short_code && (
               <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-muted">
                 <span>Liens courts :</span>
                 <a
@@ -695,7 +713,7 @@ export function MtripGuideWorkspace({ initialGuide }: Props) {
                 </span>
               </div>
             )}
-            {guide.short_code && (
+            {isPublished && guide.short_code && (
               <div className="mt-2">
                 <button
                   type="button"
@@ -791,7 +809,7 @@ export function MtripGuideWorkspace({ initialGuide }: Props) {
                 </button>
                 <button
                   type="button"
-                  disabled={Boolean(busy) || Boolean(ctaBlockReason)}
+                  disabled={Boolean(busy) || Boolean(ctaBlockReason) || !isPublished}
                   onClick={() => void sendWhatsApp()}
                   className="w-full rounded-full bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40"
                 >
@@ -887,7 +905,7 @@ export function MtripGuideWorkspace({ initialGuide }: Props) {
                 </button>
                 <button
                   type="button"
-                  disabled={Boolean(ctaBlockReason) || Boolean(busy)}
+                  disabled={Boolean(ctaBlockReason) || Boolean(busy) || !isPublished}
                   onClick={() => void sendWhatsApp()}
                   className="rounded-full bg-emerald-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40"
                 >

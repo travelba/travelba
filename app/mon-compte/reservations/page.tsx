@@ -232,7 +232,7 @@ export default async function ReservationsPage({
                     </Link>
                     {document ? (
                       <a
-                        href={`/api/files?path=${encodeURIComponent(document.storage_path)}`}
+                        href={`/api/client/files/booking/${document.id}`}
                         className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-[var(--admin-navy)]"
                       >
                         Télécharger
