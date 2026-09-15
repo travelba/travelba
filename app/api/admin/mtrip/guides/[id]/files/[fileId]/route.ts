@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireAdminUser, jsonError } from "@/lib/agency/auth";
 import type { AgencyMtripGuide } from "@/lib/mtrip/guide-types";
+import {
+  markGuidePublicationInvalidated,
+  removePublishedMtripBeforeEdit,
+} from "@/lib/mtrip/invalidate-publication";
 
 export const runtime = "nodejs";
 
@@ -71,7 +75,7 @@ export async function DELETE(_request: Request, { params }: Params) {
   const { data: guide, error } = await supabase
     .from("agency_mtrip_guides")
     .select(
-      "id,documents,passport_files,passengers,quote_lines,extraction"
+      "id,documents,passport_files,passengers,quote_lines,extraction,status,mtrip_identifier"
     )
     .eq("id", id)
     .eq("user_id", user.id)
@@ -87,6 +91,8 @@ export async function DELETE(_request: Request, { params }: Params) {
     | "passengers"
     | "quote_lines"
     | "extraction"
+    | "status"
+    | "mtrip_identifier"
   >;
 
   const inDocs = (g.documents || []).some((d) => d.id === fileId);
@@ -97,6 +103,19 @@ export async function DELETE(_request: Request, { params }: Params) {
 
   if (!doc?.storage_path) {
     return jsonError("Fichier introuvable dans ce dossier", 404);
+  }
+  try {
+    const removed = await removePublishedMtripBeforeEdit(g);
+    if (removed) {
+      await markGuidePublicationInvalidated(supabase, user.id, id);
+    }
+  } catch (publicationError) {
+    return jsonError(
+      publicationError instanceof Error
+        ? publicationError.message
+        : "Dépublication mTrip impossible",
+      502
+    );
   }
 
   const { error: removeError } = await supabase.storage

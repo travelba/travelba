@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { requireAdminUser, jsonError } from "@/lib/agency/auth";
 import { ingestDocumentFiles } from "@/lib/mtrip/ingest-documents";
 import type { AgencyMtripGuide } from "@/lib/mtrip/guide-types";
+import {
+  markGuidePublicationInvalidated,
+  removePublishedMtripBeforeEdit,
+} from "@/lib/mtrip/invalidate-publication";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -38,6 +42,12 @@ export async function POST(request: Request, { params }: Params) {
   );
 
   try {
+    const removed = await removePublishedMtripBeforeEdit(
+      guide as AgencyMtripGuide
+    );
+    if (removed) {
+      await markGuidePublicationInvalidated(supabase, user.id, id);
+    }
     const result = await ingestDocumentFiles({
       supabase,
       userId: user.id,

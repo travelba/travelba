@@ -96,37 +96,27 @@ export async function POST(request: Request) {
         });
         return NextResponse.json({ error: "Rapprochement impossible" }, { status: 500 });
       }
-      const [{ data: linkedTransactions }, { data: localPayment }] =
-        await Promise.all([
-          admin
-            .from("crm_transactions")
-            .select("direction,amount")
-            .eq("payment_schedule_id", scheduleId)
-            .eq("status", "posted"),
-          admin
-            .from("crm_transactions")
-            .select("id")
-            .eq("source", "stripe")
-            .eq("external_id", payment.id)
-            .maybeSingle(),
-        ]);
-      const netPaid = (linkedTransactions || []).reduce(
-        (sum, transaction) =>
-          sum +
-          (transaction.direction === "credit" ? 1 : -1) *
-            Number(transaction.amount),
-        0
-      );
-      const overpaymentCents = Math.max(
-        0,
-        Math.round((netPaid - Number(schedule.amount)) * 100)
-      );
-      if (overpaymentCents > 0 && localPayment?.id) {
-        const refundAmount = Math.min(payment.amount_received, overpaymentCents);
+      const { data: localPayment } = await admin
+        .from("crm_transactions")
+        .select("id,amount,schedule_applied_amount")
+        .eq("source", "stripe")
+        .eq("external_id", payment.id)
+        .maybeSingle();
+      const refundAmount = localPayment
+        ? Math.max(
+            0,
+            Math.round(
+              (Number(localPayment.amount) -
+                Number(localPayment.schedule_applied_amount || 0)) *
+                100
+            )
+          )
+        : 0;
+      if (refundAmount > 0 && localPayment?.id) {
         await stripe.refunds.create(
           {
             payment_intent: payment.id,
-            amount: refundAmount,
+            amount: Math.min(payment.amount_received, refundAmount),
             metadata: {
               crm_transaction_id: localPayment.id,
               crm_customer_id: schedule.customer_id,

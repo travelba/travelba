@@ -143,7 +143,7 @@ export async function publishGuideToMtrip(guide: AgencyMtripGuide) {
   }
 
   const travelers: MtripTraveler[] = guide.passengers.map(
-    (p: MtripGuidePassenger, index: number) => {
+    (p: MtripGuidePassenger) => {
       const loginEmail = mtripScopedEmail(p.email, guide.id);
       return {
         identifier: p.id,
@@ -153,7 +153,7 @@ export async function publishGuideToMtrip(guide: AgencyMtripGuide) {
         phone: normalizePhone(p.phone) || undefined,
         language: p.language || "fr",
         role:
-          p.role === "lead_traveler" || index === 0
+          p.role === "lead_traveler"
             ? ["lead_traveler", "traveler"]
             : ["traveler"],
         password: randomBytes(9).toString("base64url"),

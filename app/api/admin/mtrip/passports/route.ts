@@ -5,6 +5,10 @@ import type {
   AgencyMtripGuide,
   MtripGuidePassenger,
 } from "@/lib/mtrip/guide-types";
+import {
+  markGuidePublicationInvalidated,
+  removePublishedMtripBeforeEdit,
+} from "@/lib/mtrip/invalidate-publication";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -59,6 +63,12 @@ export async function POST(request: Request) {
   );
 
   try {
+    if (guide && guideId) {
+      const removed = await removePublishedMtripBeforeEdit(guide);
+      if (removed) {
+        await markGuidePublicationInvalidated(supabase, user.id, guideId);
+      }
+    }
     const result = await ingestPassportFiles({
       supabase,
       userId: user.id,

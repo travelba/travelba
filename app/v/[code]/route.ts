@@ -12,7 +12,7 @@ export async function GET(_request: Request, { params }: Ctx) {
   }
   const { data } = await createServiceClient()
     .from("agency_mtrip_guides")
-    .select("app_links")
+    .select("app_links,passengers")
     .eq("short_code", code)
     .eq("status", "published")
     .maybeSingle();
@@ -20,10 +20,18 @@ export async function GET(_request: Request, { params }: Ctx) {
     data?.app_links && typeof data.app_links === "object"
       ? (data.app_links as Record<string, unknown>)
       : {};
-  const destination = Object.values(appLinks).find(
-    (value): value is string =>
-      typeof value === "string" && /^https:\/\//i.test(value)
-  );
+  const passengers = Array.isArray(data?.passengers)
+    ? (data.passengers as Array<{ id?: string; role?: string }>)
+    : [];
+  const leadId = passengers.find(
+    (passenger) => passenger.role === "lead_traveler"
+  )?.id;
+  const destination =
+    leadId &&
+    typeof appLinks[leadId] === "string" &&
+    /^https:\/\//i.test(appLinks[leadId] as string)
+      ? (appLinks[leadId] as string)
+      : null;
   if (!destination) {
     return NextResponse.json(
       { error: "Voyage non publié ou lien indisponible" },

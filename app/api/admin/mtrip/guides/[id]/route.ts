@@ -9,6 +9,10 @@ import type {
   MtripGuidePassenger,
 } from "@/lib/mtrip/guide-types";
 import { buildVoyageTitle } from "@/lib/mtrip/voyage-title";
+import {
+  markGuidePublicationInvalidated,
+  removePublishedMtripBeforeEdit,
+} from "@/lib/mtrip/invalidate-publication";
 
 export const runtime = "nodejs";
 
@@ -66,6 +70,39 @@ export async function PATCH(request: Request, { params }: Params) {
   const parsed = patchSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return jsonError("Validation échouée", 422, parsed.error.flatten());
+  }
+  const invalidatesPublication = [
+    "title",
+    "start_date",
+    "end_date",
+    "dossier_id",
+    "passengers",
+    "quote_lines",
+  ].some((field) => field in parsed.data);
+  if (invalidatesPublication) {
+    const { data: publication } = await supabase
+      .from("agency_mtrip_guides")
+      .select("status,mtrip_identifier")
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (!publication) return jsonError("Voyage introuvable", 404);
+    try {
+      const removed = await removePublishedMtripBeforeEdit(
+        publication as Pick<
+          AgencyMtripGuide,
+          "status" | "mtrip_identifier"
+        >
+      );
+      if (removed) {
+        await markGuidePublicationInvalidated(supabase, user.id, id);
+      }
+    } catch (error) {
+      return jsonError(
+        error instanceof Error ? error.message : "Dépublication mTrip impossible",
+        502
+      );
+    }
   }
 
   const updates: Record<string, unknown> = {
@@ -146,16 +183,7 @@ export async function PATCH(request: Request, { params }: Params) {
   if (parsed.data.quote_lines && !parsed.data.status) {
     updates.status = "ready";
   }
-  if (
-    [
-      "title",
-      "start_date",
-      "end_date",
-      "dossier_id",
-      "passengers",
-      "quote_lines",
-    ].some((field) => field in parsed.data)
-  ) {
+  if (invalidatesPublication) {
     updates.status = "ready";
     updates.payload = null;
     updates.app_links = {};
