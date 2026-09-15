@@ -48,26 +48,59 @@ function SetupForm() {
 
 export function PaymentMethodsPanel({
   methods,
-  clientSecret,
   configured,
 }: {
   methods: CrmPaymentMethod[];
-  clientSecret: string | null;
   configured: boolean;
 }) {
   const router = useRouter();
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [loadingSetup, setLoadingSetup] = useState(false);
+  const [operationError, setOperationError] = useState<string | null>(null);
+
+  async function startSetup() {
+    setLoadingSetup(true);
+    setOperationError(null);
+    const response = await fetch("/api/client/stripe/setup-intent", {
+      method: "POST",
+    });
+    const payload = (await response.json().catch(() => ({}))) as {
+      clientSecret?: string;
+      error?: string;
+    };
+    setLoadingSetup(false);
+    if (!response.ok || !payload.clientSecret) {
+      setOperationError(payload.error || "Impossible de préparer l’ajout de carte.");
+      return;
+    }
+    setClientSecret(payload.clientSecret);
+  }
 
   async function setDefault(id: string) {
-    await fetch("/api/client/payment-methods", {
+    setOperationError(null);
+    const response = await fetch("/api/client/payment-methods", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
     });
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      setOperationError(payload.error || "Impossible de modifier la carte.");
+      return;
+    }
     router.refresh();
   }
 
   async function remove(id: string) {
-    await fetch(`/api/client/payment-methods?id=${id}`, { method: "DELETE" });
+    setOperationError(null);
+    const response = await fetch(`/api/client/payment-methods?id=${id}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      setOperationError(payload.error || "Impossible de retirer la carte.");
+      return;
+    }
     router.refresh();
   }
 
@@ -95,6 +128,9 @@ export function PaymentMethodsPanel({
         ))}
         {!methods.length ? <li className="text-sm text-muted">Aucune carte enregistrée.</li> : null}
       </ul>
+      {operationError ? (
+        <p className="text-sm text-[var(--admin-red)]">{operationError}</p>
+      ) : null}
       {!configured ? (
         <p className="text-sm text-muted">
           L’enregistrement de carte sera disponible dès que Stripe sera configuré.
@@ -106,7 +142,16 @@ export function PaymentMethodsPanel({
             <SetupForm />
           </Elements>
         </div>
-      ) : null}
+      ) : (
+        <button
+          type="button"
+          onClick={startSetup}
+          disabled={loadingSetup}
+          className="admin-af-btn rounded-full px-4 py-2.5 text-sm disabled:opacity-60"
+        >
+          {loadingSetup ? "Préparation…" : "Ajouter une carte"}
+        </button>
+      )}
     </div>
   );
 }
