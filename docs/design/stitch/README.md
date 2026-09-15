@@ -1,23 +1,32 @@
 # Travelba × Google Stitch
 
-Projet Stitch : **Travelba CRM**  
-ID : `17895849105622121084`  
-URL : https://stitch.withgoogle.com/projects/17895849105622121084
+## Projets
 
-Design system : **Travelba TBA** (`assets/15726262186535647668`)  
-Tokens : navy `#002157`, rouge `#E81932`, fond `#F2F4F8`, Montserrat + Source Sans 3.
+| Projet | ID | URL |
+|---|---|---|
+| Travelba CRM (design system TBA) | `17895849105622121084` | https://stitch.withgoogle.com/projects/17895849105622121084 |
+| Travel Management Mobile App (template) | `6064940909344830146` | https://stitch.withgoogle.com/projects/6064940909344830146 |
 
-## Écrans Stitch
+## Template appliqué : Travel Management Mobile App
 
-| Écran | Route |
-|---|---|
-| Accueil Mon Compte | `/mon-compte` |
-| Connexion | `/connexion` |
-| Mes réservations | `/mon-compte/reservations` |
-| Transactions | `/mon-compte/transactions` |
-| Mon profil | `/mon-compte/profil` |
-| Dashboard admin | `/admin` |
+Source Stitch utilisée pour l’espace client `/mon-compte` :
 
-Assets locaux (échantillon) : `screens/accueil-mon-compte/`, `screens/connexion/`, `screens/reservations/`.
+- Accueil (prochain voyage, encours, activités, concierge)
+- Réservations
+- Transactions / solde
+- Compte
 
-L’UI Next.js porte ces tokens et compositions (header TBA, sidebar admin navy, cartes, chips statut, bandeau conciergerie).
+Assets locaux : `templates/travel-management-mobile-app/` (`accueil`, `reservations`, `transactions`, `compte`, `logo`).
+
+## Tokens UI portail client
+
+Inspirés du template Aura Voyage, rebrandés TBA :
+
+- Surface `#F7F9FB`
+- Navy `#002157`
+- Accent bleu `#006398` / soft `#CCE5FF`
+- Rouge marque `#E81932`
+- Typo : Plus Jakarta Sans (titres) + Inter (corps)
+- Bottom tab bar mobile (Accueil / Réservations / Transactions / Compte)
+
+Design system admin TBA inchangé : navy + rouge, Montserrat / Source Sans 3.

@@ -1,4 +1,4 @@
-import { Montserrat, Source_Sans_3 } from "next/font/google";
+import { Plus_Jakarta_Sans, Inter } from "next/font/google";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
@@ -7,14 +7,14 @@ import { siteConfig } from "@/lib/site";
 import { AccountNav } from "@/components/account/AccountNav";
 import { BrandMark } from "@/components/crm/ui";
 
-const display = Montserrat({
+const display = Plus_Jakarta_Sans({
   subsets: ["latin"],
   variable: "--font-admin-display",
   weight: ["600", "700", "800"],
   display: "swap",
 });
 
-const sans = Source_Sans_3({
+const sans = Inter({
   subsets: ["latin"],
   variable: "--font-admin-sans",
   weight: ["400", "500", "600", "700"],
@@ -40,27 +40,36 @@ export default async function AccountLayout({
   if (!customer) redirect("/connexion");
 
   const name = customerFullName(customer);
-  const initials = [customer.first_name?.[0], customer.last_name?.[0]]
-    .filter(Boolean)
-    .join("")
-    .toUpperCase() || "TB";
+  const initials =
+    [customer.first_name?.[0], customer.last_name?.[0]]
+      .filter(Boolean)
+      .join("")
+      .toUpperCase() || "TB";
 
   return (
-    <div className={`admin-af min-h-screen ${display.variable} ${sans.variable}`}>
-      <header className="sticky top-0 z-40 border-b border-slate-200/80 border-t-[3px] border-t-[var(--admin-red)] bg-white shadow-sm">
-        <div className="mx-auto flex max-w-[960px] flex-col gap-3 px-4 py-3 sm:px-6 md:h-20 md:flex-row md:items-center md:justify-between md:gap-4 md:py-0">
+    <div
+      className={`account-app admin-af min-h-screen ${display.variable} ${sans.variable}`}
+    >
+      <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-[var(--aura-surface)]/90 shadow-[0_1px_8px_rgba(0,0,0,0.04)] backdrop-blur-xl">
+        <div className="mx-auto flex max-w-[480px] items-center justify-between gap-3 px-4 py-3 md:max-w-[960px] sm:px-6 md:h-16">
           <BrandMark href="/mon-compte" subtitle="Espace client" />
           <AccountNav customerName={name} initials={initials} />
         </div>
       </header>
-      <main className="mx-auto max-w-[960px] px-4 py-8 sm:px-6 sm:py-10">
+      <main className="mx-auto max-w-[480px] px-4 pb-28 pt-6 md:max-w-[960px] sm:px-6 sm:pt-8 md:pb-10">
         {children}
       </main>
-      <footer className="mx-auto max-w-[960px] px-4 pb-10 pt-2 text-xs text-muted sm:px-6">
+      <footer className="mx-auto hidden max-w-[960px] px-4 pb-10 pt-2 text-xs text-muted md:block sm:px-6">
         <div className="flex flex-col gap-2 border-t border-[var(--border)] pt-6 sm:flex-row sm:items-center sm:justify-between">
-          <p>© {new Date().getFullYear()} Travelba — Voyage d&apos;affaires</p>
           <p>
-            <a href={`mailto:${siteConfig.contactEmail}`} className="hover:text-[var(--admin-navy)]">
+            © {new Date().getFullYear()} {siteConfig.name} — Voyage
+            d&apos;affaires
+          </p>
+          <p>
+            <a
+              href={`mailto:${siteConfig.contactEmail}`}
+              className="hover:text-[var(--admin-navy)]"
+            >
               {siteConfig.contactEmail}
             </a>
           </p>

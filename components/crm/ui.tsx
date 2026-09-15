@@ -15,7 +15,7 @@ export function BrandMark({
       </span>
       <span className="flex flex-col leading-tight">
         <span className="font-display text-lg font-extrabold tracking-tight text-[var(--admin-navy)]">
-          Travelba
+          {siteConfig.shortName}
         </span>
         {subtitle ? (
           <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
@@ -103,30 +103,35 @@ export function EmptyState({
 
 export function ConciergeBanner() {
   return (
-    <aside className="admin-af-card flex flex-col gap-4 rounded-2xl bg-[var(--admin-sky)]/50 p-5 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--admin-navy)]">
-          Assistance personnalisée
-        </p>
-        <h3 className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">
-          Ligne privée Conciergerie 24/7
-        </h3>
-        <p className="mt-1 text-sm text-muted">
-          Modifications urgentes, transferts ou questions sur votre dossier.
-        </p>
+    <aside className="admin-af-card flex flex-col gap-4 overflow-hidden rounded-[1.35rem] bg-[var(--admin-navy)] p-5 text-white sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-start gap-3">
+        <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--aura-blue)] text-lg font-bold">
+          M
+        </span>
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--aura-blue-soft)]">
+            Conciergerie 24/7
+          </p>
+          <h3 className="mt-1 font-display text-lg font-bold">
+            Votre majordome voyage dédié
+          </h3>
+          <p className="mt-1 text-sm text-white/70">
+            Modifications urgentes, transferts ou questions sur votre dossier.
+          </p>
+        </div>
       </div>
       <div className="flex flex-wrap gap-2">
         <a
           href={`tel:${siteConfig.whatsappNumber}`}
-          className="inline-flex items-center rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-[var(--admin-navy)]"
+          className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur"
         >
           {siteConfig.phoneDisplay}
         </a>
         <a
           href={`mailto:${siteConfig.contactEmail}`}
-          className="admin-af-btn inline-flex items-center rounded-xl px-4 py-2.5 text-sm"
+          className="inline-flex items-center rounded-full bg-[var(--aura-blue)] px-4 py-2.5 text-sm font-semibold text-white"
         >
-          Écrire à Travelba
+          Contacter
         </a>
       </div>
     </aside>

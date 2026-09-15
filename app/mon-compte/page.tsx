@@ -4,17 +4,27 @@ import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
 import {
   BOOKING_STATUS_LABELS,
+  TX_KIND_LABELS,
   customerFullName,
   type CrmBalance,
   type CrmBooking,
+  type CrmTransaction,
 } from "@/lib/crm/types";
 import { formatDateFr, formatMoney, isUpcomingBooking } from "@/lib/crm/money";
 import {
   ConciergeBanner,
-  PageEyebrow,
   StatusChip,
   bookingStatusTone,
 } from "@/components/crm/ui";
+import { siteConfig } from "@/lib/site";
+
+function daysUntil(date: string | null) {
+  if (!date) return null;
+  const start = new Date(`${date}T12:00:00`);
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  return Math.ceil((start.getTime() - today.getTime()) / 86_400_000);
+}
 
 export default async function AccountHomePage() {
   const supabase = await createClient();
@@ -25,143 +35,302 @@ export default async function AccountHomePage() {
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");
 
-  const [{ data: bookings }, { data: balances }] = await Promise.all([
-    supabase
-      .from("crm_bookings")
-      .select("*")
-      .eq("customer_id", customer.id)
-      .neq("status", "cancelled")
-      .order("start_date", { ascending: true, nullsFirst: false }),
-    supabase
-      .from("crm_customer_balances")
-      .select("*")
-      .eq("customer_id", customer.id),
-  ]);
+  const [{ data: bookings }, { data: balances }, { data: txs }] =
+    await Promise.all([
+      supabase
+        .from("crm_bookings")
+        .select("*")
+        .eq("customer_id", customer.id)
+        .neq("status", "cancelled")
+        .order("start_date", { ascending: true, nullsFirst: false }),
+      supabase
+        .from("crm_customer_balances")
+        .select("*")
+        .eq("customer_id", customer.id),
+      supabase
+        .from("crm_transactions")
+        .select("*")
+        .eq("customer_id", customer.id)
+        .eq("status", "posted")
+        .order("occurred_on", { ascending: false })
+        .limit(5),
+    ]);
 
   const nextTrip = ((bookings || []) as CrmBooking[]).find((b) =>
     isUpcomingBooking(b.end_date)
   );
-  const encours = (balances || []) as CrmBalance[];
-  const primaryBalance = encours[0];
+  const primaryBalance = ((balances || []) as CrmBalance[])[0];
   const balanceValue = primaryBalance ? Number(primaryBalance.balance) : 0;
-  const currency = primaryBalance?.currency || "EUR";
-  const firstName = customer.first_name || customerFullName(customer).split(" ")[0];
+  const currency = primaryBalance?.currency || nextTrip?.currency || "EUR";
+  const firstName =
+    customer.first_name || customerFullName(customer).split(" ")[0];
+  const recentTxs = (txs || []) as CrmTransaction[];
+  const jMinus = daysUntil(nextTrip?.start_date ?? null);
+  const tripTotal = nextTrip ? Number(nextTrip.total_amount) : 0;
+  const remainingDue = Math.max(0, -balanceValue);
+  const financedPct =
+    tripTotal > 0
+      ? Math.min(
+          100,
+          Math.round(((tripTotal - remainingDue) / tripTotal) * 1000) / 10
+        )
+      : balanceValue >= 0
+        ? 100
+        : 0;
 
   return (
-    <div className="space-y-8">
-      <header>
-        <PageEyebrow>Espace privilège voyageur</PageEyebrow>
-        <h1 className="mt-2 font-display text-3xl font-extrabold tracking-tight text-[var(--admin-navy)] sm:text-4xl">
-          Bonjour, {firstName}
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm text-muted sm:text-[15px]">
-          Heureux de vous retrouver dans votre espace personnel Travelba. Voici
-          le résumé de vos séjours et de votre compte.
-        </p>
+    <div className="space-y-6">
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm text-muted">Ravi de vous revoir ✨</p>
+          <h1 className="mt-1 font-display text-[1.75rem] font-extrabold tracking-tight text-[var(--admin-navy)]">
+            Bonjour {firstName}
+          </h1>
+        </div>
+        <Link
+          href="/mon-compte/reservations"
+          className="inline-flex shrink-0 items-center rounded-full bg-[var(--aura-blue-soft)] px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-[var(--aura-blue)]"
+        >
+          Explorer
+        </Link>
       </header>
 
-      <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
-        <article className="admin-af-card overflow-hidden rounded-2xl">
-          <div className="border-b border-[var(--border)] px-6 py-5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
-              Votre prochaine destination
-            </p>
-            {nextTrip ? (
-              <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h2 className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
-                    {nextTrip.destination || nextTrip.title}
-                  </h2>
-                  <p className="mt-1 text-sm text-muted">{nextTrip.title}</p>
-                </div>
-                <StatusChip tone={bookingStatusTone(nextTrip.status)}>
-                  {BOOKING_STATUS_LABELS[nextTrip.status]}
-                </StatusChip>
-              </div>
-            ) : (
-              <p className="mt-3 text-sm text-muted">
-                Aucun voyage à venir pour le moment.
+      {nextTrip ? (
+        <article className="relative overflow-hidden rounded-[1.35rem] bg-[var(--admin-navy)] text-white shadow-xl">
+          <div
+            className="absolute inset-0 bg-cover bg-center opacity-50"
+            style={{
+              backgroundImage:
+                "url(https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=1200&q=80)",
+            }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-[var(--admin-navy)] via-[var(--admin-navy)]/75 to-transparent" />
+          <div className="relative space-y-4 p-5 pt-6">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold text-[var(--admin-navy)]">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                Départ imminent
+              </span>
+              {jMinus != null && jMinus >= 0 ? (
+                <span className="rounded-full bg-black/35 px-3 py-1 text-[11px] font-bold">
+                  J-{jMinus}
+                </span>
+              ) : null}
+            </div>
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--aura-blue-soft)]">
+                Prochaine destination
               </p>
-            )}
-          </div>
-          {nextTrip ? (
-            <div className="space-y-4 px-6 py-5">
-              <div className="flex flex-wrap gap-4 text-sm">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-                    Dates
-                  </p>
-                  <p className="mt-0.5 font-semibold text-[var(--admin-navy)]">
-                    {formatDateFr(nextTrip.start_date)} →{" "}
-                    {formatDateFr(nextTrip.end_date)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-                    Référence
-                  </p>
-                  <p className="mt-0.5 font-semibold text-[var(--admin-navy)]">
-                    {nextTrip.reference}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-                    Montant
-                  </p>
-                  <p className="mt-0.5 font-semibold text-[var(--admin-navy)]">
-                    {formatMoney(Number(nextTrip.total_amount), nextTrip.currency)}
-                  </p>
-                </div>
+              <h2 className="mt-1 font-display text-2xl font-extrabold">
+                {nextTrip.destination || nextTrip.title}
+              </h2>
+              <p className="mt-1 text-sm text-white/75">
+                {formatDateFr(nextTrip.start_date)} —{" "}
+                {formatDateFr(nextTrip.end_date)}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 rounded-xl bg-white/10 p-3">
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-white/60">
+                  Référence
+                </p>
+                <p className="truncate text-sm font-semibold">{nextTrip.reference}</p>
               </div>
-              <Link
-                href={`/mon-compte/reservations/${nextTrip.reference}`}
-                className="admin-af-btn inline-flex rounded-xl px-5 py-2.5 text-sm"
-              >
-                Voir le dossier →
-              </Link>
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-white/60">
+                  Statut
+                </p>
+                <p className="truncate text-sm font-semibold">
+                  {BOOKING_STATUS_LABELS[nextTrip.status]}
+                </p>
+              </div>
             </div>
-          ) : (
-            <div className="px-6 py-5">
-              <Link
-                href="/mon-compte/reservations"
-                className="text-sm font-semibold text-[var(--admin-navy)]"
-              >
-                Voir mes réservations →
-              </Link>
-            </div>
-          )}
-        </article>
-
-        <article className="admin-af-card rounded-2xl p-6">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
-            Situation du compte
-          </p>
-          <p className="mt-3 font-display text-4xl font-extrabold tracking-tight text-[var(--admin-navy)]">
-            {formatMoney(balanceValue, currency)}
-          </p>
-          <p className="mt-1 text-sm font-semibold text-muted">
-            {balanceValue > 0
-              ? "Avoir disponible"
-              : balanceValue < 0
-                ? "Reste à payer"
-                : "Solde à jour"}
-          </p>
-          <div className="mt-5 space-y-2">
             <Link
-              href="/mon-compte/transactions"
-              className="inline-flex w-full items-center justify-center rounded-xl bg-[var(--admin-navy)] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[var(--admin-navy-deep)]"
+              href={`/mon-compte/reservations/${nextTrip.reference}`}
+              className="flex h-11 items-center justify-center rounded-full bg-white text-sm font-bold text-[var(--admin-navy)]"
             >
-              Consulter les transactions
-            </Link>
-            <Link
-              href="/mon-compte/profil/paiement"
-              className="inline-flex w-full items-center justify-center rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-[var(--admin-navy)]"
-            >
-              Moyens de paiement
+              Voir l&apos;itinéraire →
             </Link>
           </div>
         </article>
+      ) : (
+        <article className="admin-af-card rounded-[1.35rem] p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+            Prochaine destination
+          </p>
+          <h2 className="mt-2 font-display text-xl font-bold text-[var(--admin-navy)]">
+            Aucun voyage planifié
+          </h2>
+          <p className="mt-1 text-sm text-muted">
+            Votre conciergerie {siteConfig.shortName} peut préparer votre prochain
+            dossier.
+          </p>
+          <a
+            href={`mailto:${siteConfig.contactEmail}`}
+            className="admin-af-btn mt-4 inline-flex rounded-full px-5 py-2.5 text-sm"
+          >
+            Contacter la conciergerie
+          </a>
+        </article>
+      )}
+
+      <div className="grid grid-cols-3 gap-2.5">
+        <Link
+          href="/mon-compte/reservations"
+          className="admin-af-card flex flex-col items-center rounded-2xl px-2 py-3.5 text-center shadow-sm"
+        >
+          <span className="mb-2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--aura-blue-soft)] text-sm font-bold text-[var(--aura-blue)]">
+            B
+          </span>
+          <span className="text-[11px] font-bold text-[var(--admin-navy)]">Billets</span>
+          <span className="text-[10px] text-muted">& vouchers</span>
+        </Link>
+        <Link
+          href="/mon-compte/transactions"
+          className="admin-af-card flex flex-col items-center rounded-2xl px-2 py-3.5 text-center shadow-sm"
+        >
+          <span className="mb-2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-sm font-bold text-[var(--admin-navy)]">
+            +
+          </span>
+          <span className="text-[11px] font-bold text-[var(--admin-navy)]">Fonds</span>
+          <span className="text-[10px] text-muted">Revolut</span>
+        </Link>
+        <a
+          href={`mailto:${siteConfig.contactEmail}`}
+          className="admin-af-card flex flex-col items-center rounded-2xl px-2 py-3.5 text-center shadow-sm"
+        >
+          <span className="mb-2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--aura-blue-soft)] text-sm font-bold text-[var(--admin-navy)]">
+            C
+          </span>
+          <span className="text-[11px] font-bold text-[var(--admin-navy)]">Concierge</span>
+          <span className="text-[10px] text-muted">privé</span>
+        </a>
       </div>
+
+      <section className="admin-af-card rounded-[1.35rem] p-5 shadow-sm">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">
+            Votre encours voyage
+          </h3>
+          <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
+            Garanti
+          </span>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <div>
+            <p className="text-[11px] text-muted">Solde disponible</p>
+            <p className="mt-0.5 font-display text-2xl font-extrabold tracking-tight text-[var(--admin-navy)]">
+              {formatMoney(Math.max(0, balanceValue), currency)}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-[11px] text-muted">
+              {balanceValue < 0 ? "Reste à payer" : "Budget engagé"}
+            </p>
+            <p className="mt-0.5 font-display text-lg font-bold text-muted">
+              {formatMoney(
+                balanceValue < 0 ? Math.abs(balanceValue) : tripTotal || balanceValue,
+                currency
+              )}
+            </p>
+          </div>
+        </div>
+        {tripTotal > 0 ? (
+          <div className="mt-4 space-y-1.5">
+            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full bg-[var(--aura-blue)]"
+                style={{ width: `${financedPct}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-[11px] text-muted">
+              <span>{financedPct}% financé</span>
+              <span>Reste {formatMoney(remainingDue, currency)}</span>
+            </div>
+          </div>
+        ) : null}
+        <div className="mt-4 flex gap-2">
+          <Link
+            href="/mon-compte/transactions"
+            className="inline-flex flex-1 items-center justify-center rounded-xl bg-[var(--admin-navy)] px-3 py-2.5 text-sm font-semibold text-white"
+          >
+            Historique
+          </Link>
+          <Link
+            href="/mon-compte/profil/paiement"
+            className="inline-flex flex-1 items-center justify-center rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-sm font-semibold text-[var(--admin-navy)]"
+          >
+            Paiement
+          </Link>
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">
+            Dernières activités
+          </h3>
+          <Link
+            href="/mon-compte/transactions"
+            className="text-sm font-semibold text-[var(--aura-blue)]"
+          >
+            Voir l&apos;historique
+          </Link>
+        </div>
+        {recentTxs.length === 0 ? (
+          <p className="rounded-2xl bg-white px-4 py-6 text-center text-sm text-muted shadow-sm">
+            Aucune transaction récente.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {recentTxs.map((tx) => {
+              const credit = tx.direction === "credit";
+              return (
+                <li
+                  key={tx.id}
+                  className="flex items-center justify-between gap-3 rounded-2xl bg-white p-3 shadow-sm"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
+                      {tx.label || TX_KIND_LABELS[tx.kind] || tx.kind}
+                    </p>
+                    <p className="truncate text-xs text-muted">
+                      {formatDateFr(tx.occurred_on)}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p
+                      className={`text-sm font-bold ${
+                        credit ? "text-emerald-600" : "text-[var(--admin-navy)]"
+                      }`}
+                    >
+                      {credit ? "+" : "−"}
+                      {formatMoney(Number(tx.amount), tx.currency)}
+                    </p>
+                    <StatusChip tone={credit ? "green" : "sky"}>
+                      {credit ? "Reçu" : "Débit"}
+                    </StatusChip>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      {nextTrip ? (
+        <div className="flex items-center justify-between rounded-2xl bg-white px-4 py-3 shadow-sm">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+              Dossier actif
+            </p>
+            <p className="text-sm font-bold text-[var(--admin-navy)]">{nextTrip.title}</p>
+          </div>
+          <StatusChip tone={bookingStatusTone(nextTrip.status)}>
+            {BOOKING_STATUS_LABELS[nextTrip.status]}
+          </StatusChip>
+        </div>
+      ) : null}
 
       <ConciergeBanner />
     </div>
