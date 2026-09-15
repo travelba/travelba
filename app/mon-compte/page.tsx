@@ -8,14 +8,11 @@ import {
   customerFullName,
   type CrmBalance,
   type CrmBooking,
+  type CrmBookingItem,
   type CrmTransaction,
 } from "@/lib/crm/types";
 import { formatDateFr, formatMoney, isUpcomingBooking } from "@/lib/crm/money";
-import {
-  ConciergeBanner,
-  StatusChip,
-  bookingStatusTone,
-} from "@/components/crm/ui";
+import { StatusChip } from "@/components/crm/ui";
 import { siteConfig } from "@/lib/site";
 
 function daysUntil(date: string | null) {
@@ -24,6 +21,13 @@ function daysUntil(date: string | null) {
   const today = new Date();
   today.setHours(12, 0, 0, 0);
   return Math.ceil((start.getTime() - today.getTime()) / 86_400_000);
+}
+
+function tripDays(start: string | null, end: string | null) {
+  if (!start || !end) return null;
+  const a = new Date(`${start}T12:00:00`).getTime();
+  const b = new Date(`${end}T12:00:00`).getTime();
+  return Math.max(1, Math.round((b - a) / 86_400_000));
 }
 
 export default async function AccountHomePage() {
@@ -59,6 +63,20 @@ export default async function AccountHomePage() {
   const nextTrip = ((bookings || []) as CrmBooking[]).find((b) =>
     isUpcomingBooking(b.end_date)
   );
+
+  let items: CrmBookingItem[] = [];
+  if (nextTrip) {
+    const { data: itemRows } = await supabase
+      .from("crm_booking_items")
+      .select("*")
+      .eq("booking_id", nextTrip.id)
+      .order("sort_order", { ascending: true });
+    items = (itemRows || []) as CrmBookingItem[];
+  }
+
+  const flight = items.find((i) => i.kind === "flight");
+  const hotel = items.find((i) => i.kind === "hotel");
+
   const primaryBalance = ((balances || []) as CrmBalance[])[0];
   const balanceValue = primaryBalance ? Number(primaryBalance.balance) : 0;
   const currency = primaryBalance?.currency || nextTrip?.currency || "EUR";
@@ -68,6 +86,7 @@ export default async function AccountHomePage() {
   const jMinus = daysUntil(nextTrip?.start_date ?? null);
   const tripTotal = nextTrip ? Number(nextTrip.total_amount) : 0;
   const remainingDue = Math.max(0, -balanceValue);
+  const availableCredit = Math.max(0, balanceValue);
   const financedPct =
     tripTotal > 0
       ? Math.min(
@@ -77,7 +96,10 @@ export default async function AccountHomePage() {
       : balanceValue >= 0
         ? 100
         : 0;
-
+  const nights = tripDays(
+    nextTrip?.start_date ?? null,
+    nextTrip?.end_date ?? null
+  );
   const whatsappHref = `https://wa.me/${siteConfig.whatsappNumber}`;
 
   return (
@@ -99,7 +121,7 @@ export default async function AccountHomePage() {
       </header>
 
       {nextTrip ? (
-        <article className="relative min-h-[320px] overflow-hidden rounded-[1.5rem] bg-[var(--admin-navy)] text-white shadow-[0_18px_40px_rgba(11,31,58,0.28)]">
+        <article className="relative min-h-[340px] overflow-hidden rounded-[1.5rem] bg-[var(--admin-navy)] text-white shadow-[0_18px_40px_rgba(11,31,58,0.28)]">
           <div
             className="absolute inset-0 bg-cover bg-center opacity-55"
             style={{
@@ -108,7 +130,7 @@ export default async function AccountHomePage() {
             }}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-[var(--admin-navy)] via-[var(--admin-navy)]/70 to-transparent" />
-          <div className="relative flex min-h-[320px] flex-col justify-end space-y-4 p-5 pb-6 pt-8">
+          <div className="relative flex min-h-[340px] flex-col justify-end space-y-3.5 p-5 pb-6 pt-8">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1 text-[11px] font-semibold text-[var(--admin-navy)]">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
@@ -124,29 +146,32 @@ export default async function AccountHomePage() {
               <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[var(--aura-blue-soft)]">
                 {nextTrip.title || "Prochaine escapade"}
               </p>
-              <h2 className="mt-1 font-display text-[1.65rem] font-extrabold leading-tight">
+              <h2 className="mt-1 font-display text-[1.7rem] font-extrabold leading-tight">
                 {nextTrip.destination || nextTrip.title}
               </h2>
               <p className="mt-1.5 text-sm text-white/75">
                 {formatDateFr(nextTrip.start_date)} —{" "}
                 {formatDateFr(nextTrip.end_date)}
+                {nights ? ` (${nights} j)` : null}
               </p>
             </div>
             <div className="grid grid-cols-2 gap-2 rounded-2xl bg-black/25 p-3 backdrop-blur-md">
-              <div>
+              <div className="min-w-0">
                 <p className="text-[10px] uppercase tracking-wide text-white/55">
-                  Référence
+                  Vol
                 </p>
                 <p className="mt-0.5 truncate text-sm font-semibold">
-                  {nextTrip.reference}
+                  {flight?.title ||
+                    flight?.confirmation_ref ||
+                    nextTrip.reference}
                 </p>
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-[10px] uppercase tracking-wide text-white/55">
-                  Statut
+                  Séjour
                 </p>
                 <p className="mt-0.5 truncate text-sm font-semibold">
-                  {BOOKING_STATUS_LABELS[nextTrip.status]}
+                  {hotel?.title || BOOKING_STATUS_LABELS[nextTrip.status]}
                 </p>
               </div>
             </div>
@@ -198,10 +223,9 @@ export default async function AccountHomePage() {
           <span className="mb-2 inline-flex h-11 w-11 items-center justify-center rounded-full bg-[var(--aura-blue-soft)] text-base">
             🎫
           </span>
-          <span className="text-[11px] font-bold text-[var(--admin-navy)]">
-            Billets
+          <span className="text-[11px] font-bold leading-tight text-[var(--admin-navy)]">
+            Billets & Vouchers
           </span>
-          <span className="text-[10px] text-muted">& Vouchers</span>
         </Link>
         <Link
           href="/mon-compte/transactions"
@@ -210,10 +234,9 @@ export default async function AccountHomePage() {
           <span className="mb-2 inline-flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-base font-bold text-[var(--admin-navy)]">
             +
           </span>
-          <span className="text-[11px] font-bold text-[var(--admin-navy)]">
-            + Fonds
+          <span className="text-[11px] font-bold leading-tight text-[var(--admin-navy)]">
+            + Fonds (Revolut)
           </span>
-          <span className="text-[10px] text-muted">Revolut</span>
         </Link>
         <a
           href={whatsappHref}
@@ -224,18 +247,22 @@ export default async function AccountHomePage() {
           <span className="mb-2 inline-flex h-11 w-11 items-center justify-center rounded-full bg-[var(--aura-blue-soft)] text-base">
             🛎️
           </span>
-          <span className="text-[11px] font-bold text-[var(--admin-navy)]">
-            Concierge
+          <span className="text-[11px] font-bold leading-tight text-[var(--admin-navy)]">
+            Concierge Privé
           </span>
-          <span className="text-[10px] text-muted">Privé</span>
         </a>
       </div>
 
       <section className="rounded-[1.5rem] bg-white p-5 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">
-            Votre encours voyage
-          </h3>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--aura-blue-soft)] text-sm">
+              💳
+            </span>
+            <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">
+              Votre encours voyage
+            </h3>
+          </div>
           <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
             Garanti
           </span>
@@ -244,18 +271,16 @@ export default async function AccountHomePage() {
           <div>
             <p className="text-[11px] text-muted">Solde disponible</p>
             <p className="mt-0.5 font-display text-2xl font-extrabold tracking-tight text-[var(--admin-navy)]">
-              {formatMoney(Math.max(0, balanceValue), currency)}
+              {formatMoney(availableCredit, currency)}
             </p>
           </div>
           <div className="text-right">
             <p className="text-[11px] text-muted">
-              {balanceValue < 0 ? "Reste à payer" : "Budget validé"}
+              {remainingDue > 0 ? "Reste à payer" : "Budget validé"}
             </p>
             <p className="mt-0.5 font-display text-lg font-bold text-muted">
               {formatMoney(
-                balanceValue < 0
-                  ? Math.abs(balanceValue)
-                  : tripTotal || balanceValue,
+                remainingDue > 0 ? remainingDue : tripTotal || availableCredit,
                 currency
               )}
             </p>
@@ -275,37 +300,25 @@ export default async function AccountHomePage() {
             </div>
           </div>
         ) : null}
-        <div className="mt-4 rounded-xl bg-slate-50 px-3.5 py-3">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-                Prochaine échéance
-              </p>
-              <p className="mt-0.5 text-sm font-semibold text-[var(--admin-navy)]">
-                {remainingDue > 0
-                  ? formatMoney(remainingDue, currency)
-                  : "Aucune"}
-              </p>
-            </div>
-            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700">
-              Prélèvement auto
-            </span>
+        <div className="mt-4 flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3.5 py-3">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Prochaine échéance
+            </p>
+            <p className="mt-0.5 text-sm font-semibold text-[var(--admin-navy)]">
+              {remainingDue > 0 ? formatMoney(remainingDue, currency) : "Aucune"}
+            </p>
           </div>
+          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700">
+            Prélèvement auto
+          </span>
         </div>
-        <div className="mt-4 flex gap-2">
-          <Link
-            href="/mon-compte/transactions"
-            className="inline-flex flex-1 items-center justify-center rounded-xl bg-[var(--admin-navy)] px-3 py-2.5 text-sm font-semibold text-white"
-          >
-            Voir l&apos;historique
-          </Link>
-          <Link
-            href="/mon-compte/profil/paiement"
-            className="inline-flex flex-1 items-center justify-center rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-sm font-semibold text-[var(--admin-navy)]"
-          >
-            Paiement
-          </Link>
-        </div>
+        <Link
+          href="/mon-compte/transactions"
+          className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-[var(--admin-navy)] px-3 py-2.5 text-sm font-semibold text-white"
+        >
+          Voir l&apos;historique
+        </Link>
       </section>
 
       <section className="space-y-3">
@@ -371,24 +384,6 @@ export default async function AccountHomePage() {
           </ul>
         )}
       </section>
-
-      {nextTrip ? (
-        <div className="flex items-center justify-between rounded-2xl bg-white px-4 py-3 shadow-sm">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-              Dossier actif
-            </p>
-            <p className="text-sm font-bold text-[var(--admin-navy)]">
-              {nextTrip.title}
-            </p>
-          </div>
-          <StatusChip tone={bookingStatusTone(nextTrip.status)}>
-            {BOOKING_STATUS_LABELS[nextTrip.status]}
-          </StatusChip>
-        </div>
-      ) : null}
-
-      <ConciergeBanner />
     </div>
   );
 }

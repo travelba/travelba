@@ -83,12 +83,12 @@ export default async function ReservationsPage({
         </a>
       </aside>
 
-      <div className="flex rounded-full bg-slate-100 p-1">
+      <div className="flex rounded-full bg-slate-200/70 p-1">
         <Link
           href="/mon-compte/reservations"
           className={`flex-1 rounded-full px-3 py-2.5 text-center text-sm font-bold transition ${
             !showPast
-              ? "bg-[var(--admin-navy)] text-white shadow-sm"
+              ? "bg-white text-[var(--admin-navy)] shadow-sm"
               : "text-slate-600"
           }`}
         >
@@ -98,7 +98,7 @@ export default async function ReservationsPage({
           href="/mon-compte/reservations?tab=passes"
           className={`flex-1 rounded-full px-3 py-2.5 text-center text-sm font-bold transition ${
             showPast
-              ? "bg-[var(--admin-navy)] text-white shadow-sm"
+              ? "bg-white text-[var(--admin-navy)] shadow-sm"
               : "text-slate-600"
           }`}
         >

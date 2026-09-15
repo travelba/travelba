@@ -88,7 +88,7 @@ export default async function TransactionsPage({
             Historique des flux
           </h2>
           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-            {rows.length} ops
+            {rows.length} opérations
           </span>
         </div>
       </div>
@@ -99,7 +99,7 @@ export default async function TransactionsPage({
             { key: "all", label: "Tous", href: "/mon-compte/transactions" },
             {
               key: "debit",
-              label: "Débits réservations",
+              label: "Débits Réservations",
               href: "/mon-compte/transactions?filter=debit",
             },
             {

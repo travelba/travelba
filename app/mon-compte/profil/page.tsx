@@ -5,6 +5,7 @@ import { customerFullName } from "@/lib/crm/types";
 import { ProfileForm } from "@/components/account/ProfileForm";
 import { ProfileSubnav } from "@/components/account/ProfileSubnav";
 import { ConciergeBanner } from "@/components/crm/ui";
+import { SignOutButton } from "@/components/account/SignOutButton";
 import { siteConfig } from "@/lib/site";
 
 export default async function ProfilPage() {
@@ -71,6 +72,11 @@ export default async function ProfilPage() {
         </div>
         <ProfileForm customer={customer} />
       </section>
+
+      <div className="space-y-2">
+        <SignOutButton />
+        <p className="text-center text-[11px] text-muted">TBA Aura · v1.0</p>
+      </div>
 
       <ConciergeBanner />
     </div>
