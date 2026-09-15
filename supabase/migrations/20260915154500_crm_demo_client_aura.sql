@@ -98,8 +98,8 @@ from public.crm_bookings b
 cross join (
   values
     ('debit', 'booking', 5800::numeric, '2026-06-01'::date, 'Réservation TBA-DEMO-0001 — Kyoto'),
-    ('credit', 'transfer', 3450::numeric, '2026-08-10'::date, 'Apport Revolut Pay — Compte principal'),
-    ('debit', 'booking', 420::numeric, '2026-09-01'::date, 'Kitcho Arashiyama — Omakase VIP'),
+    ('credit', 'transfer', 8170::numeric, '2026-08-10'::date, 'Apport Revolut Pay — Compte principal'),
+    ('debit', 'adjustment', 420::numeric, '2026-09-01'::date, 'Kitcho Arashiyama — Omakase VIP'),
     ('credit', 'transfer', 1500::numeric, '2026-09-02'::date, 'Apport Revolut Pay')
 ) as v(direction, kind, amount, occurred_on, label)
 where b.reference = 'TBA-DEMO-0001'

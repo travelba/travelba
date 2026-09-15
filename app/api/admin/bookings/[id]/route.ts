@@ -58,11 +58,20 @@ export async function PATCH(request: Request, ctx: Ctx) {
     .single();
   if (error) return jsonError(error.message, 400);
   const booking = data as CrmBooking;
-  await syncBookingDebit(
-    auth.supabase,
-    booking,
-    prev.status as BookingStatus
-  );
+  try {
+    await syncBookingDebit(
+      auth.supabase,
+      booking,
+      prev.status as BookingStatus
+    );
+  } catch (syncError) {
+    return jsonError(
+      syncError instanceof Error
+        ? syncError.message
+        : "Échec de synchronisation comptable",
+      500
+    );
+  }
   return NextResponse.json({ booking });
 }
 
@@ -70,6 +79,15 @@ export async function DELETE(_req: Request, ctx: Ctx) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
+  const { error: voidError } = await auth.supabase
+    .from("crm_transactions")
+    .update({ status: "void" })
+    .eq("booking_id", id)
+    .eq("kind", "booking")
+    .eq("direction", "debit")
+    .neq("status", "void");
+  if (voidError) return jsonError(voidError.message, 400);
+
   const { error } = await auth.supabase.from("crm_bookings").delete().eq("id", id);
   if (error) return jsonError(error.message, 400);
   return NextResponse.json({ ok: true });

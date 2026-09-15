@@ -145,16 +145,16 @@ export default function DemoClientSpacePage() {
               </p>
             </div>
             <div className="text-right">
-              <p className="text-[11px] text-muted">Budget validé</p>
-              <p className="font-display text-lg font-bold text-muted">5 800,00 €</p>
+              <p className="text-[11px] text-muted">Dépenses engagées</p>
+              <p className="font-display text-lg font-bold text-muted">6 220,00 €</p>
             </div>
           </div>
           <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-slate-100">
-            <div className="h-full w-[59.5%] rounded-full bg-[var(--aura-blue)]" />
+            <div className="h-full w-[64.3%] rounded-full bg-[var(--aura-blue)]" />
           </div>
           <div className="mt-1.5 flex justify-between text-[11px] text-muted">
-            <span>59,5 % financé</span>
-            <span>Reste 2 350,00 €</span>
+            <span>64,3 % utilisé</span>
+            <span>Disponible 3 450,00 €</span>
           </div>
         </section>
 
