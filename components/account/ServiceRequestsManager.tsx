@@ -17,9 +17,10 @@ export function ServiceRequestsManager({ customerId, initialRequests, bookings }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formElement = event.currentTarget;
     setPending(true);
     setMessage(null);
-    const form = new FormData(event.currentTarget);
+    const form = new FormData(formElement);
     const payload = {
       customer_id: customerId,
       booking_id: String(form.get("booking_id") || "") || null,
@@ -34,7 +35,7 @@ export function ServiceRequestsManager({ customerId, initialRequests, bookings }
       return;
     }
     setRequests((current) => [data as CrmServiceRequest, ...current]);
-    event.currentTarget.reset();
+    formElement.reset();
     setMessage("Votre demande a été transmise à l’agence.");
   }
 

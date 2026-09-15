@@ -51,7 +51,8 @@ export function OperationsManager({ resource, initialItems, fields, allowCreate 
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const payload: Record<string, unknown> = {};
     for (const field of fields) {
       const value = field.type === "checkbox" ? form.get(field.name) === "on" : form.get(field.name);
@@ -71,7 +72,7 @@ export function OperationsManager({ resource, initialItems, fields, allowCreate 
     }
     requestId.current = null;
     setEditing(null);
-    event.currentTarget.reset();
+    formElement.reset();
     setMessage(editing ? "Modification enregistrée." : "Élément créé.");
   }
 

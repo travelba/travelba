@@ -13,9 +13,10 @@ export function QuotesManager({ initialQuotes, customers }: { initialQuotes: Quo
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formElement = event.currentTarget;
     setPending(true);
     setMessage(null);
-    const form = new FormData(event.currentTarget);
+    const form = new FormData(formElement);
     const response = await fetch("/api/admin/operations/quotes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -31,7 +32,7 @@ export function QuotesManager({ initialQuotes, customers }: { initialQuotes: Quo
     setPending(false);
     if (!response.ok) return setMessage(data.error || "Création impossible");
     setQuotes((rows) => [data.item, ...rows]);
-    event.currentTarget.reset();
+    formElement.reset();
     setMessage("Devis créé.");
   }
 

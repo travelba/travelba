@@ -69,8 +69,9 @@ export function QuoteEditor({ initialQuote, initialLines }: { initialQuote: Quot
 
   async function saveLine(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formElement = event.currentTarget;
     setPending(true);
-    const form = new FormData(event.currentTarget);
+    const form = new FormData(formElement);
     const payload = {
       ...(editingLine ? { id: editingLine.id } : {}),
       quote_id: quote.id,
@@ -89,7 +90,7 @@ export function QuoteEditor({ initialQuote, initialLines }: { initialQuote: Quot
       const saved = result.item as Line;
       setLines((rows) => editingLine ? rows.map((row) => row.id === saved.id ? saved : row) : [...rows, saved]);
       setEditingLine(null);
-      event.currentTarget.reset();
+      formElement.reset();
       setMessage("Ligne enregistrée.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ligne impossible");

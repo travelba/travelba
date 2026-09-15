@@ -19,14 +19,15 @@ export function TeamManager({ initialStaff, canAdmin }: { initialStaff: Staff[];
 
   async function invite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formElement = event.currentTarget;
     setPending(true);
-    const form = new FormData(event.currentTarget);
+    const form = new FormData(formElement);
     const response = await fetch("/api/admin/team", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ full_name: form.get("full_name"), email: form.get("email"), role: form.get("role") }) });
     const data = await response.json().catch(() => ({}));
     setPending(false);
     if (!response.ok) return setMessage(data.error || "Invitation impossible");
     setStaff((rows) => [...rows.filter((row) => row.id !== data.staff.id), data.staff]);
-    event.currentTarget.reset();
+    formElement.reset();
     setMessage("Invitation envoyée.");
   }
 
