@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+
+<html lang="fr"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/><title>Aura Voyage</title><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Plus+Jakarta+Sans:wght@600;700&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { colors: { "primary-fixed-dim": "#bec6e0", "error-container": "#ffdad6", "surface": "#f7f9fb", "on-tertiary-fixed-variant": "#005236", "tertiary-fixed-dim": "#4edea3", "tertiary-fixed": "#6ffbbe", "inverse-surface": "#2d3133", "surface-container-low": "#f2f4f6", "surface-bright": "#f7f9fb", "on-background": "#191c1e", "outline": "#76777d", "on-primary-fixed-variant": "#3f465c", "inverse-on-surface": "#eff1f3", "on-error": "#ffffff", "on-secondary-container": "#00476e", "on-error-container": "#93000a", "primary-container": "#131b2e", "secondary-fixed": "#cce5ff", "inverse-primary": "#bec6e0", "surface-container": "#eceef0", "on-secondary-fixed-variant": "#004b73", "surface-container-highest": "#e0e3e5", "on-surface": "#191c1e", "surface-container-lowest": "#ffffff", "tertiary": "#000000", "on-surface-variant": "#45464d", "background": "#f7f9fb", "secondary-container": "#5bb8fe", "surface-dim": "#d8dadc", "secondary": "#006398", "on-primary": "#ffffff", "outline-variant": "#c6c6cd", "on-tertiary": "#ffffff", "tertiary-container": "#002113", "surface-variant": "#e0e3e5", "on-secondary": "#ffffff", "surface-tint": "#565e74", "primary-fixed": "#dae2fd", "on-tertiary-fixed": "#002113", "surface-container-high": "#e6e8ea", "on-primary-fixed": "#131b2e", "on-primary-container": "#7c839b", "secondary-fixed-dim": "#93ccff", "primary": "#000000", "on-secondary-fixed": "#001d31", "error": "#ba1a1a", "on-tertiary-container": "#009668" }, borderRadius: { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" }, spacing: { "space-md": "1rem", "space-lg": "1.5rem", "margin": "1rem", "gutter": "1rem", "space-xl": "2rem", "space-sm": "0.5rem", "space-xs": "0.25rem" }, fontFamily: { "body-sm": ["Inter"], "headline-sm": ["Plus Jakarta Sans"], "headline-lg": ["Plus Jakarta Sans"], "display-hero": ["Plus Jakarta Sans"], "label-numeric-lg": ["Plus Jakarta Sans"], "body-lg": ["Inter"], "body-md": ["Inter"], "headline-md": ["Plus Jakarta Sans"], "label-badge": ["Inter"], "display-hero-mobile": ["Plus Jakarta Sans"], "label-numeric-md": ["Plus Jakarta Sans"] }, fontSize: { "body-sm": ["12px", { "lineHeight": "16px", "fontWeight": "400" }], "headline-sm": ["16px", { "lineHeight": "24px", "fontWeight": "600" }], "headline-lg": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600" }], "display-hero": ["36px", { "lineHeight": "44px", "letterSpacing": "-0.02em", "fontWeight": "700" }], "label-numeric-lg": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "700" }], "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }], "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }], "headline-md": ["20px", { "lineHeight": "28px", "letterSpacing": "-0.005em", "fontWeight": "600" }], "label-badge": ["11px", { "lineHeight": "14px", "letterSpacing": "0.04em", "fontWeight": "600" }], "display-hero-mobile": ["28px", { "lineHeight": "34px", "letterSpacing": "-0.015em", "fontWeight": "700" }], "label-numeric-md": ["16px", { "lineHeight": "20px", "fontWeight": "600" }] } } } };</script><style>@layer base{html,body{width:100%;margin:0;padding:0;background-color:#f7f9fb;}body{overscroll-behavior-y:none;-webkit-tap-highlight-color:transparent;}.pb-safe{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 0.5rem);}.pt-safe{padding-top:env(safe-area-inset-top,0px);}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head><body class="bg-surface font-body-md text-body-md text-on-surface antialiased flex flex-col min-h-screen"><header class="fixed top-0 w-full z-50 pt-safe bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="h-16 px-margin flex items-center justify-between max-w-[480px] mx-auto w-full"><div class="flex items-center gap-space-sm"><img alt="Aura Voyage Logo" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/AEtjO1ViFXGfHDDiq_FwkC6VGFKaoWppRo3B3Xo51v7lmWm0-gwySP52WIpOjNJ0ch6M2PtgtiuX2O0ZSW5dLDpgSpNyzfx2_ZMXkcRDSnlureCF6DCoTjF4StOjTJiLGip0Ae2F18R_UQ_0OWIfM9LqwitkHUixJnHcrmWUwdPZoWE8XlGuPEAPH1aSa1qm83DesV6XGXEVEDBbY-xnTskDS7urOyo7mCj89dpZOUnujHiYq5AOJ8PXcPKSHUs"/><div class="flex flex-col"><span class="font-headline-sm text-headline-sm text-on-surface tracking-tight leading-none">Aura Voyage</span><span class="font-body-sm text-body-sm text-on-surface-variant truncate max-w-[140px]">Réservations</span></div></div><div class="flex items-center gap-space-sm"><button aria-label="Notifications" class="w-11 h-11 flex items-center justify-center rounded-full text-on-surface-variant hover:text-on-surface active:bg-surface-container transition-colors"><span class="material-symbols-outlined text-[22px]">notifications</span></button><div class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0"><img alt="Profile" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB2dVoZFc9-oVb8CK692YNgj6yTFS9AEjAQLBOvAQIMsutD_dAvtz4Hd-5mjrSvyV3JuqNxRlT8FuScse6xabakXawOdrcGyuZkUvBaDhDQLje8_A0REuPdo1ZalgzIaOKwjrJjaDZPMWeueE4IhBgVFDZGk-wfTjaEuYmNpb5ZaDIRzJpQueHfmyo3uCfp8KQL9hzjb3FFv3spUuFkjN0cbA9oyNmal4UXraPHdsTqYdOoww8hCLX6"/></div></div></div></header><main class="flex-1 flex flex-col w-full max-w-[480px] mx-auto px-margin pt-16 pb-24 bg-surface relative"><div class="flex flex-col w-full pb-6 space-y-5">
+<!-- Concierge Banner Shortcut -->
+<div class="w-full bg-primary-container text-on-primary-container rounded-xl p-4 shadow-sm relative overflow-hidden flex items-center justify-between">
+<div class="relative z-10 flex items-center space-x-3">
+<div class="w-10 h-10 rounded-full bg-secondary text-on-secondary flex items-center justify-center font-headline-sm text-headline-sm shadow-sm">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">support_agent</span>
+</div>
+<div>
+<p class="font-headline-sm text-headline-sm text-surface-container-lowest leading-tight">Maxime de Saint-Germain</p>
+<p class="font-body-sm text-body-sm text-primary-fixed-dim">Votre majordome voyage dédié (24/7)</p>
+</div>
+</div>
+<button class="relative z-10 px-3.5 py-1.5 bg-secondary text-on-secondary font-label-badge text-label-badge rounded-full shadow hover:bg-secondary-container hover:text-on-secondary-container transition-all active:scale-95 flex items-center space-x-1" id="btn-concierge">
+<span class="material-symbols-outlined text-[16px]">chat</span>
+<span>Contacter</span>
+</button>
+<div class="absolute -right-6 -bottom-6 w-24 h-24 bg-secondary/15 rounded-full blur-xl pointer-events-none"></div>
+</div>
+<!-- Segmented Control (Tabs) -->
+<div class="w-full bg-surface-container-high p-1 rounded-full flex relative select-none">
+<div class="absolute top-1 left-1 bottom-1 w-[calc(50%-4px)] bg-surface-container-lowest rounded-full shadow-sm transition-all duration-300 ease-out" id="tab-indicator"></div>
+<button class="relative z-10 flex-1 py-2 text-center font-headline-sm text-headline-sm text-on-surface transition-colors flex items-center justify-center space-x-2" id="tab-btn-upcoming">
+<span>À venir</span>
+<span class="px-2 py-0.5 rounded-full bg-primary text-on-primary font-label-badge text-label-badge">2</span>
+</button>
+<button class="relative z-10 flex-1 py-2 text-center font-body-md text-body-md text-on-surface-variant transition-colors flex items-center justify-center space-x-2" id="tab-btn-past">
+<span>Passées</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container text-on-surface-variant font-label-badge text-label-badge">3</span>
+</button>
+</div>
+<!-- Quick Category Filter Pills -->
+<div class="flex items-center space-x-2 overflow-x-auto py-1 -mx-margin px-margin no-scrollbar">
+<button class="filter-pill active px-4 py-1.5 rounded-full bg-primary text-on-primary font-body-sm text-body-sm whitespace-nowrap shadow-sm transition-all active:scale-95 flex items-center space-x-1.5" data-filter="all">
+<span class="material-symbols-outlined text-[16px]">view_agenda</span>
+<span>Tout afficher</span>
+</button>
+<button class="filter-pill px-4 py-1.5 rounded-full bg-surface-container-lowest text-on-surface-variant font-body-sm text-body-sm whitespace-nowrap shadow-sm transition-all active:scale-95 flex items-center space-x-1.5" data-filter="flights">
+<span class="material-symbols-outlined text-[16px]">flight</span>
+<span>Vols</span>
+</button>
+<button class="filter-pill px-4 py-1.5 rounded-full bg-surface-container-lowest text-on-surface-variant font-body-sm text-body-sm whitespace-nowrap shadow-sm transition-all active:scale-95 flex items-center space-x-1.5" data-filter="hotels">
+<span class="material-symbols-outlined text-[16px]">hotel</span>
+<span>Hôtels &amp; Ryokans</span>
+</button>
+<button class="filter-pill px-4 py-1.5 rounded-full bg-surface-container-lowest text-on-surface-variant font-body-sm text-body-sm whitespace-nowrap shadow-sm transition-all active:scale-95 flex items-center space-x-1.5" data-filter="activities">
+<span class="material-symbols-outlined text-[16px]">kayaking</span>
+<span>Expéditions</span>
+</button>
+</div>
+<!-- TAB VIEW: UPCOMING (Active) -->
+<div class="flex flex-col space-y-5" id="view-upcoming">
+<!-- Card 1: Kyoto & Tokyo -->
+<div class="bg-surface-container-lowest rounded-xl shadow-md overflow-hidden transition-all duration-200" data-category="flights hotels">
+<div class="relative w-full h-44 bg-cover bg-center" data-alt="Traditional serene wooden ryokan surrounded by fiery autumn maple leaves in Kyoto, Japan, with soft morning mist and authentic lantern light reflecting off tranquil waters in a cinematic luxury aesthetic." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBoiC3cF11jG8_MmMibe-WGd9On4X6fLeFYti57wFxCeG4o8rrfVjcXAr4heKIbyJxfAc9RXCC8gIu7WpW-EUp__BJTE1FX6nvsZWfg29_UpyZzGptGJ0deIqkY7SHKnxKdNIJ6-aHxnHs2vxAXpBWHQXohXKsFBblmtiv9r2Nrsb4Edjg5upIGtp8yMaTEdjutV_7qoLErS4oO236h37GpNoFLkjAtIgN2ANQk_fWH-JlGosIc9QS9')">
+<div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent"></div>
+<div class="absolute top-3 left-3">
+<span class="px-2.5 py-1 rounded-full bg-tertiary-fixed text-on-tertiary-fixed font-label-badge text-label-badge shadow-sm inline-flex items-center space-x-1">
+<span class="material-symbols-outlined text-[14px]">check_circle</span>
+<span>Confirmé &amp; Payé</span>
+</span>
+</div>
+<div class="absolute top-3 right-3">
+<span class="px-2.5 py-1 rounded-full bg-surface-container-lowest/90 backdrop-blur-md text-on-surface font-label-badge text-label-badge shadow-sm">
+            Dans 28 jours
+          </span>
+</div>
+<div class="absolute bottom-3 left-3 right-3 text-surface-container-lowest">
+<p class="font-label-badge text-label-badge tracking-wider text-secondary-fixed uppercase">Japon Grand Tour</p>
+<h2 class="font-headline-md text-headline-md text-surface-container-lowest drop-shadow-sm">Kyoto &amp; Tokyo</h2>
+<p class="font-body-sm text-body-sm text-surface-container-low flex items-center space-x-1 mt-0.5">
+<span class="material-symbols-outlined text-[16px]">calendar_month</span>
+<span>14 – 24 Octobre 2025 (10 nuits)</span>
+</p>
+</div>
+</div>
+<!-- Segment details -->
+<div class="p-4 space-y-3.5">
+<div class="flex items-start space-x-3 bg-surface-container-low p-3 rounded-lg">
+<div class="w-8 h-8 rounded-full bg-surface-container-highest text-primary flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[18px]">flight_takeoff</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center justify-between">
+<p class="font-headline-sm text-headline-sm text-on-surface truncate">Air France Business</p>
+<span class="font-label-badge text-label-badge text-secondary font-bold">AF272 • B777</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant truncate">Paris (CDG) ➔ Tokyo Haneda (HND)</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">Sièges 03A &amp; 03B • Salon réservé</p>
+</div>
+</div>
+<div class="flex items-start space-x-3 bg-surface-container-low p-3 rounded-lg">
+<div class="w-8 h-8 rounded-full bg-surface-container-highest text-primary flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[18px]">bed</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center justify-between">
+<p class="font-headline-sm text-headline-sm text-on-surface truncate">Suite Ryokan Onsen &amp; Aman</p>
+<span class="font-label-badge text-label-badge text-on-surface-variant">4 + 6 Nuits</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant truncate">Kyoto Gion &amp; Otemachi Tokyo</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">Dîner Kaiseki inclus • Onsen privé</p>
+</div>
+</div>
+<!-- Action bar -->
+<div class="pt-1 flex items-center space-x-2">
+<button class="flex-1 py-2.5 px-3 rounded-full bg-primary text-on-primary font-headline-sm text-headline-sm shadow hover:opacity-90 active:scale-95 transition-all flex items-center justify-center space-x-1.5" onclick="downloadVoucher('Kyoto-Tokyo')">
+<span class="material-symbols-outlined text-[18px]">download</span>
+<span>Vouchers (PDF)</span>
+</button>
+<button aria-label="Partager l'itinéraire" class="w-11 h-11 rounded-full bg-surface-container text-on-surface flex items-center justify-center active:scale-95 transition-all" onclick="shareTrip('Kyoto')">
+<span class="material-symbols-outlined text-[20px]">share</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Card 2: Fjords & Tromsø -->
+<div class="bg-surface-container-lowest rounded-xl shadow-md overflow-hidden transition-all duration-200" data-category="hotels activities">
+<div class="relative w-full h-44 bg-cover bg-center" data-alt="Breathtaking polar landscape in Tromso Norway, deep blue icy fjords under vivid emerald green northern lights aurora borealis with a contemporary luxury glass dome cabin warm interior lighting." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuC8zm23YFSEHUGIsG757XYr40zaxg7Rt0hRM2U4NEnyOXaBhtV6XOm3629QYeb1hIAn3S_HkZtxJzM9lDvVZ0V5RxmqSe7-9HNlOdC6saF209Z-zHei_3qhJMtCo0eSABcMSTn07qqIZVG9YiYS8N1QZJlUH7AHVrwz53v7038RJTPYCoIC9YfFjG0B5Mat9hhomz_lmqn8RZnS1HyJ9I_qo0dfNJVGF8r3l9YPv4ocIbRmbax7U5bz')">
+<div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent"></div>
+<div class="absolute top-3 left-3">
+<span class="px-2.5 py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed-variant font-label-badge text-label-badge shadow-sm inline-flex items-center space-x-1">
+<span class="material-symbols-outlined text-[14px]">pending</span>
+<span>Acompte versé</span>
+</span>
+</div>
+<div class="absolute top-3 right-3">
+<span class="px-2.5 py-1 rounded-full bg-error-container text-on-error-container font-label-badge text-label-badge shadow-sm">
+            Solde : 850 €
+          </span>
+</div>
+<div class="absolute bottom-3 left-3 right-3 text-surface-container-lowest">
+<p class="font-label-badge text-label-badge tracking-wider text-secondary-fixed uppercase">Aurores Boréales</p>
+<h2 class="font-headline-md text-headline-md text-surface-container-lowest drop-shadow-sm">Fjords &amp; Tromsø, Norvège</h2>
+<p class="font-body-sm text-body-sm text-surface-container-low flex items-center space-x-1 mt-0.5">
+<span class="material-symbols-outlined text-[16px]">calendar_month</span>
+<span>5 – 10 Décembre 2025 (5 nuits)</span>
+</p>
+</div>
+</div>
+<!-- Segment details -->
+<div class="p-4 space-y-3.5">
+<div class="flex items-start space-x-3 bg-surface-container-low p-3 rounded-lg">
+<div class="w-8 h-8 rounded-full bg-surface-container-highest text-primary flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[18px]">cottage</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center justify-between">
+<p class="font-headline-sm text-headline-sm text-on-surface truncate">Aurora Glass Igloo Lodge</p>
+<span class="font-label-badge text-label-badge text-on-surface-variant">5 Nuits</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant truncate">Tromsø Wild Valley</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">Observation céleste • Sauna arctique</p>
+</div>
+</div>
+<div class="flex items-start space-x-3 bg-surface-container-low p-3 rounded-lg">
+<div class="w-8 h-8 rounded-full bg-surface-container-highest text-primary flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[18px]">snowmobile</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center justify-between">
+<p class="font-headline-sm text-headline-sm text-on-surface truncate">Safari Traîneau &amp; Fjords</p>
+<span class="font-label-badge text-label-badge text-secondary font-bold">Privatif</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant truncate">Excursion avec guide biologiste marin</p>
+</div>
+</div>
+<!-- Payment Reminder Alert Box -->
+<div class="p-3 bg-secondary-fixed/30 rounded-lg flex items-center justify-between">
+<div class="flex items-center space-x-2">
+<span class="material-symbols-outlined text-secondary text-[20px]">info</span>
+<p class="font-body-sm text-body-sm text-on-secondary-container">Échéance solde : 15 Novembre 2025</p>
+</div>
+<button class="px-3 py-1 bg-secondary text-on-secondary font-label-badge text-label-badge rounded-full active:scale-95 transition-transform" onclick="settleBalance()">
+            Régler 850 €
+          </button>
+</div>
+<!-- Action bar -->
+<div class="pt-1 flex items-center space-x-2">
+<button class="flex-1 py-2.5 px-3 rounded-full bg-surface-container text-on-surface font-headline-sm text-headline-sm hover:bg-surface-container-high active:scale-95 transition-all flex items-center justify-center space-x-1.5" onclick="openDetails('Tromso')">
+<span class="material-symbols-outlined text-[18px]">visibility</span>
+<span>Détails &amp; Programme</span>
+</button>
+<button aria-label="Partager l'escapade" class="w-11 h-11 rounded-full bg-surface-container text-on-surface flex items-center justify-center active:scale-95 transition-all" onclick="shareTrip('Tromso')">
+<span class="material-symbols-outlined text-[20px]">share</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- TAB VIEW: PAST (Hidden by default) -->
+<div class="hidden flex flex-col space-y-4" id="view-past">
+<!-- Safari Serengeti Card -->
+<div class="bg-surface-container-lowest rounded-xl shadow-md overflow-hidden" data-category="activities hotels">
+<div class="relative w-full h-36 bg-cover bg-center" data-alt="Serengeti vast golden savannah plains at sunset with acacia trees in silhouette and a luxury tented camp terrace viewing wild elephants in Tanzania warm golden light." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDDJzEiRGRFRmDYveQt_jcmhgR290UgmlmcJA-foaKg4hD9xoEJzNP6ZlkTnczky9aTj2bhX6vA6QuEXqiGZlXEMTBQNhHbOrm1YauPHgMhLqBKBT2fA8F_xXjWb6WZJaOKh1s7-s_eArZWo4k9K42ID3qdAHeJ-JbFAlTzCslCDF7kM4GzHUpwyTyFLJr-vN78bb5N1QO4jEJtu05Ya-wraNfo4x9n2I-pmNxDRGjz9eQIGeCCs6f2')">
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent"></div>
+<div class="absolute top-3 left-3">
+<span class="px-2.5 py-1 rounded-full bg-surface-container-highest/90 backdrop-blur-md text-on-surface font-label-badge text-label-badge shadow-sm inline-flex items-center space-x-1">
+<span class="material-symbols-outlined text-[14px]">done_all</span>
+<span>Voyage Terminé</span>
+</span>
+</div>
+<div class="absolute bottom-2.5 left-3 right-3 text-surface-container-lowest">
+<h3 class="font-headline-md text-headline-md text-surface-container-lowest">Safari Serengeti &amp; Ngorongoro</h3>
+<p class="font-body-sm text-body-sm text-surface-container-low">Tanzanie • 12 – 22 Février 2025</p>
+</div>
+</div>
+<div class="p-4 space-y-3">
+<div class="flex items-center justify-between text-on-surface-variant font-body-sm text-body-sm">
+<span>Singita Tented Reserve (7 nuits)</span>
+<span class="font-label-badge text-label-badge text-on-surface font-semibold">Réf. #AV-89211</span>
+</div>
+<div class="pt-2 flex items-center justify-between border-t-0">
+<button class="w-full py-2 px-3 rounded-full bg-surface-container-low hover:bg-surface-container text-on-surface font-headline-sm text-headline-sm flex items-center justify-center space-x-2 transition-all active:scale-98" onclick="openInvoice('AV-89211')">
+<span class="material-symbols-outlined text-[18px] text-secondary">receipt_long</span>
+<span>Revoir le récapitulatif &amp; factures</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Past Card 2 (Quick Summary) -->
+<div class="bg-surface-container-lowest rounded-xl shadow-sm p-4 flex items-center space-x-3.5" data-category="hotels">
+<div class="w-14 h-14 rounded-lg bg-cover bg-center flex-shrink-0" data-alt="Amalfi coast colorful clifftop village Positano with deep turquoise sea under bright Mediterranean summer sunshine luxury yacht sailing." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBo3r8XekE6ZxhHUi1AZ2phdbgsYfHYLnFu0sj64XHqRHH7bl3L6YuaksWxCR6GIhHlsc3ZG4MZjQ0u4CBxvlvgIN6aB7icuPJ71FVv8mYWsD3O_Tfm3l0gkYJ6wit2B7CHIIEdnzASUp6S4PShpckZ7qykVMf-dhJS7nL1ZSV5xBBB-mG2h5Hlh_foq_vkM9Z1ByG1o9BWwkhyHMEfP4mc3McgUnETlDnV83hgv4WO7IPCuTuhfJxO')"></div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center justify-between">
+<p class="font-headline-sm text-headline-sm text-on-surface truncate">Côte Amalfitaine &amp; Capri</p>
+<span class="font-label-badge text-label-badge text-on-surface-variant">Sept. 2024</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant truncate">Belmond Hotel Caruso • 6 Nuits</p>
+<button class="mt-1 font-body-sm text-body-sm text-secondary font-medium hover:underline inline-flex items-center space-x-1" onclick="openInvoice('AV-77102')">
+<span>Télécharger facture</span>
+<span class="material-symbols-outlined text-[14px]">chevron_right</span>
+</button>
+</div>
+</div>
+<!-- Past Card 3 (Quick Summary) -->
+<div class="bg-surface-container-lowest rounded-xl shadow-sm p-4 flex items-center space-x-3.5" data-category="flights hotels">
+<div class="w-14 h-14 rounded-lg bg-cover bg-center flex-shrink-0" data-alt="New York Manhattan luxury penthouse skyline view over Central Park at twilight with warm amber interior glow." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBtAQlvePiiWzXe1JEyw5p-W9EcG38e7_qKE89ajgwKf4xj7BCd6lBtw0rIje4u2roZNTQQKgcwaFTujqZMOx26uzsQjrGFHoHhdgBjJmgSgu7gFXC2CPfwTIFU-SatbPIYUQECDvfRcnC2zSxQnAAFwQWsu6bs2F-dRtl7RppwaDUD2TrOdhOXstJfG2fXrXgee9ax2TG7scJRsV6G0fCa4nOs39Fq-zdZgkDEO_Ut7yxmQSch9OFV')"></div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center justify-between">
+<p class="font-headline-sm text-headline-sm text-on-surface truncate">New York Suite &amp; Broadway</p>
+<span class="font-label-badge text-label-badge text-on-surface-variant">Mai 2024</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant truncate">The Mark Hotel • Vol AF La Première</p>
+<button class="mt-1 font-body-sm text-body-sm text-secondary font-medium hover:underline inline-flex items-center space-x-1" onclick="openInvoice('AV-65409')">
+<span>Télécharger facture</span>
+<span class="material-symbols-outlined text-[14px]">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Interactive Toast Notification Feedback -->
+<div class="fixed bottom-20 left-1/2 -translate-x-1/2 bg-primary-container text-on-primary-container px-4 py-2.5 rounded-full shadow-xl font-body-sm text-body-sm flex items-center space-x-2 transition-all duration-300 opacity-0 pointer-events-none z-50" id="action-toast">
+<span class="material-symbols-outlined text-tertiary-fixed-dim text-[18px]">check_circle</span>
+<span id="toast-text">Téléchargement initié...</span>
+</div>
+</div>
+<script>
+  (function() {
+    const tabUpcoming = document.getElementById('tab-btn-upcoming');
+    const tabPast = document.getElementById('tab-btn-past');
+    const indicator = document.getElementById('tab-indicator');
+    const viewUpcoming = document.getElementById('view-upcoming');
+    const viewPast = document.getElementById('view-past');
+    const toast = document.getElementById('action-toast');
+    const toastText = document.getElementById('toast-text');
+    const filterPills = document.querySelectorAll('.filter-pill');
+
+    function showToast(msg) {
+      toastText.textContent = msg;
+      toast.classList.remove('opacity-0', 'pointer-events-none');
+      toast.classList.add('opacity-100');
+      setTimeout(() => {
+        toast.classList.remove('opacity-100');
+        toast.classList.add('opacity-0', 'pointer-events-none');
+      }, 2600);
+    }
+
+    tabUpcoming.addEventListener('click', () => {
+      indicator.style.transform = 'translateX(0%)';
+      tabUpcoming.classList.add('text-on-surface', 'font-headline-sm');
+      tabUpcoming.classList.remove('text-on-surface-variant', 'font-body-md');
+      tabPast.classList.remove('text-on-surface', 'font-headline-sm');
+      tabPast.classList.add('text-on-surface-variant', 'font-body-md');
+      viewUpcoming.classList.remove('hidden');
+      viewPast.classList.add('hidden');
+    });
+
+    tabPast.addEventListener('click', () => {
+      indicator.style.transform = 'translateX(100%)';
+      tabPast.classList.add('text-on-surface', 'font-headline-sm');
+      tabPast.classList.remove('text-on-surface-variant', 'font-body-md');
+      tabUpcoming.classList.remove('text-on-surface', 'font-headline-sm');
+      tabUpcoming.classList.add('text-on-surface-variant', 'font-body-md');
+      viewPast.classList.remove('hidden');
+      viewUpcoming.classList.add('hidden');
+    });
+
+    filterPills.forEach(pill => {
+      pill.addEventListener('click', () => {
+        filterPills.forEach(p => {
+          p.classList.remove('bg-primary', 'text-on-primary', 'active');
+          p.classList.add('bg-surface-container-lowest', 'text-on-surface-variant');
+        });
+        pill.classList.add('bg-primary', 'text-on-primary', 'active');
+        pill.classList.remove('bg-surface-container-lowest', 'text-on-surface-variant');
+
+        const filter = pill.getAttribute('data-filter');
+        const cards = document.querySelectorAll('#view-upcoming > div, #view-past > div');
+        cards.forEach(card => {
+          const cats = card.getAttribute('data-category') || '';
+          if (filter === 'all' || cats.includes(filter)) {
+            card.style.display = '';
+          } else {
+            card.style.display = 'none';
+          }
+        });
+      });
+    });
+
+    document.getElementById('btn-concierge').addEventListener('click', () => {
+      showToast('Connexion à Maxime de Saint-Germain (WhatsApp direct)...');
+    });
+
+    window.downloadVoucher = function(name) {
+      showToast('Génération du carnet de voyage & vouchers en PDF...');
+    };
+
+    window.shareTrip = function(destination) {
+      if (navigator.share) {
+        navigator.share({
+          title: 'Mon Itinéraire Aura Voyage',
+          text: 'Découvrez mon prochain séjour : ' + destination,
+          url: window.location.href
+        }).catch(() => {});
+      } else {
+        showToast('Lien du voyage copié dans le presse-papier !');
+      }
+    };
+
+    window.settleBalance = function() {
+      showToast('Ouverture du portail bancaire sécurisé (850,00 €)...');
+    };
+
+    window.openDetails = function(dest) {
+      showToast('Chargement de la feuille de route ' + dest + '...');
+    };
+
+    window.openInvoice = function(ref) {
+      showToast('Facture ' + ref + ' prête pour téléchargement.');
+    };
+  })();
+</script></main><nav class="fixed bottom-0 w-full z-50 pb-safe bg-surface/80 backdrop-blur-xl shadow-[0_-4px_16px_rgba(0,0,0,0.03)]" data-active-classes="text-primary font-bold"><div class="max-w-[480px] mx-auto grid grid-cols-4 items-center h-16 px-space-xs"><a class="flex flex-col items-center justify-center h-full min-h-[44px] min-w-[44px] text-on-surface-variant transition-transform active:scale-95 group" data-path="accueil" href="#"><span class="material-symbols-outlined text-[24px] mb-0.5">home</span><span class="font-body-sm text-body-sm">Accueil</span></a><a class="flex flex-col items-center justify-center h-full min-h-[44px] min-w-[44px] text-on-surface-variant transition-transform active:scale-95 group" data-path="reservations" href="#"><span class="material-symbols-outlined text-[24px] mb-0.5">confirmation_number</span><span class="font-body-sm text-body-sm">Réservations</span></a><a class="flex flex-col items-center justify-center h-full min-h-[44px] min-w-[44px] text-on-surface-variant transition-transform active:scale-95 relative group" data-path="transactions" href="#"><span class="material-symbols-outlined text-[24px] mb-0.5">sync_alt</span><span class="font-body-sm text-body-sm">Transactions</span><span class="absolute top-1 right-2.5 px-1.5 py-0.2 bg-primary text-on-primary font-label-badge text-label-badge rounded-full">PRO</span></a><a class="flex flex-col items-center justify-center h-full min-h-[44px] min-w-[44px] text-on-surface-variant transition-transform active:scale-95 group" data-path="compte" href="#"><span class="material-symbols-outlined text-[24px] mb-0.5">manage_accounts</span><span class="font-body-sm text-body-sm">Compte</span></a></div></nav></body></html>

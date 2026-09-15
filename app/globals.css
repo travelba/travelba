@@ -34,9 +34,41 @@
   --admin-red: #e81932;
   --admin-sky: #dce6f5;
 
+  /* Travel Management Mobile App (Aura Voyage) tokens */
+  --aura-surface: #f7f9fb;
+  --aura-blue: #006398;
+  --aura-blue-soft: #cce5ff;
+  --aura-navy-card: #131b2e;
+  --aura-success: #009668;
+
   color: var(--foreground);
   background: var(--background);
   font-family: var(--font-admin-sans), var(--font-sans), system-ui, sans-serif;
+}
+
+/* Portail client — composition mobile Aura Voyage */
+.account-app {
+  --background: var(--aura-surface);
+  background: var(--aura-surface);
+}
+
+.account-app .font-display {
+  font-family: var(--font-admin-display), var(--font-display), system-ui,
+    sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.account-tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  border-top: 1px solid rgba(25, 28, 30, 0.06);
+  background: rgba(247, 249, 251, 0.92);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.03);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .admin-af .font-display {

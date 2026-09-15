@@ -1,0 +1,54 @@
+{
+  "projectId": "6064940909344830146",
+  "title": "Travel Management Mobile App",
+  "url": "https://stitch.withgoogle.com/projects/6064940909344830146",
+  "screens": [
+    {
+      "id": "99d8c4b4eccc400aba498eb1750c79dc",
+      "slug": "accueil",
+      "files": [
+        "screen.html",
+        "screenshot.png"
+      ]
+    },
+    {
+      "id": "8048df3a71424f3396218377c180c96a",
+      "slug": "reservations",
+      "files": [
+        "screen.html",
+        "screenshot.png"
+      ]
+    },
+    {
+      "id": "f247e3009cc94a9a84aa3b485a5994d6",
+      "slug": "transactions",
+      "files": [
+        "screen.html",
+        "screenshot.png"
+      ]
+    },
+    {
+      "id": "24e2bc94335143a787139e641892c66f",
+      "slug": "compte",
+      "files": [
+        "screen.html",
+        "screenshot.png"
+      ]
+    },
+    {
+      "id": "b762d020ec734fd5aefb54b4c4b617ad",
+      "slug": "logo",
+      "files": [
+        "screen.html",
+        "screenshot.png"
+      ]
+    },
+    {
+      "id": "531b402f00d5441ab9b0c1c59ff86e50",
+      "slug": "avatar-asset",
+      "files": [
+        "screenshot.jpg"
+      ]
+    }
+  ]
+}
