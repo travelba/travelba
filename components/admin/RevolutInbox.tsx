@@ -15,40 +15,56 @@ export function RevolutInbox({
   configured: boolean;
 }) {
   const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [pending, setPending] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ error: boolean; text: string } | null>(null);
 
-  async function sync() {
-    setBusy(true);
-    const res = await fetch("/api/admin/revolut", {
+  async function request(key: string, success: string, action: () => Promise<string | void>) {
+    setPending(key);
+    setMessage(null);
+    try {
+      const detail = await action();
+      setMessage({ error: false, text: detail || success });
+      router.refresh();
+    } catch (error) {
+      setMessage({
+        error: true,
+        text: error instanceof Error ? error.message : "Une erreur est survenue.",
+      });
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function post(url: string, body: Record<string, unknown>) {
+    const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "sync" }),
+      body: JSON.stringify(body),
     });
-    const json = await res.json();
-    setBusy(false);
-    setMessage(res.ok ? `Synchronisé (${json.fetched || 0} lus)` : json.error);
-    router.refresh();
+    const data = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(data?.error || `Erreur serveur (${response.status})`);
+    return data;
+  }
+
+  async function sync() {
+    await request("sync", "Synchronisation terminée.", async () => {
+      const data = await post("/api/admin/revolut", { action: "sync" });
+      return `Synchronisé (${data.fetched || 0} lus).`;
+    });
   }
 
   async function match(event: FormEvent<HTMLFormElement>, id: string) {
     event.preventDefault();
     const fd = new FormData(event.currentTarget);
-    await fetch(`/api/admin/revolut/${id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ customer_id: fd.get("customer_id") }),
+    await request(`match-${id}`, "Virement rapproché.", async () => {
+      await post(`/api/admin/revolut/${id}`, { customer_id: fd.get("customer_id") });
     });
-    router.refresh();
   }
 
   async function ignore(id: string) {
-    await fetch(`/api/admin/revolut/${id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "ignore" }),
+    await request(`ignore-${id}`, "Virement ignoré.", async () => {
+      await post(`/api/admin/revolut/${id}`, { action: "ignore" });
     });
-    router.refresh();
   }
 
   return (
@@ -66,10 +82,10 @@ export function RevolutInbox({
         <button
           type="button"
           onClick={sync}
-          disabled={busy || !configured}
+          disabled={pending !== null || !configured}
           className="admin-af-btn rounded-full px-4 py-2 text-sm"
         >
-          {busy ? "Sync…" : "Synchroniser Revolut"}
+          {pending === "sync" ? "Synchronisation…" : "Synchroniser Revolut"}
         </button>
         {!configured ? (
           <p className="text-sm text-muted">
@@ -77,7 +93,11 @@ export function RevolutInbox({
           </p>
         ) : null}
       </div>
-      {message ? <p className="text-sm text-muted">{message}</p> : null}
+      {message ? (
+        <p role={message.error ? "alert" : "status"} className={`text-sm ${message.error ? "text-accent" : "text-emerald-700"}`}>
+          {message.text}
+        </p>
+      ) : null}
       <ul className="admin-af-card divide-y divide-border rounded-3xl">
         {rows.map((r) => (
           <li key={r.id} className="px-5 py-4">
@@ -101,13 +121,16 @@ export function RevolutInbox({
                       </option>
                     ))}
                   </select>
-                  <button className="admin-af-btn rounded-full px-3 py-1 text-sm">Créditer</button>
+                  <button disabled={pending !== null} className="admin-af-btn rounded-full px-3 py-1 text-sm disabled:opacity-50">
+                    {pending === `match-${r.id}` ? "Crédit…" : "Créditer"}
+                  </button>
                   <button
                     type="button"
+                    disabled={pending !== null}
                     className="text-xs font-semibold text-muted"
                     onClick={() => ignore(r.id)}
                   >
-                    Ignorer
+                    {pending === `ignore-${r.id}` ? "Traitement…" : "Ignorer"}
                   </button>
                 </form>
               ) : null}

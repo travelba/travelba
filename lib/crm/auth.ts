@@ -52,6 +52,7 @@ export async function getStaffForUser(userId: string) {
     .from("crm_staff")
     .select("*")
     .eq("auth_user_id", userId)
+    .eq("active", true)
     .maybeSingle();
   return (data as CrmStaff | null) ?? null;
 }
@@ -62,6 +63,7 @@ export async function ensureStaff(user: User): Promise<CrmStaff | null> {
     .from("crm_staff")
     .select("*")
     .eq("auth_user_id", user.id)
+    .eq("active", true)
     .maybeSingle();
   return (existing as CrmStaff | null) ?? null;
 }

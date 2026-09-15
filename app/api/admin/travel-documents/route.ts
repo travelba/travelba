@@ -67,21 +67,68 @@ export async function POST(request: Request) {
   return NextResponse.json({ document: data });
 }
 
+export async function PATCH(request: Request) {
+  const auth = await requireStaff();
+  if (auth instanceof NextResponse) return auth;
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return jsonError("Corps de requête invalide");
+  }
+  const id = String(body?.id || "");
+  const customerId = String(body?.customer_id || "");
+  if (!id || !customerId) return jsonError("id et customer_id requis");
+  const patch: Record<string, unknown> = {};
+  for (const key of [
+    "companion_id",
+    "doc_type",
+    "number",
+    "issuing_country",
+    "issued_on",
+    "expires_on",
+  ]) {
+    if (key in body) patch[key] = body[key] || null;
+  }
+  if (!Object.keys(patch).length) return jsonError("Aucune modification");
+  if (patch.companion_id) {
+    const { data: companion } = await auth.supabase
+      .from("crm_travel_companions")
+      .select("id")
+      .eq("id", String(patch.companion_id))
+      .eq("customer_id", customerId)
+      .maybeSingle();
+    if (!companion) return jsonError("Le compagnon n’appartient pas à ce client.");
+  }
+  const { data, error } = await auth.supabase
+    .from("crm_travel_documents")
+    .update(patch)
+    .eq("id", id)
+    .eq("customer_id", customerId)
+    .select("*")
+    .single();
+  if (error) return jsonError(error.message, 400);
+  return NextResponse.json({ document: data });
+}
+
 export async function DELETE(request: Request) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
-  const id = new URL(request.url).searchParams.get("id");
+  const url = new URL(request.url);
+  const id = url.searchParams.get("id");
+  const customerId = url.searchParams.get("customerId");
   if (!id) return jsonError("id requis");
-  const { data: document } = await auth.supabase
+  let lookup = auth.supabase
     .from("crm_travel_documents")
     .select("storage_path")
-    .eq("id", id)
-    .maybeSingle();
+    .eq("id", id);
+  if (customerId) lookup = lookup.eq("customer_id", customerId);
+  const { data: document } = await lookup.maybeSingle();
   if (!document) return jsonError("Document introuvable", 404);
-  const { error } = await auth.supabase
+  let deletion = auth.supabase
     .from("crm_travel_documents")
     .delete()
     .eq("id", id);
+  if (customerId) deletion = deletion.eq("customer_id", customerId);
+  const { error } = await deletion;
   if (error) return jsonError(error.message, 400);
   if (document.storage_path) {
     await deleteCrmFile(document.storage_path).catch(() => undefined);

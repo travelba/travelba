@@ -1,4 +1,47 @@
 import { NextResponse } from "next/server";
+import { getStripe } from "@/lib/crm/stripe";
+import { createServiceClient } from "@/lib/supabase/admin";
+
+export async function POST(request: Request) {
+  const stripe = getStripe();
+  const secret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
+  if (!stripe || !secret) {
+    return NextResponse.json({ error: "Webhook Stripe non configuré" }, { status: 503 });
+  }
+  const signature = request.headers.get("stripe-signature");
+  if (!signature) return NextResponse.json({ error: "Signature manquante" }, { status: 400 });
+
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(await request.text(), signature, secret);
+  } catch {
+    return NextResponse.json({ error: "Signature invalide" }, { status: 400 });
+  }
+
+  if (event.type === "payment_intent.succeeded") {
+    const payment = event.data.object;
+    const scheduleId = payment.metadata.crm_schedule_id;
+    if (scheduleId && payment.amount_received > 0) {
+      const supabase = createServiceClient();
+      const { error } = await supabase.rpc("crm_record_schedule_payment", {
+        p_schedule_id: scheduleId,
+        p_external_id: payment.id,
+        p_amount: payment.amount_received / 100,
+        p_occurred_on: new Date(payment.created * 1000).toISOString().slice(0, 10),
+      });
+      if (error) {
+        console.error("Stripe payment reconciliation failed", {
+          eventId: event.id,
+          paymentIntentId: payment.id,
+          error: error.message,
+        });
+        return NextResponse.json({ error: "Rapprochement impossible" }, { status: 500 });
+      }
+    }
+  }
+  return NextResponse.json({ received: true });
+}
+import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { getStripe } from "@/lib/crm/stripe";

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent } from "react";
+import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CrmCustomer, CrmTransaction } from "@/lib/crm/types";
 import { TX_KIND_LABELS } from "@/lib/crm/types";
@@ -14,18 +14,34 @@ export function Ledger({
   customers: CrmCustomer[];
 }) {
   const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [notice, setNotice] = useState<{ error: boolean; text: string } | null>(null);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     const body = Object.fromEntries(new FormData(form).entries());
-    await fetch("/api/admin/transactions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    form.reset();
-    router.refresh();
+    setPending(true);
+    setNotice(null);
+    try {
+      const response = await fetch("/api/admin/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error || `Erreur serveur (${response.status})`);
+      form.reset();
+      setNotice({ error: false, text: "Écriture enregistrée." });
+      router.refresh();
+    } catch (error) {
+      setNotice({
+        error: true,
+        text: error instanceof Error ? error.message : "Une erreur est survenue.",
+      });
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -51,9 +67,14 @@ export function Ledger({
         </select>
         <input name="amount" type="number" step="0.01" required placeholder="Montant" className="rounded-xl border border-border px-3 py-2" />
         <input name="label" placeholder="Libellé" className="rounded-xl border border-border px-3 py-2 sm:col-span-2" />
-        <button className="admin-af-btn rounded-full px-4 py-2 text-sm sm:col-span-3">
-          Saisir une écriture
+        <button disabled={pending} className="admin-af-btn rounded-full px-4 py-2 text-sm sm:col-span-3 disabled:opacity-50">
+          {pending ? "Enregistrement…" : "Saisir une écriture"}
         </button>
+        {notice ? (
+          <p role={notice.error ? "alert" : "status"} className={`text-sm sm:col-span-3 ${notice.error ? "text-accent" : "text-emerald-700"}`}>
+            {notice.text}
+          </p>
+        ) : null}
       </form>
       <ul className="admin-af-card divide-y divide-border rounded-3xl">
         {transactions.map((t) => (

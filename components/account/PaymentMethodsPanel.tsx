@@ -14,12 +14,15 @@ function SetupForm() {
   const elements = useElements();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     if (!stripe || !elements) return;
     setLoading(true);
+    setError(null);
+    setSuccess(null);
     const { error: confirmError } = await stripe.confirmSetup({
       elements,
       redirect: "if_required",
@@ -32,6 +35,7 @@ function SetupForm() {
       setError(confirmError.message || "Erreur Stripe");
       return;
     }
+    setSuccess("Carte enregistrée auprès de Stripe.");
     router.refresh();
   }
 
@@ -39,6 +43,7 @@ function SetupForm() {
     <form onSubmit={onSubmit} className="space-y-4">
       <PaymentElement />
       {error ? <p className="text-sm text-accent">{error}</p> : null}
+      {success ? <p className="text-sm text-emerald-700">{success}</p> : null}
       <button className="admin-af-btn rounded-full px-4 py-2 text-sm" disabled={loading}>
         {loading ? "Enregistrement…" : "Enregistrer la carte"}
       </button>
@@ -57,51 +62,71 @@ export function PaymentMethodsPanel({
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [loadingSetup, setLoadingSetup] = useState(false);
   const [operationError, setOperationError] = useState<string | null>(null);
+  const [operationSuccess, setOperationSuccess] = useState<string | null>(null);
 
   async function startSetup() {
     setLoadingSetup(true);
     setOperationError(null);
-    const response = await fetch("/api/client/stripe/setup-intent", {
-      method: "POST",
-    });
-    const payload = (await response.json().catch(() => ({}))) as {
-      clientSecret?: string;
-      error?: string;
-    };
-    setLoadingSetup(false);
-    if (!response.ok || !payload.clientSecret) {
-      setOperationError(payload.error || "Impossible de préparer l’ajout de carte.");
-      return;
+    setOperationSuccess(null);
+    try {
+      const response = await fetch("/api/client/stripe/setup-intent", {
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        clientSecret?: string;
+        error?: string;
+      };
+      if (!response.ok || !payload.clientSecret) {
+        setOperationError(payload.error || "Impossible de préparer l’ajout de carte.");
+        return;
+      }
+      setClientSecret(payload.clientSecret);
+    } catch {
+      setOperationError("Le service de paiement est momentanément indisponible.");
+    } finally {
+      setLoadingSetup(false);
     }
-    setClientSecret(payload.clientSecret);
   }
 
   async function setDefault(id: string) {
     setOperationError(null);
-    const response = await fetch("/api/client/payment-methods", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    if (!response.ok) {
+    setOperationSuccess(null);
+    try {
+      const response = await fetch("/api/client/payment-methods", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
       const payload = (await response.json().catch(() => ({}))) as { error?: string };
-      setOperationError(payload.error || "Impossible de modifier la carte.");
-      return;
+      if (!response.ok) {
+        setOperationError(payload.error || "Impossible de modifier la carte.");
+        return;
+      }
+      setOperationSuccess("Carte définie par défaut.");
+      router.refresh();
+    } catch {
+      setOperationError("Le service de paiement est momentanément indisponible.");
     }
-    router.refresh();
   }
 
   async function remove(id: string) {
+    if (!window.confirm("Retirer cette carte enregistrée ?")) return;
     setOperationError(null);
-    const response = await fetch(`/api/client/payment-methods?id=${id}`, {
-      method: "DELETE",
-    });
-    if (!response.ok) {
+    setOperationSuccess(null);
+    try {
+      const response = await fetch(`/api/client/payment-methods?id=${id}`, {
+        method: "DELETE",
+      });
       const payload = (await response.json().catch(() => ({}))) as { error?: string };
-      setOperationError(payload.error || "Impossible de retirer la carte.");
-      return;
+      if (!response.ok) {
+        setOperationError(payload.error || "Impossible de retirer la carte.");
+        return;
+      }
+      setOperationSuccess("Carte retirée.");
+      router.refresh();
+    } catch {
+      setOperationError("Le service de paiement est momentanément indisponible.");
     }
-    router.refresh();
   }
 
   return (
@@ -130,6 +155,9 @@ export function PaymentMethodsPanel({
       </ul>
       {operationError ? (
         <p className="text-sm text-[var(--admin-red)]">{operationError}</p>
+      ) : null}
+      {operationSuccess ? (
+        <p className="text-sm text-emerald-700">{operationSuccess}</p>
       ) : null}
       {!configured ? (
         <p className="text-sm text-muted">

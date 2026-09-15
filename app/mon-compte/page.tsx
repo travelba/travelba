@@ -235,7 +235,7 @@ export default async function AccountHomePage() {
             +
           </span>
           <span className="text-[11px] font-bold leading-tight text-[var(--admin-navy)]">
-            + Fonds (Revolut)
+            Paiements & solde
           </span>
         </Link>
         <a
@@ -263,8 +263,8 @@ export default async function AccountHomePage() {
               Votre encours voyage
             </h3>
           </div>
-          <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
-            Garanti
+          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600">
+            Mis à jour
           </span>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-3">
@@ -303,14 +303,14 @@ export default async function AccountHomePage() {
         <div className="mt-4 flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3.5 py-3">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-              Prochaine échéance
+              Solde à régulariser
             </p>
             <p className="mt-0.5 text-sm font-semibold text-[var(--admin-navy)]">
               {remainingDue > 0 ? formatMoney(remainingDue, currency) : "Aucune"}
             </p>
           </div>
-          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700">
-            Prélèvement auto
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600">
+            Selon votre dossier
           </span>
         </div>
         <Link

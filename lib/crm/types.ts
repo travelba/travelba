@@ -79,6 +79,8 @@ export type CrmStaff = {
   auth_user_id: string;
   role: "admin" | "agent";
   full_name: string;
+  permissions: Record<string, boolean>;
+  active: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -237,6 +239,84 @@ export type CrmBalance = {
   customer_id: string;
   currency: string;
   balance: number;
+};
+
+export type CrmQuote = {
+  id: string;
+  customer_id: string;
+  booking_id: string | null;
+  reference: string;
+  title: string;
+  status: "draft" | "sent" | "accepted" | "declined" | "expired";
+  currency: string;
+  valid_until: string | null;
+  terms: string | null;
+  client_note: string | null;
+  version: number;
+  sent_at: string | null;
+  accepted_at: string | null;
+  acceptance_name: string | null;
+  terms_accepted: boolean;
+  signature_data: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CrmQuoteLine = {
+  id: string;
+  quote_id: string;
+  kind: string;
+  title: string;
+  description: string | null;
+  quantity: number;
+  unit_price: number;
+  supplier_cost: number | null;
+  tax_rate: number;
+  optional: boolean;
+  selected: boolean;
+  sort_order: number;
+};
+
+export type CrmPaymentSchedule = {
+  id: string;
+  customer_id: string;
+  booking_id: string | null;
+  quote_id: string | null;
+  label: string;
+  amount: number;
+  currency: string;
+  due_on: string;
+  status: "pending" | "paid" | "overdue" | "cancelled" | "refunded";
+  paid_amount: number;
+  paid_at: string | null;
+};
+
+export type CrmServiceRequest = {
+  id: string;
+  customer_id: string;
+  booking_id: string | null;
+  category: "change" | "cancellation" | "document" | "assistance" | "other";
+  subject: string;
+  message: string;
+  priority: "low" | "normal" | "high" | "urgent";
+  status: "open" | "in_progress" | "waiting_customer" | "resolved" | "closed";
+  assigned_to: string | null;
+  staff_response: string | null;
+  responded_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CrmNotification = {
+  id: string;
+  customer_id: string;
+  booking_id: string | null;
+  kind: string;
+  title: string;
+  message: string;
+  action_url: string | null;
+  read_at: string | null;
+  created_at: string;
 };
 
 export function customerFullName(c: Pick<CrmCustomer, "first_name" | "last_name">) {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { syncBookingDebit } from "@/lib/crm/bookings";
+import { deleteCrmFile } from "@/lib/crm/files";
 import type { CrmBooking } from "@/lib/crm/types";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -73,6 +74,11 @@ export async function DELETE(_req: Request, ctx: Ctx) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
+  const { data: documents, error: documentsError } = await auth.supabase
+    .from("crm_booking_documents")
+    .select("storage_path")
+    .eq("booking_id", id);
+  if (documentsError) return jsonError(documentsError.message, 400);
   const { error: voidError } = await auth.supabase
     .from("crm_transactions")
     .update({ status: "void" })
@@ -84,5 +90,11 @@ export async function DELETE(_req: Request, ctx: Ctx) {
 
   const { error } = await auth.supabase.from("crm_bookings").delete().eq("id", id);
   if (error) return jsonError(error.message, 400);
+  await Promise.allSettled(
+    (documents || [])
+      .map((document) => document.storage_path)
+      .filter(Boolean)
+      .map((path) => deleteCrmFile(path))
+  );
   return NextResponse.json({ ok: true });
 }

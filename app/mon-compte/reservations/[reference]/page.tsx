@@ -168,7 +168,7 @@ export default async function ReservationDetailPage({ params }: Props) {
                 href={`/api/files?path=${encodeURIComponent(d.storage_path)}`}
               >
                 <span>{d.file_name || d.kind}</span>
-                <span className="text-[var(--aura-blue)]">PDF</span>
+                <span className="text-[var(--aura-blue)]">Télécharger</span>
               </a>
             </li>
           ))}

@@ -36,20 +36,38 @@ export async function PATCH(request: Request, ctx: Ctx) {
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
   const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return jsonError("Corps de requête invalide");
+  }
   const itemId = String(body?.id || "");
   if (!itemId) return jsonError("id requis");
+  const patch: Record<string, unknown> = {};
+  for (const key of [
+    "kind",
+    "title",
+    "supplier",
+    "confirmation_ref",
+    "start_at",
+    "end_at",
+    "amount",
+    "sort_order",
+  ]) {
+    if (key in body) {
+      patch[key] =
+        key === "amount"
+          ? body[key] === "" || body[key] == null
+            ? null
+            : Number(body[key])
+          : body[key];
+    }
+  }
+  if ("title" in patch && !String(patch.title || "").trim()) {
+    return jsonError("Titre requis");
+  }
+  if (!Object.keys(patch).length) return jsonError("Aucune modification");
   const { data, error } = await auth.supabase
     .from("crm_booking_items")
-    .update({
-      kind: body.kind,
-      title: body.title,
-      supplier: body.supplier,
-      confirmation_ref: body.confirmation_ref,
-      start_at: body.start_at,
-      end_at: body.end_at,
-      amount: body.amount == null ? null : Number(body.amount),
-      sort_order: body.sort_order,
-    })
+    .update(patch)
     .eq("id", itemId)
     .eq("booking_id", id)
     .select("*")

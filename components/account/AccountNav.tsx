@@ -44,6 +44,15 @@ const LINKS = [
   },
 ];
 
+const SERVICE_LINKS = [
+  { href: "/mon-compte/devis", label: "Devis" },
+  { href: "/mon-compte/paiements", label: "Paiements" },
+  { href: "/mon-compte/documents", label: "Documents" },
+  { href: "/mon-compte/demandes", label: "Demandes" },
+  { href: "/mon-compte/notifications", label: "Notifications" },
+  { href: "/mon-compte/securite", label: "Sécurité" },
+];
+
 export function AccountNav({
   customerName,
   initials,
@@ -107,6 +116,28 @@ export function AccountNav({
           </button>
         </div>
       </div>
+
+      <nav
+        className="order-3 flex w-full gap-2 overflow-x-auto border-t border-border pt-3 md:order-none md:w-auto md:border-0 md:pt-0"
+        aria-label="Services client"
+      >
+        {SERVICE_LINKS.map((link) => {
+          const active = pathname.startsWith(link.href);
+          return (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                active
+                  ? "bg-[var(--admin-navy)] text-white"
+                  : "bg-white text-slate-600 hover:bg-[var(--aura-blue-soft)]"
+              }`}
+            >
+              {link.label}
+            </Link>
+          );
+        })}
+      </nav>
 
       <nav className="account-tabbar md:hidden" aria-label="Navigation compte">
         <div className="mx-auto grid max-w-[480px] grid-cols-4">

@@ -39,6 +39,7 @@ function LoginForm() {
       .from("crm_staff")
       .select("id")
       .eq("auth_user_id", signData.user.id)
+      .eq("active", true)
       .maybeSingle();
     if (!staff) {
       await supabase.auth.signOut();

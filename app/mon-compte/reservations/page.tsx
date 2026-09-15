@@ -2,7 +2,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
-import { BOOKING_STATUS_LABELS, type CrmBooking } from "@/lib/crm/types";
+import {
+  BOOKING_STATUS_LABELS,
+  type BookingItemKind,
+  type CrmBooking,
+  type CrmBookingDocument,
+} from "@/lib/crm/types";
 import { formatDateFr, formatMoney, isUpcomingBooking } from "@/lib/crm/money";
 import {
   ConciergeBanner,
@@ -29,9 +34,9 @@ const HERO_IMAGES = [
 export default async function ReservationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; type?: string }>;
 }) {
-  const { tab } = await searchParams;
+  const { tab, type } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -47,6 +52,33 @@ export default async function ReservationsPage({
     .order("start_date", { ascending: false, nullsFirst: false });
 
   const all = (data || []) as CrmBooking[];
+  const bookingIds = all.map((booking) => booking.id);
+  const [{ data: itemRows }, { data: documentRows }] = bookingIds.length
+    ? await Promise.all([
+        supabase
+          .from("crm_booking_items")
+          .select("booking_id, kind")
+          .in("booking_id", bookingIds),
+        supabase
+          .from("crm_booking_documents")
+          .select("*")
+          .in("booking_id", bookingIds)
+          .eq("visible_to_client", true)
+          .order("created_at", { ascending: false }),
+      ])
+    : [{ data: [] }, { data: [] }];
+  const itemKindsByBooking = new Map<string, Set<BookingItemKind>>();
+  for (const item of itemRows || []) {
+    const kinds = itemKindsByBooking.get(item.booking_id) || new Set<BookingItemKind>();
+    kinds.add(item.kind as BookingItemKind);
+    itemKindsByBooking.set(item.booking_id, kinds);
+  }
+  const documentByBooking = new Map<string, CrmBookingDocument>();
+  for (const document of (documentRows || []) as CrmBookingDocument[]) {
+    if (!documentByBooking.has(document.booking_id)) {
+      documentByBooking.set(document.booking_id, document);
+    }
+  }
   const upcoming = all.filter(
     (b) => isUpcomingBooking(b.end_date) && b.status !== "cancelled"
   );
@@ -54,7 +86,20 @@ export default async function ReservationsPage({
     (b) => !isUpcomingBooking(b.end_date) || b.status === "completed"
   );
   const showPast = tab === "passes";
-  const list = showPast ? past : upcoming;
+  const filterKinds: Record<string, BookingItemKind> = {
+    vols: "flight",
+    hotels: "hotel",
+    activites: "activity",
+    transferts: "transfer",
+  };
+  const activeType = type && filterKinds[type] ? type : "all";
+  const selectedKind = filterKinds[activeType];
+  const periodList = showPast ? past : upcoming;
+  const list = selectedKind
+    ? periodList.filter((booking) =>
+        itemKindsByBooking.get(booking.id)?.has(selectedKind)
+      )
+    : periodList;
   const whatsappHref = `https://wa.me/${siteConfig.whatsappNumber}`;
 
   return (
@@ -107,17 +152,27 @@ export default async function ReservationsPage({
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {["Tout afficher", "Vols", "Hôtels", "Expéditions"].map((label, i) => (
-          <span
-            key={label}
+        {[
+          { key: "all", label: "Tout afficher" },
+          { key: "vols", label: "Vols" },
+          { key: "hotels", label: "Hôtels" },
+          { key: "activites", label: "Activités" },
+          { key: "transferts", label: "Transferts" },
+        ].map(({ key, label }) => (
+          <Link
+            key={key}
+            href={`/mon-compte/reservations?${new URLSearchParams({
+              ...(showPast ? { tab: "passes" } : {}),
+              ...(key === "all" ? {} : { type: key }),
+            }).toString()}`}
             className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold ${
-              i === 0
+              activeType === key
                 ? "bg-[var(--admin-navy)] text-white"
                 : "bg-white text-[var(--admin-navy)] ring-1 ring-slate-200"
             }`}
           >
             {label}
-          </span>
+          </Link>
         ))}
       </div>
 
@@ -125,6 +180,7 @@ export default async function ReservationsPage({
         {list.map((b, idx) => {
           const jMinus = daysUntil(b.start_date);
           const img = HERO_IMAGES[idx % HERO_IMAGES.length];
+          const document = documentByBooking.get(b.id);
           return (
             <li key={b.id}>
               <article className="overflow-hidden rounded-[1.4rem] bg-white shadow-[0_10px_28px_rgba(15,23,42,0.06)]">
@@ -174,12 +230,21 @@ export default async function ReservationsPage({
                     >
                       {showPast ? "Revoir le dossier" : "Détails & programme"}
                     </Link>
-                    <a
-                      href={`mailto:${siteConfig.contactEmail}?subject=${encodeURIComponent(`Vouchers ${b.reference}`)}`}
-                      className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-[var(--admin-navy)]"
-                    >
-                      PDF
-                    </a>
+                    {document ? (
+                      <a
+                        href={`/api/files?path=${encodeURIComponent(document.storage_path)}`}
+                        className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-[var(--admin-navy)]"
+                      >
+                        Télécharger
+                      </a>
+                    ) : (
+                      <span
+                        title="Aucun document n’a encore été publié pour cette réservation."
+                        className="inline-flex cursor-not-allowed items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-semibold text-slate-400"
+                      >
+                        Non publié
+                      </span>
+                    )}
                   </div>
                 </div>
               </article>
@@ -190,7 +255,11 @@ export default async function ReservationsPage({
           <li>
             <EmptyState
               title={showPast ? "Aucun voyage passé" : "Aucun voyage à venir"}
-              description="Votre majordome pourra créer votre prochain dossier dès que vous le souhaitez."
+              description={
+                selectedKind
+                  ? "Aucune réservation de ce type dans cette période."
+                  : "Votre majordome pourra créer votre prochain dossier dès que vous le souhaitez."
+              }
             />
           </li>
         ) : null}
