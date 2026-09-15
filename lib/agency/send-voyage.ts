@@ -33,10 +33,6 @@ export async function publishGuideRecord(
   userId: string,
   guide: AgencyMtripGuide
 ): Promise<AgencyMtripGuide> {
-  if (guide.status === "published" && Object.keys(guide.app_links || {}).length) {
-    return guide;
-  }
-
   const docsWithUrls = [];
   for (const doc of guide.documents || []) {
     const { data: signed } = await supabase.storage
@@ -88,6 +84,7 @@ export async function publishGuideRecord(
     await supabase
       .from("agency_mtrip_guides")
       .update({
+        status: "error",
         last_error: message,
         updated_at: new Date().toISOString(),
       })

@@ -6,7 +6,7 @@ import type { CrmCustomer, CrmRevolutTransaction } from "@/lib/crm/types";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 
 export default async function AdminRevolutPage() {
-  const { supabase } = await requireStaffPage();
+  const { supabase } = await requireStaffPage("finance");
   const { data: customers } = await supabase
     .from("crm_customers")
     .select("*")

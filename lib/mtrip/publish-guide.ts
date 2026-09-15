@@ -24,7 +24,11 @@ import {
   inferTripDestinationContext,
   tripDescriptionHtml,
 } from "./map-guide-to-trip";
-import type { MtripAccommodation, MtripTraveler } from "./types";
+import type {
+  MtripAccommodation,
+  MtripDestination,
+  MtripTraveler,
+} from "./types";
 
 function slugify(input: string) {
   return input
@@ -55,6 +59,43 @@ function normalizePhone(phone: string | null | undefined): string | undefined {
     digits = `33${digits.slice(1)}`;
   }
   return `+${digits}`;
+}
+
+function validLocation(location: { latitude: number; longitude: number } | undefined) {
+  return Boolean(
+    location &&
+      Number.isFinite(location.latitude) &&
+      Number.isFinite(location.longitude) &&
+      location.latitude >= -90 &&
+      location.latitude <= 90 &&
+      location.longitude >= -180 &&
+      location.longitude <= 180 &&
+      (Math.abs(location.latitude) > 0.0001 ||
+        Math.abs(location.longitude) > 0.0001)
+  );
+}
+
+export function validatePublicationGeo(
+  destinations: MtripDestination[],
+  accommodations: MtripAccommodation[]
+) {
+  const errors: string[] = [];
+  destinations.forEach((destination, index) => {
+    if (!/^[A-Z]{2}$/.test(destination.country_iso_code || "")) {
+      errors.push(`Destination ${index + 1} : code pays ISO manquant ou invalide.`);
+    }
+    if (!validLocation(destination.location)) {
+      errors.push(`Destination ${index + 1} : coordonnées géographiques requises.`);
+    }
+  });
+  accommodations.forEach((accommodation, index) => {
+    if (!accommodation.inventory_id || !validLocation(accommodation.location)) {
+      errors.push(
+        `Hôtel ${index + 1} : établissement et coordonnées doivent être validés dans l’inventaire.`
+      );
+    }
+  });
+  return errors;
 }
 
 /**
@@ -97,6 +138,9 @@ export async function publishGuideToMtrip(guide: AgencyMtripGuide) {
   const end =
     guide.end_date ||
     new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+  if (new Date(`${start}T00:00:00`).getTime() > new Date(`${end}T23:59:00`).getTime()) {
+    throw new Error("La date de fin du voyage doit suivre la date de début.");
+  }
 
   const travelers: MtripTraveler[] = guide.passengers.map(
     (p: MtripGuidePassenger, index: number) => {
@@ -217,9 +261,7 @@ export async function publishGuideToMtrip(guide: AgencyMtripGuide) {
               latitude: leHotel.latitude,
               longitude: leHotel.longitude,
             }
-          : destCtx.lat != null && destCtx.lng != null
-            ? { latitude: destCtx.lat, longitude: destCtx.lng }
-            : undefined,
+          : undefined,
       country_code: destCtx.country,
       position: index + 1,
       active_for_every_traveler: true,
@@ -252,6 +294,10 @@ export async function publishGuideToMtrip(guide: AgencyMtripGuide) {
     flights,
     coverUrl: tripCover,
   });
+  const geoErrors = validatePublicationGeo(destinations, accommodations);
+  if (geoErrors.length) {
+    throw new Error(`Publication mTrip bloquée : ${geoErrors.join(" ")}`);
+  }
 
   // Cover trip = 1re photo hôtel ou destination
   if (!tripCover) {

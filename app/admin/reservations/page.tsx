@@ -5,7 +5,7 @@ import { requireStaffPage } from "@/lib/crm/auth";
 import type { CrmBooking, CrmCustomer } from "@/lib/crm/types";
 
 export default async function AdminReservationsPage() {
-  const { supabase } = await requireStaffPage();
+  const { supabase } = await requireStaffPage("bookings");
   const [{ data: bookings }, { data: customers }] = await Promise.all([
     supabase
       .from("crm_bookings")

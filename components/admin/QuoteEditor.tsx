@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useRef, useState } from "react";
 
 type Quote = { id: string; title: string; status: string; valid_until: string | null; terms: string | null; client_note: string | null; currency: string; reference: string; version: number };
 type Line = { id: string; quote_id: string; title: string; description: string | null; quantity: number; unit_price: number; supplier_cost: number | null; tax_rate: number; optional: boolean; selected: boolean; sort_order: number };
@@ -11,6 +11,7 @@ export function QuoteEditor({ initialQuote, initialLines }: { initialQuote: Quot
   const [editingLine, setEditingLine] = useState<Line | null>(null);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const deliveryRequestId = useRef<string | null>(null);
   const totals = useMemo(() => lines.reduce((result, line) => {
     const sell = Number(line.quantity) * Number(line.unit_price);
     const cost = Number(line.quantity) * Number(line.supplier_cost || 0);
@@ -27,7 +28,7 @@ export function QuoteEditor({ initialQuote, initialLines }: { initialQuote: Quot
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "Action impossible");
-    return data.item;
+    return data as { item: Quote | Line; delivery_warning?: string | null };
   }
 
   async function saveQuote(event: FormEvent<HTMLFormElement>) {
@@ -35,10 +36,28 @@ export function QuoteEditor({ initialQuote, initialLines }: { initialQuote: Quot
     setPending(true);
     setMessage(null);
     const form = new FormData(event.currentTarget);
+    const status = String(form.get("status") || "draft");
+    if (status === "sent") deliveryRequestId.current ||= crypto.randomUUID();
     try {
-      const saved = await request("quotes", "PATCH", { id: quote.id, title: form.get("title"), valid_until: form.get("valid_until") || null, terms: form.get("terms"), client_note: form.get("client_note"), status: form.get("status") });
+      const result = await request("quotes", "PATCH", {
+        id: quote.id,
+        title: form.get("title"),
+        valid_until: form.get("valid_until") || null,
+        terms: form.get("terms"),
+        client_note: form.get("client_note"),
+        status,
+        ...(deliveryRequestId.current
+          ? { _request_id: deliveryRequestId.current }
+          : {}),
+      });
+      const saved = result.item as Quote;
       setQuote(saved);
-      setMessage(saved.status === "sent" ? "Devis versionné et publié au portail client." : "Devis enregistré.");
+      if (result.delivery_warning) {
+        setMessage(`${result.delivery_warning} Enregistrez à nouveau pour réessayer l’envoi.`);
+      } else {
+        deliveryRequestId.current = null;
+        setMessage(saved.status === "sent" ? "Devis versionné et publié au portail client." : "Devis enregistré.");
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Enregistrement impossible");
     } finally {
@@ -64,7 +83,8 @@ export function QuoteEditor({ initialQuote, initialLines }: { initialQuote: Quot
       sort_order: editingLine?.sort_order ?? lines.length,
     };
     try {
-      const saved = await request("quote_lines", editingLine ? "PATCH" : "POST", payload);
+      const result = await request("quote_lines", editingLine ? "PATCH" : "POST", payload);
+      const saved = result.item as Line;
       setLines((rows) => editingLine ? rows.map((row) => row.id === saved.id ? saved : row) : [...rows, saved]);
       setEditingLine(null);
       event.currentTarget.reset();

@@ -114,7 +114,9 @@ export function isRedirect(value: unknown): value is NextResponse {
 }
 
 /** Guard for App Router admin pages — redirects to /admin/login if needed. */
-export async function requireStaffPage(): Promise<{
+export async function requireStaffPage(
+  capability?: keyof CrmStaff["permissions"] | "admin"
+): Promise<{
   supabase: Awaited<ReturnType<typeof createClient>>;
   user: User;
   staff: CrmStaff;
@@ -132,5 +134,13 @@ export async function requireStaffPage(): Promise<{
   if (!staff) {
     redirect("/admin/login");
   }
-  return { supabase, user: authedUser, staff: staff as CrmStaff };
+  const authedStaff = staff as CrmStaff;
+  if (
+    capability &&
+    authedStaff.role !== "admin" &&
+    (capability === "admin" || authedStaff.permissions?.[capability] !== true)
+  ) {
+    redirect("/admin");
+  }
+  return { supabase, user: authedUser, staff: authedStaff };
 }

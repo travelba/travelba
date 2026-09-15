@@ -2,7 +2,7 @@ import { requireStaffPage } from "@/lib/crm/auth";
 import { QuotesManager } from "@/components/admin/QuotesManager";
 
 export default async function AdminQuotesPage() {
-  const { supabase } = await requireStaffPage();
+  const { supabase } = await requireStaffPage("quotes");
   const [{ data: quotes }, { data: customers }] = await Promise.all([
     supabase.from("crm_quotes").select("id,reference,title,status,currency,valid_until,customer_id").order("created_at", { ascending: false }),
     supabase.from("crm_customers").select("id,first_name,last_name,email").order("last_name"),

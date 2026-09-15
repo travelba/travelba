@@ -2,7 +2,7 @@ import { requireStaffPage } from "@/lib/crm/auth";
 import { MtripGuideCreateForm } from "@/components/admin/MtripGuideCreateForm";
 
 export default async function ImportsPage() {
-  await requireStaffPage();
+  await requireStaffPage("mtrip");
   return (
     <div className="space-y-6">
       <header>

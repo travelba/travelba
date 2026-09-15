@@ -2,7 +2,7 @@ import { requireStaffPage } from "@/lib/crm/auth";
 import { TeamManager } from "@/components/admin/TeamManager";
 
 export default async function TeamPage() {
-  const { supabase, staff } = await requireStaffPage();
+  const { supabase, staff } = await requireStaffPage("admin");
   const { data } = await supabase.from("crm_staff").select("id,full_name,role,active,permissions").order("full_name");
   return (
     <div className="space-y-6">

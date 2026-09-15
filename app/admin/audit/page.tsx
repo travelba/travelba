@@ -1,7 +1,7 @@
 import { requireStaffPage } from "@/lib/crm/auth";
 
 export default async function AuditPage() {
-  const { supabase } = await requireStaffPage();
+  const { supabase } = await requireStaffPage("admin");
   const { data } = await supabase
     .from("crm_audit_events")
     .select("id,entity_type,entity_id,action,metadata,created_at,crm_staff(full_name)")

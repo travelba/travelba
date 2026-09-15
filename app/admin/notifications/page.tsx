@@ -2,7 +2,7 @@ import { requireStaffPage } from "@/lib/crm/auth";
 import { OperationsManager } from "@/components/admin/OperationsManager";
 
 export default async function AdminNotificationsPage() {
-  const { supabase } = await requireStaffPage();
+  const { supabase } = await requireStaffPage("operations");
   const [{ data: notifications }, { data: customers }, { data: bookings }] = await Promise.all([
     supabase.from("crm_notifications").select("*").order("created_at", { ascending: false }).limit(250),
     supabase.from("crm_customers").select("id,first_name,last_name").order("last_name"),

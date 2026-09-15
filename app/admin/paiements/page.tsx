@@ -3,7 +3,7 @@ import { requireStaffPage } from "@/lib/crm/auth";
 import { OperationsManager } from "@/components/admin/OperationsManager";
 
 export default async function AdminPaymentsPage() {
-  const { supabase } = await requireStaffPage();
+  const { supabase } = await requireStaffPage("finance");
   const [{ data: schedules }, { data: invoices }, { data: customers }, { data: bookings }] = await Promise.all([
     supabase.from("crm_payment_schedules").select("*").order("due_on"),
     supabase.from("crm_invoices").select("*").order("issued_on", { ascending: false }),

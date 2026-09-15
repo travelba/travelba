@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 
 type Row = Record<string, unknown> & { id: string };
 type Field = {
@@ -21,22 +21,32 @@ export function OperationsManager({ resource, initialItems, fields, allowCreate 
   const [editing, setEditing] = useState<Row | null>(null);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const requestId = useRef<string | null>(null);
 
   async function mutate(method: "POST" | "PATCH", payload: Record<string, unknown>) {
     setPending(true);
     setMessage(null);
-    const response = await fetch(`/api/admin/operations/${resource}`, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await response.json().catch(() => ({}));
-    setPending(false);
-    if (!response.ok) {
-      setMessage(data.error || "Action impossible");
+    try {
+      const response = await fetch(`/api/admin/operations/${resource}`, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setMessage(data.error || "Action impossible");
+        return null;
+      }
+      return {
+        item: data.item as Row,
+        warning: data.delivery_warning ? String(data.delivery_warning) : null,
+      };
+    } catch {
+      setMessage("Le service est momentanément indisponible. Réessayez.");
       return null;
+    } finally {
+      setPending(false);
     }
-    return data.item as Row;
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -48,9 +58,18 @@ export function OperationsManager({ resource, initialItems, fields, allowCreate 
       payload[field.name] = value === "" ? null : field.type === "number" ? Number(value) : value;
     }
     if (editing) payload.id = editing.id;
-    const saved = await mutate(editing ? "PATCH" : "POST", payload);
-    if (!saved) return;
+    requestId.current ||= crypto.randomUUID();
+    payload._request_id = requestId.current;
+    const result = await mutate(editing ? "PATCH" : "POST", payload);
+    if (!result) return;
+    const saved = result.item;
     setItems((current) => editing ? current.map((row) => row.id === saved.id ? saved : row) : [saved, ...current]);
+    if (result.warning) {
+      setEditing(saved);
+      setMessage(`${result.warning} Enregistrez à nouveau pour réessayer l’envoi.`);
+      return;
+    }
+    requestId.current = null;
     setEditing(null);
     event.currentTarget.reset();
     setMessage(editing ? "Modification enregistrée." : "Élément créé.");

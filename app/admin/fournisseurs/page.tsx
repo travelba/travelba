@@ -2,7 +2,7 @@ import { requireStaffPage } from "@/lib/crm/auth";
 import { OperationsManager } from "@/components/admin/OperationsManager";
 
 export default async function SuppliersPage() {
-  const { supabase } = await requireStaffPage();
+  const { supabase } = await requireStaffPage("suppliers");
   const { data } = await supabase.from("crm_suppliers").select("*").order("name");
   return (
     <div className="space-y-6">

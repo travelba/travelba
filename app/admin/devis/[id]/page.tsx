@@ -6,7 +6,7 @@ type Props = { params: Promise<{ id: string }> };
 
 export default async function AdminQuoteDetailPage({ params }: Props) {
   const { id } = await params;
-  const { supabase } = await requireStaffPage();
+  const { supabase } = await requireStaffPage("quotes");
   const { data } = await supabase.from("crm_quotes").select("*, crm_quote_lines(*)").eq("id", id).maybeSingle();
   if (!data) notFound();
   return (

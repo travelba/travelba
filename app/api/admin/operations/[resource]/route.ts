@@ -59,6 +59,11 @@ function cleanBody(body: Record<string, unknown>, fields: readonly string[]) {
   return Object.fromEntries(fields.filter((field) => field in body).map((field) => [field, body[field]]));
 }
 
+function requestKey(body: Record<string, unknown>) {
+  const value = String(body._request_id || "");
+  return /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(value) ? value : null;
+}
+
 async function audit(
   auth: Exclude<Awaited<ReturnType<typeof requireStaff>>, NextResponse>,
   resource: string,
@@ -74,6 +79,78 @@ async function audit(
   });
 }
 
+function safeActionUrl(value: unknown) {
+  if (value == null || value === "") return null;
+  const actionUrl = String(value).trim();
+  if (
+    !actionUrl.startsWith("/") ||
+    actionUrl.startsWith("//") ||
+    actionUrl.includes("\\") ||
+    /[\u0000-\u001f\u007f]/.test(actionUrl)
+  ) {
+    throw new Error("Le lien de notification doit être un chemin interne.");
+  }
+  const parsed = new URL(actionUrl, "https://travelba.invalid");
+  if (parsed.origin !== "https://travelba.invalid") {
+    throw new Error("Le lien de notification doit être un chemin interne.");
+  }
+  return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+}
+
+async function deliverNotificationEmail(
+  request: Request,
+  notification: {
+    id: string;
+    customer_id: string;
+    kind: string;
+    title: string;
+    message: string;
+    action_url?: string | null;
+  }
+) {
+  const service = createServiceClient();
+  const [{ data: customer }, { data: preferences }] = await Promise.all([
+    service
+      .from("crm_customers")
+      .select("first_name,email")
+      .eq("id", notification.customer_id)
+      .maybeSingle(),
+    service
+      .from("crm_notification_preferences")
+      .select("email_travel,email_payment,email_documents")
+      .eq("customer_id", notification.customer_id)
+      .maybeSingle(),
+  ]);
+  const preference =
+    notification.kind === "payment"
+      ? preferences?.email_payment !== false
+      : notification.kind === "document"
+        ? preferences?.email_documents !== false
+        : preferences?.email_travel !== false;
+  if (!preference || !customer?.email) return { delivery: "portal", warning: null };
+
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  if (!apiKey) {
+    return {
+      delivery: "portal",
+      warning: "Resend non configuré : notification disponible uniquement dans le portail.",
+    };
+  }
+  const origin = new URL(request.url).origin;
+  const link = notification.action_url
+    ? `${origin}${notification.action_url}`
+    : `${origin}/mon-compte/notifications`;
+  const { error } = await new Resend(apiKey).emails.send({
+    from: `Travelba <${process.env.CONTACT_FROM_EMAIL?.trim() || "contact@travelba.fr"}>`,
+    to: [customer.email],
+    subject: notification.title,
+    text: `Bonjour ${customer.first_name},\n\n${notification.message}\n\nConsulter : ${link}\n\nL’équipe Travelba`,
+  }, { idempotencyKey: `crm-notification/${notification.id}` });
+  return error
+    ? { delivery: "portal", warning: error.message }
+    : { delivery: "email", warning: null };
+}
+
 export async function POST(request: Request, ctx: Ctx) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
@@ -84,11 +161,34 @@ export async function POST(request: Request, ctx: Ctx) {
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   if (!body) return jsonError("Corps JSON invalide");
   const payload = cleanBody(body, config.fields);
+  const operationKey = requestKey(body);
+  if (resource === "notifications") {
+    try {
+      payload.action_url = safeActionUrl(payload.action_url);
+    } catch (error) {
+      return jsonError(error instanceof Error ? error.message : "Lien invalide");
+    }
+    if (operationKey) payload.idempotency_key = `notification:${operationKey}`;
+  }
   if (resource === "quotes") payload.created_by = auth.staff.id;
   const database = resource === "notifications" ? createServiceClient() : auth.supabase;
-  const { data, error } = await database.from(config.table).insert(payload).select("*").single();
+  const query = database.from(config.table);
+  const { data, error } = resource === "notifications" && operationKey
+    ? await query
+        .upsert(payload, { onConflict: "idempotency_key" })
+        .select("*")
+        .single()
+    : await query.insert(payload).select("*").single();
   if (error) return jsonError(error.message, 400);
   await audit(auth, resource, String(data.id), "created");
+  if (resource === "notifications") {
+    const result = await deliverNotificationEmail(request, data);
+    return NextResponse.json({
+      item: data,
+      delivery: result.delivery,
+      delivery_warning: result.warning,
+    });
+  }
   return NextResponse.json({ item: data });
 }
 
@@ -103,6 +203,35 @@ export async function PATCH(request: Request, ctx: Ctx) {
   const id = String(body?.id || "");
   if (!body || !id) return jsonError("id requis");
   const payload = cleanBody(body, config.fields);
+  const operationKey = requestKey(body);
+  if (resource === "notifications" && "action_url" in payload) {
+    try {
+      payload.action_url = safeActionUrl(payload.action_url);
+    } catch (error) {
+      return jsonError(error instanceof Error ? error.message : "Lien invalide");
+    }
+  }
+  let previousRequestResponse: string | null = null;
+  let requestDeliveryRetry = false;
+  if (resource === "requests" && payload.staff_response) {
+    const { data: currentRequest } = await auth.supabase
+      .from("crm_service_requests")
+      .select("staff_response,response_delivery_key")
+      .eq("id", id)
+      .maybeSingle();
+    previousRequestResponse = currentRequest?.staff_response || null;
+    requestDeliveryRetry = Boolean(
+      operationKey &&
+        currentRequest?.response_delivery_key ===
+          `request-response:${operationKey}`
+    );
+    if (
+      operationKey &&
+      String(payload.staff_response) !== previousRequestResponse
+    ) {
+      payload.response_delivery_key = `request-response:${operationKey}`;
+    }
+  }
   if (resource === "quotes" && payload.status === "sent") {
     const { data: current, error: quoteError } = await auth.supabase
       .from("crm_quotes")
@@ -110,9 +239,17 @@ export async function PATCH(request: Request, ctx: Ctx) {
       .eq("id", id)
       .maybeSingle();
     if (quoteError || !current) return jsonError("Devis introuvable", 404);
-    const nextVersion = current.status === "draft" ? current.version : Number(current.version) + 1;
+    const deliveryRetry =
+      operationKey &&
+      current.delivery_idempotency_key === `quote:${operationKey}`;
+    const nextVersion = deliveryRetry
+      ? current.version
+      : current.status === "draft"
+        ? current.version
+        : Number(current.version) + 1;
     payload.version = nextVersion;
-    payload.sent_at = new Date().toISOString();
+    payload.sent_at = deliveryRetry ? current.sent_at : new Date().toISOString();
+    if (operationKey) payload.delivery_idempotency_key = `quote:${operationKey}`;
     const snapshot = {
       ...current,
       ...payload,
@@ -157,6 +294,38 @@ export async function PATCH(request: Request, ctx: Ctx) {
       }
     } else {
       deliveryWarning = "Resend non configuré : le devis est publié au portail sans e-mail.";
+    }
+  }
+  if (
+    resource === "requests" &&
+    payload.staff_response &&
+    (String(payload.staff_response) !== previousRequestResponse ||
+      requestDeliveryRetry)
+  ) {
+    const notificationPayload = {
+        customer_id: data.customer_id,
+        booking_id: data.booking_id,
+        kind: "agency",
+        title: `Réponse à votre demande : ${data.subject}`,
+        message: String(payload.staff_response),
+        action_url: "/mon-compte/demandes",
+        ...(operationKey
+          ? { idempotency_key: `request-response:${operationKey}` }
+          : {}),
+      };
+    const notifications = createServiceClient().from("crm_notifications");
+    const { data: notification, error: notificationError } = operationKey
+      ? await notifications
+          .upsert(notificationPayload, { onConflict: "idempotency_key" })
+          .select("*")
+          .single()
+      : await notifications.insert(notificationPayload).select("*").single();
+    if (notificationError) {
+      deliveryWarning = notificationError.message;
+    } else {
+      const result = await deliverNotificationEmail(request, notification);
+      delivery = result.delivery as typeof delivery;
+      deliveryWarning = result.warning;
     }
   }
   return NextResponse.json({ item: data, delivery, delivery_warning: deliveryWarning });

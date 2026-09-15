@@ -2,7 +2,7 @@ import { requireStaffPage } from "@/lib/crm/auth";
 import { SettingsEditor } from "@/components/admin/SettingsEditor";
 
 export default async function SettingsPage() {
-  const { supabase, staff } = await requireStaffPage();
+  const { supabase, staff } = await requireStaffPage("admin");
   const { data } = await supabase.from("crm_agency_settings").select("key,value").in("key", ["agency_identity", "email_templates"]);
   const identity = data?.find((row) => row.key === "agency_identity")?.value as Record<string, unknown> | undefined;
   const templates = data?.find((row) => row.key === "email_templates")?.value as Record<string, unknown> | undefined;

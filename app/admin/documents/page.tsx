@@ -2,7 +2,7 @@ import { requireStaffPage } from "@/lib/crm/auth";
 import { DocumentVisibilityButton } from "@/components/admin/DocumentVisibilityButton";
 
 export default async function AdminDocumentsPage() {
-  const { supabase } = await requireStaffPage();
+  const { supabase } = await requireStaffPage("bookings");
   const [{ data: identity }, { data: bookingDocs }] = await Promise.all([
     supabase.from("crm_travel_documents").select("id,doc_type,file_name,expires_on,storage_path,crm_customers(first_name,last_name)").order("expires_on", { ascending: true, nullsFirst: false }),
     supabase.from("crm_booking_documents").select("id,booking_id,kind,file_name,visible_to_client,storage_path,crm_bookings(reference,title)").order("created_at", { ascending: false }),

@@ -1,7 +1,7 @@
 import { requireStaffPage } from "@/lib/crm/auth";
 
 export default async function ReportsPage() {
-  const { supabase } = await requireStaffPage();
+  const { supabase } = await requireStaffPage("finance");
   const [{ data: transactions }, { count: customers }, { count: activeBookings }, { count: openRequests }] = await Promise.all([
     supabase.from("crm_transactions").select("direction,amount,currency,status").eq("status", "posted"),
     supabase.from("crm_customers").select("id", { count: "exact", head: true }),
