@@ -91,10 +91,6 @@ export async function DELETE(request: Request) {
           },
         });
       }
-    } else if (stripe && auth.customer.stripe_customer_id) {
-      await stripe.customers.update(auth.customer.stripe_customer_id, {
-        invoice_settings: { default_payment_method: null },
-      });
     }
   }
   return NextResponse.json({ ok: true });
