@@ -143,3 +143,25 @@ export async function ensureCustomerForUser(user: User): Promise<CrmCustomer | n
 export function isRedirect(value: unknown): value is NextResponse {
   return value instanceof NextResponse;
 }
+
+/** Guard for App Router admin pages — redirects to /admin/login if needed. */
+export async function requireStaffPage(): Promise<{
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  user: User;
+  staff: CrmStaff;
+}> {
+  const { redirect } = await import("next/navigation");
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    redirect("/admin/login");
+  }
+  const authedUser = user as User;
+  const staff = await ensureStaff(authedUser);
+  if (!staff) {
+    redirect("/admin/login");
+  }
+  return { supabase, user: authedUser, staff: staff as CrmStaff };
+}

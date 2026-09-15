@@ -1,10 +1,11 @@
 import { Ledger } from "@/components/admin/Ledger";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { createClient } from "@/lib/supabase/server";
+import { requireStaffPage } from "@/lib/crm/auth";
 import type { CrmCustomer, CrmTransaction } from "@/lib/crm/types";
 
 export default async function AdminTransactionsPage() {
-  const supabase = await createClient();
+  const { supabase } = await requireStaffPage();
   const [{ data: transactions }, { data: customers }] = await Promise.all([
     supabase
       .from("crm_transactions")

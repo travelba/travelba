@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { requireStaffPage } from "@/lib/crm/auth";
 import { CustomerEditor } from "@/components/admin/CustomerEditor";
 import {
   customerFullName,
@@ -17,7 +18,7 @@ type Props = { params: Promise<{ id: string }> };
 
 export default async function AdminClientDetailPage({ params }: Props) {
   const { id } = await params;
-  const supabase = await createClient();
+  const { supabase } = await requireStaffPage();
   const { data: customer } = await supabase
     .from("crm_customers")
     .select("*")

@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
-import { ensureStaff } from "@/lib/crm/auth";
+import { requireStaffPage } from "@/lib/crm/auth";
 import {
   BOOKING_STATUS_LABELS,
   customerFullName,
@@ -10,17 +9,10 @@ import {
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
-import { redirect } from "next/navigation";
 import { PageEyebrow, PageTitle, StatusChip, bookingStatusTone } from "@/components/crm/ui";
 
 export default async function AdminHomePage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/admin/login");
-  const staff = await ensureStaff(user);
-  if (!staff) redirect("/admin/login");
+  const { supabase, staff } = await requireStaffPage();
 
   const today = new Date().toISOString().slice(0, 10);
   const soon = new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10);
@@ -88,14 +80,36 @@ export default async function AdminHomePage() {
           title="Vue d’ensemble"
           subtitle={`Connecté en tant que ${staff.full_name || "agent"} · ${staff.role}`}
           actions={
-            <Link
-              href="/admin/reservations"
-              className="admin-af-btn inline-flex rounded-xl px-4 py-2.5 text-sm"
-            >
-              + Nouvelle réservation
-            </Link>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href="/demo/espace-client"
+                className="inline-flex rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-[var(--admin-navy)]"
+              >
+                Espace client exemple
+              </Link>
+              <Link
+                href="/admin/reservations"
+                className="admin-af-btn inline-flex rounded-xl px-4 py-2.5 text-sm"
+              >
+                + Nouvelle réservation
+              </Link>
+            </div>
           }
         />
+      </div>
+
+      <div className="rounded-2xl border border-[var(--aura-blue-soft)] bg-[var(--aura-blue-soft)]/40 px-4 py-3 text-sm text-[var(--admin-navy)]">
+        <strong>Client démo Aura :</strong>{" "}
+        <code className="rounded bg-white px-1.5 py-0.5 text-xs">client.demo@travelba.fr</code>
+        {" — "}connexion OTP sur{" "}
+        <Link href="/connexion" className="font-semibold underline">
+          /connexion
+        </Link>
+        , aperçu sans login sur{" "}
+        <Link href="/demo/espace-client" className="font-semibold underline">
+          /demo/espace-client
+        </Link>
+        .
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

@@ -12,12 +12,7 @@ import {
   type CrmBookingTraveler,
 } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
-import {
-  ConciergeBanner,
-  PageEyebrow,
-  StatusChip,
-  bookingStatusTone,
-} from "@/components/crm/ui";
+import { ConciergeBanner, StatusChip, bookingStatusTone } from "@/components/crm/ui";
 
 type Props = { params: Promise<{ reference: string }> };
 
@@ -41,7 +36,11 @@ export default async function ReservationDetailPage({ params }: Props) {
   const b = booking as CrmBooking;
 
   const [{ data: items }, { data: travelers }, { data: docs }] = await Promise.all([
-    supabase.from("crm_booking_items").select("*").eq("booking_id", b.id).order("sort_order"),
+    supabase
+      .from("crm_booking_items")
+      .select("*")
+      .eq("booking_id", b.id)
+      .order("sort_order"),
     supabase.from("crm_booking_travelers").select("*").eq("booking_id", b.id),
     supabase
       .from("crm_booking_documents")
@@ -51,112 +50,135 @@ export default async function ReservationDetailPage({ params }: Props) {
   ]);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <Link
-          href="/mon-compte/reservations"
-          className="text-sm font-semibold text-muted hover:text-[var(--admin-navy)]"
-        >
-          ← Mes réservations
-        </Link>
-        <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <PageEyebrow>Dossier {b.reference}</PageEyebrow>
-            <h1 className="mt-2 font-display text-3xl font-extrabold text-[var(--admin-navy)]">
-              {b.destination || b.title}
-            </h1>
-            <p className="mt-2 text-sm text-muted">
-              {b.title} · {formatDateFr(b.start_date)} → {formatDateFr(b.end_date)}
-            </p>
-          </div>
-          <div className="text-right">
+    <div className="space-y-5">
+      <Link
+        href="/mon-compte/reservations"
+        className="inline-flex text-sm font-semibold text-[var(--aura-blue)]"
+      >
+        ← Mes réservations
+      </Link>
+
+      <article className="relative min-h-[220px] overflow-hidden rounded-[1.5rem] bg-[var(--admin-navy)] text-white shadow-[0_16px_36px_rgba(11,31,58,0.25)]">
+        <div
+          className="absolute inset-0 bg-cover bg-center opacity-50"
+          style={{
+            backgroundImage:
+              "url(https://images.unsplash.com/photo-1506929562872-bb421503ef21?auto=format&fit=crop&w=1200&q=80)",
+          }}
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-[var(--admin-navy)] via-[var(--admin-navy)]/70 to-transparent" />
+        <div className="relative space-y-3 p-5 pb-6 pt-10">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <StatusChip tone={bookingStatusTone(b.status)}>
               {BOOKING_STATUS_LABELS[b.status]}
             </StatusChip>
-            <p className="mt-3 font-display text-2xl font-extrabold text-[var(--admin-navy)]">
-              {formatMoney(Number(b.total_amount), b.currency)}
-            </p>
+            <span className="rounded-full bg-black/35 px-3 py-1 text-[11px] font-bold backdrop-blur">
+              {b.reference}
+            </span>
           </div>
+          <h1 className="font-display text-[1.7rem] font-extrabold leading-tight">
+            {b.destination || b.title}
+          </h1>
+          <p className="text-sm text-white/75">{b.title}</p>
+          <p className="text-sm text-white/75">
+            {formatDateFr(b.start_date)} — {formatDateFr(b.end_date)}
+          </p>
+          <p className="font-display text-2xl font-extrabold">
+            {formatMoney(Number(b.total_amount), b.currency)}
+          </p>
         </div>
-      </div>
+      </article>
 
       {b.notes_client ? (
-        <p className="admin-af-card rounded-2xl p-5 text-sm leading-relaxed">{b.notes_client}</p>
+        <p className="aura-card rounded-[1.25rem] bg-white p-4 text-sm leading-relaxed text-[var(--admin-navy)]">
+          {b.notes_client}
+        </p>
       ) : null}
 
-      <section className="admin-af-card rounded-2xl p-5">
-        <h2 className="font-display text-xl font-bold text-[var(--admin-navy)]">Prestations</h2>
-        <ul className="mt-4 divide-y divide-border">
+      <section className="aura-card space-y-3 rounded-[1.35rem] bg-white p-4">
+        <h2 className="font-display text-base font-bold text-[var(--admin-navy)]">
+          Prestations
+        </h2>
+        <ul className="space-y-2">
           {((items || []) as CrmBookingItem[]).map((item) => (
-            <li key={item.id} className="flex justify-between gap-3 py-3">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-accent">
+            <li
+              key={item.id}
+              className="flex items-start justify-between gap-3 rounded-2xl bg-slate-50 px-3.5 py-3"
+            >
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--aura-blue)]">
                   {BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind}
                 </p>
-                <p className="font-medium text-[var(--admin-navy)]">{item.title}</p>
-                <p className="text-xs text-muted">
-                  {[item.supplier, item.confirmation_ref].filter(Boolean).join(" · ") || "—"}
+                <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
+                  {item.title}
+                </p>
+                <p className="truncate text-xs text-muted">
+                  {[item.supplier, item.confirmation_ref].filter(Boolean).join(" · ") ||
+                    "Confirmé TBA"}
                 </p>
               </div>
-              <p className="font-semibold text-[var(--admin-navy)]">
+              <p className="shrink-0 text-sm font-bold text-[var(--admin-navy)]">
                 {item.amount != null ? formatMoney(Number(item.amount), b.currency) : "—"}
               </p>
             </li>
           ))}
           {!items?.length ? (
-            <li className="py-4 text-sm text-muted">
+            <li className="rounded-2xl bg-slate-50 px-3.5 py-4 text-sm text-muted">
               Détail des prestations en préparation par votre conciergerie.
             </li>
           ) : null}
         </ul>
       </section>
 
-      <div className="grid gap-5 md:grid-cols-2">
-        <section className="admin-af-card rounded-2xl p-5">
-          <h2 className="font-display text-xl font-bold text-[var(--admin-navy)]">Voyageurs</h2>
-          <ul className="mt-3 space-y-2 text-sm">
-            {((travelers || []) as CrmBookingTraveler[]).map((t) => (
-              <li
-                key={t.id}
-                className="flex items-center justify-between rounded-xl bg-[var(--admin-sky)]/40 px-3 py-2"
-              >
-                <span className="font-medium">
-                  {[t.first_name, t.last_name].filter(Boolean).join(" ") || "Voyageur"}
+      <section className="aura-card space-y-3 rounded-[1.35rem] bg-white p-4">
+        <h2 className="font-display text-base font-bold text-[var(--admin-navy)]">
+          Voyageurs
+        </h2>
+        <ul className="space-y-2">
+          {((travelers || []) as CrmBookingTraveler[]).map((t) => (
+            <li
+              key={t.id}
+              className="flex items-center justify-between rounded-2xl bg-slate-50 px-3.5 py-3 text-sm"
+            >
+              <span className="font-semibold text-[var(--admin-navy)]">
+                {[t.first_name, t.last_name].filter(Boolean).join(" ") || "Voyageur"}
+              </span>
+              {t.is_account_holder ? (
+                <span className="rounded-full bg-[var(--aura-blue-soft)] px-2 py-0.5 text-[10px] font-bold text-[var(--aura-blue)]">
+                  Titulaire
                 </span>
-                {t.is_account_holder ? (
-                  <span className="text-[11px] font-semibold uppercase text-muted">
-                    Titulaire
-                  </span>
-                ) : null}
-              </li>
-            ))}
-            {!travelers?.length ? (
-              <li className="text-muted">Voyageurs à confirmer</li>
-            ) : null}
-          </ul>
-        </section>
+              ) : null}
+            </li>
+          ))}
+          {!travelers?.length ? (
+            <li className="text-sm text-muted">Voyageurs à confirmer</li>
+          ) : null}
+        </ul>
+      </section>
 
-        <section className="admin-af-card rounded-2xl p-5">
-          <h2 className="font-display text-xl font-bold text-[var(--admin-navy)]">Documents</h2>
-          <ul className="mt-3 space-y-2">
-            {((docs || []) as CrmBookingDocument[]).map((d) => (
-              <li key={d.id}>
-                <a
-                  className="inline-flex rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm font-semibold text-[var(--admin-navy)] hover:bg-[var(--admin-sky)]"
-                  href={`/api/files?path=${encodeURIComponent(d.storage_path)}`}
-                >
-                  {d.file_name || d.kind}
-                </a>
-              </li>
-            ))}
-            {!docs?.length ? (
-              <li className="text-sm text-muted">
-                Aucun document publié pour l&apos;instant.
-              </li>
-            ) : null}
-          </ul>
-        </section>
-      </div>
+      <section className="aura-card space-y-3 rounded-[1.35rem] bg-white p-4">
+        <h2 className="font-display text-base font-bold text-[var(--admin-navy)]">
+          Documents
+        </h2>
+        <ul className="space-y-2">
+          {((docs || []) as CrmBookingDocument[]).map((d) => (
+            <li key={d.id}>
+              <a
+                className="inline-flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-3.5 py-3 text-sm font-semibold text-[var(--admin-navy)]"
+                href={`/api/files?path=${encodeURIComponent(d.storage_path)}`}
+              >
+                <span>{d.file_name || d.kind}</span>
+                <span className="text-[var(--aura-blue)]">PDF</span>
+              </a>
+            </li>
+          ))}
+          {!docs?.length ? (
+            <li className="text-sm text-muted">
+              Aucun document publié pour l&apos;instant.
+            </li>
+          ) : null}
+        </ul>
+      </section>
 
       <ConciergeBanner />
     </div>

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { requireStaffPage } from "@/lib/crm/auth";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { RevolutInbox } from "@/components/admin/RevolutInbox";
 import { revolutConfigured } from "@/lib/crm/revolut";
@@ -6,7 +7,7 @@ import type { CrmCustomer, CrmRevolutTransaction } from "@/lib/crm/types";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 
 export default async function AdminRevolutPage() {
-  const supabase = await createClient();
+  const { supabase } = await requireStaffPage();
   const { data: customers } = await supabase
     .from("crm_customers")
     .select("*")
