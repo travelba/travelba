@@ -52,6 +52,7 @@ export async function getStaffForUser(userId: string) {
     .from("crm_staff")
     .select("*")
     .eq("auth_user_id", userId)
+    .eq("active", true)
     .maybeSingle();
   return (data as CrmStaff | null) ?? null;
 }
@@ -62,30 +63,9 @@ export async function ensureStaff(user: User): Promise<CrmStaff | null> {
     .from("crm_staff")
     .select("*")
     .eq("auth_user_id", user.id)
+    .eq("active", true)
     .maybeSingle();
-  if (existing) return existing as CrmStaff;
-
-  try {
-    const admin = createServiceClient();
-    const { count } = await admin
-      .from("crm_staff")
-      .select("id", { count: "exact", head: true });
-    if ((count ?? 0) > 0) return null;
-
-    const { data: created, error } = await admin
-      .from("crm_staff")
-      .insert({
-        auth_user_id: user.id,
-        role: "admin",
-        full_name: user.email?.split("@")[0] || "Agent",
-      })
-      .select("*")
-      .single();
-    if (error) return null;
-    return created as CrmStaff;
-  } catch {
-    return null;
-  }
+  return (existing as CrmStaff | null) ?? null;
 }
 
 export async function ensureCustomerForUser(user: User): Promise<CrmCustomer | null> {
@@ -121,20 +101,9 @@ export async function ensureCustomerForUser(user: User): Promise<CrmCustomer | n
       return null;
     }
 
-    const meta = user.user_metadata || {};
-    const { data: created, error } = await admin
-      .from("crm_customers")
-      .insert({
-        auth_user_id: user.id,
-        email,
-        first_name: String(meta.first_name || meta.given_name || ""),
-        last_name: String(meta.last_name || meta.family_name || ""),
-        language: "fr",
-      })
-      .select("*")
-      .single();
-    if (error) return null;
-    return created as CrmCustomer;
+    // Customer records are provisioned by the agency. Public authentication
+    // must never create arbitrary CRM customers.
+    return null;
   } catch {
     return null;
   }
@@ -145,7 +114,9 @@ export function isRedirect(value: unknown): value is NextResponse {
 }
 
 /** Guard for App Router admin pages — redirects to /admin/login if needed. */
-export async function requireStaffPage(): Promise<{
+export async function requireStaffPage(
+  capability?: keyof CrmStaff["permissions"] | "admin"
+): Promise<{
   supabase: Awaited<ReturnType<typeof createClient>>;
   user: User;
   staff: CrmStaff;
@@ -163,5 +134,13 @@ export async function requireStaffPage(): Promise<{
   if (!staff) {
     redirect("/admin/login");
   }
-  return { supabase, user: authedUser, staff: staff as CrmStaff };
+  const authedStaff = staff as CrmStaff;
+  if (
+    capability &&
+    authedStaff.role !== "admin" &&
+    (capability === "admin" || authedStaff.permissions?.[capability] !== true)
+  ) {
+    redirect("/admin");
+  }
+  return { supabase, user: authedUser, staff: authedStaff };
 }

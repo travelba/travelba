@@ -30,6 +30,17 @@ export default async function proxy(request: NextRequest) {
   if (forwarded) return forwarded;
 
   const path = request.nextUrl.pathname;
+  // Public CRM previews must bypass next-intl, otherwise `/demo/*` is
+  // rewritten to `/fr/demo/*` even though these routes are not localized.
+  if (
+    path.startsWith("/demo") ||
+    path.startsWith("/devis/") ||
+    path.startsWith("/d/") ||
+    path.startsWith("/v/")
+  ) {
+    return NextResponse.next();
+  }
+
   if (
     path.startsWith("/admin") ||
     path.startsWith("/mon-compte") ||

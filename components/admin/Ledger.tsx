@@ -1,31 +1,98 @@
 "use client";
 
-import { FormEvent } from "react";
+import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CrmCustomer, CrmTransaction } from "@/lib/crm/types";
+import type { CrmBooking, CrmCustomer, CrmTransaction } from "@/lib/crm/types";
 import { TX_KIND_LABELS } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
+import { TransactionReceipt } from "@/components/admin/TransactionReceipt";
 
 export function Ledger({
   transactions,
   customers,
+  bookings,
 }: {
   transactions: CrmTransaction[];
   customers: CrmCustomer[];
+  bookings: Pick<CrmBooking, "id" | "customer_id" | "reference" | "title">[];
 }) {
   const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [notice, setNotice] = useState<{ error: boolean; text: string } | null>(null);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     const body = Object.fromEntries(new FormData(form).entries());
-    await fetch("/api/admin/transactions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    form.reset();
-    router.refresh();
+    setPending(true);
+    setNotice(null);
+    try {
+      const response = await fetch("/api/admin/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error || `Erreur serveur (${response.status})`);
+      form.reset();
+      setNotice({ error: false, text: "Écriture enregistrée." });
+      router.refresh();
+    } catch (error) {
+      setNotice({
+        error: true,
+        text: error instanceof Error ? error.message : "Une erreur est survenue.",
+      });
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function voidTransaction(transaction: CrmTransaction) {
+    if (!window.confirm(`Annuler l’écriture « ${transaction.label} » ? Une trace sera conservée.`)) return;
+    setPending(true);
+    setNotice(null);
+    try {
+      const response = await fetch(`/api/admin/transactions/${transaction.id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "void" }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Annulation impossible");
+      setNotice({ error: false, text: "Écriture annulée et auditée." });
+      router.refresh();
+    } catch (error) {
+      setNotice({ error: true, text: error instanceof Error ? error.message : "Annulation impossible" });
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function refundTransaction(transaction: CrmTransaction) {
+    const raw = window.prompt("Montant à rembourser", String(transaction.amount));
+    if (raw == null) return;
+    const amount = Number(raw.replace(",", "."));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setNotice({ error: true, text: "Montant invalide." });
+      return;
+    }
+    setPending(true);
+    setNotice(null);
+    try {
+      const response = await fetch("/api/admin/payments/refund", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transaction_id: transaction.id, amount }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Remboursement impossible");
+      setNotice({ error: false, text: `Remboursement Stripe ${data.refund_status}.` });
+      router.refresh();
+    } catch (error) {
+      setNotice({ error: true, text: error instanceof Error ? error.message : "Remboursement impossible" });
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -50,24 +117,41 @@ export function Ledger({
           <option value="refund">Remboursement</option>
         </select>
         <input name="amount" type="number" step="0.01" required placeholder="Montant" className="rounded-xl border border-border px-3 py-2" />
-        <input name="label" placeholder="Libellé" className="rounded-xl border border-border px-3 py-2 sm:col-span-2" />
-        <button className="admin-af-btn rounded-full px-4 py-2 text-sm sm:col-span-3">
-          Saisir une écriture
+        <select name="booking_id" className="rounded-xl border border-border px-3 py-2">
+          <option value="">Dossier (requis pour une réservation)…</option>
+          {bookings.map((booking) => (
+            <option key={booking.id} value={booking.id}>
+              {booking.reference} · {booking.title}
+            </option>
+          ))}
+        </select>
+        <input name="label" placeholder="Libellé" className="rounded-xl border border-border px-3 py-2" />
+        <button disabled={pending} className="admin-af-btn rounded-full px-4 py-2 text-sm sm:col-span-3 disabled:opacity-50">
+          {pending ? "Enregistrement…" : "Saisir une écriture"}
         </button>
+        {notice ? (
+          <p role={notice.error ? "alert" : "status"} className={`text-sm sm:col-span-3 ${notice.error ? "text-accent" : "text-emerald-700"}`}>
+            {notice.text}
+          </p>
+        ) : null}
       </form>
       <ul className="admin-af-card divide-y divide-border rounded-3xl">
         {transactions.map((t) => (
-          <li key={t.id} className="flex justify-between px-5 py-3 text-sm">
+          <li key={t.id} className="flex justify-between gap-4 px-5 py-3 text-sm">
             <div>
               <p className="font-medium">{t.label}</p>
               <p className="text-xs text-muted">
                 {formatDateFr(t.occurred_on)} · {TX_KIND_LABELS[t.kind]} · {t.status}
               </p>
+              <TransactionReceipt transactionId={t.id} fileName={t.receipt_file_name} hasFile={Boolean(t.receipt_storage_path)} />
             </div>
-            <p>
-              {t.direction === "credit" ? "+" : "−"}
-              {formatMoney(Number(t.amount), t.currency)}
-            </p>
+            <div className="text-right">
+              <p>{t.direction === "credit" ? "+" : "−"}{formatMoney(Number(t.amount), t.currency)}</p>
+              <div className="mt-1 flex gap-2">
+                {t.status !== "void" ? <button type="button" disabled={pending} onClick={() => void voidTransaction(t)} className="text-xs font-semibold text-red-700 disabled:opacity-50">Annuler</button> : null}
+                {t.source === "stripe" && t.direction === "credit" && t.status === "posted" ? <button type="button" disabled={pending} onClick={() => void refundTransaction(t)} className="text-xs font-semibold text-[var(--aura-blue)] disabled:opacity-50">Rembourser</button> : null}
+              </div>
+            </div>
           </li>
         ))}
       </ul>

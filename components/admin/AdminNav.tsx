@@ -8,8 +8,21 @@ const LINKS = [
   { href: "/admin", label: "Tableau de bord", exact: true },
   { href: "/admin/clients", label: "Clients" },
   { href: "/admin/reservations", label: "Réservations" },
+  { href: "/admin/devis", label: "Devis" },
+  { href: "/admin/imports", label: "Imports PDF" },
+  { href: "/admin/mtrip", label: "mTrip" },
+  { href: "/admin/documents", label: "Documents" },
+  { href: "/admin/paiements", label: "Paiements" },
   { href: "/admin/transactions", label: "Transactions" },
   { href: "/admin/revolut", label: "Revolut" },
+  { href: "/admin/demandes", label: "Demandes" },
+  { href: "/admin/notifications", label: "Notifications" },
+  { href: "/admin/taches", label: "Tâches" },
+  { href: "/admin/fournisseurs", label: "Fournisseurs" },
+  { href: "/admin/equipe", label: "Équipe" },
+  { href: "/admin/rapports", label: "Rapports" },
+  { href: "/admin/audit", label: "Audit" },
+  { href: "/admin/parametres", label: "Paramètres" },
 ];
 
 export function AdminNav({ unmatchedCount = 0 }: { unmatchedCount?: number }) {

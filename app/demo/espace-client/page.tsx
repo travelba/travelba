@@ -16,7 +16,12 @@ const sans = Inter({
   display: "swap",
 });
 
-const TABS = ["Accueil", "Réservations", "Transactions", "Compte"] as const;
+const TABS = [
+  { label: "Accueil", href: "#accueil" },
+  { label: "Réservations", href: "#reservations" },
+  { label: "Transactions", href: "#transactions" },
+  { label: "Compte", href: "#compte" },
+] as const;
 
 export const metadata = {
   title: `Espace client exemple — ${siteConfig.shortName}`,
@@ -28,7 +33,7 @@ export default function DemoClientSpacePage() {
     <div
       className={`account-app min-h-screen ${display.variable} ${sans.variable}`}
     >
-      <div className="mx-auto max-w-[430px] px-4 pb-28 pt-4">
+      <div id="accueil" className="mx-auto max-w-[430px] scroll-mt-4 px-4 pb-28 pt-4">
         <div className="mb-4 rounded-2xl bg-[var(--admin-navy)] px-4 py-3 text-white">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-white/60">
             Espace client exemple
@@ -37,8 +42,8 @@ export default function DemoClientSpacePage() {
             Marie Dupont · TBA Aura
           </p>
           <p className="mt-1 text-xs text-white/70">
-            Démo visuelle du CRM client. Compte réel :{" "}
-            <strong>client.demo@travelba.fr</strong> (OTP sur /connexion).
+            Démo publique et interactive du CRM client — aucune connexion
+            nécessaire.
           </p>
         </div>
 
@@ -54,7 +59,10 @@ export default function DemoClientSpacePage() {
           </span>
         </header>
 
-        <article className="relative mt-5 min-h-[300px] overflow-hidden rounded-[1.5rem] bg-[var(--admin-navy)] text-white shadow-xl">
+        <article
+          id="reservations"
+          className="relative mt-5 min-h-[300px] scroll-mt-4 overflow-hidden rounded-[1.5rem] bg-[var(--admin-navy)] text-white shadow-xl"
+        >
           <div
             className="absolute inset-0 bg-cover bg-center opacity-55"
             style={{
@@ -87,26 +95,40 @@ export default function DemoClientSpacePage() {
                 <p className="font-semibold">Hoshinoya Kyoto</p>
               </div>
             </div>
-            <button className="h-12 rounded-full bg-white text-sm font-bold text-[var(--admin-navy)]">
+            <a
+              href="#activites"
+              className="flex h-12 items-center justify-center rounded-full bg-white text-sm font-bold text-[var(--admin-navy)]"
+            >
               Voir l&apos;itinéraire →
-            </button>
+            </a>
           </div>
         </article>
 
         <div className="mt-4 grid grid-cols-3 gap-2.5">
-          {["Billets & Vouchers", "+ Fonds (Revolut)", "Concierge Privé"].map(
-            (label) => (
-              <div
-                key={label}
-                className="rounded-2xl bg-white px-2 py-3.5 text-center text-[11px] font-bold text-[var(--admin-navy)] shadow-sm"
-              >
-                {label}
-              </div>
-            )
-          )}
+          <Link
+            href="/mon-compte/documents"
+            className="rounded-2xl bg-white px-2 py-3.5 text-center text-[11px] font-bold text-[var(--admin-navy)] shadow-sm"
+          >
+            Billets & Vouchers
+          </Link>
+          <Link
+            href="/mon-compte/paiements"
+            className="rounded-2xl bg-white px-2 py-3.5 text-center text-[11px] font-bold text-[var(--admin-navy)] shadow-sm"
+          >
+            + Fonds (Revolut)
+          </Link>
+          <a
+            href={`https://wa.me/${siteConfig.whatsappNumber}`}
+            className="rounded-2xl bg-white px-2 py-3.5 text-center text-[11px] font-bold text-[var(--admin-navy)] shadow-sm"
+          >
+            Concierge Privé
+          </a>
         </div>
 
-        <section className="aura-card mt-4 rounded-[1.5rem] bg-white p-5 shadow-sm">
+        <section
+          id="transactions"
+          className="aura-card mt-4 scroll-mt-4 rounded-[1.5rem] bg-white p-5 shadow-sm"
+        >
           <div className="flex items-center justify-between">
             <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">
               Votre encours voyage
@@ -123,20 +145,20 @@ export default function DemoClientSpacePage() {
               </p>
             </div>
             <div className="text-right">
-              <p className="text-[11px] text-muted">Budget validé</p>
-              <p className="font-display text-lg font-bold text-muted">5 800,00 €</p>
+              <p className="text-[11px] text-muted">Dépenses engagées</p>
+              <p className="font-display text-lg font-bold text-muted">6 220,00 €</p>
             </div>
           </div>
           <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-slate-100">
-            <div className="h-full w-[59.5%] rounded-full bg-[var(--aura-blue)]" />
+            <div className="h-full w-[64.3%] rounded-full bg-[var(--aura-blue)]" />
           </div>
           <div className="mt-1.5 flex justify-between text-[11px] text-muted">
-            <span>59,5 % financé</span>
-            <span>Reste 2 350,00 €</span>
+            <span>64,3 % utilisé</span>
+            <span>Disponible 3 450,00 €</span>
           </div>
         </section>
 
-        <section className="mt-5 space-y-2">
+        <section id="activites" className="mt-5 scroll-mt-4 space-y-2">
           <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">
             Dernières activités
           </h3>
@@ -166,7 +188,7 @@ export default function DemoClientSpacePage() {
           ))}
         </section>
 
-        <div className="mt-6 grid gap-2">
+        <div id="compte" className="mt-6 grid scroll-mt-4 gap-2">
           <Link
             href="/connexion"
             className="rounded-full bg-[var(--admin-navy)] px-4 py-3 text-center text-sm font-bold text-white"
@@ -185,14 +207,15 @@ export default function DemoClientSpacePage() {
       <nav className="account-tabbar">
         <div className="mx-auto grid max-w-[430px] grid-cols-4">
           {TABS.map((tab, i) => (
-            <div
-              key={tab}
+            <a
+              key={tab.label}
+              href={tab.href}
               className={`flex min-h-[58px] flex-col items-center justify-center text-[10px] font-semibold ${
                 i === 0 ? "text-[var(--admin-navy)]" : "text-slate-500"
               }`}
             >
-              {tab}
-            </div>
+              {tab.label}
+            </a>
           ))}
         </div>
       </nav>

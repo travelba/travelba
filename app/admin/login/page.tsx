@@ -4,13 +4,18 @@ import { FormEvent, Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { BrandMark } from "@/components/crm/ui";
+import { safeInternalRedirect } from "@/lib/safe-redirect";
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() =>
+    searchParams.get("error") === "staff"
+      ? "Ce compte n’a pas accès au back-office agence."
+      : null
+  );
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(event: FormEvent) {
@@ -19,22 +24,39 @@ function LoginForm() {
     setError(null);
 
     const supabase = createClient();
-    const { error: signError } = await supabase.auth.signInWithPassword({
+    const { data: signData, error: signError } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
-    setLoading(false);
     if (signError) {
+      setLoading(false);
       setError(signError.message);
       return;
     }
 
-    const next = searchParams.get("next");
-    const destination =
-      next && next.startsWith("/admin") && !next.startsWith("/admin/login")
-        ? next
-        : "/admin";
+    const { data: staff } = await supabase
+      .from("crm_staff")
+      .select("id")
+      .eq("auth_user_id", signData.user.id)
+      .eq("active", true)
+      .maybeSingle();
+    if (!staff) {
+      await supabase.auth.signOut();
+      setLoading(false);
+      setError("Ce compte n’a pas accès au back-office agence.");
+      return;
+    }
+
+    setLoading(false);
+    const requestedDestination = safeInternalRedirect(
+      searchParams.get("next"),
+      ["/admin"],
+      "/admin"
+    );
+    const destination = requestedDestination.startsWith("/admin/login")
+      ? "/admin"
+      : requestedDestination;
     router.push(destination);
     router.refresh();
   }
