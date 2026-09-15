@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import {
-  fetchRevolutTransactions,
   upsertRevolutInbox,
   verifyRevolutWebhook,
   type RevolutTx,

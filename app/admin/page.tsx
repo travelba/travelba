@@ -14,8 +14,11 @@ import { PageEyebrow, PageTitle, StatusChip, bookingStatusTone } from "@/compone
 export default async function AdminHomePage() {
   const { supabase, staff } = await requireStaffPage();
 
-  const today = new Date().toISOString().slice(0, 10);
-  const soon = new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10);
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const soonDate = new Date(now);
+  soonDate.setUTCDate(soonDate.getUTCDate() + 90);
+  const soon = soonDate.toISOString().slice(0, 10);
 
   const [
     { data: bookings },
