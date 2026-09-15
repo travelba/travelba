@@ -105,18 +105,18 @@ export default function DemoClientSpacePage() {
         </article>
 
         <div className="mt-4 grid grid-cols-3 gap-2.5">
-          <a
+          <Link
             href="/mon-compte/documents"
             className="rounded-2xl bg-white px-2 py-3.5 text-center text-[11px] font-bold text-[var(--admin-navy)] shadow-sm"
           >
             Billets & Vouchers
-          </a>
-          <a
+          </Link>
+          <Link
             href="/mon-compte/paiements"
             className="rounded-2xl bg-white px-2 py-3.5 text-center text-[11px] font-bold text-[var(--admin-navy)] shadow-sm"
           >
             + Fonds (Revolut)
-          </a>
+          </Link>
           <a
             href={`https://wa.me/${siteConfig.whatsappNumber}`}
             className="rounded-2xl bg-white px-2 py-3.5 text-center text-[11px] font-bold text-[var(--admin-navy)] shadow-sm"
