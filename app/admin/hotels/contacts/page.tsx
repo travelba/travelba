@@ -19,6 +19,8 @@ export default function HotelContactsPage() {
   }
 
   useEffect(() => {
+    // Initial client-side load from the protected API.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, []);
 

@@ -72,12 +72,13 @@ export default async function TransactionsPage({
           >
             Régler une échéance
           </Link>
-          <a
-            href="/api/client/transactions/statement"
+          <form
+            action="/api/client/transactions/statement"
+            method="get"
             className="inline-flex items-center justify-center rounded-xl bg-white px-3 py-2.5 text-center text-sm font-semibold text-[var(--admin-navy)]"
           >
-            Télécharger le relevé
-          </a>
+            <button>Télécharger le relevé</button>
+          </form>
         </div>
       </section>
 

@@ -146,6 +146,8 @@ export function PassportPassengerPanel({
       setImportJob((job) => (job ? { ...job, tick: job.tick + 1 } : null));
     }, 1000);
     return () => window.clearInterval(id);
+    // Timer lifecycle is keyed to one import, not each progress tick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [importJob?.totalStartedAt]);
 
   const lead =
@@ -299,6 +301,8 @@ export function PassportPassengerPanel({
       `Passeport ${importJob.fileIndex}/${importJob.fileTotal} — ${importJob.fileName}`,
       importJob.pct
     );
+    // Callback identity is intentionally excluded to avoid restarting imports.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [importing, importJob?.fileIndex, importJob?.fileName, importJob?.pct]);
 
   const globalWarnings = useMemo(
@@ -307,6 +311,9 @@ export function PassportPassengerPanel({
   );
 
   const progressPct = importJob?.pct ?? 0;
+  const progressNow = importJob
+    ? importJob.fileStartedAt + importJob.tick * 1000
+    : 0;
 
   return (
     <div className="space-y-4">
@@ -330,10 +337,10 @@ export function PassportPassengerPanel({
               <p className="truncate text-xs text-muted">{importJob.fileName}</p>
               <div className="flex justify-center gap-4 font-mono text-xs text-accent">
                 <span>
-                  Total {formatElapsed(Date.now() - importJob.totalStartedAt)}
+                  Total {formatElapsed(progressNow - importJob.totalStartedAt)}
                 </span>
                 <span>
-                  Fichier {formatElapsed(Date.now() - importJob.fileStartedAt)}
+                  Fichier {formatElapsed(progressNow - importJob.fileStartedAt)}
                 </span>
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-white/10">

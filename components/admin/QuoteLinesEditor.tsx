@@ -44,7 +44,9 @@ export function QuoteLinesEditor({
   const [editingAmount, setEditingAmount] = useState<string | null>(null);
   const skipNext = useRef(true);
   const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
 
   const autoTitle = useMemo(() => {
     const fromLines = inferTripDates(rows);
@@ -57,6 +59,8 @@ export function QuoteLinesEditor({
   }, [rows, startDate, endDate, tripTitle]);
 
   useEffect(() => {
+    // Reinitialize the controlled draft when another guide/extraction is loaded.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRows(lines);
     skipNext.current = true;
   }, [lines, tripTitle, startDate, endDate]);

@@ -835,7 +835,7 @@ function extractFrenchVoucherHotel(text: string) {
     text.match(/R[ée]servation\s+(\d{6,})/i)?.[1] || null;
 
   // Nom = ligne après « réservé par notre partenaire » ou avant adresse FL/US
-  let name =
+  const name =
     text.match(
       /partenaire\s*\n+([A-Za-z0-9'’&\- .]{3,80})\s*\n/i
     )?.[1]?.trim() ||

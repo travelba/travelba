@@ -135,6 +135,8 @@ export function VoyageFilesPanel({
   useEffect(() => {
     if (!focusFileId) return;
     const file = files.find((f) => f.id === focusFileId);
+    // Opening the requested preview synchronizes parent focus with this modal.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (file) void openPreview(file);
     onFocusConsumed?.();
   }, [focusFileId, files, openPreview, onFocusConsumed]);

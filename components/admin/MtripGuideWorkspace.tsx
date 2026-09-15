@@ -14,7 +14,7 @@ import {
 import { PassportPassengerPanel } from "@/components/admin/PassportPassengerPanel";
 import { QuoteLinesEditor } from "@/components/admin/QuoteLinesEditor";
 import { VoyageFilesPanel } from "@/components/admin/VoyageFilesPanel";
-import { buildPublicQuoteUrl, buildShortExpenseUrl, buildShortTripUrl } from "@/lib/agency/quote-link";
+import { buildPublicQuoteUrl, buildShortExpenseUrl } from "@/lib/agency/quote-link";
 import {
   multiFileProgressPct,
   xhrFormUpload,
@@ -95,6 +95,8 @@ export function MtripGuideWorkspace({ initialGuide }: Props) {
     if (!hasPax) return;
     if (passTimer.current) clearTimeout(passTimer.current);
     passTimer.current = setTimeout(() => {
+      // Debounced invocation intentionally references the latest function body.
+      // eslint-disable-next-line react-hooks/immutability
       void autosavePassengers();
     }, 500);
     return () => {
@@ -349,10 +351,6 @@ export function MtripGuideWorkspace({ initialGuide }: Props) {
   const expenseShortUrl = guide.short_code
     ? buildShortExpenseUrl(guide.short_code)
     : quotePublicUrl;
-  const tripShortUrl = guide.short_code
-    ? buildShortTripUrl(guide.short_code)
-    : null;
-
   async function copyQuoteLink() {
     const url =
       expenseShortUrl ||

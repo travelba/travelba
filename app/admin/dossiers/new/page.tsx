@@ -29,7 +29,6 @@ export default function NewDossierPage() {
 
   useEffect(() => {
     if (destinationQuery.trim().length < 2 || selected) {
-      setSuggestions([]);
       return;
     }
     const handle = setTimeout(async () => {
@@ -119,7 +118,7 @@ export default function NewDossierPage() {
             className="w-full rounded-lg border border-border bg-surface px-3 py-2"
             required
           />
-          {suggestions.length > 0 ? (
+          {!selected && destinationQuery.trim().length >= 2 && suggestions.length > 0 ? (
             <ul className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-border bg-surface-2 shadow-xl">
               {suggestions.map((item) => (
                 <li key={`${item.type}-${item.id}`}>

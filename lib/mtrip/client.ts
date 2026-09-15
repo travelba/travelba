@@ -79,6 +79,7 @@ async function mtripFetch<T>(
   }
 
   const { query: _query, ...rest } = init || {};
+  void _query;
   const response = await fetch(url.toString(), {
     ...rest,
     headers: {

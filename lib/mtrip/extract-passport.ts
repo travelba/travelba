@@ -142,7 +142,7 @@ function repairMrzLine1(line: string) {
 
 /** TD3 ligne 2 : zones dates/n° doivent être numériques. */
 function repairMrzLine2(line: string) {
-  let l = line.padEnd(44, "<").slice(0, 44);
+  const l = line.padEnd(44, "<").slice(0, 44);
   const digitZones: Array<[number, number]> = [
     [0, 9], // document number (alphanum — only fix obvious digit lookalikes mid-scan)
     [9, 10], // check
@@ -199,7 +199,7 @@ function tryParseMrzPair(line1Raw: string, line2Raw: string) {
   const candidates = [line2];
   // Variante : forcer correction chiffres sur toute la zone dates
   const forced = line2.split("");
-  for (let i of [9, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24, 25, 26, 27]) {
+  for (const i of [9, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24, 25, 26, 27]) {
     if (/[A-Z]/.test(forced[i])) forced[i] = ocrDigitFix(forced[i]);
   }
   const forcedStr = forced.join("");
@@ -1098,7 +1098,7 @@ export async function parsePassportFile(
         );
       }
 
-      let hit = text.trim() ? passengersFromText(text, fileName, warnings) : null;
+      const hit = text.trim() ? passengersFromText(text, fileName, warnings) : null;
       if (hit?.passengers.length) return wrapResult(hit.passengers, hit.warnings);
 
       // Scanned PDF multi-pages : 1 page = potentiellement 1 passeport
