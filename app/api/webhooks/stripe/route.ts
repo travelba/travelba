@@ -69,6 +69,7 @@ export async function POST(request: Request) {
   if (event.type === "refund.created" || event.type === "refund.updated") {
     const refund = event.data.object as Stripe.Refund;
     if (refund.status === "succeeded" && refund.amount > 0) {
+      const refundMetadata = refund.metadata || {};
       const paymentIntentId =
         typeof refund.payment_intent === "string"
           ? refund.payment_intent
@@ -84,7 +85,7 @@ export async function POST(request: Request) {
           .maybeSingle();
         originalTransactionId = original?.id || "";
       }
-      const metadataTransactionId = refund.metadata.crm_transaction_id;
+      const metadataTransactionId = refundMetadata.crm_transaction_id;
       if (
         metadataTransactionId &&
         originalTransactionId &&
@@ -99,7 +100,7 @@ export async function POST(request: Request) {
       }
       if (!originalTransactionId) {
         const { error: auditError } = await admin.from("crm_audit_events").insert({
-          customer_id: refund.metadata.crm_customer_id || null,
+          customer_id: refundMetadata.crm_customer_id || null,
           entity_type: "stripe_refund",
           entity_id: refund.id,
           action: metadataTransactionId
