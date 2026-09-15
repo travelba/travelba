@@ -3,10 +3,11 @@
 import { FormEvent, Suspense, useState } from "react";
 import { Plus_Jakarta_Sans, Inter } from "next/font/google";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { siteConfig } from "@/lib/site";
 import { BrandMark } from "@/components/crm/ui";
+import { safeInternalRedirect } from "@/lib/safe-redirect";
 
 const display = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -23,15 +24,25 @@ const sans = Inter({
 });
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [token, setToken] = useState("");
   const [sent, setSent] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const authError = searchParams.get("error");
+  const [error, setError] = useState<string | null>(() =>
+    authError === "auth"
+      ? "Le lien ou le code de connexion est invalide ou expiré."
+      : authError === "account"
+        ? "Aucun espace client n’est rattaché à cette adresse. Contactez l’agence."
+        : null
+  );
   const [loading, setLoading] = useState(false);
 
-  const next = searchParams.get("next") || "/mon-compte";
+  const next = safeInternalRedirect(
+    searchParams.get("next"),
+    ["/mon-compte"],
+    "/mon-compte"
+  );
 
   async function sendOtp(event?: FormEvent) {
     event?.preventDefault();
@@ -64,7 +75,7 @@ function LoginForm() {
     const { error: verifyError } = await supabase.auth.verifyOtp({
       email: email.trim(),
       token: token.trim(),
-      type: "magiclink",
+      type: "email",
     });
     setLoading(false);
     if (verifyError) {
@@ -76,15 +87,15 @@ function LoginForm() {
       );
       return;
     }
-    router.push(next.startsWith("/") ? next : "/mon-compte");
-    router.refresh();
+    window.location.assign(`/auth/callback?next=${encodeURIComponent(next)}`);
   }
 
   if (sent) {
     return (
       <form onSubmit={verifyOtp} className="mt-6 space-y-5">
         <div className="rounded-2xl bg-[var(--aura-blue-soft)]/70 px-3.5 py-3 text-sm text-[var(--admin-navy)]">
-          Code envoyé à <strong>{email}</strong>
+          Si cette adresse est rattachée à un espace client, un code a été
+          envoyé à <strong>{email}</strong>.
         </div>
         <label className="block space-y-1.5 text-sm">
           <span className="text-xs font-semibold uppercase tracking-wider text-muted">
@@ -158,7 +169,7 @@ function LoginForm() {
         {loading ? "Envoi…" : "Recevoir le code →"}
       </button>
       <p className="text-center text-xs text-muted">
-        Connexion sécurisée sans mot de passe · template Aura
+        Connexion sécurisée sans mot de passe
       </p>
     </form>
   );

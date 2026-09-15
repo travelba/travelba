@@ -33,7 +33,6 @@ export async function updateSession(request: NextRequest) {
   const isAdmin = pathname.startsWith("/admin");
   const isAdminLogin = pathname === "/admin/login";
   const isClient = pathname.startsWith("/mon-compte");
-  const isConnexion = pathname === "/connexion";
 
   if (isAdmin) {
     if (!user && !isAdminLogin) {
@@ -56,13 +55,6 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(url);
     }
     return supabaseResponse;
-  }
-
-  if (isConnexion && user) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/mon-compte";
-    url.search = "";
-    return NextResponse.redirect(url);
   }
 
   return supabaseResponse;

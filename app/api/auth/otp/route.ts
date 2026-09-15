@@ -53,6 +53,20 @@ export async function POST(request: Request) {
 
   try {
     const supabase = createServiceClient();
+    const { data: customer, error: customerError } = await supabase
+      .from("crm_customers")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+    if (customerError) {
+      console.error("[auth/otp] customer lookup:", customerError.message);
+      return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
+    }
+    if (!customer) {
+      // Uniform response avoids exposing the agency's customer list.
+      return NextResponse.json({ ok: true, digits: 6 });
+    }
+
     const { data, error } = await supabase.auth.admin.generateLink({
       type: "magiclink",
       email,

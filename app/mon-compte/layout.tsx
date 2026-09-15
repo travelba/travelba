@@ -36,7 +36,7 @@ export default async function AccountLayout({
   } = await supabase.auth.getUser();
   if (!user) redirect("/connexion");
   const customer = await ensureCustomerForUser(user);
-  if (!customer) redirect("/connexion");
+  if (!customer) redirect("/connexion?error=account");
 
   const name = customerFullName(customer);
   const initials =
