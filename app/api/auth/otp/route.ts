@@ -67,6 +67,34 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, digits: 6 });
     }
 
+    const recipientHash = createHash("sha256").update(email).digest("hex");
+    const forwardedFor =
+      request.headers.get("x-vercel-forwarded-for") ||
+      request.headers.get("x-forwarded-for") ||
+      "unknown";
+    const ip = forwardedFor.split(",", 1)[0]?.trim() || "unknown";
+    const ipHash = createHash("sha256").update(ip).digest("hex");
+    const { data: allowed, error: rateLimitError } = await supabase.rpc(
+      "crm_allow_otp_request",
+      {
+        p_email_hash: recipientHash,
+        p_ip_hash: ipHash,
+      }
+    );
+    if (rateLimitError) {
+      console.error("[auth/otp] rate limit:", rateLimitError.message);
+      return NextResponse.json(
+        { error: "Service de connexion temporairement indisponible." },
+        { status: 503 }
+      );
+    }
+    if (!allowed) {
+      return NextResponse.json(
+        { error: "Un code vient déjà d’être envoyé. Patientez une minute." },
+        { status: 429 }
+      );
+    }
+
     const { data, error } = await supabase.auth.admin.generateLink({
       type: "magiclink",
       email,
@@ -93,7 +121,6 @@ export async function POST(request: Request) {
 
     const resend = new Resend(apiKey);
     const minuteBucket = Math.floor(Date.now() / 60_000);
-    const recipientHash = createHash("sha256").update(email).digest("hex");
     const { error: sendError } = await resend.emails.send(
       {
         from: `${siteConfig.shortName} <${fromAddress}>`,
