@@ -39,7 +39,6 @@ const patchSchema = z.object({
   end_date: z.string().nullable().optional(),
   dossier_id: z.string().uuid().nullable().optional(),
   passengers: z.array(passengerSchema).optional(),
-  status: z.enum(["draft", "ready", "error"]).optional(),
   quote_lines: z.array(quoteLineSchema).optional(),
 });
 
@@ -180,7 +179,7 @@ export async function PATCH(request: Request, { params }: Params) {
     });
   }
 
-  if (parsed.data.quote_lines && !parsed.data.status) {
+  if (parsed.data.quote_lines) {
     updates.status = "ready";
   }
   if (invalidatesPublication) {

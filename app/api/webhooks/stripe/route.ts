@@ -112,7 +112,20 @@ export async function POST(request: Request) {
             )
           )
         : 0;
-      if (refundAmount > 0 && localPayment?.id) {
+      const { count: overpaymentAuditCount } =
+        refundAmount > 0 && localPayment?.id
+          ? await admin
+              .from("crm_audit_events")
+              .select("id", { count: "exact", head: true })
+              .eq("entity_type", "transaction")
+              .eq("entity_id", localPayment.id)
+              .eq("action", "stripe_overpayment_pending_refund")
+          : { count: 0 };
+      if (
+        refundAmount > 0 &&
+        localPayment?.id &&
+        (overpaymentAuditCount || 0) > 0
+      ) {
         await stripe.refunds.create(
           {
             payment_intent: payment.id,
