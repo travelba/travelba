@@ -264,6 +264,32 @@ export async function PATCH(request: Request, ctx: Ctx) {
       );
     }
   }
+  if (resource === "invoices") {
+    const { data: invoice } = await auth.supabase
+      .from("crm_invoices")
+      .select("status,transaction_id")
+      .eq("id", id)
+      .maybeSingle();
+    if (!invoice || invoice.transaction_id || invoice.status !== "draft") {
+      return jsonError(
+        "Une pièce comptable émise ou liée à une transaction est immuable.",
+        409
+      );
+    }
+  }
+  if (resource === "schedules") {
+    const { data: schedule } = await auth.supabase
+      .from("crm_payment_schedules")
+      .select("paid_amount,transaction_id")
+      .eq("id", id)
+      .maybeSingle();
+    if (!schedule || Number(schedule.paid_amount) > 0 || schedule.transaction_id) {
+      return jsonError(
+        "Une échéance encaissée ou rapprochée est immuable.",
+        409
+      );
+    }
+  }
   if (resource === "notifications" && "action_url" in payload) {
     try {
       payload.action_url = safeActionUrl(payload.action_url);
@@ -437,6 +463,19 @@ export async function DELETE(request: Request, ctx: Ctx) {
     ) {
       return jsonError(
         "Une échéance encaissée ou rapprochée ne peut pas être supprimée.",
+        409
+      );
+    }
+  }
+  if (resource === "invoices") {
+    const { data: invoice } = await auth.supabase
+      .from("crm_invoices")
+      .select("status,transaction_id")
+      .eq("id", id)
+      .maybeSingle();
+    if (!invoice || invoice.transaction_id || invoice.status !== "draft") {
+      return jsonError(
+        "Une pièce comptable émise ou liée à une transaction ne peut pas être supprimée.",
         409
       );
     }

@@ -24,7 +24,13 @@ export default async function PublicTripQuotePage({ params }: Props) {
   if (!data) notFound();
 
   const lines = Array.isArray(data.quote_lines)
-    ? (data.quote_lines as QuoteLine[])
+    ? (data.quote_lines as QuoteLine[]).map((line) => ({
+        id: line.id,
+        kind: line.kind,
+        title: line.title,
+        amount: line.amount,
+        currency: line.currency,
+      }))
     : [];
   const currency = lines.find((line) => line.currency)?.currency || "EUR";
   const total = lines.reduce(
@@ -52,7 +58,6 @@ export default async function PublicTripQuotePage({ params }: Props) {
                 <p className="font-semibold text-[var(--admin-navy)]">{line.title}</p>
                 <p className="text-xs text-muted">
                   {line.kind}
-                  {line.confirmation ? ` · ${line.confirmation}` : ""}
                 </p>
               </div>
               <strong className="shrink-0 text-[var(--admin-navy)]">

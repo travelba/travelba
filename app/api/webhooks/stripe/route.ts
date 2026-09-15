@@ -132,12 +132,17 @@ export async function POST(request: Request) {
             amount: refund.amount / 100,
           },
         });
-        if (auditError || metadataTransactionId) {
-          return NextResponse.json(
-            { error: "Paiement local du remboursement introuvable" },
-            { status: 500 }
-          );
+        if (auditError) {
+          console.error("Stripe unmatched refund audit failed", {
+            eventId: event.id,
+            refundId: refund.id,
+            error: auditError.message,
+          });
         }
+        return NextResponse.json(
+          { error: "Paiement local du remboursement introuvable" },
+          { status: 500 }
+        );
       }
       if (originalTransactionId) {
         const { error } = await admin.rpc("crm_record_schedule_refund", {
