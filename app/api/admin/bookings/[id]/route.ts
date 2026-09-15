@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { syncBookingDebit } from "@/lib/crm/bookings";
-import type { BookingStatus, CrmBooking } from "@/lib/crm/types";
+import type { CrmBooking } from "@/lib/crm/types";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -30,8 +30,6 @@ export async function PATCH(request: Request, ctx: Ctx) {
     .eq("id", id)
     .maybeSingle();
   if (!current) return jsonError("Réservation introuvable", 404);
-  const prev = current as CrmBooking;
-
   const patch: Record<string, unknown> = {};
   for (const key of [
     "title",
@@ -59,11 +57,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
   if (error) return jsonError(error.message, 400);
   const booking = data as CrmBooking;
   try {
-    await syncBookingDebit(
-      auth.supabase,
-      booking,
-      prev.status as BookingStatus
-    );
+    await syncBookingDebit(auth.supabase, booking);
   } catch (syncError) {
     return jsonError(
       syncError instanceof Error

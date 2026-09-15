@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { BookingStatus, CrmBooking, CrmTransaction } from "@/lib/crm/types";
+import type { CrmBooking, CrmTransaction } from "@/lib/crm/types";
 
 export async function nextBookingReference(supabase: SupabaseClient) {
   const { data, error } = await supabase.rpc("crm_next_booking_reference");
@@ -11,8 +11,7 @@ export async function nextBookingReference(supabase: SupabaseClient) {
 
 export async function syncBookingDebit(
   supabase: SupabaseClient,
-  booking: CrmBooking,
-  _previousStatus?: BookingStatus
+  booking: CrmBooking
 ) {
   const amount = Number(booking.total_amount || 0);
   const shouldDebit =

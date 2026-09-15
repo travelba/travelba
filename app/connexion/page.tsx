@@ -3,7 +3,7 @@
 import { FormEvent, Suspense, useState } from "react";
 import { Plus_Jakarta_Sans, Inter } from "next/font/google";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { siteConfig } from "@/lib/site";
 import { BrandMark } from "@/components/crm/ui";
@@ -24,6 +24,7 @@ const sans = Inter({
 });
 
 function LoginForm() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [token, setToken] = useState("");
@@ -87,7 +88,7 @@ function LoginForm() {
       );
       return;
     }
-    window.location.assign(`/auth/callback?next=${encodeURIComponent(next)}`);
+    router.push(`/auth/callback?next=${encodeURIComponent(next)}`);
   }
 
   if (sent) {
