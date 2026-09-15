@@ -8,14 +8,14 @@ import {
   type CrmTransaction,
 } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
-import {
-  ConciergeBanner,
-  EmptyState,
-  PageEyebrow,
-  PageTitle,
-} from "@/components/crm/ui";
+import { EmptyState, StatusChip } from "@/components/crm/ui";
 
-export default async function TransactionsPage() {
+export default async function TransactionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ filter?: string }>;
+}) {
+  const { filter } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -31,113 +31,161 @@ export default async function TransactionsPage() {
       .eq("customer_id", customer.id)
       .eq("status", "posted")
       .order("occurred_on", { ascending: false }),
-    supabase.from("crm_customer_balances").select("*").eq("customer_id", customer.id),
+    supabase
+      .from("crm_customer_balances")
+      .select("*")
+      .eq("customer_id", customer.id),
   ]);
 
   const rows = (txs || []) as CrmTransaction[];
   const bal = ((balances || []) as CrmBalance[])[0];
   const balanceValue = bal ? Number(bal.balance) : 0;
   const currency = bal?.currency || "EUR";
-  const totalDebit = rows
-    .filter((t) => t.direction === "debit")
-    .reduce((s, t) => s + Number(t.amount), 0);
-  const totalCredit = rows
-    .filter((t) => t.direction === "credit")
-    .reduce((s, t) => s + Number(t.amount), 0);
+
+  const activeFilter = filter === "debit" || filter === "credit" ? filter : "all";
+  const filtered = rows.filter((t) => {
+    if (activeFilter === "debit") return t.direction === "debit";
+    if (activeFilter === "credit") return t.direction === "credit";
+    return true;
+  });
 
   return (
-    <div className="space-y-6">
-      <div>
-        <PageEyebrow>Espace privilège voyageur</PageEyebrow>
-        <PageTitle
-          title="Transactions"
-          subtitle="Historique de vos engagements, acomptes et règlements."
-          actions={
-            <Link
-              href="/mon-compte/profil/paiement"
-              className="inline-flex rounded-xl bg-[var(--admin-navy)] px-4 py-2.5 text-sm font-semibold text-white"
-            >
-              Régler en ligne
-            </Link>
-          }
-        />
-      </div>
+    <div className="space-y-5">
+      <section className="relative overflow-hidden rounded-[1.5rem] bg-[var(--aura-navy-card)] p-5 text-white shadow-[0_16px_36px_rgba(19,27,46,0.35)]">
+        <div className="absolute -right-8 -top-10 h-36 w-36 rounded-full bg-[var(--aura-blue)]/25 blur-2xl" />
+        <div className="relative flex items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-300">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            Connecté · Revolut API
+          </span>
+          <span className="text-[11px] text-white/55">À l&apos;instant</span>
+        </div>
+        <p className="relative mt-5 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/55">
+          Solde portefeuille voyage
+        </p>
+        <p className="relative mt-1 font-display text-[2rem] font-extrabold tracking-tight">
+          {formatMoney(balanceValue, currency)}
+        </p>
+        <div className="relative mt-5 grid grid-cols-2 gap-2">
+          <Link
+            href="/mon-compte/profil/paiement"
+            className="inline-flex items-center justify-center rounded-xl bg-white/12 px-3 py-2.5 text-sm font-semibold backdrop-blur"
+          >
+            Recharger
+          </Link>
+          <a
+            href={`mailto:contact@travelba.fr?subject=${encodeURIComponent("Relevé PDF portefeuille")}`}
+            className="inline-flex items-center justify-center rounded-xl bg-white px-3 py-2.5 text-sm font-semibold text-[var(--admin-navy)]"
+          >
+            Relevé PDF
+          </a>
+        </div>
+      </section>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="admin-af-card rounded-2xl px-5 py-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-            Encours
-          </p>
-          <p className="mt-1 font-display text-2xl font-extrabold text-[var(--admin-navy)]">
-            {formatMoney(balanceValue, currency)}
-          </p>
-          <p className="mt-1 text-xs text-muted">
-            {balanceValue < 0 ? "Reste à payer" : balanceValue > 0 ? "Avoir" : "À jour"}
-          </p>
-        </div>
-        <div className="admin-af-card rounded-2xl px-5 py-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-            Total engagé
-          </p>
-          <p className="mt-1 font-display text-2xl font-extrabold text-[var(--admin-navy)]">
-            {formatMoney(totalDebit, currency)}
-          </p>
-        </div>
-        <div className="admin-af-card rounded-2xl px-5 py-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-            Total réglé
-          </p>
-          <p className="mt-1 font-display text-2xl font-extrabold text-emerald-700">
-            +{formatMoney(totalCredit, currency)}
-          </p>
-        </div>
-      </div>
-
-      <section className="admin-af-card overflow-hidden rounded-2xl">
-        <div className="border-b border-[var(--border)] px-5 py-4">
-          <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">
-            Journal des opérations
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <h2 className="font-display text-base font-bold text-[var(--admin-navy)]">
+            Historique des flux
           </h2>
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+            {rows.length} ops
+          </span>
         </div>
-        {rows.length ? (
-          <ul className="divide-y divide-border">
-            {rows.map((t) => {
-              const credit = t.direction === "credit";
-              return (
-                <li
-                  key={t.id}
-                  className="flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div>
-                    <p className="font-semibold text-[var(--admin-navy)]">{t.label}</p>
-                    <p className="mt-0.5 text-xs text-muted">
+      </div>
+
+      <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {(
+          [
+            { key: "all", label: "Tous", href: "/mon-compte/transactions" },
+            {
+              key: "debit",
+              label: "Débits réservations",
+              href: "/mon-compte/transactions?filter=debit",
+            },
+            {
+              key: "credit",
+              label: "Crédits Revolut",
+              href: "/mon-compte/transactions?filter=credit",
+            },
+          ] as const
+        ).map((item) => (
+          <Link
+            key={item.key}
+            href={item.href}
+            className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold ${
+              activeFilter === item.key
+                ? "bg-[var(--admin-navy)] text-white"
+                : "bg-white text-[var(--admin-navy)] ring-1 ring-slate-200"
+            }`}
+          >
+            {item.label}
+          </Link>
+        ))}
+      </div>
+
+      {filtered.length ? (
+        <ul className="space-y-2">
+          {filtered.map((t) => {
+            const credit = t.direction === "credit";
+            return (
+              <li
+                key={t.id}
+                className="flex items-center justify-between gap-3 rounded-2xl bg-white p-3.5 shadow-[0_6px_18px_rgba(15,23,42,0.04)]"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <span
+                    className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
+                      credit
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "bg-[var(--aura-blue-soft)] text-[var(--aura-blue)]"
+                    }`}
+                  >
+                    {credit ? "R" : "✈"}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
+                        {t.label || TX_KIND_LABELS[t.kind] || t.kind}
+                      </p>
+                      {credit ? (
+                        <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold uppercase text-emerald-700">
+                          Instant
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-0.5 truncate text-xs text-muted">
                       {formatDateFr(t.occurred_on)} · {TX_KIND_LABELS[t.kind]}
-                      {credit ? " · Crédit" : " · Débit"}
                     </p>
                   </div>
+                </div>
+                <div className="text-right">
                   <p
-                    className={`font-display text-base font-extrabold ${
-                      credit ? "text-emerald-700" : "text-[var(--admin-navy)]"
+                    className={`text-sm font-bold ${
+                      credit ? "text-emerald-600" : "text-[var(--admin-navy)]"
                     }`}
                   >
                     {credit ? "+" : "−"}
                     {formatMoney(Number(t.amount), t.currency)}
                   </p>
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <div className="p-5">
-            <EmptyState
-              title="Aucune écriture pour le moment"
-              description="Les débits de réservation et les crédits Revolut apparaîtront ici."
-            />
-          </div>
-        )}
-      </section>
+                  <StatusChip tone={credit ? "green" : "sky"}>Reçu</StatusChip>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <EmptyState
+          title="Aucun mouvement trouvé"
+          description="Les débits de réservation et crédits Revolut apparaîtront ici."
+        />
+      )}
 
-      <ConciergeBanner />
+      <div className="rounded-2xl bg-[var(--aura-blue-soft)]/60 px-4 py-3 text-sm text-[var(--admin-navy)]">
+        <p className="font-semibold">Paiements sécurisés Revolut</p>
+        <p className="mt-0.5 text-xs text-[var(--admin-navy)]/70">
+          Protection fraude et conversion multidevise sans commission cachée.
+        </p>
+      </div>
     </div>
   );
 }
