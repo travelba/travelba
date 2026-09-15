@@ -1,7 +1,6 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { CrmCustomer, CrmRevolutTransaction } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
@@ -55,12 +54,15 @@ export function RevolutInbox({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <Link
-          href="/api/admin/revolut/oauth"
-          className="rounded-full bg-[var(--admin-sky)] px-4 py-2 text-sm font-semibold text-[var(--admin-navy)]"
-        >
-          Connecter Revolut
-        </Link>
+        <form action="/api/admin/revolut/oauth" method="get">
+          <button
+            type="submit"
+            disabled={!configured}
+            className="rounded-full bg-[var(--admin-sky)] px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Connecter Revolut
+          </button>
+        </form>
         <button
           type="button"
           onClick={sync}
