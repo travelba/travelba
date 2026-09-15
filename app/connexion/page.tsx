@@ -32,25 +32,29 @@ function LoginForm() {
 
   const next = searchParams.get("next") || "/mon-compte";
 
-  async function sendOtp(event: FormEvent) {
-    event.preventDefault();
+  async function sendOtp(event?: FormEvent) {
+    event?.preventDefault();
     setLoading(true);
     setError(null);
-    const supabase = createClient();
-    const origin = window.location.origin;
-    const { error: otpError } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}`,
-        shouldCreateUser: true,
-      },
-    });
-    setLoading(false);
-    if (otpError) {
-      setError(otpError.message);
-      return;
+    try {
+      const res = await fetch("/api/auth/otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      const payload = (await res.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      if (!res.ok) {
+        setError(payload.error || "Impossible d’envoyer le code.");
+        return;
+      }
+      setSent(true);
+    } catch {
+      setError("Impossible d’envoyer le code.");
+    } finally {
+      setLoading(false);
     }
-    setSent(true);
   }
 
   async function verifyOtp(event: FormEvent) {
@@ -59,13 +63,18 @@ function LoginForm() {
     setError(null);
     const supabase = createClient();
     const { error: verifyError } = await supabase.auth.verifyOtp({
-      email,
+      email: email.trim(),
       token: token.trim(),
-      type: "email",
+      type: "magiclink",
     });
     setLoading(false);
     if (verifyError) {
-      setError(verifyError.message);
+      const msg = verifyError.message.toLowerCase();
+      setError(
+        msg.includes("rate limit")
+          ? "Trop de tentatives. Réessayez dans quelques minutes."
+          : verifyError.message
+      );
       return;
     }
     router.push(next.startsWith("/") ? next : "/mon-compte");
@@ -80,17 +89,17 @@ function LoginForm() {
         </div>
         <label className="block space-y-1.5 text-sm">
           <span className="text-xs font-semibold uppercase tracking-wider text-muted">
-            Code à 6 chiffres
+            Code reçu par e-mail
           </span>
           <input
             inputMode="numeric"
             autoComplete="one-time-code"
             required
-            maxLength={6}
+            maxLength={8}
             value={token}
-            onChange={(e) => setToken(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            onChange={(e) => setToken(e.target.value.replace(/\D/g, "").slice(0, 8))}
             className="w-full rounded-xl border border-[var(--border)] bg-white px-3.5 py-3 text-center font-display text-2xl font-extrabold tracking-[0.35em] text-[var(--admin-navy)] outline-none focus:border-[var(--admin-navy)] focus:ring-2 focus:ring-[var(--admin-sky)]"
-            placeholder="••••••"
+            placeholder="••••••••"
           />
         </label>
         {error ? <p className="text-sm text-[var(--admin-red)]">{error}</p> : null}
@@ -176,7 +185,7 @@ export default function ConnexionPage() {
             Connexion
           </h1>
           <p className="mt-2 text-sm text-muted">
-            Entrez votre e-mail pour recevoir un code à 6 chiffres.
+            Entrez votre e-mail pour recevoir un code de connexion.
           </p>
           <div className="mt-4 h-1 w-12 rounded-full bg-[var(--admin-red)]" />
           <Suspense fallback={<p className="mt-8 text-sm text-muted">Chargement…</p>}>
