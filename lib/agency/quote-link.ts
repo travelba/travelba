@@ -19,9 +19,9 @@ export function getPublicSiteUrl() {
 /** Alphabet sans caractères ambigus (0/O, 1/l/I). */
 const SHORT_ALPHABET = "23456789abcdefghjkmnpqrstuvwxyz";
 
-/** Code court 8 caractères pour WhatsApp (ex. travelba.fr/d/xk7m2npq). */
+/** Code court 16 caractères (80 bits) pour WhatsApp. */
 export function ensureShortCode(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
   let out = "";
   for (const b of bytes) {
     out += SHORT_ALPHABET[b % SHORT_ALPHABET.length];

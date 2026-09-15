@@ -7,7 +7,7 @@ type Ctx = { params: Promise<{ code: string }> };
 
 export async function GET(_request: Request, { params }: Ctx) {
   const { code } = await params;
-  if (!/^[a-z0-9]{8}$/i.test(code)) {
+  if (!/^[a-z0-9]{16}$/i.test(code)) {
     return NextResponse.json({ error: "Lien invalide" }, { status: 404 });
   }
   const { data } = await createServiceClient()

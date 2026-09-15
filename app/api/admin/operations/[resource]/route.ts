@@ -175,6 +175,15 @@ export async function POST(request: Request, ctx: Ctx) {
   const payload = cleanBody(body, config.fields);
   const operationKey = requestKey(body);
   if (
+    resource === "quotes" &&
+    (payload.status === "accepted" || payload.status === "declined")
+  ) {
+    return jsonError(
+      "Un devis doit être accepté ou refusé depuis le parcours client.",
+      409
+    );
+  }
+  if (
     resource === "quote_lines" &&
     !(await quoteIsDraft(auth, String(payload.quote_id || "")))
   ) {

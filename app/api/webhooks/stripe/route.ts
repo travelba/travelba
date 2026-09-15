@@ -51,13 +51,26 @@ export async function POST(request: Request) {
     if (scheduleId && payment.amount_received > 0) {
       const { data: schedule } = await admin
         .from("crm_payment_schedules")
-        .select("customer_id,currency")
+        .select("customer_id,currency,amount")
         .eq("id", scheduleId)
         .maybeSingle();
+      const { data: customer } = schedule
+        ? await admin
+            .from("crm_customers")
+            .select("stripe_customer_id")
+            .eq("id", schedule.customer_id)
+            .maybeSingle()
+        : { data: null };
+      const paymentCustomerId =
+        typeof payment.customer === "string"
+          ? payment.customer
+          : payment.customer?.id;
       if (
         !schedule ||
         schedule.customer_id !== payment.metadata.crm_customer_id ||
-        schedule.currency.toLowerCase() !== payment.currency.toLowerCase()
+        schedule.currency.toLowerCase() !== payment.currency.toLowerCase() ||
+        !customer?.stripe_customer_id ||
+        paymentCustomerId !== customer.stripe_customer_id
       ) {
         console.error("Stripe payment metadata mismatch", {
           eventId: event.id,
@@ -82,6 +95,49 @@ export async function POST(request: Request) {
           error: error.message,
         });
         return NextResponse.json({ error: "Rapprochement impossible" }, { status: 500 });
+      }
+      const [{ data: linkedTransactions }, { data: localPayment }] =
+        await Promise.all([
+          admin
+            .from("crm_transactions")
+            .select("direction,amount")
+            .eq("payment_schedule_id", scheduleId)
+            .eq("status", "posted"),
+          admin
+            .from("crm_transactions")
+            .select("id")
+            .eq("source", "stripe")
+            .eq("external_id", payment.id)
+            .maybeSingle(),
+        ]);
+      const netPaid = (linkedTransactions || []).reduce(
+        (sum, transaction) =>
+          sum +
+          (transaction.direction === "credit" ? 1 : -1) *
+            Number(transaction.amount),
+        0
+      );
+      const overpaymentCents = Math.max(
+        0,
+        Math.round((netPaid - Number(schedule.amount)) * 100)
+      );
+      if (overpaymentCents > 0 && localPayment?.id) {
+        const refundAmount = Math.min(payment.amount_received, overpaymentCents);
+        await stripe.refunds.create(
+          {
+            payment_intent: payment.id,
+            amount: refundAmount,
+            metadata: {
+              crm_transaction_id: localPayment.id,
+              crm_customer_id: schedule.customer_id,
+              crm_schedule_id: scheduleId,
+              reason: "automatic_schedule_overpayment",
+            },
+          },
+          {
+            idempotencyKey: `crm-overpayment/${payment.id}/${refundAmount}`,
+          }
+        );
       }
     }
   }

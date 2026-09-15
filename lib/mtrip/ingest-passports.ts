@@ -229,6 +229,12 @@ export async function ingestPassportFiles(opts: {
       .update({
         passengers: current,
         passport_files: passportFiles,
+        status: "ready",
+        payload: null,
+        app_links: {},
+        published_at: null,
+        mtrip_trip_id: null,
+        last_error: null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", guideId)

@@ -235,21 +235,21 @@ export async function sendDossierToLead(
     );
   }
 
-  const leadPwd =
-    passwords.find((t) => t.identifier === lead.id)?.password ||
-    passwords[0]?.password ||
-    null;
-  const leadLoginEmail =
-    passwords.find((t) => t.identifier === lead.id)?.email ||
-    passwords[0]?.email ||
-    lead.email;
-  const appLink = appLinks[lead.id] || Object.values(appLinks)[0] || null;
+  const leadCredentials = passwords.find((t) => t.identifier === lead.id);
+  const leadPwd = leadCredentials?.password || null;
+  const leadLoginEmail = leadCredentials?.email || lead.email;
+  const appLink = appLinks[lead.id] || null;
+  if (!leadCredentials?.password || !appLink) {
+    throw new Error(
+      "Les accès mTrip du voyageur principal ne correspondent pas à la publication. Republiez le voyage."
+    );
+  }
 
   let quoteToken = guide.quote_token;
   let shortCode = guide.short_code;
-  if (!quoteToken || !shortCode) {
+  if (!quoteToken || !shortCode || shortCode.length < 16) {
     quoteToken = quoteToken || ensureQuoteToken();
-    shortCode = shortCode || ensureShortCode();
+    shortCode = !shortCode || shortCode.length < 16 ? ensureShortCode() : shortCode;
     await supabase
       .from("agency_mtrip_guides")
       .update({

@@ -46,8 +46,8 @@ export async function POST(request: Request) {
   }
 
   const origin = new URL(request.url).origin;
-  const suffix = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-  const fiveMinuteBucket = Math.floor(Date.now() / (5 * 60 * 1000));
+  const paidAmountCents = Math.round(Number(schedule.paid_amount) * 100);
+  const checkoutKey = `crm-schedule-checkout/${schedule.id}/${paidAmountCents}`;
   const session = await stripe.checkout.sessions.create(
     {
       mode: "payment",
@@ -70,11 +70,11 @@ export async function POST(request: Request) {
           crm_customer_id: auth.customer.id,
         },
       },
-      integration_identifier: `travelba_${suffix}`,
+      integration_identifier: `travelba_${schedule.id.slice(0, 8)}_${paidAmountCents}`,
       success_url: `${origin}/mon-compte/paiements?paiement=succes`,
       cancel_url: `${origin}/mon-compte/paiements?paiement=annule`,
     },
-    { idempotencyKey: `crm-schedule-checkout/${schedule.id}/${Math.round(remaining * 100)}/${fiveMinuteBucket}` }
+    { idempotencyKey: checkoutKey }
   );
   if (!session.url) return jsonError("Stripe n’a pas retourné de page de paiement", 502);
   return NextResponse.json({ url: session.url });

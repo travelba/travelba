@@ -208,6 +208,11 @@ export async function ingestDocumentFiles(opts: {
       start_date,
       end_date,
       status,
+      payload: null,
+      app_links: {},
+      published_at: null,
+      mtrip_trip_id: null,
+      last_error: null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)

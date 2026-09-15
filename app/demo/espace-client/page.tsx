@@ -106,13 +106,13 @@ export default function DemoClientSpacePage() {
 
         <div className="mt-4 grid grid-cols-3 gap-2.5">
           <a
-            href="#reservations"
+            href="/mon-compte/documents"
             className="rounded-2xl bg-white px-2 py-3.5 text-center text-[11px] font-bold text-[var(--admin-navy)] shadow-sm"
           >
             Billets & Vouchers
           </a>
           <a
-            href="#transactions"
+            href="/mon-compte/paiements"
             className="rounded-2xl bg-white px-2 py-3.5 text-center text-[11px] font-bold text-[var(--admin-navy)] shadow-sm"
           >
             + Fonds (Revolut)

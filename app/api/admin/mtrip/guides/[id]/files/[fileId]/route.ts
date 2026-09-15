@@ -155,6 +155,12 @@ export async function DELETE(_request: Request, { params }: Params) {
       passengers,
       quote_lines,
       extraction,
+      status: documents.length || quote_lines.length ? "ready" : "draft",
+      payload: null,
+      app_links: {},
+      published_at: null,
+      mtrip_trip_id: null,
+      last_error: null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)

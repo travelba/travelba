@@ -146,6 +146,23 @@ export async function PATCH(request: Request, { params }: Params) {
   if (parsed.data.quote_lines && !parsed.data.status) {
     updates.status = "ready";
   }
+  if (
+    [
+      "title",
+      "start_date",
+      "end_date",
+      "dossier_id",
+      "passengers",
+      "quote_lines",
+    ].some((field) => field in parsed.data)
+  ) {
+    updates.status = "ready";
+    updates.payload = null;
+    updates.app_links = {};
+    updates.published_at = null;
+    updates.mtrip_trip_id = null;
+    updates.last_error = null;
+  }
 
   const { data, error } = await supabase
     .from("agency_mtrip_guides")
