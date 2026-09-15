@@ -78,83 +78,99 @@ export default async function AccountHomePage() {
         ? 100
         : 0;
 
+  const whatsappHref = `https://wa.me/${siteConfig.whatsappNumber}`;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <header className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm text-muted">Ravi de vous revoir ✨</p>
-          <h1 className="mt-1 font-display text-[1.75rem] font-extrabold tracking-tight text-[var(--admin-navy)]">
+          <h1 className="mt-1 font-display text-[1.85rem] font-extrabold tracking-tight text-[var(--admin-navy)]">
             Bonjour {firstName}
           </h1>
         </div>
         <Link
           href="/mon-compte/reservations"
-          className="inline-flex shrink-0 items-center rounded-full bg-[var(--aura-blue-soft)] px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-[var(--aura-blue)]"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[var(--aura-blue-soft)] px-3.5 py-2 text-[11px] font-bold uppercase tracking-wide text-[var(--aura-blue)]"
         >
-          Explorer
+          <span aria-hidden>◆</span>
+          Explorer Club
         </Link>
       </header>
 
       {nextTrip ? (
-        <article className="relative overflow-hidden rounded-[1.35rem] bg-[var(--admin-navy)] text-white shadow-xl">
+        <article className="relative min-h-[320px] overflow-hidden rounded-[1.5rem] bg-[var(--admin-navy)] text-white shadow-[0_18px_40px_rgba(11,31,58,0.28)]">
           <div
-            className="absolute inset-0 bg-cover bg-center opacity-50"
+            className="absolute inset-0 bg-cover bg-center opacity-55"
             style={{
               backgroundImage:
                 "url(https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=1200&q=80)",
             }}
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-[var(--admin-navy)] via-[var(--admin-navy)]/75 to-transparent" />
-          <div className="relative space-y-4 p-5 pt-6">
+          <div className="absolute inset-0 bg-gradient-to-t from-[var(--admin-navy)] via-[var(--admin-navy)]/70 to-transparent" />
+          <div className="relative flex min-h-[320px] flex-col justify-end space-y-4 p-5 pb-6 pt-8">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold text-[var(--admin-navy)]">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1 text-[11px] font-semibold text-[var(--admin-navy)]">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                 Départ imminent
               </span>
               {jMinus != null && jMinus >= 0 ? (
-                <span className="rounded-full bg-black/35 px-3 py-1 text-[11px] font-bold">
+                <span className="rounded-full bg-black/40 px-3 py-1 text-[11px] font-bold backdrop-blur">
                   J-{jMinus}
                 </span>
               ) : null}
             </div>
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--aura-blue-soft)]">
-                Prochaine destination
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[var(--aura-blue-soft)]">
+                {nextTrip.title || "Prochaine escapade"}
               </p>
-              <h2 className="mt-1 font-display text-2xl font-extrabold">
+              <h2 className="mt-1 font-display text-[1.65rem] font-extrabold leading-tight">
                 {nextTrip.destination || nextTrip.title}
               </h2>
-              <p className="mt-1 text-sm text-white/75">
+              <p className="mt-1.5 text-sm text-white/75">
                 {formatDateFr(nextTrip.start_date)} —{" "}
                 {formatDateFr(nextTrip.end_date)}
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-2 rounded-xl bg-white/10 p-3">
+            <div className="grid grid-cols-2 gap-2 rounded-2xl bg-black/25 p-3 backdrop-blur-md">
               <div>
-                <p className="text-[10px] uppercase tracking-wide text-white/60">
+                <p className="text-[10px] uppercase tracking-wide text-white/55">
                   Référence
                 </p>
-                <p className="truncate text-sm font-semibold">{nextTrip.reference}</p>
+                <p className="mt-0.5 truncate text-sm font-semibold">
+                  {nextTrip.reference}
+                </p>
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-wide text-white/60">
+                <p className="text-[10px] uppercase tracking-wide text-white/55">
                   Statut
                 </p>
-                <p className="truncate text-sm font-semibold">
+                <p className="mt-0.5 truncate text-sm font-semibold">
                   {BOOKING_STATUS_LABELS[nextTrip.status]}
                 </p>
               </div>
             </div>
-            <Link
-              href={`/mon-compte/reservations/${nextTrip.reference}`}
-              className="flex h-11 items-center justify-center rounded-full bg-white text-sm font-bold text-[var(--admin-navy)]"
-            >
-              Voir l&apos;itinéraire →
-            </Link>
+            <div className="flex gap-2">
+              <Link
+                href={`/mon-compte/reservations/${nextTrip.reference}`}
+                className="flex h-12 flex-1 items-center justify-center rounded-full bg-white text-sm font-bold text-[var(--admin-navy)]"
+              >
+                Voir l&apos;itinéraire →
+              </Link>
+              <a
+                href={whatsappHref}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-black/35 text-lg backdrop-blur"
+                aria-label="Contacter le concierge"
+              >
+                ✦
+              </a>
+            </div>
           </div>
         </article>
       ) : (
-        <article className="admin-af-card rounded-[1.35rem] p-5">
+        <article className="rounded-[1.5rem] bg-white p-5 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
             Prochaine destination
           </p>
@@ -167,7 +183,7 @@ export default async function AccountHomePage() {
           </p>
           <a
             href={`mailto:${siteConfig.contactEmail}`}
-            className="admin-af-btn mt-4 inline-flex rounded-full px-5 py-2.5 text-sm"
+            className="mt-4 inline-flex rounded-full bg-[var(--admin-navy)] px-5 py-2.5 text-sm font-semibold text-white"
           >
             Contacter la conciergerie
           </a>
@@ -177,37 +193,45 @@ export default async function AccountHomePage() {
       <div className="grid grid-cols-3 gap-2.5">
         <Link
           href="/mon-compte/reservations"
-          className="admin-af-card flex flex-col items-center rounded-2xl px-2 py-3.5 text-center shadow-sm"
+          className="flex flex-col items-center rounded-2xl bg-white px-2 py-3.5 text-center shadow-[0_6px_18px_rgba(15,23,42,0.04)]"
         >
-          <span className="mb-2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--aura-blue-soft)] text-sm font-bold text-[var(--aura-blue)]">
-            B
+          <span className="mb-2 inline-flex h-11 w-11 items-center justify-center rounded-full bg-[var(--aura-blue-soft)] text-base">
+            🎫
           </span>
-          <span className="text-[11px] font-bold text-[var(--admin-navy)]">Billets</span>
-          <span className="text-[10px] text-muted">& vouchers</span>
+          <span className="text-[11px] font-bold text-[var(--admin-navy)]">
+            Billets
+          </span>
+          <span className="text-[10px] text-muted">& Vouchers</span>
         </Link>
         <Link
           href="/mon-compte/transactions"
-          className="admin-af-card flex flex-col items-center rounded-2xl px-2 py-3.5 text-center shadow-sm"
+          className="flex flex-col items-center rounded-2xl bg-white px-2 py-3.5 text-center shadow-[0_6px_18px_rgba(15,23,42,0.04)]"
         >
-          <span className="mb-2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-sm font-bold text-[var(--admin-navy)]">
+          <span className="mb-2 inline-flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-base font-bold text-[var(--admin-navy)]">
             +
           </span>
-          <span className="text-[11px] font-bold text-[var(--admin-navy)]">Fonds</span>
+          <span className="text-[11px] font-bold text-[var(--admin-navy)]">
+            + Fonds
+          </span>
           <span className="text-[10px] text-muted">Revolut</span>
         </Link>
         <a
-          href={`mailto:${siteConfig.contactEmail}`}
-          className="admin-af-card flex flex-col items-center rounded-2xl px-2 py-3.5 text-center shadow-sm"
+          href={whatsappHref}
+          target="_blank"
+          rel="noreferrer"
+          className="flex flex-col items-center rounded-2xl bg-white px-2 py-3.5 text-center shadow-[0_6px_18px_rgba(15,23,42,0.04)]"
         >
-          <span className="mb-2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--aura-blue-soft)] text-sm font-bold text-[var(--admin-navy)]">
-            C
+          <span className="mb-2 inline-flex h-11 w-11 items-center justify-center rounded-full bg-[var(--aura-blue-soft)] text-base">
+            🛎️
           </span>
-          <span className="text-[11px] font-bold text-[var(--admin-navy)]">Concierge</span>
-          <span className="text-[10px] text-muted">privé</span>
+          <span className="text-[11px] font-bold text-[var(--admin-navy)]">
+            Concierge
+          </span>
+          <span className="text-[10px] text-muted">Privé</span>
         </a>
       </div>
 
-      <section className="admin-af-card rounded-[1.35rem] p-5 shadow-sm">
+      <section className="rounded-[1.5rem] bg-white p-5 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
         <div className="flex items-center justify-between gap-2">
           <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">
             Votre encours voyage
@@ -225,11 +249,13 @@ export default async function AccountHomePage() {
           </div>
           <div className="text-right">
             <p className="text-[11px] text-muted">
-              {balanceValue < 0 ? "Reste à payer" : "Budget engagé"}
+              {balanceValue < 0 ? "Reste à payer" : "Budget validé"}
             </p>
             <p className="mt-0.5 font-display text-lg font-bold text-muted">
               {formatMoney(
-                balanceValue < 0 ? Math.abs(balanceValue) : tripTotal || balanceValue,
+                balanceValue < 0
+                  ? Math.abs(balanceValue)
+                  : tripTotal || balanceValue,
                 currency
               )}
             </p>
@@ -237,7 +263,7 @@ export default async function AccountHomePage() {
         </div>
         {tripTotal > 0 ? (
           <div className="mt-4 space-y-1.5">
-            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
               <div
                 className="h-full rounded-full bg-[var(--aura-blue)]"
                 style={{ width: `${financedPct}%` }}
@@ -249,12 +275,29 @@ export default async function AccountHomePage() {
             </div>
           </div>
         ) : null}
+        <div className="mt-4 rounded-xl bg-slate-50 px-3.5 py-3">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+                Prochaine échéance
+              </p>
+              <p className="mt-0.5 text-sm font-semibold text-[var(--admin-navy)]">
+                {remainingDue > 0
+                  ? formatMoney(remainingDue, currency)
+                  : "Aucune"}
+              </p>
+            </div>
+            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700">
+              Prélèvement auto
+            </span>
+          </div>
+        </div>
         <div className="mt-4 flex gap-2">
           <Link
             href="/mon-compte/transactions"
             className="inline-flex flex-1 items-center justify-center rounded-xl bg-[var(--admin-navy)] px-3 py-2.5 text-sm font-semibold text-white"
           >
-            Historique
+            Voir l&apos;historique
           </Link>
           <Link
             href="/mon-compte/profil/paiement"
@@ -288,15 +331,26 @@ export default async function AccountHomePage() {
               return (
                 <li
                   key={tx.id}
-                  className="flex items-center justify-between gap-3 rounded-2xl bg-white p-3 shadow-sm"
+                  className="flex items-center justify-between gap-3 rounded-2xl bg-white p-3.5 shadow-[0_6px_18px_rgba(15,23,42,0.04)]"
                 >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
-                      {tx.label || TX_KIND_LABELS[tx.kind] || tx.kind}
-                    </p>
-                    <p className="truncate text-xs text-muted">
-                      {formatDateFr(tx.occurred_on)}
-                    </p>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span
+                      className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
+                        credit
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-[var(--aura-blue-soft)] text-[var(--aura-blue)]"
+                      }`}
+                    >
+                      {credit ? "↓" : "↑"}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
+                        {tx.label || TX_KIND_LABELS[tx.kind] || tx.kind}
+                      </p>
+                      <p className="truncate text-xs text-muted">
+                        {formatDateFr(tx.occurred_on)}
+                      </p>
+                    </div>
                   </div>
                   <div className="text-right">
                     <p
@@ -308,7 +362,7 @@ export default async function AccountHomePage() {
                       {formatMoney(Number(tx.amount), tx.currency)}
                     </p>
                     <StatusChip tone={credit ? "green" : "sky"}>
-                      {credit ? "Reçu" : "Débit"}
+                      {credit ? "Reçu" : "Confirmé"}
                     </StatusChip>
                   </div>
                 </li>
@@ -324,7 +378,9 @@ export default async function AccountHomePage() {
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
               Dossier actif
             </p>
-            <p className="text-sm font-bold text-[var(--admin-navy)]">{nextTrip.title}</p>
+            <p className="text-sm font-bold text-[var(--admin-navy)]">
+              {nextTrip.title}
+            </p>
           </div>
           <StatusChip tone={bookingStatusTone(nextTrip.status)}>
             {BOOKING_STATUS_LABELS[nextTrip.status]}

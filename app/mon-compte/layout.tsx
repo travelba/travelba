@@ -52,7 +52,7 @@ export default async function AccountLayout({
     >
       <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-[var(--aura-surface)]/90 shadow-[0_1px_8px_rgba(0,0,0,0.04)] backdrop-blur-xl">
         <div className="mx-auto flex max-w-[480px] items-center justify-between gap-3 px-4 py-3 md:max-w-[960px] sm:px-6 md:h-16">
-          <BrandMark href="/mon-compte" subtitle="Espace client" />
+          <BrandMark href="/mon-compte" subtitle="Aura · Espace client" />
           <AccountNav customerName={name} initials={initials} />
         </div>
       </header>

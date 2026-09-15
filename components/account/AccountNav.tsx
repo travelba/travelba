@@ -122,8 +122,13 @@ export function AccountNav({
                   active ? "text-[var(--admin-navy)]" : "text-slate-500"
                 }`}
               >
-                <span className={active ? "opacity-100" : "opacity-70"}>
+                <span className={`relative ${active ? "opacity-100" : "opacity-70"}`}>
                   {link.icon}
+                  {link.label === "Transactions" ? (
+                    <span className="absolute -right-3 -top-1 rounded bg-[var(--admin-navy)] px-1 text-[7px] font-bold leading-3 text-white">
+                      PRO
+                    </span>
+                  ) : null}
                 </span>
                 {link.label}
               </Link>

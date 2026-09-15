@@ -65,10 +65,16 @@
   right: 0;
   z-index: 50;
   border-top: 1px solid rgba(25, 28, 30, 0.06);
-  background: rgba(247, 249, 251, 0.92);
-  backdrop-filter: blur(16px);
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.03);
+  background: rgba(247, 249, 251, 0.94);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.04);
   padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.account-app .aura-card {
+  border-radius: 1.35rem;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
 }
 
 .admin-af .font-display {
