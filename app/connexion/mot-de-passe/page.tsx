@@ -1,10 +1,28 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { Plus_Jakarta_Sans, Inter } from "next/font/google";
 import { useRouter } from "next/navigation";
 import { siteConfig } from "@/lib/site";
 import { BrandMark } from "@/components/crm/ui";
 import { MIN_PASSWORD_LENGTH } from "@/lib/crm/session";
+
+const display = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  variable: "--font-admin-display",
+  weight: ["600", "700", "800"],
+  display: "swap",
+});
+
+const sans = Inter({
+  subsets: ["latin"],
+  variable: "--font-admin-sans",
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+
+const fieldClass =
+  "w-full rounded-2xl border border-[var(--border)] bg-white px-3.5 py-3 text-[var(--admin-navy)] outline-none focus:border-[var(--aura-blue)] focus:ring-2 focus:ring-[var(--aura-blue-soft)]";
 
 export default function SetPasswordPage() {
   const router = useRouter();
@@ -33,25 +51,26 @@ export default function SetPasswordPage() {
   }
 
   return (
-    <div className="admin-af min-h-screen">
-      <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-5 py-10">
+    <div className={`account-app min-h-screen ${display.variable} ${sans.variable}`}>
+      <div className="mx-auto flex min-h-screen max-w-[420px] flex-col justify-center px-4 py-10">
         <div className="mb-8 flex items-center justify-between">
-          <BrandMark href="/" subtitle="Espace voyageur" />
-          <span className="rounded-full bg-white px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.12em] text-muted ring-1 ring-[var(--border)]">
+          <BrandMark href="/" subtitle="Aura · Espace client" />
+          <span className="rounded-full bg-white px-3 py-1 text-[10px] font-semibold text-muted ring-1 ring-[var(--border)]">
             Sécurisé
           </span>
         </div>
-        <div className="admin-af-card rounded-[1.5rem] p-8 sm:p-10">
-          <span className="inline-flex rounded-full bg-[var(--admin-sky)] px-3 py-1 font-label text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--admin-navy)]">
+        <div className="aura-card rounded-[1.5rem] border-t-[3px] border-t-[var(--admin-red)] bg-white p-8 shadow-[0_12px_32px_rgba(15,23,42,0.06)] sm:p-10">
+          <span className="inline-flex rounded-full bg-[var(--aura-blue-soft)] px-3 py-1 text-[11px] font-semibold text-[var(--aura-blue)]">
             Première connexion
           </span>
-          <h1 className="mt-4 font-display text-3xl font-bold tracking-tight text-[var(--admin-navy)]">
+          <h1 className="mt-4 font-display text-3xl font-extrabold tracking-tight text-[var(--admin-navy)]">
             Définir votre mot de passe
           </h1>
-          <p className="mt-2 text-sm leading-relaxed text-muted">
+          <p className="mt-2 text-sm text-muted">
             Choisissez un mot de passe d’au moins {MIN_PASSWORD_LENGTH}{" "}
             caractères. Vous resterez ensuite connecté sur cet appareil.
           </p>
+          <div className="mt-4 h-1 w-12 rounded-full bg-[var(--admin-red)]" />
           <form onSubmit={onSubmit} className="mt-6 space-y-5">
             <label className="block space-y-1.5 text-sm">
               <span className="text-xs font-semibold uppercase tracking-wider text-muted">
@@ -64,7 +83,7 @@ export default function SetPasswordPage() {
                 autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="admin-af-input w-full text-[var(--admin-navy)]"
+                className={fieldClass}
               />
             </label>
             <label className="block space-y-1.5 text-sm">
@@ -78,14 +97,14 @@ export default function SetPasswordPage() {
                 autoComplete="new-password"
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
-                className="admin-af-input w-full text-[var(--admin-navy)]"
+                className={fieldClass}
               />
             </label>
             {error ? <p className="text-sm text-[var(--admin-red)]">{error}</p> : null}
             <button
               type="submit"
               disabled={loading}
-              className="admin-af-btn w-full rounded-full px-4 py-3.5 text-sm disabled:opacity-60"
+              className="w-full rounded-full bg-[var(--admin-navy)] px-4 py-3.5 text-sm font-bold text-white transition hover:opacity-95 disabled:opacity-60"
             >
               {loading ? "Enregistrement…" : "Enregistrer et continuer"}
             </button>

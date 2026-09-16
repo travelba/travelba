@@ -1,7 +1,7 @@
 import { Plus_Jakarta_Sans, Inter } from "next/font/google";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { ensureCustomerForUser } from "@/lib/crm/auth";
+import { ensureCustomerForUser, ensureStaff } from "@/lib/crm/auth";
 import { customerFullName } from "@/lib/crm/types";
 import { siteConfig } from "@/lib/site";
 import { AccountChrome } from "@/components/account/AccountChrome";
@@ -36,7 +36,11 @@ export default async function AccountLayout({
   } = await supabase.auth.getUser();
   if (!user) redirect("/connexion");
   const customer = await ensureCustomerForUser(user);
-  if (!customer) redirect("/connexion");
+  if (!customer) {
+    const staff = await ensureStaff(user);
+    if (staff) redirect("/admin");
+    redirect("/connexion?error=no-account");
+  }
 
   const name = customerFullName(customer);
   const initials =

@@ -22,120 +22,131 @@ const sans = Inter({
   display: "swap",
 });
 
+const fieldClass =
+  "w-full rounded-2xl border border-[var(--border)] bg-white px-3.5 py-3 text-[var(--admin-navy)] outline-none focus:border-[var(--aura-blue)] focus:ring-2 focus:ring-[var(--aura-blue-soft)]";
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
-  const [token, setToken] = useState("");
-  const [sent, setSent] = useState(false);
+  const [password, setPassword] = useState("");
+  const [mode, setMode] = useState<"login" | "forgot" | "sent">("login");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const next = searchParams.get("next") || "/mon-compte";
+  const authError = searchParams.get("error") === "auth";
+  const noAccount = searchParams.get("error") === "no-account";
 
-  async function sendOtp(event?: FormEvent) {
-    event?.preventDefault();
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/auth/otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim() }),
-      });
-      const payload = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) {
-        setError(payload.error || "Impossible d’envoyer le code.");
-        return;
-      }
-      setSent(true);
-    } catch {
-      setError("Impossible d’envoyer le code.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function verifyOtp(event: FormEvent) {
+  async function loginWithPassword(event: FormEvent) {
     event.preventDefault();
     setLoading(true);
     setError(null);
     const supabase = createClient();
-    const { error: verifyError } = await supabase.auth.verifyOtp({
+    const { error: signError } = await supabase.auth.signInWithPassword({
       email: email.trim(),
-      token: token.trim(),
-      type: "magiclink",
+      password,
     });
     setLoading(false);
-    if (verifyError) {
-      const msg = verifyError.message.toLowerCase();
-      setError(
-        msg.includes("rate limit")
-          ? "Trop de tentatives. Réessayez dans quelques minutes."
-          : verifyError.message
-      );
+    if (signError) {
+      setError("E-mail ou mot de passe incorrect.");
       return;
     }
-    router.push(next.startsWith("/") ? next : "/mon-compte");
+    router.push(next.startsWith("/") && !next.startsWith("//") ? next : "/mon-compte");
     router.refresh();
   }
 
-  if (sent) {
+  async function sendReset(event: FormEvent) {
+    event.preventDefault();
+    setLoading(true);
+    setError(null);
+    const supabase = createClient();
+    const origin = window.location.origin;
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${origin}/auth/callback?next=${encodeURIComponent("/connexion/mot-de-passe")}`,
+    });
+    setLoading(false);
+    if (resetError) {
+      setError(resetError.message);
+      return;
+    }
+    setMode("sent");
+  }
+
+  if (mode === "sent") {
     return (
-      <form onSubmit={verifyOtp} className="mt-6 space-y-5">
+      <div className="mt-6 space-y-5">
         <div className="rounded-2xl bg-[var(--aura-blue-soft)]/70 px-3.5 py-3 text-sm text-[var(--admin-navy)]">
-          Code envoyé à <strong>{email}</strong>
+          Si un compte existe pour <strong>{email}</strong>, un lien pour
+          redéfinir le mot de passe vient d’être envoyé.
         </div>
+        <button
+          type="button"
+          className="w-full text-center text-sm text-muted"
+          onClick={() => {
+            setMode("login");
+            setError(null);
+          }}
+        >
+          Retour à la connexion
+        </button>
+      </div>
+    );
+  }
+
+  if (mode === "forgot") {
+    return (
+      <form onSubmit={sendReset} className="mt-6 space-y-5">
         <label className="block space-y-1.5 text-sm">
           <span className="text-xs font-semibold uppercase tracking-wider text-muted">
-            Code reçu par e-mail
+            Adresse e-mail
           </span>
           <input
-            inputMode="numeric"
-            autoComplete="one-time-code"
+            type="email"
             required
-            maxLength={8}
-            value={token}
-            onChange={(e) => setToken(e.target.value.replace(/\D/g, "").slice(0, 8))}
-            className="w-full rounded-2xl border border-[var(--border)] bg-white px-3.5 py-3 text-center font-display text-2xl font-extrabold tracking-[0.35em] text-[var(--admin-navy)] outline-none focus:border-[var(--aura-blue)] focus:ring-2 focus:ring-[var(--aura-blue-soft)]"
-            placeholder="••••••••"
+            autoComplete="username"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="marie.dupont@entreprise.com"
+            className={fieldClass}
           />
         </label>
         {error ? <p className="text-sm text-[var(--admin-red)]">{error}</p> : null}
         <button
           type="submit"
-          disabled={loading || token.length < 6}
+          disabled={loading}
           className="w-full rounded-full bg-[var(--admin-navy)] px-4 py-3.5 text-sm font-bold text-white transition hover:opacity-95 disabled:opacity-60"
         >
-          {loading ? "Vérification…" : "Accéder à mon espace"}
+          {loading ? "Envoi…" : "Envoyer le lien"}
         </button>
-        <div className="flex flex-col gap-2 text-center text-sm">
-          <button
-            type="button"
-            className="font-semibold text-[var(--aura-blue)]"
-            onClick={sendOtp}
-            disabled={loading}
-          >
-            Renvoyer le code
-          </button>
-          <button
-            type="button"
-            className="text-muted"
-            onClick={() => {
-              setSent(false);
-              setToken("");
-              setError(null);
-            }}
-          >
-            Modifier l&apos;adresse e-mail
-          </button>
-        </div>
+        <button
+          type="button"
+          className="w-full text-center text-sm text-muted"
+          onClick={() => {
+            setMode("login");
+            setError(null);
+          }}
+        >
+          Retour à la connexion
+        </button>
       </form>
     );
   }
 
   return (
-    <form onSubmit={sendOtp} className="mt-6 space-y-5">
+    <form onSubmit={loginWithPassword} className="mt-6 space-y-5">
+      {noAccount ? (
+        <p className="text-sm text-[var(--admin-red)]">
+          Aucun espace voyageur n’est associé à ce compte. Contactez l’agence
+          pour recevoir une invitation.
+        </p>
+      ) : null}
+      {authError ? (
+        <p className="text-sm text-[var(--admin-red)]">
+          Lien invalide ou expiré. Demandez une nouvelle invitation ou
+          réinitialisez votre mot de passe.
+        </p>
+      ) : null}
       <label className="block space-y-1.5 text-sm">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted">
           Adresse e-mail
@@ -143,10 +154,24 @@ function LoginForm() {
         <input
           type="email"
           required
+          autoComplete="username"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="marie.dupont@entreprise.com"
-          className="w-full rounded-2xl border border-[var(--border)] bg-white px-3.5 py-3 text-[var(--admin-navy)] outline-none focus:border-[var(--aura-blue)] focus:ring-2 focus:ring-[var(--aura-blue-soft)]"
+          className={fieldClass}
+        />
+      </label>
+      <label className="block space-y-1.5 text-sm">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted">
+          Mot de passe
+        </span>
+        <input
+          type="password"
+          required
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className={fieldClass}
         />
       </label>
       {error ? <p className="text-sm text-[var(--admin-red)]">{error}</p> : null}
@@ -155,11 +180,18 @@ function LoginForm() {
         disabled={loading}
         className="w-full rounded-full bg-[var(--admin-navy)] px-4 py-3.5 text-sm font-bold text-white transition hover:opacity-95 disabled:opacity-60"
       >
-        {loading ? "Envoi…" : "Recevoir le code →"}
+        {loading ? "Connexion…" : "Se connecter"}
       </button>
-      <p className="text-center text-xs text-muted">
-        Connexion sécurisée sans mot de passe · template Aura
-      </p>
+      <button
+        type="button"
+        className="w-full text-center text-sm text-muted"
+        onClick={() => {
+          setMode("forgot");
+          setError(null);
+        }}
+      >
+        Mot de passe oublié
+      </button>
     </form>
   );
 }
@@ -184,8 +216,8 @@ export default function ConnexionPage() {
             Connexion
           </h1>
           <p className="mt-2 text-sm text-muted">
-            Entrez votre e-mail pour recevoir un code et ouvrir votre portail
-            Aura.
+            Connectez-vous avec l’e-mail de votre invitation et votre mot de
+            passe. Vous resterez connecté sur cet appareil.
           </p>
           <div className="mt-4 h-1 w-12 rounded-full bg-[var(--admin-red)]" />
           <Suspense fallback={<p className="mt-8 text-sm text-muted">Chargement…</p>}>
@@ -204,12 +236,6 @@ export default function ConnexionPage() {
             <span className="mt-0.5 block font-display text-sm font-bold text-[var(--admin-navy)]">
               Voir le portail Aura en démo
             </span>
-          </Link>
-          <Link
-            href="/demo/aura-accueil.html"
-            className="block text-center text-xs font-semibold text-muted hover:text-[var(--admin-navy)]"
-          >
-            Maquette Accueil seule →
           </Link>
         </div>
 
