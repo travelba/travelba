@@ -51,7 +51,10 @@ export default async function ReservationsPage({
     (b) => isUpcomingBooking(b.end_date) && b.status !== "cancelled"
   );
   const past = all.filter(
-    (b) => !isUpcomingBooking(b.end_date) || b.status === "completed"
+    (b) =>
+      !isUpcomingBooking(b.end_date) ||
+      b.status === "completed" ||
+      b.status === "cancelled"
   );
   const showPast = tab === "passes";
   const list = showPast ? past : upcoming;

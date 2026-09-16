@@ -71,7 +71,7 @@ export default async function TransactionsPage({
             href="/mon-compte/profil/paiement"
             className="inline-flex items-center justify-center rounded-xl bg-white/12 px-3 py-2.5 text-sm font-semibold backdrop-blur"
           >
-            Recharger
+            Moyens de paiement
           </Link>
           <a
             href={`mailto:contact@travelba.fr?subject=${encodeURIComponent("Relevé PDF portefeuille")}`}

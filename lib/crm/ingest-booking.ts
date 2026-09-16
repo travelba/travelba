@@ -2,10 +2,10 @@ import "server-only";
 import { generateText, Output } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { extractImages, extractText, getDocumentProxy } from "unpdf";
-import sharp from "sharp";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { nextBookingReference, syncBookingDebit } from "@/lib/crm/bookings";
+import { trySharp } from "@/lib/crm/sharp";
 import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
 import { emptyToNull } from "@/lib/crm/identity";
 import {
@@ -113,11 +113,14 @@ type UserPart =
 
 async function imagePart(bytes: Uint8Array, mediaType: string): Promise<UserPart> {
   if (mediaType.includes("heic") || mediaType.includes("heif")) {
-    try {
-      const jpeg = await sharp(Buffer.from(bytes)).jpeg({ quality: 85 }).toBuffer();
-      return { type: "image", image: new Uint8Array(jpeg), mediaType: "image/jpeg" };
-    } catch {
-      /* keep original */
+    const sharp = await trySharp();
+    if (sharp) {
+      try {
+        const jpeg = await sharp(Buffer.from(bytes)).jpeg({ quality: 85 }).toBuffer();
+        return { type: "image", image: new Uint8Array(jpeg), mediaType: "image/jpeg" };
+      } catch {
+        /* keep original */
+      }
     }
   }
   return { type: "image", image: bytes, mediaType };
@@ -135,10 +138,19 @@ async function pdfParts(name: string, bytes: Uint8Array): Promise<UserPart[]> {
     });
     const dense = text.replace(/\s/g, "").length;
     if (dense < 500) {
+      const sharp = await trySharp();
       const max = Math.min(extracted.totalPages, 3);
       for (let page = 1; page <= max; page++) {
         const images = await extractImages(pdf, page);
         for (const img of images.slice(0, 6)) {
+          if (!sharp) {
+            parts.push({
+              type: "image",
+              image: new Uint8Array(img.data),
+              mediaType: "image/jpeg",
+            });
+            continue;
+          }
           const jpeg = await sharp(img.data, {
             raw: { width: img.width, height: img.height, channels: img.channels },
           })
@@ -440,16 +452,23 @@ export async function applyExtractToBooking(opts: {
   if (Object.keys(patch).length) {
     await admin.from("crm_bookings").update(patch).eq("id", opts.bookingId);
   }
+  const { data: refreshed } = await admin
+    .from("crm_bookings")
+    .select("*")
+    .eq("id", opts.bookingId)
+    .maybeSingle();
+  const next = (refreshed || booking) as CrmBooking;
+  await syncBookingDebit(admin, next, booking.status as BookingStatus);
   const hotel = opts.extract.items?.find((item) => item.kind === "hotel");
   scheduleBookingCover(
     {
-      ...booking,
-      destination: (patch.destination as string) || booking.destination,
-      title: (patch.title as string) || booking.title,
+      ...next,
+      destination: (patch.destination as string) || next.destination,
+      title: (patch.title as string) || next.title,
     } as CrmBooking,
     { hotel: hotel?.details?.hotel_name || hotel?.title || null }
   );
-  return booking as CrmBooking;
+  return next;
 }
 
 export function parseExtractPayload(raw: unknown): BookingExtract {

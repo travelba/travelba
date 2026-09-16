@@ -38,7 +38,7 @@ export default function DemoClientSpacePage() {
           </p>
           <p className="mt-1 text-xs text-white/70">
             Démo visuelle du CRM client. Compte réel :{" "}
-            <strong>client.demo@travelba.fr</strong> (OTP sur /connexion).
+            <strong>client.demo@travelba.fr</strong> (mot de passe sur /connexion).
           </p>
         </div>
 

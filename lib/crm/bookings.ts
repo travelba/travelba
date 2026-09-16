@@ -61,7 +61,9 @@ export async function syncBookingDebit(
     return;
   }
 
-  if (previousStatus && previousStatus !== booking.status) {
+  const amountChanged = Number(debit.amount) !== amount;
+  const statusChanged = Boolean(previousStatus && previousStatus !== booking.status);
+  if (amountChanged || statusChanged || debit.status !== "posted") {
     await supabase
       .from("crm_transactions")
       .update({

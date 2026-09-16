@@ -52,7 +52,26 @@ function LoginForm() {
       setError("E-mail ou mot de passe incorrect.");
       return;
     }
-    router.push(next.startsWith("/") && !next.startsWith("//") ? next : "/mon-compte");
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const { data: staff } = user
+      ? await supabase
+          .from("crm_staff")
+          .select("id")
+          .eq("auth_user_id", user.id)
+          .maybeSingle()
+      : { data: null };
+    if (staff) {
+      router.push("/admin");
+      router.refresh();
+      return;
+    }
+    const safeNext =
+      next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/admin")
+        ? next
+        : "/mon-compte";
+    router.push(safeNext);
     router.refresh();
   }
 
@@ -192,6 +211,20 @@ function LoginForm() {
       >
         Mot de passe oublié
       </button>
+      {noAccount ? (
+        <button
+          type="button"
+          className="w-full text-center text-sm font-semibold text-[var(--admin-navy)]"
+          onClick={async () => {
+            const supabase = createClient();
+            await supabase.auth.signOut();
+            router.replace("/connexion");
+            router.refresh();
+          }}
+        >
+          Se déconnecter
+        </button>
+      ) : null}
     </form>
   );
 }
