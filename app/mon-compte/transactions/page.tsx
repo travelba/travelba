@@ -24,20 +24,30 @@ export default async function TransactionsPage({
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");
 
-  const [{ data: txs }, { data: balances }] = await Promise.all([
+  const [{ data: txs }, { data: balances }, { data: invoices }] = await Promise.all([
     supabase
       .from("crm_transactions")
       .select("*")
       .eq("customer_id", customer.id)
-      .eq("status", "posted")
       .order("occurred_on", { ascending: false }),
     supabase
       .from("crm_customer_balances")
       .select("*")
       .eq("customer_id", customer.id),
+    supabase
+      .from("crm_invoices")
+      .select("id,transaction_id")
+      .eq("customer_id", customer.id)
+      .in("kind", ["receipt", "credit_note"])
+      .neq("status", "draft"),
   ]);
 
   const rows = (txs || []) as CrmTransaction[];
+  const documentByTransaction = new Map(
+    (invoices || [])
+      .filter((invoice) => invoice.transaction_id)
+      .map((invoice) => [invoice.transaction_id as string, invoice.id])
+  );
   const bal = ((balances || []) as CrmBalance[])[0];
   const balanceValue = bal ? Number(bal.balance) : 0;
   const currency = bal?.currency || "EUR";
@@ -54,11 +64,10 @@ export default async function TransactionsPage({
       <section className="relative overflow-hidden rounded-[1.5rem] bg-[var(--aura-navy-card)] p-5 text-white shadow-[0_16px_36px_rgba(19,27,46,0.35)]">
         <div className="absolute -right-8 -top-10 h-36 w-36 rounded-full bg-[var(--aura-blue)]/25 blur-2xl" />
         <div className="relative flex items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-300">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            Connecté · Revolut API
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white/75">
+            Historique du compte
           </span>
-          <span className="text-[11px] text-white/55">À l&apos;instant</span>
+          <span className="text-[11px] text-white/55">{rows.length} opérations</span>
         </div>
         <p className="relative mt-5 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/55">
           Solde portefeuille voyage
@@ -68,17 +77,18 @@ export default async function TransactionsPage({
         </p>
         <div className="relative mt-5 grid grid-cols-2 gap-2">
           <Link
-            href="/mon-compte/profil/paiement"
+            href="/mon-compte/paiements"
             className="inline-flex items-center justify-center rounded-xl bg-white/12 px-3 py-2.5 text-sm font-semibold backdrop-blur"
           >
-            Recharger
+            Régler une échéance
           </Link>
-          <a
-            href={`mailto:contact@travelba.fr?subject=${encodeURIComponent("Relevé PDF portefeuille")}`}
-            className="inline-flex items-center justify-center rounded-xl bg-white px-3 py-2.5 text-sm font-semibold text-[var(--admin-navy)]"
+          <form
+            action="/api/client/transactions/statement"
+            method="get"
+            className="inline-flex items-center justify-center rounded-xl bg-white px-3 py-2.5 text-center text-sm font-semibold text-[var(--admin-navy)]"
           >
-            Relevé PDF
-          </a>
+            <button>Télécharger le relevé</button>
+          </form>
         </div>
       </section>
 
@@ -104,7 +114,7 @@ export default async function TransactionsPage({
             },
             {
               key: "credit",
-              label: "Crédits Revolut",
+              label: "Crédits",
               href: "/mon-compte/transactions?filter=credit",
             },
           ] as const
@@ -127,6 +137,13 @@ export default async function TransactionsPage({
         <ul className="space-y-2">
           {filtered.map((t) => {
             const credit = t.direction === "credit";
+            const invoiceId = documentByTransaction.get(t.id);
+            const statusLabel =
+              t.status === "posted"
+                ? "Confirmé"
+                : t.status === "pending"
+                  ? "En attente"
+                  : "Annulé";
             return (
               <li
                 key={t.id}
@@ -140,18 +157,13 @@ export default async function TransactionsPage({
                         : "bg-[var(--aura-blue-soft)] text-[var(--aura-blue)]"
                     }`}
                   >
-                    {credit ? "R" : "✈"}
+                    {credit ? "+" : "✈"}
                   </span>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
                         {t.label || TX_KIND_LABELS[t.kind] || t.kind}
                       </p>
-                      {credit ? (
-                        <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold uppercase text-emerald-700">
-                          Instant
-                        </span>
-                      ) : null}
                     </div>
                     <p className="mt-0.5 truncate text-xs text-muted">
                       {formatDateFr(t.occurred_on)} · {TX_KIND_LABELS[t.kind]}
@@ -167,7 +179,29 @@ export default async function TransactionsPage({
                     {credit ? "+" : "−"}
                     {formatMoney(Number(t.amount), t.currency)}
                   </p>
-                  <StatusChip tone={credit ? "green" : "sky"}>Reçu</StatusChip>
+                  <div className="mt-1 flex items-center justify-end gap-2">
+                    <StatusChip
+                      tone={
+                        t.status === "void"
+                          ? "red"
+                          : t.status === "pending"
+                            ? "amber"
+                            : credit
+                              ? "green"
+                              : "sky"
+                      }
+                    >
+                      {statusLabel}
+                    </StatusChip>
+                    {invoiceId ? (
+                      <a
+                        href={`/api/client/files/invoice/${invoiceId}`}
+                        className="text-xs font-semibold text-[var(--aura-blue)]"
+                      >
+                        PDF
+                      </a>
+                    ) : null}
+                  </div>
                 </div>
               </li>
             );
@@ -176,14 +210,14 @@ export default async function TransactionsPage({
       ) : (
         <EmptyState
           title="Aucun mouvement trouvé"
-          description="Les débits de réservation et crédits Revolut apparaîtront ici."
+          description="Les débits de réservation et les crédits confirmés apparaîtront ici."
         />
       )}
 
       <div className="rounded-2xl bg-[var(--aura-blue-soft)]/60 px-4 py-3 text-sm text-[var(--admin-navy)]">
-        <p className="font-semibold">Paiements sécurisés Revolut</p>
+        <p className="font-semibold">Historique de votre compte voyage</p>
         <p className="mt-0.5 text-xs text-[var(--admin-navy)]/70">
-          Protection fraude et conversion multidevise sans commission cachée.
+          Les opérations affichées correspondent aux écritures confirmées dans votre dossier.
         </p>
       </div>
     </div>

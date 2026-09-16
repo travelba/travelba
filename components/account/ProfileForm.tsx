@@ -7,26 +7,34 @@ import type { CrmCustomer } from "@/lib/crm/types";
 export function ProfileForm({ customer }: { customer: CrmCustomer }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     setError(null);
+    setSuccess(null);
     const form = new FormData(event.currentTarget);
     const body = Object.fromEntries(form.entries());
-    const res = await fetch("/api/client/profile", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const json = await res.json();
-    setSaving(false);
-    if (!res.ok) {
-      setError(json.error || "Erreur");
-      return;
+    try {
+      const res = await fetch("/api/client/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setError(json.error || "Impossible d’enregistrer votre profil.");
+        return;
+      }
+      setSuccess("Profil enregistré.");
+      router.refresh();
+    } catch {
+      setError("Le service est momentanément indisponible. Réessayez.");
+    } finally {
+      setSaving(false);
     }
-    router.refresh();
   }
 
   return (
@@ -56,7 +64,8 @@ export function ProfileForm({ customer }: { customer: CrmCustomer }) {
         </label>
       ))}
       <p className="sm:col-span-2 text-xs text-muted">Email : {customer.email}</p>
-      {error ? <p className="sm:col-span-2 text-sm text-accent">{error}</p> : null}
+      {error ? <p className="sm:col-span-2 text-sm text-[var(--admin-red)]">{error}</p> : null}
+      {success ? <p className="sm:col-span-2 text-sm text-emerald-700">{success}</p> : null}
       <div className="sm:col-span-2">
         <button className="admin-af-btn rounded-full px-5 py-2 text-sm" disabled={saving}>
           {saving ? "Enregistrement…" : "Enregistrer"}

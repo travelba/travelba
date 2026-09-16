@@ -4,13 +4,18 @@ import { FormEvent, Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { BrandMark } from "@/components/crm/ui";
+import { safeInternalRedirect } from "@/lib/safe-redirect";
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() =>
+    searchParams.get("error") === "staff"
+      ? "Ce compte n’a pas accès au back-office agence."
+      : null
+  );
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(event: FormEvent) {
@@ -19,22 +24,39 @@ function LoginForm() {
     setError(null);
 
     const supabase = createClient();
-    const { error: signError } = await supabase.auth.signInWithPassword({
+    const { data: signData, error: signError } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
-    setLoading(false);
     if (signError) {
+      setLoading(false);
       setError(signError.message);
       return;
     }
 
-    const next = searchParams.get("next");
-    const destination =
-      next && next.startsWith("/admin") && !next.startsWith("/admin/login")
-        ? next
-        : "/admin";
+    const { data: staff } = await supabase
+      .from("crm_staff")
+      .select("id")
+      .eq("auth_user_id", signData.user.id)
+      .eq("active", true)
+      .maybeSingle();
+    if (!staff) {
+      await supabase.auth.signOut();
+      setLoading(false);
+      setError("Ce compte n’a pas accès au back-office agence.");
+      return;
+    }
+
+    setLoading(false);
+    const requestedDestination = safeInternalRedirect(
+      searchParams.get("next"),
+      ["/admin"],
+      "/admin"
+    );
+    const destination = requestedDestination.startsWith("/admin/login")
+      ? "/admin"
+      : requestedDestination;
     router.push(destination);
     router.refresh();
   }
@@ -83,8 +105,8 @@ export default function AdminLoginPage() {
       <div className="mb-6">
         <BrandMark href="/" subtitle="Back-office" />
       </div>
-      <div className="admin-af-card rounded-2xl border-t-[3px] border-t-[var(--admin-red)] p-8 sm:p-10">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--admin-red)]">
+      <div className="admin-af-card rounded-[1.5rem] border-t-[3px] border-t-[var(--aura-blue)] p-8 sm:p-10">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--aura-blue)]">
           Accès agent
         </p>
         <h1 className="mt-2 font-display text-3xl font-extrabold tracking-tight text-[var(--admin-navy)]">

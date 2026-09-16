@@ -13,24 +13,32 @@ export async function POST() {
   const admin = createServiceClient();
   let customerId = auth.customer.stripe_customer_id;
   if (!customerId) {
-    const created = await stripe.customers.create({
-      email: auth.customer.email,
-      name: [auth.customer.first_name, auth.customer.last_name]
-        .filter(Boolean)
-        .join(" "),
-      metadata: { crm_customer_id: auth.customer.id },
-    });
+    const created = await stripe.customers.create(
+      {
+        email: auth.customer.email,
+        name: [auth.customer.first_name, auth.customer.last_name]
+          .filter(Boolean)
+          .join(" "),
+        metadata: { crm_customer_id: auth.customer.id },
+      },
+      { idempotencyKey: `crm-customer/${auth.customer.id}` }
+    );
     customerId = created.id;
-    await admin
+    const { error } = await admin
       .from("crm_customers")
       .update({ stripe_customer_id: customerId })
       .eq("id", auth.customer.id);
+    if (error) return jsonError(error.message, 500);
   }
-  const intent = await stripe.setupIntents.create({
-    customer: customerId,
-    usage: "off_session",
-    payment_method_types: ["card"],
-    metadata: { crm_customer_id: auth.customer.id },
-  });
+  const intent = await stripe.setupIntents.create(
+    {
+      customer: customerId,
+      usage: "off_session",
+      metadata: { crm_customer_id: auth.customer.id },
+    },
+    {
+      idempotencyKey: `setup-intent/${auth.customer.id}/${Math.floor(Date.now() / 60_000)}`,
+    }
+  );
   return NextResponse.json({ clientSecret: intent.client_secret });
 }

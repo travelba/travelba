@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { BookingStatus, CrmBooking, CrmTransaction } from "@/lib/crm/types";
+import type { CrmBooking, CrmTransaction } from "@/lib/crm/types";
 
 export async function nextBookingReference(supabase: SupabaseClient) {
   const { data, error } = await supabase.rpc("crm_next_booking_reference");
@@ -11,15 +11,16 @@ export async function nextBookingReference(supabase: SupabaseClient) {
 
 export async function syncBookingDebit(
   supabase: SupabaseClient,
-  booking: CrmBooking,
-  previousStatus?: BookingStatus
+  booking: CrmBooking
 ) {
+  const amount = Number(booking.total_amount || 0);
   const shouldDebit =
-    booking.status === "confirmed" ||
-    booking.status === "travelling" ||
-    booking.status === "completed";
+    amount > 0 &&
+    (booking.status === "confirmed" ||
+      booking.status === "travelling" ||
+      booking.status === "completed");
 
-  const { data: existing } = await supabase
+  const { data: existing, error: lookupError } = await supabase
     .from("crm_transactions")
     .select("*")
     .eq("booking_id", booking.id)
@@ -27,27 +28,25 @@ export async function syncBookingDebit(
     .eq("direction", "debit")
     .neq("status", "void")
     .maybeSingle();
+  if (lookupError) throw new Error(lookupError.message);
 
   const debit = existing as CrmTransaction | null;
 
-  if (booking.status === "cancelled") {
+  if (!shouldDebit) {
     if (debit) {
-      await supabase
+      const { error } = await supabase
         .from("crm_transactions")
         .update({ status: "void" })
         .eq("id", debit.id);
+      if (error) throw new Error(error.message);
     }
     return;
   }
 
-  if (!shouldDebit) return;
-
-  const amount = Number(booking.total_amount || 0);
   const label = `Réservation ${booking.reference} — ${booking.title}`;
 
   if (!debit) {
-    if (amount <= 0) return;
-    await supabase.from("crm_transactions").insert({
+    const { error } = await supabase.from("crm_transactions").insert({
       customer_id: booking.customer_id,
       booking_id: booking.id,
       direction: "debit",
@@ -58,18 +57,19 @@ export async function syncBookingDebit(
       source: "manual",
       status: "posted",
     });
+    if (error) throw new Error(error.message);
     return;
   }
 
-  if (previousStatus && previousStatus !== booking.status) {
-    await supabase
-      .from("crm_transactions")
-      .update({
-        amount,
-        currency: booking.currency || "EUR",
-        label,
-        status: "posted",
-      })
-      .eq("id", debit.id);
-  }
+  const { error } = await supabase
+    .from("crm_transactions")
+    .update({
+      customer_id: booking.customer_id,
+      amount,
+      currency: booking.currency || "EUR",
+      label,
+      status: "posted",
+    })
+    .eq("id", debit.id);
+  if (error) throw new Error(error.message);
 }

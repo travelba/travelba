@@ -33,7 +33,6 @@ export async function updateSession(request: NextRequest) {
   const isAdmin = pathname.startsWith("/admin");
   const isAdminLogin = pathname === "/admin/login";
   const isClient = pathname.startsWith("/mon-compte");
-  const isConnexion = pathname === "/connexion";
 
   if (isAdmin) {
     if (!user && !isAdminLogin) {
@@ -42,16 +41,9 @@ export async function updateSession(request: NextRequest) {
       url.searchParams.set("next", pathname);
       return NextResponse.redirect(url);
     }
-    if (user && isAdminLogin) {
-      const url = request.nextUrl.clone();
-      const next = request.nextUrl.searchParams.get("next");
-      url.pathname =
-        next && next.startsWith("/admin") && !next.startsWith("/admin/login")
-          ? next
-          : "/admin";
-      url.search = "";
-      return NextResponse.redirect(url);
-    }
+    // Keep /admin/login reachable even with an existing client session.
+    // Redirecting every authenticated user to /admin caused a loop for
+    // authenticated customers who are not members of crm_staff.
     return supabaseResponse;
   }
 
@@ -63,13 +55,6 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(url);
     }
     return supabaseResponse;
-  }
-
-  if (isConnexion && user) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/mon-compte";
-    url.search = "";
-    return NextResponse.redirect(url);
   }
 
   return supabaseResponse;

@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { siteConfig } from "@/lib/site";
 import { BrandMark } from "@/components/crm/ui";
+import { safeInternalRedirect } from "@/lib/safe-redirect";
 
 const display = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -28,10 +29,21 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [token, setToken] = useState("");
   const [sent, setSent] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const authError = searchParams.get("error");
+  const [error, setError] = useState<string | null>(() =>
+    authError === "auth"
+      ? "Le lien ou le code de connexion est invalide ou expiré."
+      : authError === "account"
+        ? "Aucun espace client n’est rattaché à cette adresse. Contactez l’agence."
+        : null
+  );
   const [loading, setLoading] = useState(false);
 
-  const next = searchParams.get("next") || "/mon-compte";
+  const next = safeInternalRedirect(
+    searchParams.get("next"),
+    ["/mon-compte"],
+    "/mon-compte"
+  );
 
   async function sendOtp(event?: FormEvent) {
     event?.preventDefault();
@@ -64,7 +76,7 @@ function LoginForm() {
     const { error: verifyError } = await supabase.auth.verifyOtp({
       email: email.trim(),
       token: token.trim(),
-      type: "magiclink",
+      type: "email",
     });
     setLoading(false);
     if (verifyError) {
@@ -76,15 +88,15 @@ function LoginForm() {
       );
       return;
     }
-    router.push(next.startsWith("/") ? next : "/mon-compte");
-    router.refresh();
+    router.push(`/auth/callback?next=${encodeURIComponent(next)}`);
   }
 
   if (sent) {
     return (
       <form onSubmit={verifyOtp} className="mt-6 space-y-5">
         <div className="rounded-2xl bg-[var(--aura-blue-soft)]/70 px-3.5 py-3 text-sm text-[var(--admin-navy)]">
-          Code envoyé à <strong>{email}</strong>
+          Si cette adresse est rattachée à un espace client, un code a été
+          envoyé à <strong>{email}</strong>.
         </div>
         <label className="block space-y-1.5 text-sm">
           <span className="text-xs font-semibold uppercase tracking-wider text-muted">
@@ -158,7 +170,7 @@ function LoginForm() {
         {loading ? "Envoi…" : "Recevoir le code →"}
       </button>
       <p className="text-center text-xs text-muted">
-        Connexion sécurisée sans mot de passe · template Aura
+        Connexion sécurisée sans mot de passe
       </p>
     </form>
   );
@@ -176,7 +188,7 @@ export default function ConnexionPage() {
             Sécurisé
           </span>
         </div>
-        <div className="aura-card rounded-[1.5rem] border-t-[3px] border-t-[var(--admin-red)] bg-white p-8 shadow-[0_12px_32px_rgba(15,23,42,0.06)] sm:p-10">
+        <div className="aura-card rounded-[1.5rem] border-t-[3px] border-t-[var(--aura-blue)] bg-white p-8 shadow-[0_12px_32px_rgba(15,23,42,0.06)] sm:p-10">
           <span className="inline-flex rounded-full bg-[var(--aura-blue-soft)] px-3 py-1 text-[11px] font-semibold text-[var(--aura-blue)]">
             Espace membre
           </span>
@@ -187,7 +199,7 @@ export default function ConnexionPage() {
             Entrez votre e-mail pour recevoir un code et ouvrir votre portail
             Aura.
           </p>
-          <div className="mt-4 h-1 w-12 rounded-full bg-[var(--admin-red)]" />
+          <div className="mt-4 h-1 w-12 rounded-full bg-[var(--aura-blue)]" />
           <Suspense fallback={<p className="mt-8 text-sm text-muted">Chargement…</p>}>
             <LoginForm />
           </Suspense>
@@ -204,12 +216,6 @@ export default function ConnexionPage() {
             <span className="mt-0.5 block font-display text-sm font-bold text-[var(--admin-navy)]">
               Voir le portail Aura en démo
             </span>
-          </Link>
-          <Link
-            href="/demo/aura-accueil.html"
-            className="block text-center text-xs font-semibold text-muted hover:text-[var(--admin-navy)]"
-          >
-            Maquette Accueil seule →
           </Link>
         </div>
 

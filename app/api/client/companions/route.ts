@@ -43,11 +43,14 @@ export async function PATCH(request: Request) {
   const body = await request.json().catch(() => null);
   const id = String(body?.id || "");
   if (!id) return jsonError("id requis");
+  const first = String(body?.first_name || "").trim();
+  const last = String(body?.last_name || "").trim();
+  if (!first || !last) return jsonError("Nom et prénom requis");
   const { data, error } = await auth.supabase
     .from("crm_travel_companions")
     .update({
-      first_name: body.first_name,
-      last_name: body.last_name,
+      first_name: first,
+      last_name: last,
       birth_date: body.birth_date || null,
       sex: body.sex || null,
       nationality: body.nationality || null,
@@ -56,8 +59,9 @@ export async function PATCH(request: Request) {
     .eq("id", id)
     .eq("customer_id", auth.customer.id)
     .select("*")
-    .single();
+    .maybeSingle();
   if (error) return jsonError(error.message, 400);
+  if (!data) return jsonError("Compagnon introuvable", 404);
   return NextResponse.json({ companion: data });
 }
 
@@ -66,11 +70,14 @@ export async function DELETE(request: Request) {
   if (auth instanceof NextResponse) return auth;
   const id = new URL(request.url).searchParams.get("id");
   if (!id) return jsonError("id requis");
-  const { error } = await auth.supabase
+  const { data, error } = await auth.supabase
     .from("crm_travel_companions")
     .delete()
     .eq("id", id)
-    .eq("customer_id", auth.customer.id);
+    .eq("customer_id", auth.customer.id)
+    .select("id")
+    .maybeSingle();
   if (error) return jsonError(error.message, 400);
+  if (!data) return jsonError("Compagnon introuvable", 404);
   return NextResponse.json({ ok: true });
 }

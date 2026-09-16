@@ -1,55 +1,9 @@
--- New Travelba CRM schema + archive of agency_* tables.
+-- New Travelba CRM schema. Existing agency_* tables remain in place because
+-- they power the voyage/mTrip product independently of this CRM.
 
 create extension if not exists pgcrypto;
 
 create schema if not exists crm_private;
-
--- ---------------------------------------------------------------------------
--- Archive previous CRM
--- ---------------------------------------------------------------------------
-do $$
-begin
-  if to_regclass('public.agency_mtrip_guides') is not null
-     and to_regclass('public.legacy_agency_mtrip_guides') is null then
-    alter table public.agency_mtrip_guides rename to legacy_agency_mtrip_guides;
-  end if;
-  if to_regclass('public.agency_clients') is not null
-     and to_regclass('public.legacy_agency_clients') is null then
-    alter table public.agency_clients rename to legacy_agency_clients;
-  end if;
-  if to_regclass('public.agency_dossiers') is not null
-     and to_regclass('public.legacy_agency_dossiers') is null then
-    alter table public.agency_dossiers rename to legacy_agency_dossiers;
-  end if;
-  if to_regclass('public.agency_dossier_hotels') is not null
-     and to_regclass('public.legacy_agency_dossier_hotels') is null then
-    alter table public.agency_dossier_hotels rename to legacy_agency_dossier_hotels;
-  end if;
-  if to_regclass('public.agency_quotes') is not null
-     and to_regclass('public.legacy_agency_quotes') is null then
-    alter table public.agency_quotes rename to legacy_agency_quotes;
-  end if;
-  if to_regclass('public.agency_bookings') is not null
-     and to_regclass('public.legacy_agency_bookings') is null then
-    alter table public.agency_bookings rename to legacy_agency_bookings;
-  end if;
-  if to_regclass('public.agency_hotel_contacts') is not null
-     and to_regclass('public.legacy_agency_hotel_contacts') is null then
-    alter table public.agency_hotel_contacts rename to legacy_agency_hotel_contacts;
-  end if;
-  if to_regclass('public.agency_payment_followups') is not null
-     and to_regclass('public.legacy_agency_payment_followups') is null then
-    alter table public.agency_payment_followups rename to legacy_agency_payment_followups;
-  end if;
-  if to_regclass('public.agency_wa_ops_sessions') is not null
-     and to_regclass('public.legacy_agency_wa_ops_sessions') is null then
-    alter table public.agency_wa_ops_sessions rename to legacy_agency_wa_ops_sessions;
-  end if;
-end $$;
-
-drop function if exists public.get_public_voyage_quote(text);
-drop function if exists public.get_public_voyage_quote(uuid);
-drop function if exists public.get_public_voyage_short_links(text);
 
 -- ---------------------------------------------------------------------------
 -- Helpers
@@ -266,7 +220,6 @@ end;
 $$;
 
 revoke all on function public.crm_next_booking_reference() from public;
-grant execute on function public.crm_next_booking_reference() to authenticated;
 grant execute on function public.crm_next_booking_reference() to service_role;
 
 create or replace view public.crm_customer_balances

@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { createServiceClient } from "@/lib/supabase/admin";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
-import { getStripe, stripeConfigured } from "@/lib/crm/stripe";
+import { stripeConfigured } from "@/lib/crm/stripe";
 import { PaymentMethodsPanel } from "@/components/account/PaymentMethodsPanel";
 import { ProfileSubnav } from "@/components/account/ProfileSubnav";
 import { ConciergeBanner, PageEyebrow, PageTitle } from "@/components/crm/ui";
@@ -24,31 +23,6 @@ export default async function PaiementPage() {
     .order("created_at", { ascending: false });
 
   const configured = stripeConfigured();
-  let clientSecret: string | null = null;
-  const stripe = configured ? getStripe() : null;
-  if (stripe) {
-    const admin = createServiceClient();
-    let stripeCustomerId = customer.stripe_customer_id;
-    if (!stripeCustomerId) {
-      const created = await stripe.customers.create({
-        email: customer.email,
-        name: [customer.first_name, customer.last_name].filter(Boolean).join(" "),
-        metadata: { crm_customer_id: customer.id },
-      });
-      stripeCustomerId = created.id;
-      await admin
-        .from("crm_customers")
-        .update({ stripe_customer_id: stripeCustomerId })
-        .eq("id", customer.id);
-    }
-    const intent = await stripe.setupIntents.create({
-      customer: stripeCustomerId,
-      usage: "off_session",
-      payment_method_types: ["card"],
-      metadata: { crm_customer_id: customer.id },
-    });
-    clientSecret = intent.client_secret;
-  }
 
   return (
     <div className="space-y-6">
@@ -62,7 +36,6 @@ export default async function PaiementPage() {
       </div>
       <PaymentMethodsPanel
         methods={(methods || []) as CrmPaymentMethod[]}
-        clientSecret={clientSecret}
         configured={configured}
       />
       <ConciergeBanner />

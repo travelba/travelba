@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { BookingEditor } from "@/components/admin/BookingEditor";
 import type {
@@ -14,7 +13,7 @@ type Props = { params: Promise<{ id: string }> };
 
 export default async function AdminBookingPage({ params }: Props) {
   const { id } = await params;
-  const { supabase } = await requireStaffPage();
+  const { supabase } = await requireStaffPage("bookings");
   const { data: booking } = await supabase
     .from("crm_bookings")
     .select("*")

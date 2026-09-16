@@ -29,8 +29,8 @@ export function BrandMark({
 
 export function PageEyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--admin-red)]">
-      <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--admin-red)]" />
+    <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--aura-blue)]">
+      <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--aura-blue)]" />
       {children}
     </p>
   );
@@ -122,10 +122,12 @@ export function ConciergeBanner() {
       </div>
       <div className="flex flex-wrap gap-2">
         <a
-          href={`tel:${siteConfig.whatsappNumber}`}
+          href={`https://wa.me/${siteConfig.whatsappNumber}`}
+          target="_blank"
+          rel="noreferrer"
           className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur"
         >
-          {siteConfig.phoneDisplay}
+          WhatsApp
         </a>
         <a
           href={`mailto:${siteConfig.contactEmail}`}

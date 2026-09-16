@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { NextResponse } from "next/server";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
@@ -8,6 +9,65 @@ export function jsonError(message: string, status = 400, details?: unknown) {
   return NextResponse.json({ error: message, details }, { status });
 }
 
+/** One auth round-trip per request (layout + page + API helpers). */
+const getRequestAuth = cache(async () => {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return { supabase, user };
+});
+
+const getStaffCached = cache(async (userId: string) => {
+  const { supabase } = await getRequestAuth();
+  const { data } = await supabase
+    .from("crm_staff")
+    .select("*")
+    .eq("auth_user_id", userId)
+    .eq("active", true)
+    .maybeSingle();
+  return (data as CrmStaff | null) ?? null;
+});
+
+const getCustomerCached = cache(async (userId: string, email: string) => {
+  try {
+    const admin = createServiceClient();
+    const { data: byAuth } = await admin
+      .from("crm_customers")
+      .select("*")
+      .eq("auth_user_id", userId)
+      .maybeSingle();
+    if (byAuth) return byAuth as CrmCustomer;
+
+    const { data: byEmail } = await admin
+      .from("crm_customers")
+      .select("*")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (byEmail) {
+      if (!byEmail.auth_user_id) {
+        const { data: linked } = await admin
+          .from("crm_customers")
+          .update({ auth_user_id: userId })
+          .eq("id", byEmail.id)
+          .select("*")
+          .single();
+        return (linked as CrmCustomer) || (byEmail as CrmCustomer);
+      }
+      if (byEmail.auth_user_id === userId) return byEmail as CrmCustomer;
+      return null;
+    }
+
+    // Customer records are provisioned by the agency. Public authentication
+    // must never create arbitrary CRM customers.
+    return null;
+  } catch (err) {
+    console.error("[crm/auth] ensureCustomerForUser:", err);
+    return null;
+  }
+});
+
 export async function requireStaff(): Promise<
   | {
       user: User;
@@ -16,10 +76,7 @@ export async function requireStaff(): Promise<
     }
   | NextResponse
 > {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getRequestAuth();
   if (!user) return jsonError("Non authentifié", 401);
 
   const staff = await ensureStaff(user);
@@ -35,10 +92,7 @@ export async function requireCustomer(): Promise<
     }
   | NextResponse
 > {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getRequestAuth();
   if (!user) return jsonError("Non authentifié", 401);
 
   const customer = await ensureCustomerForUser(user);
@@ -47,114 +101,48 @@ export async function requireCustomer(): Promise<
 }
 
 export async function getStaffForUser(userId: string) {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("crm_staff")
-    .select("*")
-    .eq("auth_user_id", userId)
-    .maybeSingle();
-  return (data as CrmStaff | null) ?? null;
+  return getStaffCached(userId);
 }
 
 export async function ensureStaff(user: User): Promise<CrmStaff | null> {
-  const supabase = await createClient();
-  const { data: existing } = await supabase
-    .from("crm_staff")
-    .select("*")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-  if (existing) return existing as CrmStaff;
-
-  try {
-    const admin = createServiceClient();
-    const { count } = await admin
-      .from("crm_staff")
-      .select("id", { count: "exact", head: true });
-    if ((count ?? 0) > 0) return null;
-
-    const { data: created, error } = await admin
-      .from("crm_staff")
-      .insert({
-        auth_user_id: user.id,
-        role: "admin",
-        full_name: user.email?.split("@")[0] || "Agent",
-      })
-      .select("*")
-      .single();
-    if (error) return null;
-    return created as CrmStaff;
-  } catch {
-    return null;
-  }
+  return getStaffCached(user.id);
 }
 
 export async function ensureCustomerForUser(user: User): Promise<CrmCustomer | null> {
   const email = (user.email || "").trim().toLowerCase();
   if (!email) return null;
-
-  try {
-    const admin = createServiceClient();
-    const { data: byAuth } = await admin
-      .from("crm_customers")
-      .select("*")
-      .eq("auth_user_id", user.id)
-      .maybeSingle();
-    if (byAuth) return byAuth as CrmCustomer;
-
-    const { data: byEmail } = await admin
-      .from("crm_customers")
-      .select("*")
-      .eq("email", email)
-      .maybeSingle();
-
-    if (byEmail) {
-      if (!byEmail.auth_user_id) {
-        const { data: linked } = await admin
-          .from("crm_customers")
-          .update({ auth_user_id: user.id })
-          .eq("id", byEmail.id)
-          .select("*")
-          .single();
-        return (linked as CrmCustomer) || (byEmail as CrmCustomer);
-      }
-      if (byEmail.auth_user_id === user.id) return byEmail as CrmCustomer;
-      return null;
-    }
-
-    const meta = user.user_metadata || {};
-    const { data: created, error } = await admin
-      .from("crm_customers")
-      .insert({
-        auth_user_id: user.id,
-        email,
-        first_name: String(meta.first_name || meta.given_name || ""),
-        last_name: String(meta.last_name || meta.family_name || ""),
-        language: "fr",
-      })
-      .select("*")
-      .single();
-    if (error) return null;
-    return created as CrmCustomer;
-  } catch {
-    return null;
-  }
+  return getCustomerCached(user.id, email);
 }
 
 export function isRedirect(value: unknown): value is NextResponse {
   return value instanceof NextResponse;
 }
 
+/** Guard for App Router client pages — redirects to /connexion if needed. */
+export async function requireCustomerPage(): Promise<{
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  user: User;
+  customer: CrmCustomer;
+}> {
+  const { redirect } = await import("next/navigation");
+  const { supabase, user } = await getRequestAuth();
+  if (!user) redirect("/connexion");
+  const authedUser = user as User;
+  const customer = await ensureCustomerForUser(authedUser);
+  if (!customer) redirect("/connexion?error=account");
+  return { supabase, user: authedUser, customer: customer as CrmCustomer };
+}
+
 /** Guard for App Router admin pages — redirects to /admin/login if needed. */
-export async function requireStaffPage(): Promise<{
+export async function requireStaffPage(
+  capability?: keyof CrmStaff["permissions"] | "admin"
+): Promise<{
   supabase: Awaited<ReturnType<typeof createClient>>;
   user: User;
   staff: CrmStaff;
 }> {
   const { redirect } = await import("next/navigation");
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getRequestAuth();
   if (!user) {
     redirect("/admin/login");
   }
@@ -163,5 +151,13 @@ export async function requireStaffPage(): Promise<{
   if (!staff) {
     redirect("/admin/login");
   }
-  return { supabase, user: authedUser, staff: staff as CrmStaff };
+  const authedStaff = staff as CrmStaff;
+  if (
+    capability &&
+    authedStaff.role !== "admin" &&
+    (capability === "admin" || authedStaff.permissions?.[capability] !== true)
+  ) {
+    redirect("/admin");
+  }
+  return { supabase, user: authedUser, staff: authedStaff };
 }

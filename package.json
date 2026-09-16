@@ -9,20 +9,26 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^1.0.9",
     "@stripe/react-stripe-js": "^5.4.1",
     "@stripe/stripe-js": "^8.6.0",
     "@supabase/ssr": "^0.12.6",
     "@supabase/supabase-js": "^2.109.0",
     "framer-motion": "^12.41.0",
     "lucide-react": "^1.21.0",
-    "next": "16.2.9",
+    "mrz": "^5.0.2",
+    "next": "^16.3.5",
     "next-intl": "^4.13.0",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.3.289",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "resend": "^6.14.0",
     "sharp": "^0.35.4",
-    "stripe": "^20.1.0",
-    "zod": "^4.5.4"
+    "stripe": "^22.6.2",
+    "tesseract.js": "^7.0.0",
+    "unpdf": "^1.8.1",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -30,7 +36,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.9",
+    "eslint-config-next": "^16.3.5",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
