@@ -84,7 +84,7 @@ export default function AdminLoginPage() {
         <BrandMark href="/" subtitle="Back-office" />
       </div>
       <div className="admin-af-card rounded-[1.5rem] p-8 sm:p-10">
-        <p className="font-label text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--admin-red)]">
+        <p className="font-label text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--admin-gold)]">
           Accès agent
         </p>
         <h1 className="mt-2 font-display text-3xl font-bold tracking-tight text-[var(--admin-navy)]">

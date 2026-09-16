@@ -59,17 +59,17 @@ export default async function ReservationsPage({
 
   return (
     <div className="space-y-5">
-      <aside className="flex items-center justify-between gap-3 rounded-[1.25rem] bg-[var(--aura-navy-card)] p-4 text-white shadow-lg">
+      <aside className="flex items-center justify-between gap-3 rounded-2xl border border-[#e5e3dc] bg-white p-4">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--aura-blue)] text-sm font-bold">
-            M
+          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[var(--admin-gold)]">
+            <span className="material-symbols-outlined text-[20px]">support_agent</span>
           </span>
           <div className="min-w-0">
-            <p className="truncate font-display text-sm font-bold">
-              Majordome {siteConfig.shortName}
+            <p className="truncate text-sm font-bold text-[var(--admin-navy)]">
+              Conciergerie {siteConfig.shortName}
             </p>
-            <p className="truncate text-[11px] text-white/65">
-              Votre majordome voyage dédié (24/7)
+            <p className="truncate text-[11px] text-muted">
+              Votre travel designer dédié (24/7)
             </p>
           </div>
         </div>
@@ -77,13 +77,13 @@ export default async function ReservationsPage({
           href={whatsappHref}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex shrink-0 items-center rounded-full bg-[var(--aura-blue)] px-3.5 py-2 text-xs font-bold text-white"
+          className="inline-flex shrink-0 items-center rounded-full bg-[var(--admin-navy)] px-3.5 py-2 text-xs font-bold text-white"
         >
           Contacter
         </a>
       </aside>
 
-      <div className="flex rounded-full bg-slate-200/70 p-1">
+      <div className="flex rounded-full bg-[var(--surface-2)] p-1">
         <Link
           href="/mon-compte/reservations"
           className={`flex-1 rounded-full px-3 py-2.5 text-center text-sm font-bold transition ${
@@ -127,7 +127,7 @@ export default async function ReservationsPage({
           const img = HERO_IMAGES[idx % HERO_IMAGES.length];
           return (
             <li key={b.id}>
-              <article className="overflow-hidden rounded-[1.4rem] bg-white shadow-[0_10px_28px_rgba(15,23,42,0.06)]">
+              <article className="overflow-hidden rounded-2xl border border-[#e5e3dc] bg-white shadow-[0_4px_20px_-2px_rgba(11,25,44,0.04)]">
                 <div className="relative h-40 overflow-hidden">
                   <div
                     className="absolute inset-0 bg-cover bg-center"

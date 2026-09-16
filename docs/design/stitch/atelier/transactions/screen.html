@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+
+<html lang="fr"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{width:100vw;margin:0;padding:0;}body{overscroll-behavior:none;}.pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}.pt-safe{padding-top:env(safe-area-inset-top,0px);}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script><script id="tailwind-config">tailwind.config = {
+  darkMode: "class",
+  theme: {
+    extend: {
+      colors: {
+        "surface-container": "#efeeeb",
+        "primary": "#0b192c",
+        "inverse-on-surface": "#f2f1ee",
+        "background": "#faf9f6",
+        "outline-variant": "#c5c6cd",
+        "on-secondary-fixed-variant": "#584323",
+        "on-secondary": "#ffffff",
+        "on-primary-fixed": "#0b192c",
+        "on-error-container": "#93000a",
+        "secondary": "#b89768",
+        "secondary-dark": "#9c7c4e",
+        "secondary-container": "#f5ece0",
+        "inverse-primary": "#bac7e1",
+        "primary-fixed": "#d6e3fe",
+        "on-surface": "#1a1c1a",
+        "on-secondary-container": "#78603e",
+        "surface-container-low": "#f4f3f0",
+        "on-surface-variant": "#44474c",
+        "secondary-fixed-dim": "#e0c298",
+        "on-background": "#1a1c1a",
+        "tertiary": "#0b192c",
+        "tertiary-container": "#0b192c",
+        "secondary-fixed": "#fedeb2",
+        "error-container": "#ffdad6",
+        "on-tertiary-fixed": "#0b192c",
+        "surface": "#faf9f6",
+        "tertiary-fixed-dim": "#adc8f5",
+        "surface-container-highest": "#e3e2e0",
+        "on-tertiary": "#ffffff",
+        "inverse-surface": "#2f312f",
+        "on-secondary-fixed": "#281800",
+        "on-primary-container": "#adc8f5",
+        "surface-dim": "#dbdad7",
+        "surface-container-lowest": "#ffffff",
+        "tertiary-fixed": "#d5e3ff",
+        "surface-container-high": "#e9e8e5",
+        "error": "#ba1a1a",
+        "on-primary": "#ffffff",
+        "primary-container": "#0b192c",
+        "on-error": "#ffffff",
+        "on-tertiary-fixed-variant": "#2d486d",
+        "surface-bright": "#faf9f6",
+        "outline": "#75777d",
+        "primary-fixed-dim": "#bac7e1",
+        "surface-tint": "#525f75",
+        "surface-variant": "#e3e2e0",
+        "on-tertiary-container": "#6b85ae",
+        "on-primary-fixed-variant": "#3a475c"
+      },
+      borderRadius: {
+        "DEFAULT": "0.125rem",
+        "lg": "0.25rem",
+        "xl": "0.5rem",
+        "full": "0.75rem"
+      },
+      spacing: {
+        "space-sm": "0.5rem",
+        "space-md": "1rem",
+        "margin-mobile": "1.25rem",
+        "space-xl": "2.5rem",
+        "space-xs": "0.25rem",
+        "margin": "3rem",
+        "gutter-mobile": "1rem",
+        "gutter": "1.5rem",
+        "space-lg": "1.5rem"
+      },
+      fontFamily: {
+        "body-md": ["Plus Jakarta Sans"],
+        "headline-sm": ["Plus Jakarta Sans"],
+        "body-lg": ["Plus Jakarta Sans"],
+        "label-md": ["Plus Jakarta Sans"],
+        "body-sm": ["Plus Jakarta Sans"],
+        "headline-md": ["Plus Jakarta Sans"],
+        "label-sm": ["Plus Jakarta Sans"],
+        "headline-lg-mobile": ["Plus Jakarta Sans"],
+        "headline-lg": ["Plus Jakarta Sans"],
+        "display-mobile": ["Plus Jakarta Sans"],
+        "display": ["Plus Jakarta Sans"]
+      },
+      fontSize: {
+        "body-sm": ["13px", { "lineHeight": "20px", "fontWeight": "400" }],
+        "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.06em", "fontWeight": "600" }],
+        "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+        "body-md": ["15px", { "lineHeight": "24px", "fontWeight": "400" }],
+        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+        "label-sm": ["10px", { "lineHeight": "14px", "letterSpacing": "0.08em", "fontWeight": "700" }],
+        "headline-lg-mobile": ["26px", { "lineHeight": "34px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+        "title-sm": ["16px", { "lineHeight": "24px", "fontWeight": "600" }]
+      }
+    }
+  }
+};</script><style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head><body class="bg-surface font-body-md text-on-surface antialiased flex flex-col min-h-screen"><header class="fixed top-0 inset-x-0 z-50 bg-surface/90 backdrop-blur-md shadow-[0_1px_8px_rgba(11,25,44,0.06)] pt-safe border-b border-surface-container"><div class="h-16 px-margin-mobile flex items-center justify-between"><div class="flex items-center gap-space-sm"><img alt="Travel Business Agency Logo" class="h-9 w-9 rounded-sm object-cover border border-secondary/30" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDP09OQDjAGFI7QhlJToBt9GRbANi7FulfXe3FSyBj0cREubKYsZCDdc5KMgKHg_wVsb4Hs71GyPLPM2D-_54Nb_0Zu-sy1DL2JrQupbsqUU96JiuJUszvWqa0UVyC6BQP8plysFMDy9VEbfkCHZLQSdYB1uGp4OwiieTO0ImNWIxCcsfjTnjA2BCKqgeSIG_Gij23D-LWde77RGf5tmqiGs29JyG30rH9yl5YJ3CFOF0I3pVMCe5KylQ"/><div class="flex flex-col"><span class="font-label-sm text-[10px] text-secondary tracking-widest uppercase font-bold">Travel Business Agency</span><span class="font-title-sm text-title-sm text-primary leading-none truncate max-w-[150px] font-semibold">Transactions</span></div></div><div class="flex items-center gap-space-xs"><button aria-label="Notifications" class="relative w-11 h-11 flex items-center justify-center rounded-full text-on-surface hover:bg-surface-container-high transition-colors"><span class="material-symbols-outlined text-[22px]">notifications</span><span class="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-secondary ring-2 ring-surface"></span></button><div class="relative flex items-center justify-center p-1"><img alt="Profile" class="w-8 h-8 rounded-full object-cover ring-1 ring-secondary/40" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBSA55Iy8xb5FMj724m-dtBe32fdX6W35nS7qB059srTWt38c_S53SYkz-BN2L31n2ud6FstUhL4OqGm3ZZ-4Uyyj4T7TErW9Sh_za_K2scFshD-6Ih3f5xO9sRGfxnjkBJMNaeyW3dPaNjYAdlhknTxaUItWqNq1pDMMWXp3PnRgtkcbqRmRjIGc3M4cbacPqbPX4wEGJzGzesMJCmjzZsjtPpNRy9m_Bnp9MPeM-SngC8SUPu4fSg_w"/><span class="absolute bottom-1 right-1 w-2.5 h-2.5 rounded-full bg-primary ring-2 ring-surface" title="Concierge Actif"></span></div></div></div></header><main class="flex flex-col relative w-full pt-16 pb-24 bg-surface min-h-screen"><div class="flex flex-col w-full">
+<!-- Status Bar / Ambient Intro Card -->
+<div class="px-margin-mobile pt-space-sm pb-space-xs">
+<div class="bg-surface-container-lowest rounded-xl p-space-md shadow-sm border border-surface-container-high/60 flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-secondary/15 text-secondary-dark">
+<span class="material-symbols-outlined text-[16px]">verified_user</span>
+</span>
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-secondary-dark font-bold">Dossier Certifié #AV-2489</span>
+</div>
+<span class="px-2.5 py-1 rounded-full bg-surface-container text-on-surface-variant font-label-sm text-label-sm">
+          Kenya • Safari &amp; Océan
+        </span>
+</div>
+<!-- Financial Balance Overview -->
+<div class="flex flex-col gap-1">
+<div class="flex items-baseline justify-between">
+<span class="font-body-sm text-body-sm text-on-surface-variant">Budget global convenu</span>
+<span class="font-headline-md text-headline-md text-primary tracking-tight font-bold">14 850 €</span>
+</div>
+<!-- Progress Bar Indicator -->
+<div class="w-full bg-surface-container-high h-2.5 rounded-full overflow-hidden my-1">
+<div class="bg-primary h-full rounded-full transition-all duration-500" style="width: 63.97%;"></div>
+</div>
+<div class="flex justify-between items-center pt-0.5">
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-primary"></span>
+<span class="font-body-sm text-body-sm text-on-surface">Déjà honoré : <strong class="font-title-sm text-title-sm text-primary">9 500 €</strong></span>
+</div>
+<span class="font-label-sm text-label-sm text-secondary-dark font-bold">64% réglé</span>
+</div>
+</div>
+<!-- Due Balance Card Banner -->
+<div class="bg-surface-container-low rounded-lg p-space-sm flex flex-col gap-space-xs border border-secondary/20">
+<div class="flex items-center justify-between">
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-secondary-dark font-semibold">Solde restant dû</span>
+<span class="font-headline-lg-mobile text-headline-lg-mobile text-primary font-bold tracking-tight">5 350 €</span>
+</div>
+<div class="flex flex-col items-end text-right">
+<span class="font-label-sm text-label-sm text-on-surface-variant">Échéance finale</span>
+<span class="font-title-sm text-title-sm text-on-surface font-semibold">15 Décembre 2024</span>
+</div>
+</div>
+<!-- Direct Actions -->
+<div class="grid grid-cols-2 gap-space-xs pt-1">
+<button class="h-11 px-space-sm bg-primary text-on-primary hover:bg-primary/95 rounded-full font-label-md text-label-md flex items-center justify-center gap-1.5 shadow-sm active:scale-[0.98] transition-transform" id="btn-pay-balance">
+<span class="material-symbols-outlined text-[18px] text-secondary">credit_score</span>
+<span>Régler le solde</span>
+</button>
+<button class="h-11 px-space-sm bg-secondary/15 text-primary hover:bg-secondary/25 border border-secondary/30 rounded-full font-label-md text-label-md flex items-center justify-center gap-1.5 active:bg-surface-dim transition-colors" id="btn-rib">
+<span class="material-symbols-outlined text-[18px] text-secondary-dark">account_balance</span>
+<span class="font-semibold">RIB Agence</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Interactive Modal / Drawer for RIB (Hidden by default) -->
+<div class="hidden px-margin-mobile py-space-xs" id="rib-drawer">
+<div class="bg-primary text-on-primary rounded-xl p-space-md shadow-lg border border-secondary/30 flex flex-col gap-space-xs">
+<div class="flex justify-between items-center">
+<span class="font-label-sm text-label-sm tracking-wider uppercase text-secondary font-bold">Coordonnées Sécurisées TBA</span>
+<button class="text-surface-container-highest hover:text-on-primary" id="btn-close-rib">
+<span class="material-symbols-outlined text-[20px]">close</span>
+</button>
+</div>
+<div class="font-body-sm text-body-sm text-surface-container-highest">
+        Compte Séquestre Travel Business Agency • Société Générale Paris Opéra
+      </div>
+<div class="bg-[#050c17] p-space-sm rounded-lg flex items-center justify-between font-mono text-body-sm tracking-widest text-secondary select-all border border-secondary/20">
+<span>FR76 3000 3041 2000 0123 4567 890</span>
+<button class="text-secondary hover:text-white" onclick="navigator.clipboard?.writeText('FR7630003041200001234567890'); alert('IBAN copié dans le presse-papiers');">
+<span class="material-symbols-outlined text-[18px]">content_copy</span>
+</button>
+</div>
+<span class="font-label-sm text-label-sm text-surface-container-high">Indiquez toujours le motif : <strong class="text-secondary">KENYA-2489-SOLDE</strong></span>
+</div>
+</div>
+<!-- Section 1: Client Payments Received -->
+<div class="px-margin-mobile pt-space-md flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-[20px]">account_balance_wallet</span>
+<h2 class="font-headline-md text-headline-md text-primary">Paiements Reçus</h2>
+</div>
+<span class="font-label-md text-label-md text-primary bg-secondary/20 px-2.5 py-0.5 rounded-full font-semibold">2 règlements</span>
+</div>
+<!-- Timeline of Inflows -->
+<div class="flex flex-col gap-space-xs">
+<!-- Item 1: Second Payment -->
+<div class="bg-surface-container-lowest rounded-xl p-space-md shadow-sm border border-surface-container-high/60 flex flex-col gap-space-xs">
+<div class="flex items-start justify-between">
+<div class="flex gap-space-sm items-start">
+<div class="w-10 h-10 rounded-full bg-secondary/15 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-primary text-[22px]">south_west</span>
+</div>
+<div class="flex flex-col">
+<span class="font-title-sm text-title-sm text-primary font-semibold">Échéance Intermédiaire</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Reçu le 15 Octobre 2024</span>
+<span class="font-label-sm text-label-sm text-outline pt-0.5">Réf. VIR-2024-941 • Virement SEPA</span>
+</div>
+</div>
+<div class="flex flex-col items-end">
+<span class="font-title-sm text-title-sm text-primary font-bold tracking-tight">5 045 €</span>
+<span class="mt-1 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-secondary/15 text-primary border border-secondary/30 font-label-sm text-label-sm font-semibold">
+<span class="material-symbols-outlined text-[13px] text-secondary-dark" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+              Encaissé
+            </span>
+</div>
+</div>
+<div class="pt-2 flex justify-end">
+<button class="h-8 px-3 rounded-full bg-surface-container-low text-primary hover:bg-surface-container font-label-sm text-label-sm flex items-center gap-1 transition-colors border border-surface-container-highest">
+<span class="material-symbols-outlined text-[16px] text-secondary-dark">download</span>
+<span>Reçu officiel (PDF)</span>
+</button>
+</div>
+</div>
+<!-- Item 2: Initial Deposit -->
+<div class="bg-surface-container-lowest rounded-xl p-space-md shadow-sm border border-surface-container-high/60 flex flex-col gap-space-xs">
+<div class="flex items-start justify-between">
+<div class="flex gap-space-sm items-start">
+<div class="w-10 h-10 rounded-full bg-secondary/15 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-primary text-[22px]">south_west</span>
+</div>
+<div class="flex flex-col">
+<span class="font-title-sm text-title-sm text-primary font-semibold">Acompte Initial (30%)</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Reçu le 02 Septembre 2024</span>
+<span class="font-label-sm text-label-sm text-outline pt-0.5">Réf. VIR-2024-892 • Virement SEPA</span>
+</div>
+</div>
+<div class="flex flex-col items-end">
+<span class="font-title-sm text-title-sm text-primary font-bold tracking-tight">4 455 €</span>
+<span class="mt-1 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-secondary/15 text-primary border border-secondary/30 font-label-sm text-label-sm font-semibold">
+<span class="material-symbols-outlined text-[13px] text-secondary-dark" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+              Encaissé
+            </span>
+</div>
+</div>
+<div class="pt-2 flex justify-end">
+<button class="h-8 px-3 rounded-full bg-surface-container-low text-primary hover:bg-surface-container font-label-sm text-label-sm flex items-center gap-1 transition-colors border border-surface-container-highest">
+<span class="material-symbols-outlined text-[16px] text-secondary-dark">download</span>
+<span>Facture d'acompte (PDF)</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Section 2: Transparency of Agency Engagements -->
+<div class="px-margin-mobile pt-space-xl flex flex-col gap-space-sm">
+<div class="flex flex-col gap-0.5">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-secondary-dark text-[20px]">assured_workload</span>
+<h2 class="font-headline-md text-headline-md text-primary">Engagements de l'Agence</h2>
+</div>
+<span class="font-label-sm text-label-sm text-secondary-dark uppercase font-bold tracking-wider">Haute Transparence</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+        Acomptes et réservations fermes déjà débloqués par nos soins pour garantir l'exclusivité de votre périple.
+      </p>
+</div>
+<!-- Agency Outlays Card Bento -->
+<div class="bg-surface-container-lowest rounded-xl p-space-md shadow-sm border border-surface-container-high/60 flex flex-col gap-space-sm">
+<div class="flex items-center justify-between pb-space-xs bg-surface-container-low p-space-sm rounded-lg border border-secondary/20">
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-on-surface-variant font-medium">Total Engagé par l'Agence</span>
+<span class="font-headline-md text-headline-md text-primary font-bold">10 050 €</span>
+</div>
+<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary text-secondary font-label-sm text-label-sm font-semibold">
+<span class="material-symbols-outlined text-[14px]">lock</span>
+          100% Garanti
+        </span>
+</div>
+<!-- Outlays Breakdown -->
+<div class="flex flex-col divide-y divide-surface-container">
+<!-- Outlay 1: Flights -->
+<div class="py-space-sm flex items-center justify-between">
+<div class="flex items-center gap-space-sm">
+<div class="w-9 h-9 rounded-full bg-surface-container flex items-center justify-center shrink-0 text-primary">
+<span class="material-symbols-outlined text-[20px]">flight_takeoff</span>
+</div>
+<div class="flex flex-col">
+<span class="font-title-sm text-title-sm text-on-surface font-semibold">Air France Business Class</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">2 Billets émis • Réf. AF-TKT-884</span>
+</div>
+</div>
+<span class="font-title-sm text-title-sm text-primary font-bold">4 200 €</span>
+</div>
+<!-- Outlay 2: Lodge Angama Mara -->
+<div class="py-space-sm flex items-center justify-between">
+<div class="flex items-center gap-space-sm">
+<div class="w-9 h-9 rounded-full bg-surface-container flex items-center justify-center shrink-0 text-primary">
+<span class="material-symbols-outlined text-[20px]">hotel</span>
+</div>
+<div class="flex flex-col">
+<span class="font-title-sm text-title-sm text-on-surface font-semibold">Angama Mara Lodge</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Suite Tente VIP (Acompte 50%)</span>
+</div>
+</div>
+<span class="font-title-sm text-title-sm text-primary font-bold">2 900 €</span>
+</div>
+<!-- Outlay 3: Safari & Guide -->
+<div class="py-space-sm flex items-center justify-between">
+<div class="flex items-center gap-space-sm">
+<div class="w-9 h-9 rounded-full bg-surface-container flex items-center justify-center shrink-0 text-primary">
+<span class="material-symbols-outlined text-[20px]">nature_people</span>
+</div>
+<div class="flex flex-col">
+<span class="font-title-sm text-title-sm text-on-surface font-semibold">Privatisation 4x4 &amp; Ranger</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Guide certifié KPSGA Gold</span>
+</div>
+</div>
+<span class="font-title-sm text-title-sm text-primary font-bold">1 850 €</span>
+</div>
+<!-- Outlay 4: Helicopter transfer -->
+<div class="py-space-sm flex items-center justify-between">
+<div class="flex items-center gap-space-sm">
+<div class="w-9 h-9 rounded-full bg-surface-container flex items-center justify-center shrink-0 text-primary">
+<span class="material-symbols-outlined text-[20px]">mode_fan</span>
+</div>
+<div class="flex flex-col">
+<span class="font-title-sm text-title-sm text-on-surface font-semibold">Hélicoptère Mara → Diani</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Vol privé direct vers la côte</span>
+</div>
+</div>
+<span class="font-title-sm text-title-sm text-primary font-bold">1 100 €</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Reassurance & Legal Protections Footprint -->
+<div class="px-margin-mobile pt-space-lg pb-space-lg">
+<div class="bg-surface-container-high rounded-xl p-space-md flex items-start gap-space-sm border border-secondary/20">
+<div class="w-8 h-8 rounded-full bg-primary text-secondary flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[18px]">security</span>
+</div>
+<div class="flex flex-col gap-0.5">
+<span class="font-title-sm text-title-sm text-primary font-semibold">Garantie Totale des Fonds Déposés</span>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+          Vos versements bénéficient de la garantie financière <strong class="text-on-surface">APST</strong> (Association Professionnelle de Solidarité du Tourisme) et d'une assurance RCP Hiscox n°HA-90422. En cas d'imprévu, 100% de votre capital est sanctuarisé.
+        </p>
+</div>
+</div>
+</div>
+<!-- Interactive JavaScript for micro-interactions -->
+<script>
+    (function() {
+      const btnRib = document.getElementById('btn-rib');
+      const ribDrawer = document.getElementById('rib-drawer');
+      const btnCloseRib = document.getElementById('btn-close-rib');
+      const btnPay = document.getElementById('btn-pay-balance');
+
+      if (btnRib && ribDrawer && btnCloseRib) {
+        btnRib.addEventListener('click', () => {
+          ribDrawer.classList.toggle('hidden');
+          if (!ribDrawer.classList.contains('hidden')) {
+            ribDrawer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
+        });
+
+        btnCloseRib.addEventListener('click', () => {
+          ribDrawer.classList.add('hidden');
+        });
+      }
+
+      if (btnPay) {
+        btnPay.addEventListener('click', () => {
+          const proceed = confirm("Vous allez être redirigé vers l'interface de paiement bancaire sécurisé 3D-Secure pour un montant de 5 350 €.");
+          if (proceed) {
+            btnPay.innerHTML = '<span class="material-symbols-outlined text-[18px] animate-spin">refresh</span><span>Redirection sécurisée...</span>';
+            setTimeout(() => {
+              btnPay.innerHTML = '<span class="material-symbols-outlined text-[18px]">lock</span><span>Passerelle active</span>';
+            }, 1500);
+          }
+        });
+      }
+    })();
+  </script>
+</div></main><nav class="fixed bottom-0 inset-x-0 z-50 pb-safe bg-surface/90 backdrop-blur-md border-t border-surface-container shadow-[0_-4px_20px_rgba(11,25,44,0.06)]" data-active-classes="text-primary font-bold"><div class="flex justify-around items-center h-16 px-space-xs"><a class="flex flex-col items-center justify-center min-w-[64px] h-12 gap-0.5 text-on-surface-variant hover:text-primary transition-colors" data-path="accueil" href="#"><span class="material-symbols-outlined text-[24px]">explore</span><span class="font-label-sm text-label-sm tracking-tight">Accueil</span></a><a class="flex flex-col items-center justify-center min-w-[64px] h-12 gap-0.5 text-on-surface-variant hover:text-primary transition-colors" data-path="reservations" href="#"><span class="material-symbols-outlined text-[24px]">luggage</span><span class="font-label-sm text-label-sm tracking-tight">Réservations</span></a><a aria-current="page" class="flex flex-col items-center justify-center min-w-[64px] h-12 gap-0.5 transition-colors text-primary font-bold" data-path="transactions" href="#"><span class="material-symbols-outlined text-[24px] text-secondary-dark" style="font-variation-settings: 'FILL' 1;">receipt_long</span><span class="font-label-sm text-label-sm tracking-tight text-primary">Transactions</span></a><a class="flex flex-col items-center justify-center min-w-[64px] h-12 gap-0.5 text-on-surface-variant hover:text-primary transition-colors" data-path="mon-compte" href="#"><span class="material-symbols-outlined text-[24px]">badge</span><span class="font-label-sm text-label-sm tracking-tight">Mon Compte</span></a></div></nav></body></html>

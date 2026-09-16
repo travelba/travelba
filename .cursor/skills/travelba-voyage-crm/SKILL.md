@@ -40,9 +40,9 @@ Encours = vue `crm_customer_balances` : positif = avoir, négatif = reste à pay
 
 ## Design (Stitch)
 
-Source de vérité UI client : projet **Application Agence de Voyage Client**  
-`https://stitch.withgoogle.com/projects/7750686585265203965`  
-Design system **Aura Voyages**. Ne pas utiliser la feuille **Travelba CRM**.
+Source de vérité UI : projet **Portail Client Agence Voyage**  
+`https://stitch.withgoogle.com/projects/10475551423344387411`  
+Écrans visibles : **Sovereign Horizon** (marine `#0B192C`, champagne `#C5A880`). Ne pas appliquer Atelier Voyage (émeraude) ni la feuille **Travelba CRM**.
 
 ## Fichiers clés
 

@@ -25,8 +25,8 @@ export function ProfileSubnav() {
             href={link.href}
             className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
               active
-                ? "bg-[var(--admin-navy)] text-white"
-                : "bg-white text-[var(--admin-navy)] ring-1 ring-[var(--border)] hover:bg-[var(--admin-sky)]"
+                ? "bg-[var(--admin-navy)] text-[var(--admin-gold-soft)]"
+                : "bg-white text-[var(--admin-navy)] ring-1 ring-[#e5e3dc] hover:bg-[var(--surface-2)]"
             }`}
           >
             {link.label}

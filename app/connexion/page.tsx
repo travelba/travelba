@@ -23,7 +23,7 @@ const sans = Inter({
 });
 
 const fieldClass =
-  "w-full rounded-2xl border border-[var(--border)] bg-white px-3.5 py-3 text-[var(--admin-navy)] outline-none focus:border-[var(--aura-blue)] focus:ring-2 focus:ring-[var(--aura-blue-soft)]";
+  "w-full rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-3 text-[var(--admin-navy)] outline-none focus:border-[var(--admin-gold)] focus:bg-white focus:ring-2 focus:ring-[var(--admin-gold)]/30";
 
 function LoginForm() {
   const router = useRouter();
@@ -76,7 +76,7 @@ function LoginForm() {
   if (mode === "sent") {
     return (
       <div className="mt-6 space-y-5">
-        <div className="rounded-2xl bg-[var(--aura-blue-soft)]/70 px-3.5 py-3 text-sm text-[var(--admin-navy)]">
+        <div className="rounded-2xl border border-[var(--admin-gold)]/30 bg-[var(--admin-peach)] px-3.5 py-3 text-sm text-[var(--admin-navy)]">
           Si un compte existe pour <strong>{email}</strong>, un lien pour
           redéfinir le mot de passe vient d’être envoyé.
         </div>
@@ -199,17 +199,21 @@ function LoginForm() {
 export default function ConnexionPage() {
   return (
     <div
-      className={`account-app min-h-screen ${display.variable} ${sans.variable}`}
+      className={`account-app admin-af min-h-screen ${display.variable} ${sans.variable}`}
     >
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap"
+      />
       <div className="mx-auto flex min-h-screen max-w-[420px] flex-col justify-center px-4 py-10">
         <div className="mb-8 flex items-center justify-between">
-          <BrandMark href="/" subtitle="Aura · Espace client" />
+          <BrandMark href="/" subtitle="Espace client" />
           <span className="rounded-full bg-white px-3 py-1 text-[10px] font-semibold text-muted ring-1 ring-[var(--border)]">
             Sécurisé
           </span>
         </div>
-        <div className="aura-card rounded-[1.5rem] border-t-[3px] border-t-[var(--admin-red)] bg-white p-8 shadow-[0_12px_32px_rgba(15,23,42,0.06)] sm:p-10">
-          <span className="inline-flex rounded-full bg-[var(--aura-blue-soft)] px-3 py-1 text-[11px] font-semibold text-[var(--aura-blue)]">
+        <div className="aura-card rounded-2xl border-t-[2px] border-t-[var(--admin-gold)] bg-white p-8 sm:p-10">
+          <span className="inline-flex rounded-full border border-[var(--admin-gold)]/40 bg-[var(--admin-peach)] px-3 py-1 text-[11px] font-semibold text-[#533e1c]">
             Espace membre
           </span>
           <h1 className="mt-4 font-display text-3xl font-extrabold tracking-tight text-[var(--admin-navy)]">
@@ -219,7 +223,7 @@ export default function ConnexionPage() {
             Connectez-vous avec l’e-mail de votre invitation et votre mot de
             passe. Vous resterez connecté sur cet appareil.
           </p>
-          <div className="mt-4 h-1 w-12 rounded-full bg-[var(--admin-red)]" />
+          <div className="mt-4 h-1 w-12 rounded-full bg-[var(--admin-gold)]" />
           <Suspense fallback={<p className="mt-8 text-sm text-muted">Chargement…</p>}>
             <LoginForm />
           </Suspense>
@@ -228,13 +232,13 @@ export default function ConnexionPage() {
         <div className="mt-5 grid gap-3">
           <Link
             href="/demo/espace-client"
-            className="block rounded-[1.25rem] border border-[var(--border)] bg-white px-4 py-3.5 text-center shadow-sm transition hover:border-[var(--aura-blue)]"
+            className="block rounded-2xl border border-[#e5e3dc] bg-white px-4 py-3.5 text-center shadow-sm transition hover:border-[var(--admin-gold)]"
           >
-            <span className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--aura-blue)]">
+            <span className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--admin-gold)]">
               Espace client exemple
             </span>
             <span className="mt-0.5 block font-display text-sm font-bold text-[var(--admin-navy)]">
-              Voir le portail Aura en démo
+              Voir le portail en démo
             </span>
           </Link>
         </div>

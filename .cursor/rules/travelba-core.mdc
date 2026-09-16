@@ -14,7 +14,7 @@ Produit FR pour agence de voyage : back-office `/admin` (clients, réservations,
 - **Secrets** : `.env.local` seulement — jamais commit.
 - **Next.js** : lire `node_modules/next/dist/docs/` avant APIs nouvelles (voir `AGENTS.md`).
 - **Skills projet** : `.cursor/skills/travelba-voyage-crm/SKILL.md`
-- **Design UI client** : Stitch **Application Agence de Voyage Client** (`7750686585265203965`) — pas la feuille Travelba CRM.
+- **Design UI** : Stitch **Portail Client Agence Voyage** (`10475551423344387411`) — Sovereign Horizon (marine `#0B192C` + champagne `#C5A880`). Pas Aura Voyages, pas Travelba CRM.
 
 ## Stack clé
 

@@ -98,8 +98,8 @@ export default async function AdminHomePage() {
         />
       </div>
 
-      <div className="rounded-2xl border border-[var(--aura-blue-soft)] bg-[var(--aura-blue-soft)]/40 px-4 py-3 text-sm text-[var(--admin-navy)]">
-        <strong>Client démo Aura :</strong>{" "}
+      <div className="rounded-lg border border-[var(--admin-gold)]/40 bg-[var(--admin-peach)] px-4 py-3 text-sm text-[var(--admin-navy)]">
+        <strong>Client démo :</strong>{" "}
         <code className="rounded bg-white px-1.5 py-0.5 text-xs">client.demo@travelba.fr</code>
         {" — "}connexion OTP sur{" "}
         <Link href="/connexion" className="font-semibold underline">

@@ -5,7 +5,12 @@ import { createClient } from "@/lib/supabase/server";
 import { requireStaffPage } from "@/lib/crm/auth";
 import type { CrmBalance, CrmCustomer } from "@/lib/crm/types";
 
-export default async function AdminClientsPage() {
+export default async function AdminClientsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
+  const { q } = await searchParams;
   const { supabase } = await requireStaffPage();
   const [{ data: customers }, { data: balances }] = await Promise.all([
     supabase.from("crm_customers").select("*").order("last_name"),
@@ -25,6 +30,7 @@ export default async function AdminClientsPage() {
       <ClientsTable
         customers={(customers || []) as CrmCustomer[]}
         balances={(balances || []) as CrmBalance[]}
+        initialQuery={q || ""}
       />
     </div>
   );

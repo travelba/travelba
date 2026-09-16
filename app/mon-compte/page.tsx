@@ -4,15 +4,13 @@ import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
 import {
   BOOKING_STATUS_LABELS,
-  TX_KIND_LABELS,
-  customerFullName,
   type CrmBalance,
   type CrmBooking,
   type CrmBookingItem,
-  type CrmTransaction,
+  type CrmTravelDocument,
 } from "@/lib/crm/types";
-import { formatDateFr, formatMoney, isUpcomingBooking } from "@/lib/crm/money";
-import { StatusChip } from "@/components/crm/ui";
+import { formatDateFr, isUpcomingBooking } from "@/lib/crm/money";
+import { bookingCoverUrl } from "@/lib/crm/covers";
 import { siteConfig } from "@/lib/site";
 
 function daysUntil(date: string | null) {
@@ -21,13 +19,6 @@ function daysUntil(date: string | null) {
   const today = new Date();
   today.setHours(12, 0, 0, 0);
   return Math.ceil((start.getTime() - today.getTime()) / 86_400_000);
-}
-
-function tripDays(start: string | null, end: string | null) {
-  if (!start || !end) return null;
-  const a = new Date(`${start}T12:00:00`).getTime();
-  const b = new Date(`${end}T12:00:00`).getTime();
-  return Math.max(1, Math.round((b - a) / 86_400_000));
 }
 
 export default async function AccountHomePage() {
@@ -39,7 +30,7 @@ export default async function AccountHomePage() {
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");
 
-  const [{ data: bookings }, { data: balances }, { data: txs }] =
+  const [{ data: bookings }, { data: balances }, { data: docs }] =
     await Promise.all([
       supabase
         .from("crm_bookings")
@@ -52,12 +43,9 @@ export default async function AccountHomePage() {
         .select("*")
         .eq("customer_id", customer.id),
       supabase
-        .from("crm_transactions")
-        .select("*")
-        .eq("customer_id", customer.id)
-        .eq("status", "posted")
-        .order("occurred_on", { ascending: false })
-        .limit(5),
+        .from("crm_travel_documents")
+        .select("id, doc_type")
+        .eq("customer_id", customer.id),
     ]);
 
   const nextTrip = ((bookings || []) as CrmBooking[]).find((b) =>
@@ -76,314 +64,331 @@ export default async function AccountHomePage() {
 
   const flight = items.find((i) => i.kind === "flight");
   const hotel = items.find((i) => i.kind === "hotel");
-
   const primaryBalance = ((balances || []) as CrmBalance[])[0];
   const balanceValue = primaryBalance ? Number(primaryBalance.balance) : 0;
-  const currency = primaryBalance?.currency || nextTrip?.currency || "EUR";
-  const firstName =
-    customer.first_name || customerFullName(customer).split(" ")[0];
-  const recentTxs = (txs || []) as CrmTransaction[];
-  const jMinus = daysUntil(nextTrip?.start_date ?? null);
-  const tripTotal = nextTrip ? Number(nextTrip.total_amount) : 0;
   const remainingDue = Math.max(0, -balanceValue);
-  const availableCredit = Math.max(0, balanceValue);
-  const financedPct =
-    tripTotal > 0
-      ? Math.min(
-          100,
-          Math.round(((tripTotal - remainingDue) / tripTotal) * 1000) / 10
-        )
-      : balanceValue >= 0
-        ? 100
-        : 0;
-  const nights = tripDays(
-    nextTrip?.start_date ?? null,
-    nextTrip?.end_date ?? null
-  );
+  const firstName =
+    customer.first_name || customer.email.split("@")[0];
+  const jMinus = daysUntil(nextTrip?.start_date ?? null);
+  const passports = ((docs || []) as Pick<CrmTravelDocument, "id" | "doc_type">[]).filter(
+    (d) => d.doc_type === "passport"
+  ).length;
+  const depositDone = remainingDue <= 0;
+  const flightsDone = Boolean(flight);
+  const docsDone = passports > 0;
+  const prepScore = [depositDone, flightsDone, docsDone].filter(Boolean).length;
+  const prepPct = Math.round((prepScore / 3) * 100);
   const whatsappHref = `https://wa.me/${siteConfig.whatsappNumber}`;
+  const cover = nextTrip ? bookingCoverUrl(nextTrip, 1200) : null;
 
   return (
-    <div className="space-y-5">
-      <header className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm text-muted">Ravi de vous revoir ✨</p>
-          <h1 className="mt-1 font-display text-[1.85rem] font-extrabold tracking-tight text-[var(--admin-navy)]">
-            Bonjour {firstName}
-          </h1>
+    <div className="space-y-4">
+      <section className="flex flex-col gap-1">
+        <div className="flex items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-2">
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[var(--admin-gold)]">
+              <span className="material-symbols-outlined text-[16px]">explore</span>
+            </span>
+            <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">
+              {siteConfig.name} · Espace membre
+            </span>
+          </span>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--admin-gold)]/40 bg-[var(--admin-peach)] px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-[#533e1c]">
+            <span className="material-symbols-outlined text-[14px] text-[var(--admin-gold)]">
+              stars
+            </span>
+            Voyageur Privilège
+          </span>
         </div>
-        <Link
-          href="/mon-compte/reservations"
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[var(--aura-blue-soft)] px-3.5 py-2 text-[11px] font-bold uppercase tracking-wide text-[var(--aura-blue)]"
-        >
-          <span aria-hidden>◆</span>
-          Explorer Club
-        </Link>
-      </header>
+        <h1 className="mt-1 font-display text-[1.7rem] font-bold tracking-tight text-[var(--admin-navy)]">
+          Bonjour {firstName}
+        </h1>
+        <p className="text-sm text-muted">
+          {nextTrip
+            ? "Votre itinéraire sur-mesure prend vie avec sérénité."
+            : "Votre conciergerie prépare le prochain départ dès que vous le souhaitez."}
+        </p>
+      </section>
 
-      {nextTrip ? (
-        <article className="relative min-h-[340px] overflow-hidden rounded-[1.5rem] bg-[var(--admin-navy)] text-white shadow-[0_18px_40px_rgba(11,31,58,0.28)]">
+      {nextTrip && cover ? (
+        <article className="relative overflow-hidden rounded-2xl border border-[#e5e3dc] bg-[var(--admin-navy)] text-white shadow-xl">
           <div
-            className="absolute inset-0 bg-cover bg-center opacity-55"
-            style={{
-              backgroundImage:
-                "url(https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=1200&q=80)",
-            }}
+            className="absolute inset-0 bg-cover bg-center"
+            style={{ backgroundImage: `url(${cover})` }}
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-[var(--admin-navy)] via-[var(--admin-navy)]/70 to-transparent" />
-          <div className="relative flex min-h-[340px] flex-col justify-end space-y-3.5 p-5 pb-6 pt-8">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1 text-[11px] font-semibold text-[var(--admin-navy)]">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                Départ imminent
-              </span>
+          <div className="absolute inset-0 bg-gradient-to-t from-[var(--admin-navy)] via-[var(--admin-navy)]/70 to-black/25" />
+          <div className="relative flex flex-col gap-4 p-5">
+            <div className="flex items-center justify-between gap-2">
               {jMinus != null && jMinus >= 0 ? (
-                <span className="rounded-full bg-black/40 px-3 py-1 text-[11px] font-bold backdrop-blur">
-                  J-{jMinus}
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--admin-gold)]/30 bg-white/95 px-3 py-1 text-[12px] font-semibold text-[var(--admin-navy)]">
+                  <span className="material-symbols-outlined text-[15px] text-[var(--admin-gold)]">
+                    timer
+                  </span>
+                  <span className="font-bold">J - {jMinus}</span>
+                  <span className="font-normal text-muted">avant l&apos;envol</span>
                 </span>
+              ) : (
+                <StatusMini>{BOOKING_STATUS_LABELS[nextTrip.status]}</StatusMini>
+              )}
+            </div>
+            <div className="pt-8">
+              <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+                <span className="material-symbols-outlined text-[14px]">flight_takeoff</span>
+                {formatDateFr(nextTrip.start_date)} — {formatDateFr(nextTrip.end_date)}
+              </p>
+              <h2 className="mt-1 font-display text-2xl font-bold leading-tight">
+                {nextTrip.title || nextTrip.destination || "Prochain séjour"}
+              </h2>
+              {nextTrip.destination ? (
+                <p className="mt-1 line-clamp-2 text-sm text-slate-200">
+                  {nextTrip.destination}
+                </p>
               ) : null}
             </div>
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[var(--aura-blue-soft)]">
-                {nextTrip.title || "Prochaine escapade"}
-              </p>
-              <h2 className="mt-1 font-display text-[1.7rem] font-extrabold leading-tight">
-                {nextTrip.destination || nextTrip.title}
-              </h2>
-              <p className="mt-1.5 text-sm text-white/75">
-                {formatDateFr(nextTrip.start_date)} —{" "}
-                {formatDateFr(nextTrip.end_date)}
-                {nights ? ` (${nights} j)` : null}
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-2 rounded-2xl bg-black/25 p-3 backdrop-blur-md">
-              <div className="min-w-0">
-                <p className="text-[10px] uppercase tracking-wide text-white/55">
-                  Vol
-                </p>
-                <p className="mt-0.5 truncate text-sm font-semibold">
-                  {flight?.title ||
-                    flight?.confirmation_ref ||
-                    nextTrip.reference}
-                </p>
-              </div>
-              <div className="min-w-0">
-                <p className="text-[10px] uppercase tracking-wide text-white/55">
-                  Séjour
-                </p>
-                <p className="mt-0.5 truncate text-sm font-semibold">
-                  {hotel?.title || BOOKING_STATUS_LABELS[nextTrip.status]}
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <Link
-                href={`/mon-compte/reservations/${nextTrip.reference}`}
-                className="flex h-12 flex-1 items-center justify-center rounded-full bg-white text-sm font-bold text-[var(--admin-navy)]"
-              >
-                Voir l&apos;itinéraire →
-              </Link>
-              <a
-                href={whatsappHref}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-black/35 text-lg backdrop-blur"
-                aria-label="Contacter le concierge"
-              >
-                ✦
-              </a>
-            </div>
+            <Link
+              href={`/mon-compte/reservations/${nextTrip.reference}`}
+              className="flex h-12 items-center justify-between rounded-full bg-white px-5 text-sm font-semibold text-[var(--admin-navy)]"
+            >
+              <span className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[20px] text-[var(--admin-gold)]">
+                  menu_book
+                </span>
+                Voir mon carnet de voyage
+              </span>
+              <span className="material-symbols-outlined text-[20px] text-[var(--admin-gold)]">
+                arrow_forward
+              </span>
+            </Link>
           </div>
         </article>
       ) : (
-        <article className="rounded-[1.5rem] bg-white p-5 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+        <article className="rounded-2xl border border-[#e5e3dc] bg-white p-5">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
             Prochaine destination
           </p>
           <h2 className="mt-2 font-display text-xl font-bold text-[var(--admin-navy)]">
             Aucun voyage planifié
           </h2>
           <p className="mt-1 text-sm text-muted">
-            Votre conciergerie {siteConfig.shortName} peut préparer votre prochain
-            dossier.
+            Votre conciergerie {siteConfig.shortName} peut préparer votre prochain dossier.
           </p>
           <a
-            href={`mailto:${siteConfig.contactEmail}`}
-            className="mt-4 inline-flex rounded-full bg-[var(--admin-navy)] px-5 py-2.5 text-sm font-semibold text-white"
+            href={whatsappHref}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-4 inline-flex h-12 items-center rounded-full bg-[var(--admin-navy)] px-5 text-sm font-semibold text-white"
           >
             Contacter la conciergerie
           </a>
         </article>
       )}
 
-      <div className="grid grid-cols-3 gap-2.5">
-        <Link
-          href="/mon-compte/reservations"
-          className="flex flex-col items-center rounded-2xl bg-white px-2 py-3.5 text-center shadow-[0_6px_18px_rgba(15,23,42,0.04)]"
-        >
-          <span className="mb-2 inline-flex h-11 w-11 items-center justify-center rounded-full bg-[var(--aura-blue-soft)] text-base">
-            🎫
-          </span>
-          <span className="text-[11px] font-bold leading-tight text-[var(--admin-navy)]">
-            Billets & Vouchers
-          </span>
-        </Link>
-        <Link
-          href="/mon-compte/transactions"
-          className="flex flex-col items-center rounded-2xl bg-white px-2 py-3.5 text-center shadow-[0_6px_18px_rgba(15,23,42,0.04)]"
-        >
-          <span className="mb-2 inline-flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-base font-bold text-[var(--admin-navy)]">
-            +
-          </span>
-          <span className="text-[11px] font-bold leading-tight text-[var(--admin-navy)]">
-            + Fonds (Revolut)
-          </span>
-        </Link>
-        <a
-          href={whatsappHref}
-          target="_blank"
-          rel="noreferrer"
-          className="flex flex-col items-center rounded-2xl bg-white px-2 py-3.5 text-center shadow-[0_6px_18px_rgba(15,23,42,0.04)]"
-        >
-          <span className="mb-2 inline-flex h-11 w-11 items-center justify-center rounded-full bg-[var(--aura-blue-soft)] text-base">
-            🛎️
-          </span>
-          <span className="text-[11px] font-bold leading-tight text-[var(--admin-navy)]">
-            Concierge Privé
-          </span>
-        </a>
-      </div>
-
-      <section className="rounded-[1.5rem] bg-white p-5 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--aura-blue-soft)] text-sm">
-              💳
+      {nextTrip ? (
+        <section className="flex flex-col gap-3 rounded-2xl border border-[#e5e3dc] bg-[var(--surface-2)] p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-[20px] text-[var(--admin-gold)]">
+                task_alt
+              </span>
+              <span className="text-sm font-semibold text-[var(--admin-navy)]">
+                Préparatifs du séjour
+              </span>
+            </div>
+            <span className="rounded-full bg-[var(--admin-navy)] px-2.5 py-0.5 text-[12px] font-semibold text-[var(--admin-gold)]">
+              {prepPct}% complet
             </span>
-            <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">
-              Votre encours voyage
-            </h3>
           </div>
-          <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
-            Garanti
+          <div className="h-2 overflow-hidden rounded-full bg-[#e3e2e0]">
+            <div
+              className="h-2 rounded-full bg-gradient-to-r from-[var(--admin-navy)] to-[var(--admin-gold)]"
+              style={{ width: `${prepPct}%` }}
+            />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <PrepChip
+              icon="verified"
+              title="Acompte"
+              detail={depositDone ? "Validé" : "En attente"}
+              filled={depositDone}
+            />
+            <PrepChip
+              icon="flight"
+              title={flight?.confirmation_ref || "Vols"}
+              detail={flightsDone ? "Confirmés" : "À confirmer"}
+              filled={flightsDone}
+            />
+            <PrepChip
+              icon="description"
+              title="Passeports"
+              detail={docsDone ? `${passports} validé${passports > 1 ? "s" : ""}` : "À déposer"}
+              filled={docsDone}
+            />
+          </div>
+        </section>
+      ) : null}
+
+      <section className="flex flex-col gap-3 rounded-2xl border border-[#e5e3dc] bg-white p-4">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">
+            Votre Travel Designer
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-[var(--admin-navy)]">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--admin-gold)]" />
+            Disponible 24/7
           </span>
         </div>
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <div>
-            <p className="text-[11px] text-muted">Solde disponible</p>
-            <p className="mt-0.5 font-display text-2xl font-extrabold tracking-tight text-[var(--admin-navy)]">
-              {formatMoney(availableCredit, currency)}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-[11px] text-muted">
-              {remainingDue > 0 ? "Reste à payer" : "Budget validé"}
-            </p>
-            <p className="mt-0.5 font-display text-lg font-bold text-muted">
-              {formatMoney(
-                remainingDue > 0 ? remainingDue : tripTotal || availableCredit,
-                currency
-              )}
-            </p>
-          </div>
+        <div>
+          <h3 className="font-display text-base font-semibold text-[var(--admin-navy)]">
+            Conciergerie {siteConfig.shortName}
+          </h3>
+          <p className="text-sm text-muted">Ligne VIP directe</p>
         </div>
-        {tripTotal > 0 ? (
-          <div className="mt-4 space-y-1.5">
-            <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
-              <div
-                className="h-full rounded-full bg-[var(--aura-blue)]"
-                style={{ width: `${financedPct}%` }}
-              />
-            </div>
-            <div className="flex justify-between text-[11px] text-muted">
-              <span>{financedPct}% financé</span>
-              <span>Reste {formatMoney(remainingDue, currency)}</span>
-            </div>
-          </div>
-        ) : null}
-        <div className="mt-4 flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3.5 py-3">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-              Prochaine échéance
-            </p>
-            <p className="mt-0.5 text-sm font-semibold text-[var(--admin-navy)]">
-              {remainingDue > 0 ? formatMoney(remainingDue, currency) : "Aucune"}
-            </p>
-          </div>
-          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700">
-            Prélèvement auto
-          </span>
+        <div className="grid grid-cols-2 gap-2">
+          <a
+            href={`tel:${siteConfig.whatsappNumber}`}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#e5e3dc] bg-[var(--surface-2)] text-xs font-semibold text-[var(--admin-navy)]"
+          >
+            Appel Direct
+          </a>
+          <a
+            href={whatsappHref}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[var(--admin-navy)] text-xs font-semibold text-white"
+          >
+            Concierge Chat
+          </a>
         </div>
-        <Link
-          href="/mon-compte/transactions"
-          className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-[var(--admin-navy)] px-3 py-2.5 text-sm font-semibold text-white"
-        >
-          Voir l&apos;historique
-        </Link>
       </section>
 
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">
-            Dernières activités
+      {(flight || hotel) && nextTrip ? (
+        <section className="space-y-2.5">
+          <h3 className="font-display text-xl font-semibold text-[var(--admin-navy)]">
+            Mises à jour prioritaires
           </h3>
+          {flight ? (
+            <article className="flex items-start gap-3 rounded-2xl border border-[#e5e3dc] bg-white p-3.5">
+              <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--admin-gold)]/30 bg-[var(--admin-peach)] text-[var(--admin-navy)]">
+                <span className="material-symbols-outlined text-[20px]">airlines</span>
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-1">
+                  <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
+                    {flight.title || "Vol"}
+                  </p>
+                  <span className="rounded-full border border-[var(--admin-gold)]/30 bg-[var(--admin-peach)] px-2.5 py-0.5 text-[10px] font-semibold text-[#533e1c]">
+                    {flight.confirmation_ref || "Confirmé"}
+                  </span>
+                </div>
+                <p className="mt-0.5 text-[13px] text-muted">
+                  {flight.supplier || flight.confirmation_ref || nextTrip.reference}
+                </p>
+              </div>
+            </article>
+          ) : null}
+          {hotel ? (
+            <article className="flex items-start gap-3 rounded-2xl border border-[#e5e3dc] bg-white p-3.5">
+              <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--admin-gold)]/30 bg-[var(--admin-peach)] text-[var(--admin-gold)]">
+                <span className="material-symbols-outlined text-[20px]">hotel</span>
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-1">
+                  <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
+                    {hotel.title || "Hébergement"}
+                  </p>
+                  <span className="text-[10px] font-bold text-[#9e7e51]">Voucher prêt</span>
+                </div>
+                <p className="mt-0.5 text-[13px] text-muted">
+                  {hotel.supplier || hotel.confirmation_ref || "Hébergement confirmé"}
+                </p>
+              </div>
+            </article>
+          ) : null}
+        </section>
+      ) : null}
+
+      <section className="space-y-3 pb-2">
+        <h3 className="font-display text-xl font-semibold text-[var(--admin-navy)]">
+          Services & Documents
+        </h3>
+        <div className="grid grid-cols-3 gap-2.5">
           <Link
-            href="/mon-compte/transactions"
-            className="text-sm font-semibold text-[var(--aura-blue)]"
+            href="/mon-compte/reservations"
+            className="flex h-28 flex-col justify-between rounded-2xl border border-[#e5e3dc] bg-white p-3 text-left"
           >
-            Voir l&apos;historique
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--admin-gold)]/30 bg-[var(--admin-peach)]">
+              <span className="material-symbols-outlined text-[18px]">airplane_ticket</span>
+            </span>
+            <span>
+              <span className="block text-xs font-semibold text-[var(--admin-navy)]">Mes Billets</span>
+              <span className="text-[10px] text-muted">PDF & Wallet</span>
+            </span>
           </Link>
+          <Link
+            href="/mon-compte/profil/documents"
+            className="flex h-28 flex-col justify-between rounded-2xl border border-[#e5e3dc] bg-white p-3 text-left"
+          >
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--admin-gold)]/30 bg-[var(--admin-peach)] text-[#9e7e51]">
+              <span className="material-symbols-outlined text-[18px]">auto_stories</span>
+            </span>
+            <span>
+              <span className="block text-xs font-semibold text-[var(--admin-navy)]">Documents</span>
+              <span className="text-[10px] text-muted">Coffre-fort</span>
+            </span>
+          </Link>
+          <a
+            href={whatsappHref}
+            target="_blank"
+            rel="noreferrer"
+            className="flex h-28 flex-col justify-between rounded-2xl border border-[#e5e3dc] bg-white p-3 text-left"
+          >
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[var(--admin-gold)]">
+              <span className="material-symbols-outlined text-[18px]">support_agent</span>
+            </span>
+            <span>
+              <span className="block text-xs font-semibold text-[var(--admin-navy)]">Assistance</span>
+              <span className="text-[10px] font-medium text-[#9e7e51]">Urgences 24/7</span>
+            </span>
+          </a>
         </div>
-        {recentTxs.length === 0 ? (
-          <p className="rounded-2xl bg-white px-4 py-6 text-center text-sm text-muted shadow-sm">
-            Aucune transaction récente.
-          </p>
-        ) : (
-          <ul className="space-y-2">
-            {recentTxs.map((tx) => {
-              const credit = tx.direction === "credit";
-              return (
-                <li
-                  key={tx.id}
-                  className="flex items-center justify-between gap-3 rounded-2xl bg-white p-3.5 shadow-[0_6px_18px_rgba(15,23,42,0.04)]"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span
-                      className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
-                        credit
-                          ? "bg-emerald-50 text-emerald-700"
-                          : "bg-[var(--aura-blue-soft)] text-[var(--aura-blue)]"
-                      }`}
-                    >
-                      {credit ? "↓" : "↑"}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
-                        {tx.label || TX_KIND_LABELS[tx.kind] || tx.kind}
-                      </p>
-                      <p className="truncate text-xs text-muted">
-                        {formatDateFr(tx.occurred_on)}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p
-                      className={`text-sm font-bold ${
-                        credit ? "text-emerald-600" : "text-[var(--admin-navy)]"
-                      }`}
-                    >
-                      {credit ? "+" : "−"}
-                      {formatMoney(Number(tx.amount), tx.currency)}
-                    </p>
-                    <StatusChip tone={credit ? "green" : "sky"}>
-                      {credit ? "Reçu" : "Confirmé"}
-                    </StatusChip>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
       </section>
+    </div>
+  );
+}
+
+function StatusMini({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center rounded-full border border-[var(--admin-gold)]/30 bg-white/95 px-3 py-1 text-[11px] font-semibold text-[var(--admin-navy)]">
+      {children}
+    </span>
+  );
+}
+
+function PrepChip({
+  icon,
+  title,
+  detail,
+  filled,
+}: {
+  icon: string;
+  title: string;
+  detail: string;
+  filled: boolean;
+}) {
+  return (
+    <div className="flex flex-col items-center rounded-xl border border-[#e5e3dc] bg-white p-2.5 text-center">
+      <span
+        className={`material-symbols-outlined text-[18px] ${
+          filled ? "text-[var(--admin-gold)]" : "text-muted"
+        }`}
+        style={filled ? { fontVariationSettings: "'FILL' 1" } : undefined}
+      >
+        {icon}
+      </span>
+      <span className="mt-1 truncate text-[10px] font-semibold text-[var(--admin-navy)]">
+        {title}
+      </span>
+      <span className="text-[10px] text-muted">{detail}</span>
     </div>
   );
 }

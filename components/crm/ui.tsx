@@ -4,24 +4,34 @@ import { siteConfig } from "@/lib/site";
 export function BrandMark({
   href = "/",
   subtitle,
+  compact = false,
 }: {
   href?: string;
   subtitle?: string;
+  compact?: boolean;
 }) {
   return (
     <Link href={href} className="flex items-center gap-2.5">
-      <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--admin-navy)] font-display text-[11px] font-extrabold tracking-wider text-white shadow-sm">
+      <span className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-[var(--admin-navy)] font-display text-[11px] font-extrabold tracking-wider text-[var(--admin-gold)] shadow-sm">
         TBA
       </span>
-      <span className="flex flex-col leading-tight">
-        <span className="font-display text-lg font-extrabold tracking-tight text-[var(--admin-navy)]">
-          {siteConfig.shortName}
+      <span className="flex min-w-0 flex-col leading-tight">
+        <span className="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+          Travel Business Agency
         </span>
         {subtitle ? (
-          <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
+          <span
+            className={`truncate font-display font-semibold text-[var(--admin-navy)] ${
+              compact ? "text-base" : "text-lg"
+            }`}
+          >
             {subtitle}
           </span>
-        ) : null}
+        ) : (
+          <span className="font-display text-lg font-extrabold tracking-tight text-[var(--admin-navy)]">
+            {siteConfig.shortName}
+          </span>
+        )}
       </span>
     </Link>
   );
@@ -29,8 +39,8 @@ export function BrandMark({
 
 export function PageEyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--admin-red)]">
-      <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--admin-red)]" />
+    <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--admin-gold)]">
+      <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--admin-gold)]" />
       {children}
     </p>
   );
@@ -73,7 +83,7 @@ export function StatusChip({
     amber: "bg-amber-50 text-amber-800 border-amber-200",
     red: "bg-red-50 text-[var(--admin-red)] border-red-200",
     navy: "bg-[var(--admin-navy)] text-white border-transparent",
-    gold: "bg-[#fbf7ec] text-[var(--admin-navy)] border-[var(--admin-gold,#d4af37)]",
+    gold: "bg-[rgba(197,168,128,0.15)] text-[#7a6344] border-[rgba(197,168,128,0.4)]",
   };
   return (
     <span
@@ -104,35 +114,36 @@ export function EmptyState({
 
 export function ConciergeBanner() {
   return (
-    <aside className="admin-af-card flex flex-col gap-4 overflow-hidden rounded-[1.35rem] bg-[var(--admin-navy)] p-5 text-white sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-start gap-3">
-        <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--aura-blue)] text-lg font-bold">
-          M
+    <aside className="flex flex-col gap-3 rounded-2xl border border-[#e5e3dc] bg-white p-4 shadow-[0_4px_20px_-2px_rgba(11,25,44,0.04)]">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">
+          Votre Travel Designer
         </span>
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--aura-blue-soft)]">
-            Conciergerie 24/7
-          </p>
-          <h3 className="mt-1 font-display text-lg font-bold">
-            Votre majordome voyage dédié
-          </h3>
-          <p className="mt-1 text-sm text-white/70">
-            Modifications urgentes, transferts ou questions sur votre dossier.
-          </p>
-        </div>
+        <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-[var(--admin-navy)]">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--admin-gold)]" />
+          Disponible 24/7
+        </span>
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div>
+        <p className="font-display text-base font-semibold text-[var(--admin-navy)]">
+          Conciergerie {siteConfig.shortName}
+        </p>
+        <p className="mt-0.5 text-sm text-muted">Ligne VIP directe · modifications urgentes</p>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
         <a
           href={`tel:${siteConfig.whatsappNumber}`}
-          className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur"
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#e5e3dc] bg-[var(--surface-2)] text-xs font-semibold text-[var(--admin-navy)]"
         >
-          {siteConfig.phoneDisplay}
+          Appel Direct
         </a>
         <a
-          href={`mailto:${siteConfig.contactEmail}`}
-          className="inline-flex items-center rounded-full bg-[var(--aura-blue)] px-4 py-2.5 text-sm font-semibold text-white"
+          href={`https://wa.me/${siteConfig.whatsappNumber}`}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[var(--admin-navy)] text-xs font-semibold text-white"
         >
-          Contacter
+          Concierge Chat
         </a>
       </div>
     </aside>

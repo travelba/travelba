@@ -14,36 +14,35 @@
 }
 
 /**
- * CRM (espace client + admin) — design system Aura Voyages (Stitch).
+ * CRM (espace client + admin) — Stitch Sovereign Horizon.
  * Scoped : n’altère pas le site public.
  */
 .admin-af {
-  --background: #f8f6f0;
+  --background: #faf9f6;
   --surface: #ffffff;
-  --surface-2: #efebe0;
-  --foreground: #1c252c;
-  --muted: #5e6d77;
-  --border: #e2dcd0;
+  --surface-2: #f3f1ea;
+  --foreground: #1a1c1a;
+  --muted: #44474c;
+  --border: #e8e4dc;
 
-  --accent: #e06d53;
-  --accent-2: #0e2439;
-  --accent-3: #d4af37;
+  --accent: #c5a880;
+  --accent-2: #0b192c;
+  --accent-3: #1e3a5f;
 
-  --admin-navy: #0e2439;
-  --admin-navy-deep: #000e1d;
-  --admin-red: #e06d53;
-  --admin-sky: #efebe0;
-  --admin-gold: #d4af37;
-  --admin-lagoon: #1a5276;
-  --admin-peach: #ffdad2;
-  --admin-gold-soft: #ffe088;
+  --admin-navy: #0b192c;
+  --admin-navy-deep: #07111c;
+  --admin-red: #ba1a1a;
+  --admin-sky: #f3f1ea;
+  --admin-gold: #c5a880;
+  --admin-lagoon: #1e3a5f;
+  --admin-peach: #f5ece0;
+  --admin-gold-soft: #fedeb2;
 
-  /* Travel Management Mobile App (Aura Voyage) tokens */
-  --aura-surface: #f7f9fb;
-  --aura-blue: #006398;
-  --aura-blue-soft: #cce5ff;
-  --aura-navy-card: #131b2e;
-  --aura-success: #009668;
+  --aura-surface: #faf9f6;
+  --aura-blue: #0b192c;
+  --aura-blue-soft: #f5ece0;
+  --aura-navy-card: #0b192c;
+  --aura-success: #3d6b4f;
 
   color: var(--foreground);
   background: var(--background);
@@ -72,10 +71,10 @@
   scrollbar-width: none;
 }
 
-/* Portail client — composition mobile Aura Voyage */
+/* Portail client — composition mobile Sovereign Horizon */
 .account-app {
-  --background: var(--aura-surface);
-  background: var(--aura-surface);
+  --background: #faf9f6;
+  background: var(--background);
 }
 
 .account-app .font-display {
@@ -90,17 +89,19 @@
   left: 0;
   right: 0;
   z-index: 50;
-  border-top: 1px solid rgba(25, 28, 30, 0.06);
-  background: rgba(247, 249, 251, 0.94);
-  backdrop-filter: blur(18px);
-  box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.04);
+  border-top: 1px solid #e5e3dc;
+  background: rgba(250, 249, 246, 0.9);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 -4px 20px rgba(11, 25, 44, 0.06);
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .account-app .aura-card {
-  border-radius: 1.35rem;
+  border-radius: 1rem;
   background: #fff;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+  border: 1px solid #e5e3dc;
+  box-shadow: 0 4px 20px -2px rgba(11, 25, 44, 0.04),
+    0 2px 6px -1px rgba(197, 168, 128, 0.06);
 }
 
 .admin-af .font-display {
@@ -109,7 +110,7 @@
 }
 
 .admin-af .font-label {
-  font-family: var(--font-space-grotesk), var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-plus-jakarta), var(--font-sans), system-ui, sans-serif;
   letter-spacing: 0.06em;
 }
 
@@ -126,57 +127,60 @@
 }
 
 .admin-af-header {
-  background: rgba(248, 246, 240, 0.85);
+  background: rgba(250, 249, 246, 0.9);
   backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--border);
 }
 
 .admin-af-hero-band {
-  background: linear-gradient(135deg, #000e1d 0%, #0e2439 48%, #1a5276 100%);
-  color: #f8f6f0;
+  background: linear-gradient(135deg, #07111c 0%, #0b192c 48%, #1e3a5f 100%);
+  color: #faf9f6;
 }
 
 .admin-af-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  box-shadow: 0 4px 20px -2px rgba(14, 36, 57, 0.05);
+  box-shadow: 0 4px 20px -2px rgba(11, 25, 44, 0.04),
+    0 2px 6px -1px rgba(197, 168, 128, 0.06);
 }
 
 .admin-af-btn {
   background: var(--admin-navy);
-  color: #f8f6f0;
+  color: #faf9f6;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s ease, transform 0.15s ease;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .admin-af-btn:hover {
-  background: var(--admin-navy-deep);
+  background: var(--admin-lagoon);
+  box-shadow: inset 0 0 0 1px var(--admin-gold);
 }
 
 .admin-af-btn-accent {
-  background: var(--admin-red);
-  color: #ffffff;
+  background: var(--admin-gold);
+  color: var(--admin-navy);
   font-weight: 600;
-  box-shadow: 0 8px 24px -4px rgba(224, 109, 83, 0.3);
+  box-shadow: 0 8px 24px -4px rgba(197, 168, 128, 0.35);
 }
 
 .admin-af-btn-accent:hover {
-  background: #c85a44;
+  background: #b8986c;
 }
 
 .admin-af-input {
-  height: 3.5rem;
-  border-radius: 9999px;
+  height: 3rem;
+  border-radius: 0.5rem;
   border: 1px solid var(--border);
-  background: #ffffff;
+  background: var(--surface-2);
   padding: 0 1.25rem;
   outline: none;
 }
 
 .admin-af-input:focus {
-  border-color: var(--admin-navy);
-  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.25);
+  background: #ffffff;
+  border-color: var(--admin-gold);
+  box-shadow: 0 0 0 3px rgba(197, 168, 128, 0.18);
 }
 
 .admin-af-btn:disabled {

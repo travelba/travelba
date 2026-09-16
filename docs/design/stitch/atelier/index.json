@@ -1,0 +1,31 @@
+{
+  "projectId": "10475551423344387411",
+  "title": "Portail Client Agence Voyage",
+  "url": "https://stitch.withgoogle.com/projects/10475551423344387411",
+  "screens": [
+    {
+      "id": "1479bcbe830d4a78a670af62d2af4656",
+      "slug": "accueil",
+      "title": "Accueil Client",
+      "files": ["screen.html"]
+    },
+    {
+      "id": "a8c60eaa789e4fde82580c7156ad569d",
+      "slug": "reservations",
+      "title": "Mes Réservations",
+      "files": ["screen.html"]
+    },
+    {
+      "id": "26598459c59c407b8f601be374005cf1",
+      "slug": "transactions",
+      "title": "Transactions & Budget",
+      "files": ["screen.html"]
+    },
+    {
+      "id": "82a4959a0f0b436fadf034bea652c8e6",
+      "slug": "compte",
+      "title": "Mon Compte & Documents",
+      "files": ["screen.html"]
+    }
+  ]
+}

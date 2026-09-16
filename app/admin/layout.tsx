@@ -26,10 +26,11 @@ export default async function AdminLayout({
 
   return (
     <div className="admin-af min-h-screen">
-      <div className="flex min-h-screen flex-col lg:flex-row">
-        <AdminNav unmatchedCount={unmatched} />
-        <main className="flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">{children}</main>
-      </div>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap"
+      />
+      <AdminNav unmatchedCount={unmatched}>{children}</AdminNav>
     </div>
   );
 }

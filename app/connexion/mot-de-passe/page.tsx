@@ -22,7 +22,7 @@ const sans = Inter({
 });
 
 const fieldClass =
-  "w-full rounded-2xl border border-[var(--border)] bg-white px-3.5 py-3 text-[var(--admin-navy)] outline-none focus:border-[var(--aura-blue)] focus:ring-2 focus:ring-[var(--aura-blue-soft)]";
+  "w-full rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-3 text-[var(--admin-navy)] outline-none focus:border-[var(--admin-gold)] focus:bg-white focus:ring-2 focus:ring-[var(--admin-gold)]/30";
 
 export default function SetPasswordPage() {
   const router = useRouter();
@@ -51,16 +51,16 @@ export default function SetPasswordPage() {
   }
 
   return (
-    <div className={`account-app min-h-screen ${display.variable} ${sans.variable}`}>
+    <div className={`account-app admin-af min-h-screen ${display.variable} ${sans.variable}`}>
       <div className="mx-auto flex min-h-screen max-w-[420px] flex-col justify-center px-4 py-10">
         <div className="mb-8 flex items-center justify-between">
-          <BrandMark href="/" subtitle="Aura · Espace client" />
+          <BrandMark href="/" subtitle="Espace client" />
           <span className="rounded-full bg-white px-3 py-1 text-[10px] font-semibold text-muted ring-1 ring-[var(--border)]">
             Sécurisé
           </span>
         </div>
-        <div className="aura-card rounded-[1.5rem] border-t-[3px] border-t-[var(--admin-red)] bg-white p-8 shadow-[0_12px_32px_rgba(15,23,42,0.06)] sm:p-10">
-          <span className="inline-flex rounded-full bg-[var(--aura-blue-soft)] px-3 py-1 text-[11px] font-semibold text-[var(--aura-blue)]">
+        <div className="aura-card rounded-2xl border-t-[2px] border-t-[var(--admin-gold)] bg-white p-8 sm:p-10">
+          <span className="inline-flex rounded-full border border-[var(--admin-gold)]/40 bg-[var(--admin-peach)] px-3 py-1 text-[11px] font-semibold text-[#533e1c]">
             Première connexion
           </span>
           <h1 className="mt-4 font-display text-3xl font-extrabold tracking-tight text-[var(--admin-navy)]">
@@ -70,7 +70,7 @@ export default function SetPasswordPage() {
             Choisissez un mot de passe d’au moins {MIN_PASSWORD_LENGTH}{" "}
             caractères. Vous resterez ensuite connecté sur cet appareil.
           </p>
-          <div className="mt-4 h-1 w-12 rounded-full bg-[var(--admin-red)]" />
+          <div className="mt-4 h-1 w-12 rounded-full bg-[var(--admin-gold)]" />
           <form onSubmit={onSubmit} className="mt-6 space-y-5">
             <label className="block space-y-1.5 text-sm">
               <span className="text-xs font-semibold uppercase tracking-wider text-muted">

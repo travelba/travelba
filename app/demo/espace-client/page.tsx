@@ -26,7 +26,7 @@ export const metadata = {
 export default function DemoClientSpacePage() {
   return (
     <div
-      className={`account-app min-h-screen ${display.variable} ${sans.variable}`}
+      className={`account-app admin-af min-h-screen ${display.variable} ${sans.variable}`}
     >
       <div className="mx-auto max-w-[430px] px-4 pb-28 pt-4">
         <div className="mb-4 rounded-2xl bg-[var(--admin-navy)] px-4 py-3 text-white">
@@ -34,7 +34,7 @@ export default function DemoClientSpacePage() {
             Espace client exemple
           </p>
           <p className="mt-1 font-display text-lg font-bold">
-            Marie Dupont · TBA Aura
+            Marie Dupont · TBA
           </p>
           <p className="mt-1 text-xs text-white/70">
             Démo visuelle du CRM client. Compte réel :{" "}

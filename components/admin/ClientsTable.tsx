@@ -14,11 +14,13 @@ function initials(c: CrmCustomer) {
 export function ClientsTable({
   customers,
   balances,
+  initialQuery = "",
 }: {
   customers: CrmCustomer[];
   balances: CrmBalance[];
+  initialQuery?: string;
 }) {
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initialQuery);
   const bal = useMemo(() => {
     const map = new Map<string, CrmBalance[]>();
     for (const row of balances) {

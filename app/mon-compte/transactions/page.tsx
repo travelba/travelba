@@ -51,11 +51,11 @@ export default async function TransactionsPage({
 
   return (
     <div className="space-y-5">
-      <section className="relative overflow-hidden rounded-[1.5rem] bg-[var(--aura-navy-card)] p-5 text-white shadow-[0_16px_36px_rgba(19,27,46,0.35)]">
-        <div className="absolute -right-8 -top-10 h-36 w-36 rounded-full bg-[var(--aura-blue)]/25 blur-2xl" />
+      <section className="relative overflow-hidden rounded-2xl bg-[var(--admin-navy)] p-5 text-white shadow-[0_16px_36px_rgba(11,25,44,0.18)]">
+        <div className="absolute -right-8 -top-10 h-36 w-36 rounded-full bg-[var(--admin-gold)]/20 blur-2xl" />
         <div className="relative flex items-center justify-between gap-2">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-300">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--admin-gold)]" />
             Connecté · Revolut API
           </span>
           <span className="text-[11px] text-white/55">À l&apos;instant</span>
@@ -180,7 +180,7 @@ export default async function TransactionsPage({
         />
       )}
 
-      <div className="rounded-2xl bg-[var(--aura-blue-soft)]/60 px-4 py-3 text-sm text-[var(--admin-navy)]">
+      <div className="rounded-2xl border border-[var(--admin-gold)]/30 bg-[var(--admin-peach)] px-4 py-3 text-sm text-[var(--admin-navy)]">
         <p className="font-semibold">Paiements sécurisés Revolut</p>
         <p className="mt-0.5 text-xs text-[var(--admin-navy)]/70">
           Protection fraude et conversion multidevise sans commission cachée.
