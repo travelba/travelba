@@ -34,10 +34,10 @@ export function NewCustomerForm() {
       <input name="first_name" placeholder="Prénom" className="rounded-xl border border-border bg-white px-3 py-2.5" />
       <input name="last_name" placeholder="Nom" className="rounded-xl border border-border bg-white px-3 py-2.5" />
       <input name="email" type="email" required placeholder="Email" className="rounded-xl border border-border bg-white px-3 py-2.5" />
-      <button disabled={pending} className="admin-af-btn rounded-xl px-4 py-2.5 text-sm disabled:opacity-50">
+      <button disabled={pending} className="admin-af-btn rounded-full px-4 py-2.5 text-sm disabled:opacity-50">
         {pending ? "Création…" : "Créer le client"}
       </button>
-      {error ? <p role="alert" className="sm:col-span-4 text-sm text-accent">{error}</p> : null}
+      {error ? <p role="alert" className="sm:col-span-4 text-sm text-[var(--admin-red)]">{error}</p> : null}
     </form>
   );
 }

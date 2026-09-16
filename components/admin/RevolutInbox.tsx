@@ -101,7 +101,7 @@ export function RevolutInbox({
         ) : null}
       </div>
       {message ? (
-        <p role={message.error ? "alert" : "status"} className={`text-sm ${message.error ? "text-accent" : "text-emerald-700"}`}>
+        <p role={message.error ? "alert" : "status"} className={`text-sm ${message.error ? "text-[var(--admin-red)]" : "text-emerald-700"}`}>
           {message.text}
         </p>
       ) : null}

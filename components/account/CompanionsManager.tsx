@@ -96,7 +96,7 @@ export function CompanionsManager({ companions }: { companions: CrmCompanion[] }
                 type="button"
                 onClick={() => remove(c.id)}
                 disabled={busy}
-                className="text-xs font-semibold text-accent"
+                className="text-xs font-semibold text-[var(--admin-red)]"
               >
                 Retirer
               </button>
@@ -117,7 +117,7 @@ export function CompanionsManager({ companions }: { companions: CrmCompanion[] }
         <input name="relationship" defaultValue={editing?.relationship || ""} placeholder="Lien (conjoint, enfant…)" className="rounded-xl border border-border px-3 py-2" />
         <input name="nationality" defaultValue={editing?.nationality || ""} placeholder="Nationalité" className="rounded-xl border border-border px-3 py-2" />
         <input name="birth_date" type="date" defaultValue={editing?.birth_date || ""} className="rounded-xl border border-border px-3 py-2" />
-        {error ? <p className="sm:col-span-2 text-sm text-accent">{error}</p> : null}
+        {error ? <p className="sm:col-span-2 text-sm text-[var(--admin-red)]">{error}</p> : null}
         {success ? <p className="sm:col-span-2 text-sm text-emerald-700">{success}</p> : null}
         <div className="flex gap-2 sm:col-span-2">
           <button disabled={busy} className="admin-af-btn rounded-full px-4 py-2 text-sm disabled:opacity-60">

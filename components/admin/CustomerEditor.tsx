@@ -96,7 +96,7 @@ export function CustomerEditor({
       <div aria-live="polite" aria-atomic="true">
         {pending ? <p className="text-sm text-muted">Traitement en cours…</p> : null}
         {notice ? (
-          <p className={`text-sm ${notice.tone === "error" ? "text-accent" : "text-emerald-700"}`}>
+          <p className={`text-sm ${notice.tone === "error" ? "text-[var(--admin-red)]" : "text-emerald-700"}`}>
             {notice.text}
           </p>
         ) : null}
@@ -143,7 +143,7 @@ export function CustomerEditor({
                 <input name="relationship" defaultValue={companion.relationship || ""} placeholder="Lien" className={fieldClass} />
                 <div className="flex items-center gap-3">
                   <button disabled={disabled} className="text-xs font-semibold disabled:opacity-50">Modifier</button>
-                  <button type="button" disabled={disabled} onClick={() => remove("companion", companion.id)} className="text-xs font-semibold text-accent disabled:opacity-50">Supprimer</button>
+                  <button type="button" disabled={disabled} onClick={() => remove("companion", companion.id)} className="text-xs font-semibold text-[var(--admin-red)] disabled:opacity-50">Supprimer</button>
                 </div>
               </form>
             </li>
@@ -193,7 +193,7 @@ export function CustomerEditor({
                     </a>
                   ) : null}
                   <button disabled={disabled} className="text-xs font-semibold disabled:opacity-50">Modifier</button>
-                  <button type="button" disabled={disabled} onClick={() => remove("document", document.id)} className="text-xs font-semibold text-accent disabled:opacity-50">Supprimer</button>
+                  <button type="button" disabled={disabled} onClick={() => remove("document", document.id)} className="text-xs font-semibold text-[var(--admin-red)] disabled:opacity-50">Supprimer</button>
                 </div>
               </form>
             </li>

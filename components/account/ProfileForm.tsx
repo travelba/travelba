@@ -64,7 +64,7 @@ export function ProfileForm({ customer }: { customer: CrmCustomer }) {
         </label>
       ))}
       <p className="sm:col-span-2 text-xs text-muted">Email : {customer.email}</p>
-      {error ? <p className="sm:col-span-2 text-sm text-accent">{error}</p> : null}
+      {error ? <p className="sm:col-span-2 text-sm text-[var(--admin-red)]">{error}</p> : null}
       {success ? <p className="sm:col-span-2 text-sm text-emerald-700">{success}</p> : null}
       <div className="sm:col-span-2">
         <button className="admin-af-btn rounded-full px-5 py-2 text-sm" disabled={saving}>

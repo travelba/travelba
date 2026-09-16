@@ -182,7 +182,7 @@ export default async function AccountHomePage() {
                 href={`/mon-compte/reservations/${nextTrip.reference}`}
                 className="flex h-12 flex-1 items-center justify-center rounded-full bg-white text-sm font-bold text-[var(--admin-navy)]"
               >
-                Voir l&apos;itinéraire →
+                Voir le dossier →
               </Link>
               <a
                 href={whatsappHref}

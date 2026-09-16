@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { BrandMark } from "@/components/crm/ui";
-import { siteConfig } from "@/lib/site";
 
 const TABS = [
   {
@@ -51,11 +50,28 @@ const TABS = [
   },
 ] as const;
 
+const SERVICES = [
+  { href: "/mon-compte/devis", label: "Devis", title: "Mes devis" },
+  { href: "/mon-compte/paiements", label: "Paiements", title: "Paiements" },
+  { href: "/mon-compte/documents", label: "Documents", title: "Documents" },
+  { href: "/mon-compte/demandes", label: "Demandes", title: "Demandes" },
+  {
+    href: "/mon-compte/notifications",
+    label: "Notifications",
+    title: "Notifications",
+  },
+  { href: "/mon-compte/securite", label: "Sécurité", title: "Sécurité" },
+] as const;
+
 function pageTitle(pathname: string) {
   const hit = TABS.find((t) =>
     "exact" in t && t.exact ? pathname === t.href : pathname.startsWith(t.href)
   );
-  return hit?.title ?? "Espace client";
+  if (hit?.title) return hit.title;
+  return (
+    SERVICES.find((service) => pathname.startsWith(service.href))?.title ??
+    "Espace client"
+  );
 }
 
 export function AccountChrome({
@@ -84,18 +100,16 @@ export function AccountChrome({
         <div className="mx-auto flex max-w-[480px] items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <BrandMark href="/mon-compte" subtitle={title} />
           <div className="flex items-center gap-2">
-            <a
-              href={`https://wa.me/${siteConfig.whatsappNumber}`}
-              target="_blank"
-              rel="noreferrer"
+            <Link
+              href="/mon-compte/notifications"
               className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-[var(--admin-navy)] ring-1 ring-slate-200"
-              aria-label="Notifications concierge"
-              title="Concierge WhatsApp"
+              aria-label="Ouvrir les notifications"
+              title="Notifications"
             >
               <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
                 <path d="M12 3a7 7 0 0 0-7 7v1.1c0 .6-.2 1.1-.5 1.6L3.2 15A1 1 0 0 0 4 16.5h16a1 1 0 0 0 .8-1.5l-1.3-2.3c-.3-.5-.5-1-.5-1.6V10a7 7 0 0 0-7-7Zm0 18a2.8 2.8 0 0 0 2.7-2.2H9.3A2.8 2.8 0 0 0 12 21Z" />
               </svg>
-            </a>
+            </Link>
             <Link
               href="/mon-compte/profil"
               className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--admin-navy)] text-xs font-bold text-white ring-2 ring-[var(--aura-blue-soft)]"
@@ -132,6 +146,27 @@ export function AccountChrome({
           >
             Déconnexion
           </button>
+        </nav>
+        <nav
+          className="mx-auto flex max-w-[480px] gap-2 overflow-x-auto px-4 pb-3 sm:px-6"
+          aria-label="Services client"
+        >
+          {SERVICES.map((service) => {
+            const active = pathname.startsWith(service.href);
+            return (
+              <Link
+                key={service.href}
+                href={service.href}
+                className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                  active
+                    ? "bg-[var(--admin-navy)] text-white"
+                    : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-[var(--aura-blue-soft)]"
+                }`}
+              >
+                {service.label}
+              </Link>
+            );
+          })}
         </nav>
       </header>
 

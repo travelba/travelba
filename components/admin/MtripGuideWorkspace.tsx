@@ -413,10 +413,10 @@ export function MtripGuideWorkspace({ initialGuide }: Props) {
       <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
           <Link
-            href="/admin"
+            href="/admin/mtrip"
             className="text-sm text-muted transition hover:text-foreground"
           >
-            ← Pipeline
+            ← Voyages mTrip
           </Link>
           <h1 className="mt-2 font-display text-3xl font-extrabold tracking-tight text-[var(--admin-navy)]">
             {guide.title}
@@ -466,7 +466,7 @@ export function MtripGuideWorkspace({ initialGuide }: Props) {
             type="button"
             onClick={() => void deleteVoyage()}
             disabled={busy === "delete"}
-            className="text-xs text-muted transition hover:text-accent disabled:opacity-40"
+            className="text-xs text-muted transition hover:text-[var(--admin-red)] disabled:opacity-40"
           >
             {busy === "delete" ? "Suppression…" : "Supprimer le voyage"}
           </button>
@@ -505,9 +505,9 @@ export function MtripGuideWorkspace({ initialGuide }: Props) {
         </div>
       )}
 
-      {error && <p className="mb-4 text-sm text-accent">{error}</p>}
+      {error && <p className="mb-4 text-sm text-[var(--admin-red)]">{error}</p>}
       {!error && typeof guide.last_error === "string" && guide.last_error && (
-        <p className="mb-4 text-sm text-accent">
+        <p className="mb-4 text-sm text-[var(--admin-red)]">
           Dernière erreur : {guide.last_error}
         </p>
       )}
@@ -778,7 +778,7 @@ export function MtripGuideWorkspace({ initialGuide }: Props) {
               {waBusiness && (
                 <p
                   className={`mt-3 text-xs ${
-                    waBusiness.configured ? "text-emerald-700" : "text-accent"
+                    waBusiness.configured ? "text-emerald-700" : "text-[var(--admin-red)]"
                   }`}
                 >
                   {waBusiness.configured

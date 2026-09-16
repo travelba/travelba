@@ -92,7 +92,7 @@ export function OperationsManager({ resource, initialItems, fields, allowCreate 
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
       <div className="space-y-3">
         {items.length ? items.map((row) => (
-          <article key={row.id} className="admin-af-card p-5">
+          <article key={row.id} className="admin-af-card rounded-2xl p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 space-y-1">
                 {fields.slice(0, 5).map((field, index) => {
@@ -110,10 +110,10 @@ export function OperationsManager({ resource, initialItems, fields, allowCreate 
               </div>
             </div>
           </article>
-        )) : <div className="admin-af-card p-8 text-center text-sm text-muted">Aucun élément.</div>}
+        )) : <div className="admin-af-card rounded-2xl p-8 text-center text-sm text-muted">Aucun élément.</div>}
       </div>
       {(allowCreate || editing) ? (
-        <form key={editing?.id || "new"} onSubmit={submit} className="admin-af-card h-fit space-y-4 p-5">
+        <form key={editing?.id || "new"} onSubmit={submit} className="admin-af-card h-fit space-y-4 rounded-2xl p-5">
           <div className="flex items-center justify-between">
             <h2 className="font-display text-lg font-bold">{editing ? "Modifier" : "Ajouter"}</h2>
             {editing ? <button type="button" onClick={() => setEditing(null)} className="text-xs text-muted">Annuler</button> : null}

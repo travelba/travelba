@@ -176,7 +176,7 @@ export function BookingEditor({
       <div aria-live="polite" aria-atomic="true">
         {pending ? <p className="text-sm text-muted">Traitement en cours…</p> : null}
         {notice ? (
-          <p className={`text-sm ${notice.tone === "error" ? "text-accent" : "text-emerald-700"}`}>
+          <p className={`text-sm ${notice.tone === "error" ? "text-[var(--admin-red)]" : "text-emerald-700"}`}>
             {notice.text}
           </p>
         ) : null}
@@ -238,7 +238,7 @@ export function BookingEditor({
                   <button disabled={disabled} className="text-xs font-semibold disabled:opacity-50">Modifier</button>
                   <button type="button" disabled={disabled || index === 0} onClick={() => moveItem(index, -1)} aria-label="Monter la prestation">↑</button>
                   <button type="button" disabled={disabled || index === sortedItems.length - 1} onClick={() => moveItem(index, 1)} aria-label="Descendre la prestation">↓</button>
-                  <button type="button" disabled={disabled} onClick={() => remove("item", item.id)} className="text-xs font-semibold text-accent">Supprimer</button>
+                  <button type="button" disabled={disabled} onClick={() => remove("item", item.id)} className="text-xs font-semibold text-[var(--admin-red)]">Supprimer</button>
                 </div>
               </form>
             </li>
@@ -290,7 +290,7 @@ export function BookingEditor({
                   Titulaire
                 </label>
                 <button disabled={disabled} className="text-xs font-semibold disabled:opacity-50">Modifier</button>
-                <button type="button" disabled={disabled} onClick={() => remove("traveler", traveler.id)} className="text-xs font-semibold text-accent">Supprimer</button>
+                <button type="button" disabled={disabled} onClick={() => remove("traveler", traveler.id)} className="text-xs font-semibold text-[var(--admin-red)]">Supprimer</button>
               </form>
             </li>
           ))}
@@ -328,7 +328,7 @@ export function BookingEditor({
                 >
                   {document.visible_to_client ? "Masquer au client" : "Publier au client"}
                 </button>
-                <button type="button" disabled={disabled} onClick={() => remove("document", document.id)} className="text-xs font-semibold text-accent">Supprimer</button>
+                <button type="button" disabled={disabled} onClick={() => remove("document", document.id)} className="text-xs font-semibold text-[var(--admin-red)]">Supprimer</button>
               </div>
             </li>
           ))}

@@ -186,7 +186,7 @@ export function VoyageFilesPanel({
       </div>
 
       {error && (
-        <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-[var(--admin-red)]">
           {error}
         </p>
       )}
@@ -203,7 +203,7 @@ export function VoyageFilesPanel({
                 type="button"
                 onClick={() => void openPreview(file)}
                 disabled={busy}
-                className="group flex w-full overflow-hidden rounded-xl border border-border/70 bg-white/[0.03] text-left transition hover:border-accent/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-60"
+                className="group flex w-full overflow-hidden rounded-xl border border-border/70 bg-white text-left transition hover:border-[var(--aura-blue)]/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--aura-blue-soft)] disabled:opacity-60"
               >
                 <div className="relative h-20 w-16 shrink-0 overflow-hidden border-r border-border/50 bg-[var(--admin-navy)]/10">
                   {img && thumb ? (
@@ -295,7 +295,7 @@ export function VoyageFilesPanel({
                   type="button"
                   disabled={deletingId === preview.file.id}
                   onClick={() => void deleteFile(preview.file)}
-                  className="rounded-full border border-red-500/40 px-3 py-1.5 text-xs text-red-300 hover:border-red-400/70 disabled:opacity-50"
+                  className="rounded-full border border-red-200 px-3 py-1.5 text-xs font-semibold text-[var(--admin-red)] hover:bg-red-50 disabled:opacity-50"
                 >
                   Supprimer
                 </button>

@@ -42,7 +42,7 @@ function SetupForm() {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <PaymentElement />
-      {error ? <p className="text-sm text-accent">{error}</p> : null}
+      {error ? <p className="text-sm text-[var(--admin-red)]">{error}</p> : null}
       {success ? <p className="text-sm text-emerald-700">{success}</p> : null}
       <button className="admin-af-btn rounded-full px-4 py-2 text-sm" disabled={loading}>
         {loading ? "Enregistrement…" : "Enregistrer la carte"}
@@ -145,7 +145,7 @@ export function PaymentMethodsPanel({
                   Par défaut
                 </button>
               ) : null}
-              <button type="button" className="text-xs font-semibold text-accent" onClick={() => remove(m.id)}>
+              <button type="button" className="text-xs font-semibold text-[var(--admin-red)]" onClick={() => remove(m.id)}>
                 Retirer
               </button>
             </div>

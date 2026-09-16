@@ -122,10 +122,12 @@ export function ConciergeBanner() {
       </div>
       <div className="flex flex-wrap gap-2">
         <a
-          href={`tel:${siteConfig.whatsappNumber}`}
+          href={`https://wa.me/${siteConfig.whatsappNumber}`}
+          target="_blank"
+          rel="noreferrer"
           className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur"
         >
-          {siteConfig.phoneDisplay}
+          WhatsApp
         </a>
         <a
           href={`mailto:${siteConfig.contactEmail}`}

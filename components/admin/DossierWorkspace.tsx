@@ -317,10 +317,10 @@ export function DossierWorkspace({
     <div className="space-y-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <Link href="/admin" className="text-sm text-muted hover:text-foreground">
-            ← Pipeline
+          <Link href="/admin" className="text-sm font-semibold text-[var(--aura-blue)]">
+            ← Tableau de bord
           </Link>
-          <h1 className="mt-2 font-display text-3xl tracking-tight">
+          <h1 className="mt-2 font-display text-3xl font-extrabold tracking-tight text-[var(--admin-navy)]">
             {dossier.title || dossier.destination_text}
           </h1>
           <p className="mt-1 text-sm text-muted">
@@ -329,11 +329,11 @@ export function DossierWorkspace({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-white/5 px-3 py-1 text-xs">
+          <span className="rounded-full bg-[var(--aura-blue-soft)] px-3 py-1 text-xs font-semibold text-[var(--admin-navy)]">
             {DOSSIER_STATUS_LABELS[dossier.status]}
           </span>
           <select
-            className="rounded-lg border border-border bg-surface px-2 py-1.5 text-sm"
+            className="rounded-xl border border-border bg-white px-3 py-2 text-sm"
             value={dossier.status}
             onChange={(e) => updateStatus(e.target.value as DossierStatus)}
           >
@@ -347,25 +347,25 @@ export function DossierWorkspace({
       </div>
 
       {message ? (
-        <p className="rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-sm">
+        <p className="rounded-xl border border-[var(--aura-blue-soft)] bg-[var(--aura-blue-soft)]/40 px-3 py-2 text-sm">
           {message}
         </p>
       ) : null}
       {error ? (
-        <p className="rounded-lg border border-accent-3/40 bg-accent-3/10 px-3 py-2 text-sm text-accent-3">
+        <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-[var(--admin-red)]">
           {error}
         </p>
       ) : null}
 
-      <section className="space-y-4 rounded-xl border border-border bg-surface/40 p-5">
+      <section className="admin-af-card space-y-4 rounded-2xl p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-display text-xl">1. Disponibilités hôtels</h2>
+          <h2 className="font-display text-xl font-bold text-[var(--admin-navy)]">1. Disponibilités hôtels</h2>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={searchAvailability}
               disabled={busy === "search"}
-              className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+              className="admin-af-btn rounded-full px-4 py-2 text-sm disabled:opacity-50"
             >
               {busy === "search" ? "Recherche…" : "Lancer la recherche LE"}
             </button>
@@ -373,16 +373,16 @@ export function DossierWorkspace({
               type="button"
               onClick={() => generateQuote("hotels", true)}
               disabled={busy === "quote-hotels" || hotels.length === 0}
-              className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-white/5 disabled:opacity-50"
+              className="rounded-full border border-border bg-white px-4 py-2 text-sm hover:bg-[var(--aura-blue-soft)]/40 disabled:opacity-50"
             >
               PDF devis hôtels
             </button>
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-lg border border-border">
+        <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full text-left text-sm">
-            <thead className="bg-surface-2/70 text-muted">
+            <thead className="bg-[var(--aura-blue-soft)]/40 text-muted">
               <tr>
                 <th className="px-3 py-2">Hôtel</th>
                 <th className="px-3 py-2">À partir de</th>
@@ -450,10 +450,10 @@ export function DossierWorkspace({
         </div>
       </section>
 
-      <section className="space-y-4 rounded-xl border border-border bg-surface/40 p-5">
+      <section className="admin-af-card space-y-4 rounded-2xl p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="font-display text-xl">2. Chambres & tarifs</h2>
+            <h2 className="font-display text-xl font-bold text-[var(--admin-navy)]">2. Chambres & tarifs</h2>
             <p className="text-sm text-muted">
               Hôtel sélectionné : {dossier.hotel_name || "aucun"}
             </p>
@@ -463,7 +463,7 @@ export function DossierWorkspace({
               type="button"
               onClick={loadRooms}
               disabled={!dossier.hotel_id || busy === "rooms"}
-              className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+              className="admin-af-btn rounded-full px-4 py-2 text-sm disabled:opacity-50"
             >
               {busy === "rooms" ? "Chargement…" : "Charger les chambres LE"}
             </button>
@@ -471,14 +471,14 @@ export function DossierWorkspace({
               type="button"
               onClick={() => generateQuote("rooms", true)}
               disabled={!dossier.hotel_id || busy === "quote-rooms"}
-              className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-white/5 disabled:opacity-50"
+              className="rounded-full border border-border bg-white px-4 py-2 text-sm hover:bg-[var(--aura-blue-soft)]/40 disabled:opacity-50"
             >
               PDF devis chambres
             </button>
             <button
               type="button"
               onClick={() => updateStatus("client_approved")}
-              className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-white/5"
+              className="rounded-full border border-border bg-white px-4 py-2 text-sm hover:bg-[var(--aura-blue-soft)]/40"
             >
               Marquer client validé
             </button>
@@ -521,8 +521,8 @@ export function DossierWorkspace({
                         }}
                         className={`flex w-full items-start justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm ${
                           active
-                            ? "border-accent bg-accent/10"
-                            : "border-border hover:bg-white/5"
+                            ? "border-[var(--aura-blue)] bg-[var(--aura-blue-soft)]/40"
+                            : "border-border hover:bg-[var(--aura-blue-soft)]/30"
                         }`}
                       >
                         <div>
@@ -552,15 +552,15 @@ export function DossierWorkspace({
         )}
       </section>
 
-      <section className="space-y-4 rounded-xl border border-border bg-surface/40 p-5">
-        <h2 className="font-display text-xl">3. Réservation Little Emperors</h2>
+      <section className="admin-af-card space-y-4 rounded-2xl p-5">
+        <h2 className="font-display text-xl font-bold text-[var(--admin-navy)]">3. Réservation Little Emperors</h2>
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="space-y-1.5 text-sm">
             <span className="text-muted">Nom du client (prénom + nom)</span>
             <input
               value={guestName}
               onChange={(e) => setGuestName(e.target.value)}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2"
+              className="w-full rounded-xl border border-border bg-white px-3 py-2.5"
             />
           </label>
           <label className="space-y-1.5 text-sm">
@@ -569,7 +569,7 @@ export function DossierWorkspace({
               type="email"
               value={guestEmail}
               onChange={(e) => setGuestEmail(e.target.value)}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2"
+              className="w-full rounded-xl border border-border bg-white px-3 py-2.5"
             />
           </label>
         </div>
@@ -599,7 +599,7 @@ export function DossierWorkspace({
               type="button"
               onClick={createBooking}
               disabled={busy === "book" || !cardReady}
-              className="rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+              className="admin-af-btn rounded-full px-5 py-2.5 text-sm disabled:opacity-50"
             >
               {busy === "book" ? "Réservation…" : "Confirmer la réservation LE"}
             </button>
@@ -623,8 +623,8 @@ export function DossierWorkspace({
         ) : null}
       </section>
 
-      <section className="space-y-4 rounded-xl border border-border bg-surface/40 p-5">
-        <h2 className="font-display text-xl">4. Paiement hôtel</h2>
+      <section className="admin-af-card space-y-4 rounded-2xl p-5">
+        <h2 className="font-display text-xl font-bold text-[var(--admin-navy)]">4. Paiement hôtel</h2>
         <p className="text-sm text-muted">
           Les emails contact ne sont pas fournis par l&apos;API LE — saisissez-les
           ici, puis demandez le lien de paiement.
@@ -634,7 +634,7 @@ export function DossierWorkspace({
           <input
             value={contactEmails}
             onChange={(e) => setContactEmails(e.target.value)}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2"
+            className="w-full rounded-xl border border-border bg-white px-3 py-2.5"
             placeholder="reservations@hotel.com, sales@hotel.com"
           />
         </label>
@@ -642,7 +642,7 @@ export function DossierWorkspace({
           <button
             type="button"
             onClick={saveContact}
-            className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-white/5"
+            className="rounded-full border border-border bg-white px-4 py-2 text-sm hover:bg-[var(--aura-blue-soft)]/40"
           >
             Enregistrer contacts
           </button>
@@ -650,7 +650,7 @@ export function DossierWorkspace({
             type="button"
             onClick={sendFollowup}
             disabled={busy === "followup"}
-            className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+            className="admin-af-btn rounded-full px-4 py-2 text-sm disabled:opacity-50"
           >
             {busy === "followup" ? "Envoi…" : "Demander le lien de paiement"}
           </button>
@@ -661,19 +661,19 @@ export function DossierWorkspace({
             value={paymentLink}
             onChange={(e) => setPaymentLink(e.target.value)}
             placeholder="Coller le lien de paiement reçu"
-            className="min-w-[240px] flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+            className="min-w-[240px] flex-1 rounded-xl border border-border bg-white px-3 py-2.5 text-sm"
           />
           <button
             type="button"
             onClick={savePaymentLink}
-            className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-white/5"
+            className="rounded-full border border-border bg-white px-4 py-2 text-sm hover:bg-[var(--aura-blue-soft)]/40"
           >
             Enregistrer le lien
           </button>
           <button
             type="button"
             onClick={() => updateStatus("paid")}
-            className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-white/5"
+            className="rounded-full border border-border bg-white px-4 py-2 text-sm hover:bg-[var(--aura-blue-soft)]/40"
           >
             Marquer payé
           </button>
@@ -709,8 +709,8 @@ export function DossierWorkspace({
       </section>
 
       {quotes.length > 0 ? (
-        <section className="space-y-3 rounded-xl border border-border bg-surface/40 p-5">
-          <h2 className="font-display text-xl">PDF générés</h2>
+        <section className="admin-af-card space-y-3 rounded-2xl p-5">
+          <h2 className="font-display text-xl font-bold text-[var(--admin-navy)]">PDF générés</h2>
           <ul className="space-y-2 text-sm">
             {quotes.map((quote) => (
               <li key={quote.id} className="flex items-center justify-between gap-3">

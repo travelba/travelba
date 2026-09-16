@@ -82,10 +82,17 @@
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-.account-app .aura-card {
+.account-app .aura-card,
+.account-app .account-card {
   border-radius: 1.35rem;
   background: #fff;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+
+.account-app input,
+.account-app select,
+.account-app textarea {
+  accent-color: var(--aura-blue);
 }
 
 .admin-af .font-display {
@@ -120,6 +127,7 @@
 .admin-af-card {
   background: var(--surface);
   border: 1px solid var(--border);
+  border-radius: 1rem;
   box-shadow: 0 8px 28px -18px rgba(0, 33, 87, 0.35);
 }
 

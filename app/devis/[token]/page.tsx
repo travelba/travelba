@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { QuoteLine } from "@/lib/mtrip/guide-types";
+import { BrandMark } from "@/components/crm/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,9 @@ export default async function PublicTripQuotePage({ params }: Props) {
 
   return (
     <main className="min-h-screen bg-[var(--aura-surface)] px-4 py-10">
+      <div className="mx-auto mb-6 max-w-2xl">
+        <BrandMark href="/" subtitle="Devis voyage" />
+      </div>
       <article className="mx-auto max-w-2xl overflow-hidden rounded-3xl bg-white shadow-xl">
         <header className="bg-[var(--admin-navy)] p-7 text-white">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/60">

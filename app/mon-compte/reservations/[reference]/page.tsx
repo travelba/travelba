@@ -89,6 +89,13 @@ export default async function ReservationDetailPage({ params }: Props) {
         </div>
       </article>
 
+      <Link
+        href={`/mon-compte/reservations/${b.reference}/itineraire`}
+        className="inline-flex w-full items-center justify-center rounded-full bg-[var(--aura-blue)] px-5 py-3 text-sm font-bold text-white"
+      >
+        Ouvrir l&apos;itinéraire détaillé →
+      </Link>
+
       {b.notes_client ? (
         <p className="aura-card rounded-[1.25rem] bg-white p-4 text-sm leading-relaxed text-[var(--admin-navy)]">
           {b.notes_client}

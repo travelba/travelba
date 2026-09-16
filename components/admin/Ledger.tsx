@@ -130,7 +130,7 @@ export function Ledger({
           {pending ? "Enregistrement…" : "Saisir une écriture"}
         </button>
         {notice ? (
-          <p role={notice.error ? "alert" : "status"} className={`text-sm sm:col-span-3 ${notice.error ? "text-accent" : "text-emerald-700"}`}>
+          <p role={notice.error ? "alert" : "status"} className={`text-sm sm:col-span-3 ${notice.error ? "text-[var(--admin-red)]" : "text-emerald-700"}`}>
             {notice.text}
           </p>
         ) : null}

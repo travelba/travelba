@@ -63,10 +63,10 @@ export function MtripGuideCreateForm() {
   return (
     <form
       onSubmit={onSubmit}
-      className="space-y-6 rounded-xl border border-border bg-surface/50 p-5"
+      className="admin-af-card space-y-6 rounded-2xl p-5 sm:p-6"
     >
       <div className="space-y-1">
-        <h2 className="font-display text-xl">1. Passagers (passeports)</h2>
+        <h2 className="font-display text-xl font-bold text-[var(--admin-navy)]">1. Passagers (passeports)</h2>
         <p className="text-sm text-muted">
           Importez tous les passeports d&apos;un coup ou un par un — chaque
           import enrichit la liste. Toutes les données billet / visa sont
@@ -81,7 +81,7 @@ export function MtripGuideCreateForm() {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Famille Benamara — Panama août 2026"
-          className="w-full rounded-lg border border-border bg-surface px-3 py-2"
+          className="w-full rounded-xl border border-border bg-white px-3 py-2.5"
         />
       </label>
 
@@ -92,7 +92,7 @@ export function MtripGuideCreateForm() {
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2"
+            className="w-full rounded-xl border border-border bg-white px-3 py-2.5"
           />
         </label>
         <label className="space-y-1.5 text-sm">
@@ -101,7 +101,7 @@ export function MtripGuideCreateForm() {
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2"
+            className="w-full rounded-xl border border-border bg-white px-3 py-2.5"
           />
         </label>
       </div>
@@ -112,12 +112,12 @@ export function MtripGuideCreateForm() {
         requireLeadContact
       />
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-[var(--admin-red)]">{error}</p>}
 
       <button
         type="submit"
         disabled={!canSubmit || loading}
-        className="rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+        className="admin-af-btn rounded-full px-5 py-2.5 text-sm disabled:opacity-50"
       >
         {loading ? "Création…" : "Continuer — upload des confirmations"}
       </button>

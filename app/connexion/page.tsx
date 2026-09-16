@@ -217,12 +217,6 @@ export default function ConnexionPage() {
               Voir le portail Aura en démo
             </span>
           </Link>
-          <Link
-            href="/demo/aura-accueil.html"
-            className="block text-center text-xs font-semibold text-muted hover:text-[var(--admin-navy)]"
-          >
-            Maquette Accueil seule →
-          </Link>
         </div>
 
         <p className="mt-6 text-center text-xs text-muted">

@@ -113,7 +113,7 @@ export function DocumentsManager({
               >
                 Modifier
               </button>
-              <button type="button" disabled={busy} onClick={() => remove(d.id)} className="text-xs font-semibold text-accent">
+              <button type="button" disabled={busy} onClick={() => remove(d.id)} className="text-xs font-semibold text-[var(--admin-red)]">
                 Supprimer
               </button>
             </div>
@@ -157,7 +157,7 @@ export function DocumentsManager({
           {editing?.storage_path ? "Remplacer le fichier (facultatif)" : "Fichier (facultatif)"}
           <input name="file" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" className="mt-1 block text-sm" />
         </label>
-        {error ? <p className="sm:col-span-2 text-sm text-accent">{error}</p> : null}
+        {error ? <p className="sm:col-span-2 text-sm text-[var(--admin-red)]">{error}</p> : null}
         {success ? <p className="sm:col-span-2 text-sm text-emerald-700">{success}</p> : null}
         <div className="flex gap-2 sm:col-span-2">
           <button disabled={busy} className="admin-af-btn rounded-full px-4 py-2 text-sm disabled:opacity-60">
