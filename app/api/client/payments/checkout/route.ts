@@ -70,7 +70,6 @@ export async function POST(request: Request) {
           crm_customer_id: auth.customer.id,
         },
       },
-      integration_identifier: `travelba_${schedule.id.slice(0, 8)}_${paidAmountCents}`,
       success_url: `${origin}/mon-compte/paiements?paiement=succes`,
       cancel_url: `${origin}/mon-compte/paiements?paiement=annule`,
     },
