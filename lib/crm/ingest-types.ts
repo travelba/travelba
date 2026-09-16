@@ -59,6 +59,14 @@ export const bookingExtractSchema = z.object({
 
 export type BookingExtract = z.infer<typeof bookingExtractSchema>;
 
+export function openaiApiKey() {
+  return process.env.OPENAI_API_KEY?.trim() || "";
+}
+
 export function aiGatewayConfigured() {
-  return Boolean(process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN);
+  return Boolean(
+    openaiApiKey() ||
+      process.env.AI_GATEWAY_API_KEY ||
+      process.env.VERCEL_OIDC_TOKEN
+  );
 }

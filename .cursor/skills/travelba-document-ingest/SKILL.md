@@ -9,11 +9,12 @@ description: >-
 
 # Import documents Travelba
 
-Pipeline résa : vision LLM → relecture humaine → `persistNewBookingFromExtract` (statut `draft`).
+Pipeline résa : `unpdf` (texte + images si calque pauvre) → OpenAI `gpt-4o` (`OPENAI_API_KEY`) → relecture humaine → `persistNewBookingFromExtract` (statut `draft`).
 Pipeline identité : photo MRZ (Tesseract + `mrz`), **pas** le dropzone réservation.
 
 Code : `lib/crm/ingest-booking.ts`, `lib/crm/ingest-types.ts`, `components/crm/BookingIngest.tsx`.
 Identité : `lib/crm/ocr-document.ts`, `lib/crm/mrz-parse.ts`.
+Couvertures : `lib/crm/cover-generate.ts` — OpenAI Images (`gpt-image-1`, fallback `dall-e-3`) puis Gateway Gemini seulement si `AI_GATEWAY_API_KEY`.
 
 ## Ne jamais fusionner ces voyages
 
@@ -98,4 +99,4 @@ Ne pas logger n° de passeport / MRZ.
 
 ## Quand toucher au prompt
 
-Toute erreur d’import réelle (vol retour fantôme, devise EUR sur un $, devis pris pour une résa) se corrige **dans** `PROMPT` de `ingest-booking.ts` + une ligne ici. Ne pas ajouter Tesseract sur les e-tickets : le calque texte + vision suffisent.
+Toute erreur d’import réelle (vol retour fantôme, devise EUR sur un $, devis pris pour une résa) se corrige **dans** `PROMPT` de `ingest-booking.ts` + une ligne ici. Ne pas ajouter Tesseract sur les e-tickets : le calque texte PDF + `gpt-4o` suffisent. Ne pas brancher l’import sur le AI Gateway tant que `OPENAI_API_KEY` est présent.

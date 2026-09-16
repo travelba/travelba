@@ -1,10 +1,11 @@
 import "server-only";
 import { after } from "next/server";
 import { generateImage, generateText } from "ai";
+import { createOpenAI } from "@ai-sdk/openai";
 import sharp from "sharp";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { uploadCrmFile } from "@/lib/crm/files";
-import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
+import { openaiApiKey } from "@/lib/crm/ingest-types";
 import type { CrmBooking } from "@/lib/crm/types";
 
 const IMAGE_MODEL = "google/gemini-3.1-flash-image-preview";
@@ -59,73 +60,90 @@ function fileBytes(file: {
   return null;
 }
 
-async function generateCoverBytes(place: string, hotel?: string | null) {
-  const prompt = coverPrompt(place, hotel);
-  const timeout = AbortSignal.timeout(25000);
-
-  if (aiGatewayConfigured()) {
-    try {
-      const result = await generateText({
-        model: IMAGE_MODEL,
-        prompt,
-        abortSignal: timeout,
-      });
-      const image = result.files?.find((file) => file.mediaType?.startsWith("image/"));
-      const bytes = image ? fileBytes(image) : null;
-      if (bytes) return bytes;
-    } catch {
-      /* try dedicated image API */
-    }
-    try {
-      const { image } = await generateImage({
-        model: IMAGE_MODEL,
-        prompt,
-        aspectRatio: "16:9",
-        abortSignal: timeout,
-      });
-      if (image?.uint8Array?.length) return Buffer.from(image.uint8Array);
-      if (image?.base64) return Buffer.from(image.base64, "base64");
-    } catch {
-      /* try OpenAI via gateway */
-    }
-    try {
-      const { image } = await generateImage({
-        model: "openai/gpt-image-1",
-        prompt,
-        size: "1536x1024",
-        abortSignal: timeout,
-      });
-      if (image?.uint8Array?.length) return Buffer.from(image.uint8Array);
-      if (image?.base64) return Buffer.from(image.base64, "base64");
-    } catch {
-      /* last resort below */
-    }
-  }
-
-  const key = process.env.OPENAI_API_KEY;
+async function openaiCoverBytes(prompt: string) {
+  const key = openaiApiKey();
   if (!key) return null;
-  const res = await fetch("https://api.openai.com/v1/images/generations", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "gpt-image-1",
+  const openai = createOpenAI({ apiKey: key });
+
+  try {
+    const { image } = await generateImage({
+      model: openai.image("gpt-image-1"),
       prompt,
       size: "1536x1024",
-    }),
-    signal: timeout,
-  });
-  if (!res.ok) return null;
-  const json = (await res.json()) as {
-    data?: Array<{ b64_json?: string; url?: string }>;
-  };
-  const row = json.data?.[0];
-  if (row?.b64_json) return Buffer.from(row.b64_json, "base64");
-  if (row?.url) {
-    const img = await fetch(row.url, { signal: timeout });
-    if (img.ok) return Buffer.from(await img.arrayBuffer());
+      abortSignal: AbortSignal.timeout(45000),
+    });
+    if (image?.uint8Array?.length) return Buffer.from(image.uint8Array);
+    if (image?.base64) return Buffer.from(image.base64, "base64");
+  } catch {
+    /* REST fallback */
+  }
+
+  for (const body of [
+    { model: "gpt-image-1", prompt, size: "1536x1024" },
+    {
+      model: "dall-e-3",
+      prompt,
+      size: "1792x1024",
+      quality: "hd",
+      response_format: "b64_json",
+    },
+  ]) {
+    const timeout = AbortSignal.timeout(45000);
+    const res = await fetch("https://api.openai.com/v1/images/generations", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: timeout,
+    });
+    if (!res.ok) continue;
+    const json = (await res.json()) as {
+      data?: Array<{ b64_json?: string; url?: string }>;
+    };
+    const row = json.data?.[0];
+    if (row?.b64_json) return Buffer.from(row.b64_json, "base64");
+    if (row?.url) {
+      const img = await fetch(row.url, { signal: timeout });
+      if (img.ok) return Buffer.from(await img.arrayBuffer());
+    }
+  }
+  return null;
+}
+
+async function generateCoverBytes(place: string, hotel?: string | null) {
+  const prompt = coverPrompt(place, hotel);
+
+  const fromOpenAI = await openaiCoverBytes(prompt);
+  if (fromOpenAI) return fromOpenAI;
+
+  if (!process.env.AI_GATEWAY_API_KEY) return null;
+
+  const timeout = AbortSignal.timeout(25000);
+  try {
+    const result = await generateText({
+      model: IMAGE_MODEL,
+      prompt,
+      abortSignal: timeout,
+    });
+    const image = result.files?.find((file) => file.mediaType?.startsWith("image/"));
+    const bytes = image ? fileBytes(image) : null;
+    if (bytes) return bytes;
+  } catch {
+    /* try dedicated image API */
+  }
+  try {
+    const { image } = await generateImage({
+      model: IMAGE_MODEL,
+      prompt,
+      aspectRatio: "16:9",
+      abortSignal: timeout,
+    });
+    if (image?.uint8Array?.length) return Buffer.from(image.uint8Array);
+    if (image?.base64) return Buffer.from(image.base64, "base64");
+  } catch {
+    /* none */
   }
   return null;
 }

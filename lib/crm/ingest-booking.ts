@@ -1,11 +1,19 @@
 import "server-only";
 import { generateText, Output } from "ai";
+import { createOpenAI } from "@ai-sdk/openai";
+import { extractImages, extractText, getDocumentProxy } from "unpdf";
+import sharp from "sharp";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { nextBookingReference, syncBookingDebit } from "@/lib/crm/bookings";
 import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
 import { emptyToNull } from "@/lib/crm/identity";
-import { bookingExtractSchema, aiGatewayConfigured, type BookingExtract } from "@/lib/crm/ingest-types";
+import {
+  bookingExtractSchema,
+  aiGatewayConfigured,
+  openaiApiKey,
+  type BookingExtract,
+} from "@/lib/crm/ingest-types";
 import { scheduleBookingCover } from "@/lib/crm/cover-generate";
 import {
   BOOKING_ITEM_KINDS,
@@ -93,42 +101,100 @@ function guessMime(name: string) {
   return "image/jpeg";
 }
 
-export async function extractBookingFromFiles(files: File[]): Promise<BookingExtract> {
-  if (!aiGatewayConfigured()) {
-    throw new Error("Lecture automatique non configurée (AI_GATEWAY_API_KEY).");
+function ingestModel() {
+  const key = openaiApiKey();
+  if (key) return createOpenAI({ apiKey: key })("gpt-4o");
+  return "google/gemini-2.5-flash";
+}
+
+type UserPart =
+  | { type: "text"; text: string }
+  | { type: "image"; image: Uint8Array; mediaType: string };
+
+async function imagePart(bytes: Uint8Array, mediaType: string): Promise<UserPart> {
+  if (mediaType.includes("heic") || mediaType.includes("heif")) {
+    try {
+      const jpeg = await sharp(Buffer.from(bytes)).jpeg({ quality: 85 }).toBuffer();
+      return { type: "image", image: new Uint8Array(jpeg), mediaType: "image/jpeg" };
+    } catch {
+      /* keep original */
+    }
   }
-  assertIngestFiles(files);
+  return { type: "image", image: bytes, mediaType };
+}
 
-  const content: Array<
-    | { type: "text"; text: string }
-    | { type: "file"; data: Uint8Array; mediaType: string; filename?: string }
-  > = [{ type: "text", text: PROMPT }];
+async function pdfParts(name: string, bytes: Uint8Array): Promise<UserPart[]> {
+  const parts: UserPart[] = [];
+  try {
+    const pdf = await getDocumentProxy(bytes);
+    const extracted = await extractText(pdf, { mergePages: true });
+    const text = extracted.text;
+    parts.push({
+      type: "text",
+      text: `PDF « ${name} » (${extracted.totalPages} page${extracted.totalPages > 1 ? "s" : ""}) :\n${text.slice(0, 24000)}`,
+    });
+    const dense = text.replace(/\s/g, "").length;
+    if (dense < 500) {
+      const max = Math.min(extracted.totalPages, 3);
+      for (let page = 1; page <= max; page++) {
+        const images = await extractImages(pdf, page);
+        for (const img of images.slice(0, 6)) {
+          const jpeg = await sharp(img.data, {
+            raw: { width: img.width, height: img.height, channels: img.channels },
+          })
+            .jpeg({ quality: 80 })
+            .toBuffer();
+          parts.push({ type: "image", image: new Uint8Array(jpeg), mediaType: "image/jpeg" });
+        }
+      }
+    }
+  } catch {
+    parts.push({
+      type: "text",
+      text: `PDF « ${name} » : texte illisible, s’appuyer sur le fichier binaire s’il est fourni.`,
+    });
+  }
+  return parts;
+}
 
+async function buildIngestContent(files: File[]): Promise<UserPart[]> {
+  const content: UserPart[] = [{ type: "text", text: PROMPT }];
   for (const file of files) {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const mediaType = file.type || guessMime(file.name);
-    content.push({
-      type: "file",
-      data: bytes,
-      mediaType,
-      filename: file.name,
+    if (mediaType === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
+      content.push(...(await pdfParts(file.name, bytes)));
+    } else {
+      content.push(await imagePart(bytes, mediaType.startsWith("image/") ? mediaType : "image/jpeg"));
+    }
+  }
+  return content;
+}
+
+export async function extractBookingFromFiles(files: File[]): Promise<BookingExtract> {
+  if (!aiGatewayConfigured()) {
+    throw new Error("Lecture automatique non configurée (OPENAI_API_KEY).");
+  }
+  assertIngestFiles(files);
+  const content = await buildIngestContent(files);
+  try {
+    const result = await generateText({
+      model: ingestModel(),
+      output: Output.object({
+        schema: bookingExtractSchema,
+        name: "booking",
+        description: "Dossier de réservation extrait des documents",
+      }),
+      messages: [{ role: "user", content }],
     });
+    if (!result.output) {
+      throw new Error("Lecture incomplète. Réessayez avec des fichiers plus lisibles.");
+    }
+    return result.output;
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith("Lecture")) throw err;
+    throw new Error("Lecture OpenAI impossible. Vérifiez OPENAI_API_KEY et réessayez.");
   }
-
-  const result = await generateText({
-    model: "google/gemini-2.5-flash",
-    output: Output.object({
-      schema: bookingExtractSchema,
-      name: "booking",
-      description: "Dossier de réservation extrait des documents",
-    }),
-    messages: [{ role: "user", content }],
-  });
-
-  if (!result.output) {
-    throw new Error("Lecture incomplète. Réessayez avec des fichiers plus lisibles.");
-  }
-  return result.output;
 }
 
 function normalizeName(value: string | null | undefined) {

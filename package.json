@@ -10,6 +10,7 @@
     "seed:demo": "node scripts/seed-demo.mjs"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.112",
     "@stripe/react-stripe-js": "^5.4.1",
     "@stripe/stripe-js": "^8.6.0",
     "@supabase/ssr": "^0.12.6",
@@ -27,6 +28,7 @@
     "sharp": "^0.35.4",
     "stripe": "^20.1.0",
     "tesseract.js": "^7.0.0",
+    "unpdf": "^1.7.0",
     "zod": "^4.5.4"
   },
   "devDependencies": {

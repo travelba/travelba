@@ -136,7 +136,7 @@ export function BookingIngest({
     return (
       <div className="admin-af-card rounded-3xl border border-dashed border-border p-5 text-sm text-muted">
         La lecture automatique n’est pas encore configurée. Ajoutez{" "}
-        <code className="text-xs">AI_GATEWAY_API_KEY</code> pour déposer un billet et remplir le dossier.
+        <code className="text-xs">OPENAI_API_KEY</code> pour déposer un billet et remplir le dossier.
       </div>
     );
   }
