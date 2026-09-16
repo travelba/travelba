@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+
+<html lang="fr"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{width:100vw;margin:0;padding:0;}body{overscroll-behavior:none;}.pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}.pt-safe{padding-top:env(safe-area-inset-top,0px);}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: 'class', theme: { extend: { colors: { 'surface-container-high': '#e0e9f3', 'secondary': '#a13e28', 'error-container': '#ffdad6', 'outline-variant': '#c4c6cd', 'surface-tint': '#4c6078', 'surface': '#f6faff', 'on-tertiary': '#ffffff', 'on-secondary-fixed-variant': '#822714', 'error': '#ba1a1a', 'on-primary-fixed-variant': '#34485f', 'on-primary': '#ffffff', 'on-secondary': '#ffffff', 'surface-container-lowest': '#ffffff', 'surface-container': '#e6eff9', 'on-surface-variant': '#43474d', 'tertiary': '#735c00', 'outline': '#74777d', 'on-tertiary-container': '#4f3e00', 'on-primary-container': '#778ca5', 'on-primary-fixed': '#061d31', 'inverse-primary': '#b3c8e4', 'tertiary-fixed-dim': '#e9c349', 'secondary-container': '#fd8367', 'surface-bright': '#f6faff', 'on-secondary-container': '#721c09', 'tertiary-fixed': '#ffe088', 'primary-fixed-dim': '#b3c8e4', 'primary': '#000e1d', 'on-surface': '#141d23', 'primary-fixed': '#d0e4ff', 'on-error': '#ffffff', 'background': '#f6faff', 'secondary-fixed-dim': '#ffb4a3', 'secondary-fixed': '#ffdad2', 'on-tertiary-fixed': '#241a00', 'primary-container': '#0e2439', 'inverse-surface': '#283139', 'surface-dim': '#d2dbe5', 'on-tertiary-fixed-variant': '#574500', 'on-secondary-fixed': '#3d0600', 'surface-container-highest': '#dae4ed', 'surface-container-low': '#ebf5fe', 'tertiary-container': '#cca830', 'on-background': '#141d23', 'on-error-container': '#93000a', 'surface-variant': '#dae4ed', 'inverse-on-surface': '#e9f2fc' }, borderRadius: { 'DEFAULT': '1rem', 'lg': '2rem', 'xl': '3rem', 'full': '9999px' }, spacing: { 'space-xs': '0.25rem', 'margin': '1.25rem', 'space-sm': '0.5rem', 'space-md': '1rem', 'space-xl': '2.25rem', 'space-lg': '1.5rem', 'gutter': '1rem' }, fontFamily: { 'label-lg': ['Space Grotesk'], 'label-md': ['Space Grotesk'], 'display-hero': ['Plus Jakarta Sans'], 'label-caps': ['Space Grotesk'], 'body-lg': ['Plus Jakarta Sans'], 'body-md': ['Plus Jakarta Sans'], 'headline-lg': ['Plus Jakarta Sans'], 'body-sm': ['Plus Jakarta Sans'], 'title-md': ['Plus Jakarta Sans'], 'title-lg': ['Plus Jakarta Sans'], 'headline-md': ['Plus Jakarta Sans'], 'headline-sm': ['Plus Jakarta Sans'], 'display-hero-mobile': ['Plus Jakarta Sans'] }, fontSize: { 'label-lg': ['13px', { lineHeight: '16px', letterSpacing: '0.04em', fontWeight: '600' }], 'label-md': ['11px', { lineHeight: '14px', letterSpacing: '0.06em', fontWeight: '600' }], 'display-hero': ['44px', { lineHeight: '52px', letterSpacing: '-0.03em', fontWeight: '700' }], 'label-caps': ['10px', { lineHeight: '14px', letterSpacing: '0.12em', fontWeight: '700' }], 'body-lg': ['16px', { lineHeight: '26px', fontWeight: '400' }], 'body-md': ['14px', { lineHeight: '22px', fontWeight: '400' }], 'headline-lg': ['30px', { lineHeight: '38px', letterSpacing: '-0.02em', fontWeight: '600' }], 'body-sm': ['12px', { lineHeight: '18px', fontWeight: '400' }], 'title-md': ['16px', { lineHeight: '22px', fontWeight: '600' }], 'title-lg': ['18px', { lineHeight: '24px', letterSpacing: '-0.01em', fontWeight: '600' }], 'headline-md': ['24px', { lineHeight: '32px', letterSpacing: '-0.015em', fontWeight: '600' }], 'headline-sm': ['20px', { lineHeight: '28px', letterSpacing: '-0.01em', fontWeight: '600' }], 'display-hero-mobile': ['34px', { lineHeight: '40px', letterSpacing: '-0.025em', fontWeight: '700' }] } } } }</script><style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head><body class="bg-surface font-body-md text-body-md text-on-surface flex flex-col min-h-screen"><header class="fixed top-0 w-full z-50 pt-safe bg-surface/85 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="h-16 px-margin flex items-center justify-between"><div class="flex items-center gap-space-sm"><img alt="Logo Aura Voyages" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/AEtjO1VauGzXN20BEEA98Z0u8S4WrHVEzbGwSTbA-VZpIrqgHDG5sdWoOz9zNkzfNGrHdiCRvWvlMPiRQt7pEd_KTQxLH8r2N5gxKURw7lgVtb8n_ZVCAYx2-6oWTpCBTyu_tYmdb7I1vhouJBDthCeiTpGoxpcYKY1RAHTappArw95qWAfYcCdDi917gU-hhFH8lgVOgCnpSP2SCLvezmB0wKckZ-xkDOV9ACDDdwIiON_Psw9_yn6tgoi0xw"/><div class="flex flex-col"><span class="font-label-caps text-label-caps tracking-widest text-on-surface-variant uppercase">Aura Voyages</span><span class="font-title-md text-title-md text-primary">Carnet</span></div></div><div class="flex items-center gap-space-sm"><div class="relative flex items-center justify-center"><div class="relative p-0.5 rounded-full bg-surface-container-high"><img alt="Profile" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA6SSbtzndKHhBv-nPSyN9sHY8ILw2hmD543xAmIcr9skb0shAWJkXuak1Xjr0sSTUjX1od6FPPA3RIVxFMFdXj37G2je2Lxtpx4rrJRpyKnGnnbGSRnAMXOTp1_1mm7d5_eP-xmUmAzGHvfoUwmbUy7DPDvTHNbLA4lsJRZp0QoeZxTKeyvW23K2gX-A835VpY6NXg3MFI74J4XMGjGXHf9VceIrYNwQHPsfK5dgqe5ipqiuoh6cbd"/></div><span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-secondary rounded-full ring-2 ring-surface flex items-center justify-center"><span class="w-1.5 h-1.5 rounded-full bg-on-secondary"></span></span></div></div></div></header><main class="flex-1 flex flex-col relative w-full pt-16 pb-28 bg-surface"><div class="flex flex-col w-full">
+<!-- Immersive Story Header -->
+<section class="relative w-full overflow-hidden bg-primary-container text-on-primary">
+<div class="relative w-full h-72">
+<div class="w-full h-full bg-cover bg-center" data-alt="A cinematic misty morning at a Kyoto Zen temple with vermilion wooden pavilions, serene autumn maple leaves in deep terracotta and golden hues, reflecting in a tranquil koi pond, ultra refined editorial travel photography in warm golden hour light" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDXXDfFDEyUTH31CEh1jpbWsGkIDF4VZBQgGLT1xw3P-ZKITNLe6ghePbq8zo9WFvigb9YMAFgIHqqDCr1LaxiY3PahnOtBD6v1in02l365K9e-sxGkaSpO70e5SHmCO_zoy8SLCailaa6PsB_Mz88H9TZJ9Hs56bIotgNfGqQsWQe1y27vCXeuO5UY9s9gF4i5HAikE81V6DCPdWpAFdNcbRbtw8uKmcp4Jlgn4UxJGGZdHNxSxzKT')"></div>
+<div class="absolute inset-0 bg-gradient-to-t from-primary-container via-primary-container/45 to-transparent"></div>
+<!-- Top Badges Floating Over Scrim -->
+<div class="absolute top-4 left-margin right-margin flex items-center justify-between">
+<div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-container-lowest/20 backdrop-blur-md text-on-primary font-label-caps text-label-caps">
+<span class="w-2 h-2 rounded-full bg-tertiary-fixed animate-pulse"></span>
+          EN COURS • DOSSIER #AV-2025-8942
+        </div>
+<div class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-container-lowest/20 backdrop-blur-md text-on-primary font-label-md text-label-md">
+<span class="material-symbols-outlined text-[16px] text-tertiary-fixed">verified</span>
+          Sur-mesure VIP
+        </div>
+</div>
+<!-- Title & Live Vitals Overlay -->
+<div class="absolute bottom-4 left-margin right-margin flex flex-col gap-space-xs">
+<span class="font-label-caps text-label-caps uppercase tracking-wider text-secondary-fixed">12 Jours • 11 Nuits • 15 - 26 Octobre 2025</span>
+<h1 class="font-headline-lg text-headline-lg text-on-primary leading-tight">
+          Odyssée au Japon
+        </h1>
+<p class="font-body-sm text-body-sm text-surface-container-high opacity-90">
+          Kyoto, Nara &amp; les contreforts du Mont Fuji
+        </p>
+<!-- Live Metrics Strip -->
+<div class="flex items-center gap-3 pt-2">
+<div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-lowest/15 backdrop-blur-sm">
+<span class="material-symbols-outlined text-[15px] text-tertiary-fixed">wb_sunny</span>
+<span class="font-label-md text-label-md text-on-primary">Kyoto 21°C</span>
+</div>
+<div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-lowest/15 backdrop-blur-sm">
+<span class="material-symbols-outlined text-[15px] text-secondary-fixed">schedule</span>
+<span class="font-label-md text-label-md text-on-primary">UTC+9 (Paris +7h)</span>
+</div>
+<div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-lowest/15 backdrop-blur-sm">
+<span class="material-symbols-outlined text-[15px] text-tertiary-fixed-dim">translate</span>
+<span class="font-label-md text-label-md text-on-primary">FR • JP</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Quick Utilities Action Deck -->
+<div class="px-margin py-3 bg-surface-container-lowest/10 backdrop-blur-md flex items-center justify-between gap-2 overflow-x-auto">
+<button class="flex items-center gap-1.5 px-3 py-2 rounded-full bg-surface-container-lowest/20 hover:bg-surface-container-lowest/30 transition-colors shrink-0">
+<span class="material-symbols-outlined text-[16px] text-tertiary-fixed" style="font-variation-settings: 'FILL' 1;">cloud_done</span>
+<span class="font-label-md text-label-md text-on-primary">Hors-ligne activé</span>
+</button>
+<button class="flex items-center gap-1.5 px-3 py-2 rounded-full bg-surface-container-lowest/20 hover:bg-surface-container-lowest/30 transition-colors shrink-0">
+<span class="material-symbols-outlined text-[16px] text-surface-bright">ios_share</span>
+<span class="font-label-md text-label-md text-on-primary">Partager</span>
+</button>
+<button class="flex items-center gap-1.5 px-3 py-2 rounded-full bg-secondary text-on-secondary shadow-md hover:bg-secondary/90 transition-colors shrink-0">
+<span class="material-symbols-outlined text-[16px]">picture_as_pdf</span>
+<span class="font-label-md text-label-md">Vouchers (4)</span>
+</button>
+</div>
+</section>
+<!-- Horizontal Day Scroller -->
+<section class="w-full bg-surface-container-low py-4 px-margin">
+<div class="flex items-center justify-between mb-2.5">
+<span class="font-label-caps text-label-caps uppercase text-on-surface-variant">Chronologie du séjour</span>
+<span class="font-label-md text-label-md text-secondary">Jour 2 sur 12</span>
+</div>
+<div class="flex items-center gap-2.5 overflow-x-auto pb-1" id="days-carousel">
+<!-- J1 -->
+<button class="flex flex-col items-center justify-center min-w-[62px] py-2 px-1.5 rounded-2xl bg-surface-container hover:bg-surface-container-high transition-colors">
+<span class="font-label-caps text-label-caps text-on-surface-variant">MER</span>
+<span class="font-title-lg text-title-lg text-on-surface">15</span>
+<span class="font-label-md text-label-md text-on-surface-variant">J1</span>
+</button>
+<!-- J2 (Active) -->
+<button class="flex flex-col items-center justify-center min-w-[68px] py-2.5 px-2 rounded-2xl bg-primary text-on-primary shadow-lg shadow-primary/20 ring-2 ring-tertiary-fixed">
+<span class="font-label-caps text-label-caps text-secondary-fixed">JEU</span>
+<span class="font-title-lg text-title-lg font-bold text-on-primary">16</span>
+<span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-secondary text-on-secondary font-label-caps text-[9px]">
+          ACTIF
+        </span>
+</button>
+<!-- J3 -->
+<button class="flex flex-col items-center justify-center min-w-[62px] py-2 px-1.5 rounded-2xl bg-surface-container hover:bg-surface-container-high transition-colors">
+<span class="font-label-caps text-label-caps text-on-surface-variant">VEN</span>
+<span class="font-title-lg text-title-lg text-on-surface">17</span>
+<span class="font-label-md text-label-md text-on-surface-variant">J3</span>
+</button>
+<!-- J4 -->
+<button class="flex flex-col items-center justify-center min-w-[62px] py-2 px-1.5 rounded-2xl bg-surface-container hover:bg-surface-container-high transition-colors">
+<span class="font-label-caps text-label-caps text-on-surface-variant">SAM</span>
+<span class="font-title-lg text-title-lg text-on-surface">18</span>
+<span class="font-label-md text-label-md text-on-surface-variant">J4</span>
+</button>
+<!-- J5 -->
+<button class="flex flex-col items-center justify-center min-w-[62px] py-2 px-1.5 rounded-2xl bg-surface-container hover:bg-surface-container-high transition-colors">
+<span class="font-label-caps text-label-caps text-on-surface-variant">DIM</span>
+<span class="font-title-lg text-title-lg text-on-surface">19</span>
+<span class="font-label-md text-label-md text-on-surface-variant">J5</span>
+</button>
+<!-- J6 -->
+<button class="flex flex-col items-center justify-center min-w-[62px] py-2 px-1.5 rounded-2xl bg-surface-container hover:bg-surface-container-high transition-colors">
+<span class="font-label-caps text-label-caps text-on-surface-variant">LUN</span>
+<span class="font-title-lg text-title-lg text-on-surface">20</span>
+<span class="font-label-md text-label-md text-on-surface-variant">J6</span>
+</button>
+</div>
+</section>
+<!-- Selected Day Highlight Banner -->
+<section class="px-margin pt-6 pb-2">
+<div class="flex flex-col gap-1">
+<div class="inline-flex items-center gap-1.5 text-secondary font-label-caps text-label-caps">
+<span class="material-symbols-outlined text-[14px]">flag</span>
+        PROGRAMME DU JOUR • JEUDI 16 OCTOBRE
+      </div>
+<h2 class="font-headline-sm text-headline-sm text-primary">
+        Sanctuaires secrets de Kyoto &amp; Cérémonie du thé
+      </h2>
+<p class="font-body-md text-body-md text-on-surface-variant">
+        Immersion spirituelle au lever du jour dans les couloirs vermillon, suivie d'une dégustation haute couture au cœur de Gion.
+      </p>
+</div>
+</section>
+<!-- Timeline Itinerary Section -->
+<section class="px-margin py-4">
+<div class="relative flex flex-col gap-6">
+<!-- Vertical Rail Line -->
+<div class="absolute left-4 top-4 bottom-4 w-0.5 bg-surface-container-highest"></div>
+<!-- Item 1: Breakfast -->
+<div class="relative flex items-start gap-4">
+<!-- Icon Milestone -->
+<div class="relative z-10 w-8 h-8 rounded-full bg-surface-container-lowest shadow-sm flex items-center justify-center text-tertiary">
+<span class="material-symbols-outlined text-[18px]">restaurant</span>
+</div>
+<!-- Card Content -->
+<div class="flex-1 bg-surface-container-lowest rounded-2xl p-4 shadow-sm">
+<div class="flex items-center justify-between mb-1">
+<span class="font-label-md text-label-md text-secondary">08:30</span>
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-tertiary-fixed/40 text-on-tertiary-container font-label-caps text-label-caps">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
+              INCLUS AU FORFAIT
+            </span>
+</div>
+<h3 class="font-title-md text-title-md text-primary">Petit-déjeuner gastronomique</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">
+            Ryokan Aman Kyoto • Salon Dining Pavilion. Sélection bento traditionnel japonais ou petit-déjeuner occidental raffiné.
+          </p>
+</div>
+</div>
+<!-- Item 2: Private Guided Tour (Featured Activity) -->
+<div class="relative flex items-start gap-4">
+<div class="relative z-10 w-8 h-8 rounded-full bg-secondary text-on-secondary shadow-md flex items-center justify-center">
+<span class="material-symbols-outlined text-[18px]">tour</span>
+</div>
+<div class="flex-1 bg-surface-container-lowest rounded-2xl p-4 shadow-md overflow-hidden">
+<div class="flex items-center justify-between mb-1">
+<span class="font-label-md text-label-md text-secondary">10:00 - 12:30</span>
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface font-label-caps text-label-caps">
+              CONFIRMÉ • VIP
+            </span>
+</div>
+<h3 class="font-title-md text-title-md text-primary">Visite privée du Fushimi Inari</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">
+            Accès aux sentiers méconnus derrière les 10 000 torii. Accompagnement par Kenji Tanaka, conférencier officiel francophone.
+          </p>
+<!-- Embedded Media Thumbnail -->
+<div class="mt-3 relative w-full h-32 rounded-xl overflow-hidden">
+<div class="w-full h-full bg-cover bg-center" data-alt="Close up perspective of bright orange wooden Torii gate tunnel in Fushimi Inari Kyoto with soft natural morning light passing through bamboo grove, peaceful atmosphere, high aesthetic photography" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuB_1rbrUQr5K1m34TO0QdxoxVzVCsmghPLothWQUZNwDkIlMlo4pzMfS3n2zalSgtsqIqKlFe-sVvHZ0m3S46EiV3Ax_atvNR7flNZ55o4Ezd2DfGVqF_UlAO6t1nitCywrKKeJMKJKE1-ql3of6tkcEtHw8zyLQ-b2T55yz4PNgWimHgeAXLY8iV_-X5nJ5vdPU3c5k9eusUdcR38R1ukuUwaOXnzRT8SMX2JTQQvTJGwcyluHNBRn')"></div>
+<div class="absolute bottom-2 left-2 px-2 py-1 rounded-md bg-primary-container/80 backdrop-blur-sm text-on-primary font-label-caps text-[10px]">
+              Chauffeur privé inclus • Van Lexus LM
+            </div>
+</div>
+<!-- Quick Voucher Pill -->
+<div class="mt-3 pt-3 flex items-center justify-between bg-surface-container-low p-2.5 rounded-xl">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary text-[20px]">confirmation_number</span>
+<div class="flex flex-col">
+<span class="font-label-caps text-label-caps text-on-surface-variant">VOUCHER NUMÉRIQUE</span>
+<span class="font-label-md text-label-md text-primary">#G-4412-AURA</span>
+</div>
+</div>
+<button class="px-3 py-1 rounded-full bg-primary text-on-primary font-label-caps text-label-caps hover:bg-primary-container transition-colors">
+              Présenter
+            </button>
+</div>
+</div>
+</div>
+<!-- Item 3: Kaiseki Lunch -->
+<div class="relative flex items-start gap-4">
+<div class="relative z-10 w-8 h-8 rounded-full bg-surface-container-lowest shadow-sm flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[18px]">dinner_dining</span>
+</div>
+<div class="flex-1 bg-surface-container-lowest rounded-2xl p-4 shadow-sm">
+<div class="flex items-center justify-between mb-1">
+<span class="font-label-md text-label-md text-secondary">13:00</span>
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-tertiary-fixed/30 text-on-tertiary-container font-label-caps text-label-caps">
+              TABLE RÉSERVÉE
+            </span>
+</div>
+<h3 class="font-title-md text-title-md text-primary">Déjeuner Dégustation Kaiseki</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">
+            Restaurant étoilé Giro Giro Hitoshina. Menu en 8 étapes créé selon les arrivages matinaux du marché Nishiki.
+          </p>
+<div class="mt-2.5 flex items-center gap-2 text-on-surface-variant font-body-sm">
+<span class="material-symbols-outlined text-[16px] text-tertiary">person</span>
+<span>Réservation au nom de : <strong class="text-on-surface">Marc Dupont (2 convives)</strong></span>
+</div>
+</div>
+</div>
+<!-- Item 4: Tea Ceremony -->
+<div class="relative flex items-start gap-4">
+<div class="relative z-10 w-8 h-8 rounded-full bg-surface-container-lowest shadow-sm flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined text-[18px]">self_improvement</span>
+</div>
+<div class="flex-1 bg-surface-container-lowest rounded-2xl p-4 shadow-sm">
+<div class="flex items-center justify-between mb-1">
+<span class="font-label-md text-label-md text-secondary">15:30</span>
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface font-label-caps text-label-caps">
+              PRIVATISATION
+            </span>
+</div>
+<h3 class="font-title-md text-title-md text-primary">Cérémonie du thé Urasenke</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">
+            Pavillon zen privé à Gion. Rencontre avec Maître Sôshitsu pour une initiation silencieuse au Matcha Cérémonial.
+          </p>
+</div>
+</div>
+<!-- Item 5: Evening Curations -->
+<div class="relative flex items-start gap-4">
+<div class="relative z-10 w-8 h-8 rounded-full bg-surface-container-lowest shadow-sm flex items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined text-[18px]">nightlife</span>
+</div>
+<div class="flex-1 bg-surface-container-lowest rounded-2xl p-4 shadow-sm">
+<div class="flex items-center justify-between mb-1">
+<span class="font-label-md text-label-md text-secondary">19:30</span>
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary-fixed text-on-secondary-fixed font-label-caps text-label-caps">
+              DÎNER LIBRE
+            </span>
+</div>
+<h3 class="font-title-md text-title-md text-primary">Suggestions Conciergerie Aura</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1 mb-3">
+            Votre concierge Sarah a sélectionné 3 adresses confidentielles accessibles à pied depuis votre ryokan :
+          </p>
+<!-- Micro Curated Cards -->
+<div class="flex flex-col gap-2">
+<div class="p-2.5 rounded-xl bg-surface-container-low flex items-center justify-between">
+<div>
+<h4 class="font-title-md text-[14px] text-primary">Kura • Bar à Saké d'auteurs</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Accords mets &amp; sakés rares du département de Shiga</p>
+</div>
+<span class="material-symbols-outlined text-secondary text-[20px]">chevron_right</span>
+</div>
+<div class="p-2.5 rounded-xl bg-surface-container-low flex items-center justify-between">
+<div>
+<h4 class="font-title-md text-[14px] text-primary">Tempura Matsu</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Au bord de la rivière Oi, friture d'une légèreté aérienne</p>
+</div>
+<span class="material-symbols-outlined text-secondary text-[20px]">chevron_right</span>
+</div>
+<div class="p-2.5 rounded-xl bg-surface-container-low flex items-center justify-between">
+<div>
+<h4 class="font-title-md text-[14px] text-primary">Monk Kyoto</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Four à bois sur le chemin de la Philosophie (Sur demande)</p>
+</div>
+<span class="material-symbols-outlined text-secondary text-[20px]">chevron_right</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Interactive Map Preview for Day 2 -->
+<section class="px-margin my-3">
+<div class="bg-surface-container-lowest rounded-2xl p-4 shadow-sm flex flex-col gap-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary text-[20px]">map</span>
+<span class="font-title-md text-title-md text-primary">Parcours du jour • 4 étapes</span>
+</div>
+<span class="font-label-md text-label-md text-on-surface-variant">Kyoto Sud • Gion</span>
+</div>
+<!-- Static Google Maps Pipeline Container -->
+<div class="w-full h-44 bg-cover bg-center rounded-xl relative overflow-hidden flex items-end p-3" data-location="Fushimi Inari Taisha, Kyoto, Japan" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDDG1U9t6R03vMPe12TONCs8P5V5DjL7RHMkKQgVfhNcsQLitgWnQZj4oB4Iyk30xWdvLqWMZL2gvemOB4VP2gXv-YqJo-UYLd1N4HY381Hztnaidg0JKi6dNXy1vfllXwfXEIz_oF8KJDp-H2DgOx3bNC2oMmQbr5G94Gzrjjmhy_XFfvASiQt6v_Lr2xYuDekC5eeDl3cG4tsCC2JlSahn_Z-MW1UTWZa27gC58UAHQRndb2oKh2P')">
+<div class="bg-surface-container-lowest/90 backdrop-blur-md px-3 py-1.5 rounded-full flex items-center gap-2 text-primary shadow-sm">
+<span class="material-symbols-outlined text-[16px] text-secondary">navigation</span>
+<span class="font-label-md text-label-md">Ouvrir dans Google Maps (Offline)</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Accommodation Logistics Card -->
+<section class="px-margin py-4">
+<div class="bg-surface-container-lowest rounded-2xl p-4 shadow-sm flex flex-col gap-3">
+<div class="flex items-center justify-between">
+<span class="font-label-caps text-label-caps text-secondary uppercase">Hébergement en cours</span>
+<span class="inline-flex items-center gap-1 font-label-caps text-label-caps text-tertiary bg-tertiary-fixed/30 px-2 py-0.5 rounded-full">
+<span class="material-symbols-outlined text-[14px]">star</span> 5 Étoiles Luxe
+        </span>
+</div>
+<div class="flex gap-3 items-center">
+<div class="w-20 h-20 rounded-xl overflow-hidden shrink-0">
+<div class="w-full h-full bg-cover bg-center" data-alt="Minimalist wooden luxury hotel room suite at Aman Kyoto surrounded by lush Japanese moss garden and floor-to-ceiling glass windows, warm natural wood textures and tatami details" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBT2Xx8RyryE2DmAxF_JlGWUBEEr8axqnrnx97Ho-jkMHXSvG_EEtD3YNgtZGQ72KSGLRaQNGfggZ5Mz9SYovodjeV0AARCbTcHcoahVqQQjmQS6umdpHn-OmWfIVuFPc6NvZsswWViK8AyFfbckDlLI0x_nZCib72DIzCVsuRQ71BYN31nXtGwdTjZb9hW-uQfB3tETYv83RXWlFs7pqzVhBmGo2hlTrEiYf2ssT7DuYb3cseQMapS')"></div>
+</div>
+<div class="flex flex-col">
+<h3 class="font-title-md text-title-md text-primary">Aman Kyoto</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Chambre Pavillon Forêt • Nuit 2/3</p>
+<span class="font-label-md text-label-md text-primary mt-1">Check-out Samedi 18 Oct • 12:00</span>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-2 pt-2">
+<div class="bg-surface-container-low p-2.5 rounded-xl flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary text-[20px]">wifi</span>
+<div class="flex flex-col">
+<span class="font-label-caps text-label-caps text-on-surface-variant">WI-FI RYOKAN</span>
+<span class="font-label-md text-label-md text-primary font-mono">Aman_Guest_VIP</span>
+</div>
+</div>
+<div class="bg-surface-container-low p-2.5 rounded-xl flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary text-[20px]">room_service</span>
+<div class="flex flex-col">
+<span class="font-label-caps text-label-caps text-on-surface-variant">CONCIERGERIE</span>
+<span class="font-label-md text-label-md text-primary">Touche 1 (24h/24)</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Attached Transport & Museum Vouchers -->
+<section class="px-margin py-2">
+<div class="flex items-center justify-between mb-3">
+<h3 class="font-title-md text-title-md text-primary">Billets &amp; Documents attachés</h3>
+<span class="font-label-md text-label-md text-secondary">3 éléments</span>
+</div>
+<div class="flex flex-col gap-2.5">
+<!-- Shinkansen Ticket Card -->
+<div class="bg-surface-container-lowest rounded-2xl p-4 shadow-sm flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[20px]">train</span>
+</div>
+<div class="flex flex-col">
+<span class="font-title-md text-title-md text-primary">Shinkansen Nozomi 14</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Kyoto → Tokyo • 1ère Classe Gran Class</span>
+</div>
+</div>
+<button class="p-2 rounded-full bg-surface-container hover:bg-surface-container-high text-primary">
+<span class="material-symbols-outlined text-[20px]">qr_code_2</span>
+</button>
+</div>
+<!-- Museum Pass Card -->
+<div class="bg-surface-container-lowest rounded-2xl p-4 shadow-sm flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-secondary-fixed flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined text-[20px]">museum</span>
+</div>
+<div class="flex flex-col">
+<span class="font-title-md text-title-md text-primary">Musée National de Kyoto</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Coupe-file permanent • Réf #MNK-990</span>
+</div>
+</div>
+<button class="p-2 rounded-full bg-surface-container hover:bg-surface-container-high text-primary">
+<span class="material-symbols-outlined text-[20px]">download</span>
+</button>
+</div>
+</div>
+</section>
+<!-- Emergency & Aura Concierge Section -->
+<section class="px-margin py-6">
+<div class="bg-primary text-on-primary rounded-3xl p-5 shadow-lg flex flex-col gap-4">
+<div class="flex items-start justify-between">
+<div class="flex items-center gap-3">
+<img class="w-12 h-12 rounded-full object-cover" data-alt="Portrait of Sarah B, sophisticated travel concierge in Kyoto, warm and professional smile, dressed in tailored navy blue linen blazer, cinematic studio lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCrqh782JWZm1o-_cAYuTeAMEIxE-MBhITtBW2X1rwUUW04bW-638_NyhoE5shEC2iHfnDXsGpMTGjxw2z9QC0BgpK0-J03pH-8o-HZcZUb3BoKf3wU6xfeJA9FwEclDdWPOjab6lyKz80o51NuUe1j5psIgAMEnXGpOmjJhWDylCYrAnlhXA5zJfAVDFGa2Dgk-FCTwamZn6Cilzlis2RJt69nIMDC9j2FhKnJiM3WahF9KvFcTRtE"/>
+<div class="flex flex-col">
+<span class="font-label-caps text-label-caps text-secondary-fixed">VOTRE CONSEILLÈRE DÉDIÉE</span>
+<h4 class="font-title-lg text-title-lg text-on-primary">Sarah Benamara</h4>
+<span class="font-body-sm text-body-sm text-surface-container-high">Aura Voyages Paris • Référente Japon</span>
+</div>
+</div>
+<a class="w-10 h-10 rounded-full bg-secondary text-on-secondary flex items-center justify-center shadow-md" href="tel:+33189400000">
+<span class="material-symbols-outlined text-[20px]">call</span>
+</a>
+</div>
+<div class="grid grid-cols-2 gap-2 pt-2">
+<a class="p-3 rounded-2xl bg-surface-container-lowest/10 hover:bg-surface-container-lowest/15 flex flex-col gap-1 transition-colors" href="tel:+33180009999">
+<div class="flex items-center gap-1 text-tertiary-fixed">
+<span class="material-symbols-outlined text-[18px]">health_and_safety</span>
+<span class="font-label-caps text-label-caps">ASSISTANCE 24/7</span>
+</div>
+<span class="font-body-sm text-body-sm text-on-primary">Mutuaide Rapatriement</span>
+</a>
+<a class="p-3 rounded-2xl bg-surface-container-lowest/10 hover:bg-surface-container-lowest/15 flex flex-col gap-1 transition-colors" href="tel:+81357986000">
+<div class="flex items-center gap-1 text-secondary-fixed">
+<span class="material-symbols-outlined text-[18px]">flag</span>
+<span class="font-label-caps text-label-caps">AMBASSADE DE FRANCE</span>
+</div>
+<span class="font-body-sm text-body-sm text-on-primary">Tokyo (+81 3 5798 6000)</span>
+</a>
+</div>
+<div class="flex items-center justify-between pt-1">
+<div class="flex items-center gap-1.5 text-surface-container-high font-body-sm">
+<span class="material-symbols-outlined text-[16px] text-tertiary-fixed">mic</span>
+<span>Interprète assermenté d'urgence</span>
+</div>
+<button class="font-label-md text-label-md text-secondary-fixed hover:underline">
+          Activer l'appel →
+        </button>
+</div>
+</div>
+</section>
+</div>
+<script>
+  // Simple interactive day selector micro-interaction
+  document.addEventListener('DOMContentLoaded', () => {
+    const carousel = document.getElementById('days-carousel');
+    if (carousel) {
+      const buttons = carousel.querySelectorAll('button');
+      buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          buttons.forEach(b => {
+            b.classList.remove('bg-primary', 'text-on-primary', 'shadow-lg', 'ring-2', 'ring-tertiary-fixed');
+            b.classList.add('bg-surface-container', 'text-on-surface');
+            const badge = b.querySelector('.bg-secondary');
+            if (badge) badge.classList.add('hidden');
+          });
+          btn.classList.remove('bg-surface-container', 'text-on-surface');
+          btn.classList.add('bg-primary', 'text-on-primary', 'shadow-lg', 'ring-2', 'ring-tertiary-fixed');
+        });
+      });
+    }
+  });
+</script></main><div class="fixed bottom-0 w-full z-50 pb-safe pointer-events-none px-margin"><nav class="pointer-events-auto mb-4 mx-auto max-w-[390px] h-16 rounded-full bg-surface-container-lowest/90 backdrop-blur-xl shadow-[0_12px_32px_-4px_rgba(14,36,57,0.12)] flex items-center justify-around px-space-xs" data-active-classes="text-secondary"><a class="flex flex-col items-center justify-center min-w-[44px] min-h-[44px] px-2 py-1 text-on-surface-variant hover:text-on-surface transition-colors" data-path="accueil" href="#"><span class="material-symbols-outlined text-[22px]">home</span><span class="font-label-md text-label-md">Accueil</span></a><a class="flex flex-col items-center justify-center min-w-[44px] min-h-[44px] px-2 py-1 text-on-surface-variant hover:text-on-surface transition-colors" data-path="reservations" href="#"><span class="material-symbols-outlined text-[22px]">calendar_month</span><span class="font-label-md text-label-md">Réservations</span></a><a aria-current="page" class="flex flex-col items-center justify-center min-w-[44px] min-h-[44px] px-2 py-1 transition-colors text-secondary" data-path="carnet" href="#"><span class="material-symbols-outlined text-[22px]">explore</span><span class="font-label-md text-label-md">Carnet</span></a><a class="flex flex-col items-center justify-center min-w-[44px] min-h-[44px] px-2 py-1 text-on-surface-variant hover:text-on-surface transition-colors" data-path="finances-solde" href="#"><span class="material-symbols-outlined text-[22px]">account_balance_wallet</span><span class="font-label-md text-label-md">Finances</span></a><a class="flex flex-col items-center justify-center min-w-[44px] min-h-[44px] px-2 py-1 text-on-surface-variant hover:text-on-surface transition-colors" data-path="mon-compte" href="#"><span class="material-symbols-outlined text-[22px]">manage_accounts</span><span class="font-label-md text-label-md">Compte</span></a></nav></div></body></html>

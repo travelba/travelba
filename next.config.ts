@@ -12,7 +12,7 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  serverExternalPackages: ["sharp"],
+  serverExternalPackages: ["sharp", "tesseract.js"],
 };
 
 export default withNextIntl(nextConfig);

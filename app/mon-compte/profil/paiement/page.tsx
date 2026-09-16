@@ -5,7 +5,6 @@ import { ensureCustomerForUser } from "@/lib/crm/auth";
 import { getStripe, stripeConfigured } from "@/lib/crm/stripe";
 import { PaymentMethodsPanel } from "@/components/account/PaymentMethodsPanel";
 import { ProfileSubnav } from "@/components/account/ProfileSubnav";
-import { ConciergeBanner, PageEyebrow, PageTitle } from "@/components/crm/ui";
 import type { CrmPaymentMethod } from "@/lib/crm/types";
 
 export default async function PaiementPage() {
@@ -51,21 +50,18 @@ export default async function PaiementPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <PageEyebrow>Espace privilège voyageur</PageEyebrow>
-        <PageTitle
-          title="Moyens de paiement"
-          subtitle="Cartes enregistrées via Stripe — aucune donnée bancaire n’est stockée chez Travelba."
-        />
-        <ProfileSubnav />
-      </div>
+    <div className="space-y-4 px-5 pb-10">
+      <ProfileSubnav />
+      <h1 className="text-xl font-semibold text-[var(--admin-navy-deep)]">Moyens de paiement</h1>
+      <p className="text-xs text-muted">
+        Cartes tokenisées Stripe. Travelba ne conserve que la marque, les 4 derniers chiffres et
+        l’expiration.
+      </p>
       <PaymentMethodsPanel
         methods={(methods || []) as CrmPaymentMethod[]}
         clientSecret={clientSecret}
         configured={configured}
       />
-      <ConciergeBanner />
     </div>
   );
 }

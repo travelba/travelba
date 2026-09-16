@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { appOrigin, inviteCustomer } from "@/lib/crm/invite";
 import type { CrmCustomer } from "@/lib/crm/types";
+
+export const runtime = "nodejs";
 
 export async function GET() {
   const auth = await requireStaff();
@@ -34,5 +37,19 @@ export async function POST(request: Request) {
     .select("*")
     .single();
   if (error) return jsonError(error.message, 400);
-  return NextResponse.json({ customer: data });
+  const customer = data as CrmCustomer;
+  try {
+    const result = await inviteCustomer(customer, appOrigin(request));
+    return NextResponse.json({
+      customer: result.customer,
+      invited: result.delivered,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Invitation impossible";
+    return NextResponse.json({
+      customer,
+      invited: false,
+      inviteError: message,
+    });
+  }
 }

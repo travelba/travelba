@@ -14,6 +14,10 @@ import {
   type CrmBookingTraveler,
   type CrmCompanion,
 } from "@/lib/crm/types";
+import { itemDetailsLine, itemWhen } from "@/lib/crm/booking-display";
+import { bookingCoverUrl } from "@/lib/crm/covers";
+import { BookingIngest } from "@/components/crm/BookingIngest";
+import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
 
 export function BookingEditor({
   booking,
@@ -21,12 +25,14 @@ export function BookingEditor({
   travelers,
   documents,
   companions,
+  aiConfigured,
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
   travelers: CrmBookingTraveler[];
   documents: CrmBookingDocument[];
   companions: CrmCompanion[];
+  aiConfigured: boolean;
 }) {
   const router = useRouter();
 
@@ -96,6 +102,21 @@ export function BookingEditor({
 
   return (
     <div className="space-y-6">
+      <div className="overflow-hidden rounded-3xl">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={bookingCoverUrl(booking)}
+          alt={booking.destination || booking.title}
+          className="h-48 w-full object-cover sm:h-64"
+        />
+      </div>
+      <BookingIngest
+        role="admin"
+        mode="append"
+        ingestUrl="/api/admin/bookings/ingest"
+        saveUrl={`/api/admin/bookings/${booking.id}/from-ingest`}
+        aiConfigured={aiConfigured}
+      />
       <form onSubmit={save} className="admin-af-card grid gap-3 rounded-3xl p-5 sm:grid-cols-2">
         <input name="title" defaultValue={booking.title} className="rounded-xl border border-border px-3 py-2" />
         <input name="destination" defaultValue={booking.destination || ""} className="rounded-xl border border-border px-3 py-2" />
@@ -122,6 +143,8 @@ export function BookingEditor({
           {items.map((i) => (
             <li key={i.id}>
               {BOOKING_ITEM_LABELS[i.kind as BookingItemKind] || i.kind} · {i.title}
+              {itemWhen(i) ? ` · ${itemWhen(i)}` : ""}
+              {itemDetailsLine(i) ? ` · ${itemDetailsLine(i)}` : ""}
             </li>
           ))}
         </ul>
@@ -169,19 +192,33 @@ export function BookingEditor({
 
       <section className="admin-af-card rounded-3xl p-5">
         <h2 className="font-display text-lg font-bold">Documents</h2>
-        <ul className="mt-2 space-y-1 text-sm">
+        <ul className="mt-2 space-y-2 text-sm">
           {documents.map((d) => (
-            <li key={d.id} className="flex items-center justify-between">
-              <a className="underline" href={`/api/files?path=${encodeURIComponent(d.storage_path)}`}>
-                {d.file_name || d.kind}
-              </a>
-              <button
-                type="button"
-                className="text-xs font-semibold"
-                onClick={() => toggleDoc(d.id, !d.visible_to_client)}
-              >
-                {d.visible_to_client ? "Masquer au client" : "Publier au client"}
-              </button>
+            <li key={d.id} className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2">
+              <div className="min-w-0">
+                <p className="truncate font-medium">{d.file_name || d.kind}</p>
+                <p className="text-xs text-muted">
+                  {d.visible_to_client ? "Visible client" : "Masqué au client"}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <FileOpenLink
+                  path={d.storage_path}
+                  className="inline-flex items-center gap-1 rounded-full bg-[var(--admin-sky)] px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)]"
+                >
+                  <span className="material-symbols-outlined text-[16px]">
+                    {fileKindIcon(d.mime_type, d.file_name)}
+                  </span>
+                  Ouvrir
+                </FileOpenLink>
+                <button
+                  type="button"
+                  className="text-xs font-semibold"
+                  onClick={() => toggleDoc(d.id, !d.visible_to_client)}
+                >
+                  {d.visible_to_client ? "Masquer" : "Publier"}
+                </button>
+              </div>
             </li>
           ))}
         </ul>

@@ -5,18 +5,19 @@ export const CRM_BUCKET = "crm-files";
 export async function uploadCrmFile(
   path: string,
   bytes: Buffer,
-  contentType: string
+  contentType: string,
+  opts?: { upsert?: boolean }
 ) {
   const supabase = createServiceClient();
   const { error } = await supabase.storage.from(CRM_BUCKET).upload(path, bytes, {
     contentType,
-    upsert: false,
+    upsert: opts?.upsert ?? false,
   });
   if (error) throw error;
   return path;
 }
 
-export async function signedCrmUrl(path: string, expiresIn = 120) {
+export async function signedCrmUrl(path: string, expiresIn = 600) {
   const supabase = createServiceClient();
   const { data, error } = await supabase.storage
     .from(CRM_BUCKET)

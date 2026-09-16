@@ -3,7 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
 import { CompanionsManager } from "@/components/account/CompanionsManager";
 import { ProfileSubnav } from "@/components/account/ProfileSubnav";
-import { ConciergeBanner, PageEyebrow, PageTitle } from "@/components/crm/ui";
 import type { CrmCompanion } from "@/lib/crm/types";
 
 export default async function CompanionsPage() {
@@ -21,17 +20,11 @@ export default async function CompanionsPage() {
     .order("last_name");
 
   return (
-    <div className="space-y-6">
-      <div>
-        <PageEyebrow>Espace privilège voyageur</PageEyebrow>
-        <PageTitle
-          title="Compagnons de voyage"
-          subtitle="Personnes régulièrement associées à vos dossiers Travelba."
-        />
-        <ProfileSubnav />
-      </div>
+    <div className="space-y-4 px-5 pb-10">
+      <ProfileSubnav />
+      <h1 className="text-xl font-semibold text-[var(--admin-navy-deep)]">Compagnons de voyage</h1>
+      <p className="text-xs text-muted">Personnes régulièrement associées à vos dossiers.</p>
       <CompanionsManager companions={(data || []) as CrmCompanion[]} />
-      <ConciergeBanner />
     </div>
   );
 }

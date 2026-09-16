@@ -49,6 +49,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
       end_at: body.end_at,
       amount: body.amount == null ? null : Number(body.amount),
       sort_order: body.sort_order,
+      details: body.details ?? undefined,
     })
     .eq("id", itemId)
     .select("*")

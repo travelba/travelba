@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireCustomer } from "@/lib/crm/auth";
+import { resolveCountryCode } from "@/lib/crm/countries";
+import { emptyToNull } from "@/lib/crm/identity";
 
 export async function GET() {
   const auth = await requireCustomer();
@@ -26,10 +28,10 @@ export async function POST(request: Request) {
       customer_id: auth.customer.id,
       first_name: first,
       last_name: last,
-      birth_date: body?.birth_date || null,
-      sex: body?.sex || null,
-      nationality: body?.nationality || null,
-      relationship: body?.relationship || null,
+      birth_date: emptyToNull(body?.birth_date),
+      sex: emptyToNull(body?.sex),
+      nationality: resolveCountryCode(String(body?.nationality || "")) || emptyToNull(body?.nationality),
+      relationship: emptyToNull(body?.relationship),
     })
     .select("*")
     .single();
@@ -48,10 +50,10 @@ export async function PATCH(request: Request) {
     .update({
       first_name: body.first_name,
       last_name: body.last_name,
-      birth_date: body.birth_date || null,
-      sex: body.sex || null,
-      nationality: body.nationality || null,
-      relationship: body.relationship || null,
+      birth_date: emptyToNull(body.birth_date),
+      sex: emptyToNull(body.sex),
+      nationality: resolveCountryCode(String(body.nationality || "")) || emptyToNull(body.nationality),
+      relationship: emptyToNull(body.relationship),
     })
     .eq("id", id)
     .eq("customer_id", auth.customer.id)

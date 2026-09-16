@@ -30,11 +30,15 @@ export async function GET(request: Request) {
     const bookingId = path.split("/")[1];
     const { data: booking } = await client.supabase
       .from("crm_bookings")
-      .select("id")
+      .select("id, cover_image_path")
       .eq("id", bookingId)
       .eq("customer_id", client.customer.id)
       .maybeSingle();
     if (!booking) return jsonError("Accès refusé", 403);
+    if (booking.cover_image_path === path) {
+      const signed = await signedCrmUrl(path);
+      return NextResponse.redirect(signed);
+    }
     const { data: doc } = await client.supabase
       .from("crm_booking_documents")
       .select("id")

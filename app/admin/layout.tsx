@@ -1,21 +1,6 @@
-import { Montserrat, Source_Sans_3 } from "next/font/google";
 import { siteConfig } from "@/lib/site";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { createServiceClient } from "@/lib/supabase/admin";
-
-const adminDisplay = Montserrat({
-  subsets: ["latin"],
-  variable: "--font-admin-display",
-  weight: ["600", "700", "800"],
-  display: "swap",
-});
-
-const adminSans = Source_Sans_3({
-  subsets: ["latin"],
-  variable: "--font-admin-sans",
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
-});
 
 export const metadata = {
   title: `Admin — ${siteConfig.shortName}`,
@@ -40,9 +25,7 @@ export default async function AdminLayout({
   }
 
   return (
-    <div
-      className={`admin-af min-h-screen ${adminDisplay.variable} ${adminSans.variable}`}
-    >
+    <div className="admin-af min-h-screen">
       <div className="flex min-h-screen flex-col lg:flex-row">
         <AdminNav unmatchedCount={unmatched} />
         <main className="flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">{children}</main>

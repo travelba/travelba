@@ -121,20 +121,7 @@ export async function ensureCustomerForUser(user: User): Promise<CrmCustomer | n
       return null;
     }
 
-    const meta = user.user_metadata || {};
-    const { data: created, error } = await admin
-      .from("crm_customers")
-      .insert({
-        auth_user_id: user.id,
-        email,
-        first_name: String(meta.first_name || meta.given_name || ""),
-        last_name: String(meta.last_name || meta.family_name || ""),
-        language: "fr",
-      })
-      .select("*")
-      .single();
-    if (error) return null;
-    return created as CrmCustomer;
+    return null;
   } catch {
     return null;
   }

@@ -21,7 +21,8 @@ npm run dev
 ## Auth
 
 - Agents : `/admin/login` (email + mot de passe). Le premier utilisateur devient `crm_staff` admin.
-- Clients : `/connexion` (lien magique email) → `/mon-compte`.
+- Clients : `/connexion` (code e-mail, ou mot de passe pour les comptes de test) → `/mon-compte`.
+- Données de test : `npm run seed:demo` (identifiants affichés dans la console).
 
 ## Encours
 

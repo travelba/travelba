@@ -29,19 +29,19 @@ export function AdminNav({ unmatchedCount = 0 }: { unmatchedCount?: number }) {
     <aside className="flex w-full flex-col gap-6 border-b border-white/10 bg-[var(--admin-navy)] px-4 py-5 text-white lg:min-h-screen lg:w-64 lg:shrink-0 lg:border-b-0 lg:border-r lg:px-5 lg:py-6">
       <div>
         <Link href="/admin" className="flex items-center gap-2.5">
-          <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 font-display text-xs font-extrabold tracking-wider">
+          <span className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-white/10 font-display text-xs font-extrabold tracking-wider">
             TBA
           </span>
           <span className="flex flex-col leading-tight">
-            <span className="font-display text-base font-extrabold">Travelba</span>
-            <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/60">
+            <span className="font-display text-base font-bold">Travelba</span>
+            <span className="font-label text-[10px] font-semibold uppercase tracking-[0.16em] text-white/60">
               Back-office
             </span>
           </span>
         </Link>
         <Link
           href="/admin/reservations"
-          className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-[var(--admin-red)] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-[#c8102e]"
+          className="admin-af-btn-accent mt-4 inline-flex w-full items-center justify-center rounded-full px-3 py-2.5 text-sm"
         >
           + Nouvelle réservation
         </Link>
@@ -68,7 +68,7 @@ export function AdminNav({ unmatchedCount = 0 }: { unmatchedCount?: number }) {
             >
               <span>{link.label}</span>
               {badge != null ? (
-                <span className="rounded-full bg-[var(--admin-red)] px-2 py-0.5 text-[10px] font-bold">
+                <span className="rounded-full bg-[var(--admin-red)] px-2 py-0.5 font-label text-[10px] font-bold">
                   {badge}
                 </span>
               ) : null}

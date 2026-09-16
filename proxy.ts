@@ -12,13 +12,14 @@ const intlMiddleware = createMiddleware(routing);
  */
 function forwardAuthCode(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
+  const tokenHash = request.nextUrl.searchParams.get("token_hash");
   const path = request.nextUrl.pathname;
-  if (!code) return null;
+  if (!code && !tokenHash) return null;
   if (path.startsWith("/auth/callback")) return null;
 
   const url = request.nextUrl.clone();
   url.pathname = "/auth/callback";
-  // Keep code + any next param; drop locale prefix noise
+  // Keep code / token_hash + any next param; drop locale prefix noise
   if (!url.searchParams.get("next")) {
     url.searchParams.set("next", "/mon-compte");
   }
@@ -33,7 +34,7 @@ export default async function proxy(request: NextRequest) {
   if (
     path.startsWith("/admin") ||
     path.startsWith("/mon-compte") ||
-    path === "/connexion" ||
+    path.startsWith("/connexion") ||
     path.startsWith("/auth")
   ) {
     return updateSession(request);

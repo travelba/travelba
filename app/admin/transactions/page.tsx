@@ -19,8 +19,8 @@ export default async function AdminTransactionsPage() {
     <div>
       <PageEyebrow>Back-office</PageEyebrow>
       <PageTitle
-        title="Transactions"
-        subtitle="Grand livre clients — débits réservations, crédits Revolut et ajustements."
+        title="Grand livre"
+        subtitle="Débits réservations, crédits Revolut et ajustements — seules les écritures comptabilisées impactent l’encours."
       />
       <div className="mt-6">
         <Ledger

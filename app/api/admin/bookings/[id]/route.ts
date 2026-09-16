@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { syncBookingDebit } from "@/lib/crm/bookings";
+import { scheduleBookingCover } from "@/lib/crm/cover-generate";
 import type { BookingStatus, CrmBooking } from "@/lib/crm/types";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -63,6 +64,14 @@ export async function PATCH(request: Request, ctx: Ctx) {
     booking,
     prev.status as BookingStatus
   );
+  if (
+    ("destination" in patch || "title" in patch) &&
+    (booking.destination !== prev.destination || booking.title !== prev.title)
+  ) {
+    scheduleBookingCover(booking, { force: true });
+  } else if (!booking.cover_image_path) {
+    scheduleBookingCover(booking);
+  }
   return NextResponse.json({ booking });
 }
 

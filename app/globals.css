@@ -14,25 +14,29 @@
 }
 
 /**
- * Back-office — palette inspirée Air France (navy + rouge + light)
+ * CRM (espace client + admin) — design system Aura Voyages (Stitch).
  * Scoped : n’altère pas le site public.
  */
 .admin-af {
-  --background: #f2f4f8;
+  --background: #f8f6f0;
   --surface: #ffffff;
-  --surface-2: #e8ecf2;
-  --foreground: #002157;
-  --muted: #5a6b82;
-  --border: rgba(0, 33, 87, 0.12);
+  --surface-2: #efebe0;
+  --foreground: #1c252c;
+  --muted: #5e6d77;
+  --border: #e2dcd0;
 
-  --accent: #e81932;
-  --accent-2: #002157;
-  --accent-3: #c8102e;
+  --accent: #e06d53;
+  --accent-2: #0e2439;
+  --accent-3: #d4af37;
 
-  --admin-navy: #002157;
-  --admin-navy-deep: #00153a;
-  --admin-red: #e81932;
-  --admin-sky: #dce6f5;
+  --admin-navy: #0e2439;
+  --admin-navy-deep: #000e1d;
+  --admin-red: #e06d53;
+  --admin-sky: #efebe0;
+  --admin-gold: #d4af37;
+  --admin-lagoon: #1a5276;
+  --admin-peach: #ffdad2;
+  --admin-gold-soft: #ffe088;
 
   /* Travel Management Mobile App (Aura Voyage) tokens */
   --aura-surface: #f7f9fb;
@@ -43,7 +47,29 @@
 
   color: var(--foreground);
   background: var(--background);
-  font-family: var(--font-admin-sans), var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-plus-jakarta), var(--font-sans), system-ui, sans-serif;
+}
+
+.admin-af .material-symbols-outlined {
+  font-family: "Material Symbols Outlined";
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+
+.admin-af .no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.admin-af .no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 /* Portail client — composition mobile Aura Voyage */
@@ -78,9 +104,13 @@
 }
 
 .admin-af .font-display {
-  font-family: var(--font-admin-display), var(--font-display), system-ui,
-    sans-serif;
+  font-family: var(--font-plus-jakarta), var(--font-display), system-ui, sans-serif;
   letter-spacing: -0.02em;
+}
+
+.admin-af .font-label {
+  font-family: var(--font-space-grotesk), var(--font-sans), system-ui, sans-serif;
+  letter-spacing: 0.06em;
 }
 
 .admin-af ::selection {
@@ -96,32 +126,57 @@
 }
 
 .admin-af-header {
-  background: #ffffff;
-  border-bottom: 3px solid var(--admin-red);
-  box-shadow: 0 1px 0 rgba(0, 33, 87, 0.04);
+  background: rgba(248, 246, 240, 0.85);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
 }
 
 .admin-af-hero-band {
-  background: linear-gradient(135deg, #00153a 0%, #002157 48%, #0a3a7a 100%);
-  color: #ffffff;
+  background: linear-gradient(135deg, #000e1d 0%, #0e2439 48%, #1a5276 100%);
+  color: #f8f6f0;
 }
 
 .admin-af-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  box-shadow: 0 8px 28px -18px rgba(0, 33, 87, 0.35);
+  box-shadow: 0 4px 20px -2px rgba(14, 36, 57, 0.05);
 }
 
 .admin-af-btn {
-  background: var(--admin-red);
-  color: #ffffff;
+  background: var(--admin-navy);
+  color: #f8f6f0;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s ease, transform 0.15s ease;
 }
 
 .admin-af-btn:hover {
-  background: #c8102e;
+  background: var(--admin-navy-deep);
+}
+
+.admin-af-btn-accent {
+  background: var(--admin-red);
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 8px 24px -4px rgba(224, 109, 83, 0.3);
+}
+
+.admin-af-btn-accent:hover {
+  background: #c85a44;
+}
+
+.admin-af-input {
+  height: 3.5rem;
+  border-radius: 9999px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  padding: 0 1.25rem;
+  outline: none;
+}
+
+.admin-af-input:focus {
+  border-color: var(--admin-navy);
+  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.25);
 }
 
 .admin-af-btn:disabled {

@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { CustomerEditor } from "@/components/admin/CustomerEditor";
+import { InviteCustomerPanel } from "@/components/admin/InviteCustomerPanel";
+import { getPortalAccess } from "@/lib/crm/invite";
 import {
   customerFullName,
   type CrmBalance,
@@ -27,7 +29,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
   if (!customer) notFound();
   const c = customer as CrmCustomer;
 
-  const [{ data: companions }, { data: documents }, { data: bookings }, { data: txs }, { data: balances }] =
+  const [{ data: companions }, { data: documents }, { data: bookings }, { data: txs }, { data: balances }, portal] =
     await Promise.all([
       supabase.from("crm_travel_companions").select("*").eq("customer_id", id),
       supabase.from("crm_travel_documents").select("*").eq("customer_id", id),
@@ -38,6 +40,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         .eq("customer_id", id)
         .order("occurred_on", { ascending: false }),
       supabase.from("crm_customer_balances").select("*").eq("customer_id", id),
+      getPortalAccess(c),
     ]);
 
   return (
@@ -48,6 +51,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         </h1>
         <p className="text-sm text-muted">{c.email}</p>
       </div>
+      <InviteCustomerPanel customerId={c.id} initial={portal} />
       <div className="flex flex-wrap gap-3">
         {((balances || []) as CrmBalance[]).map((b) => (
           <div key={b.currency} className="admin-af-card rounded-2xl px-4 py-3">

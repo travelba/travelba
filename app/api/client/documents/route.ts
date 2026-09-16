@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireCustomer } from "@/lib/crm/auth";
 import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
-import type { TravelDocType } from "@/lib/crm/types";
+import { resolveCountryCode } from "@/lib/crm/countries";
+import { emptyToNull } from "@/lib/crm/identity";
+import { DOC_TYPES, type TravelDocType } from "@/lib/crm/types";
 
 export async function GET() {
   const auth = await requireCustomer();
@@ -30,17 +32,23 @@ export async function POST(request: Request) {
     fileName = file.name;
     mimeType = file.type;
   }
-  const docType = String(form.get("doc_type") || "passport") as TravelDocType;
+  const docTypeRaw = String(form.get("doc_type") || "passport");
+  const docType = (DOC_TYPES as readonly string[]).includes(docTypeRaw)
+    ? (docTypeRaw as TravelDocType)
+    : "passport";
+  const companionId = emptyToNull(form.get("companion_id"));
   const { data, error } = await auth.supabase
     .from("crm_travel_documents")
     .insert({
       customer_id: auth.customer.id,
-      companion_id: form.get("companion_id") || null,
+      companion_id: companionId,
       doc_type: docType,
-      number: form.get("number") || null,
-      issuing_country: form.get("issuing_country") || null,
-      issued_on: form.get("issued_on") || null,
-      expires_on: form.get("expires_on") || null,
+      number: emptyToNull(form.get("number")),
+      issuing_country:
+        resolveCountryCode(String(form.get("issuing_country") || "")) ||
+        emptyToNull(form.get("issuing_country")),
+      issued_on: emptyToNull(form.get("issued_on")),
+      expires_on: emptyToNull(form.get("expires_on")),
       storage_path: storagePath,
       file_name: fileName,
       mime_type: mimeType,
@@ -48,6 +56,33 @@ export async function POST(request: Request) {
     .select("*")
     .single();
   if (error) return jsonError(error.message, 400);
+
+  if (String(form.get("apply_identity") || "") === "1") {
+    const identity = {
+      first_name: emptyToNull(form.get("first_name")),
+      last_name: emptyToNull(form.get("last_name")),
+      birth_date: emptyToNull(form.get("birth_date")),
+      nationality:
+        resolveCountryCode(String(form.get("nationality") || "")) ||
+        emptyToNull(form.get("nationality")),
+      sex: emptyToNull(form.get("sex")),
+    };
+    const filled = Object.fromEntries(
+      Object.entries(identity).filter(([, value]) => value != null)
+    );
+    if (Object.keys(filled).length > 0) {
+      if (companionId) {
+        await auth.supabase
+          .from("crm_travel_companions")
+          .update(filled)
+          .eq("id", companionId)
+          .eq("customer_id", auth.customer.id);
+      } else {
+        await auth.supabase.from("crm_customers").update(filled).eq("id", auth.customer.id);
+      }
+    }
+  }
+
   return NextResponse.json({ document: data });
 }
 

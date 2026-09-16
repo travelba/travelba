@@ -5,6 +5,11 @@ import { useMemo, useState } from "react";
 import type { CrmBalance, CrmCustomer } from "@/lib/crm/types";
 import { customerFullName } from "@/lib/crm/types";
 import { formatMoney } from "@/lib/crm/money";
+import { formatPhoneDisplay } from "@/lib/crm/phone";
+
+function initials(c: CrmCustomer) {
+  return [c.first_name?.[0], c.last_name?.[0]].filter(Boolean).join("").toUpperCase() || "?";
+}
 
 export function ClientsTable({
   customers,
@@ -35,38 +40,68 @@ export function ClientsTable({
 
   return (
     <div className="mt-6 space-y-3">
-      <input
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Rechercher un client (nom, email, téléphone)…"
-        className="w-full rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm outline-none focus:border-[var(--admin-navy)] focus:ring-2 focus:ring-[var(--admin-sky)]"
-      />
-      <ul className="admin-af-card divide-y divide-border overflow-hidden rounded-2xl">
-        {filtered.map((c) => (
-          <li key={c.id}>
-            <Link
-              href={`/admin/clients/${c.id}`}
-              className="flex items-center justify-between gap-3 px-5 py-4 transition hover:bg-[var(--admin-sky)]/40"
-            >
-              <div>
-                <p className="font-semibold text-[var(--admin-navy)]">{customerFullName(c)}</p>
-                <p className="text-xs text-muted">
-                  {c.email}
-                  {c.phone ? ` · ${c.phone}` : ""}
-                </p>
-              </div>
-              <p className="shrink-0 text-sm font-semibold">
-                {(bal.get(c.id) || [])
-                  .map((b) => formatMoney(Number(b.balance), b.currency))
-                  .join(" · ") || "—"}
-              </p>
-            </Link>
-          </li>
-        ))}
-        {!filtered.length ? (
-          <li className="px-5 py-8 text-center text-sm text-muted">Aucun client trouvé.</li>
-        ) : null}
-      </ul>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Rechercher un client (nom, e-mail, téléphone)…"
+          className="admin-af-input w-full text-sm"
+        />
+        <p className="shrink-0 font-label text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+          {filtered.length} client{filtered.length > 1 ? "s" : ""}
+        </p>
+      </div>
+      <div className="admin-af-card overflow-hidden rounded-2xl">
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left text-sm">
+            <thead className="bg-[var(--admin-sky)]/70 font-label text-[10px] font-bold uppercase tracking-[0.12em] text-muted">
+              <tr>
+                <th className="px-5 py-3">Client</th>
+                <th className="px-5 py-3">E-mail</th>
+                <th className="px-5 py-3">Téléphone</th>
+                <th className="px-5 py-3 text-right">Encours</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {filtered.map((c) => {
+                const rows = bal.get(c.id) || [];
+                const amount = rows[0];
+                const value = amount ? Number(amount.balance) : 0;
+                return (
+                  <tr key={c.id} className="transition hover:bg-[var(--admin-sky)]/40">
+                    <td className="px-5 py-3">
+                      <Link href={`/admin/clients/${c.id}`} className="flex items-center gap-3">
+                        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[11px] font-bold text-[#f8f6f0]">
+                          {initials(c)}
+                        </span>
+                        <span className="font-semibold text-[var(--admin-navy)]">{customerFullName(c)}</span>
+                      </Link>
+                    </td>
+                    <td className="px-5 py-3 text-muted">{c.email}</td>
+                    <td className="px-5 py-3 text-muted">{c.phone ? formatPhoneDisplay(c.phone) : "—"}</td>
+                    <td
+                      className={`px-5 py-3 text-right font-semibold ${
+                        value < 0 ? "text-[var(--admin-red)]" : "text-[var(--admin-navy)]"
+                      }`}
+                    >
+                      {rows.length
+                        ? rows.map((b) => formatMoney(Number(b.balance), b.currency)).join(" · ")
+                        : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+              {!filtered.length ? (
+                <tr>
+                  <td colSpan={4} className="px-5 py-8 text-center text-muted">
+                    Aucun client trouvé.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

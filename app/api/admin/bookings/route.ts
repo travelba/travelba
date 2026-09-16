@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { nextBookingReference, syncBookingDebit } from "@/lib/crm/bookings";
+import { scheduleBookingCover } from "@/lib/crm/cover-generate";
 import type { CrmBooking } from "@/lib/crm/types";
 
 export async function GET() {
@@ -47,5 +48,6 @@ export async function POST(request: Request) {
   if (error) return jsonError(error.message, 400);
   const booking = data as CrmBooking;
   await syncBookingDebit(auth.supabase, booking);
+  scheduleBookingCover(booking);
   return NextResponse.json({ booking });
 }

@@ -50,7 +50,7 @@ function LoginForm() {
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full rounded-xl border border-[var(--border)] bg-white px-3.5 py-3 outline-none focus:border-[var(--admin-navy)] focus:ring-2 focus:ring-[var(--admin-sky)]"
+          className="admin-af-input w-full"
         />
       </label>
       <label className="block space-y-1.5 text-sm">
@@ -62,14 +62,14 @@ function LoginForm() {
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full rounded-xl border border-[var(--border)] bg-white px-3.5 py-3 outline-none focus:border-[var(--admin-navy)] focus:ring-2 focus:ring-[var(--admin-sky)]"
+          className="admin-af-input w-full"
         />
       </label>
       {error ? <p className="text-sm text-[var(--admin-red)]">{error}</p> : null}
       <button
         type="submit"
         disabled={loading}
-        className="admin-af-btn w-full rounded-xl px-4 py-3.5 text-sm disabled:opacity-60"
+        className="admin-af-btn w-full rounded-full px-4 py-3.5 text-sm disabled:opacity-60"
       >
         {loading ? "Connexion…" : "Se connecter"}
       </button>
@@ -83,12 +83,12 @@ export default function AdminLoginPage() {
       <div className="mb-6">
         <BrandMark href="/" subtitle="Back-office" />
       </div>
-      <div className="admin-af-card rounded-2xl border-t-[3px] border-t-[var(--admin-red)] p-8 sm:p-10">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--admin-red)]">
+      <div className="admin-af-card rounded-[1.5rem] p-8 sm:p-10">
+        <p className="font-label text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--admin-red)]">
           Accès agent
         </p>
-        <h1 className="mt-2 font-display text-3xl font-extrabold tracking-tight text-[var(--admin-navy)]">
-          Connexion
+        <h1 className="mt-2 font-display text-3xl font-bold tracking-tight text-[var(--admin-navy)]">
+          Back-office
         </h1>
         <p className="mt-2 text-sm text-muted">
           Réservé à l’équipe Travel Business Agency.

@@ -16,7 +16,7 @@ export default async function AdminClientsPage() {
     <div>
       <PageEyebrow>Back-office</PageEyebrow>
       <PageTitle
-        title="Clients"
+        title="Gestion des clients"
         subtitle="Fiches clients, encours et accès à l’espace voyageur."
       />
       <div className="mt-6">

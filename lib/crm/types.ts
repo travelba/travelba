@@ -92,6 +92,7 @@ export type CrmCustomer = {
   phone: string | null;
   whatsapp: string | null;
   birth_date: string | null;
+  sex: string | null;
   nationality: string | null;
   address_line: string | null;
   postal_code: string | null;

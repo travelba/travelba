@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { Send, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { SERVICE_KEYS } from "@/lib/site";
+import { PhoneField } from "@/components/crm/fields";
 
 type Status = "idle" | "loading" | "success" | "error";
 
@@ -11,6 +12,8 @@ export function ContactForm() {
   const t = useTranslations("Contact.form");
   const tServices = useTranslations("Services");
   const [status, setStatus] = useState<Status>("idle");
+  const [phone, setPhone] = useState("");
+  const [phoneKey, setPhoneKey] = useState(0);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -28,6 +31,8 @@ export function ContactForm() {
       if (!res.ok) throw new Error("Request failed");
       setStatus("success");
       form.reset();
+      setPhone("");
+      setPhoneKey((key) => key + 1);
     } catch {
       setStatus("error");
     }
@@ -68,18 +73,15 @@ export function ContactForm() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <label htmlFor="phone" className="mb-1.5 block text-sm text-muted">
-            {t("phone")}
-          </label>
-          <input
-            id="phone"
-            name="phone"
-            type="tel"
-            placeholder={t("phonePlaceholder")}
-            className={inputClass}
-          />
-        </div>
+        <PhoneField
+          key={phoneKey}
+          name="phone"
+          label={t("phone")}
+          value={phone}
+          onChange={setPhone}
+          controlClassName={inputClass}
+          labelClassName="mb-1.5 block text-sm text-muted"
+        />
         <div>
           <label htmlFor="service" className="mb-1.5 block text-sm text-muted">
             {t("service")}

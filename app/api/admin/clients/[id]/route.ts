@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { resolveCountryCode } from "@/lib/crm/countries";
+import { emptyToNull } from "@/lib/crm/identity";
+import { toE164 } from "@/lib/crm/phone";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -30,6 +33,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
     "phone",
     "whatsapp",
     "birth_date",
+    "sex",
     "nationality",
     "address_line",
     "postal_code",
@@ -37,8 +41,16 @@ export async function PATCH(request: Request, ctx: Ctx) {
     "country",
   ]) {
     if (key in body) {
-      patch[key] =
-        key === "email" ? String(body[key] || "").trim().toLowerCase() : body[key] || null;
+      if (key === "email") {
+        patch[key] = String(body[key] || "").trim().toLowerCase();
+      } else if (key === "phone" || key === "whatsapp") {
+        const raw = emptyToNull(body[key]);
+        patch[key] = raw ? toE164(raw, "FR") || raw : null;
+      } else if (key === "nationality" || key === "country") {
+        patch[key] = resolveCountryCode(String(body[key] || "")) || emptyToNull(body[key]);
+      } else {
+        patch[key] = emptyToNull(body[key]);
+      }
     }
   }
   const { data, error } = await auth.supabase

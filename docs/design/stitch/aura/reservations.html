@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+
+<html lang="fr"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{width:100vw;margin:0;padding:0;}body{overscroll-behavior:none;}.pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}.pt-safe{padding-top:env(safe-area-inset-top,0px);}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: 'class', theme: { extend: { colors: { 'surface-container-high': '#e0e9f3', 'secondary': '#a13e28', 'error-container': '#ffdad6', 'outline-variant': '#c4c6cd', 'surface-tint': '#4c6078', 'surface': '#f6faff', 'on-tertiary': '#ffffff', 'on-secondary-fixed-variant': '#822714', 'error': '#ba1a1a', 'on-primary-fixed-variant': '#34485f', 'on-primary': '#ffffff', 'on-secondary': '#ffffff', 'surface-container-lowest': '#ffffff', 'surface-container': '#e6eff9', 'on-surface-variant': '#43474d', 'tertiary': '#735c00', 'outline': '#74777d', 'on-tertiary-container': '#4f3e00', 'on-primary-container': '#778ca5', 'on-primary-fixed': '#061d31', 'inverse-primary': '#b3c8e4', 'tertiary-fixed-dim': '#e9c349', 'secondary-container': '#fd8367', 'surface-bright': '#f6faff', 'on-secondary-container': '#721c09', 'tertiary-fixed': '#ffe088', 'primary-fixed-dim': '#b3c8e4', 'primary': '#000e1d', 'on-surface': '#141d23', 'primary-fixed': '#d0e4ff', 'on-error': '#ffffff', 'background': '#f6faff', 'secondary-fixed-dim': '#ffb4a3', 'secondary-fixed': '#ffdad2', 'on-tertiary-fixed': '#241a00', 'primary-container': '#0e2439', 'inverse-surface': '#283139', 'surface-dim': '#d2dbe5', 'on-tertiary-fixed-variant': '#574500', 'on-secondary-fixed': '#3d0600', 'surface-container-highest': '#dae4ed', 'surface-container-low': '#ebf5fe', 'tertiary-container': '#cca830', 'on-background': '#141d23', 'on-error-container': '#93000a', 'surface-variant': '#dae4ed', 'inverse-on-surface': '#e9f2fc' }, borderRadius: { 'DEFAULT': '1rem', 'lg': '2rem', 'xl': '3rem', 'full': '9999px' }, spacing: { 'space-xs': '0.25rem', 'margin': '1.25rem', 'space-sm': '0.5rem', 'space-md': '1rem', 'space-xl': '2.25rem', 'space-lg': '1.5rem', 'gutter': '1rem' }, fontFamily: { 'label-lg': ['Space Grotesk'], 'label-md': ['Space Grotesk'], 'display-hero': ['Plus Jakarta Sans'], 'label-caps': ['Space Grotesk'], 'body-lg': ['Plus Jakarta Sans'], 'body-md': ['Plus Jakarta Sans'], 'headline-lg': ['Plus Jakarta Sans'], 'body-sm': ['Plus Jakarta Sans'], 'title-md': ['Plus Jakarta Sans'], 'title-lg': ['Plus Jakarta Sans'], 'headline-md': ['Plus Jakarta Sans'], 'headline-sm': ['Plus Jakarta Sans'], 'display-hero-mobile': ['Plus Jakarta Sans'] }, fontSize: { 'label-lg': ['13px', { lineHeight: '16px', letterSpacing: '0.04em', fontWeight: '600' }], 'label-md': ['11px', { lineHeight: '14px', letterSpacing: '0.06em', fontWeight: '600' }], 'display-hero': ['44px', { lineHeight: '52px', letterSpacing: '-0.03em', fontWeight: '700' }], 'label-caps': ['10px', { lineHeight: '14px', letterSpacing: '0.12em', fontWeight: '700' }], 'body-lg': ['16px', { lineHeight: '26px', fontWeight: '400' }], 'body-md': ['14px', { lineHeight: '22px', fontWeight: '400' }], 'headline-lg': ['30px', { lineHeight: '38px', letterSpacing: '-0.02em', fontWeight: '600' }], 'body-sm': ['12px', { lineHeight: '18px', fontWeight: '400' }], 'title-md': ['16px', { lineHeight: '22px', fontWeight: '600' }], 'title-lg': ['18px', { lineHeight: '24px', letterSpacing: '-0.01em', fontWeight: '600' }], 'headline-md': ['24px', { lineHeight: '32px', letterSpacing: '-0.015em', fontWeight: '600' }], 'headline-sm': ['20px', { lineHeight: '28px', letterSpacing: '-0.01em', fontWeight: '600' }], 'display-hero-mobile': ['34px', { lineHeight: '40px', letterSpacing: '-0.025em', fontWeight: '700' }] } } } }</script><style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head><body class="bg-surface font-body-md text-body-md text-on-surface flex flex-col min-h-screen"><header class="fixed top-0 w-full z-50 pt-safe bg-surface/85 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="h-16 px-margin flex items-center justify-between"><div class="flex items-center gap-space-sm"><img alt="Logo Aura Voyages" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/AEtjO1VauGzXN20BEEA98Z0u8S4WrHVEzbGwSTbA-VZpIrqgHDG5sdWoOz9zNkzfNGrHdiCRvWvlMPiRQt7pEd_KTQxLH8r2N5gxKURw7lgVtb8n_ZVCAYx2-6oWTpCBTyu_tYmdb7I1vhouJBDthCeiTpGoxpcYKY1RAHTappArw95qWAfYcCdDi917gU-hhFH8lgVOgCnpSP2SCLvezmB0wKckZ-xkDOV9ACDDdwIiON_Psw9_yn6tgoi0xw"/><div class="flex flex-col"><span class="font-label-caps text-label-caps tracking-widest text-on-surface-variant uppercase">Aura Voyages</span><span class="font-title-md text-title-md text-primary">Réservations</span></div></div><div class="flex items-center gap-space-sm"><div class="relative flex items-center justify-center"><div class="relative p-0.5 rounded-full bg-surface-container-high"><img alt="Profile" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA6SSbtzndKHhBv-nPSyN9sHY8ILw2hmD543xAmIcr9skb0shAWJkXuak1Xjr0sSTUjX1od6FPPA3RIVxFMFdXj37G2je2Lxtpx4rrJRpyKnGnnbGSRnAMXOTp1_1mm7d5_eP-xmUmAzGHvfoUwmbUy7DPDvTHNbLA4lsJRZp0QoeZxTKeyvW23K2gX-A835VpY6NXg3MFI74J4XMGjGXHf9VceIrYNwQHPsfK5dgqe5ipqiuoh6cbd"/></div><span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-secondary rounded-full ring-2 ring-surface flex items-center justify-center"><span class="w-1.5 h-1.5 rounded-full bg-on-secondary"></span></span></div></div></div></header><main class="flex-1 flex flex-col relative w-full pt-16 pb-28 bg-surface"><div class="flex flex-col w-full">
+<!-- Interactive Tabs Section -->
+<div class="px-margin pt-space-md pb-space-xs">
+<div class="bg-surface-container p-1 rounded-full flex items-center shadow-sm">
+<button class="flex-1 py-2.5 px-space-md rounded-full font-label-lg text-label-lg transition-all duration-300 flex items-center justify-center gap-2 bg-primary-container text-on-primary shadow-md" id="tab-upcoming-btn" onclick="switchTab('upcoming')">
+<span>À venir</span>
+<span class="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-label-caps font-label-caps bg-secondary text-on-secondary">2</span>
+</button>
+<button class="flex-1 py-2.5 px-space-md rounded-full font-label-lg text-label-lg transition-all duration-300 flex items-center justify-center gap-2 text-on-surface-variant hover:text-on-surface" id="tab-past-btn" onclick="switchTab('past')">
+<span>Passées</span>
+<span class="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-label-caps font-label-caps bg-surface-container-high text-on-surface-variant">5</span>
+</button>
+</div>
+</div>
+<!-- UPCOMING TAB CONTENT -->
+<div class="flex flex-col gap-space-lg px-margin pt-space-sm pb-space-lg transition-opacity duration-300" id="tab-upcoming-content">
+<!-- Editorial Subtitle & Quick Stat -->
+<div class="flex items-center justify-between pt-space-xs">
+<div>
+<p class="font-label-caps text-label-caps text-secondary uppercase tracking-widest">Vos Départs Prévus</p>
+<p class="font-headline-sm text-headline-sm text-primary mt-0.5">Expéditions Célestes</p>
+</div>
+<div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-container-high text-on-surface-variant">
+<span class="material-symbols-outlined text-[18px] text-tertiary">verified_user</span>
+<span class="font-label-md text-label-md">Conciergerie active</span>
+</div>
+</div>
+<!-- Card 1: Principal - Japon Majestueux -->
+<div class="relative bg-surface-container-lowest rounded-lg shadow-[0_10px_30px_-6px_rgba(14,36,57,0.08)] overflow-hidden flex flex-col">
+<!-- Media Header with Aspect & Gradient Scrim -->
+<div class="relative h-56 w-full overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="Breathtaking panoramic view of Kyoto Arashiyama bamboo path with warm morning golden light filtering through dense towering green stalks, peaceful ambiance with a refined Japanese pavilion roof in soft focus, warm sand and ecru lighting tones, high-end travel magazine aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDLpJY-gAdWmcunaU8XI8IhzoBr9UJ0pow6XwgdCSDuXenkfBpJEy2hnDDfL8QpxTBnSDAykhIFQZ3Dn4oZ9ar07W5wQl_AEdnvCmwJik30Wfd4leB0oL1Q28vrcSi8zB6Fx_cIMuOabxVVoZS3we6K7PCasgENZPwdiCTBajXWpgbEikiNblj2xw_egkHSx-6UomfT4yiaqgAE-jOxapExISZn333vB5kUtxHD78Tu-04sQ76222fs"/>
+<div class="absolute inset-0 bg-gradient-to-t from-primary/95 via-primary/40 to-transparent"></div>
+<!-- Status & Badge Pill Overlay -->
+<div class="absolute top-4 left-4 right-4 flex items-center justify-between">
+<span class="px-3 py-1.5 rounded-full bg-surface-container-lowest/90 backdrop-blur-md text-primary font-label-caps text-label-caps tracking-widest uppercase flex items-center gap-1.5 shadow-sm">
+<span class="w-2 h-2 rounded-full bg-[#1b8754]"></span>
+<span>Confirmé</span>
+</span>
+<span class="px-3 py-1.5 rounded-full bg-surface-container-lowest/90 backdrop-blur-md text-on-surface font-label-md text-label-md shadow-sm">
+            #AV-2025-8942
+          </span>
+</div>
+<!-- Hero Destination Info Inside Media -->
+<div class="absolute bottom-4 left-4 right-4 text-on-primary">
+<p class="font-label-caps text-label-caps tracking-widest text-primary-fixed uppercase mb-1">Grand Itinéraire • 14 Jours</p>
+<h2 class="font-headline-md text-headline-md text-on-primary leading-tight">Japon Majestueux</h2>
+<p class="font-body-sm text-body-sm text-primary-fixed-dim mt-0.5 flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[16px] text-secondary-container">calendar_today</span>
+            15 - 28 Octobre 2025 (Kyoto &amp; Tokyo)
+          </p>
+</div>
+</div>
+<!-- Content Details -->
+<div class="p-space-md flex flex-col gap-space-md">
+<!-- Travelers Pill Strip -->
+<div class="flex items-center justify-between bg-surface-container-low p-space-sm rounded-DEFAULT">
+<div class="flex items-center gap-2">
+<div class="w-8 h-8 rounded-full bg-primary-container text-on-primary flex items-center justify-center">
+<span class="material-symbols-outlined text-[18px]">group</span>
+</div>
+<div>
+<p class="font-label-caps text-label-caps text-on-surface-variant uppercase">Passagers Privés</p>
+<p class="font-title-md text-title-md text-primary">Marc Dupont • Sophie Dupont</p>
+</div>
+</div>
+<span class="font-label-caps text-label-caps px-2 py-1 bg-surface-container-highest rounded-full text-on-surface-variant">2 Voyageurs</span>
+</div>
+<!-- Synthesis Mini-Grid (No borders, subtle tonal cards) -->
+<div class="grid grid-cols-3 gap-2">
+<div class="bg-surface-container-low p-2.5 rounded-DEFAULT flex flex-col items-center text-center">
+<span class="material-symbols-outlined text-secondary text-[22px] mb-1">flight_takeoff</span>
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Vols A/R</span>
+<span class="font-title-md text-title-md text-primary mt-0.5">Air France</span>
+</div>
+<div class="bg-surface-container-low p-2.5 rounded-DEFAULT flex flex-col items-center text-center">
+<span class="material-symbols-outlined text-tertiary text-[22px] mb-1">hotel_class</span>
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Séjour</span>
+<span class="font-title-md text-title-md text-primary mt-0.5">2 Hôtels 5★</span>
+</div>
+<div class="bg-surface-container-low p-2.5 rounded-DEFAULT flex flex-col items-center text-center">
+<span class="material-symbols-outlined text-surface-tint text-[22px] mb-1">explore</span>
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Programme</span>
+<span class="font-title-md text-title-md text-primary mt-0.5">4 Privées</span>
+</div>
+</div>
+<!-- Payment Progress & Balance Display -->
+<div class="bg-surface-container-low p-space-md rounded-DEFAULT flex flex-col gap-2.5">
+<div class="flex justify-between items-baseline">
+<div>
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Budget Expédition</span>
+<p class="font-headline-sm text-headline-sm text-primary">8 400 €</p>
+</div>
+<div class="text-right">
+<span class="font-label-caps text-label-caps text-secondary uppercase">Encours Restant</span>
+<p class="font-headline-sm text-headline-sm text-secondary">680 €</p>
+</div>
+</div>
+<!-- Custom Segmented Gauge Bar -->
+<div class="w-full bg-surface-container-highest h-2.5 rounded-full overflow-hidden flex">
+<div class="bg-primary-container h-full rounded-full transition-all duration-500" style="width: 91.9%;"></div>
+</div>
+<div class="flex justify-between items-center text-on-surface-variant">
+<span class="font-body-sm text-body-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px] text-[#1b8754]">check_circle</span>
+              Réglé : 7 720 € (92%)
+            </span>
+<span class="font-body-sm text-body-sm">Échéance : 15 Sept.</span>
+</div>
+</div>
+<!-- Primary Action CTAs -->
+<div class="flex flex-col gap-2 pt-space-xs">
+<!-- Main CTA -->
+<button class="w-full h-14 rounded-full bg-primary-container text-on-primary font-label-lg text-label-lg flex items-center justify-center gap-2 shadow-md active:scale-[0.98] transition-transform">
+<span class="material-symbols-outlined text-[20px] text-tertiary-fixed">auto_stories</span>
+<span>Voir le carnet de voyage</span>
+<span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</button>
+<!-- Secondary Auxiliary Actions -->
+<div class="grid grid-cols-2 gap-2">
+<button class="h-11 rounded-full bg-surface-container text-primary font-label-md text-label-md flex items-center justify-center gap-1.5 active:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-[18px]">tune</span>
+<span>Gérer ma réservation</span>
+</button>
+<button class="h-11 rounded-full bg-surface-container text-primary font-label-md text-label-md flex items-center justify-center gap-1.5 active:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-[18px]">receipt_long</span>
+<span>Télécharger vouchers</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Card 2: Venise en Hiver -->
+<div class="relative bg-surface-container-lowest rounded-lg shadow-[0_10px_30px_-6px_rgba(14,36,57,0.06)] overflow-hidden flex flex-col">
+<!-- Media Header -->
+<div class="relative h-44 w-full overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="Romantic twilight in Venice during winter season with a private handcrafted wooden gondola moored along the misty Grand Canal facing historic baroque palaces, atmospheric warm amber streetlights glowing against blue hour water, luxury serene vibe." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAmye2eZ5CMy8G5l5vId37RVqvxnOREKfsLEiUyrI7nTdcDTV6Rmv2y_P-RGVfGGW2-bOjEGDygksIJU0oQ1195Gu5qths-O9JTaM_n9e15UDlcNsjqtbPiJMS9Qp4pGhNGqxtwr7-cP_X0X5395J-DPjm877AR85qdBKTeBBvIISP0QMZLJTF0O40epZLeQSPLoKXZEA04zbpw8aKwjGEtJ9Q0yB5p954FogixI6ghnwjTA5N1PqzB"/>
+<div class="absolute inset-0 bg-gradient-to-t from-primary/95 via-primary/30 to-transparent"></div>
+<!-- Status & Dossier -->
+<div class="absolute top-4 left-4 right-4 flex items-center justify-between">
+<span class="px-3 py-1.5 rounded-full bg-surface-container-lowest/90 backdrop-blur-md text-primary font-label-caps text-label-caps tracking-widest uppercase flex items-center gap-1.5 shadow-sm">
+<span class="w-2 h-2 rounded-full bg-primary-fixed-dim"></span>
+<span>Acompte Validé</span>
+</span>
+<span class="px-3 py-1.5 rounded-full bg-surface-container-lowest/90 backdrop-blur-md text-on-surface font-label-md text-label-md shadow-sm">
+            #AV-2025-9104
+          </span>
+</div>
+<div class="absolute bottom-3 left-4 right-4 text-on-primary">
+<p class="font-label-caps text-label-caps tracking-widest text-primary-fixed uppercase mb-0.5">Court Séjour • 4 Jours</p>
+<h3 class="font-headline-sm text-headline-sm text-on-primary">Escapade Sérénissime - Venise</h3>
+<p class="font-body-sm text-body-sm text-primary-fixed-dim flex items-center gap-1 mt-0.5">
+<span class="material-symbols-outlined text-[16px] text-secondary-container">calendar_today</span>
+            12 - 15 Décembre 2025
+          </p>
+</div>
+</div>
+<!-- Venise Content -->
+<div class="p-space-md flex flex-col gap-space-sm">
+<div class="flex items-center gap-3 bg-surface-container-low p-space-sm rounded-DEFAULT">
+<div class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center text-primary shrink-0">
+<span class="material-symbols-outlined text-[20px]">apartment</span>
+</div>
+<div class="min-w-0 flex-1">
+<p class="font-label-caps text-label-caps text-on-surface-variant uppercase">Hébergement &amp; Curation</p>
+<p class="font-title-md text-title-md text-primary truncate">Hôtel Danieli • Gondole privée</p>
+</div>
+</div>
+<div class="flex items-center justify-between bg-surface-container-low px-space-md py-2.5 rounded-DEFAULT">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Solde restant à régler</span>
+<span class="font-headline-sm text-headline-sm text-primary">1 850 €</span>
+</div>
+<div class="flex gap-2 pt-1">
+<button class="flex-1 h-12 rounded-full bg-primary-container text-on-primary font-label-md text-label-md flex items-center justify-center gap-1.5 shadow-sm active:scale-[0.98]">
+<span class="material-symbols-outlined text-[18px]">visibility</span>
+<span>Consulter le dossier</span>
+</button>
+<button class="h-12 w-12 rounded-full bg-surface-container text-primary flex items-center justify-center shrink-0 active:bg-surface-container-high">
+<span class="material-symbols-outlined text-[20px]">credit_card</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Concierge Assistance Banner -->
+<div class="bg-surface-container rounded-lg p-space-md flex items-center gap-space-md shadow-sm">
+<div class="w-12 h-12 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[24px]">support_agent</span>
+</div>
+<div class="flex-1 min-w-0">
+<h4 class="font-title-md text-title-md text-primary">Besoin d'un ajustement ?</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant line-clamp-1">Votre concierge dédié Aura est joignable 7j/7.</p>
+</div>
+<button class="px-3 py-2 rounded-full bg-surface-container-lowest text-primary font-label-md text-label-md shrink-0 shadow-sm">
+        Contacter
+      </button>
+</div>
+</div>
+<!-- PAST TAB CONTENT (Initially Hidden) -->
+<div class="hidden flex-col gap-space-md px-margin pt-space-sm pb-space-lg transition-opacity duration-300" id="tab-past-content">
+<!-- Past Header Info -->
+<div class="flex items-center justify-between pt-space-xs">
+<div>
+<p class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest">Vos Souvenirs</p>
+<p class="font-headline-sm text-headline-sm text-primary mt-0.5">5 Voyages Réalisés</p>
+</div>
+<button class="font-label-md text-label-md text-secondary flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">tune</span>
+        Filtrer par année
+      </button>
+</div>
+<!-- Past Card 1: Tanzanie 2024 -->
+<div class="bg-surface-container-lowest rounded-lg shadow-sm overflow-hidden flex flex-col">
+<div class="relative h-36 w-full">
+<img class="w-full h-full object-cover" data-alt="Serengeti national park savanna landscape at sunset with silhouettes of acacia trees and elephants in the distance, warm orange glow and golden haze, warm sand tones." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBcVoW0No05y17RXU7V1O0iTDnbGACtFVIpkYx1-5oIEiuaGQAZ2SFm_SWQrV7O2gil1FnT9QZ_VF6ervoy3x8qP3JsYT-1-lLvFfAX-MaDHjts28t3ohLdclZBMo2SbakLjKP_ZGeOS4qOXwOig3l9fnii0-McBRj8VdZSVxl9JmcQY62PfAAW6gjdbCHFoYfjo2rtDeJqiYCbKMeXZWABlVX3NX37tcdYYEsCv4b7azNg6jlqlUyg"/>
+<div class="absolute inset-0 bg-gradient-to-t from-primary/80 to-transparent"></div>
+<div class="absolute top-3 right-3">
+<span class="px-2.5 py-1 rounded-full bg-surface-container-lowest/90 backdrop-blur-sm text-on-surface-variant font-label-caps text-label-caps uppercase">
+            Septembre 2024
+          </span>
+</div>
+<div class="absolute bottom-3 left-4 right-4 text-on-primary">
+<h3 class="font-title-lg text-title-lg text-on-primary">Safari Grand Cratère • Tanzanie</h3>
+<p class="font-body-sm text-body-sm text-primary-fixed-dim">10 Jours • Lodge Ngorongoro &amp; Serengeti</p>
+</div>
+</div>
+<div class="p-space-md flex flex-col gap-space-sm">
+<div class="flex items-center justify-between text-on-surface-variant">
+<span class="font-label-md text-label-md">Dossier #AV-2024-4110</span>
+<span class="font-title-md text-title-md text-primary">6 250 € (Clôturé)</span>
+</div>
+<div class="flex gap-2 pt-1">
+<button class="flex-1 h-11 rounded-full bg-surface-container text-primary font-label-md text-label-md flex items-center justify-center gap-1.5 active:bg-surface-container-high">
+<span class="material-symbols-outlined text-[18px] text-tertiary">download</span>
+<span>Facture acquittée</span>
+</button>
+<button class="flex-1 h-11 rounded-full bg-primary-container text-on-primary font-label-md text-label-md flex items-center justify-center gap-1.5 shadow-sm active:scale-[0.98]">
+<span class="material-symbols-outlined text-[18px]">replay</span>
+<span>Repartir similaire</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Past Card 2: Cyclades 2023 -->
+<div class="bg-surface-container-lowest rounded-lg shadow-sm overflow-hidden flex flex-col">
+<div class="relative h-36 w-full">
+<img class="w-full h-full object-cover" data-alt="Traditional white stone architecture in Santorini with Aegean deep blue sea in background and blooming pink bougainvillea draping over a sunlit terrace, clean editorial luxury photography." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA-5pod0c7lUb7DycbxEp37ARq5UChuUbxaXM6yqqcTdWoXo6FpX8uKgUNNrO2uZH03QstfiIFUHHD3EoV6da4fffKUf7b0qy9n1ikpzrY2WnHCygpGjsiqM8jxESjWHpsM4qGma6k63FQYEnOGsnlyBtnEDvJ-ENihg9AyDhlBoEQ1PLtduYktVcfNngneXdDPwJBRxBRO4tQkHurMvkIgt0VRlwdovndMtiNl8ysYJmzdKM1h6QRZ"/>
+<div class="absolute inset-0 bg-gradient-to-t from-primary/80 to-transparent"></div>
+<div class="absolute top-3 right-3">
+<span class="px-2.5 py-1 rounded-full bg-surface-container-lowest/90 backdrop-blur-sm text-on-surface-variant font-label-caps text-label-caps uppercase">
+            Juin 2023
+          </span>
+</div>
+<div class="absolute bottom-3 left-4 right-4 text-on-primary">
+<h3 class="font-title-lg text-title-lg text-on-primary">Odyssée Cycladique • Grèce</h3>
+<p class="font-body-sm text-body-sm text-primary-fixed-dim">8 Jours • Paros, Naxos &amp; Santorin</p>
+</div>
+</div>
+<div class="p-space-md flex flex-col gap-space-sm">
+<div class="flex items-center justify-between text-on-surface-variant">
+<span class="font-label-md text-label-md">Dossier #AV-2023-1982</span>
+<span class="font-title-md text-title-md text-primary">4 890 € (Clôturé)</span>
+</div>
+<div class="flex gap-2 pt-1">
+<button class="flex-1 h-11 rounded-full bg-surface-container text-primary font-label-md text-label-md flex items-center justify-center gap-1.5 active:bg-surface-container-high">
+<span class="material-symbols-outlined text-[18px] text-tertiary">download</span>
+<span>Facture acquittée</span>
+</button>
+<button class="flex-1 h-11 rounded-full bg-primary-container text-on-primary font-label-md text-label-md flex items-center justify-center gap-1.5 shadow-sm active:scale-[0.98]">
+<span class="material-symbols-outlined text-[18px]">replay</span>
+<span>Repartir similaire</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Past Card 3: Rajasthan 2022 (Historical archive item) -->
+<div class="bg-surface-container-low rounded-lg p-space-md flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[20px]">castle</span>
+</div>
+<div>
+<h4 class="font-title-md text-title-md text-primary">Palais du Rajasthan</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Novembre 2022 • 12 Jours</p>
+</div>
+</div>
+<button class="w-10 h-10 rounded-full bg-surface-container-lowest flex items-center justify-center text-on-surface-variant shadow-sm active:bg-surface-container">
+<span class="material-symbols-outlined text-[20px]">download</span>
+</button>
+</div>
+</div>
+</div>
+<script>
+  function switchTab(target) {
+    const upcomingBtn = document.getElementById('tab-upcoming-btn');
+    const pastBtn = document.getElementById('tab-past-btn');
+    const upcomingContent = document.getElementById('tab-upcoming-content');
+    const pastContent = document.getElementById('tab-past-content');
+
+    if (target === 'upcoming') {
+      // Button states
+      upcomingBtn.className = 'flex-1 py-2.5 px-space-md rounded-full font-label-lg text-label-lg transition-all duration-300 flex items-center justify-center gap-2 bg-primary-container text-on-primary shadow-md';
+      pastBtn.className = 'flex-1 py-2.5 px-space-md rounded-full font-label-lg text-label-lg transition-all duration-300 flex items-center justify-center gap-2 text-on-surface-variant hover:text-on-surface';
+      
+      // Content visibility
+      upcomingContent.classList.remove('hidden');
+      upcomingContent.classList.add('flex');
+      pastContent.classList.add('hidden');
+      pastContent.classList.remove('flex');
+    } else {
+      // Button states
+      pastBtn.className = 'flex-1 py-2.5 px-space-md rounded-full font-label-lg text-label-lg transition-all duration-300 flex items-center justify-center gap-2 bg-primary-container text-on-primary shadow-md';
+      upcomingBtn.className = 'flex-1 py-2.5 px-space-md rounded-full font-label-lg text-label-lg transition-all duration-300 flex items-center justify-center gap-2 text-on-surface-variant hover:text-on-surface';
+      
+      // Content visibility
+      pastContent.classList.remove('hidden');
+      pastContent.classList.add('flex');
+      upcomingContent.classList.add('hidden');
+      upcomingContent.classList.remove('flex');
+    }
+  }
+</script></main><div class="fixed bottom-0 w-full z-50 pb-safe pointer-events-none px-margin"><nav class="pointer-events-auto mb-4 mx-auto max-w-[390px] h-16 rounded-full bg-surface-container-lowest/90 backdrop-blur-xl shadow-[0_12px_32px_-4px_rgba(14,36,57,0.12)] flex items-center justify-around px-space-xs" data-active-classes="text-secondary"><a class="flex flex-col items-center justify-center min-w-[44px] min-h-[44px] px-2 py-1 text-on-surface-variant hover:text-on-surface transition-colors" data-path="accueil" href="#"><span class="material-symbols-outlined text-[22px]">home</span><span class="font-label-md text-label-md">Accueil</span></a><a class="flex flex-col items-center justify-center min-w-[44px] min-h-[44px] px-2 py-1 text-on-surface-variant hover:text-on-surface transition-colors" data-path="reservations" href="#"><span class="material-symbols-outlined text-[22px]">calendar_month</span><span class="font-label-md text-label-md">Réservations</span></a><a class="flex flex-col items-center justify-center min-w-[44px] min-h-[44px] px-2 py-1 text-on-surface-variant hover:text-on-surface transition-colors" data-path="carnet" href="#"><span class="material-symbols-outlined text-[22px]">explore</span><span class="font-label-md text-label-md">Carnet</span></a><a class="flex flex-col items-center justify-center min-w-[44px] min-h-[44px] px-2 py-1 text-on-surface-variant hover:text-on-surface transition-colors" data-path="finances-solde" href="#"><span class="material-symbols-outlined text-[22px]">account_balance_wallet</span><span class="font-label-md text-label-md">Finances</span></a><a class="flex flex-col items-center justify-center min-w-[44px] min-h-[44px] px-2 py-1 text-on-surface-variant hover:text-on-surface transition-colors" data-path="mon-compte" href="#"><span class="material-symbols-outlined text-[22px]">manage_accounts</span><span class="font-label-md text-label-md">Compte</span></a></nav></div></body></html>

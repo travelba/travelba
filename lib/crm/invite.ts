@@ -1,0 +1,168 @@
+import { Resend } from "resend";
+import { createServiceClient } from "@/lib/supabase/admin";
+import { siteConfig } from "@/lib/site";
+import { customerFullName, type CrmCustomer } from "@/lib/crm/types";
+import { SET_PASSWORD_PATH, mustSetPassword } from "@/lib/crm/session";
+
+export type PortalAccess = {
+  status: "none" | "invited" | "ready";
+  lastSignInAt: string | null;
+};
+
+export type InviteResult = {
+  customer: CrmCustomer;
+  delivered: boolean;
+};
+
+export function appOrigin(request: Request) {
+  const env = (process.env.NEXT_PUBLIC_SITE_URL || "").trim().replace(/\/$/, "");
+  if (env) return env;
+  return new URL(request.url).origin;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function isAlreadyRegistered(message: string) {
+  return /already been registered|already registered|email_exists|user already exists/i.test(
+    message
+  );
+}
+
+function inviteEmailHtml(customer: CrmCustomer, link: string) {
+  const name = customer.first_name || "Bonjour";
+  return `
+    <div style="font-family:Georgia,serif;background:#F2F4F8;padding:32px 16px">
+      <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;color:#002157">
+        <p style="margin:0 0 8px;font-size:12px;letter-spacing:0.16em;text-transform:uppercase;color:#E81932">Espace voyageur</p>
+        <h1 style="margin:0 0 16px;font-size:24px">${siteConfig.shortName}</h1>
+        <p style="margin:0 0 16px;line-height:1.5">Bonjour ${escapeHtml(name)},</p>
+        <p style="margin:0 0 16px;line-height:1.5">
+          Votre espace personnel ${escapeHtml(siteConfig.name)} est prêt.
+          Cliquez sur le bouton ci-dessous pour définir votre mot de passe
+          et accéder à vos voyages.
+        </p>
+        <p style="margin:24px 0">
+          <a href="${escapeHtml(link)}" style="display:inline-block;background:#E81932;color:#fff;text-decoration:none;padding:14px 22px;border-radius:999px;font-weight:600">
+            Accéder à mon espace
+          </a>
+        </p>
+        <p style="margin:0 0 8px;font-size:13px;color:#5b6475;line-height:1.5">
+          Ce lien expire sous 24&nbsp;heures. Si vous n’êtes pas à l’origine de cette invitation, ignorez cet e-mail.
+        </p>
+        <p style="margin:24px 0 0;font-size:12px;color:#5b6475">
+          ${escapeHtml(siteConfig.name)} · ${escapeHtml(siteConfig.phoneDisplay)}
+        </p>
+      </div>
+    </div>
+  `;
+}
+
+async function sendInviteEmail(customer: CrmCustomer, link: string) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.info("[invite] RESEND_API_KEY manquante — lien non envoyé:", {
+      email: customer.email,
+      link,
+    });
+    return false;
+  }
+
+  const from = process.env.CONTACT_FROM_EMAIL || "onboarding@resend.dev";
+  const resend = new Resend(apiKey);
+  const { error } = await resend.emails.send({
+    from: `${siteConfig.name} <${from}>`,
+    to: [customer.email],
+    replyTo: siteConfig.contactEmail,
+    subject: `Votre espace voyageur ${siteConfig.shortName}`,
+    html: inviteEmailHtml(customer, link),
+  });
+  if (error) {
+    console.error("[invite] Resend error:", error);
+    throw new Error("L’envoi de l’invitation a échoué");
+  }
+  return true;
+}
+
+export async function getPortalAccess(customer: CrmCustomer): Promise<PortalAccess> {
+  if (!customer.auth_user_id) return { status: "none", lastSignInAt: null };
+  try {
+    const admin = createServiceClient();
+    const { data, error } = await admin.auth.admin.getUserById(customer.auth_user_id);
+    if (error || !data.user) return { status: "none", lastSignInAt: null };
+    return {
+      status: mustSetPassword(data.user) ? "invited" : "ready",
+      lastSignInAt: data.user.last_sign_in_at ?? null,
+    };
+  } catch {
+    return { status: "none", lastSignInAt: null };
+  }
+}
+
+export async function inviteCustomer(
+  customer: CrmCustomer,
+  origin: string
+): Promise<InviteResult> {
+  const admin = createServiceClient();
+  const email = customer.email.trim().toLowerCase();
+  const metadata = {
+    first_name: customer.first_name,
+    last_name: customer.last_name,
+    full_name: customerFullName(customer),
+  };
+
+  let linkType: "invite" | "recovery" = "invite";
+  let generated = await admin.auth.admin.generateLink({
+    type: "invite",
+    email,
+    options: { data: metadata },
+  });
+
+  if (generated.error && isAlreadyRegistered(generated.error.message)) {
+    linkType = "recovery";
+    generated = await admin.auth.admin.generateLink({
+      type: "recovery",
+      email,
+    });
+  }
+
+  if (generated.error || !generated.data?.user || !generated.data.properties?.hashed_token) {
+    throw new Error(generated.error?.message || "Impossible de générer l’invitation");
+  }
+
+  const authUser = generated.data.user;
+  const hashedToken = generated.data.properties.hashed_token;
+  const { data: fresh } = await admin.auth.admin.getUserById(authUser.id);
+  const currentMeta = fresh.user?.app_metadata || authUser.app_metadata || {};
+
+  const { error: metaError } = await admin.auth.admin.updateUserById(authUser.id, {
+    user_metadata: { ...authUser.user_metadata, ...metadata },
+    app_metadata: { ...currentMeta, must_set_password: true, crm_role: "client" },
+  });
+  if (metaError) throw new Error(metaError.message);
+
+  let linked = customer;
+  if (customer.auth_user_id !== authUser.id) {
+    const { data: updated, error: linkError } = await admin
+      .from("crm_customers")
+      .update({ auth_user_id: authUser.id })
+      .eq("id", customer.id)
+      .select("*")
+      .single();
+    if (linkError) throw new Error(linkError.message);
+    linked = updated as CrmCustomer;
+  }
+
+  const callback = new URL("/auth/callback", origin);
+  callback.searchParams.set("token_hash", hashedToken);
+  callback.searchParams.set("type", linkType);
+  callback.searchParams.set("next", SET_PASSWORD_PATH);
+
+  const delivered = await sendInviteEmail(linked, callback.toString());
+  return { customer: linked, delivered };
+}

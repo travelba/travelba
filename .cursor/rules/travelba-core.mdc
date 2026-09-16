@@ -14,6 +14,7 @@ Produit FR pour agence de voyage : back-office `/admin` (clients, réservations,
 - **Secrets** : `.env.local` seulement — jamais commit.
 - **Next.js** : lire `node_modules/next/dist/docs/` avant APIs nouvelles (voir `AGENTS.md`).
 - **Skills projet** : `.cursor/skills/travelba-voyage-crm/SKILL.md`
+- **Design UI client** : Stitch **Application Agence de Voyage Client** (`7750686585265203965`) — pas la feuille Travelba CRM.
 
 ## Stack clé
 

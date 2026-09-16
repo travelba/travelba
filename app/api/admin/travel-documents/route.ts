@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { resolveCountryCode } from "@/lib/crm/countries";
+import { emptyToNull } from "@/lib/crm/identity";
 import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
 
 export async function POST(request: Request) {
@@ -23,12 +25,14 @@ export async function POST(request: Request) {
     .from("crm_travel_documents")
     .insert({
       customer_id: customerId,
-      companion_id: form.get("companion_id") || null,
+      companion_id: emptyToNull(form.get("companion_id")),
       doc_type: form.get("doc_type") || "passport",
-      number: form.get("number") || null,
-      issuing_country: form.get("issuing_country") || null,
-      issued_on: form.get("issued_on") || null,
-      expires_on: form.get("expires_on") || null,
+      number: emptyToNull(form.get("number")),
+      issuing_country:
+        resolveCountryCode(String(form.get("issuing_country") || "")) ||
+        emptyToNull(form.get("issuing_country")),
+      issued_on: emptyToNull(form.get("issued_on")),
+      expires_on: emptyToNull(form.get("expires_on")),
       storage_path: storagePath,
       file_name: fileName,
       mime_type: mimeType,
