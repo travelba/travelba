@@ -8,7 +8,19 @@ export async function POST(request: Request, ctx: Ctx) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
-  const service = createServiceClient();
+  let service;
+  try {
+    service = createServiceClient();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "";
+    if (message.includes("SUPABASE_SERVICE_ROLE_KEY")) {
+      return jsonError(
+        "Configuration serveur incomplète (clé service). Rechargez le dernier déploiement Preview.",
+        503
+      );
+    }
+    throw err;
+  }
   const { data: customer } = await service.from("crm_customers").select("id,email,auth_user_id").eq("id", id).maybeSingle();
   if (!customer) return jsonError("Client introuvable", 404);
   if (customer.auth_user_id) return jsonError("Le portail est déjà activé pour ce client", 409);

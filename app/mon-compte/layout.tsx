@@ -1,7 +1,5 @@
 import { Plus_Jakarta_Sans, Inter } from "next/font/google";
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { ensureCustomerForUser } from "@/lib/crm/auth";
+import { requireCustomerPage } from "@/lib/crm/auth";
 import { customerFullName } from "@/lib/crm/types";
 import { siteConfig } from "@/lib/site";
 import { AccountChrome } from "@/components/account/AccountChrome";
@@ -30,13 +28,7 @@ export default async function AccountLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/connexion");
-  const customer = await ensureCustomerForUser(user);
-  if (!customer) redirect("/connexion?error=account");
+  const { customer } = await requireCustomerPage();
 
   const name = customerFullName(customer);
   const initials =

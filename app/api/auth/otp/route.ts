@@ -45,7 +45,15 @@ export async function POST(request: Request) {
 
   const fromAddress =
     process.env.CONTACT_FROM_EMAIL?.trim() || "contact@travelba.fr";
+  const requestOrigin = (() => {
+    try {
+      return new URL(request.url).origin;
+    } catch {
+      return "";
+    }
+  })();
   const siteUrl = (
+    requestOrigin ||
     process.env.NEXT_PUBLIC_SITE_URL ||
     siteConfig.url ||
     "https://travelba.fr"
@@ -156,6 +164,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, digits: String(otp).length });
   } catch (err) {
     console.error("[auth/otp] Unexpected:", err);
+    const message = err instanceof Error ? err.message : "";
+    if (message.includes("SUPABASE_SERVICE_ROLE_KEY")) {
+      return NextResponse.json(
+        {
+          error:
+            "Configuration serveur incomplète (clé service). Utilisez le dernier déploiement Preview ou contactez l’agence.",
+        },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }

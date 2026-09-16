@@ -73,6 +73,7 @@ export function AdminNav({ unmatchedCount = 0 }: { unmatchedCount?: number }) {
             <Link
               key={link.href}
               href={link.href}
+              prefetch={false}
               className={`flex shrink-0 items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition lg:w-full ${
                 active
                   ? "bg-white/15 text-white"

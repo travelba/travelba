@@ -129,6 +129,7 @@ export function AccountChrome({
               <Link
                 key={tab.href}
                 href={tab.href}
+                prefetch={false}
                 className={`pb-1 font-display text-sm tracking-wide transition ${
                   active
                     ? "border-b-2 border-[var(--admin-red)] font-bold text-[var(--admin-navy)]"
@@ -157,6 +158,7 @@ export function AccountChrome({
               <Link
                 key={service.href}
                 href={service.href}
+                prefetch={false}
                 className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
                   active
                     ? "bg-[var(--admin-navy)] text-white"
@@ -183,6 +185,7 @@ export function AccountChrome({
               <Link
                 key={tab.href}
                 href={tab.href}
+                prefetch={false}
                 className={`flex min-h-[58px] flex-col items-center justify-center gap-0.5 text-[10px] font-semibold transition ${
                   active ? "text-[var(--admin-navy)]" : "text-slate-500"
                 }`}
