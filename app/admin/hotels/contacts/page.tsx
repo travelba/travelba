@@ -13,9 +13,18 @@ export default function HotelContactsPage() {
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
-    const res = await fetch("/api/admin/hotel-contacts");
-    const data = await res.json();
-    if (res.ok) setContacts(data.contacts || []);
+    try {
+      const res = await fetch("/api/admin/hotel-contacts");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || "Chargement des contacts impossible");
+        return;
+      }
+      setError(null);
+      setContacts(data.contacts || []);
+    } catch {
+      setError("Chargement des contacts impossible");
+    }
   }
 
   useEffect(() => {
