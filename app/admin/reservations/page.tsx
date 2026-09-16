@@ -3,6 +3,7 @@ import { BookingsTable } from "@/components/admin/BookingsTable";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { createClient } from "@/lib/supabase/server";
 import { requireStaffPage } from "@/lib/crm/auth";
+import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 import type { CrmBooking, CrmCustomer } from "@/lib/crm/types";
 
 export default async function AdminReservationsPage() {
@@ -23,7 +24,10 @@ export default async function AdminReservationsPage() {
         subtitle="Dossiers voyage, statuts, montants et rattachement clients."
       />
       <div className="mt-6">
-        <NewBookingForm customers={(customers || []) as CrmCustomer[]} />
+        <NewBookingForm
+          customers={(customers || []) as CrmCustomer[]}
+          aiConfigured={aiGatewayConfigured()}
+        />
       </div>
       <BookingsTable
         bookings={(bookings || []) as CrmBooking[]}

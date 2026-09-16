@@ -64,7 +64,7 @@ export function StatusChip({
   tone = "sky",
   children,
 }: {
-  tone?: "sky" | "green" | "amber" | "red" | "navy";
+  tone?: "sky" | "green" | "amber" | "red" | "navy" | "gold";
   children: React.ReactNode;
 }) {
   const tones = {
@@ -73,6 +73,7 @@ export function StatusChip({
     amber: "bg-amber-50 text-amber-800 border-amber-200",
     red: "bg-red-50 text-[var(--admin-red)] border-red-200",
     navy: "bg-[var(--admin-navy)] text-white border-transparent",
+    gold: "bg-[#fbf7ec] text-[var(--admin-navy)] border-[var(--admin-gold,#d4af37)]",
   };
   return (
     <span

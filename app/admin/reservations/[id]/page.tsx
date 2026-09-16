@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { BookingEditor } from "@/components/admin/BookingEditor";
+import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 import type {
   CrmBooking,
   CrmBookingDocument,
@@ -41,6 +42,7 @@ export default async function AdminBookingPage({ params }: Props) {
           travelers={(travelers || []) as CrmBookingTraveler[]}
           documents={(documents || []) as CrmBookingDocument[]}
           companions={(companions || []) as CrmCompanion[]}
+          aiConfigured={aiGatewayConfigured()}
         />
       </div>
     </div>
