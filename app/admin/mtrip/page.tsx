@@ -73,14 +73,34 @@ export default function AdminMtripPage() {
             mTrip sont produits automatiquement.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={start}
-          disabled={creating}
-          className="admin-af-btn rounded-full px-4 py-2.5 text-sm disabled:opacity-50"
-        >
-          {creating ? "…" : "Nouveau voyage"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/admin/imports"
+            className="rounded-full border border-border bg-white px-4 py-2.5 text-sm font-semibold text-[var(--admin-navy)]"
+          >
+            Import guidé
+          </Link>
+          <Link
+            href="/admin/dossiers/new"
+            className="rounded-full border border-border bg-white px-4 py-2.5 text-sm font-semibold text-[var(--admin-navy)]"
+          >
+            Dossier hôtel
+          </Link>
+          <Link
+            href="/admin/hotels/contacts"
+            className="rounded-full border border-border bg-white px-4 py-2.5 text-sm font-semibold text-[var(--admin-navy)]"
+          >
+            Contacts hôtels
+          </Link>
+          <button
+            type="button"
+            onClick={start}
+            disabled={creating}
+            className="admin-af-btn rounded-full px-4 py-2.5 text-sm disabled:opacity-50"
+          >
+            {creating ? "…" : "Nouveau voyage"}
+          </button>
+        </div>
       </div>
 
       {error && <p className="text-sm text-[var(--admin-red)]">{error}</p>}

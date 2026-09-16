@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { NewCustomerForm } from "@/components/admin/NewCustomerForm";
 import { ClientsTable } from "@/components/admin/ClientsTable";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
@@ -17,6 +18,14 @@ export default async function AdminClientsPage() {
       <PageTitle
         title="Clients"
         subtitle="Fiches clients, encours et accès à l’espace voyageur."
+        actions={
+          <Link
+            href="/admin/clients/fusion"
+            className="rounded-full border border-border bg-white px-4 py-2.5 text-sm font-semibold text-[var(--admin-navy)]"
+          >
+            Fusionner des doublons
+          </Link>
+        }
       />
       <div className="mt-6">
         <NewCustomerForm />

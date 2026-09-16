@@ -112,7 +112,7 @@ export function QuoteLinesEditor({
           <input
             value={autoTitle}
             readOnly
-            className="w-full rounded-xl border border-border/80 bg-background/60 px-4 py-3 text-base font-medium outline-none"
+            className="w-full rounded-xl border border-border/80 bg-white px-4 py-3 text-base font-medium text-[var(--admin-navy)] outline-none focus:border-[var(--aura-blue)] focus:ring-2 focus:ring-[var(--aura-blue-soft)]"
           />
         </label>
         <div className="pb-3 text-xs text-muted">
@@ -130,7 +130,7 @@ export function QuoteLinesEditor({
         {rows.map((line) => (
           <article
             key={line.id}
-            className="group relative overflow-hidden rounded-2xl border border-border/70 bg-gradient-to-br from-white/[0.04] to-transparent p-4 transition hover:border-accent/40"
+            className="admin-af-card group relative overflow-hidden rounded-2xl p-4 transition hover:border-[var(--aura-blue)]/40"
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1 space-y-3">
