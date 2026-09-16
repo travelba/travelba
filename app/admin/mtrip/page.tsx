@@ -17,9 +17,18 @@ export default function AdminMtripPage() {
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
-    const res = await fetch("/api/admin/mtrip/guides");
-    const data = await res.json();
-    if (res.ok) setGuides(data.guides || []);
+    try {
+      const res = await fetch("/api/admin/mtrip/guides");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || "Chargement des voyages impossible");
+        return;
+      }
+      setError(null);
+      setGuides(data.guides || []);
+    } catch {
+      setError("Chargement des voyages impossible");
+    }
   }
 
   useEffect(() => {
