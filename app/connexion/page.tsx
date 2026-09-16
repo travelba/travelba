@@ -188,7 +188,7 @@ export default function ConnexionPage() {
             Sécurisé
           </span>
         </div>
-        <div className="aura-card rounded-[1.5rem] border-t-[3px] border-t-[var(--admin-red)] bg-white p-8 shadow-[0_12px_32px_rgba(15,23,42,0.06)] sm:p-10">
+        <div className="aura-card rounded-[1.5rem] border-t-[3px] border-t-[var(--aura-blue)] bg-white p-8 shadow-[0_12px_32px_rgba(15,23,42,0.06)] sm:p-10">
           <span className="inline-flex rounded-full bg-[var(--aura-blue-soft)] px-3 py-1 text-[11px] font-semibold text-[var(--aura-blue)]">
             Espace membre
           </span>
@@ -199,7 +199,7 @@ export default function ConnexionPage() {
             Entrez votre e-mail pour recevoir un code et ouvrir votre portail
             Aura.
           </p>
-          <div className="mt-4 h-1 w-12 rounded-full bg-[var(--admin-red)]" />
+          <div className="mt-4 h-1 w-12 rounded-full bg-[var(--aura-blue)]" />
           <Suspense fallback={<p className="mt-8 text-sm text-muted">Chargement…</p>}>
             <LoginForm />
           </Suspense>

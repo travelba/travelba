@@ -83,19 +83,20 @@ export default function NewDossierPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
-        <h1 className="font-display text-3xl tracking-tight">Nouveau dossier</h1>
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--aura-blue)]">Conciergerie</p>
+        <h1 className="font-display text-3xl font-extrabold tracking-tight text-[var(--admin-navy)]">Nouveau dossier</h1>
         <p className="mt-1 text-sm text-muted">
           Destination, dates et occupation — puis recherche Little Emperors.
         </p>
       </div>
 
-      <form onSubmit={onSubmit} className="space-y-5 rounded-xl border border-border bg-surface/50 p-5">
+      <form onSubmit={onSubmit} className="admin-af-card space-y-5 rounded-2xl p-5 sm:p-6">
         <label className="block space-y-1.5 text-sm">
           <span className="text-muted">Client</span>
           <select
             value={clientId}
             onChange={(e) => setClientId(e.target.value)}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2"
+            className="w-full rounded-xl border border-border bg-white px-3 py-2.5"
           >
             <option value="">— Sans client —</option>
             {clients.map((client) => (
@@ -115,16 +116,16 @@ export default function NewDossierPage() {
               setDestinationQuery(e.target.value);
             }}
             placeholder="Paris, London, Four Seasons…"
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2"
+            className="w-full rounded-xl border border-border bg-white px-3 py-2.5"
             required
           />
           {!selected && destinationQuery.trim().length >= 2 && suggestions.length > 0 ? (
-            <ul className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-border bg-surface-2 shadow-xl">
+            <ul className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-border bg-white shadow-xl">
               {suggestions.map((item) => (
                 <li key={`${item.type}-${item.id}`}>
                   <button
                     type="button"
-                    className="flex w-full flex-col items-start px-3 py-2 text-left hover:bg-white/5"
+                    className="flex w-full flex-col items-start px-3 py-2 text-left hover:bg-[var(--aura-blue-soft)]/40"
                     onClick={() => {
                       setSelected(item);
                       setDestinationQuery(item.text);
@@ -151,7 +152,7 @@ export default function NewDossierPage() {
               required
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2"
+              className="w-full rounded-xl border border-border bg-white px-3 py-2.5"
             />
           </label>
           <label className="space-y-1.5 text-sm">
@@ -161,7 +162,7 @@ export default function NewDossierPage() {
               required
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2"
+              className="w-full rounded-xl border border-border bg-white px-3 py-2.5"
             />
           </label>
           <label className="space-y-1.5 text-sm">
@@ -169,7 +170,7 @@ export default function NewDossierPage() {
             <select
               value={currency}
               onChange={(e) => setCurrency(e.target.value)}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2"
+              className="w-full rounded-xl border border-border bg-white px-3 py-2.5"
             >
               <option value="EUR">EUR</option>
               <option value="GBP">GBP</option>
@@ -184,7 +185,7 @@ export default function NewDossierPage() {
             <span className="text-sm text-muted">Chambres</span>
             <button
               type="button"
-              className="text-sm text-accent-2"
+              className="text-sm font-semibold text-[var(--aura-blue)]"
               onClick={() => setRooms((prev) => [...prev, { adults: 2 }])}
             >
               + Chambre
@@ -193,7 +194,7 @@ export default function NewDossierPage() {
           {rooms.map((room, index) => (
             <div
               key={index}
-              className="flex flex-wrap items-center gap-3 rounded-lg border border-border/70 bg-surface px-3 py-2"
+              className="flex flex-wrap items-center gap-3 rounded-xl border border-border/70 bg-[var(--aura-surface)] px-3 py-2"
             >
               <span className="text-xs text-muted">Ch. {index + 1}</span>
               <label className="flex items-center gap-2 text-sm">
@@ -208,13 +209,13 @@ export default function NewDossierPage() {
                       prev.map((r, i) => (i === index ? { ...r, adults } : r))
                     );
                   }}
-                  className="w-16 rounded border border-border bg-surface-2 px-2 py-1"
+                  className="w-16 rounded-lg border border-border bg-white px-2 py-1"
                 />
               </label>
               {rooms.length > 1 ? (
                 <button
                   type="button"
-                  className="ml-auto text-xs text-accent-3"
+                  className="ml-auto text-xs font-semibold text-[var(--admin-red)]"
                   onClick={() =>
                     setRooms((prev) => prev.filter((_, i) => i !== index))
                   }
@@ -232,16 +233,16 @@ export default function NewDossierPage() {
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2"
+            className="w-full rounded-xl border border-border bg-white px-3 py-2.5"
           />
         </label>
 
-        {error ? <p className="text-sm text-accent-3">{error}</p> : null}
+        {error ? <p className="text-sm text-[var(--admin-red)]">{error}</p> : null}
 
         <button
           type="submit"
           disabled={!canSubmit || loading}
-          className="rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+          className="admin-af-btn rounded-full px-5 py-2.5 text-sm disabled:opacity-50"
         >
           {loading ? "Création…" : "Créer le dossier"}
         </button>

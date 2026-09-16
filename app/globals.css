@@ -13,10 +13,7 @@
   --accent-3: #ff8a5b;
 }
 
-/**
- * Back-office — palette inspirée Air France (navy + rouge + light)
- * Scoped : n’altère pas le site public.
- */
+/** Back-office — déclinaison desktop du design system Aura Voyage. */
 .admin-af {
   --background: #f2f4f8;
   --surface: #ffffff;
@@ -25,9 +22,9 @@
   --muted: #5a6b82;
   --border: rgba(0, 33, 87, 0.12);
 
-  --accent: #e81932;
+  --accent: #006398;
   --accent-2: #002157;
-  --accent-3: #c8102e;
+  --accent-3: #e81932;
 
   --admin-navy: #002157;
   --admin-navy-deep: #00153a;
@@ -127,7 +124,7 @@
 }
 
 .admin-af-btn {
-  background: var(--admin-red);
+  background: var(--aura-blue);
   color: #ffffff;
   font-weight: 600;
   cursor: pointer;
@@ -135,7 +132,7 @@
 }
 
 .admin-af-btn:hover {
-  background: #c8102e;
+  background: #004f7a;
 }
 
 .admin-af-btn:disabled {

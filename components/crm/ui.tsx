@@ -29,8 +29,8 @@ export function BrandMark({
 
 export function PageEyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--admin-red)]">
-      <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--admin-red)]" />
+    <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--aura-blue)]">
+      <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--aura-blue)]" />
       {children}
     </p>
   );

@@ -54,13 +54,13 @@ export function AdminNav({ unmatchedCount = 0 }: { unmatchedCount?: number }) {
         </Link>
         <Link
           href="/admin/reservations"
-          className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-[var(--admin-red)] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-[#c8102e]"
+          className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-[var(--aura-blue)] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-[#004f7a]"
         >
           + Nouvelle réservation
         </Link>
       </div>
 
-      <nav className="flex flex-wrap gap-1 lg:flex-col lg:gap-1">
+      <nav className="flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
         {LINKS.map((link) => {
           const active = link.exact
             ? pathname === link.href
@@ -73,7 +73,7 @@ export function AdminNav({ unmatchedCount = 0 }: { unmatchedCount?: number }) {
             <Link
               key={link.href}
               href={link.href}
-              className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+              className={`flex shrink-0 items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition lg:w-full ${
                 active
                   ? "bg-white/15 text-white"
                   : "text-white/70 hover:bg-white/10 hover:text-white"

@@ -249,7 +249,7 @@ export function VoyageFilesPanel({
                   e.stopPropagation();
                   void deleteFile(file);
                 }}
-                className="absolute right-2 top-2 rounded-md border border-border/60 bg-[var(--admin-surface,#0f1419)]/90 px-1.5 py-0.5 text-[11px] text-muted transition hover:border-red-400/50 hover:text-red-300 disabled:opacity-50"
+                className="absolute right-2 top-2 rounded-md border border-border/60 bg-white/90 px-1.5 py-0.5 text-[11px] text-muted transition hover:border-red-300 hover:text-[var(--admin-red)] disabled:opacity-50"
               >
                 ✕
               </button>
@@ -270,7 +270,7 @@ export function VoyageFilesPanel({
           }}
         >
           <div
-            className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-[var(--admin-surface,#0f1419)] shadow-2xl"
+            className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-white shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3">

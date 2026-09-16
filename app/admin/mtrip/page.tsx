@@ -83,9 +83,9 @@ export default function AdminMtripPage() {
         </button>
       </div>
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-[var(--admin-red)]">{error}</p>}
 
-      <ul className="admin-af-card divide-y divide-border rounded-2xl">
+      <ul className="admin-af-card divide-y divide-border overflow-hidden rounded-2xl">
         {!guides.length && (
           <li className="px-4 py-8 text-center text-sm text-muted">
             Aucun voyage.
@@ -115,7 +115,7 @@ export default function AdminMtripPage() {
                 type="button"
                 onClick={() => void deleteVoyage(g)}
                 disabled={deletingId === g.id}
-                className="rounded-lg px-2 py-1 text-xs text-muted hover:bg-red-500/15 hover:text-red-300 disabled:opacity-40"
+                className="rounded-lg px-2 py-1 text-xs font-semibold text-muted hover:bg-red-50 hover:text-[var(--admin-red)] disabled:opacity-40"
               >
                 {deletingId === g.id ? "…" : "Supprimer"}
               </button>

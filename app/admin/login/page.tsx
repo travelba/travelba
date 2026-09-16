@@ -105,8 +105,8 @@ export default function AdminLoginPage() {
       <div className="mb-6">
         <BrandMark href="/" subtitle="Back-office" />
       </div>
-      <div className="admin-af-card rounded-2xl border-t-[3px] border-t-[var(--admin-red)] p-8 sm:p-10">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--admin-red)]">
+      <div className="admin-af-card rounded-[1.5rem] border-t-[3px] border-t-[var(--aura-blue)] p-8 sm:p-10">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--aura-blue)]">
           Accès agent
         </p>
         <h1 className="mt-2 font-display text-3xl font-extrabold tracking-tight text-[var(--admin-navy)]">

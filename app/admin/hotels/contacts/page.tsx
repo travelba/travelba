@@ -57,7 +57,8 @@ export default function HotelContactsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="font-display text-3xl tracking-tight">Contacts hôtels</h1>
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--aura-blue)]">Partenaires</p>
+        <h1 className="font-display text-3xl font-extrabold tracking-tight text-[var(--admin-navy)]">Contacts hôtels</h1>
         <p className="mt-1 text-sm text-muted">
           Carnet manuel (l&apos;API Little Emperors ne fournit pas les emails).
         </p>
@@ -65,7 +66,7 @@ export default function HotelContactsPage() {
 
       <form
         onSubmit={onSubmit}
-        className="grid gap-3 rounded-xl border border-border bg-surface/50 p-5 sm:grid-cols-2"
+        className="admin-af-card grid gap-4 rounded-2xl p-5 sm:grid-cols-2"
       >
         <label className="space-y-1.5 text-sm">
           <span className="text-muted">ID hôtel Little Emperors</span>
@@ -74,7 +75,7 @@ export default function HotelContactsPage() {
             type="number"
             value={leHotelId}
             onChange={(e) => setLeHotelId(e.target.value)}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2"
+            className="w-full rounded-xl border border-border bg-white px-3 py-2.5"
           />
         </label>
         <label className="space-y-1.5 text-sm">
@@ -82,7 +83,7 @@ export default function HotelContactsPage() {
           <input
             value={hotelName}
             onChange={(e) => setHotelName(e.target.value)}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2"
+            className="w-full rounded-xl border border-border bg-white px-3 py-2.5"
           />
         </label>
         <label className="space-y-1.5 text-sm sm:col-span-2">
@@ -91,7 +92,7 @@ export default function HotelContactsPage() {
             value={emails}
             onChange={(e) => setEmails(e.target.value)}
             placeholder="a@hotel.com, b@hotel.com"
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2"
+            className="w-full rounded-xl border border-border bg-white px-3 py-2.5"
           />
         </label>
         <label className="space-y-1.5 text-sm">
@@ -99,7 +100,7 @@ export default function HotelContactsPage() {
           <input
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2"
+            className="w-full rounded-xl border border-border bg-white px-3 py-2.5"
           />
         </label>
         <label className="space-y-1.5 text-sm">
@@ -107,21 +108,21 @@ export default function HotelContactsPage() {
           <input
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2"
+            className="w-full rounded-xl border border-border bg-white px-3 py-2.5"
           />
         </label>
-        {error ? <p className="text-sm text-accent-3 sm:col-span-2">{error}</p> : null}
+        {error ? <p className="text-sm text-[var(--admin-red)] sm:col-span-2">{error}</p> : null}
         <button
           type="submit"
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white sm:col-span-2 sm:w-fit"
+          className="admin-af-btn rounded-full px-5 py-2.5 text-sm sm:col-span-2 sm:w-fit"
         >
           Enregistrer
         </button>
       </form>
 
-      <div className="overflow-hidden rounded-xl border border-border">
+      <div className="admin-af-card overflow-x-auto rounded-2xl">
         <table className="w-full text-left text-sm">
-          <thead className="bg-surface-2/60 text-muted">
+          <thead className="bg-[var(--aura-blue-soft)]/40 text-muted">
             <tr>
               <th className="px-4 py-3">Hôtel</th>
               <th className="px-4 py-3">Emails</th>
