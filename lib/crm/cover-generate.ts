@@ -2,11 +2,11 @@ import "server-only";
 import { after } from "next/server";
 import { generateImage, generateText } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
-import sharp from "sharp";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { uploadCrmFile } from "@/lib/crm/files";
 import { openaiApiKey } from "@/lib/crm/ingest-types";
 import type { CrmBooking } from "@/lib/crm/types";
+import { trySharp } from "@/lib/crm/sharp";
 
 const IMAGE_MODEL = "google/gemini-3.1-flash-image-preview";
 
@@ -40,6 +40,8 @@ function coverPrompt(place: string, hotel?: string | null) {
 }
 
 async function toWebp(bytes: Buffer) {
+  const sharp = await trySharp();
+  if (!sharp) return bytes;
   return sharp(bytes, { failOn: "none" })
     .rotate()
     .resize({ width: 1600, height: 900, fit: "cover", position: "attention" })

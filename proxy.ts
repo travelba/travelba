@@ -31,11 +31,21 @@ export default async function proxy(request: NextRequest) {
   if (forwarded) return forwarded;
 
   const path = request.nextUrl.pathname;
+
+  // Locale-prefixed bookmarks from next-intl (e.g. /fr/demo/espace-client).
+  const demoted = path.match(/^\/(fr|en)(\/demo(?:\/.*)?)$/);
+  if (demoted) {
+    const url = request.nextUrl.clone();
+    url.pathname = demoted[2];
+    return NextResponse.redirect(url);
+  }
+
   if (
     path.startsWith("/admin") ||
     path.startsWith("/mon-compte") ||
     path.startsWith("/connexion") ||
-    path.startsWith("/auth")
+    path.startsWith("/auth") ||
+    path.startsWith("/demo")
   ) {
     return updateSession(request);
   }

@@ -321,7 +321,7 @@ export default async function AccountHomePage() {
             </span>
             <span>
               <span className="block text-xs font-semibold text-[var(--admin-navy)]">Mes Billets</span>
-              <span className="text-[10px] text-muted">PDF & Wallet</span>
+              <span className="text-[10px] text-muted">Dossier voyage</span>
             </span>
           </Link>
           <Link

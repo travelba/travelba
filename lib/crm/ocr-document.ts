@@ -1,8 +1,8 @@
 import "server-only";
-import sharp from "sharp";
 import { createWorker, PSM, type Worker } from "tesseract.js";
 import { parseMrzFromOcr } from "./mrz-parse";
 import type { ExtractedIdentity } from "./identity";
+import { trySharp } from "./sharp";
 
 const MAX_BYTES = 8 * 1024 * 1024;
 const WHITELIST = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<";
@@ -45,6 +45,8 @@ async function withWorker<T>(fn: (worker: Worker) => Promise<T>) {
 }
 
 async function variants(buffer: Buffer) {
+  const sharp = await trySharp();
+  if (!sharp) return [buffer];
   const rotated = sharp(buffer, { failOn: "none" }).rotate();
   const meta = await rotated.metadata();
   const width = meta.width || 1200;

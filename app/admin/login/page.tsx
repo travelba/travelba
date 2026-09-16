@@ -20,16 +20,35 @@ function LoginForm() {
 
     const supabase = createClient();
     const { error: signError } = await supabase.auth.signInWithPassword({
-      email,
+      email: email.trim(),
       password,
     });
 
-    setLoading(false);
     if (signError) {
-      setError(signError.message);
+      setLoading(false);
+      setError("E-mail ou mot de passe incorrect.");
       return;
     }
 
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const { data: staff } = user
+      ? await supabase
+          .from("crm_staff")
+          .select("id")
+          .eq("auth_user_id", user.id)
+          .maybeSingle()
+      : { data: null };
+
+    if (!staff) {
+      await supabase.auth.signOut();
+      setLoading(false);
+      setError("Accès réservé à l’équipe agence. Utilisez /connexion pour l’espace client.");
+      return;
+    }
+
+    setLoading(false);
     const next = searchParams.get("next");
     const destination =
       next && next.startsWith("/admin") && !next.startsWith("/admin/login")

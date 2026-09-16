@@ -3,6 +3,7 @@ import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmCustomer, CrmStaff } from "@/lib/crm/types";
+import { isStaffRole } from "@/lib/crm/session";
 
 export function jsonError(message: string, status = 400, details?: unknown) {
   return NextResponse.json({ error: message, details }, { status });
@@ -63,7 +64,11 @@ export async function ensureStaff(user: User): Promise<CrmStaff | null> {
     .select("*")
     .eq("auth_user_id", user.id)
     .maybeSingle();
-  if (existing) return existing as CrmStaff;
+  if (existing) {
+    const staff = existing as CrmStaff;
+    await stampStaffRole(user, staff.role);
+    return staff;
+  }
 
   try {
     const admin = createServiceClient();
@@ -82,9 +87,27 @@ export async function ensureStaff(user: User): Promise<CrmStaff | null> {
       .select("*")
       .single();
     if (error) return null;
-    return created as CrmStaff;
+    const staff = created as CrmStaff;
+    await stampStaffRole(user, staff.role);
+    return staff;
   } catch {
     return null;
+  }
+}
+
+async function stampStaffRole(user: User, role: CrmStaff["role"]) {
+  if (isStaffRole(user)) return;
+  const crmRole = role === "agent" ? "agent" : "admin";
+  try {
+    const admin = createServiceClient();
+    await admin.auth.admin.updateUserById(user.id, {
+      app_metadata: {
+        ...(user.app_metadata || {}),
+        crm_role: crmRole,
+      },
+    });
+  } catch {
+    /* JWT is refreshed on the next sign-in; crm_staff remains the source of truth. */
   }
 }
 
@@ -148,7 +171,8 @@ export async function requireStaffPage(): Promise<{
   const authedUser = user as User;
   const staff = await ensureStaff(authedUser);
   if (!staff) {
-    redirect("/admin/login");
+    const customer = await ensureCustomerForUser(authedUser);
+    redirect(customer ? "/mon-compte" : "/connexion?error=no-account");
   }
   return { supabase, user: authedUser, staff: staff as CrmStaff };
 }

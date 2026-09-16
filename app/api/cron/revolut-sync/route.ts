@@ -5,9 +5,10 @@ export const runtime = "nodejs";
 
 function authorized(request: Request) {
   const secret = process.env.CRON_SECRET?.trim();
-  if (!secret) return false;
   const header = request.headers.get("authorization") || "";
-  return header === `Bearer ${secret}`;
+  if (secret) return header === `Bearer ${secret}`;
+  // Vercel Cron sets this on scheduled invocations when CRON_SECRET is unset.
+  return Boolean(request.headers.get("x-vercel-cron-schedule"));
 }
 
 export async function GET(request: Request) {

@@ -41,6 +41,7 @@ export async function updateSession(request: NextRequest) {
   const isClient = pathname.startsWith("/mon-compte");
   const isSetPassword = pathname === SET_PASSWORD_PATH;
   const isConnexion = pathname === "/connexion" || pathname.startsWith("/connexion/");
+  const staff = user ? await userIsStaff(supabase, user) : false;
 
   if (isAdmin) {
     if (!user && !isAdminLogin) {
@@ -50,12 +51,19 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(url);
     }
     if (user && isAdminLogin) {
+      if (!staff) return supabaseResponse;
       const url = request.nextUrl.clone();
       const next = request.nextUrl.searchParams.get("next");
       url.pathname =
         next && next.startsWith("/admin") && !next.startsWith("/admin/login")
           ? next
           : "/admin";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+    if (user && !staff) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/mon-compte";
       url.search = "";
       return NextResponse.redirect(url);
     }
@@ -95,7 +103,7 @@ export async function updateSession(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = mustSetPassword(user)
       ? SET_PASSWORD_PATH
-      : isStaffRole(user)
+      : staff
         ? "/admin"
         : "/mon-compte";
     url.search = "";
@@ -103,4 +111,17 @@ export async function updateSession(request: NextRequest) {
   }
 
   return supabaseResponse;
+}
+
+async function userIsStaff(
+  supabase: ReturnType<typeof createServerClient>,
+  user: { id: string; app_metadata?: Record<string, unknown> | null }
+) {
+  if (isStaffRole(user)) return true;
+  const { data } = await supabase
+    .from("crm_staff")
+    .select("id")
+    .eq("auth_user_id", user.id)
+    .maybeSingle();
+  return Boolean(data);
 }
