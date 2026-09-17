@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireCustomer } from "@/lib/crm/auth";
 import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
-import { identityFieldsFromForm } from "@/lib/crm/document-identity";
 import { emptyToNull } from "@/lib/crm/identity";
 import {
   applyIdentityFromForm,
   cloneTravelDocument,
   insertTravelDocument,
+  travelDocumentFromForm,
 } from "@/lib/crm/travel-document-write";
 
 export async function GET() {
@@ -30,9 +30,6 @@ export async function POST(request: Request) {
   const sourceId = emptyToNull(form.get("source_id"));
   const companionId = emptyToNull(form.get("companion_id"));
   try {
-    if (!bookingId || !travelerId) {
-      return jsonError("Réservation et voyageur requis : joignez la pièce depuis le dossier voyage.");
-    }
     if (sourceId) {
       if (!bookingId) return jsonError("Réservation requise pour reprendre un document");
       const document = await cloneTravelDocument(auth.supabase, sourceId, auth.customer.id, {
@@ -48,29 +45,16 @@ export async function POST(request: Request) {
     let mimeType: string | null = null;
     if (file instanceof File && file.size > 0) {
       const bytes = Buffer.from(await file.arrayBuffer());
-      const folder = bookingId
-        ? `customers/${auth.customer.id}/documents/${bookingId}`
-        : `customers/${auth.customer.id}/documents`;
-      storagePath = `${folder}/${Date.now()}-${safeFileName(file.name)}`;
+      storagePath = `customers/${auth.customer.id}/documents/${Date.now()}-${safeFileName(file.name)}`;
       await uploadCrmFile(storagePath, bytes, file.type || "application/octet-stream");
       fileName = file.name;
       mimeType = file.type;
     }
-    const identity = identityFieldsFromForm(form);
     const document = await insertTravelDocument(auth.supabase, {
-      customerId: auth.customer.id,
-      companionId,
-      bookingId,
-      travelerId,
-      docType: String(form.get("doc_type") || "passport"),
-      number: emptyToNull(form.get("number")),
-      issuingCountry: emptyToNull(form.get("issuing_country")),
-      issuedOn: emptyToNull(form.get("issued_on")),
-      expiresOn: emptyToNull(form.get("expires_on")),
+      ...travelDocumentFromForm(form, auth.customer.id),
       storagePath,
       fileName,
       mimeType,
-      ...identity,
     });
     await applyIdentityFromForm(auth.supabase, form, auth.customer.id, companionId, travelerId);
     return NextResponse.json({ document });

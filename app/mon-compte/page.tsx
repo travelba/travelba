@@ -77,16 +77,26 @@ export default async function AccountHomePage() {
   const firstName =
     customer.first_name || customer.email.split("@")[0];
   const jMinus = daysUntil(nextTrip?.start_date ?? null);
-  const tripDocs = ((docs || []) as CrmTravelDocument[]).filter(
-    (d) => nextTrip && d.booking_id === nextTrip.id
-  );
-  const coverage = tripDocCoverage(travelers, tripDocs);
+  const party: CrmBookingTraveler[] = travelers.length
+    ? travelers
+    : nextTrip
+      ? [
+          {
+            id: "holder",
+            booking_id: nextTrip.id,
+            companion_id: null,
+            is_account_holder: true,
+            first_name: customer.first_name,
+            last_name: customer.last_name,
+            created_at: "",
+          },
+        ]
+      : [];
+  const coverage = tripDocCoverage(party, (docs || []) as CrmTravelDocument[]);
   const depositDone = remainingDue <= 0;
   const flightsDone = Boolean(flight);
   const docsDone = nextTrip ? coverage.total > 0 && coverage.ready === coverage.total : true;
-  const tripDocsHref = nextTrip
-    ? `/mon-compte/reservations/${nextTrip.reference}`
-    : "/mon-compte/profil/documents";
+  const tripDocsHref = "/mon-compte/profil/documents";
   const prepScore = [depositDone, flightsDone, docsDone].filter(Boolean).length;
   const prepPct = Math.round((prepScore / 3) * 100);
   const whatsappHref = `https://wa.me/${siteConfig.whatsappNumber}`;
@@ -350,8 +360,8 @@ export default async function AccountHomePage() {
               <span className="material-symbols-outlined text-[18px]">badge</span>
             </span>
             <span>
-              <span className="block text-xs font-semibold text-[var(--admin-navy)]">Pièces du séjour</span>
-              <span className="text-[10px] text-muted">Passeports du voyage</span>
+              <span className="block text-xs font-semibold text-[var(--admin-navy)]">Pièces d’identité</span>
+              <span className="text-[10px] text-muted">Passeports</span>
             </span>
           </Link>
           <a

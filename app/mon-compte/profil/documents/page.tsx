@@ -2,8 +2,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
 import { ProfileSubnav } from "@/components/account/ProfileSubnav";
-import { CustomerTripDocuments } from "@/components/crm/CustomerTripDocuments";
-import type { CrmBooking, CrmBookingTraveler, CrmTravelDocument } from "@/lib/crm/types";
+import { DocumentsManager } from "@/components/account/DocumentsManager";
+import type { CrmCompanion, CrmTravelDocument } from "@/lib/crm/types";
 
 export default async function DocumentsPage() {
   const supabase = await createClient();
@@ -13,25 +13,10 @@ export default async function DocumentsPage() {
   if (!user) redirect("/connexion");
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");
-  const [{ data: documents }, { data: bookings }] = await Promise.all([
+  const [{ data: documents }, { data: companions }] = await Promise.all([
     supabase.from("crm_travel_documents").select("*").eq("customer_id", customer.id),
-    supabase
-      .from("crm_bookings")
-      .select("*")
-      .eq("customer_id", customer.id)
-      .neq("status", "cancelled")
-      .order("start_date", { ascending: false }),
+    supabase.from("crm_travel_companions").select("*").eq("customer_id", customer.id),
   ]);
-  const bookingRows = (bookings || []) as CrmBooking[];
-  const { data: travelerRows } = bookingRows.length
-    ? await supabase
-        .from("crm_booking_travelers")
-        .select("*")
-        .in(
-          "booking_id",
-          bookingRows.map((item) => item.id)
-        )
-    : { data: [] as CrmBookingTraveler[] };
 
   return (
     <div className="space-y-4 px-5 pb-10">
@@ -41,18 +26,15 @@ export default async function DocumentsPage() {
           Espace membre
         </p>
         <h1 className="mt-1 font-display text-xl font-semibold text-[var(--admin-navy-deep)]">
-          Pièces par voyage
+          Pièces d’identité
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Chaque dossier a son passeport. Déposez-le depuis la réservation concernée.
+          Une pièce par personne — titulaire et accompagnateurs. Le scan remplit tous les champs.
         </p>
       </div>
-      <CustomerTripDocuments
-        variant="client"
-        hrefForBooking={(booking) => `/mon-compte/reservations/${booking.reference}`}
-        bookings={bookingRows}
-        travelers={(travelerRows || []) as CrmBookingTraveler[]}
+      <DocumentsManager
         documents={(documents || []) as CrmTravelDocument[]}
+        companions={(companions || []) as CrmCompanion[]}
       />
     </div>
   );

@@ -32,7 +32,11 @@ export function DocumentsManager({
   const [companionId, setCompanionId] = useState("");
   const [number, setNumber] = useState("");
   const [issuingCountry, setIssuingCountry] = useState("");
-  const [expiresOn, setExpiresOn] = useState("");
+  const [docIssued, setDocIssued] = useState("");
+  const [docExpiry, setDocExpiry] = useState("");
+  const [placeOfBirth, setPlaceOfBirth] = useState("");
+  const [authority, setAuthority] = useState("");
+  const [personalNumber, setPersonalNumber] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [birthDate, setBirthDate] = useState("");
@@ -49,7 +53,11 @@ export function DocumentsManager({
     setDocType(id.doc_type);
     if (id.number) setNumber(id.number);
     if (id.issuing_country) setIssuingCountry(id.issuing_country);
-    if (id.expires_on) setExpiresOn(id.expires_on);
+    if (id.issued_on) setDocIssued(id.issued_on);
+    if (id.expires_on) setDocExpiry(id.expires_on);
+    if (id.place_of_birth) setPlaceOfBirth(id.place_of_birth);
+    if (id.authority) setAuthority(id.authority);
+    if (id.personal_number) setPersonalNumber(id.personal_number);
     if (id.first_name) setFirstName(id.first_name);
     if (id.last_name) setLastName(id.last_name);
     if (id.birth_date) setBirthDate(id.birth_date);
@@ -67,7 +75,11 @@ export function DocumentsManager({
     form.set("companion_id", companionId);
     form.set("number", number);
     form.set("issuing_country", issuingCountry);
-    form.set("expires_on", expiresOn);
+    form.set("issued_on", docIssued);
+    form.set("expires_on", docExpiry);
+    form.set("place_of_birth", placeOfBirth);
+    form.set("authority", authority);
+    form.set("personal_number", personalNumber);
     form.set("first_name", firstName);
     form.set("last_name", lastName);
     form.set("birth_date", birthDate);
@@ -87,7 +99,11 @@ export function DocumentsManager({
     }
     setScan(null);
     setNumber("");
-    setExpiresOn("");
+    setDocIssued("");
+    setDocExpiry("");
+    setPlaceOfBirth("");
+    setAuthority("");
+    setPersonalNumber("");
     setIssuingCountry("");
     setFirstName("");
     setLastName("");
@@ -102,7 +118,7 @@ export function DocumentsManager({
     router.refresh();
   }
 
-  const expiryWarn = documentExpiryWarning(expiresOn);
+  const expiryWarn = documentExpiryWarning(docExpiry);
 
   const DOC_ICONS: Record<TravelDocType, string> = {
     passport: "id_card",
@@ -137,6 +153,8 @@ export function DocumentsManager({
                 </div>
                 <p className="mt-1 text-xs text-muted">
                   Expire le {formatDateFr(d.expires_on)}
+                  {d.issued_on ? ` · délivré ${formatDateFr(d.issued_on)}` : ""}
+                  {d.place_of_birth ? ` · ${d.place_of_birth}` : ""}
                   {d.issuing_country ? ` · ${countryName(d.issuing_country)}` : ""}
                 </p>
                 {d.storage_path ? (
@@ -218,11 +236,23 @@ export function DocumentsManager({
           <Field label="N° de document">
             <input value={number} onChange={(event) => setNumber(event.target.value)} className={fieldControlClass} />
           </Field>
-          <Field label="Expire le">
-            <DateFrInput value={expiresOn} onChange={setExpiresOn} />
+          <Field label="Délivré le">
+            <DateFrInput value={docIssued} onChange={setDocIssued} />
           </Field>
-          <Field label="Pays d’émission" className="sm:col-span-2">
+          <Field label="Expire le">
+            <DateFrInput value={docExpiry} onChange={setDocExpiry} />
+          </Field>
+          <Field label="Pays d’émission">
             <CountrySelect name="issuing_country" value={issuingCountry} onChange={setIssuingCountry} />
+          </Field>
+          <Field label="Lieu de naissance">
+            <input value={placeOfBirth} onChange={(event) => setPlaceOfBirth(event.target.value)} className={fieldControlClass} />
+          </Field>
+          <Field label="Autorité">
+            <input value={authority} onChange={(event) => setAuthority(event.target.value)} className={fieldControlClass} />
+          </Field>
+          <Field label="N° personnel" className="sm:col-span-2">
+            <input value={personalNumber} onChange={(event) => setPersonalNumber(event.target.value)} className={fieldControlClass} />
           </Field>
         </div>
 

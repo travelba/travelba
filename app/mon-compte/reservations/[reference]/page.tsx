@@ -5,6 +5,7 @@ import { ensureCustomerForUser } from "@/lib/crm/auth";
 import {
   BOOKING_ITEM_LABELS,
   BOOKING_STATUS_LABELS,
+  DOC_TYPE_LABELS,
   type BookingItemKind,
   type CrmBooking,
   type CrmBookingDocument,
@@ -14,7 +15,11 @@ import {
 } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { ConciergeBanner, StatusChip, bookingStatusTone } from "@/components/crm/ui";
-import { TripTravelerPassports } from "@/components/crm/TripTravelerPassports";
+import {
+  personDocumentsForTraveler,
+  primaryIdentityDoc,
+  travelerDisplayName,
+} from "@/lib/crm/trip-documents";
 
 type Props = { params: Promise<{ reference: string }> };
 
@@ -102,24 +107,43 @@ export default async function ReservationDetailPage({ params }: Props) {
       <section className="aura-card space-y-3 rounded-[1.35rem] border-t-[3px] border-t-[var(--admin-gold)] bg-white p-4">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
-            À déposer pour ce séjour
+            Voyageurs
           </p>
           <h2 className="mt-1 font-display text-base font-bold text-[var(--admin-navy)]">
-            Voyageurs & passeports
+            Pièces d’identité
           </h2>
           <p className="mt-1 text-sm text-muted">
-            Chaque voyage a ses propres pièces. Joignez le passeport de chaque voyageur pour ce
-            dossier.
+            Les passeports se joignent une fois, sur le profil de chaque personne.
           </p>
         </div>
-        <TripTravelerPassports
-          variant="client"
-          customerId={customer.id}
-          bookingId={b.id}
-          travelers={(travelers || []) as CrmBookingTraveler[]}
-          tripDocs={allIdentity.filter((doc) => doc.booking_id === b.id)}
-          reusableDocs={allIdentity.filter((doc) => doc.booking_id !== b.id)}
-        />
+        <ul className="space-y-2">
+          {((travelers || []) as CrmBookingTraveler[]).map((traveler) => {
+            const doc = primaryIdentityDoc(
+              personDocumentsForTraveler(allIdentity, traveler)
+            );
+            return (
+              <li
+                key={traveler.id}
+                className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-3.5 py-3"
+              >
+                <span className="text-sm font-semibold text-[var(--admin-navy)]">
+                  {travelerDisplayName(traveler)}
+                </span>
+                <span className={`text-xs font-semibold ${doc ? "text-[var(--admin-navy)]" : "text-accent"}`}>
+                  {doc
+                    ? `${DOC_TYPE_LABELS[doc.doc_type]} ${doc.number || ""}`.trim()
+                    : "À joindre"}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+        <Link
+          href="/mon-compte/profil/documents"
+          className="inline-flex rounded-full bg-[var(--admin-navy)] px-4 py-2 text-xs font-semibold text-white"
+        >
+          Gérer les pièces
+        </Link>
       </section>
 
       <section className="aura-card space-y-3 rounded-[1.35rem] bg-white p-4">

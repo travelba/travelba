@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { AlertTriangle, Camera, CheckCircle2, Loader2, ScanLine } from "lucide-react";
 import type { ExtractedIdentity } from "@/lib/crm/identity";
+import { identitySummary } from "@/lib/crm/passport-extract";
 
 export type ScanResult = {
   file: File;
@@ -56,7 +57,7 @@ async function compressPhoto(file: File) {
 export function IdentityScan({
   endpoint = "/api/client/documents/scan",
   title = "Photographier le passeport ou la pièce d’identité",
-  description = "Nous lisons automatiquement nom, prénom, date de naissance, nationalité et n° de document.",
+  description = "Nous lisons toutes les mentions du document : nom, naissance, n°, dates, nationalité, lieu de naissance et autorité.",
   compact = false,
   onResult,
 }: {
@@ -168,7 +169,7 @@ export function ScanStatus({
   return (
     <p className="flex items-start gap-2 rounded-2xl border border-[var(--admin-gold)]/40 bg-[#fbf7ec] px-3 py-2 text-sm text-[var(--admin-navy)]">
       <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[var(--admin-navy)]" />
-      {warning || "Document lu. Vérifiez les informations, puis enregistrez."}
+      {warning || identitySummary(identity) || "Document lu. Vérifiez les informations, puis enregistrez."}
     </p>
   );
 }

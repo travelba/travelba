@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
-import { customerFullName } from "@/lib/crm/types";
+import { customerFullName, type CrmTravelDocument } from "@/lib/crm/types";
 import { ProfileForm } from "@/components/account/ProfileForm";
 import { ProfileSubnav } from "@/components/account/ProfileSubnav";
 import { ConciergeBanner } from "@/components/crm/ui";
@@ -16,6 +16,12 @@ export default async function ProfilPage() {
   if (!user) redirect("/connexion");
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");
+
+  const { data: documents } = await supabase
+    .from("crm_travel_documents")
+    .select("*")
+    .eq("customer_id", customer.id)
+    .is("companion_id", null);
 
   const name = customerFullName(customer);
   const initials =
@@ -70,7 +76,7 @@ export default async function ProfilPage() {
             Coordonnées, fiscalité et préférences — espace {siteConfig.shortName}.
           </p>
         </div>
-        <ProfileForm customer={customer} />
+        <ProfileForm customer={customer} documents={(documents || []) as CrmTravelDocument[]} />
       </section>
 
       <div className="space-y-2">

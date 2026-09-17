@@ -6,6 +6,7 @@ import {
   type DocumentIdentityFields,
 } from "./document-identity";
 import { emptyToNull } from "./identity";
+import { cleanPersonalNumber } from "./passport-extract";
 import { DOC_TYPES, type CrmTravelDocument, type TravelDocType } from "./types";
 
 export type TravelDocumentInput = {
@@ -18,6 +19,9 @@ export type TravelDocumentInput = {
   issuingCountry?: string | null;
   issuedOn?: string | null;
   expiresOn?: string | null;
+  placeOfBirth?: string | null;
+  authority?: string | null;
+  personalNumber?: string | null;
   storagePath?: string | null;
   fileName?: string | null;
   mimeType?: string | null;
@@ -64,20 +68,29 @@ export async function assertTravelerOnBooking(
 async function retirePreviousSameType(
   supabase: SupabaseClient,
   input: {
+    customerId: string;
+    companionId: string | null;
     bookingId: string | null;
     travelerId: string | null;
     docType: TravelDocType;
     keepId: string;
   }
 ) {
-  if (!input.bookingId || !input.travelerId) return;
-  const { error } = await supabase
+  let query = supabase
     .from("crm_travel_documents")
     .delete()
-    .eq("booking_id", input.bookingId)
-    .eq("traveler_id", input.travelerId)
+    .eq("customer_id", input.customerId)
     .eq("doc_type", input.docType)
     .neq("id", input.keepId);
+  if (input.bookingId && input.travelerId) {
+    query = query.eq("booking_id", input.bookingId).eq("traveler_id", input.travelerId);
+  } else {
+    query = query.is("booking_id", null);
+    query = input.companionId
+      ? query.eq("companion_id", input.companionId)
+      : query.is("companion_id", null);
+  }
+  const { error } = await query;
   if (error) throw new Error(error.message);
 }
 
@@ -114,6 +127,9 @@ export async function insertTravelDocument(
         emptyToNull(input.issuingCountry),
       issued_on: emptyToNull(input.issuedOn),
       expires_on: emptyToNull(input.expiresOn),
+      place_of_birth: emptyToNull(input.placeOfBirth),
+      authority: emptyToNull(input.authority),
+      personal_number: cleanPersonalNumber(input.personalNumber),
       ...identity,
       storage_path: emptyToNull(input.storagePath),
       file_name: emptyToNull(input.fileName),
@@ -123,6 +139,8 @@ export async function insertTravelDocument(
     .single();
   if (error) throw new Error(error.message);
   await retirePreviousSameType(supabase, {
+    customerId: input.customerId,
+    companionId,
     bookingId,
     travelerId,
     docType,
@@ -155,6 +173,9 @@ export async function cloneTravelDocument(
     issuingCountry: source.issuing_country,
     issuedOn: source.issued_on,
     expiresOn: source.expires_on,
+    placeOfBirth: source.place_of_birth,
+    authority: source.authority,
+    personalNumber: source.personal_number,
     first_name: source.first_name,
     last_name: source.last_name,
     birth_date: source.birth_date,
@@ -166,6 +187,25 @@ export async function cloneTravelDocument(
   });
 }
 
+export function travelDocumentFromForm(form: FormData, customerId: string): TravelDocumentInput {
+  const identity = identityFieldsFromForm(form);
+  return {
+    customerId,
+    companionId: emptyToNull(form.get("companion_id")),
+    bookingId: emptyToNull(form.get("booking_id")),
+    travelerId: emptyToNull(form.get("traveler_id")),
+    docType: String(form.get("doc_type") || "passport"),
+    number: emptyToNull(form.get("number")),
+    issuingCountry: emptyToNull(form.get("issuing_country")),
+    issuedOn: emptyToNull(form.get("issued_on")),
+    expiresOn: emptyToNull(form.get("expires_on")),
+    placeOfBirth: emptyToNull(form.get("place_of_birth")),
+    authority: emptyToNull(form.get("authority")),
+    personalNumber: emptyToNull(form.get("personal_number")),
+    ...identity,
+  };
+}
+
 export async function applyIdentityFromForm(
   supabase: SupabaseClient,
   form: FormData,
@@ -173,7 +213,7 @@ export async function applyIdentityFromForm(
   companionId: string | null,
   travelerId?: string | null
 ) {
-  if (String(form.get("apply_identity") || "") !== "1") return;
+  if (String(form.get("apply_identity") || "1") !== "1") return;
   const filled = filledIdentity(identityFieldsFromForm(form));
   if (Object.keys(filled).length === 0) return;
   if (companionId) {

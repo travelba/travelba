@@ -2,9 +2,11 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CrmCompanion } from "@/lib/crm/types";
+import type { CrmCompanion, CrmTravelDocument } from "@/lib/crm/types";
 import { countryName, resolveCountryCode } from "@/lib/crm/countries";
 import { RELATIONSHIP_OPTIONS } from "@/lib/crm/identity";
+import { appendPassportForm } from "@/lib/crm/passport-extract";
+import { documentsForPerson, primaryIdentityDoc } from "@/lib/crm/trip-documents";
 import {
   CountrySelect,
   DateFrInput,
@@ -14,12 +16,19 @@ import {
   SexSelect,
 } from "@/components/crm/fields";
 import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
+import { PersonPassportCard } from "@/components/crm/PersonPassportCard";
 
 function relationshipLabel(value: string | null) {
   return RELATIONSHIP_OPTIONS.find((option) => option.value === value)?.label || value || "";
 }
 
-export function CompanionsManager({ companions }: { companions: CrmCompanion[] }) {
+export function CompanionsManager({
+  companions,
+  documents,
+}: {
+  companions: CrmCompanion[];
+  documents: CrmTravelDocument[];
+}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -30,7 +39,6 @@ export function CompanionsManager({ companions }: { companions: CrmCompanion[] }
   const [birthDate, setBirthDate] = useState("");
   const [sex, setSex] = useState("");
   const [scan, setScan] = useState<ScanResult | null>(null);
-  const [keepDocument, setKeepDocument] = useState(true);
 
   function applyScan(result: ScanResult) {
     setScan(result);
@@ -65,14 +73,11 @@ export function CompanionsManager({ companions }: { companions: CrmCompanion[] }
       setError(json.error || "Erreur");
       return;
     }
-    if (keepDocument && scan?.file) {
+    if (scan?.file) {
       const form = new FormData();
       form.set("file", scan.file);
       form.set("companion_id", json.companion.id);
-      form.set("doc_type", scan.identity?.doc_type || "passport");
-      form.set("number", scan.identity?.number || "");
-      form.set("issuing_country", scan.identity?.issuing_country || "");
-      form.set("expires_on", scan.identity?.expires_on || "");
+      appendPassportForm(form, scan.identity, true);
       await fetch("/api/client/documents", { method: "POST", body: form });
     }
     setSaving(false);
@@ -93,38 +98,45 @@ export function CompanionsManager({ companions }: { companions: CrmCompanion[] }
 
   return (
     <div className="mt-6 space-y-4">
-      <ul className="space-y-2">
-        {companions.map((c) => (
-          <li
-            key={c.id}
-            className="admin-af-card flex items-center justify-between gap-3 rounded-2xl px-4 py-3"
-          >
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--admin-navy)] text-xs font-bold text-[#f8f6f0]">
-                {[c.first_name?.[0], c.last_name?.[0]].filter(Boolean).join("").toUpperCase() || "?"}
-              </span>
-              <div>
-                <p className="font-medium text-[var(--admin-navy)]">
-                  {c.first_name} {c.last_name}
-                </p>
-                <p className="text-xs text-muted">
-                  {[relationshipLabel(c.relationship), countryName(resolveCountryCode(c.nationality) || c.nationality)]
-                    .filter(Boolean)
-                    .join(" · ") || "—"}
-                </p>
+      <ul className="space-y-4">
+        {companions.map((c) => {
+          const doc = primaryIdentityDoc(documentsForPerson(documents, c.id));
+          return (
+            <li key={c.id} className="admin-af-card space-y-3 rounded-2xl p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--admin-navy)] text-xs font-bold text-[#f8f6f0]">
+                    {[c.first_name?.[0], c.last_name?.[0]].filter(Boolean).join("").toUpperCase() || "?"}
+                  </span>
+                  <div>
+                    <p className="font-medium text-[var(--admin-navy)]">
+                      {c.first_name} {c.last_name}
+                    </p>
+                    <p className="text-xs text-muted">
+                      {[
+                        relationshipLabel(c.relationship),
+                        countryName(resolveCountryCode(c.nationality) || c.nationality),
+                        doc?.number ? `n° ${doc.number}` : "Pièce à joindre",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  </div>
+                </div>
+                <button type="button" onClick={() => remove(c.id)} className="text-xs font-semibold text-accent">
+                  Retirer
+                </button>
               </div>
-            </div>
-            <button type="button" onClick={() => remove(c.id)} className="text-xs font-semibold text-accent">
-              Retirer
-            </button>
-          </li>
-        ))}
+              <PersonPassportCard variant="client" companionId={c.id} documents={documents} />
+            </li>
+          );
+        })}
       </ul>
 
       <form onSubmit={onSubmit} className="admin-af-card space-y-4 rounded-3xl p-5">
         <IdentityScan
           title="Ajouter un compagnon depuis son passeport"
-          description="La photo remplit nom, prénom, naissance et nationalité. Il ne reste que le lien avec vous."
+          description="Toutes les mentions du document remplissent les champs. Il ne reste que le lien avec vous."
           onResult={applyScan}
         />
         {scan ? <ScanStatus identity={scan.identity} warning={scan.warning} /> : null}
@@ -164,16 +176,6 @@ export function CompanionsManager({ companions }: { companions: CrmCompanion[] }
             <SexSelect name="sex" value={sex} onChange={setSex} />
           </Field>
         </div>
-        {scan?.file ? (
-          <label className="flex items-center gap-2 text-sm text-[var(--admin-navy)]">
-            <input
-              type="checkbox"
-              checked={keepDocument}
-              onChange={(event) => setKeepDocument(event.target.checked)}
-            />
-            Enregistrer aussi le passeport dans les documents
-          </label>
-        ) : null}
         {error ? <p className="text-sm text-accent">{error}</p> : null}
         <button className="admin-af-btn rounded-full px-4 py-2.5 text-sm" disabled={saving}>
           {saving ? "Enregistrement…" : "Ajouter le compagnon"}
