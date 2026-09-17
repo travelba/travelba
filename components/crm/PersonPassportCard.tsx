@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ChevronDown } from "lucide-react";
 import {
   DOC_TYPE_LABELS,
   type CrmTravelDocument,
@@ -58,6 +59,15 @@ export function passportDetailRows(source: PassportSource) {
   ] as const;
 }
 
+export function passportCompactLabel(source: PassportSource) {
+  const type =
+    source.doc_type && source.doc_type in DOC_TYPE_LABELS
+      ? DOC_TYPE_LABELS[source.doc_type as TravelDocType]
+      : source.doc_type || "Passeport";
+  const parts = [type, source.number].filter(Boolean);
+  return parts.join(" · ") || "Pièce d’identité";
+}
+
 export function PassportDetails({ source }: { source: PassportSource }) {
   return (
     <dl className="grid gap-x-4 gap-y-2 sm:grid-cols-2">
@@ -94,6 +104,7 @@ export function PersonPassportCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [replacing, setReplacing] = useState(false);
+  const [open, setOpen] = useState(false);
   const endpoint = variant === "admin" ? "/api/admin/travel-documents" : "/api/client/documents";
   const scanEndpoint =
     variant === "admin" ? "/api/admin/travel-documents/scan" : "/api/client/documents/scan";
@@ -125,21 +136,49 @@ export function PersonPassportCard({
 
   function handleResult(result: ScanResult) {
     setScan(result);
-    if (result.identity) onIdentity?.(result.identity);
+    if (result.identity) {
+      setOpen(true);
+      onIdentity?.(result.identity);
+    }
     onScan?.(result);
     void persistScan(result);
   }
 
+  const saved = Boolean(current) && !scan;
+  const showDetails = Boolean(preview) && (open || Boolean(scan) || !current);
+
   return (
     <div className="space-y-3 rounded-2xl border border-dashed border-[var(--admin-gold)]/70 bg-[var(--admin-sky)]/40 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
+      {saved ? (
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          className="flex w-full items-start justify-between gap-3 text-left"
+          aria-expanded={open}
+        >
+          <div className="min-w-0">
+            <p className="font-display text-sm font-bold text-[var(--admin-navy)]">
+              Pièce d’identité
+            </p>
+            <p className="mt-0.5 truncate text-sm text-muted">
+              {current ? passportCompactLabel(current) : ""}
+            </p>
+          </div>
+          <span className="flex shrink-0 items-center gap-2">
+            {status ? <StatusChip tone={status.tone}>{status.label}</StatusChip> : null}
+            <ChevronDown
+              className={`h-4 w-4 text-[var(--admin-navy)] transition ${open ? "rotate-180" : ""}`}
+            />
+          </span>
+        </button>
+      ) : (
+        <div className="flex flex-wrap items-start justify-between gap-2">
           <p className="font-display text-sm font-bold text-[var(--admin-navy)]">
             Pièce d’identité
           </p>
+          {current && status ? <StatusChip tone={status.tone}>{status.label}</StatusChip> : null}
         </div>
-        {current && status ? <StatusChip tone={status.tone}>{status.label}</StatusChip> : null}
-      </div>
+      )}
 
       {showScan ? (
         <>
@@ -153,7 +192,7 @@ export function PersonPassportCard({
         </>
       ) : null}
 
-      {preview ? <PassportDetails source={preview} /> : null}
+      {showDetails && preview ? <PassportDetails source={preview} /> : null}
 
       {current?.storage_path ? (
         <FileOpenLink
