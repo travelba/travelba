@@ -27,6 +27,7 @@ export function ProfileForm({ customer }: { customer: CrmCustomer }) {
   const [sex, setSex] = useState(customer.sex || "");
   const [nationality, setNationality] = useState(resolveCountryCode(customer.nationality) || "");
   const [phone, setPhone] = useState(customer.phone || "");
+  const [phoneSecondary, setPhoneSecondary] = useState(customer.phone_secondary || "");
   const [whatsapp, setWhatsapp] = useState(customer.whatsapp || "");
   const [whatsappSame, setWhatsappSame] = useState(
     !customer.whatsapp || customer.whatsapp === customer.phone
@@ -35,6 +36,7 @@ export function ProfileForm({ customer }: { customer: CrmCustomer }) {
   const [addressLine, setAddressLine] = useState(customer.address_line || "");
   const [postalCode, setPostalCode] = useState(customer.postal_code || "");
   const [city, setCity] = useState(customer.city || "");
+  const [flyingBlue, setFlyingBlue] = useState(customer.flying_blue || "");
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [keepDocument, setKeepDocument] = useState(true);
 
@@ -64,7 +66,9 @@ export function ProfileForm({ customer }: { customer: CrmCustomer }) {
         sex,
         nationality,
         phone,
+        phone_secondary: phoneSecondary,
         whatsapp: whatsappSame ? phone : whatsapp,
+        flying_blue: flyingBlue,
         address_line: addressLine,
         postal_code: postalCode,
         city,
@@ -159,7 +163,22 @@ export function ProfileForm({ customer }: { customer: CrmCustomer }) {
           Coordonnées
         </p>
         <p className="sm:col-span-2 text-sm text-muted">Email : {customer.email}</p>
-        <PhoneField name="phone" value={phone} onChange={setPhone} className="sm:col-span-2" />
+        <PhoneField name="phone" value={phone} onChange={setPhone} />
+        <PhoneField
+          name="phone_secondary"
+          label="Téléphone 2"
+          value={phoneSecondary}
+          onChange={setPhoneSecondary}
+        />
+        <Field label="N° Flying Blue" className="sm:col-span-2" hint="Programme Air France / KLM">
+          <input
+            value={flyingBlue}
+            onChange={(event) => setFlyingBlue(event.target.value.toUpperCase())}
+            autoComplete="off"
+            className={fieldControlClass}
+            placeholder="1234567890"
+          />
+        </Field>
         <label className="sm:col-span-2 flex items-center gap-2 text-sm text-[var(--admin-navy)]">
           <input
             type="checkbox"

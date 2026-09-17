@@ -31,6 +31,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
     "last_name",
     "email",
     "phone",
+    "phone_secondary",
     "whatsapp",
     "birth_date",
     "sex",
@@ -39,15 +40,19 @@ export async function PATCH(request: Request, ctx: Ctx) {
     "postal_code",
     "city",
     "country",
+    "flying_blue",
   ]) {
     if (key in body) {
       if (key === "email") {
         patch[key] = String(body[key] || "").trim().toLowerCase();
-      } else if (key === "phone" || key === "whatsapp") {
+      } else if (key === "phone" || key === "whatsapp" || key === "phone_secondary") {
         const raw = emptyToNull(body[key]);
         patch[key] = raw ? toE164(raw, "FR") || raw : null;
       } else if (key === "nationality" || key === "country") {
         patch[key] = resolveCountryCode(String(body[key] || "")) || emptyToNull(body[key]);
+      } else if (key === "flying_blue") {
+        const raw = emptyToNull(body[key]);
+        patch[key] = raw ? raw.replace(/\s+/g, "").toUpperCase() : null;
       } else {
         patch[key] = emptyToNull(body[key]);
       }
