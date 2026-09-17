@@ -9,6 +9,22 @@ import {
   vatFromSiret,
 } from "./billing";
 import { customerPatchFromBody } from "./customer-patch";
+import {
+  billingAddressDisplay,
+  billingJson,
+  type CompanyBillingValues,
+} from "../../components/crm/CompanyBillingFields";
+
+const emptyBilling: CompanyBillingValues = {
+  companyName: "",
+  siret: "",
+  vatNumber: "",
+  billingEmail: "",
+  billingCountry: "",
+  billingLine: "",
+  billingPostal: "",
+  billingCity: "",
+};
 
 test("SIRET formatting and Luhn", () => {
   assert.equal(formatSiretInput("73282932000074"), "732 829 320 00074");
@@ -47,4 +63,35 @@ test("customer patch maps billing fields", () => {
 test("invalid SIRET is rejected", () => {
   const { error } = customerPatchFromBody({ siret: "123456" });
   assert.equal(error, "Le SIRET doit contenir 14 chiffres.");
+});
+
+test("billing address fields stay visible from the traveler or the company", () => {
+  const profile = {
+    country: "FR",
+    line: "12 rue de Rivoli",
+    postal: "75001",
+    city: "Paris",
+  };
+  const same = billingAddressDisplay(emptyBilling, profile, true);
+  assert.equal(same.line, "12 rue de Rivoli");
+  assert.equal(same.postal, "75001");
+  assert.equal(same.city, "Paris");
+  const own = billingAddressDisplay(
+    { ...emptyBilling, billingLine: "1 avenue de l’Opéra", billingPostal: "75002", billingCity: "Paris" },
+    profile,
+    false
+  );
+  assert.equal(own.line, "1 avenue de l’Opéra");
+  assert.equal(own.postal, "75002");
+});
+
+test("billing json copies traveler address when marked identical", () => {
+  const json = billingJson(
+    { ...emptyBilling, companyName: "Boukris SAS" },
+    { country: "FR", line: "12 rue de Rivoli", postal: "75001", city: "Paris" },
+    true
+  );
+  assert.equal(json.billing_address_line, "12 rue de Rivoli");
+  assert.equal(json.billing_postal_code, "75001");
+  assert.equal(json.billing_city, "Paris");
 });
