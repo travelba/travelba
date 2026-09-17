@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Phone, Plus } from "lucide-react";
 import type { CountryCode } from "libphonenumber-js";
 import { countriesForSelect, countryName, flagImageUrl, resolveCountryCode } from "@/lib/crm/countries";
 import {
@@ -411,6 +412,59 @@ export function PhoneField({
       {national && !valid ? (
         <p className="mt-1 text-xs text-accent">Numéro invalide pour cet indicatif.</p>
       ) : null}
+    </div>
+  );
+}
+
+export function OptionalSecondPhone({
+  name = "phone_secondary",
+  label = "Téléphone 2",
+  value,
+  onChange,
+}: {
+  name?: string;
+  label?: string;
+  value: string;
+  onChange: (e164: string) => void;
+}) {
+  const [open, setOpen] = useState(() => Boolean(value.trim()));
+
+  useEffect(() => {
+    if (value.trim()) setOpen(true);
+  }, [value]);
+
+  if (!open) {
+    return (
+      <div className="flex h-full items-end">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label="Ajouter un téléphone"
+          title="Ajouter un téléphone"
+          className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-full border border-border bg-white text-[var(--admin-navy)] transition hover:border-[var(--admin-gold)] hover:bg-[var(--admin-sky)]/50"
+        >
+          <span className="relative inline-flex">
+            <Phone className="h-4 w-4" />
+            <Plus className="absolute -right-2 -top-2 h-3 w-3" strokeWidth={2.5} />
+          </span>
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <PhoneField name={name} label={label} value={value} onChange={onChange} />
+      <button
+        type="button"
+        className="mt-1.5 text-xs font-semibold text-muted"
+        onClick={() => {
+          onChange("");
+          setOpen(false);
+        }}
+      >
+        Retirer
+      </button>
     </div>
   );
 }
