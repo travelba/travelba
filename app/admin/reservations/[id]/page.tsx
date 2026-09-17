@@ -55,8 +55,7 @@ export default async function AdminBookingPage({ params }: Props) {
           items={(items || []) as CrmBookingItem[]}
           travelers={(travelers || []) as CrmBookingTraveler[]}
           documents={(documents || []) as CrmBookingDocument[]}
-          tripDocs={allIdentity.filter((doc) => doc.booking_id === id)}
-          reusableDocs={allIdentity.filter((doc) => doc.booking_id !== id)}
+          identityDocs={allIdentity}
           companions={(companions || []) as CrmCompanion[]}
           holderName={{
             first_name: holder?.first_name || "",

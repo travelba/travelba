@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 const LINKS = [
   { href: "/mon-compte/profil", label: "Informations personnelles", exact: true },
   { href: "/mon-compte/profil/paiement", label: "Moyens de paiement" },
-  { href: "/mon-compte/profil/documents", label: "Pièces par voyage" },
+  { href: "/mon-compte/profil/documents", label: "Pièces d’identité" },
   { href: "/mon-compte/profil/compagnons", label: "Compagnons de voyage" },
 ];
 

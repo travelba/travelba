@@ -2,8 +2,10 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CrmCompanion, CrmCustomer } from "@/lib/crm/types";
+import type { CrmCompanion, CrmCustomer, CrmTravelDocument } from "@/lib/crm/types";
 import { resolveCountryCode } from "@/lib/crm/countries";
+import { type ExtractedIdentity } from "@/lib/crm/identity";
+import { appendPassportForm } from "@/lib/crm/passport-extract";
 import {
   AddressFields,
   CountrySelect,
@@ -11,26 +13,52 @@ import {
   Field,
   fieldControlClass,
   PhoneField,
+  RelationshipSelect,
   SexSelect,
 } from "@/components/crm/fields";
-import { IdentityScan, type ScanResult } from "@/components/crm/IdentityScan";
+import {
+  billingJson,
+  billingSameAsProfile,
+  companyBillingFromCustomer,
+  CompanyBillingFields,
+  type CompanyBillingValues,
+} from "@/components/crm/CompanyBillingFields";
+import { PersonPassportCard } from "@/components/crm/PersonPassportCard";
+import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
+
+function applyIdentityState(
+  id: ExtractedIdentity,
+  setters: {
+    setFirstName: (v: string) => void;
+    setLastName: (v: string) => void;
+    setBirthDate: (v: string) => void;
+    setSex: (v: string) => void;
+    setNationality: (v: string) => void;
+  }
+) {
+  if (id.first_name) setters.setFirstName(id.first_name);
+  if (id.last_name) setters.setLastName(id.last_name);
+  if (id.birth_date) setters.setBirthDate(id.birth_date);
+  if (id.sex) setters.setSex(id.sex);
+  if (id.nationality) setters.setNationality(id.nationality);
+}
 
 export function CustomerEditor({
   customer,
   companions,
+  documents,
 }: {
   customer: CrmCustomer;
   companions: CrmCompanion[];
+  documents: CrmTravelDocument[];
 }) {
   const router = useRouter();
   const [firstName, setFirstName] = useState(customer.first_name);
   const [lastName, setLastName] = useState(customer.last_name);
   const [email, setEmail] = useState(customer.email);
   const [phone, setPhone] = useState(customer.phone || "");
+  const [phoneSecondary, setPhoneSecondary] = useState(customer.phone_secondary || "");
   const [whatsapp, setWhatsapp] = useState(customer.whatsapp || "");
-  const [whatsappSame, setWhatsappSame] = useState(
-    !customer.whatsapp || customer.whatsapp === customer.phone
-  );
   const [birthDate, setBirthDate] = useState(customer.birth_date || "");
   const [sex, setSex] = useState(customer.sex || "");
   const [nationality, setNationality] = useState(resolveCountryCode(customer.nationality) || "");
@@ -38,20 +66,33 @@ export function CustomerEditor({
   const [addressLine, setAddressLine] = useState(customer.address_line || "");
   const [postalCode, setPostalCode] = useState(customer.postal_code || "");
   const [city, setCity] = useState(customer.city || "");
+  const [flyingBlue, setFlyingBlue] = useState(customer.flying_blue || "");
+  const [billing, setBilling] = useState<CompanyBillingValues>(() =>
+    companyBillingFromCustomer(customer)
+  );
+  const [sameBillingAddress, setSameBillingAddress] = useState(() =>
+    billingSameAsProfile(companyBillingFromCustomer(customer), {
+      country: resolveCountryCode(customer.country) || "FR",
+      line: customer.address_line || "",
+      postal: customer.postal_code || "",
+      city: customer.city || "",
+    })
+  );
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  function applyCustomerScan(result: ScanResult) {
-    const id = result.identity;
-    if (!id) return;
-    if (id.first_name) setFirstName(id.first_name);
-    if (id.last_name) setLastName(id.last_name);
-    if (id.birth_date) setBirthDate(id.birth_date);
-    if (id.sex) setSex(id.sex);
-    if (id.nationality) setNationality(id.nationality);
-  }
+  const profileAddress = {
+    country,
+    line: addressLine,
+    postal: postalCode,
+    city,
+  };
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await fetch(`/api/admin/clients/${customer.id}`, {
+    setSaving(true);
+    setSaveError(null);
+    const res = await fetch(`/api/admin/clients/${customer.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -59,7 +100,8 @@ export function CustomerEditor({
         last_name: lastName,
         email,
         phone,
-        whatsapp: whatsappSame ? phone : whatsapp,
+        phone_secondary: phoneSecondary,
+        whatsapp,
         birth_date: birthDate,
         sex,
         nationality,
@@ -67,51 +109,59 @@ export function CustomerEditor({
         postal_code: postalCode,
         city,
         country,
+        flying_blue: flyingBlue,
+        ...billingJson(billing, profileAddress, sameBillingAddress),
       }),
     });
-    router.refresh();
-  }
-
-  async function addCompanion(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const body = Object.fromEntries(new FormData(form).entries());
-    await fetch("/api/admin/companions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...body, customer_id: customer.id }),
-    });
-    form.reset();
+    const json = await res.json().catch(() => ({}));
+    setSaving(false);
+    if (!res.ok) {
+      setSaveError(json.error || "Enregistrement impossible");
+      return;
+    }
     router.refresh();
   }
 
   return (
     <div className="space-y-6">
-      <form onSubmit={save} className="admin-af-card space-y-4 rounded-3xl p-5">
-        <IdentityScan
-          endpoint="/api/admin/travel-documents/scan"
-          title="Remplir l’identité depuis le passeport"
-          description="La lecture sert au nom et à la naissance. La pièce elle-même se joint sur le dossier voyage."
-          onResult={applyCustomerScan}
+      <form onSubmit={save} className="admin-af-card space-y-6 rounded-3xl p-5">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+            Fiche client
+          </p>
+          <h2 className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">
+            Voyageur principal
+          </h2>
+          <p className="mt-1 text-sm text-muted">
+            Uploadez sa pièce : l’identité se remplit, puis les coordonnées et la facturation société.
+          </p>
+        </div>
+
+        <PersonPassportCard
+          variant="admin"
+          customerId={customer.id}
+          documents={documents}
+          onIdentity={(id) =>
+            applyIdentityState(id, {
+              setFirstName,
+              setLastName,
+              setBirthDate,
+              setSex,
+              setNationality,
+            })
+          }
         />
+
         <div className="grid gap-4 sm:grid-cols-2">
+          <p className="sm:col-span-2 font-display text-base font-bold text-[var(--admin-navy)]">
+            Identité
+          </p>
           <Field label="Prénom">
             <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
           </Field>
           <Field label="Nom">
             <input value={lastName} onChange={(e) => setLastName(e.target.value)} className={fieldControlClass} />
           </Field>
-          <Field label="Email" className="sm:col-span-2">
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={fieldControlClass} />
-          </Field>
-          <PhoneField name="phone" value={phone} onChange={setPhone} className="sm:col-span-2" />
-          <label className="sm:col-span-2 flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={whatsappSame} onChange={(e) => setWhatsappSame(e.target.checked)} />
-            WhatsApp identique
-          </label>
-          {!whatsappSame ? (
-            <PhoneField name="whatsapp" label="WhatsApp" value={whatsapp} onChange={setWhatsapp} className="sm:col-span-2" />
-          ) : null}
           <Field label="Naissance">
             <DateFrInput
               value={birthDate}
@@ -127,43 +177,302 @@ export function CustomerEditor({
             <CountrySelect name="nationality" value={nationality} onChange={setNationality} />
           </Field>
         </div>
-        <AddressFields
-          country={country}
-          onCountryChange={setCountry}
-          line={addressLine}
-          postal={postalCode}
-          city={city}
-          onLineChange={setAddressLine}
-          onPostalChange={setPostalCode}
-          onCityChange={setCity}
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <p className="sm:col-span-2 font-display text-base font-bold text-[var(--admin-navy)]">
+            Coordonnées
+          </p>
+          <Field label="Email" className="sm:col-span-2">
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={fieldControlClass} />
+          </Field>
+          <PhoneField name="phone" value={phone} onChange={setPhone} />
+          <PhoneField
+            name="phone_secondary"
+            label="Téléphone 2"
+            value={phoneSecondary}
+            onChange={setPhoneSecondary}
+          />
+          <PhoneField
+            name="whatsapp"
+            label="WhatsApp"
+            value={whatsapp}
+            onChange={setWhatsapp}
+            className="sm:col-span-2"
+          />
+          <Field label="N° Flying Blue" className="sm:col-span-2" hint="Programme Air France / KLM">
+            <input
+              value={flyingBlue}
+              onChange={(e) => setFlyingBlue(e.target.value.toUpperCase())}
+              autoComplete="off"
+              className={fieldControlClass}
+              placeholder="1234567890"
+            />
+          </Field>
+        </div>
+
+        <section>
+          <p className="mb-4 font-display text-base font-bold text-[var(--admin-navy)]">Adresse</p>
+          <AddressFields
+            country={country}
+            onCountryChange={setCountry}
+            line={addressLine}
+            postal={postalCode}
+            city={city}
+            onLineChange={setAddressLine}
+            onPostalChange={setPostalCode}
+            onCityChange={setCity}
+          />
+        </section>
+
+        <CompanyBillingFields
+          values={billing}
+          onChange={setBilling}
+          sameAsProfile={sameBillingAddress}
+          onSameAsProfileChange={setSameBillingAddress}
+          profileAddress={profileAddress}
         />
-        <button className="admin-af-btn rounded-full px-4 py-2 text-sm">Enregistrer</button>
+
+        {saveError ? <p className="text-sm text-accent">{saveError}</p> : null}
+        <button className="admin-af-btn rounded-full px-4 py-2 text-sm" disabled={saving}>
+          {saving ? "Enregistrement…" : "Enregistrer"}
+        </button>
       </form>
 
-      <section className="admin-af-card rounded-3xl p-5">
-        <h2 className="font-display text-lg font-bold">Compagnons</h2>
-        <ul className="mt-2 text-sm">
-          {companions.map((c) => (
-            <li key={c.id}>
-              {c.first_name} {c.last_name}
-            </li>
-          ))}
-        </ul>
-        <form onSubmit={addCompanion} className="mt-3 grid gap-2 sm:grid-cols-2">
-          <input name="first_name" required placeholder="Prénom" className={fieldControlClass} />
-          <input name="last_name" required placeholder="Nom" className={fieldControlClass} />
-          <select name="relationship" defaultValue="" className={fieldControlClass}>
-            <option value="">Lien</option>
-            <option value="conjoint">Conjoint(e)</option>
-            <option value="enfant">Enfant</option>
-            <option value="parent">Parent</option>
-            <option value="famille">Famille</option>
-            <option value="ami">Ami(e)</option>
-            <option value="autre">Autre</option>
-          </select>
-          <button className="admin-af-btn rounded-full px-3 py-2 text-sm sm:col-span-2">Ajouter</button>
-        </form>
+      <section className="space-y-4">
+        <div>
+          <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Accompagnateurs</h2>
+          <p className="mt-1 text-sm text-muted">
+            Même principe : une pièce par personne, qui remplit son identité.
+          </p>
+        </div>
+        {companions.map((companion) => (
+          <CompanionCard
+            key={companion.id}
+            customerId={customer.id}
+            companion={companion}
+            documents={documents}
+          />
+        ))}
+        <AddCompanionForm customerId={customer.id} />
       </section>
     </div>
+  );
+}
+
+function CompanionCard({
+  customerId,
+  companion,
+  documents,
+}: {
+  customerId: string;
+  companion: CrmCompanion;
+  documents: CrmTravelDocument[];
+}) {
+  const router = useRouter();
+  const [firstName, setFirstName] = useState(companion.first_name);
+  const [lastName, setLastName] = useState(companion.last_name);
+  const [relationship, setRelationship] = useState(companion.relationship || "");
+  const [nationality, setNationality] = useState(resolveCountryCode(companion.nationality) || "");
+  const [birthDate, setBirthDate] = useState(companion.birth_date || "");
+  const [sex, setSex] = useState(companion.sex || "");
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    await fetch("/api/admin/companions", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: companion.id,
+        customer_id: customerId,
+        first_name: firstName,
+        last_name: lastName,
+        relationship,
+        nationality,
+        birth_date: birthDate,
+        sex,
+      }),
+    });
+    setSaving(false);
+    router.refresh();
+  }
+
+  async function remove() {
+    await fetch(`/api/admin/companions?id=${companion.id}`, { method: "DELETE" });
+    router.refresh();
+  }
+
+  return (
+    <article className="admin-af-card space-y-4 rounded-3xl p-5">
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">
+          {companion.first_name} {companion.last_name}
+        </h3>
+        <button type="button" onClick={() => void remove()} className="text-xs font-semibold text-accent">
+          Retirer
+        </button>
+      </div>
+      <PersonPassportCard
+        variant="admin"
+        customerId={customerId}
+        companionId={companion.id}
+        documents={documents}
+        onIdentity={(id) =>
+          applyIdentityState(id, {
+            setFirstName,
+            setLastName,
+            setBirthDate,
+            setSex,
+            setNationality,
+          })
+        }
+      />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Prénom">
+          <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
+        </Field>
+        <Field label="Nom">
+          <input value={lastName} onChange={(e) => setLastName(e.target.value)} className={fieldControlClass} />
+        </Field>
+        <Field label="Lien">
+          <RelationshipSelect name="relationship" value={relationship} onChange={setRelationship} />
+        </Field>
+        <Field label="Nationalité">
+          <CountrySelect name="nationality" value={nationality} onChange={setNationality} />
+        </Field>
+        <Field label="Naissance">
+          <DateFrInput
+            value={birthDate}
+            onChange={setBirthDate}
+            max={new Date().toISOString().slice(0, 10)}
+          />
+        </Field>
+        <Field label="Sexe">
+          <SexSelect name="sex" value={sex} onChange={setSex} />
+        </Field>
+      </div>
+      <button
+        type="button"
+        onClick={() => void save()}
+        className="admin-af-btn rounded-full px-4 py-2 text-sm"
+        disabled={saving}
+      >
+        {saving ? "Enregistrement…" : "Enregistrer l’accompagnateur"}
+      </button>
+    </article>
+  );
+}
+
+function AddCompanionForm({ customerId }: { customerId: string }) {
+  const router = useRouter();
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [relationship, setRelationship] = useState("");
+  const [nationality, setNationality] = useState("");
+  const [birthDate, setBirthDate] = useState("");
+  const [sex, setSex] = useState("");
+  const [scan, setScan] = useState<ScanResult | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    const res = await fetch("/api/admin/companions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customer_id: customerId,
+        first_name: firstName,
+        last_name: lastName,
+        relationship,
+        nationality,
+        birth_date: birthDate,
+        sex,
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setSaving(false);
+      setError(json.error || "Impossible d’ajouter l’accompagnateur");
+      return;
+    }
+    if (scan?.file) {
+      const form = new FormData();
+      form.set("customer_id", customerId);
+      form.set("companion_id", json.companion.id);
+      form.set("file", scan.file);
+      appendPassportForm(form, scan.identity, true);
+      await fetch("/api/admin/travel-documents", { method: "POST", body: form });
+    }
+    setSaving(false);
+    setFirstName("");
+    setLastName("");
+    setRelationship("");
+    setNationality("");
+    setBirthDate("");
+    setSex("");
+    setScan(null);
+    router.refresh();
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="admin-af-card space-y-4 rounded-3xl p-5">
+      <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">
+        Ajouter un accompagnateur
+      </h3>
+      <IdentityScan
+        endpoint="/api/admin/travel-documents/scan"
+        title="Uploader sa pièce d’identité"
+        description="La lecture remplit tous les champs du passeport. Il ne reste que le lien avec le titulaire."
+        onResult={(result) => {
+          setScan(result);
+          if (result.identity) {
+            applyIdentityState(result.identity, {
+              setFirstName,
+              setLastName,
+              setBirthDate,
+              setSex,
+              setNationality,
+            });
+          }
+        }}
+      />
+      {scan ? <ScanStatus identity={scan.identity} warning={scan.warning} /> : null}
+      {scan?.identity ? (
+        <p className="text-xs text-muted">
+          Pièce lue — elle sera enregistrée avec l’accompagnateur.
+        </p>
+      ) : null}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Prénom">
+          <input required value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
+        </Field>
+        <Field label="Nom">
+          <input required value={lastName} onChange={(e) => setLastName(e.target.value)} className={fieldControlClass} />
+        </Field>
+        <Field label="Lien">
+          <RelationshipSelect name="relationship" value={relationship} onChange={setRelationship} />
+        </Field>
+        <Field label="Nationalité">
+          <CountrySelect name="nationality" value={nationality} onChange={setNationality} />
+        </Field>
+        <Field label="Naissance">
+          <DateFrInput
+            value={birthDate}
+            onChange={setBirthDate}
+            max={new Date().toISOString().slice(0, 10)}
+          />
+        </Field>
+        <Field label="Sexe">
+          <SexSelect name="sex" value={sex} onChange={setSex} />
+        </Field>
+      </div>
+      {error ? <p className="text-sm text-accent">{error}</p> : null}
+      <button className="admin-af-btn rounded-full px-4 py-2 text-sm" disabled={saving}>
+        {saving ? "Enregistrement…" : "Ajouter l’accompagnateur"}
+      </button>
+    </form>
   );
 }

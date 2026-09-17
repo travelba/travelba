@@ -39,6 +39,9 @@ function doc(partial: Partial<CrmTravelDocument>): CrmTravelDocument {
     birth_date: null,
     nationality: null,
     sex: null,
+    place_of_birth: null,
+    authority: null,
+    personal_number: null,
     storage_path: null,
     file_name: null,
     mime_type: null,
@@ -57,6 +60,7 @@ test("vault vs trip documents stay separate", () => {
   assert.equal(tripDocumentsForTraveler(vault, holder).length, 0);
   assert.equal(primaryIdentityDoc(trip)?.id, "trip");
   assert.deepEqual(tripDocCoverage([holder], trip), { ready: 1, total: 1 });
+  assert.deepEqual(tripDocCoverage([holder], vault), { ready: 1, total: 1 });
   assert.deepEqual(tripDocCoverage([holder], []), { ready: 0, total: 1 });
 });
 

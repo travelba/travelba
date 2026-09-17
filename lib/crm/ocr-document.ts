@@ -3,15 +3,13 @@ import { generateText, Output, APICallError } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
 import { parseMrzFromOcr } from "./mrz-parse";
+import { emptyToNull, type ExtractedIdentity } from "./identity";
 import {
-  emptyToNull,
-  humanizeMrzName,
-  type ExtractedIdentity,
-} from "./identity";
-import { resolveCountryCode } from "./countries";
+  identityFromVision,
+  mergePassportIdentities,
+} from "./passport-extract";
 import { aiGatewayConfigured, openaiApiKey } from "./ingest-types";
 import { trySharp } from "./sharp";
-import { DOC_TYPES, type TravelDocType } from "./types";
 
 const MAX_BYTES = 8 * 1024 * 1024;
 const VISION_TIMEOUT_MS = 45_000;
@@ -22,21 +20,33 @@ const identityExtractSchema = z.object({
   doc_type: nullableString,
   number: nullableString,
   issuing_country: nullableString,
+  issued_on: nullableString,
   expires_on: nullableString,
   first_name: nullableString,
   last_name: nullableString,
   birth_date: nullableString,
+  place_of_birth: nullableString,
   nationality: nullableString,
   sex: nullableString,
+  authority: nullableString,
+  personal_number: nullableString,
   mrz_text: nullableString,
 });
 
-const PROMPT = `Tu lis une photo de passeport, carte d’identité ou titre de voyage.
-Extrais uniquement ce qui est visible. Ne jamais inventer : mettre null.
+const PROMPT = `Tu lis une photo de passeport, carte d’identité ou titre de voyage (zone visuelle + MRZ).
+Extrais TOUS les champs visibles. Ne jamais inventer : mettre null si absent ou illisible.
 Dates en YYYY-MM-DD.
 Nationalité et pays émetteur : code ISO 2 lettres si possible (FR, US, GB…).
 sex : M, F ou X.
 doc_type : passport | id_card | visa | insurance | other.
+first_name : tous les prénoms, dans l’ordre.
+last_name : nom de famille.
+place_of_birth : lieu de naissance (ville / pays), tel qu’imprimé.
+issued_on : date de délivrance.
+expires_on : date d’expiration.
+authority : autorité de délivrance (préfecture, ministère…).
+personal_number : n° personnel / national / optionnel s’il figure.
+number : n° du document (passeport ou CNI).
 mrz_text : recopie EXACTEMENT la bande MRZ (lignes du bas, caractères A-Z 0-9 <), une ligne par ligne, si elle est lisible. Sinon null.`;
 
 function identityModel() {
@@ -78,92 +88,6 @@ async function toVisionImage(file: File) {
   return { image, mediaType };
 }
 
-function isoDate(value: string | null | undefined) {
-  const text = emptyToNull(value);
-  if (!text) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
-  const fr = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
-  if (!fr) return null;
-  return `${fr[3]}-${fr[2].padStart(2, "0")}-${fr[1].padStart(2, "0")}`;
-}
-
-function mapSex(value: string | null | undefined): ExtractedIdentity["sex"] {
-  if (!value) return null;
-  const v = value.trim().toLowerCase();
-  if (v === "m" || v === "male" || v === "homme" || v === "h") return "M";
-  if (v === "f" || v === "female" || v === "femme") return "F";
-  if (v === "x" || v === "autre" || v === "other") return "X";
-  return null;
-}
-
-function mapDocType(value: string | null | undefined): TravelDocType {
-  const raw = (value || "").trim().toLowerCase().replace(/['’]/g, " ");
-  if (raw.includes("visa")) return "visa";
-  if (raw.includes("assur")) return "insurance";
-  if (
-    raw.includes("id_card") ||
-    raw.includes("carte") ||
-    raw.includes("cni") ||
-    raw.includes("identity") ||
-    raw.includes("national id")
-  ) {
-    return "id_card";
-  }
-  if (raw && (DOC_TYPES as readonly string[]).includes(raw)) {
-    return raw as TravelDocType;
-  }
-  if (raw && !raw.includes("pass")) return "other";
-  return "passport";
-}
-
-function fieldScore(identity: ExtractedIdentity) {
-  const keys: (keyof ExtractedIdentity)[] = [
-    "number",
-    "last_name",
-    "first_name",
-    "birth_date",
-    "expires_on",
-    "nationality",
-  ];
-  return keys.reduce((sum, key) => sum + (identity[key] ? 1 : 0), 0);
-}
-
-function fromVision(raw: z.infer<typeof identityExtractSchema>): ExtractedIdentity | null {
-  const identity: ExtractedIdentity = {
-    doc_type: mapDocType(raw.doc_type),
-    number: emptyToNull(raw.number)?.replace(/\s/g, "") || null,
-    issuing_country: resolveCountryCode(raw.issuing_country) || emptyToNull(raw.issuing_country),
-    expires_on: isoDate(raw.expires_on),
-    first_name: raw.first_name ? humanizeMrzName(raw.first_name) : null,
-    last_name: raw.last_name ? humanizeMrzName(raw.last_name) : null,
-    birth_date: isoDate(raw.birth_date),
-    nationality: resolveCountryCode(raw.nationality) || emptyToNull(raw.nationality),
-    sex: mapSex(raw.sex),
-    format: null,
-    valid: false,
-  };
-  return fieldScore(identity) >= 2 ? identity : null;
-}
-
-function mergeIdentities(
-  mrz: ExtractedIdentity | null,
-  vision: ExtractedIdentity | null
-): ExtractedIdentity | null {
-  if (!mrz) return vision;
-  if (!vision) return mrz;
-  if (mrz.valid || fieldScore(mrz) >= fieldScore(vision)) {
-    return {
-      ...vision,
-      ...Object.fromEntries(
-        Object.entries(mrz).filter(([, value]) => value != null && value !== "")
-      ),
-      format: mrz.format,
-      valid: mrz.valid,
-    } as ExtractedIdentity;
-  }
-  return vision;
-}
-
 async function generateIdentity(
   image: Uint8Array,
   mediaType: string,
@@ -201,7 +125,7 @@ async function generateIdentity(
     return { identity: null, mrzText: null };
   }
   return {
-    identity: fromVision(result.output),
+    identity: identityFromVision(result.output as Record<string, unknown>),
     mrzText: emptyToNull(result.output.mrz_text),
   };
 }
@@ -248,7 +172,7 @@ export async function scanTravelDocument(file: File): Promise<{
   try {
     const { identity: vision, mrzText } = await extractWithVision(file);
     const mrz = mrzText ? parseMrzFromOcr(mrzText) : null;
-    const identity = mergeIdentities(mrz, vision);
+    const identity = mergePassportIdentities(mrz, vision);
 
     if (!identity) {
       return {

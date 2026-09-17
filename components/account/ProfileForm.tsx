@@ -2,9 +2,9 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CrmCustomer } from "@/lib/crm/types";
+import type { CrmCustomer, CrmTravelDocument } from "@/lib/crm/types";
 import { resolveCountryCode } from "@/lib/crm/countries";
-import { documentExpiryWarning } from "@/lib/crm/identity";
+import type { ExtractedIdentity } from "@/lib/crm/identity";
 import {
   AddressFields,
   CountrySelect,
@@ -14,9 +14,22 @@ import {
   PhoneField,
   SexSelect,
 } from "@/components/crm/fields";
-import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
+import {
+  billingJson,
+  billingSameAsProfile,
+  companyBillingFromCustomer,
+  CompanyBillingFields,
+  type CompanyBillingValues,
+} from "@/components/crm/CompanyBillingFields";
+import { PersonPassportCard } from "@/components/crm/PersonPassportCard";
 
-export function ProfileForm({ customer }: { customer: CrmCustomer }) {
+export function ProfileForm({
+  customer,
+  documents,
+}: {
+  customer: CrmCustomer;
+  documents: CrmTravelDocument[];
+}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -27,20 +40,26 @@ export function ProfileForm({ customer }: { customer: CrmCustomer }) {
   const [sex, setSex] = useState(customer.sex || "");
   const [nationality, setNationality] = useState(resolveCountryCode(customer.nationality) || "");
   const [phone, setPhone] = useState(customer.phone || "");
+  const [phoneSecondary, setPhoneSecondary] = useState(customer.phone_secondary || "");
   const [whatsapp, setWhatsapp] = useState(customer.whatsapp || "");
-  const [whatsappSame, setWhatsappSame] = useState(
-    !customer.whatsapp || customer.whatsapp === customer.phone
-  );
   const [country, setCountry] = useState(resolveCountryCode(customer.country) || "FR");
   const [addressLine, setAddressLine] = useState(customer.address_line || "");
   const [postalCode, setPostalCode] = useState(customer.postal_code || "");
   const [city, setCity] = useState(customer.city || "");
-  const [scan, setScan] = useState<ScanResult | null>(null);
+  const [flyingBlue, setFlyingBlue] = useState(customer.flying_blue || "");
+  const [billing, setBilling] = useState<CompanyBillingValues>(() =>
+    companyBillingFromCustomer(customer)
+  );
+  const [sameBillingAddress, setSameBillingAddress] = useState(() =>
+    billingSameAsProfile(companyBillingFromCustomer(customer), {
+      country: resolveCountryCode(customer.country) || "FR",
+      line: customer.address_line || "",
+      postal: customer.postal_code || "",
+      city: customer.city || "",
+    })
+  );
 
-  function applyScan(result: ScanResult) {
-    setScan(result);
-    const id = result.identity;
-    if (!id) return;
+  function applyIdentity(id: ExtractedIdentity) {
     if (id.first_name) setFirstName(id.first_name);
     if (id.last_name) setLastName(id.last_name);
     if (id.birth_date) setBirthDate(id.birth_date);
@@ -63,11 +82,14 @@ export function ProfileForm({ customer }: { customer: CrmCustomer }) {
         sex,
         nationality,
         phone,
-        whatsapp: whatsappSame ? phone : whatsapp,
+        phone_secondary: phoneSecondary,
+        whatsapp,
         address_line: addressLine,
         postal_code: postalCode,
         city,
         country,
+        flying_blue: flyingBlue,
+        ...billingJson(billing, { country, line: addressLine, postal: postalCode, city }, sameBillingAddress),
       }),
     });
     const json = await res.json();
@@ -81,19 +103,15 @@ export function ProfileForm({ customer }: { customer: CrmCustomer }) {
     router.refresh();
   }
 
-  const expiryWarn = documentExpiryWarning(scan?.identity?.expires_on);
-
   return (
     <form onSubmit={onSubmit} className="mt-4 space-y-6 p-4 sm:p-5">
-        <IdentityScan
-          title="Remplir depuis le passeport"
-          description="La photo sert à préremplir nom, naissance et nationalité. Le document se joint ensuite sur chaque réservation."
-          onResult={applyScan}
-        />
-        {scan ? <ScanStatus identity={scan.identity} warning={scan.warning} /> : null}
-        {expiryWarn ? <p className="text-sm text-accent">{expiryWarn}</p> : null}
+      <PersonPassportCard
+        variant="client"
+        documents={documents}
+        onIdentity={applyIdentity}
+      />
 
-        <section className="grid gap-4 sm:grid-cols-2">
+      <section className="grid gap-4 sm:grid-cols-2">
         <p className="sm:col-span-2 font-display text-base font-bold text-[var(--admin-navy)]">
           Identité voyageur
         </p>
@@ -138,24 +156,29 @@ export function ProfileForm({ customer }: { customer: CrmCustomer }) {
           Coordonnées
         </p>
         <p className="sm:col-span-2 text-sm text-muted">Email : {customer.email}</p>
-        <PhoneField name="phone" value={phone} onChange={setPhone} className="sm:col-span-2" />
-        <label className="sm:col-span-2 flex items-center gap-2 text-sm text-[var(--admin-navy)]">
+        <PhoneField name="phone" value={phone} onChange={setPhone} />
+        <PhoneField
+          name="phone_secondary"
+          label="Téléphone 2"
+          value={phoneSecondary}
+          onChange={setPhoneSecondary}
+        />
+        <PhoneField
+          name="whatsapp"
+          label="WhatsApp"
+          value={whatsapp}
+          onChange={setWhatsapp}
+          className="sm:col-span-2"
+        />
+        <Field label="N° Flying Blue" className="sm:col-span-2" hint="Programme Air France / KLM">
           <input
-            type="checkbox"
-            checked={whatsappSame}
-            onChange={(event) => setWhatsappSame(event.target.checked)}
+            value={flyingBlue}
+            onChange={(event) => setFlyingBlue(event.target.value.toUpperCase())}
+            autoComplete="off"
+            className={fieldControlClass}
+            placeholder="1234567890"
           />
-          WhatsApp identique au téléphone
-        </label>
-        {!whatsappSame ? (
-          <PhoneField
-            name="whatsapp"
-            label="WhatsApp"
-            value={whatsapp}
-            onChange={setWhatsapp}
-            className="sm:col-span-2"
-          />
-        ) : null}
+        </Field>
       </section>
 
       <section>
@@ -171,6 +194,14 @@ export function ProfileForm({ customer }: { customer: CrmCustomer }) {
           onCityChange={setCity}
         />
       </section>
+
+      <CompanyBillingFields
+        values={billing}
+        onChange={setBilling}
+        sameAsProfile={sameBillingAddress}
+        onSameAsProfileChange={setSameBillingAddress}
+        profileAddress={{ country, line: addressLine, postal: postalCode, city }}
+      />
 
       {error ? <p className="text-sm text-accent">{error}</p> : null}
       {saved ? <p className="text-sm text-[var(--admin-navy)]">Enregistré.</p> : null}

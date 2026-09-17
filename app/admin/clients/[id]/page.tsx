@@ -4,13 +4,11 @@ import { createClient } from "@/lib/supabase/server";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { CustomerEditor } from "@/components/admin/CustomerEditor";
 import { InviteCustomerPanel } from "@/components/admin/InviteCustomerPanel";
-import { CustomerTripDocuments } from "@/components/crm/CustomerTripDocuments";
 import { getPortalAccess } from "@/lib/crm/invite";
 import {
   customerFullName,
   type CrmBalance,
   type CrmBooking,
-  type CrmBookingTraveler,
   type CrmCompanion,
   type CrmCustomer,
   type CrmTransaction,
@@ -45,15 +43,6 @@ export default async function AdminClientDetailPage({ params }: Props) {
       getPortalAccess(c),
     ]);
   const bookingRows = (bookings || []) as CrmBooking[];
-  const { data: travelerRows } = bookingRows.length
-    ? await supabase
-        .from("crm_booking_travelers")
-        .select("*")
-        .in(
-          "booking_id",
-          bookingRows.map((b) => b.id)
-        )
-    : { data: [] as CrmBookingTraveler[] };
 
   return (
     <div className="space-y-6">
@@ -76,10 +65,6 @@ export default async function AdminClientDetailPage({ params }: Props) {
       <CustomerEditor
         customer={c}
         companions={(companions || []) as CrmCompanion[]}
-      />
-      <CustomerTripDocuments
-        bookings={bookingRows}
-        travelers={(travelerRows || []) as CrmBookingTraveler[]}
         documents={(documents || []) as CrmTravelDocument[]}
       />
       <section className="admin-af-card rounded-3xl p-5">

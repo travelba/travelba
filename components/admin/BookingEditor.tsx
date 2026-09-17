@@ -2,11 +2,13 @@
 
 import { FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   BOOKING_ITEM_KINDS,
   BOOKING_ITEM_LABELS,
   BOOKING_STATUSES,
   BOOKING_STATUS_LABELS,
+  DOC_TYPE_LABELS,
   type BookingItemKind,
   type CrmBooking,
   type CrmBookingDocument,
@@ -17,18 +19,17 @@ import {
 } from "@/lib/crm/types";
 import { itemDetailsLine, itemWhen } from "@/lib/crm/booking-display";
 import { bookingCoverUrl } from "@/lib/crm/covers";
+import { personDocumentsForTraveler, primaryIdentityDoc, travelerDisplayName } from "@/lib/crm/trip-documents";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
-import { TripTravelerPassports } from "@/components/crm/TripTravelerPassports";
 
 export function BookingEditor({
   booking,
   items,
   travelers,
   documents,
-  tripDocs,
-  reusableDocs,
+  identityDocs,
   companions,
   holderName,
   aiConfigured,
@@ -37,8 +38,7 @@ export function BookingEditor({
   items: CrmBookingItem[];
   travelers: CrmBookingTraveler[];
   documents: CrmBookingDocument[];
-  tripDocs: CrmTravelDocument[];
-  reusableDocs: CrmTravelDocument[];
+  identityDocs: CrmTravelDocument[];
   companions: CrmCompanion[];
   holderName: { first_name: string; last_name: string };
   aiConfigured: boolean;
@@ -161,13 +161,9 @@ export function BookingEditor({
 
       <section className="admin-af-card space-y-4 rounded-3xl p-5">
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
-            Identité du séjour
-          </p>
-          <h2 className="mt-1 font-display text-lg font-bold">Voyageurs & pièces d’identité</h2>
+          <h2 className="mt-1 font-display text-lg font-bold">Voyageurs</h2>
           <p className="mt-1 text-sm text-muted">
-            Chaque dossier a ses propres passeports. Un nouveau voyage = un nouveau dépôt si le
-            document a changé.
+            Les passeports se joignent sur la fiche de chaque personne, pas sur le dossier.
           </p>
         </div>
         {!travelers.length ? (
@@ -178,15 +174,36 @@ export function BookingEditor({
           >
             Ajouter {holderName.first_name} {holderName.last_name} (titulaire)
           </button>
-        ) : null}
-        <TripTravelerPassports
-          variant="admin"
-          customerId={booking.customer_id}
-          bookingId={booking.id}
-          travelers={travelers}
-          tripDocs={tripDocs}
-          reusableDocs={reusableDocs}
-        />
+        ) : (
+          <ul className="space-y-2">
+            {travelers.map((traveler) => {
+              const personDocs = personDocumentsForTraveler(identityDocs, traveler);
+              const doc = primaryIdentityDoc(personDocs);
+              return (
+                <li
+                  key={traveler.id}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-[#e5e3dc] bg-white px-3 py-2"
+                >
+                  <span className="text-sm font-medium text-[var(--admin-navy)]">
+                    {travelerDisplayName(traveler)}
+                    {traveler.is_account_holder ? " · titulaire" : ""}
+                  </span>
+                  <span className={`text-xs font-semibold ${doc ? "text-[var(--admin-navy)]" : "text-accent"}`}>
+                    {doc
+                      ? `${DOC_TYPE_LABELS[doc.doc_type]} ${doc.number || ""}`.trim()
+                      : "Pièce manquante"}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <Link
+          href={`/admin/clients/${booking.customer_id}`}
+          className="inline-flex text-sm font-semibold text-[var(--admin-navy)] underline"
+        >
+          Joindre les pièces sur la fiche client
+        </Link>
         <form onSubmit={addTraveler} className="grid gap-2 sm:grid-cols-2">
           <select name="companion_id" className={fieldControlClass}>
             <option value="">Saisie libre</option>

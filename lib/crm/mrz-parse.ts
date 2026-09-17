@@ -57,16 +57,21 @@ function mapDocType(format: string | undefined, documentCode: string | null): Tr
 
 function toIdentity(result: ReturnType<typeof parse>): ExtractedIdentity {
   const fields = result.fields;
+  const personal = fields.personalNumber || fields.optional || fields.optional1 || null;
   return {
     doc_type: mapDocType(result.format, fields.documentCode || null),
     number: result.documentNumber || fields.documentNumber || null,
     issuing_country: resolveCountryCode(fields.issuingState || null) || fields.issuingState || null,
+    issued_on: mrzDateToIso(fields.issueDate, "expiry"),
     expires_on: mrzDateToIso(fields.expirationDate, "expiry"),
     first_name: fields.firstName ? humanizeMrzName(fields.firstName) : null,
     last_name: fields.lastName ? humanizeMrzName(fields.lastName) : null,
     birth_date: mrzDateToIso(fields.birthDate, "birth"),
+    place_of_birth: null,
     nationality: resolveCountryCode(fields.nationality || fields.issuingState || null) || fields.nationality || null,
     sex: mapSex(fields.sex),
+    authority: null,
+    personal_number: personal ? String(personal).replace(/</g, "").trim() || null : null,
     format: result.format,
     valid: result.valid,
   };

@@ -22,6 +22,26 @@ export function samePerson(doc: CrmTravelDocument, traveler: CrmBookingTraveler)
   return doc.traveler_id === traveler.id;
 }
 
+export function documentsForPerson(
+  docs: CrmTravelDocument[],
+  companionId: string | null | undefined
+) {
+  const mine = docs.filter((doc) =>
+    companionId ? doc.companion_id === companionId : !doc.companion_id
+  );
+  const vault = mine.filter(isVaultDocument);
+  return (vault.length ? vault : mine).sort((a, b) =>
+    (b.created_at || "").localeCompare(a.created_at || "")
+  );
+}
+
+export function personDocumentsForTraveler(
+  docs: CrmTravelDocument[],
+  traveler: CrmBookingTraveler
+) {
+  return docs.filter((doc) => samePerson(doc, traveler));
+}
+
 export function vaultDocumentsForTraveler(
   docs: CrmTravelDocument[],
   traveler: CrmBookingTraveler
@@ -55,11 +75,11 @@ export function primaryIdentityDoc(docs: CrmTravelDocument[]) {
 
 export function tripDocCoverage(
   travelers: CrmBookingTraveler[],
-  tripDocs: CrmTravelDocument[]
+  docs: CrmTravelDocument[]
 ) {
   if (!travelers.length) return { ready: 0, total: 0 };
   const ready = travelers.filter((traveler) =>
-    Boolean(primaryIdentityDoc(tripDocumentsForTraveler(tripDocs, traveler)))
+    Boolean(primaryIdentityDoc(personDocumentsForTraveler(docs, traveler)))
   ).length;
   return { ready, total: travelers.length };
 }

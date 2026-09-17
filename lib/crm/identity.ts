@@ -20,12 +20,16 @@ export type ExtractedIdentity = {
   doc_type: TravelDocType;
   number: string | null;
   issuing_country: string | null;
+  issued_on: string | null;
   expires_on: string | null;
   first_name: string | null;
   last_name: string | null;
   birth_date: string | null;
+  place_of_birth: string | null;
   nationality: string | null;
   sex: "M" | "F" | "X" | null;
+  authority: string | null;
+  personal_number: string | null;
   format: string | null;
   valid: boolean;
 };
