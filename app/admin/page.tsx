@@ -80,36 +80,14 @@ export default async function AdminHomePage() {
           title="Vue d’ensemble"
           subtitle={`Connecté en tant que ${staff.full_name || "agent"} · ${staff.role}`}
           actions={
-            <div className="flex flex-wrap gap-2">
-              <Link
-                href="/demo/espace-client"
-                className="inline-flex rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-[var(--admin-navy)]"
-              >
-                Espace client exemple
-              </Link>
-              <Link
-                href="/admin/reservations"
-                className="admin-af-btn inline-flex rounded-xl px-4 py-2.5 text-sm"
-              >
-                + Nouvelle réservation
-              </Link>
-            </div>
+            <Link
+              href="/admin/reservations"
+              className="admin-af-btn inline-flex rounded-xl px-4 py-2.5 text-sm"
+            >
+              + Nouvelle réservation
+            </Link>
           }
         />
-      </div>
-
-      <div className="rounded-lg border border-[var(--admin-gold)]/40 bg-[var(--admin-peach)] px-4 py-3 text-sm text-[var(--admin-navy)]">
-        <strong>Client démo :</strong>{" "}
-        <code className="rounded bg-white px-1.5 py-0.5 text-xs">client.demo@travelba.fr</code>
-        {" — "}connexion OTP sur{" "}
-        <Link href="/connexion" className="font-semibold underline">
-          /connexion
-        </Link>
-        , aperçu sans login sur{" "}
-        <Link href="/demo/espace-client" className="font-semibold underline">
-          /demo/espace-client
-        </Link>
-        .
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
