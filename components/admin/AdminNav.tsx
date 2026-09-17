@@ -100,22 +100,6 @@ export function AdminNav({
         </div>
 
         <div className="mt-6 flex flex-col gap-3">
-          <div className="flex items-center justify-between rounded-md bg-[var(--surface-2)] p-3">
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-[22px] text-[var(--admin-gold)]">
-                headset_mic
-              </span>
-              <div>
-                <p className="font-label text-[11px] font-bold uppercase tracking-wide text-[var(--admin-navy)]">
-                  Support Concierge 24/7
-                </p>
-                <p className="font-label text-[10px] uppercase tracking-wide text-muted">
-                  Ligne jet privé active
-                </p>
-              </div>
-            </div>
-            <span className="h-2 w-2 rounded-full bg-[var(--admin-gold)]" />
-          </div>
           <Link
             href="/admin/reservations"
             className="admin-af-btn-accent inline-flex items-center justify-center rounded-md px-3 py-2.5 text-sm"
