@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BOOKING_ITEM_KINDS } from "@/lib/crm/types";
+import { BOOKING_ITEM_KINDS } from "./types";
 
 const nullableString = z.string().nullable().optional();
 const nullableNumber = z.number().nullable().optional();
@@ -59,10 +59,36 @@ export const bookingExtractSchema = z.object({
 
 export type BookingExtract = z.infer<typeof bookingExtractSchema>;
 
-export function openaiApiKey() {
-  const key = process.env.OPENAI_API_KEY?.trim() || "";
-  // Direct OpenAI calls need a real sk- key. Placeholders / invalid values 401.
-  return key.startsWith("sk-") ? key : "";
+export function openaiApiKey(raw = process.env.OPENAI_API_KEY) {
+  let key = (raw || "").trim();
+  if (
+    (key.startsWith('"') && key.endsWith('"')) ||
+    (key.startsWith("'") && key.endsWith("'"))
+  ) {
+    key = key.slice(1, -1).trim();
+  }
+  if (/^bearer\s+/i.test(key)) key = key.replace(/^bearer\s+/i, "").trim();
+  // Valeur collée comme « OPENAI_API_KEY=sk-... » dans le champ Vercel.
+  const extracted = key.match(/sk-[A-Za-z0-9_-]{20,}/);
+  return extracted ? extracted[0] : "";
+}
+
+export function bindGatewayAuth(request: Request) {
+  const token = request.headers.get("x-vercel-oidc-token");
+  if (token && !process.env.VERCEL_OIDC_TOKEN) {
+    process.env.VERCEL_OIDC_TOKEN = token;
+  }
+}
+
+export function preferAiGateway() {
+  // Sur Vercel on passe toujours par AI Gateway : une OPENAI_API_KEY
+  // mal collée ne doit plus frapper api.openai.com.
+  return Boolean(
+    process.env.VERCEL ||
+      process.env.AI_GATEWAY_API_KEY ||
+      process.env.VERCEL_OIDC_TOKEN ||
+      !openaiApiKey()
+  );
 }
 
 export function aiGatewayConfigured() {

@@ -12,6 +12,7 @@ import {
   bookingExtractSchema,
   aiGatewayConfigured,
   openaiApiKey,
+  preferAiGateway,
   type BookingExtract,
 } from "@/lib/crm/ingest-types";
 import { scheduleBookingCover } from "@/lib/crm/cover-generate";
@@ -102,6 +103,7 @@ function guessMime(name: string) {
 }
 
 function ingestModel() {
+  if (preferAiGateway()) return "openai/gpt-4o";
   const key = openaiApiKey();
   if (key) return createOpenAI({ apiKey: key })("gpt-4o");
   return "openai/gpt-4o";
@@ -198,16 +200,16 @@ export async function extractBookingFromFiles(files: File[]): Promise<BookingExt
         description: "Dossier de réservation extrait des documents",
       }),
       messages: [{ role: "user", content }],
-      ...(openaiApiKey()
-        ? {}
-        : {
+      ...(preferAiGateway()
+        ? {
             providerOptions: {
               gateway: {
                 tags: ["feature:booking-ingest"],
                 models: ["google/gemini-2.5-flash"],
               },
             },
-          }),
+          }
+        : {}),
     });
     if (!result.output) {
       throw new Error("Lecture incomplète. Réessayez avec des fichiers plus lisibles.");

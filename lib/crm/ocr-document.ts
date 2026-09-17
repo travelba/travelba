@@ -6,10 +6,12 @@ import { parseMrzFromOcr } from "./mrz-parse";
 import {
   emptyToNull,
   humanizeMrzName,
+  identityFieldScore,
+  identityScanWarning,
   type ExtractedIdentity,
 } from "./identity";
 import { resolveCountryCode } from "./countries";
-import { aiGatewayConfigured, openaiApiKey } from "./ingest-types";
+import { aiGatewayConfigured, openaiApiKey, preferAiGateway } from "./ingest-types";
 import { trySharp } from "./sharp";
 import { DOC_TYPES, type TravelDocType } from "./types";
 
@@ -39,10 +41,10 @@ sex : M, F ou X.
 doc_type : passport | id_card | visa | insurance | other.
 mrz_text : recopie EXACTEMENT la bande MRZ (lignes du bas, caractères A-Z 0-9 <), une ligne par ligne, si elle est lisible. Sinon null.`;
 
-function identityModel() {
+function identityModel(gateway: boolean) {
+  if (gateway) return "openai/gpt-4o";
   const key = openaiApiKey();
   if (key) return createOpenAI({ apiKey: key })("gpt-4o");
-  // Sur Vercel : OIDC → AI Gateway, sans OPENAI_API_KEY.
   return "openai/gpt-4o";
 }
 
@@ -61,8 +63,10 @@ async function toVisionImage(file: File) {
     try {
       const jpeg = await sharp(Buffer.from(bytes), { failOn: "none" })
         .rotate()
+        .normalize()
+        .sharpen()
         .resize({ width: 1800, withoutEnlargement: true })
-        .jpeg({ quality: 85 })
+        .jpeg({ quality: 88 })
         .toBuffer();
       image = new Uint8Array(jpeg);
       mediaType = "image/jpeg";
@@ -116,18 +120,6 @@ function mapDocType(value: string | null | undefined): TravelDocType {
   return "passport";
 }
 
-function fieldScore(identity: ExtractedIdentity) {
-  const keys: (keyof ExtractedIdentity)[] = [
-    "number",
-    "last_name",
-    "first_name",
-    "birth_date",
-    "expires_on",
-    "nationality",
-  ];
-  return keys.reduce((sum, key) => sum + (identity[key] ? 1 : 0), 0);
-}
-
 function fromVision(raw: z.infer<typeof identityExtractSchema>): ExtractedIdentity | null {
   const identity: ExtractedIdentity = {
     doc_type: mapDocType(raw.doc_type),
@@ -142,7 +134,16 @@ function fromVision(raw: z.infer<typeof identityExtractSchema>): ExtractedIdenti
     format: null,
     valid: false,
   };
-  return fieldScore(identity) >= 2 ? identity : null;
+  return identityFieldScore(identity) >= 2 ? identity : null;
+}
+
+function pickBest(
+  a: ExtractedIdentity | null,
+  b: ExtractedIdentity | null
+): ExtractedIdentity | null {
+  if (!a) return b;
+  if (!b) return a;
+  return identityFieldScore(b) > identityFieldScore(a) ? b : a;
 }
 
 function mergeIdentities(
@@ -151,7 +152,7 @@ function mergeIdentities(
 ): ExtractedIdentity | null {
   if (!mrz) return vision;
   if (!vision) return mrz;
-  if (mrz.valid || fieldScore(mrz) >= fieldScore(vision)) {
+  if (mrz.valid || identityFieldScore(mrz) >= identityFieldScore(vision)) {
     return {
       ...vision,
       ...Object.fromEntries(
@@ -170,7 +171,7 @@ async function generateIdentity(
   useGateway: boolean
 ) {
   const result = await generateText({
-    model: useGateway ? "openai/gpt-4o" : identityModel(),
+    model: identityModel(useGateway),
     abortSignal: AbortSignal.timeout(VISION_TIMEOUT_MS),
     output: Output.object({
       schema: identityExtractSchema,
@@ -206,6 +207,28 @@ async function generateIdentity(
   };
 }
 
+async function cropMrzBand(image: Uint8Array) {
+  const sharp = await trySharp();
+  if (!sharp) return null;
+  try {
+    const meta = await sharp(Buffer.from(image), { failOn: "none" }).metadata();
+    const width = meta.width || 0;
+    const height = meta.height || 0;
+    if (width < 200 || height < 200) return null;
+    const top = Math.floor(height * 0.6);
+    const jpeg = await sharp(Buffer.from(image), { failOn: "none" })
+      .extract({ left: 0, top, width, height: height - top })
+      .normalize()
+      .sharpen()
+      .jpeg({ quality: 90 })
+      .toBuffer();
+    return new Uint8Array(jpeg);
+  } catch (err) {
+    console.error("[ocr-document] mrz-crop", err);
+    return null;
+  }
+}
+
 async function extractWithVision(file: File): Promise<{
   identity: ExtractedIdentity | null;
   mrzText: string | null;
@@ -215,20 +238,41 @@ async function extractWithVision(file: File): Promise<{
   }
 
   const { image, mediaType } = await toVisionImage(file);
+  const gateway = preferAiGateway();
   const key = openaiApiKey();
+  let extracted: { identity: ExtractedIdentity | null; mrzText: string | null };
   try {
-    return await generateIdentity(image, mediaType, !key);
+    extracted = await generateIdentity(image, mediaType, gateway);
   } catch (err) {
     if (
       key &&
+      !gateway &&
       APICallError.isInstance(err) &&
       (err.statusCode === 401 || err.statusCode === 403)
     ) {
       console.error("[ocr-document] OpenAI 401, fallback AI Gateway");
-      return generateIdentity(image, mediaType, true);
+      extracted = await generateIdentity(image, mediaType, true);
+    } else {
+      throw err;
     }
-    throw err;
   }
+
+  if (!extracted.identity || identityFieldScore(extracted.identity) < 4) {
+    const crop = await cropMrzBand(image);
+    if (crop) {
+      try {
+        const second = await generateIdentity(crop, "image/jpeg", true);
+        extracted = {
+          identity: pickBest(extracted.identity, second.identity),
+          mrzText: second.mrzText || extracted.mrzText,
+        };
+      } catch (err) {
+        console.error("[ocr-document] mrz-crop vision", err);
+      }
+    }
+  }
+
+  return extracted;
 }
 
 export async function scanTravelDocument(file: File): Promise<{
@@ -260,9 +304,7 @@ export async function scanTravelDocument(file: File): Promise<{
 
     return {
       identity,
-      warning: identity.valid
-        ? null
-        : "Lecture partielle : vérifiez chaque champ avant d’enregistrer.",
+      warning: identityScanWarning(identity),
     };
   } catch (err) {
     console.error("[ocr-document]", err);

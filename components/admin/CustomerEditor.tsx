@@ -44,15 +44,14 @@ export function CustomerEditor({
   const [postalCode, setPostalCode] = useState(customer.postal_code || "");
   const [city, setCity] = useState(customer.city || "");
   const [docScan, setDocScan] = useState<ScanResult | null>(null);
+  const [profileScan, setProfileScan] = useState<ScanResult | null>(null);
   const [docType, setDocType] = useState("passport");
   const [docNumber, setDocNumber] = useState("");
   const [docCountry, setDocCountry] = useState("");
   const [docExpiry, setDocExpiry] = useState("");
   const [docCompanion, setDocCompanion] = useState("");
 
-  function applyCustomerScan(result: ScanResult) {
-    const id = result.identity;
-    if (!id) return;
+  function fillCustomerFromScan(id: NonNullable<ScanResult["identity"]>) {
     if (id.first_name) setFirstName(id.first_name);
     if (id.last_name) setLastName(id.last_name);
     if (id.birth_date) setBirthDate(id.birth_date);
@@ -60,9 +59,14 @@ export function CustomerEditor({
     if (id.nationality) setNationality(id.nationality);
   }
 
+  function applyCustomerScan(result: ScanResult) {
+    setProfileScan(result);
+    if (result.identity) fillCustomerFromScan(result.identity);
+  }
+
   function applyDocScan(result: ScanResult) {
     setDocScan(result);
-    applyCustomerScan(result);
+    if (result.identity) fillCustomerFromScan(result.identity);
     const id = result.identity;
     if (!id) return;
     setDocType(id.doc_type);
@@ -137,6 +141,9 @@ export function CustomerEditor({
           title="Lire le passeport du client"
           onResult={applyCustomerScan}
         />
+        {profileScan ? (
+          <ScanStatus identity={profileScan.identity} warning={profileScan.warning} />
+        ) : null}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Prénom">
             <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
