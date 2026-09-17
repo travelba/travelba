@@ -12,6 +12,7 @@ import {
   DateFrInput,
   Field,
   fieldControlClass,
+  OptionalSecondPhone,
   PhoneField,
   RelationshipSelect,
   SexSelect,
@@ -184,12 +185,7 @@ export function CustomerEditor({
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={fieldControlClass} />
           </Field>
           <PhoneField name="phone" value={phone} onChange={setPhone} />
-          <PhoneField
-            name="phone_secondary"
-            label="Téléphone 2"
-            value={phoneSecondary}
-            onChange={setPhoneSecondary}
-          />
+          <OptionalSecondPhone value={phoneSecondary} onChange={setPhoneSecondary} />
           <Field label="N° Flying Blue" className="sm:col-span-2" hint="Programme Air France / KLM">
             <input
               value={flyingBlue}
