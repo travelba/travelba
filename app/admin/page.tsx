@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { createServiceClient } from "@/lib/supabase/admin";
 import { requireStaffPage } from "@/lib/crm/auth";
 import {
   BOOKING_STATUS_LABELS,
@@ -20,8 +19,6 @@ export default async function AdminHomePage() {
   const [
     { data: bookings },
     { data: docs },
-    { count: customersCount },
-    { count: upcomingCount },
   ] = await Promise.all([
     supabase
       .from("crm_bookings")
@@ -37,31 +34,7 @@ export default async function AdminHomePage() {
       .lte("expires_on", soon)
       .order("expires_on")
       .limit(8),
-    supabase.from("crm_customers").select("id", { count: "exact", head: true }),
-    supabase
-      .from("crm_bookings")
-      .select("id", { count: "exact", head: true })
-      .gte("start_date", today)
-      .neq("status", "cancelled"),
   ]);
-
-  let unmatched = 0;
-  let encoursTotal = 0;
-  try {
-    const admin = createServiceClient();
-    const { count } = await admin
-      .from("crm_revolut_transactions")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "unmatched");
-    unmatched = count ?? 0;
-    const { data: bals } = await admin.from("crm_customer_balances").select("balance");
-    encoursTotal = (bals || []).reduce(
-      (s, row) => s + Number((row as { balance: number }).balance),
-      0
-    );
-  } catch {
-    unmatched = 0;
-  }
 
   const { data: customers } = await supabase
     .from("crm_customers")
@@ -88,44 +61,6 @@ export default async function AdminHomePage() {
             </Link>
           }
         />
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Link href="/admin/clients" className="admin-af-card rounded-2xl p-5 transition hover:shadow-md">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-            Clients
-          </p>
-          <p className="mt-2 font-display text-3xl font-extrabold text-[var(--admin-navy)]">
-            {customersCount ?? 0}
-          </p>
-        </Link>
-        <Link
-          href="/admin/reservations"
-          className="admin-af-card rounded-2xl p-5 transition hover:shadow-md"
-        >
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-            Réservations à venir
-          </p>
-          <p className="mt-2 font-display text-3xl font-extrabold text-[var(--admin-navy)]">
-            {upcomingCount ?? 0}
-          </p>
-        </Link>
-        <div className="admin-af-card rounded-2xl p-5">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-            Encours net
-          </p>
-          <p className="mt-2 font-display text-3xl font-extrabold text-[var(--admin-navy)]">
-            {formatMoney(encoursTotal)}
-          </p>
-        </div>
-        <Link href="/admin/revolut" className="admin-af-card rounded-2xl p-5 transition hover:shadow-md">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-            Virements à rapprocher
-          </p>
-          <p className="mt-2 font-display text-3xl font-extrabold text-[var(--admin-navy)]">
-            {unmatched}
-          </p>
-        </Link>
       </div>
 
       <section className="admin-af-card overflow-hidden rounded-2xl">
