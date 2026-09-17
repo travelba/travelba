@@ -13,6 +13,7 @@ import {
   Field,
   fieldControlClass,
   PhoneField,
+  OptionalSecondPhone,
   SexSelect,
 } from "@/components/crm/fields";
 import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
@@ -151,13 +152,8 @@ export function CustomerEditor({
           <Field label="Email" className="sm:col-span-2">
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={fieldControlClass} />
           </Field>
-          <PhoneField name="phone" value={phone} onChange={setPhone} />
-          <PhoneField
-            name="phone_secondary"
-            label="Téléphone 2"
-            value={phoneSecondary}
-            onChange={setPhoneSecondary}
-          />
+          <PhoneField name="phone" value={phone} onChange={setPhone} className="sm:col-span-2" />
+          <OptionalSecondPhone value={phoneSecondary} onChange={setPhoneSecondary} />
           <Field label="N° Flying Blue" className="sm:col-span-2" hint="Programme Air France / KLM">
             <input
               value={flyingBlue}

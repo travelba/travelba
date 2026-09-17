@@ -12,6 +12,7 @@ import {
   Field,
   fieldControlClass,
   PhoneField,
+  OptionalSecondPhone,
   SexSelect,
 } from "@/components/crm/fields";
 import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
@@ -163,13 +164,8 @@ export function ProfileForm({ customer }: { customer: CrmCustomer }) {
           Coordonnées
         </p>
         <p className="sm:col-span-2 text-sm text-muted">Email : {customer.email}</p>
-        <PhoneField name="phone" value={phone} onChange={setPhone} />
-        <PhoneField
-          name="phone_secondary"
-          label="Téléphone 2"
-          value={phoneSecondary}
-          onChange={setPhoneSecondary}
-        />
+        <PhoneField name="phone" value={phone} onChange={setPhone} className="sm:col-span-2" />
+        <OptionalSecondPhone value={phoneSecondary} onChange={setPhoneSecondary} />
         <Field label="N° Flying Blue" className="sm:col-span-2" hint="Programme Air France / KLM">
           <input
             value={flyingBlue}

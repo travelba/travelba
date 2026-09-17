@@ -415,6 +415,50 @@ export function PhoneField({
   );
 }
 
+export function OptionalSecondPhone({
+  name = "phone_secondary",
+  label = "Téléphone 2",
+  value,
+  onChange,
+  className = "sm:col-span-2",
+}: {
+  name?: string;
+  label?: string;
+  value: string;
+  onChange: (e164: string) => void;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(() => Boolean(value));
+  if (!open) {
+    return (
+      <div className={className}>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="text-sm font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline"
+        >
+          + Ajouter un numéro
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className={className}>
+      <PhoneField name={name} label={label} value={value} onChange={onChange} />
+      <button
+        type="button"
+        className="mt-1.5 text-xs font-semibold text-muted"
+        onClick={() => {
+          onChange("");
+          setOpen(false);
+        }}
+      >
+        Retirer ce numéro
+      </button>
+    </div>
+  );
+}
+
 export function SexSelect({
   name,
   value,
