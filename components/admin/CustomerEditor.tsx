@@ -58,7 +58,6 @@ export function CustomerEditor({
   const [email, setEmail] = useState(customer.email);
   const [phone, setPhone] = useState(customer.phone || "");
   const [phoneSecondary, setPhoneSecondary] = useState(customer.phone_secondary || "");
-  const [whatsapp, setWhatsapp] = useState(customer.whatsapp || "");
   const [birthDate, setBirthDate] = useState(customer.birth_date || "");
   const [sex, setSex] = useState(customer.sex || "");
   const [nationality, setNationality] = useState(resolveCountryCode(customer.nationality) || "");
@@ -101,7 +100,6 @@ export function CustomerEditor({
         email,
         phone,
         phone_secondary: phoneSecondary,
-        whatsapp,
         birth_date: birthDate,
         sex,
         nationality,
@@ -191,13 +189,6 @@ export function CustomerEditor({
             label="Téléphone 2"
             value={phoneSecondary}
             onChange={setPhoneSecondary}
-          />
-          <PhoneField
-            name="whatsapp"
-            label="WhatsApp"
-            value={whatsapp}
-            onChange={setWhatsapp}
-            className="sm:col-span-2"
           />
           <Field label="N° Flying Blue" className="sm:col-span-2" hint="Programme Air France / KLM">
             <input
