@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Plus } from "lucide-react";
 import type { CrmCompanion, CrmTravelDocument } from "@/lib/crm/types";
 import { countryName, resolveCountryCode } from "@/lib/crm/countries";
 import { RELATIONSHIP_OPTIONS } from "@/lib/crm/identity";
@@ -15,7 +16,7 @@ import {
   RelationshipSelect,
   SexSelect,
 } from "@/components/crm/fields";
-import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
+import { type ScanResult } from "@/components/crm/IdentityScan";
 import { PersonPassportCard } from "@/components/crm/PersonPassportCard";
 
 function relationshipLabel(value: string | null) {
@@ -39,16 +40,18 @@ export function CompanionsManager({
   const [birthDate, setBirthDate] = useState("");
   const [sex, setSex] = useState("");
   const [scan, setScan] = useState<ScanResult | null>(null);
+  const [open, setOpen] = useState(false);
 
-  function applyScan(result: ScanResult) {
-    setScan(result);
-    const id = result.identity;
-    if (!id) return;
-    if (id.first_name) setFirstName(id.first_name);
-    if (id.last_name) setLastName(id.last_name);
-    if (id.birth_date) setBirthDate(id.birth_date);
-    if (id.nationality) setNationality(id.nationality);
-    if (id.sex) setSex(id.sex);
+  function closeForm() {
+    setOpen(false);
+    setFirstName("");
+    setLastName("");
+    setRelationship("");
+    setNationality("");
+    setBirthDate("");
+    setSex("");
+    setScan(null);
+    setError(null);
   }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -81,13 +84,7 @@ export function CompanionsManager({
       await fetch("/api/client/documents", { method: "POST", body: form });
     }
     setSaving(false);
-    setFirstName("");
-    setLastName("");
-    setRelationship("");
-    setNationality("");
-    setBirthDate("");
-    setSex("");
-    setScan(null);
+    closeForm();
     router.refresh();
   }
 
@@ -133,13 +130,29 @@ export function CompanionsManager({
         })}
       </ul>
 
-      <form onSubmit={onSubmit} className="admin-af-card space-y-4 rounded-3xl p-5">
-        <IdentityScan
-          title="Ajouter un compagnon depuis son passeport"
-          description="Toutes les mentions du document remplissent les champs. Il ne reste que le lien avec vous."
-          onResult={applyScan}
+      {open ? (
+        <form onSubmit={onSubmit} className="admin-af-card space-y-4 rounded-3xl p-5">
+          <div className="flex items-start justify-between gap-3">
+            <p className="font-display text-base font-bold text-[var(--admin-navy)]">
+              Ajouter un accompagnateur
+            </p>
+            <button type="button" onClick={closeForm} className="text-xs font-semibold text-muted">
+              Annuler
+            </button>
+          </div>
+        <PersonPassportCard
+          variant="client"
+          documents={[]}
+          persist={false}
+          onIdentity={(id) => {
+            if (id.first_name) setFirstName(id.first_name);
+            if (id.last_name) setLastName(id.last_name);
+            if (id.birth_date) setBirthDate(id.birth_date);
+            if (id.nationality) setNationality(id.nationality);
+            if (id.sex) setSex(id.sex);
+          }}
+          onScan={setScan}
         />
-        {scan ? <ScanStatus identity={scan.identity} warning={scan.warning} /> : null}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Prénom">
             <input
@@ -177,10 +190,20 @@ export function CompanionsManager({
           </Field>
         </div>
         {error ? <p className="text-sm text-accent">{error}</p> : null}
-        <button className="admin-af-btn rounded-full px-4 py-2.5 text-sm" disabled={saving}>
-          {saving ? "Enregistrement…" : "Ajouter le compagnon"}
+          <button className="admin-af-btn rounded-full px-4 py-2.5 text-sm" disabled={saving}>
+            {saving ? "Enregistrement…" : "Ajouter l’accompagnateur"}
+          </button>
+        </form>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="admin-af-btn inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm"
+        >
+          <Plus className="h-4 w-4" />
+          Ajouter un accompagnateur
         </button>
-      </form>
+      )}
     </div>
   );
 }
