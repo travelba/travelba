@@ -132,11 +132,6 @@ export function CustomerEditor({
   return (
     <div className="space-y-6">
       <form onSubmit={save} className="admin-af-card space-y-4 rounded-3xl p-5">
-        <IdentityScan
-          endpoint="/api/admin/travel-documents/scan"
-          title="Lire le passeport du client"
-          onResult={applyCustomerScan}
-        />
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Prénom">
             <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
