@@ -4,7 +4,6 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { siteConfig } from "@/lib/site";
 
 const LINKS = [
   { href: "/admin", label: "Tableau de bord", icon: "grid_view", exact: true },
@@ -136,19 +135,6 @@ export function AdminNav({
               <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-[var(--admin-gold)]" />
             ) : null}
           </span>
-          <div className="flex items-center gap-2 rounded-md bg-[var(--surface-2)] px-3 py-1.5">
-            <span className="material-symbols-outlined text-[18px] text-[var(--admin-gold)]">
-              badge
-            </span>
-            <div className="text-left">
-              <p className="font-label text-[10px] uppercase leading-none tracking-wide text-muted">
-                Conseiller dédié
-              </p>
-              <p className="font-label text-[11px] font-bold uppercase tracking-wide text-[var(--admin-navy)]">
-                {siteConfig.shortName} Paris
-              </p>
-            </div>
-          </div>
           <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[var(--admin-gold)]">
             <span className="material-symbols-outlined text-[18px]">person</span>
           </span>
