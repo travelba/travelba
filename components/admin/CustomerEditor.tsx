@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Plus } from "lucide-react";
 import type { CrmCompanion, CrmCustomer, CrmTravelDocument } from "@/lib/crm/types";
 import { resolveCountryCode } from "@/lib/crm/countries";
 import { type ExtractedIdentity } from "@/lib/crm/identity";
@@ -12,6 +13,7 @@ import {
   DateFrInput,
   Field,
   fieldControlClass,
+  OptionalSecondPhone,
   PhoneField,
   RelationshipSelect,
   SexSelect,
@@ -24,7 +26,7 @@ import {
   type CompanyBillingValues,
 } from "@/components/crm/CompanyBillingFields";
 import { PersonPassportCard } from "@/components/crm/PersonPassportCard";
-import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
+import { type ScanResult } from "@/components/crm/IdentityScan";
 
 function applyIdentityState(
   id: ExtractedIdentity,
@@ -58,7 +60,6 @@ export function CustomerEditor({
   const [email, setEmail] = useState(customer.email);
   const [phone, setPhone] = useState(customer.phone || "");
   const [phoneSecondary, setPhoneSecondary] = useState(customer.phone_secondary || "");
-  const [whatsapp, setWhatsapp] = useState(customer.whatsapp || "");
   const [birthDate, setBirthDate] = useState(customer.birth_date || "");
   const [sex, setSex] = useState(customer.sex || "");
   const [nationality, setNationality] = useState(resolveCountryCode(customer.nationality) || "");
@@ -101,7 +102,6 @@ export function CustomerEditor({
         email,
         phone,
         phone_secondary: phoneSecondary,
-        whatsapp,
         birth_date: birthDate,
         sex,
         nationality,
@@ -186,19 +186,7 @@ export function CustomerEditor({
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={fieldControlClass} />
           </Field>
           <PhoneField name="phone" value={phone} onChange={setPhone} />
-          <PhoneField
-            name="phone_secondary"
-            label="Téléphone 2"
-            value={phoneSecondary}
-            onChange={setPhoneSecondary}
-          />
-          <PhoneField
-            name="whatsapp"
-            label="WhatsApp"
-            value={whatsapp}
-            onChange={setWhatsapp}
-            className="sm:col-span-2"
-          />
+          <OptionalSecondPhone value={phoneSecondary} onChange={setPhoneSecondary} />
           <Field label="N° Flying Blue" className="sm:col-span-2" hint="Programme Air France / KLM">
             <input
               value={flyingBlue}
@@ -374,6 +362,19 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+
+  function closeForm() {
+    setOpen(false);
+    setFirstName("");
+    setLastName("");
+    setRelationship("");
+    setNationality("");
+    setBirthDate("");
+    setSex("");
+    setScan(null);
+    setError(null);
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -407,44 +408,53 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
       await fetch("/api/admin/travel-documents", { method: "POST", body: form });
     }
     setSaving(false);
-    setFirstName("");
-    setLastName("");
-    setRelationship("");
-    setNationality("");
-    setBirthDate("");
-    setSex("");
-    setScan(null);
+    closeForm();
     router.refresh();
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="admin-af-btn inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm"
+      >
+        <Plus className="h-4 w-4" />
+        Ajouter un accompagnateur
+      </button>
+    );
   }
 
   return (
     <form onSubmit={onSubmit} className="admin-af-card space-y-4 rounded-3xl p-5">
-      <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">
-        Ajouter un accompagnateur
-      </h3>
-      <IdentityScan
-        endpoint="/api/admin/travel-documents/scan"
-        title="Uploader sa pièce d’identité"
-        description="La lecture remplit tous les champs du passeport. Il ne reste que le lien avec le titulaire."
-        onResult={(result) => {
-          setScan(result);
-          if (result.identity) {
-            applyIdentityState(result.identity, {
-              setFirstName,
-              setLastName,
-              setBirthDate,
-              setSex,
-              setNationality,
-            });
-          }
-        }}
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">
+          Ajouter un accompagnateur
+        </h3>
+        <button
+          type="button"
+          onClick={closeForm}
+          className="text-xs font-semibold text-muted"
+        >
+          Annuler
+        </button>
+      </div>
+      <PersonPassportCard
+        variant="admin"
+        customerId={customerId}
+        documents={[]}
+        persist={false}
+        onIdentity={(id) =>
+          applyIdentityState(id, {
+            setFirstName,
+            setLastName,
+            setBirthDate,
+            setSex,
+            setNationality,
+          })
+        }
+        onScan={setScan}
       />
-      {scan ? <ScanStatus identity={scan.identity} warning={scan.warning} /> : null}
-      {scan?.identity ? (
-        <p className="text-xs text-muted">
-          Pièce lue — elle sera enregistrée avec l’accompagnateur.
-        </p>
-      ) : null}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Prénom">
           <input required value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />

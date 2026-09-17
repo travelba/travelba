@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { CustomerEditor } from "@/components/admin/CustomerEditor";
+import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import { InviteCustomerPanel } from "@/components/admin/InviteCustomerPanel";
 import { getPortalAccess } from "@/lib/crm/invite";
 import {
@@ -46,10 +46,11 @@ export default async function AdminClientDetailPage({ params }: Props) {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <h1 className="font-display text-3xl font-extrabold text-[var(--admin-navy)]">
           {customerFullName(c)}
         </h1>
+        <DeleteCustomerButton customerId={c.id} name={customerFullName(c)} />
       </div>
       <InviteCustomerPanel customerId={c.id} initial={portal} />
       <div className="flex flex-wrap gap-3">

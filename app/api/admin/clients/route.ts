@@ -31,7 +31,6 @@ export async function POST(request: Request) {
       first_name: String(body?.first_name || "").trim(),
       last_name: String(body?.last_name || "").trim(),
       phone: body?.phone || null,
-      whatsapp: body?.whatsapp || null,
       language: "fr",
     })
     .select("*")
