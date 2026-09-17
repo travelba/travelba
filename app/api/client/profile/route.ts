@@ -22,6 +22,7 @@ export async function PATCH(request: Request) {
       "first_name",
       "last_name",
       "phone",
+      "phone_secondary",
       "whatsapp",
       "birth_date",
       "sex",
@@ -30,9 +31,10 @@ export async function PATCH(request: Request) {
       "postal_code",
       "city",
       "country",
+      "flying_blue",
     ]) {
       if (!(key in body)) continue;
-      if (key === "phone" || key === "whatsapp") {
+      if (key === "phone" || key === "whatsapp" || key === "phone_secondary") {
         patch[key] = normalizePhone(body[key]);
         continue;
       }
@@ -43,6 +45,11 @@ export async function PATCH(request: Request) {
       if (key === "sex") {
         const sex = emptyToNull(body[key]);
         patch[key] = sex && ["M", "F", "X"].includes(sex) ? sex : null;
+        continue;
+      }
+      if (key === "flying_blue") {
+        const raw = emptyToNull(body[key]);
+        patch[key] = raw ? raw.replace(/\s+/g, "").toUpperCase() : null;
         continue;
       }
       patch[key] = emptyToNull(body[key]);

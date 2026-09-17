@@ -13,6 +13,7 @@ import {
   Field,
   fieldControlClass,
   PhoneField,
+  OptionalSecondPhone,
   SexSelect,
 } from "@/components/crm/fields";
 import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
@@ -32,10 +33,12 @@ export function CustomerEditor({
   const [lastName, setLastName] = useState(customer.last_name);
   const [email, setEmail] = useState(customer.email);
   const [phone, setPhone] = useState(customer.phone || "");
+  const [phoneSecondary, setPhoneSecondary] = useState(customer.phone_secondary || "");
   const [whatsapp, setWhatsapp] = useState(customer.whatsapp || "");
   const [whatsappSame, setWhatsappSame] = useState(
     !customer.whatsapp || customer.whatsapp === customer.phone
   );
+  const [flyingBlue, setFlyingBlue] = useState(customer.flying_blue || "");
   const [birthDate, setBirthDate] = useState(customer.birth_date || "");
   const [sex, setSex] = useState(customer.sex || "");
   const [nationality, setNationality] = useState(resolveCountryCode(customer.nationality) || "");
@@ -81,7 +84,9 @@ export function CustomerEditor({
         last_name: lastName,
         email,
         phone,
+        phone_secondary: phoneSecondary,
         whatsapp: whatsappSame ? phone : whatsapp,
+        flying_blue: flyingBlue,
         birth_date: birthDate,
         sex,
         nationality,
@@ -148,6 +153,16 @@ export function CustomerEditor({
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={fieldControlClass} />
           </Field>
           <PhoneField name="phone" value={phone} onChange={setPhone} className="sm:col-span-2" />
+          <OptionalSecondPhone value={phoneSecondary} onChange={setPhoneSecondary} />
+          <Field label="N° Flying Blue" className="sm:col-span-2" hint="Programme Air France / KLM">
+            <input
+              value={flyingBlue}
+              onChange={(e) => setFlyingBlue(e.target.value.toUpperCase())}
+              autoComplete="off"
+              className={fieldControlClass}
+              placeholder="1234567890"
+            />
+          </Field>
           <label className="sm:col-span-2 flex items-center gap-2 text-sm">
             <input type="checkbox" checked={whatsappSame} onChange={(e) => setWhatsappSame(e.target.checked)} />
             WhatsApp identique

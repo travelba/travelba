@@ -90,6 +90,7 @@ export type CrmCustomer = {
   last_name: string;
   email: string;
   phone: string | null;
+  phone_secondary: string | null;
   whatsapp: string | null;
   birth_date: string | null;
   sex: string | null;
@@ -98,6 +99,7 @@ export type CrmCustomer = {
   postal_code: string | null;
   city: string | null;
   country: string | null;
+  flying_blue: string | null;
   language: string;
   stripe_customer_id: string | null;
   created_at: string;
