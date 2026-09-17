@@ -6,6 +6,7 @@ import type { CrmCustomer, CrmTransaction } from "@/lib/crm/types";
 import { TX_KIND_LABELS, customerFullName } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { StatusChip } from "@/components/crm/ui";
+import { DateFrInput } from "@/components/crm/fields";
 
 const STATUS_LABELS: Record<CrmTransaction["status"], string> = {
   pending: "En attente",
@@ -106,16 +107,14 @@ export function Ledger({
             </option>
           ))}
         </select>
-        <input
-          type="date"
+        <DateFrInput
           value={from}
-          onChange={(e) => setFrom(e.target.value)}
+          onChange={setFrom}
           className="rounded-xl border border-border bg-white px-3 py-2.5 text-sm"
         />
-        <input
-          type="date"
+        <DateFrInput
           value={to}
-          onChange={(e) => setTo(e.target.value)}
+          onChange={setTo}
           className="rounded-xl border border-border bg-white px-3 py-2.5 text-sm"
         />
         <select

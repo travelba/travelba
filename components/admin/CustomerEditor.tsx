@@ -9,6 +9,7 @@ import { formatDateFr } from "@/lib/crm/money";
 import {
   AddressFields,
   CountrySelect,
+  DateFrInput,
   Field,
   fieldControlClass,
   PhoneField,
@@ -155,7 +156,12 @@ export function CustomerEditor({
             <PhoneField name="whatsapp" label="WhatsApp" value={whatsapp} onChange={setWhatsapp} className="sm:col-span-2" />
           ) : null}
           <Field label="Naissance">
-            <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} className={fieldControlClass} />
+            <DateFrInput
+              value={birthDate}
+              onChange={setBirthDate}
+              max={new Date().toISOString().slice(0, 10)}
+              autoComplete="bday"
+            />
           </Field>
           <Field label="Sexe">
             <SexSelect name="sex" value={sex} onChange={setSex} />
@@ -252,7 +258,7 @@ export function CustomerEditor({
             ))}
           </select>
           <input value={docNumber} onChange={(e) => setDocNumber(e.target.value)} placeholder="Numéro" className={fieldControlClass} />
-          <input type="date" value={docExpiry} onChange={(e) => setDocExpiry(e.target.value)} className={fieldControlClass} />
+          <DateFrInput value={docExpiry} onChange={setDocExpiry} className={fieldControlClass} />
           <CountrySelect name="issuing_country" value={docCountry} onChange={setDocCountry} />
           <input name="file" type="file" className="text-sm" />
           <button className="admin-af-btn rounded-full px-3 py-2 text-sm sm:col-span-2">Ajouter</button>

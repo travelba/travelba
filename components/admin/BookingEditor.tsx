@@ -17,6 +17,7 @@ import {
 import { itemDetailsLine, itemWhen } from "@/lib/crm/booking-display";
 import { bookingCoverUrl } from "@/lib/crm/covers";
 import { BookingIngest } from "@/components/crm/BookingIngest";
+import { DateFrInput } from "@/components/crm/fields";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
 
 export function BookingEditor({
@@ -120,8 +121,8 @@ export function BookingEditor({
       <form onSubmit={save} className="admin-af-card grid gap-3 rounded-3xl p-5 sm:grid-cols-2">
         <input name="title" defaultValue={booking.title} className="rounded-xl border border-border px-3 py-2" />
         <input name="destination" defaultValue={booking.destination || ""} className="rounded-xl border border-border px-3 py-2" />
-        <input name="start_date" type="date" defaultValue={booking.start_date || ""} className="rounded-xl border border-border px-3 py-2" />
-        <input name="end_date" type="date" defaultValue={booking.end_date || ""} className="rounded-xl border border-border px-3 py-2" />
+        <DateFrInput name="start_date" defaultValue={booking.start_date || ""} className="rounded-xl border border-border px-3 py-2" />
+        <DateFrInput name="end_date" defaultValue={booking.end_date || ""} className="rounded-xl border border-border px-3 py-2" />
         <input name="total_amount" type="number" step="0.01" defaultValue={booking.total_amount} className="rounded-xl border border-border px-3 py-2" />
         <select name="status" defaultValue={booking.status} className="rounded-xl border border-border px-3 py-2">
           {BOOKING_STATUSES.map((s) => (

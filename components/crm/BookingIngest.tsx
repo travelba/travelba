@@ -10,7 +10,7 @@ import {
   type BookingItemKind,
   type CrmCustomer,
 } from "@/lib/crm/types";
-import { Field, fieldControlClass } from "@/components/crm/fields";
+import { DateFrInput, Field, fieldControlClass } from "@/components/crm/fields";
 import type { BookingExtract } from "@/lib/crm/ingest-types";
 
 type ItemDraft = BookingExtract["items"][number];
@@ -257,19 +257,15 @@ export function BookingIngest({
               />
             </Field>
             <Field label="Début">
-              <input
-                type="date"
+              <DateFrInput
                 value={(extract.start_date || "").slice(0, 10)}
-                onChange={(e) => patch("start_date", e.target.value)}
-                className={fieldControlClass}
+                onChange={(value) => patch("start_date", value)}
               />
             </Field>
             <Field label="Fin">
-              <input
-                type="date"
+              <DateFrInput
                 value={(extract.end_date || "").slice(0, 10)}
-                onChange={(e) => patch("end_date", e.target.value)}
-                className={fieldControlClass}
+                onChange={(value) => patch("end_date", value)}
               />
             </Field>
             <Field label="Montant">

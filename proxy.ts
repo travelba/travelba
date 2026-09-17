@@ -32,11 +32,14 @@ export default async function proxy(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
 
-  // Locale-prefixed bookmarks from next-intl (e.g. /fr/demo/espace-client).
-  const demoted = path.match(/^\/(fr|en)(\/demo(?:\/.*)?)$/);
-  if (demoted) {
+  if (
+    path === "/demo" ||
+    path.startsWith("/demo/") ||
+    /^\/(fr|en)\/demo(\/|$)/.test(path)
+  ) {
     const url = request.nextUrl.clone();
-    url.pathname = demoted[2];
+    url.pathname = "/connexion";
+    url.search = "";
     return NextResponse.redirect(url);
   }
 
@@ -44,8 +47,7 @@ export default async function proxy(request: NextRequest) {
     path.startsWith("/admin") ||
     path.startsWith("/mon-compte") ||
     path.startsWith("/connexion") ||
-    path.startsWith("/auth") ||
-    path.startsWith("/demo")
+    path.startsWith("/auth")
   ) {
     return updateSession(request);
   }

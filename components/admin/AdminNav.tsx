@@ -4,7 +4,6 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { siteConfig } from "@/lib/site";
 
 const LINKS = [
   { href: "/admin", label: "Tableau de bord", icon: "grid_view", exact: true },
@@ -60,62 +59,41 @@ export function AdminNav({
             </span>
           </Link>
 
-          <div>
-            <p className="px-3 font-label text-[10px] font-bold uppercase tracking-[0.14em] text-muted">
-              Console Concierge
-            </p>
-            <nav className="mt-2 flex flex-wrap gap-1 lg:flex-col">
-              {LINKS.map((link) => {
-                const active = link.exact
-                  ? pathname === link.href
-                  : pathname.startsWith(link.href);
-                const badge =
-                  link.href === "/admin/revolut" && unmatchedCount > 0
-                    ? unmatchedCount
-                    : null;
-                return (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className={`flex items-center justify-between gap-2 rounded-md px-3 py-2.5 text-sm transition ${
-                      active
-                        ? "bg-[var(--admin-navy)] font-semibold text-[var(--admin-gold-soft)]"
-                        : "text-muted hover:bg-[var(--surface-2)] hover:text-[var(--admin-navy)]"
-                    }`}
-                  >
-                    <span className="flex items-center gap-3">
-                      <span className="material-symbols-outlined text-[20px]">{link.icon}</span>
-                      <span>{link.label}</span>
+          <nav className="flex flex-wrap gap-1 lg:flex-col">
+            {LINKS.map((link) => {
+              const active = link.exact
+                ? pathname === link.href
+                : pathname.startsWith(link.href);
+              const badge =
+                link.href === "/admin/revolut" && unmatchedCount > 0
+                  ? unmatchedCount
+                  : null;
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`flex items-center justify-between gap-2 rounded-md px-3 py-2.5 text-sm transition ${
+                    active
+                      ? "bg-[var(--admin-navy)] font-semibold text-[var(--admin-gold-soft)]"
+                      : "text-muted hover:bg-[var(--surface-2)] hover:text-[var(--admin-navy)]"
+                  }`}
+                >
+                  <span className="flex items-center gap-3">
+                    <span className="material-symbols-outlined text-[20px]">{link.icon}</span>
+                    <span>{link.label}</span>
+                  </span>
+                  {badge != null ? (
+                    <span className="rounded-full bg-[var(--admin-gold)] px-2 py-0.5 font-label text-[10px] font-bold text-[var(--admin-navy)]">
+                      {badge}
                     </span>
-                    {badge != null ? (
-                      <span className="rounded-full bg-[var(--admin-gold)] px-2 py-0.5 font-label text-[10px] font-bold text-[var(--admin-navy)]">
-                        {badge}
-                      </span>
-                    ) : null}
-                  </Link>
-                );
-              })}
-            </nav>
-          </div>
+                  ) : null}
+                </Link>
+              );
+            })}
+          </nav>
         </div>
 
         <div className="mt-6 flex flex-col gap-3">
-          <div className="flex items-center justify-between rounded-md bg-[var(--surface-2)] p-3">
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-[22px] text-[var(--admin-gold)]">
-                headset_mic
-              </span>
-              <div>
-                <p className="font-label text-[11px] font-bold uppercase tracking-wide text-[var(--admin-navy)]">
-                  Support Concierge 24/7
-                </p>
-                <p className="font-label text-[10px] uppercase tracking-wide text-muted">
-                  Ligne jet privé active
-                </p>
-              </div>
-            </div>
-            <span className="h-2 w-2 rounded-full bg-[var(--admin-gold)]" />
-          </div>
           <Link
             href="/admin/reservations"
             className="admin-af-btn-accent inline-flex items-center justify-center rounded-md px-3 py-2.5 text-sm"
@@ -141,7 +119,7 @@ export function AdminNav({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="w-full rounded-md bg-[var(--surface-2)] py-2.5 pl-10 pr-4 text-[13px] text-[var(--admin-navy)] outline-none transition focus:bg-white focus:ring-2 focus:ring-[var(--admin-gold)]/30"
-            placeholder="Rechercher dossier, jet charter, client VIP…"
+            placeholder="Rechercher un client ou une réservation…"
             type="search"
           />
         </form>
@@ -152,19 +130,6 @@ export function AdminNav({
               <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-[var(--admin-gold)]" />
             ) : null}
           </span>
-          <div className="flex items-center gap-2 rounded-md bg-[var(--surface-2)] px-3 py-1.5">
-            <span className="material-symbols-outlined text-[18px] text-[var(--admin-gold)]">
-              badge
-            </span>
-            <div className="text-left">
-              <p className="font-label text-[10px] uppercase leading-none tracking-wide text-muted">
-                Conseiller dédié
-              </p>
-              <p className="font-label text-[11px] font-bold uppercase tracking-wide text-[var(--admin-navy)]">
-                {siteConfig.shortName} Paris
-              </p>
-            </div>
-          </div>
           <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[var(--admin-gold)]">
             <span className="material-symbols-outlined text-[18px]">person</span>
           </span>

@@ -8,6 +8,7 @@ import { documentExpiryWarning } from "@/lib/crm/identity";
 import {
   AddressFields,
   CountrySelect,
+  DateFrInput,
   Field,
   fieldControlClass,
   PhoneField,
@@ -138,13 +139,11 @@ export function ProfileForm({ customer }: { customer: CrmCustomer }) {
           />
         </Field>
         <Field label="Date de naissance">
-          <input
-            type="date"
+          <DateFrInput
             autoComplete="bday"
             max={new Date().toISOString().slice(0, 10)}
             value={birthDate}
-            onChange={(event) => setBirthDate(event.target.value)}
-            className={fieldControlClass}
+            onChange={setBirthDate}
           />
         </Field>
         <Field label="Sexe">

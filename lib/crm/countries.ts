@@ -236,6 +236,10 @@ export function flagEmoji(iso2: string) {
     .replace(/./g, (char) => String.fromCodePoint(127397 + char.charCodeAt(0)));
 }
 
+export function flagImageUrl(iso2: string, width = 40) {
+  return `https://flagcdn.com/w${width}/${iso2.toLowerCase()}.png`;
+}
+
 export function countryByIso2(iso2: string | null | undefined) {
   if (!iso2) return null;
   return BY_ISO2.get(iso2.toUpperCase()) || null;
