@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CrmCustomer } from "@/lib/crm/types";
 import { resolveCountryCode } from "@/lib/crm/countries";
+import { appendIdentityFields } from "@/lib/crm/document-identity";
 import { documentExpiryWarning } from "@/lib/crm/identity";
 import {
   AddressFields,
@@ -84,7 +85,17 @@ export function ProfileForm({ customer }: { customer: CrmCustomer }) {
       form.set("number", scan.identity.number || "");
       form.set("issuing_country", scan.identity.issuing_country || "");
       form.set("expires_on", scan.identity.expires_on || "");
-      form.set("apply_identity", "0");
+      appendIdentityFields(
+        form,
+        {
+          first_name: firstName,
+          last_name: lastName,
+          birth_date: birthDate,
+          nationality,
+          sex,
+        },
+        false
+      );
       await fetch("/api/client/documents", { method: "POST", body: form });
     }
     setSaving(false);

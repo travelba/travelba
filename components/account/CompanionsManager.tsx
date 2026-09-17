@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CrmCompanion } from "@/lib/crm/types";
 import { countryName, resolveCountryCode } from "@/lib/crm/countries";
+import { appendIdentityFields } from "@/lib/crm/document-identity";
 import { RELATIONSHIP_OPTIONS } from "@/lib/crm/identity";
 import {
   CountrySelect,
@@ -73,6 +74,17 @@ export function CompanionsManager({ companions }: { companions: CrmCompanion[] }
       form.set("number", scan.identity?.number || "");
       form.set("issuing_country", scan.identity?.issuing_country || "");
       form.set("expires_on", scan.identity?.expires_on || "");
+      appendIdentityFields(
+        form,
+        {
+          first_name: firstName,
+          last_name: lastName,
+          birth_date: birthDate,
+          nationality,
+          sex,
+        },
+        false
+      );
       await fetch("/api/client/documents", { method: "POST", body: form });
     }
     setSaving(false);

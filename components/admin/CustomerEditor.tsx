@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { CrmCompanion, CrmCustomer, CrmTravelDocument } from "@/lib/crm/types";
 import { DOC_TYPE_LABELS } from "@/lib/crm/types";
 import { countryName, resolveCountryCode } from "@/lib/crm/countries";
+import { appendIdentityFields, documentHolderName } from "@/lib/crm/document-identity";
 import { formatDateFr } from "@/lib/crm/money";
 import {
   AddressFields,
@@ -47,8 +48,15 @@ export function CustomerEditor({
   const [docType, setDocType] = useState("passport");
   const [docNumber, setDocNumber] = useState("");
   const [docCountry, setDocCountry] = useState("");
+  const [docIssued, setDocIssued] = useState("");
   const [docExpiry, setDocExpiry] = useState("");
   const [docCompanion, setDocCompanion] = useState("");
+  const [docFirstName, setDocFirstName] = useState("");
+  const [docLastName, setDocLastName] = useState("");
+  const [docBirthDate, setDocBirthDate] = useState("");
+  const [docNationality, setDocNationality] = useState("");
+  const [docSex, setDocSex] = useState("");
+  const [applyIdentity, setApplyIdentity] = useState(true);
 
   function applyCustomerScan(result: ScanResult) {
     const id = result.identity;
@@ -69,6 +77,11 @@ export function CustomerEditor({
     if (id.number) setDocNumber(id.number);
     if (id.issuing_country) setDocCountry(id.issuing_country);
     if (id.expires_on) setDocExpiry(id.expires_on);
+    if (id.first_name) setDocFirstName(id.first_name);
+    if (id.last_name) setDocLastName(id.last_name);
+    if (id.birth_date) setDocBirthDate(id.birth_date);
+    if (id.nationality) setDocNationality(id.nationality);
+    if (id.sex) setDocSex(id.sex);
   }
 
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -114,8 +127,20 @@ export function CustomerEditor({
     fd.set("doc_type", docType);
     fd.set("number", docNumber);
     fd.set("issuing_country", docCountry);
+    fd.set("issued_on", docIssued);
     fd.set("expires_on", docExpiry);
     fd.set("companion_id", docCompanion);
+    appendIdentityFields(
+      fd,
+      {
+        first_name: docFirstName,
+        last_name: docLastName,
+        birth_date: docBirthDate,
+        nationality: docNationality,
+        sex: docSex,
+      },
+      applyIdentity
+    );
     if (docScan?.file) fd.set("file", docScan.file);
     const extra = event.currentTarget.elements.namedItem("file");
     if (extra instanceof HTMLInputElement && extra.files?.[0] && !docScan?.file) {
@@ -125,7 +150,13 @@ export function CustomerEditor({
     setDocScan(null);
     setDocNumber("");
     setDocCountry("");
+    setDocIssued("");
     setDocExpiry("");
+    setDocFirstName("");
+    setDocLastName("");
+    setDocBirthDate("");
+    setDocNationality("");
+    setDocSex("");
     router.refresh();
   }
 
@@ -206,56 +237,107 @@ export function CustomerEditor({
       <section className="admin-af-card space-y-3 rounded-3xl p-5">
         <h2 className="font-display text-lg font-bold">Documents</h2>
         <ul className="space-y-2 text-sm">
-          {documents.map((d) => (
-            <li key={d.id} className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2">
-              <div className="min-w-0">
-                <p className="font-medium text-[var(--admin-navy)]">
-                  {DOC_TYPE_LABELS[d.doc_type]} {d.number || ""}
-                </p>
-                <p className="text-xs text-muted">
-                  exp. {formatDateFr(d.expires_on)}
-                  {d.issuing_country ? ` · ${countryName(d.issuing_country)}` : ""}
-                  {d.file_name ? ` · ${d.file_name}` : ""}
-                </p>
-              </div>
-              {d.storage_path ? (
-                <FileOpenLink
-                  path={d.storage_path}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--admin-sky)] px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)]"
-                >
-                  <span className="material-symbols-outlined text-[16px]">
-                    {fileKindIcon(d.mime_type, d.file_name)}
-                  </span>
-                  Ouvrir
-                </FileOpenLink>
-              ) : (
-                <span className="text-xs text-muted">Pas de fichier</span>
-              )}
-            </li>
-          ))}
+          {documents.map((d) => {
+            const holder = documentHolderName(d, customer, companions);
+            const meta = [
+              holder || null,
+              d.birth_date ? `né(e) ${formatDateFr(d.birth_date)}` : null,
+              d.nationality ? countryName(d.nationality) : null,
+              d.issued_on ? `délivré ${formatDateFr(d.issued_on)}` : null,
+              `exp. ${formatDateFr(d.expires_on)}`,
+              d.issuing_country ? countryName(d.issuing_country) : null,
+              d.file_name,
+            ].filter(Boolean);
+            return (
+              <li key={d.id} className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2">
+                <div className="min-w-0">
+                  <p className="font-medium text-[var(--admin-navy)]">
+                    {DOC_TYPE_LABELS[d.doc_type]}
+                    {d.number ? ` · ${d.number}` : ""}
+                  </p>
+                  <p className="text-xs text-muted">{meta.join(" · ")}</p>
+                </div>
+                {d.storage_path ? (
+                  <FileOpenLink
+                    path={d.storage_path}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--admin-sky)] px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)]"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">
+                      {fileKindIcon(d.mime_type, d.file_name)}
+                    </span>
+                    Ouvrir
+                  </FileOpenLink>
+                ) : (
+                  <span className="text-xs text-muted">Pas de fichier</span>
+                )}
+              </li>
+            );
+          })}
         </ul>
         <IdentityScan endpoint="/api/admin/travel-documents/scan" onResult={applyDocScan} />
         {docScan ? <ScanStatus identity={docScan.identity} warning={docScan.warning} /> : null}
-        <form onSubmit={addDoc} className="grid gap-2 sm:grid-cols-2">
-          <select value={docType} onChange={(e) => setDocType(e.target.value)} className={fieldControlClass}>
-            {Object.entries(DOC_TYPE_LABELS).map(([v, l]) => (
-              <option key={v} value={v}>
-                {l}
-              </option>
-            ))}
-          </select>
-          <select value={docCompanion} onChange={(e) => setDocCompanion(e.target.value)} className={fieldControlClass}>
-            <option value="">Titulaire</option>
-            {companions.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.first_name} {c.last_name}
-              </option>
-            ))}
-          </select>
-          <input value={docNumber} onChange={(e) => setDocNumber(e.target.value)} placeholder="Numéro" className={fieldControlClass} />
-          <DateFrInput value={docExpiry} onChange={setDocExpiry} className={fieldControlClass} />
-          <CountrySelect name="issuing_country" value={docCountry} onChange={setDocCountry} />
-          <input name="file" type="file" className="text-sm" />
+        <form onSubmit={addDoc} className="grid gap-4 sm:grid-cols-2">
+          <Field label="Type">
+            <select value={docType} onChange={(e) => setDocType(e.target.value)} className={fieldControlClass}>
+              {Object.entries(DOC_TYPE_LABELS).map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Titulaire">
+            <select value={docCompanion} onChange={(e) => setDocCompanion(e.target.value)} className={fieldControlClass}>
+              <option value="">Client</option>
+              {companions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.first_name} {c.last_name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="N° de document">
+            <input value={docNumber} onChange={(e) => setDocNumber(e.target.value)} className={fieldControlClass} />
+          </Field>
+          <Field label="Délivré le">
+            <DateFrInput value={docIssued} onChange={setDocIssued} className={fieldControlClass} />
+          </Field>
+          <Field label="Expire le">
+            <DateFrInput value={docExpiry} onChange={setDocExpiry} className={fieldControlClass} />
+          </Field>
+          <Field label="Pays d’émission">
+            <CountrySelect name="issuing_country" value={docCountry} onChange={setDocCountry} />
+          </Field>
+          <Field label="Prénom">
+            <input value={docFirstName} onChange={(e) => setDocFirstName(e.target.value)} className={fieldControlClass} />
+          </Field>
+          <Field label="Nom">
+            <input value={docLastName} onChange={(e) => setDocLastName(e.target.value)} className={fieldControlClass} />
+          </Field>
+          <Field label="Naissance">
+            <DateFrInput
+              value={docBirthDate}
+              onChange={setDocBirthDate}
+              max={new Date().toISOString().slice(0, 10)}
+            />
+          </Field>
+          <Field label="Sexe">
+            <SexSelect name="doc_sex" value={docSex} onChange={setDocSex} />
+          </Field>
+          <Field label="Nationalité" className="sm:col-span-2">
+            <CountrySelect name="doc_nationality" value={docNationality} onChange={setDocNationality} />
+          </Field>
+          <Field label="Fichier" className="sm:col-span-2">
+            <input name="file" type="file" className="block text-sm" />
+          </Field>
+          <label className="sm:col-span-2 flex items-center gap-2 text-sm text-[var(--admin-navy)]">
+            <input
+              type="checkbox"
+              checked={applyIdentity}
+              onChange={(e) => setApplyIdentity(e.target.checked)}
+            />
+            Reporter nom, naissance et nationalité sur le profil concerné
+          </label>
           <button className="admin-af-btn rounded-full px-3 py-2 text-sm sm:col-span-2">Ajouter</button>
         </form>
       </section>

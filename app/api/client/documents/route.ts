@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { jsonError, requireCustomer } from "@/lib/crm/auth";
 import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
 import { resolveCountryCode } from "@/lib/crm/countries";
+import { filledIdentity, identityFieldsFromForm } from "@/lib/crm/document-identity";
 import { emptyToNull } from "@/lib/crm/identity";
 import { DOC_TYPES, type TravelDocType } from "@/lib/crm/types";
 
@@ -37,6 +38,7 @@ export async function POST(request: Request) {
     ? (docTypeRaw as TravelDocType)
     : "passport";
   const companionId = emptyToNull(form.get("companion_id"));
+  const identity = identityFieldsFromForm(form);
   const { data, error } = await auth.supabase
     .from("crm_travel_documents")
     .insert({
@@ -49,6 +51,7 @@ export async function POST(request: Request) {
         emptyToNull(form.get("issuing_country")),
       issued_on: emptyToNull(form.get("issued_on")),
       expires_on: emptyToNull(form.get("expires_on")),
+      ...identity,
       storage_path: storagePath,
       file_name: fileName,
       mime_type: mimeType,
@@ -58,18 +61,7 @@ export async function POST(request: Request) {
   if (error) return jsonError(error.message, 400);
 
   if (String(form.get("apply_identity") || "") === "1") {
-    const identity = {
-      first_name: emptyToNull(form.get("first_name")),
-      last_name: emptyToNull(form.get("last_name")),
-      birth_date: emptyToNull(form.get("birth_date")),
-      nationality:
-        resolveCountryCode(String(form.get("nationality") || "")) ||
-        emptyToNull(form.get("nationality")),
-      sex: emptyToNull(form.get("sex")),
-    };
-    const filled = Object.fromEntries(
-      Object.entries(identity).filter(([, value]) => value != null)
-    );
+    const filled = filledIdentity(identity);
     if (Object.keys(filled).length > 0) {
       if (companionId) {
         await auth.supabase

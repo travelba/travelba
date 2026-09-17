@@ -90,6 +90,7 @@ export type CrmCustomer = {
   last_name: string;
   email: string;
   phone: string | null;
+  phone_secondary: string | null;
   whatsapp: string | null;
   birth_date: string | null;
   sex: string | null;
@@ -98,6 +99,15 @@ export type CrmCustomer = {
   postal_code: string | null;
   city: string | null;
   country: string | null;
+  flying_blue: string | null;
+  company_name: string | null;
+  siret: string | null;
+  vat_number: string | null;
+  billing_email: string | null;
+  billing_address_line: string | null;
+  billing_postal_code: string | null;
+  billing_city: string | null;
+  billing_country: string | null;
   language: string;
   stripe_customer_id: string | null;
   created_at: string;
@@ -126,6 +136,11 @@ export type CrmTravelDocument = {
   issuing_country: string | null;
   issued_on: string | null;
   expires_on: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  birth_date: string | null;
+  nationality: string | null;
+  sex: string | null;
   storage_path: string | null;
   file_name: string | null;
   mime_type: string | null;
