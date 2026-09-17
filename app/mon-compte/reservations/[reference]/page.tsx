@@ -10,9 +10,11 @@ import {
   type CrmBookingDocument,
   type CrmBookingItem,
   type CrmBookingTraveler,
+  type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { ConciergeBanner, StatusChip, bookingStatusTone } from "@/components/crm/ui";
+import { TripTravelerPassports } from "@/components/crm/TripTravelerPassports";
 
 type Props = { params: Promise<{ reference: string }> };
 
@@ -35,7 +37,7 @@ export default async function ReservationDetailPage({ params }: Props) {
   if (!booking) notFound();
   const b = booking as CrmBooking;
 
-  const [{ data: items }, { data: travelers }, { data: docs }] = await Promise.all([
+  const [{ data: items }, { data: travelers }, { data: docs }, { data: identityDocs }] = await Promise.all([
     supabase
       .from("crm_booking_items")
       .select("*")
@@ -47,7 +49,9 @@ export default async function ReservationDetailPage({ params }: Props) {
       .select("*")
       .eq("booking_id", b.id)
       .eq("visible_to_client", true),
+    supabase.from("crm_travel_documents").select("*").eq("customer_id", customer.id),
   ]);
+  const allIdentity = (identityDocs || []) as CrmTravelDocument[];
 
   return (
     <div className="space-y-5">
@@ -95,6 +99,29 @@ export default async function ReservationDetailPage({ params }: Props) {
         </p>
       ) : null}
 
+      <section className="aura-card space-y-3 rounded-[1.35rem] border-t-[3px] border-t-[var(--admin-gold)] bg-white p-4">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+            À déposer pour ce séjour
+          </p>
+          <h2 className="mt-1 font-display text-base font-bold text-[var(--admin-navy)]">
+            Voyageurs & passeports
+          </h2>
+          <p className="mt-1 text-sm text-muted">
+            Chaque voyage a ses propres pièces. Joignez le passeport de chaque voyageur pour ce
+            dossier.
+          </p>
+        </div>
+        <TripTravelerPassports
+          variant="client"
+          customerId={customer.id}
+          bookingId={b.id}
+          travelers={(travelers || []) as CrmBookingTraveler[]}
+          tripDocs={allIdentity.filter((doc) => doc.booking_id === b.id)}
+          reusableDocs={allIdentity.filter((doc) => doc.booking_id !== b.id)}
+        />
+      </section>
+
       <section className="aura-card space-y-3 rounded-[1.35rem] bg-white p-4">
         <h2 className="font-display text-base font-bold text-[var(--admin-navy)]">
           Prestations
@@ -132,33 +159,7 @@ export default async function ReservationDetailPage({ params }: Props) {
 
       <section className="aura-card space-y-3 rounded-[1.35rem] bg-white p-4">
         <h2 className="font-display text-base font-bold text-[var(--admin-navy)]">
-          Voyageurs
-        </h2>
-        <ul className="space-y-2">
-          {((travelers || []) as CrmBookingTraveler[]).map((t) => (
-            <li
-              key={t.id}
-              className="flex items-center justify-between rounded-2xl bg-slate-50 px-3.5 py-3 text-sm"
-            >
-              <span className="font-semibold text-[var(--admin-navy)]">
-                {[t.first_name, t.last_name].filter(Boolean).join(" ") || "Voyageur"}
-              </span>
-              {t.is_account_holder ? (
-                <span className="rounded-full bg-[var(--aura-blue-soft)] px-2 py-0.5 text-[10px] font-bold text-[var(--aura-blue)]">
-                  Titulaire
-                </span>
-              ) : null}
-            </li>
-          ))}
-          {!travelers?.length ? (
-            <li className="text-sm text-muted">Voyageurs à confirmer</li>
-          ) : null}
-        </ul>
-      </section>
-
-      <section className="aura-card space-y-3 rounded-[1.35rem] bg-white p-4">
-        <h2 className="font-display text-base font-bold text-[var(--admin-navy)]">
-          Documents
+          Billets et vouchers
         </h2>
         <ul className="space-y-2">
           {((docs || []) as CrmBookingDocument[]).map((d) => (

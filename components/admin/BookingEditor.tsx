@@ -13,26 +13,34 @@ import {
   type CrmBookingItem,
   type CrmBookingTraveler,
   type CrmCompanion,
+  type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { itemDetailsLine, itemWhen } from "@/lib/crm/booking-display";
 import { bookingCoverUrl } from "@/lib/crm/covers";
 import { BookingIngest } from "@/components/crm/BookingIngest";
-import { DateFrInput } from "@/components/crm/fields";
+import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
+import { TripTravelerPassports } from "@/components/crm/TripTravelerPassports";
 
 export function BookingEditor({
   booking,
   items,
   travelers,
   documents,
+  tripDocs,
+  reusableDocs,
   companions,
+  holderName,
   aiConfigured,
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
   travelers: CrmBookingTraveler[];
   documents: CrmBookingDocument[];
+  tripDocs: CrmTravelDocument[];
+  reusableDocs: CrmTravelDocument[];
   companions: CrmCompanion[];
+  holderName: { first_name: string; last_name: string };
   aiConfigured: boolean;
 }) {
   const router = useRouter();
@@ -78,6 +86,19 @@ export function BookingEditor({
       }),
     });
     form.reset();
+    router.refresh();
+  }
+
+  async function addHolder() {
+    await fetch(`/api/admin/bookings/${booking.id}/travelers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        is_account_holder: true,
+        first_name: holderName.first_name,
+        last_name: holderName.last_name,
+      }),
+    });
     router.refresh();
   }
 
@@ -138,6 +159,54 @@ export function BookingEditor({
         </button>
       </form>
 
+      <section className="admin-af-card space-y-4 rounded-3xl p-5">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+            Identité du séjour
+          </p>
+          <h2 className="mt-1 font-display text-lg font-bold">Voyageurs & pièces d’identité</h2>
+          <p className="mt-1 text-sm text-muted">
+            Chaque dossier a ses propres passeports. Un nouveau voyage = un nouveau dépôt si le
+            document a changé.
+          </p>
+        </div>
+        {!travelers.length ? (
+          <button
+            type="button"
+            onClick={() => void addHolder()}
+            className="rounded-full bg-[var(--admin-peach)] px-4 py-2 text-sm font-semibold text-[var(--admin-navy)]"
+          >
+            Ajouter {holderName.first_name} {holderName.last_name} (titulaire)
+          </button>
+        ) : null}
+        <TripTravelerPassports
+          variant="admin"
+          customerId={booking.customer_id}
+          bookingId={booking.id}
+          travelers={travelers}
+          tripDocs={tripDocs}
+          reusableDocs={reusableDocs}
+        />
+        <form onSubmit={addTraveler} className="grid gap-2 sm:grid-cols-2">
+          <select name="companion_id" className={fieldControlClass}>
+            <option value="">Saisie libre</option>
+            {companions.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.first_name} {c.last_name}
+              </option>
+            ))}
+          </select>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="is_account_holder" /> Titulaire du dossier
+          </label>
+          <input name="first_name" placeholder="Prénom" className={fieldControlClass} />
+          <input name="last_name" placeholder="Nom" className={fieldControlClass} />
+          <button className="admin-af-btn rounded-full px-3 py-2 text-sm sm:col-span-2">
+            Ajouter un voyageur
+          </button>
+        </form>
+      </section>
+
       <section className="admin-af-card rounded-3xl p-5">
         <h2 className="font-display text-lg font-bold">Prestations</h2>
         <ul className="mt-2 text-sm">
@@ -164,35 +233,8 @@ export function BookingEditor({
       </section>
 
       <section className="admin-af-card rounded-3xl p-5">
-        <h2 className="font-display text-lg font-bold">Voyageurs</h2>
-        <ul className="mt-2 text-sm">
-          {travelers.map((t) => (
-            <li key={t.id}>
-              {[t.first_name, t.last_name].filter(Boolean).join(" ")}
-              {t.is_account_holder ? " (titulaire)" : ""}
-            </li>
-          ))}
-        </ul>
-        <form onSubmit={addTraveler} className="mt-3 flex flex-wrap gap-2">
-          <select name="companion_id" className="rounded-xl border border-border px-3 py-2">
-            <option value="">Saisie libre</option>
-            {companions.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.first_name} {c.last_name}
-              </option>
-            ))}
-          </select>
-          <input name="first_name" placeholder="Prénom" className="rounded-xl border border-border px-3 py-2" />
-          <input name="last_name" placeholder="Nom" className="rounded-xl border border-border px-3 py-2" />
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="is_account_holder" /> Titulaire
-          </label>
-          <button className="admin-af-btn rounded-full px-3 py-2 text-sm">Ajouter</button>
-        </form>
-      </section>
-
-      <section className="admin-af-card rounded-3xl p-5">
-        <h2 className="font-display text-lg font-bold">Documents</h2>
+        <h2 className="font-display text-lg font-bold">Billets, vouchers et devis</h2>
+        <p className="mt-1 text-sm text-muted">Justificatifs du dossier, distincts des passeports.</p>
         <ul className="mt-2 space-y-2 text-sm">
           {documents.map((d) => (
             <li key={d.id} className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2">

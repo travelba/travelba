@@ -121,6 +121,8 @@ export type CrmTravelDocument = {
   id: string;
   customer_id: string;
   companion_id: string | null;
+  booking_id: string | null;
+  traveler_id: string | null;
   doc_type: TravelDocType;
   number: string | null;
   issuing_country: string | null;

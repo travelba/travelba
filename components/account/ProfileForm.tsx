@@ -36,7 +36,6 @@ export function ProfileForm({ customer }: { customer: CrmCustomer }) {
   const [postalCode, setPostalCode] = useState(customer.postal_code || "");
   const [city, setCity] = useState(customer.city || "");
   const [scan, setScan] = useState<ScanResult | null>(null);
-  const [keepDocument, setKeepDocument] = useState(true);
 
   function applyScan(result: ScanResult) {
     setScan(result);
@@ -77,16 +76,6 @@ export function ProfileForm({ customer }: { customer: CrmCustomer }) {
       setError(json.error || "Erreur");
       return;
     }
-    if (keepDocument && scan?.file && scan.identity) {
-      const form = new FormData();
-      form.set("file", scan.file);
-      form.set("doc_type", scan.identity.doc_type);
-      form.set("number", scan.identity.number || "");
-      form.set("issuing_country", scan.identity.issuing_country || "");
-      form.set("expires_on", scan.identity.expires_on || "");
-      form.set("apply_identity", "0");
-      await fetch("/api/client/documents", { method: "POST", body: form });
-    }
     setSaving(false);
     setSaved(true);
     router.refresh();
@@ -96,25 +85,15 @@ export function ProfileForm({ customer }: { customer: CrmCustomer }) {
 
   return (
     <form onSubmit={onSubmit} className="mt-4 space-y-6 p-4 sm:p-5">
-      <IdentityScan
-        title="Remplir depuis le passeport"
-        description="Une photo du document suffit : nous reportons les infos essentielles. Vous n’avez plus qu’à vérifier."
-        onResult={applyScan}
-      />
-      {scan ? <ScanStatus identity={scan.identity} warning={scan.warning} /> : null}
-      {expiryWarn ? <p className="text-sm text-accent">{expiryWarn}</p> : null}
-      {scan?.file ? (
-        <label className="flex items-center gap-2 text-sm text-[var(--admin-navy)]">
-          <input
-            type="checkbox"
-            checked={keepDocument}
-            onChange={(event) => setKeepDocument(event.target.checked)}
-          />
-          Enregistrer aussi le document dans mes pièces
-        </label>
-      ) : null}
+        <IdentityScan
+          title="Remplir depuis le passeport"
+          description="La photo sert à préremplir nom, naissance et nationalité. Le document se joint ensuite sur chaque réservation."
+          onResult={applyScan}
+        />
+        {scan ? <ScanStatus identity={scan.identity} warning={scan.warning} /> : null}
+        {expiryWarn ? <p className="text-sm text-accent">{expiryWarn}</p> : null}
 
-      <section className="grid gap-4 sm:grid-cols-2">
+        <section className="grid gap-4 sm:grid-cols-2">
         <p className="sm:col-span-2 font-display text-base font-bold text-[var(--admin-navy)]">
           Identité voyageur
         </p>

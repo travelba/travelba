@@ -116,7 +116,7 @@ export default async function AdminHomePage() {
           {((docs || []) as CrmTravelDocument[]).map((d) => (
             <li key={d.id} className="flex justify-between gap-3 px-5 py-3">
               <Link
-                href={`/admin/clients/${d.customer_id}`}
+                href={d.booking_id ? `/admin/reservations/${d.booking_id}` : `/admin/clients/${d.customer_id}`}
                 className="font-medium text-[var(--admin-navy)] hover:underline"
               >
                 {d.doc_type} {d.number || ""} · {byId.get(d.customer_id) || d.customer_id}
