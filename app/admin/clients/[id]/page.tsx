@@ -49,7 +49,6 @@ export default async function AdminClientDetailPage({ params }: Props) {
         <h1 className="font-display text-3xl font-extrabold text-[var(--admin-navy)]">
           {customerFullName(c)}
         </h1>
-        <p className="text-sm text-muted">{c.email}</p>
       </div>
       <InviteCustomerPanel customerId={c.id} initial={portal} />
       <div className="flex flex-wrap gap-3">
