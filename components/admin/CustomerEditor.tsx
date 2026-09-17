@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Plus } from "lucide-react";
 import type { CrmCompanion, CrmCustomer, CrmTravelDocument } from "@/lib/crm/types";
 import { resolveCountryCode } from "@/lib/crm/countries";
 import { type ExtractedIdentity } from "@/lib/crm/identity";
@@ -374,6 +375,19 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+
+  function closeForm() {
+    setOpen(false);
+    setFirstName("");
+    setLastName("");
+    setRelationship("");
+    setNationality("");
+    setBirthDate("");
+    setSex("");
+    setScan(null);
+    setError(null);
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -407,21 +421,37 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
       await fetch("/api/admin/travel-documents", { method: "POST", body: form });
     }
     setSaving(false);
-    setFirstName("");
-    setLastName("");
-    setRelationship("");
-    setNationality("");
-    setBirthDate("");
-    setSex("");
-    setScan(null);
+    closeForm();
     router.refresh();
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="admin-af-btn inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm"
+      >
+        <Plus className="h-4 w-4" />
+        Ajouter un accompagnateur
+      </button>
+    );
   }
 
   return (
     <form onSubmit={onSubmit} className="admin-af-card space-y-4 rounded-3xl p-5">
-      <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">
-        Ajouter un accompagnateur
-      </h3>
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">
+          Ajouter un accompagnateur
+        </h3>
+        <button
+          type="button"
+          onClick={closeForm}
+          className="text-xs font-semibold text-muted"
+        >
+          Annuler
+        </button>
+      </div>
       <PersonPassportCard
         variant="admin"
         customerId={customerId}
