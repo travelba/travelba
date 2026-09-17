@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { CrmCompanion, CrmCustomer, CrmTravelDocument } from "@/lib/crm/types";
 import { DOC_TYPE_LABELS } from "@/lib/crm/types";
 import { countryName, resolveCountryCode } from "@/lib/crm/countries";
-import { appendIdentityFields, documentHolderName } from "@/lib/crm/document-identity";
+import { documentExpiryStatus } from "@/lib/crm/identity";
 import { formatDateFr } from "@/lib/crm/money";
 import {
   AddressFields,
@@ -16,8 +16,16 @@ import {
   PhoneField,
   SexSelect,
 } from "@/components/crm/fields";
+import {
+  billingJson,
+  billingSameAsProfile,
+  companyBillingFromCustomer,
+  CompanyBillingFields,
+  type CompanyBillingValues,
+} from "@/components/crm/CompanyBillingFields";
 import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
+import { StatusChip } from "@/components/crm/ui";
 
 export function CustomerEditor({
   customer,
@@ -33,10 +41,8 @@ export function CustomerEditor({
   const [lastName, setLastName] = useState(customer.last_name);
   const [email, setEmail] = useState(customer.email);
   const [phone, setPhone] = useState(customer.phone || "");
+  const [phoneSecondary, setPhoneSecondary] = useState(customer.phone_secondary || "");
   const [whatsapp, setWhatsapp] = useState(customer.whatsapp || "");
-  const [whatsappSame, setWhatsappSame] = useState(
-    !customer.whatsapp || customer.whatsapp === customer.phone
-  );
   const [birthDate, setBirthDate] = useState(customer.birth_date || "");
   const [sex, setSex] = useState(customer.sex || "");
   const [nationality, setNationality] = useState(resolveCountryCode(customer.nationality) || "");
@@ -44,6 +50,19 @@ export function CustomerEditor({
   const [addressLine, setAddressLine] = useState(customer.address_line || "");
   const [postalCode, setPostalCode] = useState(customer.postal_code || "");
   const [city, setCity] = useState(customer.city || "");
+  const [flyingBlue, setFlyingBlue] = useState(customer.flying_blue || "");
+  const [billing, setBilling] = useState<CompanyBillingValues>(() => companyBillingFromCustomer(customer));
+  const [sameBillingAddress, setSameBillingAddress] = useState(() =>
+    billingSameAsProfile(companyBillingFromCustomer(customer), {
+      country: resolveCountryCode(customer.country) || "FR",
+      line: customer.address_line || "",
+      postal: customer.postal_code || "",
+      city: customer.city || "",
+    })
+  );
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
   const [docScan, setDocScan] = useState<ScanResult | null>(null);
   const [docType, setDocType] = useState("passport");
   const [docNumber, setDocNumber] = useState("");
@@ -58,9 +77,14 @@ export function CustomerEditor({
   const [docSex, setDocSex] = useState("");
   const [applyIdentity, setApplyIdentity] = useState(true);
 
-  function applyCustomerScan(result: ScanResult) {
-    const id = result.identity;
-    if (!id) return;
+  const profileAddress = {
+    country,
+    line: addressLine,
+    postal: postalCode,
+    city,
+  };
+
+  function applyIdentityFields(id: NonNullable<ScanResult["identity"]>) {
     if (id.first_name) setFirstName(id.first_name);
     if (id.last_name) setLastName(id.last_name);
     if (id.birth_date) setBirthDate(id.birth_date);
@@ -68,9 +92,23 @@ export function CustomerEditor({
     if (id.nationality) setNationality(id.nationality);
   }
 
+  async function persistIdentity(id: NonNullable<ScanResult["identity"]>) {
+    if (docCompanion) return;
+    await fetch(`/api/admin/clients/${customer.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        first_name: id.first_name || firstName,
+        last_name: id.last_name || lastName,
+        birth_date: id.birth_date || birthDate,
+        sex: id.sex || sex,
+        nationality: id.nationality || nationality,
+      }),
+    });
+  }
+
   function applyDocScan(result: ScanResult) {
     setDocScan(result);
-    applyCustomerScan(result);
     const id = result.identity;
     if (!id) return;
     setDocType(id.doc_type);
@@ -82,11 +120,17 @@ export function CustomerEditor({
     if (id.birth_date) setDocBirthDate(id.birth_date);
     if (id.nationality) setDocNationality(id.nationality);
     if (id.sex) setDocSex(id.sex);
+    if (applyIdentity && !docCompanion) {
+      applyIdentityFields(id);
+      void persistIdentity(id);
+    }
   }
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await fetch(`/api/admin/clients/${customer.id}`, {
+    setSaving(true);
+    setSaveError(null);
+    const res = await fetch(`/api/admin/clients/${customer.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -94,7 +138,8 @@ export function CustomerEditor({
         last_name: lastName,
         email,
         phone,
-        whatsapp: whatsappSame ? phone : whatsapp,
+        phone_secondary: phoneSecondary,
+        whatsapp,
         birth_date: birthDate,
         sex,
         nationality,
@@ -102,8 +147,16 @@ export function CustomerEditor({
         postal_code: postalCode,
         city,
         country,
+        flying_blue: flyingBlue,
+        ...billingJson(billing, profileAddress, sameBillingAddress),
       }),
     });
+    const json = await res.json().catch(() => ({}));
+    setSaving(false);
+    if (!res.ok) {
+      setSaveError(json.error || "Enregistrement impossible");
+      return;
+    }
     router.refresh();
   }
 
@@ -130,17 +183,12 @@ export function CustomerEditor({
     fd.set("issued_on", docIssued);
     fd.set("expires_on", docExpiry);
     fd.set("companion_id", docCompanion);
-    appendIdentityFields(
-      fd,
-      {
-        first_name: docFirstName,
-        last_name: docLastName,
-        birth_date: docBirthDate,
-        nationality: docNationality,
-        sex: docSex,
-      },
-      applyIdentity
-    );
+    fd.set("first_name", docFirstName);
+    fd.set("last_name", docLastName);
+    fd.set("birth_date", docBirthDate);
+    fd.set("nationality", docNationality);
+    fd.set("sex", docSex);
+    fd.set("apply_identity", applyIdentity ? "1" : "0");
     if (docScan?.file) fd.set("file", docScan.file);
     const extra = event.currentTarget.elements.namedItem("file");
     if (extra instanceof HTMLInputElement && extra.files?.[0] && !docScan?.file) {
@@ -162,8 +210,11 @@ export function CustomerEditor({
 
   return (
     <div className="space-y-6">
-      <form onSubmit={save} className="admin-af-card space-y-4 rounded-3xl p-5">
+      <form onSubmit={save} className="admin-af-card space-y-6 rounded-3xl p-5">
         <div className="grid gap-4 sm:grid-cols-2">
+          <p className="sm:col-span-2 font-display text-base font-bold text-[var(--admin-navy)]">
+            Identité voyageur
+          </p>
           <Field label="Prénom">
             <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
           </Field>
@@ -173,14 +224,6 @@ export function CustomerEditor({
           <Field label="Email" className="sm:col-span-2">
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={fieldControlClass} />
           </Field>
-          <PhoneField name="phone" value={phone} onChange={setPhone} className="sm:col-span-2" />
-          <label className="sm:col-span-2 flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={whatsappSame} onChange={(e) => setWhatsappSame(e.target.checked)} />
-            WhatsApp identique
-          </label>
-          {!whatsappSame ? (
-            <PhoneField name="whatsapp" label="WhatsApp" value={whatsapp} onChange={setWhatsapp} className="sm:col-span-2" />
-          ) : null}
           <Field label="Naissance">
             <DateFrInput
               value={birthDate}
@@ -196,17 +239,62 @@ export function CustomerEditor({
             <CountrySelect name="nationality" value={nationality} onChange={setNationality} />
           </Field>
         </div>
-        <AddressFields
-          country={country}
-          onCountryChange={setCountry}
-          line={addressLine}
-          postal={postalCode}
-          city={city}
-          onLineChange={setAddressLine}
-          onPostalChange={setPostalCode}
-          onCityChange={setCity}
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <p className="sm:col-span-2 font-display text-base font-bold text-[var(--admin-navy)]">
+            Coordonnées
+          </p>
+          <PhoneField name="phone" value={phone} onChange={setPhone} />
+          <PhoneField
+            name="phone_secondary"
+            label="Téléphone 2"
+            value={phoneSecondary}
+            onChange={setPhoneSecondary}
+          />
+          <PhoneField
+            name="whatsapp"
+            label="WhatsApp"
+            value={whatsapp}
+            onChange={setWhatsapp}
+            className="sm:col-span-2"
+          />
+          <Field label="N° Flying Blue" className="sm:col-span-2" hint="Programme Air France / KLM">
+            <input
+              value={flyingBlue}
+              onChange={(e) => setFlyingBlue(e.target.value.toUpperCase())}
+              autoComplete="off"
+              className={fieldControlClass}
+              placeholder="1234567890"
+            />
+          </Field>
+        </div>
+
+        <section>
+          <p className="mb-4 font-display text-base font-bold text-[var(--admin-navy)]">Adresse</p>
+          <AddressFields
+            country={country}
+            onCountryChange={setCountry}
+            line={addressLine}
+            postal={postalCode}
+            city={city}
+            onLineChange={setAddressLine}
+            onPostalChange={setPostalCode}
+            onCityChange={setCity}
+          />
+        </section>
+
+        <CompanyBillingFields
+          values={billing}
+          onChange={setBilling}
+          sameAsProfile={sameBillingAddress}
+          onSameAsProfileChange={setSameBillingAddress}
+          profileAddress={profileAddress}
         />
-        <button className="admin-af-btn rounded-full px-4 py-2 text-sm">Enregistrer</button>
+
+        {saveError ? <p className="text-sm text-accent">{saveError}</p> : null}
+        <button className="admin-af-btn rounded-full px-4 py-2 text-sm" disabled={saving}>
+          {saving ? "Enregistrement…" : "Enregistrer"}
+        </button>
       </form>
 
       <section className="admin-af-card rounded-3xl p-5">
@@ -238,24 +326,26 @@ export function CustomerEditor({
         <h2 className="font-display text-lg font-bold">Documents</h2>
         <ul className="space-y-2 text-sm">
           {documents.map((d) => {
-            const holder = documentHolderName(d, customer, companions);
-            const meta = [
-              holder || null,
-              d.birth_date ? `né(e) ${formatDateFr(d.birth_date)}` : null,
-              d.nationality ? countryName(d.nationality) : null,
-              d.issued_on ? `délivré ${formatDateFr(d.issued_on)}` : null,
-              `exp. ${formatDateFr(d.expires_on)}`,
-              d.issuing_country ? countryName(d.issuing_country) : null,
-              d.file_name,
-            ].filter(Boolean);
+            const status = documentExpiryStatus(d.expires_on);
+            const holder = d.first_name || d.last_name
+              ? [d.first_name, d.last_name].filter(Boolean).join(" ")
+              : null;
             return (
               <li key={d.id} className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2">
                 <div className="min-w-0">
-                  <p className="font-medium text-[var(--admin-navy)]">
-                    {DOC_TYPE_LABELS[d.doc_type]}
-                    {d.number ? ` · ${d.number}` : ""}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-medium text-[var(--admin-navy)]">
+                      {DOC_TYPE_LABELS[d.doc_type]} {d.number || ""}
+                    </p>
+                    <StatusChip tone={status.tone}>{status.label}</StatusChip>
+                  </div>
+                  <p className="text-xs text-muted">
+                    {holder ? `${holder} · ` : ""}
+                    exp. {formatDateFr(d.expires_on)}
+                    {d.issuing_country ? ` · ${countryName(d.issuing_country)}` : ""}
+                    {d.nationality ? ` · ${countryName(d.nationality)}` : ""}
+                    {d.file_name ? ` · ${d.file_name}` : ""}
                   </p>
-                  <p className="text-xs text-muted">{meta.join(" · ")}</p>
                 </div>
                 {d.storage_path ? (
                   <FileOpenLink
@@ -274,9 +364,14 @@ export function CustomerEditor({
             );
           })}
         </ul>
-        <IdentityScan endpoint="/api/admin/travel-documents/scan" onResult={applyDocScan} />
+        <IdentityScan
+          title="Lire un passeport"
+          description="Nous reportons nom, prénom, naissance, nationalité et n° de document sur la fiche et le document."
+          endpoint="/api/admin/travel-documents/scan"
+          onResult={applyDocScan}
+        />
         {docScan ? <ScanStatus identity={docScan.identity} warning={docScan.warning} /> : null}
-        <form onSubmit={addDoc} className="grid gap-4 sm:grid-cols-2">
+        <form onSubmit={addDoc} className="grid gap-3 sm:grid-cols-2">
           <Field label="Type">
             <select value={docType} onChange={(e) => setDocType(e.target.value)} className={fieldControlClass}>
               {Object.entries(DOC_TYPE_LABELS).map(([v, l]) => (
@@ -286,9 +381,9 @@ export function CustomerEditor({
               ))}
             </select>
           </Field>
-          <Field label="Titulaire">
+          <Field label="Pour qui">
             <select value={docCompanion} onChange={(e) => setDocCompanion(e.target.value)} className={fieldControlClass}>
-              <option value="">Client</option>
+              <option value="">Titulaire</option>
               {companions.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.first_name} {c.last_name}
@@ -300,44 +395,42 @@ export function CustomerEditor({
             <input value={docNumber} onChange={(e) => setDocNumber(e.target.value)} className={fieldControlClass} />
           </Field>
           <Field label="Délivré le">
-            <DateFrInput value={docIssued} onChange={setDocIssued} className={fieldControlClass} />
+            <DateFrInput value={docIssued} onChange={setDocIssued} />
           </Field>
           <Field label="Expire le">
-            <DateFrInput value={docExpiry} onChange={setDocExpiry} className={fieldControlClass} />
+            <DateFrInput value={docExpiry} onChange={setDocExpiry} />
           </Field>
           <Field label="Pays d’émission">
             <CountrySelect name="issuing_country" value={docCountry} onChange={setDocCountry} />
-          </Field>
-          <Field label="Prénom">
-            <input value={docFirstName} onChange={(e) => setDocFirstName(e.target.value)} className={fieldControlClass} />
-          </Field>
-          <Field label="Nom">
-            <input value={docLastName} onChange={(e) => setDocLastName(e.target.value)} className={fieldControlClass} />
-          </Field>
-          <Field label="Naissance">
-            <DateFrInput
-              value={docBirthDate}
-              onChange={setDocBirthDate}
-              max={new Date().toISOString().slice(0, 10)}
-            />
-          </Field>
-          <Field label="Sexe">
-            <SexSelect name="doc_sex" value={docSex} onChange={setDocSex} />
-          </Field>
-          <Field label="Nationalité" className="sm:col-span-2">
-            <CountrySelect name="doc_nationality" value={docNationality} onChange={setDocNationality} />
-          </Field>
-          <Field label="Fichier" className="sm:col-span-2">
-            <input name="file" type="file" className="block text-sm" />
           </Field>
           <label className="sm:col-span-2 flex items-center gap-2 text-sm text-[var(--admin-navy)]">
             <input
               type="checkbox"
               checked={applyIdentity}
-              onChange={(e) => setApplyIdentity(e.target.checked)}
+              onChange={(event) => setApplyIdentity(event.target.checked)}
             />
-            Reporter nom, naissance et nationalité sur le profil concerné
+            Reporter l’identité sur le profil concerné
           </label>
+          {applyIdentity ? (
+            <>
+              <Field label="Prénom">
+                <input value={docFirstName} onChange={(e) => setDocFirstName(e.target.value)} className={fieldControlClass} />
+              </Field>
+              <Field label="Nom">
+                <input value={docLastName} onChange={(e) => setDocLastName(e.target.value)} className={fieldControlClass} />
+              </Field>
+              <Field label="Naissance">
+                <DateFrInput value={docBirthDate} onChange={setDocBirthDate} />
+              </Field>
+              <Field label="Sexe">
+                <SexSelect name="doc_sex" value={docSex} onChange={setDocSex} />
+              </Field>
+              <Field label="Nationalité" className="sm:col-span-2">
+                <CountrySelect name="doc_nationality" value={docNationality} onChange={setDocNationality} />
+              </Field>
+            </>
+          ) : null}
+          <input name="file" type="file" className="text-sm sm:col-span-2" />
           <button className="admin-af-btn rounded-full px-3 py-2 text-sm sm:col-span-2">Ajouter</button>
         </form>
       </section>
