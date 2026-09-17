@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { resolveCountryCode } from "@/lib/crm/countries";
+import { filledIdentity, identityFieldsFromForm } from "@/lib/crm/document-identity";
 import { emptyToNull } from "@/lib/crm/identity";
 import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
 
@@ -21,11 +22,13 @@ export async function POST(request: Request) {
     fileName = file.name;
     mimeType = file.type;
   }
+  const identity = identityFieldsFromForm(form);
+  const companionId = emptyToNull(form.get("companion_id"));
   const { data, error } = await auth.supabase
     .from("crm_travel_documents")
     .insert({
       customer_id: customerId,
-      companion_id: emptyToNull(form.get("companion_id")),
+      companion_id: companionId,
       doc_type: form.get("doc_type") || "passport",
       number: emptyToNull(form.get("number")),
       issuing_country:
@@ -33,6 +36,7 @@ export async function POST(request: Request) {
         emptyToNull(form.get("issuing_country")),
       issued_on: emptyToNull(form.get("issued_on")),
       expires_on: emptyToNull(form.get("expires_on")),
+      ...identity,
       storage_path: storagePath,
       file_name: fileName,
       mime_type: mimeType,
@@ -40,6 +44,22 @@ export async function POST(request: Request) {
     .select("*")
     .single();
   if (error) return jsonError(error.message, 400);
+
+  if (String(form.get("apply_identity") || "1") !== "0") {
+    const filled = filledIdentity(identity);
+    if (Object.keys(filled).length > 0) {
+      if (companionId) {
+        await auth.supabase
+          .from("crm_travel_companions")
+          .update(filled)
+          .eq("id", companionId)
+          .eq("customer_id", customerId);
+      } else {
+        await auth.supabase.from("crm_customers").update(filled).eq("id", customerId);
+      }
+    }
+  }
+
   return NextResponse.json({ document: data });
 }
 

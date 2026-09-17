@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DOC_TYPE_LABELS, type CrmCompanion, type CrmTravelDocument, type TravelDocType } from "@/lib/crm/types";
 import { countryName } from "@/lib/crm/countries";
+import { appendIdentityFields, documentHolderName } from "@/lib/crm/document-identity";
 import { documentExpiryStatus, documentExpiryWarning } from "@/lib/crm/identity";
 import { formatDateFr } from "@/lib/crm/money";
 import { StatusChip } from "@/components/crm/ui";
@@ -68,12 +69,17 @@ export function DocumentsManager({
     form.set("number", number);
     form.set("issuing_country", issuingCountry);
     form.set("expires_on", expiresOn);
-    form.set("first_name", firstName);
-    form.set("last_name", lastName);
-    form.set("birth_date", birthDate);
-    form.set("nationality", nationality);
-    form.set("sex", sex);
-    form.set("apply_identity", applyIdentity ? "1" : "0");
+    appendIdentityFields(
+      form,
+      {
+        first_name: firstName,
+        last_name: lastName,
+        birth_date: birthDate,
+        nationality,
+        sex,
+      },
+      applyIdentity
+    );
     const extra = event.currentTarget.elements.namedItem("extra_file");
     if (extra instanceof HTMLInputElement && extra.files?.[0] && !scan?.file) {
       form.set("file", extra.files[0]);
@@ -136,8 +142,15 @@ export function DocumentsManager({
                   <StatusChip tone={status.tone}>{status.label}</StatusChip>
                 </div>
                 <p className="mt-1 text-xs text-muted">
-                  Expire le {formatDateFr(d.expires_on)}
-                  {d.issuing_country ? ` · ${countryName(d.issuing_country)}` : ""}
+                  {[
+                    documentHolderName(d, { first_name: "", last_name: "" }, companions) || null,
+                    d.birth_date ? `né(e) ${formatDateFr(d.birth_date)}` : null,
+                    d.nationality ? countryName(d.nationality) : null,
+                    `Expire le ${formatDateFr(d.expires_on)}`,
+                    d.issuing_country ? countryName(d.issuing_country) : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </p>
                 {d.storage_path ? (
                   <FileOpenLink
@@ -226,6 +239,24 @@ export function DocumentsManager({
           </Field>
         </div>
 
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Prénom">
+            <input value={firstName} onChange={(event) => setFirstName(event.target.value)} className={fieldControlClass} />
+          </Field>
+          <Field label="Nom">
+            <input value={lastName} onChange={(event) => setLastName(event.target.value)} className={fieldControlClass} />
+          </Field>
+          <Field label="Naissance">
+            <DateFrInput value={birthDate} onChange={setBirthDate} />
+          </Field>
+          <Field label="Sexe">
+            <SexSelect name="sex" value={sex} onChange={setSex} />
+          </Field>
+          <Field label="Nationalité" className="sm:col-span-2">
+            <CountrySelect name="nationality" value={nationality} onChange={setNationality} />
+          </Field>
+        </div>
+
         <label className="flex items-center gap-2 text-sm text-[var(--admin-navy)]">
           <input
             type="checkbox"
@@ -234,26 +265,6 @@ export function DocumentsManager({
           />
           Reporter nom, naissance et nationalité sur le profil concerné
         </label>
-
-        {applyIdentity ? (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Prénom">
-              <input value={firstName} onChange={(event) => setFirstName(event.target.value)} className={fieldControlClass} />
-            </Field>
-            <Field label="Nom">
-              <input value={lastName} onChange={(event) => setLastName(event.target.value)} className={fieldControlClass} />
-            </Field>
-            <Field label="Naissance">
-              <DateFrInput value={birthDate} onChange={setBirthDate} />
-            </Field>
-            <Field label="Sexe">
-              <SexSelect name="sex" value={sex} onChange={setSex} />
-            </Field>
-            <Field label="Nationalité" className="sm:col-span-2">
-              <CountrySelect name="nationality" value={nationality} onChange={setNationality} />
-            </Field>
-          </div>
-        ) : null}
 
         <button
           type="button"

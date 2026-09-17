@@ -479,6 +479,7 @@ export function AddressFields({
   onLineChange,
   onPostalChange,
   onCityChange,
+  namePrefix = "",
 }: {
   country: string;
   onCountryChange: (iso2: string) => void;
@@ -488,7 +489,9 @@ export function AddressFields({
   onLineChange: (value: string) => void;
   onPostalChange: (value: string) => void;
   onCityChange: (value: string) => void;
+  namePrefix?: string;
 }) {
+  const nameOf = (base: string) => (namePrefix ? `${namePrefix}_${base}` : base);
   const [hints, setHints] = useState<BanFeature[]>([]);
   const isFrance = (resolveCountryCode(country) || country) === "FR";
 
@@ -537,7 +540,7 @@ export function AddressFields({
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <Field label="Pays" className="sm:col-span-2">
-        <CountrySelect name="country" value={country} onChange={onCountryChange} allowEmpty={false} />
+        <CountrySelect name={nameOf("country")} value={country} onChange={onCountryChange} allowEmpty={false} />
       </Field>
       <Field
         label="Adresse"
@@ -546,7 +549,7 @@ export function AddressFields({
       >
         <div className="relative">
           <input
-            name="address_line"
+            name={nameOf("address_line")}
             autoComplete="street-address"
             value={line}
             onChange={(event) => search(event.target.value)}
@@ -572,7 +575,7 @@ export function AddressFields({
       </Field>
       <Field label="Code postal">
         <input
-          name="postal_code"
+          name={nameOf("postal_code")}
           autoComplete="postal-code"
           inputMode={isFrance ? "numeric" : "text"}
           maxLength={isFrance ? 5 : 12}
@@ -583,7 +586,7 @@ export function AddressFields({
       </Field>
       <Field label="Ville">
         <input
-          name="city"
+          name={nameOf("city")}
           autoComplete="address-level2"
           value={city}
           onChange={(event) => onCityChange(event.target.value)}
