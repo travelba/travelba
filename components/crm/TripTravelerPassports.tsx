@@ -191,6 +191,9 @@ function TravelerPassportCard({
             </p>
             <p className="text-xs text-muted">
               Joint à ce voyage
+              {current.first_name || current.last_name
+                ? ` · ${[current.first_name, current.last_name].filter(Boolean).join(" ")}`
+                : ""}
               {current.expires_on ? ` · exp. ${formatDateFr(current.expires_on)}` : ""}
               {current.issuing_country ? ` · ${countryName(current.issuing_country)}` : ""}
             </p>

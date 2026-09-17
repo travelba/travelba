@@ -128,6 +128,11 @@ export type CrmTravelDocument = {
   issuing_country: string | null;
   issued_on: string | null;
   expires_on: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  birth_date: string | null;
+  nationality: string | null;
+  sex: string | null;
   storage_path: string | null;
   file_name: string | null;
   mime_type: string | null;

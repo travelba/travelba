@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireCustomer } from "@/lib/crm/auth";
 import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
+import { identityFieldsFromForm } from "@/lib/crm/document-identity";
 import { emptyToNull } from "@/lib/crm/identity";
 import {
   applyIdentityFromForm,
@@ -55,6 +56,7 @@ export async function POST(request: Request) {
       fileName = file.name;
       mimeType = file.type;
     }
+    const identity = identityFieldsFromForm(form);
     const document = await insertTravelDocument(auth.supabase, {
       customerId: auth.customer.id,
       companionId,
@@ -68,6 +70,7 @@ export async function POST(request: Request) {
       storagePath,
       fileName,
       mimeType,
+      ...identity,
     });
     await applyIdentityFromForm(auth.supabase, form, auth.customer.id, companionId, travelerId);
     return NextResponse.json({ document });

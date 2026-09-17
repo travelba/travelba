@@ -1,5 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveCountryCode } from "./countries";
+import {
+  filledIdentity,
+  identityFieldsFromForm,
+  type DocumentIdentityFields,
+} from "./document-identity";
 import { emptyToNull } from "./identity";
 import { DOC_TYPES, type CrmTravelDocument, type TravelDocType } from "./types";
 
@@ -16,7 +21,7 @@ export type TravelDocumentInput = {
   storagePath?: string | null;
   fileName?: string | null;
   mimeType?: string | null;
-};
+} & Partial<DocumentIdentityFields>;
 
 function asDocType(value: string | null | undefined): TravelDocType {
   const raw = String(value || "passport");
@@ -87,6 +92,14 @@ export async function insertTravelDocument(
   const companionId =
     emptyToNull(input.companionId) || traveler?.companion_id || null;
   const docType = asDocType(input.docType);
+  const identity: DocumentIdentityFields = {
+    first_name: emptyToNull(input.first_name),
+    last_name: emptyToNull(input.last_name),
+    birth_date: emptyToNull(input.birth_date),
+    nationality:
+      resolveCountryCode(String(input.nationality || "")) || emptyToNull(input.nationality),
+    sex: input.sex === "M" || input.sex === "F" || input.sex === "X" ? input.sex : null,
+  };
   const { data, error } = await supabase
     .from("crm_travel_documents")
     .insert({
@@ -101,6 +114,7 @@ export async function insertTravelDocument(
         emptyToNull(input.issuingCountry),
       issued_on: emptyToNull(input.issuedOn),
       expires_on: emptyToNull(input.expiresOn),
+      ...identity,
       storage_path: emptyToNull(input.storagePath),
       file_name: emptyToNull(input.fileName),
       mime_type: emptyToNull(input.mimeType),
@@ -141,6 +155,11 @@ export async function cloneTravelDocument(
     issuingCountry: source.issuing_country,
     issuedOn: source.issued_on,
     expiresOn: source.expires_on,
+    first_name: source.first_name,
+    last_name: source.last_name,
+    birth_date: source.birth_date,
+    nationality: source.nationality,
+    sex: source.sex,
     storagePath: source.storage_path,
     fileName: source.file_name,
     mimeType: source.mime_type,
@@ -155,18 +174,7 @@ export async function applyIdentityFromForm(
   travelerId?: string | null
 ) {
   if (String(form.get("apply_identity") || "") !== "1") return;
-  const identity = {
-    first_name: emptyToNull(form.get("first_name")),
-    last_name: emptyToNull(form.get("last_name")),
-    birth_date: emptyToNull(form.get("birth_date")),
-    nationality:
-      resolveCountryCode(String(form.get("nationality") || "")) ||
-      emptyToNull(form.get("nationality")),
-    sex: emptyToNull(form.get("sex")),
-  };
-  const filled = Object.fromEntries(
-    Object.entries(identity).filter(([, value]) => value != null)
-  );
+  const filled = filledIdentity(identityFieldsFromForm(form));
   if (Object.keys(filled).length === 0) return;
   if (companionId) {
     const { error } = await supabase
