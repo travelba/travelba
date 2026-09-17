@@ -1,5 +1,5 @@
 import "server-only";
-import { generateText, Output } from "ai";
+import { generateText, Output, APICallError } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
 import { parseMrzFromOcr } from "./mrz-parse";
@@ -164,18 +164,13 @@ function mergeIdentities(
   return vision;
 }
 
-async function extractWithVision(file: File): Promise<{
-  identity: ExtractedIdentity | null;
-  mrzText: string | null;
-}> {
-  if (!aiGatewayConfigured()) {
-    throw new Error("Lecture automatique non configurée.");
-  }
-
-  const { image, mediaType } = await toVisionImage(file);
-  const key = openaiApiKey();
+async function generateIdentity(
+  image: Uint8Array,
+  mediaType: string,
+  useGateway: boolean
+) {
   const result = await generateText({
-    model: identityModel(),
+    model: useGateway ? "openai/gpt-4o" : identityModel(),
     abortSignal: AbortSignal.timeout(VISION_TIMEOUT_MS),
     output: Output.object({
       schema: identityExtractSchema,
@@ -191,26 +186,49 @@ async function extractWithVision(file: File): Promise<{
         ],
       },
     ],
-    ...(key
-      ? {}
-      : {
+    ...(useGateway
+      ? {
           providerOptions: {
             gateway: {
               tags: ["feature:passport-scan"],
               models: ["google/gemini-2.5-flash"],
             },
           },
-        }),
+        }
+      : {}),
   });
-
   if (!result.output) {
     return { identity: null, mrzText: null };
   }
-
   return {
     identity: fromVision(result.output),
     mrzText: emptyToNull(result.output.mrz_text),
   };
+}
+
+async function extractWithVision(file: File): Promise<{
+  identity: ExtractedIdentity | null;
+  mrzText: string | null;
+}> {
+  if (!aiGatewayConfigured()) {
+    throw new Error("Lecture automatique non configurée.");
+  }
+
+  const { image, mediaType } = await toVisionImage(file);
+  const key = openaiApiKey();
+  try {
+    return await generateIdentity(image, mediaType, !key);
+  } catch (err) {
+    if (
+      key &&
+      APICallError.isInstance(err) &&
+      (err.statusCode === 401 || err.statusCode === 403)
+    ) {
+      console.error("[ocr-document] OpenAI 401, fallback AI Gateway");
+      return generateIdentity(image, mediaType, true);
+    }
+    throw err;
+  }
 }
 
 export async function scanTravelDocument(file: File): Promise<{

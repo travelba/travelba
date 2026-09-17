@@ -60,7 +60,9 @@ export const bookingExtractSchema = z.object({
 export type BookingExtract = z.infer<typeof bookingExtractSchema>;
 
 export function openaiApiKey() {
-  return process.env.OPENAI_API_KEY?.trim() || "";
+  const key = process.env.OPENAI_API_KEY?.trim() || "";
+  // Direct OpenAI calls need a real sk- key. Placeholders / invalid values 401.
+  return key.startsWith("sk-") ? key : "";
 }
 
 export function aiGatewayConfigured() {

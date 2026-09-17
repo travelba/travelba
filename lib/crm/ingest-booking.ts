@@ -198,6 +198,16 @@ export async function extractBookingFromFiles(files: File[]): Promise<BookingExt
         description: "Dossier de réservation extrait des documents",
       }),
       messages: [{ role: "user", content }],
+      ...(openaiApiKey()
+        ? {}
+        : {
+            providerOptions: {
+              gateway: {
+                tags: ["feature:booking-ingest"],
+                models: ["google/gemini-2.5-flash"],
+              },
+            },
+          }),
     });
     if (!result.output) {
       throw new Error("Lecture incomplète. Réessayez avec des fichiers plus lisibles.");
