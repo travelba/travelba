@@ -66,9 +66,12 @@ export function openaiApiKey() {
 }
 
 export function aiGatewayConfigured() {
+  // On Vercel the OIDC token is on the request (`x-vercel-oidc-token`),
+  // not always in process.env.VERCEL_OIDC_TOKEN — the AI SDK still picks it up.
   return Boolean(
     openaiApiKey() ||
       process.env.AI_GATEWAY_API_KEY ||
-      process.env.VERCEL_OIDC_TOKEN
+      process.env.VERCEL_OIDC_TOKEN ||
+      process.env.VERCEL
   );
 }
