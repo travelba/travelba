@@ -2,7 +2,6 @@
 
 import { FormEvent, Suspense, useState } from "react";
 import { Plus_Jakarta_Sans, Inter } from "next/font/google";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { siteConfig } from "@/lib/site";
@@ -260,20 +259,6 @@ export default function ConnexionPage() {
           <Suspense fallback={<p className="mt-8 text-sm text-muted">Chargement…</p>}>
             <LoginForm />
           </Suspense>
-        </div>
-
-        <div className="mt-5 grid gap-3">
-          <Link
-            href="/demo/espace-client"
-            className="block rounded-2xl border border-[#e5e3dc] bg-white px-4 py-3.5 text-center shadow-sm transition hover:border-[var(--admin-gold)]"
-          >
-            <span className="block text-[11px] font-semibold uppercase tracking-wide text-[var(--admin-gold)]">
-              Espace client exemple
-            </span>
-            <span className="mt-0.5 block font-display text-sm font-bold text-[var(--admin-navy)]">
-              Voir le portail en démo
-            </span>
-          </Link>
         </div>
 
         <p className="mt-6 text-center text-xs text-muted">
