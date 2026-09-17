@@ -19,7 +19,7 @@ const VISION_TIMEOUT_MS = 45_000;
 const nullableString = z.string().nullable().optional();
 
 const identityExtractSchema = z.object({
-  doc_type: z.enum(DOC_TYPES).nullable().optional(),
+  doc_type: nullableString,
   number: nullableString,
   issuing_country: nullableString,
   expires_on: nullableString,
@@ -42,19 +42,13 @@ mrz_text : recopie EXACTEMENT la bande MRZ (lignes du bas, caractères A-Z 0-9 <
 function identityModel() {
   const key = openaiApiKey();
   if (key) return createOpenAI({ apiKey: key })("gpt-4o");
-  return "google/gemini-2.5-flash";
+  // Sur Vercel : OIDC → AI Gateway, sans OPENAI_API_KEY.
+  return "openai/gpt-4o";
 }
 
-async function withTimeout<T>(promise: Promise<T>, ms: number, message: string) {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(message)), ms);
-  });
-  try {
-    return await Promise.race([promise, timeout]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
+function isAbortError(err: unknown) {
+  if (!(err instanceof Error)) return false;
+  return err.name === "TimeoutError" || err.name === "AbortError";
 }
 
 async function toVisionImage(file: File) {
@@ -72,11 +66,13 @@ async function toVisionImage(file: File) {
         .toBuffer();
       image = new Uint8Array(jpeg);
       mediaType = "image/jpeg";
-    } catch {
-      if (mediaType.includes("heic") || mediaType.includes("heif")) {
-        mediaType = "image/jpeg";
-      }
+    } catch (err) {
+      console.error("[ocr-document] sharp", err);
     }
+  }
+
+  if (mediaType.includes("heic") || mediaType.includes("heif")) {
+    throw new Error("Format HEIC illisible ici. Enregistrez la photo en JPEG ou PNG.");
   }
 
   return { image, mediaType };
@@ -101,9 +97,22 @@ function mapSex(value: string | null | undefined): ExtractedIdentity["sex"] {
 }
 
 function mapDocType(value: string | null | undefined): TravelDocType {
-  if (value && (DOC_TYPES as readonly string[]).includes(value)) {
-    return value as TravelDocType;
+  const raw = (value || "").trim().toLowerCase().replace(/['’]/g, " ");
+  if (raw.includes("visa")) return "visa";
+  if (raw.includes("assur")) return "insurance";
+  if (
+    raw.includes("id_card") ||
+    raw.includes("carte") ||
+    raw.includes("cni") ||
+    raw.includes("identity") ||
+    raw.includes("national id")
+  ) {
+    return "id_card";
   }
+  if (raw && (DOC_TYPES as readonly string[]).includes(raw)) {
+    return raw as TravelDocType;
+  }
+  if (raw && !raw.includes("pass")) return "other";
   return "passport";
 }
 
@@ -160,31 +169,39 @@ async function extractWithVision(file: File): Promise<{
   mrzText: string | null;
 }> {
   if (!aiGatewayConfigured()) {
-    throw new Error("Lecture automatique non configurée (OPENAI_API_KEY).");
+    throw new Error("Lecture automatique non configurée.");
   }
 
   const { image, mediaType } = await toVisionImage(file);
-  const result = await withTimeout(
-    generateText({
-      model: identityModel(),
-      output: Output.object({
-        schema: identityExtractSchema,
-        name: "identity",
-        description: "Identité extraite du passeport ou de la pièce",
-      }),
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: PROMPT },
-            { type: "image", image, mediaType },
-          ],
-        },
-      ],
+  const key = openaiApiKey();
+  const result = await generateText({
+    model: identityModel(),
+    abortSignal: AbortSignal.timeout(VISION_TIMEOUT_MS),
+    output: Output.object({
+      schema: identityExtractSchema,
+      name: "identity",
+      description: "Identité extraite du passeport ou de la pièce",
     }),
-    VISION_TIMEOUT_MS,
-    "Lecture trop longue. Réessayez avec une photo plus nette du bas du document."
-  );
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: PROMPT },
+          { type: "image", image, mediaType },
+        ],
+      },
+    ],
+    ...(key
+      ? {}
+      : {
+          providerOptions: {
+            gateway: {
+              tags: ["feature:passport-scan"],
+              models: ["google/gemini-2.5-flash"],
+            },
+          },
+        }),
+  });
 
   if (!result.output) {
     return { identity: null, mrzText: null };
@@ -230,9 +247,13 @@ export async function scanTravelDocument(file: File): Promise<{
         : "Lecture partielle : vérifiez chaque champ avant d’enregistrer.",
     };
   } catch (err) {
-    if (err instanceof Error && (err.message.startsWith("Lecture") || err.message.startsWith("Photo"))) {
+    console.error("[ocr-document]", err);
+    if (isAbortError(err)) {
+      throw new Error("Lecture trop longue. Réessayez avec une photo plus nette du bas du document.");
+    }
+    if (err instanceof Error && (err.message.startsWith("Lecture") || err.message.startsWith("Photo") || err.message.startsWith("Format"))) {
       throw err;
     }
-    throw new Error("Lecture OpenAI impossible. Vérifiez OPENAI_API_KEY et réessayez.");
+    throw new Error("Lecture du document impossible. Réessayez avec une photo plus nette du bas du document.");
   }
 }

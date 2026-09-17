@@ -104,7 +104,7 @@ function guessMime(name: string) {
 function ingestModel() {
   const key = openaiApiKey();
   if (key) return createOpenAI({ apiKey: key })("gpt-4o");
-  return "google/gemini-2.5-flash";
+  return "openai/gpt-4o";
 }
 
 type UserPart =
