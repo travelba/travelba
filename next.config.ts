@@ -12,7 +12,7 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  serverExternalPackages: ["sharp", "tesseract.js", "unpdf"],
+  serverExternalPackages: ["sharp", "unpdf"],
   async redirects() {
     return [
       {

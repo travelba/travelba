@@ -11,6 +11,24 @@ export type ScanResult = {
   warning: string | null;
 };
 
+async function readScanJson(res: Response) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text) as {
+      error?: string;
+      identity?: ExtractedIdentity | null;
+      warning?: string | null;
+    };
+  } catch {
+    if (res.status === 504 || /timeout|an error occurred/i.test(text)) {
+      throw new Error(
+        "Lecture trop longue. Réessayez avec une photo plus nette du bas du document."
+      );
+    }
+    throw new Error("Lecture impossible. Réessayez dans un instant.");
+  }
+}
+
 async function compressPhoto(file: File) {
   if (!file.type.startsWith("image/") || file.type.includes("svg")) return file;
   try {
@@ -60,7 +78,7 @@ export function IdentityScan({
     body.set("file", prepared);
     try {
       const res = await fetch(endpoint, { method: "POST", body });
-      const json = await res.json();
+      const json = await readScanJson(res);
       if (!res.ok) throw new Error(json.error || "Lecture impossible");
       onResult({
         file: prepared,
