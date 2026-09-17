@@ -3,7 +3,7 @@ import { resolveCountryCode } from "./countries";
 import { emptyToNull } from "./identity";
 import { toE164 } from "./phone";
 
-const PHONE_KEYS = new Set(["phone", "whatsapp", "phone_secondary"]);
+const PHONE_KEYS = new Set(["phone", "phone_secondary"]);
 const COUNTRY_KEYS = new Set(["nationality", "country", "billing_country"]);
 
 export const CUSTOMER_PATCH_KEYS = [
@@ -12,7 +12,6 @@ export const CUSTOMER_PATCH_KEYS = [
   "email",
   "phone",
   "phone_secondary",
-  "whatsapp",
   "birth_date",
   "sex",
   "nationality",
