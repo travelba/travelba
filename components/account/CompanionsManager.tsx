@@ -7,6 +7,7 @@ import { countryName, resolveCountryCode } from "@/lib/crm/countries";
 import { RELATIONSHIP_OPTIONS } from "@/lib/crm/identity";
 import {
   CountrySelect,
+  DateFrInput,
   Field,
   fieldControlClass,
   RelationshipSelect,
@@ -153,12 +154,10 @@ export function CompanionsManager({ companions }: { companions: CrmCompanion[] }
             <CountrySelect name="nationality" value={nationality} onChange={setNationality} />
           </Field>
           <Field label="Date de naissance">
-            <input
-              type="date"
+            <DateFrInput
               max={new Date().toISOString().slice(0, 10)}
               value={birthDate}
-              onChange={(event) => setBirthDate(event.target.value)}
-              className={fieldControlClass}
+              onChange={setBirthDate}
             />
           </Field>
           <Field label="Sexe">

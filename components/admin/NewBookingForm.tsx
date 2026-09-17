@@ -4,7 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CrmCustomer } from "@/lib/crm/types";
 import { BookingIngest } from "@/components/crm/BookingIngest";
-import { fieldControlClass } from "@/components/crm/fields";
+import { fieldControlClass, DateFrInput } from "@/components/crm/fields";
 
 export function NewBookingForm({
   customers,
@@ -70,8 +70,8 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
       </select>
       <input name="title" required placeholder="Titre du voyage" className={fieldControlClass} />
       <input name="destination" placeholder="Destination" className={fieldControlClass} />
-      <input name="start_date" type="date" className={fieldControlClass} />
-      <input name="end_date" type="date" className={fieldControlClass} />
+      <DateFrInput name="start_date" className={fieldControlClass} />
+      <DateFrInput name="end_date" className={fieldControlClass} />
       <input name="total_amount" type="number" step="0.01" placeholder="Montant" className={fieldControlClass} />
       {error ? <p className="sm:col-span-3 text-sm text-accent">{error}</p> : null}
       <button className="admin-af-btn rounded-xl px-4 py-2.5 text-sm sm:col-span-3">

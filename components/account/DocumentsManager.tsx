@@ -9,6 +9,7 @@ import { formatDateFr } from "@/lib/crm/money";
 import { StatusChip } from "@/components/crm/ui";
 import {
   CountrySelect,
+  DateFrInput,
   Field,
   fieldControlClass,
   SexSelect,
@@ -218,12 +219,7 @@ export function DocumentsManager({
             <input value={number} onChange={(event) => setNumber(event.target.value)} className={fieldControlClass} />
           </Field>
           <Field label="Expire le">
-            <input
-              type="date"
-              value={expiresOn}
-              onChange={(event) => setExpiresOn(event.target.value)}
-              className={fieldControlClass}
-            />
+            <DateFrInput value={expiresOn} onChange={setExpiresOn} />
           </Field>
           <Field label="Pays d’émission" className="sm:col-span-2">
             <CountrySelect name="issuing_country" value={issuingCountry} onChange={setIssuingCountry} />
@@ -248,7 +244,7 @@ export function DocumentsManager({
               <input value={lastName} onChange={(event) => setLastName(event.target.value)} className={fieldControlClass} />
             </Field>
             <Field label="Naissance">
-              <input type="date" value={birthDate} onChange={(event) => setBirthDate(event.target.value)} className={fieldControlClass} />
+              <DateFrInput value={birthDate} onChange={setBirthDate} />
             </Field>
             <Field label="Sexe">
               <SexSelect name="sex" value={sex} onChange={setSex} />
