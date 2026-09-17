@@ -137,9 +137,6 @@ export function PersonPassportCard({
           <p className="font-display text-sm font-bold text-[var(--admin-navy)]">
             Pièce d’identité
           </p>
-          <p className="text-xs text-muted">
-            Uploadez le passeport ou la CNI : tous les champs se remplissent tout seuls.
-          </p>
         </div>
         {current && status ? <StatusChip tone={status.tone}>{status.label}</StatusChip> : null}
       </div>
