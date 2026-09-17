@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { CountryCode } from "libphonenumber-js";
-import { countriesForSelect, countryName, flagEmoji, resolveCountryCode } from "@/lib/crm/countries";
+import { countriesForSelect, countryName, flagImageUrl, resolveCountryCode } from "@/lib/crm/countries";
 import {
   formatAsYouType,
   isValidPhone,
@@ -14,6 +14,41 @@ import { RELATIONSHIP_OPTIONS, SEX_OPTIONS } from "@/lib/crm/identity";
 
 export const fieldControlClass =
   "w-full rounded-xl border border-border bg-white px-3 py-2.5 text-sm text-[var(--admin-navy)] outline-none transition focus:border-[var(--admin-navy)]";
+
+function FlagImg({ iso2 }: { iso2: string }) {
+  return (
+    <img
+      src={flagImageUrl(iso2, 40)}
+      srcSet={`${flagImageUrl(iso2, 40)} 1x, ${flagImageUrl(iso2, 80)} 2x`}
+      alt=""
+      width={20}
+      height={15}
+      className="h-[15px] w-5 shrink-0 rounded-[2px] object-cover shadow-[0_0_0_1px_rgba(11,25,44,0.12)]"
+    />
+  );
+}
+
+function useDismiss(open: boolean, onClose: () => void) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (!open) return;
+    function onPointer(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) onCloseRef.current();
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onCloseRef.current();
+    }
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  return rootRef;
+}
 
 export function Field({
   label,
@@ -54,22 +89,172 @@ export function CountrySelect({
   className?: string;
 }) {
   const options = useMemo(() => countriesForSelect(), []);
-  const known = options.some((country) => country.iso2 === value);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const close = () => {
+    setOpen(false);
+    setQuery("");
+  };
+  const rootRef = useDismiss(open, close);
+  const selected = options.find((country) => country.iso2 === value);
+  const filtered = options.filter((country) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      country.name.toLowerCase().includes(q) ||
+      country.iso2.toLowerCase().includes(q)
+    );
+  });
+
   return (
-    <select
-      name={name}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className={className}
-    >
-      {allowEmpty ? <option value="">{emptyLabel}</option> : null}
-      {value && !known ? <option value={value}>{value}</option> : null}
-      {options.map((country) => (
-        <option key={country.iso2} value={country.iso2}>
-          {flagEmoji(country.iso2)} {country.name}
-        </option>
-      ))}
-    </select>
+    <div ref={rootRef} className="relative">
+      <input type="hidden" name={name} value={value} />
+      <button
+        type="button"
+        aria-label="Pays"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className={`${className} flex items-center gap-2 text-left`}
+      >
+        {selected ? <FlagImg iso2={selected.iso2} /> : null}
+        <span className="min-w-0 flex-1 truncate">
+          {selected?.name || emptyLabel}
+        </span>
+        <span className="text-[10px] text-muted">▾</span>
+      </button>
+      {open ? (
+        <div className="absolute z-40 mt-1 w-full overflow-hidden rounded-xl border border-border bg-white shadow-lg">
+          <input
+            autoFocus
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Rechercher un pays"
+            className="w-full border-b border-border px-3 py-2 text-sm outline-none"
+          />
+          <ul role="listbox" className="max-h-60 overflow-auto py-1">
+            {allowEmpty ? (
+              <li>
+                <button
+                  type="button"
+                  className="flex w-full px-3 py-2 text-left text-sm text-muted hover:bg-[var(--admin-sky)]"
+                  onClick={() => {
+                    onChange("");
+                    close();
+                  }}
+                >
+                  {emptyLabel}
+                </button>
+              </li>
+            ) : null}
+            {filtered.map((country) => (
+              <li key={country.iso2}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={country.iso2 === value}
+                  className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-[var(--admin-sky)] ${
+                    country.iso2 === value ? "bg-[var(--admin-sky)]/70" : ""
+                  }`}
+                  onClick={() => {
+                    onChange(country.iso2);
+                    close();
+                  }}
+                >
+                  <FlagImg iso2={country.iso2} />
+                  <span className="truncate">{country.name}</span>
+                </button>
+              </li>
+            ))}
+            {filtered.length === 0 ? (
+              <li className="px-3 py-2 text-sm text-muted">Aucun pays</li>
+            ) : null}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function PhoneCountrySelect({
+  value,
+  onChange,
+  className,
+}: {
+  value: CountryCode;
+  onChange: (iso2: CountryCode) => void;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const close = () => {
+    setOpen(false);
+    setQuery("");
+  };
+  const rootRef = useDismiss(open, close);
+  const selected =
+    PHONE_COUNTRIES.find((item) => item.iso2 === value) || PHONE_COUNTRIES[0];
+  const filtered = PHONE_COUNTRIES.filter((item) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      item.name.toLowerCase().includes(q) ||
+      item.dial.includes(q.replace(/^\+/, "")) ||
+      item.iso2.toLowerCase().includes(q)
+    );
+  });
+
+  return (
+    <div ref={rootRef} className="relative shrink-0">
+      <button
+        type="button"
+        aria-label="Indicatif international"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className={`${className} flex items-center gap-2 text-left`}
+      >
+        <FlagImg iso2={selected.iso2} />
+        <span className="min-w-0 flex-1 truncate font-medium">{selected.dial}</span>
+        <span className="text-[10px] text-muted">▾</span>
+      </button>
+      {open ? (
+        <div className="absolute z-40 mt-1 w-[min(calc(100vw-2rem),20rem)] overflow-hidden rounded-xl border border-border bg-white shadow-lg">
+          <input
+            autoFocus
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Pays ou indicatif"
+            className="w-full border-b border-border px-3 py-2 text-sm outline-none"
+          />
+          <ul role="listbox" className="max-h-60 overflow-auto py-1">
+            {filtered.map((item) => (
+              <li key={item.iso2}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={item.iso2 === value}
+                  className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-[var(--admin-sky)] ${
+                    item.iso2 === value ? "bg-[var(--admin-sky)]/70" : ""
+                  }`}
+                  onClick={() => {
+                    onChange(item.iso2);
+                    close();
+                  }}
+                >
+                  <FlagImg iso2={item.iso2} />
+                  <span className="w-12 shrink-0 font-medium">{item.dial}</span>
+                  <span className="truncate text-muted">{item.name}</span>
+                </button>
+              </li>
+            ))}
+            {filtered.length === 0 ? (
+              <li className="px-3 py-2 text-sm text-muted">Aucun pays</li>
+            ) : null}
+          </ul>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -115,18 +300,11 @@ export function PhoneField({
     <div className={className}>
       <span className={labelClassName}>{label}</span>
       <div className="flex w-full gap-2">
-        <select
-          aria-label="Indicatif international"
+        <PhoneCountrySelect
           value={country}
-          onChange={(event) => update(event.target.value as CountryCode, national)}
-          className={`${controlClassName.replace(/\bw-full\b/g, "")} w-[9.5rem] shrink-0 px-2`}
-        >
-          {PHONE_COUNTRIES.map((item) => (
-            <option key={item.iso2} value={item.iso2}>
-              {item.flag} {item.dial} {item.name}
-            </option>
-          ))}
-        </select>
+          onChange={(next) => update(next, national)}
+          className={`${controlClassName.replace(/\bw-full\b/g, "")} w-[8.75rem] shrink-0 px-2`}
+        />
         <input
           ref={telRef}
           type="tel"
