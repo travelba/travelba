@@ -41,7 +41,6 @@ export function ProfileForm({
   const [nationality, setNationality] = useState(resolveCountryCode(customer.nationality) || "");
   const [phone, setPhone] = useState(customer.phone || "");
   const [phoneSecondary, setPhoneSecondary] = useState(customer.phone_secondary || "");
-  const [whatsapp, setWhatsapp] = useState(customer.whatsapp || "");
   const [country, setCountry] = useState(resolveCountryCode(customer.country) || "FR");
   const [addressLine, setAddressLine] = useState(customer.address_line || "");
   const [postalCode, setPostalCode] = useState(customer.postal_code || "");
@@ -83,7 +82,6 @@ export function ProfileForm({
         nationality,
         phone,
         phone_secondary: phoneSecondary,
-        whatsapp,
         address_line: addressLine,
         postal_code: postalCode,
         city,
@@ -162,13 +160,6 @@ export function ProfileForm({
           label="Téléphone 2"
           value={phoneSecondary}
           onChange={setPhoneSecondary}
-        />
-        <PhoneField
-          name="whatsapp"
-          label="WhatsApp"
-          value={whatsapp}
-          onChange={setWhatsapp}
-          className="sm:col-span-2"
         />
         <Field label="N° Flying Blue" className="sm:col-span-2" hint="Programme Air France / KLM">
           <input

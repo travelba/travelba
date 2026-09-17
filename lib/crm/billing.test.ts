@@ -48,3 +48,13 @@ test("invalid SIRET is rejected", () => {
   const { error } = customerPatchFromBody({ siret: "123456" });
   assert.equal(error, "Le SIRET doit contenir 14 chiffres.");
 });
+
+test("whatsapp is ignored on customer patch", () => {
+  const { patch, error } = customerPatchFromBody({
+    whatsapp: "+33612345678",
+    phone: "+33601020304",
+  });
+  assert.equal(error, undefined);
+  assert.equal("whatsapp" in patch, false);
+  assert.equal(patch.phone, "+33601020304");
+});
