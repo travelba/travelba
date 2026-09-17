@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { bindGatewayAuth } from "@/lib/crm/ingest-types";
 import { scanTravelDocument } from "@/lib/crm/ocr-document";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
+  bindGatewayAuth(request);
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
   const form = await request.formData();

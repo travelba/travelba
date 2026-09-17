@@ -60,3 +60,21 @@ export function emptyToNull(value: unknown) {
   const text = String(value).trim();
   return text === "" ? null : text;
 }
+
+const IDENTITY_SCORE_KEYS: (keyof ExtractedIdentity)[] = [
+  "number",
+  "last_name",
+  "first_name",
+  "birth_date",
+  "expires_on",
+  "nationality",
+];
+
+export function identityFieldScore(identity: ExtractedIdentity) {
+  return IDENTITY_SCORE_KEYS.reduce((sum, key) => sum + (identity[key] ? 1 : 0), 0);
+}
+
+export function identityScanWarning(identity: ExtractedIdentity) {
+  if (identity.valid || identityFieldScore(identity) >= 5) return null;
+  return "Lecture partielle : vérifiez chaque champ avant d’enregistrer.";
+}
