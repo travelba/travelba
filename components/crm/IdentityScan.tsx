@@ -57,11 +57,13 @@ export function IdentityScan({
   endpoint = "/api/client/documents/scan",
   title = "Photographier le passeport ou la pièce d’identité",
   description = "Nous lisons automatiquement nom, prénom, date de naissance, nationalité et n° de document.",
+  compact = false,
   onResult,
 }: {
   endpoint?: string;
   title?: string;
   description?: string;
+  compact?: boolean;
   onResult: (result: ScanResult) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -95,20 +97,26 @@ export function IdentityScan({
   }
 
   return (
-    <div className="rounded-3xl border border-dashed border-[var(--admin-gold)]/70 bg-[var(--admin-sky)]/50 p-5">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+    <div
+      className={
+        compact
+          ? "rounded-2xl border border-dashed border-[var(--admin-gold)]/70 bg-[var(--admin-sky)]/40 p-3"
+          : "rounded-3xl border border-dashed border-[var(--admin-gold)]/70 bg-[var(--admin-sky)]/50 p-5"
+      }
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         {busy ? (
-          <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-[var(--admin-navy)]">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-[var(--admin-navy)]">
             <Loader2 className="h-5 w-5 animate-spin" />
           </span>
         ) : (
-          <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-[var(--admin-navy)]">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-[var(--admin-navy)]">
             <ScanLine className="h-5 w-5" />
           </span>
         )}
         <div className="min-w-0 flex-1">
-          <p className="font-display text-base font-bold text-[var(--admin-navy)]">{title}</p>
-          <p className="mt-1 text-sm text-muted">{description}</p>
+          <p className="font-display text-sm font-bold text-[var(--admin-navy)] sm:text-base">{title}</p>
+          {compact ? null : <p className="mt-1 text-sm text-muted">{description}</p>}
         </div>
         <button
           type="button"

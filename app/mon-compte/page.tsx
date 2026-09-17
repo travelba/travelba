@@ -7,9 +7,11 @@ import {
   type CrmBalance,
   type CrmBooking,
   type CrmBookingItem,
+  type CrmBookingTraveler,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { formatDateFr, isUpcomingBooking } from "@/lib/crm/money";
+import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { bookingCoverUrl } from "@/lib/crm/covers";
 import { siteConfig } from "@/lib/site";
 
@@ -44,7 +46,7 @@ export default async function AccountHomePage() {
         .eq("customer_id", customer.id),
       supabase
         .from("crm_travel_documents")
-        .select("id, doc_type")
+        .select("*")
         .eq("customer_id", customer.id),
     ]);
 
@@ -53,13 +55,18 @@ export default async function AccountHomePage() {
   );
 
   let items: CrmBookingItem[] = [];
+  let travelers: CrmBookingTraveler[] = [];
   if (nextTrip) {
-    const { data: itemRows } = await supabase
-      .from("crm_booking_items")
-      .select("*")
-      .eq("booking_id", nextTrip.id)
-      .order("sort_order", { ascending: true });
+    const [{ data: itemRows }, { data: travelerRows }] = await Promise.all([
+      supabase
+        .from("crm_booking_items")
+        .select("*")
+        .eq("booking_id", nextTrip.id)
+        .order("sort_order", { ascending: true }),
+      supabase.from("crm_booking_travelers").select("*").eq("booking_id", nextTrip.id),
+    ]);
     items = (itemRows || []) as CrmBookingItem[];
+    travelers = (travelerRows || []) as CrmBookingTraveler[];
   }
 
   const flight = items.find((i) => i.kind === "flight");
@@ -70,12 +77,16 @@ export default async function AccountHomePage() {
   const firstName =
     customer.first_name || customer.email.split("@")[0];
   const jMinus = daysUntil(nextTrip?.start_date ?? null);
-  const passports = ((docs || []) as Pick<CrmTravelDocument, "id" | "doc_type">[]).filter(
-    (d) => d.doc_type === "passport"
-  ).length;
+  const tripDocs = ((docs || []) as CrmTravelDocument[]).filter(
+    (d) => nextTrip && d.booking_id === nextTrip.id
+  );
+  const coverage = tripDocCoverage(travelers, tripDocs);
   const depositDone = remainingDue <= 0;
   const flightsDone = Boolean(flight);
-  const docsDone = passports > 0;
+  const docsDone = nextTrip ? coverage.total > 0 && coverage.ready === coverage.total : true;
+  const tripDocsHref = nextTrip
+    ? `/mon-compte/reservations/${nextTrip.reference}`
+    : "/mon-compte/profil/documents";
   const prepScore = [depositDone, flightsDone, docsDone].filter(Boolean).length;
   const prepPct = Math.round((prepScore / 3) * 100);
   const whatsappHref = `https://wa.me/${siteConfig.whatsappNumber}`;
@@ -220,8 +231,15 @@ export default async function AccountHomePage() {
             <PrepChip
               icon="description"
               title="Passeports"
-              detail={docsDone ? `${passports} validé${passports > 1 ? "s" : ""}` : "À déposer"}
+              detail={
+                docsDone
+                  ? `${coverage.ready} validé${coverage.ready > 1 ? "s" : ""}`
+                  : coverage.total
+                    ? `${coverage.ready}/${coverage.total}`
+                    : "À déposer"
+              }
               filled={docsDone}
+              href={tripDocsHref}
             />
           </div>
         </section>
@@ -325,15 +343,15 @@ export default async function AccountHomePage() {
             </span>
           </Link>
           <Link
-            href="/mon-compte/profil/documents"
+            href={tripDocsHref}
             className="flex h-28 flex-col justify-between rounded-2xl border border-[#e5e3dc] bg-white p-3 text-left"
           >
             <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--admin-gold)]/30 bg-[var(--admin-peach)] text-[#9e7e51]">
-              <span className="material-symbols-outlined text-[18px]">auto_stories</span>
+              <span className="material-symbols-outlined text-[18px]">badge</span>
             </span>
             <span>
-              <span className="block text-xs font-semibold text-[var(--admin-navy)]">Documents</span>
-              <span className="text-[10px] text-muted">Coffre-fort</span>
+              <span className="block text-xs font-semibold text-[var(--admin-navy)]">Pièces du séjour</span>
+              <span className="text-[10px] text-muted">Passeports du voyage</span>
             </span>
           </Link>
           <a
@@ -369,14 +387,16 @@ function PrepChip({
   title,
   detail,
   filled,
+  href,
 }: {
   icon: string;
   title: string;
   detail: string;
   filled: boolean;
+  href?: string;
 }) {
-  return (
-    <div className="flex flex-col items-center rounded-xl border border-[#e5e3dc] bg-white p-2.5 text-center">
+  const body = (
+    <>
       <span
         className={`material-symbols-outlined text-[18px] ${
           filled ? "text-[var(--admin-gold)]" : "text-muted"
@@ -389,6 +409,16 @@ function PrepChip({
         {title}
       </span>
       <span className="text-[10px] text-muted">{detail}</span>
-    </div>
+    </>
   );
+  const className =
+    "flex flex-col items-center rounded-xl border border-[#e5e3dc] bg-white p-2.5 text-center";
+  if (href) {
+    return (
+      <Link href={href} className={className}>
+        {body}
+      </Link>
+    );
+  }
+  return <div className={className}>{body}</div>;
 }
