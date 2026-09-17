@@ -11,6 +11,7 @@ import {
   DateFrInput,
   Field,
   fieldControlClass,
+  OptionalSecondPhone,
   PhoneField,
   SexSelect,
 } from "@/components/crm/fields";
@@ -157,12 +158,7 @@ export function ProfileForm({
         </p>
         <p className="sm:col-span-2 text-sm text-muted">Email : {customer.email}</p>
         <PhoneField name="phone" value={phone} onChange={setPhone} />
-        <PhoneField
-          name="phone_secondary"
-          label="Téléphone 2"
-          value={phoneSecondary}
-          onChange={setPhoneSecondary}
-        />
+        <OptionalSecondPhone value={phoneSecondary} onChange={setPhoneSecondary} />
         <PhoneField
           name="whatsapp"
           label="WhatsApp"
