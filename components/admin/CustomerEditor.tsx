@@ -24,7 +24,7 @@ import {
   type CompanyBillingValues,
 } from "@/components/crm/CompanyBillingFields";
 import { PersonPassportCard } from "@/components/crm/PersonPassportCard";
-import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
+import { type ScanResult } from "@/components/crm/IdentityScan";
 
 function applyIdentityState(
   id: ExtractedIdentity,
@@ -422,29 +422,22 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
       <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">
         Ajouter un accompagnateur
       </h3>
-      <IdentityScan
-        endpoint="/api/admin/travel-documents/scan"
-        title="Uploader sa pièce d’identité"
-        description="La lecture remplit tous les champs du passeport. Il ne reste que le lien avec le titulaire."
-        onResult={(result) => {
-          setScan(result);
-          if (result.identity) {
-            applyIdentityState(result.identity, {
-              setFirstName,
-              setLastName,
-              setBirthDate,
-              setSex,
-              setNationality,
-            });
-          }
-        }}
+      <PersonPassportCard
+        variant="admin"
+        customerId={customerId}
+        documents={[]}
+        persist={false}
+        onIdentity={(id) =>
+          applyIdentityState(id, {
+            setFirstName,
+            setLastName,
+            setBirthDate,
+            setSex,
+            setNationality,
+          })
+        }
+        onScan={setScan}
       />
-      {scan ? <ScanStatus identity={scan.identity} warning={scan.warning} /> : null}
-      {scan?.identity ? (
-        <p className="text-xs text-muted">
-          Pièce lue — elle sera enregistrée avec l’accompagnateur.
-        </p>
-      ) : null}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Prénom">
           <input required value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />

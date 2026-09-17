@@ -15,7 +15,7 @@ import {
   RelationshipSelect,
   SexSelect,
 } from "@/components/crm/fields";
-import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
+import { type ScanResult } from "@/components/crm/IdentityScan";
 import { PersonPassportCard } from "@/components/crm/PersonPassportCard";
 
 function relationshipLabel(value: string | null) {
@@ -39,17 +39,6 @@ export function CompanionsManager({
   const [birthDate, setBirthDate] = useState("");
   const [sex, setSex] = useState("");
   const [scan, setScan] = useState<ScanResult | null>(null);
-
-  function applyScan(result: ScanResult) {
-    setScan(result);
-    const id = result.identity;
-    if (!id) return;
-    if (id.first_name) setFirstName(id.first_name);
-    if (id.last_name) setLastName(id.last_name);
-    if (id.birth_date) setBirthDate(id.birth_date);
-    if (id.nationality) setNationality(id.nationality);
-    if (id.sex) setSex(id.sex);
-  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -134,12 +123,19 @@ export function CompanionsManager({
       </ul>
 
       <form onSubmit={onSubmit} className="admin-af-card space-y-4 rounded-3xl p-5">
-        <IdentityScan
-          title="Ajouter un compagnon depuis son passeport"
-          description="Toutes les mentions du document remplissent les champs. Il ne reste que le lien avec vous."
-          onResult={applyScan}
+        <PersonPassportCard
+          variant="client"
+          documents={[]}
+          persist={false}
+          onIdentity={(id) => {
+            if (id.first_name) setFirstName(id.first_name);
+            if (id.last_name) setLastName(id.last_name);
+            if (id.birth_date) setBirthDate(id.birth_date);
+            if (id.nationality) setNationality(id.nationality);
+            if (id.sex) setSex(id.sex);
+          }}
+          onScan={setScan}
         />
-        {scan ? <ScanStatus identity={scan.identity} warning={scan.warning} /> : null}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Prénom">
             <input
