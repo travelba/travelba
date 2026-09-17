@@ -42,6 +42,34 @@ export function companyBillingFromCustomer(customer: {
   };
 }
 
+export type ProfileAddress = {
+  country: string;
+  line: string;
+  postal: string;
+  city: string;
+};
+
+export function billingAddressDisplay(
+  values: CompanyBillingValues,
+  profile: ProfileAddress,
+  sameAsProfile: boolean
+): ProfileAddress {
+  if (sameAsProfile) {
+    return {
+      country: profile.country || "FR",
+      line: profile.line,
+      postal: profile.postal,
+      city: profile.city,
+    };
+  }
+  return {
+    country: values.billingCountry || "FR",
+    line: values.billingLine,
+    postal: values.billingPostal,
+    city: values.billingCity,
+  };
+}
+
 export function billingSameAsProfile(
   billing: CompanyBillingValues,
   profile: { country: string; line: string; postal: string; city: string }
@@ -114,6 +142,19 @@ export function CompanyBillingFields({
     onChange({ ...values, ...partial });
   }
 
+  const address = billingAddressDisplay(values, profileAddress, sameAsProfile);
+
+  function editAddress(partial: Partial<ProfileAddress>) {
+    const next = { ...address, ...partial };
+    if (sameAsProfile) onSameAsProfileChange(false);
+    update({
+      billingCountry: next.country,
+      billingLine: next.line,
+      billingPostal: next.postal,
+      billingCity: next.city,
+    });
+  }
+
   function onSiret(raw: string) {
     const formatted = formatSiretInput(raw);
     const digits = normalizeSiret(formatted);
@@ -175,6 +216,16 @@ export function CompanyBillingFields({
           />
         </Field>
       </div>
+      <AddressFields
+        country={address.country}
+        onCountryChange={(country) => editAddress({ country })}
+        line={address.line}
+        postal={address.postal}
+        city={address.city}
+        onLineChange={(line) => editAddress({ line })}
+        onPostalChange={(postal) => editAddress({ postal })}
+        onCityChange={(city) => editAddress({ city })}
+      />
       <label className="flex items-center gap-2 text-sm text-[var(--admin-navy)]">
         <input
           type="checkbox"
@@ -182,30 +233,18 @@ export function CompanyBillingFields({
           onChange={(event) => {
             const same = event.target.checked;
             onSameAsProfileChange(same);
-            if (!same) {
+            if (same) {
               update({
-                billingCountry: values.billingCountry || profileAddress.country || "FR",
-                billingLine: values.billingLine || profileAddress.line,
-                billingPostal: values.billingPostal || profileAddress.postal,
-                billingCity: values.billingCity || profileAddress.city,
+                billingCountry: profileAddress.country || "FR",
+                billingLine: profileAddress.line,
+                billingPostal: profileAddress.postal,
+                billingCity: profileAddress.city,
               });
             }
           }}
         />
         Adresse de facturation identique à l’adresse du voyageur
       </label>
-      {sameAsProfile ? null : (
-        <AddressFields
-          country={values.billingCountry || "FR"}
-          onCountryChange={(country) => update({ billingCountry: country })}
-          line={values.billingLine}
-          postal={values.billingPostal}
-          city={values.billingCity}
-          onLineChange={(line) => update({ billingLine: line })}
-          onPostalChange={(postal) => update({ billingPostal: postal })}
-          onCityChange={(city) => update({ billingCity: city })}
-        />
-      )}
     </section>
   );
 }
