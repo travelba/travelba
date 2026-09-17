@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import type { CrmBalance, CrmCustomer } from "@/lib/crm/types";
 import { customerFullName } from "@/lib/crm/types";
 import { formatMoney } from "@/lib/crm/money";
@@ -62,6 +63,9 @@ export function ClientsTable({
                 <th className="px-5 py-3">E-mail</th>
                 <th className="px-5 py-3">Téléphone</th>
                 <th className="px-5 py-3 text-right">Encours</th>
+                <th className="px-5 py-3 text-right">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -90,12 +94,20 @@ export function ClientsTable({
                         ? rows.map((b) => formatMoney(Number(b.balance), b.currency)).join(" · ")
                         : "—"}
                     </td>
+                    <td className="px-5 py-3 text-right">
+                      <DeleteCustomerButton
+                        compact
+                        redirectTo={null}
+                        customerId={c.id}
+                        name={customerFullName(c)}
+                      />
+                    </td>
                   </tr>
                 );
               })}
               {!filtered.length ? (
                 <tr>
-                  <td colSpan={4} className="px-5 py-8 text-center text-muted">
+                  <td colSpan={5} className="px-5 py-8 text-center text-muted">
                     Aucun client trouvé.
                   </td>
                 </tr>
