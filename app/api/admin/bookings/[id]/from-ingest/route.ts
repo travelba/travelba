@@ -7,7 +7,7 @@ import {
 } from "@/lib/crm/ingest-booking";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 type Ctx = { params: Promise<{ id: string }> };
 

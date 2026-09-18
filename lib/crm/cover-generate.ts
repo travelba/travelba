@@ -4,7 +4,7 @@ import { generateImage, generateText } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { uploadCrmFile } from "@/lib/crm/files";
-import { openaiApiKey } from "@/lib/crm/ingest-types";
+import { aiGatewayConfigured, openaiApiKey } from "@/lib/crm/ingest-types";
 import type { CrmBooking } from "@/lib/crm/types";
 import { trySharp } from "@/lib/crm/sharp";
 import { coverQuery } from "@/lib/crm/carnet";
@@ -121,7 +121,7 @@ async function generateCoverBytes(place: string, hotel?: string | null) {
   const fromOpenAI = await openaiCoverBytes(prompt);
   if (fromOpenAI) return fromOpenAI;
 
-  if (!process.env.AI_GATEWAY_API_KEY) return null;
+  if (!aiGatewayConfigured()) return null;
 
   const timeout = AbortSignal.timeout(25000);
   try {
