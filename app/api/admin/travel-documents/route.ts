@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { emptyToNull } from "@/lib/crm/identity";
 import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
 import {
@@ -59,6 +59,6 @@ export async function DELETE(request: Request) {
   const id = new URL(request.url).searchParams.get("id");
   if (!id) return jsonError("id requis");
   const { error } = await auth.supabase.from("crm_travel_documents").delete().eq("id", id);
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   return NextResponse.json({ ok: true });
 }

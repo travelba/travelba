@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { appOrigin, inviteCustomer } from "@/lib/crm/invite";
 import type { CrmCustomer } from "@/lib/crm/types";
 
@@ -16,7 +16,7 @@ export async function POST(request: Request, ctx: Ctx) {
     .select("*")
     .eq("id", id)
     .maybeSingle();
-  if (error) return jsonError(error.message, 500);
+  if (error) return dbError(error, 500);
   if (!data) return jsonError("Client introuvable", 404);
 
   try {

@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+    return NextResponse.json({ error: "Requête invalide" }, { status: 400 });
   }
 
   const name = body.name?.trim();
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
 
   if (!name || !email || !message) {
     return NextResponse.json(
-      { error: "Missing required fields" },
+      { error: "Nom, e-mail et message requis" },
       { status: 400 }
     );
   }
@@ -43,16 +43,10 @@ export async function POST(request: Request) {
   const service = body.service?.trim() || "—";
 
   const apiKey = process.env.RESEND_API_KEY;
-  // Sans clé API configurée, on logge la demande pour ne pas bloquer le formulaire
-  // en développement. Configurez RESEND_API_KEY pour l'envoi réel.
+  // Sans RESEND_API_KEY (dev), la demande n’est pas envoyée ; on ne logue pas les
+  // coordonnées du visiteur.
   if (!apiKey) {
-    console.info("[contact] Nouvelle demande (RESEND_API_KEY manquante):", {
-      name,
-      email,
-      phone,
-      service,
-      message,
-    });
+    console.warn("[contact] RESEND_API_KEY manquante — demande non livrée");
     return NextResponse.json({ ok: true, delivered: false });
   }
 
@@ -79,12 +73,12 @@ export async function POST(request: Request) {
 
     if (error) {
       console.error("[contact] Resend error:", error);
-      return NextResponse.json({ error: "Send failed" }, { status: 502 });
+      return NextResponse.json({ error: "Envoi impossible" }, { status: 502 });
     }
 
     return NextResponse.json({ ok: true, delivered: true });
   } catch (err) {
     console.error("[contact] Unexpected error:", err);
-    return NextResponse.json({ error: "Send failed" }, { status: 500 });
+    return NextResponse.json({ error: "Envoi impossible" }, { status: 500 });
   }
 }

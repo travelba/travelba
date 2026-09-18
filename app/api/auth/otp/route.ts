@@ -12,7 +12,7 @@ function authErrorMessage(message: string) {
   if (lower.includes("rate limit") || lower.includes("over_email_send_rate_limit")) {
     return "Trop de tentatives. Réessayez dans quelques minutes.";
   }
-  return message;
+  return "Erreur serveur. Réessayez dans un instant.";
 }
 
 function escapeHtml(value: string) {

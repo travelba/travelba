@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { createServiceClient } from "@/lib/supabase/admin";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -47,7 +47,7 @@ export async function POST(request: Request, ctx: Ctx) {
     })
     .select("*")
     .single();
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
 
   await admin
     .from("crm_revolut_transactions")

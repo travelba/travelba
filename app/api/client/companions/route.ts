@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireCustomer } from "@/lib/crm/auth";
+import { dbError, jsonError, requireCustomer } from "@/lib/crm/auth";
 import { resolveCountryCode } from "@/lib/crm/countries";
 import { emptyToNull } from "@/lib/crm/identity";
 
@@ -11,7 +11,7 @@ export async function GET() {
     .select("*")
     .eq("customer_id", auth.customer.id)
     .order("last_name");
-  if (error) return jsonError(error.message, 500);
+  if (error) return dbError(error, 500);
   return NextResponse.json({ companions: data });
 }
 
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
     })
     .select("*")
     .single();
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   return NextResponse.json({ companion: data });
 }
 
@@ -59,7 +59,7 @@ export async function PATCH(request: Request) {
     .eq("customer_id", auth.customer.id)
     .select("*")
     .single();
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   return NextResponse.json({ companion: data });
 }
 
@@ -73,6 +73,6 @@ export async function DELETE(request: Request) {
     .delete()
     .eq("id", id)
     .eq("customer_id", auth.customer.id);
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   return NextResponse.json({ ok: true });
 }

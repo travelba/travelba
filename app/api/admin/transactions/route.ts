@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 
 export async function GET() {
   const auth = await requireStaff();
@@ -9,7 +9,7 @@ export async function GET() {
     .select("*")
     .order("occurred_on", { ascending: false })
     .limit(500);
-  if (error) return jsonError(error.message, 500);
+  if (error) return dbError(error, 500);
   return NextResponse.json({ transactions: data });
 }
 
@@ -36,6 +36,6 @@ export async function POST(request: Request) {
     })
     .select("*")
     .single();
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   return NextResponse.json({ transaction: data });
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { appOrigin, inviteCustomer } from "@/lib/crm/invite";
 import type { CrmCustomer } from "@/lib/crm/types";
 
@@ -12,7 +12,7 @@ export async function GET() {
     .from("crm_customers")
     .select("*")
     .order("last_name", { ascending: true });
-  if (error) return jsonError(error.message, 500);
+  if (error) return dbError(error, 500);
   return NextResponse.json({ customers: data as CrmCustomer[] });
 }
 
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
     })
     .select("*")
     .single();
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   const customer = data as CrmCustomer;
   if (!body?.invite) {
     return NextResponse.json({ customer, invited: false });

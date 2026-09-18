@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { resolveCountryCode } from "@/lib/crm/countries";
 import { emptyToNull } from "@/lib/crm/identity";
 
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     })
     .select("*")
     .single();
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   return NextResponse.json({ companion: data });
 }
 
@@ -49,7 +49,7 @@ export async function PATCH(request: Request) {
     .eq("customer_id", customerId)
     .select("*")
     .single();
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   return NextResponse.json({ companion: data });
 }
 
@@ -62,6 +62,6 @@ export async function DELETE(request: Request) {
     .from("crm_travel_companions")
     .delete()
     .eq("id", id);
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   return NextResponse.json({ ok: true });
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireCustomer } from "@/lib/crm/auth";
+import { dbError, jsonError, requireCustomer } from "@/lib/crm/auth";
 import { getStripe } from "@/lib/crm/stripe";
 
 export async function PATCH(request: Request) {
@@ -19,7 +19,7 @@ export async function PATCH(request: Request) {
     .eq("customer_id", auth.customer.id)
     .select("*")
     .single();
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   return NextResponse.json({ paymentMethod: data });
 }
 
@@ -47,6 +47,6 @@ export async function DELETE(request: Request) {
     .from("crm_payment_methods")
     .delete()
     .eq("id", id);
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   return NextResponse.json({ ok: true });
 }
