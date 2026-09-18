@@ -31,7 +31,7 @@ function ConfirmLink({
       href={`/api/files?path=${encodeURIComponent(doc.storage_path)}`}
       className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--aura-blue)]"
     >
-      Voir confirmation
+      Voir la confirmation
       <Icon name="picture_as_pdf" className="h-4 w-4" />
     </a>
   );

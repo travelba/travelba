@@ -83,7 +83,7 @@ export default async function ReservationDetailPage({ params }: Props) {
       </Link>
 
       <article className="relative min-h-[220px] overflow-hidden rounded-[1.5rem] bg-[var(--admin-navy)] text-white shadow-[0_16px_36px_rgba(11,31,58,0.25)]">
-        <CoverPhoto src={cover} alt="" className="absolute inset-0 h-full w-full object-cover opacity-50" priority />
+        <CoverPhoto src={cover} alt={b.destination || b.title} className="absolute inset-0 h-full w-full object-cover opacity-50" priority />
         <div className="absolute inset-0 bg-gradient-to-t from-[var(--admin-navy)] via-[var(--admin-navy)]/70 to-transparent" />
         <div className="relative space-y-3 p-5 pb-6 pt-10">
           <div className="flex flex-wrap items-center justify-between gap-2">

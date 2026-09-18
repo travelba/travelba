@@ -131,7 +131,7 @@ export default async function AccountHomePage() {
 
       {nextTrip && cover ? (
         <article className="relative overflow-hidden rounded-2xl border border-[#e5e3dc] bg-[var(--admin-navy)] text-white shadow-xl">
-          <CoverPhoto src={cover} alt="" priority />
+          <CoverPhoto src={cover} alt={nextTrip.destination || nextTrip.title} priority />
           <div className="absolute inset-0 bg-gradient-to-t from-[var(--admin-navy)] via-[var(--admin-navy)]/70 to-black/25" />
           <div className="relative flex flex-col gap-4 p-5">
             <div className="flex items-center justify-between gap-2">
@@ -245,7 +245,7 @@ export default async function AccountHomePage() {
       <section className="flex flex-col gap-3 rounded-2xl border border-[#e5e3dc] bg-white p-4">
         <div className="flex items-center justify-between">
           <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">
-            Votre Travel Designer
+            Votre conseiller voyage
           </span>
           <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-[var(--admin-navy)]">
             <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--admin-gold)]" />
@@ -256,14 +256,14 @@ export default async function AccountHomePage() {
           <h3 className="font-display text-base font-semibold text-[var(--admin-navy)]">
             Conciergerie {siteConfig.shortName}
           </h3>
-          <p className="text-sm text-muted">Ligne VIP directe</p>
+          <p className="text-sm text-muted">Ligne directe de l’agence</p>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <a
             href={`tel:${siteConfig.whatsappNumber}`}
             className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#e5e3dc] bg-[var(--surface-2)] text-xs font-semibold text-[var(--admin-navy)]"
           >
-            Appel Direct
+            Appeler
           </a>
           <a
             href={whatsappHref}
@@ -271,7 +271,7 @@ export default async function AccountHomePage() {
             rel="noreferrer"
             className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[var(--admin-navy)] text-xs font-semibold text-white"
           >
-            Concierge Chat
+            WhatsApp conciergerie
           </a>
         </div>
       </section>
@@ -282,7 +282,7 @@ export default async function AccountHomePage() {
 
       <section className="space-y-3 pb-2">
         <h3 className="font-display text-xl font-semibold text-[var(--admin-navy)]">
-          Services & Documents
+          Services et documents
         </h3>
         <div className="grid grid-cols-3 gap-2.5">
           <Link
@@ -293,7 +293,7 @@ export default async function AccountHomePage() {
               <Icon name="airplane_ticket" className="h-[18px] w-[18px]" />
             </span>
             <span>
-              <span className="block text-xs font-semibold text-[var(--admin-navy)]">Mes Billets</span>
+              <span className="block text-xs font-semibold text-[var(--admin-navy)]">Mes billets</span>
               <span className="text-[10px] text-muted">Dossier voyage</span>
             </span>
           </Link>
