@@ -13,6 +13,7 @@ import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { bookingCoverUrl } from "@/lib/crm/covers";
 import { CoverPhoto } from "@/components/crm/CoverPhoto";
 import { StatusChip, bookingStatusTone } from "@/components/crm/ui";
+import { bookingsListEmptyMessage } from "@/lib/crm/launch-status";
 
 export function BookingsTable({
   bookings,
@@ -101,7 +102,7 @@ export function BookingsTable({
         ))}
         {!filtered.length ? (
           <li className="px-5 py-8 text-center text-sm text-muted">
-            Aucune réservation trouvée.
+            {bookingsListEmptyMessage(bookings.length > 0)}
           </li>
         ) : null}
       </ul>

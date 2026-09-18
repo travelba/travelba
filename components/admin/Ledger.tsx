@@ -7,6 +7,7 @@ import { TX_KIND_LABELS, customerFullName } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { StatusChip } from "@/components/crm/ui";
 import { DateFrInput } from "@/components/crm/fields";
+import { ledgerEmptyMessage } from "@/lib/crm/launch-status";
 
 const STATUS_LABELS: Record<CrmTransaction["status"], string> = {
   pending: "En attente",
@@ -171,7 +172,7 @@ export function Ledger({
               {!filtered.length ? (
                 <tr>
                   <td colSpan={6} className="px-5 py-8 text-center text-muted">
-                    Aucune écriture.
+                    {ledgerEmptyMessage(transactions.length > 0)}
                   </td>
                 </tr>
               ) : null}

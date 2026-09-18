@@ -22,7 +22,7 @@ export default async function AdminClientsPage({
       <PageEyebrow>Back-office</PageEyebrow>
       <PageTitle
         title="Gestion des clients"
-        subtitle="Fiches clients, encours et accès à l’espace voyageur."
+        subtitle="Fiches, invitation du titulaire, encours. Sans téléphone, le client le renseigne dans Vous au premier accès."
       />
       <div className="mt-6">
         <NewCustomerForm />

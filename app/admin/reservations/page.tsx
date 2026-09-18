@@ -1,7 +1,6 @@
 import { NewBookingForm } from "@/components/admin/NewBookingForm";
 import { BookingsTable } from "@/components/admin/BookingsTable";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
-import { createClient } from "@/lib/supabase/server";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 import type { CrmBooking, CrmCustomer } from "@/lib/crm/types";
@@ -21,7 +20,7 @@ export default async function AdminReservationsPage() {
       <PageEyebrow>Back-office</PageEyebrow>
       <PageTitle
         title="Réservations"
-        subtitle="Dossiers voyage, statuts, montants et rattachement clients."
+        subtitle="Importer les PDF, Enregistrer le brouillon, puis Publier — Enregistrer ne rend pas le carnet visible."
       />
       <div className="mt-6">
         <NewBookingForm
