@@ -1,6 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { dbErrorMessage } from "./db-error";
+import { dbErrorMessage, passwordErrorMessage } from "./db-error";
+
+test("auth password errors are explained in French", () => {
+  assert.equal(
+    passwordErrorMessage({ code: "same_password", message: "New password should be different" }),
+    "Choisissez un mot de passe différent de l’ancien."
+  );
+  assert.match(passwordErrorMessage({ code: "weak_password" }), /trop simple/);
+  assert.match(passwordErrorMessage({ code: "session_expired" }), /nouveau lien/);
+  const out = passwordErrorMessage({ code: "unexpected_failure", message: "pg: boom" });
+  assert.equal(out.includes("boom"), false);
+});
 
 test("postgres codes map to neutral French messages", () => {
   assert.equal(dbErrorMessage({ code: "23505", message: "duplicate key value violates" }), "Cette valeur existe déjà.");
