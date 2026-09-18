@@ -409,7 +409,7 @@ function shouldReconcile(extract: BookingExtract) {
 }
 
 async function reconcileExtract(extract: BookingExtract): Promise<BookingExtract> {
-  if (!shouldReconcile(extract)) return extract;
+  if (!aiGatewayConfigured() || !shouldReconcile(extract)) return extract;
   const content: UserPart[] = [
     {
       type: "text",
@@ -545,6 +545,28 @@ async function processPreparedFile(
     }
   }
 
+  if (!aiGatewayConfigured()) {
+    if (parsed.items.length) {
+      return {
+        name,
+        family,
+        extract: sanitizeExtractedPrices({
+          ...emptyBookingExtract(),
+          document_status: parsed.status || (family === "quote" ? "quote" : "confirmed"),
+          notes_client: parsed.notes.join("\n"),
+          items: tagSourceFileName(parsed.items, name),
+        }),
+        warning: "Lecture IA indisponible : cartes du parseur uniquement, à relire.",
+      };
+    }
+    return {
+      name,
+      family,
+      extract: emptyBookingExtract(),
+      error: "Lecture automatique indisponible ici — carte à saisir à la main.",
+    };
+  }
+
   try {
     const extract = await llmExtract({
       name,
@@ -590,9 +612,6 @@ export async function extractBookingFromPrepared(
     signal?: AbortSignal;
   }
 ): Promise<{ extract: BookingExtract; warnings: IngestWarning[] }> {
-  if (!aiGatewayConfigured()) {
-    throw new Error("Lecture automatique non configurée (OPENAI_API_KEY).");
-  }
   if (!files.length) throw new Error("Ajoutez au moins un PDF ou une photo.");
   const total = files.length;
   const results = await mapPool(files, LLM_CONCURRENCY, async (file, index) => {

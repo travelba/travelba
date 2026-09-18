@@ -485,7 +485,7 @@ export function BookingIngest({
             </p>
             {!aiConfigured ? (
               <p className="mt-2 text-xs text-[var(--admin-navy)]">
-                Lecture automatique indisponible ici. Déposez les fichiers et saisissez les cartes à la main.
+                Lecture IA indisponible ici : seuls les documents reconnus (billets Amadeus, confirmations hôtel connues) sont lus. Le reste se saisit à la main.
               </p>
             ) : null}
             {progress ? (
@@ -562,7 +562,7 @@ export function BookingIngest({
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={busy !== "idle" || !slots.length || !aiConfigured}
+            disabled={busy !== "idle" || !slots.length}
             onClick={() => void runIngest(slots)}
             className="admin-af-btn rounded-full px-4 py-2.5 text-sm disabled:opacity-50"
           >
