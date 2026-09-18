@@ -1,5 +1,5 @@
 import "server-only";
-import { generateText, Output } from "ai";
+import { generateText, Output, APICallError } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { extractImages, extractText, getDocumentProxy } from "unpdf";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -140,6 +140,28 @@ type UserPart =
   | { type: "text"; text: string }
   | { type: "image"; image: Uint8Array; mediaType: string };
 
+async function generateExtract(content: UserPart[], useGateway: boolean) {
+  return generateText({
+    model: useGateway ? "openai/gpt-4o" : ingestModel(),
+    output: Output.object({
+      schema: bookingExtractSchema,
+      name: "booking",
+      description: "Dossier de réservation extrait des documents",
+    }),
+    messages: [{ role: "user", content }],
+    ...(useGateway
+      ? {
+          providerOptions: {
+            gateway: {
+              tags: ["feature:booking-ingest"],
+              models: ["google/gemini-2.5-flash"],
+            },
+          },
+        }
+      : {}),
+  });
+}
+
 async function imagePart(bytes: Uint8Array, mediaType: string): Promise<UserPart> {
   if (mediaType.includes("heic") || mediaType.includes("heif")) {
     const sharp = await trySharp();
@@ -218,33 +240,33 @@ export async function extractBookingFromFiles(files: File[]): Promise<BookingExt
   }
   assertIngestFiles(files);
   const content = await buildIngestContent(files);
+  const key = openaiApiKey();
   try {
-    const result = await generateText({
-      model: ingestModel(),
-      output: Output.object({
-        schema: bookingExtractSchema,
-        name: "booking",
-        description: "Dossier de réservation extrait des documents",
-      }),
-      messages: [{ role: "user", content }],
-      ...(openaiApiKey()
-        ? {}
-        : {
-            providerOptions: {
-              gateway: {
-                tags: ["feature:booking-ingest"],
-                models: ["google/gemini-2.5-flash"],
-              },
-            },
-          }),
-    });
+    const result = await generateExtract(content, !key);
     if (!result.output) {
       throw new Error("Lecture incomplète. Réessayez avec des fichiers plus lisibles.");
     }
     return sanitizeExtractedPrices(result.output);
   } catch (err) {
     if (err instanceof Error && err.message.startsWith("Lecture")) throw err;
-    throw new Error("Lecture OpenAI impossible. Vérifiez OPENAI_API_KEY et réessayez.");
+    if (
+      key &&
+      APICallError.isInstance(err) &&
+      (err.statusCode === 401 || err.statusCode === 403)
+    ) {
+      try {
+        const fallback = await generateExtract(content, true);
+        if (!fallback.output) {
+          throw new Error("Lecture incomplète. Réessayez avec des fichiers plus lisibles.");
+        }
+        return sanitizeExtractedPrices(fallback.output);
+      } catch (fallbackErr) {
+        if (fallbackErr instanceof Error && fallbackErr.message.startsWith("Lecture")) {
+          throw fallbackErr;
+        }
+      }
+    }
+    throw new Error("Lecture automatique impossible. Réessayez avec des fichiers plus lisibles.");
   }
 }
 

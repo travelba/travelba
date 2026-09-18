@@ -3,7 +3,7 @@ import { jsonError, requireCustomer } from "@/lib/crm/auth";
 import { scanTravelDocument } from "@/lib/crm/ocr-document";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   const auth = await requireCustomer();
