@@ -6,6 +6,8 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 # Travelba agent notes
 
-- Always-on rules: `.cursor/rules/travelba-core.mdc`
-- Start CRM work with skill `.cursor/skills/travelba-voyage-crm/SKILL.md`
+- Always-on : `.cursor/rules/travelba-core.mdc`
+- Index CRM : `.cursor/skills/travelba-voyage-crm/SKILL.md` (charger **un** skill spécialisé ensuite)
+- Création / clone local : `.cursor/skills/travelba-bootstrap/SKILL.md`
+- Prod `travelba.fr` : `.cursor/skills/travelba-go-live/SKILL.md`
 - Prefer shipping working CRM flows over speculative refactors.

@@ -1,103 +1,92 @@
 ---
 name: travelba-document-ingest
 description: >-
-  Maps real agency PDFs (Amadeus e-tickets, Little Emperors hotel
-  quotes/bookings, TAAP/Talixo transfers, French passports) onto Travelba
-  booking and identity fields. Use when importing PDFs/images into a
-  reservation, tuning ingest prompts, OCR, or document dropzones.
+  Maps agency PDFs (Amadeus e-tickets, Little Emperors hotel quotes/bookings,
+  TAAP/Talixo transfers) onto Travelba carnet cards. Use when importing
+  PDFs/images into a reservation, tuning ingest prompts, OCR dropzones, or
+  gpt-4o extract. Identity scans use travelba-identity instead.
 ---
 
 # Import documents Travelba
 
-Pipeline résa : `unpdf` (texte + images si calque pauvre) → OpenAI `gpt-4o` (`OPENAI_API_KEY`) → relecture humaine → `persistNewBookingFromExtract` (statut `draft`).
-Pipeline identité : photo MRZ (Tesseract + `mrz`), **pas** le dropzone réservation.
+Agence **seule**. APIs `app/api/client/bookings/**/ingest` = 404.
+Relecture humaine obligatoire puis **Enregistrer** (brouillon). Publier = skill `travelba-carnet`.
 
-Code : `lib/crm/ingest-booking.ts`, `lib/crm/ingest-types.ts`, `components/crm/BookingIngest.tsx`.
-Identité : `lib/crm/ocr-document.ts`, `lib/crm/mrz-parse.ts`.
-Couvertures : `lib/crm/cover-generate.ts` — OpenAI Images (`gpt-image-1`, fallback `dall-e-3`) puis Gateway Gemini seulement si `AI_GATEWAY_API_KEY`.
-Limites : **30 fichiers**, **25 Mo** chacun.
+Pipeline résa : `unpdf` (texte + images si calque pauvre) → OpenAI `gpt-4o` (`OPENAI_API_KEY` `sk-`) → `sanitizeExtractedPrices` → persist `visible_to_client=false`.
+Identité : skill `travelba-identity` (photo MRZ, **pas** ce dropzone).
+
+Code : `lib/crm/ingest-booking.ts` (`PROMPT`), `lib/crm/ingest-types.ts`, `components/crm/BookingIngest.tsx`, `components/crm/IngestItemCard.tsx` (sous-fiches typées `Field`).
+Couvertures : Unsplash ville (`covers.ts`) puis IA (`cover-generate.ts`).
+Limites : **30 fichiers**, **25 Mo**, PDF/images.
+
+Traduire les libellés **en FR** à l’extract (chambre, inclus). L’agent voit le PDF original au clic. `needs_review=true` si doute.
 
 ## Ne jamais fusionner ces voyages
 
-Un dépôt de fichiers = **un** dossier. Si dates / destinations / noms divergent, extraire un seul voyage et le dire dans `notes_client`.
+Un dépôt = **un** dossier. Fichiers hétérogènes : extraire le séjour le plus complet + `notes_client`.
 
 | Famille | Indices | Dossier |
 |---------|---------|---------|
-| E-ticket Amadeus | « Reçu de Billet Electronique », Référence du dossier 6 lettres, CheckMyTrip | Un PNR = un itinéraire aérien |
-| Little Emperors quote | IATA 96020293, « none are on hold », pas de booking name | `document_status=quote` |
-| Little Emperors booking | « Reservation Details », Booking Reference, Booking name | Hôtel confirmé |
-| TAAP / Talixo | « Détails du voyage TAAP », n° 14 chiffres, Talixo | Transfert, pas un vol |
-| Passeport FR | MRZ `P<FRA`, scan souvent sans calque texte | Profil / documents, pas une résa |
+| E-ticket Amadeus | « Reçu de Billet Electronique », Référence du dossier 6 lettres | Un PNR = itinéraire aérien |
+| Little Emperors quote | IATA 96020293, « none are on hold » | `document_status=quote`, invisible |
+| Little Emperors booking | Reservation Details, Booking Reference | Hôtel confirmé, **un** item |
+| TAAP / Talixo | n° 14 chiffres, Talixo | Transfert, pas un vol |
+| Passeport FR | MRZ `P<FRA` | Profil — `document_status=identity`, pas de résa |
 
-## E-ticket Amadeus (PDF texte)
+## Prix
 
-Champs :
+Toujours `total_amount=null` et `item.amount=null` après sanitize. Le `$` / CHF du PDF = net **interne**, jamais carte client. Devise du symbole pour `currency` (ne pas forcer EUR) — l’agent saisit le **prix vendu** ensuite.
 
-- `confirmation_ref` = **PNR GDS** (bandeau « Référence du dossier », 6 lettres).
-- `details.pnr` = réf. compagnie (`AF/Y2FYWL`, `X1/N0OP1Q`, `TA/Y9JCXV`).
-- `airline` / `details.airline` = **transporteur opérant** (« Opéré par Air Panama »), pas Hahn Air (émetteur 169-).
-- `supplier` = compagnie émettrice du billet.
-- Aller et retour = **deux** items `flight`. **Interdit** d’inventer le retour.
-- `details.from` / `to` = IATA (`CDG`, `RAK`, `MIA`, `SJO`, `PAC`, `BOC`).
-- Horaires ISO tels qu’imprimés. Classe : Economique + code tarif (L, W, K, Y) dans `details.cabin`.
-- Voyageur = ligne Passager (casse normale).
-- Email agence (`contact@travelbt.fr`) ≠ `customer_email`.
-- **Ne jamais** extraire le mode de paiement / PAN masqué.
-- Bagages `0PC` / `1PC` / `2PC` → `details.notes` si utile, pas un item.
+Ne **pas** extraire paiement / PAN / annulation / conditions.
 
-## Devis hôtel Little Emperors / My Concierge
+## E-ticket Amadeus
 
-Signaux : « All prices listed are subject to availability and change, none are on hold », plusieurs blocs tarifaires, pas de nom.
+- `confirmation_ref` = PNR GDS 6 lettres. `details.pnr` = réf. compagnie.
+- `details.airline` = **opérant**. `supplier` = émetteur (Hahn Air ≠ Air Panama).
+- Aller / retour / correspondance = **un item par segment**. Pas de retour fantôme.
+- `details.from` / `to` = IATA. `details.city_from` / `city_to` = villes.
+- Horaires ISO imprimés. Cabin = libellé + code tarif. Bagages `1PC` → `details.baggage`.
+- Email agence ≠ `customer_email`.
+- Réimport même PNR + n° + date = **remplace** la carte.
 
-- `document_status=quote`, `total_amount=null`.
-- Un item `hotel` **par option** (chambre + prix). Ne pas prendre la première ligne comme le dossier.
-- Dates header (`5 Aug - 8 Aug 2026`) → `start_date` / `end_date`.
-- Devise du symbole : CHF, EUR, USD. « 2 adults » / « 6 adults » ≠ voyageurs nommés — ne pas créer de lignes vides.
-- Pas de `confirmation_ref`.
+## Hôtel Little Emperors / My Concierge
 
-## Réservation hôtel Little Emperors
+**Un item `hotel` par établissement**, même 2 chambres / 2 Booking name / 2 réf.
 
-Signaux : Reservation Details, Booking Reference, Booking name, Total en $.
+- `details.rooms = [{ room, guests, confirmation_ref }, …]`
+- `confirmation_ref` = première réf. ou `97620170;97620172`
+- `details.hotel_name`, `city`, `address` (agent), `board` si écrit, `occupancy` brut
+- `details.included[]` **seulement** si phrase explicite (breakfast…). Sinon pas de bloc
+- **Interdit** d’inventer check-in 15:00 / check-out 12:00
+- Devis : `document_status=quote`, `status` dossier `quoted`, `rooms` = options, toujours invisible tant que non publié. **Pas** un item par option tarifaire
+- Dates header → `start_at` / `end_at` (date only)
 
-- `document_status=confirmed`.
-- Deux refs `97620170;97620172` + deux Booking name = **deux** items hotel + deux voyageurs.
-- `$858.80` → `currency=USD`, `total_amount=858.8`. Ne pas défaut EUR.
-- Adresse → `details.address`. Room type → `details.room`.
-- **Interdit** d’inventer check-in 15:00 / check-out 12:00 s’ils ne sont pas écrits.
-- Benefits (breakfast, upgrade) → `details.notes`.
+## Transfert TAAP / Talixo
 
-## Transfert TAAP / Talixo / Expedia
+- `kind=transfer`, `details.pickup` / `dropoff` (pas `from`/`to`)
+- Heure vol citée ≠ pickup. « 2,5 h avant » → `details.pickup_note`, pas d’heure inventée
+- Vol sur le bon → item `flight` seulement s’il y a un e-ticket
+- `YANIK` / `YANNICK` = même personne (normaliser)
 
-- `kind=transfer`, `supplier=Talixo`.
-- `confirmation_ref` = n° voyage (14 chiffres).
-- `details.pickup` / `details.dropoff` — **pas** `from`/`to`.
-- L’heure d’un vol citée (« Air Panama 682 — 09:30 ») n’est **pas** l’heure de prise en charge. Pickup hôtel = souvent « 2,5 h avant le vol » sans heure clock.
-- Un vol mentionné sur le bon n’ajoute un item `flight` que s’il y a aussi un e-ticket.
+## Train / voiture / bateau
 
-Noms : `YANIK` (billet) et `YANNICK` (TAAP) = même personne — matcher en normalisant, pas créer un doublon.
+`rail` / `car` / `cruise` : n°, lieux, horaires **s’ils sont écrits**. Croisière = une carte, pas un jour par port. Pas de franchise loueur inventée.
 
-## Passeport (scan PDF)
+## Voyageurs
 
-Le dropzone résa refuse l’identité (`document_status=identity`). Photo JPEG/PNG/HEIC via `/api/.../scan`.
+- Noms imprimés, casse normale
+- « 2 adults » sans noms → `{first_name:"Adulte", last_name:"1"}` et `Adulte 2` (rattacher un compagnon plus tard)
+- Pas d’enfant sans nom
 
-Un PDF passeport n’a souvent **aucun texte** : rasteriser la page ou photographier la zone MRZ.
+`title` / `destination` : villes séparées par ` · `.
 
-VIZ + MRZ TD3 :
+## UI persist
 
-- Ligne 1 `P<FRA` + nom `<<` prénoms
-- Ligne 2 n° + `FRA` + naissance AAMMJJ + sexe + expiration AAMMJJ
-- OCR : `L` répétés → `<`. Recadrer le bas du document.
+- Relecture sous-fiche par `kind`. Bandeau devis « tarifs non bloqués ». Bandeau **À vérifier**
+- Cartes manuelles OK. Drag ordre après persist
+- Fichiers `/api/files`. Cover `scheduleBookingCover` → `bookings/{id}/cover.webp`
+- Identity extract → ne pas `persistNewBookingFromExtract`
 
-Ne pas logger n° de passeport / MRZ.
+## Prompt
 
-## UI / persist
-
-- Relecture obligatoire. Quote → bandeau « tarifs non bloqués ». Identity → pas d’enregistrement résa.
-- Agence : résa créée en `draft`, `visible_to_client=false`. Pas de débit ledger tant que `confirmed`.
-- Fichiers via `/api/files`, jamais d’URL signed longue côté client.
-- Après création, une couverture destination est générée (`scheduleBookingCover`) et stockée dans `crm-files` (`bookings/{id}/cover.webp`).
-- Max 30 fichiers, 25 Mo, PDF/images.
-
-## Quand toucher au prompt
-
-Toute erreur d’import réelle (vol retour fantôme, devise EUR sur un $, devis pris pour une résa) se corrige **dans** `PROMPT` de `ingest-booking.ts` + une ligne ici. Ne pas ajouter Tesseract sur les e-tickets : le calque texte PDF + `gpt-4o` suffisent. Ne pas brancher l’import sur le AI Gateway tant que `OPENAI_API_KEY` est présent.
+Toute erreur réelle (retour fantôme, EUR sur un $, 2 items hôtel, petit-déj fantôme, net affiché) se corrige **dans** `PROMPT` + une ligne ici. Pas de Tesseract sur les e-tickets. Pas d’AI Gateway tant que `OPENAI_API_KEY` `sk-` est présent.

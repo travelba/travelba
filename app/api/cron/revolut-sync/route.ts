@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { fetchRevolutTransactions, upsertRevolutInbox } from "@/lib/crm/revolut";
+import {
+  fetchRevolutTransactions,
+  revolutConfigured,
+  revolutConnected,
+  upsertRevolutInbox,
+} from "@/lib/crm/revolut";
 
 export const runtime = "nodejs";
 
@@ -14,6 +19,12 @@ function authorized(request: Request) {
 export async function GET(request: Request) {
   if (!authorized(request)) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  }
+  if (!revolutConfigured()) {
+    return NextResponse.json({ skipped: true, reason: "not_configured" });
+  }
+  if (!(await revolutConnected())) {
+    return NextResponse.json({ skipped: true, reason: "not_connected" });
   }
   const from = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
   const txs = await fetchRevolutTransactions(from);

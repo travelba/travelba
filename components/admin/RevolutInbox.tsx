@@ -9,10 +9,12 @@ export function RevolutInbox({
   rows,
   customers,
   configured,
+  connected,
 }: {
   rows: CrmRevolutTransaction[];
   customers: CrmCustomer[];
   configured: boolean;
+  connected: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -63,7 +65,7 @@ export function RevolutInbox({
         <button
           type="button"
           onClick={sync}
-          disabled={busy || !configured}
+          disabled={busy || !configured || !connected}
           className="admin-af-btn rounded-full px-4 py-2 text-sm"
         >
           {busy ? "Sync…" : "Synchroniser Revolut"}
@@ -71,6 +73,10 @@ export function RevolutInbox({
         {!configured ? (
           <p className="text-sm text-muted">
             Renseignez REVOLUT_CLIENT_ID et REVOLUT_PRIVATE_KEY, puis connectez le compte.
+          </p>
+        ) : !connected ? (
+          <p className="text-sm text-muted">
+            Clés présentes — cliquez sur Connecter Revolut (une fois, compte Business).
           </p>
         ) : null}
       </div>
