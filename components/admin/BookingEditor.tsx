@@ -157,7 +157,7 @@ export function BookingEditor({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24">
       <div className="relative h-48 overflow-hidden rounded-3xl sm:h-64">
         <CoverPhoto
           src={bookingCoverUrl(booking, 1200)}
