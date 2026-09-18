@@ -490,7 +490,9 @@ export async function persistNewBookingFromExtract(opts: {
       notes_internal:
         extract.document_status === "quote"
           ? "Devis importé — tarifs non bloqués, à confirmer."
-          : "Dossier créé par lecture de documents.",
+          : opts.files.length
+            ? "Dossier créé par lecture de documents."
+            : "Dossier créé par l’agence.",
       visible_to_client: false,
     })
     .select("*")

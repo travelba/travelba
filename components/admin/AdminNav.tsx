@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { Icon } from "@/components/crm/icons";
 
 const LINKS = [
   { href: "/admin", label: "Tableau de bord", icon: "grid_view", exact: true },
@@ -41,9 +42,82 @@ export function AdminNav({
     router.push(q ? `/admin/clients?q=${encodeURIComponent(q)}` : "/admin/clients");
   }
 
+  function navLink(link: (typeof LINKS)[number], compact = false) {
+    const active = link.exact ? pathname === link.href : pathname.startsWith(link.href);
+    const badge =
+      link.href === "/admin/revolut" && unmatchedCount > 0 ? unmatchedCount : null;
+    return (
+      <Link
+        key={link.href}
+        href={link.href}
+        className={`flex items-center justify-between gap-2 rounded-md px-3 py-2 text-sm transition ${
+          compact ? "shrink-0" : ""
+        } ${
+          active
+            ? "bg-[var(--admin-navy)] font-semibold text-[var(--admin-gold-soft)]"
+            : "text-muted hover:bg-[var(--surface-2)] hover:text-[var(--admin-navy)]"
+        }`}
+      >
+        <span className="flex items-center gap-2">
+          <Icon name={link.icon} className="h-4 w-4" />
+          <span>{link.label}</span>
+        </span>
+        {badge != null ? (
+          <span className="rounded-full bg-[var(--admin-gold)] px-2 py-0.5 font-label text-[10px] font-bold text-[var(--admin-navy)]">
+            {badge}
+          </span>
+        ) : null}
+      </Link>
+    );
+  }
+
   return (
     <>
-      <aside className="z-50 flex w-full flex-col justify-between border-b border-[var(--border)] bg-white px-4 py-5 shadow-[0_1px_8px_rgba(0,0,0,0.04)] lg:fixed lg:left-0 lg:top-0 lg:h-full lg:w-72 lg:shrink-0 lg:border-b-0 lg:border-r lg:px-5 lg:py-6">
+      <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-white lg:hidden">
+        <div className="flex items-center justify-between gap-3 px-4 py-3">
+          <Link href="/admin" className="flex min-w-0 items-center gap-2">
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-[var(--admin-navy)] font-display text-[11px] font-extrabold tracking-wider text-[var(--admin-gold)]">
+              TBA
+            </span>
+            <span className="truncate font-display text-sm font-semibold text-[var(--admin-navy)]">
+              Back-office
+            </span>
+          </Link>
+          <div className="flex shrink-0 items-center gap-2">
+            <Link
+              href="/admin/reservations"
+              className="admin-af-btn-accent rounded-md px-3 py-2 text-xs"
+            >
+              + Résa
+            </Link>
+            <button
+              type="button"
+              onClick={signOut}
+              className="text-xs font-semibold text-muted"
+            >
+              Sortir
+            </button>
+          </div>
+        </div>
+        <nav className="no-scrollbar flex gap-1 overflow-x-auto px-3 pb-2">
+          {LINKS.map((link) => navLink(link, true))}
+        </nav>
+        <form onSubmit={onSearch} className="relative px-3 pb-3">
+          <Icon
+            name="search"
+            className="pointer-events-none absolute left-7 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
+          />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="w-full rounded-md bg-[var(--surface-2)] py-2.5 pl-10 pr-4 text-[13px] text-[var(--admin-navy)] outline-none transition focus:bg-white focus:ring-2 focus:ring-[var(--admin-gold)]/30"
+            placeholder="Rechercher un client…"
+            type="search"
+          />
+        </form>
+      </header>
+
+      <aside className="z-50 hidden w-72 flex-col justify-between border-r border-[var(--border)] bg-white px-5 py-6 shadow-[0_1px_8px_rgba(0,0,0,0.04)] lg:fixed lg:left-0 lg:top-0 lg:flex lg:h-full lg:shrink-0">
         <div className="flex flex-col gap-6">
           <Link href="/admin" className="flex items-center gap-3 px-1">
             <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[var(--admin-navy)] font-display text-[11px] font-extrabold tracking-wider text-[var(--admin-gold)]">
@@ -59,38 +133,7 @@ export function AdminNav({
             </span>
           </Link>
 
-          <nav className="flex flex-wrap gap-1 lg:flex-col">
-            {LINKS.map((link) => {
-              const active = link.exact
-                ? pathname === link.href
-                : pathname.startsWith(link.href);
-              const badge =
-                link.href === "/admin/revolut" && unmatchedCount > 0
-                  ? unmatchedCount
-                  : null;
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={`flex items-center justify-between gap-2 rounded-md px-3 py-2.5 text-sm transition ${
-                    active
-                      ? "bg-[var(--admin-navy)] font-semibold text-[var(--admin-gold-soft)]"
-                      : "text-muted hover:bg-[var(--surface-2)] hover:text-[var(--admin-navy)]"
-                  }`}
-                >
-                  <span className="flex items-center gap-3">
-                    <span className="material-symbols-outlined text-[20px]">{link.icon}</span>
-                    <span>{link.label}</span>
-                  </span>
-                  {badge != null ? (
-                    <span className="rounded-full bg-[var(--admin-gold)] px-2 py-0.5 font-label text-[10px] font-bold text-[var(--admin-navy)]">
-                      {badge}
-                    </span>
-                  ) : null}
-                </Link>
-              );
-            })}
-          </nav>
+          <nav className="flex flex-col gap-1">{LINKS.map((link) => navLink(link))}</nav>
         </div>
 
         <div className="mt-6 flex flex-col gap-3">
@@ -112,9 +155,10 @@ export function AdminNav({
 
       <header className="sticky top-0 z-40 hidden h-20 items-center justify-between border-b border-[var(--border)] bg-[rgba(250,249,246,0.9)] px-8 shadow-[0_1px_8px_rgba(0,0,0,0.04)] backdrop-blur-xl lg:flex lg:pl-[calc(18rem+2rem)]">
         <form onSubmit={onSearch} className="relative w-full max-w-xl">
-          <span className="material-symbols-outlined pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[18px] text-muted">
-            search
-          </span>
+          <Icon
+            name="search"
+            className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted"
+          />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -124,14 +168,18 @@ export function AdminNav({
           />
         </form>
         <div className="ml-6 flex items-center gap-4">
-          <span className="relative inline-flex h-10 w-10 items-center justify-center rounded-md text-muted">
-            <span className="material-symbols-outlined text-[22px]">notifications</span>
+          <Link
+            href="/admin/revolut"
+            className="relative inline-flex h-10 w-10 items-center justify-center rounded-md text-muted"
+            aria-label="Revolut à rapprocher"
+          >
+            <Icon name="notifications" className="h-[22px] w-[22px]" />
             {unmatchedCount > 0 ? (
               <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-[var(--admin-gold)]" />
             ) : null}
-          </span>
+          </Link>
           <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[var(--admin-gold)]">
-            <span className="material-symbols-outlined text-[18px]">person</span>
+            <Icon name="person" className="h-[18px] w-[18px]" />
           </span>
         </div>
       </header>

@@ -151,13 +151,9 @@ export function BookingIngest({
       (extract && !extract.items.length)
   );
 
-  if (!aiConfigured) {
-    return (
-      <div className="admin-af-card rounded-3xl border border-dashed border-border p-5 text-sm text-muted">
-        La lecture automatique n’est pas encore configurée. Ajoutez{" "}
-        <code className="text-xs">OPENAI_API_KEY</code> pour déposer un billet et remplir le dossier.
-      </div>
-    );
+  function startManual() {
+    setExtract(emptyExtract());
+    setError(null);
   }
 
   return (
@@ -182,6 +178,11 @@ export function BookingIngest({
               Billets, vouchers, devis, trains, voitures, bateaux (PDF ou photo). 30 fichiers, 25 Mo max.
               Rien n’est publié tant que vous n’avez pas cliqué sur Publier.
             </p>
+            {!aiConfigured ? (
+              <p className="mt-2 text-xs text-[var(--admin-navy)]">
+                Lecture automatique indisponible ici. Déposez les fichiers et saisissez les cartes à la main.
+              </p>
+            ) : null}
           </div>
           <button
             type="button"
@@ -218,14 +219,24 @@ export function BookingIngest({
             ))}
           </ul>
         ) : null}
-        <button
-          type="button"
-          disabled={busy !== "idle" || !files.length}
-          onClick={() => void readDocs()}
-          className="admin-af-btn mt-4 rounded-full px-4 py-2.5 text-sm disabled:opacity-50"
-        >
-          {busy === "read" ? "Lecture…" : "Lire et remplir"}
-        </button>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={busy !== "idle" || !files.length || !aiConfigured}
+            onClick={() => void readDocs()}
+            className="admin-af-btn rounded-full px-4 py-2.5 text-sm disabled:opacity-50"
+          >
+            {busy === "read" ? "Lecture…" : "Lire et remplir"}
+          </button>
+          <button
+            type="button"
+            disabled={busy !== "idle" || Boolean(extract)}
+            onClick={startManual}
+            className="rounded-full border border-border px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
+          >
+            Saisir les cartes à la main
+          </button>
+        </div>
       </div>
 
       {extract ? (

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { CrmBookingItem } from "./types.ts";
+import type { CrmBookingItem } from "./types";
 import {
   carnetVisible,
   coverQuery,
@@ -9,6 +9,7 @@ import {
   itemClock,
   whatsappModifyHref,
 } from "./carnet";
+import { bookingCoverUrl } from "./covers";
 
 function item(partial: Partial<CrmBookingItem>): CrmBookingItem {
   return {
@@ -69,6 +70,15 @@ describe("carnet", () => {
 
   it("prend la première ville pour la couverture", () => {
     assert.equal(coverQuery("Marrakech · Essaouira", "Voyage"), "Marrakech");
+  });
+
+  it("sert une couverture Unsplash légère", () => {
+    const url = bookingCoverUrl(
+      { destination: "Marrakech", title: "Voyage", cover_image_path: null },
+      800
+    );
+    assert.match(url, /w=800/);
+    assert.match(url, /q=70/);
   });
 
   it("prépare le WhatsApp de modification", () => {

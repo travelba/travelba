@@ -1,8 +1,8 @@
 import type { CrmBooking } from "@/lib/crm/types";
 import { coverQuery } from "@/lib/crm/carnet";
 
-const UNSPLASH = (id: string, width = 1600) =>
-  `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&h=900&q=80`;
+const UNSPLASH = (id: string, width = 960) =>
+  `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&h=720&q=70`;
 
 const BY_KEYWORD: Array<[RegExp, string]> = [
   [/papagayo|guanacaste|andaz|nicoya|costa rica|heredia|belen|san jos[eé]|sjo|arenal|manuel antonio/i, "photo-1687304527563-74c180d8ced7"],
@@ -35,7 +35,7 @@ function hashKey(value: string) {
 
 export function bookingCoverUrl(
   booking: Pick<CrmBooking, "destination" | "title" | "cover_image_path">,
-  width = 1600
+  width = 960
 ) {
   if (booking.cover_image_path) {
     return `/api/files?path=${encodeURIComponent(booking.cover_image_path)}`;

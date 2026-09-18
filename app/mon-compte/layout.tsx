@@ -1,24 +1,9 @@
-import { Plus_Jakarta_Sans, Inter } from "next/font/google";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser, ensureStaff } from "@/lib/crm/auth";
 import { customerFullName } from "@/lib/crm/types";
 import { siteConfig } from "@/lib/site";
 import { AccountChrome } from "@/components/account/AccountChrome";
-
-const display = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  variable: "--font-admin-display",
-  weight: ["600", "700", "800"],
-  display: "swap",
-});
-
-const sans = Inter({
-  subsets: ["latin"],
-  variable: "--font-admin-sans",
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
-});
 
 export const metadata = {
   title: `Mon compte — ${siteConfig.shortName}`,
@@ -50,14 +35,8 @@ export default async function AccountLayout({
       .toUpperCase() || "TB";
 
   return (
-    <div className={`${display.variable} ${sans.variable}`}>
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap"
-      />
-      <AccountChrome customerName={name} initials={initials} needsPhone={!customer.phone}>
-        {children}
-      </AccountChrome>
-    </div>
+    <AccountChrome customerName={name} initials={initials} needsPhone={!customer.phone}>
+      {children}
+    </AccountChrome>
   );
 }

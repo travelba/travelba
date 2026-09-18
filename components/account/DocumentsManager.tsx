@@ -16,6 +16,7 @@ import {
 } from "@/components/crm/fields";
 import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
+import { Icon } from "@/components/crm/icons";
 
 export function DocumentsManager({
   documents,
@@ -136,7 +137,7 @@ export function DocumentsManager({
           return (
             <li key={d.id} className="admin-af-card flex items-start gap-3 rounded-2xl p-4">
               <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[var(--admin-sky)] text-[var(--admin-navy)]">
-                <span className="material-symbols-outlined text-[22px]">{DOC_ICONS[d.doc_type]}</span>
+                <Icon name={DOC_ICONS[d.doc_type]} className="h-[22px] w-[22px]" />
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -162,9 +163,7 @@ export function DocumentsManager({
                     path={d.storage_path}
                     className="mt-2 inline-flex items-center gap-1 rounded-full bg-[#efebe0] px-3 py-1.5 font-label text-[11px] font-bold uppercase tracking-wide text-[var(--admin-navy)]"
                   >
-                    <span className="material-symbols-outlined text-[16px]">
-                      {fileKindIcon(d.mime_type, d.file_name)}
-                    </span>
+                    <Icon name={fileKindIcon(d.mime_type, d.file_name)} className="h-4 w-4" />
                     Ouvrir
                   </FileOpenLink>
                 ) : null}

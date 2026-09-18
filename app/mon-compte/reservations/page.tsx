@@ -13,6 +13,8 @@ import {
 import { bookingCoverUrl } from "@/lib/crm/covers";
 import { loadVisibleCarnets } from "@/lib/crm/carnet-query";
 import { siteConfig } from "@/lib/site";
+import { CoverPhoto } from "@/components/crm/CoverPhoto";
+import { Icon } from "@/components/crm/icons";
 
 function daysUntil(date: string | null) {
   if (!date) return null;
@@ -55,7 +57,7 @@ export default async function ReservationsPage({
       <aside className="flex items-center justify-between gap-3 rounded-2xl border border-[#e5e3dc] bg-white p-4">
         <div className="flex min-w-0 items-center gap-3">
           <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[var(--admin-gold)]">
-            <span className="material-symbols-outlined text-[20px]">support_agent</span>
+            <Icon name="support_agent" className="h-5 w-5" />
           </span>
           <div className="min-w-0">
             <p className="truncate text-sm font-bold text-[var(--admin-navy)]">
@@ -102,15 +104,12 @@ export default async function ReservationsPage({
       <ul className="space-y-4">
         {list.map((b) => {
           const jMinus = daysUntil(b.start_date);
-          const img = bookingCoverUrl(b, 1200);
+          const img = bookingCoverUrl(b, 800);
           return (
             <li key={b.id}>
               <article className="overflow-hidden rounded-2xl border border-[#e5e3dc] bg-white shadow-[0_4px_20px_-2px_rgba(11,25,44,0.04)]">
                 <div className="relative h-40 overflow-hidden">
-                  <div
-                    className="absolute inset-0 bg-cover bg-center"
-                    style={{ backgroundImage: `url(${img})` }}
-                  />
+                  <CoverPhoto src={img} alt="" />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/55 to-transparent" />
                   <div className="absolute left-3 top-3 flex flex-wrap gap-2">
                     <StatusChip tone={bookingStatusTone(b.status)}>

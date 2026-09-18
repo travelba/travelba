@@ -15,6 +15,8 @@ import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { bookingCoverUrl } from "@/lib/crm/covers";
 import { loadVisibleCarnets } from "@/lib/crm/carnet-query";
 import { siteConfig } from "@/lib/site";
+import { CoverPhoto } from "@/components/crm/CoverPhoto";
+import { Icon } from "@/components/crm/icons";
 
 function daysUntil(date: string | null) {
   if (!date) return null;
@@ -94,7 +96,7 @@ export default async function AccountHomePage() {
   const prepScore = [depositDone, flightsDone, docsDone].filter(Boolean).length;
   const prepPct = Math.round((prepScore / 3) * 100);
   const whatsappHref = `https://wa.me/${siteConfig.whatsappNumber}`;
-  const cover = nextTrip ? bookingCoverUrl(nextTrip, 1200) : null;
+  const cover = nextTrip ? bookingCoverUrl(nextTrip, 960) : null;
 
   return (
     <div className="space-y-4">
@@ -102,7 +104,7 @@ export default async function AccountHomePage() {
         <div className="flex items-center justify-between gap-2">
           <span className="inline-flex items-center gap-2">
             <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[var(--admin-gold)]">
-              <span className="material-symbols-outlined text-[16px]">explore</span>
+              <Icon name="explore" className="h-4 w-4" />
             </span>
             <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">
               {siteConfig.name} · Espace membre
@@ -121,18 +123,13 @@ export default async function AccountHomePage() {
 
       {nextTrip && cover ? (
         <article className="relative overflow-hidden rounded-2xl border border-[#e5e3dc] bg-[var(--admin-navy)] text-white shadow-xl">
-          <div
-            className="absolute inset-0 bg-cover bg-center"
-            style={{ backgroundImage: `url(${cover})` }}
-          />
+          <CoverPhoto src={cover} alt="" priority />
           <div className="absolute inset-0 bg-gradient-to-t from-[var(--admin-navy)] via-[var(--admin-navy)]/70 to-black/25" />
           <div className="relative flex flex-col gap-4 p-5">
             <div className="flex items-center justify-between gap-2">
               {jMinus != null && jMinus >= 0 ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--admin-gold)]/30 bg-white/95 px-3 py-1 text-[12px] font-semibold text-[var(--admin-navy)]">
-                  <span className="material-symbols-outlined text-[15px] text-[var(--admin-gold)]">
-                    timer
-                  </span>
+                  <Icon name="timer" className="h-[15px] w-[15px] text-[var(--admin-gold)]" />
                   <span className="font-bold">J - {jMinus}</span>
                   <span className="font-normal text-muted">avant l&apos;envol</span>
                 </span>
@@ -142,7 +139,7 @@ export default async function AccountHomePage() {
             </div>
             <div className="pt-8">
               <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
-                <span className="material-symbols-outlined text-[14px]">flight_takeoff</span>
+                <Icon name="flight_takeoff" className="h-[14px] w-[14px]" />
                 {formatDateFr(nextTrip.start_date)} — {formatDateFr(nextTrip.end_date)}
               </p>
               <h2 className="mt-1 font-display text-2xl font-bold leading-tight">
@@ -159,14 +156,10 @@ export default async function AccountHomePage() {
               className="flex h-12 items-center justify-between rounded-full bg-white px-5 text-sm font-semibold text-[var(--admin-navy)]"
             >
               <span className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-[20px] text-[var(--admin-gold)]">
-                  menu_book
-                </span>
+                <Icon name="menu_book" className="h-5 w-5 text-[var(--admin-gold)]" />
                 Voir mon carnet de voyage
               </span>
-              <span className="material-symbols-outlined text-[20px] text-[var(--admin-gold)]">
-                arrow_forward
-              </span>
+              <Icon name="arrow_forward" className="h-5 w-5 text-[var(--admin-gold)]" />
             </Link>
           </div>
         </article>
@@ -196,9 +189,7 @@ export default async function AccountHomePage() {
         <section className="flex flex-col gap-3 rounded-2xl border border-[#e5e3dc] bg-[var(--surface-2)] p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-[20px] text-[var(--admin-gold)]">
-                task_alt
-              </span>
+              <Icon name="task_alt" className="h-5 w-5 text-[var(--admin-gold)]" />
               <span className="text-sm font-semibold text-[var(--admin-navy)]">
                 Préparatifs du séjour
               </span>
@@ -285,7 +276,7 @@ export default async function AccountHomePage() {
           {flight ? (
             <article className="flex items-start gap-3 rounded-2xl border border-[#e5e3dc] bg-white p-3.5">
               <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--admin-gold)]/30 bg-[var(--admin-peach)] text-[var(--admin-navy)]">
-                <span className="material-symbols-outlined text-[20px]">airlines</span>
+                <Icon name="airlines" className="h-5 w-5" />
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-1">
@@ -305,7 +296,7 @@ export default async function AccountHomePage() {
           {hotel ? (
             <article className="flex items-start gap-3 rounded-2xl border border-[#e5e3dc] bg-white p-3.5">
               <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--admin-gold)]/30 bg-[var(--admin-peach)] text-[var(--admin-gold)]">
-                <span className="material-symbols-outlined text-[20px]">hotel</span>
+                <Icon name="hotel" className="h-5 w-5" />
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-1">
@@ -333,7 +324,7 @@ export default async function AccountHomePage() {
             className="flex h-28 flex-col justify-between rounded-2xl border border-[#e5e3dc] bg-white p-3 text-left"
           >
             <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--admin-gold)]/30 bg-[var(--admin-peach)]">
-              <span className="material-symbols-outlined text-[18px]">airplane_ticket</span>
+              <Icon name="airplane_ticket" className="h-[18px] w-[18px]" />
             </span>
             <span>
               <span className="block text-xs font-semibold text-[var(--admin-navy)]">Mes Billets</span>
@@ -345,7 +336,7 @@ export default async function AccountHomePage() {
             className="flex h-28 flex-col justify-between rounded-2xl border border-[#e5e3dc] bg-white p-3 text-left"
           >
             <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--admin-gold)]/30 bg-[var(--admin-peach)] text-[#9e7e51]">
-              <span className="material-symbols-outlined text-[18px]">badge</span>
+              <Icon name="badge" className="h-[18px] w-[18px]" />
             </span>
             <span>
               <span className="block text-xs font-semibold text-[var(--admin-navy)]">Pièces d’identité</span>
@@ -359,7 +350,7 @@ export default async function AccountHomePage() {
             className="flex h-28 flex-col justify-between rounded-2xl border border-[#e5e3dc] bg-white p-3 text-left"
           >
             <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[var(--admin-gold)]">
-              <span className="material-symbols-outlined text-[18px]">support_agent</span>
+              <Icon name="support_agent" className="h-[18px] w-[18px]" />
             </span>
             <span>
               <span className="block text-xs font-semibold text-[var(--admin-navy)]">Assistance</span>
@@ -395,14 +386,13 @@ function PrepChip({
 }) {
   const body = (
     <>
-      <span
-        className={`material-symbols-outlined text-[18px] ${
+      <Icon
+        name={icon}
+        className={`h-[18px] w-[18px] ${
           filled ? "text-[var(--admin-gold)]" : "text-muted"
         }`}
-        style={filled ? { fontVariationSettings: "'FILL' 1" } : undefined}
-      >
-        {icon}
-      </span>
+        filled={filled}
+      />
       <span className="mt-1 truncate text-[10px] font-semibold text-[var(--admin-navy)]">
         {title}
       </span>

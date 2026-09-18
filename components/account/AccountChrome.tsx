@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { BrandMark } from "@/components/crm/ui";
+import { Icon } from "@/components/crm/icons";
 import { siteConfig } from "@/lib/site";
 
 const TABS = [
@@ -57,7 +58,7 @@ export function AccountChrome({
               aria-label="WhatsApp conciergerie"
               title="WhatsApp conciergerie"
             >
-              <span className="material-symbols-outlined text-[22px]">chat</span>
+              <Icon name="chat" className="h-[22px] w-[22px]" />
             </a>
             <Link
               href="/mon-compte/profil"
@@ -134,12 +135,11 @@ export function AccountChrome({
                   active ? "text-[var(--admin-navy)]" : "text-[#5a5c60]"
                 }`}
               >
-                <span
-                  className="material-symbols-outlined text-[24px]"
-                  style={active ? { fontVariationSettings: "'FILL' 1" } : undefined}
-                >
-                  {tab.icon}
-                </span>
+                <Icon
+                  name={tab.icon}
+                  className="h-6 w-6"
+                  filled={active}
+                />
                 {tab.label === "Mon Compte" ? "Compte" : tab.label}
               </Link>
             );

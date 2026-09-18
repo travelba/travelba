@@ -164,10 +164,12 @@ export function ProfileForm({
       </section>
 
       {error ? <p className="text-sm text-accent">{error}</p> : null}
-      {saved ? <p className="text-sm text-[var(--admin-navy)]">Enregistré.</p> : null}
-      <button className="admin-af-btn rounded-full px-5 py-2.5 text-sm" disabled={saving}>
-        {saving ? "Enregistrement…" : "Enregistrer"}
-      </button>
+      <div className="sticky bottom-20 z-20 -mx-4 mt-2 border-t border-[#e5e3dc] bg-[rgba(250,249,246,0.95)] px-4 py-3 backdrop-blur md:bottom-4">
+        {saved ? <p className="mb-2 text-sm text-[var(--admin-navy)]">Enregistré.</p> : null}
+        <button className="admin-af-btn w-full rounded-full px-5 py-2.5 text-sm" disabled={saving}>
+          {saving ? "Enregistrement…" : "Enregistrer"}
+        </button>
+      </div>
     </form>
   );
 }

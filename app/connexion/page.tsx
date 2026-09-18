@@ -1,25 +1,10 @@
 "use client";
 
 import { FormEvent, Suspense, useState } from "react";
-import { Plus_Jakarta_Sans, Inter } from "next/font/google";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { siteConfig } from "@/lib/site";
 import { BrandMark } from "@/components/crm/ui";
-
-const display = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  variable: "--font-admin-display",
-  weight: ["600", "700", "800"],
-  display: "swap",
-});
-
-const sans = Inter({
-  subsets: ["latin"],
-  variable: "--font-admin-sans",
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
-});
 
 const fieldClass =
   "w-full rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-3 text-[var(--admin-navy)] outline-none focus:border-[var(--admin-gold)] focus:bg-white focus:ring-2 focus:ring-[var(--admin-gold)]/30";
@@ -296,13 +281,7 @@ function LoginForm() {
 
 export default function ConnexionPage() {
   return (
-    <div
-      className={`account-app admin-af min-h-screen ${display.variable} ${sans.variable}`}
-    >
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap"
-      />
+    <div className="account-app admin-af min-h-screen">
       <div className="mx-auto flex min-h-screen max-w-[420px] flex-col justify-center px-4 py-10">
         <div className="mb-8 flex items-center justify-between">
           <BrandMark href="/" subtitle="Espace client" />

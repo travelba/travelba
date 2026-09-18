@@ -1,5 +1,6 @@
 import type { CrmBooking, CrmBookingDocument, CrmBookingItem } from "@/lib/crm/types";
 import { BOOKING_ITEM_LABELS, type BookingItemKind } from "@/lib/crm/types";
+import { Icon } from "@/components/crm/icons";
 import {
   confirmationForItem,
   dayHeading,
@@ -32,7 +33,7 @@ function ConfirmLink({
       className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--aura-blue)]"
     >
       Voir confirmation
-      <span className="material-symbols-outlined text-[16px]">picture_as_pdf</span>
+      <Icon name="picture_as_pdf" className="h-4 w-4" />
     </a>
   );
 }
@@ -66,7 +67,7 @@ function CardBody({
     <details className="group rounded-2xl border border-[#e5e3dc] bg-white">
       <summary className="flex cursor-pointer list-none items-start gap-3 px-3.5 py-3 [&::-webkit-details-marker]:hidden">
         <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--admin-peach)] text-[var(--admin-navy)]">
-          <span className="material-symbols-outlined text-[20px]">{kindIcon(item.kind)}</span>
+          <Icon name={kindIcon(item.kind)} className="h-5 w-5" />
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--aura-blue)]">

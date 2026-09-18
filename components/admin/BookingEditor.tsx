@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent } from "react";
+import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -24,6 +24,8 @@ import { bookingCoverUrl } from "@/lib/crm/covers";
 import { documentLabel } from "@/lib/crm/carnet";
 import { personDocumentsForTraveler, primaryIdentityDoc, travelerDisplayName } from "@/lib/crm/trip-documents";
 import { BookingIngest } from "@/components/crm/BookingIngest";
+import { CoverPhoto } from "@/components/crm/CoverPhoto";
+import { Icon } from "@/components/crm/icons";
 import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
 
@@ -51,24 +53,42 @@ export function BookingEditor({
   const router = useRouter();
   const unpublishedItems = items.filter((item) => !item.visible_to_client);
   const needsReview = items.some((item) => item.details?.needs_review === true);
+  const [busy, setBusy] = useState<"idle" | "save" | "publish">("idle");
+  const [flash, setFlash] = useState<string | null>(null);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setBusy("save");
+    setFlash(null);
     const body = Object.fromEntries(new FormData(event.currentTarget).entries());
-    await fetch(`/api/admin/bookings/${booking.id}`, {
+    const res = await fetch(`/api/admin/bookings/${booking.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+    setBusy("idle");
+    if (!res.ok) {
+      setFlash("Enregistrement impossible.");
+      return;
+    }
+    setFlash("Enregistré. Le carnet n’est pas publié pour autant.");
     router.refresh();
   }
 
   async function setPublished(visible: boolean) {
-    await fetch(`/api/admin/bookings/${booking.id}`, {
+    setBusy("publish");
+    setFlash(null);
+    const res = await fetch(`/api/admin/bookings/${booking.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ visible_to_client: visible }),
     });
+    setBusy("idle");
+    if (!res.ok) {
+      setFlash(visible ? "Publication impossible." : "Masquage impossible.");
+      return;
+    }
+    setFlash(visible ? "Carnet publié." : "Carnet masqué.");
     router.refresh();
   }
 
@@ -138,12 +158,11 @@ export function BookingEditor({
 
   return (
     <div className="space-y-6">
-      <div className="overflow-hidden rounded-3xl">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={bookingCoverUrl(booking)}
+      <div className="relative h-48 overflow-hidden rounded-3xl sm:h-64">
+        <CoverPhoto
+          src={bookingCoverUrl(booking, 1200)}
           alt={booking.destination || booking.title}
-          className="h-48 w-full object-cover sm:h-64"
+          priority
         />
       </div>
 
@@ -156,7 +175,7 @@ export function BookingEditor({
           <p className="text-sm text-muted">
             Enregistrer ne publie pas. Publier rend visibles toutes les cartes actuelles.
           </p>
-          {unpublishedItems.length && booking.visible_to_client ? (
+          {unpublishedItems.length > 0 && booking.visible_to_client ? (
             <p className="mt-2 rounded-2xl bg-[var(--admin-peach)] px-3 py-2 text-sm">
               À vérifier — {unpublishedItems.length} nouvelle{unpublishedItems.length > 1 ? "s" : ""} carte
               {unpublishedItems.length > 1 ? "s" : ""} non publiée{unpublishedItems.length > 1 ? "s" : ""}.
@@ -193,7 +212,7 @@ export function BookingEditor({
         saveUrl={`/api/admin/bookings/${booking.id}/from-ingest`}
         aiConfigured={aiConfigured}
       />
-      <form onSubmit={save} className="admin-af-card grid gap-3 rounded-3xl p-5 sm:grid-cols-2">
+      <form id="booking-meta" onSubmit={save} className="admin-af-card grid gap-3 rounded-3xl p-5 sm:grid-cols-2">
         <input name="title" defaultValue={booking.title} className="rounded-xl border border-border px-3 py-2" />
         <input name="destination" defaultValue={booking.destination || ""} className="rounded-xl border border-border px-3 py-2" />
         <DateFrInput name="start_date" defaultValue={booking.start_date || ""} className="rounded-xl border border-border px-3 py-2" />
@@ -219,9 +238,9 @@ export function BookingEditor({
         </select>
         <textarea name="notes_client" defaultValue={booking.notes_client || ""} placeholder="Notes client" className="sm:col-span-2 rounded-xl border border-border px-3 py-2" />
         <textarea name="notes_internal" defaultValue={booking.notes_internal || ""} placeholder="Notes internes" className="sm:col-span-2 rounded-xl border border-border px-3 py-2" />
-        <button className="admin-af-btn rounded-full px-4 py-2 text-sm sm:col-span-2">
-          Enregistrer (le statut confirmé crée le débit)
-        </button>
+        <p className="sm:col-span-2 text-xs text-muted">
+          Enregistrer ne publie pas. Le statut confirmé crée le débit au grand livre.
+        </p>
       </form>
 
       <section className="admin-af-card space-y-4 rounded-3xl p-5">
@@ -351,9 +370,7 @@ export function BookingEditor({
                 path={d.storage_path}
                 className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--admin-sky)] px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)]"
               >
-                <span className="material-symbols-outlined text-[16px]">
-                  {fileKindIcon(d.mime_type, d.file_name)}
-                </span>
+                <Icon name={fileKindIcon(d.mime_type, d.file_name)} className="h-4 w-4" />
                 Ouvrir
               </FileOpenLink>
             </li>
@@ -364,6 +381,37 @@ export function BookingEditor({
           <button className="admin-af-btn rounded-full px-3 py-2 text-sm">Joindre</button>
         </form>
       </section>
+
+      <div className="sticky bottom-4 z-30 flex flex-col gap-2 rounded-2xl border border-[#e5e3dc] bg-white/95 p-3 shadow-[0_12px_32px_rgba(11,25,44,0.12)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-[var(--admin-navy)]">
+          {flash ||
+            (booking.visible_to_client
+              ? "Carnet en ligne — enregistrer ne change pas la visibilité."
+              : "Brouillon — le client ne voit rien tant que vous ne publiez pas.")}
+        </p>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <button
+            type="submit"
+            form="booking-meta"
+            disabled={busy !== "idle"}
+            className="rounded-full border border-border px-4 py-2 text-sm font-semibold disabled:opacity-50"
+          >
+            {busy === "save" ? "Enregistrement…" : "Enregistrer"}
+          </button>
+          <button
+            type="button"
+            disabled={busy !== "idle"}
+            onClick={() => void setPublished(true)}
+            className="admin-af-btn rounded-full px-4 py-2 text-sm disabled:opacity-50"
+          >
+            {busy === "publish"
+              ? "Publication…"
+              : booking.visible_to_client
+                ? "Publier les mises à jour"
+                : "Publier le carnet"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

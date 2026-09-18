@@ -12,6 +12,7 @@ export type PortalAccess = {
 export type InviteResult = {
   customer: CrmCustomer;
   delivered: boolean;
+  link: string;
 };
 
 export function appOrigin(request: Request) {
@@ -163,6 +164,7 @@ export async function inviteCustomer(
   callback.searchParams.set("type", linkType);
   callback.searchParams.set("next", SET_PASSWORD_PATH);
 
-  const delivered = await sendInviteEmail(linked, callback.toString());
-  return { customer: linked, delivered };
+  const link = callback.toString();
+  const delivered = await sendInviteEmail(linked, link);
+  return { customer: linked, delivered, link };
 }
