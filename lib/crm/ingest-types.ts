@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { sortItemsByOrder } from "./carnet";
+import { redactIngestValue } from "./ingest-redact";
+import { mergeExtractItems } from "./item-match";
 import { BOOKING_ITEM_KINDS } from "./types";
 
 const nullableString = z.string().nullable().optional();
@@ -91,11 +93,15 @@ export const bookingExtractSchema = z.object({
 export type BookingExtract = z.infer<typeof bookingExtractSchema>;
 
 export function sanitizeExtractedPrices(extract: BookingExtract): BookingExtract {
-  return {
+  const merged = mergeExtractItems(
+    (extract.items || []).map((item) => ({ ...item, amount: null }))
+  );
+  const next: BookingExtract = {
     ...extract,
     total_amount: null,
-    items: sortItemsByOrder((extract.items || []).map((item) => ({ ...item, amount: null }))),
+    items: sortItemsByOrder(merged),
   };
+  return redactIngestValue(next);
 }
 
 export function openaiApiKey() {

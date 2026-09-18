@@ -12,10 +12,10 @@ description: >-
 Agence **seule**. APIs `app/api/client/bookings/**/ingest` = 404.
 Relecture humaine obligatoire puis **Enregistrer** (brouillon). Publier = skill `travelba-carnet`.
 
-Pipeline résa : `unpdf` (texte + images si calque pauvre) → OpenAI `gpt-4o` (`OPENAI_API_KEY` `sk-`) → `sanitizeExtractedPrices` → persist `visible_to_client=false`.
+Pipeline résa : `unpdf` (texte + images si calque pauvre) → redact PAN → indices structurés (`ingest-parse.ts`) → OpenAI `gpt-4o` (`OPENAI_API_KEY` `sk-`) → `applyStructuredHints` + `sanitizeExtractedPrices` (fusion même vol, prix null) → persist `visible_to_client=false`.
 Identité : skill `travelba-identity` (photo MRZ, **pas** ce dropzone).
 
-Code : `lib/crm/ingest-booking.ts` (`PROMPT`), `lib/crm/ingest-types.ts`, `components/crm/BookingIngest.tsx`, `components/crm/IngestItemCard.tsx` (sous-fiches typées `Field`).
+Code : `lib/crm/ingest-booking.ts` (`PROMPT`), `lib/crm/ingest-parse.ts`, `lib/crm/ingest-redact.ts`, `lib/crm/ingest-types.ts`, `components/crm/BookingIngest.tsx`, `components/crm/IngestItemCard.tsx` (sous-fiches typées `Field`).
 Couvertures : Unsplash ville (`covers.ts`) puis IA (`cover-generate.ts`).
 Limites : **30 fichiers**, **25 Mo**, PDF/images.
 
@@ -44,20 +44,26 @@ Ne **pas** extraire paiement / PAN / annulation / conditions.
 - `confirmation_ref` = PNR GDS 6 lettres. `details.pnr` = réf. compagnie.
 - `details.airline` = **opérant**. `supplier` = émetteur (Hahn Air ≠ Air Panama).
 - Aller / retour / correspondance = **un item par segment**. Pas de retour fantôme.
-- `details.from` / `to` = IATA. `details.city_from` / `city_to` = villes.
-- Horaires ISO imprimés. Cabin = libellé + code tarif. Bagages `1PC` → `details.baggage`.
+- **Plusieurs e-tickets passagers du même vol (même n°, même jour) = une carte**, pas une par pax. Noms → `travelers`.
+- IATA 8 chiffres (agence / consolidateur) **n’est pas** un PNR.
+- `details.from` / `to` = IATA. Souvent absent : Gelabert/Albrook=`PAC`, Isla Colón=`BOC`, Enrique Malek=`DAV`, Tocumen=`PTY`.
+- Horaires ISO imprimés. « 03 August 09:45 » + année de « Lundi 03 août 2026 ». Cabin = libellé + code tarif. Bagages `1PC` → `details.baggage`.
+- « Scan for check-in » ≠ hôtel.
 - Email agence ≠ `customer_email`.
 - Réimport même PNR + n° + date = **remplace** la carte.
+- Avant le modèle : `redactIngestText` (PAN / CCVI) + `structuredHintFromPdfText` dans `pdfParts`.
 
 ## Hôtel Little Emperors / My Concierge
 
 **Un item `hotel` par établissement**, même 2 chambres / 2 Booking name / 2 réf.
 
 - `details.rooms = [{ room, guests, confirmation_ref }, …]`
-- `confirmation_ref` = première réf. ou `97620170;97620172`
+- `confirmation_ref` = première réf. ou `97620170;97620172` — `findMatchingItem` rapproche par recouvrement de réf.
 - `details.hotel_name`, `city`, `address` (agent), `board` si écrit, `occupancy` brut
 - `details.included[]` **seulement** si phrase explicite (breakfast…). Sinon pas de bloc
 - **Interdit** d’inventer check-in 15:00 / check-out 12:00
+- Nantipa / vouchers CR : `08/02/2026` = 2 août (MM/JJ). Politique 15:00 ≠ heure de carte.
+- Toucan Discovery = `activity`. Les étapes du cadre ne sont pas des hôtels.
 - Devis : `document_status=quote`, `status` dossier `quoted`, `rooms` = options, toujours invisible tant que non publié. **Pas** un item par option tarifaire
 - Dates header → `start_at` / `end_at` (date only)
 

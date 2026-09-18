@@ -17,6 +17,8 @@ import {
 } from "@/lib/crm/ingest-types";
 import { sortItemsByOrder } from "@/lib/crm/carnet";
 import { scheduleBookingCover } from "@/lib/crm/cover-generate";
+import { applyStructuredHints, structuredHintFromPdfText } from "@/lib/crm/ingest-parse";
+import { redactIngestText } from "@/lib/crm/ingest-redact";
 import { findMatchingItem } from "@/lib/crm/item-match";
 import {
   BOOKING_ITEM_KINDS,
@@ -65,19 +67,24 @@ Règles d’honnêteté :
 
 Vol :
 - Aller et retour = DEUX items. Correspondance = DEUX items (un segment chacun). Pas de retour fantôme.
-- confirmation_ref = PNR GDS 6 lettres. details.pnr = réf. compagnie.
-- details.airline = transporteur opérant. supplier = émetteur du billet (Hahn Air ≠ Air Panama).
-- details.from / to = IATA. details.city_from / city_to = villes.
+- Plusieurs e-tickets passagers pour le MÊME vol (même n°, même jour) = UN item. Les noms vont dans travelers.
+- confirmation_ref = PNR GDS 6 lettres (XL8LPD). details.pnr = réf. compagnie (N0OP1Q). Jamais l’IATA 8 chiffres agence (20287864, 20255270, 96020293).
+- details.airline = transporteur opérant. supplier = émetteur du billet (Hahn Air ≠ Air Panama ; Copa opérant = Copa).
+- details.from / to = IATA. Souvent absent du PDF : Gelabert/Albrook=PAC, Isla Colón=BOC, Enrique Malek=DAV, Tocumen=PTY.
+- details.city_from / city_to = villes. « 03 August 09:45 » : année = ligne « Lundi 03 août 2026 ».
+- « Scan for check-in. Not to be used as boarding pass » n’est PAS un hôtel.
 - Bagages / siège / terminal seulement s’ils sont imprimés.
 - Vol de nuit : start_at = décollage ; noter J+1 dans details.notes si l’arrivée est le lendemain.
 
 Hôtel :
 - UN item même s’il y a deux chambres / deux réf. : details.rooms = [{room, guests, confirmation_ref}, …].
-- confirmation_ref = première réf. ou les deux séparées par « ; ».
+- confirmation_ref = première réf. ou les deux séparées par « ; » (ex. 97620170;97620172).
 - details.hotel_name, details.city (ville), details.address (pour l’agent), details.board (pension) si écrite.
 - details.occupancy = texte brut (« 2 adultes + 1 enfant ») s’il est écrit.
 - details.special_requests si lit bébé / vue / late check-in est écrit.
-- Devis : document_status=quote, un item hôtel, rooms = les options, total_amount=null.
+- Nantipa / vouchers Costa Rica : 08/02/2026 = 2 août (MM/JJ), pas 8 février. Check-in 15:00 dans les CGV ≠ heure de la carte (date only).
+- Toucan Discovery = activités (kind=activity). Les « étapes » du cadre (El Silencio, Arenas…) ne sont PAS des réservations hôtel.
+- Devis Passion Collection / « none are on hold » : document_status=quote, un item hôtel, rooms = les options, total_amount=null. Pas de NET.
 
 Transfert : details.pickup / dropoff. Si « 2 h 30 avant le vol » sans heure clock → details.pickup_note, pas d’heure inventée. Pas de chauffeur au client.
 
@@ -177,15 +184,20 @@ async function imagePart(bytes: Uint8Array, mediaType: string): Promise<UserPart
   return { type: "image", image: bytes, mediaType };
 }
 
-async function pdfParts(name: string, bytes: Uint8Array): Promise<UserPart[]> {
+async function pdfParts(
+  name: string,
+  bytes: Uint8Array
+): Promise<{ parts: UserPart[]; text: string }> {
   const parts: UserPart[] = [];
+  let text = "";
   try {
     const pdf = await getDocumentProxy(bytes);
     const extracted = await extractText(pdf, { mergePages: true });
-    const text = extracted.text;
+    text = redactIngestText(extracted.text);
+    const hint = structuredHintFromPdfText(text);
     parts.push({
       type: "text",
-      text: `PDF « ${name} » (${extracted.totalPages} page${extracted.totalPages > 1 ? "s" : ""}) :\n${text.slice(0, 24000)}`,
+      text: `PDF « ${name} » (${extracted.totalPages} page${extracted.totalPages > 1 ? "s" : ""}) :\n${text.slice(0, 24000)}${hint ? `\n\nIndices structurés :\n${hint}` : ""}`,
     });
     const dense = text.replace(/\s/g, "").length;
     if (dense < 500) {
@@ -217,21 +229,43 @@ async function pdfParts(name: string, bytes: Uint8Array): Promise<UserPart[]> {
       text: `PDF « ${name} » : texte illisible, s’appuyer sur le fichier binaire s’il est fourni.`,
     });
   }
-  return parts;
+  return { parts, text };
 }
 
-async function buildIngestContent(files: File[]): Promise<UserPart[]> {
+async function buildIngestContent(
+  files: File[]
+): Promise<{ content: UserPart[]; texts: string[] }> {
   const content: UserPart[] = [{ type: "text", text: PROMPT }];
+  const texts: string[] = [];
   for (const file of files) {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const mediaType = file.type || guessMime(file.name);
     if (mediaType === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
-      content.push(...(await pdfParts(file.name, bytes)));
+      const pdf = await pdfParts(file.name, bytes);
+      if (pdf.text) texts.push(pdf.text);
+      content.push(...pdf.parts);
     } else {
-      content.push(await imagePart(bytes, mediaType.startsWith("image/") ? mediaType : "image/jpeg"));
+      content.push(
+        await imagePart(bytes, mediaType.startsWith("image/") ? mediaType : "image/jpeg")
+      );
+      content.push({
+        type: "text",
+        text: `Image « ${file.name} » : billet, voucher ou capture. Ne pas extraire de numéro de carte. « Scan for check-in » n’est pas un hôtel.`,
+      });
     }
   }
-  return content;
+  const hints = texts.map(structuredHintFromPdfText).filter(Boolean).join("\n");
+  if (hints) {
+    content.splice(1, 0, {
+      type: "text",
+      text: `Indices structurés (prioritaires). Plusieurs e-tickets du même vol = UN item. Aéroports sans IATA : déduire PAC/BOC/DAV/PTY.\n${hints}`,
+    });
+  }
+  return { content, texts };
+}
+
+function finalizeExtract(extract: BookingExtract, texts: string[]): BookingExtract {
+  return sanitizeExtractedPrices(applyStructuredHints(extract, texts));
 }
 
 export async function extractBookingFromFiles(files: File[]): Promise<BookingExtract> {
@@ -239,14 +273,14 @@ export async function extractBookingFromFiles(files: File[]): Promise<BookingExt
     throw new Error("Lecture automatique non configurée (OPENAI_API_KEY).");
   }
   assertIngestFiles(files);
-  const content = await buildIngestContent(files);
+  const { content, texts } = await buildIngestContent(files);
   const key = openaiApiKey();
   try {
     const result = await generateExtract(content, !key);
     if (!result.output) {
       throw new Error("Lecture incomplète. Réessayez avec des fichiers plus lisibles.");
     }
-    return sanitizeExtractedPrices(result.output);
+    return finalizeExtract(result.output, texts);
   } catch (err) {
     if (err instanceof Error && err.message.startsWith("Lecture")) throw err;
     if (
@@ -259,7 +293,7 @@ export async function extractBookingFromFiles(files: File[]): Promise<BookingExt
         if (!fallback.output) {
           throw new Error("Lecture incomplète. Réessayez avec des fichiers plus lisibles.");
         }
-        return sanitizeExtractedPrices(fallback.output);
+        return finalizeExtract(fallback.output, texts);
       } catch (fallbackErr) {
         if (fallbackErr instanceof Error && fallbackErr.message.startsWith("Lecture")) {
           throw fallbackErr;
@@ -449,15 +483,28 @@ async function upsertItemsAndTravelers(
           .update(payload)
           .eq("id", match.id);
         if (error) throw new Error(error.message);
-        const idx = remaining.findIndex((row) => row.id === match.id);
-        if (idx >= 0) remaining.splice(idx, 1);
+        Object.assign(match, payload);
       } else {
-        const { error } = await supabase.from("crm_booking_items").insert({
-          booking_id: bookingId,
-          sort_order: sort++,
-          ...payload,
-        });
+        const { data: inserted, error } = await supabase
+          .from("crm_booking_items")
+          .insert({
+            booking_id: bookingId,
+            sort_order: sort++,
+            ...payload,
+          })
+          .select("id")
+          .single();
         if (error) throw new Error(error.message);
+        if (inserted?.id) {
+          remaining.push({
+            id: inserted.id,
+            booking_id: bookingId,
+            sort_order: sort - 1,
+            created_at: "",
+            updated_at: "",
+            ...payload,
+          } as CrmBookingItem);
+        }
       }
       saved += 1;
     } catch (err) {
@@ -627,5 +674,5 @@ export async function applyExtractToBooking(opts: {
 export function parseExtractPayload(raw: unknown): BookingExtract {
   const parsed = bookingExtractSchema.safeParse(raw);
   if (!parsed.success) throw new Error("Données extraites invalides");
-  return parsed.data;
+  return sanitizeExtractedPrices(parsed.data);
 }

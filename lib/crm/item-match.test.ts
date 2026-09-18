@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { findMatchingItem, itemMatchKey } from "./item-match";
+import { findMatchingItem, itemMatchKey, mergeExtractItems } from "./item-match";
 
 describe("itemMatchKey", () => {
   it("fusionne deux vols au même numéro et jour", () => {
@@ -45,5 +45,17 @@ describe("itemMatchKey", () => {
 
   it("n’invente pas de clé sans réf. ni dates", () => {
     assert.equal(itemMatchKey({ kind: "activity", title: "Spa" }), null);
+  });
+
+  it("fusionne cinq e-tickets du même segment", () => {
+    const merged = mergeExtractItems(
+      Array.from({ length: 5 }, () => ({
+        kind: "flight",
+        confirmation_ref: "XLDW2Z",
+        start_at: "2026-08-12T09:50:00",
+        details: { flight_number: "CM 18" },
+      }))
+    );
+    assert.equal(merged.length, 1);
   });
 });
