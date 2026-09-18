@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { TX_KIND_LABELS, type CrmTransaction } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
+import { Icon } from "@/components/crm/icons";
 
 export function TxHistory({ rows }: { rows: CrmTransaction[] }) {
   const searchParams = useSearchParams();
@@ -56,9 +57,10 @@ export function TxHistory({ rows }: { rows: CrmTransaction[] }) {
                     credit ? "text-[var(--admin-gold)]" : "text-[var(--admin-red)]"
                   } bg-[#efebe0]`}
                 >
-                  <span className="material-symbols-outlined text-[20px]">
-                    {credit ? "add" : t.kind === "booking" ? "hotel" : "payments"}
-                  </span>
+                  <Icon
+                    name={credit ? "add" : t.kind === "booking" ? "hotel" : "payments"}
+                    className="h-5 w-5"
+                  />
                 </div>
                 <div className="flex min-w-0 flex-col">
                   <span className="truncate font-semibold text-[var(--admin-navy-deep)]">

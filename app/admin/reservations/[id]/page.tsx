@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { BookingEditor } from "@/components/admin/BookingEditor";
 import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
@@ -9,6 +8,7 @@ import type {
   CrmBookingItem,
   CrmBookingTraveler,
   CrmCompanion,
+  CrmCustomer,
   CrmTravelDocument,
 } from "@/lib/crm/types";
 
@@ -31,6 +31,7 @@ export default async function AdminBookingPage({ params }: Props) {
     { data: companions },
     { data: identityDocs },
     { data: holder },
+    { data: customers },
   ] = await Promise.all([
     supabase.from("crm_booking_items").select("*").eq("booking_id", id).order("sort_order"),
     supabase.from("crm_booking_travelers").select("*").eq("booking_id", id),
@@ -42,6 +43,7 @@ export default async function AdminBookingPage({ params }: Props) {
       .select("first_name, last_name")
       .eq("id", b.customer_id)
       .maybeSingle(),
+    supabase.from("crm_customers").select("*").order("last_name"),
   ]);
   const allIdentity = (identityDocs || []) as CrmTravelDocument[];
 
@@ -57,6 +59,7 @@ export default async function AdminBookingPage({ params }: Props) {
           documents={(documents || []) as CrmBookingDocument[]}
           identityDocs={allIdentity}
           companions={(companions || []) as CrmCompanion[]}
+          customers={(customers || []) as CrmCustomer[]}
           holderName={{
             first_name: holder?.first_name || "",
             last_name: holder?.last_name || "",

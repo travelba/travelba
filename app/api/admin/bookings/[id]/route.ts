@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
-import { syncBookingDebit } from "@/lib/crm/bookings";
+import { setCarnetPublished, syncBookingDebit } from "@/lib/crm/bookings";
 import { scheduleBookingCover } from "@/lib/crm/cover-generate";
 import type { BookingStatus, CrmBooking } from "@/lib/crm/types";
 
@@ -51,14 +51,30 @@ export async function PATCH(request: Request, ctx: Ctx) {
     }
   }
 
-  const { data, error } = await auth.supabase
-    .from("crm_bookings")
-    .update(patch)
-    .eq("id", id)
-    .select("*")
-    .single();
-  if (error) return jsonError(error.message, 400);
-  const booking = data as CrmBooking;
+  let booking = prev;
+  if (Object.keys(patch).length) {
+    const { data, error } = await auth.supabase
+      .from("crm_bookings")
+      .update(patch)
+      .eq("id", id)
+      .select("*")
+      .single();
+    if (error) return jsonError(error.message, 400);
+    booking = data as CrmBooking;
+  }
+  if ("visible_to_client" in body) {
+    try {
+      await setCarnetPublished(auth.supabase, id, Boolean(body.visible_to_client));
+    } catch (err) {
+      return jsonError(err instanceof Error ? err.message : "Publication impossible", 400);
+    }
+    const { data: refreshed } = await auth.supabase
+      .from("crm_bookings")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+    if (refreshed) booking = refreshed as CrmBooking;
+  }
   await syncBookingDebit(
     auth.supabase,
     booking,

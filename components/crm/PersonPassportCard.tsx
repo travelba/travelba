@@ -15,6 +15,7 @@ import { appendPassportForm } from "@/lib/crm/passport-extract";
 import { documentsForPerson, primaryIdentityDoc } from "@/lib/crm/trip-documents";
 import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
+import { Icon } from "@/components/crm/icons";
 import { StatusChip } from "@/components/crm/ui";
 
 type PassportSource = {
@@ -199,9 +200,7 @@ export function PersonPassportCard({
           path={current.storage_path}
           className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)] ring-1 ring-[#e5e3dc]"
         >
-          <span className="material-symbols-outlined text-[16px]">
-            {fileKindIcon(current.mime_type, current.file_name)}
-          </span>
+          <Icon name={fileKindIcon(current.mime_type, current.file_name)} className="h-4 w-4" />
           Ouvrir le fichier
         </FileOpenLink>
       ) : null}

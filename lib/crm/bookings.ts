@@ -75,3 +75,41 @@ export async function syncBookingDebit(
       .eq("id", debit.id);
   }
 }
+
+export function canPublishCarnet(items: { kind: string }[]) {
+  return items.some((item) => item.kind !== "fee");
+}
+
+export async function setCarnetPublished(
+  supabase: SupabaseClient,
+  bookingId: string,
+  visible: boolean
+) {
+  if (visible) {
+    const { data: items, error: itemsLookupError } = await supabase
+      .from("crm_booking_items")
+      .select("kind")
+      .eq("booking_id", bookingId);
+    if (itemsLookupError) throw new Error(itemsLookupError.message);
+    if (!canPublishCarnet(items || [])) {
+      throw new Error("Ajoutez au moins une carte avant de publier le carnet.");
+    }
+  }
+  const { error: bookingError } = await supabase
+    .from("crm_bookings")
+    .update({ visible_to_client: visible })
+    .eq("id", bookingId);
+  if (bookingError) throw new Error(bookingError.message);
+  if (!visible) return;
+  const { error: itemsError } = await supabase
+    .from("crm_booking_items")
+    .update({ visible_to_client: true })
+    .eq("booking_id", bookingId);
+  if (itemsError) throw new Error(itemsError.message);
+  const { error: docsError } = await supabase
+    .from("crm_booking_documents")
+    .update({ visible_to_client: true })
+    .eq("booking_id", bookingId);
+  if (docsError) throw new Error(docsError.message);
+}
+

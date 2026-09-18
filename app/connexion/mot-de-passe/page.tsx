@@ -1,25 +1,10 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { Plus_Jakarta_Sans, Inter } from "next/font/google";
 import { useRouter } from "next/navigation";
 import { siteConfig } from "@/lib/site";
 import { BrandMark } from "@/components/crm/ui";
 import { MIN_PASSWORD_LENGTH } from "@/lib/crm/session";
-
-const display = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  variable: "--font-admin-display",
-  weight: ["600", "700", "800"],
-  display: "swap",
-});
-
-const sans = Inter({
-  subsets: ["latin"],
-  variable: "--font-admin-sans",
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
-});
 
 const fieldClass =
   "w-full rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-3 text-[var(--admin-navy)] outline-none focus:border-[var(--admin-gold)] focus:bg-white focus:ring-2 focus:ring-[var(--admin-gold)]/30";
@@ -46,12 +31,12 @@ export default function SetPasswordPage() {
       setError(json.error || "Impossible d’enregistrer le mot de passe");
       return;
     }
-    router.push("/mon-compte");
+    router.push("/mon-compte/profil");
     router.refresh();
   }
 
   return (
-    <div className={`account-app admin-af min-h-screen ${display.variable} ${sans.variable}`}>
+    <div className="account-app admin-af min-h-screen">
       <div className="mx-auto flex min-h-screen max-w-[420px] flex-col justify-center px-4 py-10">
         <div className="mb-8 flex items-center justify-between">
           <BrandMark href="/" subtitle="Espace client" />

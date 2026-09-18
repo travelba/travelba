@@ -25,13 +25,12 @@ export async function POST(request: Request, ctx: Ctx) {
     if (!booking) return jsonError("Réservation introuvable", 404);
     const extract = parseExtractPayload(JSON.parse(String(form.get("extract") || "{}")));
     const files = collectIngestFiles(form);
-    const visibleToClient = String(form.get("visible_to_client") || "1") !== "0";
     await applyExtractToBooking({
       bookingId: id,
       customerId: booking.customer_id,
       extract,
       files,
-      visibleToClient,
+      visibleToClient: false,
     });
     return NextResponse.json({ ok: true, booking_id: id });
   } catch (err) {
