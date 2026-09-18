@@ -6,22 +6,7 @@ import type { CrmCustomer, CrmRevolutTransaction } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { revolutInboxEmptyMessage } from "@/lib/crm/launch-status";
 import { StatusChip } from "@/components/crm/ui";
-
-export const REVOLUT_STATUS_LABELS: Record<string, string> = {
-  unmatched: "À rapprocher",
-  matched: "Crédité",
-  ignored: "Ignoré",
-};
-
-export function revolutStatusLabel(status: string) {
-  return REVOLUT_STATUS_LABELS[status] ?? status;
-}
-
-function revolutStatusTone(status: string): "amber" | "gold" | "navy" {
-  if (status === "unmatched") return "amber";
-  if (status === "matched") return "gold";
-  return "navy";
-}
+import { revolutStatusLabel, revolutStatusTone, revolutSyncSummary } from "@/lib/crm/revolut-labels";
 
 export function RevolutInbox({
   rows,
@@ -62,13 +47,7 @@ export function RevolutInbox({
         setError(json.error || "Synchronisation impossible. Réessayez.");
         return;
       }
-      setMessage(
-        `Synchronisation terminée : ${json.fetched || 0} mouvement${
-          (json.fetched || 0) > 1 ? "s" : ""
-        } lu${(json.fetched || 0) > 1 ? "s" : ""}, ${json.inserted || 0} nouveau${
-          (json.inserted || 0) > 1 ? "x" : ""
-        }.`
-      );
+      setMessage(revolutSyncSummary(Number(json.fetched || 0), Number(json.inserted || 0)));
       router.refresh();
     } catch {
       setError("Connexion interrompue. Réessayez.");
