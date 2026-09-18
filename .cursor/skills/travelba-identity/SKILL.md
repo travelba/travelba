@@ -27,7 +27,7 @@ description: >-
 ## Passeport / pièces
 
 - **Un passeport par personne** (titulaire ou compagnon), pas un passeport « du dossier » générique.
-- Scan : photo JPEG/PNG/HEIC → `/api/admin/travel-documents/scan` ou `/api/client/documents/scan`. MRZ Tesseract + `mrz`. **Pas** le dropzone résa.
+- Scan : photo JPEG/PNG/HEIC → `/api/admin/travel-documents/scan` ou `/api/client/documents/scan`. MRZ Tesseract + `mrz`. **Pas** le dropzone résa (skill `travelba-document-ingest`).
 - PDF passeport souvent sans calque : rasteriser ou photo de la bande MRZ.
 - Ne **pas** logger numéro / MRZ.
 - Champs : n°, nationalité, naissance, expiration, `place_of_birth`, `authority`, `personal_number` (migration passport_fields).

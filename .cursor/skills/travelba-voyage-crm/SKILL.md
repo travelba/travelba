@@ -13,6 +13,7 @@ Produit : back-office `/admin` + espace client `/mon-compte`. UI française.
 Site public : `https://travelba.fr`. Compte : Travel Business Agency (TBA).
 
 Lire **ce fichier en premier**, puis **un seul** skill spécialisé ci-dessous.
+PDF / photos / « entraîne l’import » → **`travelba-document-ingest`** (qualité carnet = qualité import).
 Ne pas ré-ouvrir le QCM produit : les règles sont déjà ancrées dans les skills.
 
 ## Quel skill charger
@@ -24,7 +25,7 @@ Ne pas ré-ouvrir le QCM produit : les règles sont déjà ancrées dans les ski
 | Schema, RLS, bucket, Auth dashboard, migrations | `.cursor/skills/travelba-supabase/SKILL.md` |
 | Invitation, magique, mot de passe, sessions, staff | `.cursor/skills/travelba-auth/SKILL.md` |
 | Carnet, timeline, publier, cartes vol/hôtel | `.cursor/skills/travelba-carnet/SKILL.md` |
-| PDF Amadeus / Little Emperors / TAAP, OCR | `.cursor/skills/travelba-document-ingest/SKILL.md` |
+| **Import PDF/photos** (qualité / fiabilité des cartes) | `.cursor/skills/travelba-document-ingest/SKILL.md` |
 | Ledger, encours, Stripe, Revolut | `.cursor/skills/travelba-money/SKILL.md` |
 | Stitch, Lucide, `/api/files`, copy FR | `.cursor/skills/travelba-ui/SKILL.md` |
 | Fiche, passeports, compagnons, facturation | `.cursor/skills/travelba-identity/SKILL.md` |
@@ -80,7 +81,7 @@ IDs prod :
 | Auth staff/client | `lib/crm/auth.ts`, `lib/crm/session.ts` |
 | Invitation | `lib/crm/invite.ts` |
 | Carnet | `lib/crm/carnet.ts` |
-| Import docs | `lib/crm/ingest-booking.ts` |
+| Import docs | `lib/crm/ingest-booking.ts`, `ingest-parse.ts`, skill `travelba-document-ingest` |
 | Couvertures | `lib/crm/covers.ts` + `lib/crm/cover-generate.ts` |
 | Identité | `lib/crm/ocr-document.ts` |
 | Fichiers | `lib/crm/files.ts` + `app/api/files/route.ts` |
