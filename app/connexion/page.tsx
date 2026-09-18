@@ -127,7 +127,7 @@ function LoginForm() {
             autoComplete="username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="marie.dupont@entreprise.com"
+            placeholder="vous@email.fr"
             className={fieldClass}
           />
         </label>
@@ -166,7 +166,7 @@ function LoginForm() {
             autoComplete="username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="marie.dupont@entreprise.com"
+            placeholder="vous@email.fr"
             className={fieldClass}
           />
         </label>
@@ -216,7 +216,7 @@ function LoginForm() {
           autoComplete="username"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="marie.dupont@entreprise.com"
+          placeholder="vous@email.fr"
           className={fieldClass}
         />
       </label>
