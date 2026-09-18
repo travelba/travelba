@@ -179,6 +179,7 @@
       "submitting": "Sending...",
       "success": "Thank you! Your request has been sent. We'll reply very soon.",
       "error": "Something went wrong. Please retry or contact us directly on WhatsApp.",
+      "undelivered": "Your request could not be forwarded automatically. Message us on WhatsApp or at {email} and we will reply quickly.",
       "orWhatsapp": "or message us directly on WhatsApp"
     },
     "infoTitle": "Contact details",

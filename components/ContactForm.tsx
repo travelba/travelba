@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { Send, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
-import { SERVICE_KEYS } from "@/lib/site";
+import { SERVICE_KEYS, siteConfig } from "@/lib/site";
 import { PhoneField } from "@/components/crm/fields";
 
-type Status = "idle" | "loading" | "success" | "error";
+type Status = "idle" | "loading" | "success" | "undelivered" | "error";
 
 export function ContactForm() {
   const t = useTranslations("Contact.form");
@@ -29,7 +29,9 @@ export function ContactForm() {
         body: JSON.stringify(data),
       });
       if (!res.ok) throw new Error("Request failed");
-      setStatus("success");
+      const json = (await res.json().catch(() => ({}))) as { delivered?: boolean };
+      // L’API répond ok sans envoi quand la messagerie n’est pas configurée : ne pas promettre une réponse.
+      setStatus(json.delivered === false ? "undelivered" : "success");
       form.reset();
       setPhone("");
       setPhoneKey((key) => key + 1);
@@ -141,6 +143,12 @@ export function ContactForm() {
         <p className="flex items-center gap-2 rounded-xl border border-accent-2/30 bg-accent-2/10 px-4 py-3 text-sm text-foreground">
           <CheckCircle2 className="h-4 w-4 shrink-0 text-accent-2" />
           {t("success")}
+        </p>
+      )}
+      {status === "undelivered" && (
+        <p className="flex items-center gap-2 rounded-xl border border-accent-3/30 bg-accent-3/10 px-4 py-3 text-sm text-foreground">
+          <AlertCircle className="h-4 w-4 shrink-0 text-accent-3" />
+          {t("undelivered", { email: siteConfig.contactEmail })}
         </p>
       )}
       {status === "error" && (
