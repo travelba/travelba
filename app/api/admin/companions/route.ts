@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { resolveCountryCode } from "@/lib/crm/countries";
 import { emptyToNull } from "@/lib/crm/identity";
+import { deleteTravelDocuments } from "@/lib/crm/travel-document-write";
 
 function companionPatch(body: Record<string, unknown>) {
   const sex = emptyToNull(body.sex);
@@ -58,6 +59,8 @@ export async function DELETE(request: Request) {
   if (auth instanceof NextResponse) return auth;
   const id = new URL(request.url).searchParams.get("id");
   if (!id) return jsonError("id requis");
+  const docs = await deleteTravelDocuments(auth.supabase, { companion_id: id });
+  if (docs.error) return dbError(docs.error, 400);
   const { error } = await auth.supabase
     .from("crm_travel_companions")
     .delete()

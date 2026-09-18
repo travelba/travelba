@@ -5,6 +5,7 @@ import {
   identityFieldsFromForm,
   type DocumentIdentityFields,
 } from "./document-identity";
+import { removeCrmFiles } from "./files";
 import { emptyToNull } from "./identity";
 import { cleanPersonalNumber } from "./passport-extract";
 import { DOC_TYPES, type CrmTravelDocument, type TravelDocType } from "./types";
@@ -237,4 +238,23 @@ export async function applyIdentityFromForm(
       .eq("id", travelerId);
     if (travelerUpdate.error) throw new Error(travelerUpdate.error.message);
   }
+}
+
+/**
+ * Supprime des pièces (ligne + fichier du coffre). `filter` porte la clause RLS
+ * (id, customer_id, companion_id…) pour que le client ne touche qu’à ses pièces.
+ */
+export async function deleteTravelDocuments(
+  supabase: SupabaseClient,
+  filter: Record<string, string>
+) {
+  let query = supabase.from("crm_travel_documents").delete();
+  for (const [column, value] of Object.entries(filter)) query = query.eq(column, value);
+  const { data, error } = await query.select("storage_path");
+  if (error) return { error, paths: [] as string[] };
+  const paths = (data || [])
+    .map((row) => (row as { storage_path: string | null }).storage_path)
+    .filter((path): path is string => Boolean(path));
+  if (paths.length) await removeCrmFiles(paths);
+  return { error: null, paths };
 }

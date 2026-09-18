@@ -5,6 +5,7 @@ import { emptyToNull } from "@/lib/crm/identity";
 import {
   applyIdentityFromForm,
   cloneTravelDocument,
+  deleteTravelDocuments,
   insertTravelDocument,
   travelDocumentFromForm,
 } from "@/lib/crm/travel-document-write";
@@ -68,11 +69,10 @@ export async function DELETE(request: Request) {
   if (auth instanceof NextResponse) return auth;
   const id = new URL(request.url).searchParams.get("id");
   if (!id) return jsonError("id requis");
-  const { error } = await auth.supabase
-    .from("crm_travel_documents")
-    .delete()
-    .eq("id", id)
-    .eq("customer_id", auth.customer.id);
+  const { error } = await deleteTravelDocuments(auth.supabase, {
+    id,
+    customer_id: auth.customer.id,
+  });
   if (error) return dbError(error, 400);
   return NextResponse.json({ ok: true });
 }
