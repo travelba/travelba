@@ -9,6 +9,10 @@ const AIRPORTS: { re: RegExp; iata: string; city: string }[] = [
   { re: /ISLA COLON|BOCAS DEL TORO/i, iata: "BOC", city: "Bocas del Toro" },
   { re: /ENRIQUE MALEK/i, iata: "DAV", city: "David" },
   { re: /TOCUMEN/i, iata: "PTY", city: "Panama" },
+  { re: /CHARLES-DE-GAULLE|CHARLES DE GAULLE/i, iata: "CDG", city: "Paris" },
+  { re: /A[ÉE]ROPORT DE GEN[ÈE]VE|GEN[ÈE]VE GEN[ÈE]VE/i, iata: "GVA", city: "Genève" },
+  { re: /HEATHROW/i, iata: "LHR", city: "Londres" },
+  { re: /MARSEILLE PROVENCE/i, iata: "MRS", city: "Marseille" },
 ];
 
 const MONTHS: Record<string, string> = {
@@ -75,17 +79,17 @@ function itineraryYear(text: string): string | null {
   return weekday?.[1] || null;
 }
 
-/** `10 August 2026`, `18 août 2026`, ou `03 August 09:45` + année de l’itinéraire. */
+/** `10 August 2026`, `18 août 2026`, `Pickup on 18 Septembre 2026 at 16:00`, ou `03 August 09:45` + année. */
 export function parseFrEnDate(chunk: string, yearHint?: string | null): string | null {
-  const named = chunk.match(
-    /(\d{1,2})\s+([A-Za-zàâéèêëïîôùûüç.]+)\s+(20\d{2})(?:\s+(\d{1,2})[h:](\d{2}))?/i
-  );
+  const named = chunk.match(/(\d{1,2})\s+([A-Za-zàâéèêëïîôùûüç.]+)\s+(20\d{2})/i);
   if (named) {
     const mm = monthNum(named[2]);
     if (!mm) return null;
     const day = named[1].padStart(2, "0");
     const iso = `${named[3]}-${mm}-${day}`;
-    return named[4] ? `${iso}T${named[4].padStart(2, "0")}:${named[5]}:00` : iso;
+    const rest = chunk.slice((named.index || 0) + named[0].length);
+    const time = rest.match(/^(?:\s+(?:at|à))?\s*(\d{1,2})[h:](\d{2})/i);
+    return time ? `${iso}T${time[1].padStart(2, "0")}:${time[2]}:00` : iso;
   }
   const clock = chunk.match(
     /(\d{1,2})\s+([A-Za-zàâéèêëïîôùûüç.]+)\s+(\d{1,2})[h:](\d{2})/i
@@ -109,6 +113,17 @@ export function parseUsMonthDayYear(chunk: string): string | null {
   return `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
 }
 
+/** Confirmation Leela : `14-SEP-26`. */
+export function parseDdMonYy(chunk: string): string | null {
+  const m = chunk.match(/(\d{1,2})-([A-Za-z]{3})-(\d{2})\b/);
+  if (!m) return null;
+  const mm = monthNum(m[2]);
+  if (!mm) return null;
+  const yy = Number(m[3]);
+  const year = yy >= 70 ? 1900 + yy : 2000 + yy;
+  return `${year}-${mm}-${m[1].padStart(2, "0")}`;
+}
+
 export type ParsedAmadeusFlight = {
   confirmation_ref: string;
   pnr: string | null;
@@ -123,56 +138,93 @@ export type ParsedAmadeusFlight = {
   end_at: string | null;
   cabin: string | null;
   baggage: string | null;
+  terminal: string | null;
+  seat: string | null;
 };
 
-export function parseAmadeusReceipt(text: string): ParsedAmadeusFlight | null {
-  if (!/Reçu de Billet Electronique/i.test(text)) return null;
-  const gds = text.match(
-    /R[eé]f[eé]rence du dossier(?!\s+compagnie)\s+([A-Z0-9]{6})\b/i
-  );
-  if (!gds) return null;
-  const year = itineraryYear(text);
-  const company = text.match(
-    /R[eé]f[eé]rence du dossier compagnie\s+([A-Z0-9]{2})\/([A-Z0-9]{5,6})/i
-  );
-  const issuer = text.match(/Compagnie [eé]mettrice\s*:\s*([A-Z][A-Z ]+)/i);
-  const operated = text.match(
-    /([A-Z][A-Za-z0-9 .]+?)\s+([A-Z0-9]{1,3})\s+(\d{1,4})\s+\(Op[eé]r[eé] Par\s+([^,]+),/i
-  );
+function parseAmadeusSegment(
+  block: string,
+  gds: string,
+  companyPnr: string | null,
+  issuer: string | null,
+  yearHint: string | null,
+  operated: RegExpMatchArray
+): ParsedAmadeusFlight {
+  const year = itineraryYear(block) || yearHint;
   const clock = /(\d{1,2}\s+[A-Za-zàâéèêëïîôùûüç.]+\s+\d{1,2}:\d{2})/i;
-  const dep = text.match(
-    new RegExp(clock.source + "([\\s\\S]{0,160}?)D[eé]part", "i")
-  );
-  const afterDep = dep?.index != null ? text.slice(dep.index + dep[0].length) : text;
+  const dep = block.match(new RegExp(clock.source + "([\\s\\S]{0,160}?)D[eé]part", "i"));
+  const afterDep = dep?.index != null ? block.slice(dep.index + dep[0].length) : block;
   const arr = afterDep.match(
     new RegExp(clock.source + "([\\s\\S]{0,160}?)Arriv[eé]e", "i")
   );
-  const cabin = text.match(/([A-Za-z]+) \(([A-Z])\)\s*Classe/i);
-  const bags = text.match(/Bagages autoris[eé]s\s+(\d+PC)/i);
+  const cabin = block.match(/([A-Za-z]+) \(([A-Z])\)\s*Classe/i);
+  const bags = block.match(/Bagages autoris[eé]s\s+(\d+PC)/i);
+  const terminal = (dep?.[2] || "").match(/Terminal\s*:\s*([A-Z0-9]+)/i);
+  const seat = block.match(/Si[eè]ge\s+(\d{1,2}[A-Z])\b/i);
   const depText = `${dep?.[1] || ""} ${dep?.[2] || ""}`;
   const arrText = `${arr?.[1] || ""} ${arr?.[2] || ""}`;
-  const fromApt = inferAirportIata(depText) || inferAirportIata(text);
+  const fromApt = inferAirportIata(depText);
   const toApt = inferAirportIata(arrText);
-  const start = parseFrEnDate(dep?.[1] || depText, year);
-  const end = parseFrEnDate(arr?.[1] || arrText, year);
-  const operating = operated?.[4]?.trim() || null;
-  const marketing = operated?.[1]?.trim() || null;
-  const flight = operated ? `${operated[2]} ${operated[3]}` : null;
+  const operating = operated[4]?.trim() || null;
+  const marketing = operated[1]?.trim() || null;
   return {
-    confirmation_ref: gds[1].toUpperCase(),
-    pnr: company?.[2]?.toUpperCase() || null,
-    supplier: (issuer?.[1] || marketing || "").replace(/\s+/g, " ").trim() || null,
+    confirmation_ref: gds,
+    pnr: companyPnr,
+    supplier: (issuer || marketing || "").replace(/\s+/g, " ").trim() || null,
     airline: operating,
-    flight_number: flight,
+    flight_number: `${operated[2]} ${operated[3]}`,
     from: fromApt?.iata || null,
     to: toApt?.iata || null,
     city_from: fromApt?.city || null,
     city_to: toApt?.city || null,
-    start_at: start,
-    end_at: end,
+    start_at: parseFrEnDate(dep?.[1] || depText, year),
+    end_at: parseFrEnDate(arr?.[1] || arrText, year),
     cabin: cabin ? `${cabin[1]} (${cabin[2]})` : null,
     baggage: bags?.[1] || null,
+    terminal: terminal?.[1] || null,
+    seat: seat?.[1] || null,
   };
+}
+
+/** Tous les segments d’un e-ticket (aller + retour dans le même PDF). */
+export function parseAmadeusFlights(text: string): ParsedAmadeusFlight[] {
+  if (!/Reçu de Billet Electronique/i.test(text)) return [];
+  const gds = text.match(
+    /R[eé]f[eé]rence du dossier(?!\s+compagnie)\s+([A-Z0-9]{6})\b/i
+  );
+  if (!gds) return [];
+  const company = text.match(
+    /R[eé]f[eé]rence du dossier compagnie\s+([A-Z0-9]{2})\/([A-Z0-9]{5,6})/i
+  );
+  const issuer = text.match(/Compagnie [eé]mettrice\s*:\s*([A-Z][A-Z ]+)/i);
+  const opRe =
+    /([A-Z][A-Za-z0-9 .]+?)\s+([A-Z0-9]{1,3})\s+(\d{1,4})\s+\(Op[eé]r[eé] Par\s+([^,]+),/gi;
+  const ops = [...text.matchAll(opRe)];
+  if (!ops.length) return [];
+  const companyAt = text.search(/R[eé]f[eé]rence du dossier compagnie/i);
+  const yearHint = itineraryYear(text);
+  return ops.map((op, i) => {
+    const from = Math.max(0, (op.index || 0) - 120);
+    const next = ops[i + 1]?.index;
+    const to =
+      next != null
+        ? next
+        : companyAt > (op.index || 0)
+          ? companyAt
+          : (op.index || 0) + 900;
+    return parseAmadeusSegment(
+      text.slice(from, to),
+      gds[1].toUpperCase(),
+      company?.[2]?.toUpperCase() || null,
+      issuer?.[1]?.trim() || null,
+      yearHint,
+      op
+    );
+  });
+}
+
+export function parseAmadeusReceipt(text: string): ParsedAmadeusFlight | null {
+  return parseAmadeusFlights(text)[0] || null;
 }
 
 export type ParsedHotel = {
@@ -184,6 +236,7 @@ export type ParsedHotel = {
   end_at: string | null;
   included: string[];
   rooms: { room: string | null; guests: string | null }[];
+  needs_review?: boolean;
 };
 
 export function parseLittleEmperorsHotel(text: string): ParsedHotel | null {
@@ -246,6 +299,96 @@ export function parseNantipaConfirmation(text: string): ParsedHotel | null {
   };
 }
 
+/** The Leela / confirmation anglaise `14-SEP-26`. Pas les 14:00/12:00 de politique. */
+export function parseHotelConfirmationLetter(text: string): ParsedHotel | null {
+  if (parseLittleEmperorsHotel(text) || parseNantipaConfirmation(text)) return null;
+  if (!/RESERVATION CONFIRMATION/i.test(text) && !/Reservation Status/i.test(text)) {
+    return null;
+  }
+  const checkIn = text.match(/Check In\s+(\d{1,2}-[A-Z]{3}-\d{2})/i);
+  const checkOut = text.match(/Check Out\s+(\d{1,2}-[A-Z]{3}-\d{2})/i);
+  if (!checkIn) return null;
+  const ref =
+    text.match(/Reservation Number\s+(\d{5,})/i)?.[1] ||
+    text.match(/CRS Reference Number\s+(\d{5,})/i)?.[1] ||
+    null;
+  const hotel_name =
+    text.match(/The Leela [A-Za-z]+/i)?.[0]?.trim() ||
+    text.match(/stay at ([^\n.]+)/i)?.[1]?.trim() ||
+    null;
+  const room = text.match(/Room Type\s+([^\n]+)/i);
+  const adults = text.match(/Adults Per Room\s+(\d+)/i);
+  const address = text.match(
+    /((?:Sahar|[A-Z][a-z]+,)[^.\n]*Mumbai[^.\n]*)/i
+  );
+  const city = /Mumbai/i.test(text) ? "Mumbai" : null;
+  return {
+    hotel_name,
+    confirmation_ref: ref,
+    city,
+    address: address?.[1]?.replace(/\s+/g, " ").trim() || null,
+    start_at: parseDdMonYy(checkIn[1]),
+    end_at: checkOut ? parseDdMonYy(checkOut[1]) : null,
+    included: [],
+    rooms: [
+      {
+        room: room?.[1]?.trim() || null,
+        guests: adults ? `${adults[1]} adulte${adults[1] === "1" ? "" : "s"}` : null,
+      },
+    ],
+    needs_review: /TENTATIVE/i.test(text),
+  };
+}
+
+export type ParsedCar = {
+  confirmation_ref: string | null;
+  supplier: string;
+  vehicle: string | null;
+  pickup: string | null;
+  dropoff: string | null;
+  start_at: string | null;
+  end_at: string | null;
+};
+
+function joinLocation(block: string) {
+  return block
+    .replace(/\s+/g, " ")
+    .replace(/\s*,\s*/g, ", ")
+    .trim();
+}
+
+export function parseSixtCar(text: string): ParsedCar | null {
+  if (!/\bSIXT\b/i.test(text)) return null;
+  const pickupOn = text.match(/Pickup on\s+([^\n]+)/i);
+  const returnOn = text.match(/Return on\s+([^\n]+)/i);
+  if (!pickupOn) return null;
+  const pickupLoc = text.match(
+    /Pickup on[^\n]+\n([\s\S]{0,160}?)(?:Voir l[’']itin[eé]raire|See map|Return on)/i
+  );
+  const dropLoc = text.match(
+    /Return on[^\n]+\n([\s\S]{0,160}?)(?:See map|Afficher|Ajoutez|Ce que vous)/i
+  );
+  const category = text.match(/cat[eé]gorie r[eé]serv[eé]e est\s+([^\n]+)/i);
+  const model = text.match(/cat[eé]gorie r[eé]serv[eé]e est[^\n]+\n([^\n]+ou similaire)/i);
+  const vehicle = [category?.[1], model?.[1]]
+    .map((part) => (part || "").trim())
+    .filter(Boolean)
+    .join(" · ");
+  const ref =
+    text.match(/Num[eé]ro de r[eé]servation\s*:\s*(\d{8,})/i)?.[1] ||
+    text.match(/confirm[eé]e\s*:\s*#(\d{8,})/i)?.[1] ||
+    null;
+  return {
+    confirmation_ref: ref,
+    supplier: "SIXT",
+    vehicle: vehicle || null,
+    pickup: pickupLoc ? joinLocation(pickupLoc[1]) : null,
+    dropoff: dropLoc ? joinLocation(dropLoc[1]) : null,
+    start_at: parseFrEnDate(pickupOn[1]),
+    end_at: returnOn ? parseFrEnDate(returnOn[1]) : null,
+  };
+}
+
 export type ParsedTransfer = {
   pickup: string | null;
   dropoff: string | null;
@@ -289,17 +432,25 @@ export function isToucanActivities(text: string) {
 export function structuredHintFromPdfText(text: string): string {
   const clean = redactIngestText(text);
   const bits: string[] = [];
-  const flight = parseAmadeusReceipt(clean);
-  if (flight) {
-    bits.push(`VOL ${JSON.stringify(flight)}`);
+  const flights = parseAmadeusFlights(clean);
+  for (const flight of flights) bits.push(`VOL ${JSON.stringify(flight)}`);
+  if (flights.length) {
     bits.push(
-      "Plusieurs e-tickets du même vol (même n°, même jour) = UN item. IATA 8 chiffres = code agence, pas un PNR. « Scan for check-in » n’est pas un hôtel."
+      "Plusieurs e-tickets du même vol (même n°, même jour) = UN item. Aller-retour dans UN PDF = DEUX items. IATA 8 chiffres = code agence, pas un PNR. « Scan for check-in » n’est pas un hôtel. Ne pas extraire la carte fidélité."
     );
   }
-  const hotel = parseLittleEmperorsHotel(clean) || parseNantipaConfirmation(clean);
+  const hotel =
+    parseLittleEmperorsHotel(clean) ||
+    parseNantipaConfirmation(clean) ||
+    parseHotelConfirmationLetter(clean);
   if (hotel) bits.push(`HOTEL ${JSON.stringify(hotel)}`);
   const transfer = parseTransferConfirmation(clean);
   if (transfer) bits.push(`TRANSFERT ${JSON.stringify(transfer)}`);
+  const car = parseSixtCar(clean);
+  if (car) {
+    bits.push(`VOITURE ${JSON.stringify(car)}`);
+    bits.push("SIXT = kind car. Pas de franchise, caution, TTC ni protection.");
+  }
   if (isQuoteDocument(clean)) {
     bits.push("STATUT quote — ne pas extraire les montants NET ni les conditions d’annulation.");
   }
@@ -336,6 +487,8 @@ function flightToItem(flight: ParsedAmadeusFlight): ExtractItem {
       city_to: flight.city_to,
       cabin: flight.cabin,
       baggage: flight.baggage,
+      terminal: flight.terminal,
+      seat: flight.seat,
     },
   };
 }
@@ -355,6 +508,7 @@ function hotelToItem(hotel: ParsedHotel): ExtractItem {
       address: hotel.address,
       included: hotel.included,
       rooms: hotel.rooms,
+      needs_review: hotel.needs_review || undefined,
     },
   };
 }
@@ -374,6 +528,24 @@ function transferToItem(transfer: ParsedTransfer): ExtractItem {
       pickup: transfer.pickup,
       dropoff: transfer.dropoff,
       vehicle: transfer.vehicle,
+    },
+  };
+}
+
+function carToItem(car: ParsedCar): ExtractItem {
+  const title = [car.supplier, car.vehicle].filter(Boolean).join(" · ") || "Location";
+  return {
+    kind: "car",
+    title,
+    supplier: car.supplier,
+    confirmation_ref: car.confirmation_ref,
+    start_at: car.start_at,
+    end_at: car.end_at,
+    amount: null,
+    details: {
+      pickup: car.pickup,
+      dropoff: car.dropoff,
+      vehicle: car.vehicle,
     },
   };
 }
@@ -413,6 +585,11 @@ function overlayItem(target: ExtractItem, incoming: ExtractItem) {
   if (incoming.details?.city_to && !current.city_to) {
     current.city_to = incoming.details.city_to;
   }
+  if (incoming.details?.cabin && !current.cabin) current.cabin = incoming.details.cabin;
+  if (incoming.details?.terminal && !current.terminal) {
+    current.terminal = incoming.details.terminal;
+  }
+  if (incoming.details?.seat && !current.seat) current.seat = incoming.details.seat;
   if (incoming.kind === "hotel") {
     const roomsA = Array.isArray(current.rooms) ? current.rooms : [];
     const roomsB = Array.isArray(incoming.details?.rooms) ? incoming.details.rooms : [];
@@ -441,12 +618,23 @@ export function applyStructuredHints(
 
   for (const raw of texts) {
     const text = redactIngestText(raw);
-    const flight = parseAmadeusReceipt(text);
-    if (flight) upsertHint(items, flightToItem(flight));
-    const hotel = parseLittleEmperorsHotel(text) || parseNantipaConfirmation(text);
-    if (hotel) upsertHint(items, hotelToItem(hotel));
+    for (const flight of parseAmadeusFlights(text)) {
+      upsertHint(items, flightToItem(flight));
+    }
+    const hotel =
+      parseLittleEmperorsHotel(text) ||
+      parseNantipaConfirmation(text) ||
+      parseHotelConfirmationLetter(text);
+    if (hotel) {
+      upsertHint(items, hotelToItem(hotel));
+      if (hotel.needs_review) {
+        extraNotes.push("Hôtel : réservation provisoire (tentative), à confirmer.");
+      }
+    }
     const transfer = parseTransferConfirmation(text);
     if (transfer) upsertHint(items, transferToItem(transfer));
+    const car = parseSixtCar(text);
+    if (car) upsertHint(items, carToItem(car));
     if (isQuoteDocument(text)) {
       status = status || "quote";
       extraNotes.push("Devis — tarifs non bloqués, à confirmer.");

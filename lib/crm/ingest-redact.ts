@@ -2,6 +2,7 @@
 export function redactIngestText(text: string): string {
   return text
     .replace(/Mode de paiement\s*:[^\n]+/gi, "Mode de paiement : [masqué]")
+    .replace(/N[ºo°]?\s*de carte fid[eé]lit[eé][^\n]+/gi, "Carte fidélité : [masqué]")
     .replace(/\bCC[A-Z]{0,2}\s*X{4,}\d{2,4}\b/gi, "[carte]")
     .replace(/\bX{8,}\d{2,4}\b/g, "[carte]")
     .replace(/\b(?:\d{4}[\s-]?){3}\d{4}\b/g, "[carte]");

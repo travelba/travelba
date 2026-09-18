@@ -66,12 +66,14 @@ Règles d’honnêteté :
 - details.needs_review = true si lecture douteuse.
 
 Vol :
-- Aller et retour = DEUX items. Correspondance = DEUX items (un segment chacun). Pas de retour fantôme.
+- Aller et retour = DEUX items si les deux sont imprimés (même PDF). Correspondance = DEUX items. Pas de retour fantôme.
 - Plusieurs e-tickets passagers pour le MÊME vol (même n°, même jour) = UN item. Les noms vont dans travelers.
-- confirmation_ref = PNR GDS 6 lettres (XL8LPD). details.pnr = réf. compagnie (N0OP1Q). Jamais l’IATA 8 chiffres agence (20287864, 20255270, 96020293).
+- confirmation_ref = PNR GDS 6 lettres. details.pnr = réf. compagnie. Jamais l’IATA 8 chiffres agence (20287864, 20255270, 96020293, 20289905).
 - details.airline = transporteur opérant. supplier = émetteur du billet (Hahn Air ≠ Air Panama ; Copa opérant = Copa).
-- details.from / to = IATA. Souvent absent du PDF : Gelabert/Albrook=PAC, Isla Colón=BOC, Enrique Malek=DAV, Tocumen=PTY.
+- details.from / to = IATA. Souvent absent du PDF : Gelabert/Albrook=PAC, Isla Colón=BOC, Enrique Malek=DAV, Tocumen=PTY, Charles-de-Gaulle=CDG, Genève=GVA, Heathrow=LHR, Marseille Provence=MRS.
 - details.city_from / city_to = villes. « 03 August 09:45 » : année = ligne « Lundi 03 août 2026 ».
+- Terminal / siège seulement s’ils sont imprimés. « Heure limite d’enregistrement » n’est pas l’horaire du vol.
+- Carte fidélité : ne pas extraire.
 - « Scan for check-in. Not to be used as boarding pass » n’est PAS un hôtel.
 - Bagages / siège / terminal seulement s’ils sont imprimés.
 - Vol de nuit : start_at = décollage ; noter J+1 dans details.notes si l’arrivée est le lendemain.
@@ -84,12 +86,13 @@ Hôtel :
 - details.special_requests si lit bébé / vue / late check-in est écrit.
 - Nantipa / vouchers Costa Rica : 08/02/2026 = 2 août (MM/JJ), pas 8 février. Check-in 15:00 dans les CGV ≠ heure de la carte (date only).
 - Toucan Discovery = activités (kind=activity). Les « étapes » du cadre (El Silencio, Arenas…) ne sont PAS des réservations hôtel.
+- Confirmation type The Leela : Check In 14-SEP-26 = date only. Ignorer 14:00/12:00 de politique et Pick Up / Drop Off 00:00 (ce n’est pas un transfert). TENTATIVE → details.needs_review.
 - Devis Passion Collection / « none are on hold » : document_status=quote, un item hôtel, rooms = les options, total_amount=null. Pas de NET.
 
 Transfert : details.pickup / dropoff. Si « 2 h 30 avant le vol » sans heure clock → details.pickup_note, pas d’heure inventée. Pas de chauffeur au client.
 
 Train (rail) : comme un vol (n°, gares, horaires si écrits).
-Voiture (car) : catégorie, conducteur, prise/restitution si écrits. Pas de franchise.
+Voiture (SIXT / loueur) : kind=car. confirmation_ref = n° de réservation. start_at / end_at = prise et restitution. details.pickup / dropoff / vehicle (catégorie). Pas de franchise, caution, TTC, protection.
 Bateau (cruise) : une carte pour la traversée / croisière, pas un jour par port.
 
 Voyageurs :

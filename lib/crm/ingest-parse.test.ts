@@ -1,14 +1,18 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { redactIngestText } from "./ingest-redact";
 import { sanitizeExtractedPrices } from "./ingest-types";
 import {
   applyStructuredHints,
   inferAirportIata,
+  parseAmadeusFlights,
   parseAmadeusReceipt,
+  parseDdMonYy,
+  parseHotelConfirmationLetter,
   parseLittleEmperorsHotel,
   parseNantipaConfirmation,
+  parseSixtCar,
   parseTransferConfirmation,
   parseUsMonthDayYear,
   structuredHintFromPdfText,
@@ -133,6 +137,10 @@ describe("inferAirportIata", () => {
     assert.equal(inferAirportIata("ISLA COLON INTL BOCAS DEL TORO")?.iata, "BOC");
     assert.equal(inferAirportIata("ENRIQUE MALEK INTL DAVID")?.iata, "DAV");
     assert.equal(inferAirportIata("AÉROPORT DE TOCUMEN PANAMA (VILLE)")?.iata, "PTY");
+    assert.equal(inferAirportIata("CHARLES-DE-GAULLE PARIS")?.iata, "CDG");
+    assert.equal(inferAirportIata("AÉROPORT DE GENÈVE GENÈVE")?.iata, "GVA");
+    assert.equal(inferAirportIata("HEATHROW LONDRES")?.iata, "LHR");
+    assert.equal(inferAirportIata("MARSEILLE PROVENCE MARSEILLE")?.iata, "MRS");
   });
 });
 
@@ -297,6 +305,149 @@ describe("mergeExtractItems", () => {
 });
 
 const SAMPLE_DIR = "/tmp/ingest-samples/text";
+const UPLOAD_DIR = "/tmp/ingest-uploads";
+
+const AMADEUS_AF_RT = `
+Reçu de Billet Electronique Reference du dossier AB12CD CheckMyTrip App
+IATA 20289905
+Vendredi 18 septembre 2026
+Check-in
+Air France AF 1142 (Opéré Par Air France, AF)
+18 September 15:00 CHARLES-DE-GAULLE PARIS Terminal : 2F - Aerogare 2
+Terminal F
+Départ
+18 September 16:10 AÉROPORT DE GENÈVE GENÈVE Terminal : 1Arrivée
+Economique (V)Classe
+Bagages autorisés 2PC pour PAX
+Dimanche 20 septembre 2026
+Check-in
+Air France AF 1643 (Opéré Par Air France, AF)
+20 September 10:30 AÉROPORT DE GENÈVE GENÈVE Terminal : 1Départ
+20 September 11:45 CHARLES-DE-GAULLE PARIS Terminal : 2F - Aerogare 2
+Terminal F
+Arrivée
+Economique (F)Classe
+Bagages autorisés 2PC pour PAX
+Référence du dossier compagnie AF/AB12CD
+Compagnie émettrice : AIR FRANCE
+`;
+
+const AMADEUS_BA = `
+Reçu de Billet Electronique Reference du dossier XY34ZT CheckMyTrip App
+Samedi 03 octobre 2026
+British Airways BA 346 (Opéré Par British Airways, BA)
+03 October 09:20 HEATHROW LONDRES Terminal : 3Départ
+03 October 12:20 MARSEILLE PROVENCE MARSEILLE Terminal : 1Arrivée
+Economique (N)Classe
+Bagages autorisés 1PC pour PAX
+Référence du dossier compagnie BA/XY34ZT
+Compagnie émettrice : BRITISH AIRWAYS
+`;
+
+const SIXT = `
+Votre réservation chez SIXT Genève (Genf) Aéroport est confirmée : #1234567890
+Pickup on 18 Septembre 2026 at 16:00
+Genève (Genf) Aéroport - Terminal 1, Centre de location de
+voitures
+Voir l’itinéraire
+Return on 20 Septembre 2026 at 09:30
+Genève (Genf) Aéroport - Route de Pre-Bois 29 (P51), Geneve
+(Meyrin), Suisse 1215
+See map
+Votre catégorie réservée est Intermédiaire SUV
+Smart #3 Brabus ou similaire
+Total (TTC) CHF 333.10
+Caution remboursable
+Numéro de réservation : 1234567890
+`;
+
+const LEELA = `
+Greetings from The Leela Mumbai!
+we are pleased to confirm your reservation as per the details below:
+Reservation StatusGuest Name(s)
+Guest Test
+Reservation Number
+1500001111
+Check In
+14-SEP-26
+Check Out
+17-SEP-26
+Adults Per Room
+1
+Room Type
+Premier City View
+Grand Total
+13,750.00 INR
+TENTATIVE
+The Leela Mumbai
+Sahar,Andheri East,Mumbai-400059,India
+Total Duration of Stay
+3
+14:00 12:00
+Pick Up Time
+Drop Off Time
+00:00 00:00
+RESERVATION CONFIRMATION
+Cancellation Policy : Reservation must be cancelled 48 hours prior
+`;
+
+describe("parseAmadeusFlights aller-retour", () => {
+  it("crée deux segments CDG → GVA et GVA → CDG", () => {
+    const flights = parseAmadeusFlights(AMADEUS_AF_RT);
+    assert.equal(flights.length, 2);
+    assert.equal(flights[0].from, "CDG");
+    assert.equal(flights[0].to, "GVA");
+    assert.equal(flights[0].flight_number, "AF 1142");
+    assert.equal(flights[0].start_at, "2026-09-18T15:00:00");
+    assert.equal(flights[0].terminal, "2F");
+    assert.equal(flights[1].from, "GVA");
+    assert.equal(flights[1].to, "CDG");
+    assert.equal(flights[1].flight_number, "AF 1643");
+    assert.equal(flights[1].start_at, "2026-09-20T10:30:00");
+  });
+
+  it("lit Heathrow → Marseille", () => {
+    const parsed = parseAmadeusReceipt(AMADEUS_BA);
+    assert.ok(parsed);
+    assert.equal(parsed.from, "LHR");
+    assert.equal(parsed.to, "MRS");
+    assert.equal(parsed.flight_number, "BA 346");
+    assert.equal(parsed.start_at, "2026-10-03T09:20:00");
+    assert.equal(parsed.terminal, "3");
+  });
+});
+
+describe("parseSixtCar", () => {
+  it("lit prise et restitution sans le TTC", () => {
+    const parsed = parseSixtCar(SIXT);
+    assert.ok(parsed);
+    assert.equal(parsed.confirmation_ref, "1234567890");
+    assert.equal(parsed.start_at, "2026-09-18T16:00:00");
+    assert.equal(parsed.end_at, "2026-09-20T09:30:00");
+    assert.match(parsed.pickup || "", /Genève/);
+    assert.match(parsed.vehicle || "", /Intermédiaire SUV/);
+    assert.equal(JSON.stringify(parsed).includes("333"), false);
+  });
+});
+
+describe("parseHotelConfirmationLetter", () => {
+  it("lit The Leela en date only, sans 14:00 ni tarif", () => {
+    const parsed = parseHotelConfirmationLetter(LEELA);
+    assert.ok(parsed);
+    assert.equal(parsed.start_at, "2026-09-14");
+    assert.equal(parsed.end_at, "2026-09-17");
+    assert.equal(parsed.start_at?.includes("T"), false);
+    assert.match(parsed.hotel_name || "", /Leela Mumbai/i);
+    assert.equal(parsed.needs_review, true);
+    assert.equal(JSON.stringify(parsed).includes("13750"), false);
+  });
+});
+
+describe("parseDdMonYy", () => {
+  it("lit 14-SEP-26", () => {
+    assert.equal(parseDdMonYy("14-SEP-26"), "2026-09-14");
+  });
+});
 
 describe("échantillons PDF agence", () => {
   const eticket = `${SAMPLE_DIR}/etickets/eticket-01.txt`;
@@ -328,5 +479,55 @@ describe("échantillons PDF agence", () => {
     assert.ok(parsed);
     assert.equal(parsed.start_at, "2026-08-02");
     assert.equal(parsed.end_at, "2026-08-07");
+  });
+});
+
+describe("PDF déposés (upload)", () => {
+  const files = existsSync(UPLOAD_DIR)
+    ? readdirSync(UPLOAD_DIR).filter((name) => name.endsWith(".txt"))
+    : [];
+  if (!files.length) return;
+
+  it("découpe l’aller-retour Air France en deux vols", () => {
+    const name = files.find((row) => /PARIS_GENEVA|GENEVA/i.test(row));
+    if (!name) return;
+    const flights = parseAmadeusFlights(readFileSync(`${UPLOAD_DIR}/${name}`, "utf8"));
+    assert.equal(flights.length, 2);
+    assert.equal(flights[0].from, "CDG");
+    assert.equal(flights[0].to, "GVA");
+    assert.equal(flights[1].from, "GVA");
+    assert.equal(flights[1].to, "CDG");
+    assert.equal(flights[0].start_at, "2026-09-18T15:00:00");
+  });
+
+  it("lit Heathrow → Marseille", () => {
+    const name = files.find((row) => /LONDON_MARSEILLE|MARSEILLE/i.test(row));
+    if (!name) return;
+    const parsed = parseAmadeusReceipt(readFileSync(`${UPLOAD_DIR}/${name}`, "utf8"));
+    assert.equal(parsed?.from, "LHR");
+    assert.equal(parsed?.to, "MRS");
+  });
+
+  it("lit SIXT sans le tarif CHF", () => {
+    const name = files.find((row) => /SIXT/i.test(row));
+    if (!name) return;
+    const parsed = parseSixtCar(readFileSync(`${UPLOAD_DIR}/${name}`, "utf8"));
+    assert.ok(parsed);
+    assert.equal(parsed.start_at, "2026-09-18T16:00:00");
+    assert.equal(parsed.end_at, "2026-09-20T09:30:00");
+    assert.equal(JSON.stringify(parsed).includes("333"), false);
+  });
+
+  it("lit The Leela sans heure de politique ni transfert 00:00", () => {
+    const hit = files.find((row) =>
+      /The Leela Mumbai/i.test(readFileSync(`${UPLOAD_DIR}/${row}`, "utf8"))
+    );
+    if (!hit) return;
+    const text = readFileSync(`${UPLOAD_DIR}/${hit}`, "utf8");
+    const parsed = parseHotelConfirmationLetter(text);
+    assert.ok(parsed);
+    assert.equal(parsed.start_at, "2026-09-14");
+    assert.equal(parsed.end_at, "2026-09-17");
+    assert.equal(parseTransferConfirmation(text), null);
   });
 });

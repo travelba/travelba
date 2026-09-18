@@ -43,11 +43,12 @@ Ne **pas** extraire paiement / PAN / annulation / conditions.
 
 - `confirmation_ref` = PNR GDS 6 lettres. `details.pnr` = réf. compagnie.
 - `details.airline` = **opérant**. `supplier` = émetteur (Hahn Air ≠ Air Panama).
-- Aller / retour / correspondance = **un item par segment**. Pas de retour fantôme.
+- Aller / retour / correspondance = **un item par segment**. Pas de retour fantôme. **Aller-retour dans un seul PDF = deux cartes.**
 - **Plusieurs e-tickets passagers du même vol (même n°, même jour) = une carte**, pas une par pax. Noms → `travelers`.
 - IATA 8 chiffres (agence / consolidateur) **n’est pas** un PNR.
-- `details.from` / `to` = IATA. Souvent absent : Gelabert/Albrook=`PAC`, Isla Colón=`BOC`, Enrique Malek=`DAV`, Tocumen=`PTY`.
+- `details.from` / `to` = IATA. Souvent absent : Gelabert/Albrook=`PAC`, Isla Colón=`BOC`, Enrique Malek=`DAV`, Tocumen=`PTY`, Charles-de-Gaulle=`CDG`, Genève=`GVA`, Heathrow=`LHR`, Marseille Provence=`MRS`.
 - Horaires ISO imprimés. « 03 August 09:45 » + année de « Lundi 03 août 2026 ». Cabin = libellé + code tarif. Bagages `1PC` → `details.baggage`.
+- Terminal / siège si imprimés. Carte fidélité : ne pas extraire. « Heure limite d’enregistrement » ≠ horaire de vol.
 - « Scan for check-in » ≠ hôtel.
 - Email agence ≠ `customer_email`.
 - Réimport même PNR + n° + date = **remplace** la carte.
@@ -63,6 +64,7 @@ Ne **pas** extraire paiement / PAN / annulation / conditions.
 - `details.included[]` **seulement** si phrase explicite (breakfast…). Sinon pas de bloc
 - **Interdit** d’inventer check-in 15:00 / check-out 12:00
 - Nantipa / vouchers CR : `08/02/2026` = 2 août (MM/JJ). Politique 15:00 ≠ heure de carte.
+- Confirmation anglaise (The Leela) : `14-SEP-26` = date only. Ignorer 14:00/12:00 et Pick Up 00:00. TENTATIVE → `needs_review`. Pas de tarif INR / CXL.
 - Toucan Discovery = `activity`. Les étapes du cadre ne sont pas des hôtels.
 - Devis : `document_status=quote`, `status` dossier `quoted`, `rooms` = options, toujours invisible tant que non publié. **Pas** un item par option tarifaire
 - Dates header → `start_at` / `end_at` (date only)
@@ -77,6 +79,8 @@ Ne **pas** extraire paiement / PAN / annulation / conditions.
 ## Train / voiture / bateau
 
 `rail` / `car` / `cruise` : n°, lieux, horaires **s’ils sont écrits**. Croisière = une carte, pas un jour par port. Pas de franchise loueur inventée.
+
+SIXT : `kind=car`, n° de réservation, prise/restitution (ex. `18 Septembre 2026 at 16:00`), `details.pickup` / `dropoff` / `vehicle` (catégorie). **Pas** de CHF TTC, caution, protection, plein.
 
 ## Voyageurs
 
