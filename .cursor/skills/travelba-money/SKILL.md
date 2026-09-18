@@ -38,7 +38,7 @@ Ajustements / remboursements : lignes manuelles admin `kind=adjustment|refund`.
 - **Interdit** : PAN, CVC, `card.number`, Checkout Session d’encaissement, PaymentIntent capture dans ce CRM.
 - UI client cartes **retirée** : `/mon-compte/profil/paiement` redirect facturation. Ne pas recréer un wallet carte sans décision.
 
-`getStripe()` absent → webhook 503, ne pas crasher le reste du CRM.
+`getStripe()` absent → webhook 503, ne pas crasher le reste du CRM. UI cartes fermée : 503 live n’empêche ni carnet, ni ledger manuel, ni rapprochement Revolut.
 
 ## Revolut
 

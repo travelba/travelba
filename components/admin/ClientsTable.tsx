@@ -108,7 +108,9 @@ export function ClientsTable({
               {!filtered.length ? (
                 <tr>
                   <td colSpan={5} className="px-5 py-8 text-center text-muted">
-                    Aucun client trouvé.
+                    {customers.length === 0
+                      ? "Aucun client. Créez une fiche titulaire puis invitez — pas de client fictif."
+                      : "Aucun client trouvé."}
                   </td>
                 </tr>
               ) : null}

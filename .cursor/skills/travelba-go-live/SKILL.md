@@ -83,6 +83,7 @@ OIDC Vercel : `aiGatewayConfigured()` peut être vrai sur Vercel sans `sk-`. L�
 - Endpoint : `https://travelba.fr/api/webhooks/stripe`
 - Events : `setup_intent.succeeded`, `payment_method.detached`
 - UI client cartes **retirée** (`/paiement` → facturation). La table `crm_payment_methods` peut rester (SetupIntent) mais ne pas rerendre un formulaire carte sans décision produit.
+- Sans `sk_live` / `pk_live` / `whsec` en Production, le webhook répond **503** — attendu tant que l’UI cartes n’est pas réouverte. Ne pas inventer les clés. Le grand livre manuel fonctionne.
 - Ne jamais logger le PaymentMethod brut au-delà de `brand` / `last4` / exp.
 
 ## Revolut
@@ -115,9 +116,11 @@ OIDC Vercel : `aiGatewayConfigured()` peut être vrai sur Vercel sans `sk-`. L�
 1. `https://travelba.fr/admin/login` → staff existant entre.
 2. `/admin/clients` liste les vrais clients (pas un seed).
 3. `/connexion` mot de passe + magique (Regarder Resend, pas les logs pour le lien).
-4. Un carnet **déjà publié** s’affiche ; un brouillon reste invisible.
-5. `/admin/revolut` : cron a inséré des unmatched **sans** les créditer.
+4. Un carnet **déjà publié** s’affiche ; un brouillon reste invisible. **S’il n’y a aucun séjour publié, ne pas en inventer** — skip ce check. L’agent importe un vrai dossier, Enregistrer, puis Publier. `/admin` affiche alors « Mise en service ».
+5. `/admin/revolut` : **Connecter Revolut** (SCA Business) si `crm_integrations` est vide. Ensuite le cron insère des unmatched **sans** les créditer. Inbox vide tant que l’OAuth n’est pas fait = normal.
 6. Contact vitrine → e-mail `CONTACT_TO_EMAIL`.
 7. WhatsApp header client → `wa.me/33756841315`.
+
+Smoke **loggé** staff → ingest → publier, et client → téléphone → carnet : à faire par l’agence sur un vrai dossier. Pas de mot de passe staff dans un agent.
 
 Si un check échoue : skill `travelba-verify`, logs Vercel runtime, **pas** un seed.

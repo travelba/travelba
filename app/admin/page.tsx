@@ -8,7 +8,17 @@ import {
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
-import { PageEyebrow, PageTitle, StatusChip, bookingStatusTone } from "@/components/crm/ui";
+import { revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
+import { stripeConfigured, stripeWebhookConfigured } from "@/lib/crm/stripe";
+import { buildLaunchItems } from "@/lib/crm/launch-status";
+import { AdminLaunchStatus } from "@/components/admin/AdminLaunchStatus";
+import {
+  EmptyState,
+  PageEyebrow,
+  PageTitle,
+  StatusChip,
+  bookingStatusTone,
+} from "@/components/crm/ui";
 
 export default async function AdminHomePage() {
   const { supabase, staff } = await requireStaffPage();
@@ -20,6 +30,11 @@ export default async function AdminHomePage() {
     { data: bookings },
     { data: docs },
     { data: customers },
+    { count: bookingCount },
+    { count: publishedCount },
+    { count: customerCount },
+    { count: withPhoneCount },
+    revolutIsConnected,
   ] = await Promise.all([
     supabase
       .from("crm_bookings")
@@ -36,12 +51,35 @@ export default async function AdminHomePage() {
       .order("expires_on")
       .limit(8),
     supabase.from("crm_customers").select("id, first_name, last_name"),
+    supabase.from("crm_bookings").select("id", { count: "exact", head: true }),
+    supabase
+      .from("crm_bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("visible_to_client", true),
+    supabase.from("crm_customers").select("id", { count: "exact", head: true }),
+    supabase
+      .from("crm_customers")
+      .select("id", { count: "exact", head: true })
+      .not("phone", "is", null)
+      .neq("phone", ""),
+    revolutConnected(),
   ]);
   const byId = new Map(
     ((customers || []) as Pick<CrmCustomer, "id" | "first_name" | "last_name">[]).map(
       (c) => [c.id, customerFullName(c)]
     )
   );
+  const customersTotal = customerCount ?? 0;
+  const launchItems = buildLaunchItems({
+    customerCount: customersTotal,
+    customersWithoutPhone: Math.max(0, customersTotal - (withPhoneCount ?? 0)),
+    bookingCount: bookingCount ?? 0,
+    publishedCount: publishedCount ?? 0,
+    revolutConfigured: revolutConfigured(),
+    revolutConnected: revolutIsConnected,
+    stripeConfigured: stripeConfigured(),
+    stripeWebhookConfigured: stripeWebhookConfigured(),
+  });
 
   return (
     <div className="space-y-6">
@@ -60,6 +98,8 @@ export default async function AdminHomePage() {
           }
         />
       </div>
+
+      <AdminLaunchStatus items={launchItems} />
 
       <section className="admin-af-card overflow-hidden rounded-2xl">
         <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
@@ -97,8 +137,19 @@ export default async function AdminHomePage() {
             </li>
           ))}
           {!bookings?.length ? (
-            <li className="px-5 py-8 text-center text-sm text-muted">
-              Aucune réservation à venir.
+            <li className="px-5 py-6">
+              <EmptyState
+                title="Aucune réservation à venir"
+                description="Importez les PDF d’un vrai dossier, Enregistrer, puis Publier. Le carnet n’apparaît côté client qu’après Publier."
+                action={
+                  <Link
+                    href="/admin/reservations"
+                    className="admin-af-btn inline-flex rounded-xl px-4 py-2.5 text-sm"
+                  >
+                    Importer un dossier
+                  </Link>
+                }
+              />
             </li>
           ) : null}
         </ul>

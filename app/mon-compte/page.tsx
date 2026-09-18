@@ -180,7 +180,7 @@ export default async function AccountHomePage() {
             Aucun voyage planifié
           </h2>
           <p className="mt-1 text-sm text-muted">
-            L’agence {siteConfig.shortName} peut préparer votre prochain dossier.
+            L’agence publiera le carnet ici dès que le dossier sera prêt.
           </p>
           <a
             href={whatsappHref}

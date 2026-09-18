@@ -1,4 +1,3 @@
-import { createClient } from "@/lib/supabase/server";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { RevolutInbox } from "@/components/admin/RevolutInbox";
@@ -31,7 +30,7 @@ export default async function AdminRevolutPage() {
       <PageEyebrow>Back-office</PageEyebrow>
       <PageTitle
         title="Rapprochement Revolut"
-        subtitle="Les virements entrants restent non rapprochés jusqu’à validation manuelle. Aucun crédit client n’est automatique."
+        subtitle="Connecter le compte Business une fois, puis rapprocher à la main. Aucun crédit client n’est automatique."
       />
       <div className="mt-6">
         <RevolutInbox

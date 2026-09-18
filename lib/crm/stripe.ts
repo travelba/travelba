@@ -31,3 +31,7 @@ export function stripeConfigured() {
   }
   return true;
 }
+
+export function stripeWebhookConfigured() {
+  return Boolean(process.env.STRIPE_WEBHOOK_SECRET?.trim());
+}

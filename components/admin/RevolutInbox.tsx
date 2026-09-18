@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CrmCustomer, CrmRevolutTransaction } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
+import { revolutInboxEmptyMessage } from "@/lib/crm/launch-status";
 
 export function RevolutInbox({
   rows,
@@ -118,7 +119,17 @@ export function RevolutInbox({
           </li>
         ))}
         {!rows.length ? (
-          <li className="px-5 py-8 text-center text-sm text-muted">Aucun virement importé.</li>
+          <li className="space-y-3 px-5 py-8 text-center text-sm text-muted">
+            <p>{revolutInboxEmptyMessage({ configured, connected })}</p>
+            {!connected ? (
+              <a
+                href="/api/admin/revolut/oauth"
+                className="inline-flex rounded-full bg-[var(--admin-navy)] px-4 py-2 text-sm font-semibold text-white"
+              >
+                Connecter Revolut
+              </a>
+            ) : null}
+          </li>
         ) : null}
       </ul>
     </div>
