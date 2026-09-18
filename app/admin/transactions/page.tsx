@@ -26,7 +26,6 @@ export default async function AdminTransactionsPage() {
       {!stripeReady ? (
         <p className="mt-4 rounded-2xl border border-dashed border-[var(--border)] bg-white/70 px-4 py-3 text-sm text-muted">
           Cartes Stripe non ouvertes. Le grand livre manuel et le rapprochement Revolut suffisent.
-          Pour un webhook live plus tard : coller sk_live, pk_live et whsec dans Vercel Production.
         </p>
       ) : null}
       <div className="mt-6">
