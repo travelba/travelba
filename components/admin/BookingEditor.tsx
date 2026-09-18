@@ -138,8 +138,8 @@ export function BookingEditor({
   }
 
   return (
-    <div className="space-y-6 pb-28">
-      <div className="relative h-48 overflow-hidden rounded-3xl sm:h-64">
+    <div className="space-y-6">
+      <div className="relative h-36 overflow-hidden rounded-3xl sm:h-48">
         <CoverPhoto
           src={bookingCoverUrl(booking, 960)}
           alt={booking.destination || booking.title}
@@ -165,8 +165,17 @@ export function BookingEditor({
           {needsReview ? (
             <p className="mt-2 text-sm text-accent">Certaines cartes sont marquées lecture douteuse.</p>
           ) : null}
+          {flash ? <p className="mt-2 text-sm text-[var(--admin-navy)]">{flash}</p> : null}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
+          <button
+            type="submit"
+            form="booking-meta"
+            disabled={busy !== "idle"}
+            className="rounded-full border border-border px-4 py-2 text-sm font-semibold disabled:opacity-50"
+          >
+            {busy === "save" ? "Enregistrement…" : "Enregistrer"}
+          </button>
           {booking.visible_to_client ? (
             <button
               type="button"
@@ -178,10 +187,15 @@ export function BookingEditor({
           ) : null}
           <button
             type="button"
+            disabled={busy !== "idle"}
             onClick={() => void setPublished(true)}
-            className="admin-af-btn rounded-full px-4 py-2 text-sm"
+            className="admin-af-btn rounded-full px-4 py-2 text-sm disabled:opacity-50"
           >
-            {booking.visible_to_client ? "Publier les mises à jour" : "Publier le carnet"}
+            {busy === "publish"
+              ? "Publication…"
+              : booking.visible_to_client
+                ? "Publier les mises à jour"
+                : "Publier le carnet"}
           </button>
         </div>
       </section>
@@ -222,6 +236,13 @@ export function BookingEditor({
         <p className="sm:col-span-2 text-xs text-muted">
           Enregistrer ne publie pas. Le statut confirmé crée le débit au grand livre.
         </p>
+        <button
+          type="submit"
+          disabled={busy !== "idle"}
+          className="admin-af-btn rounded-full px-4 py-2 text-sm sm:col-span-2 sm:justify-self-start disabled:opacity-50"
+        >
+          {busy === "save" ? "Enregistrement…" : "Enregistrer le dossier"}
+        </button>
       </form>
 
       <section className="admin-af-card space-y-4 rounded-3xl p-5">
@@ -318,37 +339,6 @@ export function BookingEditor({
           <button className="admin-af-btn rounded-full px-3 py-2 text-sm">Joindre</button>
         </form>
       </section>
-
-      <div className="fixed bottom-4 left-4 right-4 z-30 flex flex-col gap-2 rounded-2xl border border-[#e5e3dc] bg-white/95 p-3 shadow-[0_12px_32px_rgba(11,25,44,0.12)] backdrop-blur sm:flex-row sm:items-center sm:justify-between lg:left-[calc(18rem+2rem)] lg:right-8">
-        <p className="text-sm text-[var(--admin-navy)]">
-          {flash ||
-            (booking.visible_to_client
-              ? "Carnet en ligne — enregistrer ne change pas la visibilité."
-              : "Brouillon — le client ne voit rien tant que vous ne publiez pas.")}
-        </p>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <button
-            type="submit"
-            form="booking-meta"
-            disabled={busy !== "idle"}
-            className="rounded-full border border-border px-4 py-2 text-sm font-semibold disabled:opacity-50"
-          >
-            {busy === "save" ? "Enregistrement…" : "Enregistrer"}
-          </button>
-          <button
-            type="button"
-            disabled={busy !== "idle"}
-            onClick={() => void setPublished(true)}
-            className="admin-af-btn rounded-full px-4 py-2 text-sm disabled:opacity-50"
-          >
-            {busy === "publish"
-              ? "Publication…"
-              : booking.visible_to_client
-                ? "Publier les mises à jour"
-                : "Publier le carnet"}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
