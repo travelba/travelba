@@ -32,18 +32,20 @@ Toute erreur réelle (retour fantôme, 10 cartes pour 10 passagers, EUR sur un $
 
 ```
 PDF/image
-  → unpdf (texte ; images si calque < 500 chars)
-  → redactIngestText (PAN, CCVI, fidélité)
-  → structuredHintFromPdfText (indices)
-  → gpt-4o  (OPENAI_API_KEY sk- ; pas Tesseract e-tickets)
-  → applyStructuredHints + mergeExtractItems + sanitizeExtractedPrices
-  → UI relecture (IngestItemCard)
-  → Enregistrer brouillon
+  → PUT signed crm-files ingest-tmp (contourne la limite Vercel ~4,5 Mo)
+  → unpdf texte intégral (parseur, pas de coupe 24k)
+  → classifyIngestFamily + parsedItemsFromText
+  → si famille connue et champs complets : pas de LLM sur ce PDF
+  → sinon gpt-4o (texte ; vision si calque < 800 ou image)
+  → calque vide : raster unpdf.renderPageAsImage (max 5 pages) ou Gemini PDF natif
+  → fusion mergeFileExtracts (devis+confirmé, identité mélangée)
+  → 1 passage reconcile compact (ne pas inventer)
+  → UI relecture (progression NDJSON, retry, Enregistrer brouillon)
 ```
 
-Parseur **d’abord**, LLM **ensuite**. Si le PDF a un calque, le déterministe doit déjà produire les bonnes cartes. Le modèle complète noms / libellés FR / doutes (`needs_review`).
+Parseur **d’abord**, LLM **ensuite**. Si le PDF a un calque, le déterministe doit déjà produire les bonnes cartes. Le modèle complète noms / libellés FR / doutes (`needs_review`). 10 e-tickets du même vol ne déclenchent pas 10 appels LLM.
 
-Limites : **30 fichiers**, **25 Mo**, PDF + images.
+Limites : **30 fichiers**, **25 Mo**, PDF + images. Envoi par URL signée courte, jamais une signed URL longue dans le HTML.
 
 ## Quand un PDF / une photo arrive
 
@@ -54,7 +56,7 @@ C’est **ce** skill. Boucle courte :
 3. Fixture **anonymisée** dans `lib/crm/ingest-parse.test.ts` (Pax / Guest Test, PNR fictif).
 4. Étendre le parseur dans `lib/crm/ingest-parse.ts` (aéroport, date, kind).
 5. Une ligne dans `PROMPT` (`ingest-booking.ts`) **et** dans la section famille ici.
-6. `npx tsx --test lib/crm/ingest-parse.test.ts lib/crm/item-match.test.ts`
+6. `npx tsx --test lib/crm/ingest-parse.test.ts lib/crm/item-match.test.ts lib/crm/ingest-pipeline.test.ts`
 7. Ne **pas** `persistNewBookingFromExtract` sur un vrai client pour « voir ».
 
 Pièces iOS parfois absentes du VM : le dire, demander le trombone desktop, ou lire la boîte agence **RAW** sans committer.
@@ -127,28 +129,35 @@ Réimport même clé = **remplace** la carte. Dans un même extract, 10 duplicat
 
 ## UI persist
 
+- Dropzone : progression par fichier, Annuler, retry des erreurs, succès partiel. Filtre cartes par `source_file_name`.
 - Sous-fiche par `kind`. Bandeau devis. Bandeau **À vérifier** (`needs_review`) : on **enregistre**, on ne refuse pas tout le lot.
 - Cartes manuelles OK. Drag `sort_order` après persist.
-- Fichiers `/api/files` (pas d’URL signed longue). Cover `scheduleBookingCover`.
+- Fichiers : upload signé `ingest-tmp/` puis copie `bookings/{id}/`. Lecture via `/api/files` (pas d’URL signed longue). Cover `scheduleBookingCover`.
 - Identity extract → ne pas `persistNewBookingFromExtract`.
 
 ## Fichiers
 
 | Rôle | Path |
 |------|------|
-| Orchestration + `PROMPT` | `lib/crm/ingest-booking.ts` |
-| Parseurs déterministes | `lib/crm/ingest-parse.ts` |
+| Orchestration persist | `lib/crm/ingest-booking.ts` |
+| LLM / vision / raster par fichier | `lib/crm/ingest-file.ts` |
+| Parseurs + `classifyIngestFamily` | `lib/crm/ingest-parse.ts` |
+| Fusion lot (quote / identity) | `lib/crm/ingest-merge.ts` |
+| Chemins `ingest-tmp` | `lib/crm/ingest-storage.ts` |
 | PAN | `lib/crm/ingest-redact.ts` |
-| Schéma + prix null | `lib/crm/ingest-types.ts` |
-| Fusion | `lib/crm/item-match.ts` |
-| Tests | `lib/crm/ingest-parse.test.ts`, `item-match.test.ts` |
+| Schéma + prix null + événements NDJSON | `lib/crm/ingest-types.ts` |
+| Fusion clés | `lib/crm/item-match.ts` |
+| Tests | `lib/crm/ingest-parse.test.ts`, `ingest-pipeline.test.ts`, `item-match.test.ts` |
 | UI | `components/crm/BookingIngest.tsx`, `IngestItemCard.tsx` |
-| API agence | `app/api/admin/bookings/ingest` (`maxDuration` 300) |
+| API agence | `app/api/admin/bookings/ingest` (NDJSON, `maxDuration` 300) |
+| Upload signé | `app/api/admin/bookings/ingest/sign` |
+
+Fallback modèle : gpt-4o (`OPENAI_API_KEY` `sk-`) puis Gateway `google/gemini-2.5-flash` sur 401/403/429/5xx/timeout. Pas de migration Gateway tant que la clé OpenAI est là.
 
 ## Vérifier
 
 ```bash
-npx tsx --test lib/crm/ingest-parse.test.ts lib/crm/item-match.test.ts lib/crm/carnet.test.ts
+npx tsx --test lib/crm/ingest-parse.test.ts lib/crm/item-match.test.ts lib/crm/ingest-pipeline.test.ts lib/crm/carnet.test.ts
 npx tsc --noEmit
 ```
 

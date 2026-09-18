@@ -92,6 +92,72 @@ export const bookingExtractSchema = z.object({
 
 export type BookingExtract = z.infer<typeof bookingExtractSchema>;
 
+export const MAX_INGEST_BYTES = 25 * 1024 * 1024;
+export const MAX_INGEST_FILES = 30;
+
+export type IngestStagedFile = {
+  path: string;
+  name: string;
+  type?: string | null;
+};
+
+export type IngestWarning = {
+  file: string;
+  message: string;
+};
+
+export function guessIngestMime(name: string) {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".pdf")) return "application/pdf";
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".heic") || lower.endsWith(".heif")) return "image/heic";
+  return "image/jpeg";
+}
+
+export function isAllowedIngestType(type: string | null | undefined, name: string) {
+  const mime = type || guessIngestMime(name);
+  return mime === "application/pdf" || mime.startsWith("image/");
+}
+
+export type IngestStreamEvent =
+  | {
+      event: "file";
+      index: number;
+      total: number;
+      name: string;
+      status: "reading" | "ok" | "error" | "identity";
+      family?: string;
+      itemCount?: number;
+      message?: string;
+    }
+  | { event: "progress"; done: number; total: number; current?: string }
+  | {
+      event: "done";
+      extract: BookingExtract;
+      suggested_customer_id: string | null;
+      warnings: IngestWarning[];
+    }
+  | { event: "fatal"; error: string };
+
+export function emptyBookingExtract(): BookingExtract {
+  return {
+    document_status: null,
+    title: "",
+    destination: "",
+    start_date: "",
+    end_date: "",
+    currency: "EUR",
+    total_amount: null,
+    notes_client: "",
+    customer_email: "",
+    customer_first_name: "",
+    customer_last_name: "",
+    items: [],
+    travelers: [],
+  };
+}
+
 export function sanitizeExtractedPrices(extract: BookingExtract): BookingExtract {
   const merged = mergeExtractItems(
     (extract.items || []).map((item) => ({ ...item, amount: null }))

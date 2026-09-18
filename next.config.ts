@@ -12,7 +12,7 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  serverExternalPackages: ["sharp", "unpdf"],
+  serverExternalPackages: ["sharp", "unpdf", "@napi-rs/canvas", "pdfjs-dist"],
   async redirects() {
     return [
       {

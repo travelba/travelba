@@ -429,6 +429,110 @@ export function isToucanActivities(text: string) {
   return /TOUCAN DISCOVERY/i.test(text);
 }
 
+export const INGEST_FAMILIES = [
+  "amadeus",
+  "little_emperors",
+  "nantipa",
+  "hotel_letter",
+  "sixt",
+  "transfer",
+  "quote",
+  "toucan",
+  "identity",
+  "unknown",
+] as const;
+
+export type IngestFamily = (typeof INGEST_FAMILIES)[number];
+
+export const DENSE_VISION_THRESHOLD = 800;
+
+export function classifyIngestFamily(text: string, filename = ""): IngestFamily {
+  const name = filename.toLowerCase();
+  if (/\bP<[A-Z]{3}/.test(text) || /\bP<[A-Z]{3}/.test(name)) return "identity";
+  if (/passeport|passport/i.test(name) && /MRZ|TD[13]|IDFRA/i.test(text)) {
+    return "identity";
+  }
+  if (isToucanActivities(text)) return "toucan";
+  if (/Reçu de Billet Electronique/i.test(text)) return "amadeus";
+  if (/\bSIXT\b/i.test(text) && /Pickup on/i.test(text)) return "sixt";
+  if (
+    (/TRANSFER CONFIRMATION/i.test(text) || /DROPOFF/i.test(text)) &&
+    /Itin[eé]raire/i.test(text)
+  ) {
+    return "transfer";
+  }
+  if (/NANTIPA/i.test(text) && /Reservation Number/i.test(text)) return "nantipa";
+  if (/Reservation Details/i.test(text) && /Booking Reference/i.test(text)) {
+    return isQuoteDocument(text) ? "quote" : "little_emperors";
+  }
+  if (isQuoteDocument(text)) return "quote";
+  if (/RESERVATION CONFIRMATION/i.test(text) || /Reservation Status/i.test(text)) {
+    return "hotel_letter";
+  }
+  return "unknown";
+}
+
+function isIata(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Z]{3}$/.test(value);
+}
+
+export function parserItemsComplete(
+  family: IngestFamily,
+  items: BookingExtract["items"]
+): boolean {
+  if (!items.length) return false;
+  if (family === "amadeus") {
+    return items.every(
+      (item) =>
+        item.kind === "flight" &&
+        Boolean(item.details?.flight_number) &&
+        Boolean(item.start_at) &&
+        Boolean(item.confirmation_ref || item.details?.pnr) &&
+        (isIata(item.details?.from) || Boolean(item.details?.city_from))
+    );
+  }
+  if (
+    family === "little_emperors" ||
+    family === "nantipa" ||
+    family === "hotel_letter"
+  ) {
+    return items.some(
+      (item) =>
+        item.kind === "hotel" &&
+        Boolean(item.details?.hotel_name || item.title) &&
+        Boolean(item.start_at)
+    );
+  }
+  if (family === "sixt") {
+    return items.some(
+      (item) => item.kind === "car" && Boolean(item.confirmation_ref) && Boolean(item.start_at)
+    );
+  }
+  if (family === "transfer") {
+    return items.some(
+      (item) =>
+        item.kind === "transfer" &&
+        Boolean(item.details?.pickup || item.details?.dropoff)
+    );
+  }
+  return false;
+}
+
+export function shouldUseVision(opts: {
+  denseChars: number;
+  itemCount: number;
+  family: IngestFamily;
+  isImage: boolean;
+  parserComplete: boolean;
+}) {
+  if (opts.parserComplete) return false;
+  if (opts.family === "identity") return false;
+  if (opts.isImage) return true;
+  if (opts.denseChars < DENSE_VISION_THRESHOLD) return true;
+  if (opts.itemCount === 0 && opts.family === "unknown") return true;
+  return false;
+}
+
 export function structuredHintFromPdfText(text: string): string {
   const clean = redactIngestText(text);
   const bits: string[] = [];
@@ -607,6 +711,54 @@ function upsertHint(items: ExtractItem[], incoming: ExtractItem) {
   else items.push(incoming);
 }
 
+export function parsedItemsFromText(text: string): {
+  items: ExtractItem[];
+  status: BookingExtract["document_status"];
+  notes: string[];
+} {
+  const items: ExtractItem[] = [];
+  const notes: string[] = [];
+  let status: BookingExtract["document_status"] = null;
+  const clean = redactIngestText(text);
+  for (const flight of parseAmadeusFlights(clean)) {
+    items.push(flightToItem(flight));
+  }
+  const hotel =
+    parseLittleEmperorsHotel(clean) ||
+    parseNantipaConfirmation(clean) ||
+    parseHotelConfirmationLetter(clean);
+  if (hotel) {
+    items.push(hotelToItem(hotel));
+    if (hotel.needs_review) {
+      notes.push("Hôtel : réservation provisoire (tentative), à confirmer.");
+    }
+  }
+  const transfer = parseTransferConfirmation(clean);
+  if (transfer) items.push(transferToItem(transfer));
+  const car = parseSixtCar(clean);
+  if (car) items.push(carToItem(car));
+  if (isQuoteDocument(clean)) {
+    status = "quote";
+    notes.push("Devis — tarifs non bloqués, à confirmer.");
+  }
+  if (isToucanActivities(clean)) {
+    notes.push(
+      "Toucan Discovery : activités uniquement ; les étapes du cadre ne sont pas des hôtels."
+    );
+  }
+  return { items: mergeExtractItems(items), status, notes };
+}
+
+export function tagSourceFileName(items: ExtractItem[], name: string): ExtractItem[] {
+  return items.map((item) => ({
+    ...item,
+    details: {
+      ...(item.details || {}),
+      source_file_name: item.details?.source_file_name || name,
+    },
+  }));
+}
+
 /** Complète / déduplique l’extract LLM avec les parseurs déterministes. */
 export function applyStructuredHints(
   extract: BookingExtract,
@@ -617,40 +769,18 @@ export function applyStructuredHints(
   let status = extract.document_status;
 
   for (const raw of texts) {
-    const text = redactIngestText(raw);
-    for (const flight of parseAmadeusFlights(text)) {
-      upsertHint(items, flightToItem(flight));
-    }
-    const hotel =
-      parseLittleEmperorsHotel(text) ||
-      parseNantipaConfirmation(text) ||
-      parseHotelConfirmationLetter(text);
-    if (hotel) {
-      upsertHint(items, hotelToItem(hotel));
-      if (hotel.needs_review) {
-        extraNotes.push("Hôtel : réservation provisoire (tentative), à confirmer.");
-      }
-    }
-    const transfer = parseTransferConfirmation(text);
-    if (transfer) upsertHint(items, transferToItem(transfer));
-    const car = parseSixtCar(text);
-    if (car) upsertHint(items, carToItem(car));
-    if (isQuoteDocument(text)) {
-      status = status || "quote";
-      extraNotes.push("Devis — tarifs non bloqués, à confirmer.");
-    }
-    if (isToucanActivities(text)) {
-      extraNotes.push(
-        "Toucan Discovery : activités uniquement ; les étapes du cadre ne sont pas des hôtels."
-      );
-    }
+    const parsed = parsedItemsFromText(raw);
+    for (const item of parsed.items) upsertHint(items, item);
+    if (parsed.status) status = status || parsed.status;
+    extraNotes.push(...parsed.notes);
   }
 
-  const notes = [extract.notes_client, ...extraNotes]
-    .map((row) => (row || "").trim())
-    .filter(Boolean)
-    .filter((row, index, all) => all.indexOf(row) === index)
-    .join("\n") || null;
+  const notes =
+    [extract.notes_client, ...extraNotes]
+      .map((row) => (row || "").trim())
+      .filter(Boolean)
+      .filter((row, index, all) => all.indexOf(row) === index)
+      .join("\n") || null;
 
   return {
     ...extract,
