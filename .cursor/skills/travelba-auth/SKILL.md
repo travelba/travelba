@@ -44,7 +44,7 @@ Après succès mot de passe (`/api/client/password`) : `app_metadata.must_set_pa
 
 `/connexion` : mot de passe **et** lien magique (`POST /api/auth/otp` → `generateLink` magiclink + Resend). Mot de passe oublié = `resetPasswordForEmail` → callback → définir mot de passe.
 
-OTP : si l’e-mail n’existe pas, répondre `{ ok: true }` quand même (pas d’énumération).
+OTP : si l’e-mail n’est pas un client déjà invité (`crm_customers.auth_user_id`), répondre `{ ok: true }` sans `generateLink` (pas d’énumération, pas de création Auth).
 
 ## Sessions
 

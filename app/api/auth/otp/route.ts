@@ -47,6 +47,15 @@ export async function POST(request: Request) {
 
   try {
     const supabase = createServiceClient();
+    const { data: customer } = await supabase
+      .from("crm_customers")
+      .select("id, auth_user_id")
+      .eq("email", email)
+      .maybeSingle();
+    if (!customer?.auth_user_id) {
+      return NextResponse.json({ ok: true });
+    }
+
     const { data, error } = await supabase.auth.admin.generateLink({
       type: "magiclink",
       email,
