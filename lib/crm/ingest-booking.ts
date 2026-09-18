@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
 import { nextBookingReference, syncBookingDebit } from "@/lib/crm/bookings";
 import {
   copyCrmFile,
@@ -206,7 +207,7 @@ async function insertBookingDoc(
     })
     .select("id, file_name")
     .single();
-  if (error) throw new Error(error.message);
+  if (error) throw dbFailure(error, "Pièce jointe non enregistrée.");
   return { id: data.id, file_name: data.file_name };
 }
 
@@ -308,7 +309,7 @@ async function upsertItemsAndTravelers(
           .from("crm_booking_items")
           .update(payload)
           .eq("id", match.id);
-        if (error) throw new Error(error.message);
+        if (error) throw dbFailure(error, "Carte non mise à jour.");
         Object.assign(match, payload);
       } else {
         const { data: inserted, error } = await supabase
@@ -320,7 +321,7 @@ async function upsertItemsAndTravelers(
           })
           .select("id")
           .single();
-        if (error) throw new Error(error.message);
+        if (error) throw dbFailure(error, "Carte non enregistrée.");
         if (inserted?.id) {
           remaining.push({
             id: inserted.id,
@@ -372,6 +373,8 @@ export async function persistNewBookingFromExtract(opts: {
   batchId?: string;
   status: BookingStatus;
   visibleToClient: boolean;
+  /** Client authentifié de l’agent : la RPC de référence tourne sous son rôle (crm_private). */
+  referenceClient?: SupabaseClient;
 }) {
   const admin = createServiceClient();
   const [{ data: customer }, { data: companions }] = await Promise.all([
@@ -382,7 +385,7 @@ export async function persistNewBookingFromExtract(opts: {
   if (opts.extract.document_status === "identity") {
     throw new Error("Document d’identité : enregistrez-le dans le profil, pas en réservation.");
   }
-  const reference = await nextBookingReference(admin);
+  const reference = await nextBookingReference(opts.referenceClient ?? admin);
   const extract = opts.extract;
   const title =
     emptyToNull(extract.title) ||
@@ -411,7 +414,7 @@ export async function persistNewBookingFromExtract(opts: {
     })
     .select("*")
     .single();
-  if (error || !data) throw new Error(error?.message || "Création impossible");
+  if (error || !data) throw dbFailure(error, "Création du dossier impossible.");
   const booking = data as CrmBooking;
   const docs = await attachBookingFiles(
     booking.id,
@@ -527,4 +530,9 @@ export function parseExtractPayload(raw: unknown): BookingExtract {
   const parsed = bookingExtractSchema.safeParse(raw);
   if (!parsed.success) throw new Error("Données extraites invalides");
   return sanitizeExtractedPrices(parsed.data);
+}
+
+function dbFailure(error: DbErrorLike, fallback: string) {
+  console.error("[ingest] db:", error?.code ?? "?", error?.message ?? "");
+  return new Error(dbErrorMessage(error, fallback));
 }

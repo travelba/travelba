@@ -20,7 +20,8 @@ export function bookingDebitIntent(input: {
 export async function nextBookingReference(supabase: SupabaseClient) {
   const { data, error } = await supabase.rpc("crm_next_booking_reference");
   if (error || !data) {
-    throw new Error(error?.message || "Référence indisponible");
+    console.error("[bookings] reference:", error?.code ?? "?", error?.message ?? "");
+    throw new Error("Référence de dossier indisponible. Réessayez.");
   }
   return String(data);
 }

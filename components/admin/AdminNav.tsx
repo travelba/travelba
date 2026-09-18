@@ -126,10 +126,10 @@ export function AdminNav({
             </span>
             <span className="flex flex-col leading-tight">
               <span className="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">
-                Travel Business
+                Travel Business Agency
               </span>
               <span className="font-display text-base font-semibold text-[var(--admin-navy)]">
-                Private Agency
+                Espace agence
               </span>
             </span>
           </Link>

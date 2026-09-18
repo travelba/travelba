@@ -27,6 +27,7 @@ export async function POST(request: Request) {
       files,
       staged,
       staffUserId: auth.user.id,
+      referenceClient: auth.supabase,
       batchId: batchId || undefined,
       status: "draft",
       visibleToClient: false,
