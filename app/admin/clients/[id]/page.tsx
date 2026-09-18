@@ -69,19 +69,41 @@ export default async function AdminClientDetailPage({ params }: Props) {
         documents={(documents || []) as CrmTravelDocument[]}
       />
       <section className="admin-af-card rounded-3xl p-5">
-        <h2 className="font-display text-lg font-bold">Réservations</h2>
-        <ul className="mt-2 text-sm">
-          {bookingRows.map((b) => (
-            <li key={b.id}>
-              <Link href={`/admin/reservations/${b.id}`}>
-                {b.reference} · {b.title} · {formatDateFr(b.start_date)}
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="font-display text-lg font-bold">Réservations</h2>
+          <Link
+            href="/admin/reservations"
+            className="text-xs font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline"
+          >
+            Nouveau dossier
+          </Link>
+        </div>
+        {bookingRows.length ? (
+          <ul className="mt-2 divide-y divide-border text-sm">
+            {bookingRows.map((b) => (
+              <li key={b.id} className="py-2">
+                <Link
+                  href={`/admin/reservations/${b.id}`}
+                  className="text-[var(--admin-navy)] underline-offset-2 hover:underline"
+                >
+                  {b.reference} · {b.title} · {formatDateFr(b.start_date)}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-sm text-muted">
+            Aucun dossier pour ce client. Importez ses confirmations depuis Réservations.
+          </p>
+        )}
       </section>
       <section className="admin-af-card rounded-3xl p-5">
         <h2 className="font-display text-lg font-bold">Transactions</h2>
+        {!(txs || []).length ? (
+          <p className="mt-2 text-sm text-muted">
+            Aucune écriture. Les débits sont créés à la confirmation d’un dossier, les crédits au rapprochement Revolut ou à la saisie manuelle.
+          </p>
+        ) : null}
         <ul className="mt-2 divide-y divide-border text-sm">
           {((txs || []) as CrmTransaction[]).map((t) => (
             <li key={t.id} className="flex justify-between py-2">

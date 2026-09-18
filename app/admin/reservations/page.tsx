@@ -17,7 +17,7 @@ export default async function AdminReservationsPage() {
 
   return (
     <div>
-      <PageEyebrow>Back-office</PageEyebrow>
+      <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
         title="Réservations"
         subtitle="Importer les PDF, Enregistrer le brouillon, puis Publier — Enregistrer ne rend pas le carnet visible."

@@ -5,7 +5,6 @@ import { ensureCustomerForUser } from "@/lib/crm/auth";
 import {
   BOOKING_STATUS_LABELS,
   type CrmBalance,
-  type CrmBooking,
   type CrmBookingItem,
   type CrmBookingTraveler,
   type CrmBookingDocument,

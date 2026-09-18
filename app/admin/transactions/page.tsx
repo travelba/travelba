@@ -18,7 +18,7 @@ export default async function AdminTransactionsPage() {
 
   return (
     <div>
-      <PageEyebrow>Back-office</PageEyebrow>
+      <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
         title="Grand livre"
         subtitle="Débits réservations, crédits Revolut et ajustements — seules les écritures comptabilisées impactent l’encours."

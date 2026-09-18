@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import {
@@ -57,15 +57,16 @@ export function BookingItemsPanel({
 }) {
   const router = useRouter();
   const [rows, setRows] = useState(items);
+  const [syncedItems, setSyncedItems] = useState(items);
+  if (syncedItems !== items) {
+    setSyncedItems(items);
+    setRows(items);
+  }
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
   const [draft, setDraft] = useState<ItemDraft>(emptyDraft());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dragFrom = useRef<number | null>(null);
-
-  useEffect(() => {
-    setRows(items);
-  }, [items]);
 
   function startEdit(item: CrmBookingItem) {
     setEditingId(item.id);

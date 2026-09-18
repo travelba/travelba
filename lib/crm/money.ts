@@ -24,6 +24,10 @@ export function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);
 }
 
+export function isoDateInDays(days: number) {
+  return new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+}
+
 export function isUpcomingBooking(endDate: string | null) {
   if (!endDate) return true;
   return endDate >= todayIsoDate();

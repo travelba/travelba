@@ -5,8 +5,19 @@ import { revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
 import type { CrmCustomer, CrmRevolutTransaction } from "@/lib/crm/types";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 
-export default async function AdminRevolutPage() {
+export default async function AdminRevolutPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ connected?: string; error?: string }>;
+}) {
   const { supabase } = await requireStaffPage();
+  const params = await searchParams;
+  const initialMessage =
+    params.error === "oauth"
+      ? "Connexion Revolut refusée ou expirée. Relancez « Connecter Revolut »."
+      : params.connected === "1"
+        ? "Compte Revolut connecté."
+        : null;
   const { data: customers } = await supabase
     .from("crm_customers")
     .select("*")
@@ -27,7 +38,7 @@ export default async function AdminRevolutPage() {
 
   return (
     <div>
-      <PageEyebrow>Back-office</PageEyebrow>
+      <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
         title="Rapprochement Revolut"
         subtitle="Connecter le compte Business une fois, puis rapprocher à la main. Aucun crédit client n’est automatique."
@@ -38,6 +49,7 @@ export default async function AdminRevolutPage() {
           customers={(customers || []) as CrmCustomer[]}
           configured={revolutConfigured()}
           connected={await revolutConnected()}
+          initialMessage={initialMessage}
         />
       </div>
     </div>

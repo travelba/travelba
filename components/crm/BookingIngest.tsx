@@ -195,7 +195,9 @@ export function BookingIngest({
   const [customerId, setCustomerId] = useState("");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const slotsRef = useRef<Slot[]>([]);
-  slotsRef.current = slots;
+  useEffect(() => {
+    slotsRef.current = slots;
+  }, [slots]);
 
   useEffect(() => {
     return () => {
