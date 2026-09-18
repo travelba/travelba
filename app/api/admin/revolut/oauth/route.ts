@@ -12,7 +12,8 @@ export async function GET(request: Request) {
       await exchangeRevolutAuthCode(code);
       return NextResponse.redirect(new URL("/admin/revolut?connected=1", url.origin));
     } catch (err) {
-      return jsonError(err instanceof Error ? err.message : "OAuth Revolut", 400);
+      console.error("[revolut/oauth]", err);
+      return NextResponse.redirect(new URL("/admin/revolut?error=oauth", url.origin));
     }
   }
 

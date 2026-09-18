@@ -7,7 +7,7 @@ import {
   type CrmCustomer,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
-import { formatDateFr, formatMoney } from "@/lib/crm/money";
+import { formatDateFr, formatMoney, isoDateInDays, todayIsoDate } from "@/lib/crm/money";
 import { revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
 import { stripeConfigured, stripeWebhookConfigured } from "@/lib/crm/stripe";
 import { buildLaunchItems } from "@/lib/crm/launch-status";
@@ -23,8 +23,8 @@ import {
 export default async function AdminHomePage() {
   const { supabase, staff } = await requireStaffPage();
 
-  const today = new Date().toISOString().slice(0, 10);
-  const soon = new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10);
+  const today = todayIsoDate();
+  const soon = isoDateInDays(90);
 
   const [
     { data: bookings },
@@ -84,7 +84,7 @@ export default async function AdminHomePage() {
   return (
     <div className="space-y-6">
       <div>
-        <PageEyebrow>Back-office agence</PageEyebrow>
+        <PageEyebrow>Espace agence</PageEyebrow>
         <PageTitle
           title="Vue d’ensemble"
           subtitle={`Connecté en tant que ${staff.full_name || "agent"} · ${staff.role}`}

@@ -86,7 +86,8 @@ export function customerPatchFromBody(
     }
     patch[key] = emptyToNull(body[key]);
   }
-  if (opts.requirePhone) {
+  // Un PATCH partiel (ex. facturation) ne touche pas au téléphone ; on refuse seulement de l’effacer.
+  if (opts.requirePhone && "phone" in body) {
     const raw = emptyToNull(body.phone);
     const e164 = raw ? toE164(raw, "FR") : null;
     if (!e164) return { patch, error: "Indiquez un numéro de téléphone." };

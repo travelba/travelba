@@ -80,7 +80,7 @@ export function AdminNav({
               TBA
             </span>
             <span className="truncate font-display text-sm font-semibold text-[var(--admin-navy)]">
-              Back-office
+              Espace agence
             </span>
           </Link>
           <div className="flex shrink-0 items-center gap-2">
@@ -112,6 +112,7 @@ export function AdminNav({
             onChange={(e) => setQuery(e.target.value)}
             className="w-full rounded-md bg-[var(--surface-2)] py-2.5 pl-10 pr-4 text-[13px] text-[var(--admin-navy)] outline-none transition focus:bg-white focus:ring-2 focus:ring-[var(--admin-gold)]/30"
             placeholder="Rechercher un client…"
+            aria-label="Rechercher un client"
             type="search"
           />
         </form>
@@ -125,10 +126,10 @@ export function AdminNav({
             </span>
             <span className="flex flex-col leading-tight">
               <span className="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">
-                Travel Business
+                Travel Business Agency
               </span>
               <span className="font-display text-base font-semibold text-[var(--admin-navy)]">
-                Private Agency
+                Espace agence
               </span>
             </span>
           </Link>
@@ -163,22 +164,26 @@ export function AdminNav({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="w-full rounded-md bg-[var(--surface-2)] py-2.5 pl-10 pr-4 text-[13px] text-[var(--admin-navy)] outline-none transition focus:bg-white focus:ring-2 focus:ring-[var(--admin-gold)]/30"
-            placeholder="Rechercher un client ou une réservation…"
+            placeholder="Rechercher un client…"
+            aria-label="Rechercher un client"
             type="search"
           />
         </form>
         <div className="ml-6 flex items-center gap-4">
-          <Link
-            href="/admin/revolut"
-            className="relative inline-flex h-10 w-10 items-center justify-center rounded-md text-muted"
-            aria-label="Revolut à rapprocher"
+          {unmatchedCount > 0 ? (
+            <Link
+              href="/admin/revolut"
+              className="inline-flex items-center gap-2 rounded-full border border-[var(--admin-gold)]/40 bg-[var(--admin-gold-soft)]/40 px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)]"
+            >
+              <Icon name="sync_alt" className="h-4 w-4" />
+              {unmatchedCount} virement{unmatchedCount > 1 ? "s" : ""} à rapprocher
+            </Link>
+          ) : null}
+          <span
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[var(--admin-gold)]"
+            role="img"
+            aria-label="Agent connecté"
           >
-            <Icon name="notifications" className="h-[22px] w-[22px]" />
-            {unmatchedCount > 0 ? (
-              <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-[var(--admin-gold)]" />
-            ) : null}
-          </Link>
-          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[var(--admin-gold)]">
             <Icon name="person" className="h-[18px] w-[18px]" />
           </span>
         </div>

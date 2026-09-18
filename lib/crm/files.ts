@@ -17,6 +17,37 @@ export async function uploadCrmFile(
   return path;
 }
 
+export async function createSignedCrmUploadUrl(path: string) {
+  const supabase = createServiceClient();
+  const { data, error } = await supabase.storage
+    .from(CRM_BUCKET)
+    .createSignedUploadUrl(path, { upsert: true });
+  if (error || !data?.signedUrl) {
+    throw error || new Error("URL d’envoi impossible");
+  }
+  return data;
+}
+
+export async function downloadCrmFile(path: string): Promise<{
+  bytes: Uint8Array;
+  contentType: string;
+}> {
+  const supabase = createServiceClient();
+  const { data, error } = await supabase.storage.from(CRM_BUCKET).download(path);
+  if (error || !data) throw error || new Error("Fichier introuvable");
+  return {
+    bytes: new Uint8Array(await data.arrayBuffer()),
+    contentType: data.type || "application/octet-stream",
+  };
+}
+
+export async function copyCrmFile(fromPath: string, toPath: string) {
+  const supabase = createServiceClient();
+  const { error } = await supabase.storage.from(CRM_BUCKET).copy(fromPath, toPath);
+  if (error) throw error;
+  return toPath;
+}
+
 export async function signedCrmUrl(path: string, expiresIn = 600) {
   const supabase = createServiceClient();
   const { data, error } = await supabase.storage

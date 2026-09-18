@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { resolveCountryCode } from "@/lib/crm/countries";
 import { emptyToNull } from "@/lib/crm/identity";
+import { deleteTravelDocuments } from "@/lib/crm/travel-document-write";
 
 function companionPatch(body: Record<string, unknown>) {
   const sex = emptyToNull(body.sex);
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
     })
     .select("*")
     .single();
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   return NextResponse.json({ companion: data });
 }
 
@@ -49,7 +50,7 @@ export async function PATCH(request: Request) {
     .eq("customer_id", customerId)
     .select("*")
     .single();
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   return NextResponse.json({ companion: data });
 }
 
@@ -58,10 +59,12 @@ export async function DELETE(request: Request) {
   if (auth instanceof NextResponse) return auth;
   const id = new URL(request.url).searchParams.get("id");
   if (!id) return jsonError("id requis");
+  const docs = await deleteTravelDocuments(auth.supabase, { companion_id: id });
+  if (docs.error) return dbError(docs.error, 400);
   const { error } = await auth.supabase
     .from("crm_travel_companions")
     .delete()
     .eq("id", id);
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   return NextResponse.json({ ok: true });
 }

@@ -1,20 +1,29 @@
 import "server-only";
-import { generateText, Output, APICallError } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
-import { extractImages, extractText, getDocumentProxy } from "unpdf";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
 import { nextBookingReference, syncBookingDebit } from "@/lib/crm/bookings";
-import { trySharp } from "@/lib/crm/sharp";
-import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
+import {
+  copyCrmFile,
+  listCrmFiles,
+  removeCrmFiles,
+  safeFileName,
+  uploadCrmFile,
+} from "@/lib/crm/files";
 import { emptyToNull } from "@/lib/crm/identity";
+import { extractBookingFromFiles } from "@/lib/crm/ingest-file";
 import {
   bookingExtractSchema,
   aiGatewayConfigured,
-  openaiApiKey,
+  guessIngestMime,
+  isAllowedIngestType,
   sanitizeExtractedPrices,
+  MAX_INGEST_BYTES,
+  MAX_INGEST_FILES,
   type BookingExtract,
+  type IngestStagedFile,
 } from "@/lib/crm/ingest-types";
+import { assertStaffIngestPath, ingestBatchPrefix } from "@/lib/crm/ingest-storage";
 import { sortItemsByOrder } from "@/lib/crm/carnet";
 import { scheduleBookingCover } from "@/lib/crm/cover-generate";
 import { findMatchingItem } from "@/lib/crm/item-match";
@@ -29,71 +38,8 @@ import {
 } from "@/lib/crm/types";
 
 export { bookingExtractSchema, aiGatewayConfigured, type BookingExtract };
-
-export const MAX_INGEST_BYTES = 25 * 1024 * 1024;
-export const MAX_INGEST_FILES = 30;
-const ALLOWED_TYPES = new Set([
-  "application/pdf",
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-  "image/webp",
-  "image/heic",
-  "image/heif",
-]);
-
-const PROMPT = `Tu es l’assistant d’une agence de voyage française (Travel Business Agency).
-Lis TOUS les documents (e-tickets IATA/Amadeus, vouchers hôtel, devis Little Emperors / My Concierge, TAAP/Talixo, trains, voitures, ferries, activités, captures d’écran).
-Un dépôt = UN séjour. Si plusieurs voyages : extraire le plus complet et le dire dans notes_client.
-
-document_status : confirmed | quote | identity.
-- quote = « none are on hold », plusieurs options tarifaires, pas de nom de réservation.
-- identity = passeport → ne pas créer de prestation.
-
-Règles d’honnêteté :
-- Ne jamais inventer. Absent = null. Pas de check-in 15:00 / check-out 12:00.
-- Ne jamais extraire de PAN / CVC, même masqué.
-- Ne pas extraire conditions d’annulation, net fournisseur, franchise, CGV.
-- Inclus (petit-déj, spa, taxes) UNIQUEMENT si une phrase l’écrit. Sinon included = [].
-- Traduire en français les libellés de chambre / inclus. Garder les noms propres.
-- Horaires ISO 8601 seulement s’ils sont imprimés (heures locales du lieu).
-- Devise : $ = USD, € = EUR, CHF = CHF.
-- kind : flight | hotel | transfer | activity | rail | car | cruise | insurance | fee.
-- Un PDF peut produire PLUSIEURS cartes.
-- details.source_file_name = nom exact du fichier source.
-- details.needs_review = true si lecture douteuse.
-
-Vol :
-- Aller et retour = DEUX items. Correspondance = DEUX items (un segment chacun). Pas de retour fantôme.
-- confirmation_ref = PNR GDS 6 lettres. details.pnr = réf. compagnie.
-- details.airline = transporteur opérant. supplier = émetteur du billet (Hahn Air ≠ Air Panama).
-- details.from / to = IATA. details.city_from / city_to = villes.
-- Bagages / siège / terminal seulement s’ils sont imprimés.
-- Vol de nuit : start_at = décollage ; noter J+1 dans details.notes si l’arrivée est le lendemain.
-
-Hôtel :
-- UN item même s’il y a deux chambres / deux réf. : details.rooms = [{room, guests, confirmation_ref}, …].
-- confirmation_ref = première réf. ou les deux séparées par « ; ».
-- details.hotel_name, details.city (ville), details.address (pour l’agent), details.board (pension) si écrite.
-- details.occupancy = texte brut (« 2 adultes + 1 enfant ») s’il est écrit.
-- details.special_requests si lit bébé / vue / late check-in est écrit.
-- Devis : document_status=quote, un item hôtel, rooms = les options, total_amount=null.
-
-Transfert : details.pickup / dropoff. Si « 2 h 30 avant le vol » sans heure clock → details.pickup_note, pas d’heure inventée. Pas de chauffeur au client.
-
-Train (rail) : comme un vol (n°, gares, horaires si écrits).
-Voiture (car) : catégorie, conducteur, prise/restitution si écrits. Pas de franchise.
-Bateau (cruise) : une carte pour la traversée / croisière, pas un jour par port.
-
-Voyageurs :
-- Noms imprimés, casse normale.
-- Si « 2 adults » sans noms : travelers = [{first_name:"Adulte", last_name:"1"}, {first_name:"Adulte", last_name:"2"}].
-- Ne pas créer d’enfant sans nom.
-
-title : villes séparées par « · » (ex. « Marrakech · Essaouira »).
-destination : mêmes villes.
-amount des items : toujours null. Le prix vendu est saisi par l’agent, jamais le net PDF.
-total_amount : toujours null. Le total TTC est saisi par l’agent dans « Prix vendu ».`;
+export { extractBookingFromFiles };
+export { MAX_INGEST_BYTES, MAX_INGEST_FILES };
 
 export function collectIngestFiles(form: FormData) {
   const files: File[] = [];
@@ -105,6 +51,24 @@ export function collectIngestFiles(form: FormData) {
   return files;
 }
 
+export function collectStagedFiles(form: FormData): IngestStagedFile[] {
+  const raw = form.get("staged");
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(String(raw));
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((row) => ({
+        path: String(row?.path || ""),
+        name: String(row?.name || ""),
+        type: row?.type ? String(row.type) : null,
+      }))
+      .filter((row) => row.path && row.name);
+  } catch {
+    throw new Error("Fichiers joints invalides");
+  }
+}
+
 export function assertIngestFiles(files: File[]) {
   if (files.length === 0) throw new Error("Ajoutez au moins un PDF ou une photo.");
   if (files.length > MAX_INGEST_FILES) {
@@ -114,159 +78,19 @@ export function assertIngestFiles(files: File[]) {
     if (file.size > MAX_INGEST_BYTES) {
       throw new Error(`${file.name} dépasse 25 Mo.`);
     }
-    const type = file.type || guessMime(file.name);
-    if (!ALLOWED_TYPES.has(type) && !type.startsWith("image/")) {
+    if (!isAllowedIngestType(file.type, file.name)) {
       throw new Error(`${file.name} : PDF ou image uniquement.`);
     }
   }
 }
 
-function guessMime(name: string) {
-  const lower = name.toLowerCase();
-  if (lower.endsWith(".pdf")) return "application/pdf";
-  if (lower.endsWith(".png")) return "image/png";
-  if (lower.endsWith(".webp")) return "image/webp";
-  if (lower.endsWith(".heic") || lower.endsWith(".heif")) return "image/heic";
-  return "image/jpeg";
-}
-
-function ingestModel() {
-  const key = openaiApiKey();
-  if (key) return createOpenAI({ apiKey: key })("gpt-4o");
-  return "openai/gpt-4o";
-}
-
-type UserPart =
-  | { type: "text"; text: string }
-  | { type: "image"; image: Uint8Array; mediaType: string };
-
-async function generateExtract(content: UserPart[], useGateway: boolean) {
-  return generateText({
-    model: useGateway ? "openai/gpt-4o" : ingestModel(),
-    output: Output.object({
-      schema: bookingExtractSchema,
-      name: "booking",
-      description: "Dossier de réservation extrait des documents",
-    }),
-    messages: [{ role: "user", content }],
-    ...(useGateway
-      ? {
-          providerOptions: {
-            gateway: {
-              tags: ["feature:booking-ingest"],
-              models: ["google/gemini-2.5-flash"],
-            },
-          },
-        }
-      : {}),
-  });
-}
-
-async function imagePart(bytes: Uint8Array, mediaType: string): Promise<UserPart> {
-  if (mediaType.includes("heic") || mediaType.includes("heif")) {
-    const sharp = await trySharp();
-    if (sharp) {
-      try {
-        const jpeg = await sharp(Buffer.from(bytes)).jpeg({ quality: 85 }).toBuffer();
-        return { type: "image", image: new Uint8Array(jpeg), mediaType: "image/jpeg" };
-      } catch {
-        /* keep original */
-      }
-    }
-  }
-  return { type: "image", image: bytes, mediaType };
-}
-
-async function pdfParts(name: string, bytes: Uint8Array): Promise<UserPart[]> {
-  const parts: UserPart[] = [];
+export async function cleanupIngestBatch(staffUserId: string, batchId: string) {
   try {
-    const pdf = await getDocumentProxy(bytes);
-    const extracted = await extractText(pdf, { mergePages: true });
-    const text = extracted.text;
-    parts.push({
-      type: "text",
-      text: `PDF « ${name} » (${extracted.totalPages} page${extracted.totalPages > 1 ? "s" : ""}) :\n${text.slice(0, 24000)}`,
-    });
-    const dense = text.replace(/\s/g, "").length;
-    if (dense < 500) {
-      const sharp = await trySharp();
-      const max = Math.min(extracted.totalPages, 3);
-      for (let page = 1; page <= max; page++) {
-        const images = await extractImages(pdf, page);
-        for (const img of images.slice(0, 6)) {
-          if (!sharp) {
-            parts.push({
-              type: "image",
-              image: new Uint8Array(img.data),
-              mediaType: "image/jpeg",
-            });
-            continue;
-          }
-          const jpeg = await sharp(img.data, {
-            raw: { width: img.width, height: img.height, channels: img.channels },
-          })
-            .jpeg({ quality: 80 })
-            .toBuffer();
-          parts.push({ type: "image", image: new Uint8Array(jpeg), mediaType: "image/jpeg" });
-        }
-      }
-    }
-  } catch {
-    parts.push({
-      type: "text",
-      text: `PDF « ${name} » : texte illisible, s’appuyer sur le fichier binaire s’il est fourni.`,
-    });
-  }
-  return parts;
-}
-
-async function buildIngestContent(files: File[]): Promise<UserPart[]> {
-  const content: UserPart[] = [{ type: "text", text: PROMPT }];
-  for (const file of files) {
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const mediaType = file.type || guessMime(file.name);
-    if (mediaType === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
-      content.push(...(await pdfParts(file.name, bytes)));
-    } else {
-      content.push(await imagePart(bytes, mediaType.startsWith("image/") ? mediaType : "image/jpeg"));
-    }
-  }
-  return content;
-}
-
-export async function extractBookingFromFiles(files: File[]): Promise<BookingExtract> {
-  if (!aiGatewayConfigured()) {
-    throw new Error("Lecture automatique non configurée (OPENAI_API_KEY).");
-  }
-  assertIngestFiles(files);
-  const content = await buildIngestContent(files);
-  const key = openaiApiKey();
-  try {
-    const result = await generateExtract(content, !key);
-    if (!result.output) {
-      throw new Error("Lecture incomplète. Réessayez avec des fichiers plus lisibles.");
-    }
-    return sanitizeExtractedPrices(result.output);
+    const prefix = ingestBatchPrefix(staffUserId, batchId);
+    const paths = await listCrmFiles(prefix);
+    await removeCrmFiles(paths);
   } catch (err) {
-    if (err instanceof Error && err.message.startsWith("Lecture")) throw err;
-    if (
-      key &&
-      APICallError.isInstance(err) &&
-      (err.statusCode === 401 || err.statusCode === 403)
-    ) {
-      try {
-        const fallback = await generateExtract(content, true);
-        if (!fallback.output) {
-          throw new Error("Lecture incomplète. Réessayez avec des fichiers plus lisibles.");
-        }
-        return sanitizeExtractedPrices(fallback.output);
-      } catch (fallbackErr) {
-        if (fallbackErr instanceof Error && fallbackErr.message.startsWith("Lecture")) {
-          throw fallbackErr;
-        }
-      }
-    }
-    throw new Error("Lecture automatique impossible. Réessayez avec des fichiers plus lisibles.");
+    console.error("[ingest-tmp] cleanup", err instanceof Error ? err.message : err);
   }
 }
 
@@ -361,31 +185,68 @@ function itemKind(value: string | null | undefined): BookingItemKind {
 
 type UploadedDoc = { id: string; file_name: string | null };
 
-async function uploadBookingFiles(
+async function insertBookingDoc(
+  supabase: SupabaseClient,
   bookingId: string,
+  opts: {
+    name: string;
+    mime: string;
+    storagePath: string;
+    visibleToClient: boolean;
+  }
+): Promise<UploadedDoc> {
+  const { data, error } = await supabase
+    .from("crm_booking_documents")
+    .insert({
+      booking_id: bookingId,
+      kind: opts.mime.includes("pdf") ? "pdf" : "image",
+      file_name: opts.name,
+      mime_type: opts.mime,
+      storage_path: opts.storagePath,
+      visible_to_client: opts.visibleToClient,
+    })
+    .select("id, file_name")
+    .single();
+  if (error) throw dbFailure(error, "Pièce jointe non enregistrée.");
+  return { id: data.id, file_name: data.file_name };
+}
+
+async function attachBookingFiles(
+  bookingId: string,
+  staged: IngestStagedFile[],
   files: File[],
   visibleToClient: boolean,
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  staffUserId?: string
 ): Promise<UploadedDoc[]> {
   const uploaded: UploadedDoc[] = [];
+  for (const file of staged) {
+    if (staffUserId) assertStaffIngestPath(file.path, staffUserId);
+    const mime = file.type || guessIngestMime(file.name);
+    const dest = `bookings/${bookingId}/${Date.now()}-${safeFileName(file.name)}`;
+    await copyCrmFile(file.path, dest);
+    uploaded.push(
+      await insertBookingDoc(supabase, bookingId, {
+        name: file.name,
+        mime,
+        storagePath: dest,
+        visibleToClient,
+      })
+    );
+  }
   for (const file of files) {
     const bytes = Buffer.from(await file.arrayBuffer());
+    const mime = file.type || guessIngestMime(file.name);
     const path = `bookings/${bookingId}/${Date.now()}-${safeFileName(file.name)}`;
-    await uploadCrmFile(path, bytes, file.type || guessMime(file.name));
-    const { data, error } = await supabase
-      .from("crm_booking_documents")
-      .insert({
-        booking_id: bookingId,
-        kind: file.type?.includes("pdf") ? "pdf" : "image",
-        file_name: file.name,
-        mime_type: file.type || guessMime(file.name),
-        storage_path: path,
-        visible_to_client: visibleToClient,
+    await uploadCrmFile(path, bytes, mime);
+    uploaded.push(
+      await insertBookingDoc(supabase, bookingId, {
+        name: file.name,
+        mime,
+        storagePath: path,
+        visibleToClient,
       })
-      .select("id, file_name")
-      .single();
-    if (error) throw new Error(error.message);
-    uploaded.push({ id: data.id, file_name: data.file_name });
+    );
   }
   return uploaded;
 }
@@ -448,16 +309,29 @@ async function upsertItemsAndTravelers(
           .from("crm_booking_items")
           .update(payload)
           .eq("id", match.id);
-        if (error) throw new Error(error.message);
-        const idx = remaining.findIndex((row) => row.id === match.id);
-        if (idx >= 0) remaining.splice(idx, 1);
+        if (error) throw dbFailure(error, "Carte non mise à jour.");
+        Object.assign(match, payload);
       } else {
-        const { error } = await supabase.from("crm_booking_items").insert({
-          booking_id: bookingId,
-          sort_order: sort++,
-          ...payload,
-        });
-        if (error) throw new Error(error.message);
+        const { data: inserted, error } = await supabase
+          .from("crm_booking_items")
+          .insert({
+            booking_id: bookingId,
+            sort_order: sort++,
+            ...payload,
+          })
+          .select("id")
+          .single();
+        if (error) throw dbFailure(error, "Carte non enregistrée.");
+        if (inserted?.id) {
+          remaining.push({
+            id: inserted.id,
+            booking_id: bookingId,
+            sort_order: sort - 1,
+            created_at: "",
+            updated_at: "",
+            ...payload,
+          } as CrmBookingItem);
+        }
       }
       saved += 1;
     } catch (err) {
@@ -493,9 +367,14 @@ async function upsertItemsAndTravelers(
 export async function persistNewBookingFromExtract(opts: {
   customerId: string;
   extract: BookingExtract;
-  files: File[];
+  files?: File[];
+  staged?: IngestStagedFile[];
+  staffUserId?: string;
+  batchId?: string;
   status: BookingStatus;
   visibleToClient: boolean;
+  /** Client authentifié de l’agent : la RPC de référence tourne sous son rôle (crm_private). */
+  referenceClient?: SupabaseClient;
 }) {
   const admin = createServiceClient();
   const [{ data: customer }, { data: companions }] = await Promise.all([
@@ -506,7 +385,7 @@ export async function persistNewBookingFromExtract(opts: {
   if (opts.extract.document_status === "identity") {
     throw new Error("Document d’identité : enregistrez-le dans le profil, pas en réservation.");
   }
-  const reference = await nextBookingReference(admin);
+  const reference = await nextBookingReference(opts.referenceClient ?? admin);
   const extract = opts.extract;
   const title =
     emptyToNull(extract.title) ||
@@ -528,16 +407,26 @@ export async function persistNewBookingFromExtract(opts: {
       notes_internal:
         extract.document_status === "quote"
           ? "Devis importé — tarifs non bloqués, à confirmer."
-          : opts.files.length
+          : (opts.staged?.length || opts.files?.length)
             ? "Dossier créé par lecture de documents."
             : "Dossier créé par l’agence.",
       visible_to_client: false,
     })
     .select("*")
     .single();
-  if (error || !data) throw new Error(error?.message || "Création impossible");
+  if (error || !data) throw dbFailure(error, "Création du dossier impossible.");
   const booking = data as CrmBooking;
-  const docs = await uploadBookingFiles(booking.id, opts.files, false, admin);
+  const docs = await attachBookingFiles(
+    booking.id,
+    opts.staged || [],
+    opts.files || [],
+    false,
+    admin,
+    opts.staffUserId
+  );
+  if (opts.staffUserId && opts.batchId) {
+    await cleanupIngestBatch(opts.staffUserId, opts.batchId);
+  }
   await upsertItemsAndTravelers(
     admin,
     booking.id,
@@ -560,7 +449,10 @@ export async function applyExtractToBooking(opts: {
   bookingId: string;
   customerId: string;
   extract: BookingExtract;
-  files: File[];
+  files?: File[];
+  staged?: IngestStagedFile[];
+  staffUserId?: string;
+  batchId?: string;
   visibleToClient: boolean;
 }) {
   const admin = createServiceClient();
@@ -583,7 +475,17 @@ export async function applyExtractToBooking(opts: {
   if (opts.extract.document_status === "identity") {
     throw new Error("Document d’identité : enregistrez-le dans le profil, pas en réservation.");
   }
-  const docs = await uploadBookingFiles(opts.bookingId, opts.files, false, admin);
+  const docs = await attachBookingFiles(
+    opts.bookingId,
+    opts.staged || [],
+    opts.files || [],
+    false,
+    admin,
+    opts.staffUserId
+  );
+  if (opts.staffUserId && opts.batchId) {
+    await cleanupIngestBatch(opts.staffUserId, opts.batchId);
+  }
   await upsertItemsAndTravelers(
     admin,
     opts.bookingId,
@@ -627,5 +529,10 @@ export async function applyExtractToBooking(opts: {
 export function parseExtractPayload(raw: unknown): BookingExtract {
   const parsed = bookingExtractSchema.safeParse(raw);
   if (!parsed.success) throw new Error("Données extraites invalides");
-  return parsed.data;
+  return sanitizeExtractedPrices(parsed.data);
+}
+
+function dbFailure(error: DbErrorLike, fallback: string) {
+  console.error("[ingest] db:", error?.code ?? "?", error?.message ?? "");
+  return new Error(dbErrorMessage(error, fallback));
 }

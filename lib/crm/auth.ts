@@ -4,9 +4,15 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmCustomer, CrmStaff } from "@/lib/crm/types";
 import { isStaffRole } from "@/lib/crm/session";
+import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
 
 export function jsonError(message: string, status = 400, details?: unknown) {
   return NextResponse.json({ error: message, details }, { status });
+}
+
+export function dbError(error: DbErrorLike, status = 400, fallback?: string) {
+  console.error("[crm] db:", error?.code ?? "?", error?.message ?? "");
+  return jsonError(dbErrorMessage(error, fallback), status);
 }
 
 export async function requireStaff(): Promise<

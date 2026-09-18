@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
 import { CustomerDeleteError, deleteCustomerById } from "@/lib/crm/delete-customer";
 
@@ -16,7 +16,7 @@ export async function GET(_req: Request, ctx: Ctx) {
     .select("*")
     .eq("id", id)
     .maybeSingle();
-  if (error) return jsonError(error.message, 500);
+  if (error) return dbError(error, 500);
   if (!data) return jsonError("Client introuvable", 404);
   return NextResponse.json({ customer: data });
 }
@@ -34,7 +34,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
     .eq("id", id)
     .select("*")
     .single();
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   return NextResponse.json({ customer: data });
 }
 

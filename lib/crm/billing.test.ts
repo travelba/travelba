@@ -86,6 +86,17 @@ test("client profile requires a valid phone", () => {
   assert.equal(ok.patch.phone, "+33601020304");
 });
 
+test("a billing-only patch does not require the phone again", () => {
+  const billing = customerPatchFromBody(
+    { company_name: "QA SAS", siret: "", billing_email: "Compta@QA.fr" },
+    { requirePhone: true, strictPhones: true }
+  );
+  assert.equal(billing.error, undefined);
+  assert.equal("phone" in billing.patch, false);
+  assert.equal(billing.patch.company_name, "QA SAS");
+  assert.equal(billing.patch.billing_email, "compta@qa.fr");
+});
+
 test("billing address fields stay visible from the traveler or the company", () => {
   const profile = {
     country: "FR",

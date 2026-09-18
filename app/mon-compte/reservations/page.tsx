@@ -64,7 +64,7 @@ export default async function ReservationsPage({
               Conciergerie {siteConfig.shortName}
             </p>
             <p className="truncate text-[11px] text-muted">
-              Votre travel designer dédié (24/7)
+              Votre conseiller dédié, 7 j/7
             </p>
           </div>
         </div>
@@ -109,7 +109,7 @@ export default async function ReservationsPage({
             <li key={b.id}>
               <article className="overflow-hidden rounded-2xl border border-[#e5e3dc] bg-white shadow-[0_4px_20px_-2px_rgba(11,25,44,0.04)]">
                 <div className="relative h-40 overflow-hidden">
-                  <CoverPhoto src={img} alt="" />
+                  <CoverPhoto src={img} alt={b.destination || b.title} />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/55 to-transparent" />
                   <div className="absolute left-3 top-3 flex flex-wrap gap-2">
                     <StatusChip tone={bookingStatusTone(b.status)}>

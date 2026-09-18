@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { nextBookingReference, syncBookingDebit } from "@/lib/crm/bookings";
 import { scheduleBookingCover } from "@/lib/crm/cover-generate";
 import type { CrmBooking } from "@/lib/crm/types";
@@ -11,7 +11,7 @@ export async function GET() {
     .from("crm_bookings")
     .select("*")
     .order("start_date", { ascending: false, nullsFirst: false });
-  if (error) return jsonError(error.message, 500);
+  if (error) return dbError(error, 500);
   return NextResponse.json({ bookings: data });
 }
 
@@ -26,7 +26,8 @@ export async function POST(request: Request) {
   try {
     reference = await nextBookingReference(auth.supabase);
   } catch (err) {
-    return jsonError(err instanceof Error ? err.message : "Référence", 500);
+    console.error("[bookings] reference:", err);
+    return jsonError("Impossible de générer la référence du dossier. Réessayez.", 500);
   }
   const { data, error } = await auth.supabase
     .from("crm_bookings")
@@ -46,7 +47,7 @@ export async function POST(request: Request) {
     })
     .select("*")
     .single();
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   const booking = data as CrmBooking;
   await syncBookingDebit(auth.supabase, booking);
   scheduleBookingCover(booking);

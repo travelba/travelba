@@ -70,7 +70,7 @@ export function BookingsTable({
             >
               <div className="flex min-w-0 items-center gap-3">
               <div className="relative h-12 w-16 shrink-0 overflow-hidden rounded-xl">
-                <CoverPhoto src={bookingCoverUrl(b, 240)} alt="" />
+                <CoverPhoto src={bookingCoverUrl(b, 240)} alt={b.destination || b.title} />
               </div>
                 <div className="min-w-0">
                   <p className="font-semibold text-[var(--admin-navy)]">

@@ -209,31 +209,58 @@ export function BookingEditor({
         aiConfigured={aiConfigured}
       />
       <form id="booking-meta" onSubmit={save} className="admin-af-card grid gap-3 rounded-3xl p-5 sm:grid-cols-2">
-        <input name="title" defaultValue={booking.title} className="rounded-xl border border-border px-3 py-2" />
-        <input name="destination" defaultValue={booking.destination || ""} className="rounded-xl border border-border px-3 py-2" />
-        <DateFrInput name="start_date" defaultValue={booking.start_date || ""} className="rounded-xl border border-border px-3 py-2" />
-        <DateFrInput name="end_date" defaultValue={booking.end_date || ""} className="rounded-xl border border-border px-3 py-2" />
-        <input name="total_amount" type="number" step="0.01" defaultValue={booking.total_amount} className="rounded-xl border border-border px-3 py-2" />
-        <select name="status" defaultValue={booking.status} className="rounded-xl border border-border px-3 py-2">
-          {BOOKING_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {BOOKING_STATUS_LABELS[s]}
-            </option>
-          ))}
-        </select>
-        <select
-          name="customer_id"
-          defaultValue={booking.customer_id}
-          className="rounded-xl border border-border px-3 py-2 sm:col-span-2"
-        >
-          {customers.map((c) => (
-            <option key={c.id} value={c.id}>
-              {customerFullName(c)} — {c.email}
-            </option>
-          ))}
-        </select>
-        <textarea name="notes_client" defaultValue={booking.notes_client || ""} placeholder="Notes client" className="sm:col-span-2 rounded-xl border border-border px-3 py-2" />
-        <textarea name="notes_internal" defaultValue={booking.notes_internal || ""} placeholder="Notes internes" className="sm:col-span-2 rounded-xl border border-border px-3 py-2" />
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+          Titre du voyage
+          <input name="title" required defaultValue={booking.title} className="rounded-xl border border-border px-3 py-2" />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+          Destination
+          <input name="destination" defaultValue={booking.destination || ""} className="rounded-xl border border-border px-3 py-2" />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+          Départ
+          <DateFrInput name="start_date" aria-label="Date de départ" defaultValue={booking.start_date || ""} className="rounded-xl border border-border px-3 py-2" />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+          Retour
+          <DateFrInput name="end_date" aria-label="Date de retour" defaultValue={booking.end_date || ""} className="rounded-xl border border-border px-3 py-2" />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+          Montant total (€)
+          <input name="total_amount" type="number" step="0.01" min="0" defaultValue={booking.total_amount} className="rounded-xl border border-border px-3 py-2" />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+          Statut
+          <select name="status" defaultValue={booking.status} className="rounded-xl border border-border bg-white px-3 py-2">
+            {BOOKING_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {BOOKING_STATUS_LABELS[s]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted sm:col-span-2">
+          Client
+          <select
+            name="customer_id"
+            defaultValue={booking.customer_id}
+            className="rounded-xl border border-border bg-white px-3 py-2"
+          >
+            {customers.map((c) => (
+              <option key={c.id} value={c.id}>
+                {customerFullName(c)} — {c.email}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted sm:col-span-2">
+          Notes visibles par le client
+          <textarea name="notes_client" defaultValue={booking.notes_client || ""} placeholder="Conseils, horaires de rendez-vous…" className="rounded-xl border border-border px-3 py-2" />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted sm:col-span-2">
+          Notes internes (agence)
+          <textarea name="notes_internal" defaultValue={booking.notes_internal || ""} placeholder="Jamais affichées au client" className="rounded-xl border border-border px-3 py-2" />
+        </label>
         <p className="sm:col-span-2 text-xs text-muted">
           Enregistrer ne publie pas. Le statut confirmé crée le débit au grand livre.
         </p>
