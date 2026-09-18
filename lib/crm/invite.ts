@@ -67,10 +67,7 @@ function inviteEmailHtml(customer: CrmCustomer, link: string) {
 async function sendInviteEmail(customer: CrmCustomer, link: string) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    console.info("[invite] RESEND_API_KEY manquante — lien non envoyé:", {
-      email: customer.email,
-      link,
-    });
+    console.info("[invite] RESEND_API_KEY manquante — e-mail non envoyé, lien renvoyé à l’écran admin");
     return false;
   }
 

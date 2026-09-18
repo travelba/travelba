@@ -7,6 +7,17 @@ export function mustSetPassword(user: {
   return user.app_metadata?.must_set_password === true;
 }
 
+export function shouldForcePasswordSetup(opts: {
+  flagged: boolean;
+  type: string | null;
+  next: string;
+}) {
+  if (opts.flagged) return true;
+  if (opts.type === "recovery" || opts.type === "invite") return true;
+  const path = opts.next.split("?")[0];
+  return path === SET_PASSWORD_PATH;
+}
+
 export function isStaffRole(user: {
   app_metadata?: Record<string, unknown> | null;
 }) {

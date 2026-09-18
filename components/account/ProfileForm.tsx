@@ -136,7 +136,7 @@ export function ProfileForm({
           Coordonnées
         </p>
         <p className="sm:col-span-2 text-sm text-muted">Email : {customer.email}</p>
-        <PhoneField name="phone" value={phone} onChange={setPhone} />
+        <PhoneField name="phone" value={phone} onChange={setPhone} required />
         <OptionalSecondPhone value={phoneSecondary} onChange={setPhoneSecondary} />
         <Field label="N° Flying Blue" className="sm:col-span-2" hint="Programme Air France / KLM">
           <input

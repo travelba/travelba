@@ -75,6 +75,17 @@ test("whatsapp is ignored on customer patch", () => {
   assert.equal(patch.phone, "+33601020304");
 });
 
+test("client profile requires a valid phone", () => {
+  const empty = customerPatchFromBody({ first_name: "Ada", phone: "" }, { requirePhone: true });
+  assert.equal(empty.error, "Indiquez un numéro de téléphone.");
+  const ok = customerPatchFromBody(
+    { first_name: "Ada", phone: "+33601020304" },
+    { requirePhone: true, strictPhones: true }
+  );
+  assert.equal(ok.error, undefined);
+  assert.equal(ok.patch.phone, "+33601020304");
+});
+
 test("billing address fields stay visible from the traveler or the company", () => {
   const profile = {
     country: "FR",

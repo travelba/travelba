@@ -379,7 +379,9 @@ export function PhoneField({
     const formatted = formatAsYouType(nextNational, nextCountry);
     setCountry(nextCountry);
     setNational(formatted);
-    const ok = !formatted.trim() || isValidPhone(formatted, nextCountry);
+    const ok = formatted.trim()
+      ? isValidPhone(formatted, nextCountry)
+      : !required;
     const next = ok && formatted.trim() ? toE164(formatted, nextCountry) || "" : "";
     onChange(next);
     queueMicrotask(() => {

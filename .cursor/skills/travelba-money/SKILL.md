@@ -25,6 +25,7 @@ Ledger visible côté client (`/mon-compte/transactions`) : lignes `posted` seul
 `syncBookingDebit` (`lib/crm/bookings.ts`) :
 
 - Crée / met à jour un débit `kind=booking` si statut `confirmed` \| `travelling` \| `completed` et `total_amount > 0`
+- `cancelled` **ou** `total_amount <= 0` alors qu’un débit ouvert existe → `void`
 - `cancelled` → `void` le débit
 - `draft` / `quoted` → pas de débit
 - Le total = **prix vendu agent**, pas le net fournisseur

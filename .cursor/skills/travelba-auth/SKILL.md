@@ -46,6 +46,8 @@ Après succès mot de passe (`/api/client/password`) : `app_metadata.must_set_pa
 
 OTP : si l’e-mail n’est pas un client déjà invité (`crm_customers.auth_user_id`), répondre `{ ok: true }` sans `generateLink` (pas d’énumération, pas de création Auth).
 
+Mot de passe oublié : `POST /api/auth/reset` (même garde titulaire, `generateLink` recovery + `must_set_password`, Resend). Pas `resetPasswordForEmail` client (PKCE sans `type=recovery`).
+
 ## Sessions
 
 - Cookies `AUTH_COOKIE_OPTIONS` : `maxAge` 400 jours, `sameSite=lax`, `path=/`.

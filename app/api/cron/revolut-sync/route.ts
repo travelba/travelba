@@ -5,15 +5,13 @@ import {
   revolutConnected,
   upsertRevolutInbox,
 } from "@/lib/crm/revolut";
+import { cronAuthorized } from "@/lib/crm/cron-auth";
 
 export const runtime = "nodejs";
 
 function authorized(request: Request) {
   const secret = process.env.CRON_SECRET?.trim();
-  const header = request.headers.get("authorization") || "";
-  if (secret) return header === `Bearer ${secret}`;
-  // Vercel Cron sets this on scheduled invocations when CRON_SECRET is unset.
-  return Boolean(request.headers.get("x-vercel-cron-schedule"));
+  return cronAuthorized(request.headers.get("authorization"), secret);
 }
 
 export async function GET(request: Request) {
