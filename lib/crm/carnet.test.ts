@@ -4,6 +4,8 @@ import type { CrmBookingItem } from "./types";
 import {
   carnetVisible,
   coverQuery,
+  flightCities,
+  flightIata,
   groupByDay,
   hotelStayLabel,
   itemClock,
@@ -55,6 +57,22 @@ describe("carnet", () => {
     assert.equal(groups[0][0], "2026-08-12");
   });
 
+  it("répète l’hôtel chaque nuit du séjour", () => {
+    const groups = groupByDay([
+      item({
+        id: "h",
+        kind: "hotel",
+        title: "Andaz",
+        start_at: "2026-08-12",
+        end_at: "2026-08-15",
+      }),
+      item({ id: "f", start_at: "2026-08-12T10:00:00", title: "Aller" }),
+    ]);
+    assert.equal(groups.map(([day]) => day).join(","), "2026-08-12,2026-08-13,2026-08-14");
+    assert.equal(groups[1][1].some((row) => row.title === "Andaz"), true);
+    assert.equal(groups[1][1].some((row) => row.title === "Aller"), false);
+  });
+
   it("cache un séjour sans carte visible", () => {
     assert.equal(
       carnetVisible({ visible_to_client: true }, [
@@ -101,6 +119,14 @@ describe("carnet", () => {
 
   it("affiche l’heure locale imprimée sans conversion", () => {
     assert.equal(itemClock("2026-08-12T08:40:00"), "08h40");
+  });
+
+  it("sépare IATA et villes sur le vol", () => {
+    const flight = item({
+      details: { from: "CDG", to: "RAK", city_from: "Paris", city_to: "Marrakech" },
+    });
+    assert.equal(flightIata(flight), "CDG → RAK");
+    assert.equal(flightCities(flight), "Paris → Marrakech");
   });
 
   it("refuse de publier un carnet sans carte métier", () => {

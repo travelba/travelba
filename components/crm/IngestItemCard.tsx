@@ -3,7 +3,7 @@
 import type { BookingExtract } from "@/lib/crm/ingest-types";
 import type { BookingItemKind } from "@/lib/crm/types";
 import { BOOKING_ITEM_KINDS, BOOKING_ITEM_LABELS } from "@/lib/crm/types";
-import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
+import { DateFrInput, Field, fieldControlClass } from "@/components/crm/fields";
 import { Trash2 } from "lucide-react";
 
 type ItemDraft = BookingExtract["items"][number];
@@ -52,19 +52,16 @@ function patchDetails(item: ItemDraft, key: string, value: string): ItemDraft {
 }
 
 function Text({
-  placeholder,
   value,
   onChange,
   className = "",
 }: {
-  placeholder: string;
   value: string;
   onChange: (value: string) => void;
   className?: string;
 }) {
   return (
     <input
-      placeholder={placeholder}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       className={`${fieldControlClass} ${className}`}
@@ -97,12 +94,12 @@ export function IngestItemCard({
     : "";
 
   return (
-    <div className="space-y-2 rounded-2xl border border-border p-3">
-      <div className="grid gap-2 sm:grid-cols-6">
+    <div className="space-y-3 rounded-2xl border border-border p-3">
+      <div className="flex items-center justify-between gap-2">
         <select
           value={item.kind}
           onChange={(e) => onChange({ ...item, kind: e.target.value as BookingItemKind })}
-          className={fieldControlClass}
+          className={`${fieldControlClass} max-w-[12rem]`}
         >
           {BOOKING_ITEM_KINDS.map((kind) => (
             <option key={kind} value={kind}>
@@ -110,130 +107,182 @@ export function IngestItemCard({
             </option>
           ))}
         </select>
-        <Text
-          placeholder="Titre"
-          value={item.title}
-          onChange={(title) => onChange({ ...item, title })}
-          className="sm:col-span-2"
-        />
-        <Text
-          placeholder="Fournisseur"
-          value={item.supplier || ""}
-          onChange={(supplier) => onChange({ ...item, supplier })}
-        />
-        <Text
-          placeholder="PNR / réf."
-          value={item.confirmation_ref || ""}
-          onChange={(confirmation_ref) => onChange({ ...item, confirmation_ref })}
-        />
-        <button type="button" className="justify-self-end text-accent" onClick={onRemove}>
+        <button type="button" className="text-accent" onClick={onRemove} aria-label="Retirer">
           <Trash2 className="h-4 w-4" />
         </button>
-        <div className="sm:col-span-3">
-          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">Début</p>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Field label="Libellé">
+          <Text value={item.title} onChange={(title) => onChange({ ...item, title })} />
+        </Field>
+        <Field label={item.kind === "flight" ? "PNR" : "Référence"}>
+          <Text
+            value={item.confirmation_ref || ""}
+            onChange={(confirmation_ref) => onChange({ ...item, confirmation_ref })}
+          />
+        </Field>
+        <Field label="Début">
           <StampField
             value={item.start_at || ""}
             onChange={(start_at) => onChange({ ...item, start_at })}
             withTime={withTime}
           />
-        </div>
-        <div className="sm:col-span-2">
-          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">Fin</p>
+        </Field>
+        <Field label="Fin">
           <StampField
             value={item.end_at || ""}
             onChange={(end_at) => onChange({ ...item, end_at })}
             withTime={withTime}
           />
-        </div>
-        <Text
-          placeholder="Prix vendu (optionnel)"
-          value={item.amount == null ? "" : String(item.amount)}
-          onChange={(raw) =>
-            onChange({ ...item, amount: raw === "" ? null : Number(raw) })
-          }
-        />
+        </Field>
+        <Field label="Prix vendu (optionnel)">
+          <Text
+            value={item.amount == null ? "" : String(item.amount)}
+            onChange={(raw) => onChange({ ...item, amount: raw === "" ? null : Number(raw) })}
+          />
+        </Field>
+        <Field label="Fournisseur">
+          <Text
+            value={item.supplier || ""}
+            onChange={(supplier) => onChange({ ...item, supplier })}
+          />
+        </Field>
       </div>
 
       {item.kind === "flight" ? (
-        <div className="grid gap-2 sm:grid-cols-4">
-          <Text placeholder="Vol AF123" value={d.flight_number || ""} onChange={(v) => onChange(patchDetails(item, "flight_number", v))} />
-          <Text placeholder="Opérateur" value={d.airline || ""} onChange={(v) => onChange(patchDetails(item, "airline", v))} />
-          <Text placeholder="De (CDG)" value={d.from || ""} onChange={(v) => onChange(patchDetails(item, "from", v))} />
-          <Text placeholder="Vers (RAK)" value={d.to || ""} onChange={(v) => onChange(patchDetails(item, "to", v))} />
-          <Text placeholder="Ville départ" value={d.city_from || ""} onChange={(v) => onChange(patchDetails(item, "city_from", v))} />
-          <Text placeholder="Ville arrivée" value={d.city_to || ""} onChange={(v) => onChange(patchDetails(item, "city_to", v))} />
-          <Text placeholder="Classe" value={d.cabin || ""} onChange={(v) => onChange(patchDetails(item, "cabin", v))} />
-          <Text placeholder="Bagages" value={d.baggage || ""} onChange={(v) => onChange(patchDetails(item, "baggage", v))} />
-          <Text placeholder="Siège" value={d.seat || ""} onChange={(v) => onChange(patchDetails(item, "seat", v))} />
-          <Text placeholder="Terminal" value={d.terminal || ""} onChange={(v) => onChange(patchDetails(item, "terminal", v))} />
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Field label="N° de vol">
+            <Text value={d.flight_number || ""} onChange={(v) => onChange(patchDetails(item, "flight_number", v))} />
+          </Field>
+          <Field label="Opérateur">
+            <Text value={d.airline || ""} onChange={(v) => onChange(patchDetails(item, "airline", v))} />
+          </Field>
+          <Field label="IATA départ">
+            <Text value={d.from || ""} onChange={(v) => onChange(patchDetails(item, "from", v))} />
+          </Field>
+          <Field label="IATA arrivée">
+            <Text value={d.to || ""} onChange={(v) => onChange(patchDetails(item, "to", v))} />
+          </Field>
+          <Field label="Ville départ">
+            <Text value={d.city_from || ""} onChange={(v) => onChange(patchDetails(item, "city_from", v))} />
+          </Field>
+          <Field label="Ville arrivée">
+            <Text value={d.city_to || ""} onChange={(v) => onChange(patchDetails(item, "city_to", v))} />
+          </Field>
+          <Field label="Classe">
+            <Text value={d.cabin || ""} onChange={(v) => onChange(patchDetails(item, "cabin", v))} />
+          </Field>
+          <Field label="Bagages">
+            <Text value={d.baggage || ""} onChange={(v) => onChange(patchDetails(item, "baggage", v))} />
+          </Field>
         </div>
       ) : null}
 
       {item.kind === "hotel" ? (
         <div className="grid gap-2 sm:grid-cols-2">
-          <Text placeholder="Établissement" value={d.hotel_name || ""} onChange={(v) => onChange(patchDetails(item, "hotel_name", v))} />
-          <Text placeholder="Ville" value={d.city || ""} onChange={(v) => onChange(patchDetails(item, "city", v))} />
-          <textarea
-            placeholder={"Chambres (une par ligne : type · occupants · réf.)"}
-            value={rooms}
-            onChange={(e) => {
-              const next = e.target.value.split("\n").filter(Boolean).map((line) => {
-                const [room, guests, confirmation_ref] = line.split("·").map((p) => p.trim());
-                return { room, guests, confirmation_ref };
-              });
-              onChange({ ...item, details: { ...item.details, rooms: next } });
-            }}
-            className={`${fieldControlClass} min-h-[72px] sm:col-span-2`}
-          />
-          <textarea
-            placeholder="Inclus — uniquement ce qui est écrit sur le doc"
-            value={included}
-            onChange={(e) =>
-              onChange({
-                ...item,
-                details: {
-                  ...item.details,
-                  included: e.target.value.split("\n").map((p) => p.trim()).filter(Boolean),
-                },
-              })
-            }
-            className={`${fieldControlClass} min-h-[72px] sm:col-span-2`}
-          />
-          <Text placeholder="Occupation (2 adultes + 1 enfant)" value={d.occupancy || ""} onChange={(v) => onChange(patchDetails(item, "occupancy", v))} />
-          <Text placeholder="Demandes spéciales" value={d.special_requests || ""} onChange={(v) => onChange(patchDetails(item, "special_requests", v))} />
+          <Field label="Établissement">
+            <Text value={d.hotel_name || ""} onChange={(v) => onChange(patchDetails(item, "hotel_name", v))} />
+          </Field>
+          <Field label="Ville">
+            <Text value={d.city || ""} onChange={(v) => onChange(patchDetails(item, "city", v))} />
+          </Field>
+          <Field label="Pension (si écrite)">
+            <Text value={d.board || ""} onChange={(v) => onChange(patchDetails(item, "board", v))} />
+          </Field>
+          <Field label="Occupation">
+            <Text value={d.occupancy || ""} onChange={(v) => onChange(patchDetails(item, "occupancy", v))} />
+          </Field>
+          <Field label="Chambres (une par ligne : type · occupants · réf.)" className="sm:col-span-2">
+            <textarea
+              value={rooms}
+              onChange={(e) => {
+                const next = e.target.value.split("\n").filter(Boolean).map((line) => {
+                  const [room, guests, confirmation_ref] = line.split("·").map((p) => p.trim());
+                  return { room, guests, confirmation_ref };
+                });
+                onChange({ ...item, details: { ...item.details, rooms: next } });
+              }}
+              className={`${fieldControlClass} min-h-[72px]`}
+            />
+          </Field>
+          <Field label="Inclus — uniquement si écrit sur le document" className="sm:col-span-2">
+            <textarea
+              value={included}
+              onChange={(e) =>
+                onChange({
+                  ...item,
+                  details: {
+                    ...item.details,
+                    included: e.target.value.split("\n").map((p) => p.trim()).filter(Boolean),
+                  },
+                })
+              }
+              className={`${fieldControlClass} min-h-[72px]`}
+            />
+          </Field>
         </div>
       ) : null}
 
       {item.kind === "transfer" ? (
         <div className="grid gap-2 sm:grid-cols-2">
-          <Text placeholder="Prise en charge" value={d.pickup || ""} onChange={(v) => onChange(patchDetails(item, "pickup", v))} />
-          <Text placeholder="Destination" value={d.dropoff || ""} onChange={(v) => onChange(patchDetails(item, "dropoff", v))} />
-          <Text placeholder="Sans heure clock (ex. 2 h 30 avant le vol)" value={d.pickup_note || ""} onChange={(v) => onChange(patchDetails(item, "pickup_note", v))} className="sm:col-span-2" />
+          <Field label="Prise en charge">
+            <Text value={d.pickup || ""} onChange={(v) => onChange(patchDetails(item, "pickup", v))} />
+          </Field>
+          <Field label="Destination">
+            <Text value={d.dropoff || ""} onChange={(v) => onChange(patchDetails(item, "dropoff", v))} />
+          </Field>
+          <Field label="Note sans heure (ex. 2 h 30 avant le vol)">
+            <Text value={d.pickup_note || ""} onChange={(v) => onChange(patchDetails(item, "pickup_note", v))} />
+          </Field>
         </div>
       ) : null}
 
       {item.kind === "rail" ? (
-        <div className="grid gap-2 sm:grid-cols-4">
-          <Text placeholder="N° train" value={d.flight_number || ""} onChange={(v) => onChange(patchDetails(item, "flight_number", v))} />
-          <Text placeholder="De" value={d.from || d.city_from || ""} onChange={(v) => onChange(patchDetails(item, "from", v))} />
-          <Text placeholder="Vers" value={d.to || d.city_to || ""} onChange={(v) => onChange(patchDetails(item, "to", v))} />
-          <Text placeholder="Classe / voiture" value={d.cabin || ""} onChange={(v) => onChange(patchDetails(item, "cabin", v))} />
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Field label="N° de train">
+            <Text value={d.flight_number || ""} onChange={(v) => onChange(patchDetails(item, "flight_number", v))} />
+          </Field>
+          <Field label="Classe / voiture">
+            <Text value={d.cabin || ""} onChange={(v) => onChange(patchDetails(item, "cabin", v))} />
+          </Field>
+          <Field label="Gare départ">
+            <Text value={d.from || d.city_from || ""} onChange={(v) => onChange(patchDetails(item, "from", v))} />
+          </Field>
+          <Field label="Gare arrivée">
+            <Text value={d.to || d.city_to || ""} onChange={(v) => onChange(patchDetails(item, "to", v))} />
+          </Field>
         </div>
       ) : null}
 
       {item.kind === "car" ? (
         <div className="grid gap-2 sm:grid-cols-2">
-          <Text placeholder="Catégorie" value={d.vehicle || d.cabin || ""} onChange={(v) => onChange(patchDetails(item, "vehicle", v))} />
-          <Text placeholder="Conducteur" value={d.driver || d.guests || ""} onChange={(v) => onChange(patchDetails(item, "driver", v))} />
-          <Text placeholder="Prise" value={d.pickup || ""} onChange={(v) => onChange(patchDetails(item, "pickup", v))} />
-          <Text placeholder="Restitution" value={d.dropoff || ""} onChange={(v) => onChange(patchDetails(item, "dropoff", v))} />
+          <Field label="Catégorie">
+            <Text value={d.vehicle || d.cabin || ""} onChange={(v) => onChange(patchDetails(item, "vehicle", v))} />
+          </Field>
+          <Field label="Conducteur">
+            <Text value={d.driver || d.guests || ""} onChange={(v) => onChange(patchDetails(item, "driver", v))} />
+          </Field>
+          <Field label="Prise">
+            <Text value={d.pickup || ""} onChange={(v) => onChange(patchDetails(item, "pickup", v))} />
+          </Field>
+          <Field label="Restitution">
+            <Text value={d.dropoff || ""} onChange={(v) => onChange(patchDetails(item, "dropoff", v))} />
+          </Field>
         </div>
       ) : null}
 
       {item.kind === "activity" || item.kind === "cruise" ? (
         <div className="grid gap-2 sm:grid-cols-2">
-          <Text placeholder="Lieu / meeting" value={d.meeting_point || d.city || ""} onChange={(v) => onChange(patchDetails(item, "meeting_point", v))} />
-          <Text placeholder="Durée" value={d.duration || ""} onChange={(v) => onChange(patchDetails(item, "duration", v))} />
+          <Field label="Lieu">
+            <Text
+              value={d.meeting_point || d.city || ""}
+              onChange={(v) => onChange(patchDetails(item, "meeting_point", v))}
+            />
+          </Field>
+          <Field label="Durée">
+            <Text value={d.duration || ""} onChange={(v) => onChange(patchDetails(item, "duration", v))} />
+          </Field>
         </div>
       ) : null}
     </div>

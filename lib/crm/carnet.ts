@@ -70,6 +70,25 @@ export function hotelStayLabel(item: CrmBookingItem) {
   return range;
 }
 
+export function stayNightDates(start: string | null, end: string | null) {
+  const from = (start || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return [] as string[];
+  const to = (end || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(to) || to <= from) return [from];
+  const dates: string[] = [];
+  const cur = new Date(`${from}T12:00:00`);
+  const last = new Date(`${to}T12:00:00`);
+  if (Number.isNaN(cur.getTime()) || Number.isNaN(last.getTime())) return [from];
+  while (cur < last) {
+    const year = cur.getFullYear();
+    const month = String(cur.getMonth() + 1).padStart(2, "0");
+    const day = String(cur.getDate()).padStart(2, "0");
+    dates.push(`${year}-${month}-${day}`);
+    cur.setDate(cur.getDate() + 1);
+  }
+  return dates.length ? dates : [from];
+}
+
 export function itemDayKey(item: CrmBookingItem) {
   if (!item.start_at) return null;
   return item.start_at.slice(0, 10);
@@ -78,6 +97,7 @@ export function itemDayKey(item: CrmBookingItem) {
 export function isTimelineKind(kind: string) {
   return (
     kind === "flight" ||
+    kind === "hotel" ||
     kind === "transfer" ||
     kind === "activity" ||
     kind === "rail" ||
@@ -113,11 +133,15 @@ export function timelineItems(items: CrmBookingItem[]) {
 export function groupByDay(items: CrmBookingItem[]) {
   const map = new Map<string, CrmBookingItem[]>();
   for (const item of items) {
-    const key = itemDayKey(item);
-    if (!key) continue;
-    const list = map.get(key) || [];
-    list.push(item);
-    map.set(key, list);
+    if (item.kind === "insurance" || item.kind === "fee") continue;
+    const keys =
+      item.kind === "hotel" ? stayNightDates(item.start_at, item.end_at) : [itemDayKey(item)];
+    for (const key of keys) {
+      if (!key) continue;
+      const list = map.get(key) || [];
+      list.push(item);
+      map.set(key, list);
+    }
   }
   for (const list of map.values()) {
     list.sort(compareItemsByOrder);
@@ -126,7 +150,12 @@ export function groupByDay(items: CrmBookingItem[]) {
 }
 
 export function undatedTimeline(items: CrmBookingItem[]) {
-  return sortItemsByOrder(timelineItems(items).filter((item) => !itemDayKey(item)));
+  return sortItemsByOrder(
+    timelineItems(items).filter((item) => {
+      if (item.kind === "hotel") return stayNightDates(item.start_at, item.end_at).length === 0;
+      return !itemDayKey(item);
+    })
+  );
 }
 
 export function itemClock(iso: string | null | undefined) {
@@ -187,18 +216,21 @@ export function kindIcon(kind: string) {
   }
 }
 
-export function flightRoute(item: CrmBookingItem) {
+export function flightIata(item: CrmBookingItem) {
   const from = detailStr(item, "from");
   const to = detailStr(item, "to");
+  return from && to ? `${from} → ${to}` : "";
+}
+
+export function flightCities(item: CrmBookingItem) {
   const cityFrom = detailStr(item, "city_from");
   const cityTo = detailStr(item, "city_to");
-  if (from && to) {
-    const extra =
-      cityFrom || cityTo ? ` · ${[cityFrom, cityTo].filter(Boolean).join(" → ")}` : "";
-    return `${from} → ${to}${extra}`;
-  }
   if (cityFrom && cityTo) return `${cityFrom} → ${cityTo}`;
-  return "";
+  return cityFrom || cityTo || "";
+}
+
+export function flightRoute(item: CrmBookingItem) {
+  return flightIata(item) || flightCities(item);
 }
 
 export function carnetVisible(

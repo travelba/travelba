@@ -8,6 +8,7 @@ import {
   type CrmBooking,
   type CrmBookingItem,
   type CrmBookingTraveler,
+  type CrmBookingDocument,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { formatDateFr, isUpcomingBooking } from "@/lib/crm/money";
@@ -17,6 +18,7 @@ import { loadVisibleCarnets } from "@/lib/crm/carnet-query";
 import { siteConfig } from "@/lib/site";
 import { CoverPhoto } from "@/components/crm/CoverPhoto";
 import { Icon } from "@/components/crm/icons";
+import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 
 function daysUntil(date: string | null) {
   if (!date) return null;
@@ -52,21 +54,27 @@ export default async function AccountHomePage() {
 
   let items: CrmBookingItem[] = [];
   let travelers: CrmBookingTraveler[] = [];
+  let tripDocs: CrmBookingDocument[] = [];
   if (nextTrip) {
-    const [{ data: itemRows }, { data: travelerRows }] = await Promise.all([
+    const [{ data: itemRows }, { data: travelerRows }, { data: docRows }] = await Promise.all([
       supabase
         .from("crm_booking_items")
         .select("*")
         .eq("booking_id", nextTrip.id)
         .order("sort_order", { ascending: true }),
       supabase.from("crm_booking_travelers").select("*").eq("booking_id", nextTrip.id),
+      supabase
+        .from("crm_booking_documents")
+        .select("*")
+        .eq("booking_id", nextTrip.id)
+        .eq("visible_to_client", true),
     ]);
     items = (itemRows || []) as CrmBookingItem[];
     travelers = (travelerRows || []) as CrmBookingTraveler[];
+    tripDocs = (docRows || []) as CrmBookingDocument[];
   }
 
   const flight = items.find((i) => i.kind === "flight");
-  const hotel = items.find((i) => i.kind === "hotel");
   const primaryBalance = ((balances || []) as CrmBalance[])[0];
   const balanceValue = primaryBalance ? Number(primaryBalance.balance) : 0;
   const remainingDue = Math.max(0, -balanceValue);
@@ -116,8 +124,8 @@ export default async function AccountHomePage() {
         </h1>
         <p className="text-sm text-muted">
           {nextTrip
-            ? "Votre itinéraire sur-mesure prend vie avec sérénité."
-            : "Votre conciergerie prépare le prochain départ dès que vous le souhaitez."}
+            ? "Votre itinéraire, préparé par l’agence."
+            : "L’agence prépare le prochain départ dès que vous le souhaitez."}
         </p>
       </section>
 
@@ -172,7 +180,7 @@ export default async function AccountHomePage() {
             Aucun voyage planifié
           </h2>
           <p className="mt-1 text-sm text-muted">
-            Votre conciergerie {siteConfig.shortName} peut préparer votre prochain dossier.
+            L’agence {siteConfig.shortName} peut préparer votre prochain dossier.
           </p>
           <a
             href={whatsappHref}
@@ -180,7 +188,7 @@ export default async function AccountHomePage() {
             rel="noreferrer"
             className="mt-4 inline-flex h-12 items-center rounded-full bg-[var(--admin-navy)] px-5 text-sm font-semibold text-white"
           >
-            Contacter la conciergerie
+            Contacter l’agence
           </a>
         </article>
       )}
@@ -268,50 +276,8 @@ export default async function AccountHomePage() {
         </div>
       </section>
 
-      {(flight || hotel) && nextTrip ? (
-        <section className="space-y-2.5">
-          <h3 className="font-display text-xl font-semibold text-[var(--admin-navy)]">
-            Mises à jour prioritaires
-          </h3>
-          {flight ? (
-            <article className="flex items-start gap-3 rounded-2xl border border-[#e5e3dc] bg-white p-3.5">
-              <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--admin-gold)]/30 bg-[var(--admin-peach)] text-[var(--admin-navy)]">
-                <Icon name="airlines" className="h-5 w-5" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-1">
-                  <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
-                    {flight.title || "Vol"}
-                  </p>
-                  <span className="rounded-full border border-[var(--admin-gold)]/30 bg-[var(--admin-peach)] px-2.5 py-0.5 text-[10px] font-semibold text-[#533e1c]">
-                    {flight.confirmation_ref || "Confirmé"}
-                  </span>
-                </div>
-                <p className="mt-0.5 text-[13px] text-muted">
-                  {flight.supplier || flight.confirmation_ref || nextTrip.reference}
-                </p>
-              </div>
-            </article>
-          ) : null}
-          {hotel ? (
-            <article className="flex items-start gap-3 rounded-2xl border border-[#e5e3dc] bg-white p-3.5">
-              <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--admin-gold)]/30 bg-[var(--admin-peach)] text-[var(--admin-gold)]">
-                <Icon name="hotel" className="h-5 w-5" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-1">
-                  <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
-                    {hotel.title || "Hébergement"}
-                  </p>
-                  <span className="text-[10px] font-bold text-[#9e7e51]">Voucher prêt</span>
-                </div>
-                <p className="mt-0.5 text-[13px] text-muted">
-                  {hotel.supplier || hotel.confirmation_ref || "Hébergement confirmé"}
-                </p>
-              </div>
-            </article>
-          ) : null}
-        </section>
+      {nextTrip ? (
+        <CarnetItinerary booking={nextTrip} items={items} docs={tripDocs} />
       ) : null}
 
       <section className="space-y-3 pb-2">

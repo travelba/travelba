@@ -159,7 +159,7 @@ export default async function ReservationsPage({
           <li>
             <EmptyState
               title={showPast ? "Aucun voyage passé" : "Aucun voyage à venir"}
-              description="Votre conciergerie publiera le carnet dès que le dossier sera prêt."
+              description="L’agence publiera le carnet dès que le dossier sera prêt."
             />
           </li>
         ) : null}

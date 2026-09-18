@@ -23,6 +23,7 @@ import { BookingIngest } from "@/components/crm/BookingIngest";
 import { CoverPhoto } from "@/components/crm/CoverPhoto";
 import { Icon } from "@/components/crm/icons";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
+import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
 
@@ -311,6 +312,14 @@ export function BookingEditor({
       </section>
 
       <BookingItemsPanel bookingId={booking.id} items={items} />
+
+      {items.length ? (
+        <section className="admin-af-card space-y-3 rounded-3xl p-5">
+          <h2 className="font-display text-lg font-bold">Aperçu client</h2>
+          <p className="text-sm text-muted">Les mêmes cartes, dans l’ordre du carnet. Invisible tant que vous ne publiez pas.</p>
+          <CarnetItinerary booking={booking} items={items} docs={documents} />
+        </section>
+      ) : null}
 
       <section className="admin-af-card rounded-3xl p-5">
         <h2 className="font-display text-lg font-bold">Billets, vouchers et devis</h2>

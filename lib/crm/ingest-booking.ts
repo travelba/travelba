@@ -74,7 +74,7 @@ Vol :
 Hôtel :
 - UN item même s’il y a deux chambres / deux réf. : details.rooms = [{room, guests, confirmation_ref}, …].
 - confirmation_ref = première réf. ou les deux séparées par « ; ».
-- details.hotel_name, details.city (ville), details.address (pour l’agent).
+- details.hotel_name, details.city (ville), details.address (pour l’agent), details.board (pension) si écrite.
 - details.occupancy = texte brut (« 2 adultes + 1 enfant ») s’il est écrit.
 - details.special_requests si lit bébé / vue / late check-in est écrit.
 - Devis : document_status=quote, un item hôtel, rooms = les options, total_amount=null.

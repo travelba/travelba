@@ -6,15 +6,14 @@ import {
   dayHeading,
   detailList,
   detailStr,
-  flightRoute,
+  flightCities,
+  flightIata,
   groupByDay,
   hotelRooms,
   hotelStayLabel,
-  hotelsOf,
   itemClock,
   itemPriceLabel,
   kindIcon,
-  timelineItems,
   undatedTimeline,
 } from "@/lib/crm/carnet";
 
@@ -42,15 +41,18 @@ function CardBody({
   item,
   currency,
   docs,
+  compactHotel = false,
 }: {
   item: CrmBookingItem;
   currency: string;
   docs: CrmBookingDocument[];
+  compactHotel?: boolean;
 }) {
   const price = itemPriceLabel(item, currency);
   const included = detailList(item, "included");
   const rooms = hotelRooms(item);
-  const route = flightRoute(item);
+  const iata = flightIata(item);
+  const cities = flightCities(item);
   const clock = itemClock(item.start_at);
   const endClock = itemClock(item.end_at);
   const occupancy = detailStr(item, "occupancy");
@@ -62,6 +64,7 @@ function CardBody({
   const cabin = detailStr(item, "cabin");
   const airline = detailStr(item, "airline") || item.supplier || "";
   const city = detailStr(item, "city");
+  const board = detailStr(item, "board");
 
   return (
     <details className="group rounded-2xl border border-[#e5e3dc] bg-white">
@@ -76,11 +79,20 @@ function CardBody({
             {endClock && item.kind !== "hotel" ? ` → ${endClock}` : ""}
           </p>
           <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">{item.title}</p>
-          <p className="truncate text-xs text-muted">
-            {item.kind === "hotel"
-              ? hotelStayLabel(item)
-              : route || [item.supplier, item.confirmation_ref].filter(Boolean).join(" · ")}
-          </p>
+          {item.kind === "flight" || item.kind === "rail" ? (
+            <>
+              {iata ? <p className="truncate text-xs font-semibold text-[var(--admin-navy)]">{iata}</p> : null}
+              {cities ? <p className="truncate text-xs text-muted">{cities}</p> : null}
+            </>
+          ) : (
+            <p className="truncate text-xs text-muted">
+              {item.kind === "hotel"
+                ? compactHotel
+                  ? city || hotelStayLabel(item)
+                  : hotelStayLabel(item)
+                : [item.supplier, item.confirmation_ref].filter(Boolean).join(" · ")}
+            </p>
+          )}
         </div>
         {price ? (
           <p className="shrink-0 text-sm font-bold text-[var(--admin-navy)]">{price}</p>
@@ -90,7 +102,8 @@ function CardBody({
         {item.kind === "flight" || item.kind === "rail" ? (
           <>
             {airline ? <p>{airline}</p> : null}
-            {route ? <p>{route}</p> : null}
+            {iata ? <p>{iata}</p> : null}
+            {cities ? <p>{cities}</p> : null}
             {cabin ? <p>Classe {cabin}</p> : null}
             {baggage ? <p>Bagages {baggage}</p> : null}
             {seat ? <p>Siège {seat}</p> : null}
@@ -100,6 +113,7 @@ function CardBody({
         {item.kind === "hotel" ? (
           <>
             {city ? <p>{city}</p> : null}
+            {board ? <p>{board}</p> : null}
             {occupancy ? <p>{occupancy}</p> : null}
             {rooms.map((room, index) => (
               <p key={index} className="text-muted">
@@ -154,46 +168,42 @@ export function CarnetItinerary({
   items: CrmBookingItem[];
   docs: CrmBookingDocument[];
 }) {
-  const hotels = hotelsOf(items);
-  const days = groupByDay(timelineItems(items));
+  const days = groupByDay(items);
   const undated = undatedTimeline(items);
+
+  if (!days.length && !undated.length) return null;
 
   return (
     <div className="space-y-5">
-      {hotels.length ? (
-        <section className="space-y-3">
-          <h2 className="font-display text-base font-bold text-[var(--admin-navy)]">Hébergement</h2>
-          {hotels.map((item) => (
-            <CardBody key={item.id} item={item} currency={booking.currency} docs={docs} />
-          ))}
-        </section>
-      ) : null}
-
-      {days.length || undated.length ? (
-        <section className="space-y-4">
-          <h2 className="font-display text-base font-bold text-[var(--admin-navy)]">Itinéraire</h2>
-          {days.map(([day, rows]) => (
-            <div key={day} className="space-y-2">
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
-                {dayHeading(day)}
-              </p>
-              {rows.map((item) => (
-                <CardBody key={item.id} item={item} currency={booking.currency} docs={docs} />
-              ))}
-            </div>
-          ))}
-          {undated.length ? (
-            <div className="space-y-2">
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
-                Sans horaire
-              </p>
-              {undated.map((item) => (
-                <CardBody key={item.id} item={item} currency={booking.currency} docs={docs} />
-              ))}
-            </div>
-          ) : null}
-        </section>
-      ) : null}
+      <section className="space-y-4">
+        <h2 className="font-display text-base font-bold text-[var(--admin-navy)]">Itinéraire</h2>
+        {days.map(([day, rows]) => (
+          <div key={day} className="space-y-2">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+              {dayHeading(day)}
+            </p>
+            {rows.map((item) => (
+              <CardBody
+                key={`${item.id}-${day}`}
+                item={item}
+                currency={booking.currency}
+                docs={docs}
+                compactHotel={item.kind === "hotel"}
+              />
+            ))}
+          </div>
+        ))}
+        {undated.length ? (
+          <div className="space-y-2">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+              Sans horaire
+            </p>
+            {undated.map((item) => (
+              <CardBody key={item.id} item={item} currency={booking.currency} docs={docs} />
+            ))}
+          </div>
+        ) : null}
+      </section>
     </div>
   );
 }
