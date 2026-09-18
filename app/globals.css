@@ -49,20 +49,6 @@
   font-family: var(--font-plus-jakarta), var(--font-sans), system-ui, sans-serif;
 }
 
-.admin-af .material-symbols-outlined {
-  font-family: "Material Symbols Outlined";
-  font-weight: 400;
-  font-style: normal;
-  line-height: 1;
-  letter-spacing: normal;
-  text-transform: none;
-  display: inline-block;
-  white-space: nowrap;
-  direction: ltr;
-  -webkit-font-smoothing: antialiased;
-  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
-}
-
 .admin-af .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -78,7 +64,7 @@
 }
 
 .account-app .font-display {
-  font-family: var(--font-admin-display), var(--font-display), system-ui,
+  font-family: var(--font-plus-jakarta), var(--font-display), system-ui,
     sans-serif;
   letter-spacing: -0.02em;
 }
@@ -243,7 +229,7 @@
 }
 
 html {
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
 }
 
 body {

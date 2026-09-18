@@ -167,3 +167,17 @@ export function bookingStatusTone(
       return "sky";
   }
 }
+
+export function CrmSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="animate-pulse space-y-3">
+      <div className="h-7 w-44 rounded-lg bg-[var(--admin-peach)]" />
+      {Array.from({ length: rows }).map((_, index) => (
+        <div
+          key={index}
+          className="h-24 rounded-2xl bg-white ring-1 ring-[#e5e3dc]"
+        />
+      ))}
+    </div>
+  );
+}

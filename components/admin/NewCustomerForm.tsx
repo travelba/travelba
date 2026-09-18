@@ -29,7 +29,7 @@ export function NewCustomerForm() {
       <input name="first_name" placeholder="Prénom" className="rounded-xl border border-border bg-white px-3 py-2.5" />
       <input name="last_name" placeholder="Nom" className="rounded-xl border border-border bg-white px-3 py-2.5" />
       <input name="email" type="email" required placeholder="Email" className="rounded-xl border border-border bg-white px-3 py-2.5" />
-      <button className="admin-af-btn rounded-full px-4 py-2.5 text-sm">Créer et inviter</button>
+      <button className="admin-af-btn rounded-full px-4 py-2.5 text-sm">Créer</button>
       {error ? <p className="sm:col-span-4 text-sm text-accent">{error}</p> : null}
     </form>
   );

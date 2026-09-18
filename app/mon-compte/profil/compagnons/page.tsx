@@ -25,7 +25,7 @@ export default async function CompanionsPage() {
   return (
     <div className="space-y-4 px-5 pb-10">
       <ProfileSubnav />
-      <h1 className="text-xl font-semibold text-[var(--admin-navy-deep)]">Compagnons de voyage</h1>
+        <h1 className="text-xl font-semibold text-[var(--admin-navy-deep)]">Voyageurs</h1>
       <p className="text-xs text-muted">
         Même parcours que pour vous : uploadez la pièce, l’identité se remplit.
       </p>

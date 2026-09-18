@@ -8,7 +8,8 @@ import {
   type CrmTransaction,
 } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
-import { EmptyState, StatusChip } from "@/components/crm/ui";
+import { EmptyState } from "@/components/crm/ui";
+import { siteConfig } from "@/lib/site";
 
 export default async function TransactionsPage({
   searchParams,
@@ -54,30 +55,31 @@ export default async function TransactionsPage({
       <section className="relative overflow-hidden rounded-2xl bg-[var(--admin-navy)] p-5 text-white shadow-[0_16px_36px_rgba(11,25,44,0.18)]">
         <div className="absolute -right-8 -top-10 h-36 w-36 rounded-full bg-[var(--admin-gold)]/20 blur-2xl" />
         <div className="relative flex items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-300">
-            <span className="h-1.5 w-1.5 rounded-full bg-[var(--admin-gold)]" />
-            Connecté · Revolut API
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-white/70">
+            Grand livre
           </span>
-          <span className="text-[11px] text-white/55">À l&apos;instant</span>
         </div>
         <p className="relative mt-5 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/55">
-          Solde portefeuille voyage
+          Encours
         </p>
         <p className="relative mt-1 font-display text-[2rem] font-extrabold tracking-tight">
           {formatMoney(balanceValue, currency)}
         </p>
+        <p className="relative mt-1 text-xs text-white/60">
+          Positif = avoir · négatif = reste à régler
+        </p>
         <div className="relative mt-5 grid grid-cols-2 gap-2">
           <Link
-            href="/mon-compte/profil/paiement"
+            href="/mon-compte/profil/facturation"
             className="inline-flex items-center justify-center rounded-xl bg-white/12 px-3 py-2.5 text-sm font-semibold backdrop-blur"
           >
-            Moyens de paiement
+            Facturation
           </Link>
           <a
-            href={`mailto:contact@travelba.fr?subject=${encodeURIComponent("Relevé PDF portefeuille")}`}
+            href={`mailto:${siteConfig.contactEmail}?subject=${encodeURIComponent("Demande de relevé")}`}
             className="inline-flex items-center justify-center rounded-xl bg-white px-3 py-2.5 text-sm font-semibold text-[var(--admin-navy)]"
           >
-            Relevé PDF
+            Demander un relevé
           </a>
         </div>
       </section>
@@ -143,16 +145,9 @@ export default async function TransactionsPage({
                     {credit ? "R" : "✈"}
                   </span>
                   <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
-                        {t.label || TX_KIND_LABELS[t.kind] || t.kind}
-                      </p>
-                      {credit ? (
-                        <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold uppercase text-emerald-700">
-                          Instant
-                        </span>
-                      ) : null}
-                    </div>
+                    <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
+                      {t.label || TX_KIND_LABELS[t.kind] || t.kind}
+                    </p>
                     <p className="mt-0.5 truncate text-xs text-muted">
                       {formatDateFr(t.occurred_on)} · {TX_KIND_LABELS[t.kind]}
                     </p>
@@ -167,7 +162,6 @@ export default async function TransactionsPage({
                     {credit ? "+" : "−"}
                     {formatMoney(Number(t.amount), t.currency)}
                   </p>
-                  <StatusChip tone={credit ? "green" : "sky"}>Reçu</StatusChip>
                 </div>
               </li>
             );
@@ -176,16 +170,9 @@ export default async function TransactionsPage({
       ) : (
         <EmptyState
           title="Aucun mouvement trouvé"
-          description="Les débits de réservation et crédits Revolut apparaîtront ici."
+          description="Les débits de réservation et crédits rapprochés apparaîtront ici."
         />
       )}
-
-      <div className="rounded-2xl border border-[var(--admin-gold)]/30 bg-[var(--admin-peach)] px-4 py-3 text-sm text-[var(--admin-navy)]">
-        <p className="font-semibold">Paiements sécurisés Revolut</p>
-        <p className="mt-0.5 text-xs text-[var(--admin-navy)]/70">
-          Protection fraude et conversion multidevise sans commission cachée.
-        </p>
-      </div>
     </div>
   );
 }

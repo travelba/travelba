@@ -12,6 +12,7 @@ export type PortalAccess = {
 export type InviteResult = {
   customer: CrmCustomer;
   delivered: boolean;
+  link: string;
 };
 
 export function appOrigin(request: Request) {
@@ -53,7 +54,7 @@ function inviteEmailHtml(customer: CrmCustomer, link: string) {
           </a>
         </p>
         <p style="margin:0 0 8px;font-size:13px;color:#5b6475;line-height:1.5">
-          Ce lien expire sous 24&nbsp;heures. Si vous n’êtes pas à l’origine de cette invitation, ignorez cet e-mail.
+          Ce lien expire sous 30&nbsp;jours. Si vous n’êtes pas à l’origine de cette invitation, ignorez cet e-mail.
         </p>
         <p style="margin:24px 0 0;font-size:12px;color:#5b6475">
           ${escapeHtml(siteConfig.name)} · ${escapeHtml(siteConfig.phoneDisplay)}
@@ -163,6 +164,7 @@ export async function inviteCustomer(
   callback.searchParams.set("type", linkType);
   callback.searchParams.set("next", SET_PASSWORD_PATH);
 
-  const delivered = await sendInviteEmail(linked, callback.toString());
-  return { customer: linked, delivered };
+  const link = callback.toString();
+  const delivered = await sendInviteEmail(linked, link);
+  return { customer: linked, delivered, link };
 }

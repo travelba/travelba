@@ -7,6 +7,7 @@ import { uploadCrmFile } from "@/lib/crm/files";
 import { openaiApiKey } from "@/lib/crm/ingest-types";
 import type { CrmBooking } from "@/lib/crm/types";
 import { trySharp } from "@/lib/crm/sharp";
+import { coverQuery } from "@/lib/crm/carnet";
 
 const IMAGE_MODEL = "google/gemini-3.1-flash-image-preview";
 
@@ -19,11 +20,11 @@ export function isCoverStoragePath(path: string) {
 }
 
 function placeName(booking: Pick<CrmBooking, "destination" | "title">, hotel?: string | null) {
-  const dest = (booking.destination || "").trim();
-  if (dest) return dest;
+  const dest = coverQuery(booking.destination, booking.title);
+  if (dest && dest !== "voyage") return dest;
   const hotelName = (hotel || "").trim();
   if (hotelName) return hotelName;
-  return (booking.title || "voyage de luxe").replace(/\s+[—–-]\s+.+$/, "").trim();
+  return dest || "voyage";
 }
 
 function coverPrompt(place: string, hotel?: string | null) {

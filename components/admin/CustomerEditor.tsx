@@ -221,9 +221,11 @@ export function CustomerEditor({
         />
 
         {saveError ? <p className="text-sm text-accent">{saveError}</p> : null}
-        <button className="admin-af-btn rounded-full px-4 py-2 text-sm" disabled={saving}>
-          {saving ? "Enregistrement…" : "Enregistrer"}
-        </button>
+        <div className="sticky bottom-4 z-20 -mx-1 rounded-2xl border border-[#e5e3dc] bg-white/95 p-3 shadow-lg backdrop-blur">
+          <button className="admin-af-btn w-full rounded-full px-4 py-2 text-sm" disabled={saving}>
+            {saving ? "Enregistrement…" : "Enregistrer"}
+          </button>
+        </div>
       </form>
 
       <section className="space-y-4">

@@ -6,6 +6,7 @@ import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-
 import { useRouter } from "next/navigation";
 import type { CrmPaymentMethod } from "@/lib/crm/types";
 import { StatusChip } from "@/components/crm/ui";
+import { Icon } from "@/components/crm/icons";
 
 const pk = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || "";
 const stripePromise = pk ? loadStripe(pk) : null;
@@ -95,7 +96,7 @@ export function PaymentMethodsPanel({
         {methods.map((m) => (
           <li key={m.id} className="admin-af-card flex items-center gap-3 rounded-2xl p-4">
             <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[var(--admin-navy)] text-[#f8f6f0]">
-              <span className="material-symbols-outlined text-[22px]">credit_card</span>
+              <Icon name="credit_card" className="h-[22px] w-[22px]" />
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">

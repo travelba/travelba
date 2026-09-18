@@ -42,6 +42,7 @@ export async function POST(request: Request) {
       total_amount: Number(body?.total_amount || 0),
       notes_client: body?.notes_client || null,
       notes_internal: body?.notes_internal || null,
+      visible_to_client: false,
     })
     .select("*")
     .single();

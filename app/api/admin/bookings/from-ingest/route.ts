@@ -18,13 +18,12 @@ export async function POST(request: Request) {
     if (!customerId) return jsonError("Choisissez un client");
     const extract = parseExtractPayload(JSON.parse(String(form.get("extract") || "{}")));
     const files = collectIngestFiles(form);
-    const visibleToClient = String(form.get("visible_to_client") || "1") !== "0";
     const booking = await persistNewBookingFromExtract({
       customerId,
       extract,
       files,
       status: "draft",
-      visibleToClient,
+      visibleToClient: false,
     });
     return NextResponse.json({ booking });
   } catch (err) {

@@ -12,7 +12,6 @@ export async function POST(request: Request, ctx: Ctx) {
   const file = form.get("file");
   if (!(file instanceof File)) return jsonError("Fichier requis");
   const kind = String(form.get("kind") || "other");
-  const visible = String(form.get("visible_to_client") || "") === "true";
   const bytes = Buffer.from(await file.arrayBuffer());
   const path = `bookings/${id}/${Date.now()}-${safeFileName(file.name)}`;
   await uploadCrmFile(path, bytes, file.type || "application/octet-stream");
@@ -24,7 +23,7 @@ export async function POST(request: Request, ctx: Ctx) {
       file_name: file.name,
       mime_type: file.type,
       storage_path: path,
-      visible_to_client: visible,
+      visible_to_client: false,
     })
     .select("*")
     .single();

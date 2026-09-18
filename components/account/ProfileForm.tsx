@@ -15,13 +15,6 @@ import {
   PhoneField,
   SexSelect,
 } from "@/components/crm/fields";
-import {
-  billingJson,
-  billingSameAsProfile,
-  companyBillingFromCustomer,
-  CompanyBillingFields,
-  type CompanyBillingValues,
-} from "@/components/crm/CompanyBillingFields";
 import { PersonPassportCard } from "@/components/crm/PersonPassportCard";
 
 export function ProfileForm({
@@ -47,17 +40,6 @@ export function ProfileForm({
   const [postalCode, setPostalCode] = useState(customer.postal_code || "");
   const [city, setCity] = useState(customer.city || "");
   const [flyingBlue, setFlyingBlue] = useState(customer.flying_blue || "");
-  const [billing, setBilling] = useState<CompanyBillingValues>(() =>
-    companyBillingFromCustomer(customer)
-  );
-  const [sameBillingAddress, setSameBillingAddress] = useState(() =>
-    billingSameAsProfile(companyBillingFromCustomer(customer), {
-      country: resolveCountryCode(customer.country) || "FR",
-      line: customer.address_line || "",
-      postal: customer.postal_code || "",
-      city: customer.city || "",
-    })
-  );
 
   function applyIdentity(id: ExtractedIdentity) {
     if (id.first_name) setFirstName(id.first_name);
@@ -88,7 +70,6 @@ export function ProfileForm({
         city,
         country,
         flying_blue: flyingBlue,
-        ...billingJson(billing, { country, line: addressLine, postal: postalCode, city }, sameBillingAddress),
       }),
     });
     const json = await res.json();
@@ -182,19 +163,13 @@ export function ProfileForm({
         />
       </section>
 
-      <CompanyBillingFields
-        values={billing}
-        onChange={setBilling}
-        sameAsProfile={sameBillingAddress}
-        onSameAsProfileChange={setSameBillingAddress}
-        profileAddress={{ country, line: addressLine, postal: postalCode, city }}
-      />
-
       {error ? <p className="text-sm text-accent">{error}</p> : null}
-      {saved ? <p className="text-sm text-[var(--admin-navy)]">Enregistré.</p> : null}
-      <button className="admin-af-btn rounded-full px-5 py-2.5 text-sm" disabled={saving}>
-        {saving ? "Enregistrement…" : "Enregistrer"}
-      </button>
+      <div className="sticky bottom-20 z-20 -mx-4 mt-2 border-t border-[#e5e3dc] bg-[rgba(250,249,246,0.95)] px-4 py-3 backdrop-blur md:bottom-4">
+        {saved ? <p className="mb-2 text-sm text-[var(--admin-navy)]">Enregistré.</p> : null}
+        <button className="admin-af-btn w-full rounded-full px-5 py-2.5 text-sm" disabled={saving}>
+          {saving ? "Enregistrement…" : "Enregistrer"}
+        </button>
+      </div>
     </form>
   );
 }

@@ -1,11 +1,12 @@
 import { siteConfig } from "@/lib/site";
+import { Icon } from "@/components/crm/icons";
 
 export function ConciergeCard({ compact = false }: { compact?: boolean }) {
   if (compact) {
     return (
       <div className="flex items-center gap-4 rounded-2xl bg-[#efebe0] p-4 shadow-sm">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--admin-red)] text-white">
-          <span className="material-symbols-outlined text-[24px]">support_agent</span>
+          <Icon name="support_agent" className="h-6 w-6" />
         </div>
         <div className="min-w-0 flex-1">
           <h4 className="text-base font-semibold text-[var(--admin-navy-deep)]">
@@ -51,7 +52,7 @@ export function ConciergeCard({ compact = false }: { compact?: boolean }) {
           href={`mailto:${siteConfig.contactEmail}`}
           className="flex h-11 flex-1 items-center justify-center gap-2 rounded-full bg-[var(--admin-navy-deep)] font-label text-[11px] font-semibold tracking-wide text-white"
         >
-          <span className="material-symbols-outlined text-[18px]">chat</span>
+          <Icon name="chat" className="h-[18px] w-[18px]" />
           Échanger avec Travelba
         </a>
         <a
@@ -59,7 +60,7 @@ export function ConciergeCard({ compact = false }: { compact?: boolean }) {
           aria-label="Appeler la conciergerie"
           className="flex h-11 w-11 items-center justify-center rounded-full bg-[#e2dcd0] text-[var(--admin-navy)]"
         >
-          <span className="material-symbols-outlined text-[20px]">call</span>
+          <Icon name="call" className="h-5 w-5" />
         </a>
       </div>
     </section>
