@@ -46,7 +46,7 @@ export default function SetPasswordPage() {
       setError(json.error || "Impossible d’enregistrer le mot de passe");
       return;
     }
-    router.push("/mon-compte");
+    router.push("/mon-compte/profil");
     router.refresh();
   }
 

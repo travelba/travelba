@@ -9,13 +9,18 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function authErrorMessage(message: string) {
   const lower = message.toLowerCase();
-  if (
-    lower.includes("rate limit") ||
-    lower.includes("over_email_send_rate_limit")
-  ) {
+  if (lower.includes("rate limit") || lower.includes("over_email_send_rate_limit")) {
     return "Trop de tentatives. Réessayez dans quelques minutes.";
   }
   return message;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 export async function POST(request: Request) {
@@ -28,20 +33,10 @@ export async function POST(request: Request) {
 
   const email = body.email?.trim().toLowerCase();
   if (!email || !EMAIL_RE.test(email)) {
-    return NextResponse.json(
-      { error: "Adresse e-mail invalide" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Adresse e-mail invalide" }, { status: 400 });
   }
 
   const apiKey = process.env.RESEND_API_KEY?.trim();
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "Envoi e-mail non configuré (RESEND_API_KEY)." },
-      { status: 503 }
-    );
-  }
-
   const fromAddress =
     process.env.CONTACT_FROM_EMAIL?.trim() || "contact@travelba.fr";
   const siteUrl = (
@@ -55,54 +50,61 @@ export async function POST(request: Request) {
     const { data, error } = await supabase.auth.admin.generateLink({
       type: "magiclink",
       email,
-      options: {
-        redirectTo: `${siteUrl}/auth/callback?next=${encodeURIComponent("/mon-compte")}`,
-      },
     });
 
-    if (error) {
-      console.error("[auth/otp] generateLink:", error.message);
-      return NextResponse.json(
-        { error: authErrorMessage(error.message) },
-        { status: 400 }
-      );
+    if (error || !data?.properties?.hashed_token) {
+      console.info("[auth/otp] generateLink:", error?.message || "no token");
+      return NextResponse.json({ ok: true });
     }
 
-    const otp = data.properties?.email_otp;
-    if (!otp) {
-      return NextResponse.json(
-        { error: "Impossible de générer le code." },
-        { status: 500 }
-      );
+    const callback = new URL("/auth/callback", siteUrl);
+    callback.searchParams.set("token_hash", data.properties.hashed_token);
+    callback.searchParams.set("type", "magiclink");
+    callback.searchParams.set("next", "/mon-compte");
+
+    if (!apiKey) {
+      console.info("[auth/otp] RESEND_API_KEY manquante — lien non envoyé:", {
+        email,
+        link: callback.toString(),
+      });
+      return NextResponse.json({ ok: true });
     }
 
     const resend = new Resend(apiKey);
     const { error: sendError } = await resend.emails.send({
       from: `${siteConfig.shortName} <${fromAddress}>`,
       to: [email],
-      subject: `Votre code de connexion ${siteConfig.shortName}`,
-      text: `Votre code de connexion ${siteConfig.shortName} : ${otp}\n\nIl expire dans quelques minutes.`,
+      replyTo: siteConfig.contactEmail,
+      subject: `Votre lien de connexion ${siteConfig.shortName}`,
       html: `
-        <div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#0b1f3a">
-          <p style="margin:0 0 8px;font-size:14px;color:#64748b">Connexion sécurisée</p>
-          <h1 style="margin:0 0 16px;font-size:22px">Votre code ${siteConfig.shortName}</h1>
-          <p style="margin:0 0 20px;font-size:36px;font-weight:800;letter-spacing:0.2em">${otp}</p>
-          <p style="margin:0;font-size:13px;color:#64748b">Ce code expire dans quelques minutes. Si vous n’êtes pas à l’origine de cette demande, ignorez cet e-mail.</p>
+        <div style="font-family:Georgia,serif;background:#F2F4F8;padding:32px 16px">
+          <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;color:#002157">
+            <p style="margin:0 0 8px;font-size:12px;letter-spacing:0.16em;text-transform:uppercase;color:#E81932">Espace voyageur</p>
+            <h1 style="margin:0 0 16px;font-size:24px">${escapeHtml(siteConfig.shortName)}</h1>
+            <p style="margin:0 0 16px;line-height:1.5">
+              Cliquez sur le bouton pour ouvrir votre espace. Le lien expire sous 24&nbsp;heures.
+            </p>
+            <p style="margin:24px 0">
+              <a href="${escapeHtml(callback.toString())}" style="display:inline-block;background:#E81932;color:#fff;text-decoration:none;padding:14px 22px;border-radius:999px;font-weight:600">
+                Me connecter
+              </a>
+            </p>
+            <p style="margin:0;font-size:13px;color:#5b6475">
+              Si vous n’êtes pas à l’origine de cette demande, ignorez cet e-mail.
+            </p>
+          </div>
         </div>
       `,
     });
 
     if (sendError) {
       console.error("[auth/otp] Resend:", sendError);
-      return NextResponse.json(
-        { error: "Échec d’envoi de l’e-mail. Réessayez." },
-        { status: 502 }
-      );
+      return NextResponse.json({ error: "Échec d’envoi de l’e-mail. Réessayez." }, { status: 502 });
     }
 
-    return NextResponse.json({ ok: true, digits: String(otp).length });
+    return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("[auth/otp] Unexpected:", err);
-    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
+    return NextResponse.json({ error: authErrorMessage(err instanceof Error ? err.message : "Erreur serveur") }, { status: 500 });
   }
 }
