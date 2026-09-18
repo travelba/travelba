@@ -81,14 +81,15 @@ function LoginForm() {
     event.preventDefault();
     setLoading(true);
     setError(null);
-    const supabase = createClient();
-    const origin = window.location.origin;
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${origin}/auth/callback?next=${encodeURIComponent("/connexion/mot-de-passe")}`,
+    const res = await fetch("/api/auth/reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.trim() }),
     });
+    const json = await res.json().catch(() => ({}));
     setLoading(false);
-    if (resetError) {
-      setError(resetError.message);
+    if (!res.ok) {
+      setError(json.error || "Envoi impossible. Réessayez.");
       return;
     }
     setMode("sent");

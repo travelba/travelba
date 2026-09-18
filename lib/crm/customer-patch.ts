@@ -32,7 +32,7 @@ export const CUSTOMER_PATCH_KEYS = [
 
 export function customerPatchFromBody(
   body: Record<string, unknown>,
-  opts: { allowEmail?: boolean; strictPhones?: boolean } = {}
+  opts: { allowEmail?: boolean; strictPhones?: boolean; requirePhone?: boolean } = {}
 ) {
   const patch: Record<string, unknown> = {};
   for (const key of CUSTOMER_PATCH_KEYS) {
@@ -85,6 +85,12 @@ export function customerPatchFromBody(
       continue;
     }
     patch[key] = emptyToNull(body[key]);
+  }
+  if (opts.requirePhone) {
+    const raw = emptyToNull(body.phone);
+    const e164 = raw ? toE164(raw, "FR") : null;
+    if (!e164) return { patch, error: "Indiquez un numéro de téléphone." };
+    patch.phone = e164;
   }
   return { patch };
 }

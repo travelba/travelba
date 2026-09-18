@@ -2,18 +2,11 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
+import { SET_PASSWORD_PATH } from "@/lib/crm/session";
 
 export const runtime = "nodejs";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function authErrorMessage(message: string) {
-  const lower = message.toLowerCase();
-  if (lower.includes("rate limit") || lower.includes("over_email_send_rate_limit")) {
-    return "Trop de tentatives. Réessayez dans quelques minutes.";
-  }
-  return message;
-}
 
 function escapeHtml(value: string) {
   return value
@@ -57,22 +50,28 @@ export async function POST(request: Request) {
     }
 
     const { data, error } = await supabase.auth.admin.generateLink({
-      type: "magiclink",
+      type: "recovery",
       email,
     });
 
-    if (error || !data?.properties?.hashed_token) {
-      console.info("[auth/otp] generateLink:", error?.message || "no token");
+    if (error || !data?.user || !data.properties?.hashed_token) {
+      console.info("[auth/reset] generateLink indisponible");
       return NextResponse.json({ ok: true });
     }
 
+    const { data: fresh } = await supabase.auth.admin.getUserById(data.user.id);
+    const meta = fresh.user?.app_metadata || data.user.app_metadata || {};
+    await supabase.auth.admin.updateUserById(data.user.id, {
+      app_metadata: { ...meta, must_set_password: true },
+    });
+
     const callback = new URL("/auth/callback", siteUrl);
     callback.searchParams.set("token_hash", data.properties.hashed_token);
-    callback.searchParams.set("type", "magiclink");
-    callback.searchParams.set("next", "/mon-compte");
+    callback.searchParams.set("type", "recovery");
+    callback.searchParams.set("next", SET_PASSWORD_PATH);
 
     if (!apiKey) {
-      console.info("[auth/otp] RESEND_API_KEY manquante — e-mail non envoyé");
+      console.info("[auth/reset] RESEND_API_KEY manquante — e-mail non envoyé");
       return NextResponse.json({ ok: true });
     }
 
@@ -81,18 +80,18 @@ export async function POST(request: Request) {
       from: `${siteConfig.shortName} <${fromAddress}>`,
       to: [email],
       replyTo: siteConfig.contactEmail,
-      subject: `Votre lien de connexion ${siteConfig.shortName}`,
+      subject: `Réinitialiser votre mot de passe ${siteConfig.shortName}`,
       html: `
         <div style="font-family:Georgia,serif;background:#F2F4F8;padding:32px 16px">
           <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;color:#002157">
             <p style="margin:0 0 8px;font-size:12px;letter-spacing:0.16em;text-transform:uppercase;color:#E81932">Espace voyageur</p>
             <h1 style="margin:0 0 16px;font-size:24px">${escapeHtml(siteConfig.shortName)}</h1>
             <p style="margin:0 0 16px;line-height:1.5">
-              Cliquez sur le bouton pour ouvrir votre espace. Le lien expire sous 24&nbsp;heures.
+              Cliquez sur le bouton pour choisir un nouveau mot de passe.
             </p>
             <p style="margin:24px 0">
               <a href="${escapeHtml(callback.toString())}" style="display:inline-block;background:#E81932;color:#fff;text-decoration:none;padding:14px 22px;border-radius:999px;font-weight:600">
-                Me connecter
+                Définir mon mot de passe
               </a>
             </p>
             <p style="margin:0;font-size:13px;color:#5b6475">
@@ -104,13 +103,16 @@ export async function POST(request: Request) {
     });
 
     if (sendError) {
-      console.error("[auth/otp] Resend:", sendError);
+      console.error("[auth/reset] Resend:", sendError.name);
       return NextResponse.json({ error: "Échec d’envoi de l’e-mail. Réessayez." }, { status: 502 });
     }
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error("[auth/otp] Unexpected:", err);
-    return NextResponse.json({ error: authErrorMessage(err instanceof Error ? err.message : "Erreur serveur") }, { status: 500 });
+    console.error("[auth/reset] Unexpected");
+    return NextResponse.json(
+      { error: err instanceof Error && /rate limit/i.test(err.message) ? "Trop de tentatives. Réessayez dans quelques minutes." : "Erreur serveur" },
+      { status: 500 }
+    );
   }
 }

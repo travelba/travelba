@@ -108,7 +108,7 @@ OIDC Vercel : `aiGatewayConfigured()` peut être vrai sur Vercel sans `sk-`. L�
 - Recréer Marie Dupont / TBA-DEMO
 - Pointer `REVOLUT_API_URL` sandbox
 - Clés Stripe `sk_test` / `pk_test` sur l’env Production
-- Déployer sans `CRON_SECRET` (cron ouvert si le header Vercel n’est pas envoyé)
+- Déployer sans `CRON_SECRET` (le cron refuse toute requête sans Bearer). Ne pas retomber sur `x-vercel-cron-schedule` (spoofable).
 - Imprimer PII dans les logs Vercel (passeport, MRZ, e-mail client en clair dans un `console.info` d’invite : déjà le lien en local seulement)
 
 ## Smoke prod (après deploy)

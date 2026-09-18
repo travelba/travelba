@@ -6,7 +6,10 @@ export async function PATCH(request: Request) {
   const auth = await requireCustomer();
   if (auth instanceof NextResponse) return auth;
   const body = await request.json().catch(() => ({}));
-  const { patch, error: patchError } = customerPatchFromBody(body, { strictPhones: true });
+  const { patch, error: patchError } = customerPatchFromBody(body, {
+    strictPhones: true,
+    requirePhone: true,
+  });
   if (patchError) return jsonError(patchError);
   const { data, error } = await auth.supabase
     .from("crm_customers")

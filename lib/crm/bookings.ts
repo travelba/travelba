@@ -1,6 +1,22 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BookingStatus, CrmBooking, CrmTransaction } from "@/lib/crm/types";
 
+export function bookingDebitIntent(input: {
+  status: BookingStatus;
+  amount: number;
+  hasOpenDebit: boolean;
+}): "insert" | "update" | "void" | "noop" {
+  if (input.status === "cancelled") return input.hasOpenDebit ? "void" : "noop";
+  const shouldDebit =
+    input.status === "confirmed" ||
+    input.status === "travelling" ||
+    input.status === "completed";
+  if (!shouldDebit) return "noop";
+  if (!input.hasOpenDebit) return input.amount > 0 ? "insert" : "noop";
+  if (input.amount <= 0) return "void";
+  return "update";
+}
+
 export async function nextBookingReference(supabase: SupabaseClient) {
   const { data, error } = await supabase.rpc("crm_next_booking_reference");
   if (error || !data) {
@@ -14,11 +30,6 @@ export async function syncBookingDebit(
   booking: CrmBooking,
   previousStatus?: BookingStatus
 ) {
-  const shouldDebit =
-    booking.status === "confirmed" ||
-    booking.status === "travelling" ||
-    booking.status === "completed";
-
   const { data: existing } = await supabase
     .from("crm_transactions")
     .select("*")
@@ -29,24 +40,23 @@ export async function syncBookingDebit(
     .maybeSingle();
 
   const debit = existing as CrmTransaction | null;
+  const amount = Number(booking.total_amount || 0);
+  const intent = bookingDebitIntent({
+    status: booking.status,
+    amount,
+    hasOpenDebit: Boolean(debit),
+  });
+  const label = `Réservation ${booking.reference} — ${booking.title}`;
 
-  if (booking.status === "cancelled") {
-    if (debit) {
-      await supabase
-        .from("crm_transactions")
-        .update({ status: "void" })
-        .eq("id", debit.id);
-    }
+  if (intent === "void" && debit) {
+    await supabase
+      .from("crm_transactions")
+      .update({ status: "void" })
+      .eq("id", debit.id);
     return;
   }
 
-  if (!shouldDebit) return;
-
-  const amount = Number(booking.total_amount || 0);
-  const label = `Réservation ${booking.reference} — ${booking.title}`;
-
-  if (!debit) {
-    if (amount <= 0) return;
+  if (intent === "insert") {
     await supabase.from("crm_transactions").insert({
       customer_id: booking.customer_id,
       booking_id: booking.id,
@@ -60,6 +70,8 @@ export async function syncBookingDebit(
     });
     return;
   }
+
+  if (intent !== "update" || !debit) return;
 
   const amountChanged = Number(debit.amount) !== amount;
   const statusChanged = Boolean(previousStatus && previousStatus !== booking.status);
