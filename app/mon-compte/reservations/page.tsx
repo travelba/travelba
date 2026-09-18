@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
-import { BOOKING_STATUS_LABELS, type CrmBooking } from "@/lib/crm/types";
+import { BOOKING_STATUS_LABELS } from "@/lib/crm/types";
 import { formatDateFr, formatMoney, isUpcomingBooking } from "@/lib/crm/money";
 import {
   ConciergeBanner,
@@ -10,6 +10,8 @@ import {
   StatusChip,
   bookingStatusTone,
 } from "@/components/crm/ui";
+import { bookingCoverUrl } from "@/lib/crm/covers";
+import { loadVisibleCarnets } from "@/lib/crm/carnet-query";
 import { siteConfig } from "@/lib/site";
 
 function daysUntil(date: string | null) {
@@ -19,12 +21,6 @@ function daysUntil(date: string | null) {
   today.setHours(12, 0, 0, 0);
   return Math.ceil((start.getTime() - today.getTime()) / 86_400_000);
 }
-
-const HERO_IMAGES = [
-  "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=1200&q=80",
-  "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=1200&q=80",
-  "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=1200&q=80",
-];
 
 export default async function ReservationsPage({
   searchParams,
@@ -40,13 +36,7 @@ export default async function ReservationsPage({
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");
 
-  const { data } = await supabase
-    .from("crm_bookings")
-    .select("*")
-    .eq("customer_id", customer.id)
-    .order("start_date", { ascending: false, nullsFirst: false });
-
-  const all = (data || []) as CrmBooking[];
+  const all = await loadVisibleCarnets(supabase, customer.id);
   const upcoming = all.filter(
     (b) => isUpcomingBooking(b.end_date) && b.status !== "cancelled"
   );
@@ -109,25 +99,10 @@ export default async function ReservationsPage({
         </Link>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {["Tout afficher", "Vols", "Hôtels", "Expéditions"].map((label, i) => (
-          <span
-            key={label}
-            className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold ${
-              i === 0
-                ? "bg-[var(--admin-navy)] text-white"
-                : "bg-white text-[var(--admin-navy)] ring-1 ring-slate-200"
-            }`}
-          >
-            {label}
-          </span>
-        ))}
-      </div>
-
       <ul className="space-y-4">
-        {list.map((b, idx) => {
+        {list.map((b) => {
           const jMinus = daysUntil(b.start_date);
-          const img = HERO_IMAGES[idx % HERO_IMAGES.length];
+          const img = bookingCoverUrl(b, 1200);
           return (
             <li key={b.id}>
               <article className="overflow-hidden rounded-2xl border border-[#e5e3dc] bg-white shadow-[0_4px_20px_-2px_rgba(11,25,44,0.04)]">
@@ -170,20 +145,12 @@ export default async function ReservationsPage({
                       {formatMoney(Number(b.total_amount), b.currency)}
                     </p>
                   </div>
-                  <div className="flex gap-2">
-                    <Link
-                      href={`/mon-compte/reservations/${b.reference}`}
-                      className="inline-flex flex-1 items-center justify-center rounded-xl bg-[var(--admin-navy)] px-3 py-2.5 text-sm font-semibold text-white"
-                    >
-                      {showPast ? "Revoir le dossier" : "Détails & programme"}
-                    </Link>
-                    <a
-                      href={`mailto:${siteConfig.contactEmail}?subject=${encodeURIComponent(`Vouchers ${b.reference}`)}`}
-                      className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-[var(--admin-navy)]"
-                    >
-                      PDF
-                    </a>
-                  </div>
+                  <Link
+                    href={`/mon-compte/reservations/${b.reference}`}
+                    className="inline-flex w-full items-center justify-center rounded-xl bg-[var(--admin-navy)] px-3 py-2.5 text-sm font-semibold text-white"
+                  >
+                    {showPast ? "Revoir le carnet" : "Ouvrir le carnet"}
+                  </Link>
                 </div>
               </article>
             </li>
@@ -193,7 +160,7 @@ export default async function ReservationsPage({
           <li>
             <EmptyState
               title={showPast ? "Aucun voyage passé" : "Aucun voyage à venir"}
-              description="Votre majordome pourra créer votre prochain dossier dès que vous le souhaitez."
+              description="Votre conciergerie publiera le carnet dès que le dossier sera prêt."
             />
           </li>
         ) : null}

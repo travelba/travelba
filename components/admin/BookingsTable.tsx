@@ -84,6 +84,13 @@ export function BookingsTable({
                 </div>
               </div>
               <div className="flex items-center gap-3">
+                {!b.visible_to_client ? (
+                  <span className="rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">
+                    Brouillon
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold uppercase text-muted">Publié</span>
+                )}
                 <StatusChip tone={bookingStatusTone(b.status)}>
                   {BOOKING_STATUS_LABELS[b.status]}
                 </StatusChip>

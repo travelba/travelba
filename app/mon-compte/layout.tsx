@@ -55,7 +55,7 @@ export default async function AccountLayout({
         rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap"
       />
-      <AccountChrome customerName={name} initials={initials}>
+      <AccountChrome customerName={name} initials={initials} needsPhone={!customer.phone}>
         {children}
       </AccountChrome>
     </div>

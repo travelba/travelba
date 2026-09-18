@@ -13,6 +13,7 @@ import {
 import { formatDateFr, isUpcomingBooking } from "@/lib/crm/money";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { bookingCoverUrl } from "@/lib/crm/covers";
+import { loadVisibleCarnets } from "@/lib/crm/carnet-query";
 import { siteConfig } from "@/lib/site";
 
 function daysUntil(date: string | null) {
@@ -32,14 +33,8 @@ export default async function AccountHomePage() {
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");
 
-  const [{ data: bookings }, { data: balances }, { data: docs }] =
+  const [{ data: balances }, { data: docs }, bookings] =
     await Promise.all([
-      supabase
-        .from("crm_bookings")
-        .select("*")
-        .eq("customer_id", customer.id)
-        .neq("status", "cancelled")
-        .order("start_date", { ascending: true, nullsFirst: false }),
       supabase
         .from("crm_customer_balances")
         .select("*")
@@ -48,11 +43,10 @@ export default async function AccountHomePage() {
         .from("crm_travel_documents")
         .select("*")
         .eq("customer_id", customer.id),
+      loadVisibleCarnets(supabase, customer.id),
     ]);
 
-  const nextTrip = ((bookings || []) as CrmBooking[]).find((b) =>
-    isUpcomingBooking(b.end_date)
-  );
+  const nextTrip = bookings.find((b) => isUpcomingBooking(b.end_date) && b.status !== "cancelled");
 
   let items: CrmBookingItem[] = [];
   let travelers: CrmBookingTraveler[] = [];
@@ -113,12 +107,6 @@ export default async function AccountHomePage() {
             <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">
               {siteConfig.name} · Espace membre
             </span>
-          </span>
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--admin-gold)]/40 bg-[var(--admin-peach)] px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-[#533e1c]">
-            <span className="material-symbols-outlined text-[14px] text-[var(--admin-gold)]">
-              stars
-            </span>
-            Voyageur Privilège
           </span>
         </div>
         <h1 className="mt-1 font-display text-[1.7rem] font-bold tracking-tight text-[var(--admin-navy)]">

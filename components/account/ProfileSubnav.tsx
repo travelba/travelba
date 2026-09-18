@@ -4,10 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const LINKS = [
-  { href: "/mon-compte/profil", label: "Informations personnelles", exact: true },
-  { href: "/mon-compte/profil/paiement", label: "Moyens de paiement" },
-  { href: "/mon-compte/profil/documents", label: "Pièces d’identité" },
-  { href: "/mon-compte/profil/compagnons", label: "Compagnons de voyage" },
+  { href: "/mon-compte/profil", label: "Vous", exact: true },
+  { href: "/mon-compte/profil/documents", label: "Pièces" },
+  { href: "/mon-compte/profil/compagnons", label: "Voyageurs" },
+  { href: "/mon-compte/profil/facturation", label: "Facturation" },
 ];
 
 export function ProfileSubnav() {

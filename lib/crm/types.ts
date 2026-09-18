@@ -23,6 +23,9 @@ export const BOOKING_ITEM_KINDS = [
   "hotel",
   "transfer",
   "activity",
+  "rail",
+  "car",
+  "cruise",
   "insurance",
   "fee",
 ] as const;
@@ -34,6 +37,9 @@ export const BOOKING_ITEM_LABELS: Record<BookingItemKind, string> = {
   hotel: "Hôtel",
   transfer: "Transfert",
   activity: "Activité",
+  rail: "Train",
+  car: "Voiture",
+  cruise: "Bateau",
   insurance: "Assurance",
   fee: "Frais",
 };
@@ -167,6 +173,7 @@ export type CrmBooking = {
   cover_image_path: string | null;
   notes_client: string | null;
   notes_internal: string | null;
+  visible_to_client: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -183,6 +190,8 @@ export type CrmBookingItem = {
   amount: number | null;
   sort_order: number;
   details: Record<string, unknown>;
+  visible_to_client: boolean;
+  source_document_id: string | null;
   created_at: string;
   updated_at: string;
 };

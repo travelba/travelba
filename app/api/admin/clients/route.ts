@@ -37,6 +37,9 @@ export async function POST(request: Request) {
     .single();
   if (error) return jsonError(error.message, 400);
   const customer = data as CrmCustomer;
+  if (!body?.invite) {
+    return NextResponse.json({ customer, invited: false });
+  }
   try {
     const result = await inviteCustomer(customer, appOrigin(request));
     return NextResponse.json({

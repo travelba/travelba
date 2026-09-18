@@ -24,6 +24,7 @@ export async function POST(request: Request, ctx: Ctx) {
       amount: body?.amount == null ? null : Number(body.amount),
       sort_order: Number(body?.sort_order || 0),
       details: body?.details || {},
+      visible_to_client: false,
     })
     .select("*")
     .single();

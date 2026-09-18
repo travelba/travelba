@@ -4,6 +4,53 @@ import { BOOKING_ITEM_KINDS } from "@/lib/crm/types";
 const nullableString = z.string().nullable().optional();
 const nullableNumber = z.number().nullable().optional();
 
+const roomSchema = z
+  .object({
+    room: nullableString,
+    type: nullableString,
+    guests: nullableString,
+    confirmation_ref: nullableString,
+  })
+  .optional();
+
+const detailsSchema = z
+  .object({
+    airline: nullableString,
+    flight_number: nullableString,
+    pnr: nullableString,
+    from: nullableString,
+    to: nullableString,
+    city_from: nullableString,
+    city_to: nullableString,
+    cabin: nullableString,
+    baggage: nullableString,
+    terminal: nullableString,
+    seat: nullableString,
+    hotel_name: nullableString,
+    room: nullableString,
+    city: nullableString,
+    address: nullableString,
+    board: nullableString,
+    occupancy: nullableString,
+    guests: nullableString,
+    special_requests: nullableString,
+    included: z.array(z.string()).optional(),
+    rooms: z.array(roomSchema.unwrap()).optional(),
+    pickup: nullableString,
+    dropoff: nullableString,
+    pickup_note: nullableString,
+    vehicle: nullableString,
+    driver: nullableString,
+    policy_number: nullableString,
+    meeting_point: nullableString,
+    duration: nullableString,
+    notes: nullableString,
+    source_file_name: nullableString,
+    needs_review: z.boolean().optional(),
+  })
+  .optional()
+  .default({});
+
 export const bookingExtractSchema = z.object({
   document_status: z.enum(["confirmed", "quote", "identity"]).nullable().optional(),
   title: nullableString,
@@ -26,24 +73,7 @@ export const bookingExtractSchema = z.object({
         start_at: nullableString,
         end_at: nullableString,
         amount: nullableNumber,
-        details: z
-          .object({
-            airline: nullableString,
-            flight_number: nullableString,
-            pnr: nullableString,
-            from: nullableString,
-            to: nullableString,
-            cabin: nullableString,
-            hotel_name: nullableString,
-            room: nullableString,
-            address: nullableString,
-            pickup: nullableString,
-            dropoff: nullableString,
-            policy_number: nullableString,
-            notes: nullableString,
-          })
-          .optional()
-          .default({}),
+        details: detailsSchema,
       })
     )
     .default([]),
@@ -61,13 +91,10 @@ export type BookingExtract = z.infer<typeof bookingExtractSchema>;
 
 export function openaiApiKey() {
   const key = process.env.OPENAI_API_KEY?.trim() || "";
-  // Direct OpenAI calls need a real sk- key. Placeholders / invalid values 401.
   return key.startsWith("sk-") ? key : "";
 }
 
 export function aiGatewayConfigured() {
-  // On Vercel the OIDC token is on the request (`x-vercel-oidc-token`),
-  // not always in process.env.VERCEL_OIDC_TOKEN — the AI SDK still picks it up.
   return Boolean(
     openaiApiKey() ||
       process.env.AI_GATEWAY_API_KEY ||

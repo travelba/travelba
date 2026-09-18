@@ -3,18 +3,15 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, CheckCircle2, FileUp, Loader2, Plus, Trash2 } from "lucide-react";
-import {
-  BOOKING_ITEM_KINDS,
-  BOOKING_ITEM_LABELS,
-  customerFullName,
-  type BookingItemKind,
-  type CrmCustomer,
-} from "@/lib/crm/types";
+import { customerFullName, type CrmCustomer } from "@/lib/crm/types";
 import { DateFrInput, Field, fieldControlClass } from "@/components/crm/fields";
 import type { BookingExtract } from "@/lib/crm/ingest-types";
+import { IngestItemCard } from "@/components/crm/IngestItemCard";
 
 type ItemDraft = BookingExtract["items"][number];
-type TravelerDraft = BookingExtract["travelers"][number];
+
+const MAX_FILES = 30;
+const MAX_BYTES = 25 * 1024 * 1024;
 
 function emptyExtract(): BookingExtract {
   return {
@@ -31,6 +28,19 @@ function emptyExtract(): BookingExtract {
     customer_last_name: "",
     items: [],
     travelers: [],
+  };
+}
+
+function emptyItem(): ItemDraft {
+  return {
+    kind: "hotel",
+    title: "",
+    supplier: "",
+    confirmation_ref: "",
+    start_at: "",
+    end_at: "",
+    amount: null,
+    details: {},
   };
 }
 
@@ -58,11 +68,16 @@ export function BookingIngest({
   const [error, setError] = useState<string | null>(null);
   const [extract, setExtract] = useState<BookingExtract | null>(null);
   const [customerId, setCustomerId] = useState("");
-  const [visibleToClient, setVisibleToClient] = useState(true);
 
   function addFiles(list: FileList | File[] | null) {
     if (!list) return;
-    setFiles((prev) => [...prev, ...Array.from(list)].slice(0, 8));
+    const incoming = Array.from(list);
+    const tooBig = incoming.find((file) => file.size > MAX_BYTES);
+    if (tooBig) {
+      setError(`${tooBig.name} dépasse 25 Mo.`);
+      return;
+    }
+    setFiles((prev) => [...prev, ...incoming].slice(0, MAX_FILES));
     setError(null);
   }
 
@@ -99,7 +114,6 @@ export function BookingIngest({
     const body = new FormData();
     body.set("extract", JSON.stringify(extract));
     body.set("customer_id", customerId);
-    body.set("visible_to_client", visibleToClient ? "1" : "0");
     for (const file of files) body.append("files", file);
     try {
       const res = await fetch(saveUrl, { method: "POST", body });
@@ -132,6 +146,11 @@ export function BookingIngest({
     });
   }
 
+  const needsReview = Boolean(
+    extract?.items.some((item) => item.details?.needs_review) ||
+      (extract && !extract.items.length)
+  );
+
   if (!aiConfigured) {
     return (
       <div className="admin-af-card rounded-3xl border border-dashed border-border p-5 text-sm text-muted">
@@ -157,10 +176,11 @@ export function BookingIngest({
           </span>
           <div className="min-w-0 flex-1">
             <p className="font-display text-base font-bold text-[var(--admin-navy)]">
-              {mode === "append" ? "Compléter avec un document" : "Créer le dossier depuis les documents"}
+              {mode === "append" ? "Ajouter des documents au dossier" : "Créer le dossier depuis les documents"}
             </p>
             <p className="mt-1 text-sm text-muted">
-              Déposez billets, vouchers, devis ou factures (PDF ou photo). Nous lisons tout et proposons les champs.
+              Billets, vouchers, devis, trains, voitures, bateaux (PDF ou photo). 30 fichiers, 25 Mo max.
+              Rien n’est publié tant que vous n’avez pas cliqué sur Publier.
             </p>
           </div>
           <button
@@ -212,11 +232,16 @@ export function BookingIngest({
         <div className="space-y-4">
           <p className="flex items-center gap-2 text-sm text-[var(--admin-navy)]">
             <CheckCircle2 className="h-4 w-4" />
-            Vérifiez puis enregistrez. Rien n’est écrit tant que vous n’avez pas validé.
+            Relisez chaque carte. Enregistrer crée un brouillon invisible au client.
           </p>
+          {needsReview ? (
+            <p className="rounded-2xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
+              À vérifier — lecture incomplète ou aucune carte extraite. Les fichiers restent joints.
+            </p>
+          ) : null}
           {extract.document_status === "quote" ? (
             <p className="rounded-2xl bg-[#efebe0] px-3 py-2 text-sm text-[var(--admin-navy)]">
-              Devis : tarifs non bloqués. Vérifiez la chambre et le prix avant d’enregistrer.
+              Devis : le client ne verra ce dossier qu’après publication. Saisissez le prix vendu, pas le net PDF.
             </p>
           ) : null}
           {extract.document_status === "identity" ? (
@@ -268,7 +293,7 @@ export function BookingIngest({
                 onChange={(value) => patch("end_date", value)}
               />
             </Field>
-            <Field label="Montant">
+            <Field label="Prix vendu (total)">
               <input
                 type="number"
                 step="0.01"
@@ -288,105 +313,22 @@ export function BookingIngest({
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <p className="font-display font-bold text-[var(--admin-navy)]">Prestations</p>
+              <p className="font-display font-bold text-[var(--admin-navy)]">Cartes du carnet</p>
               <button
                 type="button"
                 className="inline-flex items-center gap-1 text-xs font-semibold"
-                onClick={() =>
-                  patch("items", [
-                    ...extract.items,
-                    {
-                      kind: "fee",
-                      title: "",
-                      supplier: "",
-                      confirmation_ref: "",
-                      start_at: "",
-                      end_at: "",
-                      amount: null,
-                      details: {},
-                    },
-                  ])
-                }
+                onClick={() => patch("items", [...extract.items, emptyItem()])}
               >
-                <Plus className="h-3.5 w-3.5" /> Ajouter
+                <Plus className="h-3.5 w-3.5" /> Carte manuelle
               </button>
             </div>
             {extract.items.map((item, index) => (
-              <div key={index} className="grid gap-2 rounded-2xl border border-border p-3 sm:grid-cols-6">
-                <select
-                  value={item.kind}
-                  onChange={(e) => patchItem(index, { ...item, kind: e.target.value as BookingItemKind })}
-                  className={fieldControlClass}
-                >
-                  {BOOKING_ITEM_KINDS.map((kind) => (
-                    <option key={kind} value={kind}>
-                      {BOOKING_ITEM_LABELS[kind]}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  placeholder="Titre"
-                  value={item.title}
-                  onChange={(e) => patchItem(index, { ...item, title: e.target.value })}
-                  className={`${fieldControlClass} sm:col-span-2`}
-                />
-                <input
-                  placeholder="Fournisseur"
-                  value={item.supplier || ""}
-                  onChange={(e) => patchItem(index, { ...item, supplier: e.target.value })}
-                  className={fieldControlClass}
-                />
-                <input
-                  placeholder="PNR / réf."
-                  value={item.confirmation_ref || ""}
-                  onChange={(e) => patchItem(index, { ...item, confirmation_ref: e.target.value })}
-                  className={fieldControlClass}
-                />
-                <button
-                  type="button"
-                  className="justify-self-end text-accent"
-                  onClick={() => patch("items", extract.items.filter((_, i) => i !== index))}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-                <input
-                  placeholder="Début"
-                  value={item.start_at || ""}
-                  onChange={(e) => patchItem(index, { ...item, start_at: e.target.value })}
-                  className={`${fieldControlClass} sm:col-span-2`}
-                />
-                <input
-                  placeholder="Fin"
-                  value={item.end_at || ""}
-                  onChange={(e) => patchItem(index, { ...item, end_at: e.target.value })}
-                  className={`${fieldControlClass} sm:col-span-2`}
-                />
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="Montant"
-                  value={item.amount ?? ""}
-                  onChange={(e) =>
-                    patchItem(index, { ...item, amount: e.target.value === "" ? null : Number(e.target.value) })
-                  }
-                  className={fieldControlClass}
-                />
-                {item.kind === "flight" ? (
-                  <input
-                    placeholder="Vol (AF123)"
-                    value={item.details?.flight_number || ""}
-                    onChange={(e) =>
-                      patchItem(index, {
-                        ...item,
-                        details: { ...item.details, flight_number: e.target.value },
-                      })
-                    }
-                    className={fieldControlClass}
-                  />
-                ) : (
-                  <span />
-                )}
-              </div>
+              <IngestItemCard
+                key={index}
+                item={item}
+                onChange={(next) => patchItem(index, next)}
+                onRemove={() => patch("items", extract.items.filter((_, i) => i !== index))}
+              />
             ))}
           </div>
 
@@ -436,17 +378,6 @@ export function BookingIngest({
             ))}
           </div>
 
-          {role === "admin" ? (
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={visibleToClient}
-                onChange={(e) => setVisibleToClient(e.target.checked)}
-              />
-              Publier les fichiers dans l’espace client
-            </label>
-          ) : null}
-
           <button
             type="button"
             disabled={busy !== "idle" || extract.document_status === "identity"}
@@ -456,8 +387,8 @@ export function BookingIngest({
             {busy === "save"
               ? "Enregistrement…"
               : mode === "append"
-                ? "Ajouter au dossier"
-                : "Créer le dossier"}
+                ? "Enregistrer le brouillon"
+                : "Créer le dossier (brouillon)"}
           </button>
         </div>
       ) : null}

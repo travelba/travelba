@@ -9,16 +9,19 @@ import {
   BOOKING_STATUSES,
   BOOKING_STATUS_LABELS,
   DOC_TYPE_LABELS,
+  customerFullName,
   type BookingItemKind,
   type CrmBooking,
   type CrmBookingDocument,
   type CrmBookingItem,
   type CrmBookingTraveler,
   type CrmCompanion,
+  type CrmCustomer,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { itemDetailsLine, itemWhen } from "@/lib/crm/booking-display";
 import { bookingCoverUrl } from "@/lib/crm/covers";
+import { documentLabel } from "@/lib/crm/carnet";
 import { personDocumentsForTraveler, primaryIdentityDoc, travelerDisplayName } from "@/lib/crm/trip-documents";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
@@ -31,6 +34,7 @@ export function BookingEditor({
   documents,
   identityDocs,
   companions,
+  customers,
   holderName,
   aiConfigured,
 }: {
@@ -40,10 +44,13 @@ export function BookingEditor({
   documents: CrmBookingDocument[];
   identityDocs: CrmTravelDocument[];
   companions: CrmCompanion[];
+  customers: CrmCustomer[];
   holderName: { first_name: string; last_name: string };
   aiConfigured: boolean;
 }) {
   const router = useRouter();
+  const unpublishedItems = items.filter((item) => !item.visible_to_client);
+  const needsReview = items.some((item) => item.details?.needs_review === true);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -52,6 +59,15 @@ export function BookingEditor({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+    });
+    router.refresh();
+  }
+
+  async function setPublished(visible: boolean) {
+    await fetch(`/api/admin/bookings/${booking.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ visible_to_client: visible }),
     });
     router.refresh();
   }
@@ -66,6 +82,13 @@ export function BookingEditor({
       body: JSON.stringify(body),
     });
     form.reset();
+    router.refresh();
+  }
+
+  async function removeItem(id: string) {
+    await fetch(`/api/admin/bookings/${booking.id}/items?itemId=${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
     router.refresh();
   }
 
@@ -113,15 +136,6 @@ export function BookingEditor({
     router.refresh();
   }
 
-  async function toggleDoc(id: string, visible: boolean) {
-    await fetch(`/api/admin/bookings/${booking.id}/documents`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, visible_to_client: visible }),
-    });
-    router.refresh();
-  }
-
   return (
     <div className="space-y-6">
       <div className="overflow-hidden rounded-3xl">
@@ -132,6 +146,46 @@ export function BookingEditor({
           className="h-48 w-full object-cover sm:h-64"
         />
       </div>
+
+      <section className="admin-af-card flex flex-col gap-3 rounded-3xl p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">Carnet client</p>
+          <p className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">
+            {booking.visible_to_client ? "Publié" : "Brouillon — invisible au client"}
+          </p>
+          <p className="text-sm text-muted">
+            Enregistrer ne publie pas. Publier rend visibles toutes les cartes actuelles.
+          </p>
+          {unpublishedItems.length && booking.visible_to_client ? (
+            <p className="mt-2 rounded-2xl bg-[var(--admin-peach)] px-3 py-2 text-sm">
+              À vérifier — {unpublishedItems.length} nouvelle{unpublishedItems.length > 1 ? "s" : ""} carte
+              {unpublishedItems.length > 1 ? "s" : ""} non publiée{unpublishedItems.length > 1 ? "s" : ""}.
+            </p>
+          ) : null}
+          {needsReview ? (
+            <p className="mt-2 text-sm text-accent">Certaines cartes sont marquées lecture douteuse.</p>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {booking.visible_to_client ? (
+            <button
+              type="button"
+              onClick={() => void setPublished(false)}
+              className="rounded-full border border-border px-4 py-2 text-sm font-semibold"
+            >
+              Masquer le carnet
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void setPublished(true)}
+            className="admin-af-btn rounded-full px-4 py-2 text-sm"
+          >
+            {booking.visible_to_client ? "Publier les mises à jour" : "Publier le carnet"}
+          </button>
+        </div>
+      </section>
+
       <BookingIngest
         role="admin"
         mode="append"
@@ -149,6 +203,17 @@ export function BookingEditor({
           {BOOKING_STATUSES.map((s) => (
             <option key={s} value={s}>
               {BOOKING_STATUS_LABELS[s]}
+            </option>
+          ))}
+        </select>
+        <select
+          name="customer_id"
+          defaultValue={booking.customer_id}
+          className="rounded-xl border border-border px-3 py-2 sm:col-span-2"
+        >
+          {customers.map((c) => (
+            <option key={c.id} value={c.id}>
+              {customerFullName(c)} — {c.email}
             </option>
           ))}
         </select>
@@ -225,13 +290,33 @@ export function BookingEditor({
       </section>
 
       <section className="admin-af-card rounded-3xl p-5">
-        <h2 className="font-display text-lg font-bold">Prestations</h2>
-        <ul className="mt-2 text-sm">
+        <h2 className="font-display text-lg font-bold">Cartes</h2>
+        <ul className="mt-2 space-y-2 text-sm">
           {items.map((i) => (
-            <li key={i.id}>
-              {BOOKING_ITEM_LABELS[i.kind as BookingItemKind] || i.kind} · {i.title}
-              {itemWhen(i) ? ` · ${itemWhen(i)}` : ""}
-              {itemDetailsLine(i) ? ` · ${itemDetailsLine(i)}` : ""}
+            <li
+              key={i.id}
+              className="flex items-start justify-between gap-3 rounded-xl border border-border px-3 py-2"
+            >
+              <div className="min-w-0">
+                <p className="font-medium">
+                  {BOOKING_ITEM_LABELS[i.kind as BookingItemKind] || i.kind} · {i.title}
+                  {!i.visible_to_client ? (
+                    <span className="ml-2 rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase">
+                      Brouillon
+                    </span>
+                  ) : null}
+                </p>
+                <p className="text-xs text-muted">
+                  {[itemWhen(i), itemDetailsLine(i)].filter(Boolean).join(" · ")}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="shrink-0 text-xs font-semibold text-accent"
+                onClick={() => void removeItem(i.id)}
+              >
+                Retirer
+              </button>
             </li>
           ))}
         </ul>
@@ -244,50 +329,39 @@ export function BookingEditor({
             ))}
           </select>
           <input name="title" required placeholder="Titre" className="rounded-xl border border-border px-3 py-2" />
-          <input name="amount" type="number" step="0.01" placeholder="Montant" className="rounded-xl border border-border px-3 py-2" />
+          <input name="amount" type="number" step="0.01" placeholder="Prix vendu" className="rounded-xl border border-border px-3 py-2" />
           <button className="admin-af-btn rounded-full px-3 py-2 text-sm">Ajouter</button>
         </form>
+        <p className="mt-2 text-xs text-muted">Retirer une carte conserve le PDF joint au dossier.</p>
       </section>
 
       <section className="admin-af-card rounded-3xl p-5">
         <h2 className="font-display text-lg font-bold">Billets, vouchers et devis</h2>
-        <p className="mt-1 text-sm text-muted">Justificatifs du dossier, distincts des passeports.</p>
+        <p className="mt-1 text-sm text-muted">Justificatifs du dossier. Visibles au client seulement après publication du carnet.</p>
         <ul className="mt-2 space-y-2 text-sm">
           {documents.map((d) => (
             <li key={d.id} className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2">
               <div className="min-w-0">
-                <p className="truncate font-medium">{d.file_name || d.kind}</p>
+                <p className="truncate font-medium">{documentLabel(d, items)}</p>
                 <p className="text-xs text-muted">
-                  {d.visible_to_client ? "Visible client" : "Masqué au client"}
+                  {d.visible_to_client ? "Publié avec le carnet" : "Masqué jusqu’à publication"}
                 </p>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <FileOpenLink
-                  path={d.storage_path}
-                  className="inline-flex items-center gap-1 rounded-full bg-[var(--admin-sky)] px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)]"
-                >
-                  <span className="material-symbols-outlined text-[16px]">
-                    {fileKindIcon(d.mime_type, d.file_name)}
-                  </span>
-                  Ouvrir
-                </FileOpenLink>
-                <button
-                  type="button"
-                  className="text-xs font-semibold"
-                  onClick={() => toggleDoc(d.id, !d.visible_to_client)}
-                >
-                  {d.visible_to_client ? "Masquer" : "Publier"}
-                </button>
-              </div>
+              <FileOpenLink
+                path={d.storage_path}
+                className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--admin-sky)] px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)]"
+              >
+                <span className="material-symbols-outlined text-[16px]">
+                  {fileKindIcon(d.mime_type, d.file_name)}
+                </span>
+                Ouvrir
+              </FileOpenLink>
             </li>
           ))}
         </ul>
         <form onSubmit={addDoc} className="mt-3 flex flex-wrap gap-2">
           <input name="file" type="file" required />
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="visible_to_client" value="true" /> Visible client
-          </label>
-          <button className="admin-af-btn rounded-full px-3 py-2 text-sm">Uploader</button>
+          <button className="admin-af-btn rounded-full px-3 py-2 text-sm">Joindre</button>
         </form>
       </section>
     </div>

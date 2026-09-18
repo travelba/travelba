@@ -42,26 +42,12 @@ export default async function ProfilPage() {
               <h1 className="font-display text-xl font-extrabold text-[var(--admin-navy)]">
                 {name}
               </h1>
-              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700">
-                Vérifié
-              </span>
             </div>
             <p className="mt-0.5 truncate text-sm text-muted">{customer.email}</p>
             <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
               N° client · {customer.id.slice(0, 8).toUpperCase()}
             </p>
           </div>
-        </div>
-        <div className="mt-4 flex items-center justify-between gap-2 rounded-xl bg-[var(--admin-navy)] px-3.5 py-3 text-white">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">
-              Statut exclusif
-            </p>
-            <p className="font-display text-sm font-bold">Voyageur Privilège</p>
-          </div>
-          <span className="rounded-full bg-[var(--admin-gold)] px-2.5 py-1 text-[10px] font-bold text-[var(--admin-navy)]">
-            Concierge 24/7
-          </span>
         </div>
       </section>
 

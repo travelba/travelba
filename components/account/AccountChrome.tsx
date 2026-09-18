@@ -23,15 +23,18 @@ function pageTitle(pathname: string) {
 export function AccountChrome({
   customerName,
   initials,
+  needsPhone,
   children,
 }: {
   customerName: string;
   initials: string;
+  needsPhone: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const title = pageTitle(pathname);
+  const phoneWall = needsPhone && !pathname.startsWith("/mon-compte/profil");
 
   async function signOut() {
     const supabase = createClient();
@@ -50,12 +53,11 @@ export function AccountChrome({
               href={`https://wa.me/${siteConfig.whatsappNumber}`}
               target="_blank"
               rel="noreferrer"
-              className="relative inline-flex h-11 w-11 items-center justify-center rounded-full text-[var(--admin-navy)] hover:bg-[var(--surface-2)]"
-              aria-label="Notifications concierge"
-              title="Concierge WhatsApp"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full text-[var(--admin-navy)] hover:bg-[var(--surface-2)]"
+              aria-label="WhatsApp conciergerie"
+              title="WhatsApp conciergerie"
             >
-              <span className="material-symbols-outlined text-[22px]">notifications</span>
-              <span className="absolute top-2.5 right-2.5 h-2 w-2 rounded-full bg-[var(--admin-gold)] ring-2 ring-[var(--background)]" />
+              <span className="material-symbols-outlined text-[22px]">chat</span>
             </a>
             <Link
               href="/mon-compte/profil"
@@ -97,7 +99,25 @@ export function AccountChrome({
         </nav>
       </header>
 
-      <main className="mx-auto max-w-[480px] px-4 pb-28 pt-5 sm:px-6">{children}</main>
+      <main className="mx-auto max-w-[480px] px-4 pb-28 pt-5 sm:px-6">
+        {phoneWall ? (
+          <div className="rounded-2xl bg-[var(--admin-peach)] p-5 text-[var(--admin-navy)]">
+            <p className="font-display text-lg font-bold">Ajoutez votre téléphone</p>
+            <p className="mt-2 text-sm">
+              L’agence a besoin d’un numéro pour vous joindre. Complétez-le dans votre profil
+              pour accéder au carnet.
+            </p>
+            <Link
+              href="/mon-compte/profil"
+              className="mt-4 inline-flex h-11 items-center rounded-full bg-[var(--admin-navy)] px-5 text-sm font-semibold text-white"
+            >
+              Compléter mon profil
+            </Link>
+          </div>
+        ) : (
+          children
+        )}
+      </main>
 
       <nav className="account-tabbar md:hidden" aria-label="Navigation compte">
         <div className="mx-auto flex h-16 max-w-[480px] items-center justify-around px-1">

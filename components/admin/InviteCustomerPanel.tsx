@@ -12,7 +12,7 @@ const STATUS_COPY: Record<PortalAccess["status"], { label: string; hint: string 
   },
   invited: {
     label: "Invitation envoyée",
-    hint: "Le client doit encore définir son mot de passe.",
+    hint: "Lien valable 30 jours. Le client doit encore définir son mot de passe.",
   },
   ready: {
     label: "Espace actif",
