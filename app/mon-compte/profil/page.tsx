@@ -59,7 +59,7 @@ export default async function ProfilPage() {
             Informations personnelles
           </h2>
           <p className="mt-1 text-sm text-muted">
-            Coordonnées, fiscalité et préférences — espace {siteConfig.shortName}.
+            Coordonnées et préférences — espace {siteConfig.shortName}.
           </p>
         </div>
         <ProfileForm customer={customer} documents={(documents || []) as CrmTravelDocument[]} />
