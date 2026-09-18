@@ -162,6 +162,7 @@ export function itemClock(iso: string | null | undefined) {
   if (!iso || iso.length <= 10) return "";
   const match = iso.match(/T(\d{2}):(\d{2})/);
   if (!match) return "";
+  if (match[1] === "00" && match[2] === "00") return "";
   return `${match[1]}h${match[2]}`;
 }
 

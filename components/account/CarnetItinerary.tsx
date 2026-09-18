@@ -75,7 +75,7 @@ function CardBody({
         <div className="min-w-0 flex-1">
           <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--aura-blue)]">
             {BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind}
-            {clock ? ` · ${clock}` : ""}
+            {item.kind !== "hotel" && clock ? ` · ${clock}` : ""}
             {endClock && item.kind !== "hotel" ? ` → ${endClock}` : ""}
           </p>
           <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">{item.title}</p>

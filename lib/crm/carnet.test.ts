@@ -119,6 +119,7 @@ describe("carnet", () => {
 
   it("affiche l’heure locale imprimée sans conversion", () => {
     assert.equal(itemClock("2026-08-12T08:40:00"), "08h40");
+    assert.equal(itemClock("2026-08-12T00:00:00"), "");
   });
 
   it("sépare IATA et villes sur le vol", () => {
