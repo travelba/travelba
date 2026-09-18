@@ -11,6 +11,7 @@ import {
 import { customerFullName } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { bookingCoverUrl } from "@/lib/crm/covers";
+import { CoverPhoto } from "@/components/crm/CoverPhoto";
 import { StatusChip, bookingStatusTone } from "@/components/crm/ui";
 
 export function BookingsTable({
@@ -67,12 +68,9 @@ export function BookingsTable({
               className="flex flex-col gap-2 px-5 py-4 transition hover:bg-[var(--admin-sky)]/40 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="flex min-w-0 items-center gap-3">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={bookingCoverUrl(b, 240)}
-                  alt=""
-                  className="h-12 w-16 shrink-0 rounded-xl object-cover"
-                />
+              <div className="relative h-12 w-16 shrink-0 overflow-hidden rounded-xl">
+                <CoverPhoto src={bookingCoverUrl(b, 240)} alt="" />
+              </div>
                 <div className="min-w-0">
                   <p className="font-semibold text-[var(--admin-navy)]">
                     {b.reference} · {b.title}

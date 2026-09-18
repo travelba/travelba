@@ -3,10 +3,43 @@
 import type { BookingExtract } from "@/lib/crm/ingest-types";
 import type { BookingItemKind } from "@/lib/crm/types";
 import { BOOKING_ITEM_KINDS, BOOKING_ITEM_LABELS } from "@/lib/crm/types";
-import { fieldControlClass } from "@/components/crm/fields";
+import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
 import { Trash2 } from "lucide-react";
 
 type ItemDraft = BookingExtract["items"][number];
+
+function splitStamp(value: string) {
+  const date = (value || "").slice(0, 10);
+  const time = (value || "").match(/T(\d{2}:\d{2})/)?.[1] || "";
+  return { date, time };
+}
+
+function joinStamp(date: string, time: string) {
+  if (!date) return "";
+  return time ? `${date}T${time}:00` : date;
+}
+
+function StampField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const { date, time } = splitStamp(value);
+  return (
+    <div className="grid grid-cols-[1fr_auto] gap-2">
+      <DateFrInput value={date} onChange={(next) => onChange(joinStamp(next, time))} />
+      <input
+        type="time"
+        value={time}
+        onChange={(event) => onChange(joinStamp(date, event.target.value))}
+        className={`${fieldControlClass} w-[7.5rem]`}
+        aria-label="Heure"
+      />
+    </div>
+  );
+}
 
 function patchDetails(item: ItemDraft, key: string, value: string): ItemDraft {
   return { ...item, details: { ...item.details, [key]: value } };
@@ -83,18 +116,20 @@ export function IngestItemCard({
         <button type="button" className="justify-self-end text-accent" onClick={onRemove}>
           <Trash2 className="h-4 w-4" />
         </button>
-        <Text
-          placeholder="Début (ISO)"
-          value={item.start_at || ""}
-          onChange={(start_at) => onChange({ ...item, start_at })}
-          className="sm:col-span-2"
-        />
-        <Text
-          placeholder="Fin (ISO)"
-          value={item.end_at || ""}
-          onChange={(end_at) => onChange({ ...item, end_at })}
-          className="sm:col-span-2"
-        />
+        <div className="sm:col-span-3">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">Début</p>
+          <StampField
+            value={item.start_at || ""}
+            onChange={(start_at) => onChange({ ...item, start_at })}
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">Fin</p>
+          <StampField
+            value={item.end_at || ""}
+            onChange={(end_at) => onChange({ ...item, end_at })}
+          />
+        </div>
         <Text
           placeholder="Prix vendu (optionnel)"
           value={item.amount == null ? "" : String(item.amount)}

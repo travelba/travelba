@@ -4,13 +4,10 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  BOOKING_ITEM_KINDS,
-  BOOKING_ITEM_LABELS,
   BOOKING_STATUSES,
   BOOKING_STATUS_LABELS,
   DOC_TYPE_LABELS,
   customerFullName,
-  type BookingItemKind,
   type CrmBooking,
   type CrmBookingDocument,
   type CrmBookingItem,
@@ -19,13 +16,13 @@ import {
   type CrmCustomer,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
-import { itemDetailsLine, itemWhen } from "@/lib/crm/booking-display";
 import { bookingCoverUrl } from "@/lib/crm/covers";
 import { documentLabel } from "@/lib/crm/carnet";
 import { personDocumentsForTraveler, primaryIdentityDoc, travelerDisplayName } from "@/lib/crm/trip-documents";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { CoverPhoto } from "@/components/crm/CoverPhoto";
 import { Icon } from "@/components/crm/icons";
+import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
 import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
 
@@ -76,6 +73,10 @@ export function BookingEditor({
   }
 
   async function setPublished(visible: boolean) {
+    if (visible && !items.some((item) => item.kind !== "fee")) {
+      setFlash("Ajoutez au moins une carte avant de publier le carnet.");
+      return;
+    }
     setBusy("publish");
     setFlash(null);
     const res = await fetch(`/api/admin/bookings/${booking.id}`, {
@@ -89,26 +90,6 @@ export function BookingEditor({
       return;
     }
     setFlash(visible ? "Carnet publié." : "Carnet masqué.");
-    router.refresh();
-  }
-
-  async function addItem(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const body = Object.fromEntries(new FormData(form).entries());
-    await fetch(`/api/admin/bookings/${booking.id}/items`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    form.reset();
-    router.refresh();
-  }
-
-  async function removeItem(id: string) {
-    await fetch(`/api/admin/bookings/${booking.id}/items?itemId=${encodeURIComponent(id)}`, {
-      method: "DELETE",
-    });
     router.refresh();
   }
 
@@ -157,7 +138,7 @@ export function BookingEditor({
   }
 
   return (
-    <div className="space-y-6 pb-24">
+    <div className="space-y-6 pb-28">
       <div className="relative h-48 overflow-hidden rounded-3xl sm:h-64">
         <CoverPhoto
           src={bookingCoverUrl(booking, 1200)}
@@ -308,51 +289,7 @@ export function BookingEditor({
         </form>
       </section>
 
-      <section className="admin-af-card rounded-3xl p-5">
-        <h2 className="font-display text-lg font-bold">Cartes</h2>
-        <ul className="mt-2 space-y-2 text-sm">
-          {items.map((i) => (
-            <li
-              key={i.id}
-              className="flex items-start justify-between gap-3 rounded-xl border border-border px-3 py-2"
-            >
-              <div className="min-w-0">
-                <p className="font-medium">
-                  {BOOKING_ITEM_LABELS[i.kind as BookingItemKind] || i.kind} · {i.title}
-                  {!i.visible_to_client ? (
-                    <span className="ml-2 rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase">
-                      Brouillon
-                    </span>
-                  ) : null}
-                </p>
-                <p className="text-xs text-muted">
-                  {[itemWhen(i), itemDetailsLine(i)].filter(Boolean).join(" · ")}
-                </p>
-              </div>
-              <button
-                type="button"
-                className="shrink-0 text-xs font-semibold text-accent"
-                onClick={() => void removeItem(i.id)}
-              >
-                Retirer
-              </button>
-            </li>
-          ))}
-        </ul>
-        <form onSubmit={addItem} className="mt-3 grid gap-2 sm:grid-cols-4">
-          <select name="kind" className="rounded-xl border border-border px-3 py-2">
-            {BOOKING_ITEM_KINDS.map((k) => (
-              <option key={k} value={k}>
-                {BOOKING_ITEM_LABELS[k]}
-              </option>
-            ))}
-          </select>
-          <input name="title" required placeholder="Titre" className="rounded-xl border border-border px-3 py-2" />
-          <input name="amount" type="number" step="0.01" placeholder="Prix vendu" className="rounded-xl border border-border px-3 py-2" />
-          <button className="admin-af-btn rounded-full px-3 py-2 text-sm">Ajouter</button>
-        </form>
-        <p className="mt-2 text-xs text-muted">Retirer une carte conserve le PDF joint au dossier.</p>
-      </section>
+      <BookingItemsPanel bookingId={booking.id} items={items} />
 
       <section className="admin-af-card rounded-3xl p-5">
         <h2 className="font-display text-lg font-bold">Billets, vouchers et devis</h2>
@@ -382,7 +319,7 @@ export function BookingEditor({
         </form>
       </section>
 
-      <div className="sticky bottom-4 z-30 flex flex-col gap-2 rounded-2xl border border-[#e5e3dc] bg-white/95 p-3 shadow-[0_12px_32px_rgba(11,25,44,0.12)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+      <div className="fixed bottom-4 left-4 right-4 z-30 flex flex-col gap-2 rounded-2xl border border-[#e5e3dc] bg-white/95 p-3 shadow-[0_12px_32px_rgba(11,25,44,0.12)] backdrop-blur sm:flex-row sm:items-center sm:justify-between lg:left-[calc(18rem+2rem)] lg:right-8">
         <p className="text-sm text-[var(--admin-navy)]">
           {flash ||
             (booking.visible_to_client

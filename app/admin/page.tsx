@@ -19,6 +19,7 @@ export default async function AdminHomePage() {
   const [
     { data: bookings },
     { data: docs },
+    { data: customers },
   ] = await Promise.all([
     supabase
       .from("crm_bookings")
@@ -34,11 +35,8 @@ export default async function AdminHomePage() {
       .lte("expires_on", soon)
       .order("expires_on")
       .limit(8),
+    supabase.from("crm_customers").select("id, first_name, last_name"),
   ]);
-
-  const { data: customers } = await supabase
-    .from("crm_customers")
-    .select("id, first_name, last_name");
   const byId = new Map(
     ((customers || []) as Pick<CrmCustomer, "id" | "first_name" | "last_name">[]).map(
       (c) => [c.id, customerFullName(c)]
