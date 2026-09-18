@@ -2,7 +2,8 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CheckCircle2, FileUp, Loader2, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileUp, GripVertical, Loader2, Plus, Trash2 } from "lucide-react";
+import { sortItemsByOrder } from "@/lib/crm/carnet";
 import { customerFullName, type CrmCustomer } from "@/lib/crm/types";
 import { DateFrInput, Field, fieldControlClass } from "@/components/crm/fields";
 import type { BookingExtract } from "@/lib/crm/ingest-types";
@@ -21,7 +22,7 @@ function emptyExtract(): BookingExtract {
     start_date: "",
     end_date: "",
     currency: "EUR",
-    total_amount: 0,
+    total_amount: null,
     notes_client: "",
     customer_email: "",
     customer_first_name: "",
@@ -63,6 +64,7 @@ export function BookingIngest({
 }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
+  const dragItem = useRef<number | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState<"idle" | "read" | "save">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +96,11 @@ export function BookingIngest({
       const res = await fetch(ingestUrl, { method: "POST", body });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Lecture impossible");
-      setExtract({ ...emptyExtract(), ...json.extract });
+      const incoming = { ...emptyExtract(), ...json.extract };
+      setExtract({
+        ...incoming,
+        items: sortItemsByOrder(incoming.items || []),
+      });
       if (json.suggested_customer_id) setCustomerId(json.suggested_customer_id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Lecture impossible");
@@ -334,12 +340,38 @@ export function BookingIngest({
               </button>
             </div>
             {extract.items.map((item, index) => (
-              <IngestItemCard
+              <div
                 key={index}
-                item={item}
-                onChange={(next) => patchItem(index, next)}
-                onRemove={() => patch("items", extract.items.filter((_, i) => i !== index))}
-              />
+                className="flex gap-2"
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => {
+                  const from = dragItem.current;
+                  dragItem.current = null;
+                  if (from == null || from === index) return;
+                  const items = [...extract.items];
+                  const [row] = items.splice(from, 1);
+                  items.splice(index, 0, row);
+                  patch("items", items);
+                }}
+              >
+                <span
+                  draggable
+                  onDragStart={() => {
+                    dragItem.current = index;
+                  }}
+                  className="mt-3 cursor-grab touch-none text-muted"
+                  aria-label="Réordonner"
+                >
+                  <GripVertical className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <IngestItemCard
+                    item={item}
+                    onChange={(next) => patchItem(index, next)}
+                    onRemove={() => patch("items", extract.items.filter((_, i) => i !== index))}
+                  />
+                </div>
+              </div>
             ))}
           </div>
 

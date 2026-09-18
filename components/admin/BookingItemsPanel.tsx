@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import {
   BOOKING_ITEM_LABELS,
   type BookingItemKind,
@@ -39,6 +40,14 @@ function toDraft(item: CrmBookingItem): ItemDraft {
   };
 }
 
+function moveItem<T>(list: T[], from: number, to: number) {
+  if (to < 0 || to >= list.length) return list;
+  const next = [...list];
+  const [row] = next.splice(from, 1);
+  next.splice(to, 0, row);
+  return next;
+}
+
 export function BookingItemsPanel({
   bookingId,
   items,
@@ -47,10 +56,16 @@ export function BookingItemsPanel({
   items: CrmBookingItem[];
 }) {
   const router = useRouter();
+  const [rows, setRows] = useState(items);
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
   const [draft, setDraft] = useState<ItemDraft>(emptyDraft());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const dragFrom = useRef<number | null>(null);
+
+  useEffect(() => {
+    setRows(items);
+  }, [items]);
 
   function startEdit(item: CrmBookingItem) {
     setEditingId(item.id);
@@ -62,6 +77,31 @@ export function BookingItemsPanel({
     setEditingId("new");
     setDraft(emptyDraft());
     setError(null);
+  }
+
+  async function persistOrder(next: CrmBookingItem[]) {
+    setBusy(true);
+    setError(null);
+    const res = await fetch(`/api/admin/bookings/${bookingId}/items`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order: next.map((item) => item.id) }),
+    });
+    setBusy(false);
+    if (!res.ok) {
+      setError("Ordre non enregistré.");
+      setRows(items);
+      return;
+    }
+    router.refresh();
+  }
+
+  function reorder(from: number, to: number) {
+    if (from === to) return;
+    const next = moveItem(rows, from, to);
+    if (next === rows) return;
+    setRows(next);
+    void persistOrder(next);
   }
 
   async function saveDraft() {
@@ -125,9 +165,20 @@ export function BookingItemsPanel({
           Ajouter une carte
         </button>
       </div>
+      <p className="mt-1 text-xs text-muted">Glissez pour l’ordre du carnet. Par défaut : chronologique.</p>
       <ul className="mt-2 space-y-2 text-sm">
-        {items.map((item) => (
-          <li key={item.id} className="rounded-xl border border-border px-3 py-2">
+        {rows.map((item, index) => (
+          <li
+            key={item.id}
+            className="rounded-xl border border-border px-3 py-2"
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={() => {
+              const from = dragFrom.current;
+              dragFrom.current = null;
+              if (from == null) return;
+              reorder(from, index);
+            }}
+          >
             {editingId === item.id ? (
               <div className="space-y-2">
                 <IngestItemCard item={draft} onChange={setDraft} onRemove={() => setEditingId(null)} />
@@ -147,20 +198,52 @@ export function BookingItemsPanel({
               </div>
             ) : (
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-medium">
-                    {BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind} · {item.title}
-                    {!item.visible_to_client ? (
-                      <span className="ml-2 rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase">
-                        Brouillon
-                      </span>
-                    ) : null}
-                  </p>
-                  <p className="text-xs text-muted">
-                    {[itemWhen(item), itemDetailsLine(item)].filter(Boolean).join(" · ")}
-                  </p>
+                <div className="flex min-w-0 items-start gap-2">
+                  <span
+                    draggable
+                    onDragStart={(event) => {
+                      dragFrom.current = index;
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", item.id);
+                    }}
+                    className="mt-0.5 cursor-grab touch-none text-muted"
+                    aria-label="Réordonner"
+                  >
+                    <GripVertical className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="font-medium">
+                      {BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind} · {item.title}
+                      {!item.visible_to_client ? (
+                        <span className="ml-2 rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase">
+                          Brouillon
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="text-xs text-muted">
+                      {[itemWhen(item), itemDetailsLine(item)].filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex shrink-0 gap-2">
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    aria-label="Monter"
+                    className="rounded-full p-1 text-muted disabled:opacity-30"
+                    disabled={index === 0 || busy}
+                    onClick={() => reorder(index, index - 1)}
+                  >
+                    <ChevronUp className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Descendre"
+                    className="rounded-full p-1 text-muted disabled:opacity-30"
+                    disabled={index === rows.length - 1 || busy}
+                    onClick={() => reorder(index, index + 1)}
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
                   <button
                     type="button"
                     className="text-xs font-semibold text-[var(--admin-navy)]"

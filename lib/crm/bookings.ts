@@ -76,11 +76,25 @@ export async function syncBookingDebit(
   }
 }
 
+export function canPublishCarnet(items: { kind: string }[]) {
+  return items.some((item) => item.kind !== "fee");
+}
+
 export async function setCarnetPublished(
   supabase: SupabaseClient,
   bookingId: string,
   visible: boolean
 ) {
+  if (visible) {
+    const { data: items, error: itemsLookupError } = await supabase
+      .from("crm_booking_items")
+      .select("kind")
+      .eq("booking_id", bookingId);
+    if (itemsLookupError) throw new Error(itemsLookupError.message);
+    if (!canPublishCarnet(items || [])) {
+      throw new Error("Ajoutez au moins une carte avant de publier le carnet.");
+    }
+  }
   const { error: bookingError } = await supabase
     .from("crm_bookings")
     .update({ visible_to_client: visible })

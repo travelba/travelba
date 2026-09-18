@@ -15,6 +15,7 @@ Pipeline identité : photo MRZ (Tesseract + `mrz`), **pas** le dropzone réserva
 Code : `lib/crm/ingest-booking.ts`, `lib/crm/ingest-types.ts`, `components/crm/BookingIngest.tsx`.
 Identité : `lib/crm/ocr-document.ts`, `lib/crm/mrz-parse.ts`.
 Couvertures : `lib/crm/cover-generate.ts` — OpenAI Images (`gpt-image-1`, fallback `dall-e-3`) puis Gateway Gemini seulement si `AI_GATEWAY_API_KEY`.
+Limites : **30 fichiers**, **25 Mo** chacun.
 
 ## Ne jamais fusionner ces voyages
 
@@ -92,10 +93,10 @@ Ne pas logger n° de passeport / MRZ.
 ## UI / persist
 
 - Relecture obligatoire. Quote → bandeau « tarifs non bloqués ». Identity → pas d’enregistrement résa.
-- Client : résa créée en `draft`, `visible_to_client=true`. Pas de débit ledger tant que `confirmed`.
+- Agence : résa créée en `draft`, `visible_to_client=false`. Pas de débit ledger tant que `confirmed`.
 - Fichiers via `/api/files`, jamais d’URL signed longue côté client.
 - Après création, une couverture destination est générée (`scheduleBookingCover`) et stockée dans `crm-files` (`bookings/{id}/cover.webp`).
-- Max 8 fichiers, 10 Mo, PDF/images.
+- Max 30 fichiers, 25 Mo, PDF/images.
 
 ## Quand toucher au prompt
 

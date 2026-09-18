@@ -86,8 +86,24 @@ export function isTimelineKind(kind: string) {
   );
 }
 
+export function compareItemsByOrder<T extends { start_at?: string | null; sort_order?: number | null }>(
+  a: T,
+  b: T
+) {
+  const orderA = a.sort_order;
+  const orderB = b.sort_order;
+  if (orderA != null && orderB != null && orderA !== orderB) return orderA - orderB;
+  return (a.start_at || "9999-99-99").localeCompare(b.start_at || "9999-99-99");
+}
+
+export function sortItemsByOrder<T extends { start_at?: string | null; sort_order?: number | null }>(
+  items: T[]
+) {
+  return [...items].sort(compareItemsByOrder);
+}
+
 export function hotelsOf(items: CrmBookingItem[]) {
-  return items.filter((item) => item.kind === "hotel");
+  return sortItemsByOrder(items.filter((item) => item.kind === "hotel"));
 }
 
 export function timelineItems(items: CrmBookingItem[]) {
@@ -104,13 +120,13 @@ export function groupByDay(items: CrmBookingItem[]) {
     map.set(key, list);
   }
   for (const list of map.values()) {
-    list.sort((a, b) => (a.start_at || "").localeCompare(b.start_at || ""));
+    list.sort(compareItemsByOrder);
   }
   return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
 }
 
 export function undatedTimeline(items: CrmBookingItem[]) {
-  return timelineItems(items).filter((item) => !itemDayKey(item));
+  return sortItemsByOrder(timelineItems(items).filter((item) => !itemDayKey(item)));
 }
 
 export function itemClock(iso: string | null | undefined) {

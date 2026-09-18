@@ -12,8 +12,10 @@ import {
   bookingExtractSchema,
   aiGatewayConfigured,
   openaiApiKey,
+  sanitizeExtractedPrices,
   type BookingExtract,
 } from "@/lib/crm/ingest-types";
+import { sortItemsByOrder } from "@/lib/crm/carnet";
 import { scheduleBookingCover } from "@/lib/crm/cover-generate";
 import { findMatchingItem } from "@/lib/crm/item-match";
 import {
@@ -90,8 +92,8 @@ Voyageurs :
 
 title : villes séparées par « · » (ex. « Marrakech · Essaouira »).
 destination : mêmes villes.
-amount des items : null (prix vendu saisi par l’agent, pas le net PDF).
-total_amount : null sauf total TTC unique clairement imprimé.`;
+amount des items : toujours null. Le prix vendu est saisi par l’agent, jamais le net PDF.
+total_amount : toujours null. Le total TTC est saisi par l’agent dans « Prix vendu ».`;
 
 export function collectIngestFiles(form: FormData) {
   const files: File[] = [];
@@ -239,7 +241,7 @@ export async function extractBookingFromFiles(files: File[]): Promise<BookingExt
     if (!result.output) {
       throw new Error("Lecture incomplète. Réessayez avec des fichiers plus lisibles.");
     }
-    return result.output;
+    return sanitizeExtractedPrices(result.output);
   } catch (err) {
     if (err instanceof Error && err.message.startsWith("Lecture")) throw err;
     throw new Error("Lecture OpenAI impossible. Vérifiez OPENAI_API_KEY et réessayez.");
@@ -293,10 +295,14 @@ function isHolder(customer: CrmCustomer, first: string | null, last: string | nu
   return Boolean(l) && normalizeName(customer.last_name) === l && (!f || normalizeName(customer.first_name) === f);
 }
 
+const FORBIDDEN_DETAIL_KEY =
+  /cancel|annul|franchise|cgv|net_rate|net_price|supplier_net|penalit/i;
+
 function cleanDetails(details: BookingExtract["items"][number]["details"] | undefined) {
   const raw = details || {};
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(raw)) {
+    if (FORBIDDEN_DETAIL_KEY.test(key)) continue;
     if (value == null || value === "") continue;
     if (typeof value === "boolean") {
       out[key] = value;
@@ -386,8 +392,11 @@ async function upsertItemsAndTravelers(
 ) {
   const remaining = [...existingItems];
   let sort = existingItems.reduce((max, row) => Math.max(max, row.sort_order || 0), -1) + 1;
+  const ordered = sortItemsByOrder(extract.items || []);
+  let saved = 0;
+  let lastError = "";
 
-  for (const item of extract.items || []) {
+  for (const item of ordered) {
     const title = String(item.title || "").trim();
     if (!title) continue;
     const details = cleanDetails(item.details);
@@ -411,23 +420,30 @@ async function upsertItemsAndTravelers(
       title: payload.title,
       details,
     });
-    if (match) {
-      const { error } = await supabase
-        .from("crm_booking_items")
-        .update(payload)
-        .eq("id", match.id);
-      if (error) throw new Error(error.message);
-      const idx = remaining.findIndex((row) => row.id === match.id);
-      if (idx >= 0) remaining.splice(idx, 1);
-    } else {
-      const { error } = await supabase.from("crm_booking_items").insert({
-        booking_id: bookingId,
-        sort_order: sort++,
-        ...payload,
-      });
-      if (error) throw new Error(error.message);
+    try {
+      if (match) {
+        const { error } = await supabase
+          .from("crm_booking_items")
+          .update(payload)
+          .eq("id", match.id);
+        if (error) throw new Error(error.message);
+        const idx = remaining.findIndex((row) => row.id === match.id);
+        if (idx >= 0) remaining.splice(idx, 1);
+      } else {
+        const { error } = await supabase.from("crm_booking_items").insert({
+          booking_id: bookingId,
+          sort_order: sort++,
+          ...payload,
+        });
+        if (error) throw new Error(error.message);
+      }
+      saved += 1;
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : "Carte ignorée";
     }
   }
+
+  if (!saved && lastError) throw new Error(lastError);
 
   for (const traveler of extract.travelers || []) {
     const first = emptyToNull(traveler.first_name);
@@ -447,7 +463,7 @@ async function upsertItemsAndTravelers(
       first_name: first || companion?.first_name || null,
       last_name: last || companion?.last_name || null,
     });
-    if (error) throw new Error(error.message);
+    if (error) continue;
     existingTravelers.push({ first_name: first, last_name: last });
   }
 }

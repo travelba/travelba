@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { BOOKING_ITEM_KINDS } from "@/lib/crm/types";
+import { sortItemsByOrder } from "./carnet";
+import { BOOKING_ITEM_KINDS } from "./types";
 
 const nullableString = z.string().nullable().optional();
 const nullableNumber = z.number().nullable().optional();
@@ -88,6 +89,14 @@ export const bookingExtractSchema = z.object({
 });
 
 export type BookingExtract = z.infer<typeof bookingExtractSchema>;
+
+export function sanitizeExtractedPrices(extract: BookingExtract): BookingExtract {
+  return {
+    ...extract,
+    total_amount: null,
+    items: sortItemsByOrder((extract.items || []).map((item) => ({ ...item, amount: null }))),
+  };
+}
 
 export function openaiApiKey() {
   const key = process.env.OPENAI_API_KEY?.trim() || "";

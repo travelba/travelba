@@ -15,9 +15,10 @@ export function CoverPhoto({
       src={src}
       alt={alt}
       className={className}
-      decoding={priority ? "sync" : "async"}
+      decoding="async"
       loading={priority ? "eager" : "lazy"}
       fetchPriority={priority ? "high" : "low"}
+      referrerPolicy="no-referrer"
     />
   );
 }

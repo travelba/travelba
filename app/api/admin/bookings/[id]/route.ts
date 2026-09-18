@@ -63,7 +63,11 @@ export async function PATCH(request: Request, ctx: Ctx) {
     booking = data as CrmBooking;
   }
   if ("visible_to_client" in body) {
-    await setCarnetPublished(auth.supabase, id, Boolean(body.visible_to_client));
+    try {
+      await setCarnetPublished(auth.supabase, id, Boolean(body.visible_to_client));
+    } catch (err) {
+      return jsonError(err instanceof Error ? err.message : "Publication impossible", 400);
+    }
     const { data: refreshed } = await auth.supabase
       .from("crm_bookings")
       .select("*")
