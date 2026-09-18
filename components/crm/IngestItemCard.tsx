@@ -22,16 +22,22 @@ function joinStamp(date: string, time: string) {
 function StampField({
   value,
   onChange,
+  withTime = true,
 }: {
   value: string;
   onChange: (next: string) => void;
+  withTime?: boolean;
 }) {
   const { date, time } = splitStamp(value);
+  if (!withTime) {
+    return <DateFrInput value={date} onChange={(next) => onChange(next)} />;
+  }
   return (
     <div className="grid grid-cols-[1fr_auto] gap-2">
       <DateFrInput value={date} onChange={(next) => onChange(joinStamp(next, time))} />
       <input
         type="time"
+        lang="fr-FR"
         value={time}
         onChange={(event) => onChange(joinStamp(date, event.target.value))}
         className={`${fieldControlClass} w-[7.5rem]`}
@@ -75,6 +81,13 @@ export function IngestItemCard({
   onChange: (next: ItemDraft) => void;
   onRemove: () => void;
 }) {
+  const withTime =
+    item.kind === "flight" ||
+    item.kind === "rail" ||
+    item.kind === "transfer" ||
+    item.kind === "activity" ||
+    item.kind === "car" ||
+    item.kind === "cruise";
   const d = item.details || {};
   const included = Array.isArray(d.included) ? d.included.join("\n") : String(d.included || "");
   const rooms = Array.isArray(d.rooms)
@@ -121,6 +134,7 @@ export function IngestItemCard({
           <StampField
             value={item.start_at || ""}
             onChange={(start_at) => onChange({ ...item, start_at })}
+            withTime={withTime}
           />
         </div>
         <div className="sm:col-span-2">
@@ -128,6 +142,7 @@ export function IngestItemCard({
           <StampField
             value={item.end_at || ""}
             onChange={(end_at) => onChange({ ...item, end_at })}
+            withTime={withTime}
           />
         </div>
         <Text
