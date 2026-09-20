@@ -35,6 +35,25 @@ function hashKey(value: string) {
   return n;
 }
 
+export function unsplashKeywordMatch(
+  booking: Pick<CrmBooking, "destination" | "title">
+) {
+  const key = coverQuery(booking.destination, booking.title);
+  for (const [re, id] of BY_KEYWORD) {
+    if (re.test(key)) return id;
+  }
+  return null;
+}
+
+/** IA seulement s’il n’y a pas déjà une photo Unsplash de lieu. */
+export function needsAiCover(
+  booking: Pick<CrmBooking, "destination" | "title">,
+  force?: boolean
+) {
+  if (force) return true;
+  return !unsplashKeywordMatch(booking);
+}
+
 export function bookingCoverUrl(
   booking: Pick<CrmBooking, "destination" | "title" | "cover_image_path">,
   width = 960
@@ -43,8 +62,7 @@ export function bookingCoverUrl(
     return `/api/files?path=${encodeURIComponent(booking.cover_image_path)}`;
   }
   const key = coverQuery(booking.destination, booking.title);
-  for (const [re, id] of BY_KEYWORD) {
-    if (re.test(key)) return UNSPLASH(id, width);
-  }
+  const match = unsplashKeywordMatch(booking);
+  if (match) return UNSPLASH(match, width);
   return UNSPLASH(FALLBACKS[hashKey(key) % FALLBACKS.length], width);
 }

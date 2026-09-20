@@ -23,13 +23,13 @@ export default async function DocumentsPage() {
       <ProfileSubnav />
       <div>
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
-          Espace membre
+          L’agence
         </p>
         <h1 className="mt-1 font-display text-xl font-semibold text-[var(--admin-navy-deep)]">
           Pièces d’identité
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Une pièce par personne — titulaire et accompagnateurs. Le scan remplit tous les champs.
+          Plusieurs passeports possibles. Cochez celui du séjour depuis chaque réservation.
         </p>
       </div>
       <DocumentsManager

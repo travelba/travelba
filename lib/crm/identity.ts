@@ -64,3 +64,14 @@ export function emptyToNull(value: unknown) {
   const text = String(value).trim();
   return text === "" ? null : text;
 }
+
+export function identityOverwriteWarning(
+  current: { first_name?: string | null; last_name?: string | null },
+  incoming: { first_name?: string | null; last_name?: string | null }
+) {
+  const cur = [current.first_name, current.last_name].filter(Boolean).join(" ").trim();
+  const next = [incoming.first_name, incoming.last_name].filter(Boolean).join(" ").trim();
+  if (!cur || !next) return null;
+  if (cur.toLocaleLowerCase("fr") === next.toLocaleLowerCase("fr")) return null;
+  return `Le passeport indique ${next}. Les noms du profil (${cur}) seront mis à jour.`;
+}

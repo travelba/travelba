@@ -106,6 +106,8 @@ export type CrmCustomer = {
   city: string | null;
   country: string | null;
   flying_blue: string | null;
+  loyalty: Record<string, string | null> | null;
+  iban: string | null;
   company_name: string | null;
   siret: string | null;
   vat_number: string | null;

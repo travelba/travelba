@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import type { CrmCompanion, CrmTravelDocument } from "@/lib/crm/types";
 import { countryName, resolveCountryCode } from "@/lib/crm/countries";
-import { RELATIONSHIP_OPTIONS } from "@/lib/crm/identity";
+import { identityOverwriteWarning, RELATIONSHIP_OPTIONS } from "@/lib/crm/identity";
 import { appendPassportForm } from "@/lib/crm/passport-extract";
 import { documentsForPerson, primaryIdentityDoc } from "@/lib/crm/trip-documents";
 import {
@@ -41,6 +41,7 @@ export function CompanionsManager({
   const [sex, setSex] = useState("");
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [open, setOpen] = useState(false);
+  const [nameWarn, setNameWarn] = useState<string | null>(null);
 
   function closeForm() {
     setOpen(false);
@@ -150,6 +151,9 @@ export function CompanionsManager({
           documents={[]}
           persist={false}
           onIdentity={(id) => {
+            setNameWarn(
+              identityOverwriteWarning({ first_name: firstName, last_name: lastName }, id)
+            );
             if (id.first_name) setFirstName(id.first_name);
             if (id.last_name) setLastName(id.last_name);
             if (id.birth_date) setBirthDate(id.birth_date);
@@ -159,7 +163,7 @@ export function CompanionsManager({
           onScan={setScan}
         />
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Prénom">
+          <Field label="Prénom" hint="Comme sur le passeport">
             <input
               required
               autoComplete="off"
@@ -168,7 +172,7 @@ export function CompanionsManager({
               className={fieldControlClass}
             />
           </Field>
-          <Field label="Nom">
+          <Field label="Nom" hint="Comme sur le passeport">
             <input
               required
               autoComplete="off"
@@ -194,6 +198,11 @@ export function CompanionsManager({
             <SexSelect name="sex" value={sex} onChange={setSex} />
           </Field>
         </div>
+        {nameWarn ? (
+          <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
+            {nameWarn}
+          </p>
+        ) : null}
         {error ? <p className="text-sm text-accent">{error}</p> : null}
           <button className="admin-af-btn rounded-full px-4 py-2.5 text-sm" disabled={saving}>
             {saving ? "Enregistrement…" : "Ajouter l’accompagnateur"}

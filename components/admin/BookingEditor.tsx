@@ -6,7 +6,6 @@ import Link from "next/link";
 import {
   BOOKING_STATUSES,
   BOOKING_STATUS_LABELS,
-  DOC_TYPE_LABELS,
   customerFullName,
   type CrmBooking,
   type CrmBookingDocument,
@@ -18,7 +17,6 @@ import {
 } from "@/lib/crm/types";
 import { bookingCoverUrl } from "@/lib/crm/covers";
 import { documentLabel } from "@/lib/crm/carnet";
-import { personDocumentsForTraveler, primaryIdentityDoc, travelerDisplayName } from "@/lib/crm/trip-documents";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { CoverPhoto } from "@/components/crm/CoverPhoto";
 import { Icon } from "@/components/crm/icons";
@@ -26,6 +24,7 @@ import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
+import { TripPassportPicker } from "@/components/crm/TripPassportPicker";
 
 export function BookingEditor({
   booking,
@@ -152,10 +151,10 @@ export function BookingEditor({
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">Carnet client</p>
           <p className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">
-            {booking.visible_to_client ? "Publié" : "Brouillon — invisible au client"}
+            {booking.visible_to_client ? "Visible dans l’espace" : "Masqué — invisible au client"}
           </p>
           <p className="text-sm text-muted">
-            Enregistrer ne publie pas. Publier rend visibles toutes les cartes actuelles.
+            Enregistrer ne publie pas. L’interrupteur rend le carnet visible dans l’espace client.
           </p>
           {unpublishedItems.length > 0 && booking.visible_to_client ? (
             <p className="mt-2 rounded-2xl bg-[var(--admin-peach)] px-3 py-2 text-sm">
@@ -177,27 +176,25 @@ export function BookingEditor({
           >
             {busy === "save" ? "Enregistrement…" : "Enregistrer"}
           </button>
-          {booking.visible_to_client ? (
+          <label className="flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-semibold">
+            <input
+              type="checkbox"
+              checked={booking.visible_to_client}
+              disabled={busy !== "idle"}
+              onChange={(event) => void setPublished(event.target.checked)}
+            />
+            Visible dans l’espace
+          </label>
+          {booking.visible_to_client && unpublishedItems.length > 0 ? (
             <button
               type="button"
-              onClick={() => void setPublished(false)}
-              className="rounded-full border border-border px-4 py-2 text-sm font-semibold"
+              disabled={busy !== "idle"}
+              onClick={() => void setPublished(true)}
+              className="admin-af-btn rounded-full px-4 py-2 text-sm disabled:opacity-50"
             >
-              Masquer le carnet
+              {busy === "publish" ? "Publication…" : "Publier les mises à jour"}
             </button>
           ) : null}
-          <button
-            type="button"
-            disabled={busy !== "idle"}
-            onClick={() => void setPublished(true)}
-            className="admin-af-btn rounded-full px-4 py-2 text-sm disabled:opacity-50"
-          >
-            {busy === "publish"
-              ? "Publication…"
-              : booking.visible_to_client
-                ? "Publier les mises à jour"
-                : "Publier le carnet"}
-          </button>
         </div>
       </section>
 
@@ -277,7 +274,7 @@ export function BookingEditor({
         <div>
           <h2 className="mt-1 font-display text-lg font-bold">Voyageurs</h2>
           <p className="mt-1 text-sm text-muted">
-            Les passeports se joignent sur la fiche de chaque personne, pas sur le dossier.
+            Cochez le passeport utilisé pour chaque voyageur de ce séjour.
           </p>
         </div>
         {!travelers.length ? (
@@ -289,28 +286,13 @@ export function BookingEditor({
             Ajouter {holderName.first_name} {holderName.last_name} (titulaire)
           </button>
         ) : (
-          <ul className="space-y-2">
-            {travelers.map((traveler) => {
-              const personDocs = personDocumentsForTraveler(identityDocs, traveler);
-              const doc = primaryIdentityDoc(personDocs);
-              return (
-                <li
-                  key={traveler.id}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-[#e5e3dc] bg-white px-3 py-2"
-                >
-                  <span className="text-sm font-medium text-[var(--admin-navy)]">
-                    {travelerDisplayName(traveler)}
-                    {traveler.is_account_holder ? " · titulaire" : ""}
-                  </span>
-                  <span className={`text-xs font-semibold ${doc ? "text-[var(--admin-navy)]" : "text-accent"}`}>
-                    {doc
-                      ? `${DOC_TYPE_LABELS[doc.doc_type]} ${doc.number || ""}`.trim()
-                      : "Pièce manquante"}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+          <TripPassportPicker
+            variant="admin"
+            customerId={booking.customer_id}
+            bookingId={booking.id}
+            travelers={travelers}
+            documents={identityDocs}
+          />
         )}
         <Link
           href={`/admin/clients/${booking.customer_id}`}

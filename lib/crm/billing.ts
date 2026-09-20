@@ -72,3 +72,21 @@ export function normalizeFlyingBlue(value: unknown) {
   if (!raw) return null;
   return raw.replace(/\s+/g, "").toUpperCase();
 }
+
+/** IBAN FR : 27 caractères, FR + clé + BBAN. */
+export function normalizeIban(value: unknown) {
+  const raw = String(value || "").replace(/\s+/g, "").toUpperCase();
+  return raw || null;
+}
+
+export function formatIbanInput(value: string) {
+  return normalizeIban(value)?.replace(/(.{4})/g, "$1 ").trim() || "";
+}
+
+export function ibanError(iban: string | null) {
+  if (!iban) return null;
+  if (!iban.startsWith("FR")) return "Indiquez un IBAN français (commence par FR).";
+  if (iban.length !== 27) return "L’IBAN français doit contenir 27 caractères.";
+  if (!/^FR\d{2}[A-Z0-9]{23}$/.test(iban)) return "IBAN invalide.";
+  return null;
+}

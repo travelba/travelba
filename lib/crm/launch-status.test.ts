@@ -88,7 +88,7 @@ test("inbox Revolut : connecter d’abord, jamais de crédit auto", () => {
 });
 
 test("listes vides : distinguer absence réelle et filtre", () => {
-  assert.match(bookingsListEmptyMessage(false), /Publier/);
+  assert.match(bookingsListEmptyMessage(false), /Visible dans l’espace/);
   assert.equal(bookingsListEmptyMessage(true), "Aucune réservation trouvée.");
   assert.match(ledgerEmptyMessage(false), /rapprochement manuel/);
   assert.equal(ledgerEmptyMessage(true), "Aucune écriture pour ces filtres.");

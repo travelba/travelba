@@ -4,7 +4,7 @@ import { ensureCustomerForUser } from "@/lib/crm/auth";
 import { customerFullName, type CrmTravelDocument } from "@/lib/crm/types";
 import { ProfileForm } from "@/components/account/ProfileForm";
 import { ProfileSubnav } from "@/components/account/ProfileSubnav";
-import { ConciergeBanner } from "@/components/crm/ui";
+import { ConciergeBanner, PhoneWallBanner } from "@/components/crm/ui";
 import { SignOutButton } from "@/components/account/SignOutButton";
 import { siteConfig } from "@/lib/site";
 
@@ -52,6 +52,8 @@ export default async function ProfilPage() {
       </section>
 
       <ProfileSubnav />
+
+      {!customer.phone ? <PhoneWallBanner /> : null}
 
       <section className="rounded-[1.35rem] bg-white p-1 shadow-[0_8px_24px_rgba(15,23,42,0.05)] sm:p-2">
         <div className="px-4 pt-4 sm:px-5">

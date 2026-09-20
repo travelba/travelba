@@ -35,6 +35,13 @@ export function documentsForPerson(
   );
 }
 
+export function vaultDocumentsForPerson(
+  docs: CrmTravelDocument[],
+  companionId: string | null | undefined
+) {
+  return documentsForPerson(docs, companionId).filter(isVaultDocument);
+}
+
 export function personDocumentsForTraveler(
   docs: CrmTravelDocument[],
   traveler: CrmBookingTraveler
@@ -79,7 +86,7 @@ export function tripDocCoverage(
 ) {
   if (!travelers.length) return { ready: 0, total: 0 };
   const ready = travelers.filter((traveler) =>
-    Boolean(primaryIdentityDoc(personDocumentsForTraveler(docs, traveler)))
+    Boolean(primaryIdentityDoc(tripDocumentsForTraveler(docs, traveler)))
   ).length;
   return { ready, total: travelers.length };
 }

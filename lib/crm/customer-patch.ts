@@ -1,6 +1,7 @@
-import { normalizeFlyingBlue, normalizeSiret, normalizeVat, siretError } from "./billing";
+import { normalizeFlyingBlue, normalizeIban, ibanError, normalizeSiret, normalizeVat, siretError } from "./billing";
 import { resolveCountryCode } from "./countries";
 import { emptyToNull } from "./identity";
+import { normalizeLoyaltyMap } from "./loyalty";
 import { toE164 } from "./phone";
 
 const PHONE_KEYS = new Set(["phone", "phone_secondary"]);
@@ -20,6 +21,8 @@ export const CUSTOMER_PATCH_KEYS = [
   "city",
   "country",
   "flying_blue",
+  "loyalty",
+  "iban",
   "company_name",
   "siret",
   "vat_number",
@@ -77,6 +80,19 @@ export function customerPatchFromBody(
     }
     if (key === "flying_blue") {
       patch.flying_blue = normalizeFlyingBlue(body[key]);
+      continue;
+    }
+    if (key === "loyalty") {
+      const loyalty = normalizeLoyaltyMap(body.loyalty);
+      patch.loyalty = loyalty;
+      if (loyalty.flying_blue) patch.flying_blue = loyalty.flying_blue;
+      continue;
+    }
+    if (key === "iban") {
+      const iban = normalizeIban(body[key]);
+      const err = ibanError(iban);
+      if (err) return { patch, error: err };
+      patch.iban = iban;
       continue;
     }
     if (key === "billing_email") {

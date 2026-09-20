@@ -5,6 +5,10 @@ export function formatMoney(amount: number, currency = "EUR") {
   });
 }
 
+export function formatEncours(amount: number, currency = "EUR") {
+  return `Encours ${formatMoney(amount, currency)}`;
+}
+
 export function formatDateFr(value: string | null | undefined) {
   if (!value) return "—";
   const d = new Date(value.length === 10 ? `${value}T12:00:00` : value);

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { BrandMark } from "@/components/crm/ui";
+import { BrandMark, PhoneWallBanner } from "@/components/crm/ui";
 import { Icon } from "@/components/crm/icons";
 import { siteConfig } from "@/lib/site";
 
@@ -55,18 +55,17 @@ export function AccountChrome({
               target="_blank"
               rel="noreferrer"
               className="inline-flex h-11 w-11 items-center justify-center rounded-full text-[var(--admin-navy)] hover:bg-[var(--surface-2)]"
-              aria-label="WhatsApp conciergerie"
-              title="WhatsApp conciergerie"
+              aria-label="Écrire à l’agence sur WhatsApp"
+              title="Écrire à l’agence"
             >
               <Icon name="chat" className="h-[22px] w-[22px]" />
             </a>
             <Link
               href="/mon-compte/profil"
-              className="relative inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[11px] font-bold text-white ring-1 ring-[var(--admin-gold)]/40"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[11px] font-bold text-white ring-1 ring-[var(--admin-gold)]/40"
               aria-label={`Compte ${customerName}`}
             >
               {initials}
-              <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-[var(--admin-gold)] ring-2 ring-[var(--background)]" />
             </Link>
           </div>
         </div>
@@ -101,23 +100,7 @@ export function AccountChrome({
       </header>
 
       <main className="mx-auto max-w-[480px] px-4 pb-28 pt-5 sm:px-6">
-        {phoneWall ? (
-          <div className="rounded-2xl bg-[var(--admin-peach)] p-5 text-[var(--admin-navy)]">
-            <p className="font-display text-lg font-bold">Ajoutez votre téléphone</p>
-            <p className="mt-2 text-sm">
-              L’agence a besoin d’un numéro pour vous joindre. Complétez-le dans votre profil
-              pour accéder au carnet.
-            </p>
-            <Link
-              href="/mon-compte/profil"
-              className="mt-4 inline-flex h-11 items-center rounded-full bg-[var(--admin-navy)] px-5 text-sm font-semibold text-white"
-            >
-              Compléter mon profil
-            </Link>
-          </div>
-        ) : (
-          children
-        )}
+        {phoneWall ? <PhoneWallBanner href="/mon-compte/profil" /> : children}
       </main>
 
       <nav className="account-tabbar md:hidden" aria-label="Navigation compte">
