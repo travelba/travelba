@@ -37,13 +37,13 @@ export function buildLaunchItems(snapshot: LaunchSnapshot): LaunchItem[] {
   let revolutDescription: string;
   if (snapshot.revolutConnected) {
     revolutDescription =
-      "Compte connecté. Le cron importe les virements en unmatched. Aucun crédit automatique — rapprochez à la main.";
+      "Compte connecté. Les virements reçus arrivent toutes les 15 min dans « À rapprocher ». Aucun crédit automatique — rapprochez à la main.";
   } else if (snapshot.revolutConfigured) {
     revolutDescription =
       "Clés app présentes. Cliquez sur Connecter Revolut (authentification Business). Le cron toutes les 15 min remplira ensuite l’inbox — aucun crédit automatique.";
   } else {
     revolutDescription =
-      "Renseignez REVOLUT_CLIENT_ID et REVOLUT_PRIVATE_KEY, puis Connecter Revolut. Aucun crédit automatique.";
+      "Clés Revolut à installer côté serveur (Vercel), puis Connecter Revolut. Aucun crédit automatique.";
   }
 
   const stripeReady = snapshot.stripeConfigured && snapshot.stripeWebhookConfigured;
@@ -99,7 +99,7 @@ export function buildLaunchItems(snapshot: LaunchSnapshot): LaunchItem[] {
       title: "Stripe live",
       description: stripeReady
         ? "Clés live et secret webhook présents. L’UI cartes reste fermée."
-        : "UI cartes fermée : le grand livre manuel fonctionne. Pour un webhook live plus tard, coller sk_live, pk_live et whsec dans Vercel Production — pas depuis cet écran.",
+        : "Cartes fermées : le grand livre manuel fonctionne. Les clés Stripe live se posent côté serveur (Vercel), jamais depuis cet écran.",
       href: "/admin/transactions",
       cta: "Grand livre",
     },
@@ -118,10 +118,10 @@ export function revolutInboxEmptyMessage(opts: {
   connected: boolean;
 }): string {
   if (!opts.configured) {
-    return "Renseignez REVOLUT_CLIENT_ID et REVOLUT_PRIVATE_KEY, puis connectez le compte.";
+    return "Intégration Revolut non installée côté serveur. Une fois les clés posées, connectez le compte Business ici.";
   }
   if (!opts.connected) {
-    return "Aucun virement tant que Revolut n’est pas connecté. Cliquez sur Connecter Revolut (authentification Business). Le cron toutes les 15 min importera ensuite les virements en unmatched — aucun crédit automatique.";
+    return "Aucun virement tant que Revolut n’est pas connecté. Cliquez sur Connecter Revolut (authentification Business). Les virements reçus arriveront ensuite ici, toutes les 15 min, à rapprocher — aucun crédit automatique.";
   }
   return "Aucun virement importé. Synchronisez ou attendez le cron (toutes les 15 min). Aucun crédit automatique.";
 }

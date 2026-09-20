@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireCustomer } from "@/lib/crm/auth";
+import { dbError, jsonError, requireCustomer } from "@/lib/crm/auth";
 import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
 import { emptyToNull } from "@/lib/crm/identity";
 import {
   applyIdentityFromForm,
   cloneTravelDocument,
+  deleteTravelDocuments,
   insertTravelDocument,
   travelDocumentFromForm,
 } from "@/lib/crm/travel-document-write";
@@ -17,7 +18,7 @@ export async function GET() {
     .select("*")
     .eq("customer_id", auth.customer.id)
     .order("expires_on", { ascending: true, nullsFirst: false });
-  if (error) return jsonError(error.message, 500);
+  if (error) return dbError(error, 500);
   return NextResponse.json({ documents: data });
 }
 
@@ -68,11 +69,10 @@ export async function DELETE(request: Request) {
   if (auth instanceof NextResponse) return auth;
   const id = new URL(request.url).searchParams.get("id");
   if (!id) return jsonError("id requis");
-  const { error } = await auth.supabase
-    .from("crm_travel_documents")
-    .delete()
-    .eq("id", id)
-    .eq("customer_id", auth.customer.id);
-  if (error) return jsonError(error.message, 400);
+  const { error } = await deleteTravelDocuments(auth.supabase, {
+    id,
+    customer_id: auth.customer.id,
+  });
+  if (error) return dbError(error, 400);
   return NextResponse.json({ ok: true });
 }

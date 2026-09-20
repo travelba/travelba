@@ -11,7 +11,7 @@ const TABS = [
   { href: "/mon-compte", label: "Accueil", exact: true, icon: "explore" },
   { href: "/mon-compte/reservations", label: "Réservations", icon: "luggage" },
   { href: "/mon-compte/transactions", label: "Transactions", icon: "receipt_long" },
-  { href: "/mon-compte/profil", label: "Mon Compte", icon: "badge" },
+  { href: "/mon-compte/profil", label: "Mon compte", icon: "badge" },
 ] as const;
 
 function pageTitle(pathname: string) {
@@ -140,7 +140,7 @@ export function AccountChrome({
                   className="h-6 w-6"
                   filled={active}
                 />
-                {tab.label === "Mon Compte" ? "Compte" : tab.label}
+                {tab.label}
               </Link>
             );
           })}

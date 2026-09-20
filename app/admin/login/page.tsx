@@ -100,14 +100,14 @@ export default function AdminLoginPage() {
   return (
     <div className="mx-auto flex min-h-[80vh] max-w-md flex-col justify-center">
       <div className="mb-6">
-        <BrandMark href="/" subtitle="Back-office" />
+        <BrandMark href="/" subtitle="Espace agence" />
       </div>
       <div className="admin-af-card rounded-[1.5rem] p-8 sm:p-10">
         <p className="font-label text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--admin-gold)]">
           Accès agent
         </p>
         <h1 className="mt-2 font-display text-3xl font-bold tracking-tight text-[var(--admin-navy)]">
-          Back-office
+          Espace agence
         </h1>
         <p className="mt-2 text-sm text-muted">
           Réservé à l’équipe Travel Business Agency.

@@ -13,7 +13,7 @@ Produit FR pour agence de voyage : back-office `/admin` (clients, réservations,
 - **Langue UI / copy client** : français. Voix **l’agence**.
 - **Secrets** : `.env.local` / Vercel env — jamais commit.
 - **Next.js 16** : lire `node_modules/next/dist/docs/` avant APIs nouvelles. Pas de Cache Components. Session = `proxy.ts`.
-- **Skills** : commencer par `.cursor/skills/travelba-voyage-crm/SKILL.md` puis **un** skill de la table ci-dessous.
+- **Skills** : commencer par `.cursor/skills/travelba-voyage-crm/SKILL.md` puis **un** skill de la table ci-dessous. PDF / photos / import → `travelba-document-ingest` **tout de suite** (qualité carnet = qualité import).
 - **Design** : Stitch Portail Client (`10475551423344387411`) Sovereign Horizon (marine `#0B192C` + champagne `#C5A880`). Pas Aura, pas la feuille Travelba CRM.
 
 | Tâche | Skill |
@@ -23,7 +23,7 @@ Produit FR pour agence de voyage : back-office `/admin` (clients, réservations,
 | Schema / RLS / bucket | `travelba-supabase` |
 | Invite, magique, sessions | `travelba-auth` |
 | Carnet / publier / timeline | `travelba-carnet` |
-| PDF → cartes | `travelba-document-ingest` |
+| **Import PDF/photos → cartes** (qualité) | `travelba-document-ingest` |
 | Ledger / Stripe / Revolut | `travelba-money` |
 | UI Stitch / fichiers | `travelba-ui` |
 | Fiche / passeports | `travelba-identity` |
@@ -48,3 +48,4 @@ Produit FR pour agence de voyage : back-office `/admin` (clients, réservations,
 - `npm run seed:demo` en production — ne pas vider `crm_staff`
 - Inventer horaires / inclus / nets PDF
 - Ingest documents côté client
+- Committer des PDF d’entraînement ou de la PII (PAN, noms) — skill `travelba-document-ingest`

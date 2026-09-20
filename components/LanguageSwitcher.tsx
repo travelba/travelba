@@ -1,12 +1,13 @@
 "use client";
 
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { usePathname, useRouter } from "@/i18n/navigation";
 import { routing } from "@/i18n/routing";
 import { useTransition } from "react";
 
 export function LanguageSwitcher() {
   const locale = useLocale();
+  const tCommon = useTranslations("Common");
   const pathname = usePathname();
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -21,7 +22,8 @@ export function LanguageSwitcher() {
   return (
     <div
       className="flex items-center rounded-full border border-border bg-surface/60 p-0.5 text-xs font-medium"
-      aria-label="Language switcher"
+      role="group"
+      aria-label={tCommon("language")}
     >
       {routing.locales.map((loc) => {
         const active = loc === locale;

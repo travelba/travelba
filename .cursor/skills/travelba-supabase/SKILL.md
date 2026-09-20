@@ -23,6 +23,7 @@ Avant d’écrire du SQL : lister les tables (`crm_*`), lire la **dernière** mi
 | `20260917070936_customer_billing.sql` | tél 2, Flying Blue, facturation société |
 | `20260917173300_travel_document_booking.sql` | pièce liée au voyage / traveler |
 | `20260917184000_travel_document_passport_fields.sql` | lieu naissance, autorité, personal_number |
+| `20260918043000_carnet_visibility_kinds.sql` | kinds `rail/car/cruise`, `visible_to_client`, RLS published-only |
 
 Toute évolution = **nouveau fichier** `supabase/migrations/YYYYMMDDHHMMSS_slug.sql` (idempotent : `if not exists`, `drop policy if exists`). Appliquer via MCP `apply_migration` ou SQL Editor. Ne pas éditer une migration déjà poussée en prod.
 

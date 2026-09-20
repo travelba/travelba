@@ -95,6 +95,11 @@ export function CompanionsManager({
 
   return (
     <div className="mt-6 space-y-4">
+      {companions.length === 0 && !open ? (
+        <p className="rounded-2xl border border-dashed border-[var(--border)] bg-white/70 px-5 py-6 text-center text-sm text-muted">
+          Aucun voyageur ajouté pour l’instant. Ajoutez les personnes qui voyagent avec vous.
+        </p>
+      ) : null}
       <ul className="space-y-4">
         {companions.map((c) => {
           const doc = primaryIdentityDoc(documentsForPerson(documents, c.id));

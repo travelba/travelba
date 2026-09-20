@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireCustomer, requireStaff } from "@/lib/crm/auth";
 import { signedCrmUrl } from "@/lib/crm/files";
+import { customerPathScope, isSafeCrmPath } from "@/lib/crm/files-access";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const path = url.searchParams.get("path");
   if (!path) return jsonError("path requis");
-  if (path.includes("..") || path.startsWith("/")) {
-    return jsonError("Chemin invalide", 400);
-  }
+  if (!isSafeCrmPath(path)) return jsonError("Chemin invalide", 400);
 
   const staff = await requireStaff();
   if (!(staff instanceof NextResponse)) {
@@ -19,15 +18,11 @@ export async function GET(request: Request) {
   const client = await requireCustomer();
   if (client instanceof NextResponse) return client;
 
-  const allowedPrefix = [
-    `customers/${client.customer.id}/`,
-    `bookings/`,
-  ];
-  const okPrefix = allowedPrefix.some((p) => path.startsWith(p));
-  if (!okPrefix) return jsonError("Accès refusé", 403);
+  const scope = customerPathScope(path, client.customer.id);
+  if (scope.kind === "denied") return jsonError("Accès refusé", 403);
 
-  if (path.startsWith("bookings/")) {
-    const bookingId = path.split("/")[1];
+  if (scope.kind === "booking") {
+    const bookingId = scope.bookingId;
     const { data: booking } = await client.supabase
       .from("crm_bookings")
       .select("id, cover_image_path")

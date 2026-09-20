@@ -187,6 +187,12 @@ export function documentLabel(doc: CrmBookingDocument, items: CrmBookingItem[]) 
   return name ? `${metier} · ${name}` : metier;
 }
 
+/** Pièces publiées qui ne sont rattachées à aucune carte : à lister à part dans le carnet client. */
+export function unlinkedDocuments(docs: CrmBookingDocument[], items: CrmBookingItem[]) {
+  const linked = new Set(items.map((item) => item.source_document_id).filter(Boolean));
+  return docs.filter((doc) => !linked.has(doc.id));
+}
+
 export function confirmationForItem(item: CrmBookingItem, docs: CrmBookingDocument[]) {
   if (item.source_document_id) {
     return docs.find((doc) => doc.id === item.source_document_id) || null;

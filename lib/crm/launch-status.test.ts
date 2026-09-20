@@ -34,7 +34,7 @@ test("prod vide : carnet + Revolut bloquent, téléphone et Stripe en option", (
   assert.match(visible.find((item) => item.id === "carnet")!.description, /Pas de séjour fictif/);
   assert.match(visible.find((item) => item.id === "revolut")!.description, /aucun crédit automatique/i);
   assert.match(visible.find((item) => item.id === "phone")!.description, /Ne pas inventer/);
-  assert.match(visible.find((item) => item.id === "stripe")!.description, /UI cartes fermée/);
+  assert.match(visible.find((item) => item.id === "stripe")!.description, /Cartes fermées/);
 });
 
 test("brouillon sans publication : encore le geste Publier", () => {
@@ -76,7 +76,7 @@ test("zéro client : fiche titulaire requise, pas de client fictif", () => {
 });
 
 test("inbox Revolut : connecter d’abord, jamais de crédit auto", () => {
-  assert.match(revolutInboxEmptyMessage({ configured: false, connected: false }), /REVOLUT_CLIENT_ID/);
+  assert.match(revolutInboxEmptyMessage({ configured: false, connected: false }), /non installée côté serveur/);
   assert.match(
     revolutInboxEmptyMessage({ configured: true, connected: false }),
     /Connecter Revolut/

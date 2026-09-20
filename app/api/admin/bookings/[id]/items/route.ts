@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -40,7 +40,7 @@ export async function POST(request: Request, ctx: Ctx) {
     })
     .select("*")
     .single();
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   return NextResponse.json({ item: data });
 }
 
@@ -57,7 +57,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
         .update({ sort_order: index })
         .eq("id", order[index])
         .eq("booking_id", bookingId);
-      if (error) return jsonError(error.message, 400);
+      if (error) return dbError(error, 400);
     }
     return NextResponse.json({ ok: true });
   }
@@ -81,7 +81,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
     .eq("booking_id", bookingId)
     .select("*")
     .single();
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   return NextResponse.json({ item: data });
 }
 
@@ -97,6 +97,6 @@ export async function DELETE(request: Request, ctx: Ctx) {
     .delete()
     .eq("id", itemId)
     .eq("booking_id", bookingId);
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   return NextResponse.json({ ok: true });
 }

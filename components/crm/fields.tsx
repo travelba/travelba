@@ -33,7 +33,9 @@ function FlagImg({ iso2 }: { iso2: string }) {
 function useDismiss(open: boolean, onClose: () => void) {
   const rootRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
   useEffect(() => {
     if (!open) return;
     function onPointer(event: MouseEvent) {
@@ -85,6 +87,7 @@ export function DateFrInput({
   required = false,
   className = fieldControlClass,
   autoComplete,
+  "aria-label": ariaLabel,
 }: {
   name?: string;
   value?: string;
@@ -95,15 +98,16 @@ export function DateFrInput({
   required?: boolean;
   className?: string;
   autoComplete?: string;
+  "aria-label"?: string;
 }) {
   const [iso, setIso] = useState(value ?? defaultValue ?? "");
   const [text, setText] = useState(() => isoToFrInput(value ?? defaultValue ?? ""));
-
-  useEffect(() => {
-    if (value === undefined) return;
+  const [syncedValue, setSyncedValue] = useState(value);
+  if (value !== undefined && value !== syncedValue) {
+    setSyncedValue(value);
     setIso(value);
     setText(isoToFrInput(value));
-  }, [value]);
+  }
 
   function commit(nextIso: string) {
     if (nextIso && max && nextIso > max) return;
@@ -120,6 +124,7 @@ export function DateFrInput({
         type="text"
         inputMode="numeric"
         autoComplete={autoComplete}
+        aria-label={ariaLabel}
         required={required}
         placeholder="jj/mm/aaaa"
         lang="fr-FR"
@@ -429,11 +434,8 @@ export function OptionalSecondPhone({
   value: string;
   onChange: (e164: string) => void;
 }) {
-  const [open, setOpen] = useState(() => Boolean(value.trim()));
-
-  useEffect(() => {
-    if (value.trim()) setOpen(true);
-  }, [value]);
+  const [opened, setOpen] = useState(false);
+  const open = opened || Boolean(value.trim());
 
   if (!open) {
     return (

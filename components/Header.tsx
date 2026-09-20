@@ -17,6 +17,7 @@ const NAV_ITEMS = [
 
 export function Header() {
   const t = useTranslations("Nav");
+  const tCommon = useTranslations("Common");
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -76,7 +77,7 @@ export function Header() {
             type="button"
             onClick={() => setOpen((v) => !v)}
             className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border text-foreground lg:hidden"
-            aria-label="Menu"
+            aria-label={open ? tCommon("close") : tCommon("menu")}
             aria-expanded={open}
           >
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}

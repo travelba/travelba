@@ -9,6 +9,7 @@ import {
   groupByDay,
   hotelStayLabel,
   itemClock,
+  unlinkedDocuments,
   whatsappModifyHref,
 } from "./carnet";
 import { canPublishCarnet } from "./bookings";
@@ -37,6 +38,23 @@ function item(partial: Partial<CrmBookingItem>): CrmBookingItem {
 }
 
 describe("carnet", () => {
+  it("liste à part les pièces non rattachées à une carte", () => {
+    const doc = (id: string) => ({
+      id,
+      booking_id: "b",
+      kind: "pdf",
+      file_name: `${id}.pdf`,
+      mime_type: "application/pdf",
+      storage_path: `bookings/b/${id}.pdf`,
+      visible_to_client: true,
+      created_at: "",
+    });
+    const docs = [doc("linked"), doc("voucher")];
+    const orphans = unlinkedDocuments(docs, [item({ source_document_id: "linked" })]);
+    assert.deepEqual(orphans.map((d) => d.id), ["voucher"]);
+    assert.equal(unlinkedDocuments(docs, []).length, 2);
+  });
+
   it("écrit 3 nuits sans répéter les jours", () => {
     const label = hotelStayLabel(
       item({

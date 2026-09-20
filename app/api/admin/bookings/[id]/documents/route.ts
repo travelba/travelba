@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -27,14 +27,14 @@ export async function POST(request: Request, ctx: Ctx) {
     })
     .select("*")
     .single();
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   return NextResponse.json({ document: data });
 }
 
 export async function PATCH(request: Request, ctx: Ctx) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
-  await ctx.params;
+  const { id } = await ctx.params;
   const body = await request.json().catch(() => null);
   const docId = String(body?.id || "");
   if (!docId) return jsonError("id requis");
@@ -42,8 +42,9 @@ export async function PATCH(request: Request, ctx: Ctx) {
     .from("crm_booking_documents")
     .update({ visible_to_client: Boolean(body?.visible_to_client) })
     .eq("id", docId)
+    .eq("booking_id", id)
     .select("*")
     .single();
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   return NextResponse.json({ document: data });
 }

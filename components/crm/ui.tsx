@@ -117,7 +117,7 @@ export function ConciergeBanner() {
     <aside className="flex flex-col gap-3 rounded-2xl border border-[#e5e3dc] bg-white p-4 shadow-[0_4px_20px_-2px_rgba(11,25,44,0.04)]">
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">
-          Votre Travel Designer
+          Votre conseiller voyage
         </span>
         <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-[var(--admin-navy)]">
           <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--admin-gold)]" />
@@ -128,14 +128,14 @@ export function ConciergeBanner() {
         <p className="font-display text-base font-semibold text-[var(--admin-navy)]">
           Conciergerie {siteConfig.shortName}
         </p>
-        <p className="mt-0.5 text-sm text-muted">Ligne VIP directe · modifications urgentes</p>
+        <p className="mt-0.5 text-sm text-muted">Ligne directe de l’agence · modifications urgentes</p>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <a
           href={`tel:${siteConfig.whatsappNumber}`}
           className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#e5e3dc] bg-[var(--surface-2)] text-xs font-semibold text-[var(--admin-navy)]"
         >
-          Appel Direct
+          Appeler
         </a>
         <a
           href={`https://wa.me/${siteConfig.whatsappNumber}`}
@@ -143,7 +143,7 @@ export function ConciergeBanner() {
           rel="noreferrer"
           className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[var(--admin-navy)] text-xs font-semibold text-white"
         >
-          Concierge Chat
+          WhatsApp conciergerie
         </a>
       </div>
     </aside>

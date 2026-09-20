@@ -107,10 +107,20 @@ export function IngestItemCard({
             </option>
           ))}
         </select>
-        <button type="button" className="text-accent" onClick={onRemove} aria-label="Retirer">
-          <Trash2 className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          {d.needs_review ? (
+            <span className="rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[11px] font-semibold text-[var(--admin-navy)]">
+              À vérifier
+            </span>
+          ) : null}
+          <button type="button" className="text-accent" onClick={onRemove} aria-label="Retirer">
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
       </div>
+      {d.source_file_name ? (
+        <p className="text-xs text-muted">Fichier : {d.source_file_name}</p>
+      ) : null}
 
       <div className="grid gap-2 sm:grid-cols-2">
         <Field label="Libellé">

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { setCarnetPublished, syncBookingDebit } from "@/lib/crm/bookings";
 import { scheduleBookingCover } from "@/lib/crm/cover-generate";
 import type { BookingStatus, CrmBooking } from "@/lib/crm/types";
@@ -15,7 +15,7 @@ export async function GET(_req: Request, ctx: Ctx) {
     .select("*")
     .eq("id", id)
     .maybeSingle();
-  if (error) return jsonError(error.message, 500);
+  if (error) return dbError(error, 500);
   if (!data) return jsonError("Réservation introuvable", 404);
   return NextResponse.json({ booking: data });
 }
@@ -59,7 +59,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
       .eq("id", id)
       .select("*")
       .single();
-    if (error) return jsonError(error.message, 400);
+    if (error) return dbError(error, 400);
     booking = data as CrmBooking;
   }
   if ("visible_to_client" in body) {
@@ -96,6 +96,6 @@ export async function DELETE(_req: Request, ctx: Ctx) {
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
   const { error } = await auth.supabase.from("crm_bookings").delete().eq("id", id);
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   return NextResponse.json({ ok: true });
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireCustomer } from "@/lib/crm/auth";
+import { dbError, jsonError, requireCustomer } from "@/lib/crm/auth";
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
 
 export async function PATCH(request: Request) {
@@ -17,6 +17,6 @@ export async function PATCH(request: Request) {
     .eq("id", auth.customer.id)
     .select("*")
     .single();
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   return NextResponse.json({ customer: data });
 }

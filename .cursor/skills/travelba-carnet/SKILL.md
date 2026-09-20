@@ -10,6 +10,7 @@ description: >-
 # Travelba — carnet
 
 Cœur produit. Admin = mêmes cartes que le client, densité pro.
+La **qualité des cartes** vient de l’import : skill `travelba-document-ingest` (PDF → items honnêtes, fusion, pas de net).
 Code : `lib/crm/carnet.ts`, `lib/crm/bookings.ts`, `components/admin/BookingEditor.tsx`,
 `components/admin/BookingItemsPanel.tsx`, `components/crm/IngestItemCard.tsx`,
 `components/account/CarnetItinerary.tsx`.

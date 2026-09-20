@@ -5,75 +5,112 @@ import { useRouter } from "next/navigation";
 import type { CrmCustomer, CrmRevolutTransaction } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { revolutInboxEmptyMessage } from "@/lib/crm/launch-status";
+import { StatusChip } from "@/components/crm/ui";
+import { revolutStatusLabel, revolutStatusTone, revolutSyncSummary } from "@/lib/crm/revolut-labels";
 
 export function RevolutInbox({
   rows,
   customers,
   configured,
   connected,
+  initialMessage = null,
 }: {
   rows: CrmRevolutTransaction[];
   customers: CrmCustomer[];
   configured: boolean;
   connected: boolean;
+  initialMessage?: string | null;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [rowBusy, setRowBusy] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(initialMessage);
+  const [error, setError] = useState<string | null>(null);
+
+  function connect() {
+    // Redirection OAuth Revolut : sortie du site, pas une navigation client.
+    window.location.assign("/api/admin/revolut/oauth");
+  }
 
   async function sync() {
     setBusy(true);
-    const res = await fetch("/api/admin/revolut", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "sync" }),
-    });
-    const json = await res.json();
-    setBusy(false);
-    setMessage(res.ok ? `Synchronisé (${json.fetched || 0} lus)` : json.error);
-    router.refresh();
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/admin/revolut", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "sync" }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(json.error || "Synchronisation impossible. Réessayez.");
+        return;
+      }
+      setMessage(revolutSyncSummary(Number(json.fetched || 0), Number(json.inserted || 0)));
+      router.refresh();
+    } catch {
+      setError("Connexion interrompue. Réessayez.");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  async function match(event: FormEvent<HTMLFormElement>, id: string) {
+  async function post(id: string, body: Record<string, unknown>, failure: string) {
+    setRowBusy(id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/revolut/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(json.error || failure);
+        return;
+      }
+      router.refresh();
+    } catch {
+      setError("Connexion interrompue. Réessayez.");
+    } finally {
+      setRowBusy(null);
+    }
+  }
+
+  function match(event: FormEvent<HTMLFormElement>, id: string) {
     event.preventDefault();
     const fd = new FormData(event.currentTarget);
-    await fetch(`/api/admin/revolut/${id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ customer_id: fd.get("customer_id") }),
-    });
-    router.refresh();
-  }
-
-  async function ignore(id: string) {
-    await fetch(`/api/admin/revolut/${id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "ignore" }),
-    });
-    router.refresh();
+    const customerId = String(fd.get("customer_id") || "");
+    if (!customerId) {
+      setError("Choisissez le client à créditer.");
+      return;
+    }
+    void post(id, { customer_id: customerId }, "Rapprochement impossible. Réessayez.");
   }
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <a
-          href="/api/admin/revolut/oauth"
-          className="rounded-full bg-[var(--admin-sky)] px-4 py-2 text-sm font-semibold text-[var(--admin-navy)]"
+        <button
+          type="button"
+          onClick={connect}
+          disabled={!configured}
+          className="rounded-full bg-[var(--admin-sky)] px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
         >
           Connecter Revolut
-        </a>
+        </button>
         <button
           type="button"
           onClick={sync}
           disabled={busy || !configured || !connected}
           className="admin-af-btn rounded-full px-4 py-2 text-sm"
         >
-          {busy ? "Sync…" : "Synchroniser Revolut"}
+          {busy ? "Synchronisation…" : "Synchroniser Revolut"}
         </button>
         {!configured ? (
           <p className="text-sm text-muted">
-            Renseignez REVOLUT_CLIENT_ID et REVOLUT_PRIVATE_KEY, puis connectez le compte.
+            Clés Revolut absentes côté serveur : l’intégration est désactivée. Le grand livre manuel reste disponible.
           </p>
         ) : !connected ? (
           <p className="text-sm text-muted">
@@ -82,22 +119,30 @@ export function RevolutInbox({
         ) : null}
       </div>
       {message ? <p className="text-sm text-muted">{message}</p> : null}
+      {error ? <p className="text-sm text-accent">{error}</p> : null}
       <ul className="admin-af-card divide-y divide-border rounded-3xl">
         {rows.map((r) => (
           <li key={r.id} className="px-5 py-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
+              <div className="space-y-1">
                 <p className="font-medium">
                   {r.counterparty_name || "Contrepartie inconnue"} ·{" "}
                   {formatMoney(Number(r.amount), r.currency)}
                 </p>
                 <p className="text-xs text-muted">
-                  {formatDateFr(r.booked_at)} · {r.reference || r.revolut_transaction_id} · {r.status}
+                  {formatDateFr(r.booked_at)} · {r.reference || r.revolut_transaction_id}
                 </p>
+                <StatusChip tone={revolutStatusTone(r.status)}>{revolutStatusLabel(r.status)}</StatusChip>
               </div>
               {r.status === "unmatched" ? (
-                <form onSubmit={(e) => match(e, r.id)} className="flex flex-wrap gap-2">
-                  <select name="customer_id" required className="rounded-xl border border-border px-3 py-1 text-sm">
+                <form onSubmit={(e) => match(e, r.id)} className="flex flex-wrap items-center gap-2">
+                  <select
+                    name="customer_id"
+                    required
+                    disabled={rowBusy === r.id}
+                    aria-label="Client à créditer"
+                    className="rounded-xl border border-border px-3 py-1 text-sm"
+                  >
                     <option value="">Rapprocher vers…</option>
                     {customers.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -105,11 +150,20 @@ export function RevolutInbox({
                       </option>
                     ))}
                   </select>
-                  <button className="admin-af-btn rounded-full px-3 py-1 text-sm">Créditer</button>
+                  <button
+                    type="submit"
+                    disabled={rowBusy === r.id}
+                    className="admin-af-btn rounded-full px-3 py-1 text-sm"
+                  >
+                    {rowBusy === r.id ? "En cours…" : "Créditer"}
+                  </button>
                   <button
                     type="button"
+                    disabled={rowBusy === r.id}
                     className="text-xs font-semibold text-muted"
-                    onClick={() => ignore(r.id)}
+                    onClick={() =>
+                      void post(r.id, { action: "ignore" }, "Impossible d’ignorer ce mouvement.")
+                    }
                   >
                     Ignorer
                   </button>
@@ -121,13 +175,14 @@ export function RevolutInbox({
         {!rows.length ? (
           <li className="space-y-3 px-5 py-8 text-center text-sm text-muted">
             <p>{revolutInboxEmptyMessage({ configured, connected })}</p>
-            {!connected ? (
-              <a
-                href="/api/admin/revolut/oauth"
+            {configured && !connected ? (
+              <button
+                type="button"
+                onClick={connect}
                 className="inline-flex rounded-full bg-[var(--admin-navy)] px-4 py-2 text-sm font-semibold text-white"
               >
                 Connecter Revolut
-              </a>
+              </button>
             ) : null}
           </li>
         ) : null}
