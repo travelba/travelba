@@ -20,7 +20,7 @@ export default async function AdminClientsPage({
     <div>
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
-        title="Gestion des clients"
+        title="Clients"
         subtitle="Fiches, invitation du titulaire, encours. Sans téléphone, le client le renseigne dans Vous au premier accès."
       />
       <div className="mt-6">

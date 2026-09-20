@@ -46,12 +46,12 @@ export function BookingsTable({
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Référence, destination, client…"
-          className="w-full rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm outline-none focus:border-[var(--admin-navy)] focus:ring-2 focus:ring-[var(--admin-sky)]"
+          className="admin-af-input w-full text-sm"
         />
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value)}
-          className="rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-sm"
+          className="admin-af-input text-sm sm:w-56"
         >
           <option value="all">Tous les statuts</option>
           {(Object.keys(BOOKING_STATUS_LABELS) as BookingStatus[]).map((s) => (

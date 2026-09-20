@@ -24,7 +24,7 @@ export default async function AdminTransactionsPage() {
     <div>
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
-        title="Trésorerie"
+        title="Transactions"
         subtitle="Débits réservations, crédits Revolut et ajustements — seules les écritures comptabilisées impactent l’encours."
       />
       <div className="mt-6 grid gap-3 sm:grid-cols-3">

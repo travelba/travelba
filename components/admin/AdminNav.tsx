@@ -10,8 +10,8 @@ import { siteConfig } from "@/lib/site";
 const LINKS = [
   { href: "/admin", label: "Tableau de bord", icon: "grid_view", exact: true },
   { href: "/admin/clients", label: "Clients", icon: "group" },
-  { href: "/admin/reservations", label: "Planning & résas", icon: "event" },
-  { href: "/admin/transactions", label: "Trésorerie", icon: "account_balance" },
+  { href: "/admin/reservations", label: "Réservations", icon: "event" },
+  { href: "/admin/transactions", label: "Transactions", icon: "account_balance" },
   { href: "/admin/revolut", label: "Revolut", icon: "sync_alt" },
 ];
 

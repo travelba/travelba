@@ -16,6 +16,7 @@ import {
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { bookingCoverUrl } from "@/lib/crm/covers";
+import { jMinusLabel } from "@/lib/crm/money";
 import { documentLabel } from "@/lib/crm/carnet";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { CoverPhoto } from "@/components/crm/CoverPhoto";
@@ -149,6 +150,7 @@ export function BookingEditor({
         <div className="absolute bottom-4 left-5 right-5 text-white">
           <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">
             {booking.reference}
+            {jMinusLabel(booking.start_date) ? ` · ${jMinusLabel(booking.start_date)}` : ""}
           </p>
           <h1 className="font-display text-2xl font-bold leading-tight">{booking.title}</h1>
         </div>

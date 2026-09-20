@@ -19,6 +19,8 @@ import { revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
 import { stripeConfigured, stripeWebhookConfigured } from "@/lib/crm/stripe";
 import { buildLaunchItems } from "@/lib/crm/launch-status";
 import { AdminLaunchStatus } from "@/components/admin/AdminLaunchStatus";
+import { CoverPhoto } from "@/components/crm/CoverPhoto";
+import { bookingCoverUrl } from "@/lib/crm/covers";
 import {
   EmptyState,
   PageEyebrow,
@@ -105,6 +107,9 @@ export default async function AdminHomePage() {
     0
   );
   const staffFirst = (staff.full_name || "l’agence").split(" ")[0];
+  const upcoming = (bookings || []) as CrmBooking[];
+  const featured = upcoming[0];
+  const rest = upcoming.slice(1);
   const kpis = [
     {
       label: "Portefeuille",
@@ -186,8 +191,8 @@ export default async function AdminHomePage() {
 
       <AdminLaunchStatus items={launchItems} />
 
-      <section className="admin-af-card overflow-hidden rounded-2xl">
-        <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
+      <section className="space-y-3">
+        <div className="flex items-center justify-between px-1">
           <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">
             Prochaines réservations
           </h2>
@@ -195,53 +200,92 @@ export default async function AdminHomePage() {
             Tout voir →
           </Link>
         </div>
-        <ul className="divide-y divide-border">
-          {((bookings || []) as CrmBooking[]).map((b) => (
-            <li key={b.id}>
-              <Link
-                href={`/admin/reservations/${b.id}`}
-                className="flex flex-col gap-2 px-5 py-3.5 transition hover:bg-[var(--admin-sky)]/40 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9e7e51]">
-                    {b.reference}
-                    {jMinusLabel(b.start_date) ? ` · ${jMinusLabel(b.start_date)}` : ""}
-                  </p>
-                  <p className="font-semibold text-[var(--admin-navy)]">
-                    {b.title}
-                  </p>
-                  <p className="text-xs text-muted">
-                    {byId.get(b.customer_id) || "Client"} · {formatDateFr(b.start_date)}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <StatusChip tone={bookingStatusTone(b.status)}>
-                    {BOOKING_STATUS_LABELS[b.status]}
-                  </StatusChip>
-                  <span className="text-sm font-semibold">
-                    {formatMoney(Number(b.total_amount), b.currency)}
-                  </span>
-                </div>
-              </Link>
-            </li>
-          ))}
-          {!bookings?.length ? (
-            <li className="px-5 py-6">
-              <EmptyState
-                title="Aucune réservation à venir"
-                description="Importez les PDF d’un vrai dossier, Enregistrer, puis Publier. Le carnet n’apparaît côté client qu’après Publier."
-                action={
-                  <Link
-                    href="/admin/reservations"
-                    className="admin-af-btn inline-flex rounded-xl px-4 py-2.5 text-sm"
-                  >
-                    Importer un dossier
-                  </Link>
-                }
+
+        {featured ? (
+          <Link
+            href={`/admin/reservations/${featured.id}`}
+            className="admin-af-card relative block overflow-hidden rounded-2xl"
+          >
+            <div className="relative h-44 sm:h-52">
+              <CoverPhoto
+                src={bookingCoverUrl(featured, 960)}
+                alt={featured.destination || featured.title}
+                priority
               />
-            </li>
-          ) : null}
-        </ul>
+              <div className="absolute inset-0 bg-gradient-to-t from-[var(--admin-navy)] via-[var(--admin-navy)]/55 to-black/10" />
+              <div className="absolute inset-0 flex flex-col justify-between p-5 text-white">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">
+                    {featured.reference}
+                    {jMinusLabel(featured.start_date)
+                      ? ` · ${jMinusLabel(featured.start_date)}`
+                      : ""}
+                  </p>
+                  <StatusChip tone={bookingStatusTone(featured.status)}>
+                    {BOOKING_STATUS_LABELS[featured.status]}
+                  </StatusChip>
+                </div>
+                <div>
+                  <h3 className="font-display text-2xl font-bold leading-tight">
+                    {featured.title}
+                  </h3>
+                  <p className="mt-1 text-sm text-white/80">
+                    {byId.get(featured.customer_id) || "Client"} ·{" "}
+                    {formatDateFr(featured.start_date)}
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-[var(--admin-gold)]">
+                    {formatMoney(Number(featured.total_amount), featured.currency)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </Link>
+        ) : (
+          <EmptyState
+            title="Aucune réservation à venir"
+            description="Importez les PDF d’un vrai dossier, Enregistrer, puis Publier. Le carnet n’apparaît côté client qu’après Publier."
+            action={
+              <Link
+                href="/admin/reservations"
+                className="admin-af-btn inline-flex rounded-xl px-4 py-2.5 text-sm"
+              >
+                Importer un dossier
+              </Link>
+            }
+          />
+        )}
+
+        {rest.length ? (
+          <ul className="admin-af-card divide-y divide-border overflow-hidden rounded-2xl">
+            {rest.map((b) => (
+              <li key={b.id}>
+                <Link
+                  href={`/admin/reservations/${b.id}`}
+                  className="flex flex-col gap-2 px-5 py-3.5 transition hover:bg-[var(--admin-sky)]/40 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9e7e51]">
+                      {b.reference}
+                      {jMinusLabel(b.start_date) ? ` · ${jMinusLabel(b.start_date)}` : ""}
+                    </p>
+                    <p className="font-semibold text-[var(--admin-navy)]">{b.title}</p>
+                    <p className="text-xs text-muted">
+                      {byId.get(b.customer_id) || "Client"} · {formatDateFr(b.start_date)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <StatusChip tone={bookingStatusTone(b.status)}>
+                      {BOOKING_STATUS_LABELS[b.status]}
+                    </StatusChip>
+                    <span className="text-sm font-semibold">
+                      {formatMoney(Number(b.total_amount), b.currency)}
+                    </span>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </section>
 
       <section className="admin-af-card overflow-hidden rounded-2xl">
