@@ -25,6 +25,7 @@ import { siteConfig } from "@/lib/site";
 import { CoverPhoto } from "@/components/crm/CoverPhoto";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
 import { Icon } from "@/components/crm/icons";
+import { TripPassportPicker } from "@/components/crm/TripPassportPicker";
 
 type Props = { params: Promise<{ reference: string }> };
 
@@ -115,9 +116,16 @@ export default async function ReservationDetailPage({ params }: Props) {
           className="block rounded-2xl bg-[var(--admin-peach)] px-4 py-3 text-sm text-[var(--admin-navy)]"
         >
           Pièce d’identité manquante pour {coverage.total - coverage.ready} voyageur
-          {coverage.total - coverage.ready > 1 ? "s" : ""}. Joindre dans Mon compte.
+          {coverage.total - coverage.ready > 1 ? "s" : ""}. Joindre dans Mon compte, puis cocher ci-dessous.
         </Link>
       ) : null}
+
+      <TripPassportPicker
+        variant="client"
+        bookingId={b.id}
+        travelers={party}
+        documents={(identityDocs || []) as CrmTravelDocument[]}
+      />
 
       {b.notes_client ? (
         <p className="aura-card rounded-[1.25rem] bg-white p-4 text-sm leading-relaxed text-[var(--admin-navy)]">

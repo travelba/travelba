@@ -139,14 +139,16 @@ export async function insertTravelDocument(
     .select("*")
     .single();
   if (error) throw new Error(error.message);
-  await retirePreviousSameType(supabase, {
-    customerId: input.customerId,
-    companionId,
-    bookingId,
-    travelerId,
-    docType,
-    keepId: data.id,
-  });
+  if (bookingId) {
+    await retirePreviousSameType(supabase, {
+      customerId: input.customerId,
+      companionId,
+      bookingId,
+      travelerId,
+      docType,
+      keepId: data.id,
+    });
+  }
   return data as CrmTravelDocument;
 }
 
@@ -252,9 +254,24 @@ export async function deleteTravelDocuments(
   for (const [column, value] of Object.entries(filter)) query = query.eq(column, value);
   const { data, error } = await query.select("storage_path");
   if (error) return { error, paths: [] as string[] };
-  const paths = (data || [])
-    .map((row) => (row as { storage_path: string | null }).storage_path)
-    .filter((path): path is string => Boolean(path));
-  if (paths.length) await removeCrmFiles(paths);
-  return { error: null, paths };
+  const paths = [...new Set(
+    (data || [])
+      .map((row) => (row as { storage_path: string | null }).storage_path)
+      .filter((path): path is string => Boolean(path))
+  )];
+  let toRemove = paths;
+  if (paths.length) {
+    const { data: remaining } = await supabase
+      .from("crm_travel_documents")
+      .select("storage_path")
+      .in("storage_path", paths);
+    const stillUsed = new Set(
+      (remaining || [])
+        .map((row) => (row as { storage_path: string | null }).storage_path)
+        .filter((path): path is string => Boolean(path))
+    );
+    toRemove = paths.filter((path) => !stillUsed.has(path));
+    if (toRemove.length) await removeCrmFiles(toRemove);
+  }
+  return { error: null, paths: toRemove };
 }

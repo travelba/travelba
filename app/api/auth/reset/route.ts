@@ -3,18 +3,11 @@ import { Resend } from "resend";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { SET_PASSWORD_PATH } from "@/lib/crm/session";
+import { agencyEmailHtml } from "@/lib/crm/email-html";
 
 export const runtime = "nodejs";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
 export async function POST(request: Request) {
   let body: { email?: string };
@@ -81,25 +74,13 @@ export async function POST(request: Request) {
       to: [email],
       replyTo: siteConfig.contactEmail,
       subject: `Réinitialiser votre mot de passe ${siteConfig.shortName}`,
-      html: `
-        <div style="font-family:Georgia,serif;background:#F2F4F8;padding:32px 16px">
-          <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;color:#002157">
-            <p style="margin:0 0 8px;font-size:12px;letter-spacing:0.16em;text-transform:uppercase;color:#E81932">Espace voyageur</p>
-            <h1 style="margin:0 0 16px;font-size:24px">${escapeHtml(siteConfig.shortName)}</h1>
-            <p style="margin:0 0 16px;line-height:1.5">
-              Cliquez sur le bouton pour choisir un nouveau mot de passe.
-            </p>
-            <p style="margin:24px 0">
-              <a href="${escapeHtml(callback.toString())}" style="display:inline-block;background:#E81932;color:#fff;text-decoration:none;padding:14px 22px;border-radius:999px;font-weight:600">
-                Définir mon mot de passe
-              </a>
-            </p>
-            <p style="margin:0;font-size:13px;color:#5b6475">
-              Si vous n’êtes pas à l’origine de cette demande, ignorez cet e-mail.
-            </p>
-          </div>
-        </div>
-      `,
+      html: agencyEmailHtml({
+        title: siteConfig.shortName,
+        bodyHtml: `<p style="margin:0 0 16px;line-height:1.5">Cliquez sur le bouton pour choisir un nouveau mot de passe.</p>`,
+        ctaLabel: "Définir mon mot de passe",
+        ctaHref: callback.toString(),
+        footnote: "Si vous n’êtes pas à l’origine de cette demande, ignorez cet e-mail.",
+      }),
     });
 
     if (sendError) {

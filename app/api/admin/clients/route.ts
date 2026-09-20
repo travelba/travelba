@@ -23,13 +23,16 @@ export async function POST(request: Request) {
   const email = String(body?.email || "")
     .trim()
     .toLowerCase();
+  const firstName = String(body?.first_name || "").trim();
+  const lastName = String(body?.last_name || "").trim();
   if (!email) return jsonError("Email requis");
+  if (!firstName || !lastName) return jsonError("Prénom et nom requis");
   const { data, error } = await auth.supabase
     .from("crm_customers")
     .insert({
       email,
-      first_name: String(body?.first_name || "").trim(),
-      last_name: String(body?.last_name || "").trim(),
+      first_name: firstName,
+      last_name: lastName,
       phone: body?.phone || null,
       language: "fr",
     })

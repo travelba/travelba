@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
+import { agencyEmailHtml } from "@/lib/crm/email-html";
 
 export const runtime = "nodejs";
 
@@ -13,14 +14,6 @@ function authErrorMessage(message: string) {
     return "Trop de tentatives. Réessayez dans quelques minutes.";
   }
   return "Erreur serveur. Réessayez dans un instant.";
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 export async function POST(request: Request) {
@@ -82,25 +75,13 @@ export async function POST(request: Request) {
       to: [email],
       replyTo: siteConfig.contactEmail,
       subject: `Votre lien de connexion ${siteConfig.shortName}`,
-      html: `
-        <div style="font-family:Georgia,serif;background:#F2F4F8;padding:32px 16px">
-          <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;color:#002157">
-            <p style="margin:0 0 8px;font-size:12px;letter-spacing:0.16em;text-transform:uppercase;color:#E81932">Espace voyageur</p>
-            <h1 style="margin:0 0 16px;font-size:24px">${escapeHtml(siteConfig.shortName)}</h1>
-            <p style="margin:0 0 16px;line-height:1.5">
-              Cliquez sur le bouton pour ouvrir votre espace. Le lien expire sous 24&nbsp;heures.
-            </p>
-            <p style="margin:24px 0">
-              <a href="${escapeHtml(callback.toString())}" style="display:inline-block;background:#E81932;color:#fff;text-decoration:none;padding:14px 22px;border-radius:999px;font-weight:600">
-                Me connecter
-              </a>
-            </p>
-            <p style="margin:0;font-size:13px;color:#5b6475">
-              Si vous n’êtes pas à l’origine de cette demande, ignorez cet e-mail.
-            </p>
-          </div>
-        </div>
-      `,
+      html: agencyEmailHtml({
+        title: siteConfig.shortName,
+        bodyHtml: `<p style="margin:0 0 16px;line-height:1.5">Cliquez sur le bouton pour ouvrir votre espace. Le lien expire sous 24&nbsp;heures.</p>`,
+        ctaLabel: "Me connecter",
+        ctaHref: callback.toString(),
+        footnote: "Si vous n’êtes pas à l’origine de cette demande, ignorez cet e-mail.",
+      }),
     });
 
     if (sendError) {

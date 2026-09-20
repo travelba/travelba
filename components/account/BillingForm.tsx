@@ -4,6 +4,8 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CrmCustomer } from "@/lib/crm/types";
 import { resolveCountryCode } from "@/lib/crm/countries";
+import { formatIbanInput, ibanError, normalizeIban } from "@/lib/crm/billing";
+import { Field, fieldControlClass } from "@/components/crm/fields";
 import {
   billingJson,
   billingSameAsProfile,
@@ -17,6 +19,7 @@ export function BillingForm({ customer }: { customer: CrmCustomer }) {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [iban, setIban] = useState(() => formatIbanInput(customer.iban || ""));
   const [billing, setBilling] = useState<CompanyBillingValues>(() =>
     companyBillingFromCustomer(customer)
   );
@@ -29,16 +32,26 @@ export function BillingForm({ customer }: { customer: CrmCustomer }) {
   const [sameBillingAddress, setSameBillingAddress] = useState(() =>
     billingSameAsProfile(companyBillingFromCustomer(customer), profileAddress)
   );
+  const ibanHint = ibanError(normalizeIban(iban));
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const normalized = normalizeIban(iban);
+    const err = ibanError(normalized);
+    if (err) {
+      setError(err);
+      return;
+    }
     setSaving(true);
     setError(null);
     setSaved(false);
     const res = await fetch("/api/client/profile", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(billingJson(billing, profileAddress, sameBillingAddress)),
+      body: JSON.stringify({
+        iban: normalized,
+        ...billingJson(billing, profileAddress, sameBillingAddress),
+      }),
     });
     const json = await res.json();
     if (!res.ok) {
@@ -53,6 +66,16 @@ export function BillingForm({ customer }: { customer: CrmCustomer }) {
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
+      <Field label="IBAN" hint="Compte français, 27 caractères" error={ibanHint}>
+        <input
+          value={iban}
+          onChange={(event) => setIban(formatIbanInput(event.target.value))}
+          autoComplete="off"
+          spellCheck={false}
+          className={fieldControlClass}
+          placeholder="FR76 XXXX XXXX XXXX XXXX XXXX XXX"
+        />
+      </Field>
       <CompanyBillingFields
         values={billing}
         onChange={setBilling}

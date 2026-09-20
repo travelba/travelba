@@ -5,6 +5,7 @@ import {
   reusableDocumentsForTraveler,
   tripDocCoverage,
   tripDocumentsForTraveler,
+  vaultDocumentsForPerson,
   vaultDocumentsForTraveler,
 } from "./trip-documents";
 import type { CrmBookingTraveler, CrmTravelDocument } from "./types";
@@ -56,11 +57,12 @@ test("vault vs trip documents stay separate", () => {
   const vault = [doc({ id: "vault" })];
   const trip = [doc({ id: "trip", booking_id: "b1", traveler_id: "t1" })];
   assert.equal(vaultDocumentsForTraveler(vault, holder)[0]?.id, "vault");
+  assert.equal(vaultDocumentsForPerson(vault, null)[0]?.id, "vault");
   assert.equal(tripDocumentsForTraveler(trip, holder)[0]?.id, "trip");
   assert.equal(tripDocumentsForTraveler(vault, holder).length, 0);
   assert.equal(primaryIdentityDoc(trip)?.id, "trip");
   assert.deepEqual(tripDocCoverage([holder], trip), { ready: 1, total: 1 });
-  assert.deepEqual(tripDocCoverage([holder], vault), { ready: 1, total: 1 });
+  assert.deepEqual(tripDocCoverage([holder], vault), { ready: 0, total: 1 });
   assert.deepEqual(tripDocCoverage([holder], []), { ready: 0, total: 1 });
 });
 

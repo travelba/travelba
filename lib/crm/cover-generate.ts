@@ -8,6 +8,7 @@ import { aiGatewayConfigured, openaiApiKey } from "@/lib/crm/ingest-types";
 import type { CrmBooking } from "@/lib/crm/types";
 import { trySharp } from "@/lib/crm/sharp";
 import { coverQuery } from "@/lib/crm/carnet";
+import { needsAiCover } from "@/lib/crm/covers";
 
 const IMAGE_MODEL = "google/gemini-3.1-flash-image-preview";
 
@@ -156,6 +157,7 @@ export async function ensureBookingCover(
   opts?: { hotel?: string | null; force?: boolean }
 ) {
   if (booking.cover_image_path && !opts?.force) return booking.cover_image_path;
+  if (!needsAiCover(booking, opts?.force)) return null;
   const place = placeName(booking, opts?.hotel);
   if (!place) return null;
   const raw = await generateCoverBytes(place, opts?.hotel);

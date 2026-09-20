@@ -3,6 +3,9 @@ import test from "node:test";
 import {
   formatSiretInput,
   normalizeFlyingBlue,
+  normalizeIban,
+  formatIbanInput,
+  ibanError,
   normalizeSiret,
   normalizeVat,
   siretError,
@@ -38,6 +41,26 @@ test("SIRET formatting and Luhn", () => {
 test("VAT and Flying Blue normalize", () => {
   assert.equal(normalizeVat("fr 45 732 829 320"), "FR45732829320");
   assert.equal(normalizeFlyingBlue(" 12 345 6789 "), "123456789");
+});
+
+test("IBAN FR is 27 characters", () => {
+  assert.equal(normalizeIban("fr76 3000 6000 0112 3456 7890 189"), "FR7630006000011234567890189");
+  assert.equal(formatIbanInput("FR7630006000011234567890189"), "FR76 3000 6000 0112 3456 7890 189");
+  assert.equal(ibanError("FR7630006000011234567890189"), null);
+  assert.equal(ibanError("DE89370400440532013000"), "Indiquez un IBAN français (commence par FR).");
+  assert.equal(ibanError("FR76"), "L’IBAN français doit contenir 27 caractères.");
+});
+
+test("customer patch maps loyalty and IBAN", () => {
+  const { patch, error } = customerPatchFromBody({
+    loyalty: { flying_blue: "ab 12", miles_more: " 99 " },
+    iban: "fr76 3000 6000 0112 3456 7890 189",
+  });
+  assert.equal(error, undefined);
+  assert.equal((patch.loyalty as { flying_blue: string }).flying_blue, "AB12");
+  assert.equal((patch.loyalty as { miles_more: string }).miles_more, "99");
+  assert.equal(patch.flying_blue, "AB12");
+  assert.equal(patch.iban, "FR7630006000011234567890189");
 });
 
 test("customer patch maps billing fields", () => {

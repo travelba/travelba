@@ -12,9 +12,7 @@ import {
 } from "@/components/crm/ui";
 import { bookingCoverUrl } from "@/lib/crm/covers";
 import { loadVisibleCarnets } from "@/lib/crm/carnet-query";
-import { siteConfig } from "@/lib/site";
 import { CoverPhoto } from "@/components/crm/CoverPhoto";
-import { Icon } from "@/components/crm/icons";
 
 function daysUntil(date: string | null) {
   if (!date) return null;
@@ -50,34 +48,9 @@ export default async function ReservationsPage({
   );
   const showPast = tab === "passes";
   const list = showPast ? past : upcoming;
-  const whatsappHref = `https://wa.me/${siteConfig.whatsappNumber}`;
 
   return (
     <div className="space-y-5">
-      <aside className="flex items-center justify-between gap-3 rounded-2xl border border-[#e5e3dc] bg-white p-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[var(--admin-gold)]">
-            <Icon name="support_agent" className="h-5 w-5" />
-          </span>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-bold text-[var(--admin-navy)]">
-              Conciergerie {siteConfig.shortName}
-            </p>
-            <p className="truncate text-[11px] text-muted">
-              Votre conseiller dédié, 7 j/7
-            </p>
-          </div>
-        </div>
-        <a
-          href={whatsappHref}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex shrink-0 items-center rounded-full bg-[var(--admin-navy)] px-3.5 py-2 text-xs font-bold text-white"
-        >
-          Contacter
-        </a>
-      </aside>
-
       <div className="flex rounded-full bg-[var(--surface-2)] p-1">
         <Link
           href="/mon-compte/reservations"

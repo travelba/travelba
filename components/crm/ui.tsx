@@ -112,40 +112,43 @@ export function EmptyState({
   );
 }
 
-export function ConciergeBanner() {
+export function PhoneWallBanner({ href }: { href?: string }) {
   return (
-    <aside className="flex flex-col gap-3 rounded-2xl border border-[#e5e3dc] bg-white p-4 shadow-[0_4px_20px_-2px_rgba(11,25,44,0.04)]">
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">
-          Votre conseiller voyage
-        </span>
-        <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-[var(--admin-navy)]">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--admin-gold)]" />
-          Disponible 24/7
-        </span>
-      </div>
-      <div>
-        <p className="font-display text-base font-semibold text-[var(--admin-navy)]">
-          Conciergerie {siteConfig.shortName}
-        </p>
-        <p className="mt-0.5 text-sm text-muted">Ligne directe de l’agence · modifications urgentes</p>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
+    <div className="rounded-2xl bg-[var(--admin-gold)]/25 p-5 text-[var(--admin-navy)] ring-1 ring-[var(--admin-gold)]">
+      <p className="font-display text-lg font-bold">Ajoutez un téléphone pour continuer.</p>
+      <p className="mt-2 text-sm">L’agence a besoin d’un numéro pour vous joindre.</p>
+      {href ? (
         <a
-          href={`tel:${siteConfig.whatsappNumber}`}
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#e5e3dc] bg-[var(--surface-2)] text-xs font-semibold text-[var(--admin-navy)]"
+          href={href}
+          className="mt-4 inline-flex h-11 items-center rounded-full bg-[var(--admin-navy)] px-5 text-sm font-semibold text-white"
         >
-          Appeler
+          Ouvrir ma fiche
         </a>
-        <a
-          href={`https://wa.me/${siteConfig.whatsappNumber}`}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[var(--admin-navy)] text-xs font-semibold text-white"
-        >
-          WhatsApp conciergerie
-        </a>
-      </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function ConciergeBanner({
+  href,
+  label = "Écrire à l’agence",
+}: {
+  href?: string;
+  label?: string;
+}) {
+  const wa = href || `https://wa.me/${siteConfig.whatsappNumber}`;
+  return (
+    <aside className="flex flex-col gap-3 rounded-2xl border border-[#e5e3dc] bg-white p-4">
+      <p className="font-display text-base font-semibold text-[var(--admin-navy)]">L’agence</p>
+      <p className="text-sm text-muted">Une question ? Écrivez-nous sur WhatsApp.</p>
+      <a
+        href={wa}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--admin-navy)] text-sm font-semibold text-white"
+      >
+        {label}
+      </a>
     </aside>
   );
 }

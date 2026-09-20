@@ -4,8 +4,9 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DOC_TYPE_LABELS, type CrmCompanion, type CrmTravelDocument, type TravelDocType } from "@/lib/crm/types";
 import { countryName } from "@/lib/crm/countries";
-import { documentExpiryStatus, documentExpiryWarning } from "@/lib/crm/identity";
+import { documentExpiryStatus, documentExpiryWarning, identityOverwriteWarning } from "@/lib/crm/identity";
 import { formatDateFr } from "@/lib/crm/money";
+import { isVaultDocument } from "@/lib/crm/trip-documents";
 import { StatusChip } from "@/components/crm/ui";
 import {
   CountrySelect,
@@ -45,6 +46,7 @@ export function DocumentsManager({
   const [sex, setSex] = useState("");
   const [applyIdentity, setApplyIdentity] = useState(true);
   const [scan, setScan] = useState<ScanResult | null>(null);
+  const [nameWarn, setNameWarn] = useState<string | null>(null);
 
   function applyScan(result: ScanResult) {
     setScan(result);
@@ -59,6 +61,11 @@ export function DocumentsManager({
     if (id.place_of_birth) setPlaceOfBirth(id.place_of_birth);
     if (id.authority) setAuthority(id.authority);
     if (id.personal_number) setPersonalNumber(id.personal_number);
+    if (id.first_name || id.last_name) {
+      setNameWarn(
+        identityOverwriteWarning({ first_name: firstName, last_name: lastName }, id)
+      );
+    }
     if (id.first_name) setFirstName(id.first_name);
     if (id.last_name) setLastName(id.last_name);
     if (id.birth_date) setBirthDate(id.birth_date);
@@ -119,6 +126,7 @@ export function DocumentsManager({
     router.refresh();
   }
 
+  const vault = documents.filter(isVaultDocument);
   const expiryWarn = documentExpiryWarning(docExpiry);
 
   const DOC_ICONS: Record<TravelDocType, string> = {
@@ -132,7 +140,7 @@ export function DocumentsManager({
   return (
     <div className="space-y-4">
       <ul className="space-y-3">
-        {documents.map((d) => {
+        {vault.map((d) => {
           const status = documentExpiryStatus(d.expires_on);
           return (
             <li key={d.id} className="admin-af-card flex items-start gap-3 rounded-2xl p-4">
@@ -178,7 +186,7 @@ export function DocumentsManager({
             </li>
           );
         })}
-        {!documents.length ? (
+        {!vault.length ? (
           <li className="rounded-2xl border border-dashed border-[var(--border)] bg-white/70 px-4 py-8 text-center text-sm text-muted">
             Aucun document dans le coffre-fort.
           </li>
@@ -200,6 +208,11 @@ export function DocumentsManager({
             <div className="min-w-0 flex-1 space-y-2">
               <ScanStatus identity={scan.identity} warning={scan.warning} />
               {expiryWarn ? <p className="text-sm text-accent">{expiryWarn}</p> : null}
+              {nameWarn ? (
+                <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
+                  {nameWarn}
+                </p>
+              ) : null}
             </div>
           </div>
         ) : null}

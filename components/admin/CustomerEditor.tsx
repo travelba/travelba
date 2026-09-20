@@ -5,8 +5,11 @@ import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import type { CrmCompanion, CrmCustomer, CrmTravelDocument } from "@/lib/crm/types";
 import { resolveCountryCode } from "@/lib/crm/countries";
-import { type ExtractedIdentity } from "@/lib/crm/identity";
+import { identityOverwriteWarning, type ExtractedIdentity } from "@/lib/crm/identity";
 import { appendPassportForm } from "@/lib/crm/passport-extract";
+import { formatIbanInput, ibanError, normalizeIban } from "@/lib/crm/billing";
+import { loyaltyFromCustomer, type LoyaltyMap } from "@/lib/crm/loyalty";
+import { LoyaltyFields } from "@/components/crm/LoyaltyFields";
 import {
   AddressFields,
   CountrySelect,
@@ -57,7 +60,6 @@ export function CustomerEditor({
   const router = useRouter();
   const [firstName, setFirstName] = useState(customer.first_name);
   const [lastName, setLastName] = useState(customer.last_name);
-  const [email, setEmail] = useState(customer.email);
   const [phone, setPhone] = useState(customer.phone || "");
   const [phoneSecondary, setPhoneSecondary] = useState(customer.phone_secondary || "");
   const [birthDate, setBirthDate] = useState(customer.birth_date || "");
@@ -67,7 +69,9 @@ export function CustomerEditor({
   const [addressLine, setAddressLine] = useState(customer.address_line || "");
   const [postalCode, setPostalCode] = useState(customer.postal_code || "");
   const [city, setCity] = useState(customer.city || "");
-  const [flyingBlue, setFlyingBlue] = useState(customer.flying_blue || "");
+  const [loyalty, setLoyalty] = useState<LoyaltyMap>(() => loyaltyFromCustomer(customer));
+  const [iban, setIban] = useState(() => formatIbanInput(customer.iban || ""));
+  const [nameWarn, setNameWarn] = useState<string | null>(null);
   const [billing, setBilling] = useState<CompanyBillingValues>(() =>
     companyBillingFromCustomer(customer)
   );
@@ -91,6 +95,12 @@ export function CustomerEditor({
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const normalizedIban = normalizeIban(iban);
+    const err = ibanError(normalizedIban);
+    if (err) {
+      setSaveError(err);
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     const res = await fetch(`/api/admin/clients/${customer.id}`, {
@@ -99,7 +109,6 @@ export function CustomerEditor({
       body: JSON.stringify({
         first_name: firstName,
         last_name: lastName,
-        email,
         phone,
         phone_secondary: phoneSecondary,
         birth_date: birthDate,
@@ -109,7 +118,9 @@ export function CustomerEditor({
         postal_code: postalCode,
         city,
         country,
-        flying_blue: flyingBlue,
+        loyalty,
+        flying_blue: loyalty.flying_blue,
+        iban: normalizedIban,
         ...billingJson(billing, profileAddress, sameBillingAddress),
       }),
     });
@@ -141,25 +152,31 @@ export function CustomerEditor({
           variant="admin"
           customerId={customer.id}
           documents={documents}
-          onIdentity={(id) =>
+          onIdentity={(id) => {
+            setNameWarn(identityOverwriteWarning({ first_name: firstName, last_name: lastName }, id));
             applyIdentityState(id, {
               setFirstName,
               setLastName,
               setBirthDate,
               setSex,
               setNationality,
-            })
-          }
+            });
+          }}
         />
+        {nameWarn ? (
+          <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
+            {nameWarn}
+          </p>
+        ) : null}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <p className="sm:col-span-2 font-display text-base font-bold text-[var(--admin-navy)]">
             Identité
           </p>
-          <Field label="Prénom">
+          <Field label="Prénom" hint="Comme sur le passeport">
             <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
           </Field>
-          <Field label="Nom">
+          <Field label="Nom" hint="Comme sur le passeport">
             <input value={lastName} onChange={(e) => setLastName(e.target.value)} className={fieldControlClass} />
           </Field>
           <Field label="Naissance">
@@ -182,21 +199,23 @@ export function CustomerEditor({
           <p className="sm:col-span-2 font-display text-base font-bold text-[var(--admin-navy)]">
             Coordonnées
           </p>
-          <Field label="Email" className="sm:col-span-2">
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={fieldControlClass} />
-          </Field>
+          <p className="sm:col-span-2 text-sm text-muted">E-mail (identifiant) : {customer.email}</p>
           <PhoneField name="phone" value={phone} onChange={setPhone} />
           <OptionalSecondPhone value={phoneSecondary} onChange={setPhoneSecondary} />
-          <Field label="N° Flying Blue" className="sm:col-span-2" hint="Programme Air France / KLM">
-            <input
-              value={flyingBlue}
-              onChange={(e) => setFlyingBlue(e.target.value.toUpperCase())}
-              autoComplete="off"
-              className={fieldControlClass}
-              placeholder="1234567890"
-            />
-          </Field>
         </div>
+
+        <LoyaltyFields values={loyalty} onChange={setLoyalty} />
+
+        <Field label="IBAN" hint="Compte français, 27 caractères" error={ibanError(normalizeIban(iban))}>
+          <input
+            value={iban}
+            onChange={(e) => setIban(formatIbanInput(e.target.value))}
+            autoComplete="off"
+            spellCheck={false}
+            className={fieldControlClass}
+            placeholder="FR76 XXXX XXXX XXXX XXXX XXXX XXX"
+          />
+        </Field>
 
         <section>
           <p className="mb-4 font-display text-base font-bold text-[var(--admin-navy)]">Adresse</p>
@@ -266,6 +285,7 @@ function CompanionCard({
   const [birthDate, setBirthDate] = useState(companion.birth_date || "");
   const [sex, setSex] = useState(companion.sex || "");
   const [saving, setSaving] = useState(false);
+  const [nameWarn, setNameWarn] = useState<string | null>(null);
 
   async function save() {
     setSaving(true);
@@ -307,21 +327,27 @@ function CompanionCard({
         customerId={customerId}
         companionId={companion.id}
         documents={documents}
-        onIdentity={(id) =>
+        onIdentity={(id) => {
+          setNameWarn(identityOverwriteWarning({ first_name: firstName, last_name: lastName }, id));
           applyIdentityState(id, {
             setFirstName,
             setLastName,
             setBirthDate,
             setSex,
             setNationality,
-          })
-        }
+          });
+        }}
       />
+      {nameWarn ? (
+        <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
+          {nameWarn}
+        </p>
+      ) : null}
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Prénom">
+        <Field label="Prénom" hint="Comme sur le passeport">
           <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
         </Field>
-        <Field label="Nom">
+        <Field label="Nom" hint="Comme sur le passeport">
           <input value={lastName} onChange={(e) => setLastName(e.target.value)} className={fieldControlClass} />
         </Field>
         <Field label="Lien">

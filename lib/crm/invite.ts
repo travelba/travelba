@@ -3,6 +3,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { customerFullName, type CrmCustomer } from "@/lib/crm/types";
 import { SET_PASSWORD_PATH, mustSetPassword } from "@/lib/crm/session";
+import { agencyEmailHtml, escapeHtml } from "@/lib/crm/email-html";
 
 export type PortalAccess = {
   status: "none" | "invited" | "ready";
@@ -21,14 +22,6 @@ export function appOrigin(request: Request) {
   return new URL(request.url).origin;
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 function isAlreadyRegistered(message: string) {
   return /already been registered|already registered|email_exists|user already exists/i.test(
     message
@@ -36,32 +29,22 @@ function isAlreadyRegistered(message: string) {
 }
 
 function inviteEmailHtml(customer: CrmCustomer, link: string) {
-  const name = customer.first_name || "Bonjour";
-  return `
-    <div style="font-family:Georgia,serif;background:#F2F4F8;padding:32px 16px">
-      <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;color:#002157">
-        <p style="margin:0 0 8px;font-size:12px;letter-spacing:0.16em;text-transform:uppercase;color:#E81932">Espace voyageur</p>
-        <h1 style="margin:0 0 16px;font-size:24px">${siteConfig.shortName}</h1>
-        <p style="margin:0 0 16px;line-height:1.5">Bonjour ${escapeHtml(name)},</p>
-        <p style="margin:0 0 16px;line-height:1.5">
-          Votre espace personnel ${escapeHtml(siteConfig.name)} est prêt.
-          Cliquez sur le bouton ci-dessous pour définir votre mot de passe
-          et accéder à vos voyages.
-        </p>
-        <p style="margin:24px 0">
-          <a href="${escapeHtml(link)}" style="display:inline-block;background:#E81932;color:#fff;text-decoration:none;padding:14px 22px;border-radius:999px;font-weight:600">
-            Accéder à mon espace
-          </a>
-        </p>
-        <p style="margin:0 0 8px;font-size:13px;color:#5b6475;line-height:1.5">
-          Ce lien expire sous 30&nbsp;jours. Si vous n’êtes pas à l’origine de cette invitation, ignorez cet e-mail.
-        </p>
-        <p style="margin:24px 0 0;font-size:12px;color:#5b6475">
-          ${escapeHtml(siteConfig.name)} · ${escapeHtml(siteConfig.phoneDisplay)}
-        </p>
-      </div>
-    </div>
-  `;
+  const name = escapeHtml(customer.first_name || "Bonjour");
+  return agencyEmailHtml({
+    kicker: "L’agence",
+    title: siteConfig.shortName,
+    bodyHtml: `
+      <p style="margin:0 0 16px;line-height:1.5">Bonjour ${name},</p>
+      <p style="margin:0 0 16px;line-height:1.5">
+        Votre espace ${escapeHtml(siteConfig.name)} est prêt.
+        Définissez votre mot de passe pour y accéder — le lien reste valable 30&nbsp;jours.
+      </p>
+    `,
+    ctaLabel: "Accéder à mon espace",
+    ctaHref: link,
+    footnote:
+      "Si vous n’êtes pas à l’origine de cette invitation, ignorez cet e-mail.",
+  });
 }
 
 async function sendInviteEmail(customer: CrmCustomer, link: string) {

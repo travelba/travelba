@@ -28,10 +28,10 @@ export function buildLaunchItems(snapshot: LaunchSnapshot): LaunchItem[] {
     carnetDescription = "Au moins un carnet est visible côté client.";
   } else if (snapshot.bookingCount > 0) {
     carnetDescription =
-      "Des dossiers existent en brouillon. Publier rend le carnet visible dans l’espace client. Enregistrer ne publie pas.";
+      "Des dossiers existent en brouillon. L’interrupteur « Visible dans l’espace » rend le carnet visible. Enregistrer ne publie pas.";
   } else {
     carnetDescription =
-      "Ouvrez un client, importez les PDF, Enregistrer, puis Publier. Sans publication, le client n’a rien à ouvrir. Pas de séjour fictif.";
+      "Ouvrez un client, importez les PDF, Enregistrer, puis Visible dans l’espace. Sans publication, le client n’a rien à ouvrir. Pas de séjour fictif.";
   }
 
   let revolutDescription: string;
@@ -128,7 +128,7 @@ export function revolutInboxEmptyMessage(opts: {
 
 export function bookingsListEmptyMessage(hasAnyBookings: boolean): string {
   if (!hasAnyBookings) {
-    return "Aucun dossier. Importez les PDF d’un vrai séjour, Enregistrer, puis Publier. Le carnet n’apparaît côté client qu’après Publier.";
+    return "Aucun dossier. Importez les PDF d’un vrai séjour, Enregistrer, puis Visible dans l’espace. Le carnet n’apparaît côté client qu’après activation.";
   }
   return "Aucune réservation trouvée.";
 }
