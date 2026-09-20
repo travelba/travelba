@@ -4,7 +4,7 @@ Source de vérité : **Portail Client Agence Voyage**
 ID : `10475551423344387411`  
 URL : https://stitch.withgoogle.com/projects/10475551423344387411
 
-Écrans visibles (HTML dans `atelier/`) : **Sovereign Horizon** — marine `#0B192C`, champagne `#C5A880`, ivoire `#FAF9F6`, Plus Jakarta Sans.
+Écrans figés (HTML + PNG dans `atelier/`) : **Sovereign Horizon** — marine `#0B192C`, champagne `#C5A880`, ivoire `#FAF9F6`, Plus Jakarta Sans.
 
 Le projet Stitch contient aussi le DS **Atelier Voyage Sur-Mesure** (émeraude). Ne pas l’appliquer : les maquettes actives sont marine / champagne.
 
@@ -29,12 +29,18 @@ Dock : Accueil / Réservations / Transactions / Mon Compte.
 
 | Écran | Device | ID | Route |
 |---|---|---|---|
-| Dashboard Agence & Pilotage | DESKTOP | `0afcdddbd0e14cc49c3b3ef2b56f69ef` | chrome `/admin` (sidebar + topbar) |
+| Dashboard Agence & Pilotage | DESKTOP | `439d30444c774ddebdfd5a9b81100aba` | `/admin` |
+| Clients & Fiche Voyageur | DESKTOP | `fea54e6f80df4d16ba99340210a5686c` | `/admin/clients/[id]` |
+| Planning & Gestion Réservations | DESKTOP | `6f783ff9f98743649ec57b9e600a7c23` | `/admin/reservations/[id]` |
+| Trésorerie & Dépenses Dossiers | DESKTOP | `647a2e5c6785433281a3482b6aa6e35b` | `/admin/transactions` |
+| Validation Documents & Passeports | DESKTOP | `b80fd53a7de34ffa8480e5934e9db3ea` | pièces sur `/admin/clients/[id]` |
 
-Pages admin internes (clients, résas, ledger, Revolut) : mêmes tokens, pas de maquette dédiée.
+Revolut (rapprochement) n’a pas de maquette Stitch : même chrome, route `/admin/revolut`.
 
-Les HTML dans `atelier/` sont le dernier export figé. Relancer `@google/stitch-sdk` + `STITCH_API_KEY` pour rafraîchir depuis le projet live. Porter **composition et tokens**, jamais le copy fictif (Privilège, cloche, 24/7, points club).
+Porter **composition et tokens**, jamais le copy fictif (Privilège, cloche, 24/7, points club, GDS Sabre, Cellule VIP).
+
+Export : `@google/stitch-sdk` + `STITCH_API_KEY` dans `.env.local` (jamais git).
 
 ## Portage Next.js
 
-Tokens CRM : `.admin-af` (Sovereign) + `.account-app` (même palette, composition mobile).
+Tokens CRM : `.admin-af` (Sovereign, sidebar marine) + `.account-app` (même palette, composition mobile).

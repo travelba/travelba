@@ -3,11 +3,18 @@ import { requireStaffPage } from "@/lib/crm/auth";
 import {
   BOOKING_STATUS_LABELS,
   customerFullName,
+  type CrmBalance,
   type CrmBooking,
   type CrmCustomer,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
-import { formatDateFr, formatMoney, isoDateInDays, todayIsoDate } from "@/lib/crm/money";
+import {
+  formatDateFr,
+  formatMoney,
+  isoDateInDays,
+  jMinusLabel,
+  todayIsoDate,
+} from "@/lib/crm/money";
 import { revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
 import { stripeConfigured, stripeWebhookConfigured } from "@/lib/crm/stripe";
 import { buildLaunchItems } from "@/lib/crm/launch-status";
@@ -34,6 +41,8 @@ export default async function AdminHomePage() {
     { count: publishedCount },
     { count: customerCount },
     { count: withPhoneCount },
+    { data: balances },
+    { count: departSoonCount },
     revolutIsConnected,
   ] = await Promise.all([
     supabase
@@ -62,6 +71,13 @@ export default async function AdminHomePage() {
       .select("id", { count: "exact", head: true })
       .not("phone", "is", null)
       .neq("phone", ""),
+    supabase.from("crm_customer_balances").select("balance, currency"),
+    supabase
+      .from("crm_bookings")
+      .select("id", { count: "exact", head: true })
+      .gte("start_date", today)
+      .lte("start_date", isoDateInDays(7))
+      .neq("status", "cancelled"),
     revolutConnected(),
   ]);
   const byId = new Map(
@@ -80,11 +96,44 @@ export default async function AdminHomePage() {
     stripeConfigured: stripeConfigured(),
     stripeWebhookConfigured: stripeWebhookConfigured(),
   });
+  const remainingDue = ((balances || []) as Pick<CrmBalance, "balance" | "currency">[]).reduce(
+    (sum, row) => sum + Math.max(0, -Number(row.balance) || 0),
+    0
+  );
+  const pipelineVolume = ((bookings || []) as CrmBooking[]).reduce(
+    (sum, row) => sum + (Number(row.total_amount) || 0),
+    0
+  );
+  const staffFirst = (staff.full_name || "l’agence").split(" ")[0];
   const kpis = [
-    { label: "Clients", value: customersTotal, href: "/admin/clients" },
-    { label: "Réservations", value: bookingCount ?? 0, href: "/admin/reservations" },
-    { label: "Publiées", value: publishedCount ?? 0, href: "/admin/reservations" },
-    { label: "Pièces à échéance", value: (docs || []).length, href: "/admin/clients" },
+    {
+      label: "Portefeuille",
+      value: String(bookingCount ?? 0),
+      hint: `${formatMoney(pipelineVolume)} à venir`,
+      href: "/admin/reservations",
+      tone: "ivory" as const,
+    },
+    {
+      label: "Pièces à échéance",
+      value: String((docs || []).length),
+      hint: "Passeports et pièces < 90 jours",
+      href: "/admin/clients",
+      tone: "warn" as const,
+    },
+    {
+      label: "Soldes à encaisser",
+      value: formatMoney(remainingDue),
+      hint: "Encours négatifs",
+      href: "/admin/transactions",
+      tone: "gold" as const,
+    },
+    {
+      label: "Départs < 7 jours",
+      value: String(departSoonCount ?? 0),
+      hint: "Séjours non annulés",
+      href: "/admin/reservations",
+      tone: "navy" as const,
+    },
   ];
 
   return (
@@ -92,8 +141,8 @@ export default async function AdminHomePage() {
       <div>
         <PageEyebrow>Espace agence</PageEyebrow>
         <PageTitle
-          title="Pilotage"
-          subtitle={`Connecté en tant que ${staff.full_name || "agent"} · ${staff.role}`}
+          title={`Bonjour ${staffFirst}`}
+          subtitle={`${staff.full_name || "Agent"} · ${staff.role} · ${formatDateFr(today)}`}
           actions={
             <Link
               href="/admin/reservations"
@@ -110,13 +159,26 @@ export default async function AdminHomePage() {
           <Link
             key={kpi.label}
             href={kpi.href}
-            className="admin-af-card rounded-2xl px-5 py-4 transition hover:border-[var(--admin-gold)]/50"
+            className={`rounded-2xl px-5 py-4 transition ${
+              kpi.tone === "navy"
+                ? "bg-[var(--admin-navy)] text-white shadow-sm"
+                : kpi.tone === "gold"
+                  ? "border border-[var(--admin-gold)]/40 bg-[#f8f4ed] text-[var(--admin-navy)]"
+                  : kpi.tone === "warn"
+                    ? "border border-[var(--admin-gold)]/50 bg-white text-[var(--admin-navy)]"
+                    : "admin-af-card text-[var(--admin-navy)]"
+            }`}
           >
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+            <p
+              className={`text-[10px] font-bold uppercase tracking-[0.14em] ${
+                kpi.tone === "navy" ? "text-[var(--admin-gold)]" : "text-[#9e7e51]"
+              }`}
+            >
               {kpi.label}
             </p>
-            <p className="mt-2 font-display text-3xl font-bold text-[var(--admin-navy)]">
-              {kpi.value}
+            <p className="mt-2 font-display text-3xl font-bold">{kpi.value}</p>
+            <p className={`mt-1 text-xs ${kpi.tone === "navy" ? "text-white/70" : "text-muted"}`}>
+              {kpi.hint}
             </p>
           </Link>
         ))}
@@ -141,8 +203,12 @@ export default async function AdminHomePage() {
                 className="flex flex-col gap-2 px-5 py-3.5 transition hover:bg-[var(--admin-sky)]/40 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9e7e51]">
+                    {b.reference}
+                    {jMinusLabel(b.start_date) ? ` · ${jMinusLabel(b.start_date)}` : ""}
+                  </p>
                   <p className="font-semibold text-[var(--admin-navy)]">
-                    {b.reference} · {b.title}
+                    {b.title}
                   </p>
                   <p className="text-xs text-muted">
                     {byId.get(b.customer_id) || "Client"} · {formatDateFr(b.start_date)}
