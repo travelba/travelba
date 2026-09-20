@@ -24,7 +24,7 @@ import { mergeFileExtracts, type FileExtractResult } from "@/lib/crm/ingest-merg
 import { redactIngestText } from "@/lib/crm/ingest-redact";
 import {
   aiGatewayConfigured,
-  bookingExtractSchema,
+  bookingExtractLlmSchema,
   emptyBookingExtract,
   guessIngestMime,
   openaiApiKey,
@@ -140,7 +140,7 @@ async function generateExtract(content: UserPart[], useGateway: boolean) {
   return generateText({
     model: useGateway ? "openai/gpt-4o" : ingestModel(),
     output: Output.object({
-      schema: bookingExtractSchema,
+      schema: bookingExtractLlmSchema,
       name: "booking",
       description: "Dossier de réservation extrait des documents",
     }),
@@ -283,7 +283,7 @@ async function llmExtract(opts: {
     if (!result.output) {
       throw new Error("Lecture incomplète. Réessayez avec des fichiers plus lisibles.");
     }
-    return finalizeExtract(result.output, opts.texts, opts.name);
+    return finalizeExtract(result.output as BookingExtract, opts.texts, opts.name);
   };
 
   try {
@@ -423,7 +423,7 @@ Voici les cartes déjà extraites (JSON compact). Complète UNIQUEMENT les champ
     const key = openaiApiKey();
     const result = await generateExtract(content, !key);
     if (!result.output) return extract;
-    const next = sanitizeExtractedPrices(result.output);
+    const next = sanitizeExtractedPrices(result.output as BookingExtract);
     return {
       ...extract,
       title: extract.title || next.title,

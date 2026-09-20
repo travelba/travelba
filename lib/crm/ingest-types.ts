@@ -4,93 +4,174 @@ import { redactIngestValue } from "./ingest-redact";
 import { mergeExtractItems } from "./item-match";
 import { BOOKING_ITEM_KINDS } from "./types";
 
-const nullableString = z.string().nullable().optional();
-const nullableNumber = z.number().nullable().optional();
+const looseString = z.string().nullable().optional();
+const looseNumber = z.number().nullable().optional();
 
-const roomSchema = z
+const roomSchemaLoose = z
   .object({
-    room: nullableString,
-    type: nullableString,
-    guests: nullableString,
-    confirmation_ref: nullableString,
+    room: looseString,
+    type: looseString,
+    guests: looseString,
+    confirmation_ref: looseString,
   })
   .optional();
 
-const detailsSchema = z
+const detailsSchemaLoose = z
   .object({
-    airline: nullableString,
-    flight_number: nullableString,
-    pnr: nullableString,
-    from: nullableString,
-    to: nullableString,
-    city_from: nullableString,
-    city_to: nullableString,
-    cabin: nullableString,
-    baggage: nullableString,
-    terminal: nullableString,
-    seat: nullableString,
-    hotel_name: nullableString,
-    room: nullableString,
-    city: nullableString,
-    address: nullableString,
-    board: nullableString,
-    occupancy: nullableString,
-    guests: nullableString,
-    special_requests: nullableString,
+    airline: looseString,
+    flight_number: looseString,
+    pnr: looseString,
+    from: looseString,
+    to: looseString,
+    city_from: looseString,
+    city_to: looseString,
+    cabin: looseString,
+    baggage: looseString,
+    terminal: looseString,
+    seat: looseString,
+    hotel_name: looseString,
+    room: looseString,
+    city: looseString,
+    address: looseString,
+    board: looseString,
+    occupancy: looseString,
+    guests: looseString,
+    special_requests: looseString,
     included: z.array(z.string()).optional(),
-    rooms: z.array(roomSchema.unwrap()).optional(),
-    pickup: nullableString,
-    dropoff: nullableString,
-    pickup_note: nullableString,
-    vehicle: nullableString,
-    driver: nullableString,
-    policy_number: nullableString,
-    meeting_point: nullableString,
-    duration: nullableString,
-    notes: nullableString,
-    source_file_name: nullableString,
+    rooms: z.array(roomSchemaLoose.unwrap()).optional(),
+    pickup: looseString,
+    dropoff: looseString,
+    pickup_note: looseString,
+    vehicle: looseString,
+    driver: looseString,
+    policy_number: looseString,
+    meeting_point: looseString,
+    duration: looseString,
+    notes: looseString,
+    source_file_name: looseString,
     needs_review: z.boolean().optional(),
   })
   .optional()
   .default({});
 
+/** Validation souple (saisie agent / save). */
 export const bookingExtractSchema = z.object({
   document_status: z.enum(["confirmed", "quote", "identity"]).nullable().optional(),
-  title: nullableString,
-  destination: nullableString,
-  start_date: nullableString,
-  end_date: nullableString,
+  title: looseString,
+  destination: looseString,
+  start_date: looseString,
+  end_date: looseString,
   currency: z.string().nullable().optional().default("EUR"),
-  total_amount: nullableNumber,
-  notes_client: nullableString,
-  customer_email: nullableString,
-  customer_first_name: nullableString,
-  customer_last_name: nullableString,
+  total_amount: looseNumber,
+  notes_client: looseString,
+  customer_email: looseString,
+  customer_first_name: looseString,
+  customer_last_name: looseString,
   items: z
     .array(
       z.object({
         kind: z.enum(BOOKING_ITEM_KINDS).default("fee"),
         title: z.string(),
-        supplier: nullableString,
-        confirmation_ref: nullableString,
-        start_at: nullableString,
-        end_at: nullableString,
-        amount: nullableNumber,
-        details: detailsSchema,
+        supplier: looseString,
+        confirmation_ref: looseString,
+        start_at: looseString,
+        end_at: looseString,
+        amount: looseNumber,
+        details: detailsSchemaLoose,
       })
     )
     .default([]),
   travelers: z
     .array(
       z.object({
-        first_name: nullableString,
-        last_name: nullableString,
+        first_name: looseString,
+        last_name: looseString,
       })
     )
     .default([]),
 });
 
 export type BookingExtract = z.infer<typeof bookingExtractSchema>;
+
+// OpenAI structured outputs: every property must be in `required`.
+const strictString = z.string().nullable();
+const strictNumber = z.number().nullable();
+const strictBoolean = z.boolean().nullable();
+
+const roomSchemaStrict = z.object({
+  room: strictString,
+  type: strictString,
+  guests: strictString,
+  confirmation_ref: strictString,
+});
+
+const detailsSchemaStrict = z.object({
+  airline: strictString,
+  flight_number: strictString,
+  pnr: strictString,
+  from: strictString,
+  to: strictString,
+  city_from: strictString,
+  city_to: strictString,
+  cabin: strictString,
+  baggage: strictString,
+  terminal: strictString,
+  seat: strictString,
+  hotel_name: strictString,
+  room: strictString,
+  city: strictString,
+  address: strictString,
+  board: strictString,
+  occupancy: strictString,
+  guests: strictString,
+  special_requests: strictString,
+  included: z.array(z.string()),
+  rooms: z.array(roomSchemaStrict),
+  pickup: strictString,
+  dropoff: strictString,
+  pickup_note: strictString,
+  vehicle: strictString,
+  driver: strictString,
+  policy_number: strictString,
+  meeting_point: strictString,
+  duration: strictString,
+  notes: strictString,
+  source_file_name: strictString,
+  needs_review: strictBoolean,
+});
+
+/** Schéma strict pour Output.object (OpenAI). */
+export const bookingExtractLlmSchema = z.object({
+  document_status: z.enum(["confirmed", "quote", "identity"]).nullable(),
+  title: strictString,
+  destination: strictString,
+  start_date: strictString,
+  end_date: strictString,
+  currency: strictString,
+  total_amount: strictNumber,
+  notes_client: strictString,
+  customer_email: strictString,
+  customer_first_name: strictString,
+  customer_last_name: strictString,
+  items: z.array(
+    z.object({
+      kind: z.enum(BOOKING_ITEM_KINDS),
+      title: z.string(),
+      supplier: strictString,
+      confirmation_ref: strictString,
+      start_at: strictString,
+      end_at: strictString,
+      amount: strictNumber,
+      details: detailsSchemaStrict,
+    })
+  ),
+  travelers: z.array(
+    z.object({
+      first_name: strictString,
+      last_name: strictString,
+    })
+  ),
+});
 
 export const MAX_INGEST_BYTES = 25 * 1024 * 1024;
 export const MAX_INGEST_FILES = 30;
@@ -164,6 +245,7 @@ export function sanitizeExtractedPrices(extract: BookingExtract): BookingExtract
   );
   const next: BookingExtract = {
     ...extract,
+    currency: extract.currency || "EUR",
     total_amount: null,
     items: sortItemsByOrder(merged),
   };
