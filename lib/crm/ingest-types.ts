@@ -49,7 +49,7 @@ const detailsSchemaLoose = z
     duration: looseString,
     notes: looseString,
     source_file_name: looseString,
-    needs_review: z.boolean().optional(),
+    needs_review: z.boolean().nullable().optional(),
   })
   .optional()
   .default({});
