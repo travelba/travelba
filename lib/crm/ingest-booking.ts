@@ -528,7 +528,17 @@ export async function applyExtractToBooking(opts: {
 
 export function parseExtractPayload(raw: unknown): BookingExtract {
   const parsed = bookingExtractSchema.safeParse(raw);
-  if (!parsed.success) throw new Error("Données extraites invalides");
+  if (!parsed.success) {
+    console.error(
+      "[ingest] extract_invalid",
+      parsed.error.issues.map((issue) => ({
+        path: issue.path.join("."),
+        code: issue.code,
+        message: issue.message,
+      }))
+    );
+    throw new Error("Données extraites invalides");
+  }
   return sanitizeExtractedPrices(parsed.data);
 }
 
