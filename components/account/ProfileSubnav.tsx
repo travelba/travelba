@@ -14,7 +14,10 @@ export function ProfileSubnav() {
   const pathname = usePathname();
 
   return (
-    <nav className="mt-5 flex flex-wrap gap-2">
+    <nav
+      className="flex rounded-full bg-[#efeeeb] p-1 shadow-[0_1px_2px_rgba(11,25,44,0.04)]"
+      aria-label="Sections du compte"
+    >
       {LINKS.map((link) => {
         const active = link.exact
           ? pathname === link.href
@@ -23,10 +26,10 @@ export function ProfileSubnav() {
           <Link
             key={link.href}
             href={link.href}
-            className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
+            className={`flex-1 rounded-full px-2 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.04em] transition ${
               active
-                ? "bg-[var(--admin-navy)] text-[var(--admin-gold-soft)]"
-                : "bg-white text-[var(--admin-navy)] ring-1 ring-[#e5e3dc] hover:bg-[var(--surface-2)]"
+                ? "bg-[var(--admin-navy)] text-white shadow-sm"
+                : "text-[#5a5c60] hover:text-[var(--admin-navy)]"
             }`}
           >
             {link.label}

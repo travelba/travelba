@@ -19,7 +19,7 @@ export default async function DocumentsPage() {
   ]);
 
   return (
-    <div className="space-y-4 px-5 pb-10">
+    <div className="space-y-4 pb-6">
       <ProfileSubnav />
       <div>
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { identityOverwriteWarning } from "./identity";
 import { loyaltyFromCustomer, normalizeLoyaltyMap, normalizeLoyaltyNumber } from "./loyalty";
-import { formatEncours, formatMoney } from "./money";
+import { formatEncours, formatMoney, jMinusLabel, postedLedgerTotals } from "./money";
 import { needsAiCover, unsplashKeywordMatch } from "./covers";
 import { vaultDocumentsForPerson } from "./trip-documents";
 import type { CrmTravelDocument } from "./types";
@@ -31,6 +31,32 @@ test("loyalty map keeps six programs", () => {
 test("encours shows the signed amount", () => {
   assert.equal(formatEncours(1200), `Encours ${formatMoney(1200)}`);
   assert.equal(formatEncours(-2400), `Encours ${formatMoney(-2400)}`);
+});
+
+test("J-minus uses the real start date", () => {
+  assert.equal(jMinusLabel(null), null);
+  const ymd = (offset: number) => {
+    const d = new Date();
+    d.setHours(12, 0, 0, 0);
+    d.setDate(d.getDate() + offset);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+  assert.equal(jMinusLabel(ymd(0)), "Aujourd’hui");
+  assert.equal(jMinusLabel(ymd(18)), "J - 18");
+  assert.equal(jMinusLabel(ymd(-2)), null);
+});
+
+test("ledger totals stay honest from posted movements", () => {
+  const { credits, debits, settledPct } = postedLedgerTotals([
+    { direction: "credit", amount: "9500" },
+    { direction: "debit", amount: 14850 },
+  ]);
+  assert.equal(credits, 9500);
+  assert.equal(debits, 14850);
+  assert.equal(settledPct, 64);
 });
 
 test("Unsplash keyword match skips AI cover", () => {

@@ -2,30 +2,70 @@
   "projectId": "10475551423344387411",
   "title": "Portail Client Agence Voyage",
   "url": "https://stitch.withgoogle.com/projects/10475551423344387411",
+  "exportedAt": "2026-09-20T16:51:14.769Z",
   "screens": [
     {
       "id": "1479bcbe830d4a78a670af62d2af4656",
       "slug": "accueil",
       "title": "Accueil Client",
-      "files": ["screen.html"]
+      "device": "MOBILE",
+      "files": ["screen.html", "screen.png"]
     },
     {
       "id": "a8c60eaa789e4fde82580c7156ad569d",
       "slug": "reservations",
       "title": "Mes Réservations",
-      "files": ["screen.html"]
+      "device": "MOBILE",
+      "files": ["screen.html", "screen.png"]
     },
     {
       "id": "26598459c59c407b8f601be374005cf1",
       "slug": "transactions",
       "title": "Transactions & Budget",
-      "files": ["screen.html"]
+      "device": "MOBILE",
+      "files": ["screen.html", "screen.png"]
     },
     {
       "id": "82a4959a0f0b436fadf034bea652c8e6",
       "slug": "compte",
       "title": "Mon Compte & Documents",
-      "files": ["screen.html"]
+      "device": "MOBILE",
+      "files": ["screen.html", "screen.png"]
+    },
+    {
+      "id": "439d30444c774ddebdfd5a9b81100aba",
+      "slug": "admin/dashboard",
+      "title": "Dashboard Agence & Pilotage",
+      "device": "DESKTOP",
+      "files": ["screen.html", "screen.png"]
+    },
+    {
+      "id": "fea54e6f80df4d16ba99340210a5686c",
+      "slug": "admin/clients",
+      "title": "Clients & Fiche Voyageur",
+      "device": "DESKTOP",
+      "files": ["screen.png"]
+    },
+    {
+      "id": "6f783ff9f98743649ec57b9e600a7c23",
+      "slug": "admin/planning",
+      "title": "Planning & Gestion Réservations",
+      "device": "DESKTOP",
+      "files": ["screen.html", "screen.png"]
+    },
+    {
+      "id": "647a2e5c6785433281a3482b6aa6e35b",
+      "slug": "admin/tresorerie",
+      "title": "Trésorerie & Dépenses Dossiers",
+      "device": "DESKTOP",
+      "files": ["screen.html", "screen.png"]
+    },
+    {
+      "id": "b80fd53a7de34ffa8480e5934e9db3ea",
+      "slug": "admin/validation",
+      "title": "Validation Documents & Passeports",
+      "device": "DESKTOP",
+      "files": ["screen.html", "screen.png"]
     }
   ]
 }

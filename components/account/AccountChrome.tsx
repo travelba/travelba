@@ -47,9 +47,9 @@ export function AccountChrome({
   return (
     <div className="account-app admin-af min-h-screen">
       <header className="sticky top-0 z-40 border-b border-[#e5e3dc] bg-[rgba(250,249,246,0.9)] shadow-[0_1px_8px_rgba(11,25,44,0.04)] backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-[480px] items-center justify-between gap-3 px-4 sm:px-6">
+        <div className="mx-auto flex h-16 max-w-[480px] items-center justify-between gap-3 px-4 sm:px-5">
           <BrandMark href="/mon-compte" subtitle={title} compact />
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             <a
               href={`https://wa.me/${siteConfig.whatsappNumber}`}
               target="_blank"
@@ -62,10 +62,11 @@ export function AccountChrome({
             </a>
             <Link
               href="/mon-compte/profil"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[11px] font-bold text-white ring-1 ring-[var(--admin-gold)]/40"
+              className="relative inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[11px] font-bold text-white ring-1 ring-[var(--admin-gold)]/40"
               aria-label={`Compte ${customerName}`}
             >
               {initials}
+              <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-[var(--admin-gold)] ring-2 ring-[var(--background)]" />
             </Link>
           </div>
         </div>
@@ -99,7 +100,7 @@ export function AccountChrome({
         </nav>
       </header>
 
-      <main className="mx-auto max-w-[480px] px-4 pb-28 pt-5 sm:px-6">
+      <main className="mx-auto max-w-[480px] px-4 pb-28 pt-4 sm:px-5">
         {phoneWall ? <PhoneWallBanner href="/mon-compte/profil" /> : children}
       </main>
 
@@ -114,8 +115,8 @@ export function AccountChrome({
               <Link
                 key={tab.href}
                 href={tab.href}
-                className={`flex min-w-[64px] flex-col items-center justify-center gap-0.5 text-[10px] font-bold tracking-tight transition ${
-                  active ? "text-[var(--admin-navy)]" : "text-[#5a5c60]"
+                className={`flex h-12 min-w-[64px] flex-col items-center justify-center gap-0.5 text-[10px] font-bold tracking-tight transition ${
+                  active ? "text-[var(--admin-navy)]" : "text-[#5a5c60] hover:text-[var(--admin-navy)]"
                 }`}
               >
                 <Icon

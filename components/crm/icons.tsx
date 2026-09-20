@@ -1,9 +1,9 @@
 import type { LucideIcon } from "lucide-react";
 import {
+  ArrowDownLeft,
   ArrowLeftRight,
   ArrowRight,
   BadgeCheck,
-  Bell,
   BookOpen,
   Bus,
   Calendar,
@@ -13,6 +13,7 @@ import {
   File,
   FileText,
   Headset,
+  History,
   Hotel,
   IdCard,
   Image as ImageIcon,
@@ -37,6 +38,7 @@ import {
   TrainFront,
   User,
   Users,
+  Wallet,
 } from "lucide-react";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -54,6 +56,10 @@ const ICONS: Record<string, LucideIcon> = {
   hotel: Hotel,
   airplane_ticket: Ticket,
   support_agent: Headset,
+  history_edu: History,
+  account_balance_wallet: Wallet,
+  south_west: ArrowDownLeft,
+  verified_user: ShieldCheck,
   verified: BadgeCheck,
   flight: Plane,
   description: FileText,
@@ -65,7 +71,6 @@ const ICONS: Record<string, LucideIcon> = {
   account_balance: Landmark,
   sync_alt: ArrowLeftRight,
   search: Search,
-  notifications: Bell,
   person: User,
   credit_card: CreditCard,
   add: Plus,

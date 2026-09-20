@@ -32,21 +32,39 @@ export default async function ProfilPage() {
 
   return (
     <div className="space-y-5">
-      <section className="overflow-hidden rounded-2xl border border-[#e5e3dc] bg-white p-5">
-        <div className="flex items-start gap-3">
-          <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[var(--admin-navy)] text-base font-bold text-white ring-4 ring-white">
+      <section className="relative overflow-hidden rounded-xl border border-[#e3e2e0]/70 bg-white p-4 shadow-[0_8px_24px_-4px_rgba(11,25,44,0.08)]">
+        <div className="pointer-events-none absolute -right-8 -top-8 h-36 w-36 rounded-full bg-[var(--admin-gold)]/15 blur-2xl" />
+        <div className="pointer-events-none absolute -bottom-10 -left-10 h-32 w-32 rounded-full bg-[var(--admin-navy)]/5 blur-xl" />
+        <div className="relative flex items-center gap-4">
+          <span className="inline-flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[var(--admin-navy)] text-base font-bold text-white ring-2 ring-[var(--admin-gold)]/40">
             {initials}
           </span>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="font-display text-xl font-extrabold text-[var(--admin-navy)]">
-                {name}
-              </h1>
-            </div>
-            <p className="mt-0.5 truncate text-sm text-muted">{customer.email}</p>
-            <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
-              N° client · {customer.id.slice(0, 8).toUpperCase()}
-            </p>
+            <h1 className="truncate font-display text-xl font-semibold text-[var(--admin-navy)]">
+              {name}
+            </h1>
+            <p className="mt-0.5 truncate text-[13px] text-muted">{customer.email}</p>
+            {customer.phone ? (
+              <p className="text-[13px] text-muted">{customer.phone}</p>
+            ) : null}
+          </div>
+        </div>
+        <div className="relative mt-4 grid grid-cols-2 gap-2">
+          <div className="flex flex-col rounded-lg border border-[#e3e2e0]/60 bg-[#f4f3f0] p-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-muted">
+              Téléphone
+            </span>
+            <span className="mt-0.5 text-[16px] font-semibold text-[var(--admin-navy)]">
+              {customer.phone || "À renseigner"}
+            </span>
+          </div>
+          <div className="flex flex-col rounded-lg border border-[#e3e2e0]/60 bg-[#f4f3f0] p-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-muted">
+              N° client
+            </span>
+            <span className="mt-0.5 text-[16px] font-semibold text-[#997b52]">
+              {customer.id.slice(0, 8).toUpperCase()}
+            </span>
           </div>
         </div>
       </section>
@@ -55,15 +73,13 @@ export default async function ProfilPage() {
 
       {!customer.phone ? <PhoneWallBanner /> : null}
 
-      <section className="rounded-[1.35rem] bg-white p-1 shadow-[0_8px_24px_rgba(15,23,42,0.05)] sm:p-2">
-        <div className="px-4 pt-4 sm:px-5">
-          <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">
-            Informations personnelles
-          </h2>
-          <p className="mt-1 text-sm text-muted">
-            Coordonnées et préférences — espace {siteConfig.shortName}.
-          </p>
-        </div>
+      <section className="rounded-xl border border-[#e3e2e0]/70 bg-white p-4 shadow-[0_8px_24px_-4px_rgba(11,25,44,0.05)]">
+        <h2 className="font-display text-base font-semibold text-[var(--admin-navy)]">
+          Informations personnelles
+        </h2>
+        <p className="mt-1 text-sm text-muted">
+          Coordonnées et préférences — espace {siteConfig.shortName}.
+        </p>
         <ProfileForm customer={customer} documents={(documents || []) as CrmTravelDocument[]} />
       </section>
 

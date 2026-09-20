@@ -56,12 +56,30 @@ export default async function AdminClientDetailPage({ params }: Props) {
       <div className="flex flex-wrap gap-3">
         {((balances || []) as CrmBalance[]).map((b) => (
           <div key={b.currency} className="admin-af-card rounded-2xl px-4 py-3">
-            <p className="text-xs text-muted">Encours {b.currency}</p>
-            <p className="font-display text-xl font-bold">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">
+              Encours {b.currency}
+            </p>
+            <p className="font-display text-xl font-bold text-[var(--admin-navy)]">
               {formatMoney(Number(b.balance), b.currency)}
             </p>
           </div>
         ))}
+        <div className="admin-af-card rounded-2xl px-4 py-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Dossiers</p>
+          <p className="font-display text-xl font-bold text-[var(--admin-navy)]">{bookingRows.length}</p>
+        </div>
+        <div className="admin-af-card rounded-2xl px-4 py-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Voyageurs</p>
+          <p className="font-display text-xl font-bold text-[var(--admin-navy)]">
+            {1 + ((companions || []) as CrmCompanion[]).length}
+          </p>
+        </div>
+        <div className="admin-af-card rounded-2xl px-4 py-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Pièces</p>
+          <p className="font-display text-xl font-bold text-[var(--admin-navy)]">
+            {((documents || []) as CrmTravelDocument[]).length}
+          </p>
+        </div>
       </div>
       <CustomerEditor
         customer={c}

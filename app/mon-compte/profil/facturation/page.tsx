@@ -14,7 +14,7 @@ export default async function FacturationPage() {
   if (!customer) redirect("/connexion");
 
   return (
-    <div className="space-y-4 px-5 pb-10">
+    <div className="space-y-4 pb-6">
       <ProfileSubnav />
       <div>
         <h1 className="font-display text-xl font-semibold text-[var(--admin-navy-deep)]">
