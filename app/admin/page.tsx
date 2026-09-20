@@ -80,13 +80,19 @@ export default async function AdminHomePage() {
     stripeConfigured: stripeConfigured(),
     stripeWebhookConfigured: stripeWebhookConfigured(),
   });
+  const kpis = [
+    { label: "Clients", value: customersTotal, href: "/admin/clients" },
+    { label: "Réservations", value: bookingCount ?? 0, href: "/admin/reservations" },
+    { label: "Publiées", value: publishedCount ?? 0, href: "/admin/reservations" },
+    { label: "Pièces à échéance", value: (docs || []).length, href: "/admin/clients" },
+  ];
 
   return (
     <div className="space-y-6">
       <div>
         <PageEyebrow>Espace agence</PageEyebrow>
         <PageTitle
-          title="Vue d’ensemble"
+          title="Pilotage"
           subtitle={`Connecté en tant que ${staff.full_name || "agent"} · ${staff.role}`}
           actions={
             <Link
@@ -98,6 +104,23 @@ export default async function AdminHomePage() {
           }
         />
       </div>
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {kpis.map((kpi) => (
+          <Link
+            key={kpi.label}
+            href={kpi.href}
+            className="admin-af-card rounded-2xl px-5 py-4 transition hover:border-[var(--admin-gold)]/50"
+          >
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+              {kpi.label}
+            </p>
+            <p className="mt-2 font-display text-3xl font-bold text-[var(--admin-navy)]">
+              {kpi.value}
+            </p>
+          </Link>
+        ))}
+      </section>
 
       <AdminLaunchStatus items={launchItems} />
 

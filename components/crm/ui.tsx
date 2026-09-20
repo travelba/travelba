@@ -21,8 +21,8 @@ export function BrandMark({
         </span>
         {subtitle ? (
           <span
-            className={`truncate font-display font-semibold text-[var(--admin-navy)] ${
-              compact ? "text-base" : "text-lg"
+            className={`truncate font-display font-semibold leading-none text-[var(--admin-navy)] ${
+              compact ? "text-[15px]" : "text-lg"
             }`}
           >
             {subtitle}
@@ -131,24 +131,46 @@ export function PhoneWallBanner({ href }: { href?: string }) {
 
 export function ConciergeBanner({
   href,
-  label = "Écrire à l’agence",
+  label = "WhatsApp",
 }: {
   href?: string;
   label?: string;
 }) {
   const wa = href || `https://wa.me/${siteConfig.whatsappNumber}`;
   return (
-    <aside className="flex flex-col gap-3 rounded-2xl border border-[#e5e3dc] bg-white p-4">
-      <p className="font-display text-base font-semibold text-[var(--admin-navy)]">L’agence</p>
-      <p className="text-sm text-muted">Une question ? Écrivez-nous sur WhatsApp.</p>
-      <a
-        href={wa}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--admin-navy)] text-sm font-semibold text-white"
-      >
-        {label}
-      </a>
+    <aside className="flex flex-col gap-3 rounded-2xl border border-[#e5e3dc] bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">
+          L’agence
+        </span>
+      </div>
+      <div className="flex items-center gap-3">
+        <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[var(--admin-navy)] font-display text-[11px] font-extrabold tracking-wider text-[var(--admin-gold)] ring-2 ring-[var(--admin-gold)]/30">
+          TBA
+        </span>
+        <div className="min-w-0">
+          <p className="truncate font-display text-base font-semibold text-[var(--admin-navy)]">
+            Travel Business Agency
+          </p>
+          <p className="text-sm text-muted">Une question sur le dossier ?</p>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <a
+          href={`tel:+${siteConfig.whatsappNumber}`}
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#e5e3dc] bg-[var(--surface-2)] text-xs font-semibold uppercase tracking-[0.06em] text-[var(--admin-navy)]"
+        >
+          Appeler
+        </a>
+        <a
+          href={wa}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[var(--admin-navy)] text-xs font-semibold uppercase tracking-[0.06em] text-white"
+        >
+          {label}
+        </a>
+      </div>
     </aside>
   );
 }

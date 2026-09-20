@@ -46,6 +46,28 @@ export function daysUntil(date: string | null | undefined) {
   return Math.round((d.getTime() - today.getTime()) / 86400000);
 }
 
+export function jMinusLabel(date: string | null | undefined) {
+  const n = daysUntil(date);
+  if (n == null || n < 0) return null;
+  if (n === 0) return "Aujourd’hui";
+  return `J - ${n}`;
+}
+
+export function postedLedgerTotals(
+  rows: { direction: "debit" | "credit"; amount: number | string }[]
+) {
+  let credits = 0;
+  let debits = 0;
+  for (const row of rows) {
+    const n = Number(row.amount);
+    if (!Number.isFinite(n)) continue;
+    if (row.direction === "credit") credits += n;
+    else debits += n;
+  }
+  const settledPct = debits > 0 ? Math.min(100, Math.round((credits / debits) * 100)) : null;
+  return { credits, debits, settledPct };
+}
+
 function parseFrDate(value: string) {
   const d = new Date(value.length === 10 ? `${value}T12:00:00` : value);
   if (Number.isNaN(d.getTime())) return null;

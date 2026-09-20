@@ -33,6 +33,8 @@ Dock : Accueil / Réservations / Transactions / Mon Compte.
 
 Pages admin internes (clients, résas, ledger, Revolut) : mêmes tokens, pas de maquette dédiée.
 
+Les HTML dans `atelier/` sont le dernier export figé. Relancer `@google/stitch-sdk` + `STITCH_API_KEY` pour rafraîchir depuis le projet live. Porter **composition et tokens**, jamais le copy fictif (Privilège, cloche, 24/7, points club).
+
 ## Portage Next.js
 
 Tokens CRM : `.admin-af` (Sovereign) + `.account-app` (même palette, composition mobile).

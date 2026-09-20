@@ -3,13 +3,19 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
 import type { CrmBalance, CrmBookingDocument, CrmBookingItem } from "@/lib/crm/types";
-import { formatDateFr, formatEncours, isUpcomingBooking } from "@/lib/crm/money";
+import {
+  formatDateRangeShort,
+  formatEncours,
+  isUpcomingBooking,
+  jMinusLabel,
+} from "@/lib/crm/money";
 import { bookingCoverUrl } from "@/lib/crm/covers";
 import { loadVisibleCarnets } from "@/lib/crm/carnet-query";
 import { whatsappModifyHref } from "@/lib/crm/carnet";
 import { siteConfig } from "@/lib/site";
 import { CoverPhoto } from "@/components/crm/CoverPhoto";
 import { Icon } from "@/components/crm/icons";
+import { ConciergeBanner } from "@/components/crm/ui";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 
 export default async function AccountHomePage() {
@@ -56,14 +62,23 @@ export default async function AccountHomePage() {
     ? whatsappModifyHref(siteConfig.whatsappNumber, nextTrip.reference, nextTrip.destination)
     : whatsappHref;
   const cover = nextTrip ? bookingCoverUrl(nextTrip, 960) : null;
+  const countdown = nextTrip ? jMinusLabel(nextTrip.start_date) : null;
 
   return (
     <div className="space-y-4">
-      <section>
-        <h1 className="font-display text-[1.7rem] font-bold tracking-tight text-[var(--admin-navy)]">
+      <section className="flex flex-col gap-1">
+        <div className="flex items-center gap-2">
+          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[var(--admin-gold)] shadow-sm">
+            <Icon name="explore" className="h-4 w-4" />
+          </span>
+          <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">
+            {siteConfig.name} · Espace client
+          </span>
+        </div>
+        <h1 className="font-display text-[1.5rem] font-bold tracking-tight text-[var(--admin-navy)]">
           Bonjour {firstName}
         </h1>
-        <p className="mt-1 text-sm text-muted">
+        <p className="text-[13px] text-muted">
           {nextTrip
             ? "Votre itinéraire, préparé par l’agence."
             : "L’agence prépare le prochain départ dès que vous le souhaitez."}
@@ -85,10 +100,19 @@ export default async function AccountHomePage() {
           <CoverPhoto src={cover} alt={nextTrip.destination || nextTrip.title} priority />
           <div className="absolute inset-0 bg-gradient-to-t from-[var(--admin-navy)] via-[var(--admin-navy)]/70 to-black/25" />
           <div className="relative flex flex-col gap-4 p-5">
-            <div className="pt-10">
+            {countdown ? (
+              <div className="inline-flex w-fit items-center gap-1.5 rounded-full border border-[var(--admin-gold)]/30 bg-white/95 px-3 py-1 text-[12px] font-semibold text-[var(--admin-navy)] shadow-sm">
+                <Icon name="timer" className="h-[15px] w-[15px] text-[var(--admin-gold)]" />
+                <span className="font-bold">{countdown}</span>
+                {countdown.startsWith("J") ? (
+                  <span className="font-normal text-[#5a5c60]">avant l’envol</span>
+                ) : null}
+              </div>
+            ) : null}
+            <div className="pt-6">
               <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
                 <Icon name="flight_takeoff" className="h-[14px] w-[14px]" />
-                {formatDateFr(nextTrip.start_date)} — {formatDateFr(nextTrip.end_date)}
+                {formatDateRangeShort(nextTrip.start_date, nextTrip.end_date)}
               </p>
               <h2 className="mt-1 font-display text-2xl font-bold leading-tight">
                 {nextTrip.title || nextTrip.destination || "Prochain séjour"}
@@ -131,6 +155,70 @@ export default async function AccountHomePage() {
       >
         {nextTrip ? "Demander une modification" : "Écrire à l’agence"}
       </a>
+
+      <ConciergeBanner />
+
+      <section className="flex flex-col gap-3">
+        <h3 className="font-display text-xl font-semibold text-[var(--admin-navy)]">
+          Services & documents
+        </h3>
+        <div className="grid grid-cols-3 gap-2.5">
+          <Link
+            href={
+              nextTrip
+                ? `/mon-compte/reservations/${nextTrip.reference}`
+                : "/mon-compte/reservations"
+            }
+            className="flex h-28 flex-col justify-between rounded-2xl border border-[#e5e3dc] bg-white p-3 text-left shadow-[0_1px_2px_rgba(11,25,44,0.04)]"
+          >
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--admin-gold)]/30 bg-[#f8f4ed] text-[var(--admin-navy)]">
+              <Icon name="airplane_ticket" className="h-[18px] w-[18px]" />
+            </span>
+            <span>
+              <span className="block text-[12px] font-semibold leading-tight text-[var(--admin-navy)]">
+                Mes billets
+              </span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted">
+                {tripDocs.length ? `${tripDocs.length} fichier${tripDocs.length > 1 ? "s" : ""}` : "Carnet"}
+              </span>
+            </span>
+          </Link>
+          <Link
+            href="/mon-compte/profil/documents"
+            className="flex h-28 flex-col justify-between rounded-2xl border border-[#e5e3dc] bg-white p-3 text-left shadow-[0_1px_2px_rgba(11,25,44,0.04)]"
+          >
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--admin-gold)]/30 bg-[#f8f4ed] text-[#9e7e51]">
+              <Icon name="badge" className="h-[18px] w-[18px]" />
+            </span>
+            <span>
+              <span className="block text-[12px] font-semibold leading-tight text-[var(--admin-navy)]">
+                Pièces
+              </span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted">
+                Passeports
+              </span>
+            </span>
+          </Link>
+          <a
+            href={whatsappHref}
+            target="_blank"
+            rel="noreferrer"
+            className="flex h-28 flex-col justify-between rounded-2xl border border-[#e5e3dc] bg-white p-3 text-left shadow-[0_1px_2px_rgba(11,25,44,0.04)]"
+          >
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[var(--admin-gold)]">
+              <Icon name="support_agent" className="h-[18px] w-[18px]" />
+            </span>
+            <span>
+              <span className="block text-[12px] font-semibold leading-tight text-[var(--admin-navy)]">
+                Assistance
+              </span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#9e7e51]">
+                L’agence
+              </span>
+            </span>
+          </a>
+        </div>
+      </section>
 
       {nextTrip ? <CarnetItinerary booking={nextTrip} items={items} docs={tripDocs} /> : null}
     </div>

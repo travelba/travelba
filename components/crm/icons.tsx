@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
+  ArrowDownLeft,
   ArrowLeftRight,
   ArrowRight,
   BadgeCheck,
@@ -13,6 +14,7 @@ import {
   File,
   FileText,
   Headset,
+  History,
   Hotel,
   IdCard,
   Image as ImageIcon,
@@ -37,6 +39,7 @@ import {
   TrainFront,
   User,
   Users,
+  Wallet,
 } from "lucide-react";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -54,6 +57,10 @@ const ICONS: Record<string, LucideIcon> = {
   hotel: Hotel,
   airplane_ticket: Ticket,
   support_agent: Headset,
+  history_edu: History,
+  account_balance_wallet: Wallet,
+  south_west: ArrowDownLeft,
+  verified_user: ShieldCheck,
   verified: BadgeCheck,
   flight: Plane,
   description: FileText,

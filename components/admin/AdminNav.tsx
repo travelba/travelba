@@ -76,7 +76,7 @@ export function AdminNav({
       <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-white lg:hidden">
         <div className="flex items-center justify-between gap-3 px-4 py-3">
           <Link href="/admin" className="flex min-w-0 items-center gap-2">
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-[var(--admin-navy)] font-display text-[11px] font-extrabold tracking-wider text-[var(--admin-gold)]">
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[var(--admin-gold)]/30 bg-[var(--admin-navy)] font-display text-[11px] font-extrabold tracking-wider text-[var(--admin-gold)]">
               TBA
             </span>
             <span className="truncate font-display text-sm font-semibold text-[var(--admin-navy)]">
@@ -121,7 +121,7 @@ export function AdminNav({
       <aside className="z-50 hidden w-72 flex-col justify-between border-r border-[var(--border)] bg-white px-5 py-6 shadow-[0_1px_8px_rgba(0,0,0,0.04)] lg:fixed lg:left-0 lg:top-0 lg:flex lg:h-full lg:shrink-0">
         <div className="flex flex-col gap-6">
           <Link href="/admin" className="flex items-center gap-3 px-1">
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[var(--admin-navy)] font-display text-[11px] font-extrabold tracking-wider text-[var(--admin-gold)]">
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-[var(--admin-gold)]/30 bg-[var(--admin-navy)] font-display text-[11px] font-extrabold tracking-wider text-[var(--admin-gold)]">
               TBA
             </span>
             <span className="flex flex-col leading-tight">
@@ -154,7 +154,7 @@ export function AdminNav({
         </div>
       </aside>
 
-      <header className="sticky top-0 z-40 hidden h-20 items-center justify-between border-b border-[var(--border)] bg-[rgba(250,249,246,0.9)] px-8 shadow-[0_1px_8px_rgba(0,0,0,0.04)] backdrop-blur-xl lg:flex lg:pl-[calc(18rem+2rem)]">
+      <header className="sticky top-0 z-40 hidden h-20 items-center justify-between border-b border-[var(--border)] bg-[rgba(250,249,246,0.9)] px-8 shadow-[0_1px_8px_rgba(11,25,44,0.04)] backdrop-blur-xl lg:flex lg:pl-[calc(18rem+2rem)]">
         <form onSubmit={onSearch} className="relative w-full max-w-xl">
           <Icon
             name="search"
