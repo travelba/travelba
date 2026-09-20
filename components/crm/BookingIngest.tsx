@@ -305,14 +305,20 @@ export function BookingIngest({
           files: uploaded.map((slot) => ({
             path: slot.path,
             name: slot.file.name,
-            type: slot.file.type,
+            type: slot.file.type || "",
           })),
         }),
         signal: controller.signal,
       });
-      if (!res.ok && !res.body) {
-        const json = await res.json().catch(() => ({}));
-        throw new Error(json.error || "Lecture impossible");
+      if (!res.ok) {
+        const contentType = res.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          const json = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(json.error || "Lecture impossible");
+        }
+        if (!res.body) {
+          throw new Error("Lecture impossible");
+        }
       }
       let fatal: string | null = null;
       await readNdjson(res, (event) => {
