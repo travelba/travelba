@@ -1,7 +1,6 @@
 import "server-only";
 import { generateText, Output, APICallError } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
-import { z } from "zod";
 import { parseMrzFromOcr } from "./mrz-parse";
 import { emptyToNull, type ExtractedIdentity } from "./identity";
 import {
@@ -9,29 +8,11 @@ import {
   mergePassportIdentities,
 } from "./passport-extract";
 import { aiGatewayConfigured, openaiApiKey } from "./ingest-types";
+import { identityExtractSchema } from "./ocr-schema";
 import { trySharp } from "./sharp";
 
 const MAX_BYTES = 8 * 1024 * 1024;
 const VISION_TIMEOUT_MS = 45_000;
-
-const nullableString = z.string().nullable().optional();
-
-const identityExtractSchema = z.object({
-  doc_type: nullableString,
-  number: nullableString,
-  issuing_country: nullableString,
-  issued_on: nullableString,
-  expires_on: nullableString,
-  first_name: nullableString,
-  last_name: nullableString,
-  birth_date: nullableString,
-  place_of_birth: nullableString,
-  nationality: nullableString,
-  sex: nullableString,
-  authority: nullableString,
-  personal_number: nullableString,
-  mrz_text: nullableString,
-});
 
 const PROMPT = `Tu lis une photo de passeport, carte d’identité ou titre de voyage (zone visuelle + MRZ).
 Extrais TOUS les champs visibles. Ne jamais inventer : mettre null si absent ou illisible.
@@ -195,6 +176,17 @@ export async function scanTravelDocument(file: File): Promise<{
     }
     if (err instanceof Error && (err.message.startsWith("Lecture") || err.message.startsWith("Photo") || err.message.startsWith("Format"))) {
       throw err;
+    }
+    if (APICallError.isInstance(err) && err.statusCode === 400) {
+      const detail =
+        typeof err.data === "object" &&
+        err.data &&
+        "error" in err.data &&
+        typeof (err.data as { error?: { message?: string } }).error?.message === "string"
+          ? (err.data as { error: { message: string } }).error.message
+          : err.message;
+      console.error("[ocr-document] openai_schema_or_request", detail);
+      throw new Error("Lecture automatique indisponible temporairement. Réessayez dans un instant.");
     }
     throw new Error("Lecture du document impossible. Réessayez avec une photo plus nette du bas du document.");
   }
