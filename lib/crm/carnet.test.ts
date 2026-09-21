@@ -106,8 +106,12 @@ describe("carnet", () => {
     );
   });
 
-  it("prend la première ville pour la couverture", () => {
+  it("prend la ville d’arrivée, pas Paris", () => {
     assert.equal(coverQuery("Marrakech · Essaouira", "Voyage"), "Marrakech");
+    assert.equal(coverQuery("Paris · Marrakech", "Voyage"), "Marrakech");
+    assert.equal(coverQuery("CDG → RAK", "Vol"), "RAK");
+    assert.equal(coverQuery("Paris", "Week-end"), "Paris");
+    assert.equal(coverQuery("Nice, France", null), "Nice");
   });
 
   it("sert une couverture Unsplash légère", () => {
