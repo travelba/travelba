@@ -65,9 +65,9 @@ function uniqueCities(extract: BookingExtract): string[] {
   };
   for (const part of (extract.destination || "").split("·")) push(part);
   for (const item of extract.items || []) {
-    push(item.details?.city_from);
     push(item.details?.city_to);
     push(item.details?.city);
+    push(item.details?.city_from);
   }
   return cities;
 }

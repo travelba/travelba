@@ -63,6 +63,15 @@ test("Unsplash keyword match skips AI cover", () => {
   assert.ok(unsplashKeywordMatch({ destination: "Paris", title: "Week-end" }));
   assert.equal(needsAiCover({ destination: "Paris", title: "Week-end" }), false);
   assert.equal(needsAiCover({ destination: "Paris", title: "Week-end" }, true), true);
+  const marrakech = unsplashKeywordMatch({
+    destination: "Paris · Marrakech",
+    title: "Voyage",
+  });
+  assert.ok(marrakech);
+  assert.notEqual(
+    marrakech,
+    unsplashKeywordMatch({ destination: "Paris", title: "Week-end" })
+  );
   assert.equal(unsplashKeywordMatch({ destination: "Xyzzy", title: "Inconnu" }), null);
   assert.equal(needsAiCover({ destination: "Xyzzy", title: "Inconnu" }), true);
 });

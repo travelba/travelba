@@ -63,7 +63,7 @@ RLS : le client ne `select` que `visible_to_client`. Preview admin ≠ URL clien
 
 ## Couverture
 
-`coverQuery` = **première ville** de `destination` (avant `·`). Unsplash (`lib/crm/covers.ts`) puis IA si besoin. `<CoverPhoto>` img natif. En Puppeteer, Unsplash peut casser `networkidle0` — skill verify.
+`coverQuery` = **ville d’arrivée** : on ignore Paris / CDG / ORY s’il y a une autre ville (`Paris · Marrakech` → Marrakech). Unsplash (`lib/crm/covers.ts`) puis IA si besoin. `<CoverPhoto>` img natif, repli Unsplash si `/api/files` casse. En Puppeteer, Unsplash peut casser `networkidle0` — skill verify.
 
 ## Fichiers séjour
 

@@ -253,9 +253,28 @@ export function itemPriceLabel(item: CrmBookingItem, currency: string) {
   return formatMoney(Number(item.amount), currency);
 }
 
+/** Gares / aéroports de départ FR — jamais une couverture (le client part de Paris). */
+const ORIGIN_HUBS =
+  /^(paris|cdg|ory|lbg|bva|france|ile-de-france|île-de-france)$/i;
+
+function coverTokens(value: string) {
+  return value
+    .split(/\s*(?:·|\||\/|→|->|—|–)\s*/)
+    .map((part) => part.split(",")[0]?.trim())
+    .filter((part): part is string => Boolean(part));
+}
+
+function firstArrival(tokens: string[]) {
+  return tokens.find((token) => !ORIGIN_HUBS.test(token)) || "";
+}
+
+/** Ville d’arrivée pour la photo : on ignore Paris / CDG / ORY s’il y a une autre ville. */
 export function coverQuery(destination: string | null, title: string | null) {
-  const first = (destination || "").split(/[·,|/]/)[0].trim();
-  return first || `${destination || ""} ${title || ""}`.trim() || "voyage";
+  const destTokens = coverTokens(destination || "");
+  const fromDest = firstArrival(destTokens) || destTokens[0] || "";
+  if (fromDest) return fromDest;
+  const titleTokens = coverTokens(title || "");
+  return firstArrival(titleTokens) || titleTokens[0] || "voyage";
 }
 
 export function whatsappModifyHref(
