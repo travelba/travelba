@@ -26,6 +26,11 @@ import {
 import { assertStaffIngestPath, ingestBatchPrefix } from "@/lib/crm/ingest-storage";
 import { sortItemsByOrder } from "@/lib/crm/carnet";
 import { scheduleBookingCover } from "@/lib/crm/cover-generate";
+import {
+  companionNamesMatch,
+  holderNamesMatch,
+  normalizePersonName,
+} from "@/lib/crm/person-name";
 import { findMatchingItem } from "@/lib/crm/item-match";
 import {
   BOOKING_ITEM_KINDS,
@@ -94,29 +99,18 @@ export async function cleanupIngestBatch(staffUserId: string, batchId: string) {
   }
 }
 
-function normalizeName(value: string | null | undefined) {
-  return (value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z]/g, "");
-}
-
 export function matchCustomerId(customers: CrmCustomer[], extract: BookingExtract) {
   const email = extract.customer_email?.trim().toLowerCase();
   if (email) {
     const hit = customers.find((c) => c.email.toLowerCase() === email);
     if (hit) return hit.id;
   }
-  const last = normalizeName(extract.customer_last_name);
-  const first = normalizeName(extract.customer_first_name);
-  if (!last) return null;
-  const hits = customers.filter((c) => {
-    if (normalizeName(c.last_name) !== last) return false;
-    if (!first) return true;
-    const cf = normalizeName(c.first_name);
-    return cf === first || cf.startsWith(first) || first.startsWith(cf);
-  });
+  const hits = customers.filter((customer) =>
+    holderNamesMatch(customer, {
+      first_name: extract.customer_first_name ?? null,
+      last_name: extract.customer_last_name ?? null,
+    })
+  );
   return hits.length === 1 ? hits[0].id : null;
 }
 
@@ -125,20 +119,14 @@ function matchCompanion(
   first: string | null,
   last: string | null
 ) {
-  const f = normalizeName(first);
-  const l = normalizeName(last);
-  if (!l && !f) return null;
-  return (
-    companions.find(
-      (c) => normalizeName(c.last_name) === l && normalizeName(c.first_name) === f
-    ) || null
+  const hits = companions.filter((companion) =>
+    companionNamesMatch(companion, { first_name: first ?? null, last_name: last ?? null })
   );
+  return hits.length === 1 ? hits[0] : null;
 }
 
 function isHolder(customer: CrmCustomer, first: string | null, last: string | null) {
-  const f = normalizeName(first);
-  const l = normalizeName(last);
-  return Boolean(l) && normalizeName(customer.last_name) === l && (!f || normalizeName(customer.first_name) === f);
+  return holderNamesMatch(customer, { first_name: first, last_name: last });
 }
 
 const FORBIDDEN_DETAIL_KEY =
@@ -347,8 +335,8 @@ async function upsertItemsAndTravelers(
     if (!first && !last) continue;
     const dup = existingTravelers.some(
       (t) =>
-        normalizeName(t.first_name) === normalizeName(first) &&
-        normalizeName(t.last_name) === normalizeName(last)
+        normalizePersonName(t.first_name) === normalizePersonName(first) &&
+        normalizePersonName(t.last_name) === normalizePersonName(last)
     );
     if (dup) continue;
     const companion = matchCompanion(companions, first, last);

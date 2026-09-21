@@ -21,6 +21,7 @@ import {
 } from "@/lib/crm/carnet";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
+import { reconcileBookingTravelers } from "@/lib/crm/traveler-link";
 import { siteConfig } from "@/lib/site";
 import { CoverPhoto } from "@/components/crm/CoverPhoto";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
@@ -48,20 +49,25 @@ export default async function ReservationDetailPage({ params }: Props) {
   if (!booking) notFound();
   const b = booking as CrmBooking;
 
-  const [{ data: items }, { data: travelers }, { data: docs }, { data: identityDocs }] = await Promise.all([
-    supabase
-      .from("crm_booking_items")
-      .select("*")
-      .eq("booking_id", b.id)
-      .order("sort_order"),
-    supabase.from("crm_booking_travelers").select("*").eq("booking_id", b.id),
-    supabase
-      .from("crm_booking_documents")
-      .select("*")
-      .eq("booking_id", b.id)
-      .eq("visible_to_client", true),
-    supabase.from("crm_travel_documents").select("*").eq("customer_id", customer.id),
-  ]);
+  const [{ data: items }, { data: travelers }, { data: docs }, { data: identityDocs }, { data: companions }] =
+    await Promise.all([
+      supabase
+        .from("crm_booking_items")
+        .select("*")
+        .eq("booking_id", b.id)
+        .order("sort_order"),
+      supabase.from("crm_booking_travelers").select("*").eq("booking_id", b.id),
+      supabase
+        .from("crm_booking_documents")
+        .select("*")
+        .eq("booking_id", b.id)
+        .eq("visible_to_client", true),
+      supabase.from("crm_travel_documents").select("*").eq("customer_id", customer.id),
+      supabase
+        .from("crm_travel_companions")
+        .select("id, first_name, last_name")
+        .eq("customer_id", customer.id),
+    ]);
 
   const visibleItems = (items || []) as CrmBookingItem[];
   if (!carnetVisible(b, visibleItems)) notFound();
@@ -69,7 +75,11 @@ export default async function ReservationDetailPage({ params }: Props) {
   const insurances = visibleItems.filter((item) => item.kind === "insurance");
   const visibleDocs = (docs || []) as CrmBookingDocument[];
   const extraDocs = unlinkedDocuments(visibleDocs, visibleItems);
-  const party = (travelers || []) as CrmBookingTraveler[];
+  const party = await reconcileBookingTravelers({
+    travelers: (travelers || []) as CrmBookingTraveler[],
+    customer,
+    companions: companions || [],
+  });
   const coverage = tripDocCoverage(party, (identityDocs || []) as CrmTravelDocument[]);
   const missingPassports = coverage.total > 0 && coverage.ready < coverage.total;
   const modifyHref = whatsappModifyHref(

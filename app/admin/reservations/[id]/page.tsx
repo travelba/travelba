@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { BookingEditor } from "@/components/admin/BookingEditor";
 import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
+import { reconcileBookingTravelers } from "@/lib/crm/traveler-link";
 import type {
   CrmBooking,
   CrmBookingDocument,
@@ -46,6 +47,14 @@ export default async function AdminBookingPage({ params }: Props) {
     supabase.from("crm_customers").select("*").order("last_name"),
   ]);
   const allIdentity = (identityDocs || []) as CrmTravelDocument[];
+  const party = await reconcileBookingTravelers({
+    travelers: (travelers || []) as CrmBookingTraveler[],
+    customer: {
+      first_name: holder?.first_name || "",
+      last_name: holder?.last_name || "",
+    },
+    companions: (companions || []) as CrmCompanion[],
+  });
 
   return (
     <div>
@@ -55,7 +64,7 @@ export default async function AdminBookingPage({ params }: Props) {
         <BookingEditor
           booking={b}
           items={(items || []) as CrmBookingItem[]}
-          travelers={(travelers || []) as CrmBookingTraveler[]}
+          travelers={party}
           documents={(documents || []) as CrmBookingDocument[]}
           identityDocs={allIdentity}
           companions={(companions || []) as CrmCompanion[]}
