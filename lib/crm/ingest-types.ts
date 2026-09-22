@@ -2,7 +2,7 @@ import { z } from "zod";
 import { sortItemsByOrder } from "./carnet";
 import { redactIngestValue } from "./ingest-redact";
 import { mergeExtractItems } from "./item-match";
-import { BOOKING_ITEM_KINDS } from "./types";
+import { BOOKING_ITEM_KINDS, type BookingStatus } from "./types";
 
 const looseString = z.string().nullable().optional();
 const looseNumber = z.number().nullable().optional();
@@ -249,6 +249,62 @@ function asPositiveMoney(value: unknown): number | null {
   return Math.round(n * 100) / 100;
 }
 
+function textDetail(details: Record<string, unknown> | undefined, key: string) {
+  const value = details?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+/** Un montant PDF par fichier (max), sommé. L’agent peut écraser via total_amount (y compris 0). */
+export function sellingTotalFromExtract(extract: BookingExtract): number | null {
+  if (extract.total_amount != null && Number.isFinite(Number(extract.total_amount))) {
+    const n = Math.round(Number(extract.total_amount) * 100) / 100;
+    return n < 0 ? 0 : n;
+  }
+  const byKey = new Map<string, number>();
+  for (const item of extract.items || []) {
+    const amount = asPositiveMoney(item.details?.document_amount);
+    if (!amount) continue;
+    const file = String(item.details?.source_file_name || "")
+      .trim()
+      .toLowerCase();
+    const key = file
+      ? `file:${file}`
+      : `item:${item.kind}:${String(item.confirmation_ref || "").toLowerCase()}:${String(item.title || "").toLowerCase()}`;
+    const prev = byKey.get(key);
+    byKey.set(key, prev == null ? amount : Math.max(prev, amount));
+  }
+  if (!byKey.size) return null;
+  const sum = [...byKey.values()].reduce((a, b) => a + b, 0);
+  return Math.round(sum * 100) / 100;
+}
+
+export function bookingStatusFromExtract(
+  extract: BookingExtract,
+  fallback: BookingStatus
+): BookingStatus {
+  if (extract.document_status === "quote") return "quoted";
+  if (extract.document_status === "confirmed") return "confirmed";
+  return fallback;
+}
+
+/** Carte hôtel : title = nom d’établissement, ville dans details.city. */
+export function normalizeHotelExtractItem(
+  item: BookingExtract["items"][number]
+): BookingExtract["items"][number] {
+  if (item.kind !== "hotel") return item;
+  const details = { ...(item.details || {}) };
+  const hotelName = textDetail(details, "hotel_name");
+  const city = textDetail(details, "city");
+  const title = String(item.title || "").trim();
+  const name =
+    hotelName || (title && title.toLowerCase() !== city.toLowerCase() ? title : "");
+  if (name) {
+    if (!hotelName) details.hotel_name = name;
+    return { ...item, title: name, details };
+  }
+  return { ...item, title: title || city || "Hôtel", details };
+}
+
 function keepDocumentPrice(
   item: BookingExtract["items"][number],
   fallbackCurrency: string | null | undefined,
@@ -268,22 +324,28 @@ function keepDocumentPrice(
   return { ...item, amount: null, details };
 }
 
-/** Prix vendu (encours / cartes client) jamais auto-rempli. Prix PDF → details.document_amount. */
+/** item.amount client toujours null. total_amount = saisie agent ou somme des montants PDF (1 / fichier). */
 export function sanitizeExtractedPrices(extract: BookingExtract): BookingExtract {
   const fallbackTotal = asPositiveMoney(extract.total_amount);
   const rawItems = extract.items || [];
   const items = rawItems.map((item, index) =>
-    keepDocumentPrice(
-      item,
-      extract.currency,
-      rawItems.length === 1 && index === 0 ? fallbackTotal : null
+    normalizeHotelExtractItem(
+      keepDocumentPrice(
+        item,
+        extract.currency,
+        rawItems.length === 1 && index === 0 ? fallbackTotal : null
+      )
     )
   );
   const merged = mergeExtractItems(items);
+  const priced: BookingExtract = {
+    ...extract,
+    items: merged,
+  };
   const next: BookingExtract = {
     ...extract,
     currency: extract.currency || "EUR",
-    total_amount: null,
+    total_amount: sellingTotalFromExtract(priced),
     items: sortItemsByOrder(merged),
   };
   return redactIngestValue(next);

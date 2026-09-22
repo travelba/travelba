@@ -686,7 +686,10 @@ export function BookingIngest({
                 onChange={(value) => patch("end_date", value)}
               />
             </Field>
-            <Field label="Prix vendu (total)">
+            <Field
+              label="Prix vendu (total)"
+              hint="Prérempli depuis les documents. Corrigez si le prix vendu diffère."
+            >
               <input
                 type="number"
                 step="0.01"

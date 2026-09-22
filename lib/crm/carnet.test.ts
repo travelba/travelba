@@ -7,6 +7,8 @@ import {
   flightCities,
   flightIata,
   groupByDay,
+  hotelCityLine,
+  hotelDisplayName,
   hotelStayLabel,
   itemClock,
   unlinkedDocuments,
@@ -64,6 +66,20 @@ describe("carnet", () => {
       })
     );
     assert.match(label, /3 nuits/);
+  });
+
+  it("affiche le nom d’hôtel avant la ville", () => {
+    const hotel = item({
+      kind: "hotel",
+      title: "Santa Teresa",
+      details: { hotel_name: "Nantipa", city: "Santa Teresa" },
+    });
+    assert.equal(hotelDisplayName(hotel), "Nantipa");
+    assert.equal(hotelCityLine(hotel), "Santa Teresa");
+    assert.equal(
+      hotelDisplayName(item({ kind: "hotel", title: "Andaz", details: { city: "Marrakech" } })),
+      "Andaz"
+    );
   });
 
   it("saute les jours sans prestation", () => {
@@ -157,7 +173,7 @@ describe("carnet", () => {
     assert.equal(canPublishCarnet([{ kind: "hotel" }]), true);
   });
 
-  it("efface les prix extraits pour laisser l’agent saisir le vendu", () => {
+  it("propose le total séjour depuis le montant document, sans coller le net sur la carte", () => {
     const cleaned = sanitizeExtractedPrices({
       document_status: "confirmed",
       title: "Marrakech",
@@ -184,7 +200,7 @@ describe("carnet", () => {
       ],
       travelers: [],
     });
-    assert.equal(cleaned.total_amount, null);
+    assert.equal(cleaned.total_amount, 858.8);
     assert.equal(cleaned.items[0].amount, null);
     assert.equal(cleaned.items[0].details?.document_amount, 858.8);
     assert.equal(cleaned.items[0].details?.document_currency, "EUR");

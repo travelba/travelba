@@ -58,15 +58,16 @@ test("hôtel : journée entière check-in → checkout exclusif, sans heure", ()
     item({
       id: "h1",
       kind: "hotel",
-      title: "Andaz",
+      title: "Santa Teresa",
       start_at: "2026-08-12",
       end_at: "2026-08-15",
-      details: {},
+      details: { hotel_name: "Nantipa", city: "Santa Teresa" },
     }),
     booking()
   );
   assert.match(event || "", /DTSTART;VALUE=DATE:20260812/);
   assert.match(event || "", /DTEND;VALUE=DATE:20260815/);
+  assert.match(event || "", /SUMMARY:Hôtel · Nantipa/);
   assert.equal((event || "").includes("T00"), false);
 });
 

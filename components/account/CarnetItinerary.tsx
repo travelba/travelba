@@ -9,6 +9,8 @@ import {
   flightCities,
   flightIata,
   groupByDay,
+  hotelCityLine,
+  hotelDisplayName,
   hotelRooms,
   hotelStayLabel,
   itemClock,
@@ -85,6 +87,8 @@ function CardBody({
   const airline = detailStr(item, "airline") || item.supplier || "";
   const city = detailStr(item, "city");
   const board = detailStr(item, "board");
+  const hotelName = item.kind === "hotel" ? hotelDisplayName(item) : "";
+  const hotelCity = item.kind === "hotel" ? hotelCityLine(item) : "";
 
   return (
     <details className="group rounded-2xl border border-[#e5e3dc] bg-white">
@@ -98,19 +102,24 @@ function CardBody({
             {item.kind !== "hotel" && clock ? ` · ${clock}` : ""}
             {endClock && item.kind !== "hotel" ? ` → ${endClock}` : ""}
           </p>
-          <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">{item.title}</p>
+          <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
+            {item.kind === "hotel" ? hotelName : item.title}
+          </p>
           {item.kind === "flight" || item.kind === "rail" ? (
             <>
               {iata ? <p className="truncate text-xs font-semibold text-[var(--admin-navy)]">{iata}</p> : null}
               {cities ? <p className="truncate text-xs text-muted">{cities}</p> : null}
             </>
+          ) : item.kind === "hotel" ? (
+            <>
+              {hotelCity ? <p className="truncate text-xs text-muted">{hotelCity}</p> : null}
+              {compactHotel ? null : (
+                <p className="truncate text-xs text-muted">{hotelStayLabel(item)}</p>
+              )}
+            </>
           ) : (
             <p className="truncate text-xs text-muted">
-              {item.kind === "hotel"
-                ? compactHotel
-                  ? city || hotelStayLabel(item)
-                  : hotelStayLabel(item)
-                : [item.supplier, item.confirmation_ref].filter(Boolean).join(" · ")}
+              {[item.supplier, item.confirmation_ref].filter(Boolean).join(" · ")}
             </p>
           )}
         </div>

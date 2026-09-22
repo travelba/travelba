@@ -32,7 +32,7 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 
 - Grouper par jour (`groupByDay`). **Hôtel répété chaque nuit** de stay (`stayNightDates` : start inclus, checkout **exclu**).
 - Jours **sans aucune** carte : **sautés** (pas de ligne vide entre deux villes).
-- Hôtel : **pas d’horloge**. `itemClock` ignore `T00:00:00` (timestamptz minuit ≠ 00h00 check-in).
+- Hôtel : **pas d’horloge**. `itemClock` ignore `T00:00:00` (timestamptz minuit ≠ 00h00 check-in). Carte compacte : **nom d’établissement** (`details.hotel_name` / `hotelDisplayName`) en titre, **ville** (`hotelCityLine`) en dessous. Jamais la ville à la place du nom.
 - Vol : ligne 1 `CDG → RAK` (`flightIata`), ligne 2 villes (`flightCities`).
 - Clic carte = détail + **Voir la confirmation** (PDF `source_document_id`) + **Ajouter à l’agenda** (.ics).
 - En-tête itinéraire : **Ajouter tout le séjour** (`GET /api/client/bookings/[reference]/calendrier`). Horaires seulement s’ils existent ; hôtel = journée entière.
@@ -41,14 +41,16 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 
 ## Prix
 
-- `sanitizeExtractedPrices` : `total_amount` et `item.amount` extraits = **null**. Montant PDF → `details.document_amount` (relecture agent seulement).
-- **Prix vendu** saisi par l’agent (total dossier). Jamais le net PDF ($858…) sur la carte client.
+- `item.amount` extrait = **null** (jamais le net fournisseur sur la carte client).
+- Montant PDF → `details.document_amount` (relecture agent). `sanitizeExtractedPrices` **préremplit** `total_amount` = somme **un montant par fichier**. L’agent peut corriger le prix vendu (y compris 0).
+- **Enregistrer** un extract `document_status=confirmed` : écrit `booking.total_amount` et passe le dossier en **confirmé** (toujours `visible_to_client=false` jusqu’à Publier) → `syncBookingLedger` poste le débit + frais billeterie.
+- Devis (`quote`) : montant proposé, statut `quoted`, **pas** de débit.
 - Inclus (`details.included`) **seulement si la phrase est écrite**. Pas de petit-déj inventé. Sinon pas de bloc Inclus.
 - N’extraire **pas** annulation / barème / conditions : le PDF suffit.
 
 ## Cartes
 
-- **Un hôtel** par établissement même si 2 chambres / 2 réf. → `details.rooms[]`.
+- **Un hôtel** par établissement même si 2 chambres / 2 réf. → `details.rooms[]`. `title` = nom d’hôtel, pas la ville.
 - Cartes **à la main** autorisées (mêmes types que l’ingest).
 - Réimport **même réf.** (vol : réf. + n° + date) = **remplace** la carte, n’ajoute pas un doublon.
 - Illisible : on **enregistre** + bandeau **À vérifier** (`details.needs_review`), pas un refus global.

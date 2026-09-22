@@ -10,6 +10,7 @@ import {
 } from "@/lib/crm/types";
 import type { BookingExtract } from "@/lib/crm/ingest-types";
 import { itemDetailsLine, itemWhen } from "@/lib/crm/booking-display";
+import { hotelDisplayName } from "@/lib/crm/carnet";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
 
 type ItemDraft = BookingExtract["items"][number];
@@ -214,7 +215,8 @@ export function BookingItemsPanel({
                   </span>
                   <div className="min-w-0">
                     <p className="font-medium">
-                      {BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind} · {item.title}
+                      {BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind} ·{" "}
+                      {item.kind === "hotel" ? hotelDisplayName(item) : item.title}
                       {!item.visible_to_client ? (
                         <span className="ml-2 rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase">
                           Brouillon
