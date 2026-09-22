@@ -1,22 +1,26 @@
 import "server-only";
 import { generateText, Output, APICallError } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
-import { parseMrzFromOcr } from "./mrz-parse";
+import { parseMrzFromOcrAll } from "./mrz-parse";
 import { emptyToNull, type ExtractedIdentity } from "./identity";
 import {
+  fieldScore,
   identityFromVision,
-  mergePassportIdentities,
+  mergePassportSets,
+  uniquePassports,
 } from "./passport-extract";
 import { aiGatewayConfigured, isAllowedIngestType, isPdfFile, openaiApiKey } from "./ingest-types";
-import { identityExtractSchema } from "./ocr-schema";
+import { identitiesExtractSchema } from "./ocr-schema";
 import { trySharp } from "./sharp";
 import { inspectPdf, type RasterPage } from "./pdf-raster";
 
 const MAX_BYTES = 12 * 1024 * 1024;
-const VISION_TIMEOUT_MS = 45_000;
-const PASSPORT_PDF_PAGES = 2;
+const VISION_TIMEOUT_MS = 60_000;
+const PASSPORT_PDF_PAGES = 6;
 
 const PROMPT = `Tu lis une photo ou un scan PDF de passeport, carte d’identité ou titre de voyage (zone visuelle + MRZ).
+Le fichier peut contenir PLUSIEURS passeports (deux pièces sur la même photo, photocopie de couple, PDF de plusieurs pages). Extrais CHAQUE personne séparément dans identities — un objet par document. Ne fusionne jamais deux personnes.
+
 Extrais TOUS les champs visibles. Ne jamais inventer : mettre null si absent ou illisible.
 Dates en YYYY-MM-DD.
 Nationalité : code ISO 2 lettres UNIQUEMENT (FR, MA, US, GB). Jamais l’adjectif (Française, Marocaine) ni le nom du pays.
@@ -31,7 +35,7 @@ expires_on : date d’expiration.
 authority : autorité de délivrance (préfecture, ministère…).
 personal_number : n° personnel / national / optionnel s’il figure.
 number : n° du document (passeport ou CNI).
-mrz_text : recopie EXACTEMENT la bande MRZ (lignes du bas, caractères A-Z 0-9 <), une ligne par ligne, si elle est lisible. Sinon null.`;
+mrz_text : recopie EXACTEMENT la bande MRZ de CETTE personne (lignes du bas, caractères A-Z 0-9 <), une ligne par ligne, si elle est lisible. Sinon null.`;
 
 function identityModel() {
   const key = openaiApiKey();
@@ -89,14 +93,23 @@ async function toVisionImages(
   return [{ image, mediaType: mediaType as RasterPage["mediaType"] }];
 }
 
-async function generateIdentity(pages: RasterPage[], useGateway: boolean) {
+function scanResult(identities: ExtractedIdentity[], warning: string | null) {
+  const unique = uniquePassports(identities);
+  return {
+    identities: unique,
+    identity: unique[0] || null,
+    warning,
+  };
+}
+
+async function generateIdentities(pages: RasterPage[], useGateway: boolean) {
   const result = await generateText({
     model: useGateway ? "openai/gpt-4o" : identityModel(),
     abortSignal: AbortSignal.timeout(VISION_TIMEOUT_MS),
     output: Output.object({
-      schema: identityExtractSchema,
-      name: "identity",
-      description: "Identité extraite du passeport ou de la pièce",
+      schema: identitiesExtractSchema,
+      name: "identities",
+      description: "Tous les passeports visibles, un objet par personne",
     }),
     messages: [
       {
@@ -122,17 +135,19 @@ async function generateIdentity(pages: RasterPage[], useGateway: boolean) {
         }
       : {}),
   });
-  if (!result.output) {
-    return { identity: null, mrzText: null };
-  }
-  return {
-    identity: identityFromVision(result.output as Record<string, unknown>),
-    mrzText: emptyToNull(result.output.mrz_text),
-  };
+  const rows = result.output?.identities || [];
+  const identities = rows
+    .map((row) => identityFromVision(row as Record<string, unknown>))
+    .filter((identity): identity is ExtractedIdentity => Boolean(identity));
+  const mrzText = rows
+    .map((row) => emptyToNull(row.mrz_text))
+    .filter((text): text is string => Boolean(text))
+    .join("\n");
+  return { identities, mrzText: mrzText || null };
 }
 
 async function extractWithVision(pages: RasterPage[]): Promise<{
-  identity: ExtractedIdentity | null;
+  identities: ExtractedIdentity[];
   mrzText: string | null;
 }> {
   if (!aiGatewayConfigured()) {
@@ -141,7 +156,7 @@ async function extractWithVision(pages: RasterPage[]): Promise<{
 
   const key = openaiApiKey();
   try {
-    return await generateIdentity(pages, !key);
+    return await generateIdentities(pages, !key);
   } catch (err) {
     if (
       key &&
@@ -149,13 +164,14 @@ async function extractWithVision(pages: RasterPage[]): Promise<{
       (err.statusCode === 401 || err.statusCode === 403)
     ) {
       console.error("[ocr-document] OpenAI 401, fallback AI Gateway");
-      return generateIdentity(pages, true);
+      return generateIdentities(pages, true);
     }
     throw err;
   }
 }
 
 export async function scanTravelDocument(file: File): Promise<{
+  identities: ExtractedIdentity[];
   identity: ExtractedIdentity | null;
   warning: string | null;
 }> {
@@ -163,21 +179,18 @@ export async function scanTravelDocument(file: File): Promise<{
     throw new Error("Fichier trop lourd (max 12 Mo).");
   }
   if (!isAllowedIngestType(file.type, file.name)) {
-    return {
-      identity: null,
-      warning: "Formats acceptés : PDF, JPEG, PNG, HEIC.",
-    };
+    return scanResult([], "Formats acceptés : PDF, JPEG, PNG, HEIC.");
   }
 
   const bytes = new Uint8Array(await file.arrayBuffer());
   const isPdf = isPdfFile(file.type, file.name);
-  let pdfMrz = null as ReturnType<typeof parseMrzFromOcr>;
+  let pdfMrz: ExtractedIdentity[] = [];
   let pages: RasterPage[];
 
   try {
     if (isPdf) {
       const inspected = await inspectPdf(bytes, PASSPORT_PDF_PAGES);
-      pdfMrz = parseMrzFromOcr(inspected.text);
+      pdfMrz = parseMrzFromOcrAll(inspected.text);
       if (!inspected.rasters.length) {
         throw new Error(
           "Impossible de lire ce PDF. Essayez une photo JPEG de la page d’identité."
@@ -188,31 +201,33 @@ export async function scanTravelDocument(file: File): Promise<{
       pages = await toVisionImages(bytes, file.type, file.name);
     }
 
-    const { identity: vision, mrzText } = await extractWithVision(pages);
-    const mrz = pdfMrz || (mrzText ? parseMrzFromOcr(mrzText) : null);
-    const identity = mergePassportIdentities(mrz, vision);
+    const { identities: vision, mrzText } = await extractWithVision(pages);
+    const mrz = uniquePassports([
+      ...pdfMrz,
+      ...(mrzText ? parseMrzFromOcrAll(mrzText) : []),
+    ]);
+    const identities = mergePassportSets(mrz, vision);
 
-    if (!identity) {
-      return {
-        identity: null,
-        warning: isPdf
+    if (!identities.length) {
+      return scanResult(
+        [],
+        isPdf
           ? "PDF lu, mais l’identité n’est pas assez nette. Essayez une photo JPEG de la page d’identité."
-          : "Zone illisible. Cadrez le bas du passeport ou de la carte (bande de caractères) et réessayez.",
-      };
+          : "Zone illisible. Cadrez le bas du passeport ou de la carte (bande de caractères) et réessayez."
+      );
     }
 
-    return {
-      identity,
-      warning: identity.valid
-        ? null
-        : "Lecture partielle : vérifiez chaque champ avant d’enregistrer.",
-    };
+    const weak = identities.some((identity) => fieldScore(identity) < 4);
+    return scanResult(
+      identities,
+      weak ? "Lecture partielle : vérifiez chaque passeport avant d’enregistrer." : null
+    );
   } catch (err) {
-    if (pdfMrz) {
-      return {
-        identity: pdfMrz,
-        warning: "Lecture partielle depuis le PDF : vérifiez chaque champ avant d’enregistrer.",
-      };
+    if (pdfMrz.length) {
+      return scanResult(
+        pdfMrz,
+        "Lecture partielle depuis le PDF : vérifiez chaque champ avant d’enregistrer."
+      );
     }
     console.error("[ocr-document]", err);
     if (isAbortError(err)) {

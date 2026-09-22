@@ -20,3 +20,8 @@ export const identityExtractSchema = z.object({
   personal_number: nullableString,
   mrz_text: nullableString,
 });
+
+/** Un PDF / une photo peut contenir plusieurs passeports : un objet par personne. */
+export const identitiesExtractSchema = z.object({
+  identities: z.array(identityExtractSchema),
+});

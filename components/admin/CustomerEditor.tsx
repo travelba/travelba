@@ -7,7 +7,7 @@ import type { CrmCompanion, CrmCustomer, CrmTravelDocument, CompanyRole } from "
 import { resolveCountryCode } from "@/lib/crm/countries";
 import { identityNationalityFromSources, nationalityFromIdentity } from "@/lib/crm/document-identity";
 import { identityOverwriteWarning, type ExtractedIdentity } from "@/lib/crm/identity";
-import { appendPassportForm } from "@/lib/crm/passport-extract";
+import { appendPassportForm, appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-extract";
 import { formatIbanInput, ibanError, normalizeIban } from "@/lib/crm/billing";
 import { loyaltyFromCustomer, type LoyaltyMap } from "@/lib/crm/loyalty";
 import { LoyaltyFields } from "@/components/crm/LoyaltyFields";
@@ -164,6 +164,7 @@ export function CustomerEditor({
           variant="admin"
           customerId={customer.id}
           documents={documents}
+          person={{ first_name: firstName, last_name: lastName }}
           onIdentity={(id) => {
             setNameWarn(identityOverwriteWarning({ first_name: firstName, last_name: lastName }, id));
             applyIdentityState(id, {
@@ -356,6 +357,7 @@ function CompanionCard({
         customerId={customerId}
         companionId={companion.id}
         documents={documents}
+        person={{ first_name: firstName, last_name: lastName }}
         onIdentity={(id) => {
           setNameWarn(identityOverwriteWarning({ first_name: firstName, last_name: lastName }, id));
           applyIdentityState(id, {
@@ -437,6 +439,37 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
     event.preventDefault();
     setSaving(true);
     setError(null);
+    const identities = listedIdentities(scan?.identity, scan?.identities);
+    if (identities.length > 1 && scan?.file) {
+      const patched = identities.map((identity, index) =>
+        index === 0
+          ? {
+              ...identity,
+              first_name: firstName || identity.first_name,
+              last_name: lastName || identity.last_name,
+              birth_date: birthDate || identity.birth_date,
+              nationality: nationality || identity.nationality,
+              sex: (sex as ExtractedIdentity["sex"]) || identity.sex,
+            }
+          : identity
+      );
+      const form = appendPassportImportForm(new FormData(), {
+        identities: patched,
+        file: scan.file,
+        customerId,
+        createUnmatchedOnly: true,
+      });
+      const docs = await fetch("/api/admin/travel-documents", { method: "POST", body: form });
+      const docsJson = await docs.json().catch(() => ({}));
+      setSaving(false);
+      if (!docs.ok) {
+        setError(docsJson.error || "Impossible d’importer les passeports");
+        return;
+      }
+      closeForm();
+      router.refresh();
+      return;
+    }
     const res = await fetch("/api/admin/companions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -501,6 +534,7 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
         customerId={customerId}
         documents={[]}
         persist={false}
+        person={{ first_name: firstName, last_name: lastName }}
         onIdentity={(id) =>
           applyIdentityState(id, {
             setFirstName,

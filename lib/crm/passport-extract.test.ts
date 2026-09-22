@@ -6,6 +6,8 @@ import {
   identityFromVision,
   identitySummary,
   mergePassportIdentities,
+  mergePassportSets,
+  uniquePassports,
 } from "./passport-extract";
 
 test("vision extract fills every passport field", () => {
@@ -169,4 +171,68 @@ test("passport form posts every extracted field", () => {
   assert.equal(form.get("authority"), "Mairie");
   assert.equal(form.get("personal_number"), "AB12");
   assert.equal(form.get("apply_identity"), "1");
+});
+
+test("mergePassportSets keeps two people and fills visual fields", () => {
+  const mrzA = {
+    ...emptyIdentity(),
+    number: "12AB34567",
+    last_name: "Dupont",
+    first_name: "Jean",
+    birth_date: "1990-04-02",
+    expires_on: "2028-03-12",
+    nationality: "FR",
+    issuing_country: "FR",
+    valid: true,
+    format: "TD3",
+  };
+  const mrzB = {
+    ...emptyIdentity(),
+    number: "98CD76543",
+    last_name: "Martin",
+    first_name: "Marie",
+    birth_date: "1985-01-01",
+    expires_on: "2030-01-01",
+    nationality: "FR",
+    issuing_country: "FR",
+    valid: true,
+    format: "TD3",
+  };
+  const visionA = identityFromVision({
+    number: "12AB34567",
+    last_name: "Dupont",
+    first_name: "JEAN PIERRE",
+    place_of_birth: "Paris",
+  });
+  const visionB = identityFromVision({
+    number: "98CD76543",
+    last_name: "Martin",
+    first_name: "Marie Claire",
+    place_of_birth: "Lyon",
+  });
+  const merged = mergePassportSets([mrzA, mrzB], [visionA!, visionB!]);
+  assert.equal(merged.length, 2);
+  const jean = merged.find((identity) => identity.number === "12AB34567");
+  const marie = merged.find((identity) => identity.number === "98CD76543");
+  assert.equal(jean?.first_name, "Jean Pierre");
+  assert.equal(jean?.place_of_birth, "Paris");
+  assert.equal(marie?.first_name, "Marie Claire");
+  assert.equal(marie?.place_of_birth, "Lyon");
+});
+
+test("uniquePassports drops a duplicate number", () => {
+  const first = identityFromVision({
+    number: "12AB34567",
+    last_name: "Dupont",
+    first_name: "Jean",
+  });
+  const copy = identityFromVision({
+    number: "12 AB 34567",
+    last_name: "Dupont",
+    first_name: "Jean Pierre",
+    expires_on: "2028-03-12",
+  });
+  const unique = uniquePassports([first!, copy!]);
+  assert.equal(unique.length, 1);
+  assert.equal(unique[0].first_name, "Jean Pierre");
 });

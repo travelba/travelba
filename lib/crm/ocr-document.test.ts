@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { zodSchema } from "ai";
-import { identityExtractSchema } from "./ocr-schema";
+import { identityExtractSchema, identitiesExtractSchema } from "./ocr-schema";
 import { isAllowedIngestType, isPdfFile } from "./ingest-types";
 
 describe("identityExtractSchema OpenAI strict", () => {
@@ -12,6 +12,14 @@ describe("identityExtractSchema OpenAI strict", () => {
     assert.ok(Array.isArray(json.required));
     assert.deepEqual([...(json.required || [])].sort(), [...props].sort());
     assert.ok(props.includes("doc_type"));
+  });
+
+  it("demande un tableau identities avec les mêmes champs required", async () => {
+    const json = await zodSchema(identitiesExtractSchema).jsonSchema;
+    assert.deepEqual(json.required, ["identities"]);
+    const items = (json.properties?.identities as { items?: { required?: string[]; properties?: object } })?.items;
+    assert.ok(items?.properties);
+    assert.deepEqual([...(items.required || [])].sort(), Object.keys(items.properties).sort());
   });
 });
 
