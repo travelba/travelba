@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CrmRevolutTransaction } from "@/lib/crm/types";
 import { formatDateFr, formatMoney, agencyFeeFromGross, netAfterAgencyFee } from "@/lib/crm/money";
+import { revolutInboxCopy } from "@/lib/crm/revolut-inbox";
 import {
   matchReasonLabel,
   type RevolutMatchCandidate,
@@ -59,15 +60,16 @@ export function ClientRevolutSuggestions({
           const signed = `+${formatMoney(Number(row.amount), row.currency)}`;
           const fee = agencyFeeFromGross(Number(row.amount));
           const net = netAfterAgencyFee(Number(row.amount));
+          const { sender, designation } = revolutInboxCopy(row);
           return (
           <li key={row.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
             <div>
               <p className="font-medium">
-                {row.counterparty_name || "Contrepartie inconnue"} · {signed}
+                {sender} · {signed}
               </p>
               <p className="text-xs text-muted">
                 {formatDateFr(row.booked_at)} · {matchReasonLabel(candidate.reason)}
-                {row.reference ? ` · ${row.reference}` : ""}
+                {designation ? ` · ${designation}` : ""}
               </p>
               {net != null ? (
                 <p className="text-xs text-[#9e7e51]">

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { CrmRevolutTransaction } from "@/lib/crm/types";
 import { formatDateFr, formatMoney, netAfterAgencyFee, agencyFeeFromGross } from "@/lib/crm/money";
 import { revolutInboxEmptyMessage } from "@/lib/crm/launch-status";
+import { revolutInboxCopy } from "@/lib/crm/revolut-inbox";
 import { StatusChip } from "@/components/crm/ui";
 import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
 import { Icon } from "@/components/crm/icons";
@@ -175,15 +176,17 @@ export function RevolutInbox({
           const signed = `+${formatMoney(Number(r.amount), r.currency)}`;
           const fee = agencyFeeFromGross(Number(r.amount));
           const net = netAfterAgencyFee(Number(r.amount));
+          const { sender, designation } = revolutInboxCopy(r);
           return (
             <li key={r.id} className="px-5 py-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="space-y-1">
                   <p className="font-medium">
-                    {r.counterparty_name || "Contrepartie inconnue"} · {signed}
+                    {sender} · {signed}
                   </p>
                   <p className="text-xs text-muted">
-                    {formatDateFr(r.booked_at)} · {r.reference || r.revolut_transaction_id}
+                    {formatDateFr(r.booked_at)}
+                    {designation ? ` · ${designation}` : ""}
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
                     <StatusChip tone={revolutStatusTone(r.status)}>

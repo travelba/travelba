@@ -1,4 +1,4 @@
-import { isRevolutCredit } from "./revolut-inbox";
+import { isRevolutCredit, revolutSenderName } from "./revolut-inbox";
 import type { CrmCustomer, CrmRevolutTransaction } from "./types";
 import { AGENCY_FEE_LABEL } from "./types";
 import { agencyFeeFromGross, netAfterAgencyFee } from "./money";
@@ -34,8 +34,10 @@ export function normalizeMatchText(value: string | null | undefined) {
     .replace(/[^a-z0-9]/g, "");
 }
 
-function haystackFor(row: Pick<CrmRevolutTransaction, "counterparty_name" | "reference">) {
-  return normalizeMatchText(`${row.counterparty_name || ""} ${row.reference || ""}`);
+function haystackFor(row: Pick<CrmRevolutTransaction, "counterparty_name" | "reference"> & { raw?: unknown }) {
+  return normalizeMatchText(
+    `${revolutSenderName(row)} ${row.counterparty_name || ""} ${row.reference || ""}`
+  );
 }
 
 function customerLabel(c: Pick<CrmCustomer, "first_name" | "last_name" | "company_name">) {
@@ -51,7 +53,7 @@ function customerLabel(c: Pick<CrmCustomer, "first_name" | "last_name" | "compan
  * Auto-match only when exactly one strong unique hit (full name, unique last name, or unique company).
  */
 export function scoreRevolutMatches(
-  row: Pick<CrmRevolutTransaction, "counterparty_name" | "reference">,
+  row: Pick<CrmRevolutTransaction, "counterparty_name" | "reference"> & { raw?: unknown },
   customers: Pick<CrmCustomer, "id" | "first_name" | "last_name" | "company_name">[]
 ): RevolutMatchResult {
   const haystack = haystackFor(row);
@@ -154,10 +156,9 @@ export async function applyRevolutToCustomer(
   if (!isRevolutCredit(row.direction)) {
     return { ok: false as const, error: "not_a_credit" };
   }
-  const labelBase =
-    row.reference ||
-    row.counterparty_name ||
-    row.revolut_transaction_id;
+  const sender = revolutSenderName(row);
+  const designation = (row.reference || "").trim();
+  const labelBase = [sender, designation].filter(Boolean).join(" — ") || row.revolut_transaction_id;
   const label = `Virement Revolut ${labelBase}`.trim();
 
   const { data: tx, error } = await admin
