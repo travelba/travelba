@@ -10,13 +10,7 @@ import {
 import { aiGatewayConfigured, isAllowedIngestType, isPdfFile, openaiApiKey } from "./ingest-types";
 import { identityExtractSchema } from "./ocr-schema";
 import { trySharp } from "./sharp";
-import {
-  definePDFJSModule,
-  extractImages,
-  extractText,
-  getDocumentProxy,
-  renderPageAsImage,
-} from "unpdf";
+import { pdfPlainText, rasterPdfPages, type RasterPage } from "./pdf-raster";
 
 const MAX_BYTES = 12 * 1024 * 1024;
 const VISION_TIMEOUT_MS = 45_000;
@@ -51,94 +45,28 @@ function isAbortError(err: unknown) {
   return err.name === "TimeoutError" || err.name === "AbortError";
 }
 
-let officialPdfjs = false;
-
-async function ensureOfficialPdfjs() {
-  if (officialPdfjs) return;
-  try {
-    await definePDFJSModule(() => import("pdfjs-dist/legacy/build/pdf.mjs"));
-    officialPdfjs = true;
-  } catch {
-    try {
-      await definePDFJSModule(() => import("pdfjs-dist"));
-      officialPdfjs = true;
-    } catch {
-      /* bundled unpdf pdfjs */
-    }
-  }
+function isPdfEngineError(err: unknown) {
+  const message = err instanceof Error ? err.message : String(err);
+  return /API version|Worker version|DataCloneError|Cannot transfer object/i.test(message);
 }
 
-async function jpegFromBytes(data: Uint8Array, raw?: { width: number; height: number; channels: 1 | 3 | 4 }) {
-  const sharp = await trySharp();
-  if (!sharp) return { image: data, mediaType: raw ? "image/jpeg" : "image/png" };
-  try {
-    const pipeline = raw
-      ? sharp(data, { raw: { width: raw.width, height: raw.height, channels: raw.channels } })
-      : sharp(data);
-    const jpeg = await pipeline
-      .rotate()
-      .resize({ width: 1800, withoutEnlargement: true })
-      .jpeg({ quality: 85 })
-      .toBuffer();
-    return { image: new Uint8Array(jpeg), mediaType: "image/jpeg" as const };
-  } catch {
-    return null;
-  }
-}
-
-async function rasterPassportPdf(bytes: Uint8Array): Promise<{ image: Uint8Array; mediaType: string } | null> {
-  await ensureOfficialPdfjs();
-  const pdf = await getDocumentProxy(bytes);
-  for (let page = 1; page <= PASSPORT_PDF_PAGES; page += 1) {
-    try {
-      const png = await renderPageAsImage(pdf, page, {
-        canvasImport: () => import("@napi-rs/canvas"),
-        scale: 1.6,
-      });
-      const part = await jpegFromBytes(new Uint8Array(png as ArrayBuffer));
-      if (part) return part;
-    } catch {
-      /* embedded images */
+async function toVisionImages(
+  bytes: Uint8Array,
+  type: string,
+  name: string
+): Promise<RasterPage[]> {
+  if (isPdfFile(type, name)) {
+    const pages = await rasterPdfPages(bytes, PASSPORT_PDF_PAGES);
+    if (!pages.length) {
+      throw new Error(
+        "Impossible de lire ce PDF. Essayez une photo JPEG de la page d’identité."
+      );
     }
-    try {
-      const images = await extractImages(pdf, page);
-      for (const img of images.slice(0, 2)) {
-        const part = await jpegFromBytes(new Uint8Array(img.data), {
-          width: img.width,
-          height: img.height,
-          channels: img.channels,
-        });
-        if (part) return part;
-      }
-    } catch {
-      /* next page */
-    }
+    return pages;
   }
-  return null;
-}
 
-async function mrzFromPdfText(bytes: Uint8Array) {
-  try {
-    const pdf = await getDocumentProxy(bytes);
-    const extracted = await extractText(pdf, { mergePages: true });
-    return parseMrzFromOcr(extracted.text || "");
-  } catch {
-    return null;
-  }
-}
-
-async function toVisionImage(file: File) {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  if (isPdfFile(file.type, file.name)) {
-    const raster = await rasterPassportPdf(bytes);
-    if (!raster) {
-      throw new Error("PDF illisible. Photographiez la page d’identité ou réessayez.");
-    }
-    return raster;
-  }
-  let mediaType = file.type || "image/jpeg";
+  let mediaType = type || "image/jpeg";
   let image = bytes;
-
   const sharp = await trySharp();
   if (sharp) {
     try {
@@ -158,14 +86,10 @@ async function toVisionImage(file: File) {
     throw new Error("Format HEIC illisible ici. Enregistrez la photo en JPEG ou PNG.");
   }
 
-  return { image, mediaType };
+  return [{ image, mediaType: mediaType as RasterPage["mediaType"] }];
 }
 
-async function generateIdentity(
-  image: Uint8Array,
-  mediaType: string,
-  useGateway: boolean
-) {
+async function generateIdentity(pages: RasterPage[], useGateway: boolean) {
   const result = await generateText({
     model: useGateway ? "openai/gpt-4o" : identityModel(),
     abortSignal: AbortSignal.timeout(VISION_TIMEOUT_MS),
@@ -179,7 +103,11 @@ async function generateIdentity(
         role: "user",
         content: [
           { type: "text", text: PROMPT },
-          { type: "image", image, mediaType },
+          ...pages.map((page) => ({
+            type: "image" as const,
+            image: page.image,
+            mediaType: page.mediaType,
+          })),
         ],
       },
     ],
@@ -203,7 +131,11 @@ async function generateIdentity(
   };
 }
 
-async function extractWithVision(file: File): Promise<{
+async function extractWithVision(
+  bytes: Uint8Array,
+  type: string,
+  name: string
+): Promise<{
   identity: ExtractedIdentity | null;
   mrzText: string | null;
 }> {
@@ -211,10 +143,10 @@ async function extractWithVision(file: File): Promise<{
     throw new Error("Lecture automatique non configurée.");
   }
 
-  const { image, mediaType } = await toVisionImage(file);
+  const pages = await toVisionImages(bytes, type, name);
   const key = openaiApiKey();
   try {
-    return await generateIdentity(image, mediaType, !key);
+    return await generateIdentity(pages, !key);
   } catch (err) {
     if (
       key &&
@@ -222,7 +154,7 @@ async function extractWithVision(file: File): Promise<{
       (err.statusCode === 401 || err.statusCode === 403)
     ) {
       console.error("[ocr-document] OpenAI 401, fallback AI Gateway");
-      return generateIdentity(image, mediaType, true);
+      return generateIdentity(pages, true);
     }
     throw err;
   }
@@ -242,21 +174,21 @@ export async function scanTravelDocument(file: File): Promise<{
     };
   }
 
-  const pdfBytes = isPdfFile(file.type, file.name)
-    ? new Uint8Array(await file.arrayBuffer())
-    : null;
-  const pdfMrz = pdfBytes ? await mrzFromPdfText(pdfBytes) : null;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const isPdf = isPdfFile(file.type, file.name);
+  const pdfMrz = isPdf ? parseMrzFromOcr((await pdfPlainText(bytes)).text) : null;
 
   try {
-    const { identity: vision, mrzText } = await extractWithVision(file);
+    const { identity: vision, mrzText } = await extractWithVision(bytes, file.type, file.name);
     const mrz = pdfMrz || (mrzText ? parseMrzFromOcr(mrzText) : null);
     const identity = mergePassportIdentities(mrz, vision);
 
     if (!identity) {
       return {
         identity: null,
-        warning:
-          "Zone illisible. Cadrez le bas du passeport ou de la carte (bande de caractères) et réessayez.",
+        warning: isPdf
+          ? "PDF lu, mais l’identité n’est pas assez nette. Essayez une photo JPEG de la page d’identité."
+          : "Zone illisible. Cadrez le bas du passeport ou de la carte (bande de caractères) et réessayez.",
       };
     }
 
@@ -275,12 +207,17 @@ export async function scanTravelDocument(file: File): Promise<{
     }
     console.error("[ocr-document]", err);
     if (isAbortError(err)) {
-      throw new Error("Lecture trop longue. Réessayez avec une photo plus nette du bas du document.");
+      throw new Error(
+        isPdf
+          ? "Lecture du PDF trop longue. Réessayez, ou photographiez la page d’identité."
+          : "Lecture trop longue. Réessayez avec une photo plus nette du bas du document."
+      );
     }
     if (
       err instanceof Error &&
       (err.message.startsWith("Lecture") ||
         err.message.startsWith("Fichier") ||
+        err.message.startsWith("Impossible") ||
         err.message.startsWith("PDF") ||
         err.message.startsWith("Format"))
     ) {
@@ -296,6 +233,11 @@ export async function scanTravelDocument(file: File): Promise<{
           : err.message;
       console.error("[ocr-document] openai_schema_or_request", detail);
       throw new Error("Lecture automatique indisponible temporairement. Réessayez dans un instant.");
+    }
+    if (isPdf || isPdfEngineError(err)) {
+      throw new Error(
+        "Impossible de lire ce PDF. Essayez une photo JPEG de la page d’identité."
+      );
     }
     throw new Error("Lecture du document impossible. Réessayez avec une photo plus nette du bas du document.");
   }
