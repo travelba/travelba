@@ -10,7 +10,7 @@ import {
 import { aiGatewayConfigured, isAllowedIngestType, isPdfFile, openaiApiKey } from "./ingest-types";
 import { identityExtractSchema } from "./ocr-schema";
 import { trySharp } from "./sharp";
-import { pdfPlainText, rasterPdfPages, type RasterPage } from "./pdf-raster";
+import { inspectPdf, type RasterPage } from "./pdf-raster";
 
 const MAX_BYTES = 12 * 1024 * 1024;
 const VISION_TIMEOUT_MS = 45_000;
@@ -56,13 +56,13 @@ async function toVisionImages(
   name: string
 ): Promise<RasterPage[]> {
   if (isPdfFile(type, name)) {
-    const pages = await rasterPdfPages(bytes, PASSPORT_PDF_PAGES);
-    if (!pages.length) {
+    const inspected = await inspectPdf(bytes, PASSPORT_PDF_PAGES);
+    if (!inspected.rasters.length) {
       throw new Error(
         "Impossible de lire ce PDF. Essayez une photo JPEG de la page d’identité."
       );
     }
-    return pages;
+    return inspected.rasters;
   }
 
   let mediaType = type || "image/jpeg";
@@ -131,11 +131,7 @@ async function generateIdentity(pages: RasterPage[], useGateway: boolean) {
   };
 }
 
-async function extractWithVision(
-  bytes: Uint8Array,
-  type: string,
-  name: string
-): Promise<{
+async function extractWithVision(pages: RasterPage[]): Promise<{
   identity: ExtractedIdentity | null;
   mrzText: string | null;
 }> {
@@ -143,7 +139,6 @@ async function extractWithVision(
     throw new Error("Lecture automatique non configurée.");
   }
 
-  const pages = await toVisionImages(bytes, type, name);
   const key = openaiApiKey();
   try {
     return await generateIdentity(pages, !key);
@@ -176,10 +171,24 @@ export async function scanTravelDocument(file: File): Promise<{
 
   const bytes = new Uint8Array(await file.arrayBuffer());
   const isPdf = isPdfFile(file.type, file.name);
-  const pdfMrz = isPdf ? parseMrzFromOcr((await pdfPlainText(bytes)).text) : null;
+  let pdfMrz = null as ReturnType<typeof parseMrzFromOcr>;
+  let pages: RasterPage[];
 
   try {
-    const { identity: vision, mrzText } = await extractWithVision(bytes, file.type, file.name);
+    if (isPdf) {
+      const inspected = await inspectPdf(bytes, PASSPORT_PDF_PAGES);
+      pdfMrz = parseMrzFromOcr(inspected.text);
+      if (!inspected.rasters.length) {
+        throw new Error(
+          "Impossible de lire ce PDF. Essayez une photo JPEG de la page d’identité."
+        );
+      }
+      pages = inspected.rasters;
+    } else {
+      pages = await toVisionImages(bytes, file.type, file.name);
+    }
+
+    const { identity: vision, mrzText } = await extractWithVision(pages);
     const mrz = pdfMrz || (mrzText ? parseMrzFromOcr(mrzText) : null);
     const identity = mergePassportIdentities(mrz, vision);
 

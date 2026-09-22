@@ -14,6 +14,9 @@ export type RasterPage = {
 /**
  * unpdf charge PDF.js 5.6.205. Relancer definePDFJSModule (même unpdf/pdfjs)
  * casse le worker (DataCloneError). Ne jamais importer pdfjs-dist 5.7 ici.
+ *
+ * getDocumentProxy **transfère** le ArrayBuffer au worker : un second passage
+ * sur les mêmes octets lève DataCloneError. On clone toujours avant d’ouvrir.
  */
 export async function ensureBundledPdfjs() {
   const pdfjs = await getResolvedPDFJS();
@@ -21,6 +24,17 @@ export async function ensureBundledPdfjs() {
   if (version && !version.startsWith("5.6")) {
     console.error("[pdf-raster] PDF.js", version, "attendu 5.6 (bundle unpdf)");
   }
+}
+
+export function clonePdfBytes(bytes: Uint8Array): Uint8Array {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy;
+}
+
+export async function openPdf(bytes: Uint8Array) {
+  await ensureBundledPdfjs();
+  return getDocumentProxy(clonePdfBytes(bytes));
 }
 
 export async function bundledPdfjsVersion() {
@@ -119,8 +133,7 @@ async function rasterOnePage(
 }
 
 export async function rasterPdfPages(bytes: Uint8Array, maxPages = 2): Promise<RasterPage[]> {
-  await ensureBundledPdfjs();
-  const pdf = await getDocumentProxy(bytes);
+  const pdf = await openPdf(bytes);
   const pages = Math.min(pdf.numPages || 1, maxPages);
   const out: RasterPage[] = [];
   for (let page = 1; page <= pages; page += 1) {
@@ -131,12 +144,32 @@ export async function rasterPdfPages(bytes: Uint8Array, maxPages = 2): Promise<R
 }
 
 export async function pdfPlainText(bytes: Uint8Array): Promise<{ text: string; pages: number }> {
-  await ensureBundledPdfjs();
   try {
-    const pdf = await getDocumentProxy(bytes);
+    const pdf = await openPdf(bytes);
     const extracted = await extractText(pdf, { mergePages: true });
     return { text: extracted.text || "", pages: extracted.totalPages || pdf.numPages || 1 };
   } catch {
     return { text: "", pages: 1 };
   }
+}
+
+export async function inspectPdf(
+  bytes: Uint8Array,
+  maxPages = 2
+): Promise<{ text: string; pages: number; rasters: RasterPage[] }> {
+  const pdf = await openPdf(bytes);
+  let text = "";
+  try {
+    const extracted = await extractText(pdf, { mergePages: true });
+    text = extracted.text || "";
+  } catch {
+    /* scan image sans calque */
+  }
+  const pages = Math.min(pdf.numPages || 1, maxPages);
+  const rasters: RasterPage[] = [];
+  for (let page = 1; page <= pages; page += 1) {
+    const part = await rasterOnePage(pdf, page);
+    if (part) rasters.push(part);
+  }
+  return { text, pages: pdf.numPages || pages, rasters };
 }
