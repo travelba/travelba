@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireCustomer } from "@/lib/crm/auth";
+import { readBillingPatch } from "@/lib/crm/entreprises";
 import { resolveCountryCode } from "@/lib/crm/countries";
 import { emptyToNull } from "@/lib/crm/identity";
 import { toE164 } from "@/lib/crm/phone";
@@ -47,6 +48,7 @@ export async function PATCH(request: Request) {
       }
       patch[key] = emptyToNull(body[key]);
     }
+    Object.assign(patch, readBillingPatch(body));
   } catch (err) {
     return jsonError(err instanceof Error ? err.message : "Données invalides");
   }

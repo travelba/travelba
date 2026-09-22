@@ -14,6 +14,7 @@ import {
   SexSelect,
 } from "@/components/crm/fields";
 import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
+import { billingFromCustomer, CompanyLookup, type CompanyBilling } from "@/components/crm/CompanyLookup";
 
 export function ProfileForm({ customer }: { customer: CrmCustomer }) {
   const router = useRouter();
@@ -34,6 +35,7 @@ export function ProfileForm({ customer }: { customer: CrmCustomer }) {
   const [addressLine, setAddressLine] = useState(customer.address_line || "");
   const [postalCode, setPostalCode] = useState(customer.postal_code || "");
   const [city, setCity] = useState(customer.city || "");
+  const [billing, setBilling] = useState<CompanyBilling>(() => billingFromCustomer(customer));
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [keepDocument, setKeepDocument] = useState(true);
 
@@ -68,6 +70,12 @@ export function ProfileForm({ customer }: { customer: CrmCustomer }) {
         postal_code: postalCode,
         city,
         country,
+        billing_legal_name: billing.legalName,
+        billing_siret: billing.siret,
+        billing_vat: billing.vat,
+        billing_address_line: billing.addressLine,
+        billing_postal_code: billing.postalCode,
+        billing_city: billing.city,
       }),
     });
     const json = await res.json();
@@ -193,6 +201,8 @@ export function ProfileForm({ customer }: { customer: CrmCustomer }) {
           onCityChange={setCity}
         />
       </section>
+
+      <CompanyLookup value={billing} onChange={setBilling} />
 
       {error ? <p className="text-sm text-accent">{error}</p> : null}
       {saved ? <p className="text-sm text-[var(--admin-navy)]">Enregistré.</p> : null}

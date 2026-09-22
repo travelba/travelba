@@ -98,6 +98,12 @@ export type CrmCustomer = {
   postal_code: string | null;
   city: string | null;
   country: string | null;
+  billing_legal_name: string | null;
+  billing_siret: string | null;
+  billing_vat: string | null;
+  billing_address_line: string | null;
+  billing_postal_code: string | null;
+  billing_city: string | null;
   language: string;
   stripe_customer_id: string | null;
   created_at: string;

@@ -15,6 +15,7 @@ import {
   SexSelect,
 } from "@/components/crm/fields";
 import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
+import { billingFromCustomer, CompanyLookup, type CompanyBilling } from "@/components/crm/CompanyLookup";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
 
 export function CustomerEditor({
@@ -42,6 +43,8 @@ export function CustomerEditor({
   const [addressLine, setAddressLine] = useState(customer.address_line || "");
   const [postalCode, setPostalCode] = useState(customer.postal_code || "");
   const [city, setCity] = useState(customer.city || "");
+  const [billing, setBilling] = useState<CompanyBilling>(() => billingFromCustomer(customer));
+  const [error, setError] = useState<string | null>(null);
   const [docScan, setDocScan] = useState<ScanResult | null>(null);
   const [docType, setDocType] = useState("passport");
   const [docNumber, setDocNumber] = useState("");
@@ -72,7 +75,8 @@ export function CustomerEditor({
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await fetch(`/api/admin/clients/${customer.id}`, {
+    setError(null);
+    const res = await fetch(`/api/admin/clients/${customer.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -88,8 +92,19 @@ export function CustomerEditor({
         postal_code: postalCode,
         city,
         country,
+        billing_legal_name: billing.legalName,
+        billing_siret: billing.siret,
+        billing_vat: billing.vat,
+        billing_address_line: billing.addressLine,
+        billing_postal_code: billing.postalCode,
+        billing_city: billing.city,
       }),
     });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(json.error || "Erreur");
+      return;
+    }
     router.refresh();
   }
 
@@ -174,6 +189,8 @@ export function CustomerEditor({
           onPostalChange={setPostalCode}
           onCityChange={setCity}
         />
+        <CompanyLookup value={billing} onChange={setBilling} />
+        {error ? <p className="text-sm text-accent">{error}</p> : null}
         <button className="admin-af-btn rounded-full px-4 py-2 text-sm">Enregistrer</button>
       </form>
 

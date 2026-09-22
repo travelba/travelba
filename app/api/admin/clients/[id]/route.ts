@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { resolveCountryCode } from "@/lib/crm/countries";
+import { readBillingPatch } from "@/lib/crm/entreprises";
 import { emptyToNull } from "@/lib/crm/identity";
 import { toE164 } from "@/lib/crm/phone";
 
@@ -26,7 +27,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   const body = await request.json().catch(() => ({}));
   const patch: Record<string, unknown> = {};
-  for (const key of [
+  try {
+    for (const key of [
     "first_name",
     "last_name",
     "email",
@@ -40,18 +42,22 @@ export async function PATCH(request: Request, ctx: Ctx) {
     "city",
     "country",
   ]) {
-    if (key in body) {
-      if (key === "email") {
-        patch[key] = String(body[key] || "").trim().toLowerCase();
-      } else if (key === "phone" || key === "whatsapp") {
-        const raw = emptyToNull(body[key]);
-        patch[key] = raw ? toE164(raw, "FR") || raw : null;
-      } else if (key === "nationality" || key === "country") {
-        patch[key] = resolveCountryCode(String(body[key] || "")) || emptyToNull(body[key]);
-      } else {
-        patch[key] = emptyToNull(body[key]);
+      if (key in body) {
+        if (key === "email") {
+          patch[key] = String(body[key] || "").trim().toLowerCase();
+        } else if (key === "phone" || key === "whatsapp") {
+          const raw = emptyToNull(body[key]);
+          patch[key] = raw ? toE164(raw, "FR") || raw : null;
+        } else if (key === "nationality" || key === "country") {
+          patch[key] = resolveCountryCode(String(body[key] || "")) || emptyToNull(body[key]);
+        } else {
+          patch[key] = emptyToNull(body[key]);
+        }
       }
     }
+    Object.assign(patch, readBillingPatch(body));
+  } catch (err) {
+    return jsonError(err instanceof Error ? err.message : "Données invalides");
   }
   const { data, error } = await auth.supabase
     .from("crm_customers")
