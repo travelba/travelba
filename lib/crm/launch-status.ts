@@ -37,13 +37,13 @@ export function buildLaunchItems(snapshot: LaunchSnapshot): LaunchItem[] {
   let revolutDescription: string;
   if (snapshot.revolutConnected) {
     revolutDescription =
-      "Compte connecté. Les virements reçus arrivent toutes les 15 min dans « À rapprocher ». Aucun crédit automatique — rapprochez à la main.";
+      "Compte connecté. Les virements arrivent toutes les 15 min. Crédit automatique seulement s’il n’y a aucun doute ; sinon proposition dans l’inbox ou sur la fiche client.";
   } else if (snapshot.revolutConfigured) {
     revolutDescription =
-      "Clés app présentes. Cliquez sur Connecter Revolut (authentification Business). Le cron toutes les 15 min remplira ensuite l’inbox — aucun crédit automatique.";
+      "Clés app présentes. Cliquez sur Connecter Revolut (authentification Business). Le cron toutes les 15 min remplira ensuite l’inbox.";
   } else {
     revolutDescription =
-      "Clés Revolut à installer côté serveur (Vercel), puis Connecter Revolut. Aucun crédit automatique.";
+      "Clés Revolut à finaliser (Client ID après upload du certificat), puis Connecter Revolut.";
   }
 
   const stripeReady = snapshot.stripeConfigured && snapshot.stripeWebhookConfigured;
@@ -121,9 +121,9 @@ export function revolutInboxEmptyMessage(opts: {
     return "Intégration Revolut non installée côté serveur. Une fois les clés posées, connectez le compte Business ici.";
   }
   if (!opts.connected) {
-    return "Aucun virement tant que Revolut n’est pas connecté. Cliquez sur Connecter Revolut (authentification Business). Les virements reçus arriveront ensuite ici, toutes les 15 min, à rapprocher — aucun crédit automatique.";
+    return "Aucun virement tant que Revolut n’est pas connecté. Cliquez sur Connecter Revolut (authentification Business). Les virements reçus arriveront ensuite ici, toutes les 15 min.";
   }
-  return "Aucun virement importé. Synchronisez ou attendez le cron (toutes les 15 min). Aucun crédit automatique.";
+  return "Aucun virement importé. Synchronisez ou attendez le cron (toutes les 15 min). Les crédits sans ambiguïté sont rapprochés automatiquement.";
 }
 
 export function bookingsListEmptyMessage(hasAnyBookings: boolean): string {
@@ -135,7 +135,7 @@ export function bookingsListEmptyMessage(hasAnyBookings: boolean): string {
 
 export function ledgerEmptyMessage(hasAnyTransactions: boolean): string {
   if (!hasAnyTransactions) {
-    return "Aucune écriture. Le débit se crée à la confirmation d’un séjour. Un virement Revolut ne crédite le client qu’après rapprochement manuel.";
+    return "Aucune écriture. Le débit se crée à la confirmation d’un séjour. Un virement Revolut crédite le client après rapprochement (auto si sans doute, sinon manuel).";
   }
   return "Aucune écriture pour ces filtres.";
 }

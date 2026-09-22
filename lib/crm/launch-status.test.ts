@@ -32,7 +32,7 @@ test("prod vide : carnet + Revolut bloquent, téléphone et Stripe en option", (
   assert.equal(visible.find((item) => item.id === "phone")?.optional, true);
   assert.equal(visible.find((item) => item.id === "stripe")?.optional, true);
   assert.match(visible.find((item) => item.id === "carnet")!.description, /Pas de séjour fictif/);
-  assert.match(visible.find((item) => item.id === "revolut")!.description, /aucun crédit automatique/i);
+  assert.match(visible.find((item) => item.id === "revolut")!.description, /Connecter Revolut/);
   assert.match(visible.find((item) => item.id === "phone")!.description, /Ne pas inventer/);
   assert.match(visible.find((item) => item.id === "stripe")!.description, /Cartes fermées/);
 });
@@ -75,7 +75,7 @@ test("zéro client : fiche titulaire requise, pas de client fictif", () => {
   assert.ok(visibleLaunchItems(items).some((item) => item.id === "customers"));
 });
 
-test("inbox Revolut : connecter d’abord, jamais de crédit auto", () => {
+test("inbox Revolut : connecter d’abord, auto si sans ambiguïté", () => {
   assert.match(revolutInboxEmptyMessage({ configured: false, connected: false }), /non installée côté serveur/);
   assert.match(
     revolutInboxEmptyMessage({ configured: true, connected: false }),
@@ -83,13 +83,13 @@ test("inbox Revolut : connecter d’abord, jamais de crédit auto", () => {
   );
   assert.match(
     revolutInboxEmptyMessage({ configured: true, connected: true }),
-    /Aucun crédit automatique/
+    /rapprochés automatiquement/
   );
 });
 
 test("listes vides : distinguer absence réelle et filtre", () => {
   assert.match(bookingsListEmptyMessage(false), /Visible dans l’espace/);
   assert.equal(bookingsListEmptyMessage(true), "Aucune réservation trouvée.");
-  assert.match(ledgerEmptyMessage(false), /rapprochement manuel/);
+  assert.match(ledgerEmptyMessage(false), /rapprochement/);
   assert.equal(ledgerEmptyMessage(true), "Aucune écriture pour ces filtres.");
 });

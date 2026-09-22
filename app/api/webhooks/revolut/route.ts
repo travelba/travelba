@@ -4,6 +4,7 @@ import {
   verifyRevolutWebhook,
   type RevolutTx,
 } from "@/lib/crm/revolut";
+import { autoMatchUnmatchedRevolut } from "@/lib/crm/revolut-match";
 
 export const runtime = "nodejs";
 
@@ -24,6 +25,8 @@ export async function POST(request: Request) {
   };
   if (payload.event === "TransactionCreated" && payload.data?.id) {
     await upsertRevolutInbox([payload.data]);
+    const auto = await autoMatchUnmatchedRevolut(50);
+    return NextResponse.json({ ok: true, auto_matched: auto.matched });
   }
   return NextResponse.json({ ok: true });
 }
