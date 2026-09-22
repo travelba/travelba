@@ -6,6 +6,8 @@ import {
   dayHeading,
   detailList,
   detailStr,
+  flightCardSubtitle,
+  flightCardTitle,
   flightCities,
   flightIata,
   groupByDay,
@@ -18,6 +20,7 @@ import {
   kindIcon,
   undatedTimeline,
 } from "@/lib/crm/carnet";
+import { itemTicketCount } from "@/lib/crm/item-match";
 
 function AgendaLink({
   href,
@@ -77,6 +80,10 @@ function CardBody({
   const rooms = hotelRooms(item);
   const iata = flightIata(item);
   const cities = flightCities(item);
+  const flightTitle = item.kind === "flight" || item.kind === "rail" ? flightCardTitle(item) : "";
+  const flightSubtitle =
+    item.kind === "flight" || item.kind === "rail" ? flightCardSubtitle(item) : "";
+  const tickets = itemTicketCount(item);
   const clock = itemClock(item.start_at);
   const endClock = itemClock(item.end_at);
   const occupancy = detailStr(item, "occupancy");
@@ -93,25 +100,29 @@ function CardBody({
   const hotelCity = item.kind === "hotel" ? hotelCityLine(item) : "";
 
   return (
-    <details className="group rounded-2xl border border-[#e5e3dc] bg-white">
-      <summary className="flex cursor-pointer list-none items-start gap-3 px-3.5 py-3 [&::-webkit-details-marker]:hidden">
+    <details className="group min-w-0 overflow-hidden rounded-2xl border border-[#e5e3dc] bg-white">
+      <summary className="flex min-w-0 cursor-pointer list-none items-start gap-3 overflow-hidden px-3.5 py-3 [&::-webkit-details-marker]:hidden">
         <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--admin-peach)] text-[var(--admin-navy)]">
           <Icon name={kindIcon(item.kind)} className="h-5 w-5" />
         </span>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 overflow-hidden">
           <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--aura-blue)]">
             {BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind}
             {item.kind !== "hotel" && clock ? ` · ${clock}` : ""}
             {endClock && item.kind !== "hotel" ? ` → ${endClock}` : ""}
+            {item.kind === "flight" && tickets > 1 ? ` · ${tickets} billets` : ""}
           </p>
-          <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
-            {item.kind === "hotel" ? hotelName : item.title}
+          <p className="break-words text-sm font-semibold leading-snug text-[var(--admin-navy)]">
+            {item.kind === "hotel"
+              ? hotelName
+              : item.kind === "flight" || item.kind === "rail"
+                ? flightTitle
+                : item.title}
           </p>
           {item.kind === "flight" || item.kind === "rail" ? (
-            <>
-              {iata ? <p className="truncate text-xs font-semibold text-[var(--admin-navy)]">{iata}</p> : null}
-              {cities ? <p className="truncate text-xs text-muted">{cities}</p> : null}
-            </>
+            flightSubtitle ? (
+              <p className="break-words text-xs leading-snug text-muted">{flightSubtitle}</p>
+            ) : null
           ) : item.kind === "hotel" ? (
             <>
               {hotelCity ? <p className="truncate text-xs text-muted">{hotelCity}</p> : null}
@@ -124,9 +135,16 @@ function CardBody({
               {[item.supplier, item.confirmation_ref].filter(Boolean).join(" · ")}
             </p>
           )}
+          {price ? (
+            <p className="mt-1 break-words text-sm font-bold text-[var(--admin-navy)] sm:hidden">
+              {price}
+            </p>
+          ) : null}
         </div>
         {price ? (
-          <p className="shrink-0 text-sm font-bold text-[var(--admin-navy)]">{price}</p>
+          <p className="hidden max-w-[7.5rem] shrink-0 text-right text-sm font-bold leading-snug text-[var(--admin-navy)] sm:block">
+            {price}
+          </p>
         ) : null}
       </summary>
       <div className="space-y-2 border-t border-[#e5e3dc] px-3.5 py-3 text-sm text-[var(--admin-navy)]">

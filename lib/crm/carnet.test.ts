@@ -4,6 +4,8 @@ import type { CrmBookingItem } from "./types";
 import {
   carnetVisible,
   coverQuery,
+  flightCardSubtitle,
+  flightCardTitle,
   flightCities,
   flightIata,
   groupByDay,
@@ -209,10 +211,26 @@ describe("carnet", () => {
 
   it("sépare IATA et villes sur le vol", () => {
     const flight = item({
+      title: "Paris → Marrakech",
       details: { from: "CDG", to: "RAK", city_from: "Paris", city_to: "Marrakech" },
     });
     assert.equal(flightIata(flight), "CDG → RAK");
     assert.equal(flightCities(flight), "Paris → Marrakech");
+    assert.equal(flightCardTitle(flight), "CDG → RAK");
+    assert.equal(flightCardSubtitle(flight), "Paris → Marrakech");
+  });
+
+  it("affiche le prix unitaire × billets", () => {
+    const flight = item({
+      kind: "flight",
+      amount: 250,
+      details: { ticket_count: 5 },
+    });
+    assert.equal(itemPriceLabel(flight, "EUR"), `5 × ${formatMoney(250, "EUR")}`);
+    assert.equal(
+      itemPriceLabel(item({ kind: "flight", amount: 250 }), "EUR"),
+      formatMoney(250, "EUR")
+    );
   });
 
   it("refuse de publier un carnet sans carte métier", () => {

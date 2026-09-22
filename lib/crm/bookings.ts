@@ -7,6 +7,7 @@ import {
   type CrmBookingItem,
   type CrmTransaction,
 } from "@/lib/crm/types";
+import { itemTicketCount } from "@/lib/crm/item-match";
 import {
   ticketingFeeAmount,
   ticketingFeeExternalId,
@@ -38,12 +39,26 @@ export function bookingDebitIntent(input: {
   return "update";
 }
 
-export function bookingTotalFromItems(items: { amount?: number | null }[]): number | null {
+/** Prix vendu d’une carte : vol = unitaire × billets, sinon amount. */
+export function itemSellingAmount(item: {
+  kind?: string | null;
+  amount?: number | null;
+  details?: Record<string, unknown> | null;
+}): number | null {
+  const unit = Number(item.amount);
+  if (!Number.isFinite(unit) || unit <= 0) return null;
+  const total = unit * itemTicketCount(item);
+  return Math.round(total * 100) / 100;
+}
+
+export function bookingTotalFromItems(
+  items: { kind?: string | null; amount?: number | null; details?: Record<string, unknown> | null }[]
+): number | null {
   let sum = 0;
   let priced = false;
   for (const item of items) {
-    const n = Number(item.amount);
-    if (!Number.isFinite(n) || n <= 0) continue;
+    const n = itemSellingAmount(item);
+    if (n == null) continue;
     sum += n;
     priced = true;
   }
@@ -54,7 +69,7 @@ export function bookingTotalFromItems(items: { amount?: number | null }[]): numb
 export async function syncBookingTotalFromItems(supabase: SupabaseClient, bookingId: string) {
   const { data: items } = await supabase
     .from("crm_booking_items")
-    .select("amount")
+    .select("amount, kind, details")
     .eq("booking_id", bookingId);
   const total = bookingTotalFromItems(items || []);
   if (total == null) return;
@@ -235,7 +250,7 @@ export async function syncBookingItemDebits(supabase: SupabaseClient, booking: C
   const payerId = booking.billing_customer_id || booking.customer_id;
 
   for (const item of rows) {
-    const amount = Number(item.amount || 0);
+    const amount = itemSellingAmount(item) || 0;
     const externalId = bookingItemDebitExternalId(booking.id, item.id);
     billedIds.add(item.id);
     const debit = byExternal.get(externalId) || null;

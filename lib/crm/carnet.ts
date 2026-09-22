@@ -1,6 +1,7 @@
 import type { CrmBooking, CrmBookingDocument, CrmBookingItem } from "@/lib/crm/types";
 import { BOOKING_ITEM_LABELS } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
+import { itemTicketCount } from "./item-match";
 
 export function detailStr(item: CrmBookingItem, key: string) {
   const value = item.details?.[key];
@@ -270,6 +271,18 @@ export function flightRoute(item: CrmBookingItem) {
   return flightIata(item) || flightCities(item);
 }
 
+/** Titre compact : IATA, sinon villes — évite « Paris → Marrakech » en double. */
+export function flightCardTitle(item: CrmBookingItem) {
+  return flightIata(item) || flightCities(item) || item.title;
+}
+
+export function flightCardSubtitle(item: CrmBookingItem) {
+  const iata = flightIata(item);
+  const cities = flightCities(item);
+  if (iata && cities) return cities;
+  return "";
+}
+
 export function carnetVisible(
   booking: Pick<CrmBooking, "visible_to_client">,
   items: CrmBookingItem[]
@@ -279,7 +292,9 @@ export function carnetVisible(
 }
 
 export function itemPriceLabel(
-  item: Pick<CrmBookingItem, "kind" | "start_at" | "end_at" | "amount">,
+  item: Pick<CrmBookingItem, "kind" | "start_at" | "end_at" | "amount"> & {
+    details?: Record<string, unknown> | null;
+  },
   currency: string,
   onDay?: string | null
 ) {
@@ -288,7 +303,10 @@ export function itemPriceLabel(
     const first = itemFirstDayKey(item);
     if (first && onDay !== first) return null;
   }
-  return formatMoney(Number(item.amount), currency);
+  const money = formatMoney(Number(item.amount), currency);
+  const count = itemTicketCount(item);
+  if (count > 1) return `${count} × ${money}`;
+  return money;
 }
 
 /** Gares / aéroports de départ FR — jamais une couverture (le client part de Paris). */
