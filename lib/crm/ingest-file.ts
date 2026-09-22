@@ -2,13 +2,13 @@ import "server-only";
 import { generateText, Output, APICallError } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import {
-  definePDFJSModule,
   extractImages,
   extractText,
   getDocumentProxy,
   renderPageAsImage,
 } from "unpdf";
 import { trySharp } from "@/lib/crm/sharp";
+import { ensureBundledPdfjs } from "@/lib/crm/pdf-raster";
 import { downloadCrmFile } from "@/lib/crm/files";
 import {
   applyStructuredHints,
@@ -177,23 +177,6 @@ async function imagePart(bytes: Uint8Array, mediaType: string): Promise<UserPart
   return { type: "image", image: bytes, mediaType };
 }
 
-let officialPdfjs = false;
-
-async function ensureOfficialPdfjs() {
-  if (officialPdfjs) return;
-  try {
-    await definePDFJSModule(() => import("pdfjs-dist/legacy/build/pdf.mjs"));
-    officialPdfjs = true;
-  } catch {
-    try {
-      await definePDFJSModule(() => import("pdfjs-dist"));
-      officialPdfjs = true;
-    } catch {
-      /* bundled unpdf pdfjs */
-    }
-  }
-}
-
 async function jpegFromRaw(
   data: Uint8Array,
   raw?: { width: number; height: number; channels: 1 | 3 | 4 }
@@ -241,7 +224,7 @@ async function embeddedPdfImages(
 }
 
 async function rasterPdfPages(bytes: Uint8Array, pageCount: number): Promise<UserPart[]> {
-  await ensureOfficialPdfjs();
+  await ensureBundledPdfjs();
   const pdf = await getDocumentProxy(bytes);
   const parts: UserPart[] = [];
   const max = Math.min(pageCount, MAX_RASTER_PAGES);
@@ -454,6 +437,7 @@ Voici les cartes déjà extraites (JSON compact). Complète UNIQUEMENT les champ
 
 async function readPdfText(bytes: Uint8Array): Promise<{ text: string; pages: number }> {
   try {
+    await ensureBundledPdfjs();
     const pdf = await getDocumentProxy(bytes);
     const extracted = await extractText(pdf, { mergePages: true });
     return {
