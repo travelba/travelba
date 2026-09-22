@@ -30,7 +30,7 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 
 ## Timeline
 
-- Grouper par jour (`groupByDay`). **Hôtel répété chaque nuit** de stay (`stayNightDates` : start inclus, checkout **exclu**).
+- Grouper par jour (`groupByDay`). **Hôtel et location** répétés chaque jour de stay (`stayNightDates` : start inclus, fin **exclue**). Vol = jour de départ.
 - Jours **sans aucune** carte : **sautés** (pas de ligne vide entre deux villes).
 - Hôtel : **pas d’horloge**. `itemClock` ignore `T00:00:00` (timestamptz minuit ≠ 00h00 check-in). Carte compacte : **nom d’établissement** (`details.hotel_name` / `hotelDisplayName`) en titre, **ville** (`hotelCityLine`) en dessous. Jamais la ville à la place du nom.
 - Vol : ligne 1 `CDG → RAK` (`flightIata`), ligne 2 villes (`flightCities`).
@@ -41,6 +41,7 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 
 ## Prix
 
+- Prix vendu (`item.amount`) : **uniquement le premier jour** de l’événement (check-in hôtel, départ vol, prise en charge location). Les nuits / jours suivants gardent la carte, sans recompter le montant.
 - `item.amount` extrait = **null** (jamais le net fournisseur sur la carte client).
 - Montant PDF → `details.document_amount` (relecture agent). `sanitizeExtractedPrices` **préremplit** `total_amount` = somme **un montant par fichier**. L’agent peut corriger le prix vendu (y compris 0).
 - **Enregistrer** un extract `document_status=confirmed` : écrit `booking.total_amount` et passe le dossier en **confirmé** (toujours `visible_to_client=false` jusqu’à Publier) → `syncBookingLedger` poste le débit + frais billeterie.

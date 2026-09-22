@@ -63,14 +63,16 @@ function CardBody({
   docs,
   compactHotel = false,
   calendarHref = null,
+  day = null,
 }: {
   item: CrmBookingItem;
   currency: string;
   docs: CrmBookingDocument[];
   compactHotel?: boolean;
   calendarHref?: string | null;
+  day?: string | null;
 }) {
-  const price = itemPriceLabel(item, currency);
+  const price = itemPriceLabel(item, currency, day);
   const included = detailList(item, "included");
   const rooms = hotelRooms(item);
   const iata = flightIata(item);
@@ -234,6 +236,7 @@ export function CarnetItinerary({
                 docs={docs}
                 compactHotel={item.kind === "hotel"}
                 calendarHref={itemHref(item.id)}
+                day={day}
               />
             ))}
           </div>
