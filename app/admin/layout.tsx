@@ -28,7 +28,8 @@ export default async function AdminLayout({
       const { count } = await admin
         .from("crm_revolut_transactions")
         .select("id", { count: "exact", head: true })
-        .eq("status", "unmatched");
+        .eq("status", "unmatched")
+        .eq("direction", "credit");
       unmatched = count ?? 0;
     } catch {
       unmatched = 0;

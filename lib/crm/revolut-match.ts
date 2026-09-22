@@ -1,4 +1,5 @@
-import type { CrmCustomer, CrmRevolutTransaction } from "@/lib/crm/types";
+import { isRevolutCredit } from "./revolut-inbox";
+import type { CrmCustomer, CrmRevolutTransaction } from "./types";
 
 export type RevolutMatchReason =
   | "full_name"
@@ -130,7 +131,7 @@ export function suggestionsForCustomer(
   rows: CrmRevolutTransaction[]
 ) {
   return rows
-    .filter((r) => r.status === "unmatched")
+    .filter((r) => r.status === "unmatched" && isRevolutCredit(r.direction))
     .map((row) => {
       const { candidates } = scoreRevolutMatches(row, [customer]);
       const hit = candidates.find((c) => c.customer_id === customer.id);
@@ -148,21 +149,20 @@ export async function applyRevolutToCustomer(
   if (row.status === "matched") {
     return { ok: false as const, error: "already_matched" };
   }
-  const direction = row.direction === "debit" ? "debit" : "credit";
+  if (!isRevolutCredit(row.direction)) {
+    return { ok: false as const, error: "not_a_credit" };
+  }
   const labelBase =
     row.reference ||
     row.counterparty_name ||
     row.revolut_transaction_id;
-  const label =
-    direction === "debit"
-      ? `Dépense Revolut ${labelBase}`.trim()
-      : `Virement Revolut ${labelBase}`.trim();
+  const label = `Virement Revolut ${labelBase}`.trim();
 
   const { data: tx, error } = await admin
     .from("crm_transactions")
     .insert({
       customer_id: customerId,
-      direction,
+      direction: "credit",
       kind: "transfer",
       amount: Math.abs(Number(row.amount)),
       currency: row.currency,
@@ -207,6 +207,7 @@ export async function autoMatchUnmatchedRevolut(limit = 100) {
       .from("crm_revolut_transactions")
       .select("*")
       .eq("status", "unmatched")
+      .eq("direction", "credit")
       .order("booked_at", { ascending: false, nullsFirst: false })
       .limit(limit),
     service.from("crm_customers").select("id, first_name, last_name, company_name"),

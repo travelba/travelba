@@ -36,6 +36,9 @@ export async function POST(request: Request, ctx: Ctx) {
   );
   if (!result.ok) {
     if (result.error === "already_matched") return jsonError("Déjà rapproché");
+    if (result.error === "not_a_credit") {
+      return jsonError("Le rapprochement ne porte que sur les crédits reçus.");
+    }
     return jsonError(result.error || "Rapprochement impossible", 400);
   }
 

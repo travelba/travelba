@@ -2,7 +2,8 @@ import { requireStaffPage } from "@/lib/crm/auth";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { RevolutInbox } from "@/components/admin/RevolutInbox";
 import { revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
-import type { CrmCustomer, CrmRevolutTransaction } from "@/lib/crm/types";
+import type { PickableCustomer } from "@/lib/crm/customer-search";
+import type { CrmRevolutTransaction } from "@/lib/crm/types";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 
 export default async function AdminRevolutPage({
@@ -10,7 +11,7 @@ export default async function AdminRevolutPage({
 }: {
   searchParams: Promise<{ connected?: string; error?: string }>;
 }) {
-  const { supabase } = await requireStaffPage();
+  await requireStaffPage();
   const params = await searchParams;
   const initialMessage =
     params.error === "oauth"
@@ -18,17 +19,18 @@ export default async function AdminRevolutPage({
       : params.connected === "1"
         ? "Compte Revolut connecté. Les virements sans ambiguïté seront crédités automatiquement."
         : null;
-  const { data: customers } = await supabase
+  const admin = createServiceClient();
+  const { data: customers } = await admin
     .from("crm_customers")
-    .select("*")
+    .select("id, first_name, last_name, company_name, email, phone")
     .order("last_name");
 
   let rows: CrmRevolutTransaction[] = [];
   try {
-    const admin = createServiceClient();
     const { data } = await admin
       .from("crm_revolut_transactions")
       .select("*")
+      .eq("direction", "credit")
       .order("booked_at", { ascending: false, nullsFirst: false })
       .limit(200);
     rows = (data || []) as CrmRevolutTransaction[];
@@ -43,12 +45,12 @@ export default async function AdminRevolutPage({
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
         title="Rapprochement Revolut"
-        subtitle="Revenus et dépenses du compte Business. Proposition de client pré-sélectionnée : Valider ou Refuser."
+        subtitle="Virements reçus sur le compte Business. Proposition de client pré-sélectionnée : Valider ou Refuser."
       />
       <div className="mt-6">
         <RevolutInbox
           rows={rows}
-          customers={(customers || []) as CrmCustomer[]}
+          customers={(customers || []) as PickableCustomer[]}
           configured={revolutConfigured()}
           connected={await revolutConnected()}
           hasClientId={hasClientId}

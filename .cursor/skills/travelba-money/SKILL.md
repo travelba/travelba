@@ -44,13 +44,14 @@ Ajustements / remboursements : lignes manuelles admin `kind=adjustment|refund`.
 
 ## Revolut
 
-Flux : API Business → `crm_revolut_transactions` (`unmatched`, `direction` credit|debit) → matching → écriture `crm_transactions` (crédit = revenu, débit = dépense) si **un seul** hit certain. Sinon inbox / fiche client : **Valider** (proposition pré-sélectionnée) ou **Refuser**.
+Flux : API Business → `crm_revolut_transactions` (`unmatched`, **crédits seulement**) → matching → écriture `crm_transactions` crédit si **un seul** hit certain. Sinon inbox / fiche client : **Valider** (proposition pré-sélectionnée) ou **Refuser**.
 
 - `POST /api/admin/revolut/[id]` `{ customer_id }` | `{ action: "ignore"|"refuse" }`
 - Déjà `matched` → 400
-- Sync importe topups/transferts entrants (revenus) et transferts sortants (dépenses) ; ignore Stripe / cartes / charges
-- Cron `/api/cron/revolut-sync` (15 min) + webhook : upsert puis `autoMatchUnmatchedRevolut`
-- UI `/admin/revolut` : filtres Tous / Revenus / Dépenses ; badge = count `unmatched`
+- Sync importe **uniquement les crédits** (topups / virements reçus). Ignore sorties, Stripe, cartes, charges. `shouldIngestRevolutForRapprochement`.
+- Cron `/api/cron/revolut-sync` (15 min) + webhook : upsert puis `autoMatchUnmatchedRevolut` (crédits)
+- UI `/admin/revolut` : inbox crédits ; badge = unmatched **credit**
+- **Choisir un client** ouvre `CustomerPickDialog` (recherche nom / société / e-mail / téléphone, propositions en tête). Ne plus utiliser un `<select>` natif pour le rapprochement.
 - Prod : `REVOLUT_SANDBOX=0`, URL `https://b2b.revolut.com`
 
 **Ne pas** imputer si plusieurs clients matchent ou score partiel — laisser `unmatched` pour Valider/Refuser.

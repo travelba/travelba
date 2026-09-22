@@ -1,5 +1,6 @@
 import { createPrivateKey, createSign, createHmac, timingSafeEqual } from "crypto";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { shouldIngestRevolutForRapprochement } from "@/lib/crm/revolut-inbox";
 
 const PROVIDER = "revolut";
 
@@ -211,18 +212,21 @@ export async function upsertRevolutInbox(txs: RevolutTx[]) {
   let inserted = 0;
   for (const tx of txs) {
     const txType = (tx.type || "").toLowerCase();
-    // Bruit agence (cartes / frais) : hors rapprochement client.
-    if (txType === "card_payment" || txType === "charge" || txType === "atm") continue;
-
     const leg = tx.legs?.[0];
     if (!tx.id || !leg) continue;
     const signed = Number(leg.amount || 0);
-    if (!signed) continue;
+    if (
+      !shouldIngestRevolutForRapprochement({
+        type: txType,
+        signedAmount: signed,
+        reference: tx.reference,
+      })
+    ) {
+      continue;
+    }
 
-    const direction: "credit" | "debit" = signed > 0 ? "credit" : "debit";
     const amount = Math.abs(signed);
     const reference = (tx.reference || "").trim();
-    if (direction === "credit" && /^stripe$/i.test(reference)) continue;
 
     const counterpartyName = leg.counterparty?.name || null;
     const { error, data } = await supabase
@@ -232,7 +236,7 @@ export async function upsertRevolutInbox(txs: RevolutTx[]) {
           revolut_transaction_id: tx.id,
           amount,
           currency: leg.currency || "EUR",
-          direction,
+          direction: "credit",
           counterparty_name: counterpartyName || (reference ? reference : null),
           counterparty_iban:
             leg.counterparty?.iban || leg.counterparty?.account_no || null,

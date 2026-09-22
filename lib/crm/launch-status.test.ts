@@ -75,6 +75,12 @@ test("zéro client : fiche titulaire requise, pas de client fictif", () => {
   assert.ok(visibleLaunchItems(items).some((item) => item.id === "customers"));
 });
 
+test("Revolut connecté : uniquement les crédits reçus", () => {
+  const items = buildLaunchItems({ ...prodGap, revolutConnected: true });
+  const revolut = items.find((item) => item.id === "revolut")!;
+  assert.match(revolut.description, /crédits reçus/);
+});
+
 test("inbox Revolut : connecter d’abord, auto si sans ambiguïté", () => {
   assert.match(revolutInboxEmptyMessage({ configured: false, connected: false }), /non installée côté serveur/);
   assert.match(

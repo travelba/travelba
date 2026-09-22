@@ -51,16 +51,12 @@ export function ClientRevolutSuggestions({
     <section className="admin-af-card rounded-3xl p-5">
       <h2 className="font-display text-lg font-bold">Mouvements Revolut à rapprocher</h2>
       <p className="mt-1 text-sm text-muted">
-        Proposition automatique (revenu ou dépense). Validez pour imputer ce client, ou refusez.
+        Proposition automatique sur un crédit reçu. Validez pour créditer ce client, ou refusez.
       </p>
       {error ? <p className="mt-2 text-sm text-accent">{error}</p> : null}
       <ul className="mt-3 divide-y divide-border text-sm">
         {suggestions.map(({ row, candidate }) => {
-          const direction = row.direction || "credit";
-          const signed =
-            direction === "debit"
-              ? `−${formatMoney(Number(row.amount), row.currency)}`
-              : `+${formatMoney(Number(row.amount), row.currency)}`;
+          const signed = `+${formatMoney(Number(row.amount), row.currency)}`;
           return (
           <li key={row.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
             <div>
