@@ -1,4 +1,5 @@
 import { isRevolutCredit } from "./revolut-inbox";
+import type { CrmCustomer, CrmRevolutTransaction } from "./types";
 
 export type RevolutMatchReason =
   | "full_name"
