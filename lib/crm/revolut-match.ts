@@ -140,7 +140,7 @@ export function suggestionsForCustomer(
     .sort((a, b) => b.candidate.score - a.candidate.score);
 }
 
-export async function creditRevolutToCustomer(
+export async function applyRevolutToCustomer(
   admin: RevolutAdmin,
   row: CrmRevolutTransaction,
   customerId: string
@@ -148,16 +148,26 @@ export async function creditRevolutToCustomer(
   if (row.status === "matched") {
     return { ok: false as const, error: "already_matched" };
   }
+  const direction = row.direction === "debit" ? "debit" : "credit";
+  const labelBase =
+    row.reference ||
+    row.counterparty_name ||
+    row.revolut_transaction_id;
+  const label =
+    direction === "debit"
+      ? `Dépense Revolut ${labelBase}`.trim()
+      : `Virement Revolut ${labelBase}`.trim();
+
   const { data: tx, error } = await admin
     .from("crm_transactions")
     .insert({
       customer_id: customerId,
-      direction: "credit",
+      direction,
       kind: "transfer",
-      amount: row.amount,
+      amount: Math.abs(Number(row.amount)),
       currency: row.currency,
       occurred_on: row.booked_at ? String(row.booked_at).slice(0, 10) : null,
-      label: row.reference || `Virement Revolut ${row.counterparty_name || ""}`.trim(),
+      label,
       source: "revolut",
       external_id: row.revolut_transaction_id,
       status: "posted",
@@ -179,7 +189,16 @@ export async function creditRevolutToCustomer(
   return { ok: true as const, transaction: tx };
 }
 
-/** Auto-credit unmatched inbox rows when there is exactly one strong customer hit. */
+/** @deprecated use applyRevolutToCustomer */
+export async function creditRevolutToCustomer(
+  admin: RevolutAdmin,
+  row: CrmRevolutTransaction,
+  customerId: string
+) {
+  return applyRevolutToCustomer(admin, row, customerId);
+}
+
+/** Auto-apply unmatched inbox rows when there is exactly one strong customer hit. */
 export async function autoMatchUnmatchedRevolut(limit = 100) {
   const { createServiceClient } = await import("@/lib/supabase/admin");
   const service = createServiceClient();
@@ -203,7 +222,7 @@ export async function autoMatchUnmatchedRevolut(limit = 100) {
   for (const row of list) {
     const { autoCustomerId } = scoreRevolutMatches(row, people);
     if (!autoCustomerId) continue;
-    const result = await creditRevolutToCustomer(service, row, autoCustomerId);
+    const result = await applyRevolutToCustomer(service, row, autoCustomerId);
     if (result.ok) matched += 1;
   }
   return { scanned: list.length, matched };

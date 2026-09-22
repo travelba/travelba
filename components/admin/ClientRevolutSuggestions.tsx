@@ -49,18 +49,23 @@ export function ClientRevolutSuggestions({
 
   return (
     <section className="admin-af-card rounded-3xl p-5">
-      <h2 className="font-display text-lg font-bold">Virements Revolut à rapprocher</h2>
+      <h2 className="font-display text-lg font-bold">Mouvements Revolut à rapprocher</h2>
       <p className="mt-1 text-sm text-muted">
-        Propositions basées sur le nom de famille ou la société. Confirmez pour créditer l’encours.
+        Proposition automatique (revenu ou dépense). Validez pour imputer ce client, ou refusez.
       </p>
       {error ? <p className="mt-2 text-sm text-accent">{error}</p> : null}
       <ul className="mt-3 divide-y divide-border text-sm">
-        {suggestions.map(({ row, candidate }) => (
+        {suggestions.map(({ row, candidate }) => {
+          const direction = row.direction || "credit";
+          const signed =
+            direction === "debit"
+              ? `−${formatMoney(Number(row.amount), row.currency)}`
+              : `+${formatMoney(Number(row.amount), row.currency)}`;
+          return (
           <li key={row.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
             <div>
               <p className="font-medium">
-                {row.counterparty_name || "Contrepartie inconnue"} ·{" "}
-                {formatMoney(Number(row.amount), row.currency)}
+                {row.counterparty_name || "Contrepartie inconnue"} · {signed}
               </p>
               <p className="text-xs text-muted">
                 {formatDateFr(row.booked_at)} · {matchReasonLabel(candidate.reason)}
@@ -80,21 +85,22 @@ export function ClientRevolutSuggestions({
                   )
                 }
               >
-                {busyId === row.id ? "En cours…" : "Créditer ce client"}
+                {busyId === row.id ? "En cours…" : "Valider"}
               </button>
               <button
                 type="button"
                 disabled={busyId === row.id}
                 className="text-xs font-semibold text-muted"
                 onClick={() =>
-                  void act(row.id, { action: "ignore" }, "Impossible d’ignorer ce mouvement.")
+                  void act(row.id, { action: "refuse" }, "Impossible de refuser ce mouvement.")
                 }
               >
-                Ignorer
+                Refuser
               </button>
             </div>
           </li>
-        ))}
+          );
+        })}
       </ul>
     </section>
   );

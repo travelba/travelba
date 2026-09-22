@@ -210,25 +210,32 @@ export async function upsertRevolutInbox(txs: RevolutTx[]) {
   const supabase = createServiceClient();
   let inserted = 0;
   for (const tx of txs) {
-    // Prefer the inbound leg (positive amount). Some transfers only expose one leg.
-    const leg =
-      tx.legs?.find((l) => Number(l.amount || 0) > 0) || tx.legs?.[0];
-    const amount = Number(leg?.amount || 0);
-    if (!tx.id || amount <= 0) continue;
-    // Skip obvious non-client funding (Stripe payouts) — agent can still sync others.
+    const txType = (tx.type || "").toLowerCase();
+    // Bruit agence (cartes / frais) : hors rapprochement client.
+    if (txType === "card_payment" || txType === "charge" || txType === "atm") continue;
+
+    const leg = tx.legs?.[0];
+    if (!tx.id || !leg) continue;
+    const signed = Number(leg.amount || 0);
+    if (!signed) continue;
+
+    const direction: "credit" | "debit" = signed > 0 ? "credit" : "debit";
+    const amount = Math.abs(signed);
     const reference = (tx.reference || "").trim();
-    if (/^stripe$/i.test(reference)) continue;
-    const counterpartyName = leg?.counterparty?.name || null;
+    if (direction === "credit" && /^stripe$/i.test(reference)) continue;
+
+    const counterpartyName = leg.counterparty?.name || null;
     const { error, data } = await supabase
       .from("crm_revolut_transactions")
       .upsert(
         {
           revolut_transaction_id: tx.id,
           amount,
-          currency: leg?.currency || "EUR",
+          currency: leg.currency || "EUR",
+          direction,
           counterparty_name: counterpartyName || (reference ? reference : null),
           counterparty_iban:
-            leg?.counterparty?.iban || leg?.counterparty?.account_no || null,
+            leg.counterparty?.iban || leg.counterparty?.account_no || null,
           reference: reference || null,
           booked_at: tx.completed_at || tx.created_at || null,
           raw: tx,
