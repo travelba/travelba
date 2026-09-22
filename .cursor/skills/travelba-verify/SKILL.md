@@ -33,7 +33,7 @@ Prod build local : `npm run start` (port 3000). Ne pas laisser un zombie `next-s
 - Carnet : hôtel **nom puis ville**, répété les nuits, pas d’heure 00h00, IATA puis ville, jours vides sautés, brouillon invisible en client.
 - Import : `npx tsx --test lib/crm/ingest-parse.test.ts` après tout nouveau type de PDF (skill `travelba-document-ingest`). Ne pas publier un vrai séjour pour tester l’extract.
 - Inviter : copier le lien ; ne pas spam un vrai client.
-- Revolut : popup recherche, **crédits reçus seulement**. Ne pas matcher un virement réel sur un faux client.
+- Revolut : popup recherche, **crédits reçus seulement**. Toujours l’**expéditeur**, pas seulement la désignation. Ne pas matcher un virement réel sur un faux client.
 
 UI client : viewport **390** et **1280**. Admin : 1280.
 

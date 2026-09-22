@@ -57,7 +57,7 @@ Flux : API Business → `crm_revolut_transactions` (`unmatched`, **crédits seul
 - Déjà `matched` → 400
 - Sync importe **uniquement les crédits** (topups / virements reçus). Ignore sorties, Stripe, cartes, charges. `shouldIngestRevolutForRapprochement`.
 - Cron `/api/cron/revolut-sync` (15 min) + webhook : upsert puis `autoMatchUnmatchedRevolut` (crédits)
-- UI `/admin/revolut` : inbox crédits ; badge = unmatched **credit**
+- UI `/admin/revolut` : inbox crédits ; badge = unmatched **credit**. Titre = **expéditeur** (`Payment from …` / contrepartie), ligne suivante = **désignation** (`reference`). Jamais coller la désignation à la place du nom.
 - **Choisir un client** ouvre `CustomerPickDialog` (recherche nom / société / e-mail / téléphone, propositions en tête). Ne plus utiliser un `<select>` natif pour le rapprochement.
 - Prod : `REVOLUT_SANDBOX=0`, URL `https://b2b.revolut.com`
 

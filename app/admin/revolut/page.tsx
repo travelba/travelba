@@ -45,7 +45,7 @@ export default async function AdminRevolutPage({
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
         title="Rapprochement Revolut"
-        subtitle="Virements reçus sur le compte Business. Proposition de client pré-sélectionnée : Valider ou Refuser."
+        subtitle="Virements reçus : expéditeur et désignation. Proposition pré-sélectionnée : Valider ou Refuser."
       />
       <div className="mt-6">
         <RevolutInbox

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { isRevolutCredit, shouldIngestRevolutForRapprochement } from "./revolut-inbox";
+import { isRevolutCredit, shouldIngestRevolutForRapprochement, revolutInboxCopy, senderFromRevolutPayload } from "./revolut-inbox";
 
 describe("revolut-inbox", () => {
   it("n’ingère que les crédits (hors Stripe, cartes, sorties)", () => {
@@ -42,5 +42,24 @@ describe("revolut-inbox", () => {
     assert.equal(isRevolutCredit("credit"), true);
     assert.equal(isRevolutCredit(null), true);
     assert.equal(isRevolutCredit("debit"), false);
+  });
+
+  it("prend l’expéditeur dans Payment from, pas la désignation", () => {
+    assert.equal(
+      senderFromRevolutPayload({
+        description: "Payment from Boukris SAS",
+        counterpartyName: null,
+      }),
+      "Boukris SAS"
+    );
+    const copy = revolutInboxCopy({
+      counterparty_name: "Acompte stage",
+      reference: "Acompte stage",
+      raw: {
+        legs: [{ description: "Payment from Boukris SAS" }],
+      },
+    });
+    assert.equal(copy.sender, "Boukris SAS");
+    assert.equal(copy.designation, "Acompte stage");
   });
 });

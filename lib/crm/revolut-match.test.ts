@@ -123,6 +123,28 @@ describe("revolut-match", () => {
     assert.equal(suggestions[0].row.id, "a");
   });
 
+  it("matches the sender even if the stored name is the designation", () => {
+    const customers = [
+      customer({
+        id: "1",
+        first_name: "Benjamin",
+        last_name: "Boukris",
+        company_name: "Boukris SAS",
+      }),
+      customer({ id: "2", first_name: "Alice", last_name: "Martin" }),
+    ];
+    const result = scoreRevolutMatches(
+      {
+        counterparty_name: "Acompte stage",
+        reference: "Acompte stage",
+        raw: { legs: [{ description: "Payment from Boukris SAS" }] },
+      },
+      customers
+    );
+    assert.equal(result.autoCustomerId, "1");
+    assert.equal(result.candidates[0]?.reason, "company_name");
+  });
+
   it("labels reasons in French", () => {
     assert.equal(matchReasonLabel("company_name"), "Société");
     assert.equal(matchReasonLabel("unique_last_name"), "Nom de famille unique");

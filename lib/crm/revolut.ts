@@ -1,6 +1,9 @@
 import { createPrivateKey, createSign, createHmac, timingSafeEqual } from "crypto";
 import { createServiceClient } from "@/lib/supabase/admin";
-import { shouldIngestRevolutForRapprochement } from "@/lib/crm/revolut-inbox";
+import {
+  senderFromRevolutPayload,
+  shouldIngestRevolutForRapprochement,
+} from "@/lib/crm/revolut-inbox";
 
 const PROVIDER = "revolut";
 
@@ -162,6 +165,7 @@ export type RevolutTx = {
   legs?: Array<{
     amount: number;
     currency: string;
+    description?: string;
     account_id?: string;
     counterparty?: { name?: string; account_no?: string; iban?: string };
   }>;
@@ -227,27 +231,37 @@ export async function upsertRevolutInbox(txs: RevolutTx[]) {
 
     const amount = Math.abs(signed);
     const reference = (tx.reference || "").trim();
-
-    const counterpartyName = leg.counterparty?.name || null;
+    const counterpartyName = senderFromRevolutPayload({
+      description: leg.description,
+      counterpartyName: leg.counterparty?.name,
+    });
+    const fields = {
+      amount,
+      currency: leg.currency || "EUR",
+      direction: "credit" as const,
+      counterparty_name: counterpartyName,
+      counterparty_iban: leg.counterparty?.iban || leg.counterparty?.account_no || null,
+      reference: reference || null,
+      booked_at: tx.completed_at || tx.created_at || null,
+      raw: tx,
+    };
     const { error, data } = await supabase
       .from("crm_revolut_transactions")
       .upsert(
         {
           revolut_transaction_id: tx.id,
-          amount,
-          currency: leg.currency || "EUR",
-          direction: "credit",
-          counterparty_name: counterpartyName || (reference ? reference : null),
-          counterparty_iban:
-            leg.counterparty?.iban || leg.counterparty?.account_no || null,
-          reference: reference || null,
-          booked_at: tx.completed_at || tx.created_at || null,
-          raw: tx,
+          ...fields,
         },
         { onConflict: "revolut_transaction_id", ignoreDuplicates: true }
       )
       .select("id");
     if (!error && data?.length) inserted += data.length;
+    else {
+      await supabase
+        .from("crm_revolut_transactions")
+        .update(fields)
+        .eq("revolut_transaction_id", tx.id);
+    }
   }
   return inserted;
 }
