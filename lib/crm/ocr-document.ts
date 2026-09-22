@@ -28,7 +28,7 @@ Dates en YYYY-MM-DD.
 Nationalité et pays émetteur : code ISO 2 lettres si possible (FR, US, GB…).
 sex : M, F ou X.
 doc_type : passport | id_card | visa | insurance | other.
-first_name : tous les prénoms, dans l’ordre.
+first_name : TOUS les prénoms imprimés (ligne « Prénoms » / Given names), dans l’ordre du document, séparés par un espace. Ne jamais n’en garder qu’un. Ne pas réordonner. Conserver les traits d’union (Jean-Pierre).
 last_name : nom de famille.
 place_of_birth : lieu de naissance (ville / pays), tel qu’imprimé.
 issued_on : date de délivrance.

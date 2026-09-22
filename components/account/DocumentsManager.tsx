@@ -289,7 +289,7 @@ export function DocumentsManager({
 
             {applyIdentity ? (
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Prénom">
+                <Field label="Prénom(s)" hint="Tous les prénoms, dans l’ordre du passeport">
                   <input value={firstName} onChange={(event) => setFirstName(event.target.value)} className={fieldControlClass} />
                 </Field>
                 <Field label="Nom">

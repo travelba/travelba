@@ -1,5 +1,11 @@
 import { resolveCountryCode } from "./countries";
-import { emptyToNull, humanizeMrzName, type ExtractedIdentity } from "./identity";
+import {
+  completeGivenNames,
+  emptyToNull,
+  humanizeMrzName,
+  normalizeGivenNames,
+  type ExtractedIdentity,
+} from "./identity";
 import { DOC_TYPES, type TravelDocType } from "./types";
 
 export function emptyIdentity(): ExtractedIdentity {
@@ -88,7 +94,7 @@ export function identityFromVision(raw: Record<string, unknown>): ExtractedIdent
       resolveCountryCode(String(raw.issuing_country || "")) || emptyToNull(raw.issuing_country),
     issued_on: isoDate(emptyToNull(raw.issued_on)),
     expires_on: isoDate(emptyToNull(raw.expires_on)),
-    first_name: emptyToNull(raw.first_name) ? humanizeMrzName(String(raw.first_name)) : null,
+    first_name: normalizeGivenNames(emptyToNull(raw.first_name)),
     last_name: emptyToNull(raw.last_name) ? humanizeMrzName(String(raw.last_name)) : null,
     birth_date: isoDate(emptyToNull(raw.birth_date)),
     place_of_birth: emptyToNull(raw.place_of_birth),
@@ -120,6 +126,7 @@ export function mergePassportIdentities(
     : ({ ...mrz, ...filledEntries(vision) } as ExtractedIdentity);
   return {
     ...merged,
+    first_name: completeGivenNames(mrz.first_name, vision.first_name),
     issued_on: vision.issued_on || mrz.issued_on,
     place_of_birth: vision.place_of_birth || mrz.place_of_birth,
     authority: vision.authority || mrz.authority,

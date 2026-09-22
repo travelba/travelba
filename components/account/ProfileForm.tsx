@@ -162,7 +162,7 @@ export function ProfileForm({
         open={openIdentity}
         onToggle={() => setOpenIdentity((value) => !value)}
       >
-        <Field label="Prénom">
+        <Field label="Prénom(s)" hint="Tous les prénoms, dans l’ordre du passeport">
           <input
             autoComplete="given-name"
             spellCheck={false}
