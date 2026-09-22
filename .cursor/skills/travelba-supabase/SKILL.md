@@ -28,6 +28,7 @@ Avant d’écrire du SQL : lister les tables (`crm_*`), lire la **dernière** mi
 | `20260922101000_billing_parent_read.sql` | member peut lire la fiche admin société (payeur) |
 | `20260922120000_include_in_ledger.sql` | `include_in_ledger` séjour / carte (grand livre optionnel) |
 | `20260922121500_fix_customer_parent_rls.sql` | RLS parent société sans récursion `crm_customers` |
+| `20260922140000_booking_total_from_items.sql` | backfill `total_amount` = somme des prix vendus cartes si séjour à 0 |
 
 Toute évolution = **nouveau fichier** `supabase/migrations/YYYYMMDDHHMMSS_slug.sql` (idempotent : `if not exists`, `drop policy if exists`). Appliquer via MCP `apply_migration` ou SQL Editor. Ne pas éditer une migration déjà poussée en prod.
 

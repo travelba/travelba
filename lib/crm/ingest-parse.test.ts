@@ -632,6 +632,11 @@ describe("sellingTotalFromExtract", () => {
     };
     assert.equal(sellingTotalFromExtract(extract), 943.8);
     assert.equal(sellingTotalFromExtract({ ...extract, total_amount: 2100 }), 2100);
+    assert.equal(sellingTotalFromExtract({ ...extract, total_amount: 0 }), 943.8);
+    assert.equal(
+      sellingTotalFromExtract({ ...extract, total_amount: 0, items: [] }),
+      0
+    );
     assert.equal(bookingStatusFromExtract(extract, "draft"), "confirmed");
     assert.equal(
       bookingStatusFromExtract({ ...extract, document_status: "quote" }, "draft"),

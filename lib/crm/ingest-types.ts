@@ -255,12 +255,7 @@ function textDetail(details: Record<string, unknown> | undefined, key: string) {
   return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
-/** Un montant PDF par fichier (max), sommé. L’agent peut écraser via total_amount (y compris 0). */
-export function sellingTotalFromExtract(extract: BookingExtract): number | null {
-  if (extract.total_amount != null && Number.isFinite(Number(extract.total_amount))) {
-    const n = Math.round(Number(extract.total_amount) * 100) / 100;
-    return n < 0 ? 0 : n;
-  }
+function documentAmountSum(extract: BookingExtract): number | null {
   const byKey = new Map<string, number>();
   for (const item of extract.items || []) {
     const amount = asPositiveMoney(item.details?.document_amount);
@@ -277,6 +272,17 @@ export function sellingTotalFromExtract(extract: BookingExtract): number | null 
   if (!byKey.size) return null;
   const sum = [...byKey.values()].reduce((a, b) => a + b, 0);
   return Math.round(sum * 100) / 100;
+}
+
+/** Un montant PDF par fichier (max), sommé. L’agent peut écraser via total_amount > 0. Un 0 sans documents reste 0. */
+export function sellingTotalFromExtract(extract: BookingExtract): number | null {
+  const fromDocuments = documentAmountSum(extract);
+  if (extract.total_amount != null && Number.isFinite(Number(extract.total_amount))) {
+    const n = Math.round(Number(extract.total_amount) * 100) / 100;
+    const amount = n < 0 ? 0 : n;
+    if (amount > 0 || fromDocuments == null) return amount;
+  }
+  return fromDocuments;
 }
 
 export function bookingStatusFromExtract(

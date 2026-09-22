@@ -42,8 +42,9 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 ## Prix
 
 - Prix vendu (`item.amount`) : **uniquement le premier jour** de l’événement (check-in hôtel, départ vol, prise en charge location). Les nuits / jours suivants gardent la carte, sans recompter le montant.
+- **Montant du séjour** (`booking.total_amount`) = somme des prix vendus des cartes dès qu’un `item.amount > 0`. Sinon saisie manuelle / total import.
 - `item.amount` extrait = **null** (jamais le net fournisseur sur la carte client).
-- Montant PDF → `details.document_amount` (relecture agent). `sanitizeExtractedPrices` **préremplit** `total_amount` = somme **un montant par fichier**. L’agent peut corriger le prix vendu (y compris 0).
+- Montant PDF → `details.document_amount` (relecture agent). `sanitizeExtractedPrices` **préremplit** `total_amount` = somme **un montant par fichier**. Un extract à 0 ne masque pas cette somme.
 - **Enregistrer** un extract `document_status=confirmed` : écrit `booking.total_amount` et passe le dossier en **confirmé** (toujours `visible_to_client=false` jusqu’à Publier) → `syncBookingLedger` poste le débit + frais billeterie.
 - Devis (`quote`) : montant proposé, statut `quoted`, **pas** de débit.
 - Inclus (`details.included`) **seulement si la phrase est écrite**. Pas de petit-déj inventé. Sinon pas de bloc Inclus.
