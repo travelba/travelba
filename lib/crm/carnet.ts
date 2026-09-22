@@ -70,6 +70,24 @@ export function hotelStayLabel(item: CrmBookingItem) {
   return range;
 }
 
+/** Nom d’établissement en premier (details.hotel_name), jamais la ville seule. */
+export function hotelDisplayName(item: CrmBookingItem) {
+  const name = detailStr(item, "hotel_name");
+  const title = (item.title || "").trim();
+  const city = detailStr(item, "city");
+  if (name) return name;
+  if (title && title.toLowerCase() !== city.toLowerCase()) return title;
+  return title || city || "Hôtel";
+}
+
+/** Ville sous le nom, omise si elle duplique le titre. */
+export function hotelCityLine(item: CrmBookingItem) {
+  const city = detailStr(item, "city");
+  if (!city) return "";
+  if (city.toLowerCase() === hotelDisplayName(item).toLowerCase()) return "";
+  return city;
+}
+
 export function stayNightDates(start: string | null, end: string | null) {
   const from = (start || "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return [] as string[];

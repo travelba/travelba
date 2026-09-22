@@ -46,6 +46,8 @@ Adults
 2
 Booking name
 Guest A
+Total
+$858.80
 `;
 
 const QUOTE = `
@@ -149,7 +151,7 @@ describe("mergeFileExtracts", () => {
       },
     ]);
     assert.equal(merged.extract.document_status, "confirmed");
-    assert.equal(merged.extract.total_amount, null);
+    assert.equal(merged.extract.total_amount, 858.8);
     const devis = merged.extract.items.find(
       (item) => item.details?.source_file_name === "devis.pdf"
     );

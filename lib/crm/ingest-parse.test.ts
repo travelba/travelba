@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { redactIngestText } from "./ingest-redact";
-import { sanitizeExtractedPrices } from "./ingest-types";
+import {
+  bookingStatusFromExtract,
+  normalizeHotelExtractItem,
+  sanitizeExtractedPrices,
+  sellingTotalFromExtract,
+} from "./ingest-types";
 import {
   applyStructuredHints,
   inferAirportIata,
@@ -126,7 +131,7 @@ describe("redactIngestText", () => {
       items: [],
       travelers: [],
     });
-    assert.equal(cleaned.total_amount, null);
+    assert.equal(cleaned.total_amount, 1);
     assert.equal(cleaned.document_status, "quote");
     assert.equal((cleaned.notes_client || "").includes("8445"), false);
     assert.match(cleaned.notes_client || "", /Devis/);
@@ -198,7 +203,7 @@ describe("parseDocumentMoney", () => {
       items,
       travelers: [],
     });
-    assert.equal(cleaned.total_amount, null);
+    assert.equal(cleaned.total_amount, 858.8);
     assert.equal(cleaned.items[0].amount, null);
     assert.equal(cleaned.items[0].details?.document_amount, 858.8);
   });
@@ -565,5 +570,103 @@ describe("PDF déposés (upload)", () => {
     assert.equal(parsed.start_at, "2026-09-14");
     assert.equal(parsed.end_at, "2026-09-17");
     assert.equal(parseTransferConfirmation(text), null);
+  });
+});
+
+describe("sellingTotalFromExtract", () => {
+  it("somme un montant par fichier et garde la saisie agent", () => {
+    const extract = {
+      document_status: "confirmed" as const,
+      title: "Costa Rica",
+      destination: "Costa Rica",
+      start_date: "2026-08-02",
+      end_date: "2026-08-07",
+      currency: "USD",
+      total_amount: null,
+      notes_client: null,
+      customer_email: null,
+      customer_first_name: null,
+      customer_last_name: null,
+      items: [
+        {
+          kind: "hotel" as const,
+          title: "Santa Teresa",
+          supplier: null,
+          confirmation_ref: "18093",
+          start_at: "2026-08-02",
+          end_at: "2026-08-07",
+          amount: null,
+          details: {
+            hotel_name: "Nantipa",
+            city: "Santa Teresa",
+            document_amount: 858.8,
+            source_file_name: "hotel.pdf",
+          },
+        },
+        {
+          kind: "hotel" as const,
+          title: "Nantipa",
+          supplier: null,
+          confirmation_ref: "18093b",
+          start_at: "2026-08-02",
+          end_at: "2026-08-07",
+          amount: null,
+          details: {
+            hotel_name: "Nantipa",
+            document_amount: 858.8,
+            source_file_name: "hotel.pdf",
+          },
+        },
+        {
+          kind: "transfer" as const,
+          title: "Aéroport → Hôtel",
+          supplier: null,
+          confirmation_ref: null,
+          start_at: "2026-08-02",
+          end_at: null,
+          amount: null,
+          details: { document_amount: 85, source_file_name: "transfer.pdf" },
+        },
+      ],
+      travelers: [],
+    };
+    assert.equal(sellingTotalFromExtract(extract), 943.8);
+    assert.equal(sellingTotalFromExtract({ ...extract, total_amount: 2100 }), 2100);
+    assert.equal(bookingStatusFromExtract(extract, "draft"), "confirmed");
+    assert.equal(
+      bookingStatusFromExtract({ ...extract, document_status: "quote" }, "draft"),
+      "quoted"
+    );
+  });
+
+  it("met le nom d’hôtel en title, pas la ville", () => {
+    const item = normalizeHotelExtractItem({
+      kind: "hotel",
+      title: "Santa Teresa",
+      supplier: null,
+      confirmation_ref: "18093",
+      start_at: "2026-08-02",
+      end_at: "2026-08-07",
+      amount: null,
+      details: { hotel_name: "Nantipa", city: "Santa Teresa" },
+    });
+    assert.equal(item.title, "Nantipa");
+    assert.equal(item.details?.hotel_name, "Nantipa");
+    const cleaned = sanitizeExtractedPrices({
+      document_status: "confirmed",
+      title: "Costa Rica",
+      destination: "Costa Rica",
+      start_date: "2026-08-02",
+      end_date: "2026-08-07",
+      currency: "USD",
+      total_amount: null,
+      notes_client: null,
+      customer_email: null,
+      customer_first_name: null,
+      customer_last_name: null,
+      items: [item],
+      travelers: [],
+    });
+    assert.equal(cleaned.items[0].title, "Nantipa");
   });
 });

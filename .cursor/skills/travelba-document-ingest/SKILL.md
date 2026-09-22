@@ -20,7 +20,7 @@ Identité / MRZ : skill `travelba-identity` — **pas** ce dropzone.
 ## Contrat (non négociable)
 
 1. **Ne jamais inventer.** Absent = `null`. Pas de 15:00 / 12:00, pas de petit-déj, pas de franchise.
-2. **Prix extraits** : montant PDF/photo → `details.document_amount` (agent). `item.amount` et `total_amount` restent **null** (prix vendu saisi par l’agent, jamais le net client).
+2. **Prix extraits** : montant PDF/photo → `details.document_amount` (un par fichier). `item.amount` reste **null**. `total_amount` est **prérempli** (somme des documents) ; l’agent corrige le prix vendu. Enregistrer une confirmation écrit le montant du séjour **et** le débit ledger (`syncBookingLedger`). Pas une ligne « NET » fournisseur seule.
 3. **Pas de PAN / CVC / fidélité / paiement.** `redactIngestText` avant le modèle.
 4. **Un séjour par dépôt.** Fichiers hétérogènes : le plus complet + `notes_client`.
 5. **Relecture humaine** puis Enregistrer (`visible_to_client=false`).
@@ -98,7 +98,7 @@ Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Co
 
 - `details.rooms = [{ room, guests, confirmation_ref }, …]`
 - `confirmation_ref` = `97620170;97620172` — `findMatchingItem` par **recouvrement** de réf.
-- `included[]` seulement si phrase explicite (Daily breakfast…). Sinon `[]`.
+- `details.hotel_name` + `title` = nom de l’établissement (**pas** la ville). `details.city` = ville (sous-titre itinéraire).
 - Dates header → `start_at` / `end_at` **sans heure** si seule la date est une date de séjour.
 - Politique 15:00 / 14:00 / 12:00 / Pick Up 00:00 → **ignorer** (pas l’horloge de la carte, pas un transfert).
 - Nantipa `08/02/2026` = 2 août (US), pas 8 février.
@@ -125,12 +125,15 @@ Réimport même clé = **remplace** la carte. Dans un même extract, 10 duplicat
 
 - Noms imprimés, casse normale. « 2 adults » sans noms → Adulte 1 / Adulte 2.
 - Pas d’enfant sans nom.
-- `title` / `destination` : villes séparées par ` · `.
+- `title` séjour / `destination` : villes séparées par ` · `. Title d’une **carte hôtel** = nom d’établissement.
 
 ## UI persist
 
 - Dropzone : progression par fichier, Annuler, retry des erreurs, succès partiel. Filtre cartes par `source_file_name`.
 - Sous-fiche par `kind`. Bandeau devis. Bandeau **À vérifier** (`needs_review`) : on **enregistre**, on ne refuse pas tout le lot.
+- **Prix vendu (total)** prérempli depuis les PDF. `parseExtractPayload` ne l’efface plus.
+- Hôtel : `normalizeHotelExtractItem` force `title = hotel_name`.
+- Confirmation → dossier **confirmé** (inédit client) + `total_amount` + transactions. Devis → `quoted` sans débit.
 - Cartes manuelles OK. Drag `sort_order` après persist.
 - Fichiers : upload signé `ingest-tmp/` puis copie `bookings/{id}/`. Lecture via `/api/files` (pas d’URL signed longue). Cover `scheduleBookingCover`.
 - Identity extract → ne pas `persistNewBookingFromExtract`.

@@ -1,6 +1,6 @@
 import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
 import { BOOKING_ITEM_LABELS } from "@/lib/crm/types";
-import { itemClock, flightIata, flightCities } from "@/lib/crm/carnet";
+import { itemClock, flightIata, flightCities, hotelDisplayName } from "@/lib/crm/carnet";
 
 function icsEscape(value: string) {
   return value
@@ -47,6 +47,9 @@ function itemSummary(item: CrmBookingItem) {
   const kind = BOOKING_ITEM_LABELS[item.kind] || item.kind;
   if (item.kind === "flight") {
     return `${kind} ${flightIata(item) || item.title}`.trim();
+  }
+  if (item.kind === "hotel") {
+    return `${kind} · ${hotelDisplayName(item)}`.trim();
   }
   return `${kind} · ${item.title}`.trim();
 }

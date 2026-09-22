@@ -768,6 +768,13 @@ function overlayItem(target: ExtractItem, incoming: ExtractItem) {
     const includedA = Array.isArray(current.included) ? current.included : [];
     const includedB = Array.isArray(incoming.details?.included) ? incoming.details.included : [];
     current.included = [...new Set([...includedA, ...includedB].filter(Boolean))];
+    if (incoming.details?.hotel_name && !current.hotel_name) {
+      current.hotel_name = incoming.details.hotel_name;
+    }
+    if (incoming.details?.city && !current.city) current.city = incoming.details.city;
+    const hotelName =
+      typeof current.hotel_name === "string" ? current.hotel_name.trim() : "";
+    if (hotelName) target.title = hotelName;
   }
   target.details = current;
 }

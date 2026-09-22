@@ -58,8 +58,9 @@ Règles d’honnêteté :
 - Un PDF peut produire PLUSIEURS cartes.
 - details.source_file_name = nom exact du fichier source.
 - details.needs_review = true si lecture douteuse.
-- amount des items : toujours null. total_amount : toujours null (prix vendu = saisie agent).
+- amount des items : toujours null (pas le net client).
 - details.document_amount = montant imprimé sur CE fichier (total visible). Absent = null. Pas une ligne « NET » fournisseur seule.
+- total_amount : somme des details.document_amount (un montant par fichier). L’agent peut corriger le prix vendu.
 - details.document_currency = EUR | USD | CHF | GBP selon le symbole / code imprimé.
 
 Voyageurs :
@@ -85,7 +86,7 @@ const PROMPT_FLIGHT = `Vol :
 const PROMPT_HOTEL = `Hôtel :
 - UN item même s’il y a deux chambres / deux réf. : details.rooms = [{room, guests, confirmation_ref}, …].
 - confirmation_ref = première réf. ou les deux séparées par « ; » (ex. 97620170;97620172).
-- details.hotel_name, details.city, details.address, details.board si écrite.
+- title de la carte = details.hotel_name (nom de l’établissement), PAS la ville. details.city = ville. details.address, details.board si écrite.
 - Nantipa / vouchers Costa Rica : 08/02/2026 = 2 août (MM/JJ), pas 8 février. Check-in 15:00 dans les CGV ≠ heure de la carte (date only).
 - Confirmation type The Leela : Check In 14-SEP-26 = date only. Ignorer 14:00/12:00 de politique et Pick Up / Drop Off 00:00. TENTATIVE → details.needs_review.
 - Devis Passion Collection / « none are on hold » : document_status=quote, un item hôtel, rooms = les options. Pas de NET.`;

@@ -15,9 +15,12 @@ import { extractBookingFromFiles } from "@/lib/crm/ingest-file";
 import {
   bookingExtractSchema,
   aiGatewayConfigured,
+  bookingStatusFromExtract,
   guessIngestMime,
   isAllowedIngestType,
+  normalizeHotelExtractItem,
   sanitizeExtractedPrices,
+  sellingTotalFromExtract,
   MAX_INGEST_BYTES,
   MAX_INGEST_FILES,
   type BookingExtract,
@@ -264,7 +267,8 @@ async function upsertItemsAndTravelers(
   let saved = 0;
   let lastError = "";
 
-  for (const item of ordered) {
+  for (const raw of ordered) {
+    const item = raw.kind === "hotel" ? normalizeHotelExtractItem(raw) : raw;
     const title = String(item.title || "").trim();
     if (!title) continue;
     const details = cleanDetails(item.details);
@@ -390,6 +394,8 @@ export async function persistNewBookingFromExtract(opts: {
     emptyToNull(extract.title) ||
     emptyToNull(extract.destination) ||
     "Voyage";
+  const totalAmount = sellingTotalFromExtract(extract) ?? 0;
+  const status = bookingStatusFromExtract(extract, opts.status);
   const { data, error } = await admin
     .from("crm_bookings")
     .insert({
@@ -397,11 +403,11 @@ export async function persistNewBookingFromExtract(opts: {
       reference,
       title,
       destination: emptyToNull(extract.destination),
-      status: extract.document_status === "quote" ? "quoted" : opts.status,
+      status,
       start_date: emptyToNull(extract.start_date),
       end_date: emptyToNull(extract.end_date),
       currency: emptyToNull(extract.currency) || "EUR",
-      total_amount: Number(extract.total_amount || 0),
+      total_amount: totalAmount,
       notes_client: emptyToNull(extract.notes_client),
       notes_internal:
         extract.document_status === "quote"
@@ -500,8 +506,12 @@ export async function applyExtractToBooking(opts: {
   if (!booking.destination && opts.extract.destination) patch.destination = opts.extract.destination;
   if (!booking.start_date && opts.extract.start_date) patch.start_date = opts.extract.start_date;
   if (!booking.end_date && opts.extract.end_date) patch.end_date = opts.extract.end_date;
-  if (!Number(booking.total_amount) && opts.extract.total_amount) {
-    patch.total_amount = Number(opts.extract.total_amount);
+  const proposedTotal = sellingTotalFromExtract(opts.extract);
+  if (!Number(booking.total_amount) && proposedTotal) {
+    patch.total_amount = proposedTotal;
+  }
+  if (booking.status === "draft" && opts.extract.document_status === "confirmed") {
+    patch.status = "confirmed";
   }
   if (Object.keys(patch).length) {
     await admin.from("crm_bookings").update(patch).eq("id", opts.bookingId);
