@@ -51,6 +51,7 @@ Flux : API Business → `crm_revolut_transactions` (`unmatched`, `direction` cre
 - Sync importe topups/transferts entrants (revenus) et transferts sortants (dépenses) ; ignore Stripe / cartes / charges
 - Cron `/api/cron/revolut-sync` (15 min) + webhook : upsert puis `autoMatchUnmatchedRevolut`
 - UI `/admin/revolut` : filtres Tous / Revenus / Dépenses ; badge = count `unmatched`
+- **Choisir un client** ouvre `CustomerPickDialog` (recherche nom / société / e-mail / téléphone, propositions en tête). Ne plus utiliser un `<select>` natif pour le rapprochement.
 - Prod : `REVOLUT_SANDBOX=0`, URL `https://b2b.revolut.com`
 
 **Ne pas** imputer si plusieurs clients matchent ou score partiel — laisser `unmatched` pour Valider/Refuser.
