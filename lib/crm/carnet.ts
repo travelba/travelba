@@ -107,9 +107,26 @@ export function stayNightDates(start: string | null, end: string | null) {
   return dates.length ? dates : [from];
 }
 
-export function itemDayKey(item: CrmBookingItem) {
+export function itemDayKey(item: Pick<CrmBookingItem, "start_at">) {
   if (!item.start_at) return null;
   return item.start_at.slice(0, 10);
+}
+
+/** Premier jour de l’événement (check-in / départ / prise en charge). */
+export function itemFirstDayKey(item: Pick<CrmBookingItem, "kind" | "start_at" | "end_at">) {
+  if (item.kind === "hotel" || item.kind === "car") {
+    return stayNightDates(item.start_at, item.end_at)[0] || itemDayKey(item);
+  }
+  return itemDayKey(item);
+}
+
+/** Jours où la carte apparaît : hôtel et location répétés, vol/autres = jour de début. */
+export function itemTimelineDays(item: Pick<CrmBookingItem, "kind" | "start_at" | "end_at">) {
+  if (item.kind === "hotel" || item.kind === "car") {
+    const nights = stayNightDates(item.start_at, item.end_at);
+    return nights.length ? nights : [itemDayKey(item)];
+  }
+  return [itemDayKey(item)];
 }
 
 export function isTimelineKind(kind: string) {
@@ -152,9 +169,7 @@ export function groupByDay(items: CrmBookingItem[]) {
   const map = new Map<string, CrmBookingItem[]>();
   for (const item of items) {
     if (item.kind === "insurance" || item.kind === "fee") continue;
-    const keys =
-      item.kind === "hotel" ? stayNightDates(item.start_at, item.end_at) : [itemDayKey(item)];
-    for (const key of keys) {
+    for (const key of itemTimelineDays(item)) {
       if (!key) continue;
       const list = map.get(key) || [];
       list.push(item);
@@ -169,10 +184,7 @@ export function groupByDay(items: CrmBookingItem[]) {
 
 export function undatedTimeline(items: CrmBookingItem[]) {
   return sortItemsByOrder(
-    timelineItems(items).filter((item) => {
-      if (item.kind === "hotel") return stayNightDates(item.start_at, item.end_at).length === 0;
-      return !itemDayKey(item);
-    })
+    timelineItems(items).filter((item) => itemTimelineDays(item).every((key) => !key))
   );
 }
 
@@ -266,8 +278,16 @@ export function carnetVisible(
   return items.some((item) => item.visible_to_client !== false && item.kind !== "fee");
 }
 
-export function itemPriceLabel(item: CrmBookingItem, currency: string) {
+export function itemPriceLabel(
+  item: Pick<CrmBookingItem, "kind" | "start_at" | "end_at" | "amount">,
+  currency: string,
+  onDay?: string | null
+) {
   if (item.amount == null || Number.isNaN(Number(item.amount))) return null;
+  if (onDay) {
+    const first = itemFirstDayKey(item);
+    if (first && onDay !== first) return null;
+  }
   return formatMoney(Number(item.amount), currency);
 }
 

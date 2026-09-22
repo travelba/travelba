@@ -11,12 +11,14 @@ import {
   hotelDisplayName,
   hotelStayLabel,
   itemClock,
+  itemPriceLabel,
   unlinkedDocuments,
   whatsappModifyHref,
 } from "./carnet";
 import { canPublishCarnet } from "./bookings";
 import { bookingCoverUrl } from "./covers";
 import { sanitizeExtractedPrices } from "./ingest-types";
+import { formatMoney } from "./money";
 
 function item(partial: Partial<CrmBookingItem>): CrmBookingItem {
   return {
@@ -105,6 +107,50 @@ describe("carnet", () => {
     assert.equal(groups.map(([day]) => day).join(","), "2026-08-12,2026-08-13,2026-08-14");
     assert.equal(groups[1][1].some((row) => row.title === "Andaz"), true);
     assert.equal(groups[1][1].some((row) => row.title === "Aller"), false);
+  });
+
+  it("répète la location chaque jour, sans le jour de restitution", () => {
+    const groups = groupByDay([
+      item({
+        id: "c",
+        kind: "car",
+        title: "Hertz",
+        start_at: "2026-08-12",
+        end_at: "2026-08-15",
+      }),
+    ]);
+    assert.equal(groups.map(([day]) => day).join(","), "2026-08-12,2026-08-13,2026-08-14");
+  });
+
+  it("affiche le prix vendu seulement le premier jour", () => {
+    const hotel = item({
+      kind: "hotel",
+      amount: 800,
+      start_at: "2026-08-12",
+      end_at: "2026-08-15",
+    });
+    assert.equal(itemPriceLabel(hotel, "EUR", "2026-08-12"), formatMoney(800, "EUR"));
+    assert.equal(itemPriceLabel(hotel, "EUR", "2026-08-13"), null);
+    assert.equal(itemPriceLabel(hotel, "EUR", "2026-08-14"), null);
+    assert.equal(itemPriceLabel(hotel, "EUR"), formatMoney(800, "EUR"));
+
+    const flight = item({
+      kind: "flight",
+      amount: 250,
+      start_at: "2026-08-12T22:00:00",
+      end_at: "2026-08-13T08:00:00",
+    });
+    assert.equal(itemPriceLabel(flight, "EUR", "2026-08-12"), formatMoney(250, "EUR"));
+    assert.equal(itemPriceLabel(flight, "EUR", "2026-08-13"), null);
+
+    const car = item({
+      kind: "car",
+      amount: 400,
+      start_at: "2026-08-12",
+      end_at: "2026-08-18",
+    });
+    assert.equal(itemPriceLabel(car, "EUR", "2026-08-12"), formatMoney(400, "EUR"));
+    assert.equal(itemPriceLabel(car, "EUR", "2026-08-15"), null);
   });
 
   it("cache un séjour sans carte visible", () => {
