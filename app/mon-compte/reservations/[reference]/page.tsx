@@ -20,6 +20,7 @@ import {
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
+import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { siteConfig } from "@/lib/site";
 import { CoverPhoto } from "@/components/crm/CoverPhoto";
@@ -47,6 +48,7 @@ export default async function ReservationDetailPage({ params }: Props) {
     .maybeSingle();
   if (!booking) notFound();
   const b = booking as CrmBooking;
+  await reconcileCustomerParty(customer.id);
 
   const [{ data: items }, { data: travelers }, { data: docs }, { data: identityDocs }] = await Promise.all([
     supabase

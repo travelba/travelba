@@ -18,6 +18,10 @@ export function shouldForcePasswordSetup(opts: {
   return path === SET_PASSWORD_PATH;
 }
 
+export function pathAfterPassword(phone: string | null | undefined) {
+  return phone?.trim() ? "/mon-compte" : "/mon-compte/profil";
+}
+
 export function isStaffRole(user: {
   app_metadata?: Record<string, unknown> | null;
 }) {

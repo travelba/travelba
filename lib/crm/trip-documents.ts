@@ -1,3 +1,4 @@
+import { isPlaceholderTraveler, namesReferToSamePerson } from "./person-match";
 import type { CrmBookingTraveler, CrmTravelDocument } from "./types";
 
 export function travelerDisplayName(traveler: CrmBookingTraveler) {
@@ -17,9 +18,18 @@ export function isVaultDocument(doc: CrmTravelDocument) {
 }
 
 export function samePerson(doc: CrmTravelDocument, traveler: CrmBookingTraveler) {
-  if (traveler.companion_id) return doc.companion_id === traveler.companion_id;
-  if (traveler.is_account_holder) return !doc.companion_id;
-  return doc.traveler_id === traveler.id;
+  if (isPlaceholderTraveler(traveler.first_name, traveler.last_name)) return false;
+  if (traveler.companion_id) {
+    if (doc.companion_id) return doc.companion_id === traveler.companion_id;
+    return namesReferToSamePerson(traveler, doc);
+  }
+  if (traveler.is_account_holder) {
+    if (doc.companion_id) return false;
+    if (doc.first_name || doc.last_name) return namesReferToSamePerson(traveler, doc);
+    return true;
+  }
+  if (namesReferToSamePerson(traveler, doc)) return true;
+  return Boolean(doc.traveler_id) && doc.traveler_id === traveler.id;
 }
 
 export function documentsForPerson(
@@ -84,9 +94,13 @@ export function tripDocCoverage(
   travelers: CrmBookingTraveler[],
   docs: CrmTravelDocument[]
 ) {
-  if (!travelers.length) return { ready: 0, total: 0 };
-  const ready = travelers.filter((traveler) =>
+  const named = travelers.filter(
+    (traveler) => !isPlaceholderTraveler(traveler.first_name, traveler.last_name)
+  );
+  const party = named.length ? named : travelers;
+  if (!party.length) return { ready: 0, total: 0 };
+  const ready = party.filter((traveler) =>
     Boolean(primaryIdentityDoc(tripDocumentsForTraveler(docs, traveler)))
   ).length;
-  return { ready, total: travelers.length };
+  return { ready, total: party.length };
 }

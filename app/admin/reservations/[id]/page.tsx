@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { requireStaffPage } from "@/lib/crm/auth";
+import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { BookingEditor } from "@/components/admin/BookingEditor";
 import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 import type {
@@ -24,6 +25,7 @@ export default async function AdminBookingPage({ params }: Props) {
     .maybeSingle();
   if (!booking) notFound();
   const b = booking as CrmBooking;
+  await reconcileCustomerParty(b.customer_id);
   const [
     { data: items },
     { data: travelers },

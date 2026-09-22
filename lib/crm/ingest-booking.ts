@@ -27,6 +27,8 @@ import { assertStaffIngestPath, ingestBatchPrefix } from "@/lib/crm/ingest-stora
 import { sortItemsByOrder } from "@/lib/crm/carnet";
 import { scheduleBookingCover } from "@/lib/crm/cover-generate";
 import { findMatchingItem } from "@/lib/crm/item-match";
+import { isPlaceholderTraveler, matchTravelerToParty, sameRecordedTraveler } from "@/lib/crm/person-match";
+import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import {
   BOOKING_ITEM_KINDS,
   type BookingItemKind,
@@ -118,27 +120,6 @@ export function matchCustomerId(customers: CrmCustomer[], extract: BookingExtrac
     return cf === first || cf.startsWith(first) || first.startsWith(cf);
   });
   return hits.length === 1 ? hits[0].id : null;
-}
-
-function matchCompanion(
-  companions: CrmCompanion[],
-  first: string | null,
-  last: string | null
-) {
-  const f = normalizeName(first);
-  const l = normalizeName(last);
-  if (!l && !f) return null;
-  return (
-    companions.find(
-      (c) => normalizeName(c.last_name) === l && normalizeName(c.first_name) === f
-    ) || null
-  );
-}
-
-function isHolder(customer: CrmCustomer, first: string | null, last: string | null) {
-  const f = normalizeName(first);
-  const l = normalizeName(last);
-  return Boolean(l) && normalizeName(customer.last_name) === l && (!f || normalizeName(customer.first_name) === f);
 }
 
 const FORBIDDEN_DETAIL_KEY =
@@ -341,27 +322,41 @@ async function upsertItemsAndTravelers(
 
   if (!saved && lastError) throw new Error(lastError);
 
-  for (const traveler of extract.travelers || []) {
+  const incoming = extract.travelers || [];
+  const skipPlaceholders =
+    incoming.some((traveler) => {
+      const first = emptyToNull(traveler.first_name);
+      const last = emptyToNull(traveler.last_name);
+      return Boolean(first || last) && !isPlaceholderTraveler(first, last);
+    }) ||
+    existingTravelers.some(
+      (traveler) =>
+        Boolean(traveler.first_name || traveler.last_name) &&
+        !isPlaceholderTraveler(traveler.first_name, traveler.last_name)
+    );
+
+  for (const traveler of incoming) {
     const first = emptyToNull(traveler.first_name);
     const last = emptyToNull(traveler.last_name);
     if (!first && !last) continue;
-    const dup = existingTravelers.some(
-      (t) =>
-        normalizeName(t.first_name) === normalizeName(first) &&
-        normalizeName(t.last_name) === normalizeName(last)
-    );
-    if (dup) continue;
-    const companion = matchCompanion(companions, first, last);
+    if (skipPlaceholders && isPlaceholderTraveler(first, last)) continue;
+    const recorded = { first_name: first, last_name: last };
+    if (existingTravelers.some((row) => sameRecordedTraveler(row, recorded))) continue;
+    const match = matchTravelerToParty(recorded, customer, companions);
+    const companion =
+      match?.kind === "companion" ? companions.find((row) => row.id === match.id) : null;
     const { error } = await supabase.from("crm_booking_travelers").insert({
       booking_id: bookingId,
       companion_id: companion?.id || null,
-      is_account_holder: isHolder(customer, first, last),
+      is_account_holder: match?.kind === "holder",
       first_name: first || companion?.first_name || null,
       last_name: last || companion?.last_name || null,
     });
     if (error) continue;
-    existingTravelers.push({ first_name: first, last_name: last });
+    existingTravelers.push(recorded);
   }
+
+  await reconcileCustomerParty(customer.id, supabase);
 }
 
 export async function persistNewBookingFromExtract(opts: {

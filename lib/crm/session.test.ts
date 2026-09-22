@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { SET_PASSWORD_PATH, mustSetPassword, shouldForcePasswordSetup } from "./session";
+import { SET_PASSWORD_PATH, mustSetPassword, pathAfterPassword, shouldForcePasswordSetup } from "./session";
 
 test("must_set_password only from app_metadata", () => {
   assert.equal(mustSetPassword({ app_metadata: { must_set_password: true } }), true);
@@ -21,6 +21,12 @@ test("recovery and invite always force the password screen", () => {
     shouldForcePasswordSetup({ flagged: false, type: "magiclink", next: "/mon-compte" }),
     false
   );
+});
+
+test("après le mot de passe, la fiche ne s’ouvre que sans téléphone", () => {
+  assert.equal(pathAfterPassword("+33600000000"), "/mon-compte");
+  assert.equal(pathAfterPassword("  "), "/mon-compte/profil");
+  assert.equal(pathAfterPassword(null), "/mon-compte/profil");
 });
 
 test("PKCE reset without type still forces password when next is the set-password page", () => {
