@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
 import type { CrmBalance, CrmBookingTraveler, CrmTravelDocument } from "@/lib/crm/types";
-import { formatDateRangeShort, formatEncours, isUpcomingBooking, jMinusLabel } from "@/lib/crm/money";
+import { formatDateRangeShort, formatCreditDisponible, formatEncours, isUpcomingBooking, jMinusLabel } from "@/lib/crm/money";
 import { bookingCoverUrl } from "@/lib/crm/covers";
 import { loadVisibleCarnets } from "@/lib/crm/carnet-query";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
@@ -101,8 +101,15 @@ export default async function AccountHomePage() {
         </article>
       )}
 
-      <Link href="/mon-compte/transactions" className="inline-flex text-sm font-semibold text-[var(--admin-navy)]">
-        Encours {formatEncours(balanceValue, currency)}
+      <Link href="/mon-compte/transactions" className="inline-flex flex-col text-sm font-semibold text-[var(--admin-navy)]">
+        {balanceValue > 0 ? (
+          <>
+            <span>Crédit disponible {formatCreditDisponible(balanceValue, currency)}</span>
+            <span className="text-xs font-medium text-[#9c7c4e]">Frais d’agence 10 % déduits</span>
+          </>
+        ) : (
+          <span>{formatEncours(balanceValue, currency)}</span>
+        )}
       </Link>
     </div>
   );

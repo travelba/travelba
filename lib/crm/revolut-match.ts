@@ -1,5 +1,7 @@
 import { isRevolutCredit } from "./revolut-inbox";
 import type { CrmCustomer, CrmRevolutTransaction } from "./types";
+import { AGENCY_FEE_LABEL } from "./types";
+import { agencyFeeFromGross, netAfterAgencyFee } from "./money";
 
 export type RevolutMatchReason =
   | "full_name"
@@ -174,19 +176,59 @@ export async function applyRevolutToCustomer(
     })
     .select("*")
     .single();
-  if (error) return { ok: false as const, error: error.message as string };
-  if (!tx) return { ok: false as const, error: "insert_failed" };
+
+  let posted = tx;
+  if (error) {
+    if (!/duplicate|unique/i.test(String(error.message || ""))) {
+      return { ok: false as const, error: error.message as string };
+    }
+    const { data: existing } = await admin
+      .from("crm_transactions")
+      .select("*")
+      .eq("source", "revolut")
+      .eq("external_id", row.revolut_transaction_id)
+      .maybeSingle();
+    if (!existing) return { ok: false as const, error: error.message as string };
+    posted = existing;
+  }
+  if (!posted) return { ok: false as const, error: "insert_failed" };
+
+  // Sur chaque crédit, prélever 10 % de frais d’agence → crédit disponible = 90 %.
+  const gross = Math.abs(Number(row.amount));
+  const fee = agencyFeeFromGross(gross);
+  if (fee > 0) {
+    const feeExternalId = `${row.revolut_transaction_id}:agency-fee`;
+    const { error: feeError } = await admin.from("crm_transactions").insert({
+      customer_id: customerId,
+      direction: "debit",
+      kind: "adjustment",
+      amount: fee,
+      currency: row.currency,
+      occurred_on: row.booked_at ? String(row.booked_at).slice(0, 10) : null,
+      label: `${AGENCY_FEE_LABEL} (net ${netAfterAgencyFee(gross).toLocaleString("fr-FR", {
+        style: "currency",
+        currency: row.currency || "EUR",
+      })})`,
+      source: "revolut",
+      external_id: feeExternalId,
+      status: "posted",
+    });
+    // Unique (source, external_id) : retry après insert partiel → OK.
+    if (feeError && !/duplicate|unique/i.test(String(feeError.message || ""))) {
+      return { ok: false as const, error: feeError.message as string };
+    }
+  }
 
   await admin
     .from("crm_revolut_transactions")
     .update({
       status: "matched",
       matched_customer_id: customerId,
-      matched_transaction_id: tx.id,
+      matched_transaction_id: posted.id,
     })
     .eq("id", row.id);
 
-  return { ok: true as const, transaction: tx };
+  return { ok: true as const, transaction: posted };
 }
 
 /** @deprecated use applyRevolutToCustomer */

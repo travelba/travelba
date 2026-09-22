@@ -14,9 +14,11 @@ Le CRM n’encaisse pas de carte. Il tient un **grand livre** et range les virem
 
 Vue `crm_customer_balances` = somme crédits `posted` − débits `posted` (par devise).
 
-- Positif = avoir client
+- Positif = avoir / **crédit disponible**
 - Négatif = reste à payer
 - Afficher le montant **avec le signe**, pas un libellé marketing « solde à régulariser » qui inverse
+
+**Frais d’agence 10 %** (`AGENCY_FEE_RATE`) : à chaque crédit Revolut (`applyRevolutToCustomer`), poster un débit `kind=adjustment` `external_id={revolut_id}:agency-fee` — le crédit disponible = 90 % du versement. Afficher clairement « crédit disponible » / « frais 10 % » côté admin et `/mon-compte`.
 
 Ledger visible côté client (`/mon-compte/transactions`) : lignes `posted` seulement (RLS). PDF relevé = bouton **Demander un relevé** (`mailto:`), **pas** de génération PDF auto ni d’envoi mail automatique.
 
