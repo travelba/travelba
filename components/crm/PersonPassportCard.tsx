@@ -227,7 +227,7 @@ export function PersonPassportCard({
           <IdentityScan
             compact
             endpoint={scanEndpoint}
-            title={busy ? "Enregistrement…" : "Photographier le passeport"}
+            title={busy ? "Enregistrement…" : "Photo ou PDF du passeport"}
             onResult={handleResult}
           />
           {scan ? <ScanStatus identity={scan.identity} warning={scan.warning} /> : null}

@@ -7,14 +7,22 @@ import {
   identityFromVision,
   mergePassportIdentities,
 } from "./passport-extract";
-import { aiGatewayConfigured, openaiApiKey } from "./ingest-types";
+import { aiGatewayConfigured, isAllowedIngestType, isPdfFile, openaiApiKey } from "./ingest-types";
 import { identityExtractSchema } from "./ocr-schema";
 import { trySharp } from "./sharp";
+import {
+  definePDFJSModule,
+  extractImages,
+  extractText,
+  getDocumentProxy,
+  renderPageAsImage,
+} from "unpdf";
 
-const MAX_BYTES = 8 * 1024 * 1024;
+const MAX_BYTES = 12 * 1024 * 1024;
 const VISION_TIMEOUT_MS = 45_000;
+const PASSPORT_PDF_PAGES = 2;
 
-const PROMPT = `Tu lis une photo de passeport, carte d’identité ou titre de voyage (zone visuelle + MRZ).
+const PROMPT = `Tu lis une photo ou un scan PDF de passeport, carte d’identité ou titre de voyage (zone visuelle + MRZ).
 Extrais TOUS les champs visibles. Ne jamais inventer : mettre null si absent ou illisible.
 Dates en YYYY-MM-DD.
 Nationalité et pays émetteur : code ISO 2 lettres si possible (FR, US, GB…).
@@ -42,8 +50,91 @@ function isAbortError(err: unknown) {
   return err.name === "TimeoutError" || err.name === "AbortError";
 }
 
+let officialPdfjs = false;
+
+async function ensureOfficialPdfjs() {
+  if (officialPdfjs) return;
+  try {
+    await definePDFJSModule(() => import("pdfjs-dist/legacy/build/pdf.mjs"));
+    officialPdfjs = true;
+  } catch {
+    try {
+      await definePDFJSModule(() => import("pdfjs-dist"));
+      officialPdfjs = true;
+    } catch {
+      /* bundled unpdf pdfjs */
+    }
+  }
+}
+
+async function jpegFromBytes(data: Uint8Array, raw?: { width: number; height: number; channels: 1 | 3 | 4 }) {
+  const sharp = await trySharp();
+  if (!sharp) return { image: data, mediaType: raw ? "image/jpeg" : "image/png" };
+  try {
+    const pipeline = raw
+      ? sharp(data, { raw: { width: raw.width, height: raw.height, channels: raw.channels } })
+      : sharp(data);
+    const jpeg = await pipeline
+      .rotate()
+      .resize({ width: 1800, withoutEnlargement: true })
+      .jpeg({ quality: 85 })
+      .toBuffer();
+    return { image: new Uint8Array(jpeg), mediaType: "image/jpeg" as const };
+  } catch {
+    return null;
+  }
+}
+
+async function rasterPassportPdf(bytes: Uint8Array): Promise<{ image: Uint8Array; mediaType: string } | null> {
+  await ensureOfficialPdfjs();
+  const pdf = await getDocumentProxy(bytes);
+  for (let page = 1; page <= PASSPORT_PDF_PAGES; page += 1) {
+    try {
+      const png = await renderPageAsImage(pdf, page, {
+        canvasImport: () => import("@napi-rs/canvas"),
+        scale: 1.6,
+      });
+      const part = await jpegFromBytes(new Uint8Array(png as ArrayBuffer));
+      if (part) return part;
+    } catch {
+      /* embedded images */
+    }
+    try {
+      const images = await extractImages(pdf, page);
+      for (const img of images.slice(0, 2)) {
+        const part = await jpegFromBytes(new Uint8Array(img.data), {
+          width: img.width,
+          height: img.height,
+          channels: img.channels,
+        });
+        if (part) return part;
+      }
+    } catch {
+      /* next page */
+    }
+  }
+  return null;
+}
+
+async function mrzFromPdfText(bytes: Uint8Array) {
+  try {
+    const pdf = await getDocumentProxy(bytes);
+    const extracted = await extractText(pdf, { mergePages: true });
+    return parseMrzFromOcr(extracted.text || "");
+  } catch {
+    return null;
+  }
+}
+
 async function toVisionImage(file: File) {
   const bytes = new Uint8Array(await file.arrayBuffer());
+  if (isPdfFile(file.type, file.name)) {
+    const raster = await rasterPassportPdf(bytes);
+    if (!raster) {
+      throw new Error("PDF illisible. Photographiez la page d’identité ou réessayez.");
+    }
+    return raster;
+  }
   let mediaType = file.type || "image/jpeg";
   let image = bytes;
 
@@ -141,18 +232,23 @@ export async function scanTravelDocument(file: File): Promise<{
   warning: string | null;
 }> {
   if (file.size > MAX_BYTES) {
-    throw new Error("Photo trop lourde (max 8 Mo).");
+    throw new Error("Fichier trop lourd (max 12 Mo).");
   }
-  if (!file.type.startsWith("image/")) {
+  if (!isAllowedIngestType(file.type, file.name)) {
     return {
       identity: null,
-      warning: "La lecture automatique fonctionne avec une photo (JPEG, PNG, HEIC…).",
+      warning: "Formats acceptés : PDF, JPEG, PNG, HEIC.",
     };
   }
 
+  const pdfBytes = isPdfFile(file.type, file.name)
+    ? new Uint8Array(await file.arrayBuffer())
+    : null;
+  const pdfMrz = pdfBytes ? await mrzFromPdfText(pdfBytes) : null;
+
   try {
     const { identity: vision, mrzText } = await extractWithVision(file);
-    const mrz = mrzText ? parseMrzFromOcr(mrzText) : null;
+    const mrz = pdfMrz || (mrzText ? parseMrzFromOcr(mrzText) : null);
     const identity = mergePassportIdentities(mrz, vision);
 
     if (!identity) {
@@ -170,11 +266,23 @@ export async function scanTravelDocument(file: File): Promise<{
         : "Lecture partielle : vérifiez chaque champ avant d’enregistrer.",
     };
   } catch (err) {
+    if (pdfMrz) {
+      return {
+        identity: pdfMrz,
+        warning: "Lecture partielle depuis le PDF : vérifiez chaque champ avant d’enregistrer.",
+      };
+    }
     console.error("[ocr-document]", err);
     if (isAbortError(err)) {
       throw new Error("Lecture trop longue. Réessayez avec une photo plus nette du bas du document.");
     }
-    if (err instanceof Error && (err.message.startsWith("Lecture") || err.message.startsWith("Photo") || err.message.startsWith("Format"))) {
+    if (
+      err instanceof Error &&
+      (err.message.startsWith("Lecture") ||
+        err.message.startsWith("Fichier") ||
+        err.message.startsWith("PDF") ||
+        err.message.startsWith("Format"))
+    ) {
       throw err;
     }
     if (APICallError.isInstance(err) && err.statusCode === 400) {
