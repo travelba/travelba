@@ -115,9 +115,30 @@ export function companyPaidBookingIds(
 
 export function bookingPayerKind(
   booking: Pick<CrmBooking, "billing_customer_id" | "customer_id">,
-  travelerId: string
+  travelerId: string,
+  traveler?: Pick<CrmCustomer, "company_role" | "billing_parent_id"> | null
 ): BookingPayerKind {
-  return isCompanyPaidBooking(booking, travelerId) ? "company" : "personal";
+  if (isCompanyPaidBooking(booking, travelerId)) return "company";
+  if (
+    traveler &&
+    isCompanyWallet(traveler) &&
+    (!booking.billing_customer_id || booking.billing_customer_id === travelerId)
+  ) {
+    return "company";
+  }
+  return "personal";
+}
+
+/** Pastille « réglé par la société » : collaborateur rattaché, dossier facturé ailleurs, ou gérant sur son wallet. */
+export function showsCompanyPayer(
+  booking: Pick<CrmBooking, "billing_customer_id" | "customer_id">,
+  traveler: Pick<CrmCustomer, "id" | "company_role" | "billing_parent_id">
+) {
+  return (
+    hasBillingParent(traveler) ||
+    isCompanyPaidBooking(booking, traveler.id) ||
+    isCompanyWallet(traveler)
+  );
 }
 
 export function bookingPayerLabel(

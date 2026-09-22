@@ -5,6 +5,7 @@ import {
   bookingPayerKind,
   bookingPayerLabel,
   companyDisplayName,
+  showsCompanyPayer,
   companyPaidBookingIds,
   companyRoleLabel,
   filterClientLedgerRows,
@@ -127,6 +128,17 @@ test("Marrakech billed to OZB is company-paid, a personal trip is not", () => {
   assert.equal(bookingPayerLabel("company", "OZB Optique"), "Réglé par OZB Optique");
   assert.equal(bookingPayerLabel("personal", "OZB Optique"), "À votre charge");
   assert.equal(bookingPayerLabel("company", "OZB Optique", { voice: "admin" }), "Facturé à OZB Optique");
+});
+
+test("Cyril traveling on the OZB wallet is a company trip, not a personal encours", () => {
+  const cyril = { company_role: "admin" as const, billing_parent_id: null };
+  const hisTrip = { id: "cyril-marrakech", customer_id: "cyril", billing_customer_id: "cyril" };
+  assert.equal(bookingPayerKind(hisTrip, "cyril"), "personal");
+  assert.equal(bookingPayerKind(hisTrip, "cyril", cyril), "company");
+  assert.equal(
+    showsCompanyPayer(hisTrip, { id: "cyril", company_role: "admin", billing_parent_id: null }),
+    true
+  );
 });
 
 test("any traveler can share a billing account without being a member", () => {

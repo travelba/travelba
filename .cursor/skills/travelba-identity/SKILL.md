@@ -43,7 +43,7 @@ UI : bloc pièce **replié** par défaut (passeport). Copy courte, pas « Upload
 - Adresse perso ≠ adresse de facturation. Les deux peuvent exister.
 - **Rôle société** (`company_role`) = son wallet :
   - `null` = particulier
-  - `admin` = wallet société propre (Revolut, encours) — ex. gérant OZB (Cyril). Il voyage aussi : dossiers facturés à lui-même = débit société.
+  - `admin` = wallet société propre (Revolut, encours) — ex. gérant OZB (Cyril). Il voyage aussi : fiche + carnet à son nom, dossiers facturés à lui-même = débit société. Les collaborateurs sont rattachés à lui, pas l’inverse.
   - `member` = collaborateur (compte de facturation requis)
 - **`billing_parent_id`** = compte de facturation par défaut (ex. OZB). **Indépendant du rôle** : plusieurs titulaires (Jérémy, le gérant…) voyagent sur le même wallet. Ils voient les frais de **leurs** dossiers, pas le solde du payeur.
 - **Ouvrir le compte société** depuis une fiche voyageur qui a déjà `company_name` (ex. OZB OPTIQUE) : crée le gérant (`admin`) avec **son e-mail réel**, rattache le voyageur, reprend les dossiers encore facturés à lui. Pas de fiche sans e-mail. Créer ≠ inviter.

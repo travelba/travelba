@@ -26,7 +26,7 @@ import {
   companyRoleLabel,
   hasBillingParent,
   isCompanyAdmin,
-  isCompanyPaidBooking,
+  bookingPayerKind,
   isCompanyWallet,
   mergeRowsById,
 } from "@/lib/crm/company-role";
@@ -216,47 +216,40 @@ export default async function AdminClientDetailPage({ params }: Props) {
         />
       ) : null}
       <ClientRevolutSuggestions suggestions={revolutSuggestions} />
-      <section className="admin-af-card rounded-3xl p-5">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="font-display text-lg font-bold">Réservations</h2>
-          <Link
-            href="/admin/reservations"
-            className="text-xs font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline"
-          >
-            Nouveau dossier
-          </Link>
-        </div>
-        {bookingRows.length ? (
-          <ul className="mt-2 divide-y divide-border text-sm">
-            {bookingRows.map((b) => {
-              const companyPaid = isCompanyPaidBooking(b, b.customer_id);
-              const traveler = travelerNames.get(b.customer_id)?.name || "Client";
-              const payer = travelerNames.get(b.billing_customer_id)?.company || companyName;
-              return (
-                <li key={b.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                  <Link
-                    href={`/admin/reservations/${b.id}`}
-                    className="text-[var(--admin-navy)] underline-offset-2 hover:underline"
-                  >
-                    {b.reference} · {b.title} · {traveler} · {formatDateFr(b.start_date)}
-                  </Link>
-                  {companyPaid || shared ? (
-                    <PayerChip
-                      kind={companyPaid ? "company" : "personal"}
-                      companyName={payer}
-                      voice="admin"
-                    />
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <p className="mt-2 text-sm text-muted">
-            Aucun dossier pour ce client. Importez ses confirmations depuis Réservations.
-          </p>
-        )}
-      </section>
+      {isCompanyWallet(c) ? (
+        <>
+          <ClientBookingList
+            title="Ses voyages"
+            hint={`${customerFullName(c)} est titulaire. Les dossiers débiteront ${companyDisplayName(c)}.`}
+            empty="Aucun voyage à son nom. Créez un dossier — le gérant voyage comme les autres."
+            bookings={bookingRows.filter((b) => b.customer_id === c.id)}
+            travelerNames={travelerNames}
+            companyName={companyName}
+            shared
+            self={c}
+          />
+          <ClientBookingList
+            title={`Dossiers facturés à ${companyDisplayName(c)}`}
+            hint="Voyages des collaborateurs. Le débit est sur ce wallet."
+            empty="Aucun dossier collaborateur pour le moment."
+            bookings={bookingRows.filter((b) => b.customer_id !== c.id)}
+            travelerNames={travelerNames}
+            companyName={companyName}
+            shared
+            self={c}
+          />
+        </>
+      ) : (
+        <ClientBookingList
+          title="Réservations"
+          empty="Aucun dossier pour ce client. Importez ses confirmations depuis Réservations."
+          bookings={bookingRows}
+          travelerNames={travelerNames}
+          companyName={companyName}
+          shared={shared}
+          self={c}
+        />
+      )}
       {shared || companyTripTxs.length ? (
         <section className="admin-af-card rounded-3xl p-5">
           <h2 className="font-display text-lg font-bold">
@@ -308,5 +301,74 @@ export default async function AdminClientDetailPage({ params }: Props) {
         </ul>
       </section>
     </div>
+  );
+}
+
+function ClientBookingList({
+  title,
+  hint,
+  empty,
+  bookings,
+  travelerNames,
+  companyName,
+  shared,
+  self,
+}: {
+  title: string;
+  hint?: string;
+  empty: string;
+  bookings: CrmBooking[];
+  travelerNames: Map<string, { name: string; company: string }>;
+  companyName: string | null | undefined;
+  shared: boolean;
+  self: CrmCustomer;
+}) {
+  return (
+    <section className="admin-af-card rounded-3xl p-5">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-display text-lg font-bold">{title}</h2>
+        <Link
+          href="/admin/reservations"
+          className="text-xs font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline"
+        >
+          Nouveau dossier
+        </Link>
+      </div>
+      {hint ? <p className="mt-1 text-sm text-muted">{hint}</p> : null}
+      {bookings.length ? (
+        <ul className="mt-2 divide-y divide-border text-sm">
+          {bookings.map((b) => {
+            const traveler = travelerNames.get(b.customer_id);
+            const payerCustomer = travelerNames.get(b.billing_customer_id);
+            const kind = bookingPayerKind(
+              b,
+              b.customer_id,
+              b.customer_id === self.id ? self : null
+            );
+            const payer = payerCustomer?.company || companyName;
+            return (
+              <li key={b.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                <Link
+                  href={`/admin/reservations/${b.id}`}
+                  className="text-[var(--admin-navy)] underline-offset-2 hover:underline"
+                >
+                  {b.reference} · {b.title} · {traveler?.name || "Client"} ·{" "}
+                  {formatDateFr(b.start_date)}
+                </Link>
+                {kind === "company" || shared ? (
+                  <PayerChip
+                    kind={kind}
+                    companyName={payer}
+                    voice="admin"
+                  />
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="mt-2 text-sm text-muted">{empty}</p>
+      )}
+    </section>
   );
 }

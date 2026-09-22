@@ -15,7 +15,7 @@ import { CoverPhoto } from "@/components/crm/CoverPhoto";
 import { StatusChip, bookingStatusTone } from "@/components/crm/ui";
 import { bookingsListEmptyMessage } from "@/lib/crm/launch-status";
 import { PayerChip } from "@/components/crm/PayerChip";
-import { companyDisplayName, isCompanyPaidBooking } from "@/lib/crm/company-role";
+import { bookingPayerKind, companyDisplayName } from "@/lib/crm/company-role";
 
 export function BookingsTable({
   bookings,
@@ -68,7 +68,10 @@ export function BookingsTable({
         </select>
       </div>
       <ul className="admin-af-card divide-y divide-border overflow-hidden rounded-2xl">
-        {filtered.map((b) => (
+        {filtered.map((b) => {
+          const traveler = customers.find((c) => c.id === b.customer_id);
+          const companyPaid = bookingPayerKind(b, b.customer_id, traveler) === "company";
+          return (
           <li key={b.id}>
             <Link
               href={`/admin/reservations/${b.id}`}
@@ -86,11 +89,14 @@ export function BookingsTable({
                     {byId.get(b.customer_id) || "Client"} · {formatDateFr(b.start_date)} →{" "}
                     {formatDateFr(b.end_date)}
                   </p>
-                  {isCompanyPaidBooking(b, b.customer_id) ? (
+                  {companyPaid ? (
                     <div className="mt-1">
                       <PayerChip
                         kind="company"
-                        companyName={companyById.get(b.billing_customer_id) || null}
+                        companyName={
+                          companyById.get(b.billing_customer_id) ||
+                          (traveler ? companyDisplayName(traveler) : null)
+                        }
                         voice="admin"
                       />
                     </div>
@@ -114,7 +120,8 @@ export function BookingsTable({
               </div>
             </Link>
           </li>
-        ))}
+          );
+        })}
         {!filtered.length ? (
           <li className="px-5 py-8 text-center text-sm text-muted">
             {bookingsListEmptyMessage(bookings.length > 0)}

@@ -73,8 +73,8 @@ export function AttachBillingTravelers({
         <div>
           <h2 className="font-display text-lg font-bold">Voyageurs sur ce compte</h2>
           <p className="mt-1 text-sm text-muted">
-            {companyName} paie leurs voyages pro. Chacun garde son carnet. Le gérant voyage aussi :
-            ses dossiers débiteront ce même compte.
+            {companyName} paie les voyages pro. Le gérant a déjà son carnet sur cette fiche —
+            créez-lui un dossier à son nom. Rattachez ici les autres titulaires.
           </p>
         </div>
         <button
@@ -113,7 +113,8 @@ export function AttachBillingTravelers({
         </ul>
       ) : (
         <p className="text-sm text-muted">
-          Personne n’est encore rattaché. Collaborateur ou gérant — tout titulaire peut voyager ici.
+          Aucun collaborateur rattaché. Le gérant voyage déjà ici : un dossier à son nom débite ce
+          compte.
         </p>
       )}
       <CustomerPickDialog

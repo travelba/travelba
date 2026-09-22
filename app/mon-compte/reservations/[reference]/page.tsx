@@ -32,8 +32,9 @@ import { PayerChip } from "@/components/crm/PayerChip";
 import {
   bookingPayerKind,
   companyDisplayName,
-  hasBillingParent,
   isCompanyPaidBooking,
+  isCompanyWallet,
+  showsCompanyPayer,
 } from "@/lib/crm/company-role";
 type Props = { params: Promise<{ reference: string }> };
 
@@ -91,8 +92,10 @@ export default async function ReservationDetailPage({ params }: Props) {
   const sameTitle =
     (b.title || "").trim().toLowerCase() === (b.destination || "").trim().toLowerCase();
   const missingCount = coverage.total - coverage.ready;
-  const showPayer = hasBillingParent(customer) || isCompanyPaidBooking(b, customer.id);
-  let companyName: string | null = null;
+  const showPayer = showsCompanyPayer(b, customer);
+  let companyName: string | null = isCompanyWallet(customer)
+    ? companyDisplayName(customer)
+    : null;
   if (showPayer && isCompanyPaidBooking(b, customer.id)) {
     const payerId = b.billing_customer_id || customer.billing_parent_id;
     if (payerId) {
@@ -104,6 +107,7 @@ export default async function ReservationDetailPage({ params }: Props) {
       companyName = companyDisplayName(payer as CrmCustomer | null);
     }
   }
+  const payerKind = bookingPayerKind(b, customer.id, customer);
 
   return (
     <div className="space-y-5">
@@ -199,10 +203,12 @@ export default async function ReservationDetailPage({ params }: Props) {
         </p>
         {showPayer ? (
           <div className="space-y-1">
-            <PayerChip kind={bookingPayerKind(b, customer.id)} companyName={companyName} />
+            <PayerChip kind={payerKind} companyName={companyName} />
             <p className="text-xs text-muted">
-              {bookingPayerKind(b, customer.id) === "company"
-                ? `Ce séjour est réglé par ${companyName || "la société"}. Il n’entre pas dans votre encours personnel.`
+              {payerKind === "company"
+                ? isCompanyWallet(customer)
+                  ? `Ce séjour débite le compte ${companyName || "société"}. Les collaborateurs ne voient pas ce solde.`
+                  : `Ce séjour est réglé par ${companyName || "la société"}. Il n’entre pas dans votre encours personnel.`
                 : "Ce séjour est à votre charge. Il entre dans votre encours personnel."}
             </p>
           </div>
