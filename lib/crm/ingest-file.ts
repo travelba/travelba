@@ -58,7 +58,9 @@ Règles d’honnêteté :
 - Un PDF peut produire PLUSIEURS cartes.
 - details.source_file_name = nom exact du fichier source.
 - details.needs_review = true si lecture douteuse.
-- amount des items : toujours null. total_amount : toujours null.
+- amount des items : toujours null. total_amount : toujours null (prix vendu = saisie agent).
+- details.document_amount = montant imprimé sur CE fichier (total visible). Absent = null. Pas une ligne « NET » fournisseur seule.
+- details.document_currency = EUR | USD | CHF | GBP selon le symbole / code imprimé.
 
 Voyageurs :
 - Noms imprimés, casse normale.

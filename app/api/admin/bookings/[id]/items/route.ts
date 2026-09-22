@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
+import { refreshTicketingFee } from "@/lib/crm/bookings";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -41,6 +42,7 @@ export async function POST(request: Request, ctx: Ctx) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
+  await refreshTicketingFee(auth.supabase, id);
   return NextResponse.json({ item: data });
 }
 
@@ -82,6 +84,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
+  await refreshTicketingFee(auth.supabase, bookingId);
   return NextResponse.json({ item: data });
 }
 
@@ -89,8 +92,7 @@ export async function DELETE(request: Request, ctx: Ctx) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
   const { id: bookingId } = await ctx.params;
-  const url = new URL(request.url);
-  const itemId = url.searchParams.get("itemId");
+  const itemId = new URL(request.url).searchParams.get("itemId");
   if (!itemId) return jsonError("itemId requis");
   const { error } = await auth.supabase
     .from("crm_booking_items")
@@ -98,5 +100,6 @@ export async function DELETE(request: Request, ctx: Ctx) {
     .eq("id", itemId)
     .eq("booking_id", bookingId);
   if (error) return dbError(error, 400);
+  await refreshTicketingFee(auth.supabase, bookingId);
   return NextResponse.json({ ok: true });
 }

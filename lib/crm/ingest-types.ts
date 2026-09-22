@@ -50,6 +50,8 @@ const detailsSchemaLoose = z
     notes: looseString,
     source_file_name: looseString,
     needs_review: z.boolean().nullable().optional(),
+    document_amount: looseNumber,
+    document_currency: looseString,
   })
   .optional()
   .default({});
@@ -138,6 +140,8 @@ const detailsSchemaStrict = z.object({
   notes: strictString,
   source_file_name: strictString,
   needs_review: strictBoolean,
+  document_amount: strictNumber,
+  document_currency: strictString,
 });
 
 /** Schéma strict pour Output.object (OpenAI). */
@@ -239,10 +243,43 @@ export function emptyBookingExtract(): BookingExtract {
   };
 }
 
+function asPositiveMoney(value: unknown): number | null {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.round(n * 100) / 100;
+}
+
+function keepDocumentPrice(
+  item: BookingExtract["items"][number],
+  fallbackCurrency: string | null | undefined,
+  fallbackAmount: number | null
+): BookingExtract["items"][number] {
+  const details = { ...(item.details || {}) };
+  const existing = asPositiveMoney(details.document_amount);
+  const fromItem = asPositiveMoney(item.amount);
+  const amount = existing || fromItem || fallbackAmount;
+  if (amount) details.document_amount = amount;
+  if (!details.document_currency && (amount || details.document_amount)) {
+    details.document_currency =
+      (typeof details.document_currency === "string" && details.document_currency) ||
+      fallbackCurrency ||
+      "EUR";
+  }
+  return { ...item, amount: null, details };
+}
+
+/** Prix vendu (encours / cartes client) jamais auto-rempli. Prix PDF → details.document_amount. */
 export function sanitizeExtractedPrices(extract: BookingExtract): BookingExtract {
-  const merged = mergeExtractItems(
-    (extract.items || []).map((item) => ({ ...item, amount: null }))
+  const fallbackTotal = asPositiveMoney(extract.total_amount);
+  const rawItems = extract.items || [];
+  const items = rawItems.map((item, index) =>
+    keepDocumentPrice(
+      item,
+      extract.currency,
+      rawItems.length === 1 && index === 0 ? fallbackTotal : null
+    )
   );
+  const merged = mergeExtractItems(items);
   const next: BookingExtract = {
     ...extract,
     currency: extract.currency || "EUR",

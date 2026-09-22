@@ -26,6 +26,8 @@ describe("bookingExtractLlmSchema OpenAI strict", () => {
     assert.ok(Array.isArray(details?.required));
     assert.ok(details?.required?.includes("source_file_name"));
     assert.ok(details?.required?.includes("included"));
+    assert.ok(details?.required?.includes("document_amount"));
+    assert.ok(details?.required?.includes("document_currency"));
     const traveler = (
       json.properties as { travelers?: { items?: { required?: string[] } } }
     )?.travelers?.items;

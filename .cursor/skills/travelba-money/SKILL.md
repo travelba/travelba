@@ -29,6 +29,7 @@ Ledger visible côté client (`/mon-compte/transactions`) : lignes `posted` seul
 - `cancelled` → `void` le débit
 - `draft` / `quoted` → pas de débit
 - Le total = **prix vendu agent**, pas le net fournisseur
+- `syncTicketingFee` : dès qu’il y a un vol, débit **25 € × passagers** (`external_id=booking:{id}:ticketing-fee`), void si plus de vol ou dossier annulé. 1 passager = 1 billet même avec plusieurs segments.
 
 Ajustements / remboursements : lignes manuelles admin `kind=adjustment|refund`.
 

@@ -15,6 +15,8 @@ import {
   parseSixtCar,
   parseTransferConfirmation,
   parseUsMonthDayYear,
+  parsedItemsFromText,
+  parseDocumentMoney,
   structuredHintFromPdfText,
 } from "./ingest-parse";
 import { findMatchingItem, mergeExtractItems } from "./item-match";
@@ -171,6 +173,40 @@ describe("parseAmadeusReceipt", () => {
     assert.equal(parsed.from, "DAV");
     assert.equal(parsed.to, "PTY");
     assert.equal(parsed.start_at, "2026-08-12T09:50:00");
+  });
+});
+
+describe("parseDocumentMoney", () => {
+  it("lit le total hôtel Little Emperors sans le coller au prix vendu", () => {
+    assert.deepEqual(parseDocumentMoney(LE_HOTEL), { amount: 858.8, currency: "USD" });
+    const items = parsedItemsFromText(LE_HOTEL).items;
+    assert.equal(items[0]?.amount, null);
+    assert.equal(items[0]?.details?.document_amount, 858.8);
+    assert.equal(items[0]?.details?.document_currency, "USD");
+    const cleaned = sanitizeExtractedPrices({
+      document_status: "confirmed",
+      title: "Costa Rica",
+      destination: "Costa Rica",
+      start_date: "2026-08-10",
+      end_date: "2026-08-11",
+      currency: "USD",
+      total_amount: 858.8,
+      notes_client: null,
+      customer_email: null,
+      customer_first_name: null,
+      customer_last_name: null,
+      items,
+      travelers: [],
+    });
+    assert.equal(cleaned.total_amount, null);
+    assert.equal(cleaned.items[0].amount, null);
+    assert.equal(cleaned.items[0].details?.document_amount, 858.8);
+  });
+
+  it("lit le tarif transfert USD", () => {
+    assert.deepEqual(parseDocumentMoney(TRANSFER), { amount: 85, currency: "USD" });
+    const items = parsedItemsFromText(TRANSFER).items;
+    assert.equal(items[0]?.details?.document_amount, 85);
   });
 });
 

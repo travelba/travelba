@@ -335,7 +335,12 @@ export function BookingEditor({
         <section className="admin-af-card space-y-3 rounded-3xl p-5">
           <h2 className="font-display text-lg font-bold">Aperçu client</h2>
           <p className="text-sm text-muted">Les mêmes cartes, dans l’ordre du carnet. Invisible tant que vous ne publiez pas.</p>
-          <CarnetItinerary booking={booking} items={items} docs={documents} />
+          <CarnetItinerary
+            booking={booking}
+            items={items}
+            docs={documents}
+            calendarBase={`/api/admin/bookings/${booking.id}/calendrier`}
+          />
         </section>
       ) : null}
 

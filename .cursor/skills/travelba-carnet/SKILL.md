@@ -34,13 +34,14 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 - Jours **sans aucune** carte : **sautés** (pas de ligne vide entre deux villes).
 - Hôtel : **pas d’horloge**. `itemClock` ignore `T00:00:00` (timestamptz minuit ≠ 00h00 check-in).
 - Vol : ligne 1 `CDG → RAK` (`flightIata`), ligne 2 villes (`flightCities`).
-- Clic carte = détail + **Voir la confirmation** (PDF `source_document_id`).
+- Clic carte = détail + **Voir la confirmation** (PDF `source_document_id`) + **Ajouter à l’agenda** (.ics).
+- En-tête itinéraire : **Ajouter tout le séjour** (`GET /api/client/bookings/[reference]/calendrier`). Horaires seulement s’ils existent ; hôtel = journée entière.
 - Ordre : `sort_order` agent (drag / monter-descendre), défaut **chrono**. PATCH `{ order: [ids] }` sur `/api/admin/bookings/[id]/items`.
 - Kinds : `flight` `hotel` `transfer` `activity` `rail` `car` `cruise` `insurance` `fee`. Train / voiture / bateau = cartes métier, pas un jour par escale bateau.
 
 ## Prix
 
-- `sanitizeExtractedPrices` : `total_amount` et `item.amount` extraits = **null**.
+- `sanitizeExtractedPrices` : `total_amount` et `item.amount` extraits = **null**. Montant PDF → `details.document_amount` (relecture agent seulement).
 - **Prix vendu** saisi par l’agent (total dossier). Jamais le net PDF ($858…) sur la carte client.
 - Inclus (`details.included`) **seulement si la phrase est écrite**. Pas de petit-déj inventé. Sinon pas de bloc Inclus.
 - N’extraire **pas** annulation / barème / conditions : le PDF suffit.

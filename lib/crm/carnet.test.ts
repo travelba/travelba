@@ -186,5 +186,7 @@ describe("carnet", () => {
     });
     assert.equal(cleaned.total_amount, null);
     assert.equal(cleaned.items[0].amount, null);
+    assert.equal(cleaned.items[0].details?.document_amount, 858.8);
+    assert.equal(cleaned.items[0].details?.document_currency, "EUR");
   });
 });

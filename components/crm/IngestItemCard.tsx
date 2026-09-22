@@ -146,6 +146,26 @@ export function IngestItemCard({
             withTime={withTime}
           />
         </Field>
+        <Field label="Prix document">
+          <Text
+            value={d.document_amount == null ? "" : String(d.document_amount)}
+            onChange={(raw) =>
+              onChange({
+                ...item,
+                details: {
+                  ...item.details,
+                  document_amount: raw === "" ? null : Number(raw),
+                },
+              })
+            }
+          />
+        </Field>
+        <Field label="Devise document">
+          <Text
+            value={String(d.document_currency || "")}
+            onChange={(v) => onChange(patchDetails(item, "document_currency", v))}
+          />
+        </Field>
         <Field label="Prix vendu (optionnel)">
           <Text
             value={item.amount == null ? "" : String(item.amount)}

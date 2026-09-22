@@ -63,6 +63,68 @@ export function inferAirportIata(label: string): ParsedAirport | null {
   return null;
 }
 
+const CURRENCY_CODE: Record<string, string> = {
+  "€": "EUR",
+  eur: "EUR",
+  $: "USD",
+  usd: "USD",
+  "£": "GBP",
+  gbp: "GBP",
+  chf: "CHF",
+};
+
+function parsePrintedAmount(raw: string): number | null {
+  const compact = raw.replace(/[\s\u00a0]/g, "");
+  if (!compact) return null;
+  const normalized = /,\d{1,2}$/.test(compact)
+    ? compact.replace(/\./g, "").replace(",", ".")
+    : compact.replace(/,/g, "");
+  const n = Number(normalized);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.round(n * 100) / 100;
+}
+
+/** Montant visible sur un PDF/photo (total imprimé). Ignore les lignes NET fournisseur. */
+export function parseDocumentMoney(text: string): { amount: number; currency: string } | null {
+  const lines = text.split(/\n+/);
+  const scored: { amount: number; currency: string; score: number }[] = [];
+  const pattern =
+    /(?:(total|tarif|montant|fare|amount|prix)[^\n]{0,80})?([€$£]|USD|EUR|CHF|GBP)?\s*([0-9]{1,3}(?:[.\s\u00a0][0-9]{3})+[.,][0-9]{2}|[0-9]{2,}[.,][0-9]{2})\s*(USD|EUR|CHF|GBP|€|\$|£)?/gi;
+
+  for (const line of lines) {
+    if (/\bNET\b/i.test(line) && !/\btotal\b/i.test(line)) continue;
+    pattern.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(line))) {
+      const amount = parsePrintedAmount(match[3] || "");
+      if (!amount) continue;
+      const code = (match[4] || match[2] || "").trim();
+      const currency = CURRENCY_CODE[code.toLowerCase()] || CURRENCY_CODE[code] || "EUR";
+      const labeled = Boolean(match[1]);
+      scored.push({ amount, currency, score: labeled ? 2 : 1 });
+    }
+  }
+
+  if (!scored.length) return null;
+  scored.sort((a, b) => b.score - a.score || b.amount - a.amount);
+  return { amount: scored[0].amount, currency: scored[0].currency };
+}
+
+function withDocumentPrice<T extends { details?: Record<string, unknown> | null }>(
+  item: T,
+  money: { amount: number; currency: string } | null
+): T {
+  if (!money) return item;
+  return {
+    ...item,
+    details: {
+      ...(item.details || {}),
+      document_amount: money.amount,
+      document_currency: money.currency,
+    },
+  };
+}
+
 function monthNum(token: string) {
   const key = token
     .normalize("NFD")
@@ -694,6 +756,11 @@ function overlayItem(target: ExtractItem, incoming: ExtractItem) {
     current.terminal = incoming.details.terminal;
   }
   if (incoming.details?.seat && !current.seat) current.seat = incoming.details.seat;
+  if (incoming.details?.document_amount != null && current.document_amount == null) {
+    current.document_amount = incoming.details.document_amount;
+    current.document_currency =
+      incoming.details.document_currency || current.document_currency;
+  }
   if (incoming.kind === "hotel") {
     const roomsA = Array.isArray(current.rooms) ? current.rooms : [];
     const roomsB = Array.isArray(incoming.details?.rooms) ? incoming.details.rooms : [];
@@ -720,23 +787,24 @@ export function parsedItemsFromText(text: string): {
   const notes: string[] = [];
   let status: BookingExtract["document_status"] = null;
   const clean = redactIngestText(text);
+  const money = parseDocumentMoney(clean);
   for (const flight of parseAmadeusFlights(clean)) {
-    items.push(flightToItem(flight));
+    items.push(withDocumentPrice(flightToItem(flight), money));
   }
   const hotel =
     parseLittleEmperorsHotel(clean) ||
     parseNantipaConfirmation(clean) ||
     parseHotelConfirmationLetter(clean);
   if (hotel) {
-    items.push(hotelToItem(hotel));
+    items.push(withDocumentPrice(hotelToItem(hotel), money));
     if (hotel.needs_review) {
       notes.push("Hôtel : réservation provisoire (tentative), à confirmer.");
     }
   }
   const transfer = parseTransferConfirmation(clean);
-  if (transfer) items.push(transferToItem(transfer));
+  if (transfer) items.push(withDocumentPrice(transferToItem(transfer), money));
   const car = parseSixtCar(clean);
-  if (car) items.push(carToItem(car));
+  if (car) items.push(withDocumentPrice(carToItem(car), money));
   if (isQuoteDocument(clean)) {
     status = "quote";
     notes.push("Devis — tarifs non bloqués, à confirmer.");
