@@ -176,6 +176,7 @@ export function RevolutInbox({
         ) : (
           <p className="text-sm text-muted">
             Rapprochement automatique si un seul client correspond sans doute ; sinon proposition manuelle.
+            Si la sync échoue (403), laissez la liste IP Revolut vide et recliquez Connecter Revolut.
           </p>
         )}
       </div>
