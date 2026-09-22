@@ -194,11 +194,15 @@ export function CompanionsManager({
             if (id.sex) setSex(id.sex);
           }}
           onScan={setScan}
+          onImported={() => {
+            closeForm();
+            router.refresh();
+          }}
         />
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Prénom(s)" hint="Tous les prénoms, dans l’ordre du passeport">
             <input
-              required
+              required={listedIdentities(scan?.identity, scan?.identities).length < 2}
               autoComplete="off"
               value={firstName}
               onChange={(event) => setFirstName(event.target.value)}
@@ -207,7 +211,7 @@ export function CompanionsManager({
           </Field>
           <Field label="Nom" hint="Comme sur le passeport">
             <input
-              required
+              required={listedIdentities(scan?.identity, scan?.identities).length < 2}
               autoComplete="off"
               value={lastName}
               onChange={(event) => setLastName(event.target.value)}

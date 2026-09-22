@@ -4,7 +4,7 @@ import { resolveNationality } from "./countries";
 import { safeFileName, uploadCrmFile } from "./files";
 import { emptyToNull, type ExtractedIdentity } from "./identity";
 import { assignPassportsToParty, type PassportTarget } from "./passport-assign";
-import { identitiesFromForm } from "./passport-extract";
+import { distinctPassportPeople, identitiesFromForm } from "./passport-extract";
 import type { PersonName } from "./person-match";
 import { reconcileCustomerParty } from "./reconcile-party";
 import {
@@ -35,6 +35,9 @@ export async function persistImportedPassports(
     .eq("customer_id", opts.customerId);
   if (error) throw new Error(error.message);
 
+  const identities = distinctPassportPeople(opts.identities);
+  if (!identities.length) return { documents: [], createdCompanions: 0 };
+
   const prefer = opts.createUnmatchedOnly
     ? null
     : opts.preferCompanionId
@@ -42,7 +45,7 @@ export async function persistImportedPassports(
       : { kind: "holder" as const };
 
   const assignments = assignPassportsToParty(
-    opts.identities,
+    identities,
     opts.holder,
     companions || [],
     prefer

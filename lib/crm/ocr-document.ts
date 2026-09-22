@@ -4,6 +4,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { parseMrzFromOcrAll } from "./mrz-parse";
 import { emptyToNull, type ExtractedIdentity } from "./identity";
 import {
+  distinctPassportPeople,
   fieldScore,
   identityFromVision,
   mergePassportSets,
@@ -183,7 +184,7 @@ async function extractMoreIdentities(
 }
 
 function scanResult(identities: ExtractedIdentity[], warning: string | null) {
-  const unique = uniquePassports(identities);
+  const unique = distinctPassportPeople(identities);
   return {
     identities: unique,
     identity: unique[0] || null,

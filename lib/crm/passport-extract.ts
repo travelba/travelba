@@ -6,7 +6,7 @@ import {
   normalizeGivenNames,
   type ExtractedIdentity,
 } from "./identity";
-import { foldName, nameTokens, namesReferToSamePerson } from "./person-match";
+import { foldName, lastNamesMatch, nameTokens, namesReferToSamePerson } from "./person-match";
 import { DOC_TYPES, type TravelDocType } from "./types";
 
 export function emptyIdentity(): ExtractedIdentity {
@@ -155,17 +155,88 @@ export function uniquePassports(identities: ExtractedIdentity[]): ExtractedIdent
   return [...best.values(), ...extras];
 }
 
+function compactEditDistance(left: string, right: string) {
+  if (left === right) return 0;
+  if (Math.abs(left.length - right.length) > 2) return 99;
+  const prev = new Array<number>(right.length + 1);
+  const curr = new Array<number>(right.length + 1);
+  for (let j = 0; j <= right.length; j++) prev[j] = j;
+  for (let i = 1; i <= left.length; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= right.length; j++) {
+      const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+    }
+    for (let j = 0; j <= right.length; j++) prev[j] = curr[j];
+  }
+  return prev[right.length];
+}
+
+function numbersLookLikeSameDocument(a: string | null | undefined, b: string | null | undefined) {
+  const left = passportNumberKey(a);
+  const right = passportNumberKey(b);
+  if (!left || !right) return false;
+  if (left === right) return true;
+  if (left.length < 8 || right.length < 8) return false;
+  if (Math.abs(left.length - right.length) > 1) return false;
+  return compactEditDistance(left, right) <= 2;
+}
+
+export function hasPersonName(identity: ExtractedIdentity) {
+  return Boolean((identity.first_name || "").trim() && (identity.last_name || "").trim());
+}
+
+function identityQuality(identity: ExtractedIdentity) {
+  const typeBoost = identity.doc_type === "passport" ? 4 : identity.doc_type === "id_card" ? 1 : 0;
+  return (
+    fieldScore(identity) +
+    (identity.valid ? 2 : 0) +
+    typeBoost +
+    (identity.first_name ? 2 : 0)
+  );
+}
+
+function identitiesAreSamePerson(a: ExtractedIdentity, b: ExtractedIdentity) {
+  if (passportsReferToSame(a, b)) return true;
+  if (namesReferToSamePerson(a, b)) return true;
+  if (!numbersLookLikeSameDocument(a.number, b.number)) return false;
+  if (hasPersonName(a) && hasPersonName(b)) return namesReferToSamePerson(a, b);
+  if (a.last_name && b.last_name && !lastNamesMatch(a.last_name, b.last_name)) return false;
+  return true;
+}
+
+/** Une personne par passeport : prénom + nom, sans doublon OCR ni carte au nom seul. */
+export function distinctPassportPeople(identities: ExtractedIdentity[]): ExtractedIdentity[] {
+  const unique = uniquePassports(identities.filter(Boolean));
+  const groups: ExtractedIdentity[][] = [];
+  for (const identity of unique) {
+    const group = groups.find((members) =>
+      members.some((member) => identitiesAreSamePerson(member, identity))
+    );
+    if (group) group.push(identity);
+    else groups.push([identity]);
+  }
+  const best = groups.map((group) =>
+    group.reduce((winner, identity) =>
+      identityQuality(identity) > identityQuality(winner) ? identity : winner
+    )
+  );
+  const named = best.filter(hasPersonName);
+  return named.length ? named : best;
+}
+
 export function listedIdentities(
   identity: ExtractedIdentity | null | undefined,
   identities?: ExtractedIdentity[] | null
 ): ExtractedIdentity[] {
-  if (identities && identities.length) return identities.filter(Boolean);
-  return identity ? [identity] : [];
+  const raw = identities && identities.length ? identities.filter(Boolean) : identity ? [identity] : [];
+  const people = distinctPassportPeople(raw);
+  return people.length ? people : raw;
 }
 
 export function identitiesFromUnknown(raw: unknown): ExtractedIdentity[] {
   if (!Array.isArray(raw)) return [];
-  return uniquePassports(
+  return distinctPassportPeople(
     raw
       .map((item) =>
         item && typeof item === "object" ? identityFromVision(item as Record<string, unknown>) : null
