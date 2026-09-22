@@ -98,7 +98,7 @@ OIDC Vercel : `aiGatewayConfigured()` peut être vrai sur Vercel sans `sk-`. L�
 
 - Bucket `crm-files` **privé**.
 - Ingest : `unpdf` + `gpt-4o`. Plafond 30 fichiers / 25 Mo.
-- Couverture : Unsplash ville d’abord (`lib/crm/covers.ts`), IA ensuite (`cover-generate.ts`) dans `bookings/{id}/cover.webp`.
+- Couverture : Unsplash de la **ville d’arrivée** d’abord (`lib/crm/covers.ts`), IA ensuite dans `bookings/{id}/cover.webp`. En prod, un séjour `Paris · Marrakech` peut encore montrer Paris parce que le webp a été généré avant la règle d’arrivée. Ce n’est pas un cache Vercel. Ne pas relancer l’IA sur un vrai dossier « pour voir ». Skill `travelba-carnet`.
 
 ## Interdits prod
 
@@ -116,11 +116,13 @@ OIDC Vercel : `aiGatewayConfigured()` peut être vrai sur Vercel sans `sk-`. L�
 1. `https://travelba.fr/admin/login` → staff existant entre.
 2. `/admin/clients` liste les vrais clients (pas un seed).
 3. `/connexion` mot de passe + magique (Regarder Resend, pas les logs pour le lien).
-4. Un carnet **déjà publié** s’affiche ; un brouillon reste invisible. **S’il n’y a aucun séjour publié, ne pas en inventer** — skip ce check. L’agent importe un vrai dossier, Enregistrer, puis Publier. `/admin` affiche alors « Mise en service ».
+4. Un carnet **déjà publié** s’affiche ; un brouillon reste invisible. **S’il n’y a aucun séjour publié, ne pas en inventer** — skip ce check. L’agent importe un vrai dossier, Enregistrer, puis **Visible dans l’espace**. `/admin` affiche alors « Mise en service ».
 5. `/admin/revolut` : **Connecter Revolut** (SCA Business) si `crm_integrations` est vide. Ensuite le cron insère des unmatched **sans** les créditer. Inbox vide tant que l’OAuth n’est pas fait = normal.
 6. Contact vitrine → e-mail `CONTACT_TO_EMAIL`.
 7. WhatsApp header client → `wa.me/33756841315`.
 
 Smoke **loggé** staff → ingest → publier, et client → téléphone → carnet : à faire par l’agence sur un vrai dossier. Pas de mot de passe staff dans un agent.
+
+Smoke anonyme après un déploiement : `/connexion` et `/admin/login` en 200, `/admin` et `/mon-compte` renvoient vers la connexion, `www` redirige vers l’apex. Ne pas conclure « pas en ligne » sur une preview SSO.
 
 Si un check échoue : skill `travelba-verify`, logs Vercel runtime, **pas** un seed.

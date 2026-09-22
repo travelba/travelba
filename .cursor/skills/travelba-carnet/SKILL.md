@@ -3,7 +3,7 @@ name: travelba-carnet
 description: >-
   Travelba carnet (itinerary): save vs publish, hotel nights repeat, IATA +
   city, drag order, selling price, skip empty days, no invented hours, client
-  ingest 404, copy l’agence. Use when editing bookings, timeline, ingest
+  ingest 404, copy l’agence, arrival-city cover, stale cover.webp. Use when editing bookings, timeline, ingest
   review, BookingEditor, CarnetItinerary, or visible_to_client.
 ---
 
@@ -20,7 +20,7 @@ Code : `lib/crm/carnet.ts`, `lib/crm/bookings.ts`, `components/admin/BookingEdit
 | Geste | Effet |
 |-------|--------|
 | **Enregistrer** | brouillon, `visible_to_client=false` sur le séjour |
-| **Publier** | le client voit ; items + PDFs du dossier passent visibles |
+| **Visible dans l’espace** | le client voit ; items + PDFs du dossier passent visibles. L’UI dit ça, pas un second verbe « Publier ». |
 
 Un seul interrupteur séjour (plus de case fichier séparée). Guard serveur `canPublishCarnet` : au moins **une** carte `kind !== "fee"`.
 
@@ -52,8 +52,8 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 - Réimport **même réf.** (vol : réf. + n° + date) = **remplace** la carte, n’ajoute pas un doublon.
 - Illisible : on **enregistre** + bandeau **À vérifier** (`details.needs_review`), pas un refus global.
 - Check-in / horaires absents = **rien** (pas « 15:00 », pas « non indiqué »).
-- Copy client : **l’agence**. Modifier un séjour : WhatsApp `Bonjour, je voudrais modifier {réf} — {destination}.` (`whatsappModifyHref`).
-- Conciergerie 24/7 WhatsApp — **pas** de cloche de notif fictive.
+- Copy client : **l’agence**. Pas de « conciergerie 24/7 », pas de Privilège, pas de cloche.
+- Modifier un séjour : WhatsApp `Bonjour, je voudrais modifier {réf} — {destination}.` (`whatsappModifyHref`).
 
 ## Visibilité / ingest client
 
@@ -63,7 +63,17 @@ RLS : le client ne `select` que `visible_to_client`. Preview admin ≠ URL clien
 
 ## Couverture
 
-`coverQuery` = **ville d’arrivée** : on ignore Paris / CDG / ORY s’il y a une autre ville (`Paris · Marrakech` → Marrakech). Unsplash (`lib/crm/covers.ts`) puis IA si besoin. `<CoverPhoto>` img natif, repli Unsplash si `/api/files` casse. En Puppeteer, Unsplash peut casser `networkidle0` — skill verify.
+Photo = **ville d’arrivée**, jamais le hub de départ quand une autre ville existe.
+
+`coverQuery` (`lib/crm/carnet.ts`) ignore `paris|cdg|ory|lbg|bva|france|ile-de-france`. Découpe sur `· | / → -> — –`, puis le premier morceau avant la virgule. La destination gagne sur le titre. `Paris · Marrakech` → Marrakech. Paris seul reste Paris. Dans `covers.ts`, le regex Paris est `paris|provence` : ne pas y remettre `france|cdg` (ils volaient la photo de Paris).
+
+`uniqueCities` (`lib/crm/ingest-merge.ts`) pousse `city_to` et `city` **avant** `city_from`.
+
+Unsplash (`unsplashKeywordMatch`) avant l’IA. Marrakech = `photo-1677837488142-a85ffbffe408` (Jemaa el-Fna). Ajouter l’orthographe `Marrakesh` au même mot-clé ; ne pas lancer une nouvelle image pour ça.
+
+**Piège vu en prod** : `bookingCoverUrl` sert `cover_image_path` (`bookings/{id}/cover.webp`) **avant** Unsplash. Un webp généré quand la requête était encore Paris reste affiché alors que `coverQuery` dit Marrakech. Un `PATCH` de destination ou de titre appelle `scheduleBookingCover(..., { force: true })`, et `needsAiCover` avec `force` est vrai même si un mot-clé matche — ça réécrit le webp. Règle : si un mot-clé Unsplash matche, servir cette URL et **ne pas** forcer l’IA. Le webp périmé peut rester en storage, inutilisé.
+
+`<CoverPhoto>` : `<img>` natif, `onError` → `photo-1488646953014-85cb44e25828`. En Puppeteer, Unsplash peut casser `networkidle0` — skill verify.
 
 ## Fichiers séjour
 

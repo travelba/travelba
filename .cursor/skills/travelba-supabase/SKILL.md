@@ -50,6 +50,7 @@ Visibilité carnet : `crm_bookings.visible_to_client` et `crm_booking_items.visi
 - Toute table `public.crm_*` : RLS on.
 - Staff : `for all using (crm_private.is_staff()) with check (...)`.
 - Client : `select` sur **ses** lignes. Bookings/items/docs : **published-only**.
+- `crm_booking_travelers` : client **select** seulement (`crm_booking_travelers_self`). Pas d’UPDATE client. Le lien titulaire / accompagnant s’écrit en service role sur `id` + `booking_id` déjà autorisés (skill `travelba-identity`).
 - Transactions client : `status = 'posted'`.
 - UPDATE a besoin d’un SELECT policy (sinon 0 row silencieux).
 - `user_metadata` **interdit** pour l’authz. Rôles dans `app_metadata.crm_role` **et** table `crm_staff` (source de vérité).
@@ -61,7 +62,7 @@ SQL : paramètres liés uniquement. Pas de concat d’email/id dans une string S
 ## Storage
 
 - Bucket **`crm-files`**, **privé**.
-- Chemins : `customers/{id}/…`, `bookings/{id}/…` (cover `bookings/{id}/cover.webp`).
+- Chemins : `customers/{id}/…`, `bookings/{id}/…` (cover `bookings/{id}/cover.webp`, colonne `crm_bookings.cover_image_path`). Un webp déjà écrit n’est pas « la » photo de la ville : skill `travelba-carnet`.
 - Upload : `uploadCrmFile` (service role). Lecture navigateur : `GET /api/files?path=` → signed 600s.
 - Policies storage : le navigateur ne lit **pas** le bucket directement. Ne pas passer le bucket en public « pour débugger ».
 - Upsert fichier = INSERT + SELECT + UPDATE storage.

@@ -72,6 +72,15 @@ IDs prod :
 - Cache Components Next.js
 - Inventer des heures, petits-déjs, nets, conditions d’annulation
 - Echo PII client (passeport, email, téléphone) dans un PR / log
+- Merger ou déployer la prod sans demande explicite
+
+## Remarques figées
+
+- Photo de séjour = **ville d’arrivée**. Paris / CDG n’est pas la photo s’il y a une autre ville. Un `cover.webp` déjà stocké peut encore montrer Paris : skill `travelba-carnet`.
+- « Pièce d’identité manquante » = le voyageur du **billet** n’est pas relié au coffre. Le passeport peut être dans Mon compte. Un prénom de billet plus court que la fiche (`Benjamin` / `Benjamin, Elie, David`) est la **même** personne. Skill `travelba-identity`.
+- Le client voit le carnet seulement si **Visible dans l’espace**. Enregistrer laisse le brouillon masqué.
+- Stitch : composition et tokens seulement. Pas le copy fictif (Privilège, cloche, 24/7, points club, VIP, Planning, Trésorerie). Skill `travelba-ui`.
+- `npm test` = `npx tsx --test lib/crm/*.test.ts`.
 
 ## Fichiers clés
 
@@ -82,8 +91,8 @@ IDs prod :
 | Invitation | `lib/crm/invite.ts` |
 | Carnet | `lib/crm/carnet.ts` |
 | Import docs | `lib/crm/ingest-booking.ts`, `ingest-parse.ts`, skill `travelba-document-ingest` |
-| Couvertures | `lib/crm/covers.ts` + `lib/crm/cover-generate.ts` |
-| Identité | `lib/crm/ocr-document.ts` |
+| Couvertures | `lib/crm/covers.ts` + `lib/crm/cover-generate.ts` + `coverQuery` dans `lib/crm/carnet.ts` |
+| Identité | `lib/crm/ocr-document.ts`, `lib/crm/person-name.ts`, `lib/crm/trip-documents.ts`, `lib/crm/traveler-link.ts` |
 | Fichiers | `lib/crm/files.ts` + `app/api/files/route.ts` |
 | Argent | `lib/crm/money.ts`, `lib/crm/bookings.ts` (`syncBookingDebit`) |
 | Site / WhatsApp | `lib/site.ts` (`whatsappNumber` `33756841315`) |

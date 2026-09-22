@@ -13,12 +13,12 @@ Aucune tâche UI/CRM n’est finie sur un screenshot. Exercer le flux. Si pas de
 ## Commandes (local)
 
 ```bash
-node --test lib/crm/*.test.ts
+npm test
 npx tsc --noEmit
 npm run build
 ```
 
-Pas de script `test` npm : `node --test` (modules en imports relatifs, pas `@/` dans les tests — voir `ingest-types` / `carnet`).
+`npm test` = `npx tsx --test lib/crm/*.test.ts`. Les tests importent en relatif, pas via `@/`.
 
 `npm run lint` si ESLint touche les fichiers édités.
 
@@ -31,6 +31,8 @@ Prod build local : `npm run start` (port 3000). Ne pas laisser un zombie `next-s
 - Après test : supprimer le dossier test (pas le client prod).
 - Mur téléphone : sans `phone`, Accueil/Résas bloqués ; **Vous** reste accessible.
 - Carnet : hôtel répété les nuits, pas d’heure 00h00, IATA puis ville, jours vides sautés, brouillon invisible en client.
+- Couverture : `Paris · Marrakech` doit montrer Marrakech, pas la tour Eiffel. Si `cover_image_path` est rempli, l’écran peut encore servir l’ancien webp (skill carnet).
+- Pièce d’identité : un voyageur `Benjamin` dont la fiche est `Benjamin, Elie, David` doit voir le passeport du coffre à cocher. Ne pas noter le numéro. Sans session client, le dire — ne pas seeder la prod pour ouvrir `/mon-compte`.
 - Import : `npx tsx --test lib/crm/ingest-parse.test.ts` après tout nouveau type de PDF (skill `travelba-document-ingest`). Ne pas publier un vrai séjour pour tester l’extract.
 - Inviter : copier le lien ; ne pas spam un vrai client.
 - Revolut : ne pas « matcher » un virement réel sur un faux client.
@@ -55,4 +57,4 @@ Skill `travelba-go-live` smoke. **Interdit** : `seed:demo`, reset `crm_staff`, e
 
 ## Sécurité avant commit
 
-Pas de secrets. SQL paramétré. Signed URL uniquement via `/api/files`. Si Opsera MCP `needsAuth`, ne pas bloquer le ship — relancer le scan plus tard, ne pas inventer un rapport.
+Pas de secrets. SQL paramétré. Signed URL uniquement via `/api/files`. Si Opsera MCP `needsAuth` ou demande une confirmation interactive, ne pas bloquer le ship et ne pas inventer un rapport. Ne pas merger ni déployer sans demande.

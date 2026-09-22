@@ -77,6 +77,8 @@ Nouvelle page CRM : `loading.tsx` sibling. Nouvelle API : `runtime = "nodejs"` s
 - Cookies session : `AUTH_COOKIE_OPTIONS` (`maxAge` 400 jours).
 - IDs booking : RPC `crm_next_booking_reference` → `TB-YYYY-0001`.
 - Feature carnet / argent / identité : charger le skill dédié, ne pas improviser le modèle.
+- Une remarque produit tranchée (photo, passeport, copy, nav) se note dans le skill du domaine, pas seulement dans le code.
+- Tests : `npm test` (`npx tsx --test lib/crm/*.test.ts`).
 
 ## Nouvelle feature — checklist
 

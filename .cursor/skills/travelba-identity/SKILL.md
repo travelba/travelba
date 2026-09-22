@@ -3,8 +3,9 @@ name: travelba-identity
 description: >-
   Travelba customer fiche: shared admin/client profile, passports per person,
   companions without login, billing company, Flying Blue, trip documents,
-  phone wall. Use when editing customers, OCR passport, companions, or
-  facturation.
+  phone wall, vault vs trip passport, shorter ticket given name. Use when
+  editing customers, OCR passport, companions, facturation, or the
+  « pièce manquante » banner.
 ---
 
 # Travelba — fiche & pièces
@@ -34,6 +35,23 @@ description: >-
 - Pièce **pour un voyage** : `crm_travel_documents.booking_id` / `traveler_id` (docs d’identité utiles à ce séjour, en plus des confirmations `crm_booking_documents`).
 
 UI : bloc pièce **replié** par défaut (passeport). Copy courte, pas « Uploadez le passeport du titulaire pour préremplir » en hint permanent.
+
+## Coffre vs case du séjour
+
+- Coffre = `crm_travel_documents.booking_id` null. La case « Passeport pour ce séjour » coche une **copie** (`booking_id` + `traveler_id`). Le coffre n’est pas modifié. Ne pas créer un second passeport pour « remplir » la case.
+- `tripDocCoverage` ne compte qu’une pièce **déjà copiée sur le séjour**. Le bandeau « Pièce d’identité manquante… Joindre dans Mon compte, puis cocher » reste tant que la case n’est pas cochée, même si le coffre est plein.
+- « Aucune pièce dans le coffre pour cette personne » = `samePerson` n’a pas relié ce voyageur. Ce n’est pas « le client n’a rien scanné ».
+- `samePerson` (`lib/crm/trip-documents.ts`) : `companion_id` → pièces de cet accompagnant ; sinon `is_account_holder` → pièces sans `companion_id` ; sinon seulement `doc.traveler_id === traveler.id`. Le coffre du titulaire (`companion_id` null) est invisible si le voyageur du billet n’est pas marqué titulaire.
+
+## Même personne, prénom plus court
+
+Normaliser (`normalizePersonName`) : NFD, sans accents, minuscules, **sans** espaces ni virgules. `Benjamin, Elie, David` devient `benjamineliedavid`. Le billet `Benjamin` en est le préfixe : **même titulaire**. L’égalité stricte est le bug qui laissait le coffre vide.
+
+- `holderNamesMatch` (`lib/crm/person-name.ts`) : nom exact ; prénom égal ou préfixe dans un sens. Prénom de billet vide = le nom suffit. Fiche sans prénom + billet avec prénom = pas un match.
+- `isHolder` et `matchCustomerId` (`lib/crm/ingest-booking.ts`) passent par là. Ne pas revenir à `first_name` égal caractère pour caractère.
+- `companionNamesMatch` : **les deux** prénoms requis, nom exact, prénom en préfixe. Pas de lien sur le seul nom de famille. Un accompagnant dont le prénom ne contient pas celui du billet (les deux champs remplis avec la même longue chaîne, par exemple) **ne se rattache pas**. Plusieurs matchs = on ne choisit pas.
+- Au chargement du carnet (client et admin), `reconcileBookingTravelers` (`lib/crm/traveler-link.ts`) écrit `is_account_holder` ou `companion_id` s’ils sont vides. RLS client sur `crm_booking_travelers` = **select** seulement : l’écriture est service role, limitée aux lignes déjà chargées pour un dossier autorisé. Ne pas ouvrir un UPDATE client.
+- La case reste manuelle. Ne pas copier le coffre tout seul sur le séjour.
 
 ## Flying Blue / facturation
 
