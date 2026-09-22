@@ -79,6 +79,22 @@ describe("classifyIngestFamily", () => {
       "maeva"
     );
   });
+
+  it("reconnaît un séjour complet sans le mot maeva", () => {
+    const text = `
+Votre réservation à Tignes est confirmée
+Résidence Les Alpages
+Arrivée le : 10 janvier 2027
+Départ le : 17 janvier 2027
+N° DE DOSSIER : 15000002
+VOS OPTIONS
+Total Forfaits Remontées Mécaniques 1 200,00 €
+Forfait Adulte de 26 à 64 Ans inclus
+(Forfaits 6 Jours consécutifs) 1  200,00 €
+TOTAL  1 200,00 €
+`;
+    assert.equal(classifyIngestFamily(text, "confirmation.pdf"), "maeva");
+  });
 });
 
 describe("parserItemsComplete / vision", () => {

@@ -2,10 +2,12 @@
 name: travelba-document-ingest
 description: >-
   Pièce centrale Travelba : qualité et fiabilité de l’import PDF/photos vers
-  les cartes carnet (e-tickets Amadeus, Little Emperors, Nantipa, The Leela,
-  SIXT, TAAP/Talixo, devis). Use when the user sends PDFs or images, trains
-  extraction, tunes ingest-parse / PROMPT / merge, BookingIngest, or PAN
-  redaction. Identity scans (passeport MRZ) use travelba-identity instead.
+  les cartes carnet. Une réservation complète (logement + forfaits, matériel,
+  cours, assurance, transfert) = plusieurs cartes, pas un hôtel seul. Familles
+  (Amadeus, Little Emperors, Nantipa, Leela, SIXT, TAAP, package ski / maeva,
+  devis). Use when the user sends PDFs or images, trains extraction, tunes
+  ingest-parse / PROMPT / merge, BookingIngest, or PAN redaction. Identity
+  scans (passeport MRZ) use travelba-identity instead.
 ---
 
 # Travelba — import (qualité)
@@ -74,7 +76,7 @@ Pièces iOS parfois absentes du VM : le dire, demander le trombone desktop, ou l
 | SIXT | Pickup on / Return on / catégorie | `parseSixtCar` — `kind=car` |
 | Passion Collection | Devis, NET, options | quote — **pas** de NET |
 | Toucan Discovery | étapes du cadre + excursions | `activity` — les étapes **ne sont pas** des hôtels |
-| Maeva / Pierre & Vacances | maeva.com + N° DE DOSSIER / VOS OPTIONS | `parseMaevaStay` — **1 hôtel** + forfaits / matériel / cours (`activity`) + assurance. Réf. dossier **sur l’hôtel seulement**. Dates only. Pas de frais de dossier, PAN, totaux à 0 |
+| Séjour complet (ex. maeva / PV) | VOS OPTIONS, forfaits, matériel, cours — **pas** le logo maeva | `parseMaevaStay` / `isPackageStay` — **1 hôtel** + extras. Réf. dossier **sur l’hôtel seulement**. Dates only. Pas de frais de dossier, PAN, totaux à 0 |
 | Passeport | MRZ `P<FRA` | **identité**, pas une résa |
 
 IATA **8 chiffres** (20287864, 20255270, 96020293, 20289905) = code agence, **jamais** un PNR.
@@ -105,12 +107,32 @@ Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Co
 - Nantipa `08/02/2026` = 2 août (US), pas 8 février.
 - Devis : `quoted`, `rooms` = options, **pas** un item par tarif. Invisible tant que non publié.
 
+## Réservation complète (logement + extras)
+
+Un PDF « votre réservation est confirmée » qui contient **plus que l’hébergement** n’est **pas** une carte hôtel unique. C’est le cas maeva / Pierre & Vacances, et le même contrat pour **tout** opérateur (Club Med, Odalys, Gîtes, etc.).
+
+| Imprimé | kind | Carte |
+|---------|------|--------|
+| Hébergement | `hotel` | 1 établissement, réf. dossier ici seulement |
+| Forfait / skipass | `activity` | 1 carte ; lignes (adulte/enfant) → `details.included` ; durée si écrite |
+| Matériel / casque | `activity` | Casque avec le matériel |
+| Cours | `activity` | Pas d’horaire inventé |
+| Transfert | `transfer` | |
+| Voiture | `car` | |
+| Assurance | `insurance` | Hors timeline |
+| Frais de dossier, totaux 0 €, CGV, PAN | — | ignorer |
+
+- Dates extras = dates du séjour, **sans heure**. Une carte le jour d’arrivée (l’hôtel occupe déjà chaque nuit).
+- Ne pas coller un forfait dans `included` de l’hôtel (le petit-déj / la pension **de l’hébergement**, oui).
+- Parseur `parseMaevaStay` / `isPackageStay` (famille code `maeva`) : indices `VOS OPTIONS`, forfaits, matériel, cours — **pas** le mot « maeva » obligatoire.
+- Autre opérateur, même structure : étendre le parseur + fixture anonymisée. Autre mise en page : le `PROMPT` (séjour complet) doit quand même sortir les cartes ; si le déterministe est trop étroit, ne **pas** marquer le PDF « hôtel complet » et sauter le LLM.
+
 ## Transfert / voiture / reste
 
 - Transfert : `pickup` / `dropoff` (pas `from`/`to`). « 2 h 30 avant le vol » → `pickup_note`, pas d’heure inventée. Vol sur le bon → `flight` seulement s’il y a un e-ticket.
 - SIXT : `kind=car`, n° résa, prise/restitution (`18 Septembre 2026 at 16:00`), `vehicle` = catégorie. **Pas** CHF TTC, caution, protection, plein.
 - Train / bateau : horaires **écrits**. Croisière = une carte, pas un jour par port.
-- Maeva / Pierre & Vacances : **1 hôtel** (nom d’établissement, ville = station) + cartes `activity` (forfaits, matériel, cours) et `insurance`. `included` = lignes d’option imprimées. Dates **sans heure**. Réf. dossier **uniquement** sur l’hôtel. Pas de frais de dossier, totaux à 0, PAN.
+- Séjour complet : **1 hôtel** + cartes `activity` / `insurance` / `transfer` pour chaque prestation imprimée. `included` = lignes d’option. Dates **sans heure**. Réf. dossier **uniquement** sur l’hôtel. Pas de frais de dossier, totaux à 0, PAN. Maeva n’est qu’un exemple.
 - `YANIK` / `YANNICK` = même personne.
 
 ## Fusion (`item-match.ts`)

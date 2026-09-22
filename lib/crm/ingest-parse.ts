@@ -497,14 +497,25 @@ export function isToucanActivities(text: string) {
   return /TOUCAN DISCOVERY/i.test(text);
 }
 
-export function isMaevaStay(text: string) {
-  if (!/maeva\.com/i.test(text)) return false;
-  return (
-    /N[°ºo]?\s*DE DOSSIER/i.test(text) ||
+export function isPackageStay(text: string) {
+  const extras =
     /VOS OPTIONS/i.test(text) ||
-    /Forfaits Remont[ée]es M[ée]caniques/i.test(text) ||
-    /Pierre\s*&\s*Vacances/i.test(text)
+    /forfaits?\s+remont/i.test(text) ||
+    /mat[ée]riel de (glisse|ski)/i.test(text) ||
+    /cours collectifs/i.test(text) ||
+    /skipass/i.test(text) ||
+    /forfait.{0,60}(ski|soleil|piste)/i.test(text);
+  if (!extras) return false;
+  return (
+    /arriv[ée]e|check[-\s]?in|r[ée]sidence|appartement|h[ôo]tel/i.test(text) ||
+    /N[°ºo]?\s*DE DOSSIER/i.test(text) ||
+    /maeva\.com/i.test(text)
   );
+}
+
+/** @deprecated alias — même règle que isPackageStay (maeva n’est qu’un exemple). */
+export function isMaevaStay(text: string) {
+  return isPackageStay(text);
 }
 
 const MAEVA_MONEY = /([0-9]{1,3}(?:[\s\u00a0.][0-9]{3})*,[0-9]{2}|[0-9]+,[0-9]{2})\s*€/;
@@ -613,15 +624,21 @@ function parseMaevaHotelName(text: string): string | null {
     return oneLine[0].replace(/\s*\*{2,}/g, "").replace(/\s+/g, " ").trim();
   }
   const head = text.match(/((?:R[ée]sidence(?:s)?\s+)?Pierre\s*&\s*Vacances[^\n]*)/i);
-  if (!head || head.index == null) return null;
-  let name = head[1].replace(/\s*\*{2,}/g, "").replace(/\s+/g, " ").trim();
-  const after = text.slice(head.index + head[0].length);
-  const next = after.match(/^\s*\n\s*([^\n]+)/);
-  const nextLine = (next?.[1] || "").replace(/\s*\*{2,}/g, "").trim();
-  if (nextLine && !skipNext.test(nextLine) && nextLine.length < 80) {
-    name = `${name} ${nextLine}`.replace(/\s+/g, " ").trim();
+  if (head && head.index != null) {
+    let name = head[1].replace(/\s*\*{2,}/g, "").replace(/\s+/g, " ").trim();
+    const after = text.slice(head.index + head[0].length);
+    const next = after.match(/^\s*\n\s*([^\n]+)/);
+    const nextLine = (next?.[1] || "").replace(/\s*\*{2,}/g, "").trim();
+    if (nextLine && !skipNext.test(nextLine) && nextLine.length < 80) {
+      name = `${name} ${nextLine}`.replace(/\s+/g, " ").trim();
+    }
+    return name || null;
   }
-  return name || null;
+  const generic = text.match(/R[ée]sidence(?:s)?\s+[^\n*]{3,80}/i);
+  if (generic) {
+    return generic[0].replace(/\s*\*{2,}/g, "").replace(/\s+/g, " ").trim();
+  }
+  return null;
 }
 
 function parseMaevaExtras(
@@ -796,7 +813,7 @@ export function classifyIngestFamily(text: string, filename = ""): IngestFamily 
     return "identity";
   }
   if (isToucanActivities(text)) return "toucan";
-  if (isMaevaStay(text)) return "maeva";
+  if (isPackageStay(text)) return "maeva";
   if (/Reçu de Billet Electronique/i.test(text)) return "amadeus";
   if (/\bSIXT\b/i.test(text) && /Pickup on/i.test(text)) return "sixt";
   if (
@@ -921,9 +938,9 @@ export function structuredHintFromPdfText(text: string): string {
   }
   const maeva = parseMaevaStay(clean);
   if (maeva) {
-    bits.push(`MAEVA ${JSON.stringify({ hotel: maeva.hotel, extras: maeva.extras })}`);
+    bits.push(`SEJOUR ${JSON.stringify({ hotel: maeva.hotel, extras: maeva.extras })}`);
     bits.push(
-      "maeva.com = résidence + prestations (forfaits, matériel, cours, assurance). confirmation_ref = n° de dossier sur l’hôtel seulement. Dates sans heure. Pas de frais de dossier ni de PAN."
+      "Réservation complète = résidence + prestations (forfaits, matériel, cours, assurance). confirmation_ref du dossier sur l’hôtel seulement. Dates sans heure. Pas de frais de dossier ni de PAN."
     );
   }
   return bits.join("\n");

@@ -606,7 +606,36 @@ describe("parseMaevaStay", () => {
     assert.equal(parseDocumentMoney(MAEVA)?.amount, 5626);
     assert.equal(JSON.stringify(items).includes("####"), false);
     const hint = structuredHintFromPdfText(MAEVA);
-    assert.match(hint, /MAEVA/);
+    assert.match(hint, /SEJOUR|MAEVA/);
+  });
+
+  it("lit un séjour ski complet sans le mot maeva", () => {
+    const text = `
+Votre réservation à Tignes est confirmée
+Résidence Les Alpages
+Arrivée le : 10 janvier 2027
+Départ le : 17 janvier 2027
+N° DE DOSSIER : 15000002
+Appartement 4 personnes - 1 chambre
+VOS OPTIONS
+Total Forfaits Remontées Mécaniques 1 200,00 €
+Forfait Adulte de 26 à 64 Ans inclus
+(Forfaits 6 Jours consécutifs) 1  200,00 €
+TOTAL  1 200,00 €
+`;
+    assert.equal(classifyIngestFamily(text, "pv.pdf"), "maeva");
+    const parsed = parseMaevaStay(text);
+    assert.ok(parsed);
+    assert.match(parsed.hotel.hotel_name || "", /Alpages/i);
+    assert.equal(parsed.hotel.city, "Tignes");
+    assert.equal(parsed.hotel.start_at, "2027-01-10");
+    const forfaits = parsed.extras.find((row) => /Forfaits/i.test(row.title));
+    assert.ok(forfaits);
+    assert.equal(forfaits.duration, "6 jours consécutifs");
+    assert.equal(
+      parsedItemsFromText(text).items.filter((item) => item.kind === "activity").length,
+      1
+    );
   });
 });
 

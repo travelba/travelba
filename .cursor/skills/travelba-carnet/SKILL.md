@@ -55,6 +55,7 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 ## Cartes
 
 - **Un hôtel** par établissement même si 2 chambres / 2 réf. → `details.rooms[]`. `title` = nom d’hôtel, pas la ville.
+- **Séjour complet** : forfaits, matériel, cours, assurance = cartes à part (`activity` / `insurance`), pas un bloc Inclus de l’hôtel. Activités **une fois** le jour d’arrivée (l’hôtel se répète les nuits).
 - Cartes **à la main** autorisées (mêmes types que l’ingest).
 - Réimport **même réf.** (vol : réf. + n° + date) = **remplace** la carte, n’ajoute pas un doublon.
 - Illisible : on **enregistre** + bandeau **À vérifier** (`details.needs_review`), pas un refus global.

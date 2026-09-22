@@ -55,7 +55,7 @@ Règles d’honnêteté :
 - Horaires ISO 8601 seulement s’ils sont imprimés (heures locales du lieu).
 - Devise : $ = USD, € = EUR, CHF = CHF.
 - kind : flight | hotel | transfer | activity | rail | car | cruise | insurance | fee.
-- Un PDF peut produire PLUSIEURS cartes.
+- Un PDF peut produire PLUSIEURS cartes. Un séjour complet (logement + extras) n’est PAS une seule carte hôtel.
 - details.source_file_name = nom exact du fichier source.
 - details.needs_review = true si lecture douteuse.
 - amount des items : toujours null (pas le net client).
@@ -89,7 +89,8 @@ const PROMPT_HOTEL = `Hôtel :
 - title de la carte = details.hotel_name (nom de l’établissement), PAS la ville. details.city = ville. details.address, details.board si écrite.
 - Nantipa / vouchers Costa Rica : 08/02/2026 = 2 août (MM/JJ), pas 8 février. Check-in 15:00 dans les CGV ≠ heure de la carte (date only).
 - Confirmation type The Leela : Check In 14-SEP-26 = date only. Ignorer 14:00/12:00 de politique et Pick Up / Drop Off 00:00. TENTATIVE → details.needs_review.
-- Devis Passion Collection / « none are on hold » : document_status=quote, un item hôtel, rooms = les options. Pas de NET.`;
+- Devis Passion Collection / « none are on hold » : document_status=quote, un item hôtel, rooms = les options. Pas de NET.
+- Si le même PDF liste aussi des extras (forfaits, ski, cours, assurance, transfert) : ce sont d’AUTRES cartes, pas details.included de l’hôtel (sauf petit-déj / pension écrits pour l’hébergement).`;
 
 const PROMPT_OTHER = `Toucan Discovery = activités (kind=activity). Les « étapes » du cadre ne sont PAS des réservations hôtel.
 Transfert : details.pickup / dropoff. Si « 2 h 30 avant le vol » sans heure clock → details.pickup_note, pas d’heure inventée.
@@ -97,28 +98,28 @@ Train (rail) : comme un vol (n°, gares, horaires si écrits).
 Voiture (SIXT / loueur) : kind=car. confirmation_ref = n° de réservation. start_at / end_at = prise et restitution. details.pickup / dropoff / vehicle. Pas de franchise, caution, TTC, protection.
 Bateau (cruise) : une carte pour la traversée, pas un jour par port.`;
 
-const PROMPT_MAEVA = `Confirmation maeva.com / Pierre & Vacances :
-- UN hôtel (résidence). title = details.hotel_name (établissement), PAS la ville. details.city = station.
-- Arrivée / départ en date only. Pas d’horaire inventé (15:00 / 12:00).
-- confirmation_ref = N° de dossier, UNIQUEMENT sur la carte hôtel. Les extras n’ont pas cette réf.
-- VOS OPTIONS = cartes séparées : forfaits (activity), matériel de ski (activity), cours (activity), assurance (insurance).
-- Lignes d’un même total → details.included (ex. « 1 × Adulte 26–64 ans »). details.duration si « 6 jours consécutifs » est écrit.
-- Ignorer totaux à 0 €, frais de dossier, CGV, cagnotte, PAN, n° de transaction bancaire.
+const PROMPT_PACKAGE = `Réservation complète (n’importe quel opérateur : maeva, Pierre & Vacances, Club Med, Odalys, etc.) :
+- UN hôtel / résidence. title = details.hotel_name (établissement), PAS la ville. details.city = station.
+- Chaque prestation IMPRIMÉE avec montant > 0 = une carte : forfait/skipass → activity, matériel/casque → activity, cours → activity, transfert → transfer, voiture → car, assurance → insurance.
+- Ne pas tout coller dans l’hôtel. Lignes d’un même groupe → details.included (ex. « 1 × Adulte 26–64 ans »). details.duration si « 6 jours consécutifs » est écrit.
+- confirmation_ref du dossier UNIQUEMENT sur l’hôtel. Les extras n’ont pas cette réf. (fusion titre + jour).
+- Arrivée / départ en date only. Pas d’horaire inventé. Extras = dates du séjour, une carte le jour d’arrivée.
+- Ignorer totaux à 0 €, frais de dossier, CGV, cagnotte, PAN, n° de transaction.
 - E-mail agence ≠ customer_email. Pas d’enfants sans nom.
 - amount des items = null. details.document_amount = total TTC du dossier, une seule fois.`;
 
 const FAMILY_PROMPT: Record<IngestFamily, string> = {
   amadeus: PROMPT_FLIGHT,
-  little_emperors: PROMPT_HOTEL,
-  nantipa: PROMPT_HOTEL,
-  hotel_letter: PROMPT_HOTEL,
+  little_emperors: `${PROMPT_HOTEL}\n${PROMPT_PACKAGE}`,
+  nantipa: `${PROMPT_HOTEL}\n${PROMPT_PACKAGE}`,
+  hotel_letter: `${PROMPT_HOTEL}\n${PROMPT_PACKAGE}`,
   quote: `${PROMPT_HOTEL}\nCe fichier est un devis.`,
   sixt: PROMPT_OTHER,
   transfer: PROMPT_OTHER,
   toucan: PROMPT_OTHER,
-  maeva: `${PROMPT_HOTEL}\n${PROMPT_MAEVA}`,
+  maeva: `${PROMPT_HOTEL}\n${PROMPT_PACKAGE}`,
   identity: "C’est une pièce d’identité. document_status=identity. Aucun item de réservation.",
-  unknown: `${PROMPT_FLIGHT}\n${PROMPT_HOTEL}\n${PROMPT_OTHER}\n${PROMPT_MAEVA}`,
+  unknown: `${PROMPT_FLIGHT}\n${PROMPT_HOTEL}\n${PROMPT_OTHER}\n${PROMPT_PACKAGE}`,
 };
 
 type UserPart =
