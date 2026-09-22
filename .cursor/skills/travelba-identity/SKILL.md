@@ -26,7 +26,7 @@ description: >-
 
 ## Passeport / pièces
 
-- **Un passeport par personne** (titulaire ou compagnon), pas un passeport « du dossier » générique. Un PDF / une photo avec **plusieurs passeports** (couple, pages) → extraire **chaque** personne. Le titulaire ne reçoit une pièce **que si le nom correspond** ; **chaque autre personne devient un accompagnateur**.
+- **Un passeport par personne** (titulaire ou compagnon), pas un passeport « du dossier » générique. Un PDF / une photo avec **plusieurs passeports** (couple, deux livrets ouverts sur une page paysage ~A4) → extraire **chaque** personne (découpe gauche/droite + bas). Le titulaire ne reçoit une pièce **que si le nom correspond** ; **chaque autre personne devient un accompagnateur**.
 - Scan : photo JPEG/PNG/HEIC **ou PDF** → `/api/admin/travel-documents/scan` ou `/api/client/documents/scan`. MRZ Tesseract + `mrz`. PDF : texte MRZ si calque, sinon raster 1–2 pages via **unpdf/pdfjs** (jamais `pdfjs-dist` 5.7). `getDocumentProxy` clone les octets (sinon DataCloneError au 2ᵉ passage). **Pas** le dropzone résa.
 - PDF passeport souvent sans calque : rasteriser ou photo de la bande MRZ. L’upload **accepte** le PDF.
 - **Prénoms** : tous ceux imprimés (ligne Prénoms / Given names), **dans l’ordre du document** — jamais seulement le premier. Fusion MRZ + zone visuelle : on garde la liste la plus complète si l’ordre est conservé (`normalizeGivenNames` / `completeGivenNames`). La MRZ tronque souvent.

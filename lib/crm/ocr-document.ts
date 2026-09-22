@@ -13,14 +13,16 @@ import { aiGatewayConfigured, isAllowedIngestType, isPdfFile, openaiApiKey } fro
 import { identitiesExtractSchema } from "./ocr-schema";
 import { trySharp } from "./sharp";
 import { inspectPdf, type RasterPage } from "./pdf-raster";
+import { multiPassportCrops, type CropRect } from "./passport-split";
 
 const MAX_BYTES = 12 * 1024 * 1024;
 const VISION_TIMEOUT_MS = 60_000;
 const PASSPORT_PDF_PAGES = 6;
 
 const PROMPT = `Tu lis une photo ou un scan PDF de passeport, carte d’identité ou titre de voyage (zone visuelle + MRZ).
-Le fichier peut contenir PLUSIEURS passeports (deux pièces sur la même photo, photocopie de couple, PDF de plusieurs pages).
+Le fichier peut contenir PLUSIEURS passeports (deux livrets ouverts sur la même page, photocopie de couple, PDF de plusieurs pages).
 Si tu vois 2 passeports, identities DOIT contenir 2 objets. Si tu en vois 3, 3 objets. Un objet par personne, jamais fusionnés.
+Plusieurs images peuvent être le même scan découpé (gauche / droite / bas) : dédupe par personne.
 
 Extrais TOUS les champs visibles. Ne jamais inventer : mettre null si absent ou illisible.
 Dates en YYYY-MM-DD.
@@ -94,6 +96,44 @@ async function toVisionImages(
   return [{ image, mediaType: mediaType as RasterPage["mediaType"] }];
 }
 
+async function cropPage(
+  sharp: NonNullable<Awaited<ReturnType<typeof trySharp>>>,
+  buf: Buffer,
+  rect: CropRect
+): Promise<RasterPage | null> {
+  if (rect.width < 80 || rect.height < 80) return null;
+  try {
+    const jpeg = await sharp(buf, { failOn: "none" })
+      .extract(rect)
+      .jpeg({ quality: 85 })
+      .toBuffer();
+    return { image: new Uint8Array(jpeg), mediaType: "image/jpeg" };
+  } catch {
+    return null;
+  }
+}
+
+async function expandPassportViews(pages: RasterPage[]): Promise<RasterPage[]> {
+  const sharp = await trySharp();
+  if (!sharp) return pages;
+  const views: RasterPage[] = [...pages];
+  for (const page of pages) {
+    try {
+      const buf = Buffer.from(page.image);
+      const meta = await sharp(buf, { failOn: "none" }).metadata();
+      const width = meta.width || 0;
+      const height = meta.height || 0;
+      for (const rect of multiPassportCrops(width, height)) {
+        const part = await cropPage(sharp, buf, rect);
+        if (part) views.push(part);
+      }
+    } catch {
+      /* page suivante */
+    }
+  }
+  return views.slice(0, 6);
+}
+
 async function splitWidePages(pages: RasterPage[]): Promise<RasterPage[]> {
   const sharp = await trySharp();
   if (!sharp) return [];
@@ -104,25 +144,10 @@ async function splitWidePages(pages: RasterPage[]): Promise<RasterPage[]> {
       const meta = await sharp(buf, { failOn: "none" }).metadata();
       const width = meta.width || 0;
       const height = meta.height || 0;
-      if (!width || !height || width < height * 1.7) continue;
-      const overlap = Math.round(width * 0.08);
-      const mid = Math.round(width / 2);
-      const leftWidth = Math.min(width, mid + overlap);
-      const rightX = Math.max(0, mid - overlap);
-      const rightWidth = width - rightX;
-      if (leftWidth < 80 || rightWidth < 80) continue;
-      const left = await sharp(buf, { failOn: "none" })
-        .extract({ left: 0, top: 0, width: leftWidth, height })
-        .jpeg({ quality: 85 })
-        .toBuffer();
-      const right = await sharp(buf, { failOn: "none" })
-        .extract({ left: rightX, top: 0, width: rightWidth, height })
-        .jpeg({ quality: 85 })
-        .toBuffer();
-      halves.push(
-        { image: new Uint8Array(left), mediaType: "image/jpeg" },
-        { image: new Uint8Array(right), mediaType: "image/jpeg" }
-      );
+      for (const rect of multiPassportCrops(width, height)) {
+        const part = await cropPage(sharp, buf, rect);
+        if (part) halves.push(part);
+      }
     } catch {
       /* page suivante */
     }
@@ -265,7 +290,8 @@ export async function scanTravelDocument(file: File): Promise<{
       pages = await toVisionImages(bytes, file.type, file.name);
     }
 
-    const visionFirst = await extractWithVision(pages);
+    const views = await expandPassportViews(pages);
+    const visionFirst = await extractWithVision(views);
     const visionMore = await extractMoreIdentities(pages, visionFirst.identities);
     const vision = uniquePassports([...visionFirst.identities, ...visionMore.identities]);
     const mrzText = [visionFirst.mrzText, visionMore.mrzText].filter(Boolean).join("\n") || null;
