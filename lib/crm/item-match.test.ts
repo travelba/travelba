@@ -47,6 +47,42 @@ describe("itemMatchKey", () => {
     assert.equal(itemMatchKey({ kind: "activity", title: "Spa" }), null);
   });
 
+  it("ne fusionne pas forfaits et cours maeva le même jour", () => {
+    const merged = mergeExtractItems([
+      {
+        kind: "activity",
+        title: "Forfaits Les Portes du Soleil",
+        start_at: "2027-03-20",
+        confirmation_ref: null,
+      },
+      {
+        kind: "activity",
+        title: "Cours collectifs journée",
+        start_at: "2027-03-20",
+        confirmation_ref: null,
+      },
+    ]);
+    assert.equal(merged.length, 2);
+    const hit = findMatchingItem(merged, {
+      kind: "activity",
+      title: "Forfaits Les Portes du Soleil",
+      start_at: "2027-03-20",
+    });
+    assert.equal(hit?.title, "Forfaits Les Portes du Soleil");
+  });
+
+  it("fusionne une assurance réimportée par titre et jour", () => {
+    const existing = [
+      { kind: "insurance", title: "Assurance Multirisques", start_at: "2027-03-20" },
+    ];
+    const hit = findMatchingItem(existing, {
+      kind: "insurance",
+      title: "Assurance Multirisques",
+      start_at: "2027-03-20",
+    });
+    assert.equal(hit?.title, "Assurance Multirisques");
+  });
+
   it("fusionne cinq e-tickets du même segment", () => {
     const merged = mergeExtractItems(
       Array.from({ length: 5 }, () => ({

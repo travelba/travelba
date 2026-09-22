@@ -10,18 +10,22 @@ import {
 } from "./ingest-types";
 import {
   applyStructuredHints,
+  classifyIngestFamily,
   inferAirportIata,
   parseAmadeusFlights,
   parseAmadeusReceipt,
   parseDdMonYy,
   parseHotelConfirmationLetter,
   parseLittleEmperorsHotel,
+  parseMaevaStay,
   parseNantipaConfirmation,
+  parserItemsComplete,
   parseSixtCar,
   parseTransferConfirmation,
   parseUsMonthDayYear,
   parsedItemsFromText,
   parseDocumentMoney,
+  shouldUseVision,
   structuredHintFromPdfText,
 } from "./ingest-parse";
 import { findMatchingItem, mergeExtractItems } from "./item-match";
@@ -135,6 +139,12 @@ describe("redactIngestText", () => {
     assert.equal(cleaned.document_status, "quote");
     assert.equal((cleaned.notes_client || "").includes("8445"), false);
     assert.match(cleaned.notes_client || "", /Devis/);
+  });
+
+  it("masque une ligne Numéro de la carte maeva", () => {
+    const out = redactIngestText("Numéro de la carte \t**** #### #### ##**");
+    assert.match(out, /masqué|\[carte\]/);
+    assert.equal(out.includes("####"), false);
   });
 });
 
@@ -433,6 +443,53 @@ RESERVATION CONFIRMATION
 Cancellation Policy : Reservation must be cancelled 48 hours prior
 `;
 
+const MAEVA = `
+1 / 6 pers. 	Appartement 	63 m2
+Votre réservation à Avoriaz est validée
+maeva.com <serviceclients@maeva.com>
+Bonjour Alex,
+Merci d'avoir choisi maeva.com !
+Vous venez de régler le solde de votre séjour.
+Votre réservation à Avoriaz est confirmée.
+N° DE DOSSIER : 15000001
+Avoriaz - Haute Savoie - Savoie Mont Blanc
+Résidence Pierre & Vacances Premium L'Amara *****
+Résidences de Prestige
+Arrivée le :
+20 mars
+Retour le :
+27 mars
+RÉCAPITULATIF DE VOTRE COMMANDE - N° DOSSIER : 15000001
+Arrivée le : 20 mars 2027
+Départ le : 27 mars 2027
+Résidence Pierre & Vacances Premium
+L'Amara *****
+Avoriaz
+Appartement Appartement
+Appartement 6 personnes - 2 chambres - Balcon 3 836,00 €
+Logement seul 	1 	3 836,00 €
+VOS OPTIONS
+Total Forfaits Remontées Mécaniques 	3 	710,00 €
+Forfait Les Portes du Soleil Adulte de 26 à 64 Ans inclus
+(Forfaits 6 Jours consécutifs) 1 	284,00 €
+Forfait Les Portes du Soleil Enfant de 5 à 15 Ans inclus
+(Forfaits 6 Jours consécutifs) 2 	426,00 €
+Total Matériel de Glisse 	3 	168,00 €
+Cagnotte fidélité 	Réseaux Sociaux
+Gamme Eco - skis 	1 	76,00 €
+Pack Mini-Kid ( moins de 6 ans) - skis + chaussures 	2 	92,00 €
+Total Prestations Packfood 	0 	0,00 €
+Total Assurances 	0 	0,00 €
+Casque enfant 	2 	28,00 €
+Assurance Multirisques 	1 	189,00 €
+SKI JOURNEE - COURS COLLECTIFS JOURNEE 	2 	654,00 €
+Frais de dossier 	41,00 €
+TOTAL 	5 626,00 €
+Déjà réglé : 	5 626,00 €
+Numéro de la carte 	**** #### #### ##**
+Reste à régler : 	0,00 €
+`;
+
 describe("parseAmadeusFlights aller-retour", () => {
   it("crée deux segments CDG → GVA et GVA → CDG", () => {
     const flights = parseAmadeusFlights(AMADEUS_AF_RT);
@@ -482,6 +539,74 @@ describe("parseHotelConfirmationLetter", () => {
     assert.match(parsed.hotel_name || "", /Leela Mumbai/i);
     assert.equal(parsed.needs_review, true);
     assert.equal(JSON.stringify(parsed).includes("13750"), false);
+  });
+});
+
+describe("parseMaevaStay", () => {
+  it("lit la résidence et les prestations ski, sans frais ni PAN", () => {
+    assert.equal(classifyIngestFamily(MAEVA, "maeva.pdf"), "maeva");
+    const parsed = parseMaevaStay(MAEVA);
+    assert.ok(parsed);
+    assert.match(parsed.hotel.hotel_name || "", /L['’]Amara/i);
+    assert.equal(parsed.hotel.city, "Avoriaz");
+    assert.equal(parsed.hotel.confirmation_ref, "15000001");
+    assert.equal(parsed.hotel.start_at, "2027-03-20");
+    assert.equal(parsed.hotel.end_at, "2027-03-27");
+    assert.equal(parsed.hotel.start_at?.includes("T"), false);
+    assert.equal(parsed.hotel.board, "Logement seul");
+    assert.match(parsed.hotel.rooms[0]?.room || "", /6 personnes/);
+    assert.equal(parsed.confirmed, true);
+
+    const titles = parsed.extras.map((row) => row.title);
+    assert.equal(titles.includes("Forfaits Les Portes du Soleil"), true);
+    assert.equal(titles.includes("Location matériel de ski"), true);
+    assert.equal(titles.includes("Cours collectifs journée"), true);
+    assert.equal(titles.some((title) => /Assurance Multirisques/i.test(title)), true);
+    assert.equal(titles.some((title) => /frais/i.test(title)), false);
+
+    const forfaits = parsed.extras.find((row) => row.title === "Forfaits Les Portes du Soleil");
+    assert.equal(forfaits?.duration, "6 jours consécutifs");
+    assert.equal(forfaits?.included.some((row) => /1 × Adulte 26–64/.test(row)), true);
+    assert.equal(forfaits?.included.some((row) => /2 × Enfant 5–15/.test(row)), true);
+
+    const gear = parsed.extras.find((row) => row.title === "Location matériel de ski");
+    assert.equal(gear?.included.some((row) => /Gamme Eco/i.test(row)), true);
+    assert.equal(gear?.included.some((row) => /Mini-Kid/i.test(row)), true);
+    assert.equal(gear?.included.some((row) => /Casque enfant/i.test(row)), true);
+
+    const items = parsedItemsFromText(MAEVA).items;
+    assert.equal(parserItemsComplete("maeva", items), true);
+    assert.equal(
+      shouldUseVision({
+        denseChars: 4000,
+        itemCount: items.length,
+        family: "maeva",
+        isImage: false,
+        parserComplete: true,
+      }),
+      false
+    );
+    assert.equal(items.filter((item) => item.kind === "hotel").length, 1);
+    assert.equal(items.filter((item) => item.kind === "activity").length, 3);
+    assert.equal(items.filter((item) => item.kind === "insurance").length, 1);
+    assert.equal(items.filter((item) => item.kind === "fee").length, 0);
+    assert.equal(
+      items.every((item) => !item.start_at || !item.start_at.includes("T")),
+      true
+    );
+    const hotel = items.find((item) => item.kind === "hotel");
+    assert.equal(hotel?.amount, null);
+    assert.equal(hotel?.details?.document_amount, 5626);
+    assert.equal(hotel?.confirmation_ref, "15000001");
+    assert.equal(
+      items.filter((item) => item.kind !== "hotel").every((item) => !item.confirmation_ref),
+      true
+    );
+    assert.equal(items.filter((item) => item.kind !== "hotel").every((item) => item.details?.document_amount == null), true);
+    assert.equal(parseDocumentMoney(MAEVA)?.amount, 5626);
+    assert.equal(JSON.stringify(items).includes("####"), false);
+    const hint = structuredHintFromPdfText(MAEVA);
+    assert.match(hint, /MAEVA/);
   });
 });
 

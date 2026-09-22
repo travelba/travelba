@@ -62,7 +62,8 @@ export function itemMatchKey(item: MatchableItem): string | null {
     kind === "rail" ||
     kind === "car" ||
     kind === "cruise" ||
-    kind === "activity"
+    kind === "activity" ||
+    kind === "insurance"
   ) {
     if (ref) return `${kind}:${ref}`;
     const title = norm(item.title);

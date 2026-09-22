@@ -195,9 +195,18 @@ function CardBody({
           </p>
         ) : null}
         {item.kind === "activity" || item.kind === "cruise" ? (
-          <p>
-            {[detailStr(item, "meeting_point") || city, detailStr(item, "duration")].filter(Boolean).join(" · ")}
-          </p>
+          <>
+            <p>
+              {[detailStr(item, "meeting_point") || city, detailStr(item, "duration")].filter(Boolean).join(" · ")}
+            </p>
+            {included.length ? (
+              <ul className="list-disc pl-4 text-muted">
+                {included.map((row) => (
+                  <li key={row}>{row}</li>
+                ))}
+              </ul>
+            ) : null}
+          </>
         ) : null}
         {item.confirmation_ref ? (
           <p className="text-xs text-muted">Réf. {item.confirmation_ref}</p>
