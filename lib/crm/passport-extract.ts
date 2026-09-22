@@ -1,4 +1,4 @@
-import { resolveCountryCode } from "./countries";
+import { resolveNationality } from "./countries";
 import {
   completeGivenNames,
   emptyToNull,
@@ -90,15 +90,17 @@ export function identityFromVision(raw: Record<string, unknown>): ExtractedIdent
   const identity: ExtractedIdentity = {
     doc_type: mapDocType(emptyToNull(raw.doc_type)),
     number: emptyToNull(raw.number)?.replace(/\s/g, "") || null,
-    issuing_country:
-      resolveCountryCode(String(raw.issuing_country || "")) || emptyToNull(raw.issuing_country),
+    issuing_country: resolveNationality(emptyToNull(raw.issuing_country)),
     issued_on: isoDate(emptyToNull(raw.issued_on)),
     expires_on: isoDate(emptyToNull(raw.expires_on)),
     first_name: normalizeGivenNames(emptyToNull(raw.first_name)),
     last_name: emptyToNull(raw.last_name) ? humanizeMrzName(String(raw.last_name)) : null,
     birth_date: isoDate(emptyToNull(raw.birth_date)),
     place_of_birth: emptyToNull(raw.place_of_birth),
-    nationality: resolveCountryCode(String(raw.nationality || "")) || emptyToNull(raw.nationality),
+    nationality: resolveNationality(
+      emptyToNull(raw.nationality),
+      emptyToNull(raw.issuing_country)
+    ),
     sex: mapSex(emptyToNull(raw.sex)),
     authority: emptyToNull(raw.authority),
     personal_number: cleanPersonalNumber(emptyToNull(raw.personal_number)),
@@ -127,6 +129,8 @@ export function mergePassportIdentities(
   return {
     ...merged,
     first_name: completeGivenNames(mrz.first_name, vision.first_name),
+    nationality: resolveNationality(merged.nationality, merged.issuing_country),
+    issuing_country: resolveNationality(merged.issuing_country),
     issued_on: vision.issued_on || mrz.issued_on,
     place_of_birth: vision.place_of_birth || mrz.place_of_birth,
     authority: vision.authority || mrz.authority,

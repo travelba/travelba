@@ -25,7 +25,8 @@ const PASSPORT_PDF_PAGES = 2;
 const PROMPT = `Tu lis une photo ou un scan PDF de passeport, carte d’identité ou titre de voyage (zone visuelle + MRZ).
 Extrais TOUS les champs visibles. Ne jamais inventer : mettre null si absent ou illisible.
 Dates en YYYY-MM-DD.
-Nationalité et pays émetteur : code ISO 2 lettres si possible (FR, US, GB…).
+Nationalité : code ISO 2 lettres UNIQUEMENT (FR, MA, US, GB). Jamais l’adjectif (Française, Marocaine) ni le nom du pays.
+Pays émetteur : même règle ISO 2.
 sex : M, F ou X.
 doc_type : passport | id_card | visa | insurance | other.
 first_name : TOUS les prénoms imprimés (ligne « Prénoms » / Given names), dans l’ordre du document, séparés par un espace. Ne jamais n’en garder qu’un. Ne pas réordonner. Conserver les traits d’union (Jean-Pierre).

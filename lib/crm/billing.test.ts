@@ -63,6 +63,12 @@ test("customer patch maps loyalty and IBAN", () => {
   assert.equal(patch.iban, "FR7630006000011234567890189");
 });
 
+test("customer patch maps passport nationality adjectives to ISO2", () => {
+  const { patch, error } = customerPatchFromBody({ nationality: "Française" });
+  assert.equal(error, undefined);
+  assert.equal(patch.nationality, "FR");
+});
+
 test("customer patch maps billing fields", () => {
   const { patch, error } = customerPatchFromBody({
     company_name: "Boukris SAS",

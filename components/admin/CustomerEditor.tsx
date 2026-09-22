@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import type { CrmCompanion, CrmCustomer, CrmTravelDocument, CompanyRole } from "@/lib/crm/types";
 import { resolveCountryCode } from "@/lib/crm/countries";
+import { identityNationalityFromSources, nationalityFromIdentity } from "@/lib/crm/document-identity";
 import { identityOverwriteWarning, type ExtractedIdentity } from "@/lib/crm/identity";
 import { appendPassportForm } from "@/lib/crm/passport-extract";
 import { formatIbanInput, ibanError, normalizeIban } from "@/lib/crm/billing";
@@ -31,6 +32,7 @@ import {
 import { CompanyRoleFields } from "@/components/crm/CompanyRoleFields";
 import { PersonPassportCard } from "@/components/crm/PersonPassportCard";
 import { type ScanResult } from "@/components/crm/IdentityScan";
+import { vaultDocumentsForPerson } from "@/lib/crm/trip-documents";
 
 function applyIdentityState(
   id: ExtractedIdentity,
@@ -46,7 +48,8 @@ function applyIdentityState(
   if (id.last_name) setters.setLastName(id.last_name);
   if (id.birth_date) setters.setBirthDate(id.birth_date);
   if (id.sex) setters.setSex(id.sex);
-  if (id.nationality) setters.setNationality(id.nationality);
+  const nationalityIso = nationalityFromIdentity(id);
+  if (nationalityIso) setters.setNationality(nationalityIso);
 }
 
 export function CustomerEditor({
@@ -67,7 +70,9 @@ export function CustomerEditor({
   const [phoneSecondary, setPhoneSecondary] = useState(customer.phone_secondary || "");
   const [birthDate, setBirthDate] = useState(customer.birth_date || "");
   const [sex, setSex] = useState(customer.sex || "");
-  const [nationality, setNationality] = useState(resolveCountryCode(customer.nationality) || "");
+  const [nationality, setNationality] = useState(
+    identityNationalityFromSources(customer.nationality, vaultDocumentsForPerson(documents, null))
+  );
   const [country, setCountry] = useState(resolveCountryCode(customer.country) || "FR");
   const [addressLine, setAddressLine] = useState(customer.address_line || "");
   const [postalCode, setPostalCode] = useState(customer.postal_code || "");
@@ -300,7 +305,12 @@ function CompanionCard({
   const [firstName, setFirstName] = useState(companion.first_name);
   const [lastName, setLastName] = useState(companion.last_name);
   const [relationship, setRelationship] = useState(companion.relationship || "");
-  const [nationality, setNationality] = useState(resolveCountryCode(companion.nationality) || "");
+  const [nationality, setNationality] = useState(
+    identityNationalityFromSources(
+      companion.nationality,
+      vaultDocumentsForPerson(documents, companion.id)
+    )
+  );
   const [birthDate, setBirthDate] = useState(companion.birth_date || "");
   const [sex, setSex] = useState(companion.sex || "");
   const [saving, setSaving] = useState(false);

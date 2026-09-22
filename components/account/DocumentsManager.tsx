@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DOC_TYPE_LABELS, type CrmCompanion, type CrmTravelDocument, type TravelDocType } from "@/lib/crm/types";
 import { countryName } from "@/lib/crm/countries";
+import { nationalityFromIdentity } from "@/lib/crm/document-identity";
 import { documentExpiryStatus, documentExpiryWarning, identityOverwriteWarning } from "@/lib/crm/identity";
 import { formatDateFr } from "@/lib/crm/money";
 import { isVaultDocument } from "@/lib/crm/trip-documents";
@@ -70,7 +71,8 @@ export function DocumentsManager({
     if (id.first_name) setFirstName(id.first_name);
     if (id.last_name) setLastName(id.last_name);
     if (id.birth_date) setBirthDate(id.birth_date);
-    if (id.nationality) setNationality(id.nationality);
+    const nationalityIso = nationalityFromIdentity(id);
+    if (nationalityIso) setNationality(nationalityIso);
     if (id.sex) setSex(id.sex);
   }
 

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import type { CrmCustomer, CrmTravelDocument } from "@/lib/crm/types";
 import { resolveCountryCode } from "@/lib/crm/countries";
+import { identityNationalityFromSources, nationalityFromIdentity } from "@/lib/crm/document-identity";
 import { identityOverwriteWarning, type ExtractedIdentity } from "@/lib/crm/identity";
 import { loyaltyFromCustomer, type LoyaltyMap } from "@/lib/crm/loyalty";
 import { formatDateFr } from "@/lib/crm/money";
@@ -69,7 +70,9 @@ export function ProfileForm({
   const [lastName, setLastName] = useState(customer.last_name);
   const [birthDate, setBirthDate] = useState(customer.birth_date || "");
   const [sex, setSex] = useState(customer.sex || "");
-  const [nationality, setNationality] = useState(resolveCountryCode(customer.nationality) || "");
+  const [nationality, setNationality] = useState(
+    identityNationalityFromSources(customer.nationality, vaultDocumentsForPerson(documents, null))
+  );
   const [phone, setPhone] = useState(customer.phone || "");
   const [phoneSecondary, setPhoneSecondary] = useState(customer.phone_secondary || "");
   const [country, setCountry] = useState(resolveCountryCode(customer.country) || "FR");
@@ -91,7 +94,8 @@ export function ProfileForm({
     if (id.last_name) setLastName(id.last_name);
     if (id.birth_date) setBirthDate(id.birth_date);
     if (id.sex) setSex(id.sex);
-    if (id.nationality) setNationality(id.nationality);
+    const nationalityIso = nationalityFromIdentity(id);
+    if (nationalityIso) setNationality(nationalityIso);
   }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
