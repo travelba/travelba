@@ -1,5 +1,5 @@
 import { normalizeFlyingBlue, normalizeIban, ibanError, normalizeSiret, normalizeVat, siretError } from "./billing";
-import { resolveCountryCode } from "./countries";
+import { resolveCountryCode, resolveNationality } from "./countries";
 import { emptyToNull } from "./identity";
 import { normalizeLoyaltyMap } from "./loyalty";
 import { parseCompanyRole } from "./company-role";
@@ -59,6 +59,10 @@ export function customerPatchFromBody(
         return { patch, error: "Numéro de téléphone invalide" };
       }
       patch[key] = e164 || raw;
+      continue;
+    }
+    if (key === "nationality") {
+      patch[key] = resolveNationality(String(body[key] || ""));
       continue;
     }
     if (COUNTRY_KEYS.has(key)) {

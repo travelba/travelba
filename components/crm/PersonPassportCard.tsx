@@ -8,7 +8,7 @@ import {
   type CrmTravelDocument,
   type TravelDocType,
 } from "@/lib/crm/types";
-import { countryName } from "@/lib/crm/countries";
+import { countryName, resolveNationality } from "@/lib/crm/countries";
 import {
   SEX_OPTIONS,
   documentExpiryStatus,
@@ -56,7 +56,7 @@ export function passportDetailRows(source: PassportSource) {
     ["Date de naissance", source.birth_date ? formatDateFr(source.birth_date) : null],
     ["Lieu de naissance", source.place_of_birth],
     ["Sexe", sexLabel(source.sex)],
-    ["Nationalité", countryName(source.nationality) || source.nationality],
+    ["Nationalité", countryName(resolveNationality(source.nationality, source.issuing_country))],
     ["Pays d’émission", countryName(source.issuing_country) || source.issuing_country],
     ["Délivré le", source.issued_on ? formatDateFr(source.issued_on) : null],
     ["Expire le", source.expires_on ? formatDateFr(source.expires_on) : null],

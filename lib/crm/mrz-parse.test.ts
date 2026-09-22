@@ -12,4 +12,6 @@ test("MRZ TD3 keeps every given name after <<, in order", () => {
   assert.ok(identity);
   assert.equal(identity.last_name, "Dupont");
   assert.equal(identity.first_name, "Jean Pierre Marie");
+  assert.equal(identity.nationality, "FR");
+  assert.equal(identity.issuing_country, "FR");
 });

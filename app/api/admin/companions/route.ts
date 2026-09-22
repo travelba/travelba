@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
-import { resolveCountryCode } from "@/lib/crm/countries";
+import { resolveNationality } from "@/lib/crm/countries";
 import { emptyToNull } from "@/lib/crm/identity";
 import { deleteTravelDocuments } from "@/lib/crm/travel-document-write";
 
@@ -11,7 +11,7 @@ function companionPatch(body: Record<string, unknown>) {
     last_name: String(body.last_name || "").trim(),
     birth_date: emptyToNull(body.birth_date),
     sex: sex === "M" || sex === "F" || sex === "X" ? sex : null,
-    nationality: resolveCountryCode(String(body.nationality || "")) || emptyToNull(body.nationality),
+    nationality: resolveNationality(String(body.nationality || "")),
     relationship: emptyToNull(body.relationship),
   };
 }

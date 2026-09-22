@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import type { CrmCompanion, CrmTravelDocument } from "@/lib/crm/types";
+import { nationalityFromIdentity } from "@/lib/crm/document-identity";
 import { identityOverwriteWarning, RELATIONSHIP_OPTIONS } from "@/lib/crm/identity";
 import { appendPassportForm } from "@/lib/crm/passport-extract";
 import { documentsForPerson, primaryIdentityDoc } from "@/lib/crm/trip-documents";
@@ -157,7 +158,8 @@ export function CompanionsManager({
             if (id.first_name) setFirstName(id.first_name);
             if (id.last_name) setLastName(id.last_name);
             if (id.birth_date) setBirthDate(id.birth_date);
-            if (id.nationality) setNationality(id.nationality);
+            const nationalityIso = nationalityFromIdentity(id);
+            if (nationalityIso) setNationality(nationalityIso);
             if (id.sex) setSex(id.sex);
           }}
           onScan={setScan}

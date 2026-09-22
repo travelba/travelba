@@ -1,5 +1,5 @@
 import { parse } from "mrz";
-import { resolveCountryCode } from "./countries";
+import { resolveNationality } from "./countries";
 import { humanizeMrzName, normalizeGivenNames, type ExtractedIdentity } from "./identity";
 import type { TravelDocType } from "./types";
 
@@ -61,14 +61,14 @@ function toIdentity(result: ReturnType<typeof parse>): ExtractedIdentity {
   return {
     doc_type: mapDocType(result.format, fields.documentCode || null),
     number: result.documentNumber || fields.documentNumber || null,
-    issuing_country: resolveCountryCode(fields.issuingState || null) || fields.issuingState || null,
+    issuing_country: resolveNationality(fields.issuingState || null),
     issued_on: mrzDateToIso(fields.issueDate, "expiry"),
     expires_on: mrzDateToIso(fields.expirationDate, "expiry"),
     first_name: fields.firstName ? normalizeGivenNames(fields.firstName) : null,
     last_name: fields.lastName ? humanizeMrzName(fields.lastName) : null,
     birth_date: mrzDateToIso(fields.birthDate, "birth"),
     place_of_birth: null,
-    nationality: resolveCountryCode(fields.nationality || fields.issuingState || null) || fields.nationality || null,
+    nationality: resolveNationality(fields.nationality, fields.issuingState),
     sex: mapSex(fields.sex),
     authority: null,
     personal_number: personal ? String(personal).replace(/</g, "").trim() || null : null,

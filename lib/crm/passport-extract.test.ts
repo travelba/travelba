@@ -108,6 +108,51 @@ test("MRZ identity keeps visual-only fields from the photo", () => {
   assert.equal(merged?.valid, true);
 });
 
+test("vision nationality adjectives fill ISO2, with issuing-country fallback", () => {
+  const fromAdjective = identityFromVision({
+    number: "18D151774",
+    last_name: "Dupont",
+    nationality: "Française",
+    issuing_country: "France",
+  });
+  assert.equal(fromAdjective?.nationality, "FR");
+  assert.equal(fromAdjective?.issuing_country, "FR");
+
+  const fromIssuer = identityFromVision({
+    number: "X1",
+    last_name: "Martin",
+    nationality: "illisible",
+    issuing_country: "Maroc",
+  });
+  assert.equal(fromIssuer?.nationality, "MA");
+  assert.equal(fromIssuer?.issuing_country, "MA");
+});
+
+test("merge copies passport nationality onto identity as ISO2", () => {
+  const mrz = {
+    ...emptyIdentity(),
+    number: "18D151774",
+    last_name: "Dupont",
+    first_name: "Jean",
+    birth_date: "1990-04-02",
+    expires_on: "2028-03-12",
+    nationality: "FRA",
+    issuing_country: "FRA",
+    valid: true,
+    format: "TD3",
+  };
+  const vision = identityFromVision({
+    number: "18D151774",
+    last_name: "Dupont",
+    first_name: "Jean",
+    nationality: "Française",
+    issuing_country: "République française",
+  });
+  const merged = mergePassportIdentities(mrz, vision);
+  assert.equal(merged?.nationality, "FR");
+  assert.equal(merged?.issuing_country, "FR");
+});
+
 test("passport form posts every extracted field", () => {
   const identity = identityFromVision({
     number: "X1",
