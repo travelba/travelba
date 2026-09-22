@@ -170,11 +170,12 @@ export async function fetchRevolutTransactions(fromIso: string) {
   const token = await getRevolutAccessToken();
   const out: RevolutTx[] = [];
   let to: string | undefined;
+  // Sans filtre type : les crédits clients SEPA arrivent souvent en `topup`,
+  // alors que `type=transfer` ne renvoie que les sorties (montants négatifs).
   for (let i = 0; i < 20; i++) {
     const url = new URL(`${apiBase()}/api/1.0/transactions`);
     url.searchParams.set("from", fromIso);
     url.searchParams.set("count", "1000");
-    url.searchParams.set("type", "transfer");
     if (to) url.searchParams.set("to", to);
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
@@ -209,9 +210,15 @@ export async function upsertRevolutInbox(txs: RevolutTx[]) {
   const supabase = createServiceClient();
   let inserted = 0;
   for (const tx of txs) {
-    const leg = tx.legs?.[0];
+    // Prefer the inbound leg (positive amount). Some transfers only expose one leg.
+    const leg =
+      tx.legs?.find((l) => Number(l.amount || 0) > 0) || tx.legs?.[0];
     const amount = Number(leg?.amount || 0);
     if (!tx.id || amount <= 0) continue;
+    // Skip obvious non-client funding (Stripe payouts) — agent can still sync others.
+    const reference = (tx.reference || "").trim();
+    if (/^stripe$/i.test(reference)) continue;
+    const counterpartyName = leg?.counterparty?.name || null;
     const { error, data } = await supabase
       .from("crm_revolut_transactions")
       .upsert(
@@ -219,10 +226,10 @@ export async function upsertRevolutInbox(txs: RevolutTx[]) {
           revolut_transaction_id: tx.id,
           amount,
           currency: leg?.currency || "EUR",
-          counterparty_name: leg?.counterparty?.name || null,
+          counterparty_name: counterpartyName || (reference ? reference : null),
           counterparty_iban:
             leg?.counterparty?.iban || leg?.counterparty?.account_no || null,
-          reference: tx.reference || null,
+          reference: reference || null,
           booked_at: tx.completed_at || tx.created_at || null,
           raw: tx,
         },
