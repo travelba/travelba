@@ -80,6 +80,17 @@ export const TX_KIND_LABELS: Record<TransactionKind, string> = {
   card_payment: "Carte",
 };
 
+/** Espace agence : uniquement les virements reçus (pas les débits résa / frais). */
+export function isCreditTransfer(row: { direction: string; kind: string }) {
+  return row.direction === "credit" && row.kind === "transfer";
+}
+
+export function filterCreditTransfers<T extends { direction: string; kind: string }>(
+  rows: T[]
+) {
+  return rows.filter(isCreditTransfer);
+}
+
 /** Libellé ledger pour le prélèvement 10 % sur les crédits Revolut. */
 export const AGENCY_FEE_LABEL = "Frais d’agence 10 %";
 

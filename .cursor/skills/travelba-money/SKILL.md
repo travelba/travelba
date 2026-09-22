@@ -68,7 +68,7 @@ Flux : API Business → `crm_revolut_transactions` (`unmatched`, **crédits seul
 
 ## Saisie manuelle
 
-Admin `/admin/transactions` peut poster un crédit/débit. Toujours `customer_id`, `direction`, `amount`, `currency`, `status`. Pas de SQL collé dans l’UI.
+Admin `/admin/transactions` (et fiche client) : **uniquement les virements crédit** (`kind=transfer`, `direction=credit`). Pas de débits résa, frais billeterie ni frais d’agence 10 % dans cette liste — ils restent sur le dossier et `/mon-compte/transactions`. Saisie manuelle = crédit seulement. Pas de SQL collé dans l’UI.
 
 ## PCI / PII
 

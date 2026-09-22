@@ -135,7 +135,7 @@ export function bookingsListEmptyMessage(hasAnyBookings: boolean): string {
 
 export function ledgerEmptyMessage(hasAnyTransactions: boolean): string {
   if (!hasAnyTransactions) {
-    return "Aucune écriture. Le débit se crée à la confirmation d’un séjour. Un virement Revolut crédite le client après rapprochement (auto si sans doute, sinon manuel).";
+    return "Aucun virement crédit. Un virement Revolut apparaît ici après rapprochement (auto si sans doute, sinon manuel).";
   }
-  return "Aucune écriture pour ces filtres.";
+  return "Aucun virement pour ces filtres.";
 }
