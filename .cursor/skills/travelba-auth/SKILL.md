@@ -65,6 +65,10 @@ Mot de passe oublié : `POST /api/auth/reset` (même garde titulaire, `generateL
 - `ensureStaff` d’un client déjà en `crm_customers` ne doit **pas** le promouvoir.
 - Suppression client (`deleteCustomerById`) : ne **pas** `auth.admin.deleteUser` si le même `auth_user_id` est staff.
 
+## Lien voyageur
+
+RLS client sur `crm_booking_travelers` = **select** seulement. Ne pas ajouter un UPDATE client pour rattacher un passeport. L’écriture est service role, après que la page a déjà chargé ce dossier (skill `travelba-identity`). Ne pas fermer les sessions staff existantes pour « nettoyer ».
+
 ## Client : pas de self-delete
 
 Pas de bouton « supprimer mon compte ». L’agence peut supprimer une fiche admin (dossiers + fichiers + txs + user Auth si non staff).

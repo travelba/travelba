@@ -10,6 +10,8 @@ description: >-
 
 Le CRM n’encaisse pas de carte. Il tient un **grand livre** et range les virements.
 
+L’écran s’appelle **Transactions** (client et admin). Le libellé Stitch « Trésorerie » ne se shippe pas. Une maquette qui montre un wallet ou des cartes Privilège ne réouvre pas l’UI cartes.
+
 ## Encours
 
 Vue `crm_customer_balances` = somme crédits `posted` − débits `posted` (par devise).

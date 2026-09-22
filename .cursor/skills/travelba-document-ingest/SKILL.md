@@ -123,16 +123,17 @@ Réimport même clé = **remplace** la carte. Dans un même extract, 10 duplicat
 
 ## Voyageurs / titre
 
-- Noms imprimés, casse normale. « 2 adults » sans noms → Adulte 1 / Adulte 2.
+- Noms imprimés, casse normale. « 2 adults » sans noms → Adulte 1 / Adulte 2 (pas de lien coffre tant qu’un humain ne rattache pas).
 - Pas d’enfant sans nom.
-- `title` / `destination` : villes séparées par ` · `.
+- `YANIK` / `YANNICK` = même personne. Un prénom de billet plus court que la fiche (`Benjamin` / `Benjamin, Elie, David`) = même titulaire : `holderNamesMatch` / `companionNamesMatch`, pas l’égalité stricte. Skill `travelba-identity`.
+- `title` / `destination` : villes séparées par ` · `. `uniqueCities` met `city_to` **avant** `city_from`, sinon la couverture part de Paris.
 
 ## UI persist
 
 - Dropzone : progression par fichier, Annuler, retry des erreurs, succès partiel. Filtre cartes par `source_file_name`.
 - Sous-fiche par `kind`. Bandeau devis. Bandeau **À vérifier** (`needs_review`) : on **enregistre**, on ne refuse pas tout le lot.
 - Cartes manuelles OK. Drag `sort_order` après persist.
-- Fichiers : upload signé `ingest-tmp/` puis copie `bookings/{id}/`. Lecture via `/api/files` (pas d’URL signed longue). Cover `scheduleBookingCover`.
+- Fichiers : upload signé `ingest-tmp/` puis copie `bookings/{id}/`. Lecture via `/api/files` (pas d’URL signed longue). `scheduleBookingCover` sans `force` si `unsplashKeywordMatch` a déjà une ville (skill `travelba-carnet`).
 - Identity extract → ne pas `persistNewBookingFromExtract`.
 
 ## Fichiers
