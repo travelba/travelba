@@ -1,5 +1,7 @@
 import { siteConfig } from "@/lib/site";
 import { AdminNav } from "@/components/admin/AdminNav";
+import { getStaffForUser } from "@/lib/crm/auth";
+import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 
 export const metadata = {
@@ -13,24 +15,31 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }) {
   let unmatched = 0;
-  try {
-    const admin = createServiceClient();
-    const { count } = await admin
-      .from("crm_revolut_transactions")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "unmatched");
-    unmatched = count ?? 0;
-  } catch {
-    unmatched = 0;
+  let staffName = "";
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const staff = user ? await getStaffForUser(user.id) : null;
+  if (staff) {
+    staffName = staff.full_name || "";
+    try {
+      const admin = createServiceClient();
+      const { count } = await admin
+        .from("crm_revolut_transactions")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "unmatched");
+      unmatched = count ?? 0;
+    } catch {
+      unmatched = 0;
+    }
   }
 
   return (
     <div className="admin-af min-h-screen">
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap"
-      />
-      <AdminNav unmatchedCount={unmatched}>{children}</AdminNav>
+      <AdminNav unmatchedCount={unmatched} staffName={staffName}>
+        {children}
+      </AdminNav>
     </div>
   );
 }

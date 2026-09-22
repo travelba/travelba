@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireStaff } from "@/lib/crm/auth";
-import { resolveCountryCode } from "@/lib/crm/countries";
-import { readBillingPatch } from "@/lib/crm/entreprises";
-import { emptyToNull } from "@/lib/crm/identity";
-import { toE164 } from "@/lib/crm/phone";
+import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
+import { customerPatchFromBody } from "@/lib/crm/customer-patch";
+import { CustomerDeleteError, deleteCustomerById } from "@/lib/crm/delete-customer";
+
+export const runtime = "nodejs";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -16,7 +16,7 @@ export async function GET(_req: Request, ctx: Ctx) {
     .select("*")
     .eq("id", id)
     .maybeSingle();
-  if (error) return jsonError(error.message, 500);
+  if (error) return dbError(error, 500);
   if (!data) return jsonError("Client introuvable", 404);
   return NextResponse.json({ customer: data });
 }
@@ -26,45 +26,28 @@ export async function PATCH(request: Request, ctx: Ctx) {
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
   const body = await request.json().catch(() => ({}));
-  const patch: Record<string, unknown> = {};
-  try {
-    for (const key of [
-    "first_name",
-    "last_name",
-    "email",
-    "phone",
-    "whatsapp",
-    "birth_date",
-    "sex",
-    "nationality",
-    "address_line",
-    "postal_code",
-    "city",
-    "country",
-  ]) {
-      if (key in body) {
-        if (key === "email") {
-          patch[key] = String(body[key] || "").trim().toLowerCase();
-        } else if (key === "phone" || key === "whatsapp") {
-          const raw = emptyToNull(body[key]);
-          patch[key] = raw ? toE164(raw, "FR") || raw : null;
-        } else if (key === "nationality" || key === "country") {
-          patch[key] = resolveCountryCode(String(body[key] || "")) || emptyToNull(body[key]);
-        } else {
-          patch[key] = emptyToNull(body[key]);
-        }
-      }
-    }
-    Object.assign(patch, readBillingPatch(body));
-  } catch (err) {
-    return jsonError(err instanceof Error ? err.message : "Données invalides");
-  }
+  const { patch, error: patchError } = customerPatchFromBody(body, { allowEmail: true });
+  if (patchError) return jsonError(patchError);
   const { data, error } = await auth.supabase
     .from("crm_customers")
     .update(patch)
     .eq("id", id)
     .select("*")
     .single();
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   return NextResponse.json({ customer: data });
+}
+
+export async function DELETE(_req: Request, ctx: Ctx) {
+  const auth = await requireStaff();
+  if (auth instanceof NextResponse) return auth;
+  const { id } = await ctx.params;
+  try {
+    const result = await deleteCustomerById(id);
+    return NextResponse.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Suppression impossible";
+    const status = err instanceof CustomerDeleteError ? err.status : 400;
+    return jsonError(message, status);
+  }
 }

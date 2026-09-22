@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/admin";
 import { ensureCustomerForUser, ensureStaff } from "@/lib/crm/auth";
-import { SET_PASSWORD_PATH, mustSetPassword } from "@/lib/crm/session";
+import { SET_PASSWORD_PATH, mustSetPassword, shouldForcePasswordSetup } from "@/lib/crm/session";
 
 const OTP_TYPES = new Set<EmailOtpType>([
   "signup",
@@ -45,8 +46,14 @@ export async function GET(request: Request) {
 
   await ensureCustomerForUser(user);
   const staff = await ensureStaff(user);
+  const forcePassword = shouldForcePasswordSetup({
+    flagged: mustSetPassword(user),
+    type,
+    next,
+  });
 
-  if (mustSetPassword(user) || type === "recovery" || type === "invite") {
+  if (forcePassword) {
+    await stampMustSetPassword(user.id);
     return NextResponse.redirect(new URL(SET_PASSWORD_PATH, url.origin));
   }
 
@@ -57,4 +64,18 @@ export async function GET(request: Request) {
         ? next
         : "/mon-compte";
   return NextResponse.redirect(new URL(dest, url.origin));
+}
+
+async function stampMustSetPassword(userId: string) {
+  try {
+    const admin = createServiceClient();
+    const { data } = await admin.auth.admin.getUserById(userId);
+    const meta = data.user?.app_metadata || {};
+    if (meta.must_set_password === true) return;
+    await admin.auth.admin.updateUserById(userId, {
+      app_metadata: { ...meta, must_set_password: true },
+    });
+  } catch {
+    console.error("[auth/callback] impossible de poser must_set_password");
+  }
 }

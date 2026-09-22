@@ -2,11 +2,13 @@ import "server-only";
 import { after } from "next/server";
 import { generateImage, generateText } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
-import sharp from "sharp";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { uploadCrmFile } from "@/lib/crm/files";
-import { openaiApiKey } from "@/lib/crm/ingest-types";
+import { aiGatewayConfigured, openaiApiKey } from "@/lib/crm/ingest-types";
 import type { CrmBooking } from "@/lib/crm/types";
+import { trySharp } from "@/lib/crm/sharp";
+import { coverQuery } from "@/lib/crm/carnet";
+import { needsAiCover } from "@/lib/crm/covers";
 
 const IMAGE_MODEL = "google/gemini-3.1-flash-image-preview";
 
@@ -19,11 +21,11 @@ export function isCoverStoragePath(path: string) {
 }
 
 function placeName(booking: Pick<CrmBooking, "destination" | "title">, hotel?: string | null) {
-  const dest = (booking.destination || "").trim();
-  if (dest) return dest;
+  const dest = coverQuery(booking.destination, booking.title);
+  if (dest && dest !== "voyage") return dest;
   const hotelName = (hotel || "").trim();
   if (hotelName) return hotelName;
-  return (booking.title || "voyage de luxe").replace(/\s+[—–-]\s+.+$/, "").trim();
+  return dest || "voyage";
 }
 
 function coverPrompt(place: string, hotel?: string | null) {
@@ -40,6 +42,8 @@ function coverPrompt(place: string, hotel?: string | null) {
 }
 
 async function toWebp(bytes: Buffer) {
+  const sharp = await trySharp();
+  if (!sharp) return bytes;
   return sharp(bytes, { failOn: "none" })
     .rotate()
     .resize({ width: 1600, height: 900, fit: "cover", position: "attention" })
@@ -118,7 +122,7 @@ async function generateCoverBytes(place: string, hotel?: string | null) {
   const fromOpenAI = await openaiCoverBytes(prompt);
   if (fromOpenAI) return fromOpenAI;
 
-  if (!process.env.AI_GATEWAY_API_KEY) return null;
+  if (!aiGatewayConfigured()) return null;
 
   const timeout = AbortSignal.timeout(25000);
   try {
@@ -153,6 +157,7 @@ export async function ensureBookingCover(
   opts?: { hotel?: string | null; force?: boolean }
 ) {
   if (booking.cover_image_path && !opts?.force) return booking.cover_image_path;
+  if (!needsAiCover(booking, opts?.force)) return null;
   const place = placeName(booking, opts?.hotel);
   if (!place) return null;
   const raw = await generateCoverBytes(place, opts?.hotel);

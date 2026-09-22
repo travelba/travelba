@@ -20,16 +20,35 @@ function LoginForm() {
 
     const supabase = createClient();
     const { error: signError } = await supabase.auth.signInWithPassword({
-      email,
+      email: email.trim(),
       password,
     });
 
-    setLoading(false);
     if (signError) {
-      setError(signError.message);
+      setLoading(false);
+      setError("E-mail ou mot de passe incorrect.");
       return;
     }
 
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const { data: staff } = user
+      ? await supabase
+          .from("crm_staff")
+          .select("id")
+          .eq("auth_user_id", user.id)
+          .maybeSingle()
+      : { data: null };
+
+    if (!staff) {
+      await supabase.auth.signOut();
+      setLoading(false);
+      setError("Accès réservé à l’équipe agence. Utilisez /connexion pour l’espace client.");
+      return;
+    }
+
+    setLoading(false);
     const next = searchParams.get("next");
     const destination =
       next && next.startsWith("/admin") && !next.startsWith("/admin/login")
@@ -81,14 +100,14 @@ export default function AdminLoginPage() {
   return (
     <div className="mx-auto flex min-h-[80vh] max-w-md flex-col justify-center">
       <div className="mb-6">
-        <BrandMark href="/" subtitle="Back-office" />
+        <BrandMark href="/" subtitle="Espace agence" />
       </div>
       <div className="admin-af-card rounded-[1.5rem] p-8 sm:p-10">
         <p className="font-label text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--admin-gold)]">
           Accès agent
         </p>
         <h1 className="mt-2 font-display text-3xl font-bold tracking-tight text-[var(--admin-navy)]">
-          Back-office
+          Espace agence
         </h1>
         <p className="mt-2 text-sm text-muted">
           Réservé à l’équipe Travel Business Agency.

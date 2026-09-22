@@ -3,7 +3,7 @@ import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { scanTravelDocument } from "@/lib/crm/ocr-document";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   const auth = await requireStaff();
@@ -17,6 +17,7 @@ export async function POST(request: Request) {
     const result = await scanTravelDocument(file);
     return NextResponse.json(result);
   } catch (err) {
+    console.error("[travel-documents/scan]", err);
     const message = err instanceof Error ? err.message : "Lecture impossible";
     return jsonError(message, 400);
   }

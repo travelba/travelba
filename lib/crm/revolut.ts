@@ -18,6 +18,11 @@ export function revolutConfigured() {
   return Boolean(process.env.REVOLUT_CLIENT_ID && pemKey());
 }
 
+export async function revolutConnected() {
+  const row = await loadTokens();
+  return Boolean(row?.refresh_token || row?.access_token);
+}
+
 export function createClientAssertion() {
   const clientId = process.env.REVOLUT_CLIENT_ID;
   const iss = process.env.REVOLUT_ISS || clientId;

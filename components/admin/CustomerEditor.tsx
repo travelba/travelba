@@ -2,21 +2,51 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Plus } from "lucide-react";
 import type { CrmCompanion, CrmCustomer, CrmTravelDocument } from "@/lib/crm/types";
-import { DOC_TYPE_LABELS } from "@/lib/crm/types";
-import { countryName, resolveCountryCode } from "@/lib/crm/countries";
-import { formatDateFr } from "@/lib/crm/money";
+import { resolveCountryCode } from "@/lib/crm/countries";
+import { identityOverwriteWarning, type ExtractedIdentity } from "@/lib/crm/identity";
+import { appendPassportForm } from "@/lib/crm/passport-extract";
+import { formatIbanInput, ibanError, normalizeIban } from "@/lib/crm/billing";
+import { loyaltyFromCustomer, type LoyaltyMap } from "@/lib/crm/loyalty";
+import { LoyaltyFields } from "@/components/crm/LoyaltyFields";
 import {
   AddressFields,
   CountrySelect,
+  DateFrInput,
   Field,
   fieldControlClass,
+  OptionalSecondPhone,
   PhoneField,
+  RelationshipSelect,
   SexSelect,
 } from "@/components/crm/fields";
-import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
-import { billingFromCustomer, CompanyLookup, type CompanyBilling } from "@/components/crm/CompanyLookup";
-import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
+import {
+  billingJson,
+  billingSameAsProfile,
+  companyBillingFromCustomer,
+  CompanyBillingFields,
+  type CompanyBillingValues,
+} from "@/components/crm/CompanyBillingFields";
+import { PersonPassportCard } from "@/components/crm/PersonPassportCard";
+import { type ScanResult } from "@/components/crm/IdentityScan";
+
+function applyIdentityState(
+  id: ExtractedIdentity,
+  setters: {
+    setFirstName: (v: string) => void;
+    setLastName: (v: string) => void;
+    setBirthDate: (v: string) => void;
+    setSex: (v: string) => void;
+    setNationality: (v: string) => void;
+  }
+) {
+  if (id.first_name) setters.setFirstName(id.first_name);
+  if (id.last_name) setters.setLastName(id.last_name);
+  if (id.birth_date) setters.setBirthDate(id.birth_date);
+  if (id.sex) setters.setSex(id.sex);
+  if (id.nationality) setters.setNationality(id.nationality);
+}
 
 export function CustomerEditor({
   customer,
@@ -30,12 +60,8 @@ export function CustomerEditor({
   const router = useRouter();
   const [firstName, setFirstName] = useState(customer.first_name);
   const [lastName, setLastName] = useState(customer.last_name);
-  const [email, setEmail] = useState(customer.email);
   const [phone, setPhone] = useState(customer.phone || "");
-  const [whatsapp, setWhatsapp] = useState(customer.whatsapp || "");
-  const [whatsappSame, setWhatsappSame] = useState(
-    !customer.whatsapp || customer.whatsapp === customer.phone
-  );
+  const [phoneSecondary, setPhoneSecondary] = useState(customer.phone_secondary || "");
   const [birthDate, setBirthDate] = useState(customer.birth_date || "");
   const [sex, setSex] = useState(customer.sex || "");
   const [nationality, setNationality] = useState(resolveCountryCode(customer.nationality) || "");
@@ -43,48 +69,48 @@ export function CustomerEditor({
   const [addressLine, setAddressLine] = useState(customer.address_line || "");
   const [postalCode, setPostalCode] = useState(customer.postal_code || "");
   const [city, setCity] = useState(customer.city || "");
-  const [billing, setBilling] = useState<CompanyBilling>(() => billingFromCustomer(customer));
-  const [error, setError] = useState<string | null>(null);
-  const [docScan, setDocScan] = useState<ScanResult | null>(null);
-  const [docType, setDocType] = useState("passport");
-  const [docNumber, setDocNumber] = useState("");
-  const [docCountry, setDocCountry] = useState("");
-  const [docExpiry, setDocExpiry] = useState("");
-  const [docCompanion, setDocCompanion] = useState("");
+  const [loyalty, setLoyalty] = useState<LoyaltyMap>(() => loyaltyFromCustomer(customer));
+  const [iban, setIban] = useState(() => formatIbanInput(customer.iban || ""));
+  const [nameWarn, setNameWarn] = useState<string | null>(null);
+  const [billing, setBilling] = useState<CompanyBillingValues>(() =>
+    companyBillingFromCustomer(customer)
+  );
+  const [sameBillingAddress, setSameBillingAddress] = useState(() =>
+    billingSameAsProfile(companyBillingFromCustomer(customer), {
+      country: resolveCountryCode(customer.country) || "FR",
+      line: customer.address_line || "",
+      postal: customer.postal_code || "",
+      city: customer.city || "",
+    })
+  );
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  function applyCustomerScan(result: ScanResult) {
-    const id = result.identity;
-    if (!id) return;
-    if (id.first_name) setFirstName(id.first_name);
-    if (id.last_name) setLastName(id.last_name);
-    if (id.birth_date) setBirthDate(id.birth_date);
-    if (id.sex) setSex(id.sex);
-    if (id.nationality) setNationality(id.nationality);
-  }
-
-  function applyDocScan(result: ScanResult) {
-    setDocScan(result);
-    applyCustomerScan(result);
-    const id = result.identity;
-    if (!id) return;
-    setDocType(id.doc_type);
-    if (id.number) setDocNumber(id.number);
-    if (id.issuing_country) setDocCountry(id.issuing_country);
-    if (id.expires_on) setDocExpiry(id.expires_on);
-  }
+  const profileAddress = {
+    country,
+    line: addressLine,
+    postal: postalCode,
+    city,
+  };
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
+    const normalizedIban = normalizeIban(iban);
+    const err = ibanError(normalizedIban);
+    if (err) {
+      setSaveError(err);
+      return;
+    }
+    setSaving(true);
+    setSaveError(null);
     const res = await fetch(`/api/admin/clients/${customer.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         first_name: firstName,
         last_name: lastName,
-        email,
         phone,
-        whatsapp: whatsappSame ? phone : whatsapp,
+        phone_secondary: phoneSecondary,
         birth_date: birthDate,
         sex,
         nationality,
@@ -92,85 +118,74 @@ export function CustomerEditor({
         postal_code: postalCode,
         city,
         country,
-        billing_legal_name: billing.legalName,
-        billing_siret: billing.siret,
-        billing_vat: billing.vat,
-        billing_address_line: billing.addressLine,
-        billing_postal_code: billing.postalCode,
-        billing_city: billing.city,
+        loyalty,
+        flying_blue: loyalty.flying_blue,
+        iban: normalizedIban,
+        ...billingJson(billing, profileAddress, sameBillingAddress),
       }),
     });
     const json = await res.json().catch(() => ({}));
+    setSaving(false);
     if (!res.ok) {
-      setError(json.error || "Erreur");
+      setSaveError(json.error || "Enregistrement impossible");
       return;
     }
     router.refresh();
   }
 
-  async function addCompanion(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const body = Object.fromEntries(new FormData(form).entries());
-    await fetch("/api/admin/companions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...body, customer_id: customer.id }),
-    });
-    form.reset();
-    router.refresh();
-  }
-
-  async function addDoc(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const fd = new FormData();
-    fd.set("customer_id", customer.id);
-    fd.set("doc_type", docType);
-    fd.set("number", docNumber);
-    fd.set("issuing_country", docCountry);
-    fd.set("expires_on", docExpiry);
-    fd.set("companion_id", docCompanion);
-    if (docScan?.file) fd.set("file", docScan.file);
-    const extra = event.currentTarget.elements.namedItem("file");
-    if (extra instanceof HTMLInputElement && extra.files?.[0] && !docScan?.file) {
-      fd.set("file", extra.files[0]);
-    }
-    await fetch("/api/admin/travel-documents", { method: "POST", body: fd });
-    setDocScan(null);
-    setDocNumber("");
-    setDocCountry("");
-    setDocExpiry("");
-    router.refresh();
-  }
-
   return (
     <div className="space-y-6">
-      <form onSubmit={save} className="admin-af-card space-y-4 rounded-3xl p-5">
-        <IdentityScan
-          endpoint="/api/admin/travel-documents/scan"
-          title="Lire le passeport du client"
-          onResult={applyCustomerScan}
+      <form onSubmit={save} className="admin-af-card space-y-6 rounded-3xl p-5">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+            Fiche client
+          </p>
+          <h2 className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">
+            Voyageur principal
+          </h2>
+          <p className="mt-1 text-sm text-muted">
+            Uploadez sa pièce : l’identité se remplit, puis les coordonnées et la facturation société.
+          </p>
+        </div>
+
+        <PersonPassportCard
+          variant="admin"
+          customerId={customer.id}
+          documents={documents}
+          onIdentity={(id) => {
+            setNameWarn(identityOverwriteWarning({ first_name: firstName, last_name: lastName }, id));
+            applyIdentityState(id, {
+              setFirstName,
+              setLastName,
+              setBirthDate,
+              setSex,
+              setNationality,
+            });
+          }}
         />
+        {nameWarn ? (
+          <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
+            {nameWarn}
+          </p>
+        ) : null}
+
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Prénom">
+          <p className="sm:col-span-2 font-display text-base font-bold text-[var(--admin-navy)]">
+            Identité
+          </p>
+          <Field label="Prénom" hint="Comme sur le passeport">
             <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
           </Field>
-          <Field label="Nom">
+          <Field label="Nom" hint="Comme sur le passeport">
             <input value={lastName} onChange={(e) => setLastName(e.target.value)} className={fieldControlClass} />
           </Field>
-          <Field label="Email" className="sm:col-span-2">
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={fieldControlClass} />
-          </Field>
-          <PhoneField name="phone" value={phone} onChange={setPhone} className="sm:col-span-2" />
-          <label className="sm:col-span-2 flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={whatsappSame} onChange={(e) => setWhatsappSame(e.target.checked)} />
-            WhatsApp identique
-          </label>
-          {!whatsappSame ? (
-            <PhoneField name="whatsapp" label="WhatsApp" value={whatsapp} onChange={setWhatsapp} className="sm:col-span-2" />
-          ) : null}
           <Field label="Naissance">
-            <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} className={fieldControlClass} />
+            <DateFrInput
+              value={birthDate}
+              onChange={setBirthDate}
+              max={new Date().toISOString().slice(0, 10)}
+              autoComplete="bday"
+            />
           </Field>
           <Field label="Sexe">
             <SexSelect name="sex" value={sex} onChange={setSex} />
@@ -179,102 +194,323 @@ export function CustomerEditor({
             <CountrySelect name="nationality" value={nationality} onChange={setNationality} />
           </Field>
         </div>
-        <AddressFields
-          country={country}
-          onCountryChange={setCountry}
-          line={addressLine}
-          postal={postalCode}
-          city={city}
-          onLineChange={setAddressLine}
-          onPostalChange={setPostalCode}
-          onCityChange={setCity}
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <p className="sm:col-span-2 font-display text-base font-bold text-[var(--admin-navy)]">
+            Coordonnées
+          </p>
+          <p className="sm:col-span-2 text-sm text-muted">E-mail (identifiant) : {customer.email}</p>
+          <PhoneField name="phone" value={phone} onChange={setPhone} />
+          <OptionalSecondPhone value={phoneSecondary} onChange={setPhoneSecondary} />
+        </div>
+
+        <LoyaltyFields values={loyalty} onChange={setLoyalty} />
+
+        <Field label="IBAN" hint="Compte français, 27 caractères" error={ibanError(normalizeIban(iban))}>
+          <input
+            value={iban}
+            onChange={(e) => setIban(formatIbanInput(e.target.value))}
+            autoComplete="off"
+            spellCheck={false}
+            className={fieldControlClass}
+            placeholder="FR76 XXXX XXXX XXXX XXXX XXXX XXX"
+          />
+        </Field>
+
+        <section>
+          <p className="mb-4 font-display text-base font-bold text-[var(--admin-navy)]">Adresse</p>
+          <AddressFields
+            country={country}
+            onCountryChange={setCountry}
+            line={addressLine}
+            postal={postalCode}
+            city={city}
+            onLineChange={setAddressLine}
+            onPostalChange={setPostalCode}
+            onCityChange={setCity}
+          />
+        </section>
+
+        <CompanyBillingFields
+          values={billing}
+          onChange={setBilling}
+          sameAsProfile={sameBillingAddress}
+          onSameAsProfileChange={setSameBillingAddress}
+          profileAddress={profileAddress}
         />
-        <CompanyLookup value={billing} onChange={setBilling} />
-        {error ? <p className="text-sm text-accent">{error}</p> : null}
-        <button className="admin-af-btn rounded-full px-4 py-2 text-sm">Enregistrer</button>
+
+        {saveError ? <p className="text-sm text-accent">{saveError}</p> : null}
+        <div className="sticky bottom-4 z-20 -mx-1 rounded-2xl border border-[#e5e3dc] bg-white/95 p-3 shadow-lg backdrop-blur">
+          <button className="admin-af-btn w-full rounded-full px-4 py-2 text-sm" disabled={saving}>
+            {saving ? "Enregistrement…" : "Enregistrer"}
+          </button>
+        </div>
       </form>
 
-      <section className="admin-af-card rounded-3xl p-5">
-        <h2 className="font-display text-lg font-bold">Compagnons</h2>
-        <ul className="mt-2 text-sm">
-          {companions.map((c) => (
-            <li key={c.id}>
-              {c.first_name} {c.last_name}
-            </li>
-          ))}
-        </ul>
-        <form onSubmit={addCompanion} className="mt-3 grid gap-2 sm:grid-cols-2">
-          <input name="first_name" required placeholder="Prénom" className={fieldControlClass} />
-          <input name="last_name" required placeholder="Nom" className={fieldControlClass} />
-          <select name="relationship" defaultValue="" className={fieldControlClass}>
-            <option value="">Lien</option>
-            <option value="conjoint">Conjoint(e)</option>
-            <option value="enfant">Enfant</option>
-            <option value="parent">Parent</option>
-            <option value="famille">Famille</option>
-            <option value="ami">Ami(e)</option>
-            <option value="autre">Autre</option>
-          </select>
-          <button className="admin-af-btn rounded-full px-3 py-2 text-sm sm:col-span-2">Ajouter</button>
-        </form>
-      </section>
-
-      <section className="admin-af-card space-y-3 rounded-3xl p-5">
-        <h2 className="font-display text-lg font-bold">Documents</h2>
-        <ul className="space-y-2 text-sm">
-          {documents.map((d) => (
-            <li key={d.id} className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2">
-              <div className="min-w-0">
-                <p className="font-medium text-[var(--admin-navy)]">
-                  {DOC_TYPE_LABELS[d.doc_type]} {d.number || ""}
-                </p>
-                <p className="text-xs text-muted">
-                  exp. {formatDateFr(d.expires_on)}
-                  {d.issuing_country ? ` · ${countryName(d.issuing_country)}` : ""}
-                  {d.file_name ? ` · ${d.file_name}` : ""}
-                </p>
-              </div>
-              {d.storage_path ? (
-                <FileOpenLink
-                  path={d.storage_path}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--admin-sky)] px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)]"
-                >
-                  <span className="material-symbols-outlined text-[16px]">
-                    {fileKindIcon(d.mime_type, d.file_name)}
-                  </span>
-                  Ouvrir
-                </FileOpenLink>
-              ) : (
-                <span className="text-xs text-muted">Pas de fichier</span>
-              )}
-            </li>
-          ))}
-        </ul>
-        <IdentityScan endpoint="/api/admin/travel-documents/scan" onResult={applyDocScan} />
-        {docScan ? <ScanStatus identity={docScan.identity} warning={docScan.warning} /> : null}
-        <form onSubmit={addDoc} className="grid gap-2 sm:grid-cols-2">
-          <select value={docType} onChange={(e) => setDocType(e.target.value)} className={fieldControlClass}>
-            {Object.entries(DOC_TYPE_LABELS).map(([v, l]) => (
-              <option key={v} value={v}>
-                {l}
-              </option>
-            ))}
-          </select>
-          <select value={docCompanion} onChange={(e) => setDocCompanion(e.target.value)} className={fieldControlClass}>
-            <option value="">Titulaire</option>
-            {companions.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.first_name} {c.last_name}
-              </option>
-            ))}
-          </select>
-          <input value={docNumber} onChange={(e) => setDocNumber(e.target.value)} placeholder="Numéro" className={fieldControlClass} />
-          <input type="date" value={docExpiry} onChange={(e) => setDocExpiry(e.target.value)} className={fieldControlClass} />
-          <CountrySelect name="issuing_country" value={docCountry} onChange={setDocCountry} />
-          <input name="file" type="file" className="text-sm" />
-          <button className="admin-af-btn rounded-full px-3 py-2 text-sm sm:col-span-2">Ajouter</button>
-        </form>
+      <section className="space-y-4">
+        <div>
+          <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Accompagnateurs</h2>
+          <p className="mt-1 text-sm text-muted">
+            Même principe : une pièce par personne, qui remplit son identité.
+          </p>
+        </div>
+        {companions.map((companion) => (
+          <CompanionCard
+            key={companion.id}
+            customerId={customer.id}
+            companion={companion}
+            documents={documents}
+          />
+        ))}
+        <AddCompanionForm customerId={customer.id} />
       </section>
     </div>
+  );
+}
+
+function CompanionCard({
+  customerId,
+  companion,
+  documents,
+}: {
+  customerId: string;
+  companion: CrmCompanion;
+  documents: CrmTravelDocument[];
+}) {
+  const router = useRouter();
+  const [firstName, setFirstName] = useState(companion.first_name);
+  const [lastName, setLastName] = useState(companion.last_name);
+  const [relationship, setRelationship] = useState(companion.relationship || "");
+  const [nationality, setNationality] = useState(resolveCountryCode(companion.nationality) || "");
+  const [birthDate, setBirthDate] = useState(companion.birth_date || "");
+  const [sex, setSex] = useState(companion.sex || "");
+  const [saving, setSaving] = useState(false);
+  const [nameWarn, setNameWarn] = useState<string | null>(null);
+
+  async function save() {
+    setSaving(true);
+    await fetch("/api/admin/companions", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: companion.id,
+        customer_id: customerId,
+        first_name: firstName,
+        last_name: lastName,
+        relationship,
+        nationality,
+        birth_date: birthDate,
+        sex,
+      }),
+    });
+    setSaving(false);
+    router.refresh();
+  }
+
+  async function remove() {
+    await fetch(`/api/admin/companions?id=${companion.id}`, { method: "DELETE" });
+    router.refresh();
+  }
+
+  return (
+    <article className="admin-af-card space-y-4 rounded-3xl p-5">
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">
+          {companion.first_name} {companion.last_name}
+        </h3>
+        <button type="button" onClick={() => void remove()} className="text-xs font-semibold text-accent">
+          Retirer
+        </button>
+      </div>
+      <PersonPassportCard
+        variant="admin"
+        customerId={customerId}
+        companionId={companion.id}
+        documents={documents}
+        onIdentity={(id) => {
+          setNameWarn(identityOverwriteWarning({ first_name: firstName, last_name: lastName }, id));
+          applyIdentityState(id, {
+            setFirstName,
+            setLastName,
+            setBirthDate,
+            setSex,
+            setNationality,
+          });
+        }}
+      />
+      {nameWarn ? (
+        <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
+          {nameWarn}
+        </p>
+      ) : null}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Prénom" hint="Comme sur le passeport">
+          <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
+        </Field>
+        <Field label="Nom" hint="Comme sur le passeport">
+          <input value={lastName} onChange={(e) => setLastName(e.target.value)} className={fieldControlClass} />
+        </Field>
+        <Field label="Lien">
+          <RelationshipSelect name="relationship" value={relationship} onChange={setRelationship} />
+        </Field>
+        <Field label="Nationalité">
+          <CountrySelect name="nationality" value={nationality} onChange={setNationality} />
+        </Field>
+        <Field label="Naissance">
+          <DateFrInput
+            value={birthDate}
+            onChange={setBirthDate}
+            max={new Date().toISOString().slice(0, 10)}
+          />
+        </Field>
+        <Field label="Sexe">
+          <SexSelect name="sex" value={sex} onChange={setSex} />
+        </Field>
+      </div>
+      <button
+        type="button"
+        onClick={() => void save()}
+        className="admin-af-btn rounded-full px-4 py-2 text-sm"
+        disabled={saving}
+      >
+        {saving ? "Enregistrement…" : "Enregistrer l’accompagnateur"}
+      </button>
+    </article>
+  );
+}
+
+function AddCompanionForm({ customerId }: { customerId: string }) {
+  const router = useRouter();
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [relationship, setRelationship] = useState("");
+  const [nationality, setNationality] = useState("");
+  const [birthDate, setBirthDate] = useState("");
+  const [sex, setSex] = useState("");
+  const [scan, setScan] = useState<ScanResult | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+
+  function closeForm() {
+    setOpen(false);
+    setFirstName("");
+    setLastName("");
+    setRelationship("");
+    setNationality("");
+    setBirthDate("");
+    setSex("");
+    setScan(null);
+    setError(null);
+  }
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    const res = await fetch("/api/admin/companions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customer_id: customerId,
+        first_name: firstName,
+        last_name: lastName,
+        relationship,
+        nationality,
+        birth_date: birthDate,
+        sex,
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setSaving(false);
+      setError(json.error || "Impossible d’ajouter l’accompagnateur");
+      return;
+    }
+    if (scan?.file) {
+      const form = new FormData();
+      form.set("customer_id", customerId);
+      form.set("companion_id", json.companion.id);
+      form.set("file", scan.file);
+      appendPassportForm(form, scan.identity, true);
+      await fetch("/api/admin/travel-documents", { method: "POST", body: form });
+    }
+    setSaving(false);
+    closeForm();
+    router.refresh();
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="admin-af-btn inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm"
+      >
+        <Plus className="h-4 w-4" />
+        Ajouter un accompagnateur
+      </button>
+    );
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="admin-af-card space-y-4 rounded-3xl p-5">
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">
+          Ajouter un accompagnateur
+        </h3>
+        <button
+          type="button"
+          onClick={closeForm}
+          className="text-xs font-semibold text-muted"
+        >
+          Annuler
+        </button>
+      </div>
+      <PersonPassportCard
+        variant="admin"
+        customerId={customerId}
+        documents={[]}
+        persist={false}
+        onIdentity={(id) =>
+          applyIdentityState(id, {
+            setFirstName,
+            setLastName,
+            setBirthDate,
+            setSex,
+            setNationality,
+          })
+        }
+        onScan={setScan}
+      />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Prénom">
+          <input required value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
+        </Field>
+        <Field label="Nom">
+          <input required value={lastName} onChange={(e) => setLastName(e.target.value)} className={fieldControlClass} />
+        </Field>
+        <Field label="Lien">
+          <RelationshipSelect name="relationship" value={relationship} onChange={setRelationship} />
+        </Field>
+        <Field label="Nationalité">
+          <CountrySelect name="nationality" value={nationality} onChange={setNationality} />
+        </Field>
+        <Field label="Naissance">
+          <DateFrInput
+            value={birthDate}
+            onChange={setBirthDate}
+            max={new Date().toISOString().slice(0, 10)}
+          />
+        </Field>
+        <Field label="Sexe">
+          <SexSelect name="sex" value={sex} onChange={setSex} />
+        </Field>
+      </div>
+      {error ? <p className="text-sm text-accent">{error}</p> : null}
+      <button className="admin-af-btn rounded-full px-4 py-2 text-sm" disabled={saving}>
+        {saving ? "Enregistrement…" : "Ajouter l’accompagnateur"}
+      </button>
+    </form>
   );
 }

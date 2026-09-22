@@ -3,11 +3,12 @@ import { jsonError, requireStaff } from "@/lib/crm/auth";
 import {
   applyExtractToBooking,
   collectIngestFiles,
+  collectStagedFiles,
   parseExtractPayload,
 } from "@/lib/crm/ingest-booking";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -25,13 +26,17 @@ export async function POST(request: Request, ctx: Ctx) {
     if (!booking) return jsonError("Réservation introuvable", 404);
     const extract = parseExtractPayload(JSON.parse(String(form.get("extract") || "{}")));
     const files = collectIngestFiles(form);
-    const visibleToClient = String(form.get("visible_to_client") || "1") !== "0";
+    const staged = collectStagedFiles(form);
+    const batchId = String(form.get("batch_id") || "");
     await applyExtractToBooking({
       bookingId: id,
       customerId: booking.customer_id,
       extract,
       files,
-      visibleToClient,
+      staged,
+      staffUserId: auth.user.id,
+      batchId: batchId || undefined,
+      visibleToClient: false,
     });
     return NextResponse.json({ ok: true, booking_id: id });
   } catch (err) {

@@ -20,12 +20,16 @@ export type ExtractedIdentity = {
   doc_type: TravelDocType;
   number: string | null;
   issuing_country: string | null;
+  issued_on: string | null;
   expires_on: string | null;
   first_name: string | null;
   last_name: string | null;
   birth_date: string | null;
+  place_of_birth: string | null;
   nationality: string | null;
   sex: "M" | "F" | "X" | null;
+  authority: string | null;
+  personal_number: string | null;
   format: string | null;
   valid: boolean;
 };
@@ -59,4 +63,15 @@ export function emptyToNull(value: unknown) {
   if (value == null) return null;
   const text = String(value).trim();
   return text === "" ? null : text;
+}
+
+export function identityOverwriteWarning(
+  current: { first_name?: string | null; last_name?: string | null },
+  incoming: { first_name?: string | null; last_name?: string | null }
+) {
+  const cur = [current.first_name, current.last_name].filter(Boolean).join(" ").trim();
+  const next = [incoming.first_name, incoming.last_name].filter(Boolean).join(" ").trim();
+  if (!cur || !next) return null;
+  if (cur.toLocaleLowerCase("fr") === next.toLocaleLowerCase("fr")) return null;
+  return `Le passeport indique ${next}. Les noms du profil (${cur}) seront mis à jour.`;
 }

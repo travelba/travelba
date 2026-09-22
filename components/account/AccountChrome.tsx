@@ -3,14 +3,15 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { BrandMark } from "@/components/crm/ui";
+import { BrandMark, PhoneWallBanner } from "@/components/crm/ui";
+import { Icon } from "@/components/crm/icons";
 import { siteConfig } from "@/lib/site";
 
 const TABS = [
   { href: "/mon-compte", label: "Accueil", exact: true, icon: "explore" },
   { href: "/mon-compte/reservations", label: "Réservations", icon: "luggage" },
   { href: "/mon-compte/transactions", label: "Transactions", icon: "receipt_long" },
-  { href: "/mon-compte/profil", label: "Mon Compte", icon: "badge" },
+  { href: "/mon-compte/profil", label: "Mon compte", icon: "badge" },
 ] as const;
 
 function pageTitle(pathname: string) {
@@ -23,15 +24,18 @@ function pageTitle(pathname: string) {
 export function AccountChrome({
   customerName,
   initials,
+  needsPhone,
   children,
 }: {
   customerName: string;
   initials: string;
+  needsPhone: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const title = pageTitle(pathname);
+  const phoneWall = needsPhone && !pathname.startsWith("/mon-compte/profil");
 
   async function signOut() {
     const supabase = createClient();
@@ -43,19 +47,18 @@ export function AccountChrome({
   return (
     <div className="account-app admin-af min-h-screen">
       <header className="sticky top-0 z-40 border-b border-[#e5e3dc] bg-[rgba(250,249,246,0.9)] shadow-[0_1px_8px_rgba(11,25,44,0.04)] backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-[480px] items-center justify-between gap-3 px-4 sm:px-6">
+        <div className="mx-auto flex h-16 max-w-[480px] items-center justify-between gap-3 px-4 sm:px-5">
           <BrandMark href="/mon-compte" subtitle={title} compact />
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             <a
               href={`https://wa.me/${siteConfig.whatsappNumber}`}
               target="_blank"
               rel="noreferrer"
-              className="relative inline-flex h-11 w-11 items-center justify-center rounded-full text-[var(--admin-navy)] hover:bg-[var(--surface-2)]"
-              aria-label="Notifications concierge"
-              title="Concierge WhatsApp"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full text-[var(--admin-navy)] hover:bg-[var(--surface-2)]"
+              aria-label="Écrire à l’agence sur WhatsApp"
+              title="Écrire à l’agence"
             >
-              <span className="material-symbols-outlined text-[22px]">notifications</span>
-              <span className="absolute top-2.5 right-2.5 h-2 w-2 rounded-full bg-[var(--admin-gold)] ring-2 ring-[var(--background)]" />
+              <Icon name="chat" className="h-[22px] w-[22px]" />
             </a>
             <Link
               href="/mon-compte/profil"
@@ -63,7 +66,7 @@ export function AccountChrome({
               aria-label={`Compte ${customerName}`}
             >
               {initials}
-              <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-[var(--admin-gold)] ring-2 ring-[var(--background)]" />
+              <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-[var(--admin-gold)] ring-2 ring-[var(--background)]" />
             </Link>
           </div>
         </div>
@@ -97,7 +100,9 @@ export function AccountChrome({
         </nav>
       </header>
 
-      <main className="mx-auto max-w-[480px] px-4 pb-28 pt-5 sm:px-6">{children}</main>
+      <main className="mx-auto max-w-[480px] px-4 pb-28 pt-4 sm:px-5">
+        {phoneWall ? <PhoneWallBanner href="/mon-compte/profil" /> : children}
+      </main>
 
       <nav className="account-tabbar md:hidden" aria-label="Navigation compte">
         <div className="mx-auto flex h-16 max-w-[480px] items-center justify-around px-1">
@@ -110,17 +115,16 @@ export function AccountChrome({
               <Link
                 key={tab.href}
                 href={tab.href}
-                className={`flex min-w-[64px] flex-col items-center justify-center gap-0.5 text-[10px] font-bold tracking-tight transition ${
-                  active ? "text-[var(--admin-navy)]" : "text-[#5a5c60]"
+                className={`flex h-12 min-w-[64px] flex-col items-center justify-center gap-0.5 text-[10px] font-bold tracking-tight transition ${
+                  active ? "text-[var(--admin-navy)]" : "text-[#5a5c60] hover:text-[var(--admin-navy)]"
                 }`}
               >
-                <span
-                  className="material-symbols-outlined text-[24px]"
-                  style={active ? { fontVariationSettings: "'FILL' 1" } : undefined}
-                >
-                  {tab.icon}
-                </span>
-                {tab.label === "Mon Compte" ? "Compte" : tab.label}
+                <Icon
+                  name={tab.icon}
+                  className="h-6 w-6"
+                  filled={active}
+                />
+                {tab.label}
               </Link>
             );
           })}

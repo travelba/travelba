@@ -1,5 +1,3 @@
-import { emptyToNull } from "@/lib/crm/identity";
-
 const ANNUAIRE_URL = "https://recherche-entreprises.api.gouv.fr/search";
 
 export type OfficialCompany = {
@@ -32,36 +30,6 @@ type CompanyHit = {
   matching_etablissements?: Establishment[] | null;
   tva?: string[] | null;
 };
-
-export function formatSiret(value: string) {
-  const digits = value.replace(/\D/g, "").slice(0, 14);
-  return [digits.slice(0, 3), digits.slice(3, 6), digits.slice(6, 9), digits.slice(9)]
-    .filter(Boolean)
-    .join(" ");
-}
-
-export function normalizeBillingSiret(value: unknown) {
-  const raw = emptyToNull(value);
-  if (!raw) return null;
-  const digits = raw.replace(/\D/g, "");
-  if (!/^\d{14}$/.test(digits)) throw new Error("SIRET invalide");
-  return digits;
-}
-
-export function readBillingPatch(body: Record<string, unknown>) {
-  const patch: Record<string, unknown> = {};
-  if ("billing_legal_name" in body) patch.billing_legal_name = emptyToNull(body.billing_legal_name);
-  if ("billing_siret" in body) patch.billing_siret = normalizeBillingSiret(body.billing_siret);
-  if ("billing_vat" in body) {
-    const vat = emptyToNull(body.billing_vat)?.replace(/\s/g, "") || null;
-    if (vat && vat.length > 20) throw new Error("Numéro de TVA invalide");
-    patch.billing_vat = vat;
-  }
-  if ("billing_address_line" in body) patch.billing_address_line = emptyToNull(body.billing_address_line);
-  if ("billing_postal_code" in body) patch.billing_postal_code = emptyToNull(body.billing_postal_code);
-  if ("billing_city" in body) patch.billing_city = emptyToNull(body.billing_city);
-  return patch;
-}
 
 function digitsOnly(value: string) {
   return value.replace(/\D/g, "");

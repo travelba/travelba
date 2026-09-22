@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { appOrigin, inviteCustomer } from "@/lib/crm/invite";
 import type { CrmCustomer } from "@/lib/crm/types";
 
@@ -12,7 +12,7 @@ export async function GET() {
     .from("crm_customers")
     .select("*")
     .order("last_name", { ascending: true });
-  if (error) return jsonError(error.message, 500);
+  if (error) return dbError(error, 500);
   return NextResponse.json({ customers: data as CrmCustomer[] });
 }
 
@@ -23,21 +23,26 @@ export async function POST(request: Request) {
   const email = String(body?.email || "")
     .trim()
     .toLowerCase();
+  const firstName = String(body?.first_name || "").trim();
+  const lastName = String(body?.last_name || "").trim();
   if (!email) return jsonError("Email requis");
+  if (!firstName || !lastName) return jsonError("Prénom et nom requis");
   const { data, error } = await auth.supabase
     .from("crm_customers")
     .insert({
       email,
-      first_name: String(body?.first_name || "").trim(),
-      last_name: String(body?.last_name || "").trim(),
+      first_name: firstName,
+      last_name: lastName,
       phone: body?.phone || null,
-      whatsapp: body?.whatsapp || null,
       language: "fr",
     })
     .select("*")
     .single();
-  if (error) return jsonError(error.message, 400);
+  if (error) return dbError(error, 400);
   const customer = data as CrmCustomer;
+  if (!body?.invite) {
+    return NextResponse.json({ customer, invited: false });
+  }
   try {
     const result = await inviteCustomer(customer, appOrigin(request));
     return NextResponse.json({

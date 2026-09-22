@@ -1,57 +1,91 @@
 import { z } from "zod";
-import { BOOKING_ITEM_KINDS } from "@/lib/crm/types";
+import { sortItemsByOrder } from "./carnet";
+import { redactIngestValue } from "./ingest-redact";
+import { mergeExtractItems } from "./item-match";
+import { BOOKING_ITEM_KINDS } from "./types";
 
-const nullableString = z.string().nullable().optional();
-const nullableNumber = z.number().nullable().optional();
+const looseString = z.string().nullable().optional();
+const looseNumber = z.number().nullable().optional();
 
+const roomSchemaLoose = z
+  .object({
+    room: looseString,
+    type: looseString,
+    guests: looseString,
+    confirmation_ref: looseString,
+  })
+  .optional();
+
+const detailsSchemaLoose = z
+  .object({
+    airline: looseString,
+    flight_number: looseString,
+    pnr: looseString,
+    from: looseString,
+    to: looseString,
+    city_from: looseString,
+    city_to: looseString,
+    cabin: looseString,
+    baggage: looseString,
+    terminal: looseString,
+    seat: looseString,
+    hotel_name: looseString,
+    room: looseString,
+    city: looseString,
+    address: looseString,
+    board: looseString,
+    occupancy: looseString,
+    guests: looseString,
+    special_requests: looseString,
+    included: z.array(z.string()).optional(),
+    rooms: z.array(roomSchemaLoose.unwrap()).optional(),
+    pickup: looseString,
+    dropoff: looseString,
+    pickup_note: looseString,
+    vehicle: looseString,
+    driver: looseString,
+    policy_number: looseString,
+    meeting_point: looseString,
+    duration: looseString,
+    notes: looseString,
+    source_file_name: looseString,
+    needs_review: z.boolean().nullable().optional(),
+  })
+  .optional()
+  .default({});
+
+/** Validation souple (saisie agent / save). */
 export const bookingExtractSchema = z.object({
   document_status: z.enum(["confirmed", "quote", "identity"]).nullable().optional(),
-  title: nullableString,
-  destination: nullableString,
-  start_date: nullableString,
-  end_date: nullableString,
+  title: looseString,
+  destination: looseString,
+  start_date: looseString,
+  end_date: looseString,
   currency: z.string().nullable().optional().default("EUR"),
-  total_amount: nullableNumber,
-  notes_client: nullableString,
-  customer_email: nullableString,
-  customer_first_name: nullableString,
-  customer_last_name: nullableString,
+  total_amount: looseNumber,
+  notes_client: looseString,
+  customer_email: looseString,
+  customer_first_name: looseString,
+  customer_last_name: looseString,
   items: z
     .array(
       z.object({
         kind: z.enum(BOOKING_ITEM_KINDS).default("fee"),
         title: z.string(),
-        supplier: nullableString,
-        confirmation_ref: nullableString,
-        start_at: nullableString,
-        end_at: nullableString,
-        amount: nullableNumber,
-        details: z
-          .object({
-            airline: nullableString,
-            flight_number: nullableString,
-            pnr: nullableString,
-            from: nullableString,
-            to: nullableString,
-            cabin: nullableString,
-            hotel_name: nullableString,
-            room: nullableString,
-            address: nullableString,
-            pickup: nullableString,
-            dropoff: nullableString,
-            policy_number: nullableString,
-            notes: nullableString,
-          })
-          .optional()
-          .default({}),
+        supplier: looseString,
+        confirmation_ref: looseString,
+        start_at: looseString,
+        end_at: looseString,
+        amount: looseNumber,
+        details: detailsSchemaLoose,
       })
     )
     .default([]),
   travelers: z
     .array(
       z.object({
-        first_name: nullableString,
-        last_name: nullableString,
+        first_name: looseString,
+        last_name: looseString,
       })
     )
     .default([]),
@@ -59,14 +93,175 @@ export const bookingExtractSchema = z.object({
 
 export type BookingExtract = z.infer<typeof bookingExtractSchema>;
 
+// OpenAI structured outputs: every property must be in `required`.
+const strictString = z.string().nullable();
+const strictNumber = z.number().nullable();
+const strictBoolean = z.boolean().nullable();
+
+const roomSchemaStrict = z.object({
+  room: strictString,
+  type: strictString,
+  guests: strictString,
+  confirmation_ref: strictString,
+});
+
+const detailsSchemaStrict = z.object({
+  airline: strictString,
+  flight_number: strictString,
+  pnr: strictString,
+  from: strictString,
+  to: strictString,
+  city_from: strictString,
+  city_to: strictString,
+  cabin: strictString,
+  baggage: strictString,
+  terminal: strictString,
+  seat: strictString,
+  hotel_name: strictString,
+  room: strictString,
+  city: strictString,
+  address: strictString,
+  board: strictString,
+  occupancy: strictString,
+  guests: strictString,
+  special_requests: strictString,
+  included: z.array(z.string()),
+  rooms: z.array(roomSchemaStrict),
+  pickup: strictString,
+  dropoff: strictString,
+  pickup_note: strictString,
+  vehicle: strictString,
+  driver: strictString,
+  policy_number: strictString,
+  meeting_point: strictString,
+  duration: strictString,
+  notes: strictString,
+  source_file_name: strictString,
+  needs_review: strictBoolean,
+});
+
+/** Schéma strict pour Output.object (OpenAI). */
+export const bookingExtractLlmSchema = z.object({
+  document_status: z.enum(["confirmed", "quote", "identity"]).nullable(),
+  title: strictString,
+  destination: strictString,
+  start_date: strictString,
+  end_date: strictString,
+  currency: strictString,
+  total_amount: strictNumber,
+  notes_client: strictString,
+  customer_email: strictString,
+  customer_first_name: strictString,
+  customer_last_name: strictString,
+  items: z.array(
+    z.object({
+      kind: z.enum(BOOKING_ITEM_KINDS),
+      title: z.string(),
+      supplier: strictString,
+      confirmation_ref: strictString,
+      start_at: strictString,
+      end_at: strictString,
+      amount: strictNumber,
+      details: detailsSchemaStrict,
+    })
+  ),
+  travelers: z.array(
+    z.object({
+      first_name: strictString,
+      last_name: strictString,
+    })
+  ),
+});
+
+export const MAX_INGEST_BYTES = 25 * 1024 * 1024;
+export const MAX_INGEST_FILES = 30;
+
+export type IngestStagedFile = {
+  path: string;
+  name: string;
+  type?: string | null;
+};
+
+export type IngestWarning = {
+  file: string;
+  message: string;
+};
+
+export function guessIngestMime(name: string) {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".pdf")) return "application/pdf";
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".heic") || lower.endsWith(".heif")) return "image/heic";
+  return "image/jpeg";
+}
+
+export function isAllowedIngestType(type: string | null | undefined, name: string) {
+  const mime = type || guessIngestMime(name);
+  return mime === "application/pdf" || mime.startsWith("image/");
+}
+
+export type IngestStreamEvent =
+  | {
+      event: "file";
+      index: number;
+      total: number;
+      name: string;
+      status: "reading" | "ok" | "error" | "identity";
+      family?: string;
+      itemCount?: number;
+      message?: string;
+    }
+  | { event: "progress"; done: number; total: number; current?: string }
+  | {
+      event: "done";
+      extract: BookingExtract;
+      suggested_customer_id: string | null;
+      warnings: IngestWarning[];
+    }
+  | { event: "fatal"; error: string };
+
+export function emptyBookingExtract(): BookingExtract {
+  return {
+    document_status: null,
+    title: "",
+    destination: "",
+    start_date: "",
+    end_date: "",
+    currency: "EUR",
+    total_amount: null,
+    notes_client: "",
+    customer_email: "",
+    customer_first_name: "",
+    customer_last_name: "",
+    items: [],
+    travelers: [],
+  };
+}
+
+export function sanitizeExtractedPrices(extract: BookingExtract): BookingExtract {
+  const merged = mergeExtractItems(
+    (extract.items || []).map((item) => ({ ...item, amount: null }))
+  );
+  const next: BookingExtract = {
+    ...extract,
+    currency: extract.currency || "EUR",
+    total_amount: null,
+    items: sortItemsByOrder(merged),
+  };
+  return redactIngestValue(next);
+}
+
 export function openaiApiKey() {
-  return process.env.OPENAI_API_KEY?.trim() || "";
+  const key = process.env.OPENAI_API_KEY?.trim() || "";
+  return key.startsWith("sk-") ? key : "";
 }
 
 export function aiGatewayConfigured() {
   return Boolean(
     openaiApiKey() ||
       process.env.AI_GATEWAY_API_KEY ||
-      process.env.VERCEL_OIDC_TOKEN
+      process.env.VERCEL_OIDC_TOKEN ||
+      process.env.VERCEL
   );
 }

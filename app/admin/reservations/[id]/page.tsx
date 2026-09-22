@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { requireStaffPage } from "@/lib/crm/auth";
+import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { BookingEditor } from "@/components/admin/BookingEditor";
 import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 import type {
@@ -9,6 +9,8 @@ import type {
   CrmBookingItem,
   CrmBookingTraveler,
   CrmCompanion,
+  CrmCustomer,
+  CrmTravelDocument,
 } from "@/lib/crm/types";
 
 type Props = { params: Promise<{ id: string }> };
@@ -23,13 +25,29 @@ export default async function AdminBookingPage({ params }: Props) {
     .maybeSingle();
   if (!booking) notFound();
   const b = booking as CrmBooking;
-  const [{ data: items }, { data: travelers }, { data: documents }, { data: companions }] =
-    await Promise.all([
-      supabase.from("crm_booking_items").select("*").eq("booking_id", id).order("sort_order"),
-      supabase.from("crm_booking_travelers").select("*").eq("booking_id", id),
-      supabase.from("crm_booking_documents").select("*").eq("booking_id", id),
-      supabase.from("crm_travel_companions").select("*").eq("customer_id", b.customer_id),
-    ]);
+  await reconcileCustomerParty(b.customer_id);
+  const [
+    { data: items },
+    { data: travelers },
+    { data: documents },
+    { data: companions },
+    { data: identityDocs },
+    { data: holder },
+    { data: customers },
+  ] = await Promise.all([
+    supabase.from("crm_booking_items").select("*").eq("booking_id", id).order("sort_order"),
+    supabase.from("crm_booking_travelers").select("*").eq("booking_id", id),
+    supabase.from("crm_booking_documents").select("*").eq("booking_id", id),
+    supabase.from("crm_travel_companions").select("*").eq("customer_id", b.customer_id),
+    supabase.from("crm_travel_documents").select("*").eq("customer_id", b.customer_id),
+    supabase
+      .from("crm_customers")
+      .select("first_name, last_name")
+      .eq("id", b.customer_id)
+      .maybeSingle(),
+    supabase.from("crm_customers").select("*").order("last_name"),
+  ]);
+  const allIdentity = (identityDocs || []) as CrmTravelDocument[];
 
   return (
     <div>
@@ -41,7 +59,13 @@ export default async function AdminBookingPage({ params }: Props) {
           items={(items || []) as CrmBookingItem[]}
           travelers={(travelers || []) as CrmBookingTraveler[]}
           documents={(documents || []) as CrmBookingDocument[]}
+          identityDocs={allIdentity}
           companions={(companions || []) as CrmCompanion[]}
+          customers={(customers || []) as CrmCustomer[]}
+          holderName={{
+            first_name: holder?.first_name || "",
+            last_name: holder?.last_name || "",
+          }}
           aiConfigured={aiGatewayConfigured()}
         />
       </div>

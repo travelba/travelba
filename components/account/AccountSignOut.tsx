@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { Icon } from "@/components/crm/icons";
 
 export function AccountSignOut({ className }: { className?: string }) {
   const router = useRouter();
@@ -15,7 +16,7 @@ export function AccountSignOut({ className }: { className?: string }) {
 
   return (
     <button type="button" onClick={signOut} className={className}>
-      <span className="material-symbols-outlined text-[20px]">logout</span>
+      <Icon name="logout" className="h-5 w-5" />
       Déconnexion sécurisée
     </button>
   );

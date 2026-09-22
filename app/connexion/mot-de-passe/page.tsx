@@ -1,25 +1,11 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { Plus_Jakarta_Sans, Inter } from "next/font/google";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { siteConfig } from "@/lib/site";
 import { BrandMark } from "@/components/crm/ui";
-import { MIN_PASSWORD_LENGTH } from "@/lib/crm/session";
-
-const display = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  variable: "--font-admin-display",
-  weight: ["600", "700", "800"],
-  display: "swap",
-});
-
-const sans = Inter({
-  subsets: ["latin"],
-  variable: "--font-admin-sans",
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
-});
+import { MIN_PASSWORD_LENGTH, pathAfterPassword } from "@/lib/crm/session";
 
 const fieldClass =
   "w-full rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-3 text-[var(--admin-navy)] outline-none focus:border-[var(--admin-gold)] focus:bg-white focus:ring-2 focus:ring-[var(--admin-gold)]/30";
@@ -29,6 +15,7 @@ export default function SetPasswordPage() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [expired, setExpired] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(event: FormEvent) {
@@ -42,16 +29,21 @@ export default function SetPasswordPage() {
     });
     const json = await res.json().catch(() => ({}));
     setLoading(false);
+    if (res.status === 401) {
+      setExpired(true);
+      setError("Votre session a expiré. Demandez un nouveau lien de connexion.");
+      return;
+    }
     if (!res.ok) {
       setError(json.error || "Impossible d’enregistrer le mot de passe");
       return;
     }
-    router.push("/mon-compte");
+    router.push(json.next || pathAfterPassword(json.needsPhone ? "" : "1"));
     router.refresh();
   }
 
   return (
-    <div className={`account-app admin-af min-h-screen ${display.variable} ${sans.variable}`}>
+    <div className="account-app admin-af min-h-screen">
       <div className="mx-auto flex min-h-screen max-w-[420px] flex-col justify-center px-4 py-10">
         <div className="mb-8 flex items-center justify-between">
           <BrandMark href="/" subtitle="Espace client" />
@@ -103,11 +95,19 @@ export default function SetPasswordPage() {
             {error ? <p className="text-sm text-[var(--admin-red)]">{error}</p> : null}
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || expired}
               className="w-full rounded-full bg-[var(--admin-navy)] px-4 py-3.5 text-sm font-bold text-white transition hover:opacity-95 disabled:opacity-60"
             >
               {loading ? "Enregistrement…" : "Enregistrer et continuer"}
             </button>
+            {expired ? (
+              <Link
+                href="/connexion"
+                className="block w-full text-center text-sm font-semibold text-[var(--admin-navy)]"
+              >
+                Retour à la connexion
+              </Link>
+            ) : null}
           </form>
         </div>
         <p className="mt-6 text-center text-xs text-muted">

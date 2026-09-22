@@ -12,7 +12,7 @@ export function itemWhen(item: CrmBookingItem) {
 
 export function itemDetailsLine(item: CrmBookingItem) {
   const parts: string[] = [];
-  if (item.kind === "flight") {
+  if (item.kind === "flight" || item.kind === "rail") {
     const route =
       detail(item, "from") && detail(item, "to")
         ? `${detail(item, "from")} → ${detail(item, "to")}`

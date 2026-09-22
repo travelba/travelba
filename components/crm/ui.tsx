@@ -21,8 +21,8 @@ export function BrandMark({
         </span>
         {subtitle ? (
           <span
-            className={`truncate font-display font-semibold text-[var(--admin-navy)] ${
-              compact ? "text-base" : "text-lg"
+            className={`truncate font-display font-semibold leading-none text-[var(--admin-navy)] ${
+              compact ? "text-[15px]" : "text-lg"
             }`}
           >
             {subtitle}
@@ -112,38 +112,63 @@ export function EmptyState({
   );
 }
 
-export function ConciergeBanner() {
+export function PhoneWallBanner({ href }: { href?: string }) {
   return (
-    <aside className="flex flex-col gap-3 rounded-2xl border border-[#e5e3dc] bg-white p-4 shadow-[0_4px_20px_-2px_rgba(11,25,44,0.04)]">
+    <div className="rounded-2xl bg-[var(--admin-gold)]/25 p-5 text-[var(--admin-navy)] ring-1 ring-[var(--admin-gold)]">
+      <p className="font-display text-lg font-bold">Ajoutez un téléphone pour continuer.</p>
+      <p className="mt-2 text-sm">L’agence a besoin d’un numéro pour vous joindre.</p>
+      {href ? (
+        <a
+          href={href}
+          className="mt-4 inline-flex h-11 items-center rounded-full bg-[var(--admin-navy)] px-5 text-sm font-semibold text-white"
+        >
+          Ouvrir ma fiche
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
+export function ConciergeBanner({
+  href,
+  label = "WhatsApp",
+}: {
+  href?: string;
+  label?: string;
+}) {
+  const wa = href || `https://wa.me/${siteConfig.whatsappNumber}`;
+  return (
+    <aside className="flex flex-col gap-3 rounded-2xl border border-[#e5e3dc] bg-white p-4 shadow-sm">
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">
-          Votre Travel Designer
-        </span>
-        <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-[var(--admin-navy)]">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--admin-gold)]" />
-          Disponible 24/7
+          L’agence
         </span>
       </div>
-      <div>
-        <p className="font-display text-base font-semibold text-[var(--admin-navy)]">
-          Conciergerie {siteConfig.shortName}
-        </p>
-        <p className="mt-0.5 text-sm text-muted">Ligne VIP directe · modifications urgentes</p>
+      <div className="flex items-center gap-3">
+        <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[var(--admin-navy)] font-display text-[11px] font-extrabold tracking-wider text-[var(--admin-gold)] ring-2 ring-[var(--admin-gold)]/30">
+          TBA
+        </span>
+        <div className="min-w-0">
+          <p className="truncate font-display text-base font-semibold text-[var(--admin-navy)]">
+            Travel Business Agency
+          </p>
+          <p className="text-sm text-muted">Une question sur le dossier ?</p>
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <a
-          href={`tel:${siteConfig.whatsappNumber}`}
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#e5e3dc] bg-[var(--surface-2)] text-xs font-semibold text-[var(--admin-navy)]"
+          href={`tel:+${siteConfig.whatsappNumber}`}
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#e5e3dc] bg-[var(--surface-2)] text-xs font-semibold uppercase tracking-[0.06em] text-[var(--admin-navy)]"
         >
-          Appel Direct
+          Appeler
         </a>
         <a
-          href={`https://wa.me/${siteConfig.whatsappNumber}`}
+          href={wa}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[var(--admin-navy)] text-xs font-semibold text-white"
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[var(--admin-navy)] text-xs font-semibold uppercase tracking-[0.06em] text-white"
         >
-          Concierge Chat
+          {label}
         </a>
       </div>
     </aside>
@@ -166,4 +191,18 @@ export function bookingStatusTone(
     default:
       return "sky";
   }
+}
+
+export function CrmSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="animate-pulse space-y-3">
+      <div className="h-7 w-44 rounded-lg bg-[var(--admin-peach)]" />
+      {Array.from({ length: rows }).map((_, index) => (
+        <div
+          key={index}
+          className="h-24 rounded-2xl bg-white ring-1 ring-[#e5e3dc]"
+        />
+      ))}
+    </div>
+  );
 }

@@ -1,7 +1,6 @@
 import { NewCustomerForm } from "@/components/admin/NewCustomerForm";
 import { ClientsTable } from "@/components/admin/ClientsTable";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
-import { createClient } from "@/lib/supabase/server";
 import { requireStaffPage } from "@/lib/crm/auth";
 import type { CrmBalance, CrmCustomer } from "@/lib/crm/types";
 
@@ -19,10 +18,10 @@ export default async function AdminClientsPage({
 
   return (
     <div>
-      <PageEyebrow>Back-office</PageEyebrow>
+      <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
-        title="Gestion des clients"
-        subtitle="Fiches clients, encours et accès à l’espace voyageur."
+        title="Clients"
+        subtitle="Fiches, invitation du titulaire, encours. Sans téléphone, le client le renseigne dans Vous au premier accès."
       />
       <div className="mt-6">
         <NewCustomerForm />

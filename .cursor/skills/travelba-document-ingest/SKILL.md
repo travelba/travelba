@@ -1,102 +1,164 @@
 ---
 name: travelba-document-ingest
 description: >-
-  Maps real agency PDFs (Amadeus e-tickets, Little Emperors hotel
-  quotes/bookings, TAAP/Talixo transfers, French passports) onto Travelba
-  booking and identity fields. Use when importing PDFs/images into a
-  reservation, tuning ingest prompts, OCR, or document dropzones.
+  Pièce centrale Travelba : qualité et fiabilité de l’import PDF/photos vers
+  les cartes carnet (e-tickets Amadeus, Little Emperors, Nantipa, The Leela,
+  SIXT, TAAP/Talixo, devis). Use when the user sends PDFs or images, trains
+  extraction, tunes ingest-parse / PROMPT / merge, BookingIngest, or PAN
+  redaction. Identity scans (passeport MRZ) use travelba-identity instead.
 ---
 
-# Import documents Travelba
+# Travelba — import (qualité)
 
-Pipeline résa : `unpdf` (texte + images si calque pauvre) → OpenAI `gpt-4o` (`OPENAI_API_KEY`) → relecture humaine → `persistNewBookingFromExtract` (statut `draft`).
-Pipeline identité : photo MRZ (Tesseract + `mrz`), **pas** le dropzone réservation.
+Cœur produit **avec** le carnet. Une carte fausse publiée = un client mal informé.
+L’agent (humain) relit, **Enregistre**, puis **Publie** (skill `travelba-carnet`).
+L’IA ne publie jamais.
 
-Code : `lib/crm/ingest-booking.ts`, `lib/crm/ingest-types.ts`, `components/crm/BookingIngest.tsx`.
-Identité : `lib/crm/ocr-document.ts`, `lib/crm/mrz-parse.ts`.
-Couvertures : `lib/crm/cover-generate.ts` — OpenAI Images (`gpt-image-1`, fallback `dall-e-3`) puis Gateway Gemini seulement si `AI_GATEWAY_API_KEY`.
+Agence **seule**. `app/api/client/bookings/**/ingest` = 404.
+Identité / MRZ : skill `travelba-identity` — **pas** ce dropzone.
 
-## Ne jamais fusionner ces voyages
+## Contrat (non négociable)
 
-Un dépôt de fichiers = **un** dossier. Si dates / destinations / noms divergent, extraire un seul voyage et le dire dans `notes_client`.
+1. **Ne jamais inventer.** Absent = `null`. Pas de 15:00 / 12:00, pas de petit-déj, pas de franchise.
+2. **Prix extraits = null.** `$` / CHF / INR / € du PDF = net interne. L’agent saisit le **prix vendu**.
+3. **Pas de PAN / CVC / fidélité / paiement.** `redactIngestText` avant le modèle.
+4. **Un séjour par dépôt.** Fichiers hétérogènes : le plus complet + `notes_client`.
+5. **Relecture humaine** puis Enregistrer (`visible_to_client=false`).
+6. **Ne pas persister** les PDF d’entraînement en prod. **Ne pas committer** PDF / RAW / PII.
 
-| Famille | Indices | Dossier |
-|---------|---------|---------|
-| E-ticket Amadeus | « Reçu de Billet Electronique », Référence du dossier 6 lettres, CheckMyTrip | Un PNR = un itinéraire aérien |
-| Little Emperors quote | IATA 96020293, « none are on hold », pas de booking name | `document_status=quote` |
-| Little Emperors booking | « Reservation Details », Booking Reference, Booking name | Hôtel confirmé |
-| TAAP / Talixo | « Détails du voyage TAAP », n° 14 chiffres, Talixo | Transfert, pas un vol |
-| Passeport FR | MRZ `P<FRA`, scan souvent sans calque texte | Profil / documents, pas une résa |
+Toute erreur réelle (retour fantôme, 10 cartes pour 10 passagers, EUR sur un $, hôtel fantôme) se corrige dans **trois** endroits : parseur déterministe + test anonymisé + une ligne ici **et** dans `PROMPT`.
 
-## E-ticket Amadeus (PDF texte)
+## Pipeline
 
-Champs :
+```
+PDF/image
+  → PUT signed crm-files ingest-tmp (contourne la limite Vercel ~4,5 Mo)
+  → unpdf texte intégral (parseur, pas de coupe 24k)
+  → classifyIngestFamily + parsedItemsFromText
+  → si famille connue et champs complets : pas de LLM sur ce PDF
+  → sinon gpt-4o (texte ; vision si calque < 800 ou image)
+  → calque vide : raster unpdf.renderPageAsImage (max 5 pages) ou Gemini PDF natif
+  → fusion mergeFileExtracts (devis+confirmé, identité mélangée)
+  → 1 passage reconcile compact (ne pas inventer)
+  → UI relecture (progression NDJSON, retry, Enregistrer brouillon)
+```
 
-- `confirmation_ref` = **PNR GDS** (bandeau « Référence du dossier », 6 lettres).
-- `details.pnr` = réf. compagnie (`AF/Y2FYWL`, `X1/N0OP1Q`, `TA/Y9JCXV`).
-- `airline` / `details.airline` = **transporteur opérant** (« Opéré par Air Panama »), pas Hahn Air (émetteur 169-).
-- `supplier` = compagnie émettrice du billet.
-- Aller et retour = **deux** items `flight`. **Interdit** d’inventer le retour.
-- `details.from` / `to` = IATA (`CDG`, `RAK`, `MIA`, `SJO`, `PAC`, `BOC`).
-- Horaires ISO tels qu’imprimés. Classe : Economique + code tarif (L, W, K, Y) dans `details.cabin`.
-- Voyageur = ligne Passager (casse normale).
-- Email agence (`contact@travelbt.fr`) ≠ `customer_email`.
-- **Ne jamais** extraire le mode de paiement / PAN masqué.
-- Bagages `0PC` / `1PC` / `2PC` → `details.notes` si utile, pas un item.
+Parseur **d’abord**, LLM **ensuite**. Si le PDF a un calque, le déterministe doit déjà produire les bonnes cartes. Le modèle complète noms / libellés FR / doutes (`needs_review`). 10 e-tickets du même vol ne déclenchent pas 10 appels LLM.
 
-## Devis hôtel Little Emperors / My Concierge
+Limites : **30 fichiers**, **25 Mo**, PDF + images. Envoi par URL signée courte, jamais une signed URL longue dans le HTML.
 
-Signaux : « All prices listed are subject to availability and change, none are on hold », plusieurs blocs tarifaires, pas de nom.
+## Quand un PDF / une photo arrive
 
-- `document_status=quote`, `total_amount=null`.
-- Un item `hotel` **par option** (chambre + prix). Ne pas prendre la première ligne comme le dossier.
-- Dates header (`5 Aug - 8 Aug 2026`) → `start_date` / `end_date`.
-- Devise du symbole : CHF, EUR, USD. « 2 adults » / « 6 adults » ≠ voyageurs nommés — ne pas créer de lignes vides.
-- Pas de `confirmation_ref`.
+C’est **ce** skill. Boucle courte :
 
-## Réservation hôtel Little Emperors
+1. Extraire le texte (`unpdf`) vers `/tmp` — jamais git.
+2. Classifier la famille (table ci-dessous). Ne pas echo PII (noms, e-mail, tel, n° carte, n° fidélité).
+3. Fixture **anonymisée** dans `lib/crm/ingest-parse.test.ts` (Pax / Guest Test, PNR fictif).
+4. Étendre le parseur dans `lib/crm/ingest-parse.ts` (aéroport, date, kind).
+5. Une ligne dans `PROMPT` (`ingest-booking.ts`) **et** dans la section famille ici.
+6. `npx tsx --test lib/crm/ingest-parse.test.ts lib/crm/item-match.test.ts lib/crm/ingest-pipeline.test.ts`
+7. Ne **pas** `persistNewBookingFromExtract` sur un vrai client pour « voir ».
 
-Signaux : Reservation Details, Booking Reference, Booking name, Total en $.
+Pièces iOS parfois absentes du VM : le dire, demander le trombone desktop, ou lire la boîte agence **RAW** sans committer.
 
-- `document_status=confirmed`.
-- Deux refs `97620170;97620172` + deux Booking name = **deux** items hotel + deux voyageurs.
-- `$858.80` → `currency=USD`, `total_amount=858.8`. Ne pas défaut EUR.
-- Adresse → `details.address`. Room type → `details.room`.
-- **Interdit** d’inventer check-in 15:00 / check-out 12:00 s’ils ne sont pas écrits.
-- Benefits (breakfast, upgrade) → `details.notes`.
+## Familles → parseur
 
-## Transfert TAAP / Talixo / Expedia
+| Famille | Indices | Sortie |
+|---------|---------|--------|
+| E-ticket Amadeus | « Reçu de Billet Electronique », PNR 6 car. | `parseAmadeusFlights` — **1 item / segment** |
+| Little Emperors booking | Reservation Details + Booking Reference | `parseLittleEmperorsHotel` — **1 hôtel**, `rooms[]` |
+| Little Emperors quote | IATA 96020293, « none are on hold » | `document_status=quote`, invisible |
+| Nantipa | NANTIPA + Reservation Number, dates `08/02/2026` | `parseNantipaConfirmation` — MM/JJ, date only |
+| The Leela / lettre EN | `14-SEP-26`, RESERVATION CONFIRMATION | `parseHotelConfirmationLetter` — date only, TENTATIVE → `needs_review` |
+| TAAP / Talixo | TRANSFER CONFIRMATION, DROPOFF, Itinéraire | `parseTransferConfirmation` |
+| SIXT | Pickup on / Return on / catégorie | `parseSixtCar` — `kind=car` |
+| Passion Collection | Devis, NET, options | quote — **pas** de NET |
+| Toucan Discovery | étapes du cadre + excursions | `activity` — les étapes **ne sont pas** des hôtels |
+| Passeport | MRZ `P<FRA` | **identité**, pas une résa |
 
-- `kind=transfer`, `supplier=Talixo`.
-- `confirmation_ref` = n° voyage (14 chiffres).
-- `details.pickup` / `details.dropoff` — **pas** `from`/`to`.
-- L’heure d’un vol citée (« Air Panama 682 — 09:30 ») n’est **pas** l’heure de prise en charge. Pickup hôtel = souvent « 2,5 h avant le vol » sans heure clock.
-- Un vol mentionné sur le bon n’ajoute un item `flight` que s’il y a aussi un e-ticket.
+IATA **8 chiffres** (20287864, 20255270, 96020293, 20289905) = code agence, **jamais** un PNR.
 
-Noms : `YANIK` (billet) et `YANNICK` (TAAP) = même personne — matcher en normalisant, pas créer un doublon.
+## Vol
 
-## Passeport (scan PDF)
+- Aller + retour **imprimés** (même PDF) = **deux** cartes. Correspondance = deux. Pas de retour fantôme.
+- 10 e-tickets passagers du **même n° + jour** = **une** carte. Noms → `travelers`.
+- `confirmation_ref` = PNR GDS. `details.pnr` = réf. compagnie (`AF/AB12CD`).
+- `details.airline` = **opérant**. `supplier` = émetteur (Hahn Air ≠ Air Panama).
+- `details.from` / `to` = IATA (souvent absent du PDF) ; `city_from` / `city_to` = villes.
+- Horaires ISO locaux. « 03 August 09:45 » + année de « Lundi 03 août 2026 ».
+- Terminal / siège si imprimés. « Heure limite d’enregistrement » ≠ horaire du vol.
+- « Scan for check-in » ≠ hôtel. Carte fidélité : masquer, ne pas extraire.
+- Email agence ≠ `customer_email`.
 
-Le dropzone résa refuse l’identité (`document_status=identity`). Photo JPEG/PNG/HEIC via `/api/.../scan`.
+Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Colón `BOC`, Enrique Malek `DAV`, Tocumen `PTY`, Charles-de-Gaulle `CDG`, Genève `GVA`, Heathrow `LHR`, Marseille Provence `MRS`. **Nouveau nom d’aéroport sans IATA → une entrée + un test**, pas un guess LLM.
 
-Un PDF passeport n’a souvent **aucun texte** : rasteriser la page ou photographier la zone MRZ.
+## Hôtel
 
-VIZ + MRZ TD3 :
+**Un item par établissement**, même 2 chambres / 2 Booking name / 2 réf.
 
-- Ligne 1 `P<FRA` + nom `<<` prénoms
-- Ligne 2 n° + `FRA` + naissance AAMMJJ + sexe + expiration AAMMJJ
-- OCR : `L` répétés → `<`. Recadrer le bas du document.
+- `details.rooms = [{ room, guests, confirmation_ref }, …]`
+- `confirmation_ref` = `97620170;97620172` — `findMatchingItem` par **recouvrement** de réf.
+- `included[]` seulement si phrase explicite (Daily breakfast…). Sinon `[]`.
+- Dates header → `start_at` / `end_at` **sans heure** si seule la date est une date de séjour.
+- Politique 15:00 / 14:00 / 12:00 / Pick Up 00:00 → **ignorer** (pas l’horloge de la carte, pas un transfert).
+- Nantipa `08/02/2026` = 2 août (US), pas 8 février.
+- Devis : `quoted`, `rooms` = options, **pas** un item par tarif. Invisible tant que non publié.
 
-Ne pas logger n° de passeport / MRZ.
+## Transfert / voiture / reste
 
-## UI / persist
+- Transfert : `pickup` / `dropoff` (pas `from`/`to`). « 2 h 30 avant le vol » → `pickup_note`, pas d’heure inventée. Vol sur le bon → `flight` seulement s’il y a un e-ticket.
+- SIXT : `kind=car`, n° résa, prise/restitution (`18 Septembre 2026 at 16:00`), `vehicle` = catégorie. **Pas** CHF TTC, caution, protection, plein.
+- Train / bateau : horaires **écrits**. Croisière = une carte, pas un jour par port.
+- `YANIK` / `YANNICK` = même personne.
 
-- Relecture obligatoire. Quote → bandeau « tarifs non bloqués ». Identity → pas d’enregistrement résa.
-- Client : résa créée en `draft`, `visible_to_client=true`. Pas de débit ledger tant que `confirmed`.
-- Fichiers via `/api/files`, jamais d’URL signed longue côté client.
-- Après création, une couverture destination est générée (`scheduleBookingCover`) et stockée dans `crm-files` (`bookings/{id}/cover.webp`).
-- Max 8 fichiers, 10 Mo, PDF/images.
+## Fusion (`item-match.ts`)
 
-## Quand toucher au prompt
+| Kind | Clé |
+|------|-----|
+| flight | `flight_number` + jour, sinon PNR + jour |
+| hotel | recouvrement des réf. `;`, sinon nom + jour |
+| car / transfer / activity / rail | réf. sinon titre + jour |
 
-Toute erreur d’import réelle (vol retour fantôme, devise EUR sur un $, devis pris pour une résa) se corrige **dans** `PROMPT` de `ingest-booking.ts` + une ligne ici. Ne pas ajouter Tesseract sur les e-tickets : le calque texte PDF + `gpt-4o` suffisent. Ne pas brancher l’import sur le AI Gateway tant que `OPENAI_API_KEY` est présent.
+Réimport même clé = **remplace** la carte. Dans un même extract, 10 duplicatas → 1 item (`mergeExtractItems`). Aller et retour (n° ou jours différents) → 2 items.
+
+## Voyageurs / titre
+
+- Noms imprimés, casse normale. « 2 adults » sans noms → Adulte 1 / Adulte 2.
+- Pas d’enfant sans nom.
+- `title` / `destination` : villes séparées par ` · `.
+
+## UI persist
+
+- Dropzone : progression par fichier, Annuler, retry des erreurs, succès partiel. Filtre cartes par `source_file_name`.
+- Sous-fiche par `kind`. Bandeau devis. Bandeau **À vérifier** (`needs_review`) : on **enregistre**, on ne refuse pas tout le lot.
+- Cartes manuelles OK. Drag `sort_order` après persist.
+- Fichiers : upload signé `ingest-tmp/` puis copie `bookings/{id}/`. Lecture via `/api/files` (pas d’URL signed longue). Cover `scheduleBookingCover`.
+- Identity extract → ne pas `persistNewBookingFromExtract`.
+
+## Fichiers
+
+| Rôle | Path |
+|------|------|
+| Orchestration persist | `lib/crm/ingest-booking.ts` |
+| LLM / vision / raster par fichier | `lib/crm/ingest-file.ts` |
+| Parseurs + `classifyIngestFamily` | `lib/crm/ingest-parse.ts` |
+| Fusion lot (quote / identity) | `lib/crm/ingest-merge.ts` |
+| Chemins `ingest-tmp` | `lib/crm/ingest-storage.ts` |
+| PAN | `lib/crm/ingest-redact.ts` |
+| Schéma + prix null + événements NDJSON | `lib/crm/ingest-types.ts` |
+| Fusion clés | `lib/crm/item-match.ts` |
+| Tests | `lib/crm/ingest-parse.test.ts`, `ingest-pipeline.test.ts`, `item-match.test.ts` |
+| UI | `components/crm/BookingIngest.tsx`, `IngestItemCard.tsx` |
+| API agence | `app/api/admin/bookings/ingest` (NDJSON, `maxDuration` 300) |
+| Upload signé | `app/api/admin/bookings/ingest/sign` |
+
+Fallback modèle : gpt-4o (`OPENAI_API_KEY` `sk-`) puis Gateway `google/gemini-2.5-flash` sur 401/403/429/5xx/timeout. Pas de migration Gateway tant que la clé OpenAI est là.
+
+## Vérifier
+
+```bash
+npx tsx --test lib/crm/ingest-parse.test.ts lib/crm/item-match.test.ts lib/crm/ingest-pipeline.test.ts lib/crm/carnet.test.ts
+npx tsc --noEmit
+```
+
+Un parseur sans test sur la famille du PDF **n’est pas** livré. Fixtures git = texte anonymisé, pas le PDF.

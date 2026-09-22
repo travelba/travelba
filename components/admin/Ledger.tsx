@@ -6,6 +6,8 @@ import type { CrmCustomer, CrmTransaction } from "@/lib/crm/types";
 import { TX_KIND_LABELS, customerFullName } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { StatusChip } from "@/components/crm/ui";
+import { DateFrInput } from "@/components/crm/fields";
+import { ledgerEmptyMessage } from "@/lib/crm/launch-status";
 
 const STATUS_LABELS: Record<CrmTransaction["status"], string> = {
   pending: "En attente",
@@ -25,6 +27,9 @@ export function Ledger({
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [status, setStatus] = useState("all");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const byId = useMemo(
     () => new Map(customers.map((c) => [c.id, customerFullName(c)])),
@@ -45,58 +50,101 @@ export function Ledger({
     event.preventDefault();
     const form = event.currentTarget;
     const body = Object.fromEntries(new FormData(form).entries());
-    await fetch("/api/admin/transactions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    form.reset();
-    router.refresh();
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await fetch("/api/admin/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(json.error || "Écriture impossible. Réessayez.");
+        return;
+      }
+      form.reset();
+      setNotice("Écriture enregistrée.");
+      router.refresh();
+    } catch {
+      setError("Connexion interrompue. Réessayez.");
+    } finally {
+      setSaving(false);
+    }
   }
+
+  const fieldClass = "rounded-xl border border-border bg-white px-3 py-2.5";
+  const labelClass = "flex flex-col gap-1 text-xs font-semibold text-muted";
 
   return (
     <div className="space-y-6">
       <form onSubmit={onSubmit} className="admin-af-card grid gap-3 rounded-3xl p-5 sm:grid-cols-3">
-        <select name="customer_id" required className="rounded-xl border border-border bg-white px-3 py-2.5">
-          <option value="">Client…</option>
-          {customers.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.last_name} {c.first_name}
-            </option>
-          ))}
-        </select>
-        <select name="direction" className="rounded-xl border border-border bg-white px-3 py-2.5">
-          <option value="debit">Débit</option>
-          <option value="credit">Crédit</option>
-        </select>
-        <select name="kind" className="rounded-xl border border-border bg-white px-3 py-2.5">
-          <option value="adjustment">Ajustement</option>
-          <option value="booking">Réservation</option>
-          <option value="transfer">Virement</option>
-          <option value="refund">Remboursement</option>
-        </select>
-        <input
-          name="amount"
-          type="number"
-          step="0.01"
-          required
-          placeholder="Montant"
-          className="rounded-xl border border-border bg-white px-3 py-2.5"
-        />
-        <input
-          name="label"
-          placeholder="Libellé"
-          className="rounded-xl border border-border bg-white px-3 py-2.5 sm:col-span-2"
-        />
-        <button className="admin-af-btn h-[54px] rounded-full px-4 text-sm sm:col-span-3">
-          Saisir une écriture
+        <label className={labelClass}>
+          Client
+          <select name="customer_id" required disabled={saving} className={fieldClass}>
+            <option value="">Choisir un client…</option>
+            {customers.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.last_name} {c.first_name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className={labelClass}>
+          Sens
+          <select name="direction" disabled={saving} className={fieldClass}>
+            <option value="debit">Débit</option>
+            <option value="credit">Crédit</option>
+          </select>
+        </label>
+        <label className={labelClass}>
+          Type
+          <select name="kind" disabled={saving} className={fieldClass}>
+            <option value="adjustment">Ajustement</option>
+            <option value="booking">Réservation</option>
+            <option value="transfer">Virement</option>
+            <option value="refund">Remboursement</option>
+          </select>
+        </label>
+        <label className={labelClass}>
+          Montant (€)
+          <input
+            name="amount"
+            type="number"
+            step="0.01"
+            min="0.01"
+            required
+            disabled={saving}
+            placeholder="0,00"
+            className={fieldClass}
+          />
+        </label>
+        <label className={`${labelClass} sm:col-span-2`}>
+          Libellé
+          <input
+            name="label"
+            disabled={saving}
+            placeholder="Ex. Acompte séjour Bali"
+            className={fieldClass}
+          />
+        </label>
+        <button
+          type="submit"
+          disabled={saving}
+          className="admin-af-btn h-[54px] rounded-full px-4 text-sm sm:col-span-3"
+        >
+          {saving ? "Enregistrement…" : "Saisir une écriture"}
         </button>
+        {error ? <p className="text-sm text-accent sm:col-span-3">{error}</p> : null}
+        {notice ? <p className="text-sm text-muted sm:col-span-3">{notice}</p> : null}
       </form>
 
       <div className="flex flex-col gap-2 lg:flex-row">
         <select
           value={customerId}
           onChange={(e) => setCustomerId(e.target.value)}
+          aria-label="Filtrer par client"
           className="rounded-xl border border-border bg-white px-3 py-2.5 text-sm"
         >
           <option value="">Tous les clients</option>
@@ -106,21 +154,22 @@ export function Ledger({
             </option>
           ))}
         </select>
-        <input
-          type="date"
+        <DateFrInput
           value={from}
-          onChange={(e) => setFrom(e.target.value)}
+          onChange={setFrom}
+          aria-label="Du (jj/mm/aaaa)"
           className="rounded-xl border border-border bg-white px-3 py-2.5 text-sm"
         />
-        <input
-          type="date"
+        <DateFrInput
           value={to}
-          onChange={(e) => setTo(e.target.value)}
+          onChange={setTo}
+          aria-label="Au (jj/mm/aaaa)"
           className="rounded-xl border border-border bg-white px-3 py-2.5 text-sm"
         />
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value)}
+          aria-label="Filtrer par statut"
           className="rounded-xl border border-border bg-white px-3 py-2.5 text-sm"
         >
           <option value="all">Tous les statuts</option>
@@ -172,7 +221,7 @@ export function Ledger({
               {!filtered.length ? (
                 <tr>
                   <td colSpan={6} className="px-5 py-8 text-center text-muted">
-                    Aucune écriture.
+                    {ledgerEmptyMessage(transactions.length > 0)}
                   </td>
                 </tr>
               ) : null}

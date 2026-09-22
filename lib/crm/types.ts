@@ -23,6 +23,9 @@ export const BOOKING_ITEM_KINDS = [
   "hotel",
   "transfer",
   "activity",
+  "rail",
+  "car",
+  "cruise",
   "insurance",
   "fee",
 ] as const;
@@ -34,6 +37,9 @@ export const BOOKING_ITEM_LABELS: Record<BookingItemKind, string> = {
   hotel: "Hôtel",
   transfer: "Transfert",
   activity: "Activité",
+  rail: "Train",
+  car: "Voiture",
+  cruise: "Bateau",
   insurance: "Assurance",
   fee: "Frais",
 };
@@ -90,6 +96,7 @@ export type CrmCustomer = {
   last_name: string;
   email: string;
   phone: string | null;
+  phone_secondary: string | null;
   whatsapp: string | null;
   birth_date: string | null;
   sex: string | null;
@@ -98,12 +105,17 @@ export type CrmCustomer = {
   postal_code: string | null;
   city: string | null;
   country: string | null;
-  billing_legal_name: string | null;
-  billing_siret: string | null;
-  billing_vat: string | null;
+  flying_blue: string | null;
+  loyalty: Record<string, string | null> | null;
+  iban: string | null;
+  company_name: string | null;
+  siret: string | null;
+  vat_number: string | null;
+  billing_email: string | null;
   billing_address_line: string | null;
   billing_postal_code: string | null;
   billing_city: string | null;
+  billing_country: string | null;
   language: string;
   stripe_customer_id: string | null;
   created_at: string;
@@ -127,11 +139,21 @@ export type CrmTravelDocument = {
   id: string;
   customer_id: string;
   companion_id: string | null;
+  booking_id: string | null;
+  traveler_id: string | null;
   doc_type: TravelDocType;
   number: string | null;
   issuing_country: string | null;
   issued_on: string | null;
   expires_on: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  birth_date: string | null;
+  nationality: string | null;
+  sex: string | null;
+  place_of_birth: string | null;
+  authority: string | null;
+  personal_number: string | null;
   storage_path: string | null;
   file_name: string | null;
   mime_type: string | null;
@@ -153,6 +175,7 @@ export type CrmBooking = {
   cover_image_path: string | null;
   notes_client: string | null;
   notes_internal: string | null;
+  visible_to_client: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -169,6 +192,8 @@ export type CrmBookingItem = {
   amount: number | null;
   sort_order: number;
   details: Record<string, unknown>;
+  visible_to_client: boolean;
+  source_document_id: string | null;
   created_at: string;
   updated_at: string;
 };

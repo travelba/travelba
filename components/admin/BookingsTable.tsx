@@ -11,7 +11,9 @@ import {
 import { customerFullName } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { bookingCoverUrl } from "@/lib/crm/covers";
+import { CoverPhoto } from "@/components/crm/CoverPhoto";
 import { StatusChip, bookingStatusTone } from "@/components/crm/ui";
+import { bookingsListEmptyMessage } from "@/lib/crm/launch-status";
 
 export function BookingsTable({
   bookings,
@@ -44,12 +46,12 @@ export function BookingsTable({
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Référence, destination, client…"
-          className="w-full rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm outline-none focus:border-[var(--admin-navy)] focus:ring-2 focus:ring-[var(--admin-sky)]"
+          className="admin-af-input w-full text-sm"
         />
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value)}
-          className="rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-sm"
+          className="admin-af-input text-sm sm:w-56"
         >
           <option value="all">Tous les statuts</option>
           {(Object.keys(BOOKING_STATUS_LABELS) as BookingStatus[]).map((s) => (
@@ -67,12 +69,9 @@ export function BookingsTable({
               className="flex flex-col gap-2 px-5 py-4 transition hover:bg-[var(--admin-sky)]/40 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="flex min-w-0 items-center gap-3">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={bookingCoverUrl(b, 240)}
-                  alt=""
-                  className="h-12 w-16 shrink-0 rounded-xl object-cover"
-                />
+              <div className="relative h-12 w-16 shrink-0 overflow-hidden rounded-xl">
+                <CoverPhoto src={bookingCoverUrl(b, 240)} alt={b.destination || b.title} />
+              </div>
                 <div className="min-w-0">
                   <p className="font-semibold text-[var(--admin-navy)]">
                     {b.reference} · {b.title}
@@ -84,6 +83,13 @@ export function BookingsTable({
                 </div>
               </div>
               <div className="flex items-center gap-3">
+                {!b.visible_to_client ? (
+                  <span className="rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">
+                    Brouillon
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold uppercase text-muted">Publié</span>
+                )}
                 <StatusChip tone={bookingStatusTone(b.status)}>
                   {BOOKING_STATUS_LABELS[b.status]}
                 </StatusChip>
@@ -96,7 +102,7 @@ export function BookingsTable({
         ))}
         {!filtered.length ? (
           <li className="px-5 py-8 text-center text-sm text-muted">
-            Aucune réservation trouvée.
+            {bookingsListEmptyMessage(bookings.length > 0)}
           </li>
         ) : null}
       </ul>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { jsonError } from "@/lib/crm/auth";
-import { MIN_PASSWORD_LENGTH } from "@/lib/crm/session";
+import { dbError, jsonError } from "@/lib/crm/auth";
+import { MIN_PASSWORD_LENGTH, pathAfterPassword } from "@/lib/crm/session";
+import { passwordErrorMessage } from "@/lib/crm/db-error";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 
@@ -22,7 +23,10 @@ export async function POST(request: Request) {
   if (password !== confirm) return jsonError("Les mots de passe ne correspondent pas");
 
   const { error } = await supabase.auth.updateUser({ password });
-  if (error) return jsonError(error.message, 400);
+  if (error) {
+    console.error("[client/password]", error.code ?? "?", error.message);
+    return jsonError(passwordErrorMessage(error), 400);
+  }
 
   const admin = createServiceClient();
   const { data: fresh } = await admin.auth.admin.getUserById(user.id);
@@ -34,8 +38,14 @@ export async function POST(request: Request) {
       password_set_at: new Date().toISOString(),
     },
   });
-  if (metaError) return jsonError(metaError.message, 400);
+  if (metaError) return dbError(metaError, 400);
 
   await supabase.auth.refreshSession();
-  return NextResponse.json({ ok: true });
+  const { data: customer } = await admin
+    .from("crm_customers")
+    .select("phone")
+    .eq("auth_user_id", user.id)
+    .maybeSingle();
+  const next = pathAfterPassword(customer?.phone);
+  return NextResponse.json({ ok: true, needsPhone: next !== "/mon-compte", next });
 }

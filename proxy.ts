@@ -31,6 +31,18 @@ export default async function proxy(request: NextRequest) {
   if (forwarded) return forwarded;
 
   const path = request.nextUrl.pathname;
+
+  if (
+    path === "/demo" ||
+    path.startsWith("/demo/") ||
+    /^\/(fr|en)\/demo(\/|$)/.test(path)
+  ) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/connexion";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
   if (
     path.startsWith("/admin") ||
     path.startsWith("/mon-compte") ||

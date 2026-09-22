@@ -1,58 +1,91 @@
 ---
 name: travelba-voyage-crm
 description: >-
-  Master map of Travelba CRM: clients, bookings, ledger, Stripe cards,
-  Revolut credits, and the client portal. Use at the start of any Travelba
-  admin or /mon-compte task.
+  Index Travelba CRM (agence de voyage FR). Use at the start of any Travelba
+  task: admin /admin, client /mon-compte, carnet, auth, Stripe, Revolut,
+  Supabase, production launch, or new feature. Routes the agent to the right
+  specialized skill instead of guessing product rules.
 ---
 
 # Travelba — carte CRM
+
+Produit : back-office `/admin` + espace client `/mon-compte`. UI française.
+Site public : `https://travelba.fr`. Compte : Travel Business Agency (TBA).
+
+Lire **ce fichier en premier**, puis **un seul** skill spécialisé ci-dessous.
+PDF / photos / « entraîne l’import » → **`travelba-document-ingest`** (qualité carnet = qualité import).
+Ne pas ré-ouvrir le QCM produit : les règles sont déjà ancrées dans les skills.
+
+## Quel skill charger
+
+| Tâche | Skill |
+|-------|--------|
+| Clone, stack, conventions, premier agent | `.cursor/skills/travelba-bootstrap/SKILL.md` |
+| Lancement / prod Vercel, DNS, webhooks, cron | `.cursor/skills/travelba-go-live/SKILL.md` |
+| Schema, RLS, bucket, Auth dashboard, migrations | `.cursor/skills/travelba-supabase/SKILL.md` |
+| Invitation, magique, mot de passe, sessions, staff | `.cursor/skills/travelba-auth/SKILL.md` |
+| Carnet, timeline, publier, cartes vol/hôtel | `.cursor/skills/travelba-carnet/SKILL.md` |
+| **Import PDF/photos** (qualité / fiabilité des cartes) | `.cursor/skills/travelba-document-ingest/SKILL.md` |
+| Ledger, encours, Stripe, Revolut | `.cursor/skills/travelba-money/SKILL.md` |
+| Stitch, Lucide, `/api/files`, copy FR | `.cursor/skills/travelba-ui/SKILL.md` |
+| Fiche, passeports, compagnons, facturation | `.cursor/skills/travelba-identity/SKILL.md` |
+| Tests, build, verif navigateur, ne pas casser prod | `.cursor/skills/travelba-verify/SKILL.md` |
+
+Règle always-on : `.cursor/rules/travelba-core.mdc`.
 
 ## Routes
 
 | Besoin | Où |
 |--------|-----|
-| Accueil client | `/mon-compte` |
-| Réservations | `/mon-compte/reservations` |
-| Profil / cartes / docs / compagnons | `/mon-compte/profil…` |
-| Transactions | `/mon-compte/transactions` |
-| Connexion | `/connexion` (mot de passe) |
+| Accueil client (prochain séjour) | `/mon-compte` |
+| Liste / détail carnet | `/mon-compte/reservations`, `/mon-compte/reservations/[reference]` |
+| Vous / Pièces / Voyageurs / Facturation | `/mon-compte/profil…` |
+| Transactions + demander un relevé | `/mon-compte/transactions` |
+| Connexion mot de passe + magique | `/connexion` |
 | Définir mot de passe | `/connexion/mot-de-passe` |
-| Back-office | `/admin` |
+| Admin | `/admin` → clients, réservations, transactions, Revolut |
+| Login staff | `/admin/login` |
+
+Pas de `/demo`. `proxy.ts` redirige `/demo` → `/connexion`.
+`/mon-compte/profil/paiement` redirige vers Facturation (pas d’UI cartes).
 
 ## Modèle
 
-`crm_customers` → `crm_bookings` / `crm_travel_companions` / `crm_travel_documents` / `crm_transactions` / `crm_payment_methods`
+`crm_customers` → `crm_bookings` / `crm_booking_items` / `crm_booking_documents` / `crm_booking_travelers` / `crm_travel_companions` / `crm_travel_documents` / `crm_transactions` / `crm_payment_methods`
 
-Encours = vue `crm_customer_balances` : positif = avoir, négatif = reste à payer.
+Encours = vue `crm_customer_balances` (crédits − débits `posted`). Positif = avoir, négatif = reste à payer. Afficher le signe brut.
 
-## Auth
+IDs prod :
 
-- Client : invitation back-office (e-mail Resend) → `/auth/callback?token_hash` → définir le mot de passe → session persistante jusqu’à déconnexion
-- Flag `app_metadata.must_set_password` (jamais `user_metadata`)
-- Staff : mot de passe + ligne `crm_staff`
-- Premier agent connecté bootstrap `crm_staff` si table vide
-- Données de test : `npm run seed:demo` (clients déjà avec mot de passe, pas de flag)
-- Dashboard Supabase (projet `fsmfozxgujskluxakeoq`) :
-  - Authentication → Providers : inscriptions publiques **désactivées**
-  - Authentication → Sessions : time-box et inactivity timeout **désactivés**
-  - URL allowlist : `https://travelba.fr/auth/callback` et `http://localhost:3000/auth/callback`
+- Supabase `fsmfozxgujskluxakeoq`
+- Vercel projet `prj_NAEfKYyndp7T68G2wKOguSCgtPUr`, team `team_bTvGnpMBL2dVrz8vXQ6vb3eZ`
 
-## Design (Stitch)
+## Interdits globaux
 
-Source de vérité UI : projet **Portail Client Agence Voyage**  
-`https://stitch.withgoogle.com/projects/10475551423344387411`  
-Écrans visibles : **Sovereign Horizon** (marine `#0B192C`, champagne `#C5A880`). Ne pas appliquer Atelier Voyage (émeraude) ni la feuille **Travelba CRM**.
+- Secrets dans git (seulement `.env.local` / Vercel env)
+- URL signed Supabase longue dans le HTML — `/api/files?path=`
+- Crédit Revolut sans rapprochement agent
+- PAN / CVC — références Stripe uniquement
+- `npm run seed:demo` sur la prod
+- Recréer des clients / voyages fictifs en prod
+- Fermer les sessions staff existantes
+- Cache Components Next.js
+- Inventer des heures, petits-déjs, nets, conditions d’annulation
+- Echo PII client (passeport, email, téléphone) dans un PR / log
 
 ## Fichiers clés
 
 | Rôle | Path |
 |------|------|
 | Types | `lib/crm/types.ts` |
-| Auth staff/client | `lib/crm/auth.ts` |
-| Invitation client | `lib/crm/invite.ts` |
-| Import documents → résa | `lib/crm/ingest-booking.ts` — skill `.cursor/skills/travelba-document-ingest/SKILL.md` |
-| Couverture destination | `lib/crm/cover-generate.ts` + `lib/crm/covers.ts` |
-| Identité passeport | `lib/crm/ocr-document.ts` (photo MRZ, pas PDF) |
-| Proxy | `proxy.ts` |
+| Auth staff/client | `lib/crm/auth.ts`, `lib/crm/session.ts` |
+| Invitation | `lib/crm/invite.ts` |
+| Carnet | `lib/crm/carnet.ts` |
+| Import docs | `lib/crm/ingest-booking.ts`, `ingest-parse.ts`, skill `travelba-document-ingest` |
+| Couvertures | `lib/crm/covers.ts` + `lib/crm/cover-generate.ts` |
+| Identité | `lib/crm/ocr-document.ts` |
+| Fichiers | `lib/crm/files.ts` + `app/api/files/route.ts` |
+| Argent | `lib/crm/money.ts`, `lib/crm/bookings.ts` (`syncBookingDebit`) |
+| Site / WhatsApp | `lib/site.ts` (`whatsappNumber` `33756841315`) |
+| Proxy session | `proxy.ts` (pas `middleware.ts`) |
 | Schema | `supabase/migrations/` |

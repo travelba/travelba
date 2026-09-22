@@ -11,18 +11,20 @@ Site vitrine bilingue (FR/EN) + CRM agence (back-office `/admin`, espace client 
 
 ## Démarrer
 
+Agents : `.cursor/skills/travelba-voyage-crm/SKILL.md` (index) → `travelba-bootstrap` en local, `travelba-go-live` pour `https://travelba.fr`.
+
 ```bash
-npm install
-# Copier .env.example → .env.local
-# Appliquer supabase/migrations/20260915093000_crm_schema.sql sur le projet fsmfozxgujskluxakeoq
+npm install --include=optional
+# Copier .env.example → .env.local (jamais commit)
+# Appliquer supabase/migrations/ dans l’ordre — sauf le seed démo en production
 npm run dev
 ```
 
 ## Auth
 
-- Agents : `/admin/login` (email + mot de passe). Le premier utilisateur devient `crm_staff` admin.
-- Clients : `/connexion` (code e-mail, ou mot de passe pour les comptes de test) → `/mon-compte`.
-- Données de test : `npm run seed:demo` (identifiants affichés dans la console).
+- Agents : `/admin/login` (email + mot de passe). Le premier utilisateur devient `crm_staff` admin si la table est vide — ne pas vider la table en prod.
+- Clients : `/connexion` (mot de passe **et** lien magique) après **Inviter** (Créer ≠ Inviter). Premier mot de passe → profil.
+- `npm run seed:demo` : base locale / jetable uniquement, jamais `travelba.fr`.
 
 ## Encours
 

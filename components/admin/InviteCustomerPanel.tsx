@@ -12,7 +12,7 @@ const STATUS_COPY: Record<PortalAccess["status"], { label: string; hint: string 
   },
   invited: {
     label: "Invitation envoyée",
-    hint: "Le client doit encore définir son mot de passe.",
+    hint: "Lien valable 30 jours. Copiez-le ou renvoyez l’e-mail.",
   },
   ready: {
     label: "Espace actif",
@@ -32,6 +32,8 @@ export function InviteCustomerPanel({
   const lastSignInAt = initial.lastSignInAt;
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [link, setLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const copy = STATUS_COPY[status];
@@ -40,6 +42,7 @@ export function InviteCustomerPanel({
     setLoading(true);
     setError(null);
     setInfo(null);
+    setCopied(false);
     const res = await fetch(`/api/admin/clients/${customerId}/invite`, {
       method: "POST",
     });
@@ -50,6 +53,7 @@ export function InviteCustomerPanel({
       return;
     }
     setStatus("invited");
+    setLink(typeof json.link === "string" ? json.link : null);
     setInfo(
       json.invited
         ? "Invitation envoyée par e-mail."
@@ -58,9 +62,19 @@ export function InviteCustomerPanel({
     router.refresh();
   }
 
+  async function copyLink() {
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+    } catch {
+      setError("Copie impossible — sélectionnez le lien manuellement.");
+    }
+  }
+
   return (
     <section className="admin-af-card flex flex-col gap-3 rounded-3xl p-5 sm:flex-row sm:items-center sm:justify-between">
-      <div>
+      <div className="min-w-0">
         <p className="font-label text-[10px] font-bold uppercase tracking-[0.12em] text-muted">
           Espace voyageur
         </p>
@@ -75,19 +89,35 @@ export function InviteCustomerPanel({
         ) : null}
         {info ? <p className="mt-2 text-sm text-[var(--admin-navy)]">{info}</p> : null}
         {error ? <p className="mt-2 text-sm text-[var(--admin-red)]">{error}</p> : null}
+        {link ? (
+          <p className="mt-2 truncate text-xs text-muted" title={link}>
+            Lien généré — valable 30 jours.
+          </p>
+        ) : null}
       </div>
-      <button
-        type="button"
-        onClick={sendInvite}
-        disabled={loading}
-        className="admin-af-btn shrink-0 rounded-full px-4 py-2.5 text-sm disabled:opacity-60"
-      >
-        {loading
-          ? "Envoi…"
-          : status === "none"
-            ? "Envoyer l’invitation"
-            : "Renvoyer l’invitation"}
-      </button>
+      <div className="flex shrink-0 flex-wrap gap-2">
+        {link ? (
+          <button
+            type="button"
+            onClick={() => void copyLink()}
+            className="rounded-full border border-border px-4 py-2.5 text-sm font-semibold"
+          >
+            {copied ? "Lien copié" : "Copier le lien"}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={sendInvite}
+          disabled={loading}
+          className="admin-af-btn shrink-0 rounded-full px-4 py-2.5 text-sm disabled:opacity-60"
+        >
+          {loading
+            ? "Envoi…"
+            : status === "none"
+              ? "Envoyer l’invitation"
+              : "Renvoyer l’invitation"}
+        </button>
+      </div>
     </section>
   );
 }

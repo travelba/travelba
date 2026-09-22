@@ -1,37 +1,165 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CheckCircle2, FileUp, Loader2, Plus, Trash2 } from "lucide-react";
 import {
-  BOOKING_ITEM_KINDS,
-  BOOKING_ITEM_LABELS,
-  customerFullName,
-  type BookingItemKind,
-  type CrmCustomer,
-} from "@/lib/crm/types";
-import { Field, fieldControlClass } from "@/components/crm/fields";
-import type { BookingExtract } from "@/lib/crm/ingest-types";
+  AlertTriangle,
+  CheckCircle2,
+  FileText,
+  FileUp,
+  GripVertical,
+  ImageIcon,
+  Loader2,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
+import { sortItemsByOrder } from "@/lib/crm/carnet";
+import { customerFullName, type CrmCustomer } from "@/lib/crm/types";
+import { DateFrInput, Field, fieldControlClass } from "@/components/crm/fields";
+import {
+  emptyBookingExtract,
+  MAX_INGEST_BYTES,
+  MAX_INGEST_FILES,
+  sanitizeExtractedPrices,
+  type BookingExtract,
+  type IngestStreamEvent,
+  type IngestWarning,
+} from "@/lib/crm/ingest-types";
+import { mergeExtractItems } from "@/lib/crm/item-match";
+import { IngestItemCard } from "@/components/crm/IngestItemCard";
 
 type ItemDraft = BookingExtract["items"][number];
-type TravelerDraft = BookingExtract["travelers"][number];
+type SlotStatus =
+  | "queued"
+  | "uploading"
+  | "uploaded"
+  | "reading"
+  | "ok"
+  | "error"
+  | "identity";
 
-function emptyExtract(): BookingExtract {
+type Slot = {
+  id: string;
+  file: File;
+  previewUrl: string | null;
+  path: string | null;
+  uploadPct: number;
+  status: SlotStatus;
+  family?: string;
+  message?: string;
+};
+
+function emptyItem(): ItemDraft {
   return {
-    document_status: null,
+    kind: "hotel",
     title: "",
-    destination: "",
-    start_date: "",
-    end_date: "",
-    currency: "EUR",
-    total_amount: 0,
-    notes_client: "",
-    customer_email: "",
-    customer_first_name: "",
-    customer_last_name: "",
-    items: [],
-    travelers: [],
+    supplier: "",
+    confirmation_ref: "",
+    start_at: "",
+    end_at: "",
+    amount: null,
+    details: {},
   };
+}
+
+function formatBytes(size: number) {
+  if (size < 1024) return `${size} o`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} Ko`;
+  return `${(size / (1024 * 1024)).toFixed(1)} Mo`;
+}
+
+function newId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function statusLabel(status: SlotStatus) {
+  if (status === "uploading") return "Envoi…";
+  if (status === "uploaded") return "Prêt";
+  if (status === "reading") return "Lecture…";
+  if (status === "ok") return "Lu";
+  if (status === "error") return "Erreur";
+  if (status === "identity") return "Pièce d’identité";
+  return "En attente";
+}
+
+async function putSigned(url: string, file: File, onProgress: (pct: number) => void, signal: AbortSignal) {
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url);
+    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error("Envoi impossible"));
+    };
+    xhr.onerror = () => reject(new Error("Envoi impossible"));
+    xhr.onabort = () => reject(new Error("Envoi annulé"));
+    const onAbort = () => xhr.abort();
+    signal.addEventListener("abort", onAbort, { once: true });
+    xhr.send(file);
+  });
+}
+
+async function readNdjson(res: Response, onEvent: (event: IngestStreamEvent) => void) {
+  if (!res.body) {
+    const json = await res.json();
+    if (json.extract) {
+      onEvent({
+        event: "done",
+        extract: json.extract,
+        suggested_customer_id: json.suggested_customer_id || null,
+        warnings: json.warnings || [],
+      });
+    } else {
+      throw new Error(json.error || "Lecture impossible");
+    }
+    return;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop() || "";
+    for (const line of lines) {
+      const trim = line.trim();
+      if (!trim) continue;
+      onEvent(JSON.parse(trim) as IngestStreamEvent);
+    }
+  }
+  if (buf.trim()) onEvent(JSON.parse(buf) as IngestStreamEvent);
+}
+
+function mergeRetryExtract(
+  previous: BookingExtract | null,
+  incoming: BookingExtract,
+  retried: Set<string>
+): BookingExtract {
+  if (!previous) return incoming;
+  const kept = (previous.items || []).filter(
+    (item) => !retried.has(String(item.details?.source_file_name || ""))
+  );
+  return sanitizeExtractedPrices({
+    ...previous,
+    ...incoming,
+    title: incoming.title || previous.title,
+    destination: incoming.destination || previous.destination,
+    notes_client: [previous.notes_client, incoming.notes_client]
+      .map((row) => (row || "").trim())
+      .filter(Boolean)
+      .join("\n"),
+    items: mergeExtractItems([...kept, ...(incoming.items || [])]),
+    travelers: [...(previous.travelers || []), ...(incoming.travelers || [])],
+  });
 }
 
 export function BookingIngest({
@@ -53,39 +181,197 @@ export function BookingIngest({
 }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [files, setFiles] = useState<File[]>([]);
-  const [busy, setBusy] = useState<"idle" | "read" | "save">("idle");
+  const dragItem = useRef<number | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const [batchId, setBatchId] = useState(() => newId());
+  const [slots, setSlots] = useState<Slot[]>([]);
+  const [busy, setBusy] = useState<"idle" | "upload" | "read" | "save">("idle");
+  const [progress, setProgress] = useState<{ done: number; total: number; current?: string } | null>(
+    null
+  );
   const [error, setError] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<IngestWarning[]>([]);
   const [extract, setExtract] = useState<BookingExtract | null>(null);
   const [customerId, setCustomerId] = useState("");
-  const [visibleToClient, setVisibleToClient] = useState(true);
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
+  const slotsRef = useRef<Slot[]>([]);
+  useEffect(() => {
+    slotsRef.current = slots;
+  }, [slots]);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      for (const slot of slotsRef.current) {
+        if (slot.previewUrl) URL.revokeObjectURL(slot.previewUrl);
+      }
+    };
+  }, []);
+
+  function patchSlot(id: string, patch: Partial<Slot>) {
+    setSlots((prev) => prev.map((slot) => (slot.id === id ? { ...slot, ...patch } : slot)));
+  }
 
   function addFiles(list: FileList | File[] | null) {
     if (!list) return;
-    setFiles((prev) => [...prev, ...Array.from(list)].slice(0, 8));
+    const incoming = Array.from(list);
+    const tooBig = incoming.find((file) => file.size > MAX_INGEST_BYTES);
+    if (tooBig) {
+      setError(`${tooBig.name} dépasse 25 Mo.`);
+      return;
+    }
+    setSlots((prev) => {
+      const room = MAX_INGEST_FILES - prev.length;
+      const next = incoming.slice(0, Math.max(0, room)).map((file) => ({
+        id: newId(),
+        file,
+        previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+        path: null,
+        uploadPct: 0,
+        status: "queued" as const,
+      }));
+      return [...prev, ...next];
+    });
     setError(null);
   }
 
-  async function readDocs() {
-    if (!files.length) {
+  async function removeSlot(id: string) {
+    const slot = slots.find((row) => row.id === id);
+    if (!slot) return;
+    if (slot.previewUrl) URL.revokeObjectURL(slot.previewUrl);
+    if (slot.path) {
+      try {
+        await fetch("/api/admin/bookings/ingest/sign", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: slot.path }),
+        });
+      } catch {
+        /* best-effort */
+      }
+    }
+    setSlots((prev) => prev.filter((row) => row.id !== id));
+  }
+
+  async function uploadSlots(target: Slot[], signal: AbortSignal) {
+    const ready: Slot[] = [];
+    for (const slot of target) {
+      if (slot.path) {
+        ready.push(slot);
+        continue;
+      }
+      patchSlot(slot.id, { status: "uploading", uploadPct: 0 });
+      const signedRes = await fetch("/api/admin/bookings/ingest/sign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: slot.file.name,
+          type: slot.file.type,
+          size: slot.file.size,
+          batchId,
+        }),
+        signal,
+      });
+      const signed = await signedRes.json();
+      if (!signedRes.ok) throw new Error(signed.error || "Envoi impossible");
+      await putSigned(signed.signedUrl, slot.file, (pct) => {
+        patchSlot(slot.id, { uploadPct: pct, status: "uploading" });
+      }, signal);
+      const next = { ...slot, path: signed.path as string, status: "uploaded" as const, uploadPct: 100 };
+      patchSlot(slot.id, { path: next.path, status: "uploaded", uploadPct: 100 });
+      ready.push(next);
+    }
+    return ready;
+  }
+
+  async function runIngest(target: Slot[], retryNames?: Set<string>) {
+    if (!target.length) {
       setError("Ajoutez un PDF ou une photo.");
       return;
     }
-    setBusy("read");
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setBusy("upload");
     setError(null);
-    const body = new FormData();
-    for (const file of files) body.append("files", file);
     try {
-      const res = await fetch(ingestUrl, { method: "POST", body });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Lecture impossible");
-      setExtract({ ...emptyExtract(), ...json.extract });
-      if (json.suggested_customer_id) setCustomerId(json.suggested_customer_id);
+      const uploaded = await uploadSlots(target, controller.signal);
+      setBusy("read");
+      setProgress({ done: 0, total: uploaded.length, current: uploaded[0]?.file.name });
+      const res = await fetch(ingestUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          batchId,
+          files: uploaded.map((slot) => ({
+            path: slot.path,
+            name: slot.file.name,
+            type: slot.file.type || "",
+          })),
+        }),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const contentType = res.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          const json = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(json.error || "Lecture impossible");
+        }
+        if (!res.body) {
+          throw new Error("Lecture impossible");
+        }
+      }
+      let fatal: string | null = null;
+      await readNdjson(res, (event) => {
+        if (event.event === "progress") {
+          setProgress({ done: event.done, total: event.total, current: event.current });
+        }
+        if (event.event === "file") {
+          setSlots((prev) =>
+            prev.map((slot) =>
+              slot.file.name === event.name
+                ? {
+                    ...slot,
+                    status: event.status,
+                    family: event.family,
+                    message: event.message,
+                  }
+                : slot
+            )
+          );
+          if (event.status === "reading") {
+            setProgress({ done: event.index, total: event.total, current: event.name });
+          }
+        }
+        if (event.event === "done") {
+          setExtract((prev) => {
+            const incoming = {
+              ...emptyBookingExtract(),
+              ...event.extract,
+              items: sortItemsByOrder(event.extract.items || []),
+            };
+            return retryNames ? mergeRetryExtract(prev, incoming, retryNames) : incoming;
+          });
+          setWarnings(event.warnings || []);
+          if (event.suggested_customer_id) setCustomerId(event.suggested_customer_id);
+        }
+        if (event.event === "fatal") fatal = event.error;
+      });
+      if (fatal) throw new Error(fatal);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Lecture impossible");
+      if ((err as Error).name === "AbortError" || (err instanceof Error && err.message.includes("annul"))) {
+        setError("Lecture annulée.");
+      } else {
+        setError(err instanceof Error ? err.message : "Lecture impossible");
+      }
     } finally {
+      abortRef.current = null;
       setBusy("idle");
+      setProgress(null);
     }
+  }
+
+  function abortWork() {
+    abortRef.current?.abort();
   }
 
   async function save() {
@@ -96,17 +382,36 @@ export function BookingIngest({
     }
     setBusy("save");
     setError(null);
-    const body = new FormData();
-    body.set("extract", JSON.stringify(extract));
-    body.set("customer_id", customerId);
-    body.set("visible_to_client", visibleToClient ? "1" : "0");
-    for (const file of files) body.append("files", file);
     try {
-      const res = await fetch(saveUrl, { method: "POST", body });
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const uploaded = await uploadSlots(slots, controller.signal);
+      const body = new FormData();
+      body.set("extract", JSON.stringify(extract));
+      body.set("customer_id", customerId);
+      body.set("batch_id", batchId);
+      body.set(
+        "staged",
+        JSON.stringify(
+          uploaded
+            .filter((slot) => slot.path)
+            .map((slot) => ({
+              path: slot.path,
+              name: slot.file.name,
+              type: slot.file.type,
+            }))
+        )
+      );
+      const res = await fetch(saveUrl, { method: "POST", body, signal: controller.signal });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Enregistrement impossible");
       setExtract(null);
-      setFiles([]);
+      setWarnings([]);
+      for (const slot of slots) {
+        if (slot.previewUrl) URL.revokeObjectURL(slot.previewUrl);
+      }
+      setSlots([]);
+      setBatchId(newId());
       if (json.booking && redirectTo) {
         router.push(redirectTo(json.booking));
         return;
@@ -115,6 +420,7 @@ export function BookingIngest({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Enregistrement impossible");
     } finally {
+      abortRef.current = null;
       setBusy("idle");
     }
   }
@@ -132,13 +438,33 @@ export function BookingIngest({
     });
   }
 
-  if (!aiConfigured) {
-    return (
-      <div className="admin-af-card rounded-3xl border border-dashed border-border p-5 text-sm text-muted">
-        La lecture automatique n’est pas encore configurée. Ajoutez{" "}
-        <code className="text-xs">OPENAI_API_KEY</code> pour déposer un billet et remplir le dossier.
-      </div>
+  const needsReview = Boolean(
+    extract?.items.some((item) => item.details?.needs_review) ||
+      (extract && !extract.items.length)
+  );
+
+  const sources = useMemo(() => {
+    const names = new Set(
+      (extract?.items || [])
+        .map((item) => item.details?.source_file_name)
+        .filter((name): name is string => Boolean(name))
     );
+    return [...names];
+  }, [extract]);
+
+  const visibleItems = useMemo(() => {
+    if (!extract) return [];
+    if (sourceFilter === "all") return extract.items;
+    return extract.items.filter((item) => item.details?.source_file_name === sourceFilter);
+  }, [extract, sourceFilter]);
+
+  const failedSlots = slots.filter((slot) => slot.status === "error");
+  const reading = busy === "read" || busy === "upload";
+
+  function startManual() {
+    setExtract(emptyBookingExtract());
+    setWarnings([]);
+    setError(null);
   }
 
   return (
@@ -153,15 +479,27 @@ export function BookingIngest({
       >
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
           <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-[var(--admin-navy)]">
-            {busy === "read" ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileUp className="h-5 w-5" />}
+            {reading ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileUp className="h-5 w-5" />}
           </span>
           <div className="min-w-0 flex-1">
             <p className="font-display text-base font-bold text-[var(--admin-navy)]">
-              {mode === "append" ? "Compléter avec un document" : "Créer le dossier depuis les documents"}
+              {mode === "append" ? "Ajouter des documents au dossier" : "Créer le dossier depuis les documents"}
             </p>
             <p className="mt-1 text-sm text-muted">
-              Déposez billets, vouchers, devis ou factures (PDF ou photo). Nous lisons tout et proposons les champs.
+              Billets, vouchers, devis, trains, voitures, bateaux (PDF ou photo). 30 fichiers, 25 Mo max.
+              Rien n’est publié tant que vous n’avez pas cliqué sur Publier.
             </p>
+            {!aiConfigured ? (
+              <p className="mt-2 text-xs text-[var(--admin-navy)]">
+                Lecture IA indisponible ici : seuls les documents reconnus (billets Amadeus, confirmations hôtel connues) sont lus. Le reste se saisit à la main.
+              </p>
+            ) : null}
+            {progress ? (
+              <p className="mt-2 text-sm font-medium text-[var(--admin-navy)]">
+                {progress.done} / {progress.total}
+                {progress.current ? ` — ${progress.current}` : ""}
+              </p>
+            ) : null}
           </div>
           <button
             type="button"
@@ -182,15 +520,44 @@ export function BookingIngest({
             }}
           />
         </div>
-        {files.length ? (
-          <ul className="mt-3 space-y-1 text-sm">
-            {files.map((file, index) => (
-              <li key={`${file.name}-${index}`} className="flex items-center justify-between gap-2">
-                <span className="truncate">{file.name}</span>
+        {slots.length ? (
+          <ul className="mt-4 space-y-2">
+            {slots.map((slot) => (
+              <li
+                key={slot.id}
+                className="flex items-center gap-3 rounded-2xl bg-white/80 px-3 py-2 text-sm"
+              >
+                {slot.previewUrl ? (
+                  <img
+                    src={slot.previewUrl}
+                    alt=""
+                    className="h-10 w-10 rounded-lg object-cover"
+                  />
+                ) : (
+                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--admin-sky)] text-[var(--admin-navy)]">
+                    {slot.file.type.includes("pdf") ? (
+                      <FileText className="h-4 w-4" />
+                    ) : (
+                      <ImageIcon className="h-4 w-4" />
+                    )}
+                  </span>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium text-[var(--admin-navy)]">{slot.file.name}</p>
+                  <p className="text-xs text-muted">
+                    {formatBytes(slot.file.size)}
+                    {slot.file.type ? ` · ${slot.file.type.replace("application/", "")}` : ""}
+                    {" · "}
+                    {statusLabel(slot.status)}
+                    {slot.status === "uploading" ? ` ${slot.uploadPct}%` : ""}
+                    {slot.message ? ` — ${slot.message}` : ""}
+                  </p>
+                </div>
                 <button
                   type="button"
                   className="text-xs font-semibold text-accent"
-                  onClick={() => setFiles((prev) => prev.filter((_, i) => i !== index))}
+                  onClick={() => void removeSlot(slot.id)}
+                  disabled={busy !== "idle"}
                 >
                   Retirer
                 </button>
@@ -198,25 +565,76 @@ export function BookingIngest({
             ))}
           </ul>
         ) : null}
-        <button
-          type="button"
-          disabled={busy !== "idle" || !files.length}
-          onClick={() => void readDocs()}
-          className="admin-af-btn mt-4 rounded-full px-4 py-2.5 text-sm disabled:opacity-50"
-        >
-          {busy === "read" ? "Lecture…" : "Lire et remplir"}
-        </button>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={busy !== "idle" || !slots.length}
+            onClick={() => void runIngest(slots)}
+            className="admin-af-btn rounded-full px-4 py-2.5 text-sm disabled:opacity-50"
+          >
+            {busy === "read" || busy === "upload" ? "Lecture…" : "Lire et remplir"}
+          </button>
+          {reading ? (
+            <button
+              type="button"
+              onClick={abortWork}
+              className="inline-flex items-center gap-1 rounded-full border border-border px-4 py-2.5 text-sm font-semibold"
+            >
+              <X className="h-3.5 w-3.5" /> Annuler
+            </button>
+          ) : null}
+          {failedSlots.length && busy === "idle" ? (
+            <button
+              type="button"
+              onClick={() =>
+                void runIngest(
+                  failedSlots,
+                  new Set(failedSlots.map((slot) => slot.file.name))
+                )
+              }
+              className="rounded-full border border-border px-4 py-2.5 text-sm font-semibold"
+            >
+              Réessayer les erreurs ({failedSlots.length})
+            </button>
+          ) : null}
+          <button
+            type="button"
+            disabled={busy !== "idle" || Boolean(extract)}
+            onClick={startManual}
+            className="rounded-full border border-border px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
+          >
+            Saisir les cartes à la main
+          </button>
+        </div>
       </div>
+
+      {warnings.length ? (
+        <div className="space-y-2">
+          {warnings.map((warning) => (
+            <p
+              key={`${warning.file}-${warning.message}`}
+              className="rounded-2xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]"
+            >
+              {warning.file} — {warning.message}
+            </p>
+          ))}
+        </div>
+      ) : null}
 
       {extract ? (
         <div className="space-y-4">
           <p className="flex items-center gap-2 text-sm text-[var(--admin-navy)]">
             <CheckCircle2 className="h-4 w-4" />
-            Vérifiez puis enregistrez. Rien n’est écrit tant que vous n’avez pas validé.
+            Relisez chaque carte. Enregistrer crée un brouillon invisible au client.
           </p>
+          {needsReview ? (
+            <p className="rounded-2xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
+              À vérifier — lecture incomplète ou aucune carte extraite. Les fichiers restent joints.
+            </p>
+          ) : null}
           {extract.document_status === "quote" ? (
             <p className="rounded-2xl bg-[#efebe0] px-3 py-2 text-sm text-[var(--admin-navy)]">
-              Devis : tarifs non bloqués. Vérifiez la chambre et le prix avant d’enregistrer.
+              Devis : le client ne verra ce dossier qu’après publication. Saisissez le prix vendu, pas le net PDF.
             </p>
           ) : null}
           {extract.document_status === "identity" ? (
@@ -257,22 +675,18 @@ export function BookingIngest({
               />
             </Field>
             <Field label="Début">
-              <input
-                type="date"
+              <DateFrInput
                 value={(extract.start_date || "").slice(0, 10)}
-                onChange={(e) => patch("start_date", e.target.value)}
-                className={fieldControlClass}
+                onChange={(value) => patch("start_date", value)}
               />
             </Field>
             <Field label="Fin">
-              <input
-                type="date"
+              <DateFrInput
                 value={(extract.end_date || "").slice(0, 10)}
-                onChange={(e) => patch("end_date", e.target.value)}
-                className={fieldControlClass}
+                onChange={(value) => patch("end_date", value)}
               />
             </Field>
-            <Field label="Montant">
+            <Field label="Prix vendu (total)">
               <input
                 type="number"
                 step="0.01"
@@ -291,107 +705,69 @@ export function BookingIngest({
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="font-display font-bold text-[var(--admin-navy)]">Prestations</p>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 text-xs font-semibold"
-                onClick={() =>
-                  patch("items", [
-                    ...extract.items,
-                    {
-                      kind: "fee",
-                      title: "",
-                      supplier: "",
-                      confirmation_ref: "",
-                      start_at: "",
-                      end_at: "",
-                      amount: null,
-                      details: {},
-                    },
-                  ])
-                }
-              >
-                <Plus className="h-3.5 w-3.5" /> Ajouter
-              </button>
-            </div>
-            {extract.items.map((item, index) => (
-              <div key={index} className="grid gap-2 rounded-2xl border border-border p-3 sm:grid-cols-6">
-                <select
-                  value={item.kind}
-                  onChange={(e) => patchItem(index, { ...item, kind: e.target.value as BookingItemKind })}
-                  className={fieldControlClass}
-                >
-                  {BOOKING_ITEM_KINDS.map((kind) => (
-                    <option key={kind} value={kind}>
-                      {BOOKING_ITEM_LABELS[kind]}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  placeholder="Titre"
-                  value={item.title}
-                  onChange={(e) => patchItem(index, { ...item, title: e.target.value })}
-                  className={`${fieldControlClass} sm:col-span-2`}
-                />
-                <input
-                  placeholder="Fournisseur"
-                  value={item.supplier || ""}
-                  onChange={(e) => patchItem(index, { ...item, supplier: e.target.value })}
-                  className={fieldControlClass}
-                />
-                <input
-                  placeholder="PNR / réf."
-                  value={item.confirmation_ref || ""}
-                  onChange={(e) => patchItem(index, { ...item, confirmation_ref: e.target.value })}
-                  className={fieldControlClass}
-                />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-display font-bold text-[var(--admin-navy)]">Cartes du carnet</p>
+              <div className="flex flex-wrap items-center gap-2">
+                {sources.length > 1 ? (
+                  <select
+                    value={sourceFilter}
+                    onChange={(event) => setSourceFilter(event.target.value)}
+                    className={`${fieldControlClass} w-auto min-w-[10rem] py-1.5`}
+                  >
+                    <option value="all">Tous les fichiers</option>
+                    {sources.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
                 <button
                   type="button"
-                  className="justify-self-end text-accent"
-                  onClick={() => patch("items", extract.items.filter((_, i) => i !== index))}
+                  className="inline-flex items-center gap-1 text-xs font-semibold"
+                  onClick={() => patch("items", [...extract.items, emptyItem()])}
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Plus className="h-3.5 w-3.5" /> Carte manuelle
                 </button>
-                <input
-                  placeholder="Début"
-                  value={item.start_at || ""}
-                  onChange={(e) => patchItem(index, { ...item, start_at: e.target.value })}
-                  className={`${fieldControlClass} sm:col-span-2`}
-                />
-                <input
-                  placeholder="Fin"
-                  value={item.end_at || ""}
-                  onChange={(e) => patchItem(index, { ...item, end_at: e.target.value })}
-                  className={`${fieldControlClass} sm:col-span-2`}
-                />
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="Montant"
-                  value={item.amount ?? ""}
-                  onChange={(e) =>
-                    patchItem(index, { ...item, amount: e.target.value === "" ? null : Number(e.target.value) })
-                  }
-                  className={fieldControlClass}
-                />
-                {item.kind === "flight" ? (
-                  <input
-                    placeholder="Vol (AF123)"
-                    value={item.details?.flight_number || ""}
-                    onChange={(e) =>
-                      patchItem(index, {
-                        ...item,
-                        details: { ...item.details, flight_number: e.target.value },
-                      })
-                    }
-                    className={fieldControlClass}
-                  />
-                ) : (
-                  <span />
-                )}
               </div>
-            ))}
+            </div>
+            {visibleItems.map((item) => {
+              const index = extract.items.indexOf(item);
+              return (
+                <div
+                  key={`${item.details?.source_file_name || "item"}-${index}`}
+                  className="flex gap-2"
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => {
+                    const from = dragItem.current;
+                    dragItem.current = null;
+                    if (from == null || from === index) return;
+                    const items = [...extract.items];
+                    const [row] = items.splice(from, 1);
+                    items.splice(index, 0, row);
+                    patch("items", items);
+                  }}
+                >
+                  <span
+                    draggable
+                    onDragStart={() => {
+                      dragItem.current = index;
+                    }}
+                    className="mt-3 cursor-grab touch-none text-muted"
+                    aria-label="Réordonner"
+                  >
+                    <GripVertical className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <IngestItemCard
+                      item={item}
+                      onChange={(next) => patchItem(index, next)}
+                      onRemove={() => patch("items", extract.items.filter((_, i) => i !== index))}
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           <div className="space-y-2">
@@ -440,17 +816,6 @@ export function BookingIngest({
             ))}
           </div>
 
-          {role === "admin" ? (
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={visibleToClient}
-                onChange={(e) => setVisibleToClient(e.target.checked)}
-              />
-              Publier les fichiers dans l’espace client
-            </label>
-          ) : null}
-
           <button
             type="button"
             disabled={busy !== "idle" || extract.document_status === "identity"}
@@ -460,8 +825,8 @@ export function BookingIngest({
             {busy === "save"
               ? "Enregistrement…"
               : mode === "append"
-                ? "Ajouter au dossier"
-                : "Créer le dossier"}
+                ? "Enregistrer le brouillon"
+                : "Créer le dossier (brouillon)"}
           </button>
         </div>
       ) : null}

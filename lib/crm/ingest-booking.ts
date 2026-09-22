@@ -1,70 +1,47 @@
 import "server-only";
-import { generateText, Output } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
-import { extractImages, extractText, getDocumentProxy } from "unpdf";
-import sharp from "sharp";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
 import { nextBookingReference, syncBookingDebit } from "@/lib/crm/bookings";
-import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
+import {
+  copyCrmFile,
+  listCrmFiles,
+  removeCrmFiles,
+  safeFileName,
+  uploadCrmFile,
+} from "@/lib/crm/files";
 import { emptyToNull } from "@/lib/crm/identity";
+import { extractBookingFromFiles } from "@/lib/crm/ingest-file";
 import {
   bookingExtractSchema,
   aiGatewayConfigured,
-  openaiApiKey,
+  guessIngestMime,
+  isAllowedIngestType,
+  sanitizeExtractedPrices,
+  MAX_INGEST_BYTES,
+  MAX_INGEST_FILES,
   type BookingExtract,
+  type IngestStagedFile,
 } from "@/lib/crm/ingest-types";
+import { assertStaffIngestPath, ingestBatchPrefix } from "@/lib/crm/ingest-storage";
+import { sortItemsByOrder } from "@/lib/crm/carnet";
 import { scheduleBookingCover } from "@/lib/crm/cover-generate";
+import { findMatchingItem } from "@/lib/crm/item-match";
+import { isPlaceholderTraveler, matchTravelerToParty, sameRecordedTraveler } from "@/lib/crm/person-match";
+import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import {
   BOOKING_ITEM_KINDS,
   type BookingItemKind,
   type BookingStatus,
   type CrmBooking,
+  type CrmBookingItem,
   type CrmCompanion,
   type CrmCustomer,
 } from "@/lib/crm/types";
 
 export { bookingExtractSchema, aiGatewayConfigured, type BookingExtract };
-
-export const MAX_INGEST_BYTES = 10 * 1024 * 1024;
-export const MAX_INGEST_FILES = 8;
-const ALLOWED_TYPES = new Set([
-  "application/pdf",
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-  "image/webp",
-  "image/heic",
-  "image/heif",
-]);
-
-const PROMPT = `Tu es l’assistant d’une agence de voyage française (Travelba).
-Lis TOUS les documents fournis (e-tickets IATA/Amadeus, devis Little Emperors / My Concierge, vouchers hôtel, transferts TAAP/Talixo, factures).
-Extrais un dossier de réservation UNIQUE — seulement si les fichiers concernent LE MÊME voyage.
-Si les fichiers mélangent plusieurs voyages (dates/destinations/noms différents) : extraire UNIQUEMENT le voyage le plus complet et le signaler dans notes_client. Ne pas fusionner Lugano + Costa Rica + Panama.
-
-document_status :
-- confirmed = billet émis, voucher avec n° de réservation, transfert confirmé.
-- quote = tarif / « none are on hold » / plusieurs options de chambres / pas de nom de réservation.
-- identity = passeport ou pièce d’identité : ne pas créer de prestation.
-
-Règles :
-- Ne jamais inventer une information absente : mettre null.
-- Ne jamais extraire de numéro de carte, même masqué.
-- Ne pas créer de voyageurs vides (« 2 adults » sans noms ≠ 2 voyageurs).
-- Dates de séjour : YYYY-MM-DD.
-- Horaires : ISO 8601 uniquement s’ils sont écrits. Interdit d’inventer un check-in 15:00 / check-out 12:00.
-- Devise : $ = USD, CHF = CHF, € = EUR. Ne pas forcer EUR si un symbole est présent.
-- kind : flight | hotel | transfer | activity | insurance | fee.
-- Un vol aller et un vol retour = DEUX items flight. PAS de vol retour s’il n’est pas imprimé.
-- confirmation_ref = PNR GDS 6 lettres (Référence du dossier). details.pnr = réf. compagnie (ex. AF/Y2FYWL, X1/N0OP1Q).
-- Compagnie émettrice (Hahn Air) ≠ transporteur (Air Panama) : airline / details.airline = l’opérateur réel, supplier = l’émetteur du billet.
-- details.from / details.to = codes IATA pour les vols. Transfert : details.pickup / details.dropoff (pas from/to). L’heure d’un vol citée sur un bon Talixo n’est PAS l’heure de prise en charge.
-- Deux chambres / deux « Booking name » / deux refs (97620170;97620172) = DEUX items hotel + les deux voyageurs.
-- Devis hôtel avec plusieurs tarifs : document_status=quote, total_amount=null, un item par option de chambre (ne pas choisir la première).
-- Voyageurs : casse normale (Elad Taieb, pas elad taieb).
-- title : destination courte + type (ex. « Marrakech — aller-retour »).
-- total_amount : total TTC s’il apparaît une seule fois. Si plusieurs options de prix, null.`;
+export { extractBookingFromFiles };
+export { MAX_INGEST_BYTES, MAX_INGEST_FILES };
 
 export function collectIngestFiles(form: FormData) {
   const files: File[] = [];
@@ -76,6 +53,24 @@ export function collectIngestFiles(form: FormData) {
   return files;
 }
 
+export function collectStagedFiles(form: FormData): IngestStagedFile[] {
+  const raw = form.get("staged");
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(String(raw));
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((row) => ({
+        path: String(row?.path || ""),
+        name: String(row?.name || ""),
+        type: row?.type ? String(row.type) : null,
+      }))
+      .filter((row) => row.path && row.name);
+  } catch {
+    throw new Error("Fichiers joints invalides");
+  }
+}
+
 export function assertIngestFiles(files: File[]) {
   if (files.length === 0) throw new Error("Ajoutez au moins un PDF ou une photo.");
   if (files.length > MAX_INGEST_FILES) {
@@ -83,117 +78,21 @@ export function assertIngestFiles(files: File[]) {
   }
   for (const file of files) {
     if (file.size > MAX_INGEST_BYTES) {
-      throw new Error(`${file.name} dépasse 10 Mo.`);
+      throw new Error(`${file.name} dépasse 25 Mo.`);
     }
-    const type = file.type || guessMime(file.name);
-    if (!ALLOWED_TYPES.has(type) && !type.startsWith("image/")) {
+    if (!isAllowedIngestType(file.type, file.name)) {
       throw new Error(`${file.name} : PDF ou image uniquement.`);
     }
   }
 }
 
-function guessMime(name: string) {
-  const lower = name.toLowerCase();
-  if (lower.endsWith(".pdf")) return "application/pdf";
-  if (lower.endsWith(".png")) return "image/png";
-  if (lower.endsWith(".webp")) return "image/webp";
-  if (lower.endsWith(".heic") || lower.endsWith(".heif")) return "image/heic";
-  return "image/jpeg";
-}
-
-function ingestModel() {
-  const key = openaiApiKey();
-  if (key) return createOpenAI({ apiKey: key })("gpt-4o");
-  return "google/gemini-2.5-flash";
-}
-
-type UserPart =
-  | { type: "text"; text: string }
-  | { type: "image"; image: Uint8Array; mediaType: string };
-
-async function imagePart(bytes: Uint8Array, mediaType: string): Promise<UserPart> {
-  if (mediaType.includes("heic") || mediaType.includes("heif")) {
-    try {
-      const jpeg = await sharp(Buffer.from(bytes)).jpeg({ quality: 85 }).toBuffer();
-      return { type: "image", image: new Uint8Array(jpeg), mediaType: "image/jpeg" };
-    } catch {
-      /* keep original */
-    }
-  }
-  return { type: "image", image: bytes, mediaType };
-}
-
-async function pdfParts(name: string, bytes: Uint8Array): Promise<UserPart[]> {
-  const parts: UserPart[] = [];
+export async function cleanupIngestBatch(staffUserId: string, batchId: string) {
   try {
-    const pdf = await getDocumentProxy(bytes);
-    const extracted = await extractText(pdf, { mergePages: true });
-    const text = extracted.text;
-    parts.push({
-      type: "text",
-      text: `PDF « ${name} » (${extracted.totalPages} page${extracted.totalPages > 1 ? "s" : ""}) :\n${text.slice(0, 24000)}`,
-    });
-    const dense = text.replace(/\s/g, "").length;
-    if (dense < 500) {
-      const max = Math.min(extracted.totalPages, 3);
-      for (let page = 1; page <= max; page++) {
-        const images = await extractImages(pdf, page);
-        for (const img of images.slice(0, 6)) {
-          const jpeg = await sharp(img.data, {
-            raw: { width: img.width, height: img.height, channels: img.channels },
-          })
-            .jpeg({ quality: 80 })
-            .toBuffer();
-          parts.push({ type: "image", image: new Uint8Array(jpeg), mediaType: "image/jpeg" });
-        }
-      }
-    }
-  } catch {
-    parts.push({
-      type: "text",
-      text: `PDF « ${name} » : texte illisible, s’appuyer sur le fichier binaire s’il est fourni.`,
-    });
-  }
-  return parts;
-}
-
-async function buildIngestContent(files: File[]): Promise<UserPart[]> {
-  const content: UserPart[] = [{ type: "text", text: PROMPT }];
-  for (const file of files) {
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const mediaType = file.type || guessMime(file.name);
-    if (mediaType === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
-      content.push(...(await pdfParts(file.name, bytes)));
-    } else {
-      content.push(await imagePart(bytes, mediaType.startsWith("image/") ? mediaType : "image/jpeg"));
-    }
-  }
-  return content;
-}
-
-export async function extractBookingFromFiles(files: File[]): Promise<BookingExtract> {
-  if (!aiGatewayConfigured()) {
-    throw new Error("Lecture automatique non configurée (OPENAI_API_KEY).");
-  }
-  assertIngestFiles(files);
-  const content = await buildIngestContent(files);
-  try {
-    const result = await generateText({
-      model: ingestModel(),
-      output: Output.object({
-        schema: bookingExtractSchema,
-        name: "booking",
-        description: "Dossier de réservation extrait des documents",
-      }),
-      messages: [{ role: "user", content }],
-    });
-    if (!result.output) {
-      throw new Error("Lecture incomplète. Réessayez avec des fichiers plus lisibles.");
-    }
-    return result.output;
+    const prefix = ingestBatchPrefix(staffUserId, batchId);
+    const paths = await listCrmFiles(prefix);
+    await removeCrmFiles(paths);
   } catch (err) {
-    if (err instanceof Error && err.message.startsWith("Lecture")) throw err;
-    throw new Error("Lecture OpenAI impossible. Vérifiez OPENAI_API_KEY et réessayez.");
+    console.error("[ingest-tmp] cleanup", err instanceof Error ? err.message : err);
   }
 }
 
@@ -223,31 +122,36 @@ export function matchCustomerId(customers: CrmCustomer[], extract: BookingExtrac
   return hits.length === 1 ? hits[0].id : null;
 }
 
-function matchCompanion(
-  companions: CrmCompanion[],
-  first: string | null,
-  last: string | null
-) {
-  const f = normalizeName(first);
-  const l = normalizeName(last);
-  if (!l && !f) return null;
-  return (
-    companions.find(
-      (c) => normalizeName(c.last_name) === l && normalizeName(c.first_name) === f
-    ) || null
-  );
-}
-
-function isHolder(customer: CrmCustomer, first: string | null, last: string | null) {
-  const f = normalizeName(first);
-  const l = normalizeName(last);
-  return Boolean(l) && normalizeName(customer.last_name) === l && (!f || normalizeName(customer.first_name) === f);
-}
+const FORBIDDEN_DETAIL_KEY =
+  /cancel|annul|franchise|cgv|net_rate|net_price|supplier_net|penalit/i;
 
 function cleanDetails(details: BookingExtract["items"][number]["details"] | undefined) {
   const raw = details || {};
-  const out: Record<string, string> = {};
+  const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(raw)) {
+    if (FORBIDDEN_DETAIL_KEY.test(key)) continue;
+    if (value == null || value === "") continue;
+    if (typeof value === "boolean") {
+      out[key] = value;
+      continue;
+    }
+    if (Array.isArray(value)) {
+      const cleaned = value
+        .map((entry) => {
+          if (entry && typeof entry === "object") {
+            const rec: Record<string, string> = {};
+            for (const [k, v] of Object.entries(entry as Record<string, unknown>)) {
+              const text = emptyToNull(v);
+              if (text) rec[k] = text;
+            }
+            return Object.keys(rec).length ? rec : null;
+          }
+          return emptyToNull(entry);
+        })
+        .filter(Boolean);
+      if (cleaned.length) out[key] = cleaned;
+      continue;
+    }
     const text = emptyToNull(value);
     if (text) out[key] = text;
   }
@@ -260,44 +164,108 @@ function itemKind(value: string | null | undefined): BookingItemKind {
     : "fee";
 }
 
-async function uploadBookingFiles(
+type UploadedDoc = { id: string; file_name: string | null };
+
+async function insertBookingDoc(
+  supabase: SupabaseClient,
   bookingId: string,
-  files: File[],
-  visibleToClient: boolean,
-  supabase: SupabaseClient
-) {
-  for (const file of files) {
-    const bytes = Buffer.from(await file.arrayBuffer());
-    const path = `bookings/${bookingId}/${Date.now()}-${safeFileName(file.name)}`;
-    await uploadCrmFile(path, bytes, file.type || guessMime(file.name));
-    const { error } = await supabase.from("crm_booking_documents").insert({
-      booking_id: bookingId,
-      kind: file.type?.includes("pdf") ? "pdf" : "image",
-      file_name: file.name,
-      mime_type: file.type || guessMime(file.name),
-      storage_path: path,
-      visible_to_client: visibleToClient,
-    });
-    if (error) throw new Error(error.message);
+  opts: {
+    name: string;
+    mime: string;
+    storagePath: string;
+    visibleToClient: boolean;
   }
+): Promise<UploadedDoc> {
+  const { data, error } = await supabase
+    .from("crm_booking_documents")
+    .insert({
+      booking_id: bookingId,
+      kind: opts.mime.includes("pdf") ? "pdf" : "image",
+      file_name: opts.name,
+      mime_type: opts.mime,
+      storage_path: opts.storagePath,
+      visible_to_client: opts.visibleToClient,
+    })
+    .select("id, file_name")
+    .single();
+  if (error) throw dbFailure(error, "Pièce jointe non enregistrée.");
+  return { id: data.id, file_name: data.file_name };
 }
 
-async function insertItemsAndTravelers(
+async function attachBookingFiles(
+  bookingId: string,
+  staged: IngestStagedFile[],
+  files: File[],
+  visibleToClient: boolean,
+  supabase: SupabaseClient,
+  staffUserId?: string
+): Promise<UploadedDoc[]> {
+  const uploaded: UploadedDoc[] = [];
+  for (const file of staged) {
+    if (staffUserId) assertStaffIngestPath(file.path, staffUserId);
+    const mime = file.type || guessIngestMime(file.name);
+    const dest = `bookings/${bookingId}/${Date.now()}-${safeFileName(file.name)}`;
+    await copyCrmFile(file.path, dest);
+    uploaded.push(
+      await insertBookingDoc(supabase, bookingId, {
+        name: file.name,
+        mime,
+        storagePath: dest,
+        visibleToClient,
+      })
+    );
+  }
+  for (const file of files) {
+    const bytes = Buffer.from(await file.arrayBuffer());
+    const mime = file.type || guessIngestMime(file.name);
+    const path = `bookings/${bookingId}/${Date.now()}-${safeFileName(file.name)}`;
+    await uploadCrmFile(path, bytes, mime);
+    uploaded.push(
+      await insertBookingDoc(supabase, bookingId, {
+        name: file.name,
+        mime,
+        storagePath: path,
+        visibleToClient,
+      })
+    );
+  }
+  return uploaded;
+}
+
+function sourceDocId(
+  details: Record<string, unknown>,
+  docs: UploadedDoc[]
+): string | null {
+  const name = emptyToNull(details.source_file_name);
+  if (!name) return docs[0]?.id || null;
+  const hit = docs.find(
+    (doc) => (doc.file_name || "").toLowerCase() === name.toLowerCase()
+  );
+  return hit?.id || docs[0]?.id || null;
+}
+
+async function upsertItemsAndTravelers(
   supabase: SupabaseClient,
   bookingId: string,
   extract: BookingExtract,
   customer: CrmCustomer,
   companions: CrmCompanion[],
-  existingTravelers: { first_name: string | null; last_name: string | null }[]
+  existingTravelers: { first_name: string | null; last_name: string | null }[],
+  existingItems: CrmBookingItem[],
+  docs: UploadedDoc[]
 ) {
-  let sort = 0;
-  for (const item of extract.items || []) {
+  const remaining = [...existingItems];
+  let sort = existingItems.reduce((max, row) => Math.max(max, row.sort_order || 0), -1) + 1;
+  const ordered = sortItemsByOrder(extract.items || []);
+  let saved = 0;
+  let lastError = "";
+
+  for (const item of ordered) {
     const title = String(item.title || "").trim();
     if (!title) continue;
     const details = cleanDetails(item.details);
     if (item.confirmation_ref && !details.pnr) details.pnr = item.confirmation_ref;
-    const { error } = await supabase.from("crm_booking_items").insert({
-      booking_id: bookingId,
+    const payload = {
       kind: itemKind(item.kind),
       title,
       supplier: emptyToNull(item.supplier),
@@ -305,41 +273,103 @@ async function insertItemsAndTravelers(
       start_at: emptyToNull(item.start_at),
       end_at: emptyToNull(item.end_at),
       amount: item.amount == null ? null : Number(item.amount),
-      sort_order: sort++,
+      details,
+      visible_to_client: false,
+      source_document_id: sourceDocId(details, docs),
+    };
+    const match = findMatchingItem(remaining, {
+      kind: payload.kind,
+      confirmation_ref: payload.confirmation_ref,
+      start_at: payload.start_at,
+      title: payload.title,
       details,
     });
-    if (error) throw new Error(error.message);
+    try {
+      if (match) {
+        const { error } = await supabase
+          .from("crm_booking_items")
+          .update(payload)
+          .eq("id", match.id);
+        if (error) throw dbFailure(error, "Carte non mise à jour.");
+        Object.assign(match, payload);
+      } else {
+        const { data: inserted, error } = await supabase
+          .from("crm_booking_items")
+          .insert({
+            booking_id: bookingId,
+            sort_order: sort++,
+            ...payload,
+          })
+          .select("id")
+          .single();
+        if (error) throw dbFailure(error, "Carte non enregistrée.");
+        if (inserted?.id) {
+          remaining.push({
+            id: inserted.id,
+            booking_id: bookingId,
+            sort_order: sort - 1,
+            created_at: "",
+            updated_at: "",
+            ...payload,
+          } as CrmBookingItem);
+        }
+      }
+      saved += 1;
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : "Carte ignorée";
+    }
   }
 
-  for (const traveler of extract.travelers || []) {
+  if (!saved && lastError) throw new Error(lastError);
+
+  const incoming = extract.travelers || [];
+  const skipPlaceholders =
+    incoming.some((traveler) => {
+      const first = emptyToNull(traveler.first_name);
+      const last = emptyToNull(traveler.last_name);
+      return Boolean(first || last) && !isPlaceholderTraveler(first, last);
+    }) ||
+    existingTravelers.some(
+      (traveler) =>
+        Boolean(traveler.first_name || traveler.last_name) &&
+        !isPlaceholderTraveler(traveler.first_name, traveler.last_name)
+    );
+
+  for (const traveler of incoming) {
     const first = emptyToNull(traveler.first_name);
     const last = emptyToNull(traveler.last_name);
     if (!first && !last) continue;
-    const dup = existingTravelers.some(
-      (t) =>
-        normalizeName(t.first_name) === normalizeName(first) &&
-        normalizeName(t.last_name) === normalizeName(last)
-    );
-    if (dup) continue;
-    const companion = matchCompanion(companions, first, last);
+    if (skipPlaceholders && isPlaceholderTraveler(first, last)) continue;
+    const recorded = { first_name: first, last_name: last };
+    if (existingTravelers.some((row) => sameRecordedTraveler(row, recorded))) continue;
+    const match = matchTravelerToParty(recorded, customer, companions);
+    const companion =
+      match?.kind === "companion" ? companions.find((row) => row.id === match.id) : null;
     const { error } = await supabase.from("crm_booking_travelers").insert({
       booking_id: bookingId,
       companion_id: companion?.id || null,
-      is_account_holder: isHolder(customer, first, last),
+      is_account_holder: match?.kind === "holder",
       first_name: first || companion?.first_name || null,
       last_name: last || companion?.last_name || null,
     });
-    if (error) throw new Error(error.message);
-    existingTravelers.push({ first_name: first, last_name: last });
+    if (error) continue;
+    existingTravelers.push(recorded);
   }
+
+  await reconcileCustomerParty(customer.id, supabase);
 }
 
 export async function persistNewBookingFromExtract(opts: {
   customerId: string;
   extract: BookingExtract;
-  files: File[];
+  files?: File[];
+  staged?: IngestStagedFile[];
+  staffUserId?: string;
+  batchId?: string;
   status: BookingStatus;
   visibleToClient: boolean;
+  /** Client authentifié de l’agent : la RPC de référence tourne sous son rôle (crm_private). */
+  referenceClient?: SupabaseClient;
 }) {
   const admin = createServiceClient();
   const [{ data: customer }, { data: companions }] = await Promise.all([
@@ -350,7 +380,7 @@ export async function persistNewBookingFromExtract(opts: {
   if (opts.extract.document_status === "identity") {
     throw new Error("Document d’identité : enregistrez-le dans le profil, pas en réservation.");
   }
-  const reference = await nextBookingReference(admin);
+  const reference = await nextBookingReference(opts.referenceClient ?? admin);
   const extract = opts.extract;
   const title =
     emptyToNull(extract.title) ||
@@ -363,7 +393,7 @@ export async function persistNewBookingFromExtract(opts: {
       reference,
       title,
       destination: emptyToNull(extract.destination),
-      status: opts.status,
+      status: extract.document_status === "quote" ? "quoted" : opts.status,
       start_date: emptyToNull(extract.start_date),
       end_date: emptyToNull(extract.end_date),
       currency: emptyToNull(extract.currency) || "EUR",
@@ -372,23 +402,38 @@ export async function persistNewBookingFromExtract(opts: {
       notes_internal:
         extract.document_status === "quote"
           ? "Devis importé — tarifs non bloqués, à confirmer."
-          : "Dossier créé par lecture de documents.",
+          : (opts.staged?.length || opts.files?.length)
+            ? "Dossier créé par lecture de documents."
+            : "Dossier créé par l’agence.",
+      visible_to_client: false,
     })
     .select("*")
     .single();
-  if (error || !data) throw new Error(error?.message || "Création impossible");
+  if (error || !data) throw dbFailure(error, "Création du dossier impossible.");
   const booking = data as CrmBooking;
-  await insertItemsAndTravelers(
+  const docs = await attachBookingFiles(
+    booking.id,
+    opts.staged || [],
+    opts.files || [],
+    false,
+    admin,
+    opts.staffUserId
+  );
+  if (opts.staffUserId && opts.batchId) {
+    await cleanupIngestBatch(opts.staffUserId, opts.batchId);
+  }
+  await upsertItemsAndTravelers(
     admin,
     booking.id,
     extract,
     customer as CrmCustomer,
     (companions || []) as CrmCompanion[],
-    []
+    [],
+    [],
+    docs
   );
-  await uploadBookingFiles(booking.id, opts.files, opts.visibleToClient, admin);
   await syncBookingDebit(admin, booking);
-  const hotel = extract.items?.find((item) => item.kind === "hotel");
+  const hotel = extract.items?.find((row) => row.kind === "hotel");
   scheduleBookingCover(booking, {
     hotel: hotel?.details?.hotel_name || hotel?.title || null,
   });
@@ -399,7 +444,10 @@ export async function applyExtractToBooking(opts: {
   bookingId: string;
   customerId: string;
   extract: BookingExtract;
-  files: File[];
+  files?: File[];
+  staged?: IngestStagedFile[];
+  staffUserId?: string;
+  batchId?: string;
   visibleToClient: boolean;
 }) {
   const admin = createServiceClient();
@@ -411,24 +459,38 @@ export async function applyExtractToBooking(opts: {
   if (!booking || booking.customer_id !== opts.customerId) {
     throw new Error("Réservation introuvable");
   }
-  const [{ data: customer }, { data: companions }, { data: travelers }] = await Promise.all([
-    admin.from("crm_customers").select("*").eq("id", opts.customerId).maybeSingle(),
-    admin.from("crm_travel_companions").select("*").eq("customer_id", opts.customerId),
-    admin.from("crm_booking_travelers").select("first_name, last_name").eq("booking_id", opts.bookingId),
-  ]);
+  const [{ data: customer }, { data: companions }, { data: travelers }, { data: items }] =
+    await Promise.all([
+      admin.from("crm_customers").select("*").eq("id", opts.customerId).maybeSingle(),
+      admin.from("crm_travel_companions").select("*").eq("customer_id", opts.customerId),
+      admin.from("crm_booking_travelers").select("first_name, last_name").eq("booking_id", opts.bookingId),
+      admin.from("crm_booking_items").select("*").eq("booking_id", opts.bookingId),
+    ]);
   if (!customer) throw new Error("Client introuvable");
   if (opts.extract.document_status === "identity") {
     throw new Error("Document d’identité : enregistrez-le dans le profil, pas en réservation.");
   }
-  await insertItemsAndTravelers(
+  const docs = await attachBookingFiles(
+    opts.bookingId,
+    opts.staged || [],
+    opts.files || [],
+    false,
+    admin,
+    opts.staffUserId
+  );
+  if (opts.staffUserId && opts.batchId) {
+    await cleanupIngestBatch(opts.staffUserId, opts.batchId);
+  }
+  await upsertItemsAndTravelers(
     admin,
     opts.bookingId,
     opts.extract,
     customer as CrmCustomer,
     (companions || []) as CrmCompanion[],
-    (travelers || []) as { first_name: string | null; last_name: string | null }[]
+    (travelers || []) as { first_name: string | null; last_name: string | null }[],
+    (items || []) as CrmBookingItem[],
+    docs
   );
-  await uploadBookingFiles(opts.bookingId, opts.files, opts.visibleToClient, admin);
   const patch: Record<string, unknown> = {};
   if (!booking.title && opts.extract.title) patch.title = opts.extract.title;
   if (!booking.destination && opts.extract.destination) patch.destination = opts.extract.destination;
@@ -440,20 +502,42 @@ export async function applyExtractToBooking(opts: {
   if (Object.keys(patch).length) {
     await admin.from("crm_bookings").update(patch).eq("id", opts.bookingId);
   }
+  const { data: refreshed } = await admin
+    .from("crm_bookings")
+    .select("*")
+    .eq("id", opts.bookingId)
+    .maybeSingle();
+  const next = (refreshed || booking) as CrmBooking;
+  await syncBookingDebit(admin, next, booking.status as BookingStatus);
   const hotel = opts.extract.items?.find((item) => item.kind === "hotel");
   scheduleBookingCover(
     {
-      ...booking,
-      destination: (patch.destination as string) || booking.destination,
-      title: (patch.title as string) || booking.title,
+      ...next,
+      destination: (patch.destination as string) || next.destination,
+      title: (patch.title as string) || next.title,
     } as CrmBooking,
     { hotel: hotel?.details?.hotel_name || hotel?.title || null }
   );
-  return booking as CrmBooking;
+  return next;
 }
 
 export function parseExtractPayload(raw: unknown): BookingExtract {
   const parsed = bookingExtractSchema.safeParse(raw);
-  if (!parsed.success) throw new Error("Données extraites invalides");
-  return parsed.data;
+  if (!parsed.success) {
+    console.error(
+      "[ingest] extract_invalid",
+      parsed.error.issues.map((issue) => ({
+        path: issue.path.join("."),
+        code: issue.code,
+        message: issue.message,
+      }))
+    );
+    throw new Error("Données extraites invalides");
+  }
+  return sanitizeExtractedPrices(parsed.data);
+}
+
+function dbFailure(error: DbErrorLike, fallback: string) {
+  console.error("[ingest] db:", error?.code ?? "?", error?.message ?? "");
+  return new Error(dbErrorMessage(error, fallback));
 }
