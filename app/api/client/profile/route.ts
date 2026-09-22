@@ -11,6 +11,9 @@ export async function PATCH(request: Request) {
     requirePhone: true,
   });
   if (patchError) return jsonError(patchError);
+  // Rôle société / payeur : réservé à l’agence.
+  delete patch.company_role;
+  delete patch.billing_parent_id;
   const { data, error } = await auth.supabase
     .from("crm_customers")
     .update(patch)

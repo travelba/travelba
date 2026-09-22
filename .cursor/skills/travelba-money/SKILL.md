@@ -20,7 +20,11 @@ Vue `crm_customer_balances` = somme crédits `posted` − débits `posted` (par 
 
 **Frais d’agence 10 %** (`AGENCY_FEE_RATE`) : à chaque crédit Revolut (`applyRevolutToCustomer`), poster un débit `kind=adjustment` `external_id={revolut_id}:agency-fee` — le crédit disponible = 90 % du versement. Afficher clairement « crédit disponible » / « frais 10 % » côté admin et `/mon-compte`.
 
-Ledger visible côté client (`/mon-compte/transactions`) : lignes `posted` seulement (RLS). PDF relevé = bouton **Demander un relevé** (`mailto:`), **pas** de génération PDF auto ni d’envoi mail automatique.
+Ledger visible côté client (`/mon-compte/transactions`) : lignes `posted` seulement (RLS).
+
+**Société** : si `company_role=member`, le client ne voit que les **débits** de ses dossiers (pas les crédits / encours société). `company_role=admin` (ou null) = grand livre complet de son wallet. Débits résa → `billing_customer_id` du dossier.
+
+PDF relevé = bouton **Demander un relevé** (`mailto:`), **pas** de génération PDF auto ni d’envoi mail automatique.
 
 ## Débit réservation
 
@@ -31,6 +35,7 @@ Ledger visible côté client (`/mon-compte/transactions`) : lignes `posted` seul
 - `draft` / `quoted` → pas de débit
 - Le total = **prix vendu** : à l’import, `sellingTotalFromExtract` (saisie agent ou somme des `document_amount`, 1 / fichier). Jamais le net fournisseur sur les cartes client (`item.amount` null).
 - Import `document_status=confirmed` : `bookingStatusFromExtract` → **confirmed** (même si `from-ingest` envoie `draft`) pour que le débit parte. Toujours `visible_to_client=false` jusqu’à Publier.
+- `customer_id` du débit = `booking.billing_customer_id` (payeur / société), pas forcément le voyageur
 - `syncTicketingFee` : dès qu’il y a un vol, débit **25 € × passagers** (`external_id=booking:{id}:ticketing-fee`), void si plus de vol ou dossier annulé. 1 passager = 1 billet même avec plusieurs segments.
 
 Ajustements / remboursements : lignes manuelles admin `kind=adjustment|refund`.

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
 import type { CrmBalance, CrmBookingTraveler, CrmTravelDocument } from "@/lib/crm/types";
 import { formatDateRangeShort, formatCreditDisponible, formatEncours, isUpcomingBooking, jMinusLabel } from "@/lib/crm/money";
+import { isCompanyMember } from "@/lib/crm/company-role";
 import { bookingCoverUrl } from "@/lib/crm/covers";
 import { loadVisibleCarnets } from "@/lib/crm/carnet-query";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
@@ -19,8 +20,11 @@ export default async function AccountHomePage() {
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");
 
+  const member = isCompanyMember(customer);
   const [{ data: balances }, bookings] = await Promise.all([
-    supabase.from("crm_customer_balances").select("*").eq("customer_id", customer.id),
+    member
+      ? Promise.resolve({ data: [] as CrmBalance[] })
+      : supabase.from("crm_customer_balances").select("*").eq("customer_id", customer.id),
     loadVisibleCarnets(supabase, customer.id),
   ]);
 
@@ -102,7 +106,9 @@ export default async function AccountHomePage() {
       )}
 
       <Link href="/mon-compte/transactions" className="inline-flex flex-col text-sm font-semibold text-[var(--admin-navy)]">
-        {balanceValue > 0 ? (
+        {member ? (
+          <span>Voir les frais de vos voyages</span>
+        ) : balanceValue > 0 ? (
           <>
             <span>Crédit disponible {formatCreditDisponible(balanceValue, currency)}</span>
             <span className="text-xs font-medium text-[#9c7c4e]">Frais d’agence 10 % déduits</span>

@@ -24,6 +24,8 @@ Avant d’écrire du SQL : lister les tables (`crm_*`), lire la **dernière** mi
 | `20260917173300_travel_document_booking.sql` | pièce liée au voyage / traveler |
 | `20260917184000_travel_document_passport_fields.sql` | lieu naissance, autorité, personal_number |
 | `20260918043000_carnet_visibility_kinds.sql` | kinds `rail/car/cruise`, `visible_to_client`, RLS published-only |
+| `20260922100000_company_role_billing.sql` | `company_role` admin|member, `billing_parent_id`, `billing_customer_id`, RLS member trip debits |
+| `20260922101000_billing_parent_read.sql` | member peut lire la fiche admin société (payeur) |
 
 Toute évolution = **nouveau fichier** `supabase/migrations/YYYYMMDDHHMMSS_slug.sql` (idempotent : `if not exists`, `drop policy if exists`). Appliquer via MCP `apply_migration` ou SQL Editor. Ne pas éditer une migration déjà poussée en prod.
 

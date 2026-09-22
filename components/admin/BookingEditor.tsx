@@ -246,7 +246,7 @@ export function BookingEditor({
           </select>
         </label>
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted sm:col-span-2">
-          Client
+          Client voyageur (titulaire)
           <select
             name="customer_id"
             defaultValue={booking.customer_id}
@@ -255,6 +255,24 @@ export function BookingEditor({
             {customers.map((c) => (
               <option key={c.id} value={c.id}>
                 {customerFullName(c)} — {c.email}
+                {c.company_role === "member" ? " · rattaché" : ""}
+                {c.company_role === "admin" ? " · admin société" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted sm:col-span-2">
+          Facturé à (wallet / société)
+          <select
+            name="billing_customer_id"
+            defaultValue={booking.billing_customer_id || booking.customer_id}
+            className="rounded-xl border border-border bg-white px-3 py-2"
+          >
+            {customers.map((c) => (
+              <option key={c.id} value={c.id}>
+                {customerFullName(c)}
+                {c.company_name ? ` · ${c.company_name}` : ""}
+                {c.company_role === "admin" ? " · admin société" : ""}
               </option>
             ))}
           </select>

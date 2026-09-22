@@ -65,7 +65,7 @@ export async function syncBookingDebit(
 
   if (intent === "insert") {
     await supabase.from("crm_transactions").insert({
-      customer_id: booking.customer_id,
+      customer_id: booking.billing_customer_id || booking.customer_id,
       booking_id: booking.id,
       direction: "debit",
       kind: "booking",
@@ -80,12 +80,15 @@ export async function syncBookingDebit(
 
   if (intent !== "update" || !debit) return;
 
+  const payerId = booking.billing_customer_id || booking.customer_id;
   const amountChanged = Number(debit.amount) !== amount;
   const statusChanged = Boolean(previousStatus && previousStatus !== booking.status);
-  if (amountChanged || statusChanged || debit.status !== "posted") {
+  const payerChanged = debit.customer_id !== payerId;
+  if (amountChanged || statusChanged || payerChanged || debit.status !== "posted") {
     await supabase
       .from("crm_transactions")
       .update({
+        customer_id: payerId,
         amount,
         currency: booking.currency || "EUR",
         label,
@@ -118,7 +121,7 @@ export async function syncTicketingFee(supabase: SupabaseClient, booking: CrmBoo
     amount > 0;
   const label = ticketingFeeLabel(ticketCount);
   const debit = existing as CrmTransaction | null;
-  const payerId = booking.customer_id;
+  const payerId = booking.billing_customer_id || booking.customer_id;
 
   if (!shouldPost) {
     if (debit && debit.status !== "void") {

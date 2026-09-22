@@ -28,6 +28,38 @@ export async function PATCH(request: Request, ctx: Ctx) {
   const body = await request.json().catch(() => ({}));
   const { patch, error: patchError } = customerPatchFromBody(body, { allowEmail: true });
   if (patchError) return jsonError(patchError);
+
+  const { data: current } = await auth.supabase
+    .from("crm_customers")
+    .select("company_role, billing_parent_id")
+    .eq("id", id)
+    .maybeSingle();
+  if (!current) return jsonError("Client introuvable", 404);
+
+  const nextRole =
+    "company_role" in patch ? (patch.company_role as string | null) : current.company_role;
+  const nextParent =
+    "billing_parent_id" in patch
+      ? (patch.billing_parent_id as string | null)
+      : current.billing_parent_id;
+  if (nextRole === "member") {
+    if (!nextParent) {
+      return jsonError("Choisissez l’admin société qui paie pour ce collaborateur.");
+    }
+    if (nextParent === id) {
+      return jsonError("Le payeur ne peut pas être le collaborateur lui-même.");
+    }
+    const { data: parent } = await auth.supabase
+      .from("crm_customers")
+      .select("id, company_role")
+      .eq("id", nextParent)
+      .maybeSingle();
+    if (!parent) return jsonError("Admin société introuvable.");
+    if (parent.company_role !== "admin") {
+      return jsonError("Le payeur doit être un client en rôle « Admin société ».");
+    }
+  }
+
   const { data, error } = await auth.supabase
     .from("crm_customers")
     .update(patch)
