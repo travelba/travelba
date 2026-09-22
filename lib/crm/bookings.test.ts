@@ -4,6 +4,7 @@ import {
   bookingDebitIntent,
   bookingItemDebitExternalId,
   bookingItemDebitLabel,
+  bookingTotalFromItems,
   parseIncludeInLedger,
 } from "./bookings";
 
@@ -99,4 +100,15 @@ test("item debit posts only when flagged on a confirmed stay", () => {
   assert.equal(parseIncludeInLedger(undefined, true), true);
   assert.equal(bookingItemDebitExternalId("b1", "i9"), "booking:b1:item:i9");
   assert.match(bookingItemDebitLabel({ kind: "hotel", title: "Nantipa" }, "TBA-1042"), /Hôtel/);
+});
+
+test("stay total is the sum of selling prices when any card is priced", () => {
+  assert.equal(bookingTotalFromItems([]), null);
+  assert.equal(bookingTotalFromItems([{ amount: null }, { amount: 0 }]), null);
+  assert.equal(bookingTotalFromItems([{ amount: 858 }]), 858);
+  assert.equal(
+    bookingTotalFromItems([{ amount: 858.8 }, { amount: null }, { amount: 85 }]),
+    943.8
+  );
+  assert.equal(bookingTotalFromItems([{ amount: 10.1 }, { amount: 20.25 }]), 30.35);
 });

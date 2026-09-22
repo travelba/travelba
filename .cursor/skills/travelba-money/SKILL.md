@@ -34,8 +34,9 @@ PDF relevé = bouton **Demander un relevé** (`mailto:`), **pas** de génératio
 - `cancelled`, `total_amount <= 0` **ou** `include_in_ledger=false` alors qu’un débit ouvert existe → `void`
 - `draft` / `quoted` → pas de débit
 - Case admin « Inclure dans les transactions » à côté du montant du séjour. Décochez = prix carnet sans impacter l’encours.
+- **Total séjour** = somme des `item.amount` (prix vendu cartes) dès qu’une carte en a un ; sinon saisie / import. `syncBookingTotalFromItems` à chaque POST/PATCH/DELETE carte. Frais billeterie 25 € **hors** ce total.
 - Carte (`item.amount`) : case **Inclure dans les transactions** (`include_in_ledger`, défaut **false**). Si cochée, débit `kind=booking` `external_id=booking:{id}:item:{itemId}`. Indépendant du montant du séjour — décochez le séjour pour ne pas compter deux fois.
-- Le total = **prix vendu** : à l’import, `sellingTotalFromExtract` (saisie agent ou somme des `document_amount`, 1 / fichier). Jamais le net fournisseur sur les cartes client (`item.amount` null).
+- Le total import = **prix vendu** : `sellingTotalFromExtract` (saisie agent > 0, sinon somme des `document_amount`, 1 / fichier). Un extract à 0 avec montants PDF ne masque pas la somme. Jamais le net fournisseur sur les cartes client (`item.amount` null à l’import).
 - Import `document_status=confirmed` : `bookingStatusFromExtract` → **confirmed** (même si `from-ingest` envoie `draft`) pour que le débit parte. Toujours `visible_to_client=false` jusqu’à Publier.
 - `customer_id` du débit = `booking.billing_customer_id` (payeur / société), pas forcément le voyageur
 - `syncTicketingFee` : dès qu’il y a un vol, débit **25 € × passagers** (`external_id=booking:{id}:ticketing-fee`), void si plus de vol ou dossier annulé. 1 passager = 1 billet même avec plusieurs segments.

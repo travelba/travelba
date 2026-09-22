@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
-import { nextBookingReference, syncBookingLedger } from "@/lib/crm/bookings";
+import { nextBookingReference, syncBookingLedger, syncBookingTotalFromItems } from "@/lib/crm/bookings";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import {
   copyCrmFile,
@@ -447,12 +447,19 @@ export async function persistNewBookingFromExtract(opts: {
     [],
     docs
   );
-  await syncBookingLedger(admin, booking);
+  await syncBookingTotalFromItems(admin, booking.id);
+  const { data: withTotal } = await admin
+    .from("crm_bookings")
+    .select("*")
+    .eq("id", booking.id)
+    .maybeSingle();
+  const booked = (withTotal || booking) as CrmBooking;
+  await syncBookingLedger(admin, booked);
   const hotel = extract.items?.find((row) => row.kind === "hotel");
-  scheduleBookingCover(booking, {
+  scheduleBookingCover(booked, {
     hotel: hotel?.details?.hotel_name || hotel?.title || null,
   });
-  return booking;
+  return booked;
 }
 
 export async function applyExtractToBooking(opts: {
@@ -521,6 +528,7 @@ export async function applyExtractToBooking(opts: {
   if (Object.keys(patch).length) {
     await admin.from("crm_bookings").update(patch).eq("id", opts.bookingId);
   }
+  await syncBookingTotalFromItems(admin, opts.bookingId);
   const { data: refreshed } = await admin
     .from("crm_bookings")
     .select("*")

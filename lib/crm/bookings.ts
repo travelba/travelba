@@ -38,6 +38,29 @@ export function bookingDebitIntent(input: {
   return "update";
 }
 
+export function bookingTotalFromItems(items: { amount?: number | null }[]): number | null {
+  let sum = 0;
+  let priced = false;
+  for (const item of items) {
+    const n = Number(item.amount);
+    if (!Number.isFinite(n) || n <= 0) continue;
+    sum += n;
+    priced = true;
+  }
+  if (!priced) return null;
+  return Math.round(sum * 100) / 100;
+}
+
+export async function syncBookingTotalFromItems(supabase: SupabaseClient, bookingId: string) {
+  const { data: items } = await supabase
+    .from("crm_booking_items")
+    .select("amount")
+    .eq("booking_id", bookingId);
+  const total = bookingTotalFromItems(items || []);
+  if (total == null) return;
+  await supabase.from("crm_bookings").update({ total_amount: total }).eq("id", bookingId);
+}
+
 export function bookingItemDebitExternalId(bookingId: string, itemId: string) {
   return `booking:${bookingId}:item:${itemId}`;
 }
@@ -276,6 +299,7 @@ export async function syncBookingLedger(
 }
 
 export async function refreshBookingLedger(supabase: SupabaseClient, bookingId: string) {
+  await syncBookingTotalFromItems(supabase, bookingId);
   const { data } = await supabase.from("crm_bookings").select("*").eq("id", bookingId).maybeSingle();
   if (!data) return;
   await syncBookingLedger(supabase, data as CrmBooking);
