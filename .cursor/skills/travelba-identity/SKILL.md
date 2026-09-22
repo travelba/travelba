@@ -45,8 +45,8 @@ UI : bloc pièce **replié** par défaut (passeport). Copy courte, pas « Upload
 - **Rôle société** (`company_role`) :
   - `null` = particulier (comportement historique)
   - `admin` = admin société : wallet / grand livre (Revolut, crédit disponible)
-  - `member` = collaborateur rattaché via `billing_parent_id` → ne voit **que** les débits de **ses** dossiers, pas les revenus société
-- Dossier : `crm_bookings.billing_customer_id` = qui paie (`syncBookingDebit` poste sur ce wallet). Défaut = `billing_parent_id` si member, sinon titulaire.
+  - `member` = collaborateur rattaché via `billing_parent_id` → voit les **frais de ses dossiers société** (pas le solde société) **et** son encours personnel
+- Dossier : `crm_bookings.billing_customer_id` = qui paie (`syncBookingDebit` poste sur ce wallet). Défaut = `billing_parent_id` si member, sinon titulaire. Un dossier member peut être basculé « à sa charge » (`billing_customer_id` = le voyageur).
 
 ## OCR
 

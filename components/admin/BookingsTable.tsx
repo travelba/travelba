@@ -14,6 +14,8 @@ import { bookingCoverUrl } from "@/lib/crm/covers";
 import { CoverPhoto } from "@/components/crm/CoverPhoto";
 import { StatusChip, bookingStatusTone } from "@/components/crm/ui";
 import { bookingsListEmptyMessage } from "@/lib/crm/launch-status";
+import { PayerChip } from "@/components/crm/PayerChip";
+import { companyDisplayName, isCompanyPaidBooking } from "@/lib/crm/company-role";
 
 export function BookingsTable({
   bookings,
@@ -26,6 +28,10 @@ export function BookingsTable({
   const [status, setStatus] = useState<string>("all");
   const byId = useMemo(
     () => new Map(customers.map((c) => [c.id, customerFullName(c)])),
+    [customers]
+  );
+  const companyById = useMemo(
+    () => new Map(customers.map((c) => [c.id, companyDisplayName(c)])),
     [customers]
   );
 
@@ -80,6 +86,15 @@ export function BookingsTable({
                     {byId.get(b.customer_id) || "Client"} · {formatDateFr(b.start_date)} →{" "}
                     {formatDateFr(b.end_date)}
                   </p>
+                  {isCompanyPaidBooking(b, b.customer_id) ? (
+                    <div className="mt-1">
+                      <PayerChip
+                        kind="company"
+                        companyName={companyById.get(b.billing_customer_id) || null}
+                        voice="admin"
+                      />
+                    </div>
+                  ) : null}
                 </div>
               </div>
               <div className="flex items-center gap-3">

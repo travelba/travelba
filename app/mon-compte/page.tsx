@@ -2,14 +2,15 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
-import type { CrmBalance, CrmBookingTraveler, CrmTravelDocument } from "@/lib/crm/types";
-import { formatDateRangeShort, formatCreditDisponible, formatEncours, isUpcomingBooking, jMinusLabel } from "@/lib/crm/money";
-import { isCompanyMember } from "@/lib/crm/company-role";
+import type { CrmBookingTraveler, CrmTravelDocument } from "@/lib/crm/types";
+import { formatDateRangeShort, formatMoney, isUpcomingBooking, jMinusLabel, postedLedgerTotals } from "@/lib/crm/money";
+import { loadClientMoneySnapshot } from "@/lib/crm/client-money";
 import { bookingCoverUrl } from "@/lib/crm/covers";
 import { loadVisibleCarnets } from "@/lib/crm/carnet-query";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { CoverPhoto } from "@/components/crm/CoverPhoto";
 import { Icon } from "@/components/crm/icons";
+import { personalHomeLabel } from "@/components/account/PersonalLedgerCard";
 
 export default async function AccountHomePage() {
   const supabase = await createClient();
@@ -20,11 +21,8 @@ export default async function AccountHomePage() {
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");
 
-  const member = isCompanyMember(customer);
-  const [{ data: balances }, bookings] = await Promise.all([
-    member
-      ? Promise.resolve({ data: [] as CrmBalance[] })
-      : supabase.from("crm_customer_balances").select("*").eq("customer_id", customer.id),
+  const [money, bookings] = await Promise.all([
+    loadClientMoneySnapshot(supabase, customer),
     loadVisibleCarnets(supabase, customer.id),
   ]);
 
@@ -43,13 +41,12 @@ export default async function AccountHomePage() {
     if (coverage.total > coverage.ready) missingPassports = coverage.total - coverage.ready;
   }
 
-  const primaryBalance = ((balances || []) as CrmBalance[])[0];
-  const balanceValue = primaryBalance ? Number(primaryBalance.balance) : 0;
-  const currency = primaryBalance?.currency || "EUR";
   const firstName = customer.first_name || customer.email.split("@")[0];
   const cover = nextTrip ? bookingCoverUrl(nextTrip, 960) : null;
   const countdown = nextTrip ? jMinusLabel(nextTrip.start_date) : null;
   const tripHref = nextTrip ? `/mon-compte/reservations/${nextTrip.reference}` : "/mon-compte/reservations";
+  const companyDebits = postedLedgerTotals(money.companyRows).debits;
+  const companyCurrency = money.companyRows[0]?.currency || money.personalCurrency;
 
   return (
     <div className="space-y-4">
@@ -105,18 +102,49 @@ export default async function AccountHomePage() {
         </article>
       )}
 
-      <Link href="/mon-compte/transactions" className="inline-flex flex-col text-sm font-semibold text-[var(--admin-navy)]">
-        {member ? (
-          <span>Voir les frais de vos voyages</span>
-        ) : balanceValue > 0 ? (
-          <>
-            <span>Crédit disponible {formatCreditDisponible(balanceValue, currency)}</span>
-            <span className="text-xs font-medium text-[#9c7c4e]">Frais d’agence 10 % déduits</span>
-          </>
-        ) : (
-          <span>{formatEncours(balanceValue, currency)}</span>
-        )}
-      </Link>
+      {money.member ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Link
+            href="/mon-compte/transactions"
+            className="rounded-2xl border border-[#e5e3dc] bg-white p-4 shadow-sm"
+          >
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#9c7c4e]">
+              Voyages {money.companyName || "société"}
+            </p>
+            <p className="mt-1 font-display text-xl font-bold text-[var(--admin-navy)]">
+              {formatMoney(companyDebits, companyCurrency)}
+            </p>
+            <p className="mt-1 text-xs text-muted">
+              Frais de vos dossiers. Pas le solde {money.companyName || "société"}.
+            </p>
+          </Link>
+          <Link
+            href="/mon-compte/transactions"
+            className="rounded-2xl border border-[#e5e3dc] bg-white p-4 shadow-sm"
+          >
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#9c7c4e]">Vos voyages</p>
+            <p className="mt-1 font-display text-xl font-bold text-[var(--admin-navy)]">
+              {personalHomeLabel(money.personalBalance, money.personalCurrency)}
+            </p>
+            <p className="mt-1 text-xs text-muted">
+              {money.personalBalance > 0
+                ? "Frais d’agence 10 % déduits"
+                : "Encours personnel, pour un séjour à votre charge."}
+            </p>
+          </Link>
+        </div>
+      ) : (
+        <Link href="/mon-compte/transactions" className="inline-flex flex-col text-sm font-semibold text-[var(--admin-navy)]">
+          {money.personalBalance > 0 ? (
+            <>
+              <span>{personalHomeLabel(money.personalBalance, money.personalCurrency)}</span>
+              <span className="text-xs font-medium text-[#9c7c4e]">Frais d’agence 10 % déduits</span>
+            </>
+          ) : (
+            <span>{personalHomeLabel(money.personalBalance, money.personalCurrency)}</span>
+          )}
+        </Link>
+      )}
     </div>
   );
 }

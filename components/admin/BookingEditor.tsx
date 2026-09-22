@@ -6,7 +6,6 @@ import Link from "next/link";
 import {
   BOOKING_STATUSES,
   BOOKING_STATUS_LABELS,
-  customerFullName,
   type CrmBooking,
   type CrmBookingDocument,
   type CrmBookingItem,
@@ -26,6 +25,7 @@ import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
 import { TripPassportPicker } from "@/components/crm/TripPassportPicker";
+import { BookingPayerFields } from "@/components/admin/BookingPayerFields";
 
 export function BookingEditor({
   booking,
@@ -53,6 +53,10 @@ export function BookingEditor({
   const needsReview = items.some((item) => item.details?.needs_review === true);
   const [busy, setBusy] = useState<"idle" | "save" | "publish">("idle");
   const [flash, setFlash] = useState<string | null>(null);
+  const [travelerId, setTravelerId] = useState(booking.customer_id);
+  const [billingCustomerId, setBillingCustomerId] = useState(
+    booking.billing_customer_id || booking.customer_id
+  );
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -271,38 +275,14 @@ export function BookingEditor({
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted sm:col-span-2">
-          Client voyageur (titulaire)
-          <select
-            name="customer_id"
-            defaultValue={booking.customer_id}
-            className="rounded-xl border border-border bg-white px-3 py-2"
-          >
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {customerFullName(c)} — {c.email}
-                {c.company_role === "member" ? " · rattaché" : ""}
-                {c.company_role === "admin" ? " · admin société" : ""}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted sm:col-span-2">
-          Facturé à (wallet / société)
-          <select
-            name="billing_customer_id"
-            defaultValue={booking.billing_customer_id || booking.customer_id}
-            className="rounded-xl border border-border bg-white px-3 py-2"
-          >
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {customerFullName(c)}
-                {c.company_name ? ` · ${c.company_name}` : ""}
-                {c.company_role === "admin" ? " · admin société" : ""}
-              </option>
-            ))}
-          </select>
-        </label>
+        <BookingPayerFields
+          customers={customers}
+          travelerId={travelerId}
+          billingCustomerId={billingCustomerId}
+          onTravelerChange={setTravelerId}
+          onBillingChange={setBillingCustomerId}
+          disabled={busy !== "idle"}
+        />
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted sm:col-span-2">
           Notes visibles par le client
           <textarea name="notes_client" defaultValue={booking.notes_client || ""} placeholder="Conseils, horaires de rendez-vous…" className="rounded-xl border border-border px-3 py-2" />

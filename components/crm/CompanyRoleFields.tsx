@@ -27,8 +27,8 @@ export function CompanyRoleFields({
           Société et paiement
         </p>
         <p className="mt-1 text-sm text-muted">
-          Un voyageur peut être payé par une société. L’admin voit le grand livre (revenus inclus) ;
-          le collaborateur rattaché ne voit que les frais de ses voyages.
+          Deux comptes possibles : la société paie les voyages pro (le collaborateur voit ses frais,
+          jamais le solde société). Un séjour à sa charge utilise son encours personnel.
         </p>
       </div>
       <Field label="Rôle">
@@ -48,7 +48,7 @@ export function CompanyRoleFields({
       {role === "member" ? (
         <Field
           label="Facturé par (admin société)"
-          hint="Wallet qui reçoit les virements et les débits des dossiers"
+          hint="Wallet des voyages professionnels. Un dossier peut quand même être facturé au voyageur."
         >
           <select
             value={billingParentId}

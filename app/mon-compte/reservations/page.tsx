@@ -15,6 +15,14 @@ import { bookingCoverUrl } from "@/lib/crm/covers";
 import { loadVisibleCarnets } from "@/lib/crm/carnet-query";
 import { CoverPhoto } from "@/components/crm/CoverPhoto";
 import { Icon } from "@/components/crm/icons";
+import { PayerChip } from "@/components/crm/PayerChip";
+import {
+  bookingPayerKind,
+  companyDisplayName,
+  isCompanyMember,
+  isCompanyPaidBooking,
+} from "@/lib/crm/company-role";
+import type { CrmCustomer } from "@/lib/crm/types";
 
 export default async function ReservationsPage({
   searchParams,
@@ -31,6 +39,15 @@ export default async function ReservationsPage({
   if (!customer) redirect("/connexion");
 
   const all = await loadVisibleCarnets(supabase, customer.id);
+  let companyName: string | null = null;
+  if (isCompanyMember(customer) && customer.billing_parent_id) {
+    const { data: parent } = await supabase
+      .from("crm_customers")
+      .select("first_name, last_name, company_name")
+      .eq("id", customer.billing_parent_id)
+      .maybeSingle();
+    companyName = companyDisplayName(parent as CrmCustomer | null);
+  }
   const upcoming = all.filter(
     (b) => isUpcomingBooking(b.end_date) && b.status !== "cancelled"
   );
@@ -159,6 +176,12 @@ export default async function ReservationsPage({
                       </span>
                     </div>
                   </div>
+                  {isCompanyMember(customer) || isCompanyPaidBooking(b, customer.id) ? (
+                    <PayerChip
+                      kind={bookingPayerKind(b, customer.id)}
+                      companyName={companyName}
+                    />
+                  ) : null}
                   {b.destination && b.title ? (
                     <p className="text-sm text-[var(--admin-navy)]">{b.destination}</p>
                   ) : null}

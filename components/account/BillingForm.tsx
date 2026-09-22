@@ -14,7 +14,13 @@ import {
   type CompanyBillingValues,
 } from "@/components/crm/CompanyBillingFields";
 
-export function BillingForm({ customer }: { customer: CrmCustomer }) {
+export function BillingForm({
+  customer,
+  emptyLabel,
+}: {
+  customer: CrmCustomer;
+  emptyLabel?: string;
+}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -80,7 +86,7 @@ export function BillingForm({ customer }: { customer: CrmCustomer }) {
         onClick={() => setOpen(true)}
         className="w-full rounded-2xl border border-[#e5e3dc] bg-white px-4 py-3 text-left text-sm font-semibold text-[var(--admin-navy)]"
       >
-        Ajouter un IBAN ou une société
+        {emptyLabel || "Ajouter un IBAN ou une société"}
       </button>
     );
   }

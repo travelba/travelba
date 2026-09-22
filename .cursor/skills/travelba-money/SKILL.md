@@ -22,7 +22,7 @@ Vue `crm_customer_balances` = somme crédits `posted` − débits `posted` (par 
 
 Ledger visible côté client (`/mon-compte/transactions`) : lignes `posted` seulement (RLS).
 
-**Société** : si `company_role=member`, le client ne voit que les **débits** de ses dossiers (pas les crédits / encours société). `company_role=admin` (ou null) = grand livre complet de son wallet. Débits résa → `billing_customer_id` du dossier.
+**Société** : deux comptes. `company_role=member` voit (1) les **débits** de ses dossiers facturés à la société (pas les crédits / encours société) et (2) son **wallet personnel** (encours de ses voyages à sa charge). `company_role=admin` (ou null) = grand livre complet de son wallet. Débits résa → `billing_customer_id` du dossier. Un collaborateur peut donc avoir Marrakech payé par la société et un autre séjour à son nom.
 
 PDF relevé = bouton **Demander un relevé** (`mailto:`), **pas** de génération PDF auto ni d’envoi mail automatique.
 
