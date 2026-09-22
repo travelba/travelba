@@ -33,6 +33,15 @@ export function BillingForm({ customer }: { customer: CrmCustomer }) {
     billingSameAsProfile(companyBillingFromCustomer(customer), profileAddress)
   );
   const ibanHint = ibanError(normalizeIban(iban));
+  const hasBilling = Boolean(
+    normalizeIban(iban) ||
+      billing.companyName ||
+      billing.siret ||
+      billing.vatNumber ||
+      billing.billingEmail ||
+      billing.billingLine
+  );
+  const [open, setOpen] = useState(hasBilling);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -62,6 +71,18 @@ export function BillingForm({ customer }: { customer: CrmCustomer }) {
     setSaving(false);
     setSaved(true);
     router.refresh();
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="w-full rounded-2xl border border-[#e5e3dc] bg-white px-4 py-3 text-left text-sm font-semibold text-[var(--admin-navy)]"
+      >
+        Ajouter un IBAN ou une société
+      </button>
+    );
   }
 
   return (

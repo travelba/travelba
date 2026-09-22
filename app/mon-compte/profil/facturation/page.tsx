@@ -16,14 +16,7 @@ export default async function FacturationPage() {
   return (
     <div className="space-y-4 pb-6">
       <ProfileSubnav />
-      <div>
-        <h1 className="font-display text-xl font-semibold text-[var(--admin-navy-deep)]">
-          Facturation
-        </h1>
-        <p className="mt-1 text-sm text-muted">
-          Adresse et société pour vos factures. Les cartes bancaires ne sont pas gérées ici.
-        </p>
-      </div>
+      <h1 className="font-display text-xl font-semibold text-[var(--admin-navy-deep)]">Facturation</h1>
       <BillingForm customer={customer} />
     </div>
   );

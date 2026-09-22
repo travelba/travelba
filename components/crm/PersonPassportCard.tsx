@@ -70,17 +70,20 @@ export function passportCompactLabel(source: PassportSource) {
     source.doc_type && source.doc_type in DOC_TYPE_LABELS
       ? DOC_TYPE_LABELS[source.doc_type as TravelDocType]
       : source.doc_type || "Passeport";
-  const parts = [type, source.number].filter(Boolean);
+  const expiry = source.expires_on ? `exp. ${formatDateFr(source.expires_on)}` : null;
+  const parts = [type, source.number, expiry].filter(Boolean);
   return parts.join(" · ") || "Pièce d’identité";
 }
 
 export function PassportDetails({ source }: { source: PassportSource }) {
+  const rows = passportDetailRows(source).filter(([, value]) => value);
+  if (!rows.length) return null;
   return (
     <dl className="grid gap-x-4 gap-y-2 sm:grid-cols-2">
-      {passportDetailRows(source).map(([label, value]) => (
+      {rows.map(([label, value]) => (
         <div key={label}>
           <dt className="text-[10px] font-bold uppercase tracking-wide text-muted">{label}</dt>
-          <dd className="text-sm font-medium text-[var(--admin-navy)]">{value || "—"}</dd>
+          <dd className="text-sm font-medium text-[var(--admin-navy)]">{value}</dd>
         </div>
       ))}
     </dl>
@@ -111,6 +114,7 @@ export function PersonPassportCard({
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(vault.length === 0);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
   const endpoint = variant === "admin" ? "/api/admin/travel-documents" : "/api/client/documents";
   const scanEndpoint =
     variant === "admin" ? "/api/admin/travel-documents/scan" : "/api/client/documents/scan";
@@ -227,7 +231,24 @@ export function PersonPassportCard({
             onResult={handleResult}
           />
           {scan ? <ScanStatus identity={scan.identity} warning={scan.warning} /> : null}
-          {scan ? <PassportDetails source={scan.identity || {}} /> : null}
+          {scan ? (
+            <div>
+              <button
+                type="button"
+                onClick={() => setScanOpen((value) => !value)}
+                className="flex w-full items-center justify-between gap-2 text-left text-sm font-semibold text-[var(--admin-navy)]"
+                aria-expanded={scanOpen}
+              >
+                <span className="truncate">{passportCompactLabel(scan.identity || {})}</span>
+                <ChevronDown className={`h-4 w-4 shrink-0 transition ${scanOpen ? "rotate-180" : ""}`} />
+              </button>
+              {scanOpen ? (
+                <div className="mt-2">
+                  <PassportDetails source={scan.identity || {}} />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {vault.length ? (
             <button
               type="button"
