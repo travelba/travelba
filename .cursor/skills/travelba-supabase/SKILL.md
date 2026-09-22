@@ -26,6 +26,7 @@ Avant d’écrire du SQL : lister les tables (`crm_*`), lire la **dernière** mi
 | `20260918043000_carnet_visibility_kinds.sql` | kinds `rail/car/cruise`, `visible_to_client`, RLS published-only |
 | `20260922100000_company_role_billing.sql` | `company_role` admin|member, `billing_parent_id`, `billing_customer_id`, RLS member trip debits |
 | `20260922101000_billing_parent_read.sql` | member peut lire la fiche admin société (payeur) |
+| `20260922121500_fix_customer_parent_rls.sql` | RLS parent société sans récursion `crm_customers` |
 
 Toute évolution = **nouveau fichier** `supabase/migrations/YYYYMMDDHHMMSS_slug.sql` (idempotent : `if not exists`, `drop policy if exists`). Appliquer via MCP `apply_migration` ou SQL Editor. Ne pas éditer une migration déjà poussée en prod.
 
@@ -57,6 +58,7 @@ Visibilité carnet : `crm_bookings.visible_to_client` et `crm_booking_items.visi
 - `user_metadata` **interdit** pour l’authz. Rôles dans `app_metadata.crm_role` **et** table `crm_staff` (source de vérité).
 - Vue encours : déjà `security_invoker = true`. Toute nouvelle vue : pareil, ou hors `public`.
 - Fonctions `security definer` : `search_path = public` (ou `crm_private`), grant ciblé, pas `public` execute large.
+- **Jamais** `select` sur `crm_customers` dans une policy de `crm_customers` (récursion → liste clients vide). Helper `crm_private.billing_parent_id()`.
 
 SQL : paramètres liés uniquement. Pas de concat d’email/id dans une string SQL.
 
