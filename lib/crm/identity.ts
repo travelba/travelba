@@ -34,11 +34,84 @@ export type ExtractedIdentity = {
   valid: boolean;
 };
 
+function foldNameToken(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function titleCaseNamePart(token: string) {
+  return token
+    .toLowerCase()
+    .replace(/(^|[\s'-])(\p{L})/gu, (chunk) => chunk.toUpperCase());
+}
+
+/** Prénoms du passeport : tous les mots, dans l’ordre imprimé. */
+export function givenNameTokens(value: string | null | undefined): string[] {
+  if (value == null) return [];
+  return String(value)
+    .replace(/[<>]+/g, " ")
+    .replace(/[,;|]+/g, " ")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .map(titleCaseNamePart);
+}
+
+export function normalizeGivenNames(value: string | null | undefined): string | null {
+  const tokens = givenNameTokens(value);
+  return tokens.length ? tokens.join(" ") : null;
+}
+
+function tokensEqual(left: string[], right: string[]) {
+  return left.length === right.length && left.every((token, i) => foldNameToken(token) === foldNameToken(right[i]));
+}
+
+function isOrderedPrefix(short: string[], long: string[]) {
+  if (!short.length || short.length > long.length) return false;
+  return short.every((token, i) => foldNameToken(token) === foldNameToken(long[i]));
+}
+
+function isOrderedSubsequence(needles: string[], haystack: string[]) {
+  let i = 0;
+  for (const token of haystack) {
+    if (i < needles.length && foldNameToken(token) === foldNameToken(needles[i])) i += 1;
+  }
+  return i === needles.length;
+}
+
+/**
+ * Garde tous les prénoms, dans l’ordre du document.
+ * La MRZ tronque souvent : on prend la liste la plus complète si l’ordre est conservé.
+ */
+export function completeGivenNames(
+  mrzName: string | null | undefined,
+  visionName: string | null | undefined
+): string | null {
+  const mrz = givenNameTokens(mrzName);
+  const vision = givenNameTokens(visionName);
+  if (!mrz.length && !vision.length) return null;
+  if (!mrz.length) return vision.join(" ");
+  if (!vision.length) return mrz.join(" ");
+  if (tokensEqual(mrz, vision)) return vision.join(" ");
+  if (isOrderedPrefix(mrz, vision) || isOrderedSubsequence(mrz, vision)) return vision.join(" ");
+  if (isOrderedPrefix(vision, mrz) || isOrderedSubsequence(vision, mrz)) return mrz.join(" ");
+  if (foldNameToken(mrz[0]) === foldNameToken(vision[0])) {
+    return (vision.length >= mrz.length ? vision : mrz).join(" ");
+  }
+  return (vision.length > mrz.length ? vision : mrz).join(" ");
+}
+
 export function humanizeMrzName(value: string) {
   return value
     .trim()
-    .toLowerCase()
-    .replace(/(^|[\s'-])(\p{L})/gu, (chunk) => chunk.toUpperCase());
+    .replace(/[<>]+/g, " ")
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map(titleCaseNamePart)
+    .join(" ");
 }
 
 export function documentExpiryStatus(isoDate: string | null | undefined) {

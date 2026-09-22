@@ -180,7 +180,7 @@ export function CustomerEditor({
           <p className="sm:col-span-2 font-display text-base font-bold text-[var(--admin-navy)]">
             Identité
           </p>
-          <Field label="Prénom" hint="Comme sur le passeport">
+          <Field label="Prénom(s)" hint="Tous les prénoms, dans l’ordre du passeport">
             <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
           </Field>
           <Field label="Nom" hint="Comme sur le passeport">
@@ -363,7 +363,7 @@ function CompanionCard({
         </p>
       ) : null}
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Prénom" hint="Comme sur le passeport">
+        <Field label="Prénom(s)" hint="Tous les prénoms, dans l’ordre du passeport">
           <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
         </Field>
         <Field label="Nom" hint="Comme sur le passeport">
@@ -503,7 +503,7 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
         onScan={setScan}
       />
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Prénom">
+        <Field label="Prénom(s)" hint="Tous les prénoms, dans l’ordre du passeport">
           <input required value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
         </Field>
         <Field label="Nom">
