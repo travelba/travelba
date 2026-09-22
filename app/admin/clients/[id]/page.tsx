@@ -20,16 +20,19 @@ import {
 } from "@/lib/crm/types";
 import { formatDateFr, formatMoney, formatCreditDisponible, postedLedgerTotals } from "@/lib/crm/money";
 import {
+  canOpenBillingCompany,
   companyDisplayName,
   companyPaidBookingIds,
   companyRoleLabel,
   hasBillingParent,
   isCompanyAdmin,
   isCompanyPaidBooking,
+  isCompanyWallet,
   mergeRowsById,
 } from "@/lib/crm/company-role";
 import { PayerChip } from "@/components/crm/PayerChip";
 import { AttachBillingTravelers } from "@/components/admin/AttachBillingTravelers";
+import { CreateBillingCompanyPanel } from "@/components/admin/CreateBillingCompanyPanel";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -133,11 +136,14 @@ export default async function AdminClientDetailPage({ params }: Props) {
           <h1 className="font-display text-3xl font-extrabold text-[var(--admin-navy)]">
             {customerFullName(c)}
           </h1>
-          {c.company_role || shared ? (
+          {c.company_role || shared || isCompanyWallet(c) ? (
             <p className="mt-1 text-sm text-[#9e7e51]">
               {c.company_role ? companyRoleLabel(c.company_role) : "Particulier"}
               {isCompanyAdmin(c) && c.company_name ? ` · ${c.company_name}` : ""}
               {shared && companyName ? ` · voyages facturés par ${companyName}` : ""}
+              {isCompanyWallet(c)
+                ? " · il voyage aussi : ses dossiers débiteront ce wallet"
+                : ""}
             </p>
           ) : null}
         </div>
@@ -201,6 +207,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         documents={(documents || []) as CrmTravelDocument[]}
         companyAdmins={companyAdmins}
       />
+      {canOpenBillingCompany(c) ? <CreateBillingCompanyPanel traveler={c} /> : null}
       {isCompanyAdmin(c) ? (
         <AttachBillingTravelers
           company={c}

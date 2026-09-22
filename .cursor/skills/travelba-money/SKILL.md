@@ -22,7 +22,7 @@ Vue `crm_customer_balances` = somme crédits `posted` − débits `posted` (par 
 
 Ledger visible côté client (`/mon-compte/transactions`) : lignes `posted` seulement (RLS).
 
-**Société** : un wallet payeur (ex. OZB) + N voyageurs. `billing_parent_id` rattache n’importe quel titulaire (member, admin d’une autre société, particulier). Chacun voit (1) les **débits de ses dossiers** facturés au payeur (pas le solde payeur) et (2) **son wallet**. Débits résa → `billing_customer_id`. RLS : tout titulaire lit les débits posted de ses dossiers, même si l’écriture est sur un autre wallet.
+**Société** : un wallet payeur (ex. OZB / gérant Cyril) + N voyageurs. Le gérant **est** le wallet (`company_role=admin`) et voyage aussi : ses dossiers facturés à lui-même débiteront le compte société. `billing_parent_id` rattache n’importe quel titulaire (member, admin d’une autre société, particulier). Collaborateurs voient (1) les **débits de leurs dossiers** facturés au payeur (pas le solde payeur) et (2) **leur wallet**. Débits résa → `billing_customer_id`. RLS : tout titulaire lit les débits posted de ses dossiers, même si l’écriture est sur un autre wallet. Ouvrir le compte : `POST /api/admin/clients/[id]/billing-company` (e-mail gérant obligatoire, Créer ≠ Inviter).
 
 PDF relevé = bouton **Demander un relevé** (`mailto:`), **pas** de génération PDF auto ni d’envoi mail automatique.
 

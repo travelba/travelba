@@ -73,8 +73,8 @@ export function AttachBillingTravelers({
         <div>
           <h2 className="font-display text-lg font-bold">Voyageurs sur ce compte</h2>
           <p className="mt-1 text-sm text-muted">
-            {companyName} paie leurs voyages pro. Chacun garde son carnet et, s’il en a un, son
-            propre wallet (ex. gérant de Roselle).
+            {companyName} paie leurs voyages pro. Chacun garde son carnet. Le gérant voyage aussi :
+            ses dossiers débiteront ce même compte.
           </p>
         </div>
         <button
@@ -113,8 +113,7 @@ export function AttachBillingTravelers({
         </ul>
       ) : (
         <p className="text-sm text-muted">
-          Personne n’est encore rattaché. Jérémy, le gérant de Roselle — tout titulaire peut voyager
-          ici.
+          Personne n’est encore rattaché. Collaborateur ou gérant — tout titulaire peut voyager ici.
         </p>
       )}
       <CustomerPickDialog

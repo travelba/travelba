@@ -5,6 +5,7 @@ import { customerFullName } from "@/lib/crm/types";
 import {
   companyDisplayName,
   hasBillingParent,
+  isCompanyWallet,
   resolveBillingCustomerId,
 } from "@/lib/crm/company-role";
 import { Field, fieldControlClass } from "@/components/crm/fields";
@@ -34,7 +35,12 @@ export function BookingPayerFields({
   const parentId = traveler?.billing_parent_id || "";
   const parent = parentId ? customers.find((c) => c.id === parentId) : undefined;
   const member = Boolean(traveler && hasBillingParent(traveler) && parentId);
-  const companyName = parent ? companyDisplayName(parent) : "la société";
+  const companyWallet = Boolean(traveler && isCompanyWallet(traveler));
+  const companyName = parent
+    ? companyDisplayName(parent)
+    : traveler && companyWallet
+      ? companyDisplayName(traveler)
+      : "la société";
   const travelerLabel = traveler ? customerFullName(traveler) : "le voyageur";
 
   let preset: "company" | "personal" | "other" = "personal";
@@ -135,6 +141,11 @@ export function BookingPayerFields({
             </select>
           ) : null}
         </fieldset>
+      ) : companyWallet ? (
+        <p className="text-xs text-muted">
+          Facturé à <strong>{companyName}</strong> — wallet société du gérant. Il voyage comme les
+          autres ; le débit va sur ce compte, pas sur un encours perso séparé.
+        </p>
       ) : travelerId ? (
         <p className="text-xs text-muted">Facturé au voyageur (encours personnel).</p>
       ) : null}

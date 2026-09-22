@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { billingParentError, parseCompanyRole } from "@/lib/crm/company-role";
+import { emptyToNull } from "@/lib/crm/identity";
 import { appOrigin, inviteCustomer } from "@/lib/crm/invite";
 import type { CompanyRole, CrmCustomer } from "@/lib/crm/types";
 
@@ -59,6 +60,7 @@ export async function POST(request: Request) {
       language: "fr",
       company_role: companyRole,
       billing_parent_id: billingParentId,
+      company_name: emptyToNull(body?.company_name),
     })
     .select("*")
     .single();

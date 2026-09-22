@@ -2,8 +2,9 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CrmCustomer } from "@/lib/crm/types";
+import type { CompanyRole, CrmCustomer } from "@/lib/crm/types";
 import { customerFullName } from "@/lib/crm/types";
+import { companyRoleLabel } from "@/lib/crm/company-role";
 
 const fieldClass = "rounded-xl border border-border bg-white px-3 py-2.5";
 const labelClass = "flex flex-col gap-1 text-xs font-semibold text-muted";
@@ -16,6 +17,7 @@ export function NewCustomerForm({
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [role, setRole] = useState<CompanyRole | "">("");
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -64,10 +66,44 @@ export function NewCustomerForm({
           className={fieldClass}
         />
       </label>
+      <label className={labelClass}>
+        Rôle
+        <select
+          name="company_role"
+          value={role}
+          onChange={(e) => {
+            const v = e.target.value;
+            setRole(v === "admin" || v === "member" ? v : "");
+          }}
+          disabled={saving}
+          className={fieldClass}
+        >
+          <option value="">{companyRoleLabel(null)}</option>
+          <option value="admin">{companyRoleLabel("admin")}</option>
+          <option value="member">{companyRoleLabel("member")}</option>
+        </select>
+      </label>
+      {role === "admin" ? (
+        <label className={`${labelClass} sm:col-span-2`}>
+          Société (wallet du gérant)
+          <input
+            name="company_name"
+            autoComplete="off"
+            disabled={saving}
+            placeholder="OZB Optique"
+            className={fieldClass}
+          />
+        </label>
+      ) : null}
       {companyAdmins.length ? (
         <label className={labelClass}>
           Compte de facturation
-          <select name="billing_parent_id" disabled={saving} className={fieldClass}>
+          <select
+            name="billing_parent_id"
+            required={role === "member"}
+            disabled={saving}
+            className={fieldClass}
+          >
             <option value="">Aucun — à sa charge</option>
             {companyAdmins.map((c) => (
               <option key={c.id} value={c.id}>
@@ -76,6 +112,11 @@ export function NewCustomerForm({
             ))}
           </select>
         </label>
+      ) : null}
+      {role === "admin" ? (
+        <p className="text-xs text-muted sm:col-span-4">
+          Le gérant voyage aussi : ses dossiers débiteront ce wallet société.
+        </p>
       ) : null}
       <button
         type="submit"

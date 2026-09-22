@@ -11,6 +11,7 @@ import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { CoverPhoto } from "@/components/crm/CoverPhoto";
 import { Icon } from "@/components/crm/icons";
 import { personalHomeLabel } from "@/components/account/PersonalLedgerCard";
+import { companyDisplayName, isCompanyWallet } from "@/lib/crm/company-role";
 
 export default async function AccountHomePage() {
   const supabase = await createClient();
@@ -143,6 +144,12 @@ export default async function AccountHomePage() {
           ) : (
             <span>{personalHomeLabel(money.personalBalance, money.personalCurrency)}</span>
           )}
+          {isCompanyWallet(customer) ? (
+            <span className="mt-1 text-xs font-medium text-muted">
+              Compte {companyDisplayName(customer)}. Vous voyez le solde société ; les
+              collaborateurs ne voient que les frais de leurs dossiers.
+            </span>
+          ) : null}
         </Link>
       )}
     </div>

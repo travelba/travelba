@@ -6,6 +6,7 @@ import { postedLedgerTotals } from "@/lib/crm/money";
 import { CompanyTripCard, PersonalLedgerCard } from "@/components/account/PersonalLedgerCard";
 import { TransactionRows } from "@/components/account/TransactionRows";
 import { Icon } from "@/components/crm/icons";
+import { companyDisplayName, isCompanyWallet } from "@/lib/crm/company-role";
 
 export default async function TransactionsPage() {
   const supabase = await createClient();
@@ -39,7 +40,9 @@ export default async function TransactionsPage() {
         hint={
           money.sharedBilling
             ? "Wallet personnel — pour un séjour que vous financez vous-même. Indépendant du solde société."
-            : undefined
+            : isCompanyWallet(customer)
+              ? `Compte ${companyDisplayName(customer)} — vos voyages et ceux des collaborateurs. Ils ne voient pas ce solde.`
+              : undefined
         }
       />
 

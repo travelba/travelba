@@ -68,6 +68,28 @@ export function isCompanyAdmin(
   return customer?.company_role === "admin";
 }
 
+/** Admin société sans parent : il EST le wallet (ex. Cyril / OZB). Il voyage dessus. */
+export function isCompanyWallet(
+  customer: Pick<CrmCustomer, "company_role" | "billing_parent_id"> | null | undefined
+) {
+  return isCompanyAdmin(customer) && !hasBillingParent(customer);
+}
+
+/** Fiche voyageur avec un nom de société, pas encore rattachée ni elle-même wallet. */
+export function canOpenBillingCompany(
+  customer:
+    | Pick<CrmCustomer, "company_role" | "billing_parent_id" | "company_name">
+    | null
+    | undefined
+) {
+  return Boolean(customer?.company_name?.trim()) && !isCompanyAdmin(customer) && !hasBillingParent(customer);
+}
+
+/** Rattacher un titulaire : un admin garde son wallet, les autres deviennent collaborateurs. */
+export function travelerRoleAfterAttach(role: CompanyRole | null | undefined): CompanyRole {
+  return role === "admin" ? "admin" : "member";
+}
+
 export function companyDisplayName(
   company: Pick<CrmCustomer, "company_name" | "first_name" | "last_name"> | null | undefined
 ) {

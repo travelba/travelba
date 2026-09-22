@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
-import { companyDisplayName, hasBillingParent } from "@/lib/crm/company-role";
+import { companyDisplayName, hasBillingParent, isCompanyWallet } from "@/lib/crm/company-role";
 import { customerFullName, type CrmCustomer } from "@/lib/crm/types";
 import { ProfileSubnav } from "@/components/account/ProfileSubnav";
 import { BillingForm } from "@/components/account/BillingForm";
@@ -46,6 +46,16 @@ export default async function FacturationPage() {
           </p>
           <p className="mt-3 text-xs text-muted">
             Pour modifier la facturation société, contactez l’agence ou l’admin société.
+          </p>
+        </section>
+      ) : isCompanyWallet(customer) ? (
+        <section className="rounded-2xl border border-[#e5e3dc] bg-white p-4">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[#9c7c4e]">
+            Compte {companyDisplayName(customer)}
+          </p>
+          <p className="mt-2 text-sm text-[var(--admin-navy)]">
+            Vous êtes le gérant : vos voyages et ceux des collaborateurs débiteront ce wallet. Ils
+            ne voient pas le crédit disponible ni les versements.
           </p>
         </section>
       ) : null}

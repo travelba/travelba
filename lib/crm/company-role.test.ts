@@ -9,7 +9,9 @@ import {
   companyRoleLabel,
   filterClientLedgerRows,
   hasBillingParent,
+  canOpenBillingCompany,
   isCompanyPaidBooking,
+  isCompanyWallet,
   parseCompanyRole,
   resolveBillingCustomerId,
   splitMemberLedger,
@@ -35,11 +37,20 @@ test("resolveBillingCustomerId uses parent for members", () => {
   );
   assert.equal(
     resolveBillingCustomerId({
-      id: "roselle-gerant",
+      id: "cyril",
       company_role: "admin",
       billing_parent_id: "ozb",
     }),
     "ozb"
+  );
+  assert.equal(isCompanyWallet({ company_role: "admin", billing_parent_id: null }), true);
+  assert.equal(
+    resolveBillingCustomerId({
+      id: "cyril-ozb",
+      company_role: "admin",
+      billing_parent_id: null,
+    }),
+    "cyril-ozb"
   );
   assert.equal(
     resolveBillingCustomerId({
@@ -121,6 +132,14 @@ test("Marrakech billed to OZB is company-paid, a personal trip is not", () => {
 test("any traveler can share a billing account without being a member", () => {
   assert.equal(hasBillingParent({ billing_parent_id: "ozb" }), true);
   assert.equal(hasBillingParent({ billing_parent_id: null }), false);
+  assert.equal(
+    canOpenBillingCompany({
+      company_name: "OZB OPTIQUE",
+      company_role: null,
+      billing_parent_id: null,
+    }),
+    true
+  );
   assert.equal(
     billingParentError({
       selfId: "jeremy",

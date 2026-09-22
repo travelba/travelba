@@ -27,8 +27,8 @@ export function CompanyRoleFields({
           Société et paiement
         </p>
         <p className="mt-1 text-sm text-muted">
-          Le rôle décrit le wallet du client. Le compte de facturation est un autre wallet (ex. OZB)
-          qui peut payer les voyages de plusieurs titulaires — Jérémy, le gérant de Roselle, etc.
+          Le rôle décrit le wallet du client. Le compte de facturation (ex. OZB Optique) paie les
+          voyages de plusieurs titulaires — un collaborateur, et le gérant qui voyage aussi.
         </p>
       </div>
       <Field label="Rôle (son wallet)">
@@ -47,8 +47,8 @@ export function CompanyRoleFields({
       </Field>
       {role === "admin" ? (
         <p className="text-xs text-[#9e7e51]">
-          Wallet société propre (Revolut, encours). Il peut quand même voyager sur un autre compte
-          ci-dessous.
+          Wallet société propre (Revolut, encours). Le gérant voyage aussi : sans autre compte
+          ci-dessous, ses dossiers débiteront ce wallet.
         </p>
       ) : null}
       <Field
