@@ -42,7 +42,9 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 ## Prix
 
 - Prix vendu (`item.amount`) : **uniquement le premier jour** de l’événement (check-in hôtel, départ vol, prise en charge location). Les nuits / jours suivants gardent la carte, sans recompter le montant.
-- **Montant du séjour** (`booking.total_amount`) = somme des prix vendus des cartes dès qu’un `item.amount > 0`. Sinon saisie manuelle / total import.
+- **Vols** : plusieurs e-tickets du même segment = **une** carte, `details.ticket_count`. `item.amount` = **prix unitaire par billet**. Affichage `5 × 250 €`, total séjour = unitaire × billets. Aller-retour : saisir le prix sur **un** vol.
+- Carte vol compacte : **IATA** (`CDG → RAK`) en titre, villes en dessous. Prix **sous** la route en mobile (pas à droite : ça déborde).
+- **Montant du séjour** (`booking.total_amount`) = somme des prix vendus des cartes dès qu’un `item.amount > 0` (vols : unitaire × billets). Sinon saisie manuelle / total import.
 - `item.amount` extrait = **null** (jamais le net fournisseur sur la carte client).
 - Montant PDF → `details.document_amount` (relecture agent). `sanitizeExtractedPrices` **préremplit** `total_amount` = somme **un montant par fichier**. Un extract à 0 ne masque pas cette somme.
 - **Enregistrer** un extract `document_status=confirmed` : écrit `booking.total_amount` et passe le dossier en **confirmé** (toujours `visible_to_client=false` jusqu’à Publier) → `syncBookingLedger` poste le débit + frais billeterie.

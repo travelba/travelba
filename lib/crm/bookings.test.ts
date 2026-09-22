@@ -5,6 +5,7 @@ import {
   bookingItemDebitExternalId,
   bookingItemDebitLabel,
   bookingTotalFromItems,
+  itemSellingAmount,
   parseIncludeInLedger,
 } from "./bookings";
 
@@ -111,4 +112,15 @@ test("stay total is the sum of selling prices when any card is priced", () => {
     943.8
   );
   assert.equal(bookingTotalFromItems([{ amount: 10.1 }, { amount: 20.25 }]), 30.35);
+  assert.equal(
+    itemSellingAmount({ kind: "flight", amount: 250, details: { ticket_count: 5 } }),
+    1250
+  );
+  assert.equal(
+    bookingTotalFromItems([
+      { kind: "flight", amount: 250, details: { ticket_count: 5 } },
+      { kind: "hotel", amount: 800 },
+    ]),
+    2050
+  );
 });

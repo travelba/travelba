@@ -52,6 +52,7 @@ const detailsSchemaLoose = z
     needs_review: z.boolean().nullable().optional(),
     document_amount: looseNumber,
     document_currency: looseString,
+    ticket_count: looseNumber,
   })
   .optional()
   .default({});

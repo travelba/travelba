@@ -10,7 +10,7 @@ import {
 } from "@/lib/crm/types";
 import type { BookingExtract } from "@/lib/crm/ingest-types";
 import { itemDetailsLine, itemWhen } from "@/lib/crm/booking-display";
-import { hotelDisplayName } from "@/lib/crm/carnet";
+import { hotelDisplayName, itemPriceLabel } from "@/lib/crm/carnet";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
 
 type ItemDraft = BookingExtract["items"][number];
@@ -54,9 +54,11 @@ function moveItem<T>(list: T[], from: number, to: number) {
 export function BookingItemsPanel({
   bookingId,
   items,
+  currency = "EUR",
 }: {
   bookingId: string;
   items: CrmBookingItem[];
+  currency?: string;
 }) {
   const router = useRouter();
   const [rows, setRows] = useState(items);
@@ -232,7 +234,9 @@ export function BookingItemsPanel({
                       ) : null}
                     </p>
                     <p className="text-xs text-muted">
-                      {[itemWhen(item), itemDetailsLine(item)].filter(Boolean).join(" · ")}
+                      {[itemWhen(item), itemDetailsLine(item), itemPriceLabel(item, currency)]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </p>
                   </div>
                 </div>

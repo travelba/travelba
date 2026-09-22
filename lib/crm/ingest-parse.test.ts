@@ -342,6 +342,7 @@ describe("mergeExtractItems", () => {
       }))
     );
     assert.equal(merged.length, 1);
+    assert.equal(merged[0]?.details?.ticket_count, 5);
   });
 });
 

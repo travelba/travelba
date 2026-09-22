@@ -166,12 +166,33 @@ export function IngestItemCard({
             onChange={(v) => onChange(patchDetails(item, "document_currency", v))}
           />
         </Field>
-        <Field label="Prix vendu (optionnel)">
+        {item.kind === "flight" ? (
+          <Field label="Nombre de billets">
+            <Text
+              value={d.ticket_count == null ? "" : String(d.ticket_count)}
+              onChange={(raw) =>
+                onChange({
+                  ...item,
+                  details: {
+                    ...item.details,
+                    ticket_count: raw === "" ? null : Math.max(1, Math.round(Number(raw)) || 1),
+                  },
+                })
+              }
+            />
+          </Field>
+        ) : null}
+        <Field label={item.kind === "flight" ? "Prix unitaire par billet" : "Prix vendu (optionnel)"}>
           <Text
             value={item.amount == null ? "" : String(item.amount)}
             onChange={(raw) => onChange({ ...item, amount: raw === "" ? null : Number(raw) })}
           />
         </Field>
+        {item.kind === "flight" ? (
+          <p className="text-xs text-muted sm:col-span-2">
+            Le séjour compte prix × billets. Sur un aller-retour, saisissez le prix sur un seul vol.
+          </p>
+        ) : null}
         <label className="flex items-start gap-2 text-sm text-[var(--admin-navy)] sm:col-span-2">
           <input
             type="checkbox"

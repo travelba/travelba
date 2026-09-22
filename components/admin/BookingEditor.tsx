@@ -373,7 +373,7 @@ export function BookingEditor({
         </form>
       </section>
 
-      <BookingItemsPanel bookingId={booking.id} items={items} />
+      <BookingItemsPanel bookingId={booking.id} items={items} currency={booking.currency} />
 
       {items.length ? (
         <section className="admin-af-card space-y-3 rounded-3xl p-5">
