@@ -39,6 +39,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
     { data: bookings },
     { data: txs },
     { data: balances },
+    { data: companyAdmins },
     portal,
     unmatchedRevolut,
   ] = await Promise.all([
@@ -51,6 +52,11 @@ export default async function AdminClientDetailPage({ params }: Props) {
       .eq("customer_id", id)
       .order("occurred_on", { ascending: false }),
     supabase.from("crm_customer_balances").select("*").eq("customer_id", id),
+    supabase
+      .from("crm_customers")
+      .select("*")
+      .eq("company_role", "admin")
+      .order("last_name"),
     getPortalAccess(c),
     (async () => {
       try {
@@ -118,6 +124,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         customer={c}
         companions={(companions || []) as CrmCompanion[]}
         documents={(documents || []) as CrmTravelDocument[]}
+        companyAdmins={(companyAdmins || []) as CrmCustomer[]}
       />
       <ClientRevolutSuggestions suggestions={revolutSuggestions} />
       <section className="admin-af-card rounded-3xl p-5">

@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { nextBookingReference, syncBookingLedger } from "@/lib/crm/bookings";
+import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { scheduleBookingCover } from "@/lib/crm/cover-generate";
-import type { CrmBooking } from "@/lib/crm/types";
+import type { CrmBooking, CrmCustomer } from "@/lib/crm/types";
 
 export async function GET() {
   const auth = await requireStaff();
@@ -22,6 +23,16 @@ export async function POST(request: Request) {
   const customerId = String(body?.customer_id || "");
   const title = String(body?.title || "").trim();
   if (!customerId || !title) return jsonError("Client et titre requis");
+  const { data: traveler, error: travelerError } = await auth.supabase
+    .from("crm_customers")
+    .select("id, company_role, billing_parent_id")
+    .eq("id", customerId)
+    .maybeSingle();
+  if (travelerError) return dbError(travelerError, 500);
+  if (!traveler) return jsonError("Client introuvable", 404);
+  const billingCustomerId = body?.billing_customer_id
+    ? String(body.billing_customer_id)
+    : resolveBillingCustomerId(traveler as CrmCustomer);
   let reference: string;
   try {
     reference = await nextBookingReference(auth.supabase);
@@ -33,6 +44,7 @@ export async function POST(request: Request) {
     .from("crm_bookings")
     .insert({
       customer_id: customerId,
+      billing_customer_id: billingCustomerId,
       reference,
       title,
       destination: body?.destination || null,

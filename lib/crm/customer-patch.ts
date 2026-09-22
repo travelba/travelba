@@ -2,6 +2,7 @@ import { normalizeFlyingBlue, normalizeIban, ibanError, normalizeSiret, normaliz
 import { resolveCountryCode } from "./countries";
 import { emptyToNull } from "./identity";
 import { normalizeLoyaltyMap } from "./loyalty";
+import { parseCompanyRole } from "./company-role";
 import { toE164 } from "./phone";
 
 const PHONE_KEYS = new Set(["phone", "phone_secondary"]);
@@ -31,6 +32,8 @@ export const CUSTOMER_PATCH_KEYS = [
   "billing_postal_code",
   "billing_city",
   "billing_country",
+  "company_role",
+  "billing_parent_id",
 ] as const;
 
 export function customerPatchFromBody(
@@ -98,6 +101,16 @@ export function customerPatchFromBody(
     if (key === "billing_email") {
       const email = emptyToNull(body[key]);
       patch.billing_email = email ? email.toLowerCase() : null;
+      continue;
+    }
+    if (key === "company_role") {
+      const role = parseCompanyRole(body[key]);
+      patch.company_role = role;
+      if (role !== "member") patch.billing_parent_id = null;
+      continue;
+    }
+    if (key === "billing_parent_id") {
+      patch.billing_parent_id = emptyToNull(body[key]);
       continue;
     }
     patch[key] = emptyToNull(body[key]);

@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { setCarnetPublished, syncBookingLedger } from "@/lib/crm/bookings";
+import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { scheduleBookingCover } from "@/lib/crm/cover-generate";
-import type { BookingStatus, CrmBooking } from "@/lib/crm/types";
+import type { BookingStatus, CrmBooking, CrmCustomer } from "@/lib/crm/types";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -45,9 +46,22 @@ export async function PATCH(request: Request, ctx: Ctx) {
     "notes_client",
     "notes_internal",
     "customer_id",
+    "billing_customer_id",
   ]) {
     if (key in body) {
       patch[key] = key === "total_amount" ? Number(body[key] || 0) : body[key];
+    }
+  }
+
+  if ("customer_id" in patch && !("billing_customer_id" in patch)) {
+    const travelerId = String(patch.customer_id);
+    const { data: traveler } = await auth.supabase
+      .from("crm_customers")
+      .select("id, company_role, billing_parent_id")
+      .eq("id", travelerId)
+      .maybeSingle();
+    if (traveler) {
+      patch.billing_customer_id = resolveBillingCustomerId(traveler as CrmCustomer);
     }
   }
 

@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
 import { nextBookingReference, syncBookingLedger } from "@/lib/crm/bookings";
+import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import {
   copyCrmFile,
   listCrmFiles,
@@ -400,6 +401,7 @@ export async function persistNewBookingFromExtract(opts: {
     .from("crm_bookings")
     .insert({
       customer_id: opts.customerId,
+      billing_customer_id: resolveBillingCustomerId(customer as CrmCustomer),
       reference,
       title,
       destination: emptyToNull(extract.destination),

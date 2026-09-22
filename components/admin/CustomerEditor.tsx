@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
-import type { CrmCompanion, CrmCustomer, CrmTravelDocument } from "@/lib/crm/types";
+import type { CrmCompanion, CrmCustomer, CrmTravelDocument, CompanyRole } from "@/lib/crm/types";
 import { resolveCountryCode } from "@/lib/crm/countries";
 import { identityOverwriteWarning, type ExtractedIdentity } from "@/lib/crm/identity";
 import { appendPassportForm } from "@/lib/crm/passport-extract";
@@ -28,6 +28,7 @@ import {
   CompanyBillingFields,
   type CompanyBillingValues,
 } from "@/components/crm/CompanyBillingFields";
+import { CompanyRoleFields } from "@/components/crm/CompanyRoleFields";
 import { PersonPassportCard } from "@/components/crm/PersonPassportCard";
 import { type ScanResult } from "@/components/crm/IdentityScan";
 
@@ -52,10 +53,12 @@ export function CustomerEditor({
   customer,
   companions,
   documents,
+  companyAdmins = [],
 }: {
   customer: CrmCustomer;
   companions: CrmCompanion[];
   documents: CrmTravelDocument[];
+  companyAdmins?: CrmCustomer[];
 }) {
   const router = useRouter();
   const [firstName, setFirstName] = useState(customer.first_name);
@@ -71,6 +74,8 @@ export function CustomerEditor({
   const [city, setCity] = useState(customer.city || "");
   const [loyalty, setLoyalty] = useState<LoyaltyMap>(() => loyaltyFromCustomer(customer));
   const [iban, setIban] = useState(() => formatIbanInput(customer.iban || ""));
+  const [companyRole, setCompanyRole] = useState<CompanyRole | null>(customer.company_role || null);
+  const [billingParentId, setBillingParentId] = useState(customer.billing_parent_id || "");
   const [nameWarn, setNameWarn] = useState<string | null>(null);
   const [billing, setBilling] = useState<CompanyBillingValues>(() =>
     companyBillingFromCustomer(customer)
@@ -121,6 +126,8 @@ export function CustomerEditor({
         loyalty,
         flying_blue: loyalty.flying_blue,
         iban: normalizedIban,
+        company_role: companyRole,
+        billing_parent_id: companyRole === "member" ? billingParentId || null : null,
         ...billingJson(billing, profileAddress, sameBillingAddress),
       }),
     });
@@ -230,6 +237,18 @@ export function CustomerEditor({
             onCityChange={setCity}
           />
         </section>
+
+        <CompanyRoleFields
+          role={companyRole}
+          onRoleChange={(role) => {
+            setCompanyRole(role);
+            if (role !== "member") setBillingParentId("");
+          }}
+          billingParentId={billingParentId}
+          onBillingParentChange={setBillingParentId}
+          companyAdmins={companyAdmins}
+          selfId={customer.id}
+        />
 
         <CompanyBillingFields
           values={billing}

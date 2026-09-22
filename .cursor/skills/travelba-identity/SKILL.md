@@ -41,6 +41,11 @@ UI : bloc pièce **replié** par défaut (passeport). Copy courte, pas « Upload
 - `flying_blue` normalisé (majuscules, sans espaces).
 - Société : `company_name`, `siret`, `vat_number`, `billing_email`, `billing_address_line`, `billing_postal_code`, `billing_city`, `billing_country`.
 - Adresse perso ≠ adresse de facturation. Les deux peuvent exister.
+- **Rôle société** (`company_role`) :
+  - `null` = particulier (comportement historique)
+  - `admin` = admin société : wallet / grand livre (Revolut, crédit disponible)
+  - `member` = collaborateur rattaché via `billing_parent_id` → ne voit **que** les débits de **ses** dossiers, pas les revenus société
+- Dossier : `crm_bookings.billing_customer_id` = qui paie (`syncBookingDebit` poste sur ce wallet). Défaut = `billing_parent_id` si member, sinon titulaire.
 
 ## OCR
 

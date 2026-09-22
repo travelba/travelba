@@ -77,7 +77,9 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
           <option value="">Choisir un client…</option>
           {customers.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.last_name} {c.first_name} — {c.email}
+      {c.last_name} {c.first_name} — {c.email}
+              {c.company_role === "member" ? " · rattaché" : ""}
+              {c.company_role === "admin" ? " · admin société" : ""}
             </option>
           ))}
         </select>
