@@ -121,9 +121,9 @@ export type CrmCustomer = {
   billing_postal_code: string | null;
   billing_city: string | null;
   billing_country: string | null;
-  /** null = particulier ; admin = voit revenus société ; member = frais de ses voyages seulement */
+  /** null = particulier ; admin = wallet société ; member = rattaché (frais pro + wallet perso) */
   company_role: CompanyRole | null;
-  /** Pour member : wallet / admin société qui paie */
+  /** Pour member : wallet / admin société des voyages professionnels */
   billing_parent_id: string | null;
   language: string;
   stripe_customer_id: string | null;
@@ -173,7 +173,7 @@ export type CrmTravelDocument = {
 export type CrmBooking = {
   id: string;
   customer_id: string;
-  /** Wallet facturé (admin société ou titulaire). */
+  /** Wallet facturé (société ou titulaire). Indépendant du voyageur. */
   billing_customer_id: string;
   reference: string;
   title: string;

@@ -8,6 +8,7 @@ import {
   type CrmBookingDocument,
   type CrmBookingItem,
   type CrmBookingTraveler,
+  type CrmCustomer,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
@@ -27,7 +28,13 @@ import { CoverPhoto } from "@/components/crm/CoverPhoto";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
 import { Icon } from "@/components/crm/icons";
 import { TripPassportPicker } from "@/components/crm/TripPassportPicker";
-
+import { PayerChip } from "@/components/crm/PayerChip";
+import {
+  bookingPayerKind,
+  companyDisplayName,
+  isCompanyMember,
+  isCompanyPaidBooking,
+} from "@/lib/crm/company-role";
 type Props = { params: Promise<{ reference: string }> };
 
 export default async function ReservationDetailPage({ params }: Props) {
@@ -84,6 +91,19 @@ export default async function ReservationDetailPage({ params }: Props) {
   const sameTitle =
     (b.title || "").trim().toLowerCase() === (b.destination || "").trim().toLowerCase();
   const missingCount = coverage.total - coverage.ready;
+  const showPayer = isCompanyMember(customer) || isCompanyPaidBooking(b, customer.id);
+  let companyName: string | null = null;
+  if (showPayer && isCompanyPaidBooking(b, customer.id)) {
+    const payerId = b.billing_customer_id || customer.billing_parent_id;
+    if (payerId) {
+      const { data: payer } = await supabase
+        .from("crm_customers")
+        .select("first_name, last_name, company_name")
+        .eq("id", payerId)
+        .maybeSingle();
+      companyName = companyDisplayName(payer as CrmCustomer | null);
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -177,6 +197,16 @@ export default async function ReservationDetailPage({ params }: Props) {
         <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
           {formatMoney(Number(b.total_amount), b.currency)}
         </p>
+        {showPayer ? (
+          <div className="space-y-1">
+            <PayerChip kind={bookingPayerKind(b, customer.id)} companyName={companyName} />
+            <p className="text-xs text-muted">
+              {bookingPayerKind(b, customer.id) === "company"
+                ? `Ce séjour est réglé par ${companyName || "la société"}. Il n’entre pas dans votre encours personnel.`
+                : "Ce séjour est à votre charge. Il entre dans votre encours personnel."}
+            </p>
+          </div>
+        ) : null}
         {insurances.map((item) => (
           <p key={item.id} className="text-sm text-muted">
             Assurance {item.title}

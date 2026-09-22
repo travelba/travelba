@@ -17,12 +17,14 @@ export async function POST(request: Request) {
     const form = await request.formData();
     const customerId = String(form.get("customer_id") || "");
     if (!customerId) return jsonError("Choisissez un client");
+    const billingCustomerId = String(form.get("billing_customer_id") || "") || undefined;
     const extract = parseExtractPayload(JSON.parse(String(form.get("extract") || "{}")));
     const files = collectIngestFiles(form);
     const staged = collectStagedFiles(form);
     const batchId = String(form.get("batch_id") || "");
     const booking = await persistNewBookingFromExtract({
       customerId,
+      billingCustomerId,
       extract,
       files,
       staged,

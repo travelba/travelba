@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { CrmCustomer } from "@/lib/crm/types";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { fieldControlClass, DateFrInput } from "@/components/crm/fields";
+import { BookingPayerFields } from "@/components/admin/BookingPayerFields";
 
 export function NewBookingForm({
   customers,
@@ -42,6 +43,8 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [travelerId, setTravelerId] = useState("");
+  const [billingCustomerId, setBillingCustomerId] = useState("");
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -55,6 +58,8 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...body,
+          customer_id: travelerId,
+          billing_customer_id: billingCustomerId || undefined,
           include_in_ledger: fd.get("include_in_ledger") === "on",
         }),
       });
@@ -75,19 +80,16 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
 
   return (
     <form onSubmit={onSubmit} className="admin-af-card grid gap-3 rounded-2xl p-5 sm:grid-cols-3">
-      <label className={`${labelClass} sm:col-span-3`}>
-        Client
-        <select name="customer_id" required disabled={saving} className={`${fieldControlClass} bg-white`}>
-          <option value="">Choisir un client…</option>
-          {customers.map((c) => (
-            <option key={c.id} value={c.id}>
-      {c.last_name} {c.first_name} — {c.email}
-              {c.company_role === "member" ? " · rattaché" : ""}
-              {c.company_role === "admin" ? " · admin société" : ""}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="sm:col-span-3">
+        <BookingPayerFields
+          customers={customers}
+          travelerId={travelerId}
+          billingCustomerId={billingCustomerId}
+          onTravelerChange={setTravelerId}
+          onBillingChange={setBillingCustomerId}
+          disabled={saving}
+        />
+      </div>
       <label className={labelClass}>
         Titre du voyage
         <input name="title" required disabled={saving} placeholder="Ex. Séjour à Bali" className={fieldControlClass} />

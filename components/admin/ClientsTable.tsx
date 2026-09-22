@@ -7,6 +7,7 @@ import type { CrmBalance, CrmCustomer } from "@/lib/crm/types";
 import { customerFullName } from "@/lib/crm/types";
 import { formatCreditDisponible, formatMoney } from "@/lib/crm/money";
 import { formatPhoneDisplay } from "@/lib/crm/phone";
+import { companyDisplayName, companyRoleLabel, isCompanyMember } from "@/lib/crm/company-role";
 
 function initials(c: CrmCustomer) {
   return [c.first_name?.[0], c.last_name?.[0]].filter(Boolean).join("").toUpperCase() || "?";
@@ -36,7 +37,8 @@ export function ClientsTable({
     const needle = q.trim().toLowerCase();
     if (!needle) return customers;
     return customers.filter((c) => {
-      const hay = `${customerFullName(c)} ${c.email} ${c.phone || ""}`.toLowerCase();
+      const parent = customers.find((p) => p.id === c.billing_parent_id);
+      const hay = `${customerFullName(c)} ${c.email} ${c.phone || ""} ${c.company_name || ""} ${parent ? companyDisplayName(parent) : ""}`.toLowerCase();
       return hay.includes(needle);
     });
   }, [customers, q]);
@@ -73,6 +75,7 @@ export function ClientsTable({
                 const rows = bal.get(c.id) || [];
                 const amount = rows[0];
                 const value = amount ? Number(amount.balance) : 0;
+                const parent = customers.find((p) => p.id === c.billing_parent_id);
                 return (
                   <tr key={c.id} className="transition hover:bg-[var(--admin-sky)]/40">
                     <td className="px-5 py-3">
@@ -80,7 +83,21 @@ export function ClientsTable({
                         <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[11px] font-bold text-[#f8f6f0]">
                           {initials(c)}
                         </span>
-                        <span className="font-semibold text-[var(--admin-navy)]">{customerFullName(c)}</span>
+                        <span className="flex min-w-0 flex-col">
+                          <span className="font-semibold text-[var(--admin-navy)]">{customerFullName(c)}</span>
+                          {c.company_role ? (
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-[#9e7e51]">
+                              {companyRoleLabel(c.company_role)}
+                              {isCompanyMember(c)
+                                ? parent
+                                  ? ` · ${companyDisplayName(parent)}`
+                                  : ""
+                                : c.company_name
+                                  ? ` · ${c.company_name}`
+                                  : ""}
+                            </span>
+                          ) : null}
+                        </span>
                       </Link>
                     </td>
                     <td className="px-5 py-3 text-muted">{c.email}</td>
@@ -107,6 +124,9 @@ export function ClientsTable({
                             <span className="text-[10px] font-semibold text-[#9e7e51]">
                               Frais d’agence 10 % déduits
                             </span>
+                          ) : null}
+                          {isCompanyMember(c) ? (
+                            <span className="text-[10px] font-semibold text-muted">Encours perso</span>
                           ) : null}
                         </span>
                       ) : (

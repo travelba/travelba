@@ -15,8 +15,10 @@ import {
   X,
 } from "lucide-react";
 import { sortItemsByOrder } from "@/lib/crm/carnet";
-import { customerFullName, type CrmCustomer } from "@/lib/crm/types";
+import type { CrmCustomer } from "@/lib/crm/types";
+import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { DateFrInput, Field, fieldControlClass } from "@/components/crm/fields";
+import { BookingPayerFields } from "@/components/admin/BookingPayerFields";
 import {
   emptyBookingExtract,
   MAX_INGEST_BYTES,
@@ -194,6 +196,7 @@ export function BookingIngest({
   const [warnings, setWarnings] = useState<IngestWarning[]>([]);
   const [extract, setExtract] = useState<BookingExtract | null>(null);
   const [customerId, setCustomerId] = useState("");
+  const [billingCustomerId, setBillingCustomerId] = useState("");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const slotsRef = useRef<Slot[]>([]);
   useEffect(() => {
@@ -353,7 +356,11 @@ export function BookingIngest({
             return retryNames ? mergeRetryExtract(prev, incoming, retryNames) : incoming;
           });
           setWarnings(event.warnings || []);
-          if (event.suggested_customer_id) setCustomerId(event.suggested_customer_id);
+          if (event.suggested_customer_id) {
+            setCustomerId(event.suggested_customer_id);
+            const suggested = customers.find((c) => c.id === event.suggested_customer_id);
+            if (suggested) setBillingCustomerId(resolveBillingCustomerId(suggested));
+          }
         }
         if (event.event === "fatal") fatal = event.error;
       });
@@ -390,6 +397,7 @@ export function BookingIngest({
       const body = new FormData();
       body.set("extract", JSON.stringify(extract));
       body.set("customer_id", customerId);
+      if (billingCustomerId) body.set("billing_customer_id", billingCustomerId);
       body.set("batch_id", batchId);
       body.set(
         "staged",
@@ -644,21 +652,14 @@ export function BookingIngest({
             </p>
           ) : null}
           {role === "admin" && mode === "create" ? (
-            <Field label="Client">
-              <select
-                required
-                value={customerId}
-                onChange={(event) => setCustomerId(event.target.value)}
-                className={fieldControlClass}
-              >
-                <option value="">Choisir…</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {customerFullName(c)} — {c.email}
-                  </option>
-                ))}
-              </select>
-            </Field>
+            <BookingPayerFields
+              customers={customers}
+              travelerId={customerId}
+              billingCustomerId={billingCustomerId}
+              onTravelerChange={setCustomerId}
+              onBillingChange={setBillingCustomerId}
+              disabled={busy !== "idle"}
+            />
           ) : null}
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Titre">

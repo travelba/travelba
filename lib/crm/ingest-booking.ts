@@ -380,6 +380,8 @@ export async function persistNewBookingFromExtract(opts: {
   batchId?: string;
   status: BookingStatus;
   visibleToClient: boolean;
+  /** Override du payeur (voyage perso vs société). Défaut = resolveBillingCustomerId. */
+  billingCustomerId?: string;
   /** Client authentifié de l’agent : la RPC de référence tourne sous son rôle (crm_private). */
   referenceClient?: SupabaseClient;
 }) {
@@ -404,7 +406,8 @@ export async function persistNewBookingFromExtract(opts: {
     .from("crm_bookings")
     .insert({
       customer_id: opts.customerId,
-      billing_customer_id: resolveBillingCustomerId(customer as CrmCustomer),
+      billing_customer_id:
+        opts.billingCustomerId || resolveBillingCustomerId(customer as CrmCustomer),
       reference,
       title,
       destination: emptyToNull(extract.destination),

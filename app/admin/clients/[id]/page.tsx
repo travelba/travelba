@@ -18,7 +18,17 @@ import {
   type CrmTransaction,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
-import { formatDateFr, formatMoney, formatCreditDisponible } from "@/lib/crm/money";
+import { formatDateFr, formatMoney, formatCreditDisponible, postedLedgerTotals } from "@/lib/crm/money";
+import {
+  companyDisplayName,
+  companyPaidBookingIds,
+  companyRoleLabel,
+  isCompanyAdmin,
+  isCompanyMember,
+  isCompanyPaidBooking,
+  mergeRowsById,
+} from "@/lib/crm/company-role";
+import { PayerChip } from "@/components/crm/PayerChip";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -36,7 +46,9 @@ export default async function AdminClientDetailPage({ params }: Props) {
   const [
     { data: companions },
     { data: documents },
-    { data: bookings },
+    { data: travelerBookings },
+    { data: billedBookings },
+    { data: members },
     { data: txs },
     { data: balances },
     { data: companyAdmins },
@@ -46,6 +58,8 @@ export default async function AdminClientDetailPage({ params }: Props) {
     supabase.from("crm_travel_companions").select("*").eq("customer_id", id),
     supabase.from("crm_travel_documents").select("*").eq("customer_id", id),
     supabase.from("crm_bookings").select("*").eq("customer_id", id).order("start_date", { ascending: false }),
+    supabase.from("crm_bookings").select("*").eq("billing_customer_id", id).order("start_date", { ascending: false }),
+    supabase.from("crm_customers").select("*").eq("billing_parent_id", id).order("last_name"),
     supabase
       .from("crm_transactions")
       .select("*")
@@ -74,15 +88,64 @@ export default async function AdminClientDetailPage({ params }: Props) {
       }
     })(),
   ]);
-  const bookingRows = (bookings || []) as CrmBooking[];
+  const bookingRows = mergeRowsById(
+    (travelerBookings || []) as CrmBooking[],
+    (billedBookings || []) as CrmBooking[]
+  ).sort((a, b) => (a.start_date || "") < (b.start_date || "") ? 1 : -1);
   const revolutSuggestions = suggestionsForCustomer(c, unmatchedRevolut);
+  const memberRows = (members || []) as CrmCustomer[];
+  const paidIds = isCompanyMember(c) ? companyPaidBookingIds(bookingRows, c.id) : [];
+  const parentAdmin = isCompanyMember(c)
+    ? ((companyAdmins || []) as CrmCustomer[]).find((a) => a.id === c.billing_parent_id) || null
+    : null;
+  const companyName = parentAdmin ? companyDisplayName(parentAdmin) : c.company_name;
+  const travelerNames = new Map(
+    ((companyAdmins || []) as CrmCustomer[])
+      .concat(memberRows)
+      .concat([c])
+      .map((row) => [row.id, { name: customerFullName(row), company: companyDisplayName(row) }])
+  );
+  const missingIds = [
+    ...new Set(bookingRows.flatMap((b) => [b.customer_id, b.billing_customer_id])),
+  ].filter((rowId) => !travelerNames.has(rowId));
+  if (missingIds.length) {
+    const { data: extra } = await supabase
+      .from("crm_customers")
+      .select("id, first_name, last_name, company_name")
+      .in("id", missingIds);
+    for (const row of (extra || []) as CrmCustomer[]) {
+      travelerNames.set(row.id, { name: customerFullName(row), company: companyDisplayName(row) });
+    }
+  }
+
+  let companyTripTxs: CrmTransaction[] = [];
+  if (paidIds.length) {
+    const { data } = await supabase
+      .from("crm_transactions")
+      .select("*")
+      .eq("status", "posted")
+      .eq("direction", "debit")
+      .in("booking_id", paidIds)
+      .order("occurred_on", { ascending: false });
+    companyTripTxs = (data || []) as CrmTransaction[];
+  }
+  const companyTripDebits = postedLedgerTotals(companyTripTxs).debits;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <h1 className="font-display text-3xl font-extrabold text-[var(--admin-navy)]">
-          {customerFullName(c)}
-        </h1>
+        <div>
+          <h1 className="font-display text-3xl font-extrabold text-[var(--admin-navy)]">
+            {customerFullName(c)}
+          </h1>
+          {c.company_role ? (
+            <p className="mt-1 text-sm text-[#9e7e51]">
+              {companyRoleLabel(c.company_role)}
+              {isCompanyMember(c) && companyName ? ` · rattaché à ${companyName}` : ""}
+              {isCompanyAdmin(c) && c.company_name ? ` · ${c.company_name}` : ""}
+            </p>
+          ) : null}
+        </div>
         <DeleteCustomerButton customerId={c.id} name={customerFullName(c)} />
       </div>
       <InviteCustomerPanel customerId={c.id} initial={portal} />
@@ -92,7 +155,13 @@ export default async function AdminClientDetailPage({ params }: Props) {
           return (
             <div key={b.currency} className="admin-af-card rounded-2xl px-4 py-3">
               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">
-                {value > 0 ? `Crédit disponible ${b.currency}` : `Encours ${b.currency}`}
+                {isCompanyMember(c)
+                  ? value > 0
+                    ? `Crédit perso ${b.currency}`
+                    : `Encours perso ${b.currency}`
+                  : value > 0
+                    ? `Crédit disponible ${b.currency}`
+                    : `Encours ${b.currency}`}
               </p>
               <p className="font-display text-xl font-bold text-[var(--admin-navy)]">
                 {value > 0 ? formatCreditDisponible(value, b.currency) : formatMoney(value, b.currency)}
@@ -103,6 +172,17 @@ export default async function AdminClientDetailPage({ params }: Props) {
             </div>
           );
         })}
+        {isCompanyMember(c) ? (
+          <div className="admin-af-card rounded-2xl px-4 py-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">
+              Frais {companyName || "société"}
+            </p>
+            <p className="font-display text-xl font-bold text-[var(--admin-navy)]">
+              {formatMoney(companyTripDebits, companyTripTxs[0]?.currency || "EUR")}
+            </p>
+            <p className="mt-1 text-xs text-[#9e7e51]">Ses dossiers — pas le solde société</p>
+          </div>
+        ) : null}
         <div className="admin-af-card rounded-2xl px-4 py-3">
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Dossiers</p>
           <p className="font-display text-xl font-bold text-[var(--admin-navy)]">{bookingRows.length}</p>
@@ -126,6 +206,23 @@ export default async function AdminClientDetailPage({ params }: Props) {
         documents={(documents || []) as CrmTravelDocument[]}
         companyAdmins={(companyAdmins || []) as CrmCustomer[]}
       />
+      {isCompanyAdmin(c) && memberRows.length ? (
+        <section className="admin-af-card rounded-3xl p-5">
+          <h2 className="font-display text-lg font-bold">Collaborateurs rattachés</h2>
+          <ul className="mt-2 divide-y divide-border text-sm">
+            {memberRows.map((m) => (
+              <li key={m.id} className="py-2">
+                <Link
+                  href={`/admin/clients/${m.id}`}
+                  className="text-[var(--admin-navy)] underline-offset-2 hover:underline"
+                >
+                  {customerFullName(m)}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       <ClientRevolutSuggestions suggestions={revolutSuggestions} />
       <section className="admin-af-card rounded-3xl p-5">
         <div className="flex items-center justify-between gap-3">
@@ -139,16 +236,28 @@ export default async function AdminClientDetailPage({ params }: Props) {
         </div>
         {bookingRows.length ? (
           <ul className="mt-2 divide-y divide-border text-sm">
-            {bookingRows.map((b) => (
-              <li key={b.id} className="py-2">
-                <Link
-                  href={`/admin/reservations/${b.id}`}
-                  className="text-[var(--admin-navy)] underline-offset-2 hover:underline"
-                >
-                  {b.reference} · {b.title} · {formatDateFr(b.start_date)}
-                </Link>
-              </li>
-            ))}
+            {bookingRows.map((b) => {
+              const companyPaid = isCompanyPaidBooking(b, b.customer_id);
+              const traveler = travelerNames.get(b.customer_id)?.name || "Client";
+              const payer = travelerNames.get(b.billing_customer_id)?.company || companyName;
+              return (
+                <li key={b.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                  <Link
+                    href={`/admin/reservations/${b.id}`}
+                    className="text-[var(--admin-navy)] underline-offset-2 hover:underline"
+                  >
+                    {b.reference} · {b.title} · {traveler} · {formatDateFr(b.start_date)}
+                  </Link>
+                  {companyPaid || isCompanyMember(c) ? (
+                    <PayerChip
+                      kind={companyPaid ? "company" : "personal"}
+                      companyName={payer}
+                      voice="admin"
+                    />
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <p className="mt-2 text-sm text-muted">
@@ -156,11 +265,40 @@ export default async function AdminClientDetailPage({ params }: Props) {
           </p>
         )}
       </section>
+      {isCompanyMember(c) ? (
+        <section className="admin-af-card rounded-3xl p-5">
+          <h2 className="font-display text-lg font-bold">
+            Frais {companyName || "société"} (ses dossiers)
+          </h2>
+          <p className="mt-1 text-sm text-muted">
+            Débits postés sur le wallet société. Le solde {companyName || "société"} reste sur la
+            fiche admin société.
+          </p>
+          {companyTripTxs.length ? (
+            <ul className="mt-2 divide-y divide-border text-sm">
+              {companyTripTxs.map((t) => (
+                <li key={t.id} className="flex justify-between py-2">
+                  <span>
+                    {t.label} · {formatDateFr(t.occurred_on)}
+                  </span>
+                  <span>−{formatMoney(Number(t.amount), t.currency)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-sm text-muted">Aucun frais société sur ses dossiers.</p>
+          )}
+        </section>
+      ) : null}
       <section className="admin-af-card rounded-3xl p-5">
-        <h2 className="font-display text-lg font-bold">Transactions</h2>
+        <h2 className="font-display text-lg font-bold">
+          {isCompanyMember(c) ? "Transactions personnelles" : "Transactions"}
+        </h2>
         {!(txs || []).length ? (
           <p className="mt-2 text-sm text-muted">
-            Aucune écriture. Les débits sont créés à la confirmation d’un dossier, les crédits au rapprochement Revolut ou à la saisie manuelle.
+            {isCompanyMember(c)
+              ? "Aucune écriture sur son wallet. Un séjour à sa charge créera l’encours perso ici."
+              : "Aucune écriture. Les débits sont créés à la confirmation d’un dossier, les crédits au rapprochement Revolut ou à la saisie manuelle."}
           </p>
         ) : null}
         <ul className="mt-2 divide-y divide-border text-sm">

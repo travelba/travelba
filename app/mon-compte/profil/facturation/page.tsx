@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
-import { isCompanyMember } from "@/lib/crm/company-role";
+import { companyDisplayName, isCompanyMember } from "@/lib/crm/company-role";
 import { customerFullName, type CrmCustomer } from "@/lib/crm/types";
 import { ProfileSubnav } from "@/components/account/ProfileSubnav";
 import { BillingForm } from "@/components/account/BillingForm";
@@ -24,6 +24,12 @@ export default async function FacturationPage() {
       .maybeSingle();
     billingParent = (data as CrmCustomer | null) || null;
   }
+  const companyName =
+    companyDisplayName(billingParent) !== "la société"
+      ? companyDisplayName(billingParent)
+      : billingParent
+        ? customerFullName(billingParent)
+        : "votre société";
 
   return (
     <div className="space-y-4 pb-6">
@@ -32,24 +38,37 @@ export default async function FacturationPage() {
       {isCompanyMember(customer) ? (
         <section className="rounded-2xl border border-[#e5e3dc] bg-white p-4">
           <p className="text-[10px] font-bold uppercase tracking-wider text-[#9c7c4e]">
-            Collaborateur rattaché
+            Voyages professionnels
           </p>
           <p className="mt-2 text-sm text-[var(--admin-navy)]">
-            Vos voyages sont facturés à{" "}
-            <strong>
-              {billingParent?.company_name ||
-                (billingParent ? customerFullName(billingParent) : "votre société")}
-            </strong>
-            . Vous voyez uniquement les frais liés à vos dossiers — pas les versements ni le crédit
-            disponible de la société.
+            Les dossiers réglés par <strong>{companyName}</strong> apparaissent comme frais de
+            voyage — pas le crédit disponible ni les versements de la société.
           </p>
           <p className="mt-3 text-xs text-muted">
             Pour modifier la facturation société, contactez l’agence ou l’admin société.
           </p>
         </section>
-      ) : (
-        <BillingForm customer={customer} />
-      )}
+      ) : null}
+      <section className="space-y-3">
+        {isCompanyMember(customer) ? (
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#9c7c4e]">
+              Vos voyages personnels
+            </p>
+            <p className="mt-1 text-sm text-muted">
+              IBAN et adresse pour un séjour à votre charge — indépendant de {companyName}.
+            </p>
+          </div>
+        ) : null}
+        <BillingForm
+          customer={customer}
+          emptyLabel={
+            isCompanyMember(customer)
+              ? "Ajouter un IBAN pour vos voyages personnels"
+              : undefined
+          }
+        />
+      </section>
     </div>
   );
 }
