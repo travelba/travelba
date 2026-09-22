@@ -19,7 +19,8 @@ const VISION_TIMEOUT_MS = 60_000;
 const PASSPORT_PDF_PAGES = 6;
 
 const PROMPT = `Tu lis une photo ou un scan PDF de passeport, carte d’identité ou titre de voyage (zone visuelle + MRZ).
-Le fichier peut contenir PLUSIEURS passeports (deux pièces sur la même photo, photocopie de couple, PDF de plusieurs pages). Extrais CHAQUE personne séparément dans identities — un objet par document. Ne fusionne jamais deux personnes.
+Le fichier peut contenir PLUSIEURS passeports (deux pièces sur la même photo, photocopie de couple, PDF de plusieurs pages).
+Si tu vois 2 passeports, identities DOIT contenir 2 objets. Si tu en vois 3, 3 objets. Un objet par personne, jamais fusionnés.
 
 Extrais TOUS les champs visibles. Ne jamais inventer : mettre null si absent ou illisible.
 Dates en YYYY-MM-DD.
@@ -91,6 +92,69 @@ async function toVisionImages(
   }
 
   return [{ image, mediaType: mediaType as RasterPage["mediaType"] }];
+}
+
+async function splitWidePages(pages: RasterPage[]): Promise<RasterPage[]> {
+  const sharp = await trySharp();
+  if (!sharp) return [];
+  const halves: RasterPage[] = [];
+  for (const page of pages) {
+    try {
+      const buf = Buffer.from(page.image);
+      const meta = await sharp(buf, { failOn: "none" }).metadata();
+      const width = meta.width || 0;
+      const height = meta.height || 0;
+      if (!width || !height || width < height * 1.7) continue;
+      const overlap = Math.round(width * 0.08);
+      const mid = Math.round(width / 2);
+      const leftWidth = Math.min(width, mid + overlap);
+      const rightX = Math.max(0, mid - overlap);
+      const rightWidth = width - rightX;
+      if (leftWidth < 80 || rightWidth < 80) continue;
+      const left = await sharp(buf, { failOn: "none" })
+        .extract({ left: 0, top: 0, width: leftWidth, height })
+        .jpeg({ quality: 85 })
+        .toBuffer();
+      const right = await sharp(buf, { failOn: "none" })
+        .extract({ left: rightX, top: 0, width: rightWidth, height })
+        .jpeg({ quality: 85 })
+        .toBuffer();
+      halves.push(
+        { image: new Uint8Array(left), mediaType: "image/jpeg" },
+        { image: new Uint8Array(right), mediaType: "image/jpeg" }
+      );
+    } catch {
+      /* page suivante */
+    }
+  }
+  return halves;
+}
+
+async function extractMoreIdentities(
+  pages: RasterPage[],
+  already: ExtractedIdentity[]
+): Promise<{ identities: ExtractedIdentity[]; mrzText: string | null }> {
+  if (already.length >= 2 && (pages.length <= 1 || already.length >= pages.length)) {
+    return { identities: already, mrzText: null };
+  }
+  const extras: RasterPage[] =
+    pages.length > 1 ? pages : await splitWidePages(pages);
+  if (extras.length < 2 && pages.length <= 1) {
+    return { identities: already, mrzText: null };
+  }
+  const found: ExtractedIdentity[] = [...already];
+  const mrzParts: string[] = [];
+  const batches = pages.length > 1 ? pages.map((page) => [page]) : extras.map((page) => [page]);
+  for (const batch of batches) {
+    try {
+      const extra = await extractWithVision(batch);
+      found.push(...extra.identities);
+      if (extra.mrzText) mrzParts.push(extra.mrzText);
+    } catch (err) {
+      console.error("[ocr-document] extra-page", err instanceof Error ? err.name : "error");
+    }
+  }
+  return { identities: uniquePassports(found), mrzText: mrzParts.join("\n") || null };
 }
 
 function scanResult(identities: ExtractedIdentity[], warning: string | null) {
@@ -201,7 +265,10 @@ export async function scanTravelDocument(file: File): Promise<{
       pages = await toVisionImages(bytes, file.type, file.name);
     }
 
-    const { identities: vision, mrzText } = await extractWithVision(pages);
+    const visionFirst = await extractWithVision(pages);
+    const visionMore = await extractMoreIdentities(pages, visionFirst.identities);
+    const vision = uniquePassports([...visionFirst.identities, ...visionMore.identities]);
+    const mrzText = [visionFirst.mrzText, visionMore.mrzText].filter(Boolean).join("\n") || null;
     const mrz = uniquePassports([
       ...pdfMrz,
       ...(mrzText ? parseMrzFromOcrAll(mrzText) : []),

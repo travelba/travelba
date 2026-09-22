@@ -18,7 +18,7 @@ function person(
   };
 }
 
-test("two unknown passports: current card then new companion", () => {
+test("two unknown passports both become companions", () => {
   const assignments = assignPassportsToParty(
     [person("Jean", "Dupont"), person("Marie", "Martin")],
     { first_name: "", last_name: "" },
@@ -26,10 +26,32 @@ test("two unknown passports: current card then new companion", () => {
     { kind: "holder" }
   );
   assert.equal(assignments.length, 2);
+  assert.deepEqual(
+    assignments.map((row) => row.target.kind),
+    ["create", "create"]
+  );
+});
+
+test("a single unknown passport still fills the current card", () => {
+  const assignments = assignPassportsToParty(
+    [person("Jean", "Dupont")],
+    { first_name: "", last_name: "" },
+    [],
+    { kind: "holder" }
+  );
+  assert.equal(assignments.length, 1);
   assert.equal(assignments[0].target.kind, "holder");
-  assert.equal(assignments[0].identity.last_name, "Dupont");
+});
+
+test("two unknown on a companion card: that companion then a new one", () => {
+  const assignments = assignPassportsToParty(
+    [person("Jean", "Dupont"), person("Marie", "Martin")],
+    { first_name: "Camille", last_name: "Beaumont" },
+    [{ id: "c1", first_name: "", last_name: "" }],
+    { kind: "companion", id: "c1" }
+  );
+  assert.deepEqual(assignments[0].target, { kind: "companion", id: "c1" });
   assert.equal(assignments[1].target.kind, "create");
-  assert.equal(assignments[1].identity.last_name, "Martin");
 });
 
 test("holder match plus unknown creates the companion", () => {
@@ -62,4 +84,10 @@ test("identityForPerson prefers the matching name", () => {
   const list = [person("Marie", "Martin"), person("Jean", "Dupont")];
   const mine = identityForPerson(list, { first_name: "Jean", last_name: "Dupont" });
   assert.equal(mine?.last_name, "Dupont");
+});
+
+test("identityForPerson does not fill the holder with a random extra passport", () => {
+  const list = [person("Marie", "Martin"), person("Paul", "Bernard")];
+  assert.equal(identityForPerson(list, { first_name: "Jean", last_name: "Dupont" }), null);
+  assert.equal(identityForPerson(list, { first_name: "", last_name: "" }), null);
 });
