@@ -8,6 +8,7 @@ import {
   type CrmTransaction,
 } from "@/lib/crm/types";
 import { itemTicketCount } from "@/lib/crm/item-match";
+import { hotelDisplayName } from "@/lib/crm/carnet";
 import {
   ticketingFeeAmount,
   ticketingFeeExternalId,
@@ -81,11 +82,13 @@ export function bookingItemDebitExternalId(bookingId: string, itemId: string) {
 }
 
 export function bookingItemDebitLabel(
-  item: Pick<CrmBookingItem, "kind" | "title">,
+  item: Pick<CrmBookingItem, "kind" | "title" | "details">,
   reference: string
 ) {
   const kind = BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind;
-  return `${kind} · ${item.title} — ${reference}`;
+  const title =
+    item.kind === "hotel" ? hotelDisplayName(item as CrmBookingItem) : item.title;
+  return `${kind} · ${title} — ${reference}`;
 }
 
 export async function nextBookingReference(supabase: SupabaseClient) {
@@ -254,21 +257,22 @@ export async function syncBookingItemDebits(supabase: SupabaseClient, booking: C
     const externalId = bookingItemDebitExternalId(booking.id, item.id);
     billedIds.add(item.id);
     const debit = byExternal.get(externalId) || null;
-    const hasOpenDebit = Boolean(debit && debit.status !== "void");
+    // A voided line still occupies unique(source, external_id) — update it, don't insert.
     const intent = bookingDebitIntent({
       status: booking.status,
       amount,
-      hasOpenDebit,
+      hasOpenDebit: Boolean(debit),
       includeInLedger: Boolean(item.include_in_ledger),
     });
     const label = bookingItemDebitLabel(item, booking.reference);
 
     if (intent === "void" && debit && debit.status !== "void") {
-      await supabase.from("crm_transactions").update({ status: "void" }).eq("id", debit.id);
+      const { error } = await supabase.from("crm_transactions").update({ status: "void" }).eq("id", debit.id);
+      if (error) throw new Error(error.message);
       continue;
     }
     if (intent === "insert") {
-      await supabase.from("crm_transactions").insert({
+      const { error } = await supabase.from("crm_transactions").insert({
         customer_id: payerId,
         booking_id: booking.id,
         direction: "debit",
@@ -280,10 +284,11 @@ export async function syncBookingItemDebits(supabase: SupabaseClient, booking: C
         external_id: externalId,
         status: "posted",
       });
+      if (error) throw new Error(error.message);
       continue;
     }
     if (intent !== "update" || !debit) continue;
-    await supabase
+    const { error } = await supabase
       .from("crm_transactions")
       .update({
         customer_id: payerId,
@@ -293,6 +298,7 @@ export async function syncBookingItemDebits(supabase: SupabaseClient, booking: C
         status: "posted",
       })
       .eq("id", debit.id);
+    if (error) throw new Error(error.message);
   }
 
   for (const [externalId, debit] of byExternal) {

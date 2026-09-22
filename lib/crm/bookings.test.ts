@@ -101,6 +101,22 @@ test("item debit posts only when flagged on a confirmed stay", () => {
   assert.equal(parseIncludeInLedger(undefined, true), true);
   assert.equal(bookingItemDebitExternalId("b1", "i9"), "booking:b1:item:i9");
   assert.match(bookingItemDebitLabel({ kind: "hotel", title: "Nantipa" }, "TBA-1042"), /Hôtel/);
+  assert.match(
+    bookingItemDebitLabel(
+      { kind: "hotel", title: "Aghouatim", details: { hotel_name: "The Ranch resort" } },
+      "TB-2026-0017"
+    ),
+    /The Ranch resort/
+  );
+  assert.equal(
+    bookingDebitIntent({
+      status: "confirmed",
+      amount: 273.86,
+      hasOpenDebit: true,
+      includeInLedger: true,
+    }),
+    "update"
+  );
 });
 
 test("stay total is the sum of selling prices when any card is priced", () => {
