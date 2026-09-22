@@ -214,7 +214,29 @@ export async function applyIdentityFromForm(
   travelerId?: string | null
 ) {
   if (String(form.get("apply_identity") || "1") !== "1") return;
-  const filled = filledIdentity(identityFieldsFromForm(form));
+  await applyIdentityFromIdentity(
+    supabase,
+    customerId,
+    companionId,
+    identityFieldsFromForm(form),
+    travelerId
+  );
+}
+
+export async function applyIdentityFromIdentity(
+  supabase: SupabaseClient,
+  customerId: string,
+  companionId: string | null,
+  identity: Partial<DocumentIdentityFields>,
+  travelerId?: string | null
+) {
+  const filled = filledIdentity({
+    first_name: emptyToNull(identity.first_name),
+    last_name: emptyToNull(identity.last_name),
+    birth_date: emptyToNull(identity.birth_date),
+    nationality: resolveNationality(identity.nationality),
+    sex: identity.sex === "M" || identity.sex === "F" || identity.sex === "X" ? identity.sex : null,
+  });
   if (Object.keys(filled).length === 0) return;
   if (companionId) {
     const { error } = await supabase

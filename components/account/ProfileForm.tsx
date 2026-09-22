@@ -142,7 +142,12 @@ export function ProfileForm({
   return (
     <form onSubmit={onSubmit} className="rounded-xl border border-[#e3e2e0]/70 bg-white px-4">
       <div className="py-3">
-        <PersonPassportCard variant="client" documents={documents} onIdentity={applyIdentity} />
+        <PersonPassportCard
+          variant="client"
+          documents={documents}
+          person={{ first_name: firstName, last_name: lastName }}
+          onIdentity={applyIdentity}
+        />
       </div>
       {nameWarn ? (
         <p className="mb-3 rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">

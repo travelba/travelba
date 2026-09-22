@@ -3,6 +3,7 @@ import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { emptyToNull } from "@/lib/crm/identity";
 import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
+import { persistPassportsFromForm } from "@/lib/crm/passport-import";
 import {
   applyIdentityFromForm,
   cloneTravelDocument,
@@ -32,6 +33,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ document });
     }
     const file = form.get("file");
+    const imported = await persistPassportsFromForm(auth.supabase, form, customerId);
+    if (imported) {
+      return NextResponse.json({
+        document: imported.documents[0] || null,
+        documents: imported.documents,
+        created_companions: imported.createdCompanions,
+      });
+    }
     let storagePath: string | null = null;
     let fileName: string | null = null;
     let mimeType: string | null = null;

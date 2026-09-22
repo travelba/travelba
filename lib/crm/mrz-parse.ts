@@ -119,25 +119,58 @@ function candidateGroups(lines: string[]) {
   return groups;
 }
 
-export function parseMrzFromOcr(text: string): ExtractedIdentity | null {
+function identityKey(identity: ExtractedIdentity) {
+  const number = (identity.number || "").replace(/[^A-Z0-9]/gi, "").toUpperCase();
+  if (number) return `n:${number}`;
+  const last = (identity.last_name || "").trim().toLowerCase();
+  const first = (identity.first_name || "").trim().toLowerCase();
+  const birth = identity.birth_date || "";
+  if (last && first) return `p:${last}|${first}|${birth}`;
+  return "";
+}
+
+function plausibleIdentity(identity: ExtractedIdentity) {
+  const number = (identity.number || "").trim();
+  if (number && /\s/.test(number)) return false;
+  if (/^P\s/i.test(identity.last_name || "")) return false;
+  return true;
+}
+
+function keepBest(identities: ExtractedIdentity[]) {
+  const best = new Map<string, { identity: ExtractedIdentity; score: number }>();
+  const extras: { identity: ExtractedIdentity; score: number }[] = [];
+  for (const identity of identities) {
+    if (!plausibleIdentity(identity)) continue;
+    const next = score(identity);
+    if (next < 3) continue;
+    const key = identityKey(identity);
+    if (!key) {
+      extras.push({ identity, score: next });
+      continue;
+    }
+    const prev = best.get(key);
+    if (!prev || next > prev.score) best.set(key, { identity, score: next });
+  }
+  return [...best.values(), ...extras]
+    .sort((a, b) => b.score - a.score)
+    .map((entry) => entry.identity);
+}
+
+export function parseMrzFromOcrAll(text: string): ExtractedIdentity[] {
   const lines = mrzishLines(text);
-  if (lines.length === 0) return null;
+  if (lines.length === 0) return [];
 
-  let best: ExtractedIdentity | null = null;
-  let bestScore = 0;
-
+  const found: ExtractedIdentity[] = [];
   for (const identity of [
     tryParse(lines.slice(-3)),
     tryParse(lines.slice(-2)),
     ...candidateGroups(lines).map((group) => tryParse(group)),
   ]) {
-    if (!identity) continue;
-    const next = score(identity);
-    if (next > bestScore) {
-      best = identity;
-      bestScore = next;
-    }
+    if (identity) found.push(identity);
   }
+  return keepBest(found);
+}
 
-  return bestScore >= 3 ? best : null;
+export function parseMrzFromOcr(text: string): ExtractedIdentity | null {
+  return parseMrzFromOcrAll(text)[0] || null;
 }

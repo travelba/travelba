@@ -6,6 +6,7 @@ import {
   normalizeGivenNames,
   type ExtractedIdentity,
 } from "./identity";
+import { foldName, nameTokens, namesReferToSamePerson } from "./person-match";
 import { DOC_TYPES, type TravelDocType } from "./types";
 
 export function emptyIdentity(): ExtractedIdentity {
@@ -116,6 +117,89 @@ function filledEntries(identity: ExtractedIdentity) {
   );
 }
 
+export function passportNumberKey(value: string | null | undefined) {
+  return (value || "").replace(/[^A-Z0-9]/gi, "").toUpperCase();
+}
+
+export function identityPersonKey(identity: ExtractedIdentity) {
+  const number = passportNumberKey(identity.number);
+  if (number) return `n:${number}`;
+  const last = foldName(identity.last_name);
+  const first = nameTokens(identity.first_name).join(" ");
+  const birth = identity.birth_date || "";
+  if (last && first) return `p:${last}|${first}|${birth}`;
+  return "";
+}
+
+export function passportsReferToSame(a: ExtractedIdentity, b: ExtractedIdentity) {
+  const left = passportNumberKey(a.number);
+  const right = passportNumberKey(b.number);
+  if (left && right) return left === right;
+  return namesReferToSamePerson(a, b);
+}
+
+export function uniquePassports(identities: ExtractedIdentity[]): ExtractedIdentity[] {
+  const best = new Map<string, ExtractedIdentity>();
+  const extras: ExtractedIdentity[] = [];
+  for (const identity of identities) {
+    const key = identityPersonKey(identity);
+    if (!key) {
+      extras.push(identity);
+      continue;
+    }
+    const prev = best.get(key);
+    const nextScore = fieldScore(identity) + (identity.valid ? 2 : 0);
+    const prevScore = prev ? fieldScore(prev) + (prev.valid ? 2 : 0) : -1;
+    if (!prev || nextScore > prevScore) best.set(key, identity);
+  }
+  return [...best.values(), ...extras];
+}
+
+export function listedIdentities(
+  identity: ExtractedIdentity | null | undefined,
+  identities?: ExtractedIdentity[] | null
+): ExtractedIdentity[] {
+  if (identities && identities.length) return identities.filter(Boolean);
+  return identity ? [identity] : [];
+}
+
+export function identitiesFromUnknown(raw: unknown): ExtractedIdentity[] {
+  if (!Array.isArray(raw)) return [];
+  return uniquePassports(
+    raw
+      .map((item) =>
+        item && typeof item === "object" ? identityFromVision(item as Record<string, unknown>) : null
+      )
+      .filter((identity): identity is ExtractedIdentity => Boolean(identity))
+  );
+}
+
+export function identitiesFromForm(form: FormData): ExtractedIdentity[] {
+  const raw = form.get("identities");
+  if (typeof raw !== "string" || !raw.trim()) return [];
+  try {
+    return identitiesFromUnknown(JSON.parse(raw));
+  } catch {
+    return [];
+  }
+}
+
+export function mergePassportSets(
+  mrzList: ExtractedIdentity[],
+  visionList: ExtractedIdentity[]
+): ExtractedIdentity[] {
+  const unused = [...visionList];
+  const merged: ExtractedIdentity[] = [];
+  for (const mrz of mrzList) {
+    const idx = unused.findIndex((vision) => passportsReferToSame(mrz, vision));
+    const vision = idx >= 0 ? unused.splice(idx, 1)[0] : null;
+    const identity = mergePassportIdentities(mrz, vision);
+    if (identity) merged.push(identity);
+  }
+  merged.push(...unused);
+  return uniquePassports(merged);
+}
+
 export function mergePassportIdentities(
   mrz: ExtractedIdentity | null,
   vision: ExtractedIdentity | null
@@ -179,5 +263,25 @@ export function appendPassportForm(
   form.set("nationality", id.nationality || "");
   form.set("sex", id.sex || "");
   form.set("apply_identity", applyIdentity ? "1" : "0");
+  return form;
+}
+
+export function appendPassportImportForm(
+  form: FormData,
+  opts: {
+    identities: ExtractedIdentity[];
+    file?: File | null;
+    customerId?: string;
+    companionId?: string | null;
+    applyIdentity?: boolean;
+    createUnmatchedOnly?: boolean;
+  }
+) {
+  if (opts.customerId) form.set("customer_id", opts.customerId);
+  if (opts.companionId) form.set("companion_id", opts.companionId);
+  if (opts.file) form.set("file", opts.file);
+  form.set("identities", JSON.stringify(opts.identities));
+  form.set("import_party", opts.createUnmatchedOnly ? "new" : "1");
+  appendPassportForm(form, opts.identities[0], opts.applyIdentity !== false);
   return form;
 }

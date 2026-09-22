@@ -16,7 +16,9 @@ import {
   type ExtractedIdentity,
 } from "@/lib/crm/identity";
 import { formatDateFr } from "@/lib/crm/money";
-import { appendPassportForm } from "@/lib/crm/passport-extract";
+import { appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-extract";
+import { identityForPerson } from "@/lib/crm/passport-assign";
+import type { PersonName } from "@/lib/crm/person-match";
 import { vaultDocumentsForPerson } from "@/lib/crm/trip-documents";
 import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
@@ -96,6 +98,7 @@ export function PersonPassportCard({
   companionId = null,
   documents,
   persist = true,
+  person,
   onIdentity,
   onScan,
 }: {
@@ -104,6 +107,7 @@ export function PersonPassportCard({
   companionId?: string | null;
   documents: CrmTravelDocument[];
   persist?: boolean;
+  person?: PersonName | null;
   onIdentity?: (identity: ExtractedIdentity) => void;
   onScan?: (result: ScanResult) => void;
 }) {
@@ -123,13 +127,16 @@ export function PersonPassportCard({
   async function persistScan(result: ScanResult) {
     if (!persist || !result.file) return;
     if (variant === "admin" && !customerId) return;
+    const identities = listedIdentities(result.identity, result.identities);
+    if (!identities.length) return;
     setBusy(true);
     setError(null);
-    const form = new FormData();
-    if (customerId) form.set("customer_id", customerId);
-    if (companionId) form.set("companion_id", companionId);
-    form.set("file", result.file);
-    appendPassportForm(form, result.identity, true);
+    const form = appendPassportImportForm(new FormData(), {
+      identities,
+      file: result.file,
+      customerId,
+      companionId,
+    });
     const res = await fetch(endpoint, { method: "POST", body: form });
     const json = await res.json().catch(() => ({}));
     setBusy(false);
@@ -144,7 +151,9 @@ export function PersonPassportCard({
 
   function handleResult(result: ScanResult) {
     setScan(result);
-    if (result.identity) onIdentity?.(result.identity);
+    const identities = listedIdentities(result.identity, result.identities);
+    const mine = identityForPerson(identities, person);
+    if (mine) onIdentity?.(mine);
     onScan?.(result);
     void persistScan(result);
   }
@@ -230,25 +239,31 @@ export function PersonPassportCard({
             title={busy ? "Enregistrement…" : "Photo ou PDF du passeport"}
             onResult={handleResult}
           />
-          {scan ? <ScanStatus identity={scan.identity} warning={scan.warning} /> : null}
           {scan ? (
-            <div>
+            <ScanStatus
+              identity={scan.identity}
+              identities={scan.identities}
+              warning={scan.warning}
+            />
+          ) : null}
+          {listedIdentities(scan?.identity, scan?.identities).map((identity, index) => (
+            <div key={`${identity.number || identity.last_name || "id"}-${index}`}>
               <button
                 type="button"
                 onClick={() => setScanOpen((value) => !value)}
                 className="flex w-full items-center justify-between gap-2 text-left text-sm font-semibold text-[var(--admin-navy)]"
                 aria-expanded={scanOpen}
               >
-                <span className="truncate">{passportCompactLabel(scan.identity || {})}</span>
+                <span className="truncate">{passportCompactLabel(identity)}</span>
                 <ChevronDown className={`h-4 w-4 shrink-0 transition ${scanOpen ? "rotate-180" : ""}`} />
               </button>
               {scanOpen ? (
                 <div className="mt-2">
-                  <PassportDetails source={scan.identity || {}} />
+                  <PassportDetails source={identity} />
                 </div>
               ) : null}
             </div>
-          ) : null}
+          ))}
           {vault.length ? (
             <button
               type="button"
