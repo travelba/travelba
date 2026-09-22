@@ -32,6 +32,7 @@ description: >-
 - Ne **pas** logger numéro / MRZ.
 - Champs : n°, nationalité, naissance, expiration, `place_of_birth`, `authority`, `personal_number` (migration passport_fields).
 - Pièce **pour un voyage** : `crm_travel_documents.booking_id` / `traveler_id` (docs d’identité utiles à ce séjour, en plus des confirmations `crm_booking_documents`).
+- Rattachement : un mot du prénom suffit (« Jérémy » = « Jérémy Moïse ») et le nom est égal, ou à deux caractères près s’il est assez long. « Adulte N » n’est pas une personne. Un passeport de coffre unique et non expiré est coché pour le séjour (`lib/crm/person-match.ts`, `reconcile-party.ts`).
 
 UI : bloc pièce **replié** par défaut (passeport). Copy courte, pas « Uploadez le passeport du titulaire pour préremplir » en hint permanent.
 

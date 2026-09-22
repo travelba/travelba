@@ -32,7 +32,7 @@ Compagnons = **fiche seulement**, pas de compte Auth. Pas d’auto-signup : `ens
 
 Copy « 30 jours » ; TTL réel = Supabase Auth. Ne pas stocker le lien en base.
 
-Après succès mot de passe (`/api/client/password`) : `app_metadata.must_set_password=false` + `refreshSession`, redirect **`/mon-compte/profil`** (pas Accueil) pour le téléphone. Si le code pousse encore vers `/mon-compte`, le corriger — le mur téléphone bloquerait sinon le premier écran.
+Après succès mot de passe (`/api/client/password`) : `app_metadata.must_set_password=false` + `refreshSession`. Redirection : **`/mon-compte/profil`** seulement si `crm_customers.phone` est vide, sinon **`/mon-compte`**. Le mur téléphone reste le filet si l’accueil est ouvert sans numéro.
 
 ## Flag mot de passe
 

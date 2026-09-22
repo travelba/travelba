@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { siteConfig } from "@/lib/site";
 import { BrandMark } from "@/components/crm/ui";
-import { MIN_PASSWORD_LENGTH } from "@/lib/crm/session";
+import { MIN_PASSWORD_LENGTH, pathAfterPassword } from "@/lib/crm/session";
 
 const fieldClass =
   "w-full rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-3 text-[var(--admin-navy)] outline-none focus:border-[var(--admin-gold)] focus:bg-white focus:ring-2 focus:ring-[var(--admin-gold)]/30";
@@ -38,7 +38,7 @@ export default function SetPasswordPage() {
       setError(json.error || "Impossible d’enregistrer le mot de passe");
       return;
     }
-    router.push("/mon-compte/profil");
+    router.push(json.next || pathAfterPassword(json.needsPhone ? "" : "1"));
     router.refresh();
   }
 

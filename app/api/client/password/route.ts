@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError } from "@/lib/crm/auth";
-import { MIN_PASSWORD_LENGTH } from "@/lib/crm/session";
+import { MIN_PASSWORD_LENGTH, pathAfterPassword } from "@/lib/crm/session";
 import { passwordErrorMessage } from "@/lib/crm/db-error";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -41,5 +41,11 @@ export async function POST(request: Request) {
   if (metaError) return dbError(metaError, 400);
 
   await supabase.auth.refreshSession();
-  return NextResponse.json({ ok: true });
+  const { data: customer } = await admin
+    .from("crm_customers")
+    .select("phone")
+    .eq("auth_user_id", user.id)
+    .maybeSingle();
+  const next = pathAfterPassword(customer?.phone);
+  return NextResponse.json({ ok: true, needsPhone: next !== "/mon-compte", next });
 }

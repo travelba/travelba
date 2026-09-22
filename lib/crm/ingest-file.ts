@@ -63,6 +63,7 @@ Règles d’honnêteté :
 Voyageurs :
 - Noms imprimés, casse normale.
 - Si « 2 adults » sans noms : travelers = [{first_name:"Adulte", last_name:"1"}, {first_name:"Adulte", last_name:"2"}].
+- Si des noms sont imprimés, ne pas ajouter de voyageurs « Adulte N ».
 - Ne pas créer d’enfant sans nom.
 
 title : villes séparées par « · ». destination : mêmes villes.`;

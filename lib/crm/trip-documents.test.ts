@@ -97,3 +97,40 @@ test("a previous trip passport can be reused on the next stay", () => {
   assert.equal(reusable.map((item) => item.id).includes("vault"), true);
   assert.equal(tripDocumentsForTraveler([previous], holder).length, 0);
 });
+
+test("un voyageur sans lien retrouve le passeport du coffre par le nom", () => {
+  const jeremy = traveler({
+    is_account_holder: false,
+    first_name: "Jeremy",
+    last_name: "Martin",
+  });
+  const camille = traveler({
+    id: "t2",
+    is_account_holder: false,
+    first_name: "Camille",
+    last_name: "Beaumont",
+  });
+  const ghost = traveler({
+    id: "t3",
+    is_account_holder: false,
+    first_name: "Adulte",
+    last_name: "2",
+  });
+  const docs = [
+    doc({
+      id: "jeremy",
+      first_name: "Jérémy Moïse",
+      last_name: "Martin",
+    }),
+    doc({
+      id: "camille",
+      companion_id: "comp",
+      first_name: "Camille Rose",
+      last_name: "Bbeaummont",
+    }),
+  ];
+  assert.equal(reusableDocumentsForTraveler(docs, jeremy)[0]?.id, "jeremy");
+  assert.equal(reusableDocumentsForTraveler(docs, camille)[0]?.id, "camille");
+  assert.equal(reusableDocumentsForTraveler(docs, ghost).length, 0);
+  assert.deepEqual(tripDocCoverage([jeremy, camille, ghost], []), { ready: 0, total: 2 });
+});

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireCustomer } from "@/lib/crm/auth";
+import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
 import { emptyToNull } from "@/lib/crm/identity";
 import {
@@ -58,6 +59,7 @@ export async function POST(request: Request) {
       mimeType,
     });
     await applyIdentityFromForm(auth.supabase, form, auth.customer.id, companionId, travelerId);
+    await reconcileCustomerParty(auth.customer.id);
     return NextResponse.json({ document });
   } catch (err) {
     return jsonError(err instanceof Error ? err.message : "Enregistrement impossible", 400);
