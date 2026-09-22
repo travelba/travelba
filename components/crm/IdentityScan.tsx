@@ -56,8 +56,8 @@ async function compressPhoto(file: File) {
 
 export function IdentityScan({
   endpoint = "/api/client/documents/scan",
-  title = "Photographier le passeport ou la pièce d’identité",
-  description = "Nous lisons toutes les mentions du document : nom, naissance, n°, dates, nationalité, lieu de naissance et autorité.",
+  title = "Photographier ou importer le passeport",
+  description = "Photo ou PDF de la page d’identité : nom, naissance, n°, dates, nationalité, lieu de naissance et autorité.",
   compact = false,
   onResult,
 }: {
@@ -126,12 +126,12 @@ export function IdentityScan({
           className="admin-af-btn inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm"
         >
           <Camera className="h-4 w-4" />
-          {busy ? "Lecture…" : "Choisir une photo"}
+          {busy ? "Lecture…" : "Choisir un fichier"}
         </button>
         <input
           ref={inputRef}
           type="file"
-          accept="image/*"
+          accept="image/*,application/pdf,.pdf"
           className="hidden"
           onChange={(event) => {
             const file = event.target.files?.[0];

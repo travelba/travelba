@@ -202,9 +202,15 @@ export function guessIngestMime(name: string) {
   return "image/jpeg";
 }
 
-export function isAllowedIngestType(type: string | null | undefined, name: string) {
+export function isPdfFile(type: string | null | undefined, name: string) {
   const mime = type || guessIngestMime(name);
-  return mime === "application/pdf" || mime.startsWith("image/");
+  return mime === "application/pdf" || name.toLowerCase().endsWith(".pdf");
+}
+
+export function isAllowedIngestType(type: string | null | undefined, name: string) {
+  if (isPdfFile(type, name)) return true;
+  const mime = type || guessIngestMime(name);
+  return mime.startsWith("image/");
 }
 
 export type IngestStreamEvent =

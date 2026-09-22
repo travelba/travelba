@@ -194,7 +194,7 @@ export function DocumentsManager({
       <form onSubmit={onSubmit} className="admin-af-card space-y-4 rounded-3xl p-5">
         <IdentityScan
           title="Scanner un passeport"
-          description="Photo de la page d’identité : lecture automatique, fichier chiffré dans le coffre."
+          description="Photo ou PDF de la page d’identité : lecture automatique, fichier chiffré dans le coffre."
           onResult={applyScan}
         />
         {scan ? (
@@ -202,6 +202,8 @@ export function DocumentsManager({
             {scan.preview ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={scan.preview} alt="" className="h-20 w-14 rounded-lg object-cover" />
+            ) : scan.file ? (
+              <p className="text-xs font-medium text-[var(--admin-navy)]">{scan.file.name}</p>
             ) : null}
             <div className="min-w-0 flex-1 space-y-2">
               <ScanStatus identity={scan.identity} warning={scan.warning} />
@@ -305,7 +307,14 @@ export function DocumentsManager({
               </div>
             ) : null}
 
-            {otherDoc ? <input name="extra_file" type="file" className="block text-sm" /> : null}
+            {otherDoc ? (
+              <input
+                name="extra_file"
+                type="file"
+                accept="image/*,application/pdf,.pdf"
+                className="block text-sm"
+              />
+            ) : null}
 
             {error ? <p className="text-sm text-accent">{error}</p> : null}
             <button className="admin-af-btn h-11 w-full rounded-full px-4 text-sm" disabled={saving}>
