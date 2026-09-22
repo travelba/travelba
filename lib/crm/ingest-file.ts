@@ -8,7 +8,7 @@ import {
   renderPageAsImage,
 } from "unpdf";
 import { trySharp } from "@/lib/crm/sharp";
-import { ensureBundledPdfjs } from "@/lib/crm/pdf-raster";
+import { openPdf } from "@/lib/crm/pdf-raster";
 import { downloadCrmFile } from "@/lib/crm/files";
 import {
   applyStructuredHints,
@@ -224,8 +224,7 @@ async function embeddedPdfImages(
 }
 
 async function rasterPdfPages(bytes: Uint8Array, pageCount: number): Promise<UserPart[]> {
-  await ensureBundledPdfjs();
-  const pdf = await getDocumentProxy(bytes);
+  const pdf = await openPdf(bytes);
   const parts: UserPart[] = [];
   const max = Math.min(pageCount, MAX_RASTER_PAGES);
   for (let page = 1; page <= max; page++) {
@@ -437,8 +436,7 @@ Voici les cartes déjà extraites (JSON compact). Complète UNIQUEMENT les champ
 
 async function readPdfText(bytes: Uint8Array): Promise<{ text: string; pages: number }> {
   try {
-    await ensureBundledPdfjs();
-    const pdf = await getDocumentProxy(bytes);
+    const pdf = await openPdf(bytes);
     const extracted = await extractText(pdf, { mergePages: true });
     return {
       text: redactIngestText(extracted.text || ""),
