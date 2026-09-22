@@ -14,4 +14,8 @@ test("sync summary handles singular and plural", () => {
   assert.equal(revolutSyncSummary(1, 1), "Synchronisation terminée : 1 mouvement lu, 1 nouveau.");
   assert.equal(revolutSyncSummary(3, 0), "Synchronisation terminée : 3 mouvements lus, 0 nouveau.");
   assert.equal(revolutSyncSummary(4, 2), "Synchronisation terminée : 4 mouvements lus, 2 nouveaux.");
+  assert.equal(
+    revolutSyncSummary(4, 2, 1),
+    "Synchronisation terminée : 4 mouvements lus, 2 nouveaux, 1 crédit automatique."
+  );
 });

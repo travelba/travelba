@@ -6,6 +6,7 @@ import {
   fetchRevolutTransactions,
   upsertRevolutInbox,
 } from "@/lib/crm/revolut";
+import { autoMatchUnmatchedRevolut } from "@/lib/crm/revolut-match";
 import type { CrmRevolutTransaction } from "@/lib/crm/types";
 
 export const runtime = "nodejs";
@@ -53,7 +54,12 @@ export async function POST(request: Request) {
       const from = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
       const txs = await fetchRevolutTransactions(from);
       const inserted = await upsertRevolutInbox(txs);
-      return NextResponse.json({ fetched: txs.length, inserted });
+      const auto = await autoMatchUnmatchedRevolut();
+      return NextResponse.json({
+        fetched: txs.length,
+        inserted,
+        auto_matched: auto.matched,
+      });
     } catch (err) {
       console.error("[revolut] sync:", err);
       return jsonError(

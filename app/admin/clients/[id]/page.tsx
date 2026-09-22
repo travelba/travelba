@@ -2,15 +2,19 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { CustomerEditor } from "@/components/admin/CustomerEditor";
+import { ClientRevolutSuggestions } from "@/components/admin/ClientRevolutSuggestions";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import { InviteCustomerPanel } from "@/components/admin/InviteCustomerPanel";
 import { getPortalAccess } from "@/lib/crm/invite";
+import { suggestionsForCustomer } from "@/lib/crm/revolut-match";
+import { createServiceClient } from "@/lib/supabase/admin";
 import {
   customerFullName,
   type CrmBalance,
   type CrmBooking,
   type CrmCompanion,
   type CrmCustomer,
+  type CrmRevolutTransaction,
   type CrmTransaction,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
@@ -29,20 +33,42 @@ export default async function AdminClientDetailPage({ params }: Props) {
   if (!customer) notFound();
   const c = customer as CrmCustomer;
 
-  const [{ data: companions }, { data: documents }, { data: bookings }, { data: txs }, { data: balances }, portal] =
-    await Promise.all([
-      supabase.from("crm_travel_companions").select("*").eq("customer_id", id),
-      supabase.from("crm_travel_documents").select("*").eq("customer_id", id),
-      supabase.from("crm_bookings").select("*").eq("customer_id", id).order("start_date", { ascending: false }),
-      supabase
-        .from("crm_transactions")
-        .select("*")
-        .eq("customer_id", id)
-        .order("occurred_on", { ascending: false }),
-      supabase.from("crm_customer_balances").select("*").eq("customer_id", id),
-      getPortalAccess(c),
-    ]);
+  const [
+    { data: companions },
+    { data: documents },
+    { data: bookings },
+    { data: txs },
+    { data: balances },
+    portal,
+    unmatchedRevolut,
+  ] = await Promise.all([
+    supabase.from("crm_travel_companions").select("*").eq("customer_id", id),
+    supabase.from("crm_travel_documents").select("*").eq("customer_id", id),
+    supabase.from("crm_bookings").select("*").eq("customer_id", id).order("start_date", { ascending: false }),
+    supabase
+      .from("crm_transactions")
+      .select("*")
+      .eq("customer_id", id)
+      .order("occurred_on", { ascending: false }),
+    supabase.from("crm_customer_balances").select("*").eq("customer_id", id),
+    getPortalAccess(c),
+    (async () => {
+      try {
+        const admin = createServiceClient();
+        const { data } = await admin
+          .from("crm_revolut_transactions")
+          .select("*")
+          .eq("status", "unmatched")
+          .order("booked_at", { ascending: false, nullsFirst: false })
+          .limit(100);
+        return (data || []) as CrmRevolutTransaction[];
+      } catch {
+        return [] as CrmRevolutTransaction[];
+      }
+    })(),
+  ]);
   const bookingRows = (bookings || []) as CrmBooking[];
+  const revolutSuggestions = suggestionsForCustomer(c, unmatchedRevolut);
 
   return (
     <div className="space-y-6">
@@ -86,6 +112,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         companions={(companions || []) as CrmCompanion[]}
         documents={(documents || []) as CrmTravelDocument[]}
       />
+      <ClientRevolutSuggestions suggestions={revolutSuggestions} />
       <section className="admin-af-card rounded-3xl p-5">
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-display text-lg font-bold">Réservations</h2>

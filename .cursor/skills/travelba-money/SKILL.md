@@ -43,15 +43,17 @@ Ajustements / remboursements : lignes manuelles admin `kind=adjustment|refund`.
 
 ## Revolut
 
-Flux : API Business → `crm_revolut_transactions` (`unmatched`) → agent choisit le client → insert `crm_transactions` crédit `source=revolut` + status `matched`.
+Flux : API Business → `crm_revolut_transactions` (`unmatched`) → matching (`lib/crm/revolut-match.ts`) → crédit `crm_transactions` `source=revolut` si **un seul** hit certain (nom complet, nom de famille unique, ou société unique). Sinon inbox / fiche client avec propositions.
 
 - `POST /api/admin/revolut/[id]` `{ customer_id }` ou `{ action: "ignore" }`
 - Déjà `matched` → 400
-- Cron `/api/cron/revolut-sync` (15 min) + OAuth tokens dans `crm_integrations`
+- Cron `/api/cron/revolut-sync` (15 min) + webhook `TransactionCreated` : upsert puis `autoMatchUnmatchedRevolut`
+- OAuth tokens dans `crm_integrations`
 - Prod : `REVOLUT_SANDBOX=0`, URL `https://b2b.revolut.com`
 - Badge nav admin = count `unmatched`
+- Fiche client `/admin/clients/[id]` : bloc suggestions scorées (Créditer / Ignorer)
 
-**Jamais** créditer depuis le cron / webhook sans le POST agent.
+**Ne pas** créditer si plusieurs clients matchent ou si le score est seulement partiel — laisser `unmatched` pour l’agent.
 
 ## Saisie manuelle
 

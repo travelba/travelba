@@ -16,7 +16,7 @@ export default async function AdminRevolutPage({
     params.error === "oauth"
       ? "Connexion Revolut refusée ou expirée. Relancez « Connecter Revolut »."
       : params.connected === "1"
-        ? "Compte Revolut connecté."
+        ? "Compte Revolut connecté. Les virements sans ambiguïté seront crédités automatiquement."
         : null;
   const { data: customers } = await supabase
     .from("crm_customers")
@@ -36,12 +36,14 @@ export default async function AdminRevolutPage({
     rows = [];
   }
 
+  const hasClientId = Boolean(process.env.REVOLUT_CLIENT_ID?.trim());
+
   return (
     <div>
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
         title="Rapprochement Revolut"
-        subtitle="Connecter le compte Business une fois, puis rapprocher à la main. Aucun crédit client n’est automatique."
+        subtitle="Connecter le compte Business une fois. Crédit automatique s’il n’y a aucun doute ; sinon propositions à confirmer."
       />
       <div className="mt-6">
         <RevolutInbox
@@ -49,6 +51,7 @@ export default async function AdminRevolutPage({
           customers={(customers || []) as CrmCustomer[]}
           configured={revolutConfigured()}
           connected={await revolutConnected()}
+          hasClientId={hasClientId}
           initialMessage={initialMessage}
         />
       </div>

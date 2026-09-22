@@ -5,6 +5,7 @@ import {
   revolutConnected,
   upsertRevolutInbox,
 } from "@/lib/crm/revolut";
+import { autoMatchUnmatchedRevolut } from "@/lib/crm/revolut-match";
 import { cronAuthorized } from "@/lib/crm/cron-auth";
 
 export const runtime = "nodejs";
@@ -29,7 +30,12 @@ export async function GET(request: Request) {
     const from = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
     const txs = await fetchRevolutTransactions(from);
     const inserted = await upsertRevolutInbox(txs);
-    return NextResponse.json({ fetched: txs.length, inserted });
+    const auto = await autoMatchUnmatchedRevolut();
+    return NextResponse.json({
+      fetched: txs.length,
+      inserted,
+      auto_matched: auto.matched,
+    });
   } catch (err) {
     console.error("[cron/revolut-sync]", err);
     return NextResponse.json({ error: "Synchronisation Revolut échouée" }, { status: 502 });

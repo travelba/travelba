@@ -179,7 +179,22 @@ export async function fetchRevolutTransactions(fromIso: string) {
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!res.ok) throw new Error(`Revolut transactions ${res.status}`);
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      let detail = "";
+      try {
+        const json = JSON.parse(body) as { code?: number; message?: string };
+        if (json.code === 9002) {
+          detail =
+            " : whitelist IP / scope sensible — reconnectez avec le scope READ uniquement (liste IP vide).";
+        } else if (json.message) {
+          detail = ` : ${json.message}`;
+        }
+      } catch {
+        if (body) detail = ` : ${body.slice(0, 180)}`;
+      }
+      throw new Error(`Revolut transactions ${res.status}${detail}`);
+    }
     const page = (await res.json()) as RevolutTx[];
     if (!page.length) break;
     out.push(...page);

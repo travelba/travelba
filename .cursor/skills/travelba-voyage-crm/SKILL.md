@@ -64,7 +64,7 @@ IDs prod :
 
 - Secrets dans git (seulement `.env.local` / Vercel env)
 - URL signed Supabase longue dans le HTML — `/api/files?path=`
-- Crédit Revolut sans rapprochement agent
+- Crédit Revolut ambigu sans confirmation agent (l’auto n’est autorisé que si match unique certain)
 - PAN / CVC — références Stripe uniquement
 - `npm run seed:demo` sur la prod
 - Recréer des clients / voyages fictifs en prod
