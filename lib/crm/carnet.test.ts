@@ -112,6 +112,28 @@ describe("carnet", () => {
     assert.equal(groups[1][1].some((row) => row.title === "Aller"), false);
   });
 
+  it("n’affiche l’activité ski que le jour d’arrivée", () => {
+    const groups = groupByDay([
+      item({
+        id: "h",
+        kind: "hotel",
+        title: "L'Amara",
+        start_at: "2027-03-20",
+        end_at: "2027-03-27",
+      }),
+      item({
+        id: "a",
+        kind: "activity",
+        title: "Forfaits Les Portes du Soleil",
+        start_at: "2027-03-20",
+        end_at: "2027-03-27",
+      }),
+    ]);
+    assert.equal(groups.map(([day]) => day).join(","), "2027-03-20,2027-03-21,2027-03-22,2027-03-23,2027-03-24,2027-03-25,2027-03-26");
+    assert.equal(groups[0][1].some((row) => row.kind === "activity"), true);
+    assert.equal(groups[1][1].some((row) => row.kind === "activity"), false);
+  });
+
   it("répète la location chaque jour, sans le jour de restitution", () => {
     const groups = groupByDay([
       item({

@@ -89,10 +89,13 @@ export function parseDocumentMoney(text: string): { amount: number; currency: st
   const lines = text.split(/\n+/);
   const scored: { amount: number; currency: string; score: number }[] = [];
   const pattern =
-    /(?:(total|tarif|montant|fare|amount|prix)[^\n]{0,80})?([€$£]|USD|EUR|CHF|GBP)?\s*([0-9]{1,3}(?:[.\s\u00a0][0-9]{3})+[.,][0-9]{2}|[0-9]{2,}[.,][0-9]{2})\s*(USD|EUR|CHF|GBP|€|\$|£)?/gi;
+    /(?:(total|tarif|montant|fare|amount|prix)[^\n]{0,80}?)?([€$£]|USD|EUR|CHF|GBP)?\s*\b([0-9]{1,3}(?:[.\s\u00a0][0-9]{3})+[.,][0-9]{2}|[0-9]{2,}[.,][0-9]{2})\s*(USD|EUR|CHF|GBP|€|\$|£)?/gi;
 
   for (const line of lines) {
     if (/\bNET\b/i.test(line) && !/\btotal\b/i.test(line)) continue;
+    if (/total forfaits|total mat[eé]riel|total prestations|total assurances/i.test(line)) {
+      continue;
+    }
     pattern.lastIndex = 0;
     let match: RegExpExecArray | null;
     while ((match = pattern.exec(line))) {
@@ -299,6 +302,9 @@ export type ParsedHotel = {
   included: string[];
   rooms: { room: string | null; guests: string | null }[];
   needs_review?: boolean;
+  supplier?: string | null;
+  occupancy?: string | null;
+  board?: string | null;
 };
 
 export function parseLittleEmperorsHotel(text: string): ParsedHotel | null {
@@ -491,6 +497,280 @@ export function isToucanActivities(text: string) {
   return /TOUCAN DISCOVERY/i.test(text);
 }
 
+export function isMaevaStay(text: string) {
+  if (!/maeva\.com/i.test(text)) return false;
+  return (
+    /N[°ºo]?\s*DE DOSSIER/i.test(text) ||
+    /VOS OPTIONS/i.test(text) ||
+    /Forfaits Remont[ée]es M[ée]caniques/i.test(text) ||
+    /Pierre\s*&\s*Vacances/i.test(text)
+  );
+}
+
+const MAEVA_MONEY = /([0-9]{1,3}(?:[\s\u00a0.][0-9]{3})*,[0-9]{2}|[0-9]+,[0-9]{2})\s*€/;
+
+function tidyMaevaLabel(label: string) {
+  return label
+    .replace(/\(Forfaits?\s+\d+\s+[Jj]ours cons[eé]cutifs\)/gi, "")
+    .replace(/\(\s+/g, "(")
+    .replace(/\s+\)/g, ")")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseMaevaDateOnly(chunk: string, yearHint?: string | null): string | null {
+  const full = parseFrEnDate(chunk, yearHint);
+  if (full) return full.slice(0, 10);
+  const named = chunk.match(/(\d{1,2})\s+([A-Za-zàâéèêëïîôùûüç.]+)/i);
+  if (!named || !yearHint) return null;
+  const mm = monthNum(named[2]);
+  if (!mm) return null;
+  return `${yearHint}-${mm}-${named[1].padStart(2, "0")}`;
+}
+
+function isMaevaNoise(line: string) {
+  return /cagnotte|r[eé]seaux sociaux|instagram|bon d['’][eé]change|compte voyageur|je t[eé]l[eé]charge|suivez-nous|vacances d['’][eé]t[eé]|#maeva|je fonce|c['’]est parti|modifier ma r[eé]servation|annuler ma r[eé]servation/i.test(
+    line
+  );
+}
+
+function maevaIncludedLine(label: string, qty: number) {
+  const clean = tidyMaevaLabel(label);
+  const adulte = clean.match(/Adulte de (\d+)\s+[àa]\s+(\d+)/i);
+  if (adulte) return `${qty} × Adulte ${adulte[1]}–${adulte[2]} ans`;
+  const enfant = clean.match(/Enfant de (\d+)\s+[àa]\s+(\d+)/i);
+  if (enfant) return `${qty} × Enfant ${enfant[1]}–${enfant[2]} ans`;
+  if (/casque enfant/i.test(clean)) return `${qty} × Casque enfant`;
+  if (/cours collectifs/i.test(clean) || /ski journ[eé]e/i.test(clean)) {
+    return `${qty} × Cours collectifs journée`;
+  }
+  return `${qty} × ${clean}`;
+}
+
+function parseMaevaOptionRows(block: string) {
+  const raw = block
+    .split(/\n/)
+    .map((line) => line.replace(/[\t\u00a0]+/g, " ").replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  const rows: { label: string; qty: number; amount: number }[] = [];
+  let i = 0;
+  while (i < raw.length) {
+    if (isMaevaNoise(raw[i])) {
+      i += 1;
+      continue;
+    }
+    let end = i;
+    let joined = raw[i];
+    while (end < raw.length && !MAEVA_MONEY.test(joined)) {
+      end += 1;
+      if (end - i > 3 || end >= raw.length) break;
+      if (isMaevaNoise(raw[end])) break;
+      joined = `${joined} ${raw[end]}`;
+    }
+    if (!MAEVA_MONEY.test(joined)) {
+      i += 1;
+      continue;
+    }
+    const withQty = joined.match(
+      new RegExp(String.raw`^(.*?)\s+(\d+)\s+${MAEVA_MONEY.source}\s*$`, "i")
+    );
+    const withoutQty = joined.match(
+      new RegExp(String.raw`^(.*?)\s+${MAEVA_MONEY.source}\s*$`, "i")
+    );
+    const label = (withQty?.[1] || withoutQty?.[1] || "").replace(/\s+/g, " ").trim();
+    const amount = parsePrintedAmount(withQty?.[3] || withoutQty?.[2] || "");
+    const qty = withQty ? Number(withQty[2]) : 1;
+    if (label && amount) rows.push({ label, qty: Number.isFinite(qty) ? qty : 1, amount });
+    i = MAEVA_MONEY.test(raw[i]) ? i + 1 : end + 1;
+  }
+  return rows;
+}
+
+export type ParsedMaevaExtra = {
+  kind: "activity" | "insurance";
+  title: string;
+  start_at: string | null;
+  end_at: string | null;
+  duration: string | null;
+  included: string[];
+  city: string | null;
+};
+
+export type ParsedMaevaStay = {
+  hotel: ParsedHotel;
+  extras: ParsedMaevaExtra[];
+  destination: string | null;
+  confirmed: boolean;
+};
+
+function parseMaevaHotelName(text: string): string | null {
+  const skipNext =
+    /^(arriv[eé]e|retour|d[eé]part|avoriaz|appartement|r[eé]sidences de prestige|n[°ºo]|votre|maeva)/i;
+  const oneLine = text.match(
+    /R[ée]sidence\s+Pierre\s*&\s*Vacances(?:\s+Premium)?\s+L['’]Amara(?:\s*\*{2,})?/i
+  );
+  if (oneLine) {
+    return oneLine[0].replace(/\s*\*{2,}/g, "").replace(/\s+/g, " ").trim();
+  }
+  const head = text.match(/((?:R[ée]sidence(?:s)?\s+)?Pierre\s*&\s*Vacances[^\n]*)/i);
+  if (!head || head.index == null) return null;
+  let name = head[1].replace(/\s*\*{2,}/g, "").replace(/\s+/g, " ").trim();
+  const after = text.slice(head.index + head[0].length);
+  const next = after.match(/^\s*\n\s*([^\n]+)/);
+  const nextLine = (next?.[1] || "").replace(/\s*\*{2,}/g, "").trim();
+  if (nextLine && !skipNext.test(nextLine) && nextLine.length < 80) {
+    name = `${name} ${nextLine}`.replace(/\s+/g, " ").trim();
+  }
+  return name || null;
+}
+
+function parseMaevaExtras(
+  text: string,
+  startAt: string | null,
+  endAt: string | null,
+  city: string | null
+): ParsedMaevaExtra[] {
+  const section = text.split(/VOS OPTIONS/i)[1] || "";
+  const totalAt = section.search(/\n\s*TOTAL\s+[0-9]/i);
+  const block = totalAt >= 0 ? section.slice(0, totalAt) : section;
+  const rows = parseMaevaOptionRows(block);
+  type Group = ParsedMaevaExtra & { key: "forfaits" | "gear" | "lessons" | "insurance" };
+  const groups: Group[] = [];
+  let current: Group | null = null;
+
+  function ensure(key: Group["key"], title: string, kind: Group["kind"]): Group {
+    const hit = groups.find((row) => row.key === key);
+    if (hit) return hit;
+    const created: Group = {
+      key,
+      kind,
+      title,
+      start_at: startAt,
+      end_at: endAt,
+      duration: null,
+      included: [],
+      city,
+    };
+    groups.push(created);
+    return created;
+  }
+
+  for (const row of rows) {
+    if (row.amount <= 0) {
+      current = null;
+      continue;
+    }
+    if (/frais de dossier/i.test(row.label)) continue;
+    if (
+      /^TOTAL$/i.test(row.label) ||
+      /^D[ée]j[àa] r[ée]gl[ée]/i.test(row.label) ||
+      /^Reste [àa] r[ée]gler/i.test(row.label)
+    ) {
+      break;
+    }
+    const durationHit = row.label.match(/(\d+)\s*[Jj]ours cons[eé]cutifs/i);
+    const duration = durationHit ? `${durationHit[1]} jours consécutifs` : null;
+
+    if (/^Total\s+Forfaits/i.test(row.label) || /remont[eé]es m[eé]caniques/i.test(row.label)) {
+      current = ensure("forfaits", "Forfaits Remontées Mécaniques", "activity");
+      if (duration) current.duration = current.duration || duration;
+      continue;
+    }
+    if (/^Total\s+Mat[eé]riel/i.test(row.label) || /mat[eé]riel de glisse/i.test(row.label)) {
+      current = ensure("gear", "Location matériel de ski", "activity");
+      continue;
+    }
+    if (/^Total\s+/i.test(row.label)) {
+      current = null;
+      continue;
+    }
+    if (/casque/i.test(row.label)) {
+      const gear = ensure("gear", "Location matériel de ski", "activity");
+      gear.included.push(maevaIncludedLine(row.label, row.qty));
+      continue;
+    }
+    if (/assurance/i.test(row.label)) {
+      const ins = ensure("insurance", tidyMaevaLabel(row.label) || "Assurance", "insurance");
+      if (!ins.included.length) ins.title = tidyMaevaLabel(row.label) || ins.title;
+      continue;
+    }
+    if (/cours collectifs/i.test(row.label) || /ski journ[eé]e/i.test(row.label)) {
+      const lessons = ensure("lessons", "Cours collectifs journée", "activity");
+      lessons.included.push(maevaIncludedLine(row.label, row.qty));
+      current = lessons;
+      continue;
+    }
+    if (/forfait/i.test(row.label) || /portes du soleil/i.test(row.label)) {
+      const forfaits = ensure("forfaits", "Forfaits Les Portes du Soleil", "activity");
+      if (/portes du soleil/i.test(row.label)) {
+        forfaits.title = "Forfaits Les Portes du Soleil";
+      }
+      if (duration) forfaits.duration = forfaits.duration || duration;
+      forfaits.included.push(maevaIncludedLine(row.label, row.qty));
+      current = forfaits;
+      continue;
+    }
+    if (current) {
+      current.included.push(maevaIncludedLine(row.label, row.qty));
+    }
+  }
+
+  return groups.filter((group) => group.kind === "insurance" || group.included.length);
+}
+
+export function parseMaevaStay(text: string): ParsedMaevaStay | null {
+  if (!isMaevaStay(text)) return null;
+  const year =
+    text.match(/arriv[eé]e le\s*:\s*\d{1,2}\s+[A-Za-zàâéèêëïîôùûüç.]+\s+(20\d{2})/i)?.[1] ||
+    text.match(/\b(20\d{2})\b/)?.[1] ||
+    null;
+  const arrival =
+    text.match(/arriv[eé]e le\s*:?\s*(\d{1,2}\s+[A-Za-zàâéèêëïîôùûüç.]+(?:\s+20\d{2})?)/i)?.[1] ||
+    "";
+  const departure =
+    text.match(
+      /(?:d[eé]part|retour) le\s*:?\s*(\d{1,2}\s+[A-Za-zàâéèêëïîôùûüç.]+(?:\s+20\d{2})?)/i
+    )?.[1] || "";
+  const start_at = parseMaevaDateOnly(arrival, year);
+  const end_at = parseMaevaDateOnly(departure, year);
+  const destination =
+    text.match(/Votre r[eé]servation [àa]\s+([A-Za-zàâéèêëïîôùûüç -]+?)\s+est/i)?.[1]?.trim() ||
+    text.match(/^([A-Za-zàâéèêëïîôùûüç -]+)\s+-\s+Haute[-\s]Savoie/im)?.[1]?.trim() ||
+    null;
+  const city = destination || (text.match(/\bAvoriaz\b/i)?.[0] ?? null);
+  const room = text.match(
+    /Appartement\s+\d+\s+personnes(?:\s*-\s*\d+\s+chambres?)?(?:\s*-\s*Balcon)?/i
+  );
+  const occupancy =
+    room?.[0]?.match(/(\d+)\s+personnes/i)?.[0] ||
+    text.match(/(\d+)\s+pers\.?/i)?.[0]?.replace(/pers\.?/i, "personnes") ||
+    null;
+  const board = /Logement seul/i.test(text) ? "Logement seul" : null;
+  const ref = text.match(/N[°ºo]?\s*DE DOSSIER\s*:?\s*(\d{5,})/i)?.[1] || null;
+  const hotel_name = parseMaevaHotelName(text);
+  const extras = parseMaevaExtras(text, start_at, end_at, city);
+  return {
+    hotel: {
+      hotel_name,
+      confirmation_ref: ref,
+      city,
+      address: null,
+      start_at,
+      end_at,
+      included: [],
+      rooms: room
+        ? [{ room: room[0].replace(/\s+/g, " ").trim(), guests: occupancy }]
+        : [],
+      supplier: "maeva.com",
+      occupancy,
+      board,
+    },
+    extras,
+    destination: city,
+    confirmed: /est confirm[ée]e|est valid[ée]e/i.test(text),
+  };
+}
+
 export const INGEST_FAMILIES = [
   "amadeus",
   "little_emperors",
@@ -500,6 +780,7 @@ export const INGEST_FAMILIES = [
   "transfer",
   "quote",
   "toucan",
+  "maeva",
   "identity",
   "unknown",
 ] as const;
@@ -515,6 +796,7 @@ export function classifyIngestFamily(text: string, filename = ""): IngestFamily 
     return "identity";
   }
   if (isToucanActivities(text)) return "toucan";
+  if (isMaevaStay(text)) return "maeva";
   if (/Reçu de Billet Electronique/i.test(text)) return "amadeus";
   if (/\bSIXT\b/i.test(text) && /Pickup on/i.test(text)) return "sixt";
   if (
@@ -577,6 +859,18 @@ export function parserItemsComplete(
         Boolean(item.details?.pickup || item.details?.dropoff)
     );
   }
+  if (family === "maeva") {
+    const hotelOk = items.some(
+      (item) =>
+        item.kind === "hotel" &&
+        Boolean(item.details?.hotel_name || item.title) &&
+        Boolean(item.start_at)
+    );
+    if (!hotelOk) return false;
+    return items
+      .filter((item) => item.kind === "activity" || item.kind === "insurance")
+      .every((item) => Boolean(item.title) && Boolean(item.start_at));
+  }
   return false;
 }
 
@@ -625,6 +919,13 @@ export function structuredHintFromPdfText(text: string): string {
       "Toucan Discovery = activités. Les étapes hôtel du cadre ne sont pas des réservations."
     );
   }
+  const maeva = parseMaevaStay(clean);
+  if (maeva) {
+    bits.push(`MAEVA ${JSON.stringify({ hotel: maeva.hotel, extras: maeva.extras })}`);
+    bits.push(
+      "maeva.com = résidence + prestations (forfaits, matériel, cours, assurance). confirmation_ref = n° de dossier sur l’hôtel seulement. Dates sans heure. Pas de frais de dossier ni de PAN."
+    );
+  }
   return bits.join("\n");
 }
 
@@ -663,7 +964,7 @@ function hotelToItem(hotel: ParsedHotel): ExtractItem {
   return {
     kind: "hotel",
     title: hotel.hotel_name || "Hôtel",
-    supplier: null,
+    supplier: hotel.supplier || null,
     confirmation_ref: hotel.confirmation_ref,
     start_at: hotel.start_at,
     end_at: hotel.end_at,
@@ -672,9 +973,29 @@ function hotelToItem(hotel: ParsedHotel): ExtractItem {
       hotel_name: hotel.hotel_name,
       city: hotel.city,
       address: hotel.address,
+      board: hotel.board || undefined,
+      occupancy: hotel.occupancy || undefined,
       included: hotel.included,
       rooms: hotel.rooms,
       needs_review: hotel.needs_review || undefined,
+    },
+  };
+}
+
+function maevaExtraToItem(extra: ParsedMaevaExtra): ExtractItem {
+  return {
+    kind: extra.kind,
+    title: extra.title,
+    supplier: "maeva.com",
+    confirmation_ref: null,
+    start_at: extra.start_at,
+    end_at: extra.end_at,
+    amount: null,
+    details: {
+      city: extra.city,
+      duration: extra.duration,
+      included: extra.included,
+      meeting_point: extra.city,
     },
   };
 }
@@ -772,9 +1093,21 @@ function overlayItem(target: ExtractItem, incoming: ExtractItem) {
       current.hotel_name = incoming.details.hotel_name;
     }
     if (incoming.details?.city && !current.city) current.city = incoming.details.city;
+    if (incoming.details?.board && !current.board) current.board = incoming.details.board;
+    if (incoming.details?.occupancy && !current.occupancy) {
+      current.occupancy = incoming.details.occupancy;
+    }
     const hotelName =
       typeof current.hotel_name === "string" ? current.hotel_name.trim() : "";
     if (hotelName) target.title = hotelName;
+  }
+  if (incoming.kind === "activity" || incoming.kind === "insurance") {
+    const includedA = Array.isArray(current.included) ? current.included : [];
+    const includedB = Array.isArray(incoming.details?.included) ? incoming.details.included : [];
+    current.included = [...new Set([...includedA, ...includedB].filter(Boolean))];
+    if (incoming.details?.duration && !current.duration) {
+      current.duration = incoming.details.duration;
+    }
   }
   target.details = current;
 }
@@ -798,14 +1131,21 @@ export function parsedItemsFromText(text: string): {
   for (const flight of parseAmadeusFlights(clean)) {
     items.push(withDocumentPrice(flightToItem(flight), money));
   }
-  const hotel =
-    parseLittleEmperorsHotel(clean) ||
-    parseNantipaConfirmation(clean) ||
-    parseHotelConfirmationLetter(clean);
-  if (hotel) {
-    items.push(withDocumentPrice(hotelToItem(hotel), money));
-    if (hotel.needs_review) {
-      notes.push("Hôtel : réservation provisoire (tentative), à confirmer.");
+  const maeva = parseMaevaStay(clean);
+  if (maeva) {
+    items.push(withDocumentPrice(hotelToItem(maeva.hotel), money));
+    for (const extra of maeva.extras) items.push(maevaExtraToItem(extra));
+    if (maeva.confirmed) status = status || "confirmed";
+  } else {
+    const hotel =
+      parseLittleEmperorsHotel(clean) ||
+      parseNantipaConfirmation(clean) ||
+      parseHotelConfirmationLetter(clean);
+    if (hotel) {
+      items.push(withDocumentPrice(hotelToItem(hotel), money));
+      if (hotel.needs_review) {
+        notes.push("Hôtel : réservation provisoire (tentative), à confirmer.");
+      }
     }
   }
   const transfer = parseTransferConfirmation(clean);

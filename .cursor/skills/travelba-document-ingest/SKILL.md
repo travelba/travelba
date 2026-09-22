@@ -74,6 +74,7 @@ Pièces iOS parfois absentes du VM : le dire, demander le trombone desktop, ou l
 | SIXT | Pickup on / Return on / catégorie | `parseSixtCar` — `kind=car` |
 | Passion Collection | Devis, NET, options | quote — **pas** de NET |
 | Toucan Discovery | étapes du cadre + excursions | `activity` — les étapes **ne sont pas** des hôtels |
+| Maeva / Pierre & Vacances | maeva.com + N° DE DOSSIER / VOS OPTIONS | `parseMaevaStay` — **1 hôtel** + forfaits / matériel / cours (`activity`) + assurance. Réf. dossier **sur l’hôtel seulement**. Dates only. Pas de frais de dossier, PAN, totaux à 0 |
 | Passeport | MRZ `P<FRA` | **identité**, pas une résa |
 
 IATA **8 chiffres** (20287864, 20255270, 96020293, 20289905) = code agence, **jamais** un PNR.
@@ -109,6 +110,7 @@ Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Co
 - Transfert : `pickup` / `dropoff` (pas `from`/`to`). « 2 h 30 avant le vol » → `pickup_note`, pas d’heure inventée. Vol sur le bon → `flight` seulement s’il y a un e-ticket.
 - SIXT : `kind=car`, n° résa, prise/restitution (`18 Septembre 2026 at 16:00`), `vehicle` = catégorie. **Pas** CHF TTC, caution, protection, plein.
 - Train / bateau : horaires **écrits**. Croisière = une carte, pas un jour par port.
+- Maeva / Pierre & Vacances : **1 hôtel** (nom d’établissement, ville = station) + cartes `activity` (forfaits, matériel, cours) et `insurance`. `included` = lignes d’option imprimées. Dates **sans heure**. Réf. dossier **uniquement** sur l’hôtel. Pas de frais de dossier, totaux à 0, PAN.
 - `YANIK` / `YANNICK` = même personne.
 
 ## Fusion (`item-match.ts`)
@@ -117,7 +119,7 @@ Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Co
 |------|-----|
 | flight | `flight_number` + jour, sinon PNR + jour |
 | hotel | recouvrement des réf. `;`, sinon nom + jour |
-| car / transfer / activity / rail | réf. sinon titre + jour |
+| car / transfer / activity / rail / insurance | réf. sinon titre + jour |
 
 Réimport même clé = **remplace** la carte. Dans un même extract, 10 duplicatas → 1 item (`mergeExtractItems`). Aller et retour (n° ou jours différents) → 2 items.
 

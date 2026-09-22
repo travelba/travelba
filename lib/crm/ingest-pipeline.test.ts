@@ -69,6 +69,16 @@ describe("classifyIngestFamily", () => {
   it("reconnaît une MRZ comme identité", () => {
     assert.equal(classifyIngestFamily("P<FRADUPONT<<JEAN<<<<<<<<", "scan.jpg"), "identity");
   });
+
+  it("reconnaît une confirmation maeva", () => {
+    assert.equal(
+      classifyIngestFamily(
+        "maeva.com\nN° DE DOSSIER : 15000001\nVOS OPTIONS\nTotal Forfaits Remontées Mécaniques 3 710,00 €",
+        "maeva.pdf"
+      ),
+      "maeva"
+    );
+  });
 });
 
 describe("parserItemsComplete / vision", () => {

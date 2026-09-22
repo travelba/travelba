@@ -97,6 +97,16 @@ Train (rail) : comme un vol (n°, gares, horaires si écrits).
 Voiture (SIXT / loueur) : kind=car. confirmation_ref = n° de réservation. start_at / end_at = prise et restitution. details.pickup / dropoff / vehicle. Pas de franchise, caution, TTC, protection.
 Bateau (cruise) : une carte pour la traversée, pas un jour par port.`;
 
+const PROMPT_MAEVA = `Confirmation maeva.com / Pierre & Vacances :
+- UN hôtel (résidence). title = details.hotel_name (établissement), PAS la ville. details.city = station.
+- Arrivée / départ en date only. Pas d’horaire inventé (15:00 / 12:00).
+- confirmation_ref = N° de dossier, UNIQUEMENT sur la carte hôtel. Les extras n’ont pas cette réf.
+- VOS OPTIONS = cartes séparées : forfaits (activity), matériel de ski (activity), cours (activity), assurance (insurance).
+- Lignes d’un même total → details.included (ex. « 1 × Adulte 26–64 ans »). details.duration si « 6 jours consécutifs » est écrit.
+- Ignorer totaux à 0 €, frais de dossier, CGV, cagnotte, PAN, n° de transaction bancaire.
+- E-mail agence ≠ customer_email. Pas d’enfants sans nom.
+- amount des items = null. details.document_amount = total TTC du dossier, une seule fois.`;
+
 const FAMILY_PROMPT: Record<IngestFamily, string> = {
   amadeus: PROMPT_FLIGHT,
   little_emperors: PROMPT_HOTEL,
@@ -106,8 +116,9 @@ const FAMILY_PROMPT: Record<IngestFamily, string> = {
   sixt: PROMPT_OTHER,
   transfer: PROMPT_OTHER,
   toucan: PROMPT_OTHER,
+  maeva: `${PROMPT_HOTEL}\n${PROMPT_MAEVA}`,
   identity: "C’est une pièce d’identité. document_status=identity. Aucun item de réservation.",
-  unknown: `${PROMPT_FLIGHT}\n${PROMPT_HOTEL}\n${PROMPT_OTHER}`,
+  unknown: `${PROMPT_FLIGHT}\n${PROMPT_HOTEL}\n${PROMPT_OTHER}\n${PROMPT_MAEVA}`,
 };
 
 type UserPart =

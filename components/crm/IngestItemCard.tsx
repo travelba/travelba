@@ -78,13 +78,18 @@ export function IngestItemCard({
   onChange: (next: ItemDraft) => void;
   onRemove: () => void;
 }) {
+  const stampHasClock = (value: string) => {
+    const match = (value || "").match(/T(\d{2}):(\d{2})/);
+    return Boolean(match && !(match[1] === "00" && match[2] === "00"));
+  };
   const withTime =
     item.kind === "flight" ||
     item.kind === "rail" ||
     item.kind === "transfer" ||
-    item.kind === "activity" ||
     item.kind === "car" ||
-    item.kind === "cruise";
+    item.kind === "cruise" ||
+    (item.kind === "activity" &&
+      (stampHasClock(item.start_at || "") || stampHasClock(item.end_at || "")));
   const d = item.details || {};
   const included = Array.isArray(d.included) ? d.included.join("\n") : String(d.included || "");
   const rooms = Array.isArray(d.rooms)
@@ -337,16 +342,35 @@ export function IngestItemCard({
         </div>
       ) : null}
 
-      {item.kind === "activity" || item.kind === "cruise" ? (
+      {item.kind === "activity" || item.kind === "cruise" || item.kind === "insurance" ? (
         <div className="grid gap-2 sm:grid-cols-2">
-          <Field label="Lieu">
-            <Text
-              value={d.meeting_point || d.city || ""}
-              onChange={(v) => onChange(patchDetails(item, "meeting_point", v))}
+          {item.kind === "activity" || item.kind === "cruise" ? (
+            <>
+              <Field label="Lieu">
+                <Text
+                  value={d.meeting_point || d.city || ""}
+                  onChange={(v) => onChange(patchDetails(item, "meeting_point", v))}
+                />
+              </Field>
+              <Field label="Durée">
+                <Text value={d.duration || ""} onChange={(v) => onChange(patchDetails(item, "duration", v))} />
+              </Field>
+            </>
+          ) : null}
+          <Field label="Détail — uniquement si écrit sur le document" className="sm:col-span-2">
+            <textarea
+              value={included}
+              onChange={(e) =>
+                onChange({
+                  ...item,
+                  details: {
+                    ...item.details,
+                    included: e.target.value.split("\n").map((p) => p.trim()).filter(Boolean),
+                  },
+                })
+              }
+              className={`${fieldControlClass} min-h-[72px]`}
             />
-          </Field>
-          <Field label="Durée">
-            <Text value={d.duration || ""} onChange={(v) => onChange(patchDetails(item, "duration", v))} />
           </Field>
         </div>
       ) : null}
