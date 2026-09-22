@@ -27,6 +27,7 @@ function row(
     revolut_transaction_id: partial.revolut_transaction_id || `rev-${partial.id}`,
     amount: partial.amount ?? 100,
     currency: partial.currency || "EUR",
+    direction: partial.direction || "credit",
     counterparty_name: partial.counterparty_name ?? null,
     counterparty_iban: partial.counterparty_iban ?? null,
     reference: partial.reference ?? null,

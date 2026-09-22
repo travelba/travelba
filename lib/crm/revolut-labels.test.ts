@@ -4,8 +4,8 @@ import { revolutStatusLabel, revolutStatusTone, revolutSyncSummary } from "./rev
 
 test("revolut statuses are shown in French", () => {
   assert.equal(revolutStatusLabel("unmatched"), "À rapprocher");
-  assert.equal(revolutStatusLabel("matched"), "Crédité");
-  assert.equal(revolutStatusLabel("ignored"), "Ignoré");
+  assert.equal(revolutStatusLabel("matched"), "Rapproché");
+  assert.equal(revolutStatusLabel("ignored"), "Refusé");
   assert.equal(revolutStatusLabel("weird"), "weird");
   assert.equal(revolutStatusTone("unmatched"), "amber");
 });

@@ -43,17 +43,16 @@ Ajustements / remboursements : lignes manuelles admin `kind=adjustment|refund`.
 
 ## Revolut
 
-Flux : API Business → `crm_revolut_transactions` (`unmatched`) → matching (`lib/crm/revolut-match.ts`) → crédit `crm_transactions` `source=revolut` si **un seul** hit certain (nom complet, nom de famille unique, ou société unique). Sinon inbox / fiche client avec propositions.
+Flux : API Business → `crm_revolut_transactions` (`unmatched`, `direction` credit|debit) → matching → écriture `crm_transactions` (crédit = revenu, débit = dépense) si **un seul** hit certain. Sinon inbox / fiche client : **Valider** (proposition pré-sélectionnée) ou **Refuser**.
 
-- `POST /api/admin/revolut/[id]` `{ customer_id }` ou `{ action: "ignore" }`
+- `POST /api/admin/revolut/[id]` `{ customer_id }` | `{ action: "ignore"|"refuse" }`
 - Déjà `matched` → 400
-- Cron `/api/cron/revolut-sync` (15 min) + webhook `TransactionCreated` : upsert puis `autoMatchUnmatchedRevolut`
-- OAuth tokens dans `crm_integrations`
+- Sync importe topups/transferts entrants (revenus) et transferts sortants (dépenses) ; ignore Stripe / cartes / charges
+- Cron `/api/cron/revolut-sync` (15 min) + webhook : upsert puis `autoMatchUnmatchedRevolut`
+- UI `/admin/revolut` : filtres Tous / Revenus / Dépenses ; badge = count `unmatched`
 - Prod : `REVOLUT_SANDBOX=0`, URL `https://b2b.revolut.com`
-- Badge nav admin = count `unmatched`
-- Fiche client `/admin/clients/[id]` : bloc suggestions scorées (Créditer / Ignorer)
 
-**Ne pas** créditer si plusieurs clients matchent ou si le score est seulement partiel — laisser `unmatched` pour l’agent.
+**Ne pas** imputer si plusieurs clients matchent ou score partiel — laisser `unmatched` pour Valider/Refuser.
 
 ## Saisie manuelle
 

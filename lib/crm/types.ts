@@ -253,6 +253,7 @@ export type CrmRevolutTransaction = {
   revolut_transaction_id: string;
   amount: number;
   currency: string;
+  direction: "credit" | "debit";
   counterparty_name: string | null;
   counterparty_iban: string | null;
   reference: string | null;

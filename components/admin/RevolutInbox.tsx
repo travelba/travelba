@@ -6,13 +6,21 @@ import type { CrmCustomer, CrmRevolutTransaction } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { revolutInboxEmptyMessage } from "@/lib/crm/launch-status";
 import { StatusChip } from "@/components/crm/ui";
-import { revolutStatusLabel, revolutStatusTone, revolutSyncSummary } from "@/lib/crm/revolut-labels";
+import {
+  revolutDirectionLabel,
+  revolutDirectionTone,
+  revolutStatusLabel,
+  revolutStatusTone,
+  revolutSyncSummary,
+} from "@/lib/crm/revolut-labels";
 import {
   matchReasonLabel,
   scoreRevolutMatches,
   type RevolutMatchCandidate,
 } from "@/lib/crm/revolut-match";
 import { customerFullName } from "@/lib/crm/types";
+
+type Filter = "all" | "credit" | "debit";
 
 function customerOptionLabel(c: CrmCustomer) {
   const name = customerFullName(c);
@@ -39,6 +47,7 @@ export function RevolutInbox({
   const [rowBusy, setRowBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(initialMessage);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Filter>("all");
 
   const suggestions = useMemo(() => {
     const map = new Map<string, RevolutMatchCandidate[]>();
@@ -48,6 +57,23 @@ export function RevolutInbox({
     }
     return map;
   }, [rows, customers]);
+
+  const counts = useMemo(() => {
+    const unmatched = rows.filter((r) => r.status === "unmatched");
+    return {
+      all: unmatched.length,
+      credit: unmatched.filter((r) => (r.direction || "credit") === "credit").length,
+      debit: unmatched.filter((r) => r.direction === "debit").length,
+    };
+  }, [rows]);
+
+  const visible = useMemo(() => {
+    return rows.filter((r) => {
+      if (filter === "all") return true;
+      const dir = r.direction || "credit";
+      return dir === filter;
+    });
+  }, [rows, filter]);
 
   function connect() {
     window.location.assign("/api/admin/revolut/oauth");
@@ -110,10 +136,29 @@ export function RevolutInbox({
     const fd = new FormData(event.currentTarget);
     const customerId = String(fd.get("customer_id") || "");
     if (!customerId) {
-      setError("Choisissez le client à créditer.");
+      setError("Choisissez le client à rapprocher.");
       return;
     }
     void post(id, { customer_id: customerId }, "Rapprochement impossible. Réessayez.");
+  }
+
+  function filterBtn(id: Filter, label: string, count: number) {
+    const active = filter === id;
+    return (
+      <button
+        key={id}
+        type="button"
+        onClick={() => setFilter(id)}
+        className={`rounded-full px-3 py-1 text-sm font-semibold ${
+          active
+            ? "bg-[var(--admin-navy)] text-white"
+            : "border border-border text-[var(--admin-navy)]"
+        }`}
+      >
+        {label}
+        <span className="ml-1 opacity-70">{count}</span>
+      </button>
+    );
   }
 
   return (
@@ -121,31 +166,9 @@ export function RevolutInbox({
       {!hasClientId ? (
         <div className="admin-af-card space-y-2 rounded-3xl border border-amber-200/80 bg-amber-50/50 px-5 py-4 text-sm text-[var(--admin-navy)]">
           <p className="font-semibold">Finaliser l’app Revolut Business</p>
-          <ol className="list-decimal space-y-1 pl-5 text-muted">
-            <li>
-              Dans Revolut Business → Settings → APIs → Business API, créez un certificat{" "}
-              <strong className="font-semibold text-[var(--admin-navy)]">Production</strong>.
-            </li>
-            <li>
-              Uploadez le certificat public fourni par l’agence (fichier{" "}
-              <code className="rounded bg-white/80 px-1">revolut-travelba-public.cer</code>).
-            </li>
-            <li>
-              Redirect URI exact :{" "}
-              <code className="rounded bg-white/80 px-1">
-                https://travelba.fr/api/admin/revolut/oauth
-              </code>
-            </li>
-            <li>
-              Envoyez le <strong className="font-semibold text-[var(--admin-navy)]">Client ID</strong>{" "}
-              obtenu — il sera posé en variable Vercel <code className="rounded bg-white/80 px-1">REVOLUT_CLIENT_ID</code>{" "}
-              (et <code className="rounded bg-white/80 px-1">REVOLUT_ISS</code>).
-            </li>
-            <li>
-              Revenez ici et cliquez sur <strong className="font-semibold text-[var(--admin-navy)]">Connecter Revolut</strong>{" "}
-              (SCA Business, une seule fois).
-            </li>
-          </ol>
+          <p className="text-muted">
+            Client ID manquant côté serveur. Après connexion, revenus et dépenses apparaîtront ici.
+          </p>
         </div>
       ) : null}
       <div className="flex flex-wrap items-center gap-3">
@@ -165,40 +188,43 @@ export function RevolutInbox({
         >
           {busy ? "Synchronisation…" : "Synchroniser Revolut"}
         </button>
-        {!configured ? (
+        {configured && connected ? (
           <p className="text-sm text-muted">
-            Clés Revolut incomplètes côté serveur (Client ID manquant). Le grand livre manuel reste disponible.
+            Proposition de client pré-sélectionnée — Valider ou Refuser. Auto si aucun doute.
           </p>
-        ) : !connected ? (
-          <p className="text-sm text-muted">
-            Clés présentes — cliquez sur Connecter Revolut (une fois, compte Business).
-          </p>
-        ) : (
-          <p className="text-sm text-muted">
-            Rapprochement automatique si un seul client correspond sans doute ; sinon proposition manuelle.
-            Si la sync échoue (403), laissez la liste IP Revolut vide et recliquez Connecter Revolut.
-          </p>
-        )}
+        ) : null}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {filterBtn("all", "Tous", counts.all)}
+        {filterBtn("credit", "Revenus", counts.credit)}
+        {filterBtn("debit", "Dépenses", counts.debit)}
       </div>
       {message ? <p className="text-sm text-muted">{message}</p> : null}
       {error ? <p className="text-sm text-accent">{error}</p> : null}
       <ul className="admin-af-card divide-y divide-border rounded-3xl">
-        {rows.map((r) => {
+        {visible.map((r) => {
           const candidates = suggestions.get(r.id) || [];
           const top = candidates[0];
           const defaultCustomerId = top && top.score >= 55 ? top.customer_id : "";
+          const direction = r.direction || "credit";
+          const signed =
+            direction === "debit"
+              ? `−${formatMoney(Number(r.amount), r.currency)}`
+              : `+${formatMoney(Number(r.amount), r.currency)}`;
           return (
             <li key={r.id} className="px-5 py-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="space-y-1">
                   <p className="font-medium">
-                    {r.counterparty_name || "Contrepartie inconnue"} ·{" "}
-                    {formatMoney(Number(r.amount), r.currency)}
+                    {r.counterparty_name || "Contrepartie inconnue"} · {signed}
                   </p>
                   <p className="text-xs text-muted">
                     {formatDateFr(r.booked_at)} · {r.reference || r.revolut_transaction_id}
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
+                    <StatusChip tone={revolutDirectionTone(direction)}>
+                      {revolutDirectionLabel(direction)}
+                    </StatusChip>
                     <StatusChip tone={revolutStatusTone(r.status)}>
                       {revolutStatusLabel(r.status)}
                     </StatusChip>
@@ -219,14 +245,18 @@ export function RevolutInbox({
                       required
                       defaultValue={defaultCustomerId}
                       disabled={rowBusy === r.id}
-                      aria-label="Client à créditer"
+                      aria-label="Client à rapprocher"
                       className="rounded-xl border border-border px-3 py-1 text-sm"
                     >
-                      <option value="">Rapprocher vers…</option>
+                      <option value="">Choisir un client…</option>
                       {(candidates.length
                         ? [
-                            ...candidates.map((c) => customers.find((x) => x.id === c.customer_id)!).filter(Boolean),
-                            ...customers.filter((c) => !candidates.some((x) => x.customer_id === c.id)),
+                            ...candidates
+                              .map((c) => customers.find((x) => x.id === c.customer_id)!)
+                              .filter(Boolean),
+                            ...customers.filter(
+                              (c) => !candidates.some((x) => x.customer_id === c.id)
+                            ),
                           ]
                         : customers
                       ).map((c) => (
@@ -240,17 +270,17 @@ export function RevolutInbox({
                       disabled={rowBusy === r.id}
                       className="admin-af-btn rounded-full px-3 py-1 text-sm"
                     >
-                      {rowBusy === r.id ? "En cours…" : "Créditer"}
+                      {rowBusy === r.id ? "En cours…" : "Valider"}
                     </button>
                     <button
                       type="button"
                       disabled={rowBusy === r.id}
-                      className="text-xs font-semibold text-muted"
+                      className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-muted"
                       onClick={() =>
-                        void post(r.id, { action: "ignore" }, "Impossible d’ignorer ce mouvement.")
+                        void post(r.id, { action: "refuse" }, "Impossible de refuser ce mouvement.")
                       }
                     >
-                      Ignorer
+                      Refuser
                     </button>
                   </form>
                 ) : null}
@@ -258,9 +288,13 @@ export function RevolutInbox({
             </li>
           );
         })}
-        {!rows.length ? (
+        {!visible.length ? (
           <li className="space-y-3 px-5 py-8 text-center text-sm text-muted">
-            <p>{revolutInboxEmptyMessage({ configured, connected })}</p>
+            <p>
+              {rows.length
+                ? "Aucun mouvement dans ce filtre."
+                : revolutInboxEmptyMessage({ configured, connected })}
+            </p>
             {configured && !connected ? (
               <button
                 type="button"

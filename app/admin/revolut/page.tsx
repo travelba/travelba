@@ -43,7 +43,7 @@ export default async function AdminRevolutPage({
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
         title="Rapprochement Revolut"
-        subtitle="Connecter le compte Business une fois. Crédit automatique s’il n’y a aucun doute ; sinon propositions à confirmer."
+        subtitle="Revenus et dépenses du compte Business. Proposition de client pré-sélectionnée : Valider ou Refuser."
       />
       <div className="mt-6">
         <RevolutInbox

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
-import { creditRevolutToCustomer } from "@/lib/crm/revolut-match";
+import { applyRevolutToCustomer } from "@/lib/crm/revolut-match";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmRevolutTransaction } from "@/lib/crm/types";
 
@@ -19,7 +19,7 @@ export async function POST(request: Request, ctx: Ctx) {
     .maybeSingle();
   if (!row) return jsonError("Virement introuvable", 404);
 
-  if (body?.action === "ignore") {
+  if (body?.action === "ignore" || body?.action === "refuse") {
     await admin
       .from("crm_revolut_transactions")
       .update({ status: "ignored" })
@@ -29,7 +29,7 @@ export async function POST(request: Request, ctx: Ctx) {
 
   const customerId = String(body?.customer_id || "");
   if (!customerId) return jsonError("Client requis");
-  const result = await creditRevolutToCustomer(
+  const result = await applyRevolutToCustomer(
     admin,
     row as CrmRevolutTransaction,
     customerId

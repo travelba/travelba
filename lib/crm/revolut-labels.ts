@@ -1,17 +1,31 @@
 export const REVOLUT_STATUS_LABELS: Record<string, string> = {
   unmatched: "À rapprocher",
-  matched: "Crédité",
-  ignored: "Ignoré",
+  matched: "Rapproché",
+  ignored: "Refusé",
+};
+
+export const REVOLUT_DIRECTION_LABELS: Record<string, string> = {
+  credit: "Revenu",
+  debit: "Dépense",
 };
 
 export function revolutStatusLabel(status: string) {
   return REVOLUT_STATUS_LABELS[status] ?? status;
 }
 
+export function revolutDirectionLabel(direction: string | null | undefined) {
+  if (!direction) return REVOLUT_DIRECTION_LABELS.credit;
+  return REVOLUT_DIRECTION_LABELS[direction] ?? direction;
+}
+
 export function revolutStatusTone(status: string): "amber" | "gold" | "navy" {
   if (status === "unmatched") return "amber";
   if (status === "matched") return "gold";
   return "navy";
+}
+
+export function revolutDirectionTone(direction: string | null | undefined): "gold" | "navy" {
+  return direction === "debit" ? "navy" : "gold";
 }
 
 export function revolutSyncSummary(
