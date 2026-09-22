@@ -96,6 +96,6 @@ test("inbox Revolut : connecter d’abord, auto si sans ambiguïté", () => {
 test("listes vides : distinguer absence réelle et filtre", () => {
   assert.match(bookingsListEmptyMessage(false), /Visible dans l’espace/);
   assert.equal(bookingsListEmptyMessage(true), "Aucune réservation trouvée.");
-  assert.match(ledgerEmptyMessage(false), /rapprochement/);
-  assert.equal(ledgerEmptyMessage(true), "Aucune écriture pour ces filtres.");
+  assert.match(ledgerEmptyMessage(false), /virement crédit/);
+  assert.equal(ledgerEmptyMessage(true), "Aucun virement pour ces filtres.");
 });

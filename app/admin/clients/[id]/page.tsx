@@ -17,6 +17,7 @@ import {
   type CrmRevolutTransaction,
   type CrmTransaction,
   type CrmTravelDocument,
+  filterCreditTransfers,
 } from "@/lib/crm/types";
 import { formatDateFr, formatMoney, formatCreditDisponible } from "@/lib/crm/money";
 
@@ -50,6 +51,8 @@ export default async function AdminClientDetailPage({ params }: Props) {
       .from("crm_transactions")
       .select("*")
       .eq("customer_id", id)
+      .eq("kind", "transfer")
+      .eq("direction", "credit")
       .order("occurred_on", { ascending: false }),
     supabase.from("crm_customer_balances").select("*").eq("customer_id", id),
     supabase
@@ -157,22 +160,19 @@ export default async function AdminClientDetailPage({ params }: Props) {
         )}
       </section>
       <section className="admin-af-card rounded-3xl p-5">
-        <h2 className="font-display text-lg font-bold">Transactions</h2>
+        <h2 className="font-display text-lg font-bold">Virements crédit</h2>
         {!(txs || []).length ? (
           <p className="mt-2 text-sm text-muted">
-            Aucune écriture. Les débits sont créés à la confirmation d’un dossier, les crédits au rapprochement Revolut ou à la saisie manuelle.
+            Aucun virement crédit. Ils apparaissent après rapprochement Revolut ou saisie manuelle.
           </p>
         ) : null}
         <ul className="mt-2 divide-y divide-border text-sm">
-          {((txs || []) as CrmTransaction[]).map((t) => (
+          {filterCreditTransfers((txs || []) as CrmTransaction[]).map((t) => (
             <li key={t.id} className="flex justify-between py-2">
               <span>
                 {t.label} · {formatDateFr(t.occurred_on)}
               </span>
-              <span>
-                {t.direction === "credit" ? "+" : "−"}
-                {formatMoney(Number(t.amount), t.currency)}
-              </span>
+              <span>+{formatMoney(Number(t.amount), t.currency)}</span>
             </li>
           ))}
         </ul>

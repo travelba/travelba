@@ -5,7 +5,7 @@ import { loyaltyFromCustomer, normalizeLoyaltyMap, normalizeLoyaltyNumber } from
 import { formatEncours, formatMoney, jMinusLabel, postedLedgerTotals } from "./money";
 import { needsAiCover, unsplashKeywordMatch } from "./covers";
 import { vaultDocumentsForPerson } from "./trip-documents";
-import type { CrmTravelDocument } from "./types";
+import { filterCreditTransfers, isCreditTransfer, type CrmTravelDocument } from "./types";
 
 test("identity overwrite warns only when names differ", () => {
   assert.equal(
@@ -47,6 +47,21 @@ test("J-minus uses the real start date", () => {
   assert.equal(jMinusLabel(ymd(0)), "Aujourd’hui");
   assert.equal(jMinusLabel(ymd(18)), "J - 18");
   assert.equal(jMinusLabel(ymd(-2)), null);
+});
+
+test("agency ledger keeps only credit transfers", () => {
+  assert.equal(isCreditTransfer({ direction: "credit", kind: "transfer" }), true);
+  assert.equal(isCreditTransfer({ direction: "debit", kind: "transfer" }), false);
+  assert.equal(isCreditTransfer({ direction: "credit", kind: "adjustment" }), false);
+  assert.equal(isCreditTransfer({ direction: "debit", kind: "booking" }), false);
+  const kept = filterCreditTransfers([
+    { direction: "credit", kind: "transfer" },
+    { direction: "debit", kind: "booking" },
+    { direction: "debit", kind: "adjustment" },
+    { direction: "credit", kind: "adjustment" },
+  ]);
+  assert.equal(kept.length, 1);
+  assert.equal(kept[0].kind, "transfer");
 });
 
 test("ledger totals stay honest from posted movements", () => {
