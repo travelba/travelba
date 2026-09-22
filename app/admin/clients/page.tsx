@@ -11,10 +11,13 @@ export default async function AdminClientsPage({
 }) {
   const { q } = await searchParams;
   const { supabase } = await requireStaffPage();
-  const [{ data: customers }, { data: balances }] = await Promise.all([
+  const [{ data: customers, error: customersError }, { data: balances }] = await Promise.all([
     supabase.from("crm_customers").select("*").order("last_name"),
     supabase.from("crm_customer_balances").select("*"),
   ]);
+  if (customersError) {
+    console.error("[admin/clients]", customersError.code ?? "?", customersError.message ?? "");
+  }
 
   return (
     <div>
@@ -26,6 +29,11 @@ export default async function AdminClientsPage({
       <div className="mt-6">
         <NewCustomerForm />
       </div>
+      {customersError ? (
+        <p className="mt-4 rounded-2xl bg-[var(--admin-peach)] px-4 py-3 text-sm font-semibold text-[var(--admin-navy)]">
+          Impossible de charger les fiches clients. Réessayez.
+        </p>
+      ) : null}
       <ClientsTable
         customers={(customers || []) as CrmCustomer[]}
         balances={(balances || []) as CrmBalance[]}
