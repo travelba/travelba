@@ -24,6 +24,7 @@ function emptyDraft(): ItemDraft {
     start_at: "",
     end_at: "",
     amount: null,
+    include_in_ledger: false,
     details: {},
   };
 }
@@ -37,6 +38,7 @@ function toDraft(item: CrmBookingItem): ItemDraft {
     start_at: item.start_at || "",
     end_at: item.end_at || "",
     amount: item.amount,
+    include_in_ledger: Boolean(item.include_in_ledger),
     details: item.details || {},
   };
 }
@@ -121,6 +123,7 @@ export function BookingItemsPanel({
       start_at: draft.start_at || null,
       end_at: draft.end_at || null,
       amount: draft.amount,
+      include_in_ledger: Boolean(draft.include_in_ledger),
       details: draft.details || {},
     };
     const res =
@@ -220,6 +223,11 @@ export function BookingItemsPanel({
                       {!item.visible_to_client ? (
                         <span className="ml-2 rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase">
                           Brouillon
+                        </span>
+                      ) : null}
+                      {item.include_in_ledger ? (
+                        <span className="ml-2 rounded-full bg-[var(--admin-sky)] px-2 py-0.5 text-[10px] font-bold uppercase">
+                          Transactions
                         </span>
                       ) : null}
                     </p>

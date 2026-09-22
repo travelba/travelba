@@ -31,6 +31,7 @@ function item(partial: Partial<CrmBookingItem>): CrmBookingItem {
     start_at: null,
     end_at: null,
     amount: null,
+    include_in_ledger: false,
     sort_order: 0,
     details: {},
     visible_to_client: true,

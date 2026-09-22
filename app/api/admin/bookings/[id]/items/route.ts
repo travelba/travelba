@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
-import { refreshTicketingFee } from "@/lib/crm/bookings";
+import { parseIncludeInLedger, refreshBookingLedger } from "@/lib/crm/bookings";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -35,6 +35,7 @@ export async function POST(request: Request, ctx: Ctx) {
       start_at: body?.start_at || null,
       end_at: body?.end_at || null,
       amount: body?.amount == null ? null : Number(body.amount),
+      include_in_ledger: parseIncludeInLedger(body?.include_in_ledger, false),
       sort_order: sortOrder,
       details: body?.details || {},
       visible_to_client: false,
@@ -42,7 +43,7 @@ export async function POST(request: Request, ctx: Ctx) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
-  await refreshTicketingFee(auth.supabase, id);
+  await refreshBookingLedger(auth.supabase, id);
   return NextResponse.json({ item: data });
 }
 
@@ -73,6 +74,9 @@ export async function PATCH(request: Request, ctx: Ctx) {
   if ("start_at" in body) patch.start_at = body.start_at;
   if ("end_at" in body) patch.end_at = body.end_at;
   if ("amount" in body) patch.amount = body.amount == null ? null : Number(body.amount);
+  if ("include_in_ledger" in body) {
+    patch.include_in_ledger = parseIncludeInLedger(body.include_in_ledger, false);
+  }
   if (body.sort_order != null) patch.sort_order = Number(body.sort_order);
   if ("details" in body) patch.details = body.details || {};
   if (!Object.keys(patch).length) return jsonError("Rien à mettre à jour");
@@ -84,7 +88,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
-  await refreshTicketingFee(auth.supabase, bookingId);
+  await refreshBookingLedger(auth.supabase, bookingId);
   return NextResponse.json({ item: data });
 }
 
@@ -100,6 +104,6 @@ export async function DELETE(request: Request, ctx: Ctx) {
     .eq("id", itemId)
     .eq("booking_id", bookingId);
   if (error) return dbError(error, 400);
-  await refreshTicketingFee(auth.supabase, bookingId);
+  await refreshBookingLedger(auth.supabase, bookingId);
   return NextResponse.json({ ok: true });
 }

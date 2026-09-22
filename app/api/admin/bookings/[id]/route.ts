@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
-import { setCarnetPublished, syncBookingLedger } from "@/lib/crm/bookings";
+import { setCarnetPublished, syncBookingLedger, parseIncludeInLedger } from "@/lib/crm/bookings";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { scheduleBookingCover } from "@/lib/crm/cover-generate";
 import type { BookingStatus, CrmBooking, CrmCustomer } from "@/lib/crm/types";
@@ -47,9 +47,12 @@ export async function PATCH(request: Request, ctx: Ctx) {
     "notes_internal",
     "customer_id",
     "billing_customer_id",
+    "include_in_ledger",
   ]) {
     if (key in body) {
-      patch[key] = key === "total_amount" ? Number(body[key] || 0) : body[key];
+      if (key === "total_amount") patch[key] = Number(body[key] || 0);
+      else if (key === "include_in_ledger") patch[key] = parseIncludeInLedger(body[key], true);
+      else patch[key] = body[key];
     }
   }
 

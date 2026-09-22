@@ -45,14 +45,18 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const body = Object.fromEntries(new FormData(event.currentTarget).entries());
+    const fd = new FormData(event.currentTarget);
+    const body = Object.fromEntries(fd.entries());
     setSaving(true);
     setError(null);
     try {
       const res = await fetch("/api/admin/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          ...body,
+          include_in_ledger: fd.get("include_in_ledger") === "on",
+        }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -95,6 +99,15 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
       <label className={labelClass}>
         Montant total (€)
         <input name="total_amount" type="number" step="0.01" min="0" disabled={saving} placeholder="0,00" className={fieldControlClass} />
+      </label>
+      <label className="flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-3">
+        <input type="checkbox" name="include_in_ledger" defaultChecked className="mt-1" disabled={saving} />
+        <span>
+          Inclure le montant du séjour dans les transactions
+          <span className="mt-0.5 block text-xs font-normal text-muted">
+            Décochez pour un dossier au carnet sans écriture à l’encours.
+          </span>
+        </span>
       </label>
       <label className={labelClass}>
         Départ

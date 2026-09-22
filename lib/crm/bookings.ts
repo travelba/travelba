@@ -1,5 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { BookingStatus, CrmBooking, CrmTransaction } from "@/lib/crm/types";
+import {
+  BOOKING_ITEM_LABELS,
+  type BookingItemKind,
+  type BookingStatus,
+  type CrmBooking,
+  type CrmBookingItem,
+  type CrmTransaction,
+} from "@/lib/crm/types";
 import {
   ticketingFeeAmount,
   ticketingFeeExternalId,
@@ -7,12 +14,20 @@ import {
   ticketingTicketCount,
 } from "@/lib/crm/ticketing-fee";
 
+export function parseIncludeInLedger(value: unknown, fallback: boolean) {
+  if (value === true || value === "on" || value === "true") return true;
+  if (value === false || value === "off" || value === "false") return false;
+  return fallback;
+}
+
 export function bookingDebitIntent(input: {
   status: BookingStatus;
   amount: number;
   hasOpenDebit: boolean;
+  includeInLedger?: boolean;
 }): "insert" | "update" | "void" | "noop" {
   if (input.status === "cancelled") return input.hasOpenDebit ? "void" : "noop";
+  if (input.includeInLedger === false) return input.hasOpenDebit ? "void" : "noop";
   const shouldDebit =
     input.status === "confirmed" ||
     input.status === "travelling" ||
@@ -21,6 +36,18 @@ export function bookingDebitIntent(input: {
   if (!input.hasOpenDebit) return input.amount > 0 ? "insert" : "noop";
   if (input.amount <= 0) return "void";
   return "update";
+}
+
+export function bookingItemDebitExternalId(bookingId: string, itemId: string) {
+  return `booking:${bookingId}:item:${itemId}`;
+}
+
+export function bookingItemDebitLabel(
+  item: Pick<CrmBookingItem, "kind" | "title">,
+  reference: string
+) {
+  const kind = BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind;
+  return `${kind} · ${item.title} — ${reference}`;
 }
 
 export async function nextBookingReference(supabase: SupabaseClient) {
@@ -43,6 +70,7 @@ export async function syncBookingDebit(
     .eq("booking_id", booking.id)
     .eq("kind", "booking")
     .eq("direction", "debit")
+    .is("external_id", null)
     .neq("status", "void")
     .maybeSingle();
 
@@ -52,6 +80,7 @@ export async function syncBookingDebit(
     status: booking.status,
     amount,
     hasOpenDebit: Boolean(debit),
+    includeInLedger: booking.include_in_ledger !== false,
   });
   const label = `Réservation ${booking.reference} — ${booking.title}`;
 
@@ -158,19 +187,102 @@ export async function syncTicketingFee(supabase: SupabaseClient, booking: CrmBoo
     .eq("id", debit.id);
 }
 
+export async function syncBookingItemDebits(supabase: SupabaseClient, booking: CrmBooking) {
+  const { data: items } = await supabase
+    .from("crm_booking_items")
+    .select("*")
+    .eq("booking_id", booking.id);
+  const rows = (items || []) as CrmBookingItem[];
+  const prefix = `booking:${booking.id}:item:`;
+  const { data: existingRows } = await supabase
+    .from("crm_transactions")
+    .select("*")
+    .eq("booking_id", booking.id)
+    .eq("source", "manual")
+    .eq("kind", "booking")
+    .eq("direction", "debit");
+  const byExternal = new Map<string, CrmTransaction>();
+  for (const row of (existingRows || []) as CrmTransaction[]) {
+    if ((row.external_id || "").startsWith(prefix)) {
+      byExternal.set(row.external_id as string, row);
+    }
+  }
+
+  const billedIds = new Set<string>();
+  const payerId = booking.billing_customer_id || booking.customer_id;
+
+  for (const item of rows) {
+    const amount = Number(item.amount || 0);
+    const externalId = bookingItemDebitExternalId(booking.id, item.id);
+    billedIds.add(item.id);
+    const debit = byExternal.get(externalId) || null;
+    const hasOpenDebit = Boolean(debit && debit.status !== "void");
+    const intent = bookingDebitIntent({
+      status: booking.status,
+      amount,
+      hasOpenDebit,
+      includeInLedger: Boolean(item.include_in_ledger),
+    });
+    const label = bookingItemDebitLabel(item, booking.reference);
+
+    if (intent === "void" && debit && debit.status !== "void") {
+      await supabase.from("crm_transactions").update({ status: "void" }).eq("id", debit.id);
+      continue;
+    }
+    if (intent === "insert") {
+      await supabase.from("crm_transactions").insert({
+        customer_id: payerId,
+        booking_id: booking.id,
+        direction: "debit",
+        kind: "booking",
+        amount,
+        currency: booking.currency || "EUR",
+        label,
+        source: "manual",
+        external_id: externalId,
+        status: "posted",
+      });
+      continue;
+    }
+    if (intent !== "update" || !debit) continue;
+    await supabase
+      .from("crm_transactions")
+      .update({
+        customer_id: payerId,
+        amount,
+        currency: booking.currency || "EUR",
+        label,
+        status: "posted",
+      })
+      .eq("id", debit.id);
+  }
+
+  for (const [externalId, debit] of byExternal) {
+    const itemId = externalId.slice(prefix.length);
+    if (billedIds.has(itemId)) continue;
+    if (debit.status === "void") continue;
+    await supabase.from("crm_transactions").update({ status: "void" }).eq("id", debit.id);
+  }
+}
+
 export async function syncBookingLedger(
   supabase: SupabaseClient,
   booking: CrmBooking,
   previousStatus?: BookingStatus
 ) {
   await syncBookingDebit(supabase, booking, previousStatus);
+  await syncBookingItemDebits(supabase, booking);
   await syncTicketingFee(supabase, booking);
 }
 
-export async function refreshTicketingFee(supabase: SupabaseClient, bookingId: string) {
+export async function refreshBookingLedger(supabase: SupabaseClient, bookingId: string) {
   const { data } = await supabase.from("crm_bookings").select("*").eq("id", bookingId).maybeSingle();
   if (!data) return;
-  await syncTicketingFee(supabase, data as CrmBooking);
+  await syncBookingLedger(supabase, data as CrmBooking);
+}
+
+export async function refreshTicketingFee(supabase: SupabaseClient, bookingId: string) {
+  await refreshBookingLedger(supabase, bookingId);
 }
 
 export function canPublishCarnet(items: { kind: string }[]) {

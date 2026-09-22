@@ -59,6 +59,7 @@ function emptyItem(): ItemDraft {
     start_at: "",
     end_at: "",
     amount: null,
+    include_in_ledger: false,
     details: {},
   };
 }

@@ -79,6 +79,7 @@ export const bookingExtractSchema = z.object({
         start_at: looseString,
         end_at: looseString,
         amount: looseNumber,
+        include_in_ledger: z.boolean().optional(),
         details: detailsSchemaLoose,
       })
     )
