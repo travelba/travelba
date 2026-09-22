@@ -37,7 +37,7 @@ export function buildLaunchItems(snapshot: LaunchSnapshot): LaunchItem[] {
   let revolutDescription: string;
   if (snapshot.revolutConnected) {
     revolutDescription =
-      "Compte connecté. Les virements arrivent toutes les 15 min. Crédit automatique seulement s’il n’y a aucun doute ; sinon proposition dans l’inbox ou sur la fiche client.";
+      "Compte connecté. Les crédits reçus arrivent toutes les 15 min. Rapprochement automatique seulement s’il n’y a aucun doute ; sinon proposition dans l’inbox ou sur la fiche client.";
   } else if (snapshot.revolutConfigured) {
     revolutDescription =
       "Clés app présentes. Cliquez sur Connecter Revolut (authentification Business). Le cron toutes les 15 min remplira ensuite l’inbox.";

@@ -13,8 +13,6 @@ import {
   type PickableCustomer,
 } from "@/lib/crm/customer-search";
 import {
-  revolutDirectionLabel,
-  revolutDirectionTone,
   revolutStatusLabel,
   revolutStatusTone,
   revolutSyncSummary,
@@ -24,8 +22,6 @@ import {
   scoreRevolutMatches,
   type RevolutMatchCandidate,
 } from "@/lib/crm/revolut-match";
-
-type Filter = "all" | "credit" | "debit";
 
 export function RevolutInbox({
   rows,
@@ -47,7 +43,6 @@ export function RevolutInbox({
   const [rowBusy, setRowBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(initialMessage);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<Filter>("all");
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [pickerRow, setPickerRow] = useState<string | null>(null);
 
@@ -70,23 +65,6 @@ export function RevolutInbox({
     const top = suggestions.get(rowId)?.[0];
     return top && top.score >= 55 ? top.customer_id : "";
   }
-
-  const counts = useMemo(() => {
-    const unmatched = rows.filter((r) => r.status === "unmatched");
-    return {
-      all: unmatched.length,
-      credit: unmatched.filter((r) => (r.direction || "credit") === "credit").length,
-      debit: unmatched.filter((r) => r.direction === "debit").length,
-    };
-  }, [rows]);
-
-  const visible = useMemo(() => {
-    return rows.filter((r) => {
-      if (filter === "all") return true;
-      const dir = r.direction || "credit";
-      return dir === filter;
-    });
-  }, [rows, filter]);
 
   function connect() {
     window.location.assign("/api/admin/revolut/oauth");
@@ -153,32 +131,13 @@ export function RevolutInbox({
     void post(id, { customer_id: customerId }, "Rapprochement impossible. Réessayez.");
   }
 
-  function filterBtn(id: Filter, label: string, count: number) {
-    const active = filter === id;
-    return (
-      <button
-        key={id}
-        type="button"
-        onClick={() => setFilter(id)}
-        className={`rounded-full px-3 py-1 text-sm font-semibold ${
-          active
-            ? "bg-[var(--admin-navy)] text-white"
-            : "border border-border text-[var(--admin-navy)]"
-        }`}
-      >
-        {label}
-        <span className="ml-1 opacity-70">{count}</span>
-      </button>
-    );
-  }
-
   return (
     <div className="space-y-4">
       {!hasClientId ? (
         <div className="admin-af-card space-y-2 rounded-3xl border border-amber-200/80 bg-amber-50/50 px-5 py-4 text-sm text-[var(--admin-navy)]">
           <p className="font-semibold">Finaliser l’app Revolut Business</p>
           <p className="text-muted">
-            Client ID manquant côté serveur. Après connexion, revenus et dépenses apparaîtront ici.
+            Client ID manquant côté serveur. Après connexion, les virements reçus apparaîtront ici.
           </p>
         </div>
       ) : null}
@@ -201,28 +160,19 @@ export function RevolutInbox({
         </button>
         {configured && connected ? (
           <p className="text-sm text-muted">
-            Proposition de client pré-sélectionnée — Valider ou Refuser. Auto si aucun doute.
+            Uniquement les crédits reçus — Valider ou Refuser. Auto si aucun doute.
           </p>
         ) : null}
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {filterBtn("all", "Tous", counts.all)}
-        {filterBtn("credit", "Revenus", counts.credit)}
-        {filterBtn("debit", "Dépenses", counts.debit)}
       </div>
       {message ? <p className="text-sm text-muted">{message}</p> : null}
       {error ? <p className="text-sm text-accent">{error}</p> : null}
       <ul className="admin-af-card divide-y divide-border rounded-3xl">
-        {visible.map((r) => {
+        {rows.map((r) => {
           const candidates = suggestions.get(r.id) || [];
           const top = candidates[0];
           const chosenId = chosenFor(r.id);
           const chosen = chosenId ? byId.get(chosenId) : undefined;
-          const direction = r.direction || "credit";
-          const signed =
-            direction === "debit"
-              ? `−${formatMoney(Number(r.amount), r.currency)}`
-              : `+${formatMoney(Number(r.amount), r.currency)}`;
+          const signed = `+${formatMoney(Number(r.amount), r.currency)}`;
           return (
             <li key={r.id} className="px-5 py-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -234,9 +184,6 @@ export function RevolutInbox({
                     {formatDateFr(r.booked_at)} · {r.reference || r.revolut_transaction_id}
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
-                    <StatusChip tone={revolutDirectionTone(direction)}>
-                      {revolutDirectionLabel(direction)}
-                    </StatusChip>
                     <StatusChip tone={revolutStatusTone(r.status)}>
                       {revolutStatusLabel(r.status)}
                     </StatusChip>
@@ -287,13 +234,9 @@ export function RevolutInbox({
             </li>
           );
         })}
-        {!visible.length ? (
+        {!rows.length ? (
           <li className="space-y-3 px-5 py-8 text-center text-sm text-muted">
-            <p>
-              {rows.length
-                ? "Aucun mouvement dans ce filtre."
-                : revolutInboxEmptyMessage({ configured, connected })}
-            </p>
+            <p>{revolutInboxEmptyMessage({ configured, connected })}</p>
             {configured && !connected ? (
               <button
                 type="button"

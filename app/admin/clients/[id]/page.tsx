@@ -59,6 +59,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
           .from("crm_revolut_transactions")
           .select("*")
           .eq("status", "unmatched")
+          .eq("direction", "credit")
           .order("booked_at", { ascending: false, nullsFirst: false })
           .limit(100);
         return (data || []) as CrmRevolutTransaction[];

@@ -116,6 +116,7 @@ describe("revolut-match", () => {
       row({ id: "a", counterparty_name: "BOUKRIS SAS" }),
       row({ id: "b", counterparty_name: "INCONNU SA" }),
       row({ id: "c", counterparty_name: "BOUKRIS", status: "matched" }),
+      row({ id: "d", counterparty_name: "BOUKRIS SAS", direction: "debit" }),
     ];
     const suggestions = suggestionsForCustomer(c, rows);
     assert.equal(suggestions.length, 1);

@@ -30,6 +30,7 @@ export default async function AdminRevolutPage({
     const { data } = await admin
       .from("crm_revolut_transactions")
       .select("*")
+      .eq("direction", "credit")
       .order("booked_at", { ascending: false, nullsFirst: false })
       .limit(200);
     rows = (data || []) as CrmRevolutTransaction[];
@@ -44,7 +45,7 @@ export default async function AdminRevolutPage({
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
         title="Rapprochement Revolut"
-        subtitle="Revenus et dépenses du compte Business. Proposition de client pré-sélectionnée : Valider ou Refuser."
+        subtitle="Virements reçus sur le compte Business. Proposition de client pré-sélectionnée : Valider ou Refuser."
       />
       <div className="mt-6">
         <RevolutInbox
