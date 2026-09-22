@@ -545,13 +545,17 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
           })
         }
         onScan={setScan}
+        onImported={() => {
+          closeForm();
+          router.refresh();
+        }}
       />
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Prénom(s)" hint="Tous les prénoms, dans l’ordre du passeport">
-          <input required value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
+          <input required={listedIdentities(scan?.identity, scan?.identities).length < 2} value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
         </Field>
         <Field label="Nom">
-          <input required value={lastName} onChange={(e) => setLastName(e.target.value)} className={fieldControlClass} />
+          <input required={listedIdentities(scan?.identity, scan?.identities).length < 2} value={lastName} onChange={(e) => setLastName(e.target.value)} className={fieldControlClass} />
         </Field>
         <Field label="Lien">
           <RelationshipSelect name="relationship" value={relationship} onChange={setRelationship} />

@@ -8,6 +8,9 @@ import {
   mergePassportIdentities,
   mergePassportSets,
   uniquePassports,
+  distinctPassportPeople,
+  listedIdentities,
+  identitiesFromUnknown,
 } from "./passport-extract";
 
 test("vision extract fills every passport field", () => {
@@ -235,4 +238,117 @@ test("uniquePassports drops a duplicate number", () => {
   const unique = uniquePassports([first!, copy!]);
   assert.equal(unique.length, 1);
   assert.equal(unique[0].first_name, "Jean Pierre");
+});
+
+test("distinctPassportPeople keeps siblings with sequential numbers", () => {
+  const jean = identityFromVision({
+    number: "12AB34567",
+    last_name: "Dupont",
+    first_name: "Jean",
+    expires_on: "2028-03-12",
+  });
+  const marie = identityFromVision({
+    number: "12AB34568",
+    last_name: "Dupont",
+    first_name: "Marie",
+    expires_on: "2028-03-12",
+  });
+  const people = distinctPassportPeople([jean!, marie!]);
+  assert.equal(people.length, 2);
+  assert.deepEqual(
+    people.map((identity) => identity.first_name).sort(),
+    ["Jean", "Marie"]
+  );
+});
+
+test("distinctPassportPeople drops a last-name-only id card and a near-duplicate number", () => {
+  const jean = identityFromVision({
+    number: "12AB34567",
+    last_name: "Dupont",
+    first_name: "Jean Pierre",
+    expires_on: "2028-03-12",
+  });
+  const marie = identityFromVision({
+    number: "12AB34568",
+    last_name: "Dupont",
+    first_name: "Marie",
+    expires_on: "2028-03-12",
+  });
+  const surnameCard = identityFromVision({
+    doc_type: "id_card",
+    last_name: "Dupont",
+    number: "DUPONT",
+  });
+  const ocrClone = identityFromVision({
+    number: "12AB34561",
+    last_name: "Dupont",
+    expires_on: "2028-03-12",
+  });
+  const people = distinctPassportPeople([jean!, marie!, surnameCard!, ocrClone!]);
+  assert.equal(people.length, 2);
+  assert.ok(people.every((identity) => identity.doc_type === "passport"));
+  assert.ok(people.every((identity) => identity.first_name && identity.last_name));
+});
+
+test("distinctPassportPeople prefers the passport over an id card of the same person", () => {
+  const passport = identityFromVision({
+    number: "12AB34567",
+    last_name: "Dupont",
+    first_name: "Jean",
+    expires_on: "2028-03-12",
+  });
+  const card = identityFromVision({
+    doc_type: "id_card",
+    last_name: "Dupont",
+    first_name: "Jean",
+    number: "X99",
+  });
+  const people = distinctPassportPeople([card!, passport!]);
+  assert.equal(people.length, 1);
+  assert.equal(people[0].doc_type, "passport");
+  assert.equal(people[0].number, "12AB34567");
+});
+
+test("listedIdentities hides OCR extras when two people remain", () => {
+  const jean = identityFromVision({
+    number: "12AB34567",
+    last_name: "Dupont",
+    first_name: "Jean",
+  });
+  const marie = identityFromVision({
+    number: "12AB34568",
+    last_name: "Dupont",
+    first_name: "Marie",
+  });
+  const extra = identityFromVision({
+    doc_type: "id_card",
+    last_name: "Dupont",
+    number: "DUPONT",
+  });
+  const list = listedIdentities(jean, [jean!, marie!, extra!]);
+  assert.equal(list.length, 2);
+});
+
+test("identitiesFromUnknown ignores a surname-only card on a two-passport file", () => {
+  const people = identitiesFromUnknown([
+    {
+      number: "12AB34567",
+      last_name: "Dupont",
+      first_name: "Jean",
+      expires_on: "2028-03-12",
+    },
+    {
+      number: "12AB34568",
+      last_name: "Dupont",
+      first_name: "Marie",
+      expires_on: "2028-03-12",
+    },
+    { doc_type: "id_card", last_name: "Dupont", number: "DUPONT" },
+    { number: "12AB34561", last_name: "Dupont", expires_on: "2028-03-12" },
+  ]);
+  assert.equal(people.length, 2);
+  assert.deepEqual(
+    people.map((identity) => identity.first_name).sort(),
+    ["Jean", "Marie"]
+  );
 });

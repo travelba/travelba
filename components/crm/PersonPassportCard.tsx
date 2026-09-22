@@ -101,6 +101,7 @@ export function PersonPassportCard({
   person,
   onIdentity,
   onScan,
+  onImported,
 }: {
   variant: "admin" | "client";
   customerId?: string;
@@ -110,6 +111,7 @@ export function PersonPassportCard({
   person?: PersonName | null;
   onIdentity?: (identity: ExtractedIdentity) => void;
   onScan?: (result: ScanResult) => void;
+  onImported?: (info: { createdCompanions: number }) => void;
 }) {
   const router = useRouter();
   const vault = vaultDocumentsForPerson(documents, companionId);
@@ -126,10 +128,11 @@ export function PersonPassportCard({
   const expired = vault.find((doc) => documentExpiryWarning(doc.expires_on));
 
   async function persistScan(result: ScanResult) {
-    if (!persist || !result.file) return;
+    if (!result.file) return;
     if (variant === "admin" && !customerId) return;
     const identities = listedIdentities(result.identity, result.identities);
-    if (!identities.length) return;
+    const importParty = persist || identities.length > 1;
+    if (!importParty || !identities.length) return;
     setBusy(true);
     setError(null);
     setNotice(null);
@@ -158,14 +161,19 @@ export function PersonPassportCard({
     }
     setScan(null);
     setAdding(false);
+    if (!persist && identities.length > 1) {
+      onImported?.({ createdCompanions: created });
+    }
     router.refresh();
   }
 
   function handleResult(result: ScanResult) {
     setScan(result);
     const identities = listedIdentities(result.identity, result.identities);
-    const mine = identityForPerson(identities, person);
-    if (mine) onIdentity?.(mine);
+    if (!(identities.length > 1 && !persist)) {
+      const mine = identityForPerson(identities, person);
+      if (mine) onIdentity?.(mine);
+    }
     onScan?.(result);
     void persistScan(result);
   }
