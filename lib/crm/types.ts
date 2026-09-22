@@ -183,6 +183,8 @@ export type CrmBooking = {
   end_date: string | null;
   currency: string;
   total_amount: number;
+  /** Si false : montant du séjour affiché au carnet, pas au grand livre. */
+  include_in_ledger: boolean;
   cover_image_path: string | null;
   notes_client: string | null;
   notes_internal: string | null;
@@ -201,6 +203,8 @@ export type CrmBookingItem = {
   start_at: string | null;
   end_at: string | null;
   amount: number | null;
+  /** Si true : ce prix vendu apparaît dans Transactions et l’encours. */
+  include_in_ledger: boolean;
   sort_order: number;
   details: Record<string, unknown>;
   visible_to_client: boolean;

@@ -285,6 +285,9 @@ async function upsertItemsAndTravelers(
       details,
       visible_to_client: false,
       source_document_id: sourceDocId(details, docs),
+      ...(typeof item.include_in_ledger === "boolean"
+        ? { include_in_ledger: item.include_in_ledger }
+        : {}),
     };
     const match = findMatchingItem(remaining, {
       kind: payload.kind,

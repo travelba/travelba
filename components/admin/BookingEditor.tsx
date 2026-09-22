@@ -58,11 +58,15 @@ export function BookingEditor({
     event.preventDefault();
     setBusy("save");
     setFlash(null);
-    const body = Object.fromEntries(new FormData(event.currentTarget).entries());
+    const fd = new FormData(event.currentTarget);
+    const body = Object.fromEntries(fd.entries());
     const res = await fetch(`/api/admin/bookings/${booking.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        ...body,
+        include_in_ledger: fd.get("include_in_ledger") === "on",
+      }),
     });
     setBusy("idle");
     if (!res.ok) {
@@ -234,6 +238,23 @@ export function BookingEditor({
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
           Montant total (€)
           <input name="total_amount" type="number" step="0.01" min="0" defaultValue={booking.total_amount} className="rounded-xl border border-border px-3 py-2" />
+        </label>
+        <label className="flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-2">
+          <input
+            type="checkbox"
+            name="include_in_ledger"
+            defaultChecked={booking.include_in_ledger !== false}
+            className="mt-1"
+          />
+          <span>
+            Inclure le montant du séjour dans les transactions
+            <span className="mt-0.5 block text-xs font-normal text-muted">
+              Décochez pour afficher le prix au carnet sans impacter l’encours client.
+              {items.some((item) => item.include_in_ledger)
+                ? " Des cartes sont déjà comptabilisées : laissez décoché pour éviter un double compte."
+                : ""}
+            </span>
+          </span>
         </label>
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
           Statut

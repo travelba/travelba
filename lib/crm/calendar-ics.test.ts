@@ -7,6 +7,7 @@ function booking(partial: Partial<CrmBooking> = {}): CrmBooking {
   return {
     id: "b1",
     customer_id: "c1",
+    billing_customer_id: "c1",
     reference: "TBA-1001",
     title: "Marrakech",
     destination: "Marrakech",
@@ -15,6 +16,7 @@ function booking(partial: Partial<CrmBooking> = {}): CrmBooking {
     end_date: "2026-08-15",
     currency: "EUR",
     total_amount: 0,
+    include_in_ledger: true,
     cover_image_path: null,
     notes_client: null,
     notes_internal: null,
@@ -36,6 +38,7 @@ function item(partial: Partial<CrmBookingItem>): CrmBookingItem {
     start_at: "2026-08-12T09:45:00",
     end_at: "2026-08-12T11:10:00",
     amount: null,
+    include_in_ledger: false,
     sort_order: 0,
     details: { from: "CDG", to: "RAK" },
     visible_to_client: true,

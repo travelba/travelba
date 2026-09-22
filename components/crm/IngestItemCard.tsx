@@ -172,6 +172,20 @@ export function IngestItemCard({
             onChange={(raw) => onChange({ ...item, amount: raw === "" ? null : Number(raw) })}
           />
         </Field>
+        <label className="flex items-start gap-2 text-sm text-[var(--admin-navy)] sm:col-span-2">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={Boolean(item.include_in_ledger)}
+            onChange={(event) => onChange({ ...item, include_in_ledger: event.target.checked })}
+          />
+          <span>
+            <span className="font-medium">Inclure dans les transactions</span>
+            <span className="mt-0.5 block text-xs text-muted">
+              Cette dépense entre dans l’encours. Décochez le montant du séjour si vous ne voulez pas le compter deux fois.
+            </span>
+          </span>
+        </label>
         <Field label="Fournisseur">
           <Text
             value={item.supplier || ""}

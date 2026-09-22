@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { bookingDebitIntent } from "./bookings";
+import {
+  bookingDebitIntent,
+  bookingItemDebitExternalId,
+  bookingItemDebitLabel,
+  parseIncludeInLedger,
+} from "./bookings";
 
 test("debit insert only when confirmed with a positive amount", () => {
   assert.equal(
@@ -30,4 +35,68 @@ test("existing debit is voided on cancel or zero total", () => {
     bookingDebitIntent({ status: "travelling", amount: 900, hasOpenDebit: true }),
     "update"
   );
+});
+
+test("booking debit is skipped when the stay is not included in the ledger", () => {
+  assert.equal(
+    bookingDebitIntent({
+      status: "confirmed",
+      amount: 1200,
+      hasOpenDebit: false,
+      includeInLedger: false,
+    }),
+    "noop"
+  );
+  assert.equal(
+    bookingDebitIntent({
+      status: "confirmed",
+      amount: 1200,
+      hasOpenDebit: true,
+      includeInLedger: false,
+    }),
+    "void"
+  );
+  assert.equal(
+    bookingDebitIntent({
+      status: "confirmed",
+      amount: 1200,
+      hasOpenDebit: false,
+      includeInLedger: true,
+    }),
+    "insert"
+  );
+});
+
+test("item debit posts only when flagged on a confirmed stay", () => {
+  assert.equal(
+    bookingDebitIntent({
+      status: "confirmed",
+      amount: 800,
+      hasOpenDebit: false,
+      includeInLedger: true,
+    }),
+    "insert"
+  );
+  assert.equal(
+    bookingDebitIntent({
+      status: "confirmed",
+      amount: 800,
+      hasOpenDebit: false,
+      includeInLedger: false,
+    }),
+    "noop"
+  );
+  assert.equal(
+    bookingDebitIntent({
+      status: "quoted",
+      amount: 800,
+      hasOpenDebit: false,
+      includeInLedger: true,
+    }),
+    "noop"
+  );
+  assert.equal(parseIncludeInLedger("on", false), true);
+  assert.equal(parseIncludeInLedger(undefined, true), true);
+  assert.equal(bookingItemDebitExternalId("b1", "i9"), "booking:b1:item:i9");
+  assert.match(bookingItemDebitLabel({ kind: "hotel", title: "Nantipa" }, "TBA-1042"), /Hôtel/);
 });
