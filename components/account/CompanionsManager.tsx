@@ -4,7 +4,6 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import type { CrmCompanion, CrmTravelDocument } from "@/lib/crm/types";
-import { countryName, resolveCountryCode } from "@/lib/crm/countries";
 import { identityOverwriteWarning, RELATIONSHIP_OPTIONS } from "@/lib/crm/identity";
 import { appendPassportForm } from "@/lib/crm/passport-extract";
 import { documentsForPerson, primaryIdentityDoc } from "@/lib/crm/trip-documents";
@@ -41,6 +40,7 @@ export function CompanionsManager({
   const [sex, setSex] = useState("");
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [open, setOpen] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [nameWarn, setNameWarn] = useState<string | null>(null);
 
   function closeForm() {
@@ -97,40 +97,40 @@ export function CompanionsManager({
   return (
     <div className="mt-6 space-y-4">
       {companions.length === 0 && !open ? (
-        <p className="rounded-2xl border border-dashed border-[var(--border)] bg-white/70 px-5 py-6 text-center text-sm text-muted">
-          Aucun voyageur ajouté pour l’instant. Ajoutez les personnes qui voyagent avec vous.
+        <p className="rounded-2xl border border-dashed border-[var(--border)] bg-white/70 px-4 py-4 text-center text-sm text-muted">
+          Aucun voyageur.
         </p>
       ) : null}
-      <ul className="space-y-4">
+      <ul className="space-y-2">
         {companions.map((c) => {
           const doc = primaryIdentityDoc(documentsForPerson(documents, c.id));
+          const expanded = expandedId === c.id;
+          const piece = doc?.number ? `n° ${doc.number}` : "Pièce à joindre";
           return (
-            <li key={c.id} className="admin-af-card space-y-3 rounded-2xl p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--admin-navy)] text-xs font-bold text-[#f8f6f0]">
-                    {[c.first_name?.[0], c.last_name?.[0]].filter(Boolean).join("").toUpperCase() || "?"}
-                  </span>
-                  <div>
-                    <p className="font-medium text-[var(--admin-navy)]">
-                      {c.first_name} {c.last_name}
-                    </p>
-                    <p className="text-xs text-muted">
-                      {[
-                        relationshipLabel(c.relationship),
-                        countryName(resolveCountryCode(c.nationality) || c.nationality),
-                        doc?.number ? `n° ${doc.number}` : "Pièce à joindre",
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
-                  </div>
-                </div>
-                <button type="button" onClick={() => remove(c.id)} className="text-xs font-semibold text-accent">
+            <li key={c.id} className="admin-af-card rounded-2xl px-4 py-3">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setExpandedId(expanded ? null : c.id)}
+                  className="min-w-0 flex-1 text-left"
+                  aria-expanded={expanded}
+                >
+                  <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
+                    {c.first_name} {c.last_name}
+                  </p>
+                  <p className="truncate text-xs text-muted">
+                    {[relationshipLabel(c.relationship), piece].filter(Boolean).join(" · ")}
+                  </p>
+                </button>
+                <button type="button" onClick={() => remove(c.id)} className="shrink-0 text-xs font-semibold text-accent">
                   Retirer
                 </button>
               </div>
-              <PersonPassportCard variant="client" companionId={c.id} documents={documents} />
+              {expanded ? (
+                <div className="mt-3">
+                  <PersonPassportCard variant="client" companionId={c.id} documents={documents} />
+                </div>
+              ) : null}
             </li>
           );
         })}

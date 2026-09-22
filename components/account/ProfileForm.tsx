@@ -2,10 +2,13 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ChevronDown } from "lucide-react";
 import type { CrmCustomer, CrmTravelDocument } from "@/lib/crm/types";
 import { resolveCountryCode } from "@/lib/crm/countries";
 import { identityOverwriteWarning, type ExtractedIdentity } from "@/lib/crm/identity";
 import { loyaltyFromCustomer, type LoyaltyMap } from "@/lib/crm/loyalty";
+import { formatDateFr } from "@/lib/crm/money";
+import { vaultDocumentsForPerson } from "@/lib/crm/trip-documents";
 import {
   AddressFields,
   CountrySelect,
@@ -18,6 +21,38 @@ import {
 } from "@/components/crm/fields";
 import { PersonPassportCard } from "@/components/crm/PersonPassportCard";
 import { LoyaltyFields } from "@/components/crm/LoyaltyFields";
+
+function Fold({
+  title,
+  summary,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  summary: string;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="border-t border-[#e5e3dc] py-3">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-3 text-left"
+        aria-expanded={open}
+      >
+        <span className="min-w-0">
+          <span className="block text-sm font-semibold text-[var(--admin-navy)]">{title}</span>
+          {open ? null : <span className="block truncate text-xs text-muted">{summary}</span>}
+        </span>
+        <ChevronDown className={`h-4 w-4 shrink-0 transition ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open ? <div className="mt-3 grid gap-4">{children}</div> : null}
+    </div>
+  );
+}
 
 export function ProfileForm({
   customer,
@@ -43,6 +78,11 @@ export function ProfileForm({
   const [city, setCity] = useState(customer.city || "");
   const [loyalty, setLoyalty] = useState<LoyaltyMap>(() => loyaltyFromCustomer(customer));
   const [nameWarn, setNameWarn] = useState<string | null>(null);
+  const hasPassport = vaultDocumentsForPerson(documents, null).length > 0;
+  const [openPhone, setOpenPhone] = useState(!customer.phone);
+  const [openIdentity, setOpenIdentity] = useState(!customer.first_name && !hasPassport);
+  const [openAddress, setOpenAddress] = useState(false);
+  const [openLoyalty, setOpenLoyalty] = useState(false);
 
   function applyIdentity(id: ExtractedIdentity) {
     const warn = identityOverwriteWarning({ first_name: firstName, last_name: lastName }, id);
@@ -89,24 +129,40 @@ export function ProfileForm({
     router.refresh();
   }
 
+  const identitySummary =
+    [firstName, lastName].filter(Boolean).join(" ") +
+    (birthDate ? ` · ${formatDateFr(birthDate)}` : "");
+  const addressSummary = [addressLine, postalCode, city].filter(Boolean).join(", ");
+  const loyaltyCount = Object.values(loyalty).filter(Boolean).length;
+
   return (
-    <form onSubmit={onSubmit} className="mt-4 space-y-6 p-4 sm:p-5">
-      <PersonPassportCard
-        variant="client"
-        documents={documents}
-        onIdentity={applyIdentity}
-      />
+    <form onSubmit={onSubmit} className="rounded-xl border border-[#e3e2e0]/70 bg-white px-4">
+      <div className="py-3">
+        <PersonPassportCard variant="client" documents={documents} onIdentity={applyIdentity} />
+      </div>
       {nameWarn ? (
-        <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
+        <p className="mb-3 rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
           {nameWarn}
         </p>
       ) : null}
 
-      <section className="grid gap-4 sm:grid-cols-2">
-        <p className="sm:col-span-2 font-display text-base font-bold text-[var(--admin-navy)]">
-          Identité voyageur
-        </p>
-        <Field label="Prénom" hint="Comme sur le passeport">
+      <Fold
+        title="Téléphone"
+        summary={phone || "À renseigner"}
+        open={openPhone}
+        onToggle={() => setOpenPhone((value) => !value)}
+      >
+        <PhoneField name="phone" value={phone} onChange={setPhone} required />
+        <OptionalSecondPhone value={phoneSecondary} onChange={setPhoneSecondary} />
+      </Fold>
+
+      <Fold
+        title="Identité"
+        summary={identitySummary || "À compléter"}
+        open={openIdentity}
+        onToggle={() => setOpenIdentity((value) => !value)}
+      >
+        <Field label="Prénom">
           <input
             autoComplete="given-name"
             spellCheck={false}
@@ -116,7 +172,7 @@ export function ProfileForm({
             required
           />
         </Field>
-        <Field label="Nom" hint="Comme sur le passeport">
+        <Field label="Nom">
           <input
             autoComplete="family-name"
             spellCheck={false}
@@ -137,24 +193,17 @@ export function ProfileForm({
         <Field label="Sexe">
           <SexSelect name="sex" value={sex} onChange={setSex} />
         </Field>
-        <Field label="Nationalité" className="sm:col-span-2">
+        <Field label="Nationalité">
           <CountrySelect name="nationality" value={nationality} onChange={setNationality} />
         </Field>
-      </section>
+      </Fold>
 
-      <section className="grid gap-4 sm:grid-cols-2">
-        <p className="sm:col-span-2 font-display text-base font-bold text-[var(--admin-navy)]">
-          Coordonnées
-        </p>
-        <p className="sm:col-span-2 text-sm text-muted">E-mail (identifiant) : {customer.email}</p>
-        <PhoneField name="phone" value={phone} onChange={setPhone} required />
-        <OptionalSecondPhone value={phoneSecondary} onChange={setPhoneSecondary} />
-      </section>
-
-      <LoyaltyFields values={loyalty} onChange={setLoyalty} />
-
-      <section>
-        <p className="mb-4 font-display text-base font-bold text-[var(--admin-navy)]">Adresse</p>
+      <Fold
+        title="Adresse"
+        summary={addressSummary || "Ajouter"}
+        open={openAddress}
+        onToggle={() => setOpenAddress((value) => !value)}
+      >
         <AddressFields
           country={country}
           onCountryChange={setCountry}
@@ -165,10 +214,19 @@ export function ProfileForm({
           onPostalChange={setPostalCode}
           onCityChange={setCity}
         />
-      </section>
+      </Fold>
 
-      {error ? <p className="text-sm text-accent">{error}</p> : null}
-      <div className="sticky bottom-20 z-20 -mx-4 mt-2 border-t border-[#e5e3dc] bg-[rgba(250,249,246,0.95)] px-4 py-3 backdrop-blur md:bottom-4">
+      <Fold
+        title="Fidélité"
+        summary={loyaltyCount ? `${loyaltyCount} programme${loyaltyCount > 1 ? "s" : ""}` : "Ajouter"}
+        open={openLoyalty}
+        onToggle={() => setOpenLoyalty((value) => !value)}
+      >
+        <LoyaltyFields values={loyalty} onChange={setLoyalty} onlyFilled />
+      </Fold>
+
+      {error ? <p className="py-2 text-sm text-accent">{error}</p> : null}
+      <div className="sticky bottom-20 z-20 -mx-4 border-t border-[#e5e3dc] bg-[rgba(250,249,246,0.95)] px-4 py-3 backdrop-blur md:bottom-4">
         {saved ? <p className="mb-2 text-sm text-[var(--admin-navy)]">Enregistré.</p> : null}
         <button className="admin-af-btn w-full rounded-full px-5 py-2.5 text-sm" disabled={saving}>
           {saving ? "Enregistrement…" : "Enregistrer"}

@@ -78,6 +78,10 @@ export default async function ReservationDetailPage({ params }: Props) {
     b.destination
   );
   const cover = bookingCoverUrl(b, 960);
+  const headline = b.destination || b.title;
+  const sameTitle =
+    (b.title || "").trim().toLowerCase() === (b.destination || "").trim().toLowerCase();
+  const missingCount = coverage.total - coverage.ready;
 
   return (
     <div className="space-y-5">
@@ -88,10 +92,10 @@ export default async function ReservationDetailPage({ params }: Props) {
         ← Mes réservations
       </Link>
 
-      <article className="relative min-h-[220px] overflow-hidden rounded-[1.5rem] bg-[var(--admin-navy)] text-white shadow-[0_16px_36px_rgba(11,31,58,0.25)]">
-        <CoverPhoto src={cover} alt={b.destination || b.title} className="absolute inset-0 h-full w-full object-cover opacity-50" priority />
+      <article className="relative min-h-[180px] overflow-hidden rounded-2xl bg-[var(--admin-navy)] text-white shadow-[0_16px_36px_rgba(11,31,58,0.25)]">
+        <CoverPhoto src={cover} alt={headline} className="absolute inset-0 h-full w-full object-cover opacity-50" priority />
         <div className="absolute inset-0 bg-gradient-to-t from-[var(--admin-navy)] via-[var(--admin-navy)]/70 to-transparent" />
-        <div className="relative space-y-3 p-5 pb-6 pt-10">
+        <div className="relative space-y-2 p-4 pb-5 pt-6">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <StatusChip tone={bookingStatusTone(b.status)}>
               {BOOKING_STATUS_LABELS[b.status]}
@@ -100,10 +104,8 @@ export default async function ReservationDetailPage({ params }: Props) {
               {b.reference}
             </span>
           </div>
-          <h1 className="font-display text-[1.7rem] font-extrabold leading-tight">
-            {b.destination || b.title}
-          </h1>
-          <p className="text-sm text-white/75">{b.title}</p>
+          <h1 className="font-display text-[1.7rem] font-extrabold leading-tight">{headline}</h1>
+          {b.title && !sameTitle ? <p className="text-sm text-white/75">{b.title}</p> : null}
           <p className="text-sm text-white/75">
             {formatDateFr(b.start_date)} — {formatDateFr(b.end_date)}
           </p>
@@ -111,13 +113,12 @@ export default async function ReservationDetailPage({ params }: Props) {
       </article>
 
       {missingPassports ? (
-        <Link
-          href="/mon-compte/profil/documents"
-          className="block rounded-2xl bg-[var(--admin-peach)] px-4 py-3 text-sm text-[var(--admin-navy)]"
+        <a
+          href="#passeport"
+          className="block rounded-2xl bg-[var(--admin-peach)] px-4 py-2.5 text-sm font-semibold text-[var(--admin-navy)]"
         >
-          Pièce d’identité manquante pour {coverage.total - coverage.ready} voyageur
-          {coverage.total - coverage.ready > 1 ? "s" : ""}. Joindre dans Mon compte, puis cocher ci-dessous.
-        </Link>
+          Pièce manquante pour {missingCount} voyageur{missingCount > 1 ? "s" : ""}.
+        </a>
       ) : null}
 
       <TripPassportPicker

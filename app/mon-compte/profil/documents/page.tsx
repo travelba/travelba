@@ -21,17 +21,7 @@ export default async function DocumentsPage() {
   return (
     <div className="space-y-4 pb-6">
       <ProfileSubnav />
-      <div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
-          L’agence
-        </p>
-        <h1 className="mt-1 font-display text-xl font-semibold text-[var(--admin-navy-deep)]">
-          Pièces d’identité
-        </h1>
-        <p className="mt-1 text-sm text-muted">
-          Plusieurs passeports possibles. Cochez celui du séjour depuis chaque réservation.
-        </p>
-      </div>
+      <h1 className="font-display text-xl font-semibold text-[var(--admin-navy-deep)]">Pièces</h1>
       <DocumentsManager
         documents={(documents || []) as CrmTravelDocument[]}
         companions={(companions || []) as CrmCompanion[]}
