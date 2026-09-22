@@ -121,9 +121,9 @@ export type CrmCustomer = {
   billing_postal_code: string | null;
   billing_city: string | null;
   billing_country: string | null;
-  /** null = particulier ; admin = wallet société ; member = rattaché (frais pro + wallet perso) */
+  /** null = particulier ; admin = wallet société propre ; member = collaborateur (parent requis) */
   company_role: CompanyRole | null;
-  /** Pour member : wallet / admin société des voyages professionnels */
+  /** Wallet société par défaut (voyages pro). Indépendant du rôle. */
   billing_parent_id: string | null;
   language: string;
   stripe_customer_id: string | null;

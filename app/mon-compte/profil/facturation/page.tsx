@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
-import { companyDisplayName, isCompanyMember } from "@/lib/crm/company-role";
+import { companyDisplayName, hasBillingParent } from "@/lib/crm/company-role";
 import { customerFullName, type CrmCustomer } from "@/lib/crm/types";
 import { ProfileSubnav } from "@/components/account/ProfileSubnav";
 import { BillingForm } from "@/components/account/BillingForm";
@@ -16,7 +16,7 @@ export default async function FacturationPage() {
   if (!customer) redirect("/connexion");
 
   let billingParent: CrmCustomer | null = null;
-  if (isCompanyMember(customer) && customer.billing_parent_id) {
+  if (hasBillingParent(customer) && customer.billing_parent_id) {
     const { data } = await supabase
       .from("crm_customers")
       .select("id, first_name, last_name, company_name, email")
@@ -35,7 +35,7 @@ export default async function FacturationPage() {
     <div className="space-y-4 pb-6">
       <ProfileSubnav />
       <h1 className="font-display text-xl font-semibold text-[var(--admin-navy-deep)]">Facturation</h1>
-      {isCompanyMember(customer) ? (
+      {hasBillingParent(customer) ? (
         <section className="rounded-2xl border border-[#e5e3dc] bg-white p-4">
           <p className="text-[10px] font-bold uppercase tracking-wider text-[#9c7c4e]">
             Voyages professionnels
@@ -50,7 +50,7 @@ export default async function FacturationPage() {
         </section>
       ) : null}
       <section className="space-y-3">
-        {isCompanyMember(customer) ? (
+        {hasBillingParent(customer) ? (
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wider text-[#9c7c4e]">
               Vos voyages personnels
@@ -63,7 +63,7 @@ export default async function FacturationPage() {
         <BillingForm
           customer={customer}
           emptyLabel={
-            isCompanyMember(customer)
+            hasBillingParent(customer)
               ? "Ajouter un IBAN pour vos voyages personnels"
               : undefined
           }

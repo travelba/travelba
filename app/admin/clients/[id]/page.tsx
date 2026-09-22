@@ -23,12 +23,13 @@ import {
   companyDisplayName,
   companyPaidBookingIds,
   companyRoleLabel,
+  hasBillingParent,
   isCompanyAdmin,
-  isCompanyMember,
   isCompanyPaidBooking,
   mergeRowsById,
 } from "@/lib/crm/company-role";
 import { PayerChip } from "@/components/crm/PayerChip";
+import { AttachBillingTravelers } from "@/components/admin/AttachBillingTravelers";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -48,10 +49,9 @@ export default async function AdminClientDetailPage({ params }: Props) {
     { data: documents },
     { data: travelerBookings },
     { data: billedBookings },
-    { data: members },
+    { data: allCustomers },
     { data: txs },
     { data: balances },
-    { data: companyAdmins },
     portal,
     unmatchedRevolut,
   ] = await Promise.all([
@@ -59,18 +59,13 @@ export default async function AdminClientDetailPage({ params }: Props) {
     supabase.from("crm_travel_documents").select("*").eq("customer_id", id),
     supabase.from("crm_bookings").select("*").eq("customer_id", id).order("start_date", { ascending: false }),
     supabase.from("crm_bookings").select("*").eq("billing_customer_id", id).order("start_date", { ascending: false }),
-    supabase.from("crm_customers").select("*").eq("billing_parent_id", id).order("last_name"),
+    supabase.from("crm_customers").select("*").order("last_name"),
     supabase
       .from("crm_transactions")
       .select("*")
       .eq("customer_id", id)
       .order("occurred_on", { ascending: false }),
     supabase.from("crm_customer_balances").select("*").eq("customer_id", id),
-    supabase
-      .from("crm_customers")
-      .select("*")
-      .eq("company_role", "admin")
-      .order("last_name"),
     getPortalAccess(c),
     (async () => {
       try {
@@ -93,17 +88,17 @@ export default async function AdminClientDetailPage({ params }: Props) {
     (billedBookings || []) as CrmBooking[]
   ).sort((a, b) => (a.start_date || "") < (b.start_date || "") ? 1 : -1);
   const revolutSuggestions = suggestionsForCustomer(c, unmatchedRevolut);
-  const memberRows = (members || []) as CrmCustomer[];
-  const paidIds = isCompanyMember(c) ? companyPaidBookingIds(bookingRows, c.id) : [];
-  const parentAdmin = isCompanyMember(c)
-    ? ((companyAdmins || []) as CrmCustomer[]).find((a) => a.id === c.billing_parent_id) || null
+  const everyone = (allCustomers || []) as CrmCustomer[];
+  const companyAdmins = everyone.filter((row) => row.company_role === "admin");
+  const memberRows = everyone.filter((row) => row.billing_parent_id === id);
+  const shared = hasBillingParent(c);
+  const paidIds = companyPaidBookingIds(bookingRows, c.id);
+  const parentAdmin = c.billing_parent_id
+    ? everyone.find((a) => a.id === c.billing_parent_id) || null
     : null;
   const companyName = parentAdmin ? companyDisplayName(parentAdmin) : c.company_name;
   const travelerNames = new Map(
-    ((companyAdmins || []) as CrmCustomer[])
-      .concat(memberRows)
-      .concat([c])
-      .map((row) => [row.id, { name: customerFullName(row), company: companyDisplayName(row) }])
+    everyone.map((row) => [row.id, { name: customerFullName(row), company: companyDisplayName(row) }])
   );
   const missingIds = [
     ...new Set(bookingRows.flatMap((b) => [b.customer_id, b.billing_customer_id])),
@@ -138,11 +133,11 @@ export default async function AdminClientDetailPage({ params }: Props) {
           <h1 className="font-display text-3xl font-extrabold text-[var(--admin-navy)]">
             {customerFullName(c)}
           </h1>
-          {c.company_role ? (
+          {c.company_role || shared ? (
             <p className="mt-1 text-sm text-[#9e7e51]">
-              {companyRoleLabel(c.company_role)}
-              {isCompanyMember(c) && companyName ? ` · rattaché à ${companyName}` : ""}
+              {c.company_role ? companyRoleLabel(c.company_role) : "Particulier"}
               {isCompanyAdmin(c) && c.company_name ? ` · ${c.company_name}` : ""}
+              {shared && companyName ? ` · voyages facturés par ${companyName}` : ""}
             </p>
           ) : null}
         </div>
@@ -155,7 +150,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
           return (
             <div key={b.currency} className="admin-af-card rounded-2xl px-4 py-3">
               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">
-                {isCompanyMember(c)
+                {shared
                   ? value > 0
                     ? `Crédit perso ${b.currency}`
                     : `Encours perso ${b.currency}`
@@ -172,7 +167,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
             </div>
           );
         })}
-        {isCompanyMember(c) ? (
+        {shared || paidIds.length ? (
           <div className="admin-af-card rounded-2xl px-4 py-3">
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">
               Frais {companyName || "société"}
@@ -204,24 +199,14 @@ export default async function AdminClientDetailPage({ params }: Props) {
         customer={c}
         companions={(companions || []) as CrmCompanion[]}
         documents={(documents || []) as CrmTravelDocument[]}
-        companyAdmins={(companyAdmins || []) as CrmCustomer[]}
+        companyAdmins={companyAdmins}
       />
-      {isCompanyAdmin(c) && memberRows.length ? (
-        <section className="admin-af-card rounded-3xl p-5">
-          <h2 className="font-display text-lg font-bold">Collaborateurs rattachés</h2>
-          <ul className="mt-2 divide-y divide-border text-sm">
-            {memberRows.map((m) => (
-              <li key={m.id} className="py-2">
-                <Link
-                  href={`/admin/clients/${m.id}`}
-                  className="text-[var(--admin-navy)] underline-offset-2 hover:underline"
-                >
-                  {customerFullName(m)}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
+      {isCompanyAdmin(c) ? (
+        <AttachBillingTravelers
+          company={c}
+          travelers={memberRows}
+          allCustomers={everyone}
+        />
       ) : null}
       <ClientRevolutSuggestions suggestions={revolutSuggestions} />
       <section className="admin-af-card rounded-3xl p-5">
@@ -248,7 +233,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
                   >
                     {b.reference} · {b.title} · {traveler} · {formatDateFr(b.start_date)}
                   </Link>
-                  {companyPaid || isCompanyMember(c) ? (
+                  {companyPaid || shared ? (
                     <PayerChip
                       kind={companyPaid ? "company" : "personal"}
                       companyName={payer}
@@ -265,7 +250,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
           </p>
         )}
       </section>
-      {isCompanyMember(c) ? (
+      {shared || companyTripTxs.length ? (
         <section className="admin-af-card rounded-3xl p-5">
           <h2 className="font-display text-lg font-bold">
             Frais {companyName || "société"} (ses dossiers)
@@ -292,11 +277,11 @@ export default async function AdminClientDetailPage({ params }: Props) {
       ) : null}
       <section className="admin-af-card rounded-3xl p-5">
         <h2 className="font-display text-lg font-bold">
-          {isCompanyMember(c) ? "Transactions personnelles" : "Transactions"}
+          {shared ? "Transactions personnelles" : "Transactions"}
         </h2>
         {!(txs || []).length ? (
           <p className="mt-2 text-sm text-muted">
-            {isCompanyMember(c)
+            {shared
               ? "Aucune écriture sur son wallet. Un séjour à sa charge créera l’encours perso ici."
               : "Aucune écriture. Les débits sont créés à la confirmation d’un dossier, les crédits au rapprochement Revolut ou à la saisie manuelle."}
           </p>

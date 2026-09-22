@@ -53,7 +53,7 @@ Pas de `/demo`. `proxy.ts` redirige `/demo` → `/connexion`.
 
 `crm_customers` → `crm_bookings` / `crm_booking_items` / `crm_booking_documents` / `crm_booking_travelers` / `crm_travel_companions` / `crm_travel_documents` / `crm_transactions` / `crm_payment_methods`
 
-Encours = vue `crm_customer_balances` (crédits − débits `posted`). Positif = avoir, négatif = reste à payer. Afficher le signe brut. Collaborateur société : frais de ses dossiers pro (pas le solde société) + wallet perso.
+Encours = vue `crm_customer_balances` (crédits − débits `posted`). Positif = avoir, négatif = reste à payer. Afficher le signe brut. Compte partagé (OZB) : N voyageurs, chacun voit ses frais pro + son wallet — jamais le solde du payeur.
 
 IDs prod :
 

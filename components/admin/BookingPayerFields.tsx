@@ -4,7 +4,7 @@ import type { CrmCustomer } from "@/lib/crm/types";
 import { customerFullName } from "@/lib/crm/types";
 import {
   companyDisplayName,
-  isCompanyMember,
+  hasBillingParent,
   resolveBillingCustomerId,
 } from "@/lib/crm/company-role";
 import { Field, fieldControlClass } from "@/components/crm/fields";
@@ -33,7 +33,7 @@ export function BookingPayerFields({
   const traveler = customers.find((c) => c.id === travelerId);
   const parentId = traveler?.billing_parent_id || "";
   const parent = parentId ? customers.find((c) => c.id === parentId) : undefined;
-  const member = Boolean(traveler && isCompanyMember(traveler) && parentId);
+  const member = Boolean(traveler && hasBillingParent(traveler) && parentId);
   const companyName = parent ? companyDisplayName(parent) : "la société";
   const travelerLabel = traveler ? customerFullName(traveler) : "le voyageur";
 

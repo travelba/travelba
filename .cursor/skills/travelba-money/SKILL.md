@@ -22,7 +22,7 @@ Vue `crm_customer_balances` = somme crédits `posted` − débits `posted` (par 
 
 Ledger visible côté client (`/mon-compte/transactions`) : lignes `posted` seulement (RLS).
 
-**Société** : deux comptes. `company_role=member` voit (1) les **débits** de ses dossiers facturés à la société (pas les crédits / encours société) et (2) son **wallet personnel** (encours de ses voyages à sa charge). `company_role=admin` (ou null) = grand livre complet de son wallet. Débits résa → `billing_customer_id` du dossier. Un collaborateur peut donc avoir Marrakech payé par la société et un autre séjour à son nom.
+**Société** : un wallet payeur (ex. OZB) + N voyageurs. `billing_parent_id` rattache n’importe quel titulaire (member, admin d’une autre société, particulier). Chacun voit (1) les **débits de ses dossiers** facturés au payeur (pas le solde payeur) et (2) **son wallet**. Débits résa → `billing_customer_id`. RLS : tout titulaire lit les débits posted de ses dossiers, même si l’écriture est sur un autre wallet.
 
 PDF relevé = bouton **Demander un relevé** (`mailto:`), **pas** de génération PDF auto ni d’envoi mail automatique.
 

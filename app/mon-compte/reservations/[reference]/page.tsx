@@ -32,7 +32,7 @@ import { PayerChip } from "@/components/crm/PayerChip";
 import {
   bookingPayerKind,
   companyDisplayName,
-  isCompanyMember,
+  hasBillingParent,
   isCompanyPaidBooking,
 } from "@/lib/crm/company-role";
 type Props = { params: Promise<{ reference: string }> };
@@ -91,7 +91,7 @@ export default async function ReservationDetailPage({ params }: Props) {
   const sameTitle =
     (b.title || "").trim().toLowerCase() === (b.destination || "").trim().toLowerCase();
   const missingCount = coverage.total - coverage.ready;
-  const showPayer = isCompanyMember(customer) || isCompanyPaidBooking(b, customer.id);
+  const showPayer = hasBillingParent(customer) || isCompanyPaidBooking(b, customer.id);
   let companyName: string | null = null;
   if (showPayer && isCompanyPaidBooking(b, customer.id)) {
     const payerId = b.billing_customer_id || customer.billing_parent_id;

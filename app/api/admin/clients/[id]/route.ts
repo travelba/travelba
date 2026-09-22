@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
+import { billingParentError } from "@/lib/crm/company-role";
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
 import { CustomerDeleteError, deleteCustomerById } from "@/lib/crm/delete-customer";
+import type { CompanyRole } from "@/lib/crm/types";
 
 export const runtime = "nodejs";
 
@@ -42,23 +44,25 @@ export async function PATCH(request: Request, ctx: Ctx) {
     "billing_parent_id" in patch
       ? (patch.billing_parent_id as string | null)
       : current.billing_parent_id;
-  if (nextRole === "member") {
-    if (!nextParent) {
-      return jsonError("Choisissez l’admin société qui paie pour ce collaborateur.");
-    }
-    if (nextParent === id) {
-      return jsonError("Le payeur ne peut pas être le collaborateur lui-même.");
-    }
+  let parentRole: CompanyRole | null | undefined;
+  let parentFound: boolean | undefined;
+  if (nextParent) {
     const { data: parent } = await auth.supabase
       .from("crm_customers")
       .select("id, company_role")
       .eq("id", nextParent)
       .maybeSingle();
-    if (!parent) return jsonError("Admin société introuvable.");
-    if (parent.company_role !== "admin") {
-      return jsonError("Le payeur doit être un client en rôle « Admin société ».");
-    }
+    parentFound = Boolean(parent);
+    parentRole = (parent?.company_role as CompanyRole | null) || null;
   }
+  const parentError = billingParentError({
+    selfId: id,
+    role: nextRole as CompanyRole | null,
+    parentId: nextParent,
+    parentFound,
+    parentRole,
+  });
+  if (parentError) return jsonError(parentError);
 
   const { data, error } = await auth.supabase
     .from("crm_customers")

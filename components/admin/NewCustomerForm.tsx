@@ -2,11 +2,17 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import type { CrmCustomer } from "@/lib/crm/types";
+import { customerFullName } from "@/lib/crm/types";
 
 const fieldClass = "rounded-xl border border-border bg-white px-3 py-2.5";
 const labelClass = "flex flex-col gap-1 text-xs font-semibold text-muted";
 
-export function NewCustomerForm() {
+export function NewCustomerForm({
+  companyAdmins = [],
+}: {
+  companyAdmins?: CrmCustomer[];
+}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -58,10 +64,23 @@ export function NewCustomerForm() {
           className={fieldClass}
         />
       </label>
+      {companyAdmins.length ? (
+        <label className={labelClass}>
+          Compte de facturation
+          <select name="billing_parent_id" disabled={saving} className={fieldClass}>
+            <option value="">Aucun — à sa charge</option>
+            {companyAdmins.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.company_name || customerFullName(c)}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
       <button
         type="submit"
         disabled={saving}
-        className="admin-af-btn self-end rounded-full px-4 py-2.5 text-sm"
+        className="admin-af-btn self-end rounded-full px-4 py-2.5 text-sm sm:col-span-4 sm:justify-self-start"
       >
         {saving ? "Création…" : "Créer"}
       </button>

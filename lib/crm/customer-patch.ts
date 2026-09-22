@@ -104,9 +104,7 @@ export function customerPatchFromBody(
       continue;
     }
     if (key === "company_role") {
-      const role = parseCompanyRole(body[key]);
-      patch.company_role = role;
-      if (role !== "member") patch.billing_parent_id = null;
+      patch.company_role = parseCompanyRole(body[key]);
       continue;
     }
     if (key === "billing_parent_id") {

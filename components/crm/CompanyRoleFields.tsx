@@ -27,11 +27,11 @@ export function CompanyRoleFields({
           Société et paiement
         </p>
         <p className="mt-1 text-sm text-muted">
-          Deux comptes possibles : la société paie les voyages pro (le collaborateur voit ses frais,
-          jamais le solde société). Un séjour à sa charge utilise son encours personnel.
+          Le rôle décrit le wallet du client. Le compte de facturation est un autre wallet (ex. OZB)
+          qui peut payer les voyages de plusieurs titulaires — Jérémy, le gérant de Roselle, etc.
         </p>
       </div>
-      <Field label="Rôle">
+      <Field label="Rôle (son wallet)">
         <select
           value={role || ""}
           onChange={(e) => {
@@ -45,34 +45,33 @@ export function CompanyRoleFields({
           <option value="member">{companyRoleLabel("member")}</option>
         </select>
       </Field>
-      {role === "member" ? (
-        <Field
-          label="Facturé par (admin société)"
-          hint="Wallet des voyages professionnels. Un dossier peut quand même être facturé au voyageur."
-        >
-          <select
-            value={billingParentId}
-            onChange={(e) => onBillingParentChange(e.target.value)}
-            required
-            className={fieldControlClass}
-          >
-            <option value="">Choisir l’admin société…</option>
-            {companyAdmins
-              .filter((c) => c.id !== selfId)
-              .map((c) => (
-                <option key={c.id} value={c.id}>
-                  {customerFullName(c)}
-                  {c.company_name ? ` · ${c.company_name}` : ""} — {c.email}
-                </option>
-              ))}
-          </select>
-        </Field>
-      ) : null}
       {role === "admin" ? (
         <p className="text-xs text-[#9e7e51]">
-          Ce client est le wallet société : rapprochements Revolut et encours global ici.
+          Wallet société propre (Revolut, encours). Il peut quand même voyager sur un autre compte
+          ci-dessous.
         </p>
       ) : null}
+      <Field
+        label="Compte de facturation par défaut"
+        hint="Voyages professionnels. Chaque dossier peut encore être basculé « à sa charge »."
+      >
+        <select
+          value={billingParentId}
+          onChange={(e) => onBillingParentChange(e.target.value)}
+          required={role === "member"}
+          className={fieldControlClass}
+        >
+          <option value="">Aucun — facturé à lui-même</option>
+          {companyAdmins
+            .filter((c) => c.id !== selfId)
+            .map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.company_name || customerFullName(c)}
+                {c.company_name ? ` · ${customerFullName(c)}` : ""} — {c.email}
+              </option>
+            ))}
+        </select>
+      </Field>
     </section>
   );
 }

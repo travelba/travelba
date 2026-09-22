@@ -27,7 +27,9 @@ export default async function AdminClientsPage({
         subtitle="Fiches, invitation du titulaire, encours. Sans téléphone, le client le renseigne dans Vous au premier accès."
       />
       <div className="mt-6">
-        <NewCustomerForm />
+        <NewCustomerForm
+          companyAdmins={((customers || []) as CrmCustomer[]).filter((c) => c.company_role === "admin")}
+        />
       </div>
       {customersError ? (
         <p className="mt-4 rounded-2xl bg-[var(--admin-peach)] px-4 py-3 text-sm font-semibold text-[var(--admin-navy)]">

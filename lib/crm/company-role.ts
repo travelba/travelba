@@ -8,14 +8,41 @@ import {
 
 export type BookingPayerKind = "company" | "personal";
 
-/** Wallet facturé pour un voyageur (admin société par défaut, sinon lui-même). */
+/** Wallet facturé par défaut : le compte partagé s’il existe, sinon le voyageur. */
 export function resolveBillingCustomerId(
   traveler: Pick<CrmCustomer, "id" | "company_role" | "billing_parent_id">
 ) {
-  if (traveler.company_role === "member" && traveler.billing_parent_id) {
-    return traveler.billing_parent_id;
-  }
+  if (traveler.billing_parent_id) return traveler.billing_parent_id;
   return traveler.id;
+}
+
+/** Compte de facturation partagé (OZB, etc.), quel que soit le rôle du voyageur. */
+export function hasBillingParent(
+  customer: Pick<CrmCustomer, "billing_parent_id"> | null | undefined
+) {
+  return Boolean(customer?.billing_parent_id);
+}
+
+export function billingParentError(opts: {
+  selfId: string;
+  role: CompanyRole | null | undefined;
+  parentId: string | null | undefined;
+  parentFound?: boolean;
+  parentRole?: CompanyRole | null;
+}) {
+  const parentId = opts.parentId || null;
+  if (opts.role === "member" && !parentId) {
+    return "Choisissez le compte de facturation pour ce collaborateur.";
+  }
+  if (!parentId) return null;
+  if (parentId === opts.selfId) {
+    return "Le payeur ne peut pas être le voyageur lui-même.";
+  }
+  if (opts.parentFound === false) return "Compte de facturation introuvable.";
+  if (opts.parentRole !== undefined && opts.parentRole !== "admin") {
+    return "Le compte de facturation doit être un client en rôle « Admin société ».";
+  }
+  return null;
 }
 
 export function companyRoleLabel(role: CompanyRole | null | undefined) {
@@ -85,14 +112,19 @@ export function bookingPayerLabel(
 }
 
 /**
- * Member : uniquement débits liés à ses dossiers (pas les revenus société).
- * Admin / particulier : grand livre complet de son wallet.
+ * Tranche « voyages payés par un autre wallet » : débits des dossiers du voyageur.
+ * N’inclut jamais les crédits / le solde du payeur.
  */
 export function filterClientLedgerRows(
   rows: CrmTransaction[],
-  opts: { companyRole: CompanyRole | null | undefined; travelerBookingIds: string[] }
+  opts: {
+    companyRole?: CompanyRole | null | undefined;
+    sharedBilling?: boolean;
+    travelerBookingIds: string[];
+  }
 ) {
-  if (opts.companyRole !== "member") return rows;
+  const shared = opts.sharedBilling ?? opts.companyRole === "member";
+  if (!shared) return rows;
   const allowed = new Set(opts.travelerBookingIds);
   return rows.filter(
     (t) =>
@@ -113,7 +145,7 @@ export function splitMemberLedger(opts: {
   companyPaidBookingIds: string[];
 }) {
   const companyRows = filterClientLedgerRows(opts.companyDebitRows, {
-    companyRole: "member",
+    sharedBilling: true,
     travelerBookingIds: opts.companyPaidBookingIds,
   });
   return {

@@ -23,7 +23,7 @@ export default async function TransactionsPage() {
 
   return (
     <div className="space-y-5">
-      {money.member ? (
+      {money.sharedBilling ? (
         <CompanyTripCard
           companyName={money.companyName || "votre société"}
           debits={companyTotals.debits}
@@ -35,15 +35,15 @@ export default async function TransactionsPage() {
         rows={money.personalRows}
         balanceValue={money.personalBalance}
         currency={money.personalCurrency}
-        title={money.member ? "Vos voyages" : "Grand livre"}
+        title={money.sharedBilling ? "Vos voyages" : "Grand livre"}
         hint={
-          money.member
+          money.sharedBilling
             ? "Wallet personnel — pour un séjour que vous financez vous-même. Indépendant du solde société."
             : undefined
         }
       />
 
-      {money.member ? (
+      {money.sharedBilling ? (
         <section className="space-y-3">
           <div className="flex items-center gap-1.5">
             <Icon name="receipt_long" className="h-5 w-5 text-[var(--admin-navy)]" />
@@ -64,7 +64,7 @@ export default async function TransactionsPage() {
           <div className="flex items-center gap-1.5">
             <Icon name="account_balance_wallet" className="h-5 w-5 text-[var(--admin-navy)]" />
             <h2 className="font-display text-xl font-semibold text-[var(--admin-navy)]">
-              {money.member ? "Mouvements personnels" : "Mouvements"}
+              {money.sharedBilling ? "Mouvements personnels" : "Mouvements"}
             </h2>
           </div>
           {personalCredits ? (
@@ -75,9 +75,9 @@ export default async function TransactionsPage() {
         </div>
         <TransactionRows
           rows={money.personalRows}
-          emptyTitle={money.member ? "Aucun voyage à votre charge" : "Aucun mouvement"}
+          emptyTitle={money.sharedBilling ? "Aucun voyage à votre charge" : "Aucun mouvement"}
           emptyDescription={
-            money.member
+            money.sharedBilling
               ? "Quand l’agence ouvrira un séjour à votre nom, l’encours personnel apparaîtra ici."
               : "Les débits de réservation et crédits rapprochés apparaîtront ici."
           }

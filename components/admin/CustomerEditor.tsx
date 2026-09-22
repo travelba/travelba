@@ -127,7 +127,7 @@ export function CustomerEditor({
         flying_blue: loyalty.flying_blue,
         iban: normalizedIban,
         company_role: companyRole,
-        billing_parent_id: companyRole === "member" ? billingParentId || null : null,
+        billing_parent_id: billingParentId || null,
         ...billingJson(billing, profileAddress, sameBillingAddress),
       }),
     });
@@ -240,10 +240,7 @@ export function CustomerEditor({
 
         <CompanyRoleFields
           role={companyRole}
-          onRoleChange={(role) => {
-            setCompanyRole(role);
-            if (role !== "member") setBillingParentId("");
-          }}
+          onRoleChange={setCompanyRole}
           billingParentId={billingParentId}
           onBillingParentChange={setBillingParentId}
           companyAdmins={companyAdmins}

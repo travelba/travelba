@@ -7,7 +7,7 @@ import type { CrmBalance, CrmCustomer } from "@/lib/crm/types";
 import { customerFullName } from "@/lib/crm/types";
 import { formatCreditDisponible, formatMoney } from "@/lib/crm/money";
 import { formatPhoneDisplay } from "@/lib/crm/phone";
-import { companyDisplayName, companyRoleLabel, isCompanyMember } from "@/lib/crm/company-role";
+import { companyDisplayName, companyRoleLabel, hasBillingParent } from "@/lib/crm/company-role";
 
 function initials(c: CrmCustomer) {
   return [c.first_name?.[0], c.last_name?.[0]].filter(Boolean).join("").toUpperCase() || "?";
@@ -85,16 +85,15 @@ export function ClientsTable({
                         </span>
                         <span className="flex min-w-0 flex-col">
                           <span className="font-semibold text-[var(--admin-navy)]">{customerFullName(c)}</span>
-                          {c.company_role ? (
+                          {c.company_role || hasBillingParent(c) ? (
                             <span className="text-[10px] font-semibold uppercase tracking-wider text-[#9e7e51]">
                               {companyRoleLabel(c.company_role)}
-                              {isCompanyMember(c)
-                                ? parent
-                                  ? ` · ${companyDisplayName(parent)}`
-                                  : ""
-                                : c.company_name
-                                  ? ` · ${c.company_name}`
-                                  : ""}
+                              {c.company_name && c.company_role === "admin"
+                                ? ` · ${c.company_name}`
+                                : ""}
+                              {hasBillingParent(c) && parent
+                                ? ` · facturé par ${companyDisplayName(parent)}`
+                                : ""}
                             </span>
                           ) : null}
                         </span>
@@ -125,8 +124,8 @@ export function ClientsTable({
                               Frais d’agence 10 % déduits
                             </span>
                           ) : null}
-                          {isCompanyMember(c) ? (
-                            <span className="text-[10px] font-semibold text-muted">Encours perso</span>
+                          {hasBillingParent(c) ? (
+                            <span className="text-[10px] font-semibold text-muted">Wallet perso</span>
                           ) : null}
                         </span>
                       ) : (

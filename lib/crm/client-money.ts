@@ -3,12 +3,15 @@ import type { CrmBalance, CrmBooking, CrmCustomer, CrmTransaction } from "@/lib/
 import {
   companyDisplayName,
   companyPaidBookingIds,
-  isCompanyMember,
+  hasBillingParent,
   sortLedgerRows,
   splitMemberLedger,
 } from "@/lib/crm/company-role";
 
 export type ClientMoneySnapshot = {
+  /** Voyages facturés à un autre wallet (parent ou dossier). */
+  sharedBilling: boolean;
+  /** @deprecated alias de sharedBilling */
   member: boolean;
   companyName: string | null;
   companyRows: CrmTransaction[];
@@ -17,12 +20,12 @@ export type ClientMoneySnapshot = {
   personalCurrency: string;
 };
 
-/** Encours perso + frais de dossiers société (sans le solde société). */
+/** Encours du voyageur + frais de dossiers facturés ailleurs (sans le solde payeur). */
 export async function loadClientMoneySnapshot(
   supabase: SupabaseClient,
   customer: CrmCustomer
 ): Promise<ClientMoneySnapshot> {
-  const member = isCompanyMember(customer);
+  const parentId = customer.billing_parent_id;
 
   const [{ data: myBookings }, { data: personalTxs }, { data: balances }, parentRes] =
     await Promise.all([
@@ -37,11 +40,11 @@ export async function loadClientMoneySnapshot(
         .eq("status", "posted")
         .order("occurred_on", { ascending: false }),
       supabase.from("crm_customer_balances").select("*").eq("customer_id", customer.id),
-      member && customer.billing_parent_id
+      parentId
         ? supabase
             .from("crm_customers")
             .select("id, first_name, last_name, company_name")
-            .eq("id", customer.billing_parent_id)
+            .eq("id", parentId)
             .maybeSingle()
         : Promise.resolve({ data: null }),
     ]);
@@ -51,9 +54,10 @@ export async function loadClientMoneySnapshot(
     "id" | "customer_id" | "billing_customer_id"
   >[];
   const paidIds = companyPaidBookingIds(bookings, customer.id);
+  const sharedBilling = hasBillingParent(customer) || paidIds.length > 0;
 
   let companyDebitRows: CrmTransaction[] = [];
-  if (member && paidIds.length) {
+  if (paidIds.length) {
     const { data } = await supabase
       .from("crm_transactions")
       .select("*")
@@ -65,7 +69,7 @@ export async function loadClientMoneySnapshot(
   }
 
   const personalRows = (personalTxs || []) as CrmTransaction[];
-  const split = member
+  const split = sharedBilling
     ? splitMemberLedger({
         personalRows,
         companyDebitRows,
@@ -74,14 +78,27 @@ export async function loadClientMoneySnapshot(
     : { personalRows, companyRows: [] as CrmTransaction[] };
 
   const bal = ((balances || []) as CrmBalance[])[0];
-  const parent = parentRes.data as Pick<
+  let parent = parentRes.data as Pick<
     CrmCustomer,
     "company_name" | "first_name" | "last_name"
   > | null;
 
+  if (!parent && paidIds.length) {
+    const payerId = bookings.find((b) => b.billing_customer_id !== customer.id)?.billing_customer_id;
+    if (payerId) {
+      const { data } = await supabase
+        .from("crm_customers")
+        .select("id, first_name, last_name, company_name")
+        .eq("id", payerId)
+        .maybeSingle();
+      parent = data as typeof parent;
+    }
+  }
+
   return {
-    member,
-    companyName: member ? companyDisplayName(parent) : null,
+    sharedBilling,
+    member: sharedBilling,
+    companyName: sharedBilling ? companyDisplayName(parent) : null,
     companyRows: sortLedgerRows(split.companyRows),
     personalRows: sortLedgerRows(split.personalRows),
     personalBalance: bal ? Number(bal.balance) : 0,

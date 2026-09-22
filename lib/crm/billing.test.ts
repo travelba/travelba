@@ -109,6 +109,16 @@ test("client profile requires a valid phone", () => {
   assert.equal(ok.patch.phone, "+33601020304");
 });
 
+test("an admin société can keep a shared billing parent", () => {
+  const { patch, error } = customerPatchFromBody({
+    company_role: "admin",
+    billing_parent_id: "ozb-admin-id",
+  });
+  assert.equal(error, undefined);
+  assert.equal(patch.company_role, "admin");
+  assert.equal(patch.billing_parent_id, "ozb-admin-id");
+});
+
 test("a billing-only patch does not require the phone again", () => {
   const billing = customerPatchFromBody(
     { company_name: "QA SAS", siret: "", billing_email: "Compta@QA.fr" },

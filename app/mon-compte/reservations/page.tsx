@@ -19,7 +19,7 @@ import { PayerChip } from "@/components/crm/PayerChip";
 import {
   bookingPayerKind,
   companyDisplayName,
-  isCompanyMember,
+  hasBillingParent,
   isCompanyPaidBooking,
 } from "@/lib/crm/company-role";
 import type { CrmCustomer } from "@/lib/crm/types";
@@ -40,7 +40,7 @@ export default async function ReservationsPage({
 
   const all = await loadVisibleCarnets(supabase, customer.id);
   let companyName: string | null = null;
-  if (isCompanyMember(customer) && customer.billing_parent_id) {
+  if (hasBillingParent(customer) && customer.billing_parent_id) {
     const { data: parent } = await supabase
       .from("crm_customers")
       .select("first_name, last_name, company_name")
@@ -176,7 +176,7 @@ export default async function ReservationsPage({
                       </span>
                     </div>
                   </div>
-                  {isCompanyMember(customer) || isCompanyPaidBooking(b, customer.id) ? (
+                  {hasBillingParent(customer) || isCompanyPaidBooking(b, customer.id) ? (
                     <PayerChip
                       kind={bookingPayerKind(b, customer.id)}
                       companyName={companyName}
