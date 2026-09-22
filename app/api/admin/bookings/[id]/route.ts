@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
-import { setCarnetPublished, syncBookingDebit } from "@/lib/crm/bookings";
+import { setCarnetPublished, syncBookingLedger } from "@/lib/crm/bookings";
 import { scheduleBookingCover } from "@/lib/crm/cover-generate";
 import type { BookingStatus, CrmBooking } from "@/lib/crm/types";
 
@@ -75,7 +75,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
       .maybeSingle();
     if (refreshed) booking = refreshed as CrmBooking;
   }
-  await syncBookingDebit(
+  await syncBookingLedger(
     auth.supabase,
     booking,
     prev.status as BookingStatus

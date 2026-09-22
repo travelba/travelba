@@ -20,7 +20,7 @@ Identité / MRZ : skill `travelba-identity` — **pas** ce dropzone.
 ## Contrat (non négociable)
 
 1. **Ne jamais inventer.** Absent = `null`. Pas de 15:00 / 12:00, pas de petit-déj, pas de franchise.
-2. **Prix extraits = null.** `$` / CHF / INR / € du PDF = net interne. L’agent saisit le **prix vendu**.
+2. **Prix extraits** : montant PDF/photo → `details.document_amount` (agent). `item.amount` et `total_amount` restent **null** (prix vendu saisi par l’agent, jamais le net client).
 3. **Pas de PAN / CVC / fidélité / paiement.** `redactIngestText` avant le modèle.
 4. **Un séjour par dépôt.** Fichiers hétérogènes : le plus complet + `notes_client`.
 5. **Relecture humaine** puis Enregistrer (`visible_to_client=false`).

@@ -1,5 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BookingStatus, CrmBooking, CrmTransaction } from "@/lib/crm/types";
+import {
+  ticketingFeeAmount,
+  ticketingFeeExternalId,
+  ticketingFeeLabel,
+  ticketingTicketCount,
+} from "@/lib/crm/ticketing-fee";
 
 export function bookingDebitIntent(input: {
   status: BookingStatus;
@@ -87,6 +93,81 @@ export async function syncBookingDebit(
       })
       .eq("id", debit.id);
   }
+}
+
+export async function syncTicketingFee(supabase: SupabaseClient, booking: CrmBooking) {
+  const [{ data: items }, { data: travelers }, { data: existing }] = await Promise.all([
+    supabase.from("crm_booking_items").select("kind").eq("booking_id", booking.id),
+    supabase.from("crm_booking_travelers").select("id").eq("booking_id", booking.id),
+    supabase
+      .from("crm_transactions")
+      .select("*")
+      .eq("source", "manual")
+      .eq("external_id", ticketingFeeExternalId(booking.id))
+      .maybeSingle(),
+  ]);
+
+  const hasFlight = (items || []).some((row) => row.kind === "flight");
+  const travelerCount = (travelers || []).length;
+  const ticketCount = ticketingTicketCount({ hasFlight, travelerCount });
+  const amount = ticketingFeeAmount({ hasFlight, travelerCount });
+  const shouldPost =
+    (booking.status === "confirmed" ||
+      booking.status === "travelling" ||
+      booking.status === "completed") &&
+    amount > 0;
+  const label = ticketingFeeLabel(ticketCount);
+  const debit = existing as CrmTransaction | null;
+  const payerId = booking.customer_id;
+
+  if (!shouldPost) {
+    if (debit && debit.status !== "void") {
+      await supabase.from("crm_transactions").update({ status: "void" }).eq("id", debit.id);
+    }
+    return;
+  }
+
+  if (!debit) {
+    await supabase.from("crm_transactions").insert({
+      customer_id: payerId,
+      booking_id: booking.id,
+      direction: "debit",
+      kind: "adjustment",
+      amount,
+      currency: booking.currency || "EUR",
+      label,
+      source: "manual",
+      external_id: ticketingFeeExternalId(booking.id),
+      status: "posted",
+    });
+    return;
+  }
+
+  await supabase
+    .from("crm_transactions")
+    .update({
+      customer_id: payerId,
+      amount,
+      currency: booking.currency || "EUR",
+      label,
+      status: "posted",
+    })
+    .eq("id", debit.id);
+}
+
+export async function syncBookingLedger(
+  supabase: SupabaseClient,
+  booking: CrmBooking,
+  previousStatus?: BookingStatus
+) {
+  await syncBookingDebit(supabase, booking, previousStatus);
+  await syncTicketingFee(supabase, booking);
+}
+
+export async function refreshTicketingFee(supabase: SupabaseClient, bookingId: string) {
+  const { data } = await supabase.from("crm_bookings").select("*").eq("id", bookingId).maybeSingle();
+  if (!data) return;
+  await syncTicketingFee(supabase, data as CrmBooking);
 }
 
 export function canPublishCarnet(items: { kind: string }[]) {

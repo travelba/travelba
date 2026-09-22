@@ -136,7 +136,12 @@ export default async function ReservationDetailPage({ params }: Props) {
         </p>
       ) : null}
 
-      <CarnetItinerary booking={b} items={visibleItems} docs={visibleDocs} />
+      <CarnetItinerary
+        booking={b}
+        items={visibleItems}
+        docs={visibleDocs}
+        calendarBase={`/api/client/bookings/${b.reference}/calendrier`}
+      />
 
       {extraDocs.length ? (
         <section className="aura-card space-y-3 rounded-[1.35rem] bg-white p-4">

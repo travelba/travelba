@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
+import { refreshTicketingFee } from "@/lib/crm/bookings";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -20,6 +21,7 @@ export async function POST(request: Request, ctx: Ctx) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
+  await refreshTicketingFee(auth.supabase, id);
   return NextResponse.json({ traveler: data });
 }
 
@@ -35,5 +37,6 @@ export async function DELETE(request: Request, ctx: Ctx) {
     .eq("id", travelerId)
     .eq("booking_id", id);
   if (error) return dbError(error, 400);
+  await refreshTicketingFee(auth.supabase, id);
   return NextResponse.json({ ok: true });
 }

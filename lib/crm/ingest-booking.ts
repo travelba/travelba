@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
-import { nextBookingReference, syncBookingDebit } from "@/lib/crm/bookings";
+import { nextBookingReference, syncBookingLedger } from "@/lib/crm/bookings";
 import {
   copyCrmFile,
   listCrmFiles,
@@ -132,6 +132,10 @@ function cleanDetails(details: BookingExtract["items"][number]["details"] | unde
     if (FORBIDDEN_DETAIL_KEY.test(key)) continue;
     if (value == null || value === "") continue;
     if (typeof value === "boolean") {
+      out[key] = value;
+      continue;
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
       out[key] = value;
       continue;
     }
@@ -432,7 +436,7 @@ export async function persistNewBookingFromExtract(opts: {
     [],
     docs
   );
-  await syncBookingDebit(admin, booking);
+  await syncBookingLedger(admin, booking);
   const hotel = extract.items?.find((row) => row.kind === "hotel");
   scheduleBookingCover(booking, {
     hotel: hotel?.details?.hotel_name || hotel?.title || null,
@@ -508,7 +512,7 @@ export async function applyExtractToBooking(opts: {
     .eq("id", opts.bookingId)
     .maybeSingle();
   const next = (refreshed || booking) as CrmBooking;
-  await syncBookingDebit(admin, next, booking.status as BookingStatus);
+  await syncBookingLedger(admin, next, booking.status as BookingStatus);
   const hotel = opts.extract.items?.find((item) => item.kind === "hotel");
   scheduleBookingCover(
     {

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
-import { nextBookingReference, syncBookingDebit } from "@/lib/crm/bookings";
+import { nextBookingReference, syncBookingLedger } from "@/lib/crm/bookings";
 import { scheduleBookingCover } from "@/lib/crm/cover-generate";
 import type { CrmBooking } from "@/lib/crm/types";
 
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     .single();
   if (error) return dbError(error, 400);
   const booking = data as CrmBooking;
-  await syncBookingDebit(auth.supabase, booking);
+  await syncBookingLedger(auth.supabase, booking);
   scheduleBookingCover(booking);
   return NextResponse.json({ booking });
 }

@@ -17,6 +17,24 @@ import {
   undatedTimeline,
 } from "@/lib/crm/carnet";
 
+function AgendaLink({
+  href,
+  children,
+}: {
+  href: string;
+  children: string;
+}) {
+  return (
+    <a
+      href={href}
+      className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline"
+    >
+      <Icon name="event" className="h-4 w-4" />
+      {children}
+    </a>
+  );
+}
+
 function ConfirmLink({
   item,
   docs,
@@ -42,11 +60,13 @@ function CardBody({
   currency,
   docs,
   compactHotel = false,
+  calendarHref = null,
 }: {
   item: CrmBookingItem;
   currency: string;
   docs: CrmBookingDocument[];
   compactHotel?: boolean;
+  calendarHref?: string | null;
 }) {
   const price = itemPriceLabel(item, currency);
   const included = detailList(item, "included");
@@ -153,7 +173,10 @@ function CardBody({
         {item.confirmation_ref ? (
           <p className="text-xs text-muted">Réf. {item.confirmation_ref}</p>
         ) : null}
-        <ConfirmLink item={item} docs={docs} />
+        <div className="flex flex-wrap items-center gap-3">
+          <ConfirmLink item={item} docs={docs} />
+          {calendarHref ? <AgendaLink href={calendarHref}>Ajouter à l’agenda</AgendaLink> : null}
+        </div>
       </div>
     </details>
   );
@@ -163,20 +186,32 @@ export function CarnetItinerary({
   booking,
   items,
   docs,
+  calendarBase = null,
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
   docs: CrmBookingDocument[];
+  calendarBase?: string | null;
 }) {
   const days = groupByDay(items);
   const undated = undatedTimeline(items);
 
   if (!days.length && !undated.length) return null;
 
+  function itemHref(id: string) {
+    if (!calendarBase) return null;
+    return `${calendarBase}?item_id=${encodeURIComponent(id)}`;
+  }
+
   return (
     <div className="space-y-5">
       <section className="space-y-4">
-        <h2 className="font-display text-base font-bold text-[var(--admin-navy)]">Itinéraire</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-display text-base font-bold text-[var(--admin-navy)]">Itinéraire</h2>
+          {calendarBase ? (
+            <AgendaLink href={calendarBase}>Ajouter tout le séjour</AgendaLink>
+          ) : null}
+        </div>
         {days.map(([day, rows]) => (
           <div key={day} className="space-y-2">
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
@@ -189,6 +224,7 @@ export function CarnetItinerary({
                 currency={booking.currency}
                 docs={docs}
                 compactHotel={item.kind === "hotel"}
+                calendarHref={itemHref(item.id)}
               />
             ))}
           </div>
@@ -199,7 +235,13 @@ export function CarnetItinerary({
               Sans horaire
             </p>
             {undated.map((item) => (
-              <CardBody key={item.id} item={item} currency={booking.currency} docs={docs} />
+              <CardBody
+                key={item.id}
+                item={item}
+                currency={booking.currency}
+                docs={docs}
+                calendarHref={itemHref(item.id)}
+              />
             ))}
           </div>
         ) : null}
