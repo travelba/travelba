@@ -88,11 +88,17 @@ export default async function TransactionsPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9c7c4e]">
-                {remaining > 0 ? "Solde restant dû" : "Avoir"}
+                {remaining > 0 ? "Solde restant dû" : "Crédit disponible"}
               </p>
               <p className="font-display text-[1.625rem] font-bold tracking-tight text-[var(--admin-navy)]">
-                {formatMoney(remaining > 0 ? remaining : Math.max(0, balanceValue), currency)}
+                {formatMoney(
+                  remaining > 0 ? remaining : Math.max(0, balanceValue),
+                  currency
+                )}
               </p>
+              {remaining <= 0 && balanceValue > 0 ? (
+                <p className="text-[11px] text-muted">Frais d’agence 10 % déjà déduits</p>
+              ) : null}
             </div>
             {debits > 0 ? (
               <div className="text-right">

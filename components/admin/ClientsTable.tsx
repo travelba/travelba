@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import type { CrmBalance, CrmCustomer } from "@/lib/crm/types";
 import { customerFullName } from "@/lib/crm/types";
-import { formatMoney } from "@/lib/crm/money";
+import { formatCreditDisponible, formatMoney } from "@/lib/crm/money";
 import { formatPhoneDisplay } from "@/lib/crm/phone";
 
 function initials(c: CrmCustomer) {
@@ -62,7 +62,7 @@ export function ClientsTable({
                 <th className="px-5 py-3">Client</th>
                 <th className="px-5 py-3">E-mail</th>
                 <th className="px-5 py-3">Téléphone</th>
-                <th className="px-5 py-3 text-right">Encours</th>
+                <th className="px-5 py-3 text-right">Crédit dispo. / encours</th>
                 <th className="px-5 py-3 text-right">
                   <span className="sr-only">Actions</span>
                 </th>
@@ -90,9 +90,28 @@ export function ClientsTable({
                         value < 0 ? "text-[var(--admin-red)]" : "text-[var(--admin-navy)]"
                       }`}
                     >
-                      {rows.length
-                        ? rows.map((b) => formatMoney(Number(b.balance), b.currency)).join(" · ")
-                        : "—"}
+                      {rows.length ? (
+                        <span className="inline-flex flex-col items-end gap-0.5">
+                          <span>
+                            {value > 0
+                              ? rows
+                                  .map((b) =>
+                                    formatCreditDisponible(Number(b.balance), b.currency)
+                                  )
+                                  .join(" · ")
+                              : rows
+                                  .map((b) => formatMoney(Number(b.balance), b.currency))
+                                  .join(" · ")}
+                          </span>
+                          {value > 0 ? (
+                            <span className="text-[10px] font-semibold text-[#9e7e51]">
+                              Frais d’agence 10 % déduits
+                            </span>
+                          ) : null}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td className="px-5 py-3 text-right">
                       <DeleteCustomerButton

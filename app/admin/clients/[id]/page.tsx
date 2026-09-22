@@ -18,7 +18,7 @@ import {
   type CrmTransaction,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
-import { formatDateFr, formatMoney } from "@/lib/crm/money";
+import { formatDateFr, formatMoney, formatCreditDisponible } from "@/lib/crm/money";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -81,16 +81,22 @@ export default async function AdminClientDetailPage({ params }: Props) {
       </div>
       <InviteCustomerPanel customerId={c.id} initial={portal} />
       <div className="flex flex-wrap gap-3">
-        {((balances || []) as CrmBalance[]).map((b) => (
-          <div key={b.currency} className="admin-af-card rounded-2xl px-4 py-3">
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">
-              Encours {b.currency}
-            </p>
-            <p className="font-display text-xl font-bold text-[var(--admin-navy)]">
-              {formatMoney(Number(b.balance), b.currency)}
-            </p>
-          </div>
-        ))}
+        {((balances || []) as CrmBalance[]).map((b) => {
+          const value = Number(b.balance);
+          return (
+            <div key={b.currency} className="admin-af-card rounded-2xl px-4 py-3">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">
+                {value > 0 ? `Crédit disponible ${b.currency}` : `Encours ${b.currency}`}
+              </p>
+              <p className="font-display text-xl font-bold text-[var(--admin-navy)]">
+                {value > 0 ? formatCreditDisponible(value, b.currency) : formatMoney(value, b.currency)}
+              </p>
+              {value > 0 ? (
+                <p className="mt-1 text-xs text-[#9e7e51]">Frais d’agence 10 % déduits</p>
+              ) : null}
+            </div>
+          );
+        })}
         <div className="admin-af-card rounded-2xl px-4 py-3">
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Dossiers</p>
           <p className="font-display text-xl font-bold text-[var(--admin-navy)]">{bookingRows.length}</p>

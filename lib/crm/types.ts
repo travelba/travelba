@@ -80,6 +80,9 @@ export const TX_KIND_LABELS: Record<TransactionKind, string> = {
   card_payment: "Carte",
 };
 
+/** Libellé ledger pour le prélèvement 10 % sur les crédits Revolut. */
+export const AGENCY_FEE_LABEL = "Frais d’agence 10 %";
+
 export type CrmStaff = {
   id: string;
   auth_user_id: string;

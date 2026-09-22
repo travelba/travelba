@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CrmRevolutTransaction } from "@/lib/crm/types";
-import { formatDateFr, formatMoney } from "@/lib/crm/money";
+import { formatDateFr, formatMoney, netAfterAgencyFee, agencyFeeFromGross } from "@/lib/crm/money";
 import { revolutInboxEmptyMessage } from "@/lib/crm/launch-status";
 import { StatusChip } from "@/components/crm/ui";
 import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
@@ -173,6 +173,8 @@ export function RevolutInbox({
           const chosenId = chosenFor(r.id);
           const chosen = chosenId ? byId.get(chosenId) : undefined;
           const signed = `+${formatMoney(Number(r.amount), r.currency)}`;
+          const fee = agencyFeeFromGross(Number(r.amount));
+          const net = netAfterAgencyFee(Number(r.amount));
           return (
             <li key={r.id} className="px-5 py-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -190,6 +192,14 @@ export function RevolutInbox({
                     {r.status === "unmatched" && top ? (
                       <span className="text-xs font-semibold text-[#9e7e51]">
                         Proposition : {top.label} ({matchReasonLabel(top.reason)})
+                      </span>
+                    ) : null}
+                    {net != null ? (
+                      <span className="text-xs text-muted">
+                        Frais 10 % {formatMoney(fee, r.currency)} → crédit dispo.{" "}
+                        <strong className="text-[var(--admin-navy)]">
+                          {formatMoney(net, r.currency)}
+                        </strong>
                       </span>
                     ) : null}
                   </div>
