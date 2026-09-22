@@ -126,7 +126,7 @@ export function CompanionsManager({
   }
 
   return (
-    <div className="mt-6 space-y-4">
+    <div id="accompagnateurs" className="mt-6 space-y-4">
       {companions.length === 0 && !open ? (
         <p className="rounded-2xl border border-dashed border-[var(--border)] bg-white/70 px-4 py-4 text-center text-sm text-muted">
           Aucun voyageur.

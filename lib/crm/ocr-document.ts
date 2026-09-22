@@ -13,13 +13,16 @@ import { aiGatewayConfigured, isAllowedIngestType, isPdfFile, openaiApiKey } fro
 import { identitiesExtractSchema } from "./ocr-schema";
 import { trySharp } from "./sharp";
 import { inspectPdf, type RasterPage } from "./pdf-raster";
+import { multiPassportCrops, type CropRect } from "./passport-split";
 
 const MAX_BYTES = 12 * 1024 * 1024;
 const VISION_TIMEOUT_MS = 60_000;
 const PASSPORT_PDF_PAGES = 6;
 
 const PROMPT = `Tu lis une photo ou un scan PDF de passeport, carte d’identité ou titre de voyage (zone visuelle + MRZ).
-Le fichier peut contenir PLUSIEURS passeports (deux pièces sur la même photo, photocopie de couple, PDF de plusieurs pages). Extrais CHAQUE personne séparément dans identities — un objet par document. Ne fusionne jamais deux personnes.
+Le fichier peut contenir PLUSIEURS passeports (deux livrets ouverts sur la même page, photocopie de couple, PDF de plusieurs pages).
+Si tu vois 2 passeports, identities DOIT contenir 2 objets. Si tu en vois 3, 3 objets. Un objet par personne, jamais fusionnés.
+Plusieurs images peuvent être le même scan découpé (gauche / droite / bas) : dédupe par personne.
 
 Extrais TOUS les champs visibles. Ne jamais inventer : mettre null si absent ou illisible.
 Dates en YYYY-MM-DD.
@@ -91,6 +94,92 @@ async function toVisionImages(
   }
 
   return [{ image, mediaType: mediaType as RasterPage["mediaType"] }];
+}
+
+async function cropPage(
+  sharp: NonNullable<Awaited<ReturnType<typeof trySharp>>>,
+  buf: Buffer,
+  rect: CropRect
+): Promise<RasterPage | null> {
+  if (rect.width < 80 || rect.height < 80) return null;
+  try {
+    const jpeg = await sharp(buf, { failOn: "none" })
+      .extract(rect)
+      .jpeg({ quality: 85 })
+      .toBuffer();
+    return { image: new Uint8Array(jpeg), mediaType: "image/jpeg" };
+  } catch {
+    return null;
+  }
+}
+
+async function expandPassportViews(pages: RasterPage[]): Promise<RasterPage[]> {
+  const sharp = await trySharp();
+  if (!sharp) return pages;
+  const views: RasterPage[] = [...pages];
+  for (const page of pages) {
+    try {
+      const buf = Buffer.from(page.image);
+      const meta = await sharp(buf, { failOn: "none" }).metadata();
+      const width = meta.width || 0;
+      const height = meta.height || 0;
+      for (const rect of multiPassportCrops(width, height)) {
+        const part = await cropPage(sharp, buf, rect);
+        if (part) views.push(part);
+      }
+    } catch {
+      /* page suivante */
+    }
+  }
+  return views.slice(0, 6);
+}
+
+async function splitWidePages(pages: RasterPage[]): Promise<RasterPage[]> {
+  const sharp = await trySharp();
+  if (!sharp) return [];
+  const halves: RasterPage[] = [];
+  for (const page of pages) {
+    try {
+      const buf = Buffer.from(page.image);
+      const meta = await sharp(buf, { failOn: "none" }).metadata();
+      const width = meta.width || 0;
+      const height = meta.height || 0;
+      for (const rect of multiPassportCrops(width, height)) {
+        const part = await cropPage(sharp, buf, rect);
+        if (part) halves.push(part);
+      }
+    } catch {
+      /* page suivante */
+    }
+  }
+  return halves;
+}
+
+async function extractMoreIdentities(
+  pages: RasterPage[],
+  already: ExtractedIdentity[]
+): Promise<{ identities: ExtractedIdentity[]; mrzText: string | null }> {
+  if (already.length >= 2 && (pages.length <= 1 || already.length >= pages.length)) {
+    return { identities: already, mrzText: null };
+  }
+  const extras: RasterPage[] =
+    pages.length > 1 ? pages : await splitWidePages(pages);
+  if (extras.length < 2 && pages.length <= 1) {
+    return { identities: already, mrzText: null };
+  }
+  const found: ExtractedIdentity[] = [...already];
+  const mrzParts: string[] = [];
+  const batches = pages.length > 1 ? pages.map((page) => [page]) : extras.map((page) => [page]);
+  for (const batch of batches) {
+    try {
+      const extra = await extractWithVision(batch);
+      found.push(...extra.identities);
+      if (extra.mrzText) mrzParts.push(extra.mrzText);
+    } catch (err) {
+      console.error("[ocr-document] extra-page", err instanceof Error ? err.name : "error");
+    }
+  }
+  return { identities: uniquePassports(found), mrzText: mrzParts.join("\n") || null };
 }
 
 function scanResult(identities: ExtractedIdentity[], warning: string | null) {
@@ -201,7 +290,11 @@ export async function scanTravelDocument(file: File): Promise<{
       pages = await toVisionImages(bytes, file.type, file.name);
     }
 
-    const { identities: vision, mrzText } = await extractWithVision(pages);
+    const views = await expandPassportViews(pages);
+    const visionFirst = await extractWithVision(views);
+    const visionMore = await extractMoreIdentities(pages, visionFirst.identities);
+    const vision = uniquePassports([...visionFirst.identities, ...visionMore.identities]);
+    const mrzText = [visionFirst.mrzText, visionMore.mrzText].filter(Boolean).join("\n") || null;
     const mrz = uniquePassports([
       ...pdfMrz,
       ...(mrzText ? parseMrzFromOcrAll(mrzText) : []),

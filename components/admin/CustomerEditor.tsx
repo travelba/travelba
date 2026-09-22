@@ -272,7 +272,7 @@ export function CustomerEditor({
         </div>
       </form>
 
-      <section className="space-y-4">
+      <section id="accompagnateurs" className="space-y-4">
         <div>
           <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Accompagnateurs</h2>
           <p className="mt-1 text-sm text-muted">

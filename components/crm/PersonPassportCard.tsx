@@ -116,6 +116,7 @@ export function PersonPassportCard({
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [adding, setAdding] = useState(vault.length === 0);
   const [openId, setOpenId] = useState<string | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
@@ -131,11 +132,13 @@ export function PersonPassportCard({
     if (!identities.length) return;
     setBusy(true);
     setError(null);
+    setNotice(null);
     const form = appendPassportImportForm(new FormData(), {
       identities,
       file: result.file,
       customerId,
       companionId,
+      createUnmatchedOnly: identities.length > 1 && !companionId,
     });
     const res = await fetch(endpoint, { method: "POST", body: form });
     const json = await res.json().catch(() => ({}));
@@ -143,6 +146,15 @@ export function PersonPassportCard({
     if (!res.ok) {
       setError(json.error || "Enregistrement de la pièce impossible");
       return;
+    }
+    const created = Number(json.created_companions || 0);
+    if (created > 0) {
+      setNotice(
+        created === 1
+          ? "1 accompagnateur a été ajouté."
+          : `${created} accompagnateurs ont été ajoutés.`
+      );
+      document.getElementById("accompagnateurs")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
     setScan(null);
     setAdding(false);
@@ -289,6 +301,9 @@ export function PersonPassportCard({
         </button>
       )}
 
+      {notice ? (
+        <p className="rounded-xl bg-[#fbf7ec] px-3 py-2 text-sm text-[var(--admin-navy)]">{notice}</p>
+      ) : null}
       {error ? <p className="text-sm text-accent">{error}</p> : null}
     </div>
   );
