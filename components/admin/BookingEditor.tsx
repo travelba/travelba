@@ -29,11 +29,14 @@ import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
 import { PlaceField } from "@/components/crm/PlaceField";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
 import { TripPassportPicker } from "@/components/crm/TripPassportPicker";
+import { TripFormalities } from "@/components/crm/TripFormalities";
+import { TripVisaUploads } from "@/components/crm/TripVisaUploads";
 import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
 import { IssuesList } from "@/components/crm/IssuesList";
 import { collectPublishIssues, issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
 import { householdMembers } from "@/lib/crm/household";
 import { bookingHasFlight } from "@/lib/crm/extras";
+import type { FrenchPassportTrip } from "@/lib/crm/visa-trip";
 import { reusableDocumentsForTraveler, tripDocumentsForTraveler } from "@/lib/crm/trip-documents";
 
 export function BookingEditor({
@@ -46,6 +49,7 @@ export function BookingEditor({
   customers,
   holderName,
   aiConfigured,
+  formalities,
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -56,6 +60,7 @@ export function BookingEditor({
   customers: CrmCustomer[];
   holderName: { first_name: string; last_name: string };
   aiConfigured: boolean;
+  formalities: FrenchPassportTrip;
 }) {
   const router = useRouter();
   const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
@@ -539,7 +544,17 @@ export function BookingEditor({
       />
 
       {customers.find((row) => row.id === booking.customer_id) && bookingHasFlight(items) ? (
-        <section className="admin-af-card rounded-3xl p-5">
+        <section className="admin-af-card space-y-4 rounded-3xl p-5">
+          <TripFormalities trip={formalities} />
+          {formalities.needsFormality ? (
+            <TripVisaUploads
+              variant="admin"
+              customerId={booking.customer_id}
+              bookingId={booking.id}
+              travelers={travelers}
+              documents={identityDocs}
+            />
+          ) : null}
           <ExtrasPanel
             variant="admin"
             booking={booking}
@@ -547,6 +562,7 @@ export function BookingEditor({
             travelers={travelers}
             holder={customers.find((row) => row.id === booking.customer_id)!}
             companions={companions}
+            formalities={formalities}
           />
         </section>
       ) : null}

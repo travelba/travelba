@@ -47,7 +47,7 @@ Helper privé : schema `crm_private` (`is_staff()`, `customer_id()`). Ne pas exp
 - `crm_revolut_transactions` + `crm_integrations` — **revoke** `anon`/`authenticated`, `service_role` only
 - `crm_booking_seq` + RPC `crm_next_booking_reference()`
 
-Kinds items : `flight|hotel|transfer|activity|rail|car|cruise|insurance|fee`.
+Kinds items : `flight|hotel|transfer|activity|rail|car|cruise|insurance|fee|chauffeur|greeter|visa`.
 Si la contrainte `crm_booking_items_kind_check` n’a pas encore `rail/car/cruise`, les ajouter (carnet).
 
 Visibilité carnet : `crm_bookings.visible_to_client` et `crm_booking_items.visible_to_client` (défaut **false** à la création). RLS client = `visible_to_client` **et** booking du customer. Quotes / brouillons invisibles.

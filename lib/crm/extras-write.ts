@@ -12,12 +12,76 @@ import {
   extraTitle,
   findExtra,
   transferPickupIso,
+  findVisaExtra,
   isExtraKind,
   isExtraLeg,
+  visaItemPayload,
   type ExtraKind,
   type ExtraLeg,
 } from "@/lib/crm/extras";
+import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import type { CrmBooking, CrmBookingItem, CrmBookingTraveler, CrmCompanion, CrmCustomer } from "@/lib/crm/types";
+
+async function createVisaExtra(
+  supabase: SupabaseClient,
+  opts: {
+    booking: CrmBooking;
+    items: CrmBookingItem[];
+    travelers: CrmBookingTraveler[];
+  }
+) {
+  if (!bookingHasFlight(opts.items)) {
+    throw new BookingIssuesError("Vol requis.", [
+      {
+        field: "items",
+        message: "La demande de visa se propose lorsqu’il y a un vol sur le dossier.",
+      },
+    ]);
+  }
+  const trip = frenchPassportTrip(opts.items, opts.travelers.length);
+  if (!trip.needsFormality) {
+    throw new BookingIssuesError("Visa non requis.", [
+      {
+        field: "kind",
+        message: "Aucune formalité de visa identifiée pour un passeport français sur ce séjour.",
+      },
+    ]);
+  }
+  if (findVisaExtra(opts.items)) {
+    throw new BookingIssuesError("Service déjà demandé.", [
+      { field: "kind", message: "La demande de visa est déjà sur ce dossier." },
+    ]);
+  }
+  const { data: existing } = await supabase
+    .from("crm_booking_items")
+    .select("sort_order")
+    .eq("booking_id", opts.booking.id);
+  const maxSort = (existing || []).reduce((max, row) => Math.max(max, Number(row.sort_order || 0)), -1);
+  const payload = visaItemPayload({
+    travelerCount: opts.travelers.length,
+    visibleToClient: opts.booking.visible_to_client,
+  });
+  const { data, error } = await supabase
+    .from("crm_booking_items")
+    .insert({
+      booking_id: opts.booking.id,
+      sort_order: maxSort + 1,
+      ...payload,
+    })
+    .select("*")
+    .single();
+  if (error || !data) {
+    throw new BookingIssuesError("Service non enregistré.", [
+      { field: "form", message: "Enregistrement du service impossible. Réessayez." },
+    ]);
+  }
+  await refreshBookingLedger(supabase, opts.booking.id);
+  return {
+    item: data as CrmBookingItem,
+    heads: { adults: payload.details.passengers, children: 0, missingBirth: 0 },
+    amount: payload.amount,
+  };
+}
 
 export async function createBookingExtra(
   supabase: SupabaseClient,
@@ -27,13 +91,19 @@ export async function createBookingExtra(
     travelers: CrmBookingTraveler[];
     holder: CrmCustomer;
     companions: CrmCompanion[];
-    kind: ExtraKind;
-    leg: ExtraLeg;
+    kind: ExtraKind | "visa";
+    leg: ExtraLeg | null;
     address?: string | null;
     enforceWindow?: boolean;
     now?: Date;
   }
 ) {
+  if (opts.kind === "visa") return createVisaExtra(supabase, opts);
+  if (!opts.leg) {
+    throw new BookingIssuesError("Service invalide.", [
+      { field: "leg", message: "Indiquez un trajet (départ ou arrivée)." },
+    ]);
+  }
   const leg = opts.leg;
   if (!bookingHasFlight(opts.items)) {
     throw new BookingIssuesError("Vol requis.", [
@@ -112,10 +182,11 @@ export async function createBookingExtra(
 
 export function parseExtraRequest(body: Record<string, unknown> | null) {
   const kind = String(body?.kind || "");
+  if (kind === "visa") return { kind: "visa" as const, leg: null, address: null };
   const leg = String(body?.leg || "");
   if (!isExtraKind(kind) || !isExtraLeg(leg)) {
     throw new BookingIssuesError("Service invalide.", [
-      { field: "kind", message: "Indiquez un service (chauffeur ou greeter) et un trajet (départ ou arrivée)." },
+      { field: "kind", message: "Indiquez un service (chauffeur, greeter ou visa) et un trajet si besoin." },
     ]);
   }
   return {

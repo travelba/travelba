@@ -4,6 +4,7 @@ import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { BookingEditor } from "@/components/admin/BookingEditor";
 import { DeleteBookingButton } from "@/components/admin/DeleteBookingButton";
 import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
+import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import type {
   CrmBooking,
   CrmBookingDocument,
@@ -49,6 +50,8 @@ export default async function AdminBookingPage({ params }: Props) {
     supabase.from("crm_customers").select("*").order("last_name"),
   ]);
   const allIdentity = (identityDocs || []) as CrmTravelDocument[];
+  const bookingItems = (items || []) as CrmBookingItem[];
+  const bookingTravelers = (travelers || []) as CrmBookingTraveler[];
 
   return (
     <div>
@@ -62,8 +65,8 @@ export default async function AdminBookingPage({ params }: Props) {
       <div className="mt-6">
         <BookingEditor
           booking={b}
-          items={(items || []) as CrmBookingItem[]}
-          travelers={(travelers || []) as CrmBookingTraveler[]}
+          items={bookingItems}
+          travelers={bookingTravelers}
           documents={(documents || []) as CrmBookingDocument[]}
           identityDocs={allIdentity}
           companions={(companions || []) as CrmCompanion[]}
@@ -73,6 +76,7 @@ export default async function AdminBookingPage({ params }: Props) {
             last_name: holder?.last_name || "",
           }}
           aiConfigured={aiGatewayConfigured()}
+          formalities={frenchPassportTrip(bookingItems, bookingTravelers.length)}
         />
       </div>
     </div>

@@ -30,6 +30,7 @@ export const BOOKING_ITEM_KINDS = [
   "fee",
   "chauffeur",
   "greeter",
+  "visa",
 ] as const;
 
 export type BookingItemKind = (typeof BOOKING_ITEM_KINDS)[number];
@@ -46,13 +47,14 @@ export const BOOKING_ITEM_LABELS: Record<BookingItemKind, string> = {
   fee: "Frais",
   chauffeur: "Chauffeur",
   greeter: "Greeter",
+  visa: "Visa",
 };
 
 /** Cartes hors séjour (total + publication). */
-export const EXTRA_ITEM_KINDS = ["chauffeur", "greeter"] as const;
+export const EXTRA_ITEM_KINDS = ["chauffeur", "greeter", "visa"] as const;
 
 export function isExtraItemKind(kind: string | null | undefined) {
-  return kind === "chauffeur" || kind === "greeter";
+  return kind === "chauffeur" || kind === "greeter" || kind === "visa";
 }
 
 export const DOC_TYPES = [

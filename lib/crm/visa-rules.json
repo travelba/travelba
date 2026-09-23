@@ -1,0 +1,933 @@
+{
+  "asOf": "2026-09-23",
+  "rules": {
+    "AL": {
+      "status": "none",
+      "formality": null
+    },
+    "DZ": {
+      "status": "visa",
+      "formality": "Visa"
+    },
+    "AD": {
+      "status": "none",
+      "formality": null
+    },
+    "AO": {
+      "status": "none",
+      "formality": null
+    },
+    "AG": {
+      "status": "none",
+      "formality": null
+    },
+    "AR": {
+      "status": "none",
+      "formality": null
+    },
+    "AM": {
+      "status": "none",
+      "formality": null
+    },
+    "AU": {
+      "status": "authorization",
+      "formality": "eVisitor"
+    },
+    "AT": {
+      "status": "none",
+      "formality": null
+    },
+    "AZ": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "BS": {
+      "status": "none",
+      "formality": null
+    },
+    "BH": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "BD": {
+      "status": "visa",
+      "formality": "Visa à l'arrivée"
+    },
+    "BB": {
+      "status": "none",
+      "formality": null
+    },
+    "BY": {
+      "status": "none",
+      "formality": null
+    },
+    "BE": {
+      "status": "none",
+      "formality": null
+    },
+    "BZ": {
+      "status": "none",
+      "formality": null
+    },
+    "BJ": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "BT": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "BO": {
+      "status": "none",
+      "formality": null
+    },
+    "BA": {
+      "status": "none",
+      "formality": null
+    },
+    "BW": {
+      "status": "none",
+      "formality": null
+    },
+    "BR": {
+      "status": "none",
+      "formality": null
+    },
+    "BN": {
+      "status": "none",
+      "formality": null
+    },
+    "BG": {
+      "status": "none",
+      "formality": null
+    },
+    "BF": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "BI": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "KH": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "CM": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "CA": {
+      "status": "authorization",
+      "formality": "AVE"
+    },
+    "CV": {
+      "status": "authorization",
+      "formality": "Enregistrement en ligne"
+    },
+    "CF": {
+      "status": "visa",
+      "formality": "Visa"
+    },
+    "TD": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "CL": {
+      "status": "none",
+      "formality": null
+    },
+    "CN": {
+      "status": "none",
+      "formality": null
+    },
+    "CO": {
+      "status": "none",
+      "formality": null
+    },
+    "KM": {
+      "status": "visa",
+      "formality": "Visa à l'arrivée"
+    },
+    "CG": {
+      "status": "visa",
+      "formality": "Visa"
+    },
+    "CD": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "CR": {
+      "status": "none",
+      "formality": null
+    },
+    "CI": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "HR": {
+      "status": "none",
+      "formality": null
+    },
+    "CU": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "CY": {
+      "status": "none",
+      "formality": null
+    },
+    "CZ": {
+      "status": "none",
+      "formality": null
+    },
+    "DK": {
+      "status": "none",
+      "formality": null
+    },
+    "DJ": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "DM": {
+      "status": "none",
+      "formality": null
+    },
+    "DO": {
+      "status": "none",
+      "formality": null
+    },
+    "EC": {
+      "status": "none",
+      "formality": null
+    },
+    "EG": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "SV": {
+      "status": "none",
+      "formality": null
+    },
+    "GQ": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "ER": {
+      "status": "visa",
+      "formality": "Visa"
+    },
+    "EE": {
+      "status": "none",
+      "formality": null
+    },
+    "SZ": {
+      "status": "none",
+      "formality": null
+    },
+    "ET": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "FJ": {
+      "status": "none",
+      "formality": null
+    },
+    "FI": {
+      "status": "none",
+      "formality": null
+    },
+    "GA": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "GM": {
+      "status": "none",
+      "formality": null
+    },
+    "GE": {
+      "status": "none",
+      "formality": null
+    },
+    "DE": {
+      "status": "none",
+      "formality": null
+    },
+    "GH": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "GR": {
+      "status": "none",
+      "formality": null
+    },
+    "GD": {
+      "status": "none",
+      "formality": null
+    },
+    "GT": {
+      "status": "none",
+      "formality": null
+    },
+    "GN": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "GW": {
+      "status": "visa",
+      "formality": "Visa à l'arrivée"
+    },
+    "GY": {
+      "status": "none",
+      "formality": null
+    },
+    "HT": {
+      "status": "none",
+      "formality": null
+    },
+    "HN": {
+      "status": "none",
+      "formality": null
+    },
+    "HU": {
+      "status": "none",
+      "formality": null
+    },
+    "IS": {
+      "status": "none",
+      "formality": null
+    },
+    "IN": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "ID": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "IR": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "IQ": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "IE": {
+      "status": "none",
+      "formality": null
+    },
+    "IL": {
+      "status": "authorization",
+      "formality": "ETA-IL"
+    },
+    "IT": {
+      "status": "none",
+      "formality": null
+    },
+    "JM": {
+      "status": "none",
+      "formality": null
+    },
+    "JP": {
+      "status": "none",
+      "formality": null
+    },
+    "JO": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "KZ": {
+      "status": "none",
+      "formality": null
+    },
+    "KE": {
+      "status": "authorization",
+      "formality": "eTA"
+    },
+    "KI": {
+      "status": "none",
+      "formality": null
+    },
+    "XK": {
+      "status": "none",
+      "formality": null
+    },
+    "KP": {
+      "status": "visa",
+      "formality": "Visa"
+    },
+    "KR": {
+      "status": "authorization",
+      "formality": "K-ETA"
+    },
+    "KW": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "KG": {
+      "status": "none",
+      "formality": null
+    },
+    "LA": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "LV": {
+      "status": "none",
+      "formality": null
+    },
+    "LB": {
+      "status": "visa",
+      "formality": "Visa à l'arrivée"
+    },
+    "LS": {
+      "status": "none",
+      "formality": null
+    },
+    "LR": {
+      "status": "visa",
+      "formality": "Visa"
+    },
+    "LY": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "LI": {
+      "status": "none",
+      "formality": null
+    },
+    "LT": {
+      "status": "none",
+      "formality": null
+    },
+    "LU": {
+      "status": "none",
+      "formality": null
+    },
+    "MG": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "MW": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "MY": {
+      "status": "none",
+      "formality": null
+    },
+    "MV": {
+      "status": "visa",
+      "formality": "Visa à l'arrivée"
+    },
+    "ML": {
+      "status": "visa",
+      "formality": "Visa"
+    },
+    "MT": {
+      "status": "none",
+      "formality": null
+    },
+    "MH": {
+      "status": "none",
+      "formality": null
+    },
+    "MR": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "MU": {
+      "status": "none",
+      "formality": null
+    },
+    "MX": {
+      "status": "none",
+      "formality": null
+    },
+    "FM": {
+      "status": "none",
+      "formality": null
+    },
+    "MD": {
+      "status": "none",
+      "formality": null
+    },
+    "MC": {
+      "status": "none",
+      "formality": null
+    },
+    "MN": {
+      "status": "none",
+      "formality": null
+    },
+    "ME": {
+      "status": "none",
+      "formality": null
+    },
+    "MA": {
+      "status": "none",
+      "formality": null
+    },
+    "MZ": {
+      "status": "none",
+      "formality": null
+    },
+    "MM": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "NA": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "NR": {
+      "status": "visa",
+      "formality": "Visa"
+    },
+    "NP": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "NL": {
+      "status": "none",
+      "formality": null
+    },
+    "NZ": {
+      "status": "authorization",
+      "formality": "NZeTA"
+    },
+    "NI": {
+      "status": "none",
+      "formality": null
+    },
+    "NE": {
+      "status": "visa",
+      "formality": "Visa"
+    },
+    "NG": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "MK": {
+      "status": "none",
+      "formality": null
+    },
+    "NO": {
+      "status": "none",
+      "formality": null
+    },
+    "OM": {
+      "status": "none",
+      "formality": null
+    },
+    "PK": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "PW": {
+      "status": "none",
+      "formality": null
+    },
+    "PA": {
+      "status": "none",
+      "formality": null
+    },
+    "PG": {
+      "status": "visa",
+      "formality": "Visa"
+    },
+    "PY": {
+      "status": "none",
+      "formality": null
+    },
+    "PE": {
+      "status": "none",
+      "formality": null
+    },
+    "PH": {
+      "status": "none",
+      "formality": null
+    },
+    "PL": {
+      "status": "none",
+      "formality": null
+    },
+    "PT": {
+      "status": "none",
+      "formality": null
+    },
+    "QA": {
+      "status": "none",
+      "formality": null
+    },
+    "RO": {
+      "status": "none",
+      "formality": null
+    },
+    "RU": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "RW": {
+      "status": "none",
+      "formality": null
+    },
+    "KN": {
+      "status": "authorization",
+      "formality": "ETA"
+    },
+    "LC": {
+      "status": "none",
+      "formality": null
+    },
+    "VC": {
+      "status": "none",
+      "formality": null
+    },
+    "WS": {
+      "status": "none",
+      "formality": null
+    },
+    "SM": {
+      "status": "none",
+      "formality": null
+    },
+    "SA": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "SN": {
+      "status": "none",
+      "formality": null
+    },
+    "RS": {
+      "status": "none",
+      "formality": null
+    },
+    "SL": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "SG": {
+      "status": "none",
+      "formality": null
+    },
+    "SK": {
+      "status": "none",
+      "formality": null
+    },
+    "SI": {
+      "status": "none",
+      "formality": null
+    },
+    "SB": {
+      "status": "none",
+      "formality": null
+    },
+    "SO": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "ZA": {
+      "status": "none",
+      "formality": null
+    },
+    "SS": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "ES": {
+      "status": "none",
+      "formality": null
+    },
+    "LK": {
+      "status": "none",
+      "formality": null
+    },
+    "SD": {
+      "status": "visa",
+      "formality": "Visa"
+    },
+    "SR": {
+      "status": "none",
+      "formality": null
+    },
+    "SE": {
+      "status": "none",
+      "formality": null
+    },
+    "CH": {
+      "status": "none",
+      "formality": null
+    },
+    "SY": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "TJ": {
+      "status": "none",
+      "formality": null
+    },
+    "TZ": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "TH": {
+      "status": "none",
+      "formality": null
+    },
+    "TL": {
+      "status": "none",
+      "formality": null
+    },
+    "TG": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "TO": {
+      "status": "none",
+      "formality": null
+    },
+    "TT": {
+      "status": "none",
+      "formality": null
+    },
+    "TN": {
+      "status": "none",
+      "formality": null
+    },
+    "TR": {
+      "status": "none",
+      "formality": null
+    },
+    "TM": {
+      "status": "visa",
+      "formality": "Visa"
+    },
+    "TV": {
+      "status": "none",
+      "formality": null
+    },
+    "UG": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "UA": {
+      "status": "none",
+      "formality": null
+    },
+    "AE": {
+      "status": "none",
+      "formality": null
+    },
+    "GB": {
+      "status": "authorization",
+      "formality": "ETA"
+    },
+    "US": {
+      "status": "authorization",
+      "formality": "ESTA"
+    },
+    "UY": {
+      "status": "none",
+      "formality": null
+    },
+    "UZ": {
+      "status": "none",
+      "formality": null
+    },
+    "VU": {
+      "status": "none",
+      "formality": null
+    },
+    "VA": {
+      "status": "none",
+      "formality": null
+    },
+    "VE": {
+      "status": "none",
+      "formality": null
+    },
+    "VN": {
+      "status": "none",
+      "formality": null
+    },
+    "YE": {
+      "status": "visa",
+      "formality": "Visa"
+    },
+    "ZM": {
+      "status": "none",
+      "formality": null
+    },
+    "ZW": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "FO": {
+      "status": "none",
+      "formality": null
+    },
+    "GI": {
+      "status": "none",
+      "formality": null
+    },
+    "GG": {
+      "status": "none",
+      "formality": null
+    },
+    "IM": {
+      "status": "none",
+      "formality": null
+    },
+    "JE": {
+      "status": "none",
+      "formality": null
+    },
+    "HK": {
+      "status": "none",
+      "formality": null
+    },
+    "MO": {
+      "status": "none",
+      "formality": null
+    },
+    "PS": {
+      "status": "none",
+      "formality": null
+    },
+    "TW": {
+      "status": "none",
+      "formality": null
+    },
+    "AI": {
+      "status": "none",
+      "formality": null
+    },
+    "AW": {
+      "status": "none",
+      "formality": null
+    },
+    "BM": {
+      "status": "none",
+      "formality": null
+    },
+    "VG": {
+      "status": "none",
+      "formality": null
+    },
+    "KY": {
+      "status": "none",
+      "formality": null
+    },
+    "GL": {
+      "status": "none",
+      "formality": null
+    },
+    "MS": {
+      "status": "none",
+      "formality": null
+    },
+    "PR": {
+      "status": "authorization",
+      "formality": "ESTA"
+    },
+    "SX": {
+      "status": "none",
+      "formality": null
+    },
+    "TC": {
+      "status": "none",
+      "formality": null
+    },
+    "VI": {
+      "status": "authorization",
+      "formality": "ESTA"
+    },
+    "AS": {
+      "status": "authorization",
+      "formality": "Autorisation électronique"
+    },
+    "CK": {
+      "status": "none",
+      "formality": null
+    },
+    "GU": {
+      "status": "authorization",
+      "formality": "ESTA"
+    },
+    "NU": {
+      "status": "none",
+      "formality": null
+    },
+    "MP": {
+      "status": "authorization",
+      "formality": "ESTA"
+    },
+    "FK": {
+      "status": "none",
+      "formality": null
+    },
+    "TF": {
+      "status": "none",
+      "formality": null
+    },
+    "AF": {
+      "status": "visa",
+      "formality": "e-visa"
+    },
+    "SC": {
+      "status": "none",
+      "formality": null
+    },
+    "FR": {
+      "status": "none",
+      "formality": null
+    },
+    "GF": {
+      "status": "none",
+      "formality": null
+    },
+    "GP": {
+      "status": "none",
+      "formality": null
+    },
+    "MQ": {
+      "status": "none",
+      "formality": null
+    },
+    "RE": {
+      "status": "none",
+      "formality": null
+    },
+    "YT": {
+      "status": "none",
+      "formality": null
+    },
+    "PM": {
+      "status": "none",
+      "formality": null
+    },
+    "BL": {
+      "status": "none",
+      "formality": null
+    },
+    "MF": {
+      "status": "none",
+      "formality": null
+    },
+    "NC": {
+      "status": "none",
+      "formality": null
+    },
+    "PF": {
+      "status": "none",
+      "formality": null
+    },
+    "WF": {
+      "status": "none",
+      "formality": null
+    }
+  }
+}

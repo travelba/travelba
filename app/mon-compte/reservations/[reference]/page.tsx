@@ -12,7 +12,10 @@ import {
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
+import { TripFormalities } from "@/components/crm/TripFormalities";
+import { TripVisaUploads } from "@/components/crm/TripVisaUploads";
 import { bookingHasFlight } from "@/lib/crm/extras";
+import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { BookingStatusBadge } from "@/components/crm/ui";
 import {
@@ -87,6 +90,7 @@ export default async function ReservationDetailPage({ params }: Props) {
   const sameTitle =
     (b.title || "").trim().toLowerCase() === (b.destination || "").trim().toLowerCase();
   const missingCount = coverage.total - coverage.ready;
+  const formalities = frenchPassportTrip(visibleItems, party.length);
 
   return (
     <div className="space-y-5">
@@ -175,6 +179,20 @@ export default async function ReservationDetailPage({ params }: Props) {
       ) : null}
 
       {bookingHasFlight(visibleItems) ? (
+        <section className="aura-card space-y-3 rounded-[1.35rem] bg-white p-4">
+          <TripFormalities trip={formalities} />
+          {formalities.needsFormality ? (
+            <TripVisaUploads
+              variant="client"
+              bookingId={b.id}
+              travelers={party}
+              documents={(identityDocs || []) as CrmTravelDocument[]}
+            />
+          ) : null}
+        </section>
+      ) : null}
+
+      {bookingHasFlight(visibleItems) ? (
         <section className="aura-card rounded-[1.35rem] bg-white p-4">
           <ExtrasPanel
             variant="client"
@@ -184,6 +202,7 @@ export default async function ReservationDetailPage({ params }: Props) {
             holder={customer}
             companions={(companions || []) as CrmCompanion[]}
             whatsappHref={modifyHref}
+            formalities={formalities}
           />
         </section>
       ) : null}

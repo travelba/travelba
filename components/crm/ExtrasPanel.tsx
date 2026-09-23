@@ -11,9 +11,11 @@ import {
   extraHeadsFromBooking,
   extraNoticeOk,
   findExtra,
+  findVisaExtra,
   formatCustomerAddress,
   returnStay,
   serviceOffers,
+  VISA_EUR,
   type ExtraKind,
   type ExtraLeg,
   type ServiceOffer,
@@ -21,6 +23,7 @@ import {
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { Icon } from "@/components/crm/icons";
+import type { FrenchPassportTrip } from "@/lib/crm/visa-trip";
 import type { CrmBooking, CrmBookingItem, CrmBookingTraveler, CrmCompanion, CrmCustomer } from "@/lib/crm/types";
 
 export function ExtrasPanel({
@@ -31,6 +34,7 @@ export function ExtrasPanel({
   holder,
   companions,
   whatsappHref,
+  formalities = null,
 }: {
   variant: "admin" | "client";
   booking: CrmBooking;
@@ -39,6 +43,7 @@ export function ExtrasPanel({
   holder: CrmCustomer;
   companions: CrmCompanion[];
   whatsappHref?: string;
+  formalities?: Pick<FrenchPassportTrip, "needsFormality" | "passengers" | "amount"> | null;
 }) {
   const router = useRouter();
   const [address, setAddress] = useState(() => formatCustomerAddress(holder));
@@ -76,6 +81,27 @@ export function ExtrasPanel({
         leg,
         address: kind === "chauffeur" && leg === "arrival" ? returnAddress : address,
       }),
+    });
+    const json = await res.json().catch(() => ({}));
+    setBusy(null);
+    if (!res.ok) {
+      setIssues(issuesFromResponse(json));
+      return;
+    }
+    router.refresh();
+  }
+
+  async function requestVisa() {
+    setBusy("visa");
+    setIssues([]);
+    const url =
+      variant === "admin"
+        ? `/api/admin/bookings/${booking.id}/extras`
+        : `/api/client/bookings/${booking.reference}/extras`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "visa" }),
     });
     const json = await res.json().catch(() => ({}));
     setBusy(null);
@@ -198,6 +224,67 @@ export function ExtrasPanel({
     );
   }
 
+  function visaCard() {
+    const existing = findVisaExtra(items) as CrmBookingItem | null;
+    const passengers = formalities?.passengers || 1;
+    const price = formatMoney(formalities?.amount || passengers * VISA_EUR, booking.currency);
+    return (
+      <article className="rounded-2xl border border-[#e5e3dc] bg-[#faf9f6] p-4">
+        <div className="flex items-start gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[var(--admin-gold)]">
+            <Icon name="description" className="h-5 w-5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-display text-base font-bold text-[var(--admin-navy)]">Demande de Visa</p>
+            <p className="mt-0.5 text-sm text-[var(--admin-navy)]">
+              {VISA_EUR} € par passager, hors frais du visa
+            </p>
+            <p className="mt-1 text-xs text-muted">
+              {passengers} passager{passengers > 1 ? "s" : ""}
+            </p>
+            <p className="mt-2 text-sm font-semibold text-[var(--admin-navy)]">
+              {price}
+              <span className="font-normal text-muted"> · se rajoute à l’encours</span>
+            </p>
+          </div>
+        </div>
+        <div className="mt-3 flex items-center justify-end gap-2">
+          {existing ? (
+            <>
+              <span className="rounded-full bg-[var(--admin-gold)]/20 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--admin-navy)]">
+                Validé
+              </span>
+              {isAdmin ? (
+                <button
+                  type="button"
+                  className="text-xs font-semibold text-accent"
+                  disabled={busy !== null}
+                  onClick={() => void cancel(existing.id)}
+                >
+                  Annuler
+                </button>
+              ) : null}
+            </>
+          ) : (
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void requestVisa()}
+              className="inline-flex h-10 items-center justify-center rounded-full bg-[var(--admin-navy)] px-5 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {busy === "visa" ? "…" : "Valider"}
+            </button>
+          )}
+        </div>
+        {busy === "visa" || (existing && busy === `cancel:${existing.id}`) ? (
+          <div className="mt-2">
+            <BusyBar label={busy?.startsWith("cancel") ? "Annulation…" : "Validation…"} />
+          </div>
+        ) : null}
+      </article>
+    );
+  }
+
   return (
     <section className="space-y-3">
       <div>
@@ -260,6 +347,7 @@ export function ExtrasPanel({
           {greeters.map(card)}
         </div>
       ) : null}
+      {formalities?.needsFormality ? visaCard() : null}
       <IssuesList issues={issues} />
     </section>
   );

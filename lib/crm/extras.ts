@@ -4,6 +4,7 @@ import { householdMembers, memberFromTravelerLink } from "./household";
 export const CHAUFFEUR_EUR = 150;
 export const GREETER_ADULT_EUR = 100;
 export const GREETER_CHILD_EUR = 25;
+export const VISA_EUR = 50;
 export const EXTRA_CHILD_AGE = 12;
 export const EXTRA_NOTICE_MS = 48 * 60 * 60 * 1000;
 
@@ -61,6 +62,25 @@ export function findExtra(
   leg: ExtraLeg
 ) {
   return items.find((item) => item.kind === kind && extraServiceLeg(item) === leg) || null;
+}
+
+export function findVisaExtra<T extends { kind?: string | null }>(items: T[]) {
+  return items.find((item) => item.kind === "visa") || null;
+}
+
+/** Au moins un passager : un dossier sans voyageur nommé compte pour 1. */
+export function visaPassengerCount(travelerCount: number) {
+  const n = Math.floor(Number(travelerCount));
+  return Math.max(1, Number.isFinite(n) ? n : 0);
+}
+
+export function visaFeeAmount(travelerCount: number) {
+  return visaPassengerCount(travelerCount) * VISA_EUR;
+}
+
+export function visaFeeTitle(travelerCount: number) {
+  const n = visaPassengerCount(travelerCount);
+  return `Demande de Visa (${n} passager${n > 1 ? "s" : ""})`;
 }
 
 export function ageOnDate(birthDate: string | null | undefined, at: Date) {
@@ -349,6 +369,29 @@ export function extraItemPayload(input: {
       adults: input.kind === "greeter" ? input.adults ?? 1 : null,
       children: input.kind === "greeter" ? input.children ?? 0 : null,
       extra: true,
+    },
+    visible_to_client: input.visibleToClient,
+  };
+}
+
+export function visaItemPayload(input: {
+  travelerCount: number;
+  visibleToClient: boolean;
+}) {
+  const passengers = visaPassengerCount(input.travelerCount);
+  return {
+    kind: "visa" as const,
+    title: visaFeeTitle(passengers),
+    supplier: "Travelba",
+    confirmation_ref: null as string | null,
+    start_at: null as string | null,
+    end_at: null as string | null,
+    amount: visaFeeAmount(passengers),
+    include_in_ledger: true,
+    details: {
+      extra: true,
+      passengers,
+      unit_eur: VISA_EUR,
     },
     visible_to_client: input.visibleToClient,
   };
