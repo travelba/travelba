@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  buildGmailHistorySearchParams,
   collectAttachments,
   collectBodyText,
+  collectHistoryMessageIds,
   decodeGmailPushBody,
   extractEmailAddress,
   headerValue,
@@ -121,6 +123,74 @@ describe("parseGmailMessage", () => {
     assert.equal(parsed.attachments.length, 1);
     assert.equal(parsed.attachments[0].filename, "confirmation.pdf");
     assert.ok(parsed.receivedAt);
+  });
+});
+
+describe("buildGmailHistorySearchParams", () => {
+  it("demande messageAdded et labelAdded (params répétés)", () => {
+    const params = buildGmailHistorySearchParams("100", { labelId: "Label_LE" });
+    assert.equal(params.get("startHistoryId"), "100");
+    assert.equal(params.get("labelId"), "Label_LE");
+    assert.deepEqual(params.getAll("historyTypes"), ["messageAdded", "labelAdded"]);
+  });
+  it("ajoute le pageToken si fourni", () => {
+    const params = buildGmailHistorySearchParams("100", { pageToken: "p2" });
+    assert.equal(params.get("pageToken"), "p2");
+    assert.equal(params.get("labelId"), null);
+  });
+});
+
+describe("collectHistoryMessageIds", () => {
+  it("recueille un mail nouveau (messageAdded)", () => {
+    const ids = collectHistoryMessageIds([
+      { messagesAdded: [{ message: { id: "msg-new", labelIds: ["Label_LE"] } }] },
+    ]);
+    assert.deepEqual(ids, ["msg-new"]);
+  });
+  it("recueille un mail existant auquel on applique un label (labelsAdded)", () => {
+    const ids = collectHistoryMessageIds(
+      [
+        {
+          labelsAdded: [
+            {
+              message: { id: "msg-old", labelIds: ["INBOX", "Label_LE"] },
+              labelIds: ["Label_LE"],
+            },
+          ],
+        },
+      ],
+      "Label_LE"
+    );
+    assert.deepEqual(ids, ["msg-old"]);
+  });
+  it("ignore un labelsAdded qui ne concerne pas le label suivi", () => {
+    const ids = collectHistoryMessageIds(
+      [
+        {
+          labelsAdded: [
+            {
+              message: { id: "msg-starred", labelIds: ["INBOX", "STARRED"] },
+              labelIds: ["STARRED"],
+            },
+          ],
+        },
+      ],
+      "Label_LE"
+    );
+    assert.deepEqual(ids, []);
+  });
+  it("déduplique un mail à la fois nouveau et labellisé", () => {
+    const ids = collectHistoryMessageIds([
+      {
+        messagesAdded: [{ message: { id: "msg-both" } }],
+        labelsAdded: [{ message: { id: "msg-both" }, labelIds: ["Label_LE"] }],
+      },
+    ]);
+    assert.deepEqual(ids, ["msg-both"]);
+  });
+  it("renvoie une liste vide sans historique", () => {
+    assert.deepEqual(collectHistoryMessageIds(undefined), []);
+    assert.deepEqual(collectHistoryMessageIds([]), []);
   });
 });
 

@@ -91,9 +91,9 @@ export async function setEmailWatch(
 }
 
 /**
- * Depuis une notification push (historyId), liste les nouveaux messages sous les
- * labels ciblés et insère des lignes `received` (idempotent sur gmail_message_id).
- * Traitement lourd (extraction) délégué au cron.
+ * Depuis une notification push (historyId), liste les messages nouveaux ou
+ * relabellisés sous les labels ciblés et insère des lignes `received`
+ * (idempotent sur gmail_message_id). Traitement lourd délégué au cron.
  */
 export async function captureGmailHistory(
   notifiedHistoryId: string
