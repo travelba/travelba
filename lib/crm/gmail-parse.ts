@@ -166,6 +166,80 @@ export function parseGmailMessage(raw: RawGmailMessage): ParsedGmailMessage {
   };
 }
 
+/** Types d'historique à synchroniser : arrivée ET application de label. */
+export const GMAIL_HISTORY_TYPES = ["messageAdded", "labelAdded"] as const;
+
+export type GmailHistoryMessageRef = {
+  id?: string;
+  labelIds?: string[];
+};
+
+export type GmailHistoryRecord = {
+  messagesAdded?: { message?: GmailHistoryMessageRef }[];
+  labelsAdded?: { message?: GmailHistoryMessageRef; labelIds?: string[] }[];
+};
+
+/**
+ * Query users.history.list : `historyTypes` est répété (messageAdded + labelAdded).
+ * Un seul `historyTypes=messageAdded` ignore l'application d'un label sur un mail existant.
+ */
+export function buildGmailHistorySearchParams(
+  startHistoryId: string,
+  options?: { labelId?: string; pageToken?: string }
+): URLSearchParams {
+  const params = new URLSearchParams({ startHistoryId });
+  for (const type of GMAIL_HISTORY_TYPES) {
+    params.append("historyTypes", type);
+  }
+  if (options?.labelId) params.set("labelId", options.labelId);
+  if (options?.pageToken) params.set("pageToken", options.pageToken);
+  return params;
+}
+
+function matchesWatchedLabel(
+  labelIds: string[] | undefined,
+  labelId?: string
+): boolean {
+  if (!labelId) return true;
+  if (!labelIds || !labelIds.length) return true;
+  return labelIds.includes(labelId);
+}
+
+/**
+ * IDs à capturer depuis users.history.list.
+ * - messagesAdded : mail nouveau (éventuellement déjà labellisé par un filtre).
+ * - labelsAdded : label appliqué à un message déjà dans la boîte.
+ */
+export function collectHistoryMessageIds(
+  history: GmailHistoryRecord[] | undefined,
+  labelId?: string
+): string[] {
+  const ids = new Set<string>();
+  for (const record of history || []) {
+    for (const added of record.messagesAdded || []) {
+      const id = added.message?.id;
+      if (!id) continue;
+      if (!matchesWatchedLabel(added.message?.labelIds, labelId)) continue;
+      ids.add(id);
+    }
+    for (const labeled of record.labelsAdded || []) {
+      const id = labeled.message?.id;
+      if (!id) continue;
+      const addedLabels = labeled.labelIds;
+      const messageLabels = labeled.message?.labelIds;
+      if (labelId) {
+        if (addedLabels?.length) {
+          if (!addedLabels.includes(labelId)) continue;
+        } else if (!matchesWatchedLabel(messageLabels, labelId)) {
+          continue;
+        }
+      }
+      ids.add(id);
+    }
+  }
+  return [...ids];
+}
+
 /** Décode le payload push Pub/Sub Gmail → { emailAddress, historyId }. */
 export function decodeGmailPushBody(
   body: unknown

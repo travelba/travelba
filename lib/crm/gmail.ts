@@ -1,7 +1,10 @@
 import "server-only";
 import { createPrivateKey, createSign } from "crypto";
 import {
+  buildGmailHistorySearchParams,
+  collectHistoryMessageIds,
   parseGmailMessage,
+  type GmailHistoryRecord,
   type ParsedGmailMessage,
 } from "@/lib/crm/gmail-parse";
 
@@ -172,7 +175,8 @@ export async function currentHistoryId(): Promise<string> {
 export class GmailHistoryTooOldError extends Error {}
 
 /**
- * IDs de messages ajoutés depuis startHistoryId pour un label donné.
+ * IDs de messages nouveaux ou relabellisés depuis startHistoryId pour un label.
+ * Inclut messageAdded (arrivée) et labelAdded (label appliqué à un mail existant).
  * Lève GmailHistoryTooOldError si le curseur est expiré (404).
  */
 export async function listHistoryMessageIds(
@@ -183,12 +187,10 @@ export async function listHistoryMessageIds(
   let pageToken: string | undefined;
   let latest = startHistoryId;
   do {
-    const params = new URLSearchParams({
-      startHistoryId,
-      historyTypes: "messageAdded",
+    const params = buildGmailHistorySearchParams(startHistoryId, {
+      labelId,
+      pageToken,
     });
-    if (labelId) params.set("labelId", labelId);
-    if (pageToken) params.set("pageToken", pageToken);
     let res: Response;
     try {
       res = await gmailApi(`/history?${params.toString()}`);
@@ -199,15 +201,13 @@ export async function listHistoryMessageIds(
       throw err;
     }
     const json = (await res.json()) as {
-      history?: { messagesAdded?: { message?: { id?: string } }[] }[];
+      history?: GmailHistoryRecord[];
       historyId?: string;
       nextPageToken?: string;
     };
     if (json.historyId) latest = String(json.historyId);
-    for (const h of json.history || []) {
-      for (const added of h.messagesAdded || []) {
-        if (added.message?.id) ids.add(added.message.id);
-      }
+    for (const id of collectHistoryMessageIds(json.history, labelId)) {
+      ids.add(id);
     }
     pageToken = json.nextPageToken;
   } while (pageToken);
