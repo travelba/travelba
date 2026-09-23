@@ -12,6 +12,7 @@ import {
   extraNoticeOk,
   findExtra,
   formatCustomerAddress,
+  returnStay,
   serviceOffers,
   type ExtraKind,
   type ExtraLeg,
@@ -41,6 +42,7 @@ export function ExtrasPanel({
 }) {
   const router = useRouter();
   const [address, setAddress] = useState(() => formatCustomerAddress(holder));
+  const [returnAddress, setReturnAddress] = useState(() => returnStay(items)?.address || "");
   const [busy, setBusy] = useState<string | null>(null);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
   const now = useMemo(() => new Date(), []);
@@ -57,6 +59,7 @@ export function ExtrasPanel({
   const offers = serviceOffers(items);
   const transfers = offers.filter((offer) => offer.kind === "chauffeur");
   const greeters = offers.filter((offer) => offer.kind === "greeter");
+  const stay = returnStay(items);
 
   async function request(kind: ExtraKind, leg: ExtraLeg) {
     setBusy(`${kind}:${leg}`);
@@ -68,7 +71,11 @@ export function ExtrasPanel({
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind, leg, address }),
+      body: JSON.stringify({
+        kind,
+        leg,
+        address: kind === "chauffeur" && leg === "arrival" ? returnAddress : address,
+      }),
     });
     const json = await res.json().catch(() => ({}));
     setBusy(null);
@@ -169,7 +176,13 @@ export function ExtrasPanel({
             <button
               type="button"
               disabled={busy !== null || locked}
-              onClick={() => void request(offer.kind, offer.leg)}
+              onClick={() => {
+                if (offer.kind === "chauffeur" && offer.leg === "arrival" && !returnAddress.trim()) {
+                  setIssues([{ field: "address", message: "Indiquez l’adresse de retour." }]);
+                  return;
+                }
+                void request(offer.kind, offer.leg);
+              }}
               className="inline-flex h-10 items-center justify-center rounded-full bg-[var(--admin-navy)] px-5 text-sm font-semibold text-white disabled:opacity-50"
             >
               {busy === `${offer.kind}:${offer.leg}` ? "…" : "Valider"}
@@ -202,23 +215,46 @@ export function ExtrasPanel({
               Prise en charge 2 h 30 avant le départ du vol, jusqu’à l’aéroport.
             </p>
           </div>
-          <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-            Adresse de prise en charge
-            <input
-              value={address}
-              onChange={(event) => setAddress(event.target.value)}
-              className="rounded-xl border border-[#e5e3dc] bg-white px-3 py-2 text-sm font-normal text-[var(--admin-navy)]"
-            />
-          </label>
-          {transfers.map(card)}
+          {transfers.map((offer) => (
+            <div key={`${offer.kind}-${offer.leg}`} className="space-y-2">
+              {offer.leg === "arrival" ? (
+                <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+                  Adresse de retour (hôtel ou hébergement)
+                  <input
+                    value={returnAddress}
+                    onChange={(event) => setReturnAddress(event.target.value)}
+                    placeholder="Hôtel, adresse"
+                    className="rounded-xl border border-[#e5e3dc] bg-white px-3 py-2 text-sm font-normal text-[var(--admin-navy)]"
+                  />
+                  {stay ? (
+                    <span className="font-normal text-muted">Repris de la réservation : {stay.address}</span>
+                  ) : (
+                    <span className="font-normal text-muted">Aucune réservation d’hôtel sur ce voyage.</span>
+                  )}
+                </label>
+              ) : (
+                <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+                  Adresse de prise en charge
+                  <input
+                    value={address}
+                    onChange={(event) => setAddress(event.target.value)}
+                    className="rounded-xl border border-[#e5e3dc] bg-white px-3 py-2 text-sm font-normal text-[var(--admin-navy)]"
+                  />
+                </label>
+              )}
+              {card(offer)}
+            </div>
+          ))}
         </div>
       ) : null}
       {greeters.length ? (
         <div className="space-y-2">
           <div>
-            <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">Greeter Airport</h3>
+            <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">
+              Accueil VIP et Fastpass à l’aéroport
+            </h3>
             <p className="mt-1 text-sm text-muted">
-              Accueil à l’aéroport d’arrivée, à l’heure d’atterrissage du vol.
+              Accueil VIP et fastpass à l’aéroport d’arrivée, à l’heure d’atterrissage du vol.
             </p>
           </div>
           {greeters.map(card)}

@@ -30,7 +30,7 @@ export const TRANSFER_LEAD_MINUTES = 150;
 export function extraTitle(kind: ExtraKind, leg: ExtraLeg) {
   const side = leg === "departure" ? "aller" : "retour";
   if (kind === "chauffeur") return `Transfert ${side}`;
-  return `Greeter Airport ${side}`;
+  return `Accueil VIP et Fastpass ${side}`;
 }
 
 /** Heure de réservation du transfert : 2 h 30 avant le départ du vol, sans décalage de fuseau. */
@@ -113,10 +113,49 @@ export function bookingHasFlight(
 
 type ServiceFlightRow = {
   kind?: string | null;
+  title?: string | null;
   start_at?: string | null;
   end_at?: string | null;
   details?: Record<string, unknown> | null;
 };
+
+export type StayPickup = {
+  name: string;
+  address: string;
+};
+
+function stayParts(item: ServiceFlightRow) {
+  const name = detailText(item, "hotel_name") || (item.title || "").trim() || "";
+  const address = detailText(item, "address") || "";
+  const city = detailText(item, "city") || "";
+  return { name, address, city };
+}
+
+function placeMatches(place: string, city: string) {
+  const left = place.trim().toLowerCase();
+  const right = city.trim().toLowerCase();
+  if (!left || !right) return false;
+  return left.includes(right) || right.includes(left);
+}
+
+/** Hôtel du séjour pour le transfert retour. Un seul hôtel gagne. Plusieurs : celui de la ville du vol. */
+export function matchedStay(items: ServiceFlightRow[], city?: string | null): StayPickup | null {
+  const stays = items.filter((item) => item.kind === "hotel");
+  if (!stays.length) return null;
+  const ranked = stays
+    .slice()
+    .sort((a, b) => String(b.end_at || b.start_at || "").localeCompare(String(a.end_at || a.start_at || "")));
+  const wanted = (city || "").trim();
+  const chosen =
+    (wanted && ranked.find((item) => placeMatches(stayParts(item).city || stayParts(item).name, wanted))) ||
+    ranked[0];
+  const parts = stayParts(chosen);
+  const unique = [parts.name, parts.address, parts.city].filter(Boolean).filter((part, index, all) => {
+    return all.findIndex((row) => row.toLowerCase() === part.toLowerCase()) === index;
+  });
+  if (!unique.length) return null;
+  return { name: parts.name || unique[0], address: unique.join(", ") };
+}
 
 export type ServiceFlightLeg = {
   role: "outbound" | "inbound";
@@ -213,11 +252,19 @@ export function serviceOffers(items: ServiceFlightRow[]): ServiceOffer[] {
   for (const leg of legs) {
     const aller = leg.role === "outbound";
     const departureAirport = serviceAirportLabel(leg.fromIata, leg.cityFrom);
+    const stay = aller ? null : matchedStay(items, leg.cityFrom);
+    const returnFrom = stay?.name || "Hébergement";
     offers.push({
       kind: "chauffeur",
       leg: leg.leg,
       title: aller ? "Aller" : "Retour",
-      route: leg.fromIata ? `Domicile → ${leg.fromIata}` : "Domicile → aéroport",
+      route: aller
+        ? leg.fromIata
+          ? `Domicile → ${leg.fromIata}`
+          : "Domicile → aéroport"
+        : leg.fromIata
+          ? `${returnFrom} → ${leg.fromIata}`
+          : `${returnFrom} → aéroport`,
       flightLine: transferLine(leg),
       airport: departureAirport,
       whenIso: transferPickupIso(leg.departAt),
@@ -234,6 +281,11 @@ export function serviceOffers(items: ServiceFlightRow[]): ServiceOffer[] {
     });
   }
   return offers;
+}
+
+export function returnStay(items: ServiceFlightRow[]) {
+  const inbound = serviceFlightLegs(items).find((leg) => leg.role === "inbound");
+  return matchedStay(items, inbound?.cityFrom || null);
 }
 
 export function extraFlightAt(

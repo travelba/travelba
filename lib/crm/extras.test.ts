@@ -9,6 +9,7 @@ import {
   extraTitle,
   findExtra,
   isChildAt,
+  matchedStay,
   serviceOffers,
 } from "./extras";
 
@@ -16,7 +17,7 @@ test("tarifs par trajet", () => {
   assert.equal(extraAmount("chauffeur"), 150);
   assert.equal(extraAmount("greeter", 2, 1), 225);
   assert.equal(extraTitle("chauffeur", "departure"), "Transfert aller");
-  assert.equal(extraTitle("greeter", "arrival"), "Greeter Airport retour");
+  assert.equal(extraTitle("greeter", "arrival"), "Accueil VIP et Fastpass retour");
 });
 
 test("enfant < 12 ans, sans naissance = adulte", () => {
@@ -80,11 +81,22 @@ test("le transfert est réservé 2 h 30 avant le départ, le greeter à l’arri
   assert.equal(offers[0].airport, "ORY · Paris");
   assert.equal(offers[1].route, "Aéroport TLV · Tel Aviv");
   assert.equal(offers[1].flightLine, "Vol TO 3458 · arrivée 17h10");
-  assert.equal(offers[2].route, "Domicile → TLV");
+  assert.equal(offers[2].route, "Hébergement → TLV");
   assert.equal(offers[2].flightLine, "Prise en charge 11h40 · Vol TO 3451 · départ 14h10");
   assert.equal(offers[2].whenIso, "2026-12-23T11:40:00");
   assert.equal(offers[3].route, "Aéroport ORY · Paris");
   assert.equal(offers[3].flightLine, "Vol TO 3451 · arrivée 18h25");
+  const hotel = {
+    kind: "hotel",
+    title: "The Norman",
+    end_at: "2026-12-23",
+    details: { hotel_name: "The Norman", city: "Tel Aviv", address: "23 Rothschild" },
+  };
+  assert.deepEqual(matchedStay([hotel, inbound], "Tel Aviv"), {
+    name: "The Norman",
+    address: "The Norman, 23 Rothschild, Tel Aviv",
+  });
+  assert.equal(serviceOffers([outbound, inbound, hotel])[2].route, "The Norman → TLV");
   const oneWay = serviceOffers([outbound]);
   assert.deepEqual(
     oneWay.map((offer) => offer.leg),
