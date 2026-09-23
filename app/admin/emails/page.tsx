@@ -1,5 +1,6 @@
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { EmailIngestInbox } from "@/components/admin/EmailIngestInbox";
+import { GmailDiagnostic } from "@/components/admin/GmailDiagnostic";
 import { requireStaffPage } from "@/lib/crm/auth";
 import type { CrmCustomer, CrmEmailIngest } from "@/lib/crm/types";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
@@ -26,6 +27,7 @@ export default async function AdminEmailsPage() {
         subtitle="Mails fournisseurs analysés automatiquement — rattachez chaque réservation à un client ou à un voyage. Le carnet reste invisible tant qu’il n’est pas publié."
       />
       <div className="mt-6">
+        <GmailDiagnostic />
         <EmailIngestInbox
           rows={(rows || []) as CrmEmailIngest[]}
           customers={(customers || []) as PickableCustomer[]}
