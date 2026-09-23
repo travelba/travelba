@@ -1,7 +1,6 @@
 import { siteConfig } from "@/lib/site";
 import { AdminNav } from "@/components/admin/AdminNav";
-import { getStaffForUser } from "@/lib/crm/auth";
-import { createClient } from "@/lib/supabase/server";
+import { getSessionUser, getStaffForUser } from "@/lib/crm/auth";
 import { createServiceClient } from "@/lib/supabase/admin";
 
 export const metadata = {
@@ -17,10 +16,7 @@ export default async function AdminLayout({
   let unmatched = 0;
   let emailPending = 0;
   let staffName = "";
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getSessionUser();
   const staff = user ? await getStaffForUser(user.id) : null;
   if (staff) {
     staffName = staff.full_name || "";

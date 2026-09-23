@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { ensureCustomerForUser } from "@/lib/crm/auth";
+import { ensureCustomerForUser, getSessionUser } from "@/lib/crm/auth";
 import {
   BOOKING_STATUS_LABELS,
   type CrmBooking,
@@ -27,7 +26,6 @@ import {
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
-import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { siteConfig } from "@/lib/site";
 import { BookingHero } from "@/components/crm/BookingHero";
@@ -39,10 +37,7 @@ type Props = { params: Promise<{ reference: string }> };
 
 export default async function ReservationDetailPage({ params }: Props) {
   const { reference } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getSessionUser();
   if (!user) redirect("/connexion");
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");
@@ -55,7 +50,6 @@ export default async function ReservationDetailPage({ params }: Props) {
     .maybeSingle();
   if (!booking) notFound();
   const b = booking as CrmBooking;
-  await reconcileCustomerParty(customer.id);
 
   const [{ data: items }, { data: travelers }, { data: docs }, { data: identityDocs }, { data: companions }, { data: declined }] =
     await Promise.all([

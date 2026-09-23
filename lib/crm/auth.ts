@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { NextResponse } from "next/server";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
@@ -6,6 +7,15 @@ import type { CrmCustomer, CrmStaff } from "@/lib/crm/types";
 import { isStaffRole } from "@/lib/crm/session";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
 import { issuesSummary, type BookingIssue } from "@/lib/crm/booking-issues";
+
+/** Mémo request-scoped (pas Cache Components) : layout + requireStaffPage partagent getUser. */
+export const getSessionUser = cache(async () => {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return { supabase, user };
+});
 
 export function jsonError(message: string, status = 400, details?: unknown) {
   return NextResponse.json({ error: message, details }, { status });
@@ -31,10 +41,7 @@ export async function requireStaff(): Promise<
     }
   | NextResponse
 > {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getSessionUser();
   if (!user) return jsonError("Non authentifié", 401);
 
   const staff = await ensureStaff(user);
@@ -50,10 +57,7 @@ export async function requireCustomer(): Promise<
     }
   | NextResponse
 > {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getSessionUser();
   if (!user) return jsonError("Non authentifié", 401);
 
   const customer = await ensureCustomerForUser(user);
@@ -61,7 +65,7 @@ export async function requireCustomer(): Promise<
   return { user, supabase, customer };
 }
 
-export async function getStaffForUser(userId: string) {
+export const getStaffForUser = cache(async (userId: string) => {
   const supabase = await createClient();
   const { data } = await supabase
     .from("crm_staff")
@@ -69,19 +73,13 @@ export async function getStaffForUser(userId: string) {
     .eq("auth_user_id", userId)
     .maybeSingle();
   return (data as CrmStaff | null) ?? null;
-}
+});
 
 export async function ensureStaff(user: User): Promise<CrmStaff | null> {
-  const supabase = await createClient();
-  const { data: existing } = await supabase
-    .from("crm_staff")
-    .select("*")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
+  const existing = await getStaffForUser(user.id);
   if (existing) {
-    const staff = existing as CrmStaff;
-    await stampStaffRole(user, staff.role);
-    return staff;
+    await stampStaffRole(user, existing.role);
+    return existing;
   }
 
   try {
@@ -125,7 +123,7 @@ async function stampStaffRole(user: User, role: CrmStaff["role"]) {
   }
 }
 
-export async function ensureCustomerForUser(user: User): Promise<CrmCustomer | null> {
+export const ensureCustomerForUser = cache(async (user: User): Promise<CrmCustomer | null> => {
   const email = (user.email || "").trim().toLowerCase();
   if (!email) return null;
 
@@ -162,7 +160,7 @@ export async function ensureCustomerForUser(user: User): Promise<CrmCustomer | n
   } catch {
     return null;
   }
-}
+});
 
 export function isRedirect(value: unknown): value is NextResponse {
   return value instanceof NextResponse;
@@ -175,10 +173,7 @@ export async function requireStaffPage(): Promise<{
   staff: CrmStaff;
 }> {
   const { redirect } = await import("next/navigation");
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getSessionUser();
   if (!user) {
     redirect("/admin/login");
   }

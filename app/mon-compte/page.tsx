@@ -1,12 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { ensureCustomerForUser } from "@/lib/crm/auth";
+import { ensureCustomerForUser, getSessionUser } from "@/lib/crm/auth";
 import type { CrmBalance, CrmBookingTraveler, CrmTravelDocument } from "@/lib/crm/types";
 import { encoursCaption, formatDateRangeShort, formatMoney, isUpcomingBooking, jMinusLabel } from "@/lib/crm/money";
 import { isCompanyMember } from "@/lib/crm/company-role";
 import { loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
-import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { tripHeadline, tripPlaceLine } from "@/lib/crm/carnet";
 import { BookingHero } from "@/components/crm/BookingHero";
@@ -21,16 +19,12 @@ const secondaryBtn =
   "flex h-11 items-center justify-between rounded-2xl border border-[var(--admin-gold)]/55 bg-white px-4 text-sm font-semibold text-[var(--admin-navy)] shadow-sm transition-colors hover:border-[var(--admin-gold)] hover:bg-[var(--admin-peach)]";
 
 export default async function AccountHomePage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getSessionUser();
   if (!user) redirect("/connexion");
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");
 
   const member = isCompanyMember(customer);
-  await reconcileCustomerParty(customer.id);
   const [{ data: balances }, bookings] = await Promise.all([
     member
       ? Promise.resolve({ data: [] as CrmBalance[] })
