@@ -100,10 +100,9 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
         Destination
         <input name="destination" disabled={saving} placeholder="Ville, pays" className={fieldControlClass} />
       </label>
-      <label className={labelClass}>
-        Montant total (€)
-        <input name="total_amount" type="number" step="0.01" min="0" disabled={saving} placeholder="0,00" className={fieldControlClass} />
-      </label>
+      <p className="text-xs text-muted sm:col-span-3">
+        Le montant du séjour sera la somme des prix vendus des cartes.
+      </p>
       <label className="flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-3">
         <input type="checkbox" name="include_in_ledger" defaultChecked className="mt-1" disabled={saving} />
         <span>

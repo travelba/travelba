@@ -1,5 +1,4 @@
 import type { ZodError } from "zod";
-import { travelerNeedsHousehold, type LinkedTraveler } from "./household";
 import { isExtraItemKind } from "./types";
 
 export type BookingIssue = { field: string; message: string };
@@ -84,7 +83,6 @@ export function collectExtractIssues(
   extract: {
     document_status?: string | null;
     items?: { title?: string | null; kind?: string | null }[];
-    travelers?: LinkedTraveler[];
   },
   opts: { customerId?: string; requireCustomer?: boolean } = {}
 ): BookingIssue[] {
@@ -105,16 +103,6 @@ export function collectExtractIssues(
         message: `Carte ${index + 1} : le titre est obligatoire.`,
       });
     }
-  });
-  (extract.travelers || []).forEach((traveler, index) => {
-    if (!travelerNeedsHousehold(traveler)) return;
-    const name = [traveler.first_name, traveler.last_name].filter(Boolean).join(" ").trim();
-    issues.push({
-      field: `travelers.${index}`,
-      message: name
-        ? `${name} n’est pas dans le foyer. Rattachez-le à un voyageur du compte, ou ajoutez-le d’abord sur la fiche client.`
-        : `Voyageur ${index + 1} : rattachez une personne du foyer.`,
-    });
   });
   return issues;
 }

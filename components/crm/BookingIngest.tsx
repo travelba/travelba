@@ -14,7 +14,15 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { bookingTotalFromItems } from "@/lib/crm/bookings";
+import {
+  passengersFromDetails,
+  peopleNotOnStay,
+  uniquePeople,
+} from "@/lib/crm/document-passengers";
+import type { PersonName } from "@/lib/crm/person-match";
 import { sortItemsByOrder } from "@/lib/crm/carnet";
+import { formatMoney } from "@/lib/crm/money";
 import { customerFullName, type CrmCompanion, type CrmCustomer } from "@/lib/crm/types";
 import { DateFrInput, Field, fieldControlClass } from "@/components/crm/fields";
 import { IssuesList } from "@/components/crm/IssuesList";
@@ -216,11 +224,13 @@ export function BookingIngest({
   const [fetchedCompanions, setFetchedCompanions] = useState<CrmCompanion[]>([]);
   const [warnings, setWarnings] = useState<IngestWarning[]>([]);
   const [extract, setExtract] = useState<BookingExtract | null>(null);
+  const [seenInDocuments, setSeenInDocuments] = useState<PersonName[]>([]);
   const [customerId, setCustomerId] = useState("");
   const selectedCustomer = customers.find((row) => row.id === customerId) || null;
   const holder = householdHolder || selectedCustomer;
   const companions = householdCompanions.length ? householdCompanions : fetchedCompanions;
   const household: HouseholdMember[] = holder ? householdMembers(holder, companions) : [];
+  const documentChoices = peopleNotOnStay(seenInDocuments, extract?.travelers || []);
 
   useEffect(() => {
     if (mode !== "create" || !customerId) {
@@ -397,6 +407,13 @@ export function BookingIngest({
           }
         }
         if (event.event === "done") {
+          const incomingPeople = uniquePeople([
+            ...(event.extract.travelers || []),
+            ...(event.extract.items || []).flatMap((item) =>
+              passengersFromDetails(item.details as Record<string, unknown> | null)
+            ),
+          ]);
+          setSeenInDocuments((prev) => uniquePeople([...prev, ...incomingPeople]));
           setExtract((prev) => {
             const incoming = {
               ...emptyBookingExtract(),
@@ -447,7 +464,13 @@ export function BookingIngest({
       abortRef.current = controller;
       const uploaded = await uploadSlots(slots, controller.signal);
       const body = new FormData();
-      body.set("extract", JSON.stringify(extract));
+      body.set(
+        "extract",
+        JSON.stringify({
+          ...extract,
+          total_amount: bookingTotalFromItems(extract.items || []),
+        })
+      );
       body.set("customer_id", customerId);
       body.set("batch_id", batchId);
       body.set(
@@ -470,6 +493,7 @@ export function BookingIngest({
         throw new Error(json.error || "Enregistrement impossible");
       }
       setExtract(null);
+      setSeenInDocuments([]);
       setWarnings([]);
       for (const slot of slots) {
         if (slot.previewUrl) URL.revokeObjectURL(slot.previewUrl);
@@ -751,16 +775,12 @@ export function BookingIngest({
               />
             </Field>
             <Field
-              label="Prix vendu (total)"
-              hint="Prérempli depuis les documents. Corrigez si le prix vendu diffère."
+              label="Montant du séjour"
+              hint="Somme des prix vendus de chaque carte. Saisissez le prix sur la carte, pas ici."
             >
-              <input
-                type="number"
-                step="0.01"
-                value={extract.total_amount ?? ""}
-                onChange={(e) => patch("total_amount", e.target.value === "" ? null : Number(e.target.value))}
-                className={fieldControlClass}
-              />
+              <p className={`${fieldControlClass} bg-[#f7f6f2] font-semibold text-[var(--admin-navy)]`}>
+                {formatMoney(bookingTotalFromItems(extract.items || []), extract.currency || "EUR")}
+              </p>
             </Field>
             <Field label="Devise">
               <input
@@ -839,14 +859,23 @@ export function BookingIngest({
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="font-display font-bold text-[var(--admin-navy)]">Voyageurs du foyer</p>
-              {household.length ? (
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-display font-bold text-[var(--admin-navy)]">Voyageurs</p>
+              {household.length || documentChoices.length ? (
                 <select
                   className={`${fieldControlClass} max-w-[16rem]`}
                   value=""
                   onChange={(event) => {
                     const key = event.target.value;
+                    if (key.startsWith("doc:")) {
+                      const person = documentChoices[Number(key.slice(4))];
+                      if (!person) return;
+                      patch("travelers", [
+                        ...extract.travelers,
+                        { first_name: person.first_name, last_name: person.last_name },
+                      ]);
+                      return;
+                    }
                     const person = household.find((row) => row.key === key);
                     if (!person) return;
                     patch("travelers", [
@@ -861,11 +890,24 @@ export function BookingIngest({
                   }}
                 >
                   <option value="">Ajouter…</option>
-                  {household.map((person) => (
-                    <option key={person.key} value={person.key}>
-                      {person.label}
-                    </option>
-                  ))}
+                  {documentChoices.length ? (
+                    <optgroup label="Dans les documents">
+                      {documentChoices.map((person, index) => (
+                        <option key={`doc-${person.first_name}-${person.last_name}`} value={`doc:${index}`}>
+                          {[person.first_name, person.last_name].filter(Boolean).join(" ")}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
+                  {household.length ? (
+                    <optgroup label="Foyer">
+                      {household.map((person) => (
+                        <option key={person.key} value={person.key}>
+                          {person.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
                 </select>
               ) : (
                 <p className="text-xs text-muted">Choisissez un client pour voir le foyer.</p>
@@ -889,7 +931,7 @@ export function BookingIngest({
                       linked ? "bg-[var(--admin-sky)]" : "bg-[var(--admin-peach)]"
                     }`}
                   >
-                    {traveler.is_account_holder ? "Titulaire" : linked ? "Foyer" : unknown ? "À rattacher" : "Placeholder"}
+                    {traveler.is_account_holder ? "Titulaire" : linked ? "Foyer" : unknown ? "Document" : "Placeholder"}
                   </span>
                   <select
                     className={`${fieldControlClass} max-w-[14rem]`}

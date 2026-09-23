@@ -5,16 +5,12 @@ import { useRouter } from "next/navigation";
 import type { CrmBookingTraveler, CrmTravelDocument } from "@/lib/crm/types";
 import { DOC_TYPE_LABELS } from "@/lib/crm/types";
 import {
+  isSameDocumentPiece,
   reusableDocumentsForTraveler,
   travelerDisplayName,
   tripDocumentsForTraveler,
 } from "@/lib/crm/trip-documents";
 import { formatDateFr } from "@/lib/crm/money";
-
-function isSameDoc(a: CrmTravelDocument, b: CrmTravelDocument) {
-  if (a.storage_path && b.storage_path && a.storage_path === b.storage_path) return true;
-  return Boolean(a.number && a.number === b.number && a.doc_type === b.doc_type);
-}
 
 export function TripPassportPicker({
   variant,
@@ -39,7 +35,7 @@ export function TripPassportPicker({
   async function attach(traveler: CrmBookingTraveler, source: CrmTravelDocument) {
     const existing = tripDocumentsForTraveler(documents, traveler)[0];
     const key = `${traveler.id}-${source.id}`;
-    if (existing && !isSameDoc(existing, source) && pending !== key) {
+    if (existing && !isSameDocumentPiece(existing, source) && pending !== key) {
       setPending(key);
       setWarn(
         `Une pièce est déjà cochée pour ${travelerDisplayName(traveler)}. Recochez pour la remplacer.`
@@ -125,7 +121,7 @@ export function TripPassportPicker({
                 )
               ) : (
                 choices.map((doc, index) => {
-                  const actuallyChecked = tripDocs.some((row) => isSameDoc(row, doc));
+                  const actuallyChecked = tripDocs.some((row) => isSameDocumentPiece(row, doc));
                   const label = [
                     DOC_TYPE_LABELS[doc.doc_type],
                     doc.number,

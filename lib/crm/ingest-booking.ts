@@ -42,7 +42,6 @@ import {
   applyRoomGuestLabels,
   attachTravelerToHousehold,
   householdMembers,
-  travelerIsLinked,
 } from "@/lib/crm/household";
 import { isPlaceholderTraveler, sameRecordedTraveler } from "@/lib/crm/person-match";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
@@ -300,6 +299,17 @@ async function upsertItemsAndTravelers(
         flight_number: typeof details.flight_number === "string" ? details.flight_number : null,
       });
       if (iata) details.airline_iata = iata;
+      const named = (extract.travelers || []).filter(
+        (row) =>
+          (row.first_name || row.last_name) &&
+          !isPlaceholderTraveler(row.first_name, row.last_name)
+      );
+      if (named.length && !Array.isArray(details.passengers)) {
+        details.passengers = named.map((row) => ({
+          first_name: row.first_name,
+          last_name: row.last_name,
+        }));
+      }
     }
     if (kind === "hotel" && Array.isArray(details.rooms)) {
       details.rooms = applyRoomGuestLabels(
@@ -400,7 +410,6 @@ async function upsertItemsAndTravelers(
     const last = emptyToNull(linked.last_name);
     if (!first && !last) continue;
     if (skipPlaceholders && isPlaceholderTraveler(first, last)) continue;
-    if (!isPlaceholderTraveler(first, last) && !travelerIsLinked(linked)) continue;
     const recorded = { first_name: first, last_name: last };
     if (existingTravelers.some((row) => sameRecordedTraveler(row, recorded))) continue;
     const companion =
@@ -452,7 +461,7 @@ export async function persistNewBookingFromExtract(opts: {
     emptyToNull(extract.title) ||
     emptyToNull(extract.destination) ||
     "Voyage";
-  const totalAmount = sellingTotalFromExtract(extract) ?? 0;
+  const totalAmount = sellingTotalFromExtract(extract);
   const status = bookingStatusFromExtract(extract, opts.status);
   const { data, error } = await admin
     .from("crm_bookings")
@@ -573,10 +582,6 @@ export async function applyExtractToBooking(opts: {
   if (!booking.destination && opts.extract.destination) patch.destination = opts.extract.destination;
   if (!booking.start_date && opts.extract.start_date) patch.start_date = opts.extract.start_date;
   if (!booking.end_date && opts.extract.end_date) patch.end_date = opts.extract.end_date;
-  const proposedTotal = sellingTotalFromExtract(opts.extract);
-  if (!Number(booking.total_amount) && proposedTotal) {
-    patch.total_amount = proposedTotal;
-  }
   if (booking.status === "draft" && opts.extract.document_status === "confirmed") {
     patch.status = "confirmed";
   }

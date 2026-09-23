@@ -83,19 +83,37 @@ test("companion docs never attach to the account holder", () => {
   assert.deepEqual(tripDocCoverage([holder, companion], docs), { ready: 2, total: 2 });
 });
 
-test("a previous trip passport can be reused on the next stay", () => {
+test("le coffre et la copie d’un séjour précédent ne font qu’une case", () => {
   const holder = traveler({ id: "t-new", booking_id: "b2" });
   const previous = doc({
     id: "maldives",
     booking_id: "b1",
     traveler_id: "t-old",
+    number: "22 DC 3713",
     created_at: "2025-01-01",
   });
-  const vault = doc({ id: "vault", created_at: "2024-01-01" });
+  const vault = doc({ id: "vault", number: "22DC3713", created_at: "2024-01-01" });
   const reusable = reusableDocumentsForTraveler([previous, vault], holder);
-  assert.equal(reusable[0]?.id, "maldives");
-  assert.equal(reusable.map((item) => item.id).includes("vault"), true);
+  assert.deepEqual(
+    reusable.map((item) => item.id),
+    ["vault"]
+  );
   assert.equal(tripDocumentsForTraveler([previous], holder).length, 0);
+});
+
+test("un séjour précédent sans coffre reste proposable", () => {
+  const holder = traveler({ id: "t-new", booking_id: "b2" });
+  const previous = doc({
+    id: "maldives",
+    booking_id: "b1",
+    traveler_id: "t-old",
+    number: "99ZZ",
+  });
+  const other = doc({ id: "renewed", number: "11AA", created_at: "2026-01-01" });
+  assert.deepEqual(
+    reusableDocumentsForTraveler([previous, other], holder).map((item) => item.id),
+    ["renewed", "maldives"]
+  );
 });
 
 test("un voyageur sans lien retrouve le passeport du coffre par le nom", () => {

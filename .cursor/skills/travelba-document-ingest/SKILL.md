@@ -20,7 +20,7 @@ Identité / MRZ : skill `travelba-identity` — **pas** ce dropzone.
 ## Contrat (non négociable)
 
 1. **Ne jamais inventer.** Absent = `null`. Pas de 15:00 / 12:00, pas de petit-déj, pas de franchise.
-2. **Prix extraits** : montant PDF/photo → `details.document_amount` (un par fichier). `item.amount` reste **null**. `total_amount` est **prérempli** (somme des documents) ; l’agent corrige le prix vendu. Enregistrer une confirmation écrit le montant du séjour **et** le débit ledger (`syncBookingLedger`). Pas une ligne « NET » fournisseur seule.
+2. **Prix extraits** : montant PDF/photo → `details.document_amount` (un par fichier). `item.amount` reste **null** tant que l’agent ne saisit pas le prix vendu de la carte. `total_amount` = **somme de ces prix vendus** (vol = unitaire × billets), jamais la somme des PDF. Enregistrer une confirmation écrit ce total **et** le débit ledger (`syncBookingLedger`). Pas une ligne « NET » fournisseur seule.
 3. **Pas de PAN / CVC / fidélité / paiement.** `redactIngestText` avant le modèle.
 4. **Un séjour par dépôt.** Fichiers hétérogènes : le plus complet + `notes_client`.
 5. **Relecture humaine** puis Enregistrer (`visible_to_client=false`).
@@ -75,6 +75,7 @@ Pièces iOS parfois absentes du VM : le dire, demander le trombone desktop, ou l
 | Passion Collection | Devis, NET, options | quote — **pas** de NET |
 | Toucan Discovery | étapes du cadre + excursions | `activity` — les étapes **ne sont pas** des hôtels |
 | Maeva / Pierre & Vacances | maeva.com + N° DE DOSSIER / VOS OPTIONS | `parseMaevaStay` — **1 hôtel** + forfaits / matériel / cours (`activity`) + assurance. Réf. dossier **sur l’hôtel seulement**. Dates only. Pas de frais de dossier, PAN, totaux à 0 |
+| Transavia | transavia.com, N° de réservation, Passagers | `parseTransaviaConfirmation` — **1 vol / segment**, passagers imprimés → `travelers` (une fois). Orly `ORY`, Tel Aviv `TLV`. Heure de départ / arrivée seulement. Total « services additionnels » ≠ prix des billets |
 | Passeport | MRZ `P<FRA` | **identité**, pas une résa |
 
 IATA **8 chiffres** (20287864, 20255270, 96020293, 20289905) = code agence, **jamais** un PNR.
@@ -91,7 +92,7 @@ IATA **8 chiffres** (20287864, 20255270, 96020293, 20289905) = code agence, **ja
 - « Scan for check-in » ≠ hôtel. Carte fidélité : masquer, ne pas extraire.
 - Email agence ≠ `customer_email`.
 
-Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Colón `BOC`, Enrique Malek `DAV`, Tocumen `PTY`, Charles-de-Gaulle `CDG`, Genève `GVA`, Heathrow `LHR`, Marseille Provence `MRS`. **Nouveau nom d’aéroport sans IATA → une entrée + un test**, pas un guess LLM.
+Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Colón `BOC`, Enrique Malek `DAV`, Tocumen `PTY`, Charles-de-Gaulle `CDG`, Orly `ORY`, Tel Aviv `TLV`, Genève `GVA`, Heathrow `LHR`, Marseille Provence `MRS`. **Nouveau nom d’aéroport sans IATA → une entrée + un test**, pas un guess LLM.
 
 ## Hôtel
 
@@ -111,6 +112,7 @@ Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Co
 - SIXT : `kind=car`, n° résa, prise/restitution (`18 Septembre 2026 at 16:00`), `vehicle` = catégorie. **Pas** CHF TTC, caution, protection, plein.
 - Train / bateau : horaires **écrits**. Croisière = une carte, pas un jour par port.
 - Maeva / Pierre & Vacances : **1 hôtel** (nom d’établissement, ville = station) + cartes `activity` (forfaits, matériel, cours) et `insurance`. `included` = lignes d’option imprimées. Dates **sans heure**. Réf. dossier **uniquement** sur l’hôtel. Pas de frais de dossier, totaux à 0, PAN.
+- Transavia : passagers `MR` / `MRS` / `CHD` → voyageurs du dossier, casse normale, dédupliqués aller/retour. On les enregistre même s’ils ne sont pas encore dans le foyer. « Début de l’enregistrement » ≠ horaire. Bagage soute payant ≠ inclus. `document_amount` null si seul le total des services additionnels est imprimé.
 - `YANIK` / `YANNICK` = même personne.
 
 ## Fusion (`item-match.ts`)
@@ -126,6 +128,7 @@ Réimport même clé = **remplace** la carte. Dans un même extract, 10 duplicat
 ## Voyageurs / titre
 
 - Noms imprimés, casse normale. « 2 adults » sans noms → Adulte 1 / Adulte 2.
+- Ces passagers restent proposés dans **Ajouter → Dans les documents**, même s’ils ne sont pas dans le foyer. Les retirer de la liste ne les efface pas du document.
 - Pas d’enfant sans nom.
 - `title` séjour / `destination` : villes séparées par ` · `. **Ville d’arrivée** (Avoriaz, Marrakech), pas Paris / CDG même si le PDF commence par le départ. Title d’une **carte hôtel** = nom d’établissement. Couverture = cette arrivée — skill `travelba-carnet`.
 
@@ -133,7 +136,7 @@ Réimport même clé = **remplace** la carte. Dans un même extract, 10 duplicat
 
 - Dropzone : progression par fichier, Annuler, retry des erreurs, succès partiel. Filtre cartes par `source_file_name`.
 - Sous-fiche par `kind`. Bandeau devis. Bandeau **À vérifier** (`needs_review`) : on **enregistre**, on ne refuse pas tout le lot.
-- **Prix vendu (total)** prérempli depuis les PDF. `parseExtractPayload` ne l’efface plus.
+- **Montant du séjour** = somme des prix vendus des cartes, affiché en lecture seule. `parseExtractPayload` ne copie pas le PDF dans `item.amount`.
 - Hôtel : `normalizeHotelExtractItem` force `title = hotel_name`.
 - Confirmation → dossier **confirmé** (inédit client) + `total_amount` + transactions. Devis → `quoted` sans débit.
 - Cartes manuelles OK. Drag `sort_order` après persist.

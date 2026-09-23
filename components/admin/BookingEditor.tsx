@@ -16,7 +16,9 @@ import {
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { bookingCoverUrl } from "@/lib/crm/covers";
-import { jMinusLabel } from "@/lib/crm/money";
+import { formatMoney, jMinusLabel } from "@/lib/crm/money";
+import { bookingTotalFromItems } from "@/lib/crm/bookings";
+import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
 import { documentLabel } from "@/lib/crm/carnet";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { CoverPhoto } from "@/components/crm/CoverPhoto";
@@ -59,6 +61,10 @@ export function BookingEditor({
   const [busy, setBusy] = useState<"idle" | "save" | "publish">("idle");
   const [flash, setFlash] = useState<string | null>(null);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
+  const documentChoices = peopleNotOnStay(
+    items.flatMap((item) => passengersFromDetails(item.details)),
+    travelers
+  );
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -121,13 +127,19 @@ export function BookingEditor({
     const key = String(fd.get("party_key") || "");
     const isHolder = key === "holder";
     const companionId = key.startsWith("companion:") ? key.slice("companion:".length) : "";
+    const documentIndex = key.startsWith("doc:") ? Number(key.slice(4)) : -1;
+    const fromDocument = documentChoices[documentIndex];
     const res = await fetch(`/api/admin/bookings/${booking.id}/travelers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        companion_id: companionId || null,
-        is_account_holder: isHolder,
-      }),
+      body: JSON.stringify(
+        fromDocument
+          ? { first_name: fromDocument.first_name, last_name: fromDocument.last_name }
+          : {
+              companion_id: companionId || null,
+              is_account_holder: isHolder,
+            }
+      ),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -267,15 +279,15 @@ export function BookingEditor({
           Retour
           <DateFrInput name="end_date" aria-label="Date de retour" defaultValue={booking.end_date || ""} className="rounded-xl border border-border px-3 py-2" />
         </label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-          Montant total (€)
-          <input name="total_amount" type="number" step="0.01" min="0" defaultValue={booking.total_amount} className="rounded-xl border border-border px-3 py-2" />
+        <div className="flex flex-col gap-1 text-xs font-semibold text-muted">
+          Montant du séjour
+          <p className="rounded-xl border border-border bg-[#f7f6f2] px-3 py-2 text-sm font-semibold text-[var(--admin-navy)]">
+            {formatMoney(bookingTotalFromItems(items), booking.currency)}
+          </p>
           <span className="font-normal text-muted">
-            {items.some((item) => Number(item.amount) > 0)
-              ? "Calculé depuis les prix vendus des cartes. Modifier le prix d’une carte met à jour le séjour."
-              : "Saisie manuelle, ou somme des prix vendus dès qu’une carte en a un."}
+            Somme des prix vendus de chaque carte. Le frais de billeterie n’est pas inclus.
           </span>
-        </label>
+        </div>
         <label className="flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-2">
           <input
             type="checkbox"
@@ -406,19 +418,30 @@ export function BookingEditor({
         ) : null}
         <form onSubmit={addTraveler} className="grid gap-2 sm:grid-cols-[1fr_auto]">
           <select name="party_key" required className={fieldControlClass}>
-            <option value="">Voyageur du foyer…</option>
-            {travelers.some((row) => row.is_account_holder) ? null : (
-              <option value="holder">
-                {holderName.first_name} {holderName.last_name} (titulaire)
-              </option>
-            )}
-            {companions
-              .filter((companion) => !travelers.some((row) => row.companion_id === companion.id))
-              .map((companion) => (
-                <option key={companion.id} value={`companion:${companion.id}`}>
-                  {companion.first_name} {companion.last_name}
+            <option value="">Ajouter un voyageur…</option>
+            {documentChoices.length ? (
+              <optgroup label="Dans les documents">
+                {documentChoices.map((person, index) => (
+                  <option key={`doc-${person.first_name}-${person.last_name}`} value={`doc:${index}`}>
+                    {[person.first_name, person.last_name].filter(Boolean).join(" ")}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            <optgroup label="Foyer">
+              {travelers.some((row) => row.is_account_holder) ? null : (
+                <option value="holder">
+                  {holderName.first_name} {holderName.last_name} (titulaire)
                 </option>
-              ))}
+              )}
+              {companions
+                .filter((companion) => !travelers.some((row) => row.companion_id === companion.id))
+                .map((companion) => (
+                  <option key={companion.id} value={`companion:${companion.id}`}>
+                    {companion.first_name} {companion.last_name}
+                  </option>
+                ))}
+            </optgroup>
           </select>
           <button className="admin-af-btn rounded-full px-3 py-2 text-sm">Ajouter</button>
         </form>
