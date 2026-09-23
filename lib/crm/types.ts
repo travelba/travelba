@@ -32,9 +32,10 @@ export const INGEST_ITEM_KINDS = [
   "chauffeur",
   "greeter",
   "visa",
+  "checkin",
 ] as const;
 
-export const BOOKING_ITEM_KINDS = [...INGEST_ITEM_KINDS, "expense", "checkin"] as const;
+export const BOOKING_ITEM_KINDS = [...INGEST_ITEM_KINDS, "expense"] as const;
 
 export type BookingItemKind = (typeof BOOKING_ITEM_KINDS)[number];
 
