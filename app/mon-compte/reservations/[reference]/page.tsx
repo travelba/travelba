@@ -105,20 +105,22 @@ export default async function ReservationDetailPage({ params }: Props) {
       <BookingHero
         booking={b}
         priority
-        className="min-h-[180px] rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]"
+        className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]"
       >
-        <div className="relative space-y-2 p-4 pb-5 pt-6">
+        <div className="absolute inset-0 flex flex-col justify-between p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <BookingStatusBadge label={BOOKING_STATUS_LABELS[b.status]} />
             <span className="rounded-full bg-black/35 px-3 py-1 text-[11px] font-bold backdrop-blur">
               {b.reference}
             </span>
           </div>
-          <h1 className="font-display text-[1.7rem] font-extrabold leading-tight">{headline}</h1>
-          {placeLine ? <p className="text-sm text-white/75">{placeLine}</p> : null}
-          <p className="text-sm text-white/75">
-            {formatDateFr(b.start_date)} — {formatDateFr(b.end_date)}
-          </p>
+          <div>
+            <h1 className="font-display text-[1.7rem] font-extrabold leading-tight">{headline}</h1>
+            {placeLine ? <p className="text-sm text-white/75">{placeLine}</p> : null}
+            <p className="text-sm text-white/75">
+              {formatDateFr(b.start_date)} — {formatDateFr(b.end_date)}
+            </p>
+          </div>
         </div>
       </BookingHero>
 

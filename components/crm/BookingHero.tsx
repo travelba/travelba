@@ -28,13 +28,14 @@ export function BookingHero({
   const alt = booking.destination || booking.title || label;
 
   return (
-    <div className={`relative flex flex-col overflow-hidden bg-[var(--admin-navy)] text-white ${className}`}>
-      <div className="relative min-h-0 flex-1">
+    <div className={`relative overflow-hidden bg-[var(--admin-navy)] text-white ${className}`}>
+      <div className={plain ? "absolute inset-0" : "relative h-60 w-full sm:h-72"}>
         {src ? (
           <CoverPhoto
             src={src}
             fallbackSrc={fallback}
             alt={credit ? `${alt}. ${credit}` : alt}
+            className="absolute inset-0 h-full w-full object-cover object-[center_30%]"
             priority={priority}
           />
         ) : null}
@@ -46,9 +47,9 @@ export function BookingHero({
           </div>
         ) : null}
         {plain ? null : (
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[var(--admin-navy)] via-[var(--admin-navy)]/45 to-black/10" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[var(--admin-navy)] via-[var(--admin-navy)]/35 to-transparent" />
         )}
-        {children ? <div className="relative h-full">{children}</div> : null}
+        {children ? <div className="absolute inset-0">{children}</div> : null}
       </div>
       {!plain && credit ? (
         <p className="shrink-0 truncate bg-black/40 px-3 py-1 text-[10px] leading-tight text-white/80">

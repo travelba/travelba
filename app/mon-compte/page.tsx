@@ -78,21 +78,25 @@ export default async function AccountHomePage() {
       </h1>
 
       {nextTrip ? (
-        <BookingHero booking={nextTrip} priority className="min-h-[220px] rounded-2xl shadow-xl">
-          <div className="flex min-h-[220px] flex-col justify-end gap-3 p-4">
-            {countdown ? (
-              <p className="w-fit rounded-full border border-[var(--admin-gold)]/55 bg-[#faf9f6]/95 px-3 py-1 text-[12px] font-bold text-[var(--admin-navy)]">
-                {countdown}
-                {countdown.startsWith("J") ? " avant l’envol" : ""}
-              </p>
-            ) : null}
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--admin-gold)]">
-                {formatDateRangeShort(nextTrip.start_date, nextTrip.end_date)}
-              </p>
-              <h2 className="mt-1 font-display text-2xl font-bold leading-tight">{tripName}</h2>
-              {tripPlace ? <p className="text-sm text-white/80">{tripPlace}</p> : null}
+        <article className="overflow-hidden rounded-2xl shadow-xl">
+          <BookingHero booking={nextTrip} priority>
+            <div className="absolute inset-x-0 bottom-0 space-y-2 p-4">
+              {countdown ? (
+                <p className="w-fit rounded-full border border-[var(--admin-gold)]/55 bg-[#faf9f6]/95 px-3 py-1 text-[12px] font-bold text-[var(--admin-navy)]">
+                  {countdown}
+                  {countdown.startsWith("J") ? " avant l’envol" : ""}
+                </p>
+              ) : null}
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--admin-gold)]">
+                  {formatDateRangeShort(nextTrip.start_date, nextTrip.end_date)}
+                </p>
+                <h2 className="mt-1 font-display text-2xl font-bold leading-tight">{tripName}</h2>
+                {tripPlace ? <p className="text-sm text-white/80">{tripPlace}</p> : null}
+              </div>
             </div>
+          </BookingHero>
+          <div className="space-y-3 bg-white p-4">
             {missingPassports ? (
               <Link
                 href={`${tripHref}#passeport`}
@@ -106,7 +110,7 @@ export default async function AccountHomePage() {
               <Icon name="arrow_forward" className="h-5 w-5" />
             </Link>
           </div>
-        </BookingHero>
+        </article>
       ) : (
         <article className="rounded-2xl border border-[var(--admin-gold)]/45 bg-white p-5 shadow-sm">
           <h2 className="font-display text-xl font-bold text-[var(--admin-navy)]">Aucun voyage planifié</h2>
