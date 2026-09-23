@@ -5,11 +5,14 @@ export const CHAUFFEUR_EUR = 150;
 export const GREETER_ADULT_EUR = 100;
 export const GREETER_CHILD_EUR = 25;
 export const VISA_EUR = 50;
+export const CHECKIN_EUR = 10;
 export const EXTRA_CHILD_AGE = 12;
 export const EXTRA_NOTICE_MS = 48 * 60 * 60 * 1000;
 
 export type ExtraKind = "chauffeur" | "greeter";
 export type ExtraLeg = "departure" | "arrival";
+export type ServicePlace = "home" | "hotel";
+export type OfferSlot = "before" | "after";
 
 export function isExtraKind(value: string | null | undefined): value is ExtraKind {
   return value === "chauffeur" || value === "greeter";
@@ -56,12 +59,37 @@ export function extraServiceLeg(item: { details?: Record<string, unknown> | null
   return isExtraLeg(String(value || "")) ? (value as ExtraLeg) : null;
 }
 
+export function isServicePlace(value: string | null | undefined): value is ServicePlace {
+  return value === "home" || value === "hotel";
+}
+
+/** Lieu du transfert. Les cartes déjà validées sans `place` gardent l’ancien sens : aller = domicile, retour = hôtel. */
+export function extraPlaceOf(item: {
+  kind?: string | null;
+  details?: Record<string, unknown> | null;
+}): ServicePlace | null {
+  const value = item.details?.place;
+  if (isServicePlace(typeof value === "string" ? value : "")) return value as ServicePlace;
+  if (item.kind !== "chauffeur") return null;
+  const leg = extraServiceLeg(item);
+  if (leg === "departure") return "home";
+  if (leg === "arrival") return "hotel";
+  return null;
+}
+
 export function findExtra(
   items: { kind?: string | null; details?: Record<string, unknown> | null }[],
   kind: ExtraKind,
-  leg: ExtraLeg
+  leg: ExtraLeg,
+  place?: ServicePlace | null
 ) {
-  return items.find((item) => item.kind === kind && extraServiceLeg(item) === leg) || null;
+  return (
+    items.find((item) => {
+      if (item.kind !== kind || extraServiceLeg(item) !== leg) return false;
+      if (kind !== "chauffeur" || place == null) return true;
+      return extraPlaceOf(item) === place;
+    }) || null
+  );
 }
 
 export function findVisaExtra<T extends { kind?: string | null }>(items: T[]) {
@@ -80,7 +108,24 @@ export function visaFeeAmount(travelerCount: number) {
 
 export function visaFeeTitle(travelerCount: number) {
   const n = visaPassengerCount(travelerCount);
-  return `Demande de Visa (${n} passager${n > 1 ? "s" : ""})`;
+  return `Obtention du visa (${n} passager${n > 1 ? "s" : ""})`;
+}
+
+export function checkinPassengerCount(travelerCount: number) {
+  return visaPassengerCount(travelerCount);
+}
+
+export function checkinFeeAmount(travelerCount: number) {
+  return checkinPassengerCount(travelerCount) * CHECKIN_EUR;
+}
+
+export function checkinFeeTitle(travelerCount: number) {
+  const n = checkinPassengerCount(travelerCount);
+  return `Enregistrement (${n} passager${n > 1 ? "s" : ""})`;
+}
+
+export function findCheckinExtra<T extends { kind?: string | null }>(items: T[]) {
+  return items.find((item) => item.kind === "checkin") || null;
 }
 
 export function ageOnDate(birthDate: string | null | undefined, at: Date) {
@@ -132,6 +177,7 @@ export function bookingHasFlight(
 }
 
 type ServiceFlightRow = {
+  id?: string;
   kind?: string | null;
   title?: string | null;
   start_at?: string | null;
@@ -178,6 +224,7 @@ export function matchedStay(items: ServiceFlightRow[], city?: string | null): St
 }
 
 export type ServiceFlightLeg = {
+  id: string;
   role: "outbound" | "inbound";
   leg: ExtraLeg;
   flightNumber: string | null;
@@ -192,12 +239,21 @@ export type ServiceFlightLeg = {
 export type ServiceOffer = {
   kind: ExtraKind;
   leg: ExtraLeg;
+  place: ServicePlace | null;
+  slot: OfferSlot;
+  flightId: string;
+  day: string;
   title: string;
   route: string;
   flightLine: string | null;
   airport: string | null;
   whenIso: string | null;
+  address: string | null;
 };
+
+export type JourneyRow<T> =
+  | { type: "item"; item: T }
+  | { type: "offer"; offer: ServiceOffer };
 
 function detailText(item: ServiceFlightRow, key: string) {
   const value = item.details?.[key];
@@ -226,8 +282,15 @@ function sortedFlights(items: ServiceFlightRow[]) {
     .sort((a, b) => String(a.start_at || "").localeCompare(String(b.start_at || "")));
 }
 
+function dayKey(iso: string | null | undefined) {
+  if (!iso) return null;
+  const day = iso.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null;
+}
+
 function toServiceLeg(item: ServiceFlightRow, role: "outbound" | "inbound"): ServiceFlightLeg {
   return {
+    id: item.id || role,
     role,
     leg: role === "outbound" ? "departure" : "arrival",
     flightNumber: detailText(item, "flight_number"),
@@ -266,41 +329,175 @@ function transferLine(leg: ServiceFlightLeg) {
     .join(" · ") || null;
 }
 
-export function serviceOffers(items: ServiceFlightRow[]): ServiceOffer[] {
+function offerBase(
+  leg: ServiceFlightLeg,
+  input: Pick<ServiceOffer, "kind" | "place" | "slot" | "day" | "route" | "flightLine" | "airport" | "whenIso" | "address">
+): ServiceOffer {
+  return {
+    kind: input.kind,
+    leg: leg.leg,
+    place: input.place,
+    slot: input.slot,
+    flightId: leg.id,
+    day: input.day,
+    title: leg.role === "outbound" ? "Aller" : "Retour",
+    route: input.route,
+    flightLine: input.flightLine,
+    airport: input.airport,
+    whenIso: input.whenIso,
+    address: input.address,
+  };
+}
+
+/** Propositions d’itinéraire : domicile aller/retour, hôtel s’il existe, greeter juste avant chaque vol. */
+export function itineraryOffers(items: ServiceFlightRow[]): ServiceOffer[] {
   const legs = serviceFlightLegs(items);
+  const outbound = legs.find((leg) => leg.role === "outbound");
+  const inbound = legs.find((leg) => leg.role === "inbound");
   const offers: ServiceOffer[] = [];
-  for (const leg of legs) {
-    const aller = leg.role === "outbound";
-    const departureAirport = serviceAirportLabel(leg.fromIata, leg.cityFrom);
-    const stay = aller ? null : matchedStay(items, leg.cityFrom);
-    const returnFrom = stay?.name || "Hébergement";
-    offers.push({
-      kind: "chauffeur",
-      leg: leg.leg,
-      title: aller ? "Aller" : "Retour",
-      route: aller
-        ? leg.fromIata
-          ? `Domicile → ${leg.fromIata}`
-          : "Domicile → aéroport"
-        : leg.fromIata
-          ? `${returnFrom} → ${leg.fromIata}`
-          : `${returnFrom} → aéroport`,
-      flightLine: transferLine(leg),
-      airport: departureAirport,
-      whenIso: transferPickupIso(leg.departAt),
-    });
-    const greet = serviceAirportLabel(leg.toIata, leg.cityTo);
-    offers.push({
-      kind: "greeter",
-      leg: leg.leg,
-      title: aller ? "Aller" : "Retour",
-      route: greet ? `Aéroport ${greet}` : "Aéroport",
-      flightLine: flightMomentLine(leg, "arrive"),
-      airport: greet,
-      whenIso: leg.arriveAt,
-    });
+
+  if (outbound) {
+    const departDay = dayKey(outbound.departAt);
+    const arriveDay = dayKey(outbound.arriveAt) || departDay;
+    const fromAirport = serviceAirportLabel(outbound.fromIata, outbound.cityFrom);
+    const toAirport = serviceAirportLabel(outbound.toIata, outbound.cityTo);
+    const stay = matchedStay(items, outbound.cityTo);
+    if (departDay) {
+      offers.push(
+        offerBase(outbound, {
+          kind: "chauffeur",
+          place: "home",
+          slot: "before",
+          day: departDay,
+          route: outbound.fromIata ? `Domicile → ${outbound.fromIata}` : "Domicile → aéroport",
+          flightLine: transferLine(outbound),
+          airport: fromAirport,
+          whenIso: transferPickupIso(outbound.departAt),
+          address: null,
+        })
+      );
+      offers.push(
+        offerBase(outbound, {
+          kind: "greeter",
+          place: null,
+          slot: "before",
+          day: departDay,
+          route: fromAirport ? `Aéroport ${fromAirport}` : "Aéroport",
+          flightLine: flightMomentLine(outbound, "depart"),
+          airport: fromAirport,
+          whenIso: outbound.departAt,
+          address: null,
+        })
+      );
+    }
+    if (stay && arriveDay) {
+      offers.push(
+        offerBase(outbound, {
+          kind: "chauffeur",
+          place: "hotel",
+          slot: "after",
+          day: arriveDay,
+          route: outbound.toIata ? `${outbound.toIata} → ${stay.name}` : `Aéroport → ${stay.name}`,
+          flightLine: flightMomentLine(outbound, "arrive"),
+          airport: toAirport,
+          whenIso: outbound.arriveAt,
+          address: stay.address,
+        })
+      );
+    }
   }
+
+  if (inbound) {
+    const departDay = dayKey(inbound.departAt);
+    const arriveDay = dayKey(inbound.arriveAt) || departDay;
+    const pickupIso = transferPickupIso(inbound.departAt);
+    const pickupDay = dayKey(pickupIso) || departDay;
+    const fromAirport = serviceAirportLabel(inbound.fromIata, inbound.cityFrom);
+    const toAirport = serviceAirportLabel(inbound.toIata, inbound.cityTo);
+    const stay = matchedStay(items, inbound.cityFrom);
+    if (stay && pickupDay) {
+      offers.push(
+        offerBase(inbound, {
+          kind: "chauffeur",
+          place: "hotel",
+          slot: "before",
+          day: pickupDay,
+          route: inbound.fromIata ? `${stay.name} → ${inbound.fromIata}` : `${stay.name} → aéroport`,
+          flightLine: transferLine(inbound),
+          airport: fromAirport,
+          whenIso: pickupIso,
+          address: stay.address,
+        })
+      );
+    }
+    if (departDay) {
+      offers.push(
+        offerBase(inbound, {
+          kind: "greeter",
+          place: null,
+          slot: "before",
+          day: departDay,
+          route: fromAirport ? `Aéroport ${fromAirport}` : "Aéroport",
+          flightLine: flightMomentLine(inbound, "depart"),
+          airport: fromAirport,
+          whenIso: inbound.departAt,
+          address: null,
+        })
+      );
+    }
+    if (arriveDay) {
+      offers.push(
+        offerBase(inbound, {
+          kind: "chauffeur",
+          place: "home",
+          slot: "after",
+          day: arriveDay,
+          route: inbound.toIata ? `${inbound.toIata} → Domicile` : "Aéroport → domicile",
+          flightLine: flightMomentLine(inbound, "arrive"),
+          airport: toAirport,
+          whenIso: inbound.arriveAt,
+          address: null,
+        })
+      );
+    }
+  }
+
   return offers;
+}
+
+export function offerKey(offer: Pick<ServiceOffer, "kind" | "leg" | "place">) {
+  return `${offer.kind}:${offer.leg}:${offer.place || "none"}`;
+}
+
+/** Cartes du jour : propositions collées au vol, sinon en tête de journée (arrivée la veille ou le lendemain). */
+export function composeItineraryDay<T extends { id: string }>(
+  day: string,
+  items: T[],
+  offers: ServiceOffer[]
+): JourneyRow<T>[] {
+  const used = new Set<ServiceOffer>();
+  const rows: JourneyRow<T>[] = [];
+  for (const item of items) {
+    for (const offer of offers) {
+      if (used.has(offer) || offer.day !== day || offer.flightId !== item.id || offer.slot !== "before") {
+        continue;
+      }
+      rows.push({ type: "offer", offer });
+      used.add(offer);
+    }
+    rows.push({ type: "item", item });
+    for (const offer of offers) {
+      if (used.has(offer) || offer.day !== day || offer.flightId !== item.id || offer.slot !== "after") {
+        continue;
+      }
+      rows.push({ type: "offer", offer });
+      used.add(offer);
+    }
+  }
+  const rest = offers
+    .filter((offer) => offer.day === day && !used.has(offer))
+    .map((offer) => ({ type: "offer" as const, offer }));
+  return [...rest, ...rows];
 }
 
 export function returnStay(items: ServiceFlightRow[]) {
@@ -347,6 +544,7 @@ export function extraHeadsFromBooking(opts: {
 export function extraItemPayload(input: {
   kind: ExtraKind;
   leg: ExtraLeg;
+  place?: ServicePlace | null;
   startAt: string | null;
   amount: number;
   address?: string | null;
@@ -354,6 +552,7 @@ export function extraItemPayload(input: {
   children?: number;
   visibleToClient: boolean;
 }) {
+  const place = input.kind === "chauffeur" ? input.place || null : null;
   return {
     kind: input.kind,
     title: extraTitle(input.kind, input.leg),
@@ -365,6 +564,7 @@ export function extraItemPayload(input: {
     include_in_ledger: true,
     details: {
       service_leg: input.leg,
+      place,
       pickup: input.kind === "chauffeur" ? input.address || null : null,
       adults: input.kind === "greeter" ? input.adults ?? 1 : null,
       children: input.kind === "greeter" ? input.children ?? 0 : null,
@@ -392,6 +592,26 @@ export function visaItemPayload(input: {
       extra: true,
       passengers,
       unit_eur: VISA_EUR,
+    },
+    visible_to_client: input.visibleToClient,
+  };
+}
+
+export function checkinItemPayload(input: { travelerCount: number; visibleToClient: boolean }) {
+  const passengers = checkinPassengerCount(input.travelerCount);
+  return {
+    kind: "checkin" as const,
+    title: checkinFeeTitle(passengers),
+    supplier: "Travelba",
+    confirmation_ref: null as string | null,
+    start_at: null as string | null,
+    end_at: null as string | null,
+    amount: checkinFeeAmount(passengers),
+    include_in_ledger: true,
+    details: {
+      extra: true,
+      passengers,
+      unit_eur: CHECKIN_EUR,
     },
     visible_to_client: input.visibleToClient,
   };

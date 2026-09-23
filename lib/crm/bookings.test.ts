@@ -176,6 +176,7 @@ test("stay total is always the sum of card selling prices", () => {
       { kind: "greeter", amount: 100 },
       { kind: "visa", amount: 100 },
       { kind: "expense", amount: 40 },
+      { kind: "checkin", amount: 20 },
     ]),
     800
   );

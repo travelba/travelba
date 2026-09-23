@@ -150,6 +150,13 @@ export default async function ReservationDetailPage({ params }: Props) {
         items={visibleItems}
         docs={visibleDocs}
         calendarBase={`/mon-compte/reservations/${b.reference}/agenda.ics`}
+        services={{
+          variant: "client",
+          travelers: party,
+          holder: customer,
+          companions: (companions || []) as CrmCompanion[],
+          whatsappHref: modifyHref,
+        }}
       />
 
       {extraDocs.length ? (

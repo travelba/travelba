@@ -640,6 +640,16 @@ export function BookingEditor({
             items={items}
             docs={documents}
             calendarBase={`/api/admin/bookings/${booking.id}/calendrier`}
+            services={
+              account
+                ? {
+                    variant: "admin",
+                    travelers,
+                    holder: account,
+                    companions,
+                  }
+                : null
+            }
           />
         </section>
       ) : null}

@@ -269,6 +269,10 @@ export function kindIcon(kind: string) {
       return "verified_user";
     case "expense":
       return "receipt_long";
+    case "checkin":
+      return "airplane_ticket";
+    case "visa":
+      return "description";
     default:
       return "event";
   }
