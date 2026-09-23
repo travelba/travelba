@@ -71,7 +71,7 @@ const detailsSchemaLoose = z
 
 /** Validation souple (saisie agent / save). */
 export const bookingExtractSchema = z.object({
-  document_status: z.enum(["confirmed", "quote", "identity"]).nullable().optional(),
+  document_status: z.enum(["confirmed", "quote", "identity", "cancelled"]).nullable().optional(),
   title: looseString,
   destination: looseString,
   start_date: looseString,
@@ -163,7 +163,7 @@ const detailsSchemaStrict = z.object({
 
 /** Schéma strict pour Output.object (OpenAI). */
 export const bookingExtractLlmSchema = z.object({
-  document_status: z.enum(["confirmed", "quote", "identity"]).nullable(),
+  document_status: z.enum(["confirmed", "quote", "identity", "cancelled"]).nullable(),
   title: strictString,
   destination: strictString,
   start_date: strictString,
@@ -288,7 +288,28 @@ export function bookingStatusFromExtract(
 ): BookingStatus {
   if (extract.document_status === "quote") return "quoted";
   if (extract.document_status === "confirmed") return "confirmed";
+  if (extract.document_status === "cancelled") return "cancelled";
   return fallback;
+}
+
+const CANCEL_POLICY =
+  /cancellation policy|free cancellation|conditions d['’]annulation|must be cancelled|annuler ma r[eé]servation|modifier ma r[eé]servation/i;
+
+const CANCEL_EVENT =
+  /\b(booking|reservation|r[eé]servation)\s+(has been\s+|was\s+|is\s+)?cancell?ed\b|\bcancellation confirmation\b|\bannulation confirm[eé]e\b|a [eé]t[eé] annul[eée]e?\b|\bcancell?ed (booking|reservation)\b|\byour booking (has been|was) cancell?ed\b|\bbooking cancelled\b|\breservation cancelled\b/i;
+
+/** Vrai mail d’annulation — pas une politique « free cancellation ». */
+export function detectCancellationDocument(text: string | null | undefined) {
+  const raw = String(text || "");
+  if (!raw.trim()) return false;
+  if (CANCEL_EVENT.test(raw)) return true;
+  if (CANCEL_POLICY.test(raw)) return false;
+  return /\bannul(?:ation|é|ee|ée)\b/i.test(raw) && /\b(r[eé]servation|booking|confirmation)\b/i.test(raw);
+}
+
+export function isCancellationExtract(extract: Pick<BookingExtract, "document_status" | "title" | "notes_client">) {
+  if (extract.document_status === "cancelled") return true;
+  return detectCancellationDocument(`${extract.title || ""}\n${extract.notes_client || ""}`);
 }
 
 /** Carte hôtel : title = nom d’établissement, ville dans details.city. */

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { emptyBookingExtract, type BookingExtract } from "./ingest-types";
 import {
+  cancellationApplyPlan,
   decideEmailIngestAction,
   destinationsOverlap,
   executeEmailIngestDecision,
@@ -14,6 +15,7 @@ import {
   suggestCustomerFromExtract,
   usableCustomerEmail,
 } from "./email-match";
+import { detectCancellationDocument, isCancellationExtract } from "./ingest-types";
 
 type Cust = {
   id: string;
@@ -427,6 +429,58 @@ describe("mergeBookingSuggestions + decideEmailIngestAction", () => {
     if (decision.kind === "create_customer") assert.equal(decision.email, null);
   });
 
+  it("annulation + voyage unique → apply (pas de create)", () => {
+    const decision = decideEmailIngestAction({
+      extract: extractWith({
+        document_status: "cancelled",
+        destination: "Tel Aviv",
+        start_date: "2026-12-14",
+        customer_first_name: "Simon",
+        customer_last_name: "Albilla",
+      }),
+      suggestedCustomerId: "c-alb",
+      suggestedBookingId: "b-tlv",
+      candidates: [
+        {
+          customer_id: "c-alb",
+          booking_id: "b-tlv",
+          label: "TB-2026-0033 — Tel Aviv",
+          reason: "Nom, destination et dates",
+          score: 88,
+        },
+      ],
+    });
+    assert.deepEqual(decision, {
+      kind: "apply",
+      bookingId: "b-tlv",
+      customerId: "c-alb",
+    });
+  });
+
+  it("annulation sans voyage → review (pas de create)", () => {
+    const decision = decideEmailIngestAction({
+      extract: extractWith({
+        document_status: "cancelled",
+        customer_first_name: "Léa",
+        customer_last_name: "Bernard",
+        destination: "Lisbonne",
+        customer_email: "lea.bernard@example.com",
+      }),
+      suggestedCustomerId: "c-new",
+      suggestedBookingId: null,
+      candidates: [
+        {
+          customer_id: "c-new",
+          booking_id: null,
+          label: "Léa Bernard",
+          reason: "Nom et prénom",
+          score: 92,
+        },
+      ],
+    });
+    assert.equal(decision.kind, "review");
+  });
+
   it("document d’identité → review", () => {
     const decision = decideEmailIngestAction({
       extract: extractWith({
@@ -525,5 +579,62 @@ describe("executeEmailIngestDecision", () => {
       }
     );
     assert.equal(result, null);
+  });
+});
+
+describe("annulation extract", () => {
+  it("détecte un mail d’annulation, pas une politique", () => {
+    assert.equal(detectCancellationDocument("Booking cancelled for Dan Tel Aviv Hotel"), true);
+    assert.equal(detectCancellationDocument("Your reservation has been cancelled."), true);
+    assert.equal(detectCancellationDocument("Annulation confirmée — réservation 38181"), true);
+    assert.equal(
+      detectCancellationDocument("Free cancellation before 23:59 on 8 August 2026"),
+      false
+    );
+    assert.equal(
+      detectCancellationDocument("Cancellation Policy : Reservation must be cancelled 48 hours prior"),
+      false
+    );
+    assert.equal(isCancellationExtract(extractWith({ document_status: "cancelled" })), true);
+    assert.equal(isCancellationExtract(extractWith({ document_status: "confirmed" })), false);
+  });
+
+  it("plan : hôtel unique → annule le dossier ; vols restants → masque l’hôtel seulement", () => {
+    const hotelOnly = cancellationApplyPlan(
+      extractWith({
+        document_status: "cancelled",
+        items: [hotelItem({ confirmation_ref: "38181SH005103", title: "Dan Tel Aviv Hotel" })],
+      }),
+      [
+        {
+          id: "i-hotel",
+          kind: "hotel",
+          confirmation_ref: "38181SH005103",
+          title: "Dan Tel Aviv Hotel",
+          start_at: "2026-12-14",
+        },
+      ]
+    );
+    assert.deepEqual(hotelOnly.itemIds, ["i-hotel"]);
+    assert.equal(hotelOnly.cancelBooking, true);
+
+    const withFlights = cancellationApplyPlan(
+      extractWith({
+        document_status: "cancelled",
+        items: [hotelItem({ confirmation_ref: "38181SH005103", title: "Dan Tel Aviv Hotel" })],
+      }),
+      [
+        { id: "i-hotel", kind: "hotel", confirmation_ref: "38181SH005103", title: "Dan Tel Aviv" },
+        { id: "i-fly", kind: "flight", confirmation_ref: "T8TNGL", title: "Paris → Tel Aviv" },
+      ]
+    );
+    assert.deepEqual(withFlights.itemIds, ["i-hotel"]);
+    assert.equal(withFlights.cancelBooking, false);
+
+    const stayLevel = cancellationApplyPlan(extractWith({ document_status: "cancelled" }), [
+      { id: "i-hotel", kind: "hotel", confirmation_ref: "ABC", title: "Hôtel" },
+    ]);
+    assert.deepEqual(stayLevel.itemIds, []);
+    assert.equal(stayLevel.cancelBooking, true);
   });
 });

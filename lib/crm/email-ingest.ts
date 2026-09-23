@@ -20,6 +20,8 @@ import {
   isAllowedIngestType,
   MAX_INGEST_BYTES,
   MAX_INGEST_FILES,
+  detectCancellationDocument,
+  isCancellationExtract,
   parseExtractPayloadSafe,
   type BookingExtract,
   type IngestWarning,
@@ -36,6 +38,7 @@ import {
   usableCustomerEmail,
 } from "@/lib/crm/email-match";
 import {
+  applyCancellationToBooking,
   applyExtractToBooking,
   persistNewBookingFromExtract,
 } from "@/lib/crm/ingest-booking";
@@ -286,13 +289,21 @@ async function autoApplyEmailIngest(
   try {
     const result = await executeEmailIngestDecision(decision, {
       apply: (bookingId, customerId) =>
-        applyExtractToBooking({
-          bookingId,
-          customerId,
-          extract,
-          files,
-          visibleToClient: false,
-        }),
+        isCancellationExtract(extract)
+          ? applyCancellationToBooking({
+              bookingId,
+              customerId,
+              extract,
+              files,
+              visibleToClient: false,
+            })
+          : applyExtractToBooking({
+              bookingId,
+              customerId,
+              extract,
+              files,
+              visibleToClient: false,
+            }),
       persist: (customerId) =>
         persistNewBookingFromExtract({
           customerId,
@@ -351,6 +362,12 @@ export async function matchAndStoreExtract(
 export async function rematchEmailIngestRow(row: CrmEmailIngest) {
   if (!row.extract) throw new Error("Extract introuvable");
   const extract = parseExtractPayloadSafe(row.extract);
+  if (
+    extract.document_status !== "identity" &&
+    detectCancellationDocument(`${row.subject || ""}\n${extract.title || ""}\n${extract.notes_client || ""}`)
+  ) {
+    extract.document_status = "cancelled";
+  }
   const admin = createServiceClient();
   return matchAndStoreExtract(
     admin,
@@ -449,6 +466,12 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
   }
 
   const { extract, warnings } = await extractBookingFromPrepared(prepared);
+  if (
+    extract.document_status !== "identity" &&
+    detectCancellationDocument(`${message.subject || ""}\n${body}`)
+  ) {
+    extract.document_status = "cancelled";
+  }
   await admin.from("crm_email_ingest").update(basePatch).eq("id", row.id);
   await matchAndStoreExtract(admin, row.id, extract, warnings, stored);
 }

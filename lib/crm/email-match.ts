@@ -1,4 +1,5 @@
-import type { BookingExtract } from "@/lib/crm/ingest-types";
+import { isCancellationExtract, type BookingExtract } from "@/lib/crm/ingest-types";
+import { findMatchingItem } from "@/lib/crm/item-match";
 import {
   firstNamesMatch,
   foldName,
@@ -6,13 +7,14 @@ import {
   lastNamesMatch,
 } from "@/lib/crm/person-match";
 import { siteConfig } from "@/lib/site";
-import type {
-  CrmBooking,
-  CrmBookingItem,
-  CrmCustomer,
-  EmailIngestCandidate,
+import {
+  countsAsCarnetCard,
+  customerFullName,
+  type CrmBooking,
+  type CrmBookingItem,
+  type CrmCustomer,
+  type EmailIngestCandidate,
 } from "@/lib/crm/types";
-import { customerFullName } from "@/lib/crm/types";
 import { normalizeMatchText } from "@/lib/crm/revolut-match";
 
 type CustomerLite = Pick<
@@ -523,12 +525,60 @@ export type EmailIngestSuggestionInput = {
  * Décide du geste automatique : rattacher, créer, ou laisser en relecture.
  * Ambiguïté (plusieurs voyages au même score fort) → review.
  */
+export type CancellationApplyPlan = {
+  cancelBooking: boolean;
+  itemIds: string[];
+};
+
+/** Items à masquer ; dossier annulé s’il ne reste plus de carte carnet, ou sans item ciblé. */
+export function cancellationApplyPlan(
+  extract: BookingExtract,
+  items: {
+    id: string;
+    kind: string;
+    confirmation_ref?: string | null;
+    start_at?: string | null;
+    title?: string | null;
+    details?: Record<string, unknown> | null;
+  }[]
+): CancellationApplyPlan {
+  const remaining = [...items];
+  const itemIds: string[] = [];
+  for (const incoming of extract.items || []) {
+    const hit = findMatchingItem(remaining, incoming);
+    if (!hit) continue;
+    itemIds.push(hit.id);
+    const idx = remaining.findIndex((row) => row.id === hit.id);
+    if (idx >= 0) remaining.splice(idx, 1);
+  }
+  const leftoverCards = remaining.filter((row) => countsAsCarnetCard(row.kind));
+  const cancelBooking = itemIds.length === 0 || leftoverCards.length === 0;
+  return { cancelBooking, itemIds: [...new Set(itemIds)] };
+}
+
 export function decideEmailIngestAction(input: EmailIngestSuggestionInput): EmailIngestDecision {
   const { extract } = input;
   if (extract.document_status === "identity") return { kind: "review" };
 
   const bookingCandidates = input.candidates.filter((row) => row.booking_id);
   const topBooking = [...bookingCandidates].sort((a, b) => b.score - a.score)[0];
+  if (isCancellationExtract(extract)) {
+    if (input.suggestedBookingId) {
+      const chosen =
+        bookingCandidates.find((row) => row.booking_id === input.suggestedBookingId) ||
+        topBooking;
+      const customerId = chosen?.customer_id || input.suggestedCustomerId;
+      if (customerId) {
+        return {
+          kind: "apply",
+          bookingId: input.suggestedBookingId,
+          customerId,
+        };
+      }
+    }
+    return { kind: "review" };
+  }
+
   if (input.suggestedBookingId) {
     const chosen =
       bookingCandidates.find((row) => row.booking_id === input.suggestedBookingId) || topBooking;

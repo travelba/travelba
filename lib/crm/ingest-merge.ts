@@ -123,8 +123,12 @@ export function mergeFileExtracts(results: FileExtractResult[]): {
       .map((row) => row.name)
   );
   const hasQuote = quoteNames.size > 0;
+  const hasCancelled = bookingRows.some((row) => row.extract.document_status === "cancelled");
   const hasConfirmed = bookingRows.some(
-    (row) => row.family !== "quote" && row.extract.document_status !== "quote"
+    (row) =>
+      row.family !== "quote" &&
+      row.extract.document_status !== "quote" &&
+      row.extract.document_status !== "cancelled"
   );
 
   let items: BookingExtract["items"] = [];
@@ -166,7 +170,11 @@ export function mergeFileExtracts(results: FileExtractResult[]): {
 
   const merged: BookingExtract = {
     ...emptyBookingExtract(),
-    document_status: hasQuote && !hasConfirmed ? "quote" : "confirmed",
+    document_status: hasCancelled
+      ? "cancelled"
+      : hasQuote && !hasConfirmed
+        ? "quote"
+        : "confirmed",
     title,
     destination,
     currency: currency || "EUR",
