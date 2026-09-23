@@ -206,7 +206,7 @@ export default async function AdminHomePage() {
             href={`/admin/reservations/${featured.id}`}
             className="admin-af-card relative block overflow-hidden rounded-2xl"
           >
-            <BookingHero booking={featured} priority className="h-44 sm:h-52">
+            <BookingHero booking={featured} priority>
               <div className="absolute inset-0 flex flex-col justify-between p-5 text-white">
                 <div className="flex items-start justify-between gap-3">
                   <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">
