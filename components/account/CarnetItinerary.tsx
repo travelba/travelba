@@ -343,6 +343,12 @@ export function CarnetItinerary({
     );
   }
 
+  const coveredExtraIds = new Set(
+    offers.flatMap((offer) => {
+      const row = findExtra(items, offer.kind, offer.leg, offer.place) as CrmBookingItem | null;
+      return row?.id ? [row.id] : [];
+    })
+  );
   const seenDays = new Set(days.map(([key]) => key));
   const offerDays = [...new Set(offers.map((offer) => offer.day).filter((day) => !seenDays.has(day)))];
   const timeline = [
@@ -366,15 +372,17 @@ export function CarnetItinerary({
             </p>
             {rows.map((row) =>
               row.type === "item" ? (
-                <CardBody
-                  key={`${row.item.id}-${day}`}
-                  item={row.item}
-                  currency={booking.currency}
-                  docs={docs}
-                  compactHotel={row.item.kind === "hotel"}
-                  calendarHref={itemHref(row.item.id)}
-                  day={day}
-                />
+                coveredExtraIds.has(row.item.id) ? null : (
+                  <CardBody
+                    key={`${row.item.id}-${day}`}
+                    item={row.item}
+                    currency={booking.currency}
+                    docs={docs}
+                    compactHotel={row.item.kind === "hotel"}
+                    calendarHref={itemHref(row.item.id)}
+                    day={day}
+                  />
+                )
               ) : (
                 offerCard(row.offer)
               )
