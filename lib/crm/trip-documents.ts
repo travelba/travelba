@@ -24,9 +24,8 @@ export function samePerson(doc: CrmTravelDocument, traveler: CrmBookingTraveler)
     return namesReferToSamePerson(traveler, doc);
   }
   if (traveler.is_account_holder) {
-    if (doc.companion_id) return false;
     if (doc.first_name || doc.last_name) return namesReferToSamePerson(traveler, doc);
-    return true;
+    return !doc.companion_id;
   }
   if (namesReferToSamePerson(traveler, doc)) return true;
   return Boolean(doc.traveler_id) && doc.traveler_id === traveler.id;

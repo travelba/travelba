@@ -22,7 +22,7 @@ export function ClientsTable({
   initialQuery?: string;
 }) {
   const [q, setQ] = useState(initialQuery);
-  const [filter, setFilter] = useState<"all" | "vip" | "hold">("all");
+  const [filter, setFilter] = useState<"all" | "hold">("all");
   const bal = useMemo(() => {
     const map = new Map<string, CrmBalance[]>();
     for (const row of balances) {
@@ -36,7 +36,6 @@ export function ClientsTable({
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return customers.filter((c) => {
-      if (filter === "vip" && !c.is_vip) return false;
       if (filter === "hold" && !c.on_hold) return false;
       if (!needle) return true;
       const hay = `${customerFullName(c)} ${c.email} ${c.phone || ""}`.toLowerCase();
@@ -55,12 +54,11 @@ export function ClientsTable({
         />
         <select
           value={filter}
-          onChange={(e) => setFilter(e.target.value as "all" | "vip" | "hold")}
+          onChange={(e) => setFilter(e.target.value as "all" | "hold")}
           className="admin-af-input w-full text-sm sm:w-auto"
           aria-label="Filtrer les clients"
         >
           <option value="all">Tous</option>
-          <option value="vip">VIP</option>
           <option value="hold">En veille</option>
         </select>
         <p className="shrink-0 font-label text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
@@ -96,11 +94,6 @@ export function ClientsTable({
                         <span className="flex flex-col">
                           <span className="font-semibold text-[var(--admin-navy)]">{customerFullName(c)}</span>
                           <span className="mt-0.5 flex flex-wrap gap-1">
-                            {c.is_vip ? (
-                              <span className="rounded-full bg-[var(--admin-navy)] px-2 py-0.5 text-[10px] font-bold uppercase text-white">
-                                VIP
-                              </span>
-                            ) : null}
                             {c.on_hold ? (
                               <span className="rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">
                                 En veille

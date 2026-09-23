@@ -16,6 +16,7 @@ import {
   ticketingFeeLabel,
   ticketingTicketCount,
 } from "@/lib/crm/ticketing-fee";
+import { isStayRollupDebit } from "@/lib/crm/ledger-display";
 
 export function parseIncludeInLedger(value: unknown, fallback: boolean) {
   if (value === true || value === "on" || value === "true") return true;
@@ -323,6 +324,23 @@ export async function syncBookingItemDebits(supabase: SupabaseClient, booking: C
   }
 }
 
+/** Le montant global du séjour quitte le livre dès qu’une dépense du dossier est postée. */
+export async function dropCoveredStayRollup(supabase: SupabaseClient, bookingId: string) {
+  const { data, error } = await supabase
+    .from("crm_transactions")
+    .select("id, direction, kind, external_id, status")
+    .eq("booking_id", bookingId)
+    .eq("direction", "debit")
+    .eq("status", "posted");
+  if (error) throw new Error(error.message);
+  const rows = (data || []) as Pick<CrmTransaction, "id" | "direction" | "kind" | "external_id" | "status">[];
+  if (!rows.some((row) => !isStayRollupDebit(row))) return;
+  const rollupIds = rows.filter((row) => isStayRollupDebit(row)).map((row) => row.id);
+  if (!rollupIds.length) return;
+  const { error: deleteError } = await supabase.from("crm_transactions").delete().in("id", rollupIds);
+  if (deleteError) throw new Error(deleteError.message);
+}
+
 export async function syncBookingLedger(
   supabase: SupabaseClient,
   booking: CrmBooking,
@@ -331,6 +349,7 @@ export async function syncBookingLedger(
   await syncBookingDebit(supabase, booking, previousStatus);
   await syncBookingItemDebits(supabase, booking);
   await syncTicketingFee(supabase, booking);
+  await dropCoveredStayRollup(supabase, booking.id);
 }
 
 export async function refreshBookingLedger(supabase: SupabaseClient, bookingId: string) {

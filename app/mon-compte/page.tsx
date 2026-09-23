@@ -11,6 +11,7 @@ import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { CoverPhoto } from "@/components/crm/CoverPhoto";
 import { Icon } from "@/components/crm/icons";
 import { ConciergeBanner } from "@/components/crm/ui";
+import { greetingGivenName } from "@/lib/crm/identity";
 
 export default async function AccountHomePage() {
   const supabase = await createClient();
@@ -50,7 +51,7 @@ export default async function AccountHomePage() {
   }));
   const shownBalances = balanceRows.length ? balanceRows : [{ currency: "EUR", value: 0 }];
   const owes = shownBalances.some((row) => row.value < 0);
-  const firstName = customer.first_name || customer.email.split("@")[0];
+  const firstName = greetingGivenName(customer.first_name) || customer.email.split("@")[0];
   const cover = nextTrip ? bookingCoverUrl(nextTrip, 960) : null;
   const countdown = nextTrip ? jMinusLabel(nextTrip.start_date) : null;
   const tripHref = nextTrip ? `/mon-compte/reservations/${nextTrip.reference}` : "/mon-compte/reservations";

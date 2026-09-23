@@ -33,6 +33,44 @@ test("un prénom parmi plusieurs et un nom à deux caractères près désignent 
   );
 });
 
+test("un nom imparfait désigne la même personne", () => {
+  assert.equal(
+    namesReferToSamePerson(
+      { first_name: "Simon", last_name: "Albilia" },
+      { first_name: "Simon, Albilia", last_name: null }
+    ),
+    true
+  );
+  assert.equal(
+    namesReferToSamePerson(
+      { first_name: "Simon", last_name: "Albilia" },
+      { first_name: "ALBILIA Simon", last_name: null }
+    ),
+    true
+  );
+  assert.equal(
+    namesReferToSamePerson(
+      { first_name: "Simon", last_name: "Albilia" },
+      { first_name: "Albilia", last_name: "Simon" }
+    ),
+    true
+  );
+  assert.equal(
+    namesReferToSamePerson(
+      { first_name: "Leoh", last_name: "Albilia" },
+      { first_name: "Leo", last_name: "Albilia" }
+    ),
+    true
+  );
+  assert.equal(
+    namesReferToSamePerson(
+      { first_name: "Ali", last_name: "Martin" },
+      { first_name: "Alice", last_name: "Martin" }
+    ),
+    false
+  );
+});
+
 test("un placeholder et un nom trop différent ne matchent pas", () => {
   assert.equal(isPlaceholderTraveler("Adulte", "2"), true);
   assert.equal(isPlaceholderTraveler("Camille", "2"), false);

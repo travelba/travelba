@@ -59,6 +59,11 @@ export function givenNameTokens(value: string | null | undefined): string[] {
     .map(titleCaseNamePart);
 }
 
+/** Accueil : un seul prénom, le premier. Jean-Pierre reste entier. */
+export function greetingGivenName(value: string | null | undefined) {
+  return givenNameTokens(value)[0] || null;
+}
+
 export function normalizeGivenNames(value: string | null | undefined): string | null {
   const tokens = givenNameTokens(value);
   return tokens.length ? tokens.join(" ") : null;

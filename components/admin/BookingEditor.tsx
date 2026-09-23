@@ -33,6 +33,7 @@ import { IssuesList } from "@/components/crm/IssuesList";
 import { collectPublishIssues, issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
 import { householdMembers } from "@/lib/crm/household";
 import { bookingHasFlight } from "@/lib/crm/extras";
+import { reusableDocumentsForTraveler, tripDocumentsForTraveler } from "@/lib/crm/trip-documents";
 
 export function BookingEditor({
   booking,
@@ -380,7 +381,7 @@ export function BookingEditor({
         <div>
           <h2 className="mt-1 font-display text-lg font-bold">Voyageurs</h2>
           <p className="mt-1 text-sm text-muted">
-            Cochez le passeport utilisé pour chaque voyageur de ce séjour.
+            Le passeport déposé au coffre est repris pour chaque voyageur.
           </p>
         </div>
         {!travelers.length ? (
@@ -394,36 +395,25 @@ export function BookingEditor({
         ) : (
           <TripPassportPicker
             variant="admin"
+            embedded
             customerId={booking.customer_id}
             bookingId={booking.id}
             travelers={travelers}
             documents={identityDocs}
+            onRemove={(id) => void removeTraveler(id)}
           />
         )}
-        <Link
-          href={`/admin/clients/${booking.customer_id}`}
-          className="inline-flex text-sm font-semibold text-[var(--admin-navy)] underline"
-        >
-          Joindre les pièces sur la fiche client
-        </Link>
-        {travelers.length ? (
-          <ul className="space-y-1 text-sm">
-            {travelers.map((traveler) => (
-              <li key={traveler.id} className="flex items-center justify-between gap-2">
-                <span>
-                  {[traveler.first_name, traveler.last_name].filter(Boolean).join(" ") || "Voyageur"}
-                  {traveler.is_account_holder ? " · titulaire" : ""}
-                </span>
-                <button
-                  type="button"
-                  className="text-xs font-semibold text-accent"
-                  onClick={() => void removeTraveler(traveler.id)}
-                >
-                  Retirer
-                </button>
-              </li>
-            ))}
-          </ul>
+        {travelers.some(
+          (traveler) =>
+            tripDocumentsForTraveler(identityDocs, traveler).length === 0 &&
+            reusableDocumentsForTraveler(identityDocs, traveler).length === 0
+        ) ? (
+          <Link
+            href={`/admin/clients/${booking.customer_id}`}
+            className="inline-flex text-sm font-semibold text-[var(--admin-navy)] underline"
+          >
+            Joindre les pièces sur la fiche client
+          </Link>
         ) : null}
         <form onSubmit={addTraveler} className="grid gap-2 sm:grid-cols-[1fr_auto]">
           <select name="party_key" required className={fieldControlClass}>

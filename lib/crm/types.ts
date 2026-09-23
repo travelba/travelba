@@ -151,8 +151,6 @@ export type CrmCustomer = {
   stripe_customer_id: string | null;
   /** Badge / filtre admin — aucun effet côté espace client. */
   on_hold?: boolean;
-  /** Accès greeter aéroport. */
-  is_vip?: boolean;
   created_at: string;
   updated_at: string;
 };

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   completeGivenNames,
   givenNameTokens,
+  greetingGivenName,
   humanizeMrzName,
   normalizeGivenNames,
 } from "./identity";
@@ -29,4 +30,12 @@ test("la liste la plus complète l’emporte si l’ordre est conservé", () => 
   assert.equal(completeGivenNames("Jean-Pierre", "Jean-Pierre Marie"), "Jean-Pierre Marie");
   assert.equal(completeGivenNames(null, "Claire Anne"), "Claire Anne");
   assert.equal(completeGivenNames("Claire Anne", null), "Claire Anne");
+});
+
+test("l’accueil ne garde que le premier prénom", () => {
+  assert.equal(greetingGivenName("Simon, Iony"), "Simon");
+  assert.equal(greetingGivenName("Jérémy Moïse"), "Jérémy");
+  assert.equal(greetingGivenName("JEAN-PIERRE Marie"), "Jean-Pierre");
+  assert.equal(greetingGivenName("  "), null);
+  assert.equal(greetingGivenName(null), null);
 });

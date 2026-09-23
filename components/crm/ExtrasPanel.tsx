@@ -53,7 +53,6 @@ export function ExtrasPanel({
   const chauffeurPrice = extraAmount("chauffeur");
   const greeterPrice = extraAmount("greeter", headsAt.adults, headsAt.children);
   const isAdmin = variant === "admin";
-  const canGreeter = Boolean(holder.is_vip);
 
   async function request(kind: ExtraKind, leg: ExtraLeg) {
     setBusy(`${kind}:${leg}`);
@@ -132,7 +131,7 @@ export function ExtrasPanel({
           ) : (
             <button
               type="button"
-              disabled={busy !== null || locked || (kind === "greeter" && !canGreeter)}
+              disabled={busy !== null || locked}
               onClick={() => void request(kind, leg)}
               className="rounded-full bg-[var(--admin-navy)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
             >
@@ -152,7 +151,7 @@ export function ExtrasPanel({
         </p>
         <h2 className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">À la demande</h2>
         <p className="mt-1 text-sm text-muted">
-          Chauffeur domicile ↔ aéroport : {CHAUFFEUR_EUR} € par trajet. Greeter VIP : {GREETER_ADULT_EUR} € /
+          Chauffeur domicile ↔ aéroport : {CHAUFFEUR_EUR} € par trajet. Greeter aéroport : {GREETER_ADULT_EUR} € /
           adulte, {GREETER_CHILD_EUR} € / enfant, par trajet.
         </p>
       </div>
@@ -169,28 +168,18 @@ export function ExtrasPanel({
         {row("chauffeur", "departure")}
         {row("chauffeur", "arrival")}
       </div>
-      {canGreeter || isAdmin ? (
-        <div className="space-y-2">
-          <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">
-            Greeter{!canGreeter ? " — VIP requis" : ""}
-          </p>
-          {!canGreeter && isAdmin ? (
-            <p className="text-xs text-accent">Passez le client en VIP sur sa fiche pour activer le greeter.</p>
-          ) : (
-            <p className="text-xs text-muted">
-              {headsAt.adults} adulte{headsAt.adults > 1 ? "s" : ""} · {headsAt.children} enfant
-              {headsAt.children > 1 ? "s" : ""}
-              {headsAt.missingBirth
-                ? ` · ${headsAt.missingBirth} sans date de naissance (compté adulte)`
-                : ""}
-            </p>
-          )}
-          {row("greeter", "departure")}
-          {row("greeter", "arrival")}
-        </div>
-      ) : (
-        <p className="text-sm text-muted">Le greeter aéroport est réservé à nos clients VIP.</p>
-      )}
+      <div className="space-y-2">
+        <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Greeter</p>
+        <p className="text-xs text-muted">
+          {headsAt.adults} adulte{headsAt.adults > 1 ? "s" : ""} · {headsAt.children} enfant
+          {headsAt.children > 1 ? "s" : ""}
+          {headsAt.missingBirth
+            ? ` · ${headsAt.missingBirth} sans date de naissance (compté adulte)`
+            : ""}
+        </p>
+        {row("greeter", "departure")}
+        {row("greeter", "arrival")}
+      </div>
       <IssuesList issues={issues} />
     </section>
   );

@@ -14,6 +14,11 @@ import {
   postedLedgerTotals,
 } from "@/lib/crm/money";
 import { filterClientLedgerRows, isCompanyMember } from "@/lib/crm/company-role";
+import {
+  ledgerMovementTitle,
+  reservationContextLabel,
+  visibleLedgerRows,
+} from "@/lib/crm/ledger-display";
 import { EmptyState } from "@/components/crm/ui";
 import { Icon } from "@/components/crm/icons";
 import { siteConfig } from "@/lib/site";
@@ -71,9 +76,22 @@ export default async function TransactionsPage() {
     currency = bal?.currency || "EUR";
   }
 
-  const { credits, debits, settledPct } = postedLedgerTotals(rows);
+  const shown = visibleLedgerRows(rows);
+  const contextIds = [...new Set(shown.map((row) => row.booking_id).filter(Boolean))] as string[];
+  const bookingById = new Map<string, { title: string | null; reference: string }>();
+  if (contextIds.length) {
+    const { data: linked } = await supabase
+      .from("crm_bookings")
+      .select("id, title, reference")
+      .in("id", contextIds);
+    for (const booking of linked || []) {
+      bookingById.set(booking.id, { title: booking.title, reference: booking.reference });
+    }
+  }
+
+  const { credits, debits, settledPct } = postedLedgerTotals(shown);
   const remaining = Math.max(0, -balanceValue);
-  const creditCount = rows.filter((t) => t.direction === "credit").length;
+  const creditCount = shown.filter((t) => t.direction === "credit").length;
 
   return (
     <div className="space-y-5">
@@ -197,10 +215,13 @@ export default async function TransactionsPage() {
         ) : null}
       </div>
 
-      {rows.length ? (
+      {shown.length ? (
         <ul className="space-y-2">
-          {rows.map((t) => {
+          {shown.map((t) => {
             const credit = t.direction === "credit";
+            const context = reservationContextLabel(
+              t.booking_id ? bookingById.get(t.booking_id) : null
+            );
             return (
               <li
                 key={t.id}
@@ -222,14 +243,18 @@ export default async function TransactionsPage() {
                     </span>
                     <div className="min-w-0">
                       <p className="truncate text-[16px] font-semibold text-[var(--admin-navy)]">
-                        {t.label || TX_KIND_LABELS[t.kind] || t.kind}
+                        {ledgerMovementTitle(t, TX_KIND_LABELS[t.kind] || t.kind)}
                       </p>
                       <p className="text-[13px] text-muted">
                         {credit ? "Reçu le" : "Le"} {formatDateFr(t.occurred_on)}
                       </p>
-                      <p className="pt-0.5 text-[10px] font-bold uppercase tracking-wider text-muted">
-                        {TX_KIND_LABELS[t.kind]}
-                      </p>
+                      {context ? (
+                        <p className="pt-0.5 text-[13px] text-muted">{context}</p>
+                      ) : (
+                        <p className="pt-0.5 text-[10px] font-bold uppercase tracking-wider text-muted">
+                          {TX_KIND_LABELS[t.kind]}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-col items-end">
@@ -258,7 +283,7 @@ export default async function TransactionsPage() {
           description={
             member
               ? "Les débits de vos dossiers confirmés apparaîtront ici."
-              : "Les débits de réservation et crédits rapprochés apparaîtront ici."
+              : "Les dépenses des séjours et les virements reçus apparaîtront ici."
           }
         />
       )}

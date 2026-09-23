@@ -116,6 +116,39 @@ test("un séjour précédent sans coffre reste proposable", () => {
   );
 });
 
+test("le passeport du titulaire rangé sur un accompagnateur du même nom est le sien", () => {
+  const holder = traveler({
+    first_name: "Simon",
+    last_name: "Albilia",
+  });
+  const other = traveler({
+    id: "t2",
+    is_account_holder: false,
+    companion_id: "lisa",
+    first_name: "Lisa",
+    last_name: "Garnek",
+  });
+  const docs = [
+    doc({
+      id: "simon",
+      companion_id: "simon-companion",
+      first_name: "ALBILIA Simon",
+      last_name: null,
+      number: "22AA",
+    }),
+    doc({
+      id: "lisa",
+      companion_id: "lisa",
+      first_name: "Lisa Sabine",
+      last_name: "Garnek",
+    }),
+  ];
+  assert.equal(vaultDocumentsForTraveler(docs, holder)[0]?.id, "simon");
+  assert.equal(reusableDocumentsForTraveler(docs, holder)[0]?.id, "simon");
+  assert.equal(reusableDocumentsForTraveler(docs, other)[0]?.id, "lisa");
+  assert.equal(reusableDocumentsForTraveler(docs, holder).some((item) => item.id === "lisa"), false);
+});
+
 test("un voyageur sans lien retrouve le passeport du coffre par le nom", () => {
   const jeremy = traveler({
     is_account_holder: false,

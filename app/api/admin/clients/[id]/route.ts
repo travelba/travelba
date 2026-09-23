@@ -29,7 +29,6 @@ export async function PATCH(request: Request, ctx: Ctx) {
   const { patch, error: patchError } = customerPatchFromBody(body, { allowEmail: true });
   if (patchError) return jsonError(patchError);
   if ("on_hold" in body) patch.on_hold = Boolean(body.on_hold);
-  if ("is_vip" in body) patch.is_vip = Boolean(body.is_vip);
 
   const { data: current } = await auth.supabase
     .from("crm_customers")

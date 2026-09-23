@@ -63,6 +63,38 @@ export function firstNamesMatch(a: string | null | undefined, b: string | null |
   return left.some((token) => right.includes(token));
 }
 
+/** Une lettre d’écart, seulement à partir de 4 lettres (Leoh / Leo). Ali ≠ Alice. */
+function givenTokenClose(a: string, b: string) {
+  if (a === b) return true;
+  if (Math.max(a.length, b.length) < 4) return false;
+  return editDistance(a, b) <= 1;
+}
+
+function givenNamesClose(a: string | null | undefined, b: string | null | undefined) {
+  const left = nameTokens(a);
+  const right = nameTokens(b);
+  if (!left.length || !right.length) return false;
+  return left.some((token) => right.some((other) => givenTokenClose(token, other)));
+}
+
+function combinedTokens(person: PersonName) {
+  return nameTokens(`${person.first_name || ""} ${person.last_name || ""}`);
+}
+
+/** Le nom entier est dans un seul champ : « Simon, Albilia » ou « ALBILIA Simon ». */
+function nameFoldedIntoOneField(structured: PersonName, blob: PersonName) {
+  const family = foldName(structured.last_name).replace(/ /g, "");
+  const givens = nameTokens(structured.first_name);
+  if (!family || !givens.length) return false;
+  const tokens = combinedTokens(blob);
+  if (!tokens.length) return false;
+  const familyHit = tokens.some((token) => lastNamesMatch(structured.last_name, token));
+  const givenHit = givens.some((given) =>
+    tokens.some((token) => givenTokenClose(given, token) && !lastNamesMatch(structured.last_name, token))
+  );
+  return familyHit && givenHit;
+}
+
 export function namesReferToSamePerson(a: PersonName, b: PersonName) {
   if (
     isPlaceholderTraveler(a.first_name, a.last_name) ||
@@ -70,7 +102,16 @@ export function namesReferToSamePerson(a: PersonName, b: PersonName) {
   ) {
     return false;
   }
-  return lastNamesMatch(a.last_name, b.last_name) && firstNamesMatch(a.first_name, b.first_name);
+  if (lastNamesMatch(a.last_name, b.last_name) && givenNamesClose(a.first_name, b.first_name)) {
+    return true;
+  }
+  if (lastNamesMatch(a.last_name, b.first_name) && givenNamesClose(a.first_name, b.last_name)) {
+    return true;
+  }
+  if (lastNamesMatch(a.first_name, b.last_name) && givenNamesClose(a.last_name, b.first_name)) {
+    return true;
+  }
+  return nameFoldedIntoOneField(a, b) || nameFoldedIntoOneField(b, a);
 }
 
 export function sameRecordedTraveler(a: PersonName, b: PersonName) {

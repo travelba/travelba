@@ -41,14 +41,6 @@ export async function createBookingExtra(
       },
     ]);
   }
-  if (opts.kind === "greeter" && !opts.holder.is_vip) {
-    throw new BookingIssuesError("Greeter réservé aux clients VIP.", [
-      {
-        field: "kind",
-        message: "Le greeter est réservé aux clients VIP. Passez le compte en VIP sur la fiche.",
-      },
-    ]);
-  }
   if (findExtra(opts.items, opts.kind, opts.leg)) {
     throw new BookingIssuesError("Service déjà demandé.", [
       {
