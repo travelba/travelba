@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { refreshBookingLedger } from "@/lib/crm/bookings";
 import { BookingIssuesError } from "@/lib/crm/booking-issues";
 import {
+  bookingHasFlight,
   extraAmount,
   extraFlightAt,
   extraHeadsFromBooking,
@@ -32,6 +33,14 @@ export async function createBookingExtra(
     now?: Date;
   }
 ) {
+  if (!bookingHasFlight(opts.items)) {
+    throw new BookingIssuesError("Vol requis.", [
+      {
+        field: "items",
+        message: "Chauffeur et greeter se proposent uniquement s’il y a un vol sur le dossier.",
+      },
+    ]);
+  }
   if (opts.kind === "greeter" && !opts.holder.is_vip) {
     throw new BookingIssuesError("Greeter réservé aux clients VIP.", [
       {

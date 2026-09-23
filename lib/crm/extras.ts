@@ -90,11 +90,18 @@ export function extraNoticeOk(at: string | Date | null | undefined, now = new Da
   return when.getTime() - now.getTime() >= EXTRA_NOTICE_MS;
 }
 
+export function bookingHasFlight(
+  items: { kind?: string | null }[] | null | undefined
+) {
+  return (items || []).some((item) => item.kind === "flight");
+}
+
 export function extraFlightAt(
   items: { kind?: string | null; start_at?: string | null }[],
   leg: ExtraLeg,
   fallback: string | null = null
 ) {
+  if (!bookingHasFlight(items)) return null;
   const flights = items
     .filter((item) => item.kind === "flight" && item.start_at)
     .slice()

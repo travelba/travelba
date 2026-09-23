@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { IssuesList } from "@/components/crm/IssuesList";
 import { issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
 import {
+  bookingHasFlight,
   CHAUFFEUR_EUR,
   extraAmount,
   extraFlightAt,
@@ -42,6 +43,7 @@ export function ExtrasPanel({
   const [busy, setBusy] = useState<string | null>(null);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
   const now = useMemo(() => new Date(), []);
+  if (!bookingHasFlight(items)) return null;
   const headsAt = extraHeadsFromBooking({
     travelers,
     holder,

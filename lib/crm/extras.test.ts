@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  bookingHasFlight,
   countExtraHeads,
   extraAmount,
   extraFlightAt,
@@ -40,4 +41,11 @@ test("fenêtre 48 h et unicité par trajet", () => {
   assert.equal(extraFlightAt(items, "arrival"), "2026-08-20T18:00:00");
   assert.ok(findExtra(items, "chauffeur", "departure"));
   assert.equal(findExtra(items, "chauffeur", "arrival"), null);
+});
+
+test("chauffeur et greeter seulement s’il y a un vol", () => {
+  assert.equal(bookingHasFlight([]), false);
+  assert.equal(bookingHasFlight([{ kind: "hotel" }]), false);
+  assert.equal(bookingHasFlight([{ kind: "flight" }]), true);
+  assert.equal(extraFlightAt([{ kind: "hotel", start_at: "2026-08-12" }], "departure", "2026-08-01"), null);
 });
