@@ -15,6 +15,7 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }) {
   let unmatched = 0;
+  let emailPending = 0;
   let staffName = "";
   const supabase = await createClient();
   const {
@@ -25,20 +26,32 @@ export default async function AdminLayout({
     staffName = staff.full_name || "";
     try {
       const admin = createServiceClient();
-      const { count } = await admin
-        .from("crm_revolut_transactions")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "unmatched")
-        .eq("direction", "credit");
-      unmatched = count ?? 0;
+      const [revolut, emails] = await Promise.all([
+        admin
+          .from("crm_revolut_transactions")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "unmatched")
+          .eq("direction", "credit"),
+        admin
+          .from("crm_email_ingest")
+          .select("id", { count: "exact", head: true })
+          .in("status", ["parsed", "matched"]),
+      ]);
+      unmatched = revolut.count ?? 0;
+      emailPending = emails.count ?? 0;
     } catch {
       unmatched = 0;
+      emailPending = 0;
     }
   }
 
   return (
     <div className="admin-af min-h-screen">
-      <AdminNav unmatchedCount={unmatched} staffName={staffName}>
+      <AdminNav
+        unmatchedCount={unmatched}
+        emailCount={emailPending}
+        staffName={staffName}
+      >
         {children}
       </AdminNav>
     </div>

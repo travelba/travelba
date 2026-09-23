@@ -335,6 +335,54 @@ export type CrmBalance = {
   balance: number;
 };
 
+export const EMAIL_INGEST_STATUSES = [
+  "received",
+  "parsed",
+  "matched",
+  "attached",
+  "refused",
+  "error",
+] as const;
+
+export type EmailIngestStatus = (typeof EMAIL_INGEST_STATUSES)[number];
+
+/** Une proposition de rattachement (client ou voyage) pour un e-mail ingéré. */
+export type EmailIngestCandidate = {
+  customer_id: string;
+  booking_id?: string | null;
+  label: string;
+  reason: string;
+  score: number;
+};
+
+export type EmailIngestAttachment = {
+  name: string;
+  path: string;
+  mime_type: string | null;
+};
+
+/** Mail fournisseur (label Gmail) analysé, en attente de rattachement agence. */
+export type CrmEmailIngest = {
+  id: string;
+  gmail_message_id: string;
+  gmail_thread_id: string | null;
+  label: string | null;
+  from_email: string | null;
+  subject: string | null;
+  received_at: string | null;
+  status: EmailIngestStatus;
+  extract: Record<string, unknown> | null;
+  candidates: EmailIngestCandidate[];
+  attachments: EmailIngestAttachment[];
+  warnings: { file: string; message: string }[];
+  suggested_customer_id: string | null;
+  suggested_booking_id: string | null;
+  created_booking_id: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export function customerFullName(c: Pick<CrmCustomer, "first_name" | "last_name">) {
   return [c.first_name, c.last_name].filter(Boolean).join(" ").trim() || "Client";
 }

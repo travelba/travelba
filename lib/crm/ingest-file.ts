@@ -140,6 +140,8 @@ export type PreparedIngestFile = {
   type?: string | null;
   bytes?: Uint8Array;
   path?: string;
+  /** Texte déjà extrait (ex. corps d'un e-mail) : traité comme un document texte. */
+  text?: string | null;
 };
 
 function ingestModel() {
@@ -482,17 +484,25 @@ async function processPreparedFile(
 ): Promise<FileExtractResult> {
   if (signal?.aborted) throw new Error("Lecture annulée");
   const name = file.name;
+  const hasInlineText = typeof file.text === "string";
   const mediaType = file.type || guessIngestMime(name);
-  const isPdf = mediaType === "application/pdf" || name.toLowerCase().endsWith(".pdf");
-  const isImage = !isPdf;
-  const bytes = await loadPreparedBytes(file);
+  const isPdf =
+    !hasInlineText &&
+    (mediaType === "application/pdf" || name.toLowerCase().endsWith(".pdf"));
+  const isImage = !hasInlineText && !isPdf;
 
+  let bytes: Uint8Array = new Uint8Array();
   let text = "";
   let pages = 1;
-  if (isPdf) {
-    const extracted = await readPdfText(bytes);
-    text = extracted.text;
-    pages = extracted.pages;
+  if (hasInlineText) {
+    text = redactIngestText(file.text || "");
+  } else {
+    bytes = await loadPreparedBytes(file);
+    if (isPdf) {
+      const extracted = await readPdfText(bytes);
+      text = extracted.text;
+      pages = extracted.pages;
+    }
   }
 
   const family = classifyIngestFamily(text, name);
