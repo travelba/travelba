@@ -1,6 +1,7 @@
 import type { CrmBooking, CrmBookingDocument, CrmBookingItem } from "@/lib/crm/types";
 import { BOOKING_ITEM_LABELS } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
+import { extraScheduleStart, extraTimelineSlot, isExtraKind, withExtraSchedule } from "./extras";
 import { itemTicketCount } from "./item-match";
 
 export function detailStr(item: CrmBookingItem, key: string) {
@@ -143,7 +144,9 @@ export function isTimelineKind(kind: string) {
     kind === "activity" ||
     kind === "rail" ||
     kind === "car" ||
-    kind === "cruise"
+    kind === "cruise" ||
+    kind === "chauffeur" ||
+    kind === "greeter"
   );
 }
 
@@ -163,6 +166,30 @@ export function sortItemsByOrder<T extends { start_at?: string | null; sort_orde
   return [...items].sort(compareItemsByOrder);
 }
 
+/** Itinéraire : le chauffeur privé et le greeter précèdent le vol au départ, même si leur sort_order est plus haut. */
+export function compareTimelineItems<
+  T extends {
+    kind?: string | null;
+    title?: string | null;
+    start_at?: string | null;
+    sort_order?: number | null;
+    details?: Record<string, unknown> | null;
+  },
+>(a: T, b: T, items: T[]) {
+  const slotA = extraTimelineSlot(a, items);
+  const slotB = extraTimelineSlot(b, items);
+  if (slotA && slotB && slotA.anchor === slotB.anchor && slotA.slot !== slotB.slot) {
+    return slotA.slot - slotB.slot;
+  }
+  if (isExtraKind(a.kind) || isExtraKind(b.kind)) {
+    const startA = (isExtraKind(a.kind) ? extraScheduleStart(a, items) : a.start_at) || "9999-99-99";
+    const startB = (isExtraKind(b.kind) ? extraScheduleStart(b, items) : b.start_at) || "9999-99-99";
+    if (startA !== startB) return startA.localeCompare(startB);
+    return (a.title || "").localeCompare(b.title || "");
+  }
+  return compareItemsByOrder(a, b);
+}
+
 export function hotelsOf(items: CrmBookingItem[]) {
   return sortItemsByOrder(items.filter((item) => item.kind === "hotel"));
 }
@@ -172,8 +199,9 @@ export function timelineItems(items: CrmBookingItem[]) {
 }
 
 export function groupByDay(items: CrmBookingItem[]) {
+  const scheduled = withExtraSchedule(items);
   const map = new Map<string, CrmBookingItem[]>();
-  for (const item of items) {
+  for (const item of scheduled) {
     if (item.kind === "insurance" || item.kind === "fee") continue;
     for (const key of itemTimelineDays(item)) {
       if (!key) continue;
@@ -183,15 +211,16 @@ export function groupByDay(items: CrmBookingItem[]) {
     }
   }
   for (const list of map.values()) {
-    list.sort(compareItemsByOrder);
+    list.sort((a, b) => compareTimelineItems(a, b, scheduled));
   }
   return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
 }
 
 export function undatedTimeline(items: CrmBookingItem[]) {
-  return sortItemsByOrder(
-    timelineItems(items).filter((item) => itemTimelineDays(item).every((key) => !key))
-  );
+  const scheduled = withExtraSchedule(items);
+  return timelineItems(scheduled)
+    .filter((item) => itemTimelineDays(item).every((key) => !key))
+    .sort((a, b) => compareTimelineItems(a, b, scheduled));
 }
 
 export function itemClock(iso: string | null | undefined) {
@@ -264,9 +293,9 @@ export function kindIcon(kind: string) {
     case "insurance":
       return "health_and_safety";
     case "chauffeur":
-      return "airport_shuttle";
+      return "chauffeur";
     case "greeter":
-      return "verified_user";
+      return "greeter";
     default:
       return "event";
   }

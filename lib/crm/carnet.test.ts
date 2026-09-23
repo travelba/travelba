@@ -212,6 +212,84 @@ describe("carnet", () => {
     assert.match(url, /q=70/);
   });
 
+  it("place le chauffeur privé et le greeter avant le vol au départ", () => {
+    const groups = groupByDay([
+      item({ id: "f1", title: "Aller", start_at: "2026-08-12T10:00:00", sort_order: 0 }),
+      item({ id: "f2", title: "Retour", start_at: "2026-08-20T18:00:00", sort_order: 1 }),
+      item({
+        id: "g1",
+        kind: "greeter",
+        title: "Greeter départ",
+        start_at: "2026-08-12T10:00:00",
+        sort_order: 9,
+        details: { service_leg: "departure" },
+      }),
+      item({
+        id: "c1",
+        kind: "chauffeur",
+        title: "Chauffeur départ",
+        start_at: "2026-08-12T10:00:00",
+        sort_order: 8,
+        details: { service_leg: "departure" },
+      }),
+      item({
+        id: "g2",
+        kind: "greeter",
+        title: "Greeter arrivée",
+        start_at: "2026-08-20T18:00:00",
+        sort_order: 11,
+        details: { service_leg: "arrival" },
+      }),
+      item({
+        id: "c2",
+        kind: "chauffeur",
+        title: "Chauffeur arrivée",
+        start_at: "2026-08-20T18:00:00",
+        sort_order: 10,
+        details: { service_leg: "arrival" },
+      }),
+    ]);
+    const outbound = groups.find(([day]) => day === "2026-08-12");
+    const inbound = groups.find(([day]) => day === "2026-08-20");
+    assert.ok(outbound);
+    assert.ok(inbound);
+    assert.deepEqual(
+      outbound[1].map((row) => row.kind),
+      ["chauffeur", "greeter", "flight"]
+    );
+    assert.equal(outbound[1][0].start_at, "2026-08-12T07:30:00");
+    assert.deepEqual(
+      inbound[1].map((row) => row.kind),
+      ["flight", "greeter", "chauffeur"]
+    );
+  });
+
+  it("anticipe le chauffeur privé la veille d’un vol tôt", () => {
+    const groups = groupByDay([
+      item({ id: "f", title: "Aller", start_at: "2026-08-12T01:00:00", sort_order: 0 }),
+      item({
+        id: "c",
+        kind: "chauffeur",
+        title: "Chauffeur",
+        start_at: "2026-08-12T01:00:00",
+        sort_order: 5,
+        details: { service_leg: "departure" },
+      }),
+      item({
+        id: "g",
+        kind: "greeter",
+        title: "Greeter",
+        start_at: "2026-08-12T01:00:00",
+        sort_order: 6,
+        details: { service_leg: "departure" },
+      }),
+    ]);
+    assert.equal(groups.map(([day]) => day).join(","), "2026-08-11,2026-08-12");
+    assert.deepEqual(groups[0][1].map((row) => row.kind), ["chauffeur"]);
+    assert.equal(groups[0][1][0].start_at, "2026-08-11T22:30:00");
+    assert.deepEqual(groups[1][1].map((row) => row.kind), ["greeter", "flight"]);
+  });
+
   it("respecte l’ordre agent dans un même jour", () => {
     const groups = groupByDay([
       item({ id: "b", start_at: "2026-08-12T18:00:00", title: "Soir", sort_order: 0 }),

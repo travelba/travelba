@@ -11,6 +11,7 @@ import {
   extraNoticeOk,
   extraTitle,
   findExtra,
+  scheduleExtraStart,
   isExtraKind,
   isExtraLeg,
   type ExtraKind,
@@ -37,15 +38,7 @@ export async function createBookingExtra(
     throw new BookingIssuesError("Vol requis.", [
       {
         field: "items",
-        message: "Chauffeur et greeter se proposent uniquement s’il y a un vol sur le dossier.",
-      },
-    ]);
-  }
-  if (opts.kind === "greeter" && !opts.holder.is_vip) {
-    throw new BookingIssuesError("Greeter réservé aux clients VIP.", [
-      {
-        field: "kind",
-        message: "Le greeter est réservé aux clients VIP. Passez le compte en VIP sur la fiche.",
+        message: "Le chauffeur privé et le greeter se proposent uniquement s’il y a un vol sur le dossier.",
       },
     ]);
   }
@@ -57,9 +50,9 @@ export async function createBookingExtra(
       },
     ]);
   }
-  const startAt =
+  const flightAt =
     extraFlightAt(opts.items, opts.leg, opts.booking.start_date || opts.booking.end_date) || null;
-  if (opts.enforceWindow && !extraNoticeOk(startAt, opts.now)) {
+  if (opts.enforceWindow && !extraNoticeOk(flightAt, opts.now)) {
     throw new BookingIssuesError("Délai de 48 h dépassé.", [
       {
         field: "leg",
@@ -68,7 +61,8 @@ export async function createBookingExtra(
       },
     ]);
   }
-  const at = startAt ? new Date(startAt) : opts.now || new Date();
+  const at = flightAt ? new Date(flightAt) : opts.now || new Date();
+  const startAt = scheduleExtraStart(opts.kind, opts.leg, flightAt);
   const heads = extraHeadsFromBooking({
     travelers: opts.travelers,
     holder: opts.holder,

@@ -85,6 +85,26 @@ test("minuit n’invente pas d’horaire", () => {
   assert.match(event || "", /DTSTART;VALUE=DATE:20260812/);
 });
 
+test("chauffeur privé : agenda 2 h 30 avant le décollage", () => {
+  const ics = buildBookingIcs({
+    booking: booking(),
+    items: [
+      item({ id: "f", start_at: "2026-08-12T10:00:00", end_at: null }),
+      item({
+        id: "c",
+        kind: "chauffeur",
+        title: "Chauffeur privé — domicile → aéroport",
+        start_at: "2026-08-12T10:00:00",
+        end_at: null,
+        details: { service_leg: "departure" },
+      }),
+    ],
+    itemId: "c",
+  });
+  assert.match(ics, /DTSTART:20260812T073000/);
+  assert.equal((ics.match(/BEGIN:VEVENT/g) || []).length, 1);
+});
+
 test("séjour entier : dates dossier + événements", () => {
   const stay = veventFromStay(booking());
   assert.match(stay || "", /DTSTART;VALUE=DATE:20260812/);
