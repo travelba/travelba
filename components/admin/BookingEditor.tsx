@@ -16,7 +16,8 @@ import {
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { bookingCoverUrl } from "@/lib/crm/covers";
-import { jMinusLabel } from "@/lib/crm/money";
+import { formatMoney, jMinusLabel } from "@/lib/crm/money";
+import { bookingTotalFromItems } from "@/lib/crm/bookings";
 import { documentLabel } from "@/lib/crm/carnet";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { CoverPhoto } from "@/components/crm/CoverPhoto";
@@ -267,15 +268,15 @@ export function BookingEditor({
           Retour
           <DateFrInput name="end_date" aria-label="Date de retour" defaultValue={booking.end_date || ""} className="rounded-xl border border-border px-3 py-2" />
         </label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-          Montant total (€)
-          <input name="total_amount" type="number" step="0.01" min="0" defaultValue={booking.total_amount} className="rounded-xl border border-border px-3 py-2" />
+        <div className="flex flex-col gap-1 text-xs font-semibold text-muted">
+          Montant du séjour
+          <p className="rounded-xl border border-border bg-[#f7f6f2] px-3 py-2 text-sm font-semibold text-[var(--admin-navy)]">
+            {formatMoney(bookingTotalFromItems(items), booking.currency)}
+          </p>
           <span className="font-normal text-muted">
-            {items.some((item) => Number(item.amount) > 0)
-              ? "Calculé depuis les prix vendus des cartes. Modifier le prix d’une carte met à jour le séjour."
-              : "Saisie manuelle, ou somme des prix vendus dès qu’une carte en a un."}
+            Somme des prix vendus de chaque carte. Le frais de billeterie n’est pas inclus.
           </span>
-        </label>
+        </div>
         <label className="flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-2">
           <input
             type="checkbox"

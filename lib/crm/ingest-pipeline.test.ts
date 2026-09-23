@@ -161,7 +161,11 @@ describe("mergeFileExtracts", () => {
       },
     ]);
     assert.equal(merged.extract.document_status, "confirmed");
-    assert.equal(merged.extract.total_amount, 858.8);
+    assert.equal(merged.extract.total_amount, 0);
+    assert.equal(
+      merged.extract.items.find((item) => item.kind === "hotel")?.details?.document_amount,
+      858.8
+    );
     const devis = merged.extract.items.find(
       (item) => item.details?.source_file_name === "devis.pdf"
     );

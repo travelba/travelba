@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
 import { collectPublishIssues } from "@/lib/crm/booking-issues";
-import { setCarnetPublished, syncBookingLedger, parseIncludeInLedger } from "@/lib/crm/bookings";
+import {
+  setCarnetPublished,
+  syncBookingLedger,
+  syncBookingTotalFromItems,
+  parseIncludeInLedger,
+} from "@/lib/crm/bookings";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { scheduleBookingCover } from "@/lib/crm/cover-generate";
 import type { BookingStatus, CrmBooking, CrmCustomer } from "@/lib/crm/types";
@@ -43,7 +48,6 @@ export async function PATCH(request: Request, ctx: Ctx) {
     "start_date",
     "end_date",
     "currency",
-    "total_amount",
     "notes_client",
     "notes_internal",
     "customer_id",
@@ -51,8 +55,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
     "include_in_ledger",
   ]) {
     if (key in body) {
-      if (key === "total_amount") patch[key] = Number(body[key] || 0);
-      else if (key === "include_in_ledger") patch[key] = parseIncludeInLedger(body[key], true);
+      if (key === "include_in_ledger") patch[key] = parseIncludeInLedger(body[key], true);
       else patch[key] = body[key];
     }
   }
@@ -101,6 +104,13 @@ export async function PATCH(request: Request, ctx: Ctx) {
       .maybeSingle();
     if (refreshed) booking = refreshed as CrmBooking;
   }
+  await syncBookingTotalFromItems(auth.supabase, id);
+  const { data: priced } = await auth.supabase
+    .from("crm_bookings")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (priced) booking = priced as CrmBooking;
   await syncBookingLedger(
     auth.supabase,
     booking,

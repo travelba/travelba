@@ -191,7 +191,7 @@ export function IngestItemCard({
             />
           </Field>
         ) : null}
-        <Field label={item.kind === "flight" ? "Prix unitaire par billet" : "Prix vendu (optionnel)"}>
+        <Field label={item.kind === "flight" ? "Prix unitaire par billet" : "Prix vendu"}>
           <Text
             value={item.amount == null ? "" : String(item.amount)}
             onChange={(raw) => onChange({ ...item, amount: raw === "" ? null : Number(raw) })}

@@ -135,7 +135,7 @@ describe("redactIngestText", () => {
       items: [],
       travelers: [],
     });
-    assert.equal(cleaned.total_amount, 1);
+    assert.equal(cleaned.total_amount, 0);
     assert.equal(cleaned.document_status, "quote");
     assert.equal((cleaned.notes_client || "").includes("8445"), false);
     assert.match(cleaned.notes_client || "", /Devis/);
@@ -213,7 +213,7 @@ describe("parseDocumentMoney", () => {
       items,
       travelers: [],
     });
-    assert.equal(cleaned.total_amount, 858.8);
+    assert.equal(cleaned.total_amount, 0);
     assert.equal(cleaned.items[0].amount, null);
     assert.equal(cleaned.items[0].details?.document_amount, 858.8);
   });
@@ -700,7 +700,7 @@ describe("PDF déposés (upload)", () => {
 });
 
 describe("sellingTotalFromExtract", () => {
-  it("somme un montant par fichier et garde la saisie agent", () => {
+  it("somme les prix vendus des cartes, pas les montants PDF", () => {
     const extract = {
       document_status: "confirmed" as const,
       title: "Costa Rica",
@@ -756,13 +756,18 @@ describe("sellingTotalFromExtract", () => {
       ],
       travelers: [],
     };
-    assert.equal(sellingTotalFromExtract(extract), 943.8);
-    assert.equal(sellingTotalFromExtract({ ...extract, total_amount: 2100 }), 2100);
-    assert.equal(sellingTotalFromExtract({ ...extract, total_amount: 0 }), 943.8);
+    assert.equal(sellingTotalFromExtract(extract), 0);
     assert.equal(
-      sellingTotalFromExtract({ ...extract, total_amount: 0, items: [] }),
-      0
+      sellingTotalFromExtract({
+        ...extract,
+        total_amount: 2100,
+        items: extract.items.map((item, index) =>
+          index === 0 ? { ...item, amount: 400 } : { ...item, amount: 85 }
+        ),
+      }),
+      570
     );
+    assert.equal(sellingTotalFromExtract({ ...extract, items: [] }), 0);
     assert.equal(bookingStatusFromExtract(extract, "draft"), "confirmed");
     assert.equal(
       bookingStatusFromExtract({ ...extract, document_status: "quote" }, "draft"),

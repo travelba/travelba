@@ -14,7 +14,9 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { bookingTotalFromItems } from "@/lib/crm/bookings";
 import { sortItemsByOrder } from "@/lib/crm/carnet";
+import { formatMoney } from "@/lib/crm/money";
 import { customerFullName, type CrmCompanion, type CrmCustomer } from "@/lib/crm/types";
 import { DateFrInput, Field, fieldControlClass } from "@/components/crm/fields";
 import { IssuesList } from "@/components/crm/IssuesList";
@@ -447,7 +449,13 @@ export function BookingIngest({
       abortRef.current = controller;
       const uploaded = await uploadSlots(slots, controller.signal);
       const body = new FormData();
-      body.set("extract", JSON.stringify(extract));
+      body.set(
+        "extract",
+        JSON.stringify({
+          ...extract,
+          total_amount: bookingTotalFromItems(extract.items || []),
+        })
+      );
       body.set("customer_id", customerId);
       body.set("batch_id", batchId);
       body.set(
@@ -751,16 +759,12 @@ export function BookingIngest({
               />
             </Field>
             <Field
-              label="Prix vendu (total)"
-              hint="Prérempli depuis les documents. Corrigez si le prix vendu diffère."
+              label="Montant du séjour"
+              hint="Somme des prix vendus de chaque carte. Saisissez le prix sur la carte, pas ici."
             >
-              <input
-                type="number"
-                step="0.01"
-                value={extract.total_amount ?? ""}
-                onChange={(e) => patch("total_amount", e.target.value === "" ? null : Number(e.target.value))}
-                className={fieldControlClass}
-              />
+              <p className={`${fieldControlClass} bg-[#f7f6f2] font-semibold text-[var(--admin-navy)]`}>
+                {formatMoney(bookingTotalFromItems(extract.items || []), extract.currency || "EUR")}
+              </p>
             </Field>
             <Field label="Devise">
               <input

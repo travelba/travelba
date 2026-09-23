@@ -119,9 +119,9 @@ test("item debit posts only when flagged on a confirmed stay", () => {
   );
 });
 
-test("stay total is the sum of selling prices when any card is priced", () => {
-  assert.equal(bookingTotalFromItems([]), null);
-  assert.equal(bookingTotalFromItems([{ amount: null }, { amount: 0 }]), null);
+test("stay total is always the sum of card selling prices", () => {
+  assert.equal(bookingTotalFromItems([]), 0);
+  assert.equal(bookingTotalFromItems([{ amount: null }, { amount: 0 }]), 0);
   assert.equal(bookingTotalFromItems([{ amount: 858 }]), 858);
   assert.equal(
     bookingTotalFromItems([{ amount: 858.8 }, { amount: null }, { amount: 85 }]),

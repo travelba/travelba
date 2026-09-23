@@ -53,19 +53,17 @@ export function itemSellingAmount(item: {
   return Math.round(total * 100) / 100;
 }
 
+/** Montant du séjour : toujours la somme des prix vendus. Chauffeur / greeter et frais de billeterie restent hors total. */
 export function bookingTotalFromItems(
   items: { kind?: string | null; amount?: number | null; details?: Record<string, unknown> | null }[]
-): number | null {
+): number {
   let sum = 0;
-  let priced = false;
   for (const item of items) {
     if (isExtraItemKind(item.kind)) continue;
     const n = itemSellingAmount(item);
     if (n == null) continue;
     sum += n;
-    priced = true;
   }
-  if (!priced) return null;
   return Math.round(sum * 100) / 100;
 }
 
@@ -75,7 +73,6 @@ export async function syncBookingTotalFromItems(supabase: SupabaseClient, bookin
     .select("amount, kind, details")
     .eq("booking_id", bookingId);
   const total = bookingTotalFromItems(items || []);
-  if (total == null) return;
   await supabase.from("crm_bookings").update({ total_amount: total }).eq("id", bookingId);
 }
 

@@ -262,7 +262,7 @@ describe("carnet", () => {
     assert.equal(canPublishCarnet([{ kind: "chauffeur" }, { kind: "fee" }]), false);
   });
 
-  it("propose le total séjour depuis le montant document, sans coller le net sur la carte", () => {
+  it("garde le montant document hors du prix vendu et du total séjour", () => {
     const cleaned = sanitizeExtractedPrices({
       document_status: "confirmed",
       title: "Marrakech",
@@ -289,7 +289,7 @@ describe("carnet", () => {
       ],
       travelers: [],
     });
-    assert.equal(cleaned.total_amount, 858.8);
+    assert.equal(cleaned.total_amount, 0);
     assert.equal(cleaned.items[0].amount, null);
     assert.equal(cleaned.items[0].details?.document_amount, 858.8);
     assert.equal(cleaned.items[0].details?.document_currency, "EUR");

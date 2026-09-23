@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { bookingTotalFromItems } from "./bookings";
 import { sortItemsByOrder } from "./carnet";
 import { redactIngestValue } from "./ingest-redact";
 import { mergeExtractItems } from "./item-match";
@@ -267,34 +268,9 @@ function textDetail(details: Record<string, unknown> | undefined, key: string) {
   return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
-function documentAmountSum(extract: BookingExtract): number | null {
-  const byKey = new Map<string, number>();
-  for (const item of extract.items || []) {
-    const amount = asPositiveMoney(item.details?.document_amount);
-    if (!amount) continue;
-    const file = String(item.details?.source_file_name || "")
-      .trim()
-      .toLowerCase();
-    const key = file
-      ? `file:${file}`
-      : `item:${item.kind}:${String(item.confirmation_ref || "").toLowerCase()}:${String(item.title || "").toLowerCase()}`;
-    const prev = byKey.get(key);
-    byKey.set(key, prev == null ? amount : Math.max(prev, amount));
-  }
-  if (!byKey.size) return null;
-  const sum = [...byKey.values()].reduce((a, b) => a + b, 0);
-  return Math.round(sum * 100) / 100;
-}
-
-/** Un montant PDF par fichier (max), sommé. L’agent peut écraser via total_amount > 0. Un 0 sans documents reste 0. */
-export function sellingTotalFromExtract(extract: BookingExtract): number | null {
-  const fromDocuments = documentAmountSum(extract);
-  if (extract.total_amount != null && Number.isFinite(Number(extract.total_amount))) {
-    const n = Math.round(Number(extract.total_amount) * 100) / 100;
-    const amount = n < 0 ? 0 : n;
-    if (amount > 0 || fromDocuments == null) return amount;
-  }
-  return fromDocuments;
+/** Montant du séjour = somme des prix vendus des cartes. Le montant PDF n’entre pas dans ce total. */
+export function sellingTotalFromExtract(extract: BookingExtract): number {
+  return bookingTotalFromItems(extract.items || []);
 }
 
 export function bookingStatusFromExtract(
@@ -343,7 +319,7 @@ function keepDocumentPrice(
   return { ...item, amount: null, details };
 }
 
-/** item.amount client toujours null. total_amount = saisie agent ou somme des montants PDF (1 / fichier). */
+/** item.amount reste null à l’extraction. total_amount = somme des prix vendus saisis sur les cartes. */
 export function sanitizeExtractedPrices(extract: BookingExtract): BookingExtract {
   const fallbackTotal = asPositiveMoney(extract.total_amount);
   const rawItems = extract.items || [];

@@ -60,7 +60,7 @@ Règles d’honnêteté :
 - details.needs_review = true si lecture douteuse.
 - amount des items : toujours null (pas le net client).
 - details.document_amount = montant imprimé sur CE fichier (total visible). Absent = null. Pas une ligne « NET » fournisseur seule.
-- total_amount : somme des details.document_amount (un montant par fichier). L’agent peut corriger le prix vendu.
+- total_amount : somme des prix vendus saisis sur les cartes. Ne pas le remplir avec le total PDF.
 - details.document_currency = EUR | USD | CHF | GBP selon le symbole / code imprimé.
 
 Voyageurs :

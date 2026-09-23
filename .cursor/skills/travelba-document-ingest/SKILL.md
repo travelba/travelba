@@ -20,7 +20,7 @@ Identité / MRZ : skill `travelba-identity` — **pas** ce dropzone.
 ## Contrat (non négociable)
 
 1. **Ne jamais inventer.** Absent = `null`. Pas de 15:00 / 12:00, pas de petit-déj, pas de franchise.
-2. **Prix extraits** : montant PDF/photo → `details.document_amount` (un par fichier). `item.amount` reste **null**. `total_amount` est **prérempli** (somme des documents) ; l’agent corrige le prix vendu. Enregistrer une confirmation écrit le montant du séjour **et** le débit ledger (`syncBookingLedger`). Pas une ligne « NET » fournisseur seule.
+2. **Prix extraits** : montant PDF/photo → `details.document_amount` (un par fichier). `item.amount` reste **null** tant que l’agent ne saisit pas le prix vendu de la carte. `total_amount` = **somme de ces prix vendus** (vol = unitaire × billets), jamais la somme des PDF. Enregistrer une confirmation écrit ce total **et** le débit ledger (`syncBookingLedger`). Pas une ligne « NET » fournisseur seule.
 3. **Pas de PAN / CVC / fidélité / paiement.** `redactIngestText` avant le modèle.
 4. **Un séjour par dépôt.** Fichiers hétérogènes : le plus complet + `notes_client`.
 5. **Relecture humaine** puis Enregistrer (`visible_to_client=false`).
@@ -135,7 +135,7 @@ Réimport même clé = **remplace** la carte. Dans un même extract, 10 duplicat
 
 - Dropzone : progression par fichier, Annuler, retry des erreurs, succès partiel. Filtre cartes par `source_file_name`.
 - Sous-fiche par `kind`. Bandeau devis. Bandeau **À vérifier** (`needs_review`) : on **enregistre**, on ne refuse pas tout le lot.
-- **Prix vendu (total)** prérempli depuis les PDF. `parseExtractPayload` ne l’efface plus.
+- **Montant du séjour** = somme des prix vendus des cartes, affiché en lecture seule. `parseExtractPayload` ne copie pas le PDF dans `item.amount`.
 - Hôtel : `normalizeHotelExtractItem` force `title = hotel_name`.
 - Confirmation → dossier **confirmé** (inédit client) + `total_amount` + transactions. Devis → `quoted` sans débit.
 - Cartes manuelles OK. Drag `sort_order` après persist.
