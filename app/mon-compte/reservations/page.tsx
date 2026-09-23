@@ -163,7 +163,7 @@ export default async function ReservationsPage({
                     href={`/mon-compte/reservations/${b.reference}`}
                     className="inline-flex h-11 w-full items-center justify-center rounded-full bg-[var(--admin-navy)] px-3 text-sm font-semibold text-white"
                   >
-                    {showPast ? "Revoir le carnet" : "Ouvrir le carnet"}
+                    Accéder à ma réservation
                   </Link>
                 </div>
               </article>

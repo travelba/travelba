@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { CrmCustomer } from "@/lib/crm/types";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { fieldControlClass, DateFrInput } from "@/components/crm/fields";
+import { PlaceField } from "@/components/crm/PlaceField";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { IssuesList } from "@/components/crm/IssuesList";
 import { issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
@@ -99,7 +100,7 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
       </label>
       <label className={labelClass}>
         Destination
-        <input name="destination" disabled={saving} placeholder="Ville, pays" className={fieldControlClass} />
+        <PlaceField name="destination" disabled={saving} className={fieldControlClass} />
       </label>
       <p className="text-xs text-muted sm:col-span-3">
         Le montant du séjour sera la somme des prix vendus des cartes.

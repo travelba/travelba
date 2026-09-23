@@ -26,6 +26,7 @@ import { Icon } from "@/components/crm/icons";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
+import { PlaceField } from "@/components/crm/PlaceField";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
 import { TripPassportPicker } from "@/components/crm/TripPassportPicker";
 import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
@@ -343,7 +344,11 @@ export function BookingEditor({
         </label>
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
           Destination
-          <input name="destination" defaultValue={booking.destination || ""} className="rounded-xl border border-border px-3 py-2" />
+          <PlaceField
+            name="destination"
+            defaultValue={booking.destination || ""}
+            className="rounded-xl border border-border px-3 py-2"
+          />
         </label>
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
           Départ

@@ -25,6 +25,7 @@ import { sortItemsByOrder } from "@/lib/crm/carnet";
 import { formatMoney } from "@/lib/crm/money";
 import { customerFullName, type CrmCompanion, type CrmCustomer } from "@/lib/crm/types";
 import { DateFrInput, Field, fieldControlClass } from "@/components/crm/fields";
+import { PlaceField } from "@/components/crm/PlaceField";
 import { IssuesList } from "@/components/crm/IssuesList";
 import {
   collectExtractIssues,
@@ -790,9 +791,9 @@ export function BookingIngest({
               />
             </Field>
             <Field label="Destination">
-              <input
+              <PlaceField
                 value={extract.destination || ""}
-                onChange={(e) => patch("destination", e.target.value)}
+                onValueChange={(next) => patch("destination", next)}
                 className={fieldControlClass}
               />
             </Field>

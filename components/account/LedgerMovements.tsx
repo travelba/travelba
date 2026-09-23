@@ -98,7 +98,7 @@ export function LedgerMovements({ rows }: { rows: LedgerMovementRow[] }) {
                     href={row.carnetHref}
                     className="inline-flex pt-1 text-sm font-semibold text-[var(--admin-navy)]"
                   >
-                    Ouvrir le carnet
+                    Accéder à ma réservation
                   </Link>
                 ) : null}
               </div>

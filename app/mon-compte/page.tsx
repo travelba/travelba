@@ -95,7 +95,7 @@ export default async function AccountHomePage() {
               href={tripHref}
               className="flex h-11 items-center justify-between rounded-full bg-white px-4 text-sm font-semibold text-[var(--admin-navy)]"
             >
-              Ouvrir le carnet
+              Accéder à ma réservation
               <Icon name="arrow_forward" className="h-5 w-5 text-[var(--admin-gold)]" />
             </Link>
           </div>
