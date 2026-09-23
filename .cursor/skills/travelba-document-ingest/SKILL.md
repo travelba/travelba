@@ -127,7 +127,7 @@ Réimport même clé = **remplace** la carte. Dans un même extract, 10 duplicat
 
 - Noms imprimés, casse normale. « 2 adults » sans noms → Adulte 1 / Adulte 2.
 - Pas d’enfant sans nom.
-- `title` séjour / `destination` : villes séparées par ` · `. Title d’une **carte hôtel** = nom d’établissement.
+- `title` séjour / `destination` : villes séparées par ` · `. **Ville d’arrivée** (Avoriaz, Marrakech), pas Paris / CDG même si le PDF commence par le départ. Title d’une **carte hôtel** = nom d’établissement. Couverture = cette arrivée — skill `travelba-carnet`.
 
 ## UI persist
 
