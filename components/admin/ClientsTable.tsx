@@ -22,6 +22,7 @@ export function ClientsTable({
   initialQuery?: string;
 }) {
   const [q, setQ] = useState(initialQuery);
+  const [filter, setFilter] = useState<"all" | "vip" | "hold">("all");
   const bal = useMemo(() => {
     const map = new Map<string, CrmBalance[]>();
     for (const row of balances) {
@@ -34,12 +35,14 @@ export function ClientsTable({
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    if (!needle) return customers;
     return customers.filter((c) => {
+      if (filter === "vip" && !c.is_vip) return false;
+      if (filter === "hold" && !c.on_hold) return false;
+      if (!needle) return true;
       const hay = `${customerFullName(c)} ${c.email} ${c.phone || ""}`.toLowerCase();
       return hay.includes(needle);
     });
-  }, [customers, q]);
+  }, [customers, q, filter]);
 
   return (
     <div className="mt-6 space-y-3">
@@ -50,6 +53,16 @@ export function ClientsTable({
           placeholder="Rechercher un client (nom, e-mail, téléphone)…"
           className="admin-af-input w-full text-sm"
         />
+        <select
+          value={filter}
+          onChange={(e) => setFilter(e.target.value as "all" | "vip" | "hold")}
+          className="admin-af-input w-full text-sm sm:w-auto"
+          aria-label="Filtrer les clients"
+        >
+          <option value="all">Tous</option>
+          <option value="vip">VIP</option>
+          <option value="hold">En veille</option>
+        </select>
         <p className="shrink-0 font-label text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
           {filtered.length} client{filtered.length > 1 ? "s" : ""}
         </p>
@@ -80,7 +93,21 @@ export function ClientsTable({
                         <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[11px] font-bold text-[#f8f6f0]">
                           {initials(c)}
                         </span>
-                        <span className="font-semibold text-[var(--admin-navy)]">{customerFullName(c)}</span>
+                        <span className="flex flex-col">
+                          <span className="font-semibold text-[var(--admin-navy)]">{customerFullName(c)}</span>
+                          <span className="mt-0.5 flex flex-wrap gap-1">
+                            {c.is_vip ? (
+                              <span className="rounded-full bg-[var(--admin-navy)] px-2 py-0.5 text-[10px] font-bold uppercase text-white">
+                                VIP
+                              </span>
+                            ) : null}
+                            {c.on_hold ? (
+                              <span className="rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">
+                                En veille
+                              </span>
+                            ) : null}
+                          </span>
+                        </span>
                       </Link>
                     </td>
                     <td className="px-5 py-3 text-muted">{c.email}</td>

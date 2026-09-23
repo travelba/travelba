@@ -26,6 +26,10 @@ import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
 import { TripPassportPicker } from "@/components/crm/TripPassportPicker";
+import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
+import { IssuesList } from "@/components/crm/IssuesList";
+import { collectPublishIssues, issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
+import { householdMembers } from "@/lib/crm/household";
 
 export function BookingEditor({
   booking,
@@ -53,6 +57,7 @@ export function BookingEditor({
   const needsReview = items.some((item) => item.details?.needs_review === true);
   const [busy, setBusy] = useState<"idle" | "save" | "publish">("idle");
   const [flash, setFlash] = useState<string | null>(null);
+  const [issues, setIssues] = useState<BookingIssue[]>([]);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -68,30 +73,40 @@ export function BookingEditor({
         include_in_ledger: fd.get("include_in_ledger") === "on",
       }),
     });
+    const json = await res.json().catch(() => ({}));
     setBusy("idle");
     if (!res.ok) {
-      setFlash("Enregistrement impossible.");
+      setIssues(issuesFromResponse(json));
+      setFlash(null);
       return;
     }
+    setIssues([]);
     setFlash("Enregistré. Le carnet n’est pas publié pour autant.");
     router.refresh();
   }
 
   async function setPublished(visible: boolean) {
-    if (visible && !items.some((item) => item.kind !== "fee")) {
-      setFlash("Ajoutez au moins une carte avant de publier le carnet.");
-      return;
+    if (visible) {
+      const publishIssues = collectPublishIssues(items);
+      if (publishIssues.length) {
+        setIssues(publishIssues);
+        setFlash(null);
+        return;
+      }
     }
     setBusy("publish");
     setFlash(null);
+    setIssues([]);
     const res = await fetch(`/api/admin/bookings/${booking.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ visible_to_client: visible }),
     });
+    const json = await res.json().catch(() => ({}));
     setBusy("idle");
     if (!res.ok) {
-      setFlash(visible ? "Publication impossible." : "Masquage impossible.");
+      setIssues(issuesFromResponse(json));
+      setFlash(null);
       return;
     }
     setFlash(visible ? "Carnet publié." : "Carnet masqué.");
@@ -102,19 +117,32 @@ export function BookingEditor({
     event.preventDefault();
     const form = event.currentTarget;
     const fd = new FormData(form);
-    const companionId = String(fd.get("companion_id") || "");
-    const companion = companions.find((c) => c.id === companionId);
-    await fetch(`/api/admin/bookings/${booking.id}/travelers`, {
+    const key = String(fd.get("party_key") || "");
+    const isHolder = key === "holder";
+    const companionId = key.startsWith("companion:") ? key.slice("companion:".length) : "";
+    const res = await fetch(`/api/admin/bookings/${booking.id}/travelers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         companion_id: companionId || null,
-        is_account_holder: fd.get("is_account_holder") === "on",
-        first_name: companion?.first_name || fd.get("first_name"),
-        last_name: companion?.last_name || fd.get("last_name"),
+        is_account_holder: isHolder,
       }),
     });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setIssues(issuesFromResponse(json));
+      return;
+    }
+    setIssues([]);
     form.reset();
+    router.refresh();
+  }
+
+  async function removeTraveler(travelerId: string) {
+    await fetch(
+      `/api/admin/bookings/${booking.id}/travelers?travelerId=${encodeURIComponent(travelerId)}`,
+      { method: "DELETE" }
+    );
     router.refresh();
   }
 
@@ -179,6 +207,7 @@ export function BookingEditor({
             <p className="mt-2 text-sm text-accent">Certaines cartes sont marquées lecture douteuse.</p>
           ) : null}
           {flash ? <p className="mt-2 text-sm text-[var(--admin-navy)]">{flash}</p> : null}
+          <IssuesList issues={issues} className="mt-2" />
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           <button
@@ -214,6 +243,8 @@ export function BookingEditor({
       <BookingIngest
         role="admin"
         mode="append"
+        householdHolder={customers.find((row) => row.id === booking.customer_id) || holderName}
+        householdCompanions={companions}
         ingestUrl="/api/admin/bookings/ingest"
         saveUrl={`/api/admin/bookings/${booking.id}/from-ingest`}
         aiConfigured={aiConfigured}
@@ -353,27 +384,68 @@ export function BookingEditor({
         >
           Joindre les pièces sur la fiche client
         </Link>
-        <form onSubmit={addTraveler} className="grid gap-2 sm:grid-cols-2">
-          <select name="companion_id" className={fieldControlClass}>
-            <option value="">Saisie libre</option>
-            {companions.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.first_name} {c.last_name}
-              </option>
+        {travelers.length ? (
+          <ul className="space-y-1 text-sm">
+            {travelers.map((traveler) => (
+              <li key={traveler.id} className="flex items-center justify-between gap-2">
+                <span>
+                  {[traveler.first_name, traveler.last_name].filter(Boolean).join(" ") || "Voyageur"}
+                  {traveler.is_account_holder ? " · titulaire" : ""}
+                </span>
+                <button
+                  type="button"
+                  className="text-xs font-semibold text-accent"
+                  onClick={() => void removeTraveler(traveler.id)}
+                >
+                  Retirer
+                </button>
+              </li>
             ))}
+          </ul>
+        ) : null}
+        <form onSubmit={addTraveler} className="grid gap-2 sm:grid-cols-[1fr_auto]">
+          <select name="party_key" required className={fieldControlClass}>
+            <option value="">Voyageur du foyer…</option>
+            {travelers.some((row) => row.is_account_holder) ? null : (
+              <option value="holder">
+                {holderName.first_name} {holderName.last_name} (titulaire)
+              </option>
+            )}
+            {companions
+              .filter((companion) => !travelers.some((row) => row.companion_id === companion.id))
+              .map((companion) => (
+                <option key={companion.id} value={`companion:${companion.id}`}>
+                  {companion.first_name} {companion.last_name}
+                </option>
+              ))}
           </select>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="is_account_holder" /> Titulaire du dossier
-          </label>
-          <input name="first_name" placeholder="Prénom" className={fieldControlClass} />
-          <input name="last_name" placeholder="Nom" className={fieldControlClass} />
-          <button className="admin-af-btn rounded-full px-3 py-2 text-sm sm:col-span-2">
-            Ajouter un voyageur
-          </button>
+          <button className="admin-af-btn rounded-full px-3 py-2 text-sm">Ajouter</button>
         </form>
       </section>
 
-      <BookingItemsPanel bookingId={booking.id} items={items} currency={booking.currency} />
+      <BookingItemsPanel
+        bookingId={booking.id}
+        items={items}
+        documents={documents}
+        household={householdMembers(
+          customers.find((row) => row.id === booking.customer_id) || holderName,
+          companions
+        )}
+        currency={booking.currency}
+      />
+
+      {customers.find((row) => row.id === booking.customer_id) ? (
+        <section className="admin-af-card rounded-3xl p-5">
+          <ExtrasPanel
+            variant="admin"
+            booking={booking}
+            items={items}
+            travelers={travelers}
+            holder={customers.find((row) => row.id === booking.customer_id)!}
+            companions={companions}
+          />
+        </section>
+      ) : null}
 
       {items.length ? (
         <section className="admin-af-card space-y-3 rounded-3xl p-5">

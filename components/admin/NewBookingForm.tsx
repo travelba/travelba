@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import type { CrmCustomer } from "@/lib/crm/types";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { fieldControlClass, DateFrInput } from "@/components/crm/fields";
+import { IssuesList } from "@/components/crm/IssuesList";
+import { issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
 
 export function NewBookingForm({
   customers,
@@ -41,6 +43,7 @@ export function NewBookingForm({
 function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [issues, setIssues] = useState<BookingIssue[]>([]);
   const [saving, setSaving] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -60,7 +63,8 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(json.error || "Création impossible. Réessayez.");
+        setIssues(issuesFromResponse(json));
+        setError(null);
         return;
       }
       router.push(`/admin/reservations/${json.booking.id}`);
@@ -117,7 +121,10 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
         Retour
         <DateFrInput name="end_date" aria-label="Date de retour" className={fieldControlClass} />
       </label>
-      {error ? <p className="sm:col-span-3 text-sm text-accent">{error}</p> : null}
+      <div className="sm:col-span-3">
+        <IssuesList issues={issues} />
+        {error && !issues.length ? <p className="text-sm text-accent">{error}</p> : null}
+      </div>
       <button type="submit" disabled={saving} className="admin-af-btn rounded-xl px-4 py-2.5 text-sm sm:col-span-3">
         {saving ? "Création…" : "Créer la réservation"}
       </button>

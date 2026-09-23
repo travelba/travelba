@@ -26,6 +26,7 @@ export function hotelRooms(item: CrmBookingItem): {
   room: string;
   guests: string;
   confirmation_ref: string;
+  party_keys: string[];
 }[] {
   const raw = item.details?.rooms;
   if (Array.isArray(raw) && raw.length) {
@@ -35,6 +36,9 @@ export function hotelRooms(item: CrmBookingItem): {
         room: String(rec.room || rec.type || "").trim(),
         guests: String(rec.guests || "").trim(),
         confirmation_ref: String(rec.confirmation_ref || "").trim(),
+        party_keys: Array.isArray(rec.party_keys)
+          ? rec.party_keys.map((key) => String(key || "")).filter(Boolean)
+          : [],
       };
     });
   }
@@ -45,6 +49,7 @@ export function hotelRooms(item: CrmBookingItem): {
         room,
         guests: detailStr(item, "guests"),
         confirmation_ref: item.confirmation_ref || "",
+        party_keys: [],
       },
     ];
   }
@@ -221,14 +226,23 @@ export function documentLabel(doc: CrmBookingDocument, items: CrmBookingItem[]) 
 /** Pièces publiées qui ne sont rattachées à aucune carte : à lister à part dans le carnet client. */
 export function unlinkedDocuments(docs: CrmBookingDocument[], items: CrmBookingItem[]) {
   const linked = new Set(items.map((item) => item.source_document_id).filter(Boolean));
-  return docs.filter((doc) => !linked.has(doc.id));
+  return docs.filter((doc) => !linked.has(doc.id) && !doc.booking_item_id);
+}
+
+export function documentsForItem(item: CrmBookingItem, docs: CrmBookingDocument[]) {
+  const seen = new Set<string>();
+  const list: CrmBookingDocument[] = [];
+  for (const doc of docs) {
+    const hit = doc.booking_item_id === item.id || doc.id === item.source_document_id;
+    if (!hit || seen.has(doc.id)) continue;
+    seen.add(doc.id);
+    list.push(doc);
+  }
+  return list;
 }
 
 export function confirmationForItem(item: CrmBookingItem, docs: CrmBookingDocument[]) {
-  if (item.source_document_id) {
-    return docs.find((doc) => doc.id === item.source_document_id) || null;
-  }
-  return null;
+  return documentsForItem(item, docs)[0] || null;
 }
 
 export function kindIcon(kind: string) {
@@ -249,6 +263,10 @@ export function kindIcon(kind: string) {
       return "local_activity";
     case "insurance":
       return "health_and_safety";
+    case "chauffeur":
+      return "airport_shuttle";
+    case "greeter":
+      return "verified_user";
     default:
       return "event";
   }

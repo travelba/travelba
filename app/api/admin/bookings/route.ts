@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
+import { dbError, jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
+import { collectManualCreateIssues } from "@/lib/crm/booking-issues";
 import { nextBookingReference, parseIncludeInLedger, syncBookingLedger } from "@/lib/crm/bookings";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { scheduleBookingCover } from "@/lib/crm/cover-generate";
@@ -22,14 +23,17 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const customerId = String(body?.customer_id || "");
   const title = String(body?.title || "").trim();
-  if (!customerId || !title) return jsonError("Client et titre requis");
+  const createIssues = collectManualCreateIssues({ customerId, title });
+  if (createIssues.length) return jsonIssues(createIssues);
   const { data: traveler, error: travelerError } = await auth.supabase
     .from("crm_customers")
     .select("id, company_role, billing_parent_id")
     .eq("id", customerId)
     .maybeSingle();
   if (travelerError) return dbError(travelerError, 500);
-  if (!traveler) return jsonError("Client introuvable", 404);
+  if (!traveler) {
+    return jsonIssues([{ field: "customer_id", message: "Client introuvable." }], 404);
+  }
   const billingCustomerId = body?.billing_customer_id
     ? String(body.billing_customer_id)
     : resolveBillingCustomerId(traveler as CrmCustomer);

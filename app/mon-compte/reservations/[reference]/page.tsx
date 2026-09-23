@@ -8,8 +8,10 @@ import {
   type CrmBookingDocument,
   type CrmBookingItem,
   type CrmBookingTraveler,
+  type CrmCompanion,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
+import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { ConciergeBanner, StatusChip, bookingStatusTone } from "@/components/crm/ui";
 import { bookingCoverUrl } from "@/lib/crm/covers";
@@ -50,7 +52,8 @@ export default async function ReservationDetailPage({ params }: Props) {
   const b = booking as CrmBooking;
   await reconcileCustomerParty(customer.id);
 
-  const [{ data: items }, { data: travelers }, { data: docs }, { data: identityDocs }] = await Promise.all([
+  const [{ data: items }, { data: travelers }, { data: docs }, { data: identityDocs }, { data: companions }] =
+    await Promise.all([
     supabase
       .from("crm_booking_items")
       .select("*")
@@ -63,6 +66,7 @@ export default async function ReservationDetailPage({ params }: Props) {
       .eq("booking_id", b.id)
       .eq("visible_to_client", true),
     supabase.from("crm_travel_documents").select("*").eq("customer_id", customer.id),
+    supabase.from("crm_travel_companions").select("*").eq("customer_id", customer.id),
   ]);
 
   const visibleItems = (items || []) as CrmBookingItem[];
@@ -169,6 +173,18 @@ export default async function ReservationDetailPage({ params }: Props) {
           </ul>
         </section>
       ) : null}
+
+      <section className="aura-card rounded-[1.35rem] bg-white p-4">
+        <ExtrasPanel
+          variant="client"
+          booking={b}
+          items={visibleItems}
+          travelers={party}
+          holder={customer}
+          companions={(companions || []) as CrmCompanion[]}
+          whatsappHref={modifyHref}
+        />
+      </section>
 
       <section className="aura-card space-y-2 rounded-[1.35rem] bg-white p-4">
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">

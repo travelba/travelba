@@ -15,10 +15,21 @@ export async function POST(request: Request, ctx: Ctx) {
   const bytes = Buffer.from(await file.arrayBuffer());
   const path = `bookings/${id}/${Date.now()}-${safeFileName(file.name)}`;
   await uploadCrmFile(path, bytes, file.type || "application/octet-stream");
+  const itemId = String(form.get("booking_item_id") || "").trim() || null;
+  if (itemId) {
+    const { data: item } = await auth.supabase
+      .from("crm_booking_items")
+      .select("id")
+      .eq("id", itemId)
+      .eq("booking_id", id)
+      .maybeSingle();
+    if (!item) return jsonError("Carte introuvable");
+  }
   const { data, error } = await auth.supabase
     .from("crm_booking_documents")
     .insert({
       booking_id: id,
+      booking_item_id: itemId,
       kind,
       file_name: file.name,
       mime_type: file.type,

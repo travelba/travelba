@@ -1,3 +1,4 @@
+import { inferAirlineIata } from "./brand-marks";
 import { redactIngestText } from "./ingest-redact";
 import type { BookingExtract } from "./ingest-types";
 import { findMatchingItem, mergeExtractItems } from "./item-match";
@@ -946,6 +947,10 @@ function flightToItem(flight: ParsedAmadeusFlight): ExtractItem {
     amount: null,
     details: {
       airline: flight.airline,
+      airline_iata: inferAirlineIata({
+        airline: flight.airline,
+        flight_number: flight.flight_number,
+      }),
       flight_number: flight.flight_number,
       pnr: flight.pnr,
       from: flight.from,
@@ -1064,6 +1069,9 @@ function overlayItem(target: ExtractItem, incoming: ExtractItem) {
   }
   if (incoming.details?.airline && !current.airline) {
     current.airline = incoming.details.airline;
+  }
+  if (incoming.details?.airline_iata && !current.airline_iata) {
+    current.airline_iata = incoming.details.airline_iata;
   }
   if (incoming.details?.pnr && !current.pnr) current.pnr = incoming.details.pnr;
   if (incoming.details?.city_from && !current.city_from) {

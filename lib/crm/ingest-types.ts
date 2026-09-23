@@ -13,12 +13,14 @@ const roomSchemaLoose = z
     type: looseString,
     guests: looseString,
     confirmation_ref: looseString,
+    party_keys: z.array(z.string()).optional(),
   })
   .optional();
 
 const detailsSchemaLoose = z
   .object({
     airline: looseString,
+    airline_iata: looseString,
     flight_number: looseString,
     pnr: looseString,
     from: looseString,
@@ -90,6 +92,8 @@ export const bookingExtractSchema = z.object({
       z.object({
         first_name: looseString,
         last_name: looseString,
+        companion_id: looseString,
+        is_account_holder: z.boolean().nullable().optional(),
       })
     )
     .default([]),
@@ -111,6 +115,7 @@ const roomSchemaStrict = z.object({
 
 const detailsSchemaStrict = z.object({
   airline: strictString,
+  airline_iata: strictString,
   flight_number: strictString,
   pnr: strictString,
   from: strictString,

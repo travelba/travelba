@@ -1,7 +1,10 @@
 import type { CrmBooking, CrmBookingDocument, CrmBookingItem } from "@/lib/crm/types";
 import { BOOKING_ITEM_LABELS, type BookingItemKind } from "@/lib/crm/types";
 import { Icon } from "@/components/crm/icons";
+import { BrandMark } from "@/components/crm/BrandMark";
+import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
 import {
+  documentsForItem,
   confirmationForItem,
   dayHeading,
   detailList,
@@ -102,9 +105,7 @@ function CardBody({
   return (
     <details className="group min-w-0 overflow-hidden rounded-2xl border border-[#e5e3dc] bg-white">
       <summary className="flex min-w-0 cursor-pointer list-none items-start gap-3 overflow-hidden px-3.5 py-3 [&::-webkit-details-marker]:hidden">
-        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--admin-peach)] text-[var(--admin-navy)]">
-          <Icon name={kindIcon(item.kind)} className="h-5 w-5" />
-        </span>
+        <BrandMark item={item} className="h-10 w-10" />
         <div className="min-w-0 flex-1 overflow-hidden">
           <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--aura-blue)]">
             {BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind}
@@ -179,6 +180,18 @@ function CardBody({
             {special ? <p>Demandes : {special}</p> : null}
           </>
         ) : null}
+        {item.kind === "chauffeur" || item.kind === "greeter" ? (
+          <>
+            {detailStr(item, "pickup") ? <p>{detailStr(item, "pickup")}</p> : null}
+            {item.kind === "greeter" ? (
+              <p className="text-muted">
+                Accueil à la sortie chauffeur, enregistrement, sûreté, porte ou salon.
+              </p>
+            ) : (
+              <p className="text-muted">Trajet domicile ↔ aéroport, mis en place par l’agence.</p>
+            )}
+          </>
+        ) : null}
         {item.kind === "transfer" ? (
           <>
             <p>
@@ -212,7 +225,17 @@ function CardBody({
           <p className="text-xs text-muted">Réf. {item.confirmation_ref}</p>
         ) : null}
         <div className="flex flex-wrap items-center gap-3">
-          <ConfirmLink item={item} docs={docs} />
+          {documentsForItem(item, docs).map((doc) => (
+            <FileOpenLink
+              key={doc.id}
+              path={doc.storage_path}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--aura-blue)]"
+            >
+              <Icon name={fileKindIcon(doc.mime_type, doc.file_name)} className="h-4 w-4" />
+              {doc.id === item.source_document_id ? "Voir la confirmation" : doc.file_name || "Pièce jointe"}
+            </FileOpenLink>
+          ))}
+          {!documentsForItem(item, docs).length ? <ConfirmLink item={item} docs={docs} /> : null}
           {calendarHref ? <AgendaLink href={calendarHref}>Ajouter à l’agenda</AgendaLink> : null}
         </div>
       </div>

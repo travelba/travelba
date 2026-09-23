@@ -258,6 +258,7 @@ describe("carnet", () => {
   it("refuse de publier un carnet sans carte métier", () => {
     assert.equal(canPublishCarnet([{ kind: "fee" }]), false);
     assert.equal(canPublishCarnet([{ kind: "hotel" }]), true);
+    assert.equal(canPublishCarnet([{ kind: "chauffeur" }, { kind: "fee" }]), false);
   });
 
   it("propose le total séjour depuis le montant document, sans coller le net sur la carte", () => {

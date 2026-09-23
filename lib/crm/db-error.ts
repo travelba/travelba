@@ -18,20 +18,47 @@ export function passwordErrorMessage(error: DbErrorLike) {
   }
 }
 
+const COLUMN_LABELS: Record<string, string> = {
+  title: "titre",
+  customer_id: "client",
+  email: "e-mail",
+  first_name: "prénom",
+  last_name: "nom",
+  phone: "téléphone",
+  billing_customer_id: "payeur",
+  booking_id: "dossier",
+  kind: "type",
+  storage_path: "fichier",
+  reference: "référence",
+};
+
+export function dbColumnFromMessage(message: string | null | undefined) {
+  const match = String(message || "").match(/column "([^"]+)"/i);
+  return match?.[1] || null;
+}
+
+function columnLabel(column: string | null) {
+  if (!column) return null;
+  return COLUMN_LABELS[column] || column.replace(/_/g, " ");
+}
+
 /** Message FR neutre pour une erreur Supabase/Postgres ; le détail part dans les logs serveur. */
 export function dbErrorMessage(error: DbErrorLike, fallback = "Opération impossible. Réessayez.") {
   const code = error?.code ?? "";
+  const column = columnLabel(dbColumnFromMessage(error?.message));
   switch (code) {
     case "23505":
-      return "Cette valeur existe déjà.";
+      return column ? `Cette valeur existe déjà (${column}).` : "Cette valeur existe déjà.";
     case "23503":
-      return "Élément lié introuvable.";
+      return column ? `Élément lié introuvable (${column}).` : "Élément lié introuvable.";
     case "23502":
-      return "Un champ obligatoire est vide.";
+      return column
+        ? `Le champ obligatoire « ${column} » est vide.`
+        : "Un champ obligatoire est vide.";
     case "22P02":
     case "22007":
     case "22008":
-      return "Format de valeur invalide.";
+      return column ? `Format invalide pour « ${column} ».` : "Format de valeur invalide.";
     case "PGRST116":
       return "Élément introuvable.";
     case "42501":

@@ -95,6 +95,8 @@ export function CustomerEditor({
   );
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [onHold, setOnHold] = useState(Boolean(customer.on_hold));
+  const [isVip, setIsVip] = useState(Boolean(customer.is_vip));
 
   const profileAddress = {
     country,
@@ -133,6 +135,8 @@ export function CustomerEditor({
         iban: normalizedIban,
         company_role: companyRole,
         billing_parent_id: companyRole === "member" ? billingParentId || null : null,
+        on_hold: onHold,
+        is_vip: isVip,
         ...billingJson(billing, profileAddress, sameBillingAddress),
       }),
     });
@@ -186,6 +190,20 @@ export function CustomerEditor({
           <p className="sm:col-span-2 font-display text-base font-bold text-[var(--admin-navy)]">
             Identité
           </p>
+          <label className="flex items-start gap-2 text-sm text-[var(--admin-navy)]">
+            <input type="checkbox" className="mt-1" checked={isVip} onChange={(e) => setIsVip(e.target.checked)} />
+            <span>
+              <span className="font-semibold">Client VIP</span>
+              <span className="mt-0.5 block text-xs text-muted">Accès greeter aéroport depuis l’espace client.</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-sm text-[var(--admin-navy)]">
+            <input type="checkbox" className="mt-1" checked={onHold} onChange={(e) => setOnHold(e.target.checked)} />
+            <span>
+              <span className="font-semibold">Compte en veille</span>
+              <span className="mt-0.5 block text-xs text-muted">Badge interne. Aucun changement pour le client.</span>
+            </span>
+          </label>
           <Field label="Prénom(s)" hint="Tous les prénoms, dans l’ordre du passeport">
             <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
           </Field>
