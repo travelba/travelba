@@ -41,6 +41,7 @@ export function ServiceOfferCard({
   const router = useRouter();
   const [address, setAddress] = useState(initialAddress || "");
   const [busy, setBusy] = useState<"validate" | "cancel" | null>(null);
+  const [gone, setGone] = useState(false);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
   const isAdmin = variant === "admin";
   const clock = serviceClock(offer.whenIso);
@@ -99,6 +100,51 @@ export function ServiceOfferCard({
     router.refresh();
   }
 
+  async function refuse() {
+    if (busy || existing || isAdmin) return;
+    setGone(true);
+    setIssues([]);
+    const url = `/api/client/bookings/${reference}/extras`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        decline: true,
+        kind: offer.kind,
+        leg: offer.leg,
+        place: offer.place,
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setGone(false);
+      setIssues(issuesFromResponse(json));
+      return;
+    }
+    router.refresh();
+  }
+
+  function controls() {
+    const refuseButton =
+      !existing && !isAdmin ? (
+        <button
+          type="button"
+          onClick={() => void refuse()}
+          className="inline-flex h-5 items-center text-[11px] font-semibold leading-none text-muted"
+        >
+          Refuser
+        </button>
+      ) : null;
+    const primary = action();
+    if (!refuseButton && !primary) return null;
+    return (
+      <span className="inline-flex items-center gap-2">
+        {refuseButton}
+        {primary}
+      </span>
+    );
+  }
+
   function action() {
     if (existing) {
       if (!isAdmin) return null;
@@ -138,6 +184,8 @@ export function ServiceOfferCard({
     );
   }
 
+  if (gone) return null;
+
   return (
     <article
       className={
@@ -172,12 +220,12 @@ export function ServiceOfferCard({
           </p>
           <p className="mt-1 flex items-center justify-between gap-2 sm:hidden">
             <span className="text-sm font-bold text-[var(--admin-navy)]">{priceLabel}</span>
-            {action()}
+            {controls()}
           </p>
         </div>
         <div className="hidden shrink-0 items-start gap-2 sm:flex">
           <p className="max-w-[7.5rem] text-right text-sm font-bold leading-snug text-[var(--admin-navy)]">{priceLabel}</p>
-          {action()}
+          {controls()}
         </div>
       </div>
       {busy ? (

@@ -13,8 +13,10 @@ import {
   extraTitle,
   findExtra,
   isChildAt,
+  isServiceRefused,
   itineraryOffers,
   matchedStay,
+  serviceRefusalFromRow,
 } from "./extras";
 
 test("tarifs par trajet", () => {
@@ -144,6 +146,28 @@ test("le domicile encadre le vol, l’hôtel s’ajoute, le greeter est juste av
     back.map((row) => (row.type === "offer" ? row.offer.route : "VOL")),
     ["The Norman → TLV", "Aéroport TLV · Tel Aviv", "VOL", "ORY → Domicile"]
   );
+});
+
+test("un refus masque ce service, pas les autres", () => {
+  const home = { kind: "chauffeur", leg: "departure", place: "home" };
+  const hotel = { kind: "chauffeur", leg: "arrival", place: "hotel" };
+  const greeter = { kind: "greeter", leg: "departure", place: null };
+  const refusals = [home];
+  assert.equal(isServiceRefused(refusals, home), true);
+  assert.equal(isServiceRefused(refusals, hotel), false);
+  assert.equal(isServiceRefused(refusals, greeter), false);
+  assert.equal(isServiceRefused([{ kind: "checkin", leg: null, place: null }], { kind: "checkin" }), true);
+  assert.equal(isServiceRefused([{ kind: "visa", leg: null, place: null }], { kind: "checkin" }), false);
+  assert.deepEqual(serviceRefusalFromRow({ kind: "chauffeur", service_leg: "arrival", place: "hotel" }), {
+    kind: "chauffeur",
+    leg: "arrival",
+    place: "hotel",
+  });
+  assert.deepEqual(serviceRefusalFromRow({ kind: "visa", service_leg: "", place: "" }), {
+    kind: "visa",
+    leg: null,
+    place: null,
+  });
 });
 
 test("chauffeur et greeter seulement s’il y a un vol", () => {

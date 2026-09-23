@@ -14,7 +14,7 @@ import {
 import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
 import { TripFormalities } from "@/components/crm/TripFormalities";
 import { TripVisaUploads } from "@/components/crm/TripVisaUploads";
-import { bookingHasFlight } from "@/lib/crm/extras";
+import { bookingHasFlight, serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { BookingStatusBadge } from "@/components/crm/ui";
@@ -57,7 +57,7 @@ export default async function ReservationDetailPage({ params }: Props) {
   const b = booking as CrmBooking;
   await reconcileCustomerParty(customer.id);
 
-  const [{ data: items }, { data: travelers }, { data: docs }, { data: identityDocs }, { data: companions }] =
+  const [{ data: items }, { data: travelers }, { data: docs }, { data: identityDocs }, { data: companions }, { data: declined }] =
     await Promise.all([
     supabase
       .from("crm_booking_items")
@@ -72,7 +72,11 @@ export default async function ReservationDetailPage({ params }: Props) {
       .eq("visible_to_client", true),
     supabase.from("crm_travel_documents").select("*").eq("customer_id", customer.id),
     supabase.from("crm_travel_companions").select("*").eq("customer_id", customer.id),
+    supabase.from("crm_declined_services").select("kind, service_leg, place").eq("booking_id", b.id),
   ]);
+  const refusals = ((declined || []) as { kind?: string | null; service_leg?: string | null; place?: string | null }[])
+    .map(serviceRefusalFromRow)
+    .filter((row): row is ServiceRefusal => Boolean(row));
 
   const visibleItems = (items || []) as CrmBookingItem[];
   if (!carnetVisible(b, visibleItems)) notFound();
@@ -159,6 +163,7 @@ export default async function ReservationDetailPage({ params }: Props) {
           companions: (companions || []) as CrmCompanion[],
           whatsappHref: modifyHref,
         }}
+        refusals={refusals}
       />
 
       {extraDocs.length ? (
@@ -211,8 +216,9 @@ export default async function ReservationDetailPage({ params }: Props) {
           holder={customer}
           companions={(companions || []) as CrmCompanion[]}
           whatsappHref={modifyHref}
-          formalities={formalities}
-        />
+            formalities={formalities}
+            refusals={refusals}
+          />
       ) : null}
 
       <section className="aura-card space-y-2 rounded-[1.35rem] bg-white p-4">

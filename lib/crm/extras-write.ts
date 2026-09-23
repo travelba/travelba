@@ -47,6 +47,7 @@ async function createCheckinExtra(
       { field: "kind", message: "L’enregistrement est déjà sur ce dossier." },
     ]);
   }
+  await assertNotRefused(supabase, opts.booking.id, "checkin", null, null);
   const { data: existing } = await supabase
     .from("crm_booking_items")
     .select("sort_order")
@@ -108,6 +109,7 @@ async function createVisaExtra(
       { field: "kind", message: "La demande de visa est déjà sur ce dossier." },
     ]);
   }
+  await assertNotRefused(supabase, opts.booking.id, "visa", null, null);
   const { data: existing } = await supabase
     .from("crm_booking_items")
     .select("sort_order")
@@ -196,6 +198,7 @@ export async function createBookingExtra(
       },
     ]);
   }
+  await assertNotRefused(supabase, opts.booking.id, opts.kind, leg, place);
   const flightAt =
     extraFlightAt(opts.items, leg, opts.booking.start_date || opts.booking.end_date) || null;
   const startAt = offer.whenIso || flightAt;
@@ -253,6 +256,116 @@ export async function createBookingExtra(
   }
   await refreshBookingLedger(supabase, opts.booking.id);
   return { item: data as CrmBookingItem, heads, amount };
+}
+
+function refusalColumns(
+  kind: ExtraKind | "visa" | "checkin",
+  leg: ExtraLeg | null,
+  place: ServicePlace | null | undefined
+) {
+  return {
+    kind,
+    service_leg: kind === "visa" || kind === "checkin" ? "" : leg || "",
+    place: kind === "chauffeur" ? place || "" : "",
+  };
+}
+
+async function assertNotRefused(
+  supabase: SupabaseClient,
+  bookingId: string,
+  kind: ExtraKind | "visa" | "checkin",
+  leg: ExtraLeg | null,
+  place: ServicePlace | null | undefined
+) {
+  const columns = refusalColumns(kind, leg, place);
+  const { data, error } = await supabase
+    .from("crm_declined_services")
+    .select("id")
+    .eq("booking_id", bookingId)
+    .eq("kind", columns.kind)
+    .eq("service_leg", columns.service_leg)
+    .eq("place", columns.place)
+    .maybeSingle();
+  if (error) {
+    console.error("[crm] decline lookup:", error.code ?? "?", error.message ?? "");
+    throw new BookingIssuesError("Service non enregistré.", [
+      { field: "form", message: "Vérification du service impossible. Réessayez." },
+    ]);
+  }
+  if (data) {
+    throw new BookingIssuesError("Service refusé.", [
+      { field: "kind", message: "Ce service a été refusé." },
+    ]);
+  }
+}
+
+export async function declineBookingService(
+  supabase: SupabaseClient,
+  opts: {
+    booking: CrmBooking;
+    items: CrmBookingItem[];
+    kind: ExtraKind | "visa" | "checkin";
+    leg: ExtraLeg | null;
+    place?: ServicePlace | null;
+  }
+) {
+  if (!bookingHasFlight(opts.items)) {
+    throw new BookingIssuesError("Vol requis.", [
+      { field: "items", message: "Ce service se propose lorsqu’il y a un vol sur le dossier." },
+    ]);
+  }
+  if (opts.kind === "chauffeur" || opts.kind === "greeter") {
+    if (!opts.leg) {
+      throw new BookingIssuesError("Service invalide.", [
+        { field: "leg", message: "Indiquez un trajet (départ ou arrivée)." },
+      ]);
+    }
+    const place = opts.kind === "chauffeur" ? opts.place || null : null;
+    if (opts.kind === "chauffeur" && !place) {
+      throw new BookingIssuesError("Service invalide.", [
+        { field: "place", message: "Indiquez un transfert domicile ou hôtel." },
+      ]);
+    }
+    const offer = itineraryOffers(opts.items).find(
+      (row) => row.kind === opts.kind && row.leg === opts.leg && (row.place || null) === place
+    );
+    if (!offer) {
+      throw new BookingIssuesError("Service indisponible.", [
+        { field: "leg", message: "Ce service ne correspond pas aux vols du dossier." },
+      ]);
+    }
+    if (findExtra(opts.items, opts.kind, opts.leg, place)) {
+      throw new BookingIssuesError("Service déjà demandé.", [
+        { field: "leg", message: "Ce service est déjà validé." },
+      ]);
+    }
+  } else if (opts.kind === "checkin" && findCheckinExtra(opts.items)) {
+    throw new BookingIssuesError("Service déjà demandé.", [
+      { field: "kind", message: "L’enregistrement est déjà sur ce dossier." },
+    ]);
+  } else if (opts.kind === "visa" && findVisaExtra(opts.items)) {
+    throw new BookingIssuesError("Service déjà demandé.", [
+      { field: "kind", message: "La demande de visa est déjà sur ce dossier." },
+    ]);
+  }
+
+  const columns = refusalColumns(opts.kind, opts.leg, opts.place);
+  const { error } = await supabase.from("crm_declined_services").upsert(
+    {
+      booking_id: opts.booking.id,
+      kind: columns.kind,
+      service_leg: columns.service_leg,
+      place: columns.place,
+    },
+    { onConflict: "booking_id,kind,service_leg,place", ignoreDuplicates: true }
+  );
+  if (error) {
+    console.error("[crm] decline:", error.code ?? "?", error.message ?? "");
+    throw new BookingIssuesError("Service non enregistré.", [
+      { field: "form", message: "Le refus n’a pas pu être enregistré. Réessayez." },
+    ]);
+  }
+  return { declined: true as const };
 }
 
 export function parseExtraRequest(body: Record<string, unknown> | null) {

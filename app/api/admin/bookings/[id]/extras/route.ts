@@ -35,6 +35,7 @@ export async function POST(request: Request, ctx: Ctx) {
       companions: (companions || []) as CrmCompanion[],
       kind: extra.kind,
       leg: extra.leg,
+      place: extra.place,
       address: extra.address,
       enforceWindow: false,
     });
