@@ -1,0 +1,10 @@
+{
+  "name": "Travelba",
+  "install": "npm install --include=optional",
+  "terminals": [
+    {
+      "name": "next-dev",
+      "command": "npm run dev"
+    }
+  ]
+}
