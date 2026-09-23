@@ -840,7 +840,7 @@ export function BookingIngest({
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <p className="font-display font-bold text-[var(--admin-navy)]">Voyageurs du foyer</p>
+              <p className="font-display font-bold text-[var(--admin-navy)]">Voyageurs</p>
               {household.length ? (
                 <select
                   className={`${fieldControlClass} max-w-[16rem]`}

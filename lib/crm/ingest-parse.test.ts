@@ -801,3 +801,97 @@ describe("sellingTotalFromExtract", () => {
     assert.equal(cleaned.items[0].title, "Nantipa");
   });
 });
+
+const TRANSAVIA = `
+votre confirmation de réservation
+Numéro de réservation ABC123 Date de réservation 14-09-2026
+Paris (Orly)
+Tel Aviv
+Vol aller : Paris (Orly) - Tel Aviv
+Vol retour : Tel Aviv - Paris (Orly)
+Numéro de vol
+TO 1001
+Date
+14-12-2026
+Heure de départ
+11:30
+Heure d'arrivée
+17:10
+Début de l'enregistrement 3h00 heures avant le départ de votre vol.
+Numéro de vol
+TO 1002
+Date
+23-12-2026
+Heure de départ
+14:10
+Heure d'arrivée
+18:25
+Début de l'enregistrement 4h00 avant le départ de votre vol.
+Passagers
+MR . PAUL MARTIN ( 01/02/1980 )
+Votre tarif Basic contient :
+MRS . ANNE MARTIN ( 03/04/1990 )
+Votre tarif Basic contient :
+CHD . LEA MARTIN ( 05/06/2020 )
+Votre tarif Basic contient :
+CHD . NOAH MARTIN ( 05/06/2020 )
+MR . PAUL MARTIN ( 01/02/1980 )
+MRS . ANNE MARTIN ( 03/04/1990 )
+CHD . LEA MARTIN ( 05/06/2020 )
+CHD . NOAH MARTIN ( 05/06/2020 )
+1 bagage à main de max. 40 x 30 x 20 cm
+bagage de soute: 25 kg € 61.99
+Total des services additionnels 247.96 €
+Total 247.96 €
+© 2026, Transavia
+`;
+
+describe("parseTransaviaConfirmation", () => {
+  it("importe les deux vols et chaque passager une seule fois", () => {
+    assert.equal(classifyIngestFamily(TRANSAVIA, "confirmation.pdf"), "transavia");
+    const parsed = parsedItemsFromText(TRANSAVIA);
+    assert.equal(parserItemsComplete("transavia", parsed.items, parsed.travelers), true);
+    assert.equal(parsed.destination, "Tel Aviv");
+    assert.equal(parsed.items.length, 2);
+    assert.equal(parsed.items[0]?.kind, "flight");
+    assert.equal(parsed.items[0]?.confirmation_ref, "ABC123");
+    assert.equal(parsed.items[0]?.details?.flight_number, "TO 1001");
+    assert.equal(parsed.items[0]?.details?.from, "ORY");
+    assert.equal(parsed.items[0]?.details?.to, "TLV");
+    assert.equal(parsed.items[0]?.start_at, "2026-12-14T11:30:00");
+    assert.equal(parsed.items[0]?.end_at, "2026-12-14T17:10:00");
+    assert.equal(parsed.items[0]?.details?.baggage, "1 bagage à main 40 × 30 × 20 cm");
+    assert.equal(parsed.items[0]?.details?.document_amount, undefined);
+    assert.equal(parsed.items[1]?.details?.flight_number, "TO 1002");
+    assert.equal(parsed.items[1]?.details?.from, "TLV");
+    assert.equal(parsed.items[1]?.details?.to, "ORY");
+    assert.equal(parsed.items[1]?.start_at, "2026-12-23T14:10:00");
+    assert.notEqual(parsed.items[1]?.start_at, "2026-12-23T04:00:00");
+    assert.deepEqual(
+      parsed.travelers.map((row) => `${row.first_name} ${row.last_name}`),
+      ["Paul Martin", "Anne Martin", "Lea Martin", "Noah Martin"]
+    );
+    const hinted = applyStructuredHints(
+      {
+        document_status: "confirmed",
+        title: "",
+        destination: "",
+        start_date: null,
+        end_date: null,
+        currency: "EUR",
+        total_amount: null,
+        notes_client: null,
+        customer_email: null,
+        customer_first_name: null,
+        customer_last_name: null,
+        items: [],
+        travelers: [],
+      },
+      [TRANSAVIA]
+    );
+    assert.equal(hinted.travelers.length, 4);
+    assert.equal(hinted.destination, "Tel Aviv");
+    assert.equal(inferAirportIata("Paris (Orly)")?.iata, "ORY");
+    assert.equal(inferAirportIata("Tel Aviv")?.iata, "TLV");
+  });
+});

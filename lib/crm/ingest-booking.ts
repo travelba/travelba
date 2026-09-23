@@ -42,7 +42,6 @@ import {
   applyRoomGuestLabels,
   attachTravelerToHousehold,
   householdMembers,
-  travelerIsLinked,
 } from "@/lib/crm/household";
 import { isPlaceholderTraveler, sameRecordedTraveler } from "@/lib/crm/person-match";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
@@ -400,7 +399,6 @@ async function upsertItemsAndTravelers(
     const last = emptyToNull(linked.last_name);
     if (!first && !last) continue;
     if (skipPlaceholders && isPlaceholderTraveler(first, last)) continue;
-    if (!isPlaceholderTraveler(first, last) && !travelerIsLinked(linked)) continue;
     const recorded = { first_name: first, last_name: last };
     if (existingTravelers.some((row) => sameRecordedTraveler(row, recorded))) continue;
     const companion =

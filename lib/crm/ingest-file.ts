@@ -76,7 +76,7 @@ const PROMPT_FLIGHT = `Vol :
 - Plusieurs e-tickets passagers pour le MÊME vol (même n°, même jour) = UN item. Les noms vont dans travelers. Le nombre de billets est compté à la fusion (details.ticket_count). L’agent saisit un prix unitaire par billet.
 - confirmation_ref = PNR GDS 6 lettres. details.pnr = réf. compagnie. Jamais l’IATA 8 chiffres agence (20287864, 20255270, 96020293, 20289905).
 - details.airline = transporteur opérant. details.airline_iata = code IATA 2 lettres s’il est imprimé (AF, CM). Sinon null. supplier = émetteur du billet (Hahn Air ≠ Air Panama ; Copa opérant = Copa).
-- details.from / to = IATA. Souvent absent du PDF : Gelabert/Albrook=PAC, Isla Colón=BOC, Enrique Malek=DAV, Tocumen=PTY, Charles-de-Gaulle=CDG, Genève=GVA, Heathrow=LHR, Marseille Provence=MRS.
+- details.from / to = IATA. Souvent absent du PDF : Gelabert/Albrook=PAC, Isla Colón=BOC, Enrique Malek=DAV, Tocumen=PTY, Charles-de-Gaulle=CDG, Orly=ORY, Tel Aviv=TLV, Genève=GVA, Heathrow=LHR, Marseille Provence=MRS.
 - details.city_from / city_to = villes. « 03 August 09:45 » : année = ligne « Lundi 03 août 2026 ».
 - Terminal / siège seulement s’ils sont imprimés. « Heure limite d’enregistrement » n’est pas l’horaire du vol.
 - Carte fidélité : ne pas extraire.
@@ -96,6 +96,14 @@ Transfert : details.pickup / dropoff. Si « 2 h 30 avant le vol » sans heure cl
 Train (rail) : comme un vol (n°, gares, horaires si écrits).
 Voiture (SIXT / loueur) : kind=car. confirmation_ref = n° de réservation. start_at / end_at = prise et restitution. details.pickup / dropoff / vehicle. Pas de franchise, caution, TTC, protection.
 Bateau (cruise) : une carte pour la traversée, pas un jour par port.`;
+
+const PROMPT_TRANSAVIA = `Confirmation Transavia :
+- Aller et retour imprimés = DEUX items. confirmation_ref = numéro de réservation (6 caractères).
+- Passagers (MR / MRS / CHD) → travelers, une fois chacun, casse normale. Ne pas les remplacer par « Adulte N ».
+- Heure de départ et heure d’arrivée seulement. « Début de l’enregistrement » n’est pas l’horaire du vol.
+- Paris (Orly) = ORY. Tel Aviv = TLV. title / destination = ville d’arrivée, pas Paris.
+- Tarif Basic : bagage à main si la phrase est imprimée. Le bagage en soute payant n’est pas inclus.
+- « Total des services additionnels » n’est pas le prix des billets : document_amount null si le tarif des vols n’est pas imprimé.`;
 
 const PROMPT_MAEVA = `Confirmation maeva.com / Pierre & Vacances :
 - UN hôtel (résidence). title = details.hotel_name (établissement), PAS la ville. details.city = station.
@@ -117,8 +125,9 @@ const FAMILY_PROMPT: Record<IngestFamily, string> = {
   transfer: PROMPT_OTHER,
   toucan: PROMPT_OTHER,
   maeva: `${PROMPT_HOTEL}\n${PROMPT_MAEVA}`,
+  transavia: `${PROMPT_FLIGHT}\n${PROMPT_TRANSAVIA}`,
   identity: "C’est une pièce d’identité. document_status=identity. Aucun item de réservation.",
-  unknown: `${PROMPT_FLIGHT}\n${PROMPT_HOTEL}\n${PROMPT_OTHER}\n${PROMPT_MAEVA}`,
+  unknown: `${PROMPT_FLIGHT}\n${PROMPT_HOTEL}\n${PROMPT_OTHER}\n${PROMPT_MAEVA}\n${PROMPT_TRANSAVIA}`,
 };
 
 type UserPart =
@@ -497,15 +506,19 @@ async function processPreparedFile(
   }
 
   const parsed = parsedItemsFromText(text);
-  const complete = parserItemsComplete(family, parsed.items);
-  if (complete) {
-    const extract = sanitizeExtractedPrices({
+  const complete = parserItemsComplete(family, parsed.items, parsed.travelers);
+  const fromParser = () =>
+    sanitizeExtractedPrices({
       ...emptyBookingExtract(),
       document_status: parsed.status || (family === "quote" ? "quote" : "confirmed"),
+      title: parsed.title || "",
+      destination: parsed.destination || "",
       notes_client: parsed.notes.join("\n"),
+      travelers: parsed.travelers,
       items: tagSourceFileName(parsed.items, name),
     });
-    return { name, family, extract };
+  if (complete) {
+    return { name, family, extract: fromParser() };
   }
 
   const dense = text.replace(/\s/g, "").length;
@@ -547,12 +560,7 @@ async function processPreparedFile(
       return {
         name,
         family,
-        extract: sanitizeExtractedPrices({
-          ...emptyBookingExtract(),
-          document_status: parsed.status || (family === "quote" ? "quote" : "confirmed"),
-          notes_client: parsed.notes.join("\n"),
-          items: tagSourceFileName(parsed.items, name),
-        }),
+        extract: fromParser(),
         warning: "Lecture IA indisponible : cartes du parseur uniquement, à relire.",
       };
     }
@@ -584,12 +592,7 @@ async function processPreparedFile(
       return {
         name,
         family,
-        extract: sanitizeExtractedPrices({
-          ...emptyBookingExtract(),
-          document_status: parsed.status || "confirmed",
-          notes_client: parsed.notes.join("\n"),
-          items: tagSourceFileName(parsed.items, name),
-        }),
+        extract: fromParser(),
         warning: "Lecture IA incomplète : cartes du parseur uniquement, à relire.",
       };
     }

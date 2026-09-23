@@ -11,6 +11,8 @@ const AIRPORTS: { re: RegExp; iata: string; city: string }[] = [
   { re: /ENRIQUE MALEK/i, iata: "DAV", city: "David" },
   { re: /TOCUMEN/i, iata: "PTY", city: "Panama" },
   { re: /CHARLES-DE-GAULLE|CHARLES DE GAULLE/i, iata: "CDG", city: "Paris" },
+  { re: /\bORLY\b/i, iata: "ORY", city: "Paris" },
+  { re: /TEL AVIV|BEN GOURION|BEN GURION/i, iata: "TLV", city: "Tel Aviv" },
   { re: /A[ÉE]ROPORT DE GEN[ÈE]VE|GEN[ÈE]VE GEN[ÈE]VE/i, iata: "GVA", city: "Genève" },
   { re: /HEATHROW/i, iata: "LHR", city: "Londres" },
   { re: /MARSEILLE PROVENCE/i, iata: "MRS", city: "Marseille" },
@@ -291,6 +293,107 @@ export function parseAmadeusFlights(text: string): ParsedAmadeusFlight[] {
 
 export function parseAmadeusReceipt(text: string): ParsedAmadeusFlight | null {
   return parseAmadeusFlights(text)[0] || null;
+}
+
+function titleCasePerson(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/(^|[\s'-])([a-zà-ÿ])/g, (_match, sep: string, ch: string) => sep + ch.toUpperCase());
+}
+
+function splitPersonName(raw: string) {
+  const parts = titleCasePerson(raw).split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return null;
+  return {
+    first_name: parts.slice(0, -1).join(" "),
+    last_name: parts[parts.length - 1],
+  };
+}
+
+function parseDmyClock(date: string, time: string) {
+  const day = date.match(/^(\d{2})-(\d{2})-(20\d{2})$/);
+  const clock = time.match(/^(\d{1,2}):(\d{2})$/);
+  if (!day || !clock) return null;
+  return `${day[3]}-${day[2]}-${day[1]}T${clock[1].padStart(2, "0")}:${clock[2]}:00`;
+}
+
+export type ParsedTransavia = {
+  confirmation_ref: string;
+  flights: ParsedAmadeusFlight[];
+  travelers: { first_name: string; last_name: string }[];
+  title: string | null;
+  destination: string | null;
+};
+
+/** Confirmation Transavia : vols aller/retour + passagers imprimés, une fois chacun. */
+export function parseTransaviaConfirmation(text: string): ParsedTransavia | null {
+  if (!/transavia/i.test(text) || !/num[eé]ro de r[eé]servation/i.test(text)) return null;
+  const ref = text.match(/Num[eé]ro de r[eé]servation\s+([A-Z0-9]{5,6})\b/i);
+  if (!ref) return null;
+  const confirmation_ref = ref[1].toUpperCase();
+  const flightRe =
+    /Num[eé]ro de vol\s+([A-Z0-9]{2})\s*(\d{2,4})\s+Date\s+(\d{2}-\d{2}-20\d{2})\s+Heure de d[eé]part\s+(\d{1,2}:\d{2})\s+Heure d['’]arriv[eé]e\s+(\d{1,2}:\d{2})/gi;
+  const specs = [...text.matchAll(flightRe)];
+  if (!specs.length) return null;
+  const routes = [...text.matchAll(/Vol\s+[A-Za-zÀ-ÿ]+\s*:\s*([^\n]+?)\s[-–]\s*([^\n]+)/gi)].map(
+    (match) => ({
+      from: match[1].replace(/\s+/g, " ").trim(),
+      to: match[2].replace(/\s+/g, " ").trim(),
+    })
+  );
+  const baggage =
+    /bagage à main/i.test(text) && /40\s*x\s*30\s*x\s*20/i.test(text)
+      ? "1 bagage à main 40 × 30 × 20 cm"
+      : null;
+  const cabin = /tarif\s+Basic/i.test(text) ? "Basic" : null;
+  const flights: ParsedAmadeusFlight[] = specs.map((spec, index) => {
+    const route =
+      routes[index] ||
+      (index > 0 && routes[0] ? { from: routes[0].to, to: routes[0].from } : null);
+    const fromApt = route ? inferAirportIata(route.from) : null;
+    const toApt = route ? inferAirportIata(route.to) : null;
+    return {
+      confirmation_ref,
+      pnr: confirmation_ref,
+      supplier: "Transavia",
+      airline: "Transavia",
+      flight_number: `${spec[1].toUpperCase()} ${spec[2]}`,
+      from: fromApt?.iata || null,
+      to: toApt?.iata || null,
+      city_from: fromApt?.city || route?.from || null,
+      city_to: toApt?.city || route?.to || null,
+      start_at: parseDmyClock(spec[3], spec[4]),
+      end_at: parseDmyClock(spec[3], spec[5]),
+      cabin,
+      baggage,
+      terminal: null,
+      seat: null,
+    };
+  });
+  const travelers: ParsedTransavia["travelers"] = [];
+  const seen = new Set<string>();
+  for (const match of text.matchAll(
+    /\b(?:MR|MRS|MS|MISS|CHD|INF|MSTR)\s*\.\s*([A-Z][A-Z'’ -]{2,}?)\s*\(\s*\d{2}\/\d{2}\/\d{4}\s*\)/gi
+  )) {
+    const person = splitPersonName(match[1]);
+    if (!person) continue;
+    const key = `${person.first_name}|${person.last_name}`.toLocaleLowerCase("fr");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    travelers.push(person);
+  }
+  const destination =
+    flights.map((flight) => flight.city_to).find((city) => city && !/^paris$/i.test(city)) ||
+    flights[0]?.city_to ||
+    null;
+  return {
+    confirmation_ref,
+    flights,
+    travelers,
+    title: destination,
+    destination,
+  };
 }
 
 export type ParsedHotel = {
@@ -782,6 +885,7 @@ export const INGEST_FAMILIES = [
   "quote",
   "toucan",
   "maeva",
+  "transavia",
   "identity",
   "unknown",
 ] as const;
@@ -799,6 +903,13 @@ export function classifyIngestFamily(text: string, filename = ""): IngestFamily 
   if (isToucanActivities(text)) return "toucan";
   if (isMaevaStay(text)) return "maeva";
   if (/Reçu de Billet Electronique/i.test(text)) return "amadeus";
+  if (
+    /transavia/i.test(text) &&
+    /num[eé]ro de r[eé]servation/i.test(text) &&
+    /passagers/i.test(text)
+  ) {
+    return "transavia";
+  }
   if (/\bSIXT\b/i.test(text) && /Pickup on/i.test(text)) return "sixt";
   if (
     (/TRANSFER CONFIRMATION/i.test(text) || /DROPOFF/i.test(text)) &&
@@ -821,20 +932,25 @@ function isIata(value: unknown): value is string {
   return typeof value === "string" && /^[A-Z]{3}$/.test(value);
 }
 
+function flightItemComplete(item: BookingExtract["items"][number]) {
+  return (
+    item.kind === "flight" &&
+    Boolean(item.details?.flight_number) &&
+    Boolean(item.start_at) &&
+    Boolean(item.confirmation_ref || item.details?.pnr) &&
+    (isIata(item.details?.from) || Boolean(item.details?.city_from))
+  );
+}
+
 export function parserItemsComplete(
   family: IngestFamily,
-  items: BookingExtract["items"]
+  items: BookingExtract["items"],
+  travelers: BookingExtract["travelers"] = []
 ): boolean {
   if (!items.length) return false;
-  if (family === "amadeus") {
-    return items.every(
-      (item) =>
-        item.kind === "flight" &&
-        Boolean(item.details?.flight_number) &&
-        Boolean(item.start_at) &&
-        Boolean(item.confirmation_ref || item.details?.pnr) &&
-        (isIata(item.details?.from) || Boolean(item.details?.city_from))
-    );
+  if (family === "amadeus") return items.every(flightItemComplete);
+  if (family === "transavia") {
+    return items.every(flightItemComplete) && travelers.some((row) => row.first_name || row.last_name);
   }
   if (
     family === "little_emperors" ||
@@ -918,6 +1034,19 @@ export function structuredHintFromPdfText(text: string): string {
   if (isToucanActivities(clean)) {
     bits.push(
       "Toucan Discovery = activités. Les étapes hôtel du cadre ne sont pas des réservations."
+    );
+  }
+  const transavia = parseTransaviaConfirmation(clean);
+  if (transavia) {
+    bits.push(
+      `TRANSAVIA ${JSON.stringify({
+        ref: transavia.confirmation_ref,
+        flights: transavia.flights,
+        travelers: transavia.travelers,
+      })}`
+    );
+    bits.push(
+      "Transavia : un item par vol. Les passagers imprimés vont dans travelers, une fois chacun. « Début de l’enregistrement » n’est pas l’heure du vol. Le total des services additionnels n’est pas le prix des billets."
     );
   }
   const maeva = parseMaevaStay(clean);
@@ -1130,12 +1259,26 @@ export function parsedItemsFromText(text: string): {
   items: ExtractItem[];
   status: BookingExtract["document_status"];
   notes: string[];
+  travelers: BookingExtract["travelers"];
+  title: string | null;
+  destination: string | null;
 } {
   const items: ExtractItem[] = [];
   const notes: string[] = [];
+  let travelers: BookingExtract["travelers"] = [];
+  let title: string | null = null;
+  let destination: string | null = null;
   let status: BookingExtract["document_status"] = null;
   const clean = redactIngestText(text);
   const money = parseDocumentMoney(clean);
+  const transavia = parseTransaviaConfirmation(clean);
+  if (transavia) {
+    for (const flight of transavia.flights) items.push(flightToItem(flight));
+    travelers = transavia.travelers;
+    title = transavia.title;
+    destination = transavia.destination;
+    status = "confirmed";
+  }
   for (const flight of parseAmadeusFlights(clean)) {
     items.push(withDocumentPrice(flightToItem(flight), money));
   }
@@ -1169,7 +1312,7 @@ export function parsedItemsFromText(text: string): {
       "Toucan Discovery : activités uniquement ; les étapes du cadre ne sont pas des hôtels."
     );
   }
-  return { items: mergeExtractItems(items), status, notes };
+  return { items: mergeExtractItems(items), status, notes, travelers, title, destination };
 }
 
 export function tagSourceFileName(items: ExtractItem[], name: string): ExtractItem[] {
@@ -1190,12 +1333,18 @@ export function applyStructuredHints(
   const items: ExtractItem[] = [...(extract.items || [])];
   const extraNotes: string[] = [];
   let status = extract.document_status;
+  let travelers = [...(extract.travelers || [])];
+  let title = extract.title || "";
+  let destination = extract.destination || "";
 
   for (const raw of texts) {
     const parsed = parsedItemsFromText(raw);
     for (const item of parsed.items) upsertHint(items, item);
     if (parsed.status) status = status || parsed.status;
     extraNotes.push(...parsed.notes);
+    if (!travelers.length && parsed.travelers.length) travelers = parsed.travelers;
+    if (!title && parsed.title) title = parsed.title;
+    if (!destination && parsed.destination) destination = parsed.destination;
   }
 
   const notes =
@@ -1208,7 +1357,10 @@ export function applyStructuredHints(
   return {
     ...extract,
     document_status: status,
+    title: title || extract.title,
+    destination: destination || extract.destination,
     notes_client: notes,
+    travelers,
     items: mergeExtractItems(items),
   };
 }

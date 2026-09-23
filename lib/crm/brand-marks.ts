@@ -14,6 +14,7 @@ const AIRLINE_NAMES: { re: RegExp; iata: string }[] = [
   { re: /\bBRITISH AIRWAYS\b|\bBA\b/i, iata: "BA" },
   { re: /\bLUFTHANSA\b/i, iata: "LH" },
   { re: /\bSWISS\b/i, iata: "LX" },
+  { re: /\bTRANSAVIA\b/i, iata: "TO" },
   { re: /\bEASYJET\b/i, iata: "U2" },
   { re: /\bRYANAIR\b/i, iata: "FR" },
   { re: /\bVUELING\b/i, iata: "VY" },

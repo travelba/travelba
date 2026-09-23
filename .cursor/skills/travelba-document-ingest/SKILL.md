@@ -75,6 +75,7 @@ Pièces iOS parfois absentes du VM : le dire, demander le trombone desktop, ou l
 | Passion Collection | Devis, NET, options | quote — **pas** de NET |
 | Toucan Discovery | étapes du cadre + excursions | `activity` — les étapes **ne sont pas** des hôtels |
 | Maeva / Pierre & Vacances | maeva.com + N° DE DOSSIER / VOS OPTIONS | `parseMaevaStay` — **1 hôtel** + forfaits / matériel / cours (`activity`) + assurance. Réf. dossier **sur l’hôtel seulement**. Dates only. Pas de frais de dossier, PAN, totaux à 0 |
+| Transavia | transavia.com, N° de réservation, Passagers | `parseTransaviaConfirmation` — **1 vol / segment**, passagers imprimés → `travelers` (une fois). Orly `ORY`, Tel Aviv `TLV`. Heure de départ / arrivée seulement. Total « services additionnels » ≠ prix des billets |
 | Passeport | MRZ `P<FRA` | **identité**, pas une résa |
 
 IATA **8 chiffres** (20287864, 20255270, 96020293, 20289905) = code agence, **jamais** un PNR.
@@ -91,7 +92,7 @@ IATA **8 chiffres** (20287864, 20255270, 96020293, 20289905) = code agence, **ja
 - « Scan for check-in » ≠ hôtel. Carte fidélité : masquer, ne pas extraire.
 - Email agence ≠ `customer_email`.
 
-Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Colón `BOC`, Enrique Malek `DAV`, Tocumen `PTY`, Charles-de-Gaulle `CDG`, Genève `GVA`, Heathrow `LHR`, Marseille Provence `MRS`. **Nouveau nom d’aéroport sans IATA → une entrée + un test**, pas un guess LLM.
+Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Colón `BOC`, Enrique Malek `DAV`, Tocumen `PTY`, Charles-de-Gaulle `CDG`, Orly `ORY`, Tel Aviv `TLV`, Genève `GVA`, Heathrow `LHR`, Marseille Provence `MRS`. **Nouveau nom d’aéroport sans IATA → une entrée + un test**, pas un guess LLM.
 
 ## Hôtel
 
@@ -111,6 +112,7 @@ Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Co
 - SIXT : `kind=car`, n° résa, prise/restitution (`18 Septembre 2026 at 16:00`), `vehicle` = catégorie. **Pas** CHF TTC, caution, protection, plein.
 - Train / bateau : horaires **écrits**. Croisière = une carte, pas un jour par port.
 - Maeva / Pierre & Vacances : **1 hôtel** (nom d’établissement, ville = station) + cartes `activity` (forfaits, matériel, cours) et `insurance`. `included` = lignes d’option imprimées. Dates **sans heure**. Réf. dossier **uniquement** sur l’hôtel. Pas de frais de dossier, totaux à 0, PAN.
+- Transavia : passagers `MR` / `MRS` / `CHD` → voyageurs du dossier, casse normale, dédupliqués aller/retour. On les enregistre même s’ils ne sont pas encore dans le foyer. « Début de l’enregistrement » ≠ horaire. Bagage soute payant ≠ inclus. `document_amount` null si seul le total des services additionnels est imprimé.
 - `YANIK` / `YANNICK` = même personne.
 
 ## Fusion (`item-match.ts`)
