@@ -118,17 +118,16 @@ test("le domicile encadre le vol, l’hôtel s’ajoute, le greeter est juste av
     [
       "chauffeur:home:Domicile → ORY",
       "greeter:greet:Aéroport ORY · Paris",
-      "chauffeur:hotel:TLV → The Norman",
       "chauffeur:hotel:The Norman → TLV",
       "greeter:greet:Aéroport TLV · Tel Aviv",
       "chauffeur:home:ORY → Domicile",
     ]
   );
+  assert.equal(withHotel.some((offer) => offer.route.startsWith("TLV →")), false);
   assert.equal(withHotel[2].address, "The Norman, 23 Rothschild, Tel Aviv");
-  assert.equal(withHotel[2].slot, "after");
-  assert.equal(withHotel[3].flightLine, "Prise en charge 11h40 · Vol TO 3451 · départ 14h10");
-  assert.equal(withHotel[3].whenIso, "2026-12-23T11:40:00");
-  assert.equal(withHotel[3].slot, "before");
+  assert.equal(withHotel[2].flightLine, "Prise en charge 11h40 · Vol TO 3451 · départ 14h10");
+  assert.equal(withHotel[2].whenIso, "2026-12-23T11:40:00");
+  assert.equal(withHotel[2].slot, "before");
 
   const oneWay = itineraryOffers([outbound]);
   assert.deepEqual(
@@ -138,7 +137,7 @@ test("le domicile encadre le vol, l’hôtel s’ajoute, le greeter est juste av
   const placed = composeItineraryDay("2026-12-14", [outbound], withHotel);
   assert.deepEqual(
     placed.map((row) => (row.type === "offer" ? row.offer.route : "VOL")),
-    ["Domicile → ORY", "Aéroport ORY · Paris", "VOL", "TLV → The Norman"]
+    ["Domicile → ORY", "Aéroport ORY · Paris", "VOL"]
   );
   const back = composeItineraryDay("2026-12-23", [inbound], withHotel);
   assert.deepEqual(

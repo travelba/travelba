@@ -349,7 +349,7 @@ function offerBase(
   };
 }
 
-/** Propositions d’itinéraire : domicile aller/retour, hôtel s’il existe, greeter juste avant chaque vol. */
+/** Domicile → aéroport à l’aller, aéroport → domicile au retour. Départ depuis l’hôtel seulement s’il y a un hôtel. */
 export function itineraryOffers(items: ServiceFlightRow[]): ServiceOffer[] {
   const legs = serviceFlightLegs(items);
   const outbound = legs.find((leg) => leg.role === "outbound");
@@ -358,10 +358,7 @@ export function itineraryOffers(items: ServiceFlightRow[]): ServiceOffer[] {
 
   if (outbound) {
     const departDay = dayKey(outbound.departAt);
-    const arriveDay = dayKey(outbound.arriveAt) || departDay;
     const fromAirport = serviceAirportLabel(outbound.fromIata, outbound.cityFrom);
-    const toAirport = serviceAirportLabel(outbound.toIata, outbound.cityTo);
-    const stay = matchedStay(items, outbound.cityTo);
     if (departDay) {
       offers.push(
         offerBase(outbound, {
@@ -387,21 +384,6 @@ export function itineraryOffers(items: ServiceFlightRow[]): ServiceOffer[] {
           airport: fromAirport,
           whenIso: outbound.departAt,
           address: null,
-        })
-      );
-    }
-    if (stay && arriveDay) {
-      offers.push(
-        offerBase(outbound, {
-          kind: "chauffeur",
-          place: "hotel",
-          slot: "after",
-          day: arriveDay,
-          route: outbound.toIata ? `${outbound.toIata} → ${stay.name}` : `Aéroport → ${stay.name}`,
-          flightLine: flightMomentLine(outbound, "arrive"),
-          airport: toAirport,
-          whenIso: outbound.arriveAt,
-          address: stay.address,
         })
       );
     }
