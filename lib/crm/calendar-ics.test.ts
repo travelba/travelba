@@ -92,7 +92,11 @@ test("séjour entier : dates dossier + événements", () => {
   assert.match(stay || "", /DTEND;VALUE=DATE:20260816/);
   const ics = buildBookingIcs({
     booking: booking(),
-    items: [item({}), item({ id: "i2", kind: "fee", title: "Frais", start_at: "2026-08-12" })],
+    items: [
+      item({}),
+      item({ id: "i2", kind: "fee", title: "Frais", start_at: "2026-08-12" }),
+      item({ id: "i3", kind: "expense", title: "Pourboire", start_at: "2026-08-13", amount: 40 }),
+    ],
   });
   assert.match(ics, /BEGIN:VCALENDAR/);
   assert.equal((ics.match(/BEGIN:VEVENT/g) || []).length, 2);

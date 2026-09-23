@@ -1,5 +1,5 @@
 import type { CrmBooking, CrmBookingDocument, CrmBookingItem } from "@/lib/crm/types";
-import { BOOKING_ITEM_LABELS } from "@/lib/crm/types";
+import { BOOKING_ITEM_LABELS, isLedgerExpenseKind } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { itemTicketCount } from "./item-match";
 
@@ -174,7 +174,7 @@ export function timelineItems(items: CrmBookingItem[]) {
 export function groupByDay(items: CrmBookingItem[]) {
   const map = new Map<string, CrmBookingItem[]>();
   for (const item of items) {
-    if (item.kind === "insurance" || item.kind === "fee") continue;
+    if (item.kind === "insurance" || item.kind === "fee" || isLedgerExpenseKind(item.kind)) continue;
     for (const key of itemTimelineDays(item)) {
       if (!key) continue;
       const list = map.get(key) || [];
@@ -267,6 +267,8 @@ export function kindIcon(kind: string) {
       return "airport_shuttle";
     case "greeter":
       return "verified_user";
+    case "expense":
+      return "receipt_long";
     default:
       return "event";
   }
@@ -306,7 +308,10 @@ export function carnetVisible(
   items: CrmBookingItem[]
 ) {
   if (!booking.visible_to_client) return false;
-  return items.some((item) => item.visible_to_client !== false && item.kind !== "fee");
+  return items.some(
+    (item) =>
+      item.visible_to_client !== false && item.kind !== "fee" && !isLedgerExpenseKind(item.kind)
+  );
 }
 
 export function itemPriceLabel(

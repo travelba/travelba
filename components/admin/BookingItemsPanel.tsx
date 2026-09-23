@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import {
   BOOKING_ITEM_LABELS,
+  isLedgerExpenseKind,
   type BookingItemKind,
   type CrmBookingItem,
 } from "@/lib/crm/types";
@@ -37,7 +38,7 @@ function emptyDraft(): ItemDraft {
 
 function toDraft(item: CrmBookingItem): ItemDraft {
   return {
-    kind: item.kind,
+    kind: isLedgerExpenseKind(item.kind) ? "fee" : item.kind,
     title: item.title,
     supplier: item.supplier || "",
     confirmation_ref: item.confirmation_ref || "",
@@ -114,12 +115,15 @@ export function BookingItemsPanel({
     router.refresh();
   }
 
+  const cardRows = rows.filter((item) => !isLedgerExpenseKind(item.kind));
+
   function reorder(from: number, to: number) {
     if (from === to) return;
-    const next = moveItem(rows, from, to);
-    if (next === rows) return;
-    setRows(next);
-    void persistOrder(next);
+    const nextCards = moveItem(cardRows, from, to);
+    if (nextCards === cardRows) return;
+    const expenses = rows.filter((item) => isLedgerExpenseKind(item.kind));
+    setRows([...nextCards, ...expenses]);
+    void persistOrder(nextCards);
   }
 
   async function saveDraft() {
@@ -200,7 +204,7 @@ export function BookingItemsPanel({
         <BusyBar active={busy} label="Enregistrement…" />
       </div>
       <ul className="mt-2 space-y-2 text-sm">
-        {rows.map((item, index) => (
+        {cardRows.map((item, index) => (
           <li
             key={item.id}
             className="rounded-xl border border-border px-3 py-2"
@@ -295,7 +299,7 @@ export function BookingItemsPanel({
                     type="button"
                     aria-label="Descendre"
                     className="rounded-full p-1 text-muted disabled:opacity-30"
-                    disabled={index === rows.length - 1 || busy}
+                    disabled={index === cardRows.length - 1 || busy}
                     onClick={() => reorder(index, index + 1)}
                   >
                     <ChevronDown className="h-4 w-4" />

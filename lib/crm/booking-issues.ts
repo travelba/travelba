@@ -1,5 +1,5 @@
 import type { ZodError } from "zod";
-import { isExtraItemKind } from "./types";
+import { countsAsCarnetCard } from "./types";
 
 export type BookingIssue = { field: string; message: string };
 
@@ -108,7 +108,7 @@ export function collectExtractIssues(
 }
 
 export function collectPublishIssues(items: { kind: string }[]): BookingIssue[] {
-  if (items.some((item) => item.kind !== "fee" && !isExtraItemKind(item.kind))) {
+  if (items.some((item) => countsAsCarnetCard(item.kind))) {
     return [];
   }
   return [

@@ -31,6 +31,7 @@ Avant d’écrire du SQL : lister les tables (`crm_*`), lire la **dernière** mi
 | `20260922121500_fix_customer_parent_rls.sql` | RLS parent société sans récursion `crm_customers` |
 | `20260922140000_booking_total_from_items.sql` | backfill `total_amount` = somme des prix vendus cartes si séjour à 0 |
 | `20260922150000_item_booking_debits.sql` | plusieurs débits cartes par dossier (plus un unique stays-only) |
+| `20260923180000_booking_item_kind_expense.sql` | kind `expense` — dépense libre, hors itinéraire |
 
 Toute évolution = **nouveau fichier** `supabase/migrations/YYYYMMDDHHMMSS_slug.sql` (idempotent : `if not exists`, `drop policy if exists`). Appliquer via MCP `apply_migration` ou SQL Editor. Ne pas éditer une migration déjà poussée en prod.
 
@@ -47,7 +48,7 @@ Helper privé : schema `crm_private` (`is_staff()`, `customer_id()`). Ne pas exp
 - `crm_revolut_transactions` + `crm_integrations` — **revoke** `anon`/`authenticated`, `service_role` only
 - `crm_booking_seq` + RPC `crm_next_booking_reference()`
 
-Kinds items : `flight|hotel|transfer|activity|rail|car|cruise|insurance|fee|chauffeur|greeter|visa`.
+Kinds items : `flight|hotel|transfer|activity|rail|car|cruise|insurance|fee|chauffeur|greeter|visa|expense`. `expense` = dépense libre (grand livre, hors itinéraire).
 Si la contrainte `crm_booking_items_kind_check` n’a pas encore `rail/car/cruise`, les ajouter (carnet).
 
 Visibilité carnet : `crm_bookings.visible_to_client` et `crm_booking_items.visible_to_client` (défaut **false** à la création). RLS client = `visible_to_client` **et** booking du customer. Quotes / brouillons invisibles.

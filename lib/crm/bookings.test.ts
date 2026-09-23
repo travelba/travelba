@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   bookingDebitIntent,
+  bookingExpenseDebitExternalId,
   bookingItemDebitExternalId,
   bookingItemDebitLabel,
   bookingMetaPatch,
@@ -108,6 +109,11 @@ test("item debit posts only when flagged on a confirmed stay", () => {
   assert.equal(parseIncludeInLedger("on", false), true);
   assert.equal(parseIncludeInLedger(undefined, true), true);
   assert.equal(bookingItemDebitExternalId("b1", "i9"), "booking:b1:item:i9");
+  assert.equal(bookingExpenseDebitExternalId("b1", "e1"), "booking:b1:expense:e1");
+  assert.match(
+    bookingItemDebitLabel({ kind: "expense", title: "Pourboire" }, "TB-1"),
+    /Dépense · Pourboire/
+  );
   assert.match(bookingItemDebitLabel({ kind: "hotel", title: "Nantipa" }, "TBA-1042"), /Hôtel/);
   assert.match(
     bookingItemDebitLabel(
@@ -169,6 +175,7 @@ test("stay total is always the sum of card selling prices", () => {
       { kind: "chauffeur", amount: 150 },
       { kind: "greeter", amount: 100 },
       { kind: "visa", amount: 100 },
+      { kind: "expense", amount: 40 },
     ]),
     800
   );

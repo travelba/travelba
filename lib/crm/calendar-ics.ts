@@ -1,5 +1,5 @@
 import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
-import { BOOKING_ITEM_LABELS } from "@/lib/crm/types";
+import { BOOKING_ITEM_LABELS, isLedgerExpenseKind } from "@/lib/crm/types";
 import { itemClock, flightIata, flightCities, hotelDisplayName } from "@/lib/crm/carnet";
 
 function icsEscape(value: string) {
@@ -39,7 +39,7 @@ function timedStamp(iso: string) {
 }
 
 export function itemHasCalendarDate(item: Pick<CrmBookingItem, "kind" | "start_at" | "end_at">) {
-  if (item.kind === "fee") return false;
+  if (item.kind === "fee" || isLedgerExpenseKind(item.kind)) return false;
   return Boolean((item.start_at || "").slice(0, 10).match(/^\d{4}-\d{2}-\d{2}$/));
 }
 

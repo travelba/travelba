@@ -46,7 +46,7 @@ import {
 import { isPlaceholderTraveler, sameRecordedTraveler } from "@/lib/crm/person-match";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import {
-  BOOKING_ITEM_KINDS,
+  INGEST_ITEM_KINDS,
   type BookingItemKind,
   type BookingStatus,
   type CrmBooking,
@@ -184,7 +184,7 @@ function cleanDetails(details: BookingExtract["items"][number]["details"] | unde
 }
 
 function itemKind(value: string | null | undefined): BookingItemKind {
-  return (BOOKING_ITEM_KINDS as readonly string[]).includes(value || "")
+  return (INGEST_ITEM_KINDS as readonly string[]).includes(value || "")
     ? (value as BookingItemKind)
     : "fee";
 }

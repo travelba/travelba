@@ -89,6 +89,27 @@ describe("carnet", () => {
     );
   });
 
+  it("laisse la dépense libre hors de l’itinéraire", () => {
+    const groups = groupByDay([
+      item({ id: "f", start_at: "2026-08-12T10:00:00", title: "Aller" }),
+      item({
+        id: "e",
+        kind: "expense",
+        title: "Pourboire",
+        start_at: "2026-08-12",
+        amount: 40,
+      }),
+    ]);
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0][1].some((row) => row.kind === "expense"), false);
+    assert.equal(
+      carnetVisible({ visible_to_client: true }, [
+        item({ kind: "expense", visible_to_client: true, title: "Pourboire" }),
+      ]),
+      false
+    );
+  });
+
   it("saute les jours sans prestation", () => {
     const groups = groupByDay([
       item({ start_at: "2026-08-12T10:00:00Z", title: "Aller" }),
@@ -272,6 +293,8 @@ describe("carnet", () => {
     assert.equal(canPublishCarnet([{ kind: "fee" }]), false);
     assert.equal(canPublishCarnet([{ kind: "hotel" }]), true);
     assert.equal(canPublishCarnet([{ kind: "chauffeur" }, { kind: "fee" }]), false);
+    assert.equal(canPublishCarnet([{ kind: "expense" }]), false);
+    assert.equal(canPublishCarnet([{ kind: "hotel" }, { kind: "expense" }]), true);
   });
 
   it("garde le montant document hors du prix vendu et du total séjour", () => {

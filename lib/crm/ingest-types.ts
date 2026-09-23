@@ -4,7 +4,7 @@ import { sortItemsByOrder } from "./carnet";
 import { redactIngestValue } from "./ingest-redact";
 import { mergeExtractItems } from "./item-match";
 import { parseMoney } from "./money";
-import { BOOKING_ITEM_KINDS, type BookingStatus } from "./types";
+import { INGEST_ITEM_KINDS, type BookingStatus } from "./types";
 
 const looseString = z.string().nullable().optional();
 const looseNumber = z.number().nullable().optional();
@@ -85,7 +85,7 @@ export const bookingExtractSchema = z.object({
   items: z
     .array(
       z.object({
-        kind: z.enum(BOOKING_ITEM_KINDS).default("fee"),
+        kind: z.enum(INGEST_ITEM_KINDS).default("fee"),
         title: z.string(),
         supplier: looseString,
         confirmation_ref: looseString,
@@ -176,7 +176,7 @@ export const bookingExtractLlmSchema = z.object({
   customer_last_name: strictString,
   items: z.array(
     z.object({
-      kind: z.enum(BOOKING_ITEM_KINDS),
+      kind: z.enum(INGEST_ITEM_KINDS),
       title: z.string(),
       supplier: strictString,
       confirmation_ref: strictString,

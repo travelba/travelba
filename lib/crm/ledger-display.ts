@@ -13,14 +13,26 @@ export function isStayRollupDebit(row: LedgerKindRow) {
   return row.direction === "debit" && row.kind === "booking" && !row.external_id;
 }
 
+/** Dépense libre : s’ajoute au livre sans remplacer le montant du séjour. */
+export function isFreeExpenseDebit(row: { external_id?: string | null }) {
+  return (row.external_id || "").includes(":expense:");
+}
+
+/** Une carte ou un frais du dossier couvre le montant global. Une dépense libre, non. */
+export function coversStayRollup(row: LedgerKindRow & { booking_id?: string | null }) {
+  if (!row.booking_id || row.direction !== "debit") return false;
+  if (isStayRollupDebit(row)) return false;
+  if (isFreeExpenseDebit(row)) return false;
+  return true;
+}
+
 /**
  * Masque le montant global du séjour dès qu’une dépense du même dossier est déjà au livre.
+ * La dépense libre reste à côté du séjour.
  */
 export function visibleLedgerRows<T extends LedgerRow>(rows: T[]): T[] {
   const covered = new Set(
-    rows
-      .filter((row) => row.booking_id && !isStayRollupDebit(row))
-      .map((row) => row.booking_id as string)
+    rows.filter((row) => coversStayRollup(row)).map((row) => row.booking_id as string)
   );
   return rows.filter((row) => {
     if (!row.booking_id || !isStayRollupDebit(row)) return true;
