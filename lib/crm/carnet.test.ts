@@ -4,6 +4,8 @@ import type { CrmBookingItem } from "./types";
 import {
   carnetVisible,
   coverQuery,
+  tripHeadline,
+  tripPlaceLine,
   flightCardSubtitle,
   flightCardTitle,
   flightCities,
@@ -200,6 +202,15 @@ describe("carnet", () => {
     assert.equal(coverQuery("Paris", "Week-end"), "Paris");
     assert.equal(coverQuery("Nice, France", null), "Nice");
     assert.equal(coverQuery("Avoriaz - Haute Savoie", "Séjour"), "Avoriaz");
+  });
+
+  it("affiche le titre saisi, pas la destination, comme nom du séjour", () => {
+    assert.equal(tripHeadline("40 ans", "Marrakech"), "40 ans");
+    assert.equal(tripHeadline("  ", "Marrakech"), "Marrakech");
+    assert.equal(tripHeadline("", "", "Prochain séjour"), "Prochain séjour");
+    assert.equal(tripPlaceLine("40 ans", "Marrakech"), "Marrakech");
+    assert.equal(tripPlaceLine("Marrakech", "marrakech"), null);
+    assert.equal(tripPlaceLine("", "Marrakech"), null);
   });
 
   it("sert une couverture Unsplash légère", () => {

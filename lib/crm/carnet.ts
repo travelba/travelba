@@ -342,6 +342,23 @@ function firstArrival(tokens: string[]) {
   return tokens.find((token) => !ORIGIN_HUBS.test(token)) || "";
 }
 
+/** Nom du séjour tel que saisi par l’agence. La destination ne le remplace pas. */
+export function tripHeadline(
+  title: string | null | undefined,
+  destination: string | null | undefined,
+  fallback = "Séjour"
+) {
+  return (title || "").trim() || (destination || "").trim() || fallback;
+}
+
+/** Lieu sous le titre, omis s’il répète le nom du séjour. */
+export function tripPlaceLine(title: string | null | undefined, destination: string | null | undefined) {
+  const name = (title || "").trim();
+  const place = (destination || "").trim();
+  if (!name || !place || name.toLowerCase() === place.toLowerCase()) return null;
+  return place;
+}
+
 /** Ville d’arrivée pour la photo : on ignore Paris / CDG / ORY s’il y a une autre ville. */
 export function coverQuery(destination: string | null, title: string | null) {
   const destTokens = coverTokens(destination || "");

@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 import { dbError, jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
 import { collectPublishIssues } from "@/lib/crm/booking-issues";
 import {
+  bookingMetaPatch,
   setCarnetPublished,
   syncBookingLedger,
   syncBookingTotalFromItems,
-  parseIncludeInLedger,
 } from "@/lib/crm/bookings";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { BookingDeleteError, deleteBookingById } from "@/lib/crm/delete-booking";
@@ -40,25 +40,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
   if (!current) return jsonError("Réservation introuvable", 404);
   const prev = current as CrmBooking;
 
-  const patch: Record<string, unknown> = {};
-  for (const key of [
-    "title",
-    "destination",
-    "status",
-    "start_date",
-    "end_date",
-    "currency",
-    "notes_client",
-    "notes_internal",
-    "customer_id",
-    "billing_customer_id",
-    "include_in_ledger",
-  ]) {
-    if (key in body) {
-      if (key === "include_in_ledger") patch[key] = parseIncludeInLedger(body[key], true);
-      else patch[key] = body[key];
-    }
-  }
+  const patch = bookingMetaPatch(body);
+  if ("title" in patch && !patch.title) return jsonError("Le titre du voyage est obligatoire.");
 
   if ("customer_id" in patch && !("billing_customer_id" in patch)) {
     const travelerId = String(patch.customer_id);

@@ -68,6 +68,12 @@ export function BookingEditor({
   const unpublishedItems = items.filter((item) => !item.visible_to_client);
   const needsReview = items.some((item) => item.details?.needs_review === true);
   const [busy, setBusy] = useState<"idle" | "save" | "publish" | "cover">("idle");
+  const [titleDraft, setTitleDraft] = useState(booking.title);
+  const [titleFromServer, setTitleFromServer] = useState(booking.title);
+  if (booking.title !== titleFromServer) {
+    setTitleFromServer(booking.title);
+    setTitleDraft(booking.title);
+  }
   const [coverOpen, setCoverOpen] = useState(false);
   const [coverNotice, setCoverNotice] = useState<string | null>(null);
   const arrival = coverQuery(booking.destination, booking.title);
@@ -87,26 +93,39 @@ export function BookingEditor({
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = event.currentTarget;
+    const form =
+      event.currentTarget instanceof HTMLFormElement
+        ? event.currentTarget
+        : document.getElementById("booking-meta");
+    if (!(form instanceof HTMLFormElement)) {
+      setFlash("Enregistrement impossible. Réessayez.");
+      return;
+    }
+    const fd = new FormData(form);
+    const title = titleDraft.trim();
+    const payload = {
+      ...Object.fromEntries(fd.entries()),
+      title,
+      include_in_ledger: fd.get("include_in_ledger") === "on",
+    };
     setBusy("save");
     setFlash(null);
+    setIssues([]);
     try {
+      let cardOk = true;
       if (saveOpenCard.current) {
-        const cardOk = await saveOpenCard.current();
-        if (!cardOk) {
-          setFlash("La carte ouverte n’a pas été enregistrée.");
-          return;
-        }
+        cardOk = await Promise.race([
+          saveOpenCard.current().catch(() => false),
+          new Promise<boolean>((resolve) => {
+            window.setTimeout(() => resolve(false), 12000);
+          }),
+        ]);
       }
-      const fd = new FormData(form);
-      const body = Object.fromEntries(fd.entries());
       const res = await fetch(`/api/admin/bookings/${booking.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...body,
-          include_in_ledger: fd.get("include_in_ledger") === "on",
-        }),
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(20000),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -114,8 +133,15 @@ export function BookingEditor({
         setFlash(null);
         return;
       }
+      const savedTitle = typeof json.booking?.title === "string" ? json.booking.title : title;
+      setTitleDraft(savedTitle);
+      setTitleFromServer(savedTitle);
       setIssues([]);
-      setFlash("Enregistré. Le carnet n’est pas publié pour autant.");
+      setFlash(
+        cardOk
+          ? "Enregistré. Le carnet n’est pas publié pour autant."
+          : "Titre enregistré. La carte ouverte n’a pas été enregistrée."
+      );
       router.refresh();
     } catch {
       setFlash("Enregistrement impossible. Réessayez.");
@@ -289,7 +315,7 @@ export function BookingEditor({
             {booking.reference}
             {jMinusLabel(booking.start_date) ? ` · ${jMinusLabel(booking.start_date)}` : ""}
           </p>
-          <h1 className="font-display text-2xl font-bold leading-tight">{booking.title}</h1>
+          <h1 className="font-display text-2xl font-bold leading-tight">{titleDraft || booking.title}</h1>
         </div>
       </BookingHero>
       <CoverPickDialog
@@ -373,7 +399,13 @@ export function BookingEditor({
       <form id="booking-meta" onSubmit={save} className="admin-af-card grid gap-3 rounded-3xl p-5 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
           Titre du voyage
-          <input name="title" required defaultValue={booking.title} className="rounded-xl border border-border px-3 py-2" />
+          <input
+            name="title"
+            required
+            value={titleDraft}
+            onChange={(event) => setTitleDraft(event.target.value)}
+            className="rounded-xl border border-border px-3 py-2"
+          />
         </label>
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
           Destination

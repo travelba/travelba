@@ -24,6 +24,43 @@ export function parseIncludeInLedger(value: unknown, fallback: boolean) {
   return fallback;
 }
 
+const BOOKING_META_KEYS = [
+  "title",
+  "destination",
+  "status",
+  "start_date",
+  "end_date",
+  "currency",
+  "notes_client",
+  "notes_internal",
+  "customer_id",
+  "billing_customer_id",
+  "include_in_ledger",
+] as const;
+
+/** Champs dossier envoyés par le formulaire admin. Dates vides = null, titre trimé. */
+export function bookingMetaPatch(body: Record<string, unknown>) {
+  const patch: Record<string, unknown> = {};
+  for (const key of BOOKING_META_KEYS) {
+    if (!(key in body)) continue;
+    if (key === "include_in_ledger") {
+      patch[key] = parseIncludeInLedger(body[key], true);
+      continue;
+    }
+    if (key === "title") {
+      patch[key] = String(body[key] ?? "").trim();
+      continue;
+    }
+    if (key === "start_date" || key === "end_date") {
+      const value = String(body[key] ?? "").trim();
+      patch[key] = value || null;
+      continue;
+    }
+    patch[key] = body[key];
+  }
+  return patch;
+}
+
 export function bookingDebitIntent(input: {
   status: BookingStatus;
   amount: number;
@@ -169,7 +206,8 @@ export async function syncBookingDebit(
   const amountChanged = Number(debit.amount) !== amount;
   const statusChanged = Boolean(previousStatus && previousStatus !== booking.status);
   const payerChanged = debit.customer_id !== payerId;
-  if (amountChanged || statusChanged || payerChanged || debit.status !== "posted") {
+  const labelChanged = (debit.label || "") !== label;
+  if (amountChanged || statusChanged || payerChanged || labelChanged || debit.status !== "posted") {
     await supabase
       .from("crm_transactions")
       .update({

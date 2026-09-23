@@ -21,6 +21,8 @@ import { BookingStatusBadge } from "@/components/crm/ui";
 import {
   carnetVisible,
   itemPriceLabel,
+  tripHeadline,
+  tripPlaceLine,
   unlinkedDocuments,
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
@@ -86,9 +88,8 @@ export default async function ReservationDetailPage({ params }: Props) {
     b.reference,
     b.destination
   );
-  const headline = b.destination || b.title;
-  const sameTitle =
-    (b.title || "").trim().toLowerCase() === (b.destination || "").trim().toLowerCase();
+  const headline = tripHeadline(b.title, b.destination);
+  const placeLine = tripPlaceLine(b.title, b.destination);
   const missingCount = coverage.total - coverage.ready;
   const formalities = frenchPassportTrip(visibleItems, party.length);
 
@@ -114,7 +115,7 @@ export default async function ReservationDetailPage({ params }: Props) {
             </span>
           </div>
           <h1 className="font-display text-[1.7rem] font-extrabold leading-tight">{headline}</h1>
-          {b.title && !sameTitle ? <p className="text-sm text-white/75">{b.title}</p> : null}
+          {placeLine ? <p className="text-sm text-white/75">{placeLine}</p> : null}
           <p className="text-sm text-white/75">
             {formatDateFr(b.start_date)} — {formatDateFr(b.end_date)}
           </p>
