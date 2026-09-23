@@ -199,6 +199,7 @@ describe("carnet", () => {
     assert.equal(coverQuery("CDG → RAK", "Vol"), "RAK");
     assert.equal(coverQuery("Paris", "Week-end"), "Paris");
     assert.equal(coverQuery("Nice, France", null), "Nice");
+    assert.equal(coverQuery("Avoriaz - Haute Savoie", "Séjour"), "Avoriaz");
   });
 
   it("sert une couverture Unsplash légère", () => {
