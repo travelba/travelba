@@ -20,6 +20,7 @@ import {
   type CrmTravelDocument,
   filterCreditTransfers,
 } from "@/lib/crm/types";
+import { clientLedgerAdminHref } from "@/lib/crm/client-ledger";
 import { formatDateFr, formatMoney, formatCreditDisponible } from "@/lib/crm/money";
 
 type Props = { params: Promise<{ id: string }> };
@@ -87,7 +88,15 @@ export default async function AdminClientDetailPage({ params }: Props) {
         <h1 className="font-display text-3xl font-extrabold text-[var(--admin-navy)]">
           {customerFullName(c)}
         </h1>
-        <DeleteCustomerButton customerId={c.id} name={customerFullName(c)} />
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={clientLedgerAdminHref(c.id)}
+            className="admin-af-btn inline-flex rounded-xl px-4 py-2.5 text-sm"
+          >
+            Transactions du client
+          </Link>
+          <DeleteCustomerButton customerId={c.id} name={customerFullName(c)} />
+        </div>
       </div>
       <InviteCustomerPanel customerId={c.id} initial={portal} />
       <div className="flex flex-wrap gap-3">
@@ -167,7 +176,15 @@ export default async function AdminClientDetailPage({ params }: Props) {
         )}
       </section>
       <section className="admin-af-card rounded-3xl p-5">
-        <h2 className="font-display text-lg font-bold">Virements crédit</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-display text-lg font-bold">Virements crédit</h2>
+          <Link
+            href={clientLedgerAdminHref(c.id)}
+            className="text-xs font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline"
+          >
+            Voir comme le client
+          </Link>
+        </div>
         {!(txs || []).length ? (
           <p className="mt-2 text-sm text-muted">
             Aucun virement crédit. Ils apparaissent après rapprochement Revolut ou saisie manuelle.

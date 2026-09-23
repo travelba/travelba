@@ -3,18 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/crm/icons";
+import type { LedgerMovementRow } from "@/lib/crm/ledger-movement";
 
-export type LedgerMovementRow = {
-  id: string;
-  credit: boolean;
-  title: string;
-  amountLabel: string;
-  occurredLabel: string;
-  kindLabel: string;
-  whenWhere: string | null;
-  reference: string | null;
-  carnetHref: string | null;
-};
+export type { LedgerMovementRow };
 
 export function LedgerMovements({ rows }: { rows: LedgerMovementRow[] }) {
   const [openId, setOpenId] = useState<string | null>(null);
@@ -98,7 +89,7 @@ export function LedgerMovements({ rows }: { rows: LedgerMovementRow[] }) {
                     href={row.carnetHref}
                     className="inline-flex pt-1 text-sm font-semibold text-[var(--admin-navy)]"
                   >
-                    Accéder à ma réservation
+                    {row.carnetLabel || "Accéder à ma réservation"}
                   </Link>
                 ) : null}
               </div>
