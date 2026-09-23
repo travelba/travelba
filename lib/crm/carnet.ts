@@ -333,7 +333,7 @@ const ORIGIN_HUBS =
 
 function coverTokens(value: string) {
   return value
-    .split(/\s*(?:·|\||\/|→|->|—|–)\s*/)
+    .split(/\s*(?:·|\||\/|→|->|—|–| - )\s*/)
     .map((part) => part.split(",")[0]?.trim())
     .filter((part): part is string => Boolean(part));
 }
