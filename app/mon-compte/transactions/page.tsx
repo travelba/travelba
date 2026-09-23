@@ -10,7 +10,6 @@ import {
 import {
   formatDateFr,
   formatDateRangeShort,
-  formatEncours,
   formatMoney,
   postedLedgerTotals,
 } from "@/lib/crm/money";
@@ -136,8 +135,9 @@ export default async function TransactionsPage() {
     };
   });
 
-  const { credits, debits, settledPct } = postedLedgerTotals(shown);
+  const { debits, settledPct } = postedLedgerTotals(shown);
   const remaining = Math.max(0, -balanceValue);
+  const remainingPct = settledPct == null ? null : Math.max(0, 100 - settledPct);
   const creditCount = shown.filter((t) => t.direction === "credit").length;
 
   return (
@@ -169,70 +169,34 @@ export default async function TransactionsPage() {
           </>
         ) : (
           <>
-            <div className="mt-3 flex items-baseline justify-between gap-3">
-              <span className="text-[13px] text-muted">Encours</span>
-              <span className="font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">
-                {formatEncours(balanceValue, currency)}
-              </span>
+            <div className="mt-3 rounded-lg border border-[var(--admin-gold)]/20 bg-[#f4f3f0] p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9c7c4e]">
+                Solde restant dû
+              </p>
+              <p className="font-display text-[1.625rem] font-bold tracking-tight text-[var(--admin-navy)]">
+                {formatMoney(remaining, currency)}
+              </p>
             </div>
-            <p className="mt-1 text-xs text-muted">Positif = avoir · négatif = reste à régler</p>
-
-            {settledPct != null ? (
-              <>
-                <div className="my-2 h-2.5 overflow-hidden rounded-full bg-[#e9e8e5]">
+            {remainingPct != null && remaining > 0 ? (
+              <div className="mt-3">
+                <div className="h-2.5 overflow-hidden rounded-full bg-[#e9e8e5]">
                   <div
                     className="h-full rounded-full bg-[var(--admin-navy)]"
-                    style={{ width: `${settledPct}%` }}
+                    style={{ width: `${remainingPct}%` }}
                   />
                 </div>
-                <div className="flex items-center justify-between text-[13px]">
-                  <span className="text-[var(--admin-navy)]">
-                    Déjà honoré :{" "}
-                    <strong>{formatMoney(credits, currency)}</strong>
-                  </span>
-                  <span className="text-[10px] font-bold text-[#9c7c4e]">{settledPct}% réglé</span>
-                </div>
-              </>
+                <p className="mt-1.5 text-right text-[10px] font-bold text-[#9c7c4e]">
+                  {remainingPct}% restant à régler
+                </p>
+              </div>
             ) : null}
-
-            <div className="mt-3 flex flex-col gap-1 rounded-lg border border-[var(--admin-gold)]/20 bg-[#f4f3f0] p-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9c7c4e]">
-                    {remaining > 0 ? "Solde restant dû" : "Crédit disponible"}
-                  </p>
-                  <p className="font-display text-[1.625rem] font-bold tracking-tight text-[var(--admin-navy)]">
-                    {formatMoney(remaining > 0 ? remaining : Math.max(0, balanceValue), currency)}
-                  </p>
-                  {remaining <= 0 && balanceValue > 0 ? (
-                    <p className="text-[11px] text-muted">Frais d’agence 10 % déjà déduits</p>
-                  ) : null}
-                </div>
-                {debits > 0 ? (
-                  <div className="text-right">
-                    <p className="text-[10px] text-muted">Total débité</p>
-                    <p className="text-sm font-semibold text-[var(--admin-navy)]">
-                      {formatMoney(debits, currency)}
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                <Link
-                  href="/mon-compte/profil/facturation"
-                  className="inline-flex h-11 items-center justify-center gap-1.5 rounded-full border border-[var(--admin-gold)]/30 bg-[var(--admin-gold)]/15 text-[12px] font-semibold uppercase tracking-[0.06em] text-[var(--admin-navy)]"
-                >
-                  <Icon name="account_balance" className="h-[18px] w-[18px] text-[#9c7c4e]" />
-                  Facturation
-                </Link>
-                <a
-                  href={`mailto:${siteConfig.contactEmail}?subject=${encodeURIComponent("Demande de relevé")}`}
-                  className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[12px] font-semibold uppercase tracking-[0.06em] text-white"
-                >
-                  Demander un relevé
-                </a>
-              </div>
-            </div>
+            <Link
+              href="/mon-compte/profil/facturation"
+              className="mt-3 inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-full border border-[var(--admin-gold)]/30 bg-[var(--admin-gold)]/15 text-[12px] font-semibold uppercase tracking-[0.06em] text-[var(--admin-navy)]"
+            >
+              <Icon name="account_balance" className="h-[18px] w-[18px] text-[#9c7c4e]" />
+              Facturation
+            </Link>
           </>
         )}
 
