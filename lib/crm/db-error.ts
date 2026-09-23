@@ -63,6 +63,8 @@ export function dbErrorMessage(error: DbErrorLike, fallback = "Opération imposs
       return "Élément introuvable.";
     case "42501":
       return "Accès refusé.";
+    case "42P10":
+      return "Enregistrement impossible (contrainte de dossier). Réessayez.";
     default:
       return fallback;
   }
