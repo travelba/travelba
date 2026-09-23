@@ -24,6 +24,7 @@ function booking(partial: Partial<CrmBooking> = {}): CrmBooking {
     created_at: "",
     updated_at: "",
     ...partial,
+    cover_credit: partial.cover_credit ?? null,
   };
 }
 
