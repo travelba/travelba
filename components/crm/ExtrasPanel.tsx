@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { IssuesList } from "@/components/crm/IssuesList";
+import { Icon } from "@/components/crm/icons";
 import { issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
 import {
   bookingHasFlight,
@@ -14,13 +15,15 @@ import {
   extraTitle,
   findExtra,
   formatCustomerAddress,
+  formatEuroWhole,
   GREETER_ADULT_EUR,
   GREETER_CHILD_EUR,
+  greeterTariffLine,
   type ExtraKind,
   type ExtraLeg,
 } from "@/lib/crm/extras";
-import { formatMoney } from "@/lib/crm/money";
 import type { CrmBooking, CrmBookingItem, CrmBookingTraveler, CrmCompanion, CrmCustomer } from "@/lib/crm/types";
+
 export function ExtrasPanel({
   variant,
   booking,
@@ -50,10 +53,10 @@ export function ExtrasPanel({
     companions,
     at: now,
   });
-  const chauffeurPrice = extraAmount("chauffeur");
-  const greeterPrice = extraAmount("greeter", headsAt.adults, headsAt.children);
   const isAdmin = variant === "admin";
-  const canGreeter = Boolean(holder.is_vip);
+  const balanceNote = isAdmin
+    ? "Ce montant s’ajoute à l’encours."
+    : "Ce montant s’ajoute à votre solde.";
 
   async function request(kind: ExtraKind, leg: ExtraLeg) {
     setBusy(`${kind}:${leg}`);
@@ -94,14 +97,15 @@ export function ExtrasPanel({
     const label = extraTitle(kind, leg);
     const price =
       kind === "chauffeur"
-        ? formatMoney(chauffeurPrice, booking.currency)
-        : formatMoney(greeterPrice, booking.currency);
+        ? `${formatEuroWhole(extraAmount("chauffeur"))} par trajet`
+        : greeterTariffLine(headsAt.adults, headsAt.children);
     return (
       <div key={`${kind}-${leg}`} className="rounded-xl border border-border px-3 py-2">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
             <p className="text-sm font-semibold text-[var(--admin-navy)]">{label}</p>
-            <p className="text-xs text-muted">{price} · se rajoute à l’encours</p>
+            <p className="text-sm font-semibold text-[var(--admin-navy)]">{price}</p>
+            <p className="text-xs text-muted">{balanceNote}</p>
             {locked ? (
               <p className="mt-1 text-xs text-accent">
                 Disponible jusqu’à 48 h avant le vol.{" "}
@@ -132,7 +136,7 @@ export function ExtrasPanel({
           ) : (
             <button
               type="button"
-              disabled={busy !== null || locked || (kind === "greeter" && !canGreeter)}
+              disabled={busy !== null || locked}
               onClick={() => void request(kind, leg)}
               className="rounded-full bg-[var(--admin-navy)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
             >
@@ -152,12 +156,11 @@ export function ExtrasPanel({
         </p>
         <h2 className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">À la demande</h2>
         <p className="mt-1 text-sm text-muted">
-          Chauffeur domicile ↔ aéroport : {CHAUFFEUR_EUR} € par trajet. Greeter VIP : {GREETER_ADULT_EUR} € /
-          adulte, {GREETER_CHILD_EUR} € / enfant, par trajet.
+          Ces services s’ajoutent à votre vol, au départ comme à l’arrivée.
         </p>
       </div>
       <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-        Adresse de prise en charge (chauffeur)
+        Adresse de prise en charge (chauffeur privé)
         <input
           value={address}
           onChange={(event) => setAddress(event.target.value)}
@@ -165,32 +168,44 @@ export function ExtrasPanel({
         />
       </label>
       <div className="space-y-2">
-        <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Chauffeur</p>
+        <div className="flex items-center gap-2 text-[var(--admin-navy)]">
+          <Icon name="chauffeur" className="h-4 w-4" />
+          <p className="text-xs font-bold uppercase tracking-[0.12em]">Chauffeur privé</p>
+        </div>
+        <p className="text-sm text-muted">
+          Un chauffeur privé vous prend en charge à l’adresse indiquée et vous dépose à l’aéroport. Le
+          véhicule est prévu 2 h 30 avant le décollage. Au retour, il vous attend à la sortie et vous
+          ramène à cette adresse.
+        </p>
+        <p className="text-sm font-semibold text-[var(--admin-navy)]">
+          {formatEuroWhole(CHAUFFEUR_EUR)} par trajet
+        </p>
         {row("chauffeur", "departure")}
         {row("chauffeur", "arrival")}
       </div>
-      {canGreeter || isAdmin ? (
-        <div className="space-y-2">
-          <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">
-            Greeter{!canGreeter ? " — VIP requis" : ""}
-          </p>
-          {!canGreeter && isAdmin ? (
-            <p className="text-xs text-accent">Passez le client en VIP sur sa fiche pour activer le greeter.</p>
-          ) : (
-            <p className="text-xs text-muted">
-              {headsAt.adults} adulte{headsAt.adults > 1 ? "s" : ""} · {headsAt.children} enfant
-              {headsAt.children > 1 ? "s" : ""}
-              {headsAt.missingBirth
-                ? ` · ${headsAt.missingBirth} sans date de naissance (compté adulte)`
-                : ""}
-            </p>
-          )}
-          {row("greeter", "departure")}
-          {row("greeter", "arrival")}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 text-[var(--admin-navy)]">
+          <Icon name="greeter" className="h-4 w-4" />
+          <p className="text-xs font-bold uppercase tracking-[0.12em]">Greeter</p>
         </div>
-      ) : (
-        <p className="text-sm text-muted">Le greeter aéroport est réservé à nos clients VIP.</p>
-      )}
+        <p className="text-sm text-muted">
+          Un greeter vous accueille à l’aéroport : enregistrement, passage de la sûreté, jusqu’à la porte
+          ou au salon. À l’arrivée, il vous attend à la sortie et vous accompagne jusqu’au chauffeur.
+        </p>
+        <p className="text-sm font-semibold text-[var(--admin-navy)]">
+          {formatEuroWhole(GREETER_ADULT_EUR)} par adulte, {formatEuroWhole(GREETER_CHILD_EUR)} par enfant,
+          par trajet.
+        </p>
+        <p className="text-xs text-muted">
+          {headsAt.adults} adulte{headsAt.adults > 1 ? "s" : ""} · {headsAt.children} enfant
+          {headsAt.children > 1 ? "s" : ""}
+          {headsAt.missingBirth
+            ? ` · ${headsAt.missingBirth} sans date de naissance (compté adulte)`
+            : ""}
+        </p>
+        {row("greeter", "departure")}
+        {row("greeter", "arrival")}
+      </div>
       <IssuesList issues={issues} />
     </section>
   );

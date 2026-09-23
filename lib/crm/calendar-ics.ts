@@ -1,6 +1,7 @@
 import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
 import { BOOKING_ITEM_LABELS } from "@/lib/crm/types";
 import { itemClock, flightIata, flightCities, hotelDisplayName } from "@/lib/crm/carnet";
+import { withExtraSchedule } from "@/lib/crm/extras";
 
 function icsEscape(value: string) {
   return value
@@ -120,15 +121,16 @@ export function buildBookingIcs(opts: {
   items: CrmBookingItem[];
   itemId?: string | null;
 }) {
+  const items = withExtraSchedule(opts.items);
   const events: string[] = [];
   if (opts.itemId) {
-    const item = opts.items.find((row) => row.id === opts.itemId);
+    const item = items.find((row) => row.id === opts.itemId);
     const event = item ? veventFromItem(item, opts.booking) : null;
     if (event) events.push(event);
   } else {
     const stay = veventFromStay(opts.booking);
     if (stay) events.push(stay);
-    for (const item of opts.items) {
+    for (const item of items) {
       const event = veventFromItem(item, opts.booking);
       if (event) events.push(event);
     }

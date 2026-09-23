@@ -37,7 +37,8 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 - Clic carte = détail + **Voir la confirmation** (PDF `source_document_id`) + **Ajouter à l’agenda** (.ics).
 - En-tête itinéraire : **Ajouter tout le séjour** (`GET /api/client/bookings/[reference]/calendrier`). Horaires seulement s’ils existent ; hôtel = journée entière.
 - Ordre : `sort_order` agent (drag / monter-descendre), défaut **chrono**. PATCH `{ order: [ids] }` sur `/api/admin/bookings/[id]/items`.
-- Kinds : `flight` `hotel` `transfer` `activity` `rail` `car` `cruise` `insurance` `fee`. Train / voiture / bateau = cartes métier, pas un jour par escale bateau.
+- **Chauffeur privé** et **greeter** : proposés à tous les clients dès qu’il y a un vol (pas de verrou VIP). Tarif entier : 150 € par trajet ; greeter 100 € par adulte et 25 € par enfant (`2 × 100 € + 1 × 25 € = 225 €`). Départ : chauffeur à l’heure du vol moins 2 h 30 (veille si le décollage est tôt), puis greeter, puis le vol — même si le `sort_order` de la demande est plus haut. Arrivée : vol, puis greeter, puis chauffeur. Le greeter n’a pas d’heure propre. Icônes distinctes (voiture / accueil). Hors total séjour.
+- Kinds : `flight` `hotel` `transfer` `activity` `rail` `car` `cruise` `insurance` `fee` `chauffeur` `greeter`. Train / voiture / bateau = cartes métier, pas un jour par escale bateau.
 
 ## Prix
 

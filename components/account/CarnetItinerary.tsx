@@ -23,6 +23,7 @@ import {
   kindIcon,
   undatedTimeline,
 } from "@/lib/crm/carnet";
+import { showsServiceClock } from "@/lib/crm/extras";
 import { itemTicketCount } from "@/lib/crm/item-match";
 
 function AgendaLink({
@@ -109,7 +110,7 @@ function CardBody({
         <div className="min-w-0 flex-1 overflow-hidden">
           <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--aura-blue)]">
             {BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind}
-            {item.kind !== "hotel" && clock ? ` · ${clock}` : ""}
+            {item.kind !== "hotel" && showsServiceClock(item) && clock ? ` · ${clock}` : ""}
             {endClock && item.kind !== "hotel" ? ` → ${endClock}` : ""}
             {item.kind === "flight" && tickets > 1 ? ` · ${tickets} billets` : ""}
           </p>

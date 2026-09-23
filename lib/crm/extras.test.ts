@@ -6,16 +6,26 @@ import {
   extraAmount,
   extraFlightAt,
   extraNoticeOk,
+  extraScheduleStart,
   extraTitle,
   findExtra,
+  formatEuroWhole,
+  greeterTariffLine,
   isChildAt,
+  scheduleExtraStart,
+  shiftIsoMinutes,
+  showsServiceClock,
 } from "./extras";
 
 test("tarifs par trajet", () => {
   assert.equal(extraAmount("chauffeur"), 150);
   assert.equal(extraAmount("greeter", 2, 1), 225);
-  assert.equal(extraTitle("chauffeur", "departure"), "Chauffeur domicile → aéroport");
+  assert.equal(extraTitle("chauffeur", "departure"), "Chauffeur privé — domicile → aéroport");
+  assert.equal(extraTitle("chauffeur", "arrival"), "Chauffeur privé — aéroport → domicile");
   assert.equal(extraTitle("greeter", "arrival"), "Greeter — arrivée");
+  assert.equal(formatEuroWhole(150), "150 €");
+  assert.equal(greeterTariffLine(2, 1), "2 × 100 € + 1 × 25 € = 225 €");
+  assert.equal(greeterTariffLine(1, 0), "100 €");
 });
 
 test("enfant < 12 ans, sans naissance = adulte", () => {
@@ -41,6 +51,29 @@ test("fenêtre 48 h et unicité par trajet", () => {
   assert.equal(extraFlightAt(items, "arrival"), "2026-08-20T18:00:00");
   assert.ok(findExtra(items, "chauffeur", "departure"));
   assert.equal(findExtra(items, "chauffeur", "arrival"), null);
+});
+
+test("chauffeur privé 2 h 30 avant le décollage, y compris la veille", () => {
+  assert.equal(shiftIsoMinutes("2026-08-12T10:00:00", -150), "2026-08-12T07:30:00");
+  assert.equal(shiftIsoMinutes("2026-08-12T01:00:00+02:00", -150), "2026-08-11T22:30:00+02:00");
+  assert.equal(shiftIsoMinutes("2026-08-12", -150), "2026-08-12");
+  assert.equal(shiftIsoMinutes("2026-08-12T00:00:00", -150), "2026-08-12T00:00:00");
+  const items = [
+    { kind: "flight", start_at: "2026-08-12T01:00:00" },
+    { kind: "flight", start_at: "2026-08-20T18:00:00" },
+    { kind: "chauffeur", start_at: "2026-08-12T01:00:00", details: { service_leg: "departure" } },
+    { kind: "greeter", start_at: "2026-08-12T01:00:00", details: { service_leg: "departure" } },
+    { kind: "chauffeur", start_at: "2026-08-20T18:00:00", details: { service_leg: "arrival" } },
+  ];
+  assert.equal(
+    extraScheduleStart(items[2], items),
+    "2026-08-11T22:30:00"
+  );
+  assert.equal(scheduleExtraStart("greeter", "departure", "2026-08-12T01:00:00"), "2026-08-12T01:00:00");
+  assert.equal(extraScheduleStart(items[4], items), "2026-08-20T18:00:00");
+  assert.equal(showsServiceClock(items[2]), true);
+  assert.equal(showsServiceClock(items[3]), false);
+  assert.equal(showsServiceClock(items[4]), false);
 });
 
 test("chauffeur et greeter seulement s’il y a un vol", () => {

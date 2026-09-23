@@ -6,6 +6,8 @@ export const GREETER_ADULT_EUR = 100;
 export const GREETER_CHILD_EUR = 25;
 export const EXTRA_CHILD_AGE = 12;
 export const EXTRA_NOTICE_MS = 48 * 60 * 60 * 1000;
+/** Prise en charge chauffeur privé avant le décollage. */
+export const CHAUFFEUR_LEAD_MINUTES = 150;
 
 export type ExtraKind = "chauffeur" | "greeter";
 export type ExtraLeg = "departure" | "arrival";
@@ -25,14 +27,40 @@ export function extraAmount(kind: ExtraKind, adults = 1, children = 0) {
   return a * GREETER_ADULT_EUR + c * GREETER_CHILD_EUR;
 }
 
+export function formatEuroWhole(amount: number) {
+  return `${Math.round(amount).toLocaleString("fr-FR")} €`;
+}
+
+/** Tarif du trajet greeter : `2 × 100 € + 1 × 25 € = 225 €`. */
+export function greeterTariffLine(adults: number, children: number) {
+  const a = Math.max(0, Math.floor(adults));
+  const c = Math.max(0, Math.floor(children));
+  const parts: string[] = [];
+  if (a > 0) parts.push(`${a} × ${formatEuroWhole(GREETER_ADULT_EUR)}`);
+  if (c > 0) parts.push(`${c} × ${formatEuroWhole(GREETER_CHILD_EUR)}`);
+  const total = formatEuroWhole(extraAmount("greeter", a, c));
+  if (a + c <= 1) return total;
+  return `${parts.join(" + ")} = ${total}`;
+}
+
 export function extraTitle(kind: ExtraKind, leg: ExtraLeg) {
   const side = leg === "departure" ? "départ" : "arrivée";
   if (kind === "chauffeur") {
     return leg === "departure"
-      ? "Chauffeur domicile → aéroport"
-      : "Chauffeur aéroport → domicile";
+      ? "Chauffeur privé — domicile → aéroport"
+      : "Chauffeur privé — aéroport → domicile";
   }
   return `Greeter — ${side}`;
+}
+
+/** Le greeter et le chauffeur d’arrivée n’ont pas d’heure propre. */
+export function showsServiceClock(item: {
+  kind?: string | null;
+  details?: Record<string, unknown> | null;
+}) {
+  if (item.kind === "greeter") return false;
+  if (item.kind === "chauffeur") return extraServiceLeg(item) === "departure";
+  return true;
 }
 
 export function extraServiceLeg(item: { details?: Record<string, unknown> | null }): ExtraLeg | null {
@@ -108,6 +136,92 @@ export function extraFlightAt(
     .sort((a, b) => String(a.start_at).localeCompare(String(b.start_at)));
   if (!flights.length) return fallback;
   return (leg === "departure" ? flights[0].start_at : flights[flights.length - 1].start_at) || fallback;
+}
+
+function hasWallClock(iso: string) {
+  const match = iso.match(/T(\d{2}):(\d{2})/);
+  if (!match) return false;
+  return !(match[1] === "00" && match[2] === "00");
+}
+
+/** Décale l’heure écrite dans la chaîne, sans conversion de fuseau. */
+export function shiftIsoMinutes(iso: string, minutes: number) {
+  if (!hasWallClock(iso)) return iso;
+  const match = iso.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(.*)$/);
+  if (!match) return iso;
+  const [, date, hh, mm, ss = "00", rest] = match;
+  const base = new Date(
+    Date.UTC(
+      Number(date.slice(0, 4)),
+      Number(date.slice(5, 7)) - 1,
+      Number(date.slice(8, 10)),
+      Number(hh),
+      Number(mm),
+      Number(ss)
+    )
+  );
+  base.setUTCMinutes(base.getUTCMinutes() + minutes);
+  const y = base.getUTCFullYear();
+  const m = String(base.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(base.getUTCDate()).padStart(2, "0");
+  const h = String(base.getUTCHours()).padStart(2, "0");
+  const min = String(base.getUTCMinutes()).padStart(2, "0");
+  const time = match[4]
+    ? `${h}:${min}:${String(base.getUTCSeconds()).padStart(2, "0")}`
+    : `${h}:${min}`;
+  return `${y}-${m}-${d}T${time}${rest}`;
+}
+
+export function scheduleExtraStart(kind: ExtraKind, leg: ExtraLeg, flightAt: string | null) {
+  if (!flightAt) return null;
+  if (kind === "chauffeur" && leg === "departure") {
+    return shiftIsoMinutes(flightAt, -CHAUFFEUR_LEAD_MINUTES);
+  }
+  return flightAt;
+}
+
+export function extraScheduleStart(
+  item: { kind?: string | null; start_at?: string | null; details?: Record<string, unknown> | null },
+  items: { kind?: string | null; start_at?: string | null }[]
+) {
+  if (!isExtraKind(item.kind)) return item.start_at ?? null;
+  const leg = extraServiceLeg(item);
+  if (!leg) return item.start_at ?? null;
+  const flightAt = extraFlightAt(items, leg);
+  return scheduleExtraStart(item.kind, leg, flightAt) ?? item.start_at ?? null;
+}
+
+export function withExtraSchedule<
+  T extends { kind?: string | null; start_at?: string | null; details?: Record<string, unknown> | null },
+>(items: T[]): T[] {
+  return items.map((item) => {
+    const start = extraScheduleStart(item, items);
+    if (!start || start === item.start_at) return item;
+    return { ...item, start_at: start };
+  });
+}
+
+/** Départ : chauffeur 0, greeter 1, vol 2. Arrivée : vol 2, greeter 3, chauffeur 4. */
+export function extraTimelineSlot(
+  item: { kind?: string | null; start_at?: string | null; details?: Record<string, unknown> | null },
+  items: { kind?: string | null; start_at?: string | null }[]
+): { anchor: string; slot: number } | null {
+  if (isExtraKind(item.kind)) {
+    const leg = extraServiceLeg(item);
+    if (!leg) return null;
+    const anchor = extraFlightAt(items, leg);
+    if (!anchor) return null;
+    if (leg === "departure") return { anchor, slot: item.kind === "chauffeur" ? 0 : 1 };
+    return { anchor, slot: item.kind === "greeter" ? 3 : 4 };
+  }
+  if (item.kind === "flight" && item.start_at) {
+    const departure = extraFlightAt(items, "departure");
+    const arrival = extraFlightAt(items, "arrival");
+    if (item.start_at === departure || item.start_at === arrival) {
+      return { anchor: item.start_at, slot: 2 };
+    }
+  }
+  return null;
 }
 
 export function formatCustomerAddress(

@@ -44,7 +44,7 @@ export const BOOKING_ITEM_LABELS: Record<BookingItemKind, string> = {
   cruise: "Bateau",
   insurance: "Assurance",
   fee: "Frais",
-  chauffeur: "Chauffeur",
+  chauffeur: "Chauffeur privé",
   greeter: "Greeter",
 };
 
@@ -151,7 +151,7 @@ export type CrmCustomer = {
   stripe_customer_id: string | null;
   /** Badge / filtre admin — aucun effet côté espace client. */
   on_hold?: boolean;
-  /** Accès greeter aéroport. */
+  /** Badge VIP — filtre admin. N’ouvre plus le greeter. */
   is_vip?: boolean;
   created_at: string;
   updated_at: string;
