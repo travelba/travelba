@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { jsonError, jsonIssues, requireCustomer } from "@/lib/crm/auth";
 import { BookingIssuesError } from "@/lib/crm/booking-issues";
 import { carnetVisible } from "@/lib/crm/carnet";
-import { createBookingExtra, parseExtraRequest } from "@/lib/crm/extras-write";
+import { createBookingExtra, declineBookingService, parseExtraRequest } from "@/lib/crm/extras-write";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmBooking, CrmBookingItem, CrmBookingTraveler, CrmCompanion, CrmCustomer } from "@/lib/crm/types";
 
@@ -30,6 +30,16 @@ export async function POST(request: Request, ctx: Ctx) {
   try {
     const extra = parseExtraRequest(body);
     const admin = createServiceClient();
+    if (body?.decline === true) {
+      const declined = await declineBookingService(admin, {
+        booking: b,
+        items: list,
+        kind: extra.kind,
+        leg: extra.leg,
+        place: extra.place,
+      });
+      return NextResponse.json(declined);
+    }
     const [{ data: travelers }, { data: companions }] = await Promise.all([
       admin.from("crm_booking_travelers").select("*").eq("booking_id", b.id),
       admin.from("crm_travel_companions").select("*").eq("customer_id", auth.customer.id),
@@ -42,6 +52,7 @@ export async function POST(request: Request, ctx: Ctx) {
       companions: (companions || []) as CrmCompanion[],
       kind: extra.kind,
       leg: extra.leg,
+      place: extra.place,
       address: extra.address,
       enforceWindow: true,
     });

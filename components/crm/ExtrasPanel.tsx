@@ -10,7 +10,9 @@ import {
   checkinFeeAmount,
   findCheckinExtra,
   findVisaExtra,
+  isServiceRefused,
   VISA_EUR,
+  type ServiceRefusal,
 } from "@/lib/crm/extras";
 import { formatMoney } from "@/lib/crm/money";
 import { BusyBar } from "@/components/crm/BusyBar";
@@ -24,6 +26,7 @@ export function ExtrasPanel({
   items,
   travelers,
   formalities = null,
+  refusals = [],
 }: {
   variant: "admin" | "client";
   booking: CrmBooking;
@@ -33,9 +36,11 @@ export function ExtrasPanel({
   companions: CrmCompanion[];
   whatsappHref?: string;
   formalities?: Pick<FrenchPassportTrip, "needsFormality" | "passengers" | "amount"> | null;
+  refusals?: ServiceRefusal[];
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
+  const [hidden, setHidden] = useState<string[]>([]);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
   if (!bookingHasFlight(items)) return null;
   const isAdmin = variant === "admin";
@@ -56,6 +61,24 @@ export function ExtrasPanel({
     const json = await res.json().catch(() => ({}));
     setBusy(null);
     if (!res.ok) {
+      setIssues(issuesFromResponse(json));
+      return;
+    }
+    router.refresh();
+  }
+
+  async function refuse(kind: "checkin" | "visa") {
+    if (isAdmin || busy) return;
+    setHidden((current) => (current.includes(kind) ? current : [...current, kind]));
+    setIssues([]);
+    const res = await fetch(`/api/client/bookings/${booking.reference}/extras`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decline: true, kind }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setHidden((current) => current.filter((row) => row !== kind));
       setIssues(issuesFromResponse(json));
       return;
     }
@@ -85,6 +108,16 @@ export function ExtrasPanel({
     const priceLabel = formatMoney(input.amount, booking.currency);
     const subtitle = `${status} · ${input.note} · ${input.count} passager${input.count > 1 ? "s" : ""}`;
     const pending = busy === input.kind || (input.existing && busy === `cancel:${input.existing.id}`);
+    const refuseButton =
+      !input.existing && !isAdmin ? (
+        <button
+          type="button"
+          onClick={() => void refuse(input.kind)}
+          className="inline-flex h-5 items-center text-[11px] font-semibold leading-none text-muted"
+        >
+          Refuser
+        </button>
+      ) : null;
     const validate = input.existing ? (
       isAdmin ? (
         <button
@@ -128,12 +161,18 @@ export function ExtrasPanel({
             </p>
             <p className="mt-1 flex items-center justify-between gap-2 sm:hidden">
               <span className="text-sm font-bold text-[var(--admin-navy)]">{priceLabel}</span>
-              {validate}
+              <span className="inline-flex items-center gap-2">
+                {refuseButton}
+                {validate}
+              </span>
             </p>
           </div>
           <div className="hidden shrink-0 items-start gap-2 sm:flex">
             <p className="max-w-[7.5rem] text-right text-sm font-bold leading-snug text-[var(--admin-navy)]">{priceLabel}</p>
-            {validate}
+            <span className="inline-flex items-center gap-2">
+              {refuseButton}
+              {validate}
+            </span>
           </div>
         </div>
         {pending ? (
@@ -147,6 +186,12 @@ export function ExtrasPanel({
 
   const checkin = findCheckinExtra(items) as CrmBookingItem | null;
   const visa = findVisaExtra(items) as CrmBookingItem | null;
+  const checkinGone =
+    !checkin && (hidden.includes("checkin") || isServiceRefused(refusals, { kind: "checkin" }));
+  const visaGone =
+    !visa && (hidden.includes("visa") || isServiceRefused(refusals, { kind: "visa" }));
+  const showVisa = Boolean(formalities?.needsFormality) && !visaGone;
+  if (checkinGone && !showVisa) return null;
 
   return (
     <section className="space-y-3">
@@ -157,23 +202,25 @@ export function ExtrasPanel({
         <h2 className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">À la carte</h2>
         <p className="mt-1 text-sm text-muted">Enregistrement et formalités, par passager.</p>
       </div>
-      {serviceCard({
-        kind: "checkin",
-        title: "Enregistrement",
-        icon: "airplane_ticket",
-        note: `${CHECKIN_EUR} € par passager`,
-        amount: checkinFeeAmount(passengers),
-        count: passengers,
-        existing: checkin,
-      })}
-      {formalities?.needsFormality
+      {checkinGone
+        ? null
+        : serviceCard({
+            kind: "checkin",
+            title: "Enregistrement",
+            icon: "airplane_ticket",
+            note: `${CHECKIN_EUR} € par passager`,
+            amount: checkinFeeAmount(passengers),
+            count: passengers,
+            existing: checkin,
+          })}
+      {showVisa
         ? serviceCard({
             kind: "visa",
             title: "Obtention du visa",
             icon: "description",
             note: `${VISA_EUR} € par passager, hors frais du visa`,
-            amount: formalities.amount || (formalities.passengers || passengers) * VISA_EUR,
-            count: formalities.passengers || passengers,
+            amount: formalities?.amount || (formalities?.passengers || passengers) * VISA_EUR,
+            count: formalities?.passengers || passengers,
             existing: visa,
           })
         : null}

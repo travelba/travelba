@@ -451,6 +451,47 @@ export function offerKey(offer: Pick<ServiceOffer, "kind" | "leg" | "place">) {
   return `${offer.kind}:${offer.leg}:${offer.place || "none"}`;
 }
 
+export type ServiceRefusal = {
+  kind: ExtraKind | "visa" | "checkin";
+  leg: ExtraLeg | null;
+  place: ServicePlace | null;
+};
+
+export function isRefusalKind(value: string | null | undefined): value is ServiceRefusal["kind"] {
+  return value === "chauffeur" || value === "greeter" || value === "visa" || value === "checkin";
+}
+
+/** Clé stable : un refus de domicile n’efface pas le transfert hôtel. */
+export function serviceRefusalKey(row: {
+  kind: string;
+  leg?: string | null;
+  place?: string | null;
+}) {
+  const leg = row.kind === "visa" || row.kind === "checkin" ? "" : row.leg || "";
+  const place = row.kind === "chauffeur" ? row.place || "" : "";
+  return `${row.kind}:${leg}:${place}`;
+}
+
+export function isServiceRefused(
+  refusals: Array<{ kind: string; leg?: string | null; place?: string | null }> | null | undefined,
+  row: { kind: string; leg?: string | null; place?: string | null }
+) {
+  const key = serviceRefusalKey(row);
+  return (refusals || []).some((item) => serviceRefusalKey(item) === key);
+}
+
+export function serviceRefusalFromRow(row: {
+  kind?: string | null;
+  service_leg?: string | null;
+  place?: string | null;
+}): ServiceRefusal | null {
+  const kind = String(row.kind || "");
+  if (!isRefusalKind(kind)) return null;
+  const leg = isExtraLeg(row.service_leg || "") ? (row.service_leg as ExtraLeg) : null;
+  const place = kind === "chauffeur" && isServicePlace(row.place || "") ? (row.place as ServicePlace) : null;
+  return { kind, leg, place };
+}
+
 /** Cartes du jour : propositions collées au vol, sinon en tête de journée (arrivée la veille ou le lendemain). */
 export function composeItineraryDay<T extends { id: string }>(
   day: string,

@@ -5,6 +5,7 @@ import { BookingEditor } from "@/components/admin/BookingEditor";
 import { DeleteBookingButton } from "@/components/admin/DeleteBookingButton";
 import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
+import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import type {
   CrmBooking,
   CrmBookingDocument,
@@ -36,6 +37,7 @@ export default async function AdminBookingPage({ params }: Props) {
     { data: identityDocs },
     { data: holder },
     { data: customers },
+    { data: declined },
   ] = await Promise.all([
     supabase.from("crm_booking_items").select("*").eq("booking_id", id).order("sort_order"),
     supabase.from("crm_booking_travelers").select("*").eq("booking_id", id),
@@ -48,7 +50,11 @@ export default async function AdminBookingPage({ params }: Props) {
       .eq("id", b.customer_id)
       .maybeSingle(),
     supabase.from("crm_customers").select("*").order("last_name"),
+    supabase.from("crm_declined_services").select("kind, service_leg, place").eq("booking_id", id),
   ]);
+  const refusals = ((declined || []) as { kind?: string | null; service_leg?: string | null; place?: string | null }[])
+    .map(serviceRefusalFromRow)
+    .filter((row): row is ServiceRefusal => Boolean(row));
   const allIdentity = (identityDocs || []) as CrmTravelDocument[];
   const bookingItems = (items || []) as CrmBookingItem[];
   const bookingTravelers = (travelers || []) as CrmBookingTraveler[];
@@ -77,6 +83,7 @@ export default async function AdminBookingPage({ params }: Props) {
           }}
           aiConfigured={aiGatewayConfigured()}
           formalities={frenchPassportTrip(bookingItems, bookingTravelers.length)}
+          refusals={refusals}
         />
       </div>
     </div>

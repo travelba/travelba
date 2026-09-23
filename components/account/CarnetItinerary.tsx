@@ -41,9 +41,11 @@ import {
   extraNoticeOk,
   findExtra,
   formatCustomerAddress,
+  isServiceRefused,
   itineraryOffers,
   offerKey,
   type ServiceOffer,
+  type ServiceRefusal,
 } from "@/lib/crm/extras";
 
 function AgendaLink({
@@ -270,11 +272,13 @@ export function CarnetItinerary({
   docs,
   calendarBase = null,
   services = null,
+  refusals = [],
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
   docs: CrmBookingDocument[];
   calendarBase?: string | null;
+  refusals?: ServiceRefusal[];
   services?: {
     variant: "admin" | "client";
     travelers: CrmBookingTraveler[];
@@ -285,7 +289,10 @@ export function CarnetItinerary({
 }) {
   const days = groupByDay(items);
   const undated = undatedTimeline(items);
-  const offers = services && bookingHasFlight(items) ? itineraryOffers(items) : [];
+  const offers =
+    services && bookingHasFlight(items)
+      ? itineraryOffers(items).filter((offer) => !isServiceRefused(refusals, offer))
+      : [];
   const now = new Date();
   const heads = services
     ? extraHeadsFromBooking({

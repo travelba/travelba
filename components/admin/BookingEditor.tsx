@@ -38,7 +38,7 @@ import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
 import { IssuesList } from "@/components/crm/IssuesList";
 import { collectPublishIssues, issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
 import { householdMembers } from "@/lib/crm/household";
-import { bookingHasFlight } from "@/lib/crm/extras";
+import { bookingHasFlight, type ServiceRefusal } from "@/lib/crm/extras";
 import type { FrenchPassportTrip } from "@/lib/crm/visa-trip";
 import { reusableDocumentsForTraveler, tripDocumentsForTraveler } from "@/lib/crm/trip-documents";
 
@@ -53,6 +53,7 @@ export function BookingEditor({
   holderName,
   aiConfigured,
   formalities,
+  refusals = [],
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -64,6 +65,7 @@ export function BookingEditor({
   holderName: { first_name: string; last_name: string };
   aiConfigured: boolean;
   formalities: FrenchPassportTrip;
+  refusals?: ServiceRefusal[];
 }) {
   const router = useRouter();
   const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
@@ -627,6 +629,7 @@ export function BookingEditor({
             holder={customers.find((row) => row.id === booking.customer_id)!}
             companions={companions}
             formalities={formalities}
+            refusals={refusals}
           />
         </section>
       ) : null}
@@ -650,6 +653,7 @@ export function BookingEditor({
                   }
                 : null
             }
+            refusals={refusals}
           />
         </section>
       ) : null}
