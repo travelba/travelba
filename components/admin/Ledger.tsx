@@ -1,7 +1,9 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { clientLedgerAdminHref } from "@/lib/crm/client-ledger";
 import type { CrmCustomer, CrmTransaction } from "@/lib/crm/types";
 import { TX_KIND_LABELS, customerFullName, isCreditTransfer } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
@@ -167,6 +169,14 @@ export function Ledger({
           <option value="pending">En attente</option>
           <option value="void">Annulé</option>
         </select>
+        {customerId ? (
+          <Link
+            href={clientLedgerAdminHref(customerId)}
+            className="inline-flex items-center justify-center rounded-xl border border-[var(--admin-gold)]/40 bg-[#f8f4ed] px-4 py-2.5 text-sm font-semibold text-[var(--admin-navy)]"
+          >
+            Vue client
+          </Link>
+        ) : null}
       </div>
 
       <div className="admin-af-card overflow-hidden rounded-2xl">
@@ -186,7 +196,13 @@ export function Ledger({
                 <tr key={t.id} className="align-top">
                   <td className="whitespace-nowrap px-5 py-3 text-muted">{formatDateFr(t.occurred_on)}</td>
                   <td className="px-5 py-3 font-medium text-[var(--admin-navy)]">
-                    {byId.get(t.customer_id) || "—"}
+                    <Link
+                      href={clientLedgerAdminHref(t.customer_id)}
+                      className="underline-offset-2 hover:underline"
+                      title="Transactions vues par ce client"
+                    >
+                      {byId.get(t.customer_id) || "—"}
+                    </Link>
                   </td>
                   <td className="px-5 py-3">
                     <p className="font-medium text-[var(--admin-navy)]">{t.label}</p>
