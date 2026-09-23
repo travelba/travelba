@@ -207,7 +207,7 @@ export default async function TransactionsPage() {
                 className="flex flex-col gap-1 rounded-xl border border-[#e9e8e5]/60 bg-white p-4 shadow-sm"
               >
                 <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
+                  <div className="flex min-w-0 items-start gap-3">
                     <span
                       className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
                         credit
@@ -232,8 +232,8 @@ export default async function TransactionsPage() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex flex-col items-end">
-                    <p className="text-[16px] font-bold tracking-tight text-[var(--admin-navy)]">
+                  <div className="flex shrink-0 flex-col items-end">
+                    <p className="whitespace-nowrap text-[16px] font-bold tracking-tight text-[var(--admin-navy)]">
                       {credit ? "+" : "−"}
                       {formatMoney(Number(t.amount), t.currency)}
                     </p>
