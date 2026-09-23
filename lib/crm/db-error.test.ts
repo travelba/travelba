@@ -33,6 +33,7 @@ test("postgres codes map to neutral French messages", () => {
   assert.equal(dbErrorMessage({ code: "22P02" }), "Format de valeur invalide.");
   assert.equal(dbErrorMessage({ code: "PGRST116" }), "Élément introuvable.");
   assert.equal(dbErrorMessage({ code: "42501" }), "Accès refusé.");
+  assert.match(dbErrorMessage({ code: "42P10" }), /contrainte de dossier/);
 });
 
 test("unknown errors never leak the raw message", () => {
