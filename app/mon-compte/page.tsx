@@ -8,6 +8,7 @@ import { isCompanyMember } from "@/lib/crm/company-role";
 import { loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
+import { tripHeadline, tripPlaceLine } from "@/lib/crm/carnet";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { Icon } from "@/components/crm/icons";
 import { ConciergeBanner } from "@/components/crm/ui";
@@ -58,6 +59,10 @@ export default async function AccountHomePage() {
   const owes = shownBalances.some((row) => row.value < 0);
   const firstName = greetingGivenName(customer.first_name) || customer.email.split("@")[0];
   const countdown = nextTrip ? jMinusLabel(nextTrip.start_date) : null;
+  const tripName = nextTrip
+    ? tripHeadline(nextTrip.title, nextTrip.destination, "Prochain séjour")
+    : "";
+  const tripPlace = nextTrip ? tripPlaceLine(nextTrip.title, nextTrip.destination) : null;
   const tripHref = nextTrip ? `/mon-compte/reservations/${nextTrip.reference}` : "/mon-compte/reservations";
 
   return (
@@ -79,9 +84,8 @@ export default async function AccountHomePage() {
               <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--admin-gold)]">
                 {formatDateRangeShort(nextTrip.start_date, nextTrip.end_date)}
               </p>
-              <h2 className="mt-1 font-display text-2xl font-bold leading-tight">
-                {nextTrip.destination || nextTrip.title || "Prochain séjour"}
-              </h2>
+              <h2 className="mt-1 font-display text-2xl font-bold leading-tight">{tripName}</h2>
+              {tripPlace ? <p className="text-sm text-white/80">{tripPlace}</p> : null}
             </div>
             {missingPassports ? (
               <Link

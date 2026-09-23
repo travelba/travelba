@@ -4,6 +4,7 @@ import {
   bookingDebitIntent,
   bookingItemDebitExternalId,
   bookingItemDebitLabel,
+  bookingMetaPatch,
   bookingTotalFromItems,
   itemSellingAmount,
   parseIncludeInLedger,
@@ -124,6 +125,22 @@ test("item debit posts only when flagged on a confirmed stay", () => {
     }),
     "update"
   );
+});
+
+test("le titre du dossier est trimé et une date vide ne bloque pas l’enregistrement", () => {
+  const patch = bookingMetaPatch({
+    title: "  40 ans  ",
+    destination: "Marrakech",
+    start_date: "",
+    end_date: "2026-10-11",
+    include_in_ledger: "on",
+    ignored: "nope",
+  });
+  assert.equal(patch.title, "40 ans");
+  assert.equal(patch.start_date, null);
+  assert.equal(patch.end_date, "2026-10-11");
+  assert.equal(patch.include_in_ledger, true);
+  assert.equal("ignored" in patch, false);
 });
 
 test("stay total is always the sum of card selling prices", () => {
