@@ -30,6 +30,7 @@ import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
 import { IssuesList } from "@/components/crm/IssuesList";
 import { collectPublishIssues, issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
 import { householdMembers } from "@/lib/crm/household";
+import { bookingHasFlight } from "@/lib/crm/extras";
 
 export function BookingEditor({
   booking,
@@ -434,7 +435,7 @@ export function BookingEditor({
         currency={booking.currency}
       />
 
-      {customers.find((row) => row.id === booking.customer_id) ? (
+      {customers.find((row) => row.id === booking.customer_id) && bookingHasFlight(items) ? (
         <section className="admin-af-card rounded-3xl p-5">
           <ExtrasPanel
             variant="admin"
