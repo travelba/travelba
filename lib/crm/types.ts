@@ -32,6 +32,7 @@ export const INGEST_ITEM_KINDS = [
   "chauffeur",
   "greeter",
   "visa",
+  "checkin",
 ] as const;
 
 export const BOOKING_ITEM_KINDS = [...INGEST_ITEM_KINDS, "expense"] as const;
@@ -52,13 +53,14 @@ export const BOOKING_ITEM_LABELS: Record<BookingItemKind, string> = {
   greeter: "Greeter",
   visa: "Visa",
   expense: "Dépense",
+  checkin: "Enregistrement",
 };
 
 /** Cartes hors séjour (total + publication). */
-export const EXTRA_ITEM_KINDS = ["chauffeur", "greeter", "visa"] as const;
+export const EXTRA_ITEM_KINDS = ["chauffeur", "greeter", "visa", "checkin"] as const;
 
 export function isExtraItemKind(kind: string | null | undefined) {
-  return kind === "chauffeur" || kind === "greeter" || kind === "visa";
+  return kind === "chauffeur" || kind === "greeter" || kind === "visa" || kind === "checkin";
 }
 
 /** Dépense libre : au grand livre, absente de l’itinéraire. */

@@ -2,15 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   bookingHasFlight,
+  checkinFeeAmount,
+  checkinFeeTitle,
+  composeItineraryDay,
   countExtraHeads,
   extraAmount,
   extraFlightAt,
   extraNoticeOk,
+  extraPlaceOf,
   extraTitle,
   findExtra,
   isChildAt,
+  itineraryOffers,
   matchedStay,
-  serviceOffers,
 } from "./extras";
 
 test("tarifs par trajet", () => {
@@ -18,6 +22,9 @@ test("tarifs par trajet", () => {
   assert.equal(extraAmount("greeter", 2, 1), 225);
   assert.equal(extraTitle("chauffeur", "departure"), "Transfert aller");
   assert.equal(extraTitle("greeter", "arrival"), "Accueil VIP et Fastpass retour");
+  assert.equal(checkinFeeAmount(0), 10);
+  assert.equal(checkinFeeAmount(3), 30);
+  assert.equal(checkinFeeTitle(2), "Enregistrement (2 passagers)");
 });
 
 test("enfant < 12 ans, sans naissance = adulte", () => {
@@ -41,12 +48,17 @@ test("fenêtre 48 h et unicité par trajet", () => {
   ];
   assert.equal(extraFlightAt(items, "departure"), "2026-08-12T08:00:00");
   assert.equal(extraFlightAt(items, "arrival"), "2026-08-20T18:00:00");
-  assert.ok(findExtra(items, "chauffeur", "departure"));
-  assert.equal(findExtra(items, "chauffeur", "arrival"), null);
+  assert.ok(findExtra(items, "chauffeur", "departure", "home"));
+  assert.equal(findExtra(items, "chauffeur", "arrival", "home"), null);
+  assert.equal(
+    extraPlaceOf({ kind: "chauffeur", details: { service_leg: "arrival" } }),
+    "hotel"
+  );
 });
 
-test("le transfert est réservé 2 h 30 avant le départ, le greeter à l’arrivée", () => {
+test("le domicile encadre le vol, l’hôtel s’ajoute, le greeter est juste avant l’avion", () => {
   const outbound = {
+    id: "out",
     kind: "flight",
     start_at: "2026-12-14T11:30:00+00:00",
     end_at: "2026-12-14T17:10:00+00:00",
@@ -59,6 +71,7 @@ test("le transfert est réservé 2 h 30 avant le départ, le greeter à l’arri
     },
   };
   const inbound = {
+    id: "in",
     kind: "flight",
     start_at: "2026-12-23 14:10:00+00",
     end_at: "2026-12-23 18:25:00+00",
@@ -70,22 +83,25 @@ test("le transfert est réservé 2 h 30 avant le départ, le greeter à l’arri
       flight_number: "TO 3451",
     },
   };
-  const offers = serviceOffers([outbound, inbound]);
+  const bare = itineraryOffers([outbound, inbound]);
   assert.deepEqual(
-    offers.map((offer) => `${offer.kind}:${offer.title}`),
-    ["chauffeur:Aller", "greeter:Aller", "chauffeur:Retour", "greeter:Retour"]
+    bare.map((offer) => `${offer.kind}:${offer.place || "greet"}:${offer.route}`),
+    [
+      "chauffeur:home:Domicile → ORY",
+      "greeter:greet:Aéroport ORY · Paris",
+      "greeter:greet:Aéroport TLV · Tel Aviv",
+      "chauffeur:home:ORY → Domicile",
+    ]
   );
-  assert.equal(offers[0].route, "Domicile → ORY");
-  assert.equal(offers[0].flightLine, "Prise en charge 09h00 · Vol TO 3458 · départ 11h30");
-  assert.equal(offers[0].whenIso, "2026-12-14T09:00:00");
-  assert.equal(offers[0].airport, "ORY · Paris");
-  assert.equal(offers[1].route, "Aéroport TLV · Tel Aviv");
-  assert.equal(offers[1].flightLine, "Vol TO 3458 · arrivée 17h10");
-  assert.equal(offers[2].route, "Hébergement → TLV");
-  assert.equal(offers[2].flightLine, "Prise en charge 11h40 · Vol TO 3451 · départ 14h10");
-  assert.equal(offers[2].whenIso, "2026-12-23T11:40:00");
-  assert.equal(offers[3].route, "Aéroport ORY · Paris");
-  assert.equal(offers[3].flightLine, "Vol TO 3451 · arrivée 18h25");
+  assert.equal(bare[0].flightLine, "Prise en charge 09h00 · Vol TO 3458 · départ 11h30");
+  assert.equal(bare[0].whenIso, "2026-12-14T09:00:00");
+  assert.equal(bare[0].slot, "before");
+  assert.equal(bare[1].flightLine, "Vol TO 3458 · départ 11h30");
+  assert.equal(bare[1].slot, "before");
+  assert.equal(bare[3].flightLine, "Vol TO 3451 · arrivée 18h25");
+  assert.equal(bare[3].slot, "after");
+  assert.equal(bare[3].whenIso, "2026-12-23 18:25:00+00");
+
   const hotel = {
     kind: "hotel",
     title: "The Norman",
@@ -96,11 +112,37 @@ test("le transfert est réservé 2 h 30 avant le départ, le greeter à l’arri
     name: "The Norman",
     address: "The Norman, 23 Rothschild, Tel Aviv",
   });
-  assert.equal(serviceOffers([outbound, inbound, hotel])[2].route, "The Norman → TLV");
-  const oneWay = serviceOffers([outbound]);
+  const withHotel = itineraryOffers([outbound, inbound, hotel]);
   assert.deepEqual(
-    oneWay.map((offer) => offer.leg),
-    ["departure", "departure"]
+    withHotel.map((offer) => `${offer.kind}:${offer.place || "greet"}:${offer.route}`),
+    [
+      "chauffeur:home:Domicile → ORY",
+      "greeter:greet:Aéroport ORY · Paris",
+      "chauffeur:hotel:The Norman → TLV",
+      "greeter:greet:Aéroport TLV · Tel Aviv",
+      "chauffeur:home:ORY → Domicile",
+    ]
+  );
+  assert.equal(withHotel.some((offer) => offer.route.startsWith("TLV →")), false);
+  assert.equal(withHotel[2].address, "The Norman, 23 Rothschild, Tel Aviv");
+  assert.equal(withHotel[2].flightLine, "Prise en charge 11h40 · Vol TO 3451 · départ 14h10");
+  assert.equal(withHotel[2].whenIso, "2026-12-23T11:40:00");
+  assert.equal(withHotel[2].slot, "before");
+
+  const oneWay = itineraryOffers([outbound]);
+  assert.deepEqual(
+    oneWay.map((offer) => `${offer.kind}:${offer.place || "greet"}`),
+    ["chauffeur:home", "greeter:greet"]
+  );
+  const placed = composeItineraryDay("2026-12-14", [outbound], withHotel);
+  assert.deepEqual(
+    placed.map((row) => (row.type === "offer" ? row.offer.route : "VOL")),
+    ["Domicile → ORY", "Aéroport ORY · Paris", "VOL"]
+  );
+  const back = composeItineraryDay("2026-12-23", [inbound], withHotel);
+  assert.deepEqual(
+    back.map((row) => (row.type === "offer" ? row.offer.route : "VOL")),
+    ["The Norman → TLV", "Aéroport TLV · Tel Aviv", "VOL", "ORY → Domicile"]
   );
 });
 

@@ -1,4 +1,11 @@
-import type { CrmBooking, CrmBookingDocument, CrmBookingItem } from "@/lib/crm/types";
+import type {
+  CrmBooking,
+  CrmBookingDocument,
+  CrmBookingItem,
+  CrmBookingTraveler,
+  CrmCompanion,
+  CrmCustomer,
+} from "@/lib/crm/types";
 import { BOOKING_ITEM_LABELS, type BookingItemKind } from "@/lib/crm/types";
 import { Icon } from "@/components/crm/icons";
 import { BrandMark } from "@/components/crm/BrandMark";
@@ -24,6 +31,20 @@ import {
   undatedTimeline,
 } from "@/lib/crm/carnet";
 import { itemTicketCount } from "@/lib/crm/item-match";
+import { ServiceOfferCard } from "@/components/crm/ServiceOfferCard";
+import {
+  bookingHasFlight,
+  composeItineraryDay,
+  extraAmount,
+  extraFlightAt,
+  extraHeadsFromBooking,
+  extraNoticeOk,
+  findExtra,
+  formatCustomerAddress,
+  itineraryOffers,
+  offerKey,
+  type ServiceOffer,
+} from "@/lib/crm/extras";
 
 function AgendaLink({
   href,
@@ -248,21 +269,86 @@ export function CarnetItinerary({
   items,
   docs,
   calendarBase = null,
+  services = null,
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
   docs: CrmBookingDocument[];
   calendarBase?: string | null;
+  services?: {
+    variant: "admin" | "client";
+    travelers: CrmBookingTraveler[];
+    holder: CrmCustomer;
+    companions: CrmCompanion[];
+    whatsappHref?: string;
+  } | null;
 }) {
   const days = groupByDay(items);
   const undated = undatedTimeline(items);
+  const offers = services && bookingHasFlight(items) ? itineraryOffers(items) : [];
+  const now = new Date();
+  const heads = services
+    ? extraHeadsFromBooking({
+        travelers: services.travelers,
+        holder: services.holder,
+        companions: services.companions,
+        at: now,
+      })
+    : null;
+  const homeAddress = services ? formatCustomerAddress(services.holder) : "";
 
-  if (!days.length && !undated.length) return null;
+  if (!days.length && !undated.length && !offers.length) return null;
 
   function itemHref(id: string) {
     if (!calendarBase) return null;
     return `${calendarBase}?item_id=${encodeURIComponent(id)}`;
   }
+
+  function offerCard(offer: ServiceOffer) {
+    if (!services || !heads) return null;
+    const existing = findExtra(items, offer.kind, offer.leg, offer.place) as CrmBookingItem | null;
+    const at = extraFlightAt(items, offer.leg, booking.start_date || booking.end_date);
+    const price =
+      offer.kind === "chauffeur" ? extraAmount("chauffeur") : extraAmount("greeter", heads.adults, heads.children);
+    const detail =
+      offer.kind === "greeter"
+        ? `${heads.adults} adulte${heads.adults > 1 ? "s" : ""} · ${heads.children} enfant${heads.children > 1 ? "s" : ""}${
+            heads.missingBirth ? ` · ${heads.missingBirth} sans date de naissance (compté adulte)` : ""
+          }`
+        : null;
+    return (
+      <ServiceOfferCard
+        key={`${offerKey(offer)}-${offer.day}`}
+        offer={offer}
+        existing={existing}
+        variant={services.variant}
+        bookingId={booking.id}
+        reference={booking.reference}
+        price={price}
+        currency={booking.currency}
+        locked={services.variant === "client" && !extraNoticeOk(at, now)}
+        whatsappHref={services.whatsappHref}
+        addressLabel={
+          offer.kind === "chauffeur"
+            ? offer.place === "hotel"
+              ? "Adresse de l’hôtel"
+              : offer.leg === "arrival"
+                ? "Adresse de dépôt"
+                : "Adresse de prise en charge"
+            : null
+        }
+        initialAddress={offer.place === "hotel" ? offer.address : homeAddress}
+        detail={detail}
+      />
+    );
+  }
+
+  const seenDays = new Set(days.map(([key]) => key));
+  const offerDays = [...new Set(offers.map((offer) => offer.day).filter((day) => !seenDays.has(day)))];
+  const timeline = [
+    ...days.map(([day, rows]) => [day, composeItineraryDay(day, rows, offers)] as const),
+    ...offerDays.map((day) => [day, composeItineraryDay(day, [], offers)] as const),
+  ].sort(([a], [b]) => a.localeCompare(b));
 
   return (
     <div className="space-y-5">
@@ -273,22 +359,26 @@ export function CarnetItinerary({
             <AgendaLink href={calendarBase}>Ajouter tout le séjour</AgendaLink>
           ) : null}
         </div>
-        {days.map(([day, rows]) => (
+        {timeline.map(([day, rows]) => (
           <div key={day} className="space-y-2">
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
               {dayHeading(day)}
             </p>
-            {rows.map((item) => (
-              <CardBody
-                key={`${item.id}-${day}`}
-                item={item}
-                currency={booking.currency}
-                docs={docs}
-                compactHotel={item.kind === "hotel"}
-                calendarHref={itemHref(item.id)}
-                day={day}
-              />
-            ))}
+            {rows.map((row) =>
+              row.type === "item" ? (
+                <CardBody
+                  key={`${row.item.id}-${day}`}
+                  item={row.item}
+                  currency={booking.currency}
+                  docs={docs}
+                  compactHotel={row.item.kind === "hotel"}
+                  calendarHref={itemHref(row.item.id)}
+                  day={day}
+                />
+              ) : (
+                offerCard(row.offer)
+              )
+            )}
           </div>
         ))}
         {undated.length ? (

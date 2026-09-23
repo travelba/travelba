@@ -52,7 +52,7 @@ test("New York needs ESTA and prices the visa service per passenger", () => {
   assert.equal(trip.amount, 150);
   assert.equal(visaFeeAmount(0), 50);
   assert.equal(visaPassengerCount(0), 1);
-  assert.equal(visaFeeTitle(2), "Demande de Visa (2 passagers)");
+  assert.equal(visaFeeTitle(2), "Obtention du visa (2 passagers)");
 });
 
 test("a connection via the United States still flags ESTA when the destination is visa-free", () => {

@@ -93,7 +93,7 @@ export function itemSellingAmount(item: {
   return Math.round(total * 100) / 100;
 }
 
-/** Montant du séjour : toujours la somme des prix vendus. Chauffeur, greeter, visa, dépense libre et frais de billeterie restent hors total. */
+/** Montant du séjour : toujours la somme des prix vendus. Transfert, greeter, enregistrement, visa, dépense libre et frais de billeterie restent hors total. */
 export function bookingTotalFromItems(
   items: { kind?: string | null; amount?: number | null; details?: Record<string, unknown> | null }[]
 ): number {
