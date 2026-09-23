@@ -6,22 +6,22 @@ import { IssuesList } from "@/components/crm/IssuesList";
 import { issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
 import {
   bookingHasFlight,
-  CHAUFFEUR_EUR,
   extraAmount,
   extraFlightAt,
   extraHeadsFromBooking,
   extraNoticeOk,
-  extraTitle,
   findExtra,
   formatCustomerAddress,
-  GREETER_ADULT_EUR,
-  GREETER_CHILD_EUR,
+  serviceOffers,
   type ExtraKind,
   type ExtraLeg,
+  type ServiceOffer,
 } from "@/lib/crm/extras";
-import { formatMoney } from "@/lib/crm/money";
+import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { Icon } from "@/components/crm/icons";
 import type { CrmBooking, CrmBookingItem, CrmBookingTraveler, CrmCompanion, CrmCustomer } from "@/lib/crm/types";
+
 export function ExtrasPanel({
   variant,
   booking,
@@ -54,6 +54,9 @@ export function ExtrasPanel({
   const chauffeurPrice = extraAmount("chauffeur");
   const greeterPrice = extraAmount("greeter", headsAt.adults, headsAt.children);
   const isAdmin = variant === "admin";
+  const offers = serviceOffers(items);
+  const transfers = offers.filter((offer) => offer.kind === "chauffeur");
+  const greeters = offers.filter((offer) => offer.kind === "greeter");
 
   async function request(kind: ExtraKind, leg: ExtraLeg) {
     setBusy(`${kind}:${leg}`);
@@ -86,24 +89,55 @@ export function ExtrasPanel({
     router.refresh();
   }
 
-  function row(kind: ExtraKind, leg: ExtraLeg) {
-    const existing = findExtra(items, kind, leg) as CrmBookingItem | null;
-    const at = extraFlightAt(items, leg, booking.start_date || booking.end_date);
+  function card(offer: ServiceOffer) {
+    const existing = findExtra(items, offer.kind, offer.leg) as CrmBookingItem | null;
+    const at = extraFlightAt(items, offer.leg, booking.start_date || booking.end_date);
     const windowOk = extraNoticeOk(at, now);
     const locked = !isAdmin && !windowOk;
-    const label = extraTitle(kind, leg);
     const price =
-      kind === "chauffeur"
+      offer.kind === "chauffeur"
         ? formatMoney(chauffeurPrice, booking.currency)
         : formatMoney(greeterPrice, booking.currency);
+    const dateLabel = offer.whenIso ? formatDateFr(String(offer.whenIso).slice(0, 10)) : "";
     return (
-      <div key={`${kind}-${leg}`} className="rounded-xl border border-border px-3 py-2">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <p className="text-sm font-semibold text-[var(--admin-navy)]">{label}</p>
-            <p className="text-xs text-muted">{price} · se rajoute à l’encours</p>
+      <article
+        key={`${offer.kind}-${offer.leg}`}
+        className="rounded-2xl border border-[#e5e3dc] bg-[#faf9f6] p-4"
+      >
+        <div className="flex items-start gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[var(--admin-gold)]">
+            <Icon
+              name={offer.kind === "chauffeur" ? "directions_car" : "verified_user"}
+              className="h-5 w-5"
+            />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-display text-base font-bold text-[var(--admin-navy)]">{offer.title}</p>
+            <p className="mt-0.5 text-sm font-semibold text-[var(--admin-navy)]">{offer.route}</p>
+            {offer.kind === "chauffeur" && offer.airport ? (
+              <p className="text-[13px] text-muted">Aéroport {offer.airport}</p>
+            ) : null}
+            {offer.flightLine ? (
+              <p className="text-[13px] text-[var(--admin-navy)]">
+                {offer.flightLine}
+                {dateLabel && dateLabel !== "—" ? ` · ${dateLabel}` : ""}
+              </p>
+            ) : null}
+            <p className="mt-2 text-sm font-semibold text-[var(--admin-navy)]">
+              {price}
+              <span className="font-normal text-muted"> · se rajoute à l’encours</span>
+            </p>
+            {offer.kind === "greeter" ? (
+              <p className="mt-1 text-xs text-muted">
+                {headsAt.adults} adulte{headsAt.adults > 1 ? "s" : ""} · {headsAt.children} enfant
+                {headsAt.children > 1 ? "s" : ""}
+                {headsAt.missingBirth
+                  ? ` · ${headsAt.missingBirth} sans date de naissance (compté adulte)`
+                  : ""}
+              </p>
+            ) : null}
             {locked ? (
-              <p className="mt-1 text-xs text-accent">
+              <p className="mt-2 text-xs text-accent">
                 Disponible jusqu’à 48 h avant le vol.{" "}
                 {whatsappHref ? (
                   <a href={whatsappHref} className="font-semibold underline" target="_blank" rel="noreferrer">
@@ -113,10 +147,12 @@ export function ExtrasPanel({
               </p>
             ) : null}
           </div>
+        </div>
+        <div className="mt-3 flex items-center justify-end gap-2">
           {existing ? (
-            <div className="flex items-center gap-2">
-              <span className="rounded-full bg-[var(--admin-sky)] px-2 py-0.5 text-[10px] font-bold uppercase">
-                Demandé
+            <>
+              <span className="rounded-full bg-[var(--admin-gold)]/20 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--admin-navy)]">
+                Validé
               </span>
               {isAdmin ? (
                 <button
@@ -128,24 +164,24 @@ export function ExtrasPanel({
                   Annuler
                 </button>
               ) : null}
-            </div>
+            </>
           ) : (
             <button
               type="button"
               disabled={busy !== null || locked}
-              onClick={() => void request(kind, leg)}
-              className="rounded-full bg-[var(--admin-navy)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+              onClick={() => void request(offer.kind, offer.leg)}
+              className="inline-flex h-10 items-center justify-center rounded-full bg-[var(--admin-navy)] px-5 text-sm font-semibold text-white disabled:opacity-50"
             >
-              {busy === `${kind}:${leg}` ? "…" : "Demander"}
+              {busy === `${offer.kind}:${offer.leg}` ? "…" : "Valider"}
             </button>
           )}
         </div>
-        {busy === `${kind}:${leg}` || (existing && busy === `cancel:${existing.id}`) ? (
+        {busy === `${offer.kind}:${offer.leg}` || (existing && busy === `cancel:${existing.id}`) ? (
           <div className="mt-2">
-            <BusyBar label={busy?.startsWith("cancel") ? "Annulation…" : "Demande…"} />
+            <BusyBar label={busy?.startsWith("cancel") ? "Annulation…" : "Validation…"} />
           </div>
         ) : null}
-      </div>
+      </article>
     );
   }
 
@@ -155,37 +191,21 @@ export function ExtrasPanel({
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
           Services de l’agence
         </p>
-        <h2 className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">À la demande</h2>
-        <p className="mt-1 text-sm text-muted">
-          Chauffeur domicile ↔ aéroport : {CHAUFFEUR_EUR} € par trajet. Greeter aéroport : {GREETER_ADULT_EUR} € /
-          adulte, {GREETER_CHILD_EUR} € / enfant, par trajet.
-        </p>
+        <h2 className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">À la carte</h2>
+        <p className="mt-1 text-sm text-muted">Une sélection des services à la carte</p>
       </div>
-      <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-        Adresse de prise en charge (chauffeur)
-        <input
-          value={address}
-          onChange={(event) => setAddress(event.target.value)}
-          className="rounded-xl border border-border px-3 py-2 text-sm font-normal text-[var(--admin-navy)]"
-        />
-      </label>
-      <div className="space-y-2">
-        <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Chauffeur</p>
-        {row("chauffeur", "departure")}
-        {row("chauffeur", "arrival")}
-      </div>
-      <div className="space-y-2">
-        <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Greeter</p>
-        <p className="text-xs text-muted">
-          {headsAt.adults} adulte{headsAt.adults > 1 ? "s" : ""} · {headsAt.children} enfant
-          {headsAt.children > 1 ? "s" : ""}
-          {headsAt.missingBirth
-            ? ` · ${headsAt.missingBirth} sans date de naissance (compté adulte)`
-            : ""}
-        </p>
-        {row("greeter", "departure")}
-        {row("greeter", "arrival")}
-      </div>
+      {transfers.length ? (
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+          Adresse de prise en charge
+          <input
+            value={address}
+            onChange={(event) => setAddress(event.target.value)}
+            className="rounded-xl border border-[#e5e3dc] bg-white px-3 py-2 text-sm font-normal text-[var(--admin-navy)]"
+          />
+        </label>
+      ) : null}
+      {transfers.map(card)}
+      {greeters.map(card)}
       <IssuesList issues={issues} />
     </section>
   );

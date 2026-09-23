@@ -50,11 +50,12 @@ export function planPartyLinks(
 export function planPassportAttach(
   traveler: CrmBookingTraveler,
   docs: CrmTravelDocument[],
-  validOn: string
+  validOn: string,
+  holder?: PersonName | null
 ) {
   if (isPlaceholderTraveler(traveler.first_name, traveler.last_name)) return null;
   if (primaryIdentityDoc(tripDocumentsForTraveler(docs, traveler))) return null;
-  const choices = reusableDocumentsForTraveler(docs, traveler).filter((doc) =>
+  const choices = reusableDocumentsForTraveler(docs, traveler, holder).filter((doc) =>
     IDENTITY_TYPES.has(doc.doc_type)
   );
   const valid = choices.filter((doc) => !doc.expires_on || doc.expires_on >= validOn);

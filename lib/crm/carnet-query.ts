@@ -25,3 +25,15 @@ export async function loadVisibleCarnets(supabase: SupabaseClient, customerId: s
   }
   return all.filter((booking) => carnetVisible(booking, byBooking.get(booking.id) || []));
 }
+
+export function sortBookingsByStart<T extends { start_date: string | null }>(
+  rows: T[],
+  direction: "asc" | "desc"
+) {
+  const missing = direction === "asc" ? "9999-99-99" : "";
+  return rows.slice().sort((a, b) => {
+    const left = a.start_date || missing;
+    const right = b.start_date || missing;
+    return direction === "asc" ? left.localeCompare(right) : right.localeCompare(left);
+  });
+}

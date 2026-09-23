@@ -11,7 +11,7 @@ import {
   tripDurationDays,
 } from "@/lib/crm/money";
 import { BookingStatusBadge, EmptyState } from "@/components/crm/ui";
-import { loadVisibleCarnets } from "@/lib/crm/carnet-query";
+import { loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { Icon } from "@/components/crm/icons";
 
@@ -30,14 +30,18 @@ export default async function ReservationsPage({
   if (!customer) redirect("/connexion");
 
   const all = await loadVisibleCarnets(supabase, customer.id);
-  const upcoming = all.filter(
-    (b) => isUpcomingBooking(b.end_date) && b.status !== "cancelled"
+  const upcoming = sortBookingsByStart(
+    all.filter((b) => isUpcomingBooking(b.end_date) && b.status !== "cancelled"),
+    "asc"
   );
-  const past = all.filter(
-    (b) =>
-      !isUpcomingBooking(b.end_date) ||
-      b.status === "completed" ||
-      b.status === "cancelled"
+  const past = sortBookingsByStart(
+    all.filter(
+      (b) =>
+        !isUpcomingBooking(b.end_date) ||
+        b.status === "completed" ||
+        b.status === "cancelled"
+    ),
+    "desc"
   );
   const showPast = tab === "passes";
   const list = showPast ? past : upcoming;

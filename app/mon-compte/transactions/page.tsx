@@ -9,6 +9,7 @@ import {
 } from "@/lib/crm/types";
 import {
   formatDateFr,
+  formatDateRangeShort,
   formatEncours,
   formatMoney,
   postedLedgerTotals,
@@ -19,6 +20,7 @@ import {
   reservationContextLabel,
   visibleLedgerRows,
 } from "@/lib/crm/ledger-display";
+import { LedgerMovements } from "@/components/account/LedgerMovements";
 import { EmptyState } from "@/components/crm/ui";
 import { Icon } from "@/components/crm/icons";
 import { siteConfig } from "@/lib/site";
@@ -78,16 +80,58 @@ export default async function TransactionsPage() {
 
   const shown = visibleLedgerRows(rows);
   const contextIds = [...new Set(shown.map((row) => row.booking_id).filter(Boolean))] as string[];
-  const bookingById = new Map<string, { title: string | null; reference: string }>();
+  const bookingById = new Map<
+    string,
+    {
+      title: string | null;
+      destination: string | null;
+      reference: string;
+      start_date: string | null;
+      end_date: string | null;
+      visible_to_client: boolean;
+    }
+  >();
   if (contextIds.length) {
     const { data: linked } = await supabase
       .from("crm_bookings")
-      .select("id, title, reference")
+      .select("id, title, destination, reference, start_date, end_date, visible_to_client")
       .in("id", contextIds);
     for (const booking of linked || []) {
-      bookingById.set(booking.id, { title: booking.title, reference: booking.reference });
+      bookingById.set(booking.id, {
+        title: booking.title,
+        destination: booking.destination,
+        reference: booking.reference,
+        start_date: booking.start_date,
+        end_date: booking.end_date,
+        visible_to_client: booking.visible_to_client,
+      });
     }
   }
+
+  const movements = shown.map((t) => {
+    const credit = t.direction === "credit";
+    const booking = t.booking_id ? bookingById.get(t.booking_id) : null;
+    const tripName = reservationContextLabel(booking);
+    const tripDates =
+      booking && (booking.start_date || booking.end_date)
+        ? formatDateRangeShort(booking.start_date, booking.end_date)
+        : null;
+    return {
+      id: t.id,
+      credit,
+      title: ledgerMovementTitle(t, TX_KIND_LABELS[t.kind] || t.kind),
+      amountLabel: `${credit ? "+" : "−"}${formatMoney(Number(t.amount), t.currency)}`,
+      occurredLabel: formatDateFr(t.occurred_on),
+      kindLabel: TX_KIND_LABELS[t.kind] || t.kind,
+      tripName,
+      tripDates,
+      reference: booking?.reference || null,
+      carnetHref:
+        booking?.visible_to_client && booking.reference
+          ? `/mon-compte/reservations/${booking.reference}`
+          : null,
+    };
+  });
 
   const { credits, debits, settledPct } = postedLedgerTotals(shown);
   const remaining = Math.max(0, -balanceValue);
@@ -215,68 +259,8 @@ export default async function TransactionsPage() {
         ) : null}
       </div>
 
-      {shown.length ? (
-        <ul className="space-y-2">
-          {shown.map((t) => {
-            const credit = t.direction === "credit";
-            const context = reservationContextLabel(
-              t.booking_id ? bookingById.get(t.booking_id) : null
-            );
-            return (
-              <li
-                key={t.id}
-                className="flex flex-col gap-1 rounded-xl border border-[#e9e8e5]/60 bg-white p-4 shadow-sm"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 items-start gap-3">
-                    <span
-                      className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
-                        credit
-                          ? "bg-[var(--admin-gold)]/15 text-[var(--admin-navy)]"
-                          : "bg-[#efeeeb] text-[var(--admin-navy)]"
-                      }`}
-                    >
-                      <Icon
-                        name={credit ? "south_west" : "receipt_long"}
-                        className="h-[22px] w-[22px]"
-                      />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="truncate text-[16px] font-semibold text-[var(--admin-navy)]">
-                        {ledgerMovementTitle(t, TX_KIND_LABELS[t.kind] || t.kind)}
-                      </p>
-                      <p className="text-[13px] text-muted">
-                        {credit ? "Reçu le" : "Le"} {formatDateFr(t.occurred_on)}
-                      </p>
-                      {context ? (
-                        <p className="pt-0.5 text-[13px] text-muted">{context}</p>
-                      ) : (
-                        <p className="pt-0.5 text-[10px] font-bold uppercase tracking-wider text-muted">
-                          {TX_KIND_LABELS[t.kind]}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end">
-                    <p className="whitespace-nowrap text-[16px] font-bold tracking-tight text-[var(--admin-navy)]">
-                      {credit ? "+" : "−"}
-                      {formatMoney(Number(t.amount), t.currency)}
-                    </p>
-                    <span
-                      className={`mt-1 inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${
-                        credit
-                          ? "border-[var(--admin-gold)]/30 bg-[var(--admin-gold)]/15 text-[var(--admin-navy)]"
-                          : "border-[#e5e3dc] bg-[#efeeeb] text-[#44474c]"
-                      }`}
-                    >
-                      {credit ? "Encaissé" : "Posté"}
-                    </span>
-                  </div>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+      {movements.length ? (
+        <LedgerMovements rows={movements} />
       ) : (
         <EmptyState
           title={member ? "Aucun frais de voyage" : "Aucun mouvement"}

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import type { PersonName } from "@/lib/crm/person-match";
 import type { CrmBookingTraveler, CrmTravelDocument } from "@/lib/crm/types";
 import { DOC_TYPE_LABELS } from "@/lib/crm/types";
 import {
@@ -25,6 +26,7 @@ export function TripPassportPicker({
   bookingId,
   travelers,
   documents,
+  holder = null,
   embedded = false,
   onRemove,
 }: {
@@ -33,6 +35,7 @@ export function TripPassportPicker({
   bookingId: string;
   travelers: CrmBookingTraveler[];
   documents: CrmTravelDocument[];
+  holder?: PersonName | null;
   embedded?: boolean;
   onRemove?: (travelerId: string) => void;
 }) {
@@ -118,7 +121,7 @@ export function TripPassportPicker({
         {travelers.map((traveler) => {
           const tripDocs = tripDocumentsForTraveler(documents, traveler);
           const attached = tripDocs[0] || null;
-          const choices = reusableDocumentsForTraveler(documents, traveler);
+          const choices = reusableDocumentsForTraveler(documents, traveler, holder);
           const name = travelerDisplayName(traveler);
           const holderMark = traveler.is_account_holder ? " · titulaire" : "";
           const single = choices.length === 1 ? choices[0] : null;
@@ -127,7 +130,15 @@ export function TripPassportPicker({
             return (
               <li key={traveler.id} className="space-y-1">
                 {choices.length === 0 ? (
-                  compact ? (
+                  attached ? (
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
+                        {name}
+                        {compact ? "" : holderMark}
+                      </p>
+                      <p className="shrink-0 text-xs text-muted">{passportLabel(attached)}</p>
+                    </div>
+                  ) : compact ? (
                     <div className="flex items-center justify-between gap-3">
                       <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">{name}</p>
                       <p className="shrink-0 text-xs text-muted">Aucune pièce</p>

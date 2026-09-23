@@ -5,7 +5,8 @@ import { ensureCustomerForUser } from "@/lib/crm/auth";
 import type { CrmBalance, CrmBookingTraveler, CrmTravelDocument } from "@/lib/crm/types";
 import { encoursCaption, formatDateRangeShort, formatMoney, isUpcomingBooking, jMinusLabel } from "@/lib/crm/money";
 import { isCompanyMember } from "@/lib/crm/company-role";
-import { loadVisibleCarnets } from "@/lib/crm/carnet-query";
+import { loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
+import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { Icon } from "@/components/crm/icons";
@@ -22,6 +23,7 @@ export default async function AccountHomePage() {
   if (!customer) redirect("/connexion");
 
   const member = isCompanyMember(customer);
+  await reconcileCustomerParty(customer.id);
   const [{ data: balances }, bookings] = await Promise.all([
     member
       ? Promise.resolve({ data: [] as CrmBalance[] })
@@ -29,7 +31,11 @@ export default async function AccountHomePage() {
     loadVisibleCarnets(supabase, customer.id),
   ]);
 
-  const nextTrip = bookings.find((b) => isUpcomingBooking(b.end_date) && b.status !== "cancelled");
+  const nextTrip =
+    sortBookingsByStart(
+      bookings.filter((b) => isUpcomingBooking(b.end_date) && b.status !== "cancelled"),
+      "asc"
+    )[0] || null;
 
   let missingPassports = 0;
   if (nextTrip) {
@@ -100,6 +106,14 @@ export default async function AccountHomePage() {
           <p className="mt-1 text-sm text-muted">L’agence publiera le carnet ici dès que le dossier sera prêt.</p>
         </article>
       )}
+
+      <Link
+        href="/mon-compte/reservations"
+        className="flex h-11 items-center justify-between rounded-2xl border border-[#e5e3dc] bg-white px-4 text-sm font-semibold text-[var(--admin-navy)] shadow-sm"
+      >
+        Mes réservations
+        <Icon name="luggage" className="h-5 w-5 text-[var(--admin-gold)]" />
+      </Link>
 
       {member ? (
         <Link

@@ -1,4 +1,4 @@
-import { isPlaceholderTraveler, namesReferToSamePerson } from "./person-match";
+import { isPlaceholderTraveler, namesReferToSamePerson, type PersonName } from "./person-match";
 import type { CrmBookingTraveler, CrmTravelDocument } from "./types";
 
 export function travelerDisplayName(traveler: CrmBookingTraveler) {
@@ -29,6 +29,26 @@ export function samePerson(doc: CrmTravelDocument, traveler: CrmBookingTraveler)
   }
   if (namesReferToSamePerson(traveler, doc)) return true;
   return Boolean(doc.traveler_id) && doc.traveler_id === traveler.id;
+}
+
+/** Passeport du coffre titulaire : le profil a les deux prénoms, le billet n’en a qu’un. */
+export function holderVaultMatchesProfile(
+  doc: CrmTravelDocument,
+  traveler: CrmBookingTraveler,
+  holder?: PersonName | null
+) {
+  if (!traveler.is_account_holder || !holder) return false;
+  if (doc.companion_id) return false;
+  if (!(doc.first_name || doc.last_name)) return false;
+  return namesReferToSamePerson(holder, doc);
+}
+
+export function documentMatchesTraveler(
+  doc: CrmTravelDocument,
+  traveler: CrmBookingTraveler,
+  holder?: PersonName | null
+) {
+  return samePerson(doc, traveler) || holderVaultMatchesProfile(doc, traveler, holder);
 }
 
 export function documentsForPerson(
@@ -100,10 +120,11 @@ function preferVaultCopy(current: CrmTravelDocument, candidate: CrmTravelDocumen
 
 export function reusableDocumentsForTraveler(
   docs: CrmTravelDocument[],
-  traveler: CrmBookingTraveler
+  traveler: CrmBookingTraveler,
+  holder?: PersonName | null
 ) {
   const matches = docs
-    .filter((doc) => doc.booking_id !== traveler.booking_id && samePerson(doc, traveler))
+    .filter((doc) => doc.booking_id !== traveler.booking_id && documentMatchesTraveler(doc, traveler, holder))
     .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
   const unique: CrmTravelDocument[] = [];
   for (const doc of matches) {

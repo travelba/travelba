@@ -143,3 +143,29 @@ test("le passeport du compagnon ne se coche pas sur le titulaire", () => {
     "holder-doc"
   );
 });
+
+test("le passeport du profil est coché quand le billet n’a qu’un des prénoms", () => {
+  const simon = traveler({
+    id: "simon",
+    first_name: "Simon",
+    last_name: "Albilia",
+    is_account_holder: true,
+  });
+  const profile = { first_name: "Simon, Iony", last_name: "Albilila" };
+  const passport = doc({
+    id: "iony",
+    first_name: "Iony",
+    last_name: "Albilila",
+    expires_on: "2030-01-01",
+  });
+  const other = doc({
+    id: "lisa",
+    companion_id: "lisa",
+    first_name: "Lisa Sabine",
+    last_name: "Garnek",
+    storage_path: "vault/lisa",
+    number: "99ZZ",
+  });
+  assert.equal(planPassportAttach(simon, [passport, other], "2026-12-23"), null);
+  assert.equal(planPassportAttach(simon, [passport, other], "2026-12-23", profile)?.id, "iony");
+});

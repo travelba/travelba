@@ -131,6 +131,7 @@ export default async function ReservationDetailPage({ params }: Props) {
         bookingId={b.id}
         travelers={party}
         documents={(identityDocs || []) as CrmTravelDocument[]}
+        holder={customer}
       />
 
       {b.notes_client ? (

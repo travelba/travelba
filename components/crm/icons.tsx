@@ -8,6 +8,7 @@ import {
   Bus,
   Calendar,
   Car,
+  ChevronDown,
   Compass,
   CreditCard,
   File,
@@ -88,6 +89,7 @@ const ICONS: Record<string, LucideIcon> = {
   event: Calendar,
   minus: Minus,
   close: X,
+  expand_more: ChevronDown,
 };
 
 export function Icon({

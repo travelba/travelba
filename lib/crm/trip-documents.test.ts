@@ -185,3 +185,42 @@ test("un voyageur sans lien retrouve le passeport du coffre par le nom", () => {
   assert.equal(reusableDocumentsForTraveler(docs, ghost).length, 0);
   assert.deepEqual(tripDocCoverage([jeremy, camille, ghost], []), { ready: 0, total: 2 });
 });
+
+test("le passeport Iony du profil Simon, Iony est celui du titulaire Simon", () => {
+  const simon = traveler({
+    first_name: "Simon",
+    last_name: "Albilia",
+    is_account_holder: true,
+  });
+  const lisa = traveler({
+    id: "t2",
+    is_account_holder: false,
+    companion_id: "lisa",
+    first_name: "Lisa Sabine",
+    last_name: "Garnek",
+  });
+  const profile = { first_name: "Simon, Iony", last_name: "Albilila" };
+  const docs = [
+    doc({
+      id: "iony",
+      first_name: "Iony",
+      last_name: "Albilila",
+      number: "11AA",
+    }),
+    doc({
+      id: "lisa",
+      companion_id: "lisa",
+      first_name: "Lisa Sabine",
+      last_name: "Garnek",
+      number: "99ZZ",
+      storage_path: "vault/lisa",
+    }),
+  ];
+  assert.equal(reusableDocumentsForTraveler(docs, simon).length, 0);
+  assert.equal(reusableDocumentsForTraveler(docs, simon, profile)[0]?.id, "iony");
+  assert.equal(
+    reusableDocumentsForTraveler(docs, simon, profile).some((item) => item.id === "lisa"),
+    false
+  );
+  assert.equal(reusableDocumentsForTraveler(docs, lisa, profile)[0]?.id, "lisa");
+});

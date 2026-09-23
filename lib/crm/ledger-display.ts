@@ -28,10 +28,15 @@ export function visibleLedgerRows<T extends LedgerRow>(rows: T[]): T[] {
   });
 }
 
-export function reservationContextLabel(booking: { title?: string | null; reference: string } | null | undefined) {
+export function reservationContextLabel(
+  booking: {
+    title?: string | null;
+    destination?: string | null;
+    reference: string;
+  } | null | undefined
+) {
   if (!booking) return null;
-  const name = (booking.title || "").trim() || booking.reference;
-  return `Dans le cadre de ${name}`;
+  return (booking.title || "").trim() || (booking.destination || "").trim() || booking.reference || null;
 }
 
 /** Le montant global du séjour s’affiche comme une dépense, pas comme « Réservation … ». */

@@ -9,6 +9,7 @@ import {
   extraTitle,
   findExtra,
   isChildAt,
+  serviceOffers,
 } from "./extras";
 
 test("tarifs par trajet", () => {
@@ -41,6 +42,52 @@ test("fenêtre 48 h et unicité par trajet", () => {
   assert.equal(extraFlightAt(items, "arrival"), "2026-08-20T18:00:00");
   assert.ok(findExtra(items, "chauffeur", "departure"));
   assert.equal(findExtra(items, "chauffeur", "arrival"), null);
+});
+
+test("aller et retour lisent les vols, sans inventer d’heure", () => {
+  const outbound = {
+    kind: "flight",
+    start_at: "2026-12-14T11:30:00+00:00",
+    end_at: "2026-12-14T17:10:00+00:00",
+    details: {
+      from: "ORY",
+      to: "TLV",
+      city_from: "Paris",
+      city_to: "Tel Aviv",
+      flight_number: "TO 3458",
+    },
+  };
+  const inbound = {
+    kind: "flight",
+    start_at: "2026-12-23 14:10:00+00",
+    end_at: "2026-12-23 18:25:00+00",
+    details: {
+      from: "TLV",
+      to: "ORY",
+      city_from: "Tel Aviv",
+      city_to: "Paris",
+      flight_number: "TO 3451",
+    },
+  };
+  const offers = serviceOffers([outbound, inbound]);
+  assert.deepEqual(
+    offers.map((offer) => offer.title),
+    ["Transfert aller", "Greeter aller", "Transfert retour", "Greeter retour"]
+  );
+  assert.equal(offers[0].route, "Domicile → ORY");
+  assert.equal(offers[0].flightLine, "Vol TO 3458 · départ 11h30");
+  assert.equal(offers[0].airport, "ORY · Paris");
+  assert.equal(offers[1].route, "Aéroport TLV · Tel Aviv");
+  assert.equal(offers[1].flightLine, "Vol TO 3458 · arrivée 17h10");
+  assert.equal(offers[2].route, "ORY → Domicile");
+  assert.equal(offers[2].flightLine, "Vol TO 3451 · arrivée 18h25");
+  assert.equal(offers[3].route, "Aéroport ORY · Paris");
+  assert.equal(offers[3].flightLine, "Vol TO 3451 · arrivée 18h25");
+  const oneWay = serviceOffers([outbound]);
+  assert.deepEqual(
+    oneWay.map((offer) => offer.leg),
+    ["departure", "departure"]
+  );
 });
 
 test("chauffeur et greeter seulement s’il y a un vol", () => {

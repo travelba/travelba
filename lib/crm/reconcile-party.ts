@@ -102,7 +102,7 @@ async function linkParty(supabase: SupabaseClient, customerId: string) {
     const validOn = booking.end_date || isoToday();
     const used = new Set<string>();
     for (const traveler of party) {
-      const source = planPassportAttach(traveler, docs, validOn);
+      const source = planPassportAttach(traveler, docs, validOn, holder);
       if (!source || used.has(source.id)) continue;
       used.add(source.id);
       try {

@@ -63,6 +63,12 @@ export function BookingEditor({
   const [busy, setBusy] = useState<"idle" | "save" | "publish" | "cover">("idle");
   const [flash, setFlash] = useState<string | null>(null);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
+  const account = customers.find((row) => row.id === booking.customer_id);
+  const holderProfile = {
+    first_name: account?.first_name || holderName.first_name,
+    last_name: account?.last_name || holderName.last_name,
+    usage_name: account?.usage_name ?? null,
+  };
   const documentChoices = peopleNotOnStay(
     items.flatMap((item) => passengersFromDetails(item.details)),
     travelers
@@ -461,13 +467,14 @@ export function BookingEditor({
             bookingId={booking.id}
             travelers={travelers}
             documents={identityDocs}
+            holder={holderProfile}
             onRemove={(id) => void removeTraveler(id)}
           />
         )}
         {travelers.some(
           (traveler) =>
             tripDocumentsForTraveler(identityDocs, traveler).length === 0 &&
-            reusableDocumentsForTraveler(identityDocs, traveler).length === 0
+            reusableDocumentsForTraveler(identityDocs, traveler, holderProfile).length === 0
         ) ? (
           <Link
             href={`/admin/clients/${booking.customer_id}`}
