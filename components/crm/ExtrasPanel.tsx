@@ -195,17 +195,35 @@ export function ExtrasPanel({
         <p className="mt-1 text-sm text-muted">Une sélection des services à la carte</p>
       </div>
       {transfers.length ? (
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-          Adresse de prise en charge
-          <input
-            value={address}
-            onChange={(event) => setAddress(event.target.value)}
-            className="rounded-xl border border-[#e5e3dc] bg-white px-3 py-2 text-sm font-normal text-[var(--admin-navy)]"
-          />
-        </label>
+        <div className="space-y-2">
+          <div>
+            <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">Transfert</h3>
+            <p className="mt-1 text-sm text-muted">
+              Prise en charge 2 h 30 avant le départ du vol, jusqu’à l’aéroport.
+            </p>
+          </div>
+          <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+            Adresse de prise en charge
+            <input
+              value={address}
+              onChange={(event) => setAddress(event.target.value)}
+              className="rounded-xl border border-[#e5e3dc] bg-white px-3 py-2 text-sm font-normal text-[var(--admin-navy)]"
+            />
+          </label>
+          {transfers.map(card)}
+        </div>
       ) : null}
-      {transfers.map(card)}
-      {greeters.map(card)}
+      {greeters.length ? (
+        <div className="space-y-2">
+          <div>
+            <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">Greeter Airport</h3>
+            <p className="mt-1 text-sm text-muted">
+              Accueil à l’aéroport d’arrivée, à l’heure d’atterrissage du vol.
+            </p>
+          </div>
+          {greeters.map(card)}
+        </div>
+      ) : null}
       <IssuesList issues={issues} />
     </section>
   );

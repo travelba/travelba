@@ -25,14 +25,29 @@ export function extraAmount(kind: ExtraKind, adults = 1, children = 0) {
   return a * GREETER_ADULT_EUR + c * GREETER_CHILD_EUR;
 }
 
+export const TRANSFER_LEAD_MINUTES = 150;
+
 export function extraTitle(kind: ExtraKind, leg: ExtraLeg) {
-  const side = leg === "departure" ? "départ" : "arrivée";
-  if (kind === "chauffeur") {
-    return leg === "departure"
-      ? "Chauffeur domicile → aéroport"
-      : "Chauffeur aéroport → domicile";
-  }
-  return `Greeter — ${side}`;
+  const side = leg === "departure" ? "aller" : "retour";
+  if (kind === "chauffeur") return `Transfert ${side}`;
+  return `Greeter Airport ${side}`;
+}
+
+/** Heure de réservation du transfert : 2 h 30 avant le départ du vol, sans décalage de fuseau. */
+export function transferPickupIso(departAt: string | null | undefined) {
+  if (!departAt) return null;
+  const match = departAt.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+  if (!match) return null;
+  const utc = Date.UTC(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    Number(match[4]),
+    Number(match[5])
+  );
+  const pickup = new Date(utc - TRANSFER_LEAD_MINUTES * 60 * 1000);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${pickup.getUTCFullYear()}-${pad(pickup.getUTCMonth() + 1)}-${pad(pickup.getUTCDate())}T${pad(pickup.getUTCHours())}:${pad(pickup.getUTCMinutes())}:00`;
 }
 
 export function extraServiceLeg(item: { details?: Record<string, unknown> | null }): ExtraLeg | null {
@@ -183,39 +198,35 @@ function flightMomentLine(leg: ServiceFlightLeg, moment: "depart" | "arrive") {
   return line || null;
 }
 
+function transferLine(leg: ServiceFlightLeg) {
+  const pickup = serviceClock(transferPickupIso(leg.departAt));
+  const vol = leg.flightNumber ? `Vol ${leg.flightNumber}` : "";
+  const depart = serviceClock(leg.departAt);
+  return [pickup ? `Prise en charge ${pickup}` : "", vol, depart ? `départ ${depart}` : ""]
+    .filter(Boolean)
+    .join(" · ") || null;
+}
+
 export function serviceOffers(items: ServiceFlightRow[]): ServiceOffer[] {
   const legs = serviceFlightLegs(items);
   const offers: ServiceOffer[] = [];
   for (const leg of legs) {
     const aller = leg.role === "outbound";
-    if (aller) {
-      const airport = serviceAirportLabel(leg.fromIata, leg.cityFrom);
-      offers.push({
-        kind: "chauffeur",
-        leg: "departure",
-        title: "Transfert aller",
-        route: leg.fromIata ? `Domicile → ${leg.fromIata}` : "Domicile → aéroport",
-        flightLine: flightMomentLine(leg, "depart"),
-        airport,
-        whenIso: leg.departAt,
-      });
-    } else {
-      const airport = serviceAirportLabel(leg.toIata, leg.cityTo);
-      offers.push({
-        kind: "chauffeur",
-        leg: "arrival",
-        title: "Transfert retour",
-        route: leg.toIata ? `${leg.toIata} → Domicile` : "Aéroport → domicile",
-        flightLine: flightMomentLine(leg, "arrive"),
-        airport,
-        whenIso: leg.arriveAt,
-      });
-    }
+    const departureAirport = serviceAirportLabel(leg.fromIata, leg.cityFrom);
+    offers.push({
+      kind: "chauffeur",
+      leg: leg.leg,
+      title: aller ? "Aller" : "Retour",
+      route: leg.fromIata ? `Domicile → ${leg.fromIata}` : "Domicile → aéroport",
+      flightLine: transferLine(leg),
+      airport: departureAirport,
+      whenIso: transferPickupIso(leg.departAt),
+    });
     const greet = serviceAirportLabel(leg.toIata, leg.cityTo);
     offers.push({
       kind: "greeter",
       leg: leg.leg,
-      title: aller ? "Greeter aller" : "Greeter retour",
+      title: aller ? "Aller" : "Retour",
       route: greet ? `Aéroport ${greet}` : "Aéroport",
       flightLine: flightMomentLine(leg, "arrive"),
       airport: greet,

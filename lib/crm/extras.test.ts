@@ -15,8 +15,8 @@ import {
 test("tarifs par trajet", () => {
   assert.equal(extraAmount("chauffeur"), 150);
   assert.equal(extraAmount("greeter", 2, 1), 225);
-  assert.equal(extraTitle("chauffeur", "departure"), "Chauffeur domicile → aéroport");
-  assert.equal(extraTitle("greeter", "arrival"), "Greeter — arrivée");
+  assert.equal(extraTitle("chauffeur", "departure"), "Transfert aller");
+  assert.equal(extraTitle("greeter", "arrival"), "Greeter Airport retour");
 });
 
 test("enfant < 12 ans, sans naissance = adulte", () => {
@@ -44,7 +44,7 @@ test("fenêtre 48 h et unicité par trajet", () => {
   assert.equal(findExtra(items, "chauffeur", "arrival"), null);
 });
 
-test("aller et retour lisent les vols, sans inventer d’heure", () => {
+test("le transfert est réservé 2 h 30 avant le départ, le greeter à l’arrivée", () => {
   const outbound = {
     kind: "flight",
     start_at: "2026-12-14T11:30:00+00:00",
@@ -71,16 +71,18 @@ test("aller et retour lisent les vols, sans inventer d’heure", () => {
   };
   const offers = serviceOffers([outbound, inbound]);
   assert.deepEqual(
-    offers.map((offer) => offer.title),
-    ["Transfert aller", "Greeter aller", "Transfert retour", "Greeter retour"]
+    offers.map((offer) => `${offer.kind}:${offer.title}`),
+    ["chauffeur:Aller", "greeter:Aller", "chauffeur:Retour", "greeter:Retour"]
   );
   assert.equal(offers[0].route, "Domicile → ORY");
-  assert.equal(offers[0].flightLine, "Vol TO 3458 · départ 11h30");
+  assert.equal(offers[0].flightLine, "Prise en charge 09h00 · Vol TO 3458 · départ 11h30");
+  assert.equal(offers[0].whenIso, "2026-12-14T09:00:00");
   assert.equal(offers[0].airport, "ORY · Paris");
   assert.equal(offers[1].route, "Aéroport TLV · Tel Aviv");
   assert.equal(offers[1].flightLine, "Vol TO 3458 · arrivée 17h10");
-  assert.equal(offers[2].route, "ORY → Domicile");
-  assert.equal(offers[2].flightLine, "Vol TO 3451 · arrivée 18h25");
+  assert.equal(offers[2].route, "Domicile → TLV");
+  assert.equal(offers[2].flightLine, "Prise en charge 11h40 · Vol TO 3451 · départ 14h10");
+  assert.equal(offers[2].whenIso, "2026-12-23T11:40:00");
   assert.equal(offers[3].route, "Aéroport ORY · Paris");
   assert.equal(offers[3].flightLine, "Vol TO 3451 · arrivée 18h25");
   const oneWay = serviceOffers([outbound]);

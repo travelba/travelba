@@ -11,6 +11,7 @@ import {
   extraNoticeOk,
   extraTitle,
   findExtra,
+  transferPickupIso,
   isExtraKind,
   isExtraLeg,
   type ExtraKind,
@@ -33,6 +34,7 @@ export async function createBookingExtra(
     now?: Date;
   }
 ) {
+  const leg = opts.leg;
   if (!bookingHasFlight(opts.items)) {
     throw new BookingIssuesError("Vol requis.", [
       {
@@ -41,17 +43,19 @@ export async function createBookingExtra(
       },
     ]);
   }
-  if (findExtra(opts.items, opts.kind, opts.leg)) {
+  if (findExtra(opts.items, opts.kind, leg)) {
     throw new BookingIssuesError("Service déjà demandé.", [
       {
         field: "leg",
-        message: `${extraTitle(opts.kind, opts.leg)} est déjà sur ce dossier.`,
+        message: `${extraTitle(opts.kind, leg)} est déjà sur ce dossier.`,
       },
     ]);
   }
+  const flightAt =
+    extraFlightAt(opts.items, leg, opts.booking.start_date || opts.booking.end_date) || null;
   const startAt =
-    extraFlightAt(opts.items, opts.leg, opts.booking.start_date || opts.booking.end_date) || null;
-  if (opts.enforceWindow && !extraNoticeOk(startAt, opts.now)) {
+    opts.kind === "chauffeur" ? transferPickupIso(flightAt) || flightAt : flightAt;
+  if (opts.enforceWindow && !extraNoticeOk(flightAt, opts.now)) {
     throw new BookingIssuesError("Délai de 48 h dépassé.", [
       {
         field: "leg",
@@ -80,7 +84,7 @@ export async function createBookingExtra(
   const maxSort = (existing || []).reduce((max, row) => Math.max(max, Number(row.sort_order || 0)), -1);
   const payload = extraItemPayload({
     kind: opts.kind,
-    leg: opts.leg,
+    leg,
     startAt,
     amount,
     address: opts.address,
