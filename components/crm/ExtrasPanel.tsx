@@ -81,54 +81,63 @@ export function ExtrasPanel({
     count: number;
     existing: CrmBookingItem | null;
   }) {
+    const status = input.existing ? "Validé" : "Non validé";
+    const priceLabel = formatMoney(input.amount, booking.currency);
+    const subtitle = `${status} · ${input.note} · ${input.count} passager${input.count > 1 ? "s" : ""}`;
+    const pending = busy === input.kind || (input.existing && busy === `cancel:${input.existing.id}`);
+    const validate = input.existing ? (
+      isAdmin ? (
+        <button
+          type="button"
+          className="text-xs font-semibold text-accent"
+          disabled={busy !== null}
+          onClick={() => void cancel(input.existing!.id)}
+        >
+          Annuler
+        </button>
+      ) : null
+    ) : (
+      <button
+        type="button"
+        disabled={busy !== null}
+        onClick={() => void request(input.kind)}
+        className="inline-flex h-5 items-center justify-center rounded-full bg-[var(--admin-navy)] px-2.5 text-[11px] font-semibold leading-none text-white disabled:opacity-50"
+      >
+        {busy === input.kind ? "…" : "Valider"}
+      </button>
+    );
+
     return (
-      <article key={input.kind} className="rounded-2xl border border-[#e5e3dc] bg-[#faf9f6] p-4">
-        <div className="flex items-start gap-3">
-          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[var(--admin-gold)]">
+      <article
+        key={input.kind}
+        className={
+          input.existing
+            ? "w-full min-w-0 overflow-hidden rounded-2xl border border-[#e5e3dc] bg-white"
+            : "w-full min-w-0 overflow-hidden rounded-2xl border border-dashed border-[var(--admin-gold)] bg-[#faf9f6]"
+        }
+      >
+        <div className="flex min-w-0 items-start gap-3 overflow-hidden px-3.5 py-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--admin-peach)] text-[var(--admin-navy)]">
             <Icon name={input.icon} className="h-5 w-5" />
           </span>
-          <div className="min-w-0 flex-1">
-            <p className="font-display text-base font-bold text-[var(--admin-navy)]">{input.title}</p>
-            <p className="mt-0.5 text-sm text-[var(--admin-navy)]">{input.note}</p>
-            <p className="mt-1 text-xs text-muted">
-              {input.count} passager{input.count > 1 ? "s" : ""}
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--aura-blue)]">{input.title}</p>
+            <p className="break-words text-sm font-semibold leading-snug text-[var(--admin-navy)]">{input.note}</p>
+            <p className="truncate text-xs text-muted" title={subtitle}>
+              {subtitle}
             </p>
-            <p className="mt-2 text-sm font-semibold text-[var(--admin-navy)]">
-              {formatMoney(input.amount, booking.currency)}
-              <span className="font-normal text-muted"> · se rajoute à l’encours</span>
+            <p className="mt-1 flex items-center justify-between gap-2 sm:hidden">
+              <span className="text-sm font-bold text-[var(--admin-navy)]">{priceLabel}</span>
+              {validate}
             </p>
           </div>
+          <div className="hidden shrink-0 items-start gap-2 sm:flex">
+            <p className="max-w-[7.5rem] text-right text-sm font-bold leading-snug text-[var(--admin-navy)]">{priceLabel}</p>
+            {validate}
+          </div>
         </div>
-        <div className="mt-3 flex items-center justify-end gap-2">
-          {input.existing ? (
-            <>
-              <span className="rounded-full bg-[var(--admin-gold)]/20 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--admin-navy)]">
-                Validé
-              </span>
-              {isAdmin ? (
-                <button
-                  type="button"
-                  className="text-xs font-semibold text-accent"
-                  disabled={busy !== null}
-                  onClick={() => void cancel(input.existing!.id)}
-                >
-                  Annuler
-                </button>
-              ) : null}
-            </>
-          ) : (
-            <button
-              type="button"
-              disabled={busy !== null}
-              onClick={() => void request(input.kind)}
-              className="inline-flex h-10 items-center justify-center rounded-full bg-[var(--admin-navy)] px-5 text-sm font-semibold text-white disabled:opacity-50"
-            >
-              {busy === input.kind ? "…" : "Valider"}
-            </button>
-          )}
-        </div>
-        {busy === input.kind || (input.existing && busy === `cancel:${input.existing.id}`) ? (
-          <div className="mt-2">
+        {pending ? (
+          <div className="px-3.5 pb-3">
             <BusyBar label={busy?.startsWith("cancel") ? "Annulation…" : "Validation…"} />
           </div>
         ) : null}

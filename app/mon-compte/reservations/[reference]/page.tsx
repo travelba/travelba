@@ -203,18 +203,16 @@ export default async function ReservationDetailPage({ params }: Props) {
       ) : null}
 
       {bookingHasFlight(visibleItems) ? (
-        <section className="aura-card rounded-[1.35rem] bg-white p-4">
-          <ExtrasPanel
-            variant="client"
-            booking={b}
-            items={visibleItems}
-            travelers={party}
-            holder={customer}
-            companions={(companions || []) as CrmCompanion[]}
-            whatsappHref={modifyHref}
-            formalities={formalities}
-          />
-        </section>
+        <ExtrasPanel
+          variant="client"
+          booking={b}
+          items={visibleItems}
+          travelers={party}
+          holder={customer}
+          companions={(companions || []) as CrmCompanion[]}
+          whatsappHref={modifyHref}
+          formalities={formalities}
+        />
       ) : null}
 
       <section className="aura-card space-y-2 rounded-[1.35rem] bg-white p-4">
