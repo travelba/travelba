@@ -9,6 +9,7 @@ const UNSPLASH = (id: string, width = 960) => {
 
 export type CoverBooking = Pick<CrmBooking, "destination" | "title" | "cover_image_path"> & {
   updated_at?: string | null;
+  cover_credit?: string | null;
 };
 
 /** Comparaison sur le lieu entier, accents et tirets ignorés. */

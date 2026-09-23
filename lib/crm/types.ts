@@ -215,6 +215,8 @@ export type CrmBooking = {
   /** Si false : montant du séjour affiché au carnet, pas au grand livre. */
   include_in_ledger: boolean;
   cover_image_path: string | null;
+  /** Mention affichée avec une couverture CC BY. */
+  cover_credit: string | null;
   notes_client: string | null;
   notes_internal: string | null;
   visible_to_client: boolean;

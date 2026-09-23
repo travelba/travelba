@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useRef, useState, type ChangeEvent } from "react";
+import { FormEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -19,9 +19,10 @@ import { BusyBar } from "@/components/crm/BusyBar";
 import { formatMoney, jMinusLabel } from "@/lib/crm/money";
 import { bookingTotalFromItems } from "@/lib/crm/bookings";
 import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
-import { documentLabel } from "@/lib/crm/carnet";
+import { coverQuery, documentLabel } from "@/lib/crm/carnet";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { BookingHero } from "@/components/crm/BookingHero";
+import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
 import { Icon } from "@/components/crm/icons";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
@@ -67,6 +68,10 @@ export function BookingEditor({
   const unpublishedItems = items.filter((item) => !item.visible_to_client);
   const needsReview = items.some((item) => item.details?.needs_review === true);
   const [busy, setBusy] = useState<"idle" | "save" | "publish" | "cover">("idle");
+  const [coverOpen, setCoverOpen] = useState(false);
+  const [coverNotice, setCoverNotice] = useState<string | null>(null);
+  const arrival = coverQuery(booking.destination, booking.title);
+  const coverPlace = arrival === "voyage" ? "" : arrival;
   const [flash, setFlash] = useState<string | null>(null);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
   const account = customers.find((row) => row.id === booking.customer_id);
@@ -210,26 +215,33 @@ export function BookingEditor({
     router.refresh();
   }
 
-  async function uploadCover(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
+  async function sendCover(init: RequestInit) {
     setBusy("cover");
     setFlash(null);
-    const body = new FormData();
-    body.set("file", file);
-    const res = await fetch(`/api/admin/bookings/${booking.id}/cover`, {
-      method: "POST",
-      body,
-    });
+    setCoverNotice(null);
+    const res = await fetch(`/api/admin/bookings/${booking.id}/cover`, { method: "POST", ...init });
     const json = await res.json().catch(() => ({}));
     setBusy("idle");
     if (!res.ok) {
-      setFlash(typeof json.error === "string" ? json.error : "Photo non importée.");
+      setCoverNotice(typeof json.error === "string" ? json.error : "Photo non importée.");
       return;
     }
+    setCoverOpen(false);
     setFlash("Photo importée.");
     router.refresh();
+  }
+
+  function uploadCoverFile(file: File) {
+    const body = new FormData();
+    body.set("file", file);
+    void sendCover({ body });
+  }
+
+  function pickCover(photoId: string) {
+    void sendCover({
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ photoId }),
+    });
   }
 
   async function clearCover() {
@@ -250,16 +262,17 @@ export function BookingEditor({
     <div className="space-y-6">
       <BookingHero booking={booking} priority className="h-36 rounded-3xl sm:h-48">
         <div className="absolute right-3 top-3 z-10 flex flex-wrap justify-end gap-2">
-          <label className="cursor-pointer rounded-full bg-white/95 px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)]">
+          <button
+            type="button"
+            disabled={busy !== "idle"}
+            onClick={() => {
+              setCoverNotice(null);
+              setCoverOpen(true);
+            }}
+            className="rounded-full bg-white/95 px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)] disabled:opacity-50"
+          >
             {busy === "cover" ? "Photo…" : "Importer une photo"}
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              className="sr-only"
-              disabled={busy !== "idle"}
-              onChange={uploadCover}
-            />
-          </label>
+          </button>
           {booking.cover_image_path ? (
             <button
               type="button"
@@ -279,6 +292,16 @@ export function BookingEditor({
           <h1 className="font-display text-2xl font-bold leading-tight">{booking.title}</h1>
         </div>
       </BookingHero>
+      <CoverPickDialog
+        open={coverOpen}
+        bookingId={booking.id}
+        place={coverPlace}
+        busy={busy === "cover"}
+        notice={coverNotice}
+        onClose={() => setCoverOpen(false)}
+        onPick={pickCover}
+        onFile={uploadCoverFile}
+      />
 
       <section className="admin-af-card flex flex-col gap-3 rounded-3xl p-5 sm:flex-row sm:items-center sm:justify-between">
         <div>

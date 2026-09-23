@@ -77,6 +77,7 @@ La photo = **la ville / station d’arrivée**, jamais le hub de départ.
 - Catalogue (`lib/crm/cover-catalog.ts`) : jeton d’arrivée entier. **Ville d’abord** (photo de ce lieu), **sinon le pays**. Provence sans photo de ville → France. Florence → Italie. Venise garde sa photo. Pays sans photo vérifiée : fond marine, pas une image d’un autre pays.
 - **Nouvelle ville** : une clé + le code pays, et une photo seulement si elle montre ce lieu. Test : `unsplashKeywordMatch`.
 - Import agence seulement : `cover_image_path` (`POST/DELETE /api/admin/bookings/[id]/cover`, WebP 1600×900). L’URL porte `?v=` = `updated_at`. Sinon le catalogue gagne. Pas de génération automatique.
+- **Importer une photo** : recherche de la ville d’arrivée (photos libres, paysage) puis sélection, ou fichier local. CC BY → `cover_credit` sous la photo. Le client ne cherche pas.
 - `<BookingHero>` + `<CoverPhoto>` img natif. Si l’import casse, repli sur la photo du lieu, puis le fond marine. Puppeteer : `domcontentloaded` — skill verify.
 
 ## Fichiers séjour
