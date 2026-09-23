@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { ensureCustomerForUser, ensureStaff } from "@/lib/crm/auth";
+import { ensureCustomerForUser, ensureStaff, getSessionUser } from "@/lib/crm/auth";
 import { customerFullName } from "@/lib/crm/types";
 import { siteConfig } from "@/lib/site";
 import { AccountChrome } from "@/components/account/AccountChrome";
@@ -15,10 +14,7 @@ export default async function AccountLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getSessionUser();
   if (!user) redirect("/connexion");
   const customer = await ensureCustomerForUser(user);
   if (!customer) {
