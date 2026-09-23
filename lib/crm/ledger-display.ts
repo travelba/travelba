@@ -1,12 +1,15 @@
-type LedgerRow = {
-  booking_id: string | null;
+type LedgerKindRow = {
   direction: string;
   kind: string;
   external_id: string | null;
 };
 
+type LedgerRow = LedgerKindRow & {
+  booking_id: string | null;
+};
+
 /** Débit unique du montant du séjour, pas une dépense (vol, hôtel, frais). */
-export function isStayRollupDebit(row: LedgerRow) {
+export function isStayRollupDebit(row: LedgerKindRow) {
   return row.direction === "debit" && row.kind === "booking" && !row.external_id;
 }
 
@@ -33,7 +36,7 @@ export function reservationContextLabel(booking: { title?: string | null; refere
 
 /** Le montant global du séjour s’affiche comme une dépense, pas comme « Réservation … ». */
 export function ledgerMovementTitle(
-  row: LedgerRow & { label: string | null },
+  row: LedgerKindRow & { label: string | null; booking_id?: string | null },
   fallback: string
 ) {
   if (isStayRollupDebit(row)) return "Séjour";
