@@ -77,13 +77,45 @@ export function tripDocumentsForTraveler(
   });
 }
 
+function documentNumber(value: string | null) {
+  return value?.replace(/\s+/g, "").toUpperCase() || "";
+}
+
+/** Coffre et copie de séjour du même numéro ou du même fichier : une seule pièce. */
+export function isSameDocumentPiece(a: CrmTravelDocument, b: CrmTravelDocument) {
+  if (a.id === b.id) return true;
+  if (a.storage_path && b.storage_path && a.storage_path === b.storage_path) return true;
+  const left = documentNumber(a.number);
+  const right = documentNumber(b.number);
+  return Boolean(left && left === right && a.doc_type === b.doc_type);
+}
+
+function preferVaultCopy(current: CrmTravelDocument, candidate: CrmTravelDocument) {
+  const currentVault = isVaultDocument(current);
+  const candidateVault = isVaultDocument(candidate);
+  if (currentVault !== candidateVault) return candidateVault ? candidate : current;
+  return (candidate.created_at || "").localeCompare(current.created_at || "") > 0
+    ? candidate
+    : current;
+}
+
 export function reusableDocumentsForTraveler(
   docs: CrmTravelDocument[],
   traveler: CrmBookingTraveler
 ) {
-  return docs
+  const matches = docs
     .filter((doc) => doc.booking_id !== traveler.booking_id && samePerson(doc, traveler))
     .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+  const unique: CrmTravelDocument[] = [];
+  for (const doc of matches) {
+    const index = unique.findIndex((kept) => isSameDocumentPiece(kept, doc));
+    if (index === -1) {
+      unique.push(doc);
+      continue;
+    }
+    unique[index] = preferVaultCopy(unique[index], doc);
+  }
+  return unique.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
 }
 
 export function primaryIdentityDoc(docs: CrmTravelDocument[]) {

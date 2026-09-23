@@ -93,6 +93,22 @@ test("un passeport de coffre unique et valide est coché, pas un doublon ni un e
     null
   );
   assert.equal(
+    planPassportAttach(
+      jeremy,
+      [
+        vault,
+        doc({
+          id: "clone",
+          booking_id: "other-stay",
+          traveler_id: "old",
+          storage_path: "vault/a",
+        }),
+      ],
+      "2026-10-11"
+    )?.id,
+    "vault"
+  );
+  assert.equal(
     planPassportAttach(jeremy, [doc({ id: "old", expires_on: "2026-10-10" })], "2026-10-11"),
     null
   );
