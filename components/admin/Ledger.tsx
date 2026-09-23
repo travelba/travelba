@@ -6,7 +6,7 @@ import type { CrmCustomer, CrmTransaction } from "@/lib/crm/types";
 import { TX_KIND_LABELS, customerFullName } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { StatusChip } from "@/components/crm/ui";
-import { DateFrInput } from "@/components/crm/fields";
+import { DateFrInput, MoneyInput } from "@/components/crm/fields";
 import { ledgerEmptyMessage } from "@/lib/crm/launch-status";
 
 const STATUS_LABELS: Record<CrmTransaction["status"], string> = {
@@ -109,14 +109,11 @@ export function Ledger({
         </label>
         <label className={labelClass}>
           Montant (€)
-          <input
+          <MoneyInput
             name="amount"
-            type="number"
-            step="0.01"
-            min="0.01"
             required
             disabled={saving}
-            placeholder="0,00"
+            aria-label="Montant"
             className={fieldClass}
           />
         </label>

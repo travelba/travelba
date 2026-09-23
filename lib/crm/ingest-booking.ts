@@ -11,13 +11,14 @@ import {
   uploadCrmFile,
 } from "@/lib/crm/files";
 import { emptyToNull } from "@/lib/crm/identity";
+import { parseMoney } from "@/lib/crm/money";
 import { extractBookingFromFiles } from "@/lib/crm/ingest-file";
 import {
   bookingExtractSchema,
   aiGatewayConfigured,
   guessIngestMime,
   isAllowedIngestType,
-  sanitizeExtractedPrices,
+  keepAgentPrices,
   MAX_INGEST_BYTES,
   MAX_INGEST_FILES,
   type BookingExtract,
@@ -265,6 +266,14 @@ async function upsertItemsAndTravelers(
     if (!title) continue;
     const details = cleanDetails(item.details);
     if (item.confirmation_ref && !details.pnr) details.pnr = item.confirmation_ref;
+    const match = findMatchingItem(remaining, {
+      kind: itemKind(item.kind),
+      confirmation_ref: emptyToNull(item.confirmation_ref),
+      start_at: emptyToNull(item.start_at),
+      title,
+      details,
+    });
+    const incomingAmount = parseMoney(item.amount);
     const payload = {
       kind: itemKind(item.kind),
       title,
@@ -272,18 +281,11 @@ async function upsertItemsAndTravelers(
       confirmation_ref: emptyToNull(item.confirmation_ref),
       start_at: emptyToNull(item.start_at),
       end_at: emptyToNull(item.end_at),
-      amount: item.amount == null ? null : Number(item.amount),
+      amount: incomingAmount != null ? incomingAmount : match ? parseMoney(match.amount) : null,
       details,
       visible_to_client: false,
       source_document_id: sourceDocId(details, docs),
     };
-    const match = findMatchingItem(remaining, {
-      kind: payload.kind,
-      confirmation_ref: payload.confirmation_ref,
-      start_at: payload.start_at,
-      title: payload.title,
-      details,
-    });
     try {
       if (match) {
         const { error } = await supabase
@@ -397,7 +399,7 @@ export async function persistNewBookingFromExtract(opts: {
       start_date: emptyToNull(extract.start_date),
       end_date: emptyToNull(extract.end_date),
       currency: emptyToNull(extract.currency) || "EUR",
-      total_amount: Number(extract.total_amount || 0),
+      total_amount: parseMoney(extract.total_amount) ?? 0,
       notes_client: emptyToNull(extract.notes_client),
       notes_internal:
         extract.document_status === "quote"
@@ -497,7 +499,7 @@ export async function applyExtractToBooking(opts: {
   if (!booking.start_date && opts.extract.start_date) patch.start_date = opts.extract.start_date;
   if (!booking.end_date && opts.extract.end_date) patch.end_date = opts.extract.end_date;
   if (!Number(booking.total_amount) && opts.extract.total_amount) {
-    patch.total_amount = Number(opts.extract.total_amount);
+    patch.total_amount = parseMoney(opts.extract.total_amount) ?? 0;
   }
   if (Object.keys(patch).length) {
     await admin.from("crm_bookings").update(patch).eq("id", opts.bookingId);
@@ -534,7 +536,7 @@ export function parseExtractPayload(raw: unknown): BookingExtract {
     );
     throw new Error("Données extraites invalides");
   }
-  return sanitizeExtractedPrices(parsed.data);
+  return keepAgentPrices(parsed.data);
 }
 
 function dbFailure(error: DbErrorLike, fallback: string) {

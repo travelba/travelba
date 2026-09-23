@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { CustomerEditor } from "@/components/admin/CustomerEditor";
+import { DeleteBookingButton } from "@/components/admin/DeleteBookingButton";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import { InviteCustomerPanel } from "@/components/admin/InviteCustomerPanel";
 import { getPortalAccess } from "@/lib/crm/invite";
@@ -99,13 +100,19 @@ export default async function AdminClientDetailPage({ params }: Props) {
         {bookingRows.length ? (
           <ul className="mt-2 divide-y divide-border text-sm">
             {bookingRows.map((b) => (
-              <li key={b.id} className="py-2">
+              <li key={b.id} className="flex items-center justify-between gap-3 py-2">
                 <Link
                   href={`/admin/reservations/${b.id}`}
                   className="text-[var(--admin-navy)] underline-offset-2 hover:underline"
                 >
                   {b.reference} · {b.title} · {formatDateFr(b.start_date)}
                 </Link>
+                <DeleteBookingButton
+                  compact
+                  redirectTo={null}
+                  bookingId={b.id}
+                  label={`${b.reference} — ${b.title}`}
+                />
               </li>
             ))}
           </ul>

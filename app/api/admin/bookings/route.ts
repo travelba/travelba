@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { nextBookingReference, syncBookingDebit } from "@/lib/crm/bookings";
 import { scheduleBookingCover } from "@/lib/crm/cover-generate";
+import { parseMoney } from "@/lib/crm/money";
 import type { CrmBooking } from "@/lib/crm/types";
 
 export async function GET() {
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
       start_date: body?.start_date || null,
       end_date: body?.end_date || null,
       currency: body?.currency || "EUR",
-      total_amount: Number(body?.total_amount || 0),
+      total_amount: parseMoney(body?.total_amount) ?? 0,
       notes_client: body?.notes_client || null,
       notes_internal: body?.notes_internal || null,
       visible_to_client: false,

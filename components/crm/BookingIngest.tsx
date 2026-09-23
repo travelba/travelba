@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { sortItemsByOrder } from "@/lib/crm/carnet";
 import { customerFullName, type CrmCustomer } from "@/lib/crm/types";
-import { DateFrInput, Field, fieldControlClass } from "@/components/crm/fields";
+import { DateFrInput, Field, MoneyInput, fieldControlClass } from "@/components/crm/fields";
 import {
   emptyBookingExtract,
   MAX_INGEST_BYTES,
@@ -26,7 +26,7 @@ import {
   type IngestStreamEvent,
   type IngestWarning,
 } from "@/lib/crm/ingest-types";
-import { mergeExtractItems } from "@/lib/crm/item-match";
+import { findMatchingItem, mergeExtractItems } from "@/lib/crm/item-match";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
 
 type ItemDraft = BookingExtract["items"][number];
@@ -148,7 +148,7 @@ function mergeRetryExtract(
   const kept = (previous.items || []).filter(
     (item) => !retried.has(String(item.details?.source_file_name || ""))
   );
-  return sanitizeExtractedPrices({
+  const merged = sanitizeExtractedPrices({
     ...previous,
     ...incoming,
     title: incoming.title || previous.title,
@@ -160,6 +160,14 @@ function mergeRetryExtract(
     items: mergeExtractItems([...kept, ...(incoming.items || [])]),
     travelers: [...(previous.travelers || []), ...(incoming.travelers || [])],
   });
+  return {
+    ...merged,
+    total_amount: previous.total_amount,
+    items: merged.items.map((item) => {
+      const prev = findMatchingItem(kept, item);
+      return { ...item, amount: prev?.amount ?? item.amount };
+    }),
+  };
 }
 
 export function BookingIngest({
@@ -687,12 +695,10 @@ export function BookingIngest({
               />
             </Field>
             <Field label="Prix vendu (total)">
-              <input
-                type="number"
-                step="0.01"
-                value={extract.total_amount ?? ""}
-                onChange={(e) => patch("total_amount", e.target.value === "" ? null : Number(e.target.value))}
-                className={fieldControlClass}
+              <MoneyInput
+                value={extract.total_amount}
+                onChange={(total_amount) => patch("total_amount", total_amount)}
+                aria-label="Prix vendu"
               />
             </Field>
             <Field label="Devise">

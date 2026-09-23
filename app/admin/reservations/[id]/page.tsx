@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { BookingEditor } from "@/components/admin/BookingEditor";
+import { DeleteBookingButton } from "@/components/admin/DeleteBookingButton";
 import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 import type {
   CrmBooking,
@@ -51,8 +52,13 @@ export default async function AdminBookingPage({ params }: Props) {
 
   return (
     <div>
-      <p className="text-xs font-semibold uppercase tracking-wider text-accent">{b.reference}</p>
-      <h1 className="font-display text-3xl font-extrabold text-[var(--admin-navy)]">{b.title}</h1>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-accent">{b.reference}</p>
+          <h1 className="font-display text-3xl font-extrabold text-[var(--admin-navy)]">{b.title}</h1>
+        </div>
+        <DeleteBookingButton bookingId={b.id} label={`${b.reference} — ${b.title}`} />
+      </div>
       <div className="mt-6">
         <BookingEditor
           booking={b}

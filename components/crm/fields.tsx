@@ -13,6 +13,7 @@ import {
 } from "@/lib/crm/phone";
 import { RELATIONSHIP_OPTIONS, SEX_OPTIONS } from "@/lib/crm/identity";
 import { frInputToIso, isoToFrInput, maskFrDate } from "@/lib/crm/dates";
+import { maskMoneyTyping, moneyToInput, parseMoney } from "@/lib/crm/money";
 
 export const fieldControlClass =
   "w-full rounded-xl border border-border bg-white px-3 py-2.5 text-sm text-[var(--admin-navy)] outline-none transition focus:border-[var(--admin-navy)]";
@@ -166,6 +167,83 @@ export function DateFrInput({
         </svg>
       </span>
     </div>
+  );
+}
+
+export function MoneyInput({
+  name,
+  value,
+  defaultValue,
+  onChange,
+  required = false,
+  disabled = false,
+  placeholder = "0,00",
+  className = fieldControlClass,
+  "aria-label": ariaLabel,
+}: {
+  name?: string;
+  value?: number | string | null;
+  defaultValue?: number | string | null;
+  onChange?: (amount: number | null) => void;
+  required?: boolean;
+  disabled?: boolean;
+  placeholder?: string;
+  className?: string;
+  "aria-label"?: string;
+}) {
+  const initial = parseMoney(value ?? defaultValue ?? null);
+  const [amount, setAmount] = useState<number | null>(initial);
+  const [text, setText] = useState(initial == null ? "" : moneyToInput(initial));
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [syncedValue, setSyncedValue] = useState(value);
+
+  if (value !== undefined && value !== syncedValue) {
+    setSyncedValue(value);
+    const next = parseMoney(value);
+    if (parseMoney(text) !== next) {
+      setAmount(next);
+      setText(next == null ? "" : moneyToInput(next));
+    }
+  }
+
+  useEffect(() => {
+    const form = inputRef.current?.form;
+    if (!form || value !== undefined) return;
+    function onReset() {
+      const next = parseMoney(defaultValue ?? null);
+      setAmount(next);
+      setText(next == null ? "" : moneyToInput(next));
+    }
+    form.addEventListener("reset", onReset);
+    return () => form.removeEventListener("reset", onReset);
+  }, [defaultValue, value]);
+
+  function publish(nextText: string, commitFormat: boolean) {
+    const parsed = parseMoney(nextText);
+    setAmount(parsed);
+    setText(commitFormat ? (parsed == null ? "" : moneyToInput(parsed)) : nextText);
+    onChange?.(parsed);
+  }
+
+  return (
+    <>
+      {name ? <input type="hidden" name={name} value={amount == null ? "" : String(amount)} /> : null}
+      <input
+        ref={inputRef}
+        type="text"
+        inputMode="decimal"
+        lang="fr-FR"
+        autoComplete="off"
+        aria-label={ariaLabel}
+        required={required}
+        disabled={disabled}
+        placeholder={placeholder}
+        value={text}
+        onChange={(event) => publish(maskMoneyTyping(event.target.value), false)}
+        onBlur={() => publish(text, true)}
+        className={className}
+      />
+    </>
   );
 }
 

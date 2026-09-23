@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
+import { parseMoney } from "@/lib/crm/money";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -33,7 +34,7 @@ export async function POST(request: Request, ctx: Ctx) {
       confirmation_ref: body?.confirmation_ref || null,
       start_at: body?.start_at || null,
       end_at: body?.end_at || null,
-      amount: body?.amount == null ? null : Number(body.amount),
+      amount: parseMoney(body?.amount),
       sort_order: sortOrder,
       details: body?.details || {},
       visible_to_client: false,
@@ -70,7 +71,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
   if ("confirmation_ref" in body) patch.confirmation_ref = body.confirmation_ref;
   if ("start_at" in body) patch.start_at = body.start_at;
   if ("end_at" in body) patch.end_at = body.end_at;
-  if ("amount" in body) patch.amount = body.amount == null ? null : Number(body.amount);
+  if ("amount" in body) patch.amount = parseMoney(body.amount);
   if (body.sort_order != null) patch.sort_order = Number(body.sort_order);
   if ("details" in body) patch.details = body.details || {};
   if (!Object.keys(patch).length) return jsonError("Rien à mettre à jour");

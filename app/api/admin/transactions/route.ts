@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
+import { parseMoney } from "@/lib/crm/money";
 
 export async function GET() {
   const auth = await requireStaff();
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
   if (auth instanceof NextResponse) return auth;
   const body = await request.json().catch(() => null);
   const customerId = String(body?.customer_id || "");
-  const amount = Number(body?.amount || 0);
+  const amount = parseMoney(body?.amount) ?? 0;
   if (!customerId || !(amount > 0)) return jsonError("Client et montant requis");
   const { data, error } = await auth.supabase
     .from("crm_transactions")

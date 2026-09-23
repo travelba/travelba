@@ -175,14 +175,23 @@ export function ConciergeBanner({
   );
 }
 
+export function BookingStatusBadge({ label }: { label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-[var(--admin-gold)]/50 bg-[var(--admin-navy)]/80 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-[var(--admin-gold)] shadow-sm backdrop-blur-md">
+      <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--admin-gold)]" />
+      {label}
+    </span>
+  );
+}
+
 export function bookingStatusTone(
   status: string
-): "sky" | "green" | "amber" | "red" | "navy" {
+): "sky" | "green" | "amber" | "red" | "navy" | "gold" {
   switch (status) {
     case "confirmed":
     case "travelling":
     case "completed":
-      return "green";
+      return "gold";
     case "quoted":
     case "draft":
       return "amber";

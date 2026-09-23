@@ -17,11 +17,18 @@ test("debit insert only when confirmed with a positive amount", () => {
   );
 });
 
-test("existing debit is voided on cancel or zero total", () => {
+test("cancel clears charges even without an open debit", () => {
   assert.equal(
     bookingDebitIntent({ status: "cancelled", amount: 1200, hasOpenDebit: true }),
-    "void"
+    "clear"
   );
+  assert.equal(
+    bookingDebitIntent({ status: "cancelled", amount: 0, hasOpenDebit: false }),
+    "clear"
+  );
+});
+
+test("existing debit is voided when the selling price drops to zero", () => {
   assert.equal(
     bookingDebitIntent({ status: "confirmed", amount: 0, hasOpenDebit: true }),
     "void"

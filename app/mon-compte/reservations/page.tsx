@@ -10,7 +10,7 @@ import {
   jMinusLabel,
   tripDurationDays,
 } from "@/lib/crm/money";
-import { ConciergeBanner, EmptyState } from "@/components/crm/ui";
+import { BookingStatusBadge, EmptyState } from "@/components/crm/ui";
 import { bookingCoverUrl } from "@/lib/crm/covers";
 import { loadVisibleCarnets } from "@/lib/crm/carnet-query";
 import { CoverPhoto } from "@/components/crm/CoverPhoto";
@@ -125,10 +125,7 @@ export default async function ReservationsPage({
                     ) : (
                       <span />
                     )}
-                    <span className="inline-flex items-center gap-1 rounded-full border border-[var(--admin-gold)]/50 bg-[var(--admin-navy)]/80 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-[var(--admin-gold)] shadow-sm backdrop-blur-md">
-                      <span className="h-2 w-2 rounded-full bg-[var(--admin-gold)]" />
-                      {BOOKING_STATUS_LABELS[b.status]}
-                    </span>
+                    <BookingStatusBadge label={BOOKING_STATUS_LABELS[b.status]} />
                   </div>
                   <div className="absolute bottom-3 left-3 right-3 text-white">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--admin-gold)]">
@@ -182,8 +179,6 @@ export default async function ReservationsPage({
           </li>
         ) : null}
       </ul>
-
-      <ConciergeBanner />
     </div>
   );
 }

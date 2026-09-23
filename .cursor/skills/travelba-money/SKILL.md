@@ -25,8 +25,9 @@ Ledger visible côté client (`/mon-compte/transactions`) : lignes `posted` seul
 `syncBookingDebit` (`lib/crm/bookings.ts`) :
 
 - Crée / met à jour un débit `kind=booking` si statut `confirmed` \| `travelling` \| `completed` et `total_amount > 0`
-- `cancelled` **ou** `total_amount <= 0` alors qu’un débit ouvert existe → `void`
-- `cancelled` → `void` le débit
+- `cancelled` → supprime les **débits** `booking_id` (plus au grand livre). Les crédits et les virements Revolut restent rapprochés.
+- `total_amount <= 0` alors qu’un débit ouvert existe → `void` ce débit seulement
+- Suppression du dossier → le même nettoyage, puis delete de la réservation
 - `draft` / `quoted` → pas de débit
 - Le total = **prix vendu agent**, pas le net fournisseur
 

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { sortItemsByOrder } from "./carnet";
 import { redactIngestValue } from "./ingest-redact";
 import { mergeExtractItems } from "./item-match";
+import { parseMoney } from "./money";
 import { BOOKING_ITEM_KINDS } from "./types";
 
 const looseString = z.string().nullable().optional();
@@ -248,6 +249,22 @@ export function sanitizeExtractedPrices(extract: BookingExtract): BookingExtract
     currency: extract.currency || "EUR",
     total_amount: null,
     items: sortItemsByOrder(merged),
+  };
+  return redactIngestValue(next);
+}
+
+/** Prix saisis par l’agent à la relecture. Le net PDF a déjà été retiré en amont. */
+export function keepAgentPrices(extract: BookingExtract): BookingExtract {
+  const next: BookingExtract = {
+    ...extract,
+    currency: extract.currency || "EUR",
+    total_amount: parseMoney(extract.total_amount),
+    items: sortItemsByOrder(
+      (extract.items || []).map((item) => ({
+        ...item,
+        amount: parseMoney(item.amount),
+      }))
+    ),
   };
   return redactIngestValue(next);
 }

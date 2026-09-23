@@ -25,6 +25,7 @@ import {
   EmptyState,
   PageEyebrow,
   PageTitle,
+  BookingStatusBadge,
   StatusChip,
   bookingStatusTone,
 } from "@/components/crm/ui";
@@ -221,9 +222,7 @@ export default async function AdminHomePage() {
                       ? ` · ${jMinusLabel(featured.start_date)}`
                       : ""}
                   </p>
-                  <StatusChip tone={bookingStatusTone(featured.status)}>
-                    {BOOKING_STATUS_LABELS[featured.status]}
-                  </StatusChip>
+                  <BookingStatusBadge label={BOOKING_STATUS_LABELS[featured.status]} />
                 </div>
                 <div>
                   <h3 className="font-display text-2xl font-bold leading-tight">

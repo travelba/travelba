@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { redactIngestText } from "./ingest-redact";
-import { sanitizeExtractedPrices } from "./ingest-types";
+import { keepAgentPrices, sanitizeExtractedPrices } from "./ingest-types";
 import {
   applyStructuredHints,
   inferAirportIata,
@@ -128,6 +128,39 @@ describe("redactIngestText", () => {
     assert.equal(cleaned.document_status, "quote");
     assert.equal((cleaned.notes_client || "").includes("8445"), false);
     assert.match(cleaned.notes_client || "", /Devis/);
+  });
+});
+
+describe("keepAgentPrices", () => {
+  it("conserve le prix unitaire saisi sur le billet", () => {
+    const kept = keepAgentPrices({
+      document_status: "confirmed",
+      title: "Marrakech",
+      destination: "Marrakech",
+      start_date: "2026-08-12",
+      end_date: "2026-08-15",
+      currency: "EUR",
+      total_amount: 1485.5,
+      notes_client: null,
+      customer_email: null,
+      customer_first_name: null,
+      customer_last_name: null,
+      items: [
+        {
+          kind: "flight",
+          title: "Paris → Marrakech",
+          supplier: null,
+          confirmation_ref: "ABC123",
+          start_at: "2026-08-12T09:40:00",
+          end_at: null,
+          amount: 742.75,
+          details: {},
+        },
+      ],
+      travelers: [],
+    });
+    assert.equal(kept.total_amount, 1485.5);
+    assert.equal(kept.items[0].amount, 742.75);
   });
 });
 

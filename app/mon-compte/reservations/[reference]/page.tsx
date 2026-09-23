@@ -11,7 +11,7 @@ import {
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
-import { ConciergeBanner, StatusChip, bookingStatusTone } from "@/components/crm/ui";
+import { BookingStatusBadge } from "@/components/crm/ui";
 import { bookingCoverUrl } from "@/lib/crm/covers";
 import {
   carnetVisible,
@@ -99,9 +99,7 @@ export default async function ReservationDetailPage({ params }: Props) {
         <div className="absolute inset-0 bg-gradient-to-t from-[var(--admin-navy)] via-[var(--admin-navy)]/70 to-transparent" />
         <div className="relative space-y-2 p-4 pb-5 pt-6">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <StatusChip tone={bookingStatusTone(b.status)}>
-              {BOOKING_STATUS_LABELS[b.status]}
-            </StatusChip>
+            <BookingStatusBadge label={BOOKING_STATUS_LABELS[b.status]} />
             <span className="rounded-full bg-black/35 px-3 py-1 text-[11px] font-bold backdrop-blur">
               {b.reference}
             </span>
@@ -180,6 +178,16 @@ export default async function ReservationDetailPage({ params }: Props) {
         ))}
       </section>
 
+      {b.start_date || visibleItems.some((item) => item.start_at) ? (
+        <a
+          href={`/mon-compte/reservations/${b.reference}/agenda.ics`}
+          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full border border-[var(--admin-gold)]/40 bg-white px-5 text-sm font-semibold text-[var(--admin-navy)]"
+        >
+          <Icon name="event" className="h-5 w-5 text-[var(--admin-gold)]" />
+          Ajouter à l’agenda
+        </a>
+      ) : null}
+
       <a
         href={modifyHref}
         target="_blank"
@@ -188,8 +196,6 @@ export default async function ReservationDetailPage({ params }: Props) {
       >
         Demander une modification
       </a>
-
-      <ConciergeBanner />
     </div>
   );
 }

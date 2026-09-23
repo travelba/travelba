@@ -3,7 +3,7 @@
 import type { BookingExtract } from "@/lib/crm/ingest-types";
 import type { BookingItemKind } from "@/lib/crm/types";
 import { BOOKING_ITEM_KINDS, BOOKING_ITEM_LABELS } from "@/lib/crm/types";
-import { DateFrInput, Field, fieldControlClass } from "@/components/crm/fields";
+import { DateFrInput, Field, MoneyInput, fieldControlClass } from "@/components/crm/fields";
 import { Trash2 } from "lucide-react";
 
 type ItemDraft = BookingExtract["items"][number];
@@ -147,9 +147,10 @@ export function IngestItemCard({
           />
         </Field>
         <Field label="Prix vendu (optionnel)">
-          <Text
-            value={item.amount == null ? "" : String(item.amount)}
-            onChange={(raw) => onChange({ ...item, amount: raw === "" ? null : Number(raw) })}
+          <MoneyInput
+            value={item.amount}
+            onChange={(amount) => onChange({ ...item, amount })}
+            aria-label="Prix vendu"
           />
         </Field>
         <Field label="Fournisseur">

@@ -4,7 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CrmCustomer } from "@/lib/crm/types";
 import { BookingIngest } from "@/components/crm/BookingIngest";
-import { fieldControlClass, DateFrInput } from "@/components/crm/fields";
+import { fieldControlClass, DateFrInput, MoneyInput } from "@/components/crm/fields";
 
 export function NewBookingForm({
   customers,
@@ -92,7 +92,7 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
       </label>
       <label className={labelClass}>
         Montant total (€)
-        <input name="total_amount" type="number" step="0.01" min="0" disabled={saving} placeholder="0,00" className={fieldControlClass} />
+        <MoneyInput name="total_amount" disabled={saving} aria-label="Montant total" className={fieldControlClass} />
       </label>
       <label className={labelClass}>
         Départ

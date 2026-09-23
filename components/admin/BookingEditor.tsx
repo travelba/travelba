@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -23,7 +23,7 @@ import { CoverPhoto } from "@/components/crm/CoverPhoto";
 import { Icon } from "@/components/crm/icons";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
-import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
+import { DateFrInput, MoneyInput, fieldControlClass } from "@/components/crm/fields";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
 import { TripPassportPicker } from "@/components/crm/TripPassportPicker";
 
@@ -49,6 +49,7 @@ export function BookingEditor({
   aiConfigured: boolean;
 }) {
   const router = useRouter();
+  const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
   const unpublishedItems = items.filter((item) => !item.visible_to_client);
   const needsReview = items.some((item) => item.details?.needs_review === true);
   const [busy, setBusy] = useState<"idle" | "save" | "publish">("idle");
@@ -58,6 +59,14 @@ export function BookingEditor({
     event.preventDefault();
     setBusy("save");
     setFlash(null);
+    if (saveOpenCard.current) {
+      const cardOk = await saveOpenCard.current();
+      if (!cardOk) {
+        setBusy("idle");
+        setFlash("La carte ouverte n’a pas été enregistrée.");
+        return;
+      }
+    }
     const body = Object.fromEntries(new FormData(event.currentTarget).entries());
     const res = await fetch(`/api/admin/bookings/${booking.id}`, {
       method: "PATCH",
@@ -233,7 +242,12 @@ export function BookingEditor({
         </label>
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
           Montant total (€)
-          <input name="total_amount" type="number" step="0.01" min="0" defaultValue={booking.total_amount} className="rounded-xl border border-border px-3 py-2" />
+          <MoneyInput
+            name="total_amount"
+            defaultValue={booking.total_amount}
+            aria-label="Montant total"
+            className="rounded-xl border border-border px-3 py-2"
+          />
         </label>
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
           Statut
@@ -329,7 +343,14 @@ export function BookingEditor({
         </form>
       </section>
 
-      <BookingItemsPanel bookingId={booking.id} items={items} />
+      <BookingItemsPanel
+        bookingId={booking.id}
+        currency={booking.currency}
+        items={items}
+        onBindDraftSave={(save) => {
+          saveOpenCard.current = save;
+        }}
+      />
 
       {items.length ? (
         <section className="admin-af-card space-y-3 rounded-3xl p-5">

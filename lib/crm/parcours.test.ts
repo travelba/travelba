@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { identityOverwriteWarning } from "./identity";
 import { loyaltyFromCustomer, normalizeLoyaltyMap, normalizeLoyaltyNumber } from "./loyalty";
-import { formatEncours, formatMoney, jMinusLabel, postedLedgerTotals } from "./money";
+import { encoursCaption, formatEncours, formatMoney, jMinusLabel, postedLedgerTotals } from "./money";
 import { needsAiCover, unsplashKeywordMatch } from "./covers";
 import { vaultDocumentsForPerson } from "./trip-documents";
 import type { CrmTravelDocument } from "./types";
@@ -31,6 +31,12 @@ test("loyalty map keeps six programs", () => {
 test("encours shows the signed amount", () => {
   assert.equal(formatEncours(1200), `Encours ${formatMoney(1200)}`);
   assert.equal(formatEncours(-2400), `Encours ${formatMoney(-2400)}`);
+});
+
+test("encours caption follows the sign", () => {
+  assert.equal(encoursCaption(-2400), "Reste à régler");
+  assert.equal(encoursCaption(1200), "Avoir");
+  assert.equal(encoursCaption(0), "Compte à jour");
 });
 
 test("J-minus uses the real start date", () => {

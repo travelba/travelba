@@ -5,8 +5,8 @@ export function bookingDebitIntent(input: {
   status: BookingStatus;
   amount: number;
   hasOpenDebit: boolean;
-}): "insert" | "update" | "void" | "noop" {
-  if (input.status === "cancelled") return input.hasOpenDebit ? "void" : "noop";
+}): "insert" | "update" | "void" | "clear" | "noop" {
+  if (input.status === "cancelled") return "clear";
   const shouldDebit =
     input.status === "confirmed" ||
     input.status === "travelling" ||
@@ -24,6 +24,16 @@ export async function nextBookingReference(supabase: SupabaseClient) {
     throw new Error("Référence de dossier indisponible. Réessayez.");
   }
   return String(data);
+}
+
+/** Retire uniquement les débits rattachés au dossier. Les crédits (Revolut, virements) restent. */
+export async function clearBookingCharges(supabase: SupabaseClient, bookingId: string) {
+  const { error } = await supabase
+    .from("crm_transactions")
+    .delete()
+    .eq("booking_id", bookingId)
+    .eq("direction", "debit");
+  if (error) throw new Error(error.message);
 }
 
 export async function syncBookingDebit(
@@ -48,6 +58,11 @@ export async function syncBookingDebit(
     hasOpenDebit: Boolean(debit),
   });
   const label = `Réservation ${booking.reference} — ${booking.title}`;
+
+  if (intent === "clear") {
+    await clearBookingCharges(supabase, booking.id);
+    return;
+  }
 
   if (intent === "void" && debit) {
     await supabase

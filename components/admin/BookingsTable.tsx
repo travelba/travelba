@@ -14,6 +14,7 @@ import { bookingCoverUrl } from "@/lib/crm/covers";
 import { CoverPhoto } from "@/components/crm/CoverPhoto";
 import { StatusChip, bookingStatusTone } from "@/components/crm/ui";
 import { bookingsListEmptyMessage } from "@/lib/crm/launch-status";
+import { DeleteBookingButton } from "@/components/admin/DeleteBookingButton";
 
 export function BookingsTable({
   bookings,
@@ -63,10 +64,10 @@ export function BookingsTable({
       </div>
       <ul className="admin-af-card divide-y divide-border overflow-hidden rounded-2xl">
         {filtered.map((b) => (
-          <li key={b.id}>
+          <li key={b.id} className="flex flex-col gap-2 px-5 py-4 transition hover:bg-[var(--admin-sky)]/40 sm:flex-row sm:items-center sm:justify-between">
             <Link
               href={`/admin/reservations/${b.id}`}
-              className="flex flex-col gap-2 px-5 py-4 transition hover:bg-[var(--admin-sky)]/40 sm:flex-row sm:items-center sm:justify-between"
+              className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="flex min-w-0 items-center gap-3">
               <div className="relative h-12 w-16 shrink-0 overflow-hidden rounded-xl">
@@ -98,6 +99,12 @@ export function BookingsTable({
                 </span>
               </div>
             </Link>
+            <DeleteBookingButton
+              compact
+              redirectTo={null}
+              bookingId={b.id}
+              label={`${b.reference} — ${b.title}`}
+            />
           </li>
         ))}
         {!filtered.length ? (

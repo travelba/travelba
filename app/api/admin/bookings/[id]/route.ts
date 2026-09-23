@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { setCarnetPublished, syncBookingDebit } from "@/lib/crm/bookings";
 import { scheduleBookingCover } from "@/lib/crm/cover-generate";
+import { BookingDeleteError, deleteBookingById } from "@/lib/crm/delete-booking";
+import { parseMoney } from "@/lib/crm/money";
 import type { BookingStatus, CrmBooking } from "@/lib/crm/types";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -47,7 +49,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
     "customer_id",
   ]) {
     if (key in body) {
-      patch[key] = key === "total_amount" ? Number(body[key] || 0) : body[key];
+      patch[key] = key === "total_amount" ? (parseMoney(body[key]) ?? 0) : body[key];
     }
   }
 
@@ -75,11 +77,11 @@ export async function PATCH(request: Request, ctx: Ctx) {
       .maybeSingle();
     if (refreshed) booking = refreshed as CrmBooking;
   }
-  await syncBookingDebit(
-    auth.supabase,
-    booking,
-    prev.status as BookingStatus
-  );
+  try {
+    await syncBookingDebit(auth.supabase, booking, prev.status as BookingStatus);
+  } catch (err) {
+    return jsonError(err instanceof Error ? err.message : "Écritures non retirées", 400);
+  }
   if (
     ("destination" in patch || "title" in patch) &&
     (booking.destination !== prev.destination || booking.title !== prev.title)
@@ -95,7 +97,12 @@ export async function DELETE(_req: Request, ctx: Ctx) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
-  const { error } = await auth.supabase.from("crm_bookings").delete().eq("id", id);
-  if (error) return dbError(error, 400);
-  return NextResponse.json({ ok: true });
+  try {
+    const result = await deleteBookingById(id);
+    return NextResponse.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Suppression impossible";
+    const status = err instanceof BookingDeleteError ? err.status : 400;
+    return jsonError(message, status);
+  }
 }

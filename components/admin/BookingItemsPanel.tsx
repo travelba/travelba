@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import {
@@ -10,6 +10,7 @@ import {
 } from "@/lib/crm/types";
 import type { BookingExtract } from "@/lib/crm/ingest-types";
 import { itemDetailsLine, itemWhen } from "@/lib/crm/booking-display";
+import { formatMoney } from "@/lib/crm/money";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
 
 type ItemDraft = BookingExtract["items"][number];
@@ -51,9 +52,13 @@ function moveItem<T>(list: T[], from: number, to: number) {
 export function BookingItemsPanel({
   bookingId,
   items,
+  currency = "EUR",
+  onBindDraftSave,
 }: {
   bookingId: string;
   items: CrmBookingItem[];
+  currency?: string;
+  onBindDraftSave?: (save: (() => Promise<boolean>) | null) => void;
 }) {
   const router = useRouter();
   const [rows, setRows] = useState(items);
@@ -106,9 +111,10 @@ export function BookingItemsPanel({
   }
 
   async function saveDraft() {
+    if (!editingId) return true;
     if (!draft.title.trim()) {
       setError("Titre requis.");
-      return;
+      return false;
     }
     setBusy(true);
     setError(null);
@@ -138,11 +144,21 @@ export function BookingItemsPanel({
     setBusy(false);
     if (!res.ok) {
       setError(json.error || "Enregistrement impossible");
-      return;
+      return false;
     }
     setEditingId(null);
     router.refresh();
+    return true;
   }
+
+  const saveDraftRef = useRef(saveDraft);
+  saveDraftRef.current = saveDraft;
+  const onBindRef = useRef(onBindDraftSave);
+  onBindRef.current = onBindDraftSave;
+  useEffect(() => {
+    onBindRef.current?.(() => saveDraftRef.current());
+    return () => onBindRef.current?.(null);
+  }, []);
 
   async function removeItem(id: string) {
     setBusy(true);
@@ -222,7 +238,13 @@ export function BookingItemsPanel({
                       ) : null}
                     </p>
                     <p className="text-xs text-muted">
-                      {[itemWhen(item), itemDetailsLine(item)].filter(Boolean).join(" · ")}
+                      {[
+                        itemWhen(item),
+                        itemDetailsLine(item),
+                        item.amount != null ? formatMoney(Number(item.amount), currency) : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </p>
                   </div>
                 </div>
