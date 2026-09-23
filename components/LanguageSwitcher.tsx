@@ -35,7 +35,7 @@ export function LanguageSwitcher() {
             disabled={isPending}
             className={`rounded-full px-2.5 py-1 uppercase tracking-wide transition-colors ${
               active
-                ? "bg-foreground text-background"
+                ? "bg-[#C5A880] text-[#0B192C]"
                 : "text-muted hover:text-foreground"
             }`}
             aria-current={active ? "true" : undefined}

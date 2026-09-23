@@ -31,7 +31,7 @@ export function Credentials() {
                   key={title}
                   className="flex items-center gap-4 rounded-xl border border-border bg-surface/60 px-5 py-4"
                 >
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-accent-2/20 to-accent/20 text-accent">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#C5A880]/40 bg-[#C5A880]/10 text-[#C5A880]">
                     <Icon className="h-6 w-6" />
                   </span>
                   <div>

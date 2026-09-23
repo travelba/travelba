@@ -1,5 +1,6 @@
 import { useTranslations } from "next-intl";
 import { MapPin, ShieldCheck } from "lucide-react";
+import { BrandMark } from "./BrandMark";
 import { Link } from "@/i18n/navigation";
 import { siteConfig, SERVICE_KEYS } from "@/lib/site";
 
@@ -31,9 +32,7 @@ export function Footer() {
         <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4">
           <div className="lg:col-span-1">
             <div className="flex items-center gap-2.5">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-accent-2 via-accent to-accent-3 text-sm font-bold text-background">
-                T
-              </span>
+              <BrandMark />
               <span className="text-sm font-semibold tracking-tight">
                 Travel Business Agency
               </span>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Menu, X } from "lucide-react";
+import { BrandMark } from "./BrandMark";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { siteConfig } from "@/lib/site";
 
@@ -45,11 +46,9 @@ export function Header() {
     >
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-8">
         <a href="#top" className="group flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-accent-2 via-accent to-accent-3 text-sm font-bold text-background">
-            T
-          </span>
+          <BrandMark />
           <span className="hidden text-sm font-semibold tracking-tight sm:block">
-            Travel Business <span className="text-muted">Agency</span>
+            Travel Business <span className="text-[#C5A880]">Agency</span>
           </span>
         </a>
 
@@ -69,7 +68,7 @@ export function Header() {
           <LanguageSwitcher />
           <a
             href="#contact"
-            className="hidden rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-background transition-transform hover:scale-[1.03] sm:inline-flex"
+            className="hidden rounded-full bg-[#C5A880] px-4 py-2 text-sm font-semibold text-[#0B192C] transition-colors hover:bg-[#d4bc9a] sm:inline-flex"
           >
             {t("cta")}
           </a>
@@ -103,7 +102,7 @@ export function Header() {
               target="_blank"
               rel="noopener noreferrer"
               onClick={() => setOpen(false)}
-              className="mt-4 rounded-full bg-foreground px-4 py-3 text-center text-sm font-semibold text-background"
+              className="mt-4 rounded-full bg-[#C5A880] px-4 py-3 text-center text-sm font-semibold text-[#0B192C]"
             >
               {t("cta")}
             </a>

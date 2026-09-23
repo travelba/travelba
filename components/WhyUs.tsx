@@ -16,7 +16,7 @@ export function WhyUs() {
   const t = useTranslations("WhyUs");
 
   return (
-    <section id="why" className="relative px-5 py-24 sm:px-8">
+    <section id="why" className="relative bg-[#07111c] px-5 py-24 sm:px-8">
       <div className="mx-auto max-w-7xl">
         <SectionHeading
           eyebrow={t("eyebrow")}

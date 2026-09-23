@@ -126,7 +126,7 @@ export function ContactForm() {
       <button
         type="submit"
         disabled={status === "loading"}
-        className="group inline-flex items-center justify-center gap-2 rounded-full bg-foreground px-6 py-3.5 text-sm font-semibold text-background transition-transform hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-70"
+        className="group inline-flex items-center justify-center gap-2 rounded-full bg-[#C5A880] px-6 py-3.5 text-sm font-semibold text-[#0B192C] transition-colors hover:bg-[#d4bc9a] disabled:cursor-not-allowed disabled:opacity-70"
       >
         {status === "loading" ? (
           <>
@@ -148,14 +148,14 @@ export function ContactForm() {
         </p>
       )}
       {status === "undelivered" && (
-        <p className="flex items-center gap-2 rounded-xl border border-accent-3/30 bg-accent-3/10 px-4 py-3 text-sm text-foreground">
-          <AlertCircle className="h-4 w-4 shrink-0 text-accent-3" />
+        <p className="flex items-center gap-2 rounded-xl border border-[#e8b4a2]/40 bg-[#e8b4a2]/10 px-4 py-3 text-sm text-foreground">
+          <AlertCircle className="h-4 w-4 shrink-0 text-[#e8b4a2]" />
           {t("undelivered", { email: siteConfig.contactEmail })}
         </p>
       )}
       {status === "error" && (
-        <p className="flex items-center gap-2 rounded-xl border border-accent-3/30 bg-accent-3/10 px-4 py-3 text-sm text-foreground">
-          <AlertCircle className="h-4 w-4 shrink-0 text-accent-3" />
+        <p className="flex items-center gap-2 rounded-xl border border-[#e8b4a2]/40 bg-[#e8b4a2]/10 px-4 py-3 text-sm text-foreground">
+          <AlertCircle className="h-4 w-4 shrink-0 text-[#e8b4a2]" />
           {t("error")}
         </p>
       )}

@@ -58,8 +58,8 @@ export function Hero() {
         className="relative z-10 mx-auto max-w-4xl text-center"
       >
         <motion.div variants={item} className="flex justify-center">
-          <span className="inline-flex items-center gap-2 rounded-full border border-border bg-surface/60 px-4 py-1.5 text-xs font-medium text-muted">
-            <span className="h-1.5 w-1.5 rounded-full bg-accent-2" />
+          <span className="inline-flex items-center gap-2 rounded-full border border-[#C5A880]/40 bg-[#0B192C]/55 px-4 py-1.5 text-xs font-medium tracking-wide text-[#E8D7BC]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#C5A880]" />
             {t("badge")}
           </span>
         </motion.div>
@@ -85,7 +85,7 @@ export function Hero() {
         >
           <a
             href="#contact"
-            className="group inline-flex w-full items-center justify-center gap-2 rounded-full bg-foreground px-6 py-3.5 text-sm font-semibold text-background transition-transform hover:scale-[1.03] sm:w-auto"
+            className="group inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#C5A880] px-6 py-3.5 text-sm font-semibold text-[#0B192C] transition-colors hover:bg-[#d4bc9a] sm:w-auto"
           >
             {t("ctaPrimary")}
             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
@@ -94,7 +94,7 @@ export function Hero() {
             href={`https://wa.me/${siteConfig.whatsappNumber}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-border bg-surface/40 px-6 py-3.5 text-sm font-semibold text-foreground transition-colors hover:bg-surface sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-[#C5A880]/50 bg-[#0B192C]/40 px-6 py-3.5 text-sm font-semibold text-[#FAF9F6] transition-colors hover:bg-[#0B192C]/70 sm:w-auto"
           >
             <MessageCircle className="h-4 w-4" />
             {t("ctaSecondary")}
@@ -103,17 +103,17 @@ export function Hero() {
 
         <motion.div
           variants={item}
-          className="mx-auto mt-14 grid max-w-lg grid-cols-3 gap-4"
+          className="mx-auto mt-14 flex max-w-lg divide-x divide-[#C5A880]/35"
         >
           {stats.map((s) => (
             <div
               key={s.label}
-              className="text-center [text-shadow:_0_1px_16px_rgba(0,0,0,0.6)]"
+              className="flex-1 px-3 text-center [text-shadow:_0_1px_16px_rgba(0,0,0,0.6)]"
             >
-              <div className="font-display text-2xl font-bold sm:text-3xl">
+              <div className="font-display text-xl font-medium text-[#C5A880] sm:text-2xl">
                 {s.value}
               </div>
-              <div className="mt-1 text-xs text-foreground/70 sm:text-sm">
+              <div className="mt-1 text-[11px] uppercase tracking-[0.12em] text-[#E8D7BC]/80 sm:text-xs">
                 {s.label}
               </div>
             </div>

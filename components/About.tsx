@@ -12,7 +12,7 @@ export function About() {
   ];
 
   return (
-    <section id="about" className="relative px-5 py-24 sm:px-8">
+    <section id="about" className="relative bg-[#07111c] px-5 py-24 sm:px-8">
       <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-12 lg:grid-cols-2">
         <Reveal>
           <span className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-accent-2">

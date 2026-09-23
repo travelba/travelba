@@ -1,16 +1,16 @@
 @import "tailwindcss";
 
 :root {
-  --background: #07090f;
-  --surface: #0d1018;
-  --surface-2: #131825;
-  --foreground: #f4f6fb;
-  --muted: #99a1b3;
-  --border: rgba(255, 255, 255, 0.08);
+  --background: #0b192c;
+  --surface: #12243a;
+  --surface-2: #1a314c;
+  --foreground: #faf9f6;
+  --muted: #c9bfb2;
+  --border: rgba(197, 168, 128, 0.22);
 
-  --accent: #5b8cff;
-  --accent-2: #22d3ee;
-  --accent-3: #ff8a5b;
+  --accent: #c5a880;
+  --accent-2: #c5a880;
+  --accent-3: #9e7e51;
 }
 
 /**
@@ -254,8 +254,8 @@ button:disabled,
 }
 
 ::selection {
-  background: var(--accent);
-  color: #07090f;
+  background: #c5a880;
+  color: #0b192c;
 }
 
 /* Ambient gradient utility used in hero / section backgrounds */
@@ -267,12 +267,7 @@ button:disabled,
 }
 
 .text-gradient {
-  background: linear-gradient(
-    110deg,
-    var(--accent-2),
-    var(--accent),
-    var(--accent-3)
-  );
+  background: linear-gradient(110deg, #e8d7bc, #c5a880 42%, #9e7e51);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -301,7 +296,7 @@ button:disabled,
   border-radius: 99px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #232a3d;
+  background: #9e7e51;
 }
 
 .admin-af ::-webkit-scrollbar-thumb:hover {
