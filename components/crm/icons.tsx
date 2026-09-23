@@ -22,6 +22,7 @@ import {
   LayoutGrid,
   ListChecks,
   LogOut,
+  Mail,
   Luggage,
   MessageCircle,
   Minus,
@@ -90,6 +91,7 @@ const ICONS: Record<string, LucideIcon> = {
   minus: Minus,
   close: X,
   expand_more: ChevronDown,
+  mail: Mail,
 };
 
 export function Icon({

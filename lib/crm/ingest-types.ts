@@ -355,6 +355,13 @@ export function sanitizeExtractedPrices(extract: BookingExtract): BookingExtract
   return redactIngestValue(next);
 }
 
+/** Parse tolérant : renvoie un extract vide si le payload est invalide (jamais d'exception). */
+export function parseExtractPayloadSafe(raw: unknown): BookingExtract {
+  const parsed = bookingExtractSchema.safeParse(raw);
+  if (!parsed.success) return emptyBookingExtract();
+  return sanitizeExtractedPrices(parsed.data);
+}
+
 /** Prix saisis par l’agent à la relecture. Le net PDF a déjà été retiré en amont. */
 export function keepAgentPrices(extract: BookingExtract): BookingExtract {
   const next: BookingExtract = {
