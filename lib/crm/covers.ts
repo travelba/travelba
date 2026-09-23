@@ -6,6 +6,7 @@ const UNSPLASH = (id: string, width = 960) => {
   return `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&h=${height}&q=70`;
 };
 
+/** Photo du lieu d’arrivée (Avoriaz ≠ Zermatt ≠ Paris). Skill travelba-carnet. */
 const BY_KEYWORD: Array<[RegExp, string]> = [
   [/papagayo|guanacaste|andaz|nicoya|costa rica|heredia|belen|san jos[eé]|sjo|arenal|manuel antonio/i, "photo-1687304527563-74c180d8ced7"],
   [/bocas|colon|panama|casco|tocumen|pty|panama city/i, "photo-1507525428034-b723cf961d3e"],

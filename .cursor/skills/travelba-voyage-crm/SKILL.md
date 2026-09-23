@@ -82,7 +82,7 @@ IDs prod :
 | Invitation | `lib/crm/invite.ts` |
 | Carnet | `lib/crm/carnet.ts` |
 | Import docs | `lib/crm/ingest-booking.ts`, `ingest-parse.ts`, skill `travelba-document-ingest` |
-| Couvertures | `lib/crm/covers.ts` + `lib/crm/cover-generate.ts` |
+| Couvertures | `lib/crm/covers.ts` + skill `travelba-carnet` (arrivée, pas Paris) |
 | Identité | `lib/crm/ocr-document.ts` |
 | Fichiers | `lib/crm/files.ts` + `app/api/files/route.ts` |
 | Argent | `lib/crm/money.ts`, `lib/crm/bookings.ts` (`syncBookingDebit`) |

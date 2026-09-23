@@ -70,7 +70,14 @@ RLS : le client ne `select` que `visible_to_client`. Preview admin ≠ URL clien
 
 ## Couverture
 
-`coverQuery` = **ville d’arrivée** : on ignore Paris / CDG / ORY s’il y a une autre ville (`Paris · Marrakech` → Marrakech). Unsplash (`lib/crm/covers.ts`) puis IA si besoin. `<CoverPhoto>` img natif, repli Unsplash si `/api/files` casse. En Puppeteer, Unsplash peut casser `networkidle0` — skill verify.
+La photo = **la ville / station d’arrivée**, jamais le hub de départ.
+
+- `coverQuery` (`lib/crm/carnet.ts`) : premier token qui n’est **pas** Paris / CDG / ORY / LBG / BVA / France. `Paris · Marrakech` → Marrakech. `CDG → RAK` → RAK. `Avoriaz - Haute Savoie` → Avoriaz.
+- **Interdit** : photo de Paris (Tour Eiffel) sur un séjour Avoriaz / Marrakech / ski. Le vol part souvent de CDG — ce n’est pas la destination.
+- Unsplash d’abord (`lib/crm/covers.ts` `BY_KEYWORD`) : une **photo de ce lieu**. Station ski (Avoriaz, Morzine, Châtel, Les Gets, Portes du Soleil) = entrée **avant** le filet générique `alpes|zermatt`. Zermatt ≠ Avoriaz.
+- **Nouvelle ville / station** : ajouter le regex + un ID Unsplash **de cette station** (vérifier l’URL `images.unsplash.com/photo-…`). Tests : `coverQuery` + `unsplashKeywordMatch`. Sans match, l’IA invente un paysage faux — ne pas laisser `cover_image_path` si ça ne ressemble pas au lieu (vider le champ pour retomber sur Unsplash).
+- IA (`cover-generate.ts`) seulement si `needsAiCover` (aucun mot-clé Unsplash). Prompt = le lieu d’arrivée, pas « Alps » / « France ».
+- `<CoverPhoto>` img natif, repli Unsplash si `/api/files` casse. Puppeteer : `domcontentloaded` — skill verify.
 
 ## Fichiers séjour
 

@@ -47,5 +47,6 @@ Produit FR pour agence de voyage : back-office `/admin` (clients, réservations,
 - Stocker un PAN / CVC — références Stripe uniquement
 - `npm run seed:demo` en production — ne pas vider `crm_staff`
 - Inventer horaires / inclus / nets PDF
+- Couverture = ville / station d’arrivée (Avoriaz, pas Paris / CDG) — skill `travelba-carnet`
 - Ingest documents côté client
 - Committer des PDF d’entraînement ou de la PII (PAN, noms) — skill `travelba-document-ingest`
