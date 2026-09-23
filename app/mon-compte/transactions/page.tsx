@@ -17,7 +17,9 @@ import {
 import { filterClientLedgerRows, isCompanyMember } from "@/lib/crm/company-role";
 import {
   ledgerMovementTitle,
-  reservationContextLabel,
+  ledgerPlace,
+  ledgerSubjectTitle,
+  ledgerWhenWhere,
   visibleLedgerRows,
 } from "@/lib/crm/ledger-display";
 import { LedgerMovements } from "@/components/account/LedgerMovements";
@@ -111,21 +113,22 @@ export default async function TransactionsPage() {
   const movements = shown.map((t) => {
     const credit = t.direction === "credit";
     const booking = t.booking_id ? bookingById.get(t.booking_id) : null;
-    const tripName = reservationContextLabel(booking);
     const tripDates =
       booking && (booking.start_date || booking.end_date)
         ? formatDateRangeShort(booking.start_date, booking.end_date)
         : null;
+    const place = ledgerPlace(booking);
+    const reference = booking?.reference || null;
+    const rawTitle = ledgerMovementTitle(t, TX_KIND_LABELS[t.kind] || t.kind);
     return {
       id: t.id,
       credit,
-      title: ledgerMovementTitle(t, TX_KIND_LABELS[t.kind] || t.kind),
+      title: ledgerSubjectTitle(rawTitle, reference),
       amountLabel: `${credit ? "+" : "−"}${formatMoney(Number(t.amount), t.currency)}`,
       occurredLabel: formatDateFr(t.occurred_on),
       kindLabel: TX_KIND_LABELS[t.kind] || t.kind,
-      tripName,
-      tripDates,
-      reference: booking?.reference || null,
+      whenWhere: ledgerWhenWhere(tripDates, place),
+      reference,
       carnetHref:
         booking?.visible_to_client && booking.reference
           ? `/mon-compte/reservations/${booking.reference}`

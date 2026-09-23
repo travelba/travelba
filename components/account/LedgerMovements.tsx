@@ -11,8 +11,7 @@ export type LedgerMovementRow = {
   amountLabel: string;
   occurredLabel: string;
   kindLabel: string;
-  tripName: string | null;
-  tripDates: string | null;
+  whenWhere: string | null;
   reference: string | null;
   carnetHref: string | null;
 };
@@ -49,16 +48,11 @@ export function LedgerMovements({ rows }: { rows: LedgerMovementRow[] }) {
                   />
                 </span>
                 <span className="min-w-0">
-                  {row.tripName ? (
-                    <span className="block text-sm font-semibold text-[var(--admin-navy)]">
-                      {row.tripName}
-                    </span>
-                  ) : null}
-                  {row.tripDates ? (
-                    <span className="block text-[13px] text-muted">{row.tripDates}</span>
-                  ) : null}
-                  <span className="block text-[13px] leading-snug text-[var(--admin-navy)]">
+                  <span className="block text-[15px] font-semibold leading-snug text-[var(--admin-navy)]">
                     {row.title}
+                  </span>
+                  <span className="mt-0.5 block text-[13px] leading-snug text-muted">
+                    {row.whenWhere || row.occurredLabel}
                   </span>
                 </span>
               </span>
@@ -83,10 +77,12 @@ export function LedgerMovements({ rows }: { rows: LedgerMovementRow[] }) {
             </button>
             {open ? (
               <div className="space-y-1 border-t border-[#e9e8e5] px-4 py-3 text-[13px] text-[var(--admin-navy)]">
-                <p>
-                  <span className="text-muted">Date · </span>
-                  {row.occurredLabel}
-                </p>
+                {row.whenWhere ? (
+                  <p>
+                    <span className="text-muted">Mouvement du </span>
+                    {row.occurredLabel}
+                  </p>
+                ) : null}
                 <p>
                   <span className="text-muted">Type · </span>
                   {row.kindLabel}
@@ -97,7 +93,6 @@ export function LedgerMovements({ rows }: { rows: LedgerMovementRow[] }) {
                     {row.reference}
                   </p>
                 ) : null}
-                <p className="leading-snug">{row.title}</p>
                 {row.carnetHref ? (
                   <Link
                     href={row.carnetHref}

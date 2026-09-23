@@ -39,6 +39,31 @@ export function reservationContextLabel(
   return (booking.title || "").trim() || (booking.destination || "").trim() || booking.reference || null;
 }
 
+/** Retire la référence en fin de libellé : elle va dans le détail. */
+export function ledgerSubjectTitle(label: string, reference: string | null | undefined) {
+  const ref = (reference || "").trim();
+  if (!ref) return label;
+  const suffix = ` — ${ref}`;
+  if (!label.endsWith(suffix)) return label;
+  return label.slice(0, -suffix.length).trim() || label;
+}
+
+export function ledgerPlace(
+  booking: { title?: string | null; destination?: string | null; reference: string } | null | undefined
+) {
+  if (!booking) return null;
+  const destination = (booking.destination || "").trim();
+  if (destination) return destination;
+  const title = (booking.title || "").trim();
+  if (title && title !== booking.reference) return title;
+  return null;
+}
+
+/** Date du séjour et lieu, sous le sujet du mouvement. */
+export function ledgerWhenWhere(dates: string | null | undefined, place: string | null | undefined) {
+  return [dates, place].map((value) => (value || "").trim()).filter(Boolean).join(" · ") || null;
+}
+
 /** Le montant global du séjour s’affiche comme une dépense, pas comme « Réservation … ». */
 export function ledgerMovementTitle(
   row: LedgerKindRow & { label: string | null; booking_id?: string | null },

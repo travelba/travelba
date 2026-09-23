@@ -3,6 +3,9 @@ import test from "node:test";
 import {
   isStayRollupDebit,
   ledgerMovementTitle,
+  ledgerPlace,
+  ledgerSubjectTitle,
+  ledgerWhenWhere,
   reservationContextLabel,
   visibleLedgerRows,
 } from "./ledger-display";
@@ -80,6 +83,19 @@ test("le montant global du séjour se lit comme une dépense", () => {
     ),
     "Vol · Paris → Tel Aviv — TB-2026-0031"
   );
+});
+
+test("le titre dit de quoi il s’agit, la ligne du dessous la date et le lieu", () => {
+  assert.equal(
+    ledgerSubjectTitle("Vol · Paris → Tel Aviv — TB-2026-0033", "TB-2026-0033"),
+    "Vol · Paris → Tel Aviv"
+  );
+  assert.equal(ledgerSubjectTitle("Frais de billeterie (4 billets)", "TB-2026-0033"), "Frais de billeterie (4 billets)");
+  assert.equal(ledgerPlace({ title: "Tel Aviv", destination: "Tel Aviv", reference: "TB-1" }), "Tel Aviv");
+  assert.equal(ledgerPlace({ title: "Séjour ski", destination: null, reference: "TB-1" }), "Séjour ski");
+  assert.equal(ledgerPlace(null), null);
+  assert.equal(ledgerWhenWhere("14 — 23 décembre 2026", "Tel Aviv"), "14 — 23 décembre 2026 · Tel Aviv");
+  assert.equal(ledgerWhenWhere(null, null), null);
 });
 
 test("le contexte nomme le séjour, sans formule dans le cadre", () => {
