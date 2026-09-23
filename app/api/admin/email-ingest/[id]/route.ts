@@ -7,7 +7,7 @@ import {
   applyExtractToBooking,
   persistNewBookingFromExtract,
 } from "@/lib/crm/ingest-booking";
-import { loadEmailIngestFiles } from "@/lib/crm/email-ingest";
+import { loadEmailIngestFiles, rematchEmailIngestRow } from "@/lib/crm/email-ingest";
 import type { CrmEmailIngest } from "@/lib/crm/types";
 
 export const runtime = "nodejs";
@@ -44,6 +44,17 @@ export async function POST(request: Request, ctx: Ctx) {
         .update({ status: "refused" })
         .eq("id", id);
       return NextResponse.json({ ok: true, status: "refused" });
+    }
+
+    if (action === "rematch") {
+      if (!row.extract) return jsonError("Extract introuvable");
+      await rematchEmailIngestRow(row);
+      const { data: next } = await admin
+        .from("crm_email_ingest")
+        .select("status, suggested_customer_id, suggested_booking_id, created_booking_id")
+        .eq("id", id)
+        .maybeSingle();
+      return NextResponse.json({ ok: true, row: next });
     }
 
     const extract = parseExtractPayloadSafe(row.extract);

@@ -25,6 +25,7 @@ import { redactIngestText } from "@/lib/crm/ingest-redact";
 import {
   aiGatewayConfigured,
   bookingExtractLlmSchema,
+  detectCancellationDocument,
   emptyBookingExtract,
   guessIngestMime,
   openaiApiKey,
@@ -42,9 +43,10 @@ const MAX_NATIVE_PDF_BYTES = 8 * 1024 * 1024;
 const PROMPT_COMMON = `Tu es l’assistant d’une agence de voyage française (Travel Business Agency).
 Un dépôt = UN séjour. Si plusieurs voyages : extraire le plus complet et le dire dans notes_client.
 
-document_status : confirmed | quote | identity.
+document_status : confirmed | quote | identity | cancelled.
 - quote = « none are on hold », plusieurs options tarifaires, pas de nom de réservation.
 - identity = passeport → ne pas créer de prestation.
+- cancelled = le fournisseur annule la réservation (« Cancellation confirmation », « has been cancelled », « a été annulée »). PAS une politique d’annulation ni « free cancellation ».
 
 Règles d’honnêteté :
 - Ne jamais inventer. Absent = null. Pas de check-in 15:00 / check-out 12:00.
@@ -520,7 +522,9 @@ async function processPreparedFile(
   const fromParser = () =>
     sanitizeExtractedPrices({
       ...emptyBookingExtract(),
-      document_status: parsed.status || (family === "quote" ? "quote" : "confirmed"),
+      document_status:
+        parsed.status ||
+        (family === "quote" ? "quote" : detectCancellationDocument(text) ? "cancelled" : "confirmed"),
       title: parsed.title || "",
       destination: parsed.destination || "",
       notes_client: parsed.notes.join("\n"),

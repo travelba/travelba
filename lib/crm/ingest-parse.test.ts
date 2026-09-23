@@ -225,6 +225,17 @@ describe("parseAmadeusReceipt", () => {
   });
 });
 
+describe("annulation fournisseur", () => {
+  it("marque cancelled sans traiter une politique d’annulation comme un événement", () => {
+    const cancelled = parsedItemsFromText(
+      "Cancellation confirmation\nYour reservation has been cancelled.\nBooking Reference: 38181SH005103\nGuest Test"
+    );
+    assert.equal(cancelled.status, "cancelled");
+    const policy = parsedItemsFromText(LE_HOTEL);
+    assert.notEqual(policy.status, "cancelled");
+  });
+});
+
 describe("parseDocumentMoney", () => {
   it("lit le total hôtel Little Emperors sans le coller au prix vendu", () => {
     assert.deepEqual(parseDocumentMoney(LE_HOTEL), { amount: 858.8, currency: "USD" });
@@ -806,6 +817,10 @@ describe("sellingTotalFromExtract", () => {
     assert.equal(
       bookingStatusFromExtract({ ...extract, document_status: "quote" }, "draft"),
       "quoted"
+    );
+    assert.equal(
+      bookingStatusFromExtract({ ...extract, document_status: "cancelled" }, "draft"),
+      "cancelled"
     );
   });
 

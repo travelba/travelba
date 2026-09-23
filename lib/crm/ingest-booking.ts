@@ -20,6 +20,7 @@ import {
   bookingStatusFromExtract,
   guessIngestMime,
   isAllowedIngestType,
+  isCancellationExtract,
   keepAgentPrices,
   normalizeHotelExtractItem,
   sellingTotalFromExtract,
@@ -30,6 +31,7 @@ import {
 } from "@/lib/crm/ingest-types";
 import { assertStaffIngestPath, ingestBatchPrefix } from "@/lib/crm/ingest-storage";
 import { sortItemsByOrder } from "@/lib/crm/carnet";
+import { cancellationApplyPlan } from "@/lib/crm/email-match";
 import { findMatchingItem } from "@/lib/crm/item-match";
 import { inferAirlineIata } from "@/lib/crm/brand-marks";
 import {
@@ -451,6 +453,14 @@ export async function persistNewBookingFromExtract(opts: {
       { field: "customer_id", message: "Client introuvable." },
     ]);
   }
+  if (isCancellationExtract(opts.extract)) {
+    throw new BookingIssuesError("Annulation : rattachez à un voyage existant.", [
+      {
+        field: "document_status",
+        message: "Annulation : ne créez pas un nouveau dossier.",
+      },
+    ]);
+  }
   const persistIssues = collectExtractIssues(opts.extract, {
     customerId: opts.customerId,
     requireCustomer: true,
@@ -584,6 +594,74 @@ export async function applyExtractToBooking(opts: {
   }
   if (Object.keys(patch).length) {
     await admin.from("crm_bookings").update(patch).eq("id", opts.bookingId);
+  }
+  await syncBookingTotalFromItems(admin, opts.bookingId);
+  const { data: refreshed } = await admin
+    .from("crm_bookings")
+    .select("*")
+    .eq("id", opts.bookingId)
+    .maybeSingle();
+  const next = (refreshed || booking) as CrmBooking;
+  await syncBookingLedger(admin, next, booking.status as BookingStatus);
+  return next;
+}
+
+/** Annulation fournisseur : masque les cartes concernées, annule le dossier s’il ne reste plus de carnet. */
+export async function applyCancellationToBooking(opts: {
+  bookingId: string;
+  customerId: string;
+  extract: BookingExtract;
+  files?: File[];
+  staged?: IngestStagedFile[];
+  staffUserId?: string;
+  batchId?: string;
+  visibleToClient: boolean;
+}) {
+  const admin = createServiceClient();
+  const { data: booking } = await admin
+    .from("crm_bookings")
+    .select("*")
+    .eq("id", opts.bookingId)
+    .maybeSingle();
+  if (!booking || booking.customer_id !== opts.customerId) {
+    throw new Error("Réservation introuvable");
+  }
+  const { data: items } = await admin
+    .from("crm_booking_items")
+    .select("*")
+    .eq("booking_id", opts.bookingId);
+  await attachBookingFiles(
+    opts.bookingId,
+    opts.staged || [],
+    opts.files || [],
+    false,
+    admin,
+    opts.staffUserId
+  );
+  if (opts.staffUserId && opts.batchId) {
+    await cleanupIngestBatch(opts.staffUserId, opts.batchId);
+  }
+  const plan = cancellationApplyPlan(opts.extract, (items || []) as CrmBookingItem[]);
+  for (const itemId of plan.itemIds) {
+    const { error } = await admin
+      .from("crm_booking_items")
+      .update({ visible_to_client: false, include_in_ledger: false })
+      .eq("id", itemId)
+      .eq("booking_id", opts.bookingId);
+    if (error) throw dbFailure(error, "Carte non mise à jour.");
+  }
+  const note = "Annulation fournisseur appliquée automatiquement.";
+  const patch: Record<string, unknown> = {};
+  if (plan.cancelBooking && booking.status !== "cancelled") {
+    patch.status = "cancelled";
+  }
+  const previousNotes = String(booking.notes_internal || "").trim();
+  if (!previousNotes.includes(note)) {
+    patch.notes_internal = previousNotes ? `${previousNotes}\n${note}` : note;
+  }
+  if (Object.keys(patch).length) {
+    const { error } = await admin.from("crm_bookings").update(patch).eq("id", opts.bookingId);
+    if (error) throw dbFailure(error, "Annulation non enregistrée.");
   }
   await syncBookingTotalFromItems(admin, opts.bookingId);
   const { data: refreshed } = await admin

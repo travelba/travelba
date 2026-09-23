@@ -1,6 +1,6 @@
 import { inferAirlineIata } from "./brand-marks";
 import { redactIngestText } from "./ingest-redact";
-import type { BookingExtract } from "./ingest-types";
+import { detectCancellationDocument, type BookingExtract } from "./ingest-types";
 import { findMatchingItem, mergeExtractItems } from "./item-match";
 
 export type ParsedAirport = { iata: string; city: string };
@@ -1307,6 +1307,10 @@ export function parsedItemsFromText(text: string): {
     status = "quote";
     notes.push("Devis — tarifs non bloqués, à confirmer.");
   }
+  if (detectCancellationDocument(clean)) {
+    status = "cancelled";
+    notes.push("Annulation fournisseur — à rattacher au dossier existant, sans créer de voyage.");
+  }
   if (isToucanActivities(clean)) {
     notes.push(
       "Toucan Discovery : activités uniquement ; les étapes du cadre ne sont pas des hôtels."
@@ -1350,7 +1354,8 @@ export function applyStructuredHints(
   for (const raw of texts) {
     const parsed = parsedItemsFromText(raw);
     for (const item of parsed.items) upsertHint(items, item);
-    if (parsed.status) status = status || parsed.status;
+    if (parsed.status === "cancelled") status = "cancelled";
+    else if (parsed.status) status = status || parsed.status;
     extraNotes.push(...parsed.notes);
     if (!travelers.length && parsed.travelers.length) travelers = parsed.travelers;
     if (!title && parsed.title) title = parsed.title;

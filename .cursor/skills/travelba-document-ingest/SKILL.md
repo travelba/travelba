@@ -6,6 +6,7 @@ description: >-
   SIXT, TAAP/Talixo, devis). Use when the user sends PDFs or images, trains
   extraction, tunes ingest-parse / PROMPT / merge, BookingIngest, or PAN
   redaction. Identity scans (passeport MRZ) use travelba-identity instead.
+  Gmail labels / crm_email_ingest (auto dossier) use travelba-email-ingest.
 ---
 
 # Travelba — import (qualité)
@@ -16,6 +17,8 @@ L’IA ne publie jamais.
 
 Agence **seule**. `app/api/client/bookings/**/ingest` = 404.
 Identité / MRZ : skill `travelba-identity` — **pas** ce dropzone.
+Gmail labels → `crm_email_ingest` → **auto** match/apply : skill `travelba-email-ingest`
+(ce n’est **pas** ce dropzone : ici relecture humaine puis Enregistrer).
 
 ## Contrat (non négociable)
 

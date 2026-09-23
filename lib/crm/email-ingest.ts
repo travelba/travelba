@@ -20,15 +20,28 @@ import {
   isAllowedIngestType,
   MAX_INGEST_BYTES,
   MAX_INGEST_FILES,
+  detectCancellationDocument,
+  isCancellationExtract,
   parseExtractPayloadSafe,
   type BookingExtract,
   type IngestWarning,
 } from "@/lib/crm/ingest-types";
 import { uploadCrmFile, downloadCrmFile, safeFileName } from "@/lib/crm/files";
 import {
+  decideEmailIngestAction,
+  executeEmailIngestDecision,
+  extractReferences,
+  mergeBookingSuggestions,
   suggestBookingByReference,
+  suggestBookingByTripSignals,
   suggestCustomerFromExtract,
+  usableCustomerEmail,
 } from "@/lib/crm/email-match";
+import {
+  applyCancellationToBooking,
+  applyExtractToBooking,
+  persistNewBookingFromExtract,
+} from "@/lib/crm/ingest-booking";
 import type {
   CrmBooking,
   CrmBookingItem,
@@ -166,58 +179,160 @@ export async function catchUpGmailHistory() {
 async function computeSuggestions(admin: Admin, extract: BookingExtract) {
   const { data: customers } = await admin
     .from("crm_customers")
-    .select("id, first_name, last_name, company_name, email");
-  const people = (customers || []) as Pick<
+    .select("id, first_name, last_name, usage_name, company_name, email");
+  const people = (customers || []) as (Pick<
     CrmCustomer,
     "id" | "first_name" | "last_name" | "company_name" | "email"
-  >[];
+  > & { usage_name?: string | null })[];
   const { autoCustomerId, candidates } = suggestCustomerFromExtract(people, extract);
 
-  let suggestedBookingId: string | null = null;
-  const merged: EmailIngestCandidate[] = [...candidates];
-  if (autoCustomerId) {
-    const { data: bookings } = await admin
-      .from("crm_bookings")
-      .select("id, reference, title, destination")
-      .eq("customer_id", autoCustomerId);
-    const bookingList = (bookings || []) as Pick<
-      CrmBooking,
-      "id" | "reference" | "title" | "destination"
-    >[];
-    const ids = bookingList.map((b) => b.id);
-    const itemsByBooking = new Map<string, Pick<CrmBookingItem, "confirmation_ref">[]>();
-    if (ids.length) {
-      const { data: items } = await admin
-        .from("crm_booking_items")
-        .select("booking_id, confirmation_ref")
-        .in("booking_id", ids);
-      for (const item of (items || []) as { booking_id: string; confirmation_ref: string | null }[]) {
-        const arr = itemsByBooking.get(item.booking_id) || [];
-        arr.push({ confirmation_ref: item.confirmation_ref });
-        itemsByBooking.set(item.booking_id, arr);
-      }
-    }
-    const booking = suggestBookingByReference(extract, bookingList, itemsByBooking);
-    suggestedBookingId = booking.autoBookingId;
-    for (const cand of booking.candidates) {
-      merged.push({
-        customer_id: autoCustomerId,
-        booking_id: cand.booking_id,
-        label: cand.label,
-        reason: cand.reason,
-        score: cand.score,
-      });
+  const { data: bookings } = await admin
+    .from("crm_bookings")
+    .select("id, customer_id, reference, title, destination, start_date, end_date, status")
+    .neq("status", "cancelled");
+  const bookingList = (bookings || []) as (Pick<
+    CrmBooking,
+    "id" | "reference" | "title" | "destination" | "start_date" | "end_date" | "status"
+  > & { customer_id: string })[];
+  const ids = bookingList.map((b) => b.id);
+  const itemsByBooking = new Map<string, Pick<CrmBookingItem, "confirmation_ref">[]>();
+  if (ids.length && extractReferences(extract).size) {
+    const { data: items } = await admin
+      .from("crm_booking_items")
+      .select("booking_id, confirmation_ref")
+      .in("booking_id", ids);
+    for (const item of (items || []) as { booking_id: string; confirmation_ref: string | null }[]) {
+      const arr = itemsByBooking.get(item.booking_id) || [];
+      arr.push({ confirmation_ref: item.confirmation_ref });
+      itemsByBooking.set(item.booking_id, arr);
     }
   }
 
+  const booking = mergeBookingSuggestions(
+    suggestBookingByReference(extract, bookingList, itemsByBooking),
+    suggestBookingByTripSignals(extract, bookingList, people)
+  );
+
+  const merged: EmailIngestCandidate[] = [...candidates];
+  for (const cand of booking.candidates) {
+    const customerId = cand.customer_id || autoCustomerId;
+    if (!customerId) continue;
+    merged.push({
+      customer_id: customerId,
+      booking_id: cand.booking_id,
+      label: cand.label,
+      reason: cand.reason,
+      score: cand.score,
+    });
+  }
+
+  const suggestedBookingId = booking.autoBookingId;
+  const bookingCustomerId = suggestedBookingId
+    ? booking.candidates.find((row) => row.booking_id === suggestedBookingId)?.customer_id
+    : null;
+
   return {
-    suggested_customer_id: autoCustomerId,
+    suggested_customer_id: bookingCustomerId || autoCustomerId,
     suggested_booking_id: suggestedBookingId,
-    candidates: merged,
+    candidates: merged.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label, "fr")),
   };
 }
 
-/** Applique un extract déjà obtenu à une ligne : matching + statut. */
+async function createCustomerFromExtract(
+  admin: Admin,
+  input: { firstName: string; lastName: string; email: string | null }
+) {
+  const email =
+    usableCustomerEmail(input.email) || `ingest.${crypto.randomUUID()}@invalid.local`;
+  const { data, error } = await admin
+    .from("crm_customers")
+    .insert({
+      first_name: input.firstName.trim(),
+      last_name: input.lastName.trim(),
+      email,
+      language: "fr",
+    })
+    .select("id")
+    .single();
+  if (data?.id) return data.id as string;
+  if (error && usableCustomerEmail(input.email)) {
+    const { data: existing } = await admin
+      .from("crm_customers")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+    if (existing?.id) return existing.id as string;
+  }
+  throw new Error("Création du client impossible.");
+}
+
+async function autoApplyEmailIngest(
+  admin: Admin,
+  rowId: string,
+  extract: BookingExtract,
+  suggestions: {
+    suggested_customer_id: string | null;
+    suggested_booking_id: string | null;
+    candidates: EmailIngestCandidate[];
+  },
+  attachments: EmailIngestAttachment[]
+) {
+  const decision = decideEmailIngestAction({
+    extract,
+    suggestedCustomerId: suggestions.suggested_customer_id,
+    suggestedBookingId: suggestions.suggested_booking_id,
+    candidates: suggestions.candidates,
+  });
+  if (decision.kind === "review") return;
+
+  const files = await loadEmailIngestFiles({ attachments });
+  try {
+    const result = await executeEmailIngestDecision(decision, {
+      apply: (bookingId, customerId) =>
+        isCancellationExtract(extract)
+          ? applyCancellationToBooking({
+              bookingId,
+              customerId,
+              extract,
+              files,
+              visibleToClient: false,
+            })
+          : applyExtractToBooking({
+              bookingId,
+              customerId,
+              extract,
+              files,
+              visibleToClient: false,
+            }),
+      persist: (customerId) =>
+        persistNewBookingFromExtract({
+          customerId,
+          extract,
+          files,
+          status: "draft",
+          visibleToClient: false,
+        }),
+      createCustomer: (input) => createCustomerFromExtract(admin, input),
+    });
+    if (!result) return;
+    await admin
+      .from("crm_email_ingest")
+      .update({
+        status: "attached",
+        created_booking_id: result.bookingId,
+        suggested_customer_id: result.customerId,
+        suggested_booking_id: result.bookingId,
+        error: null,
+      })
+      .eq("id", rowId);
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Rattachement automatique impossible";
+    await admin.from("crm_email_ingest").update({ error: message }).eq("id", rowId);
+  }
+}
+
+/** Applique un extract déjà obtenu à une ligne : matching + rattachement auto. */
 export async function matchAndStoreExtract(
   admin: Admin,
   rowId: string,
@@ -239,7 +354,59 @@ export async function matchAndStoreExtract(
       error: null,
     })
     .eq("id", rowId);
+  await autoApplyEmailIngest(admin, rowId, extract, suggestions, attachments);
   return suggestions;
+}
+
+/** Relance matching + auto-rattachement sur un extract déjà stocké (sans re-télécharger Gmail). */
+export async function rematchEmailIngestRow(row: CrmEmailIngest) {
+  if (!row.extract) throw new Error("Extract introuvable");
+  const extract = parseExtractPayloadSafe(row.extract);
+  if (
+    extract.document_status !== "identity" &&
+    detectCancellationDocument(`${row.subject || ""}\n${extract.title || ""}\n${extract.notes_client || ""}`)
+  ) {
+    extract.document_status = "cancelled";
+  }
+  const admin = createServiceClient();
+  return matchAndStoreExtract(
+    admin,
+    row.id,
+    extract,
+    row.warnings || [],
+    row.attachments || []
+  );
+}
+
+/** Rattrapage cron : lignes déjà parsées, pas encore rattachées. */
+export async function rematchStoredEmailIngest(limit = 20) {
+  const admin = createServiceClient();
+  const { data } = await admin
+    .from("crm_email_ingest")
+    .select("*")
+    .in("status", ["parsed", "matched"])
+    .not("extract", "is", null)
+    .is("created_booking_id", null)
+    .order("received_at", { ascending: true, nullsFirst: true })
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  const rows = (data || []) as CrmEmailIngest[];
+  let rematched = 0;
+  let failed = 0;
+  for (const row of rows) {
+    try {
+      await rematchEmailIngestRow(row);
+      rematched += 1;
+    } catch (err) {
+      failed += 1;
+      const message = err instanceof Error ? err.message : "Rapprochement impossible";
+      await admin
+        .from("crm_email_ingest")
+        .update({ error: message })
+        .eq("id", row.id);
+    }
+  }
+  return { scanned: rows.length, rematched, failed };
 }
 
 async function storeAttachment(
@@ -299,6 +466,12 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
   }
 
   const { extract, warnings } = await extractBookingFromPrepared(prepared);
+  if (
+    extract.document_status !== "identity" &&
+    detectCancellationDocument(`${message.subject || ""}\n${body}`)
+  ) {
+    extract.document_status = "cancelled";
+  }
   await admin.from("crm_email_ingest").update(basePatch).eq("id", row.id);
   await matchAndStoreExtract(admin, row.id, extract, warnings, stored);
 }
