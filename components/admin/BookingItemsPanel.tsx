@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import {
@@ -12,6 +12,11 @@ import type { BookingExtract } from "@/lib/crm/ingest-types";
 import { itemDetailsLine, itemWhen } from "@/lib/crm/booking-display";
 import { hotelDisplayName, itemPriceLabel } from "@/lib/crm/carnet";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
+import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
+import { Icon } from "@/components/crm/icons";
+import { documentsForItem } from "@/lib/crm/carnet";
+import type { CrmBookingDocument } from "@/lib/crm/types";
+import type { HouseholdMember } from "@/lib/crm/household";
 
 type ItemDraft = BookingExtract["items"][number];
 
@@ -54,10 +59,14 @@ function moveItem<T>(list: T[], from: number, to: number) {
 export function BookingItemsPanel({
   bookingId,
   items,
+  documents = [],
+  household = [],
   currency = "EUR",
 }: {
   bookingId: string;
   items: CrmBookingItem[];
+  documents?: CrmBookingDocument[];
+  household?: HouseholdMember[];
   currency?: string;
 }) {
   const router = useRouter();
@@ -188,7 +197,17 @@ export function BookingItemsPanel({
           >
             {editingId === item.id ? (
               <div className="space-y-2">
-                <IngestItemCard item={draft} onChange={setDraft} onRemove={() => setEditingId(null)} />
+                <IngestItemCard
+                  item={draft}
+                  household={household}
+                  onChange={setDraft}
+                  onRemove={() => setEditingId(null)}
+                />
+                <ItemAttachments
+                  bookingId={bookingId}
+                  itemId={item.id}
+                  docs={documentsForItem(item, documents)}
+                />
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -238,6 +257,11 @@ export function BookingItemsPanel({
                         .filter(Boolean)
                         .join(" · ")}
                     </p>
+                    <ItemAttachments
+                      bookingId={bookingId}
+                      itemId={item.id}
+                      docs={documentsForItem(item, documents)}
+                    />
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
@@ -281,7 +305,12 @@ export function BookingItemsPanel({
       </ul>
       {editingId === "new" ? (
         <div className="mt-3 space-y-2">
-          <IngestItemCard item={draft} onChange={setDraft} onRemove={() => setEditingId(null)} />
+          <IngestItemCard
+            item={draft}
+            household={household}
+            onChange={setDraft}
+            onRemove={() => setEditingId(null)}
+          />
           <button
             type="button"
             disabled={busy}
@@ -295,5 +324,51 @@ export function BookingItemsPanel({
       {error ? <p className="mt-2 text-sm text-accent">{error}</p> : null}
       <p className="mt-2 text-xs text-muted">Retirer une carte conserve le PDF joint au dossier.</p>
     </section>
+  );
+}
+
+function ItemAttachments({
+  bookingId,
+  itemId,
+  docs,
+}: {
+  bookingId: string;
+  itemId: string;
+  docs: CrmBookingDocument[];
+}) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+
+  async function upload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const fd = new FormData(form);
+    fd.set("booking_item_id", itemId);
+    setBusy(true);
+    await fetch(`/api/admin/bookings/${bookingId}/documents`, { method: "POST", body: fd });
+    setBusy(false);
+    form.reset();
+    router.refresh();
+  }
+
+  return (
+    <div className="mt-2 space-y-1">
+      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted">Pièces jointes</p>
+      {docs.map((doc) => (
+        <div key={doc.id} className="flex items-center justify-between gap-2 text-xs">
+          <span className="truncate">{doc.file_name || "Document"}</span>
+          <FileOpenLink path={doc.storage_path} className="inline-flex items-center gap-1 font-semibold">
+            <Icon name={fileKindIcon(doc.mime_type, doc.file_name)} className="h-3.5 w-3.5" />
+            Ouvrir
+          </FileOpenLink>
+        </div>
+      ))}
+      <form onSubmit={upload} className="flex flex-wrap items-center gap-2">
+        <input name="file" type="file" required className="text-xs" />
+        <button type="submit" disabled={busy} className="text-xs font-semibold text-[var(--admin-navy)]">
+          {busy ? "Envoi…" : "Joindre"}
+        </button>
+      </form>
+    </div>
   );
 }

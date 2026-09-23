@@ -139,4 +139,12 @@ test("stay total is the sum of selling prices when any card is priced", () => {
     ]),
     2050
   );
+  assert.equal(
+    bookingTotalFromItems([
+      { kind: "hotel", amount: 800 },
+      { kind: "chauffeur", amount: 150 },
+      { kind: "greeter", amount: 100 },
+    ]),
+    800
+  );
 });

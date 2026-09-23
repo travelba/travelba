@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
+import { dbError, jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
+import { collectPublishIssues } from "@/lib/crm/booking-issues";
 import { setCarnetPublished, syncBookingLedger, parseIncludeInLedger } from "@/lib/crm/bookings";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { scheduleBookingCover } from "@/lib/crm/cover-generate";
@@ -81,6 +82,14 @@ export async function PATCH(request: Request, ctx: Ctx) {
   }
   if ("visible_to_client" in body) {
     try {
+      if (body.visible_to_client) {
+        const { data: publishItems } = await auth.supabase
+          .from("crm_booking_items")
+          .select("kind")
+          .eq("booking_id", id);
+        const publishIssues = collectPublishIssues(publishItems || []);
+        if (publishIssues.length) return jsonIssues(publishIssues);
+      }
       await setCarnetPublished(auth.supabase, id, Boolean(body.visible_to_client));
     } catch (err) {
       return jsonError(err instanceof Error ? err.message : "Publication impossible", 400);

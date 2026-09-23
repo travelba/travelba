@@ -31,7 +31,20 @@ import { assertStaffIngestPath, ingestBatchPrefix } from "@/lib/crm/ingest-stora
 import { sortItemsByOrder } from "@/lib/crm/carnet";
 import { scheduleBookingCover } from "@/lib/crm/cover-generate";
 import { findMatchingItem } from "@/lib/crm/item-match";
-import { isPlaceholderTraveler, matchTravelerToParty, sameRecordedTraveler } from "@/lib/crm/person-match";
+import { inferAirlineIata } from "@/lib/crm/brand-marks";
+import {
+  BookingIssuesError,
+  collectExtractIssues,
+  issuesSummary,
+  zodIssuesToBookingIssues,
+} from "@/lib/crm/booking-issues";
+import {
+  applyRoomGuestLabels,
+  attachTravelerToHousehold,
+  householdMembers,
+  travelerIsLinked,
+} from "@/lib/crm/household";
+import { isPlaceholderTraveler, sameRecordedTraveler } from "@/lib/crm/person-match";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import {
   BOOKING_ITEM_KINDS,
@@ -147,8 +160,13 @@ function cleanDetails(details: BookingExtract["items"][number]["details"] | unde
       const cleaned = value
         .map((entry) => {
           if (entry && typeof entry === "object") {
-            const rec: Record<string, string> = {};
+            const rec: Record<string, unknown> = {};
             for (const [k, v] of Object.entries(entry as Record<string, unknown>)) {
+              if (k === "party_keys" && Array.isArray(v)) {
+                const keys = v.map((key) => String(key || "")).filter(Boolean);
+                if (keys.length) rec.party_keys = keys;
+                continue;
+              }
               const text = emptyToNull(v);
               if (text) rec[k] = text;
             }
@@ -272,10 +290,25 @@ async function upsertItemsAndTravelers(
     const item = raw.kind === "hotel" ? normalizeHotelExtractItem(raw) : raw;
     const title = String(item.title || "").trim();
     if (!title) continue;
+    const kind = itemKind(item.kind);
     const details = cleanDetails(item.details);
     if (item.confirmation_ref && !details.pnr) details.pnr = item.confirmation_ref;
+    if (kind === "flight") {
+      const iata = inferAirlineIata({
+        airline: typeof details.airline === "string" ? details.airline : null,
+        airline_iata: typeof details.airline_iata === "string" ? details.airline_iata : null,
+        flight_number: typeof details.flight_number === "string" ? details.flight_number : null,
+      });
+      if (iata) details.airline_iata = iata;
+    }
+    if (kind === "hotel" && Array.isArray(details.rooms)) {
+      details.rooms = applyRoomGuestLabels(
+        details.rooms as { guests?: string; party_keys?: string[] }[],
+        householdMembers(customer, companions)
+      );
+    }
     const payload = {
-      kind: itemKind(item.kind),
+      kind,
       title,
       supplier: emptyToNull(item.supplier),
       confirmation_ref: emptyToNull(item.confirmation_ref),
@@ -304,6 +337,13 @@ async function upsertItemsAndTravelers(
           .eq("id", match.id);
         if (error) throw dbFailure(error, "Carte non mise à jour.");
         Object.assign(match, payload);
+        if (payload.source_document_id) {
+          await supabase
+            .from("crm_booking_documents")
+            .update({ booking_item_id: match.id })
+            .eq("id", payload.source_document_id)
+            .eq("booking_id", bookingId);
+        }
       } else {
         const { data: inserted, error } = await supabase
           .from("crm_booking_items")
@@ -324,6 +364,13 @@ async function upsertItemsAndTravelers(
             updated_at: "",
             ...payload,
           } as CrmBookingItem);
+          if (payload.source_document_id) {
+            await supabase
+              .from("crm_booking_documents")
+              .update({ booking_item_id: inserted.id })
+              .eq("id", payload.source_document_id)
+              .eq("booking_id", bookingId);
+          }
         }
       }
       saved += 1;
@@ -348,23 +395,24 @@ async function upsertItemsAndTravelers(
     );
 
   for (const traveler of incoming) {
-    const first = emptyToNull(traveler.first_name);
-    const last = emptyToNull(traveler.last_name);
+    const linked = attachTravelerToHousehold(traveler, customer, companions);
+    const first = emptyToNull(linked.first_name);
+    const last = emptyToNull(linked.last_name);
     if (!first && !last) continue;
     if (skipPlaceholders && isPlaceholderTraveler(first, last)) continue;
+    if (!isPlaceholderTraveler(first, last) && !travelerIsLinked(linked)) continue;
     const recorded = { first_name: first, last_name: last };
     if (existingTravelers.some((row) => sameRecordedTraveler(row, recorded))) continue;
-    const match = matchTravelerToParty(recorded, customer, companions);
     const companion =
-      match?.kind === "companion" ? companions.find((row) => row.id === match.id) : null;
+      linked.companion_id ? companions.find((row) => row.id === linked.companion_id) : null;
     const { error } = await supabase.from("crm_booking_travelers").insert({
       booking_id: bookingId,
       companion_id: companion?.id || null,
-      is_account_holder: match?.kind === "holder",
+      is_account_holder: Boolean(linked.is_account_holder),
       first_name: first || companion?.first_name || null,
       last_name: last || companion?.last_name || null,
     });
-    if (error) continue;
+    if (error) throw dbFailure(error, "Voyageur non enregistré.");
     existingTravelers.push(recorded);
   }
 
@@ -388,10 +436,16 @@ export async function persistNewBookingFromExtract(opts: {
     admin.from("crm_customers").select("*").eq("id", opts.customerId).maybeSingle(),
     admin.from("crm_travel_companions").select("*").eq("customer_id", opts.customerId),
   ]);
-  if (!customer) throw new Error("Client introuvable");
-  if (opts.extract.document_status === "identity") {
-    throw new Error("Document d’identité : enregistrez-le dans le profil, pas en réservation.");
+  if (!customer) {
+    throw new BookingIssuesError("Client introuvable", [
+      { field: "customer_id", message: "Client introuvable." },
+    ]);
   }
+  const persistIssues = collectExtractIssues(opts.extract, {
+    customerId: opts.customerId,
+    requireCustomer: true,
+  });
+  if (persistIssues.length) throw new BookingIssuesError(issuesSummary(persistIssues), persistIssues);
   const reference = await nextBookingReference(opts.referenceClient ?? admin);
   const extract = opts.extract;
   const title =
@@ -488,10 +542,11 @@ export async function applyExtractToBooking(opts: {
       admin.from("crm_booking_travelers").select("first_name, last_name").eq("booking_id", opts.bookingId),
       admin.from("crm_booking_items").select("*").eq("booking_id", opts.bookingId),
     ]);
-  if (!customer) throw new Error("Client introuvable");
-  if (opts.extract.document_status === "identity") {
-    throw new Error("Document d’identité : enregistrez-le dans le profil, pas en réservation.");
-  }
+  if (!customer) throw new BookingIssuesError("Client introuvable", [
+    { field: "customer_id", message: "Client introuvable." },
+  ]);
+  const persistIssues = collectExtractIssues(opts.extract);
+  if (persistIssues.length) throw new BookingIssuesError(issuesSummary(persistIssues), persistIssues);
   const docs = await attachBookingFiles(
     opts.bookingId,
     opts.staged || [],
@@ -551,6 +606,7 @@ export async function applyExtractToBooking(opts: {
 export function parseExtractPayload(raw: unknown): BookingExtract {
   const parsed = bookingExtractSchema.safeParse(raw);
   if (!parsed.success) {
+    const issues = zodIssuesToBookingIssues(parsed.error);
     console.error(
       "[ingest] extract_invalid",
       parsed.error.issues.map((issue) => ({
@@ -559,7 +615,7 @@ export function parseExtractPayload(raw: unknown): BookingExtract {
         message: issue.message,
       }))
     );
-    throw new Error("Données extraites invalides");
+    throw new BookingIssuesError(issuesSummary(issues) || "Données extraites invalides", issues);
   }
   return sanitizeExtractedPrices(parsed.data);
 }

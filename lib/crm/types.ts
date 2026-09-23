@@ -28,6 +28,8 @@ export const BOOKING_ITEM_KINDS = [
   "cruise",
   "insurance",
   "fee",
+  "chauffeur",
+  "greeter",
 ] as const;
 
 export type BookingItemKind = (typeof BOOKING_ITEM_KINDS)[number];
@@ -42,7 +44,16 @@ export const BOOKING_ITEM_LABELS: Record<BookingItemKind, string> = {
   cruise: "Bateau",
   insurance: "Assurance",
   fee: "Frais",
+  chauffeur: "Chauffeur",
+  greeter: "Greeter",
 };
+
+/** Cartes hors séjour (total + publication). */
+export const EXTRA_ITEM_KINDS = ["chauffeur", "greeter"] as const;
+
+export function isExtraItemKind(kind: string | null | undefined) {
+  return kind === "chauffeur" || kind === "greeter";
+}
 
 export const DOC_TYPES = [
   "passport",
@@ -138,6 +149,10 @@ export type CrmCustomer = {
   billing_parent_id: string | null;
   language: string;
   stripe_customer_id: string | null;
+  /** Badge / filtre admin — aucun effet côté espace client. */
+  on_hold?: boolean;
+  /** Accès greeter aéroport. */
+  is_vip?: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -237,6 +252,7 @@ export type CrmBookingTraveler = {
 export type CrmBookingDocument = {
   id: string;
   booking_id: string;
+  booking_item_id?: string | null;
   kind: string;
   file_name: string | null;
   mime_type: string | null;

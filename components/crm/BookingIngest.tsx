@@ -15,8 +15,23 @@ import {
   X,
 } from "lucide-react";
 import { sortItemsByOrder } from "@/lib/crm/carnet";
-import { customerFullName, type CrmCustomer } from "@/lib/crm/types";
+import { customerFullName, type CrmCompanion, type CrmCustomer } from "@/lib/crm/types";
 import { DateFrInput, Field, fieldControlClass } from "@/components/crm/fields";
+import { IssuesList } from "@/components/crm/IssuesList";
+import {
+  collectExtractIssues,
+  issuesFromResponse,
+  type BookingIssue,
+} from "@/lib/crm/booking-issues";
+import {
+  companionKey,
+  householdMembers,
+  holderKey,
+  linkExtractTravelers,
+  travelerIsLinked,
+  travelerNeedsHousehold,
+  type HouseholdMember,
+} from "@/lib/crm/household";
 import {
   emptyBookingExtract,
   MAX_INGEST_BYTES,
@@ -28,6 +43,8 @@ import {
 } from "@/lib/crm/ingest-types";
 import { mergeExtractItems } from "@/lib/crm/item-match";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
+
+const EMPTY_COMPANIONS: CrmCompanion[] = [];
 
 type ItemDraft = BookingExtract["items"][number];
 type SlotStatus =
@@ -167,6 +184,8 @@ export function BookingIngest({
   role,
   mode,
   customers = [],
+  householdHolder = null,
+  householdCompanions = EMPTY_COMPANIONS,
   ingestUrl,
   saveUrl,
   aiConfigured,
@@ -175,6 +194,8 @@ export function BookingIngest({
   role: "admin" | "client";
   mode: "create" | "append";
   customers?: CrmCustomer[];
+  householdHolder?: Pick<CrmCustomer, "first_name" | "last_name"> & { birth_date?: string | null } | null;
+  householdCompanions?: CrmCompanion[];
   ingestUrl: string;
   saveUrl: string;
   aiConfigured: boolean;
@@ -191,9 +212,41 @@ export function BookingIngest({
     null
   );
   const [error, setError] = useState<string | null>(null);
+  const [issues, setIssues] = useState<BookingIssue[]>([]);
+  const [fetchedCompanions, setFetchedCompanions] = useState<CrmCompanion[]>([]);
   const [warnings, setWarnings] = useState<IngestWarning[]>([]);
   const [extract, setExtract] = useState<BookingExtract | null>(null);
   const [customerId, setCustomerId] = useState("");
+  const selectedCustomer = customers.find((row) => row.id === customerId) || null;
+  const holder = householdHolder || selectedCustomer;
+  const companions = householdCompanions.length ? householdCompanions : fetchedCompanions;
+  const household: HouseholdMember[] = holder ? householdMembers(holder, companions) : [];
+
+  useEffect(() => {
+    if (mode !== "create" || !customerId) {
+      if (mode === "create") setFetchedCompanions([]);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/admin/companions?customer_id=${encodeURIComponent(customerId)}`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (!cancelled) setFetchedCompanions(json.companions || []);
+      })
+      .catch(() => {
+        if (!cancelled) setFetchedCompanions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [customerId, mode]);
+
+  useEffect(() => {
+    if (!holder) return;
+    setExtract((prev) =>
+      prev ? { ...prev, travelers: linkExtractTravelers(prev.travelers, holder, companions) } : prev
+    );
+  }, [holder, companions]);
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const slotsRef = useRef<Slot[]>([]);
   useEffect(() => {
@@ -377,12 +430,18 @@ export function BookingIngest({
 
   async function save() {
     if (!extract) return;
-    if (role === "admin" && mode === "create" && !customerId) {
-      setError("Choisissez un client.");
+    const blockers = collectExtractIssues(extract, {
+      customerId,
+      requireCustomer: role === "admin" && mode === "create",
+    });
+    if (blockers.length) {
+      setIssues(blockers);
+      setError(null);
       return;
     }
     setBusy("save");
     setError(null);
+    setIssues([]);
     try {
       const controller = new AbortController();
       abortRef.current = controller;
@@ -405,7 +464,11 @@ export function BookingIngest({
       );
       const res = await fetch(saveUrl, { method: "POST", body, signal: controller.signal });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Enregistrement impossible");
+      if (!res.ok) {
+        const next = issuesFromResponse(json);
+        setIssues(next);
+        throw new Error(json.error || "Enregistrement impossible");
+      }
       setExtract(null);
       setWarnings([]);
       for (const slot of slots) {
@@ -765,6 +828,7 @@ export function BookingIngest({
                   <div className="min-w-0 flex-1">
                     <IngestItemCard
                       item={item}
+                      household={household}
                       onChange={(next) => patchItem(index, next)}
                       onRemove={() => patch("items", extract.items.filter((_, i) => i !== index))}
                     />
@@ -776,38 +840,81 @@ export function BookingIngest({
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <p className="font-display font-bold text-[var(--admin-navy)]">Voyageurs</p>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 text-xs font-semibold"
-                onClick={() => patch("travelers", [...extract.travelers, { first_name: "", last_name: "" }])}
-              >
-                <Plus className="h-3.5 w-3.5" /> Ajouter
-              </button>
-            </div>
-            {extract.travelers.map((traveler, index) => (
-              <div key={index} className="grid gap-2 sm:grid-cols-2">
-                <input
-                  placeholder="Prénom"
-                  value={traveler.first_name || ""}
-                  onChange={(e) => {
-                    const travelers = [...extract.travelers];
-                    travelers[index] = { ...traveler, first_name: e.target.value };
-                    patch("travelers", travelers);
+              <p className="font-display font-bold text-[var(--admin-navy)]">Voyageurs du foyer</p>
+              {household.length ? (
+                <select
+                  className={`${fieldControlClass} max-w-[16rem]`}
+                  value=""
+                  onChange={(event) => {
+                    const key = event.target.value;
+                    const person = household.find((row) => row.key === key);
+                    if (!person) return;
+                    patch("travelers", [
+                      ...extract.travelers,
+                      {
+                        first_name: person.first_name,
+                        last_name: person.last_name,
+                        companion_id: person.companion_id,
+                        is_account_holder: person.is_account_holder,
+                      },
+                    ]);
                   }}
-                  className={fieldControlClass}
-                />
-                <div className="flex gap-2">
-                  <input
-                    placeholder="Nom"
-                    value={traveler.last_name || ""}
-                    onChange={(e) => {
+                >
+                  <option value="">Ajouter…</option>
+                  {household.map((person) => (
+                    <option key={person.key} value={person.key}>
+                      {person.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="text-xs text-muted">Choisissez un client pour voir le foyer.</p>
+              )}
+            </div>
+            {extract.travelers.map((traveler, index) => {
+              const linked = travelerIsLinked(traveler);
+              const unknown = travelerNeedsHousehold(traveler);
+              const selected = traveler.is_account_holder
+                ? holderKey()
+                : traveler.companion_id
+                  ? companionKey(traveler.companion_id)
+                  : "";
+              return (
+                <div key={index} className="flex flex-wrap items-center gap-2 rounded-xl border border-border px-3 py-2">
+                  <p className="min-w-[10rem] flex-1 text-sm font-medium">
+                    {[traveler.first_name, traveler.last_name].filter(Boolean).join(" ") || "Sans nom"}
+                  </p>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                      linked ? "bg-[var(--admin-sky)]" : "bg-[var(--admin-peach)]"
+                    }`}
+                  >
+                    {traveler.is_account_holder ? "Titulaire" : linked ? "Foyer" : unknown ? "À rattacher" : "Placeholder"}
+                  </span>
+                  <select
+                    className={`${fieldControlClass} max-w-[14rem]`}
+                    value={selected}
+                    onChange={(event) => {
+                      const person = household.find((row) => row.key === event.target.value);
                       const travelers = [...extract.travelers];
-                      travelers[index] = { ...traveler, last_name: e.target.value };
+                      travelers[index] = person
+                        ? {
+                            first_name: person.first_name,
+                            last_name: person.last_name,
+                            companion_id: person.companion_id,
+                            is_account_holder: person.is_account_holder,
+                          }
+                        : { ...traveler, companion_id: null, is_account_holder: false };
                       patch("travelers", travelers);
                     }}
-                    className={fieldControlClass}
-                  />
+                  >
+                    <option value="">{household.length ? "Rattacher…" : "Choisissez un client"}</option>
+                    {household.map((person) => (
+                      <option key={person.key} value={person.key}>
+                        {person.label}
+                      </option>
+                    ))}
+                  </select>
                   <button
                     type="button"
                     className="text-accent"
@@ -816,8 +923,8 @@ export function BookingIngest({
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <button
@@ -835,7 +942,8 @@ export function BookingIngest({
         </div>
       ) : null}
 
-      {error ? (
+      <IssuesList issues={issues} />
+      {error && !issues.length ? (
         <p className="flex items-start gap-2 text-sm text-accent">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           {error}

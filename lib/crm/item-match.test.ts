@@ -93,6 +93,6 @@ describe("itemMatchKey", () => {
       }))
     );
     assert.equal(merged.length, 1);
-    assert.equal(merged[0]?.details?.ticket_count, 5);
+    assert.equal((merged[0]?.details as { ticket_count?: number } | undefined)?.ticket_count, 5);
   });
 });

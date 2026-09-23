@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   BOOKING_ITEM_LABELS,
+  isExtraItemKind,
   type BookingItemKind,
   type BookingStatus,
   type CrmBooking,
@@ -58,6 +59,7 @@ export function bookingTotalFromItems(
   let sum = 0;
   let priced = false;
   for (const item of items) {
+    if (isExtraItemKind(item.kind)) continue;
     const n = itemSellingAmount(item);
     if (n == null) continue;
     sum += n;
@@ -82,7 +84,7 @@ export function bookingItemDebitExternalId(bookingId: string, itemId: string) {
 }
 
 export function bookingItemDebitLabel(
-  item: Pick<CrmBookingItem, "kind" | "title" | "details">,
+  item: Pick<CrmBookingItem, "kind" | "title"> & { details?: Record<string, unknown> | null },
   reference: string
 ) {
   const kind = BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind;
@@ -331,7 +333,7 @@ export async function refreshTicketingFee(supabase: SupabaseClient, bookingId: s
 }
 
 export function canPublishCarnet(items: { kind: string }[]) {
-  return items.some((item) => item.kind !== "fee");
+  return items.some((item) => item.kind !== "fee" && !isExtraItemKind(item.kind));
 }
 
 export async function setCarnetPublished(
@@ -346,7 +348,9 @@ export async function setCarnetPublished(
       .eq("booking_id", bookingId);
     if (itemsLookupError) throw new Error(itemsLookupError.message);
     if (!canPublishCarnet(items || [])) {
-      throw new Error("Ajoutez au moins une carte avant de publier le carnet.");
+      throw new Error(
+        "Ajoutez au moins une carte (vol, hôtel, transfert…) avant de publier le carnet."
+      );
     }
   }
   const { error: bookingError } = await supabase

@@ -16,6 +16,20 @@ function companionPatch(body: Record<string, unknown>) {
   };
 }
 
+export async function GET(request: Request) {
+  const auth = await requireStaff();
+  if (auth instanceof NextResponse) return auth;
+  const customerId = new URL(request.url).searchParams.get("customer_id") || "";
+  if (!customerId) return jsonError("customer_id requis");
+  const { data, error } = await auth.supabase
+    .from("crm_travel_companions")
+    .select("*")
+    .eq("customer_id", customerId)
+    .order("last_name");
+  if (error) return dbError(error, 500);
+  return NextResponse.json({ companions: data || [] });
+}
+
 export async function POST(request: Request) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;

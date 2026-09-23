@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
+import { BookingIssuesError } from "@/lib/crm/booking-issues";
 import {
   collectIngestFiles,
   collectStagedFiles,
@@ -34,6 +35,7 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ booking });
   } catch (err) {
+    if (err instanceof BookingIssuesError) return jsonIssues(err.issues);
     const message = err instanceof Error ? err.message : "Enregistrement impossible";
     return jsonError(message, 400);
   }
