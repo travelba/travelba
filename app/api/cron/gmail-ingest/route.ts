@@ -4,6 +4,7 @@ import {
   catchUpGmailHistory,
   emailParsingReady,
   processReceivedEmailIngest,
+  rematchStoredEmailIngest,
 } from "@/lib/crm/email-ingest";
 import { gmailConfigured } from "@/lib/crm/gmail";
 
@@ -38,7 +39,16 @@ export async function GET(request: Request) {
       );
     }
     const result = await processReceivedEmailIngest(10);
-    return NextResponse.json({ captured, ...result });
+    let rematch = { scanned: 0, rematched: 0, failed: 0 };
+    try {
+      rematch = await rematchStoredEmailIngest(20);
+    } catch (err) {
+      console.error(
+        "[cron/gmail-ingest] rematch",
+        err instanceof Error ? err.message : err
+      );
+    }
+    return NextResponse.json({ captured, ...result, rematch });
   } catch (err) {
     console.error("[cron/gmail-ingest]", err instanceof Error ? err.message : err);
     return NextResponse.json({ error: "Ingestion e-mail échouée" }, { status: 502 });
