@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { siteConfig } from "@/lib/site";
 import { BrandMark } from "@/components/crm/ui";
+import { BusyBar } from "@/components/crm/BusyBar";
 import { MIN_PASSWORD_LENGTH, pathAfterPassword } from "@/lib/crm/session";
 
 const fieldClass =
@@ -93,6 +94,7 @@ export default function SetPasswordPage() {
               />
             </label>
             {error ? <p className="text-sm text-[var(--admin-red)]">{error}</p> : null}
+            <BusyBar active={loading} label="Enregistrement…" />
             <button
               type="submit"
               disabled={loading || expired}

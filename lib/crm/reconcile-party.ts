@@ -22,12 +22,12 @@ async function linkParty(supabase: SupabaseClient, customerId: string) {
     await Promise.all([
       supabase
         .from("crm_customers")
-        .select("id, first_name, last_name")
+        .select("id, first_name, last_name, usage_name")
         .eq("id", customerId)
         .maybeSingle(),
       supabase
         .from("crm_travel_companions")
-        .select("id, first_name, last_name")
+        .select("id, first_name, last_name, usage_name")
         .eq("customer_id", customerId),
       supabase.from("crm_travel_documents").select("*").eq("customer_id", customerId),
       supabase.from("crm_bookings").select("id, end_date").eq("customer_id", customerId),
@@ -45,11 +45,13 @@ async function linkParty(supabase: SupabaseClient, customerId: string) {
   const holder = {
     first_name: customer.first_name as string | null,
     last_name: customer.last_name as string | null,
+    usage_name: customer.usage_name as string | null,
   };
   const companionRows = (companions || []) as {
     id: string;
     first_name: string | null;
     last_name: string | null;
+    usage_name: string | null;
   }[];
   let docs = (documents || []) as CrmTravelDocument[];
   const byBooking = new Map<string, CrmBookingTraveler[]>();

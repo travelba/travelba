@@ -18,6 +18,7 @@ import {
 } from "@/components/crm/fields";
 import { type ScanResult } from "@/components/crm/IdentityScan";
 import { PersonPassportCard } from "@/components/crm/PersonPassportCard";
+import { BusyBar } from "@/components/crm/BusyBar";
 
 function relationshipLabel(value: string | null) {
   return RELATIONSHIP_OPTIONS.find((option) => option.value === value)?.label || value || "";
@@ -35,6 +36,7 @@ export function CompanionsManager({
   const [saving, setSaving] = useState(false);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [usageName, setUsageName] = useState("");
   const [relationship, setRelationship] = useState("");
   const [nationality, setNationality] = useState("");
   const [birthDate, setBirthDate] = useState("");
@@ -48,6 +50,7 @@ export function CompanionsManager({
     setOpen(false);
     setFirstName("");
     setLastName("");
+    setUsageName("");
     setRelationship("");
     setNationality("");
     setBirthDate("");
@@ -68,6 +71,7 @@ export function CompanionsManager({
               ...identity,
               first_name: firstName || identity.first_name,
               last_name: lastName || identity.last_name,
+              usage_name: usageName || identity.usage_name,
               birth_date: birthDate || identity.birth_date,
               nationality: nationality || identity.nationality,
               sex: (sex as typeof identity.sex) || identity.sex,
@@ -96,6 +100,7 @@ export function CompanionsManager({
       body: JSON.stringify({
         first_name: firstName,
         last_name: lastName,
+        usage_name: usageName,
         relationship,
         nationality,
         birth_date: birthDate,
@@ -188,6 +193,7 @@ export function CompanionsManager({
             );
             if (id.first_name) setFirstName(id.first_name);
             if (id.last_name) setLastName(id.last_name);
+            setUsageName(id.usage_name || "");
             if (id.birth_date) setBirthDate(id.birth_date);
             const nationalityIso = nationalityFromIdentity(id);
             if (nationalityIso) setNationality(nationalityIso);
@@ -209,12 +215,20 @@ export function CompanionsManager({
               className={fieldControlClass}
             />
           </Field>
-          <Field label="Nom" hint="Comme sur le passeport">
+          <Field label="Nom" hint="Nom de naissance, comme sur la pièce">
             <input
               required={listedIdentities(scan?.identity, scan?.identities).length < 2}
               autoComplete="off"
               value={lastName}
               onChange={(event) => setLastName(event.target.value)}
+              className={fieldControlClass}
+            />
+          </Field>
+          <Field label="Nom d'épouse" hint="Nom d'usage s'il est imprimé" className="sm:col-span-2">
+            <input
+              autoComplete="off"
+              value={usageName}
+              onChange={(event) => setUsageName(event.target.value)}
               className={fieldControlClass}
             />
           </Field>
@@ -241,6 +255,7 @@ export function CompanionsManager({
           </p>
         ) : null}
         {error ? <p className="text-sm text-accent">{error}</p> : null}
+          <BusyBar active={saving} label="Enregistrement…" />
           <button className="admin-af-btn rounded-full px-4 py-2.5 text-sm" disabled={saving}>
             {saving ? "Enregistrement…" : "Ajouter l’accompagnateur"}
           </button>

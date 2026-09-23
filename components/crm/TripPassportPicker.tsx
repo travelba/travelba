@@ -11,6 +11,7 @@ import {
   tripDocumentsForTraveler,
 } from "@/lib/crm/trip-documents";
 import { formatDateFr } from "@/lib/crm/money";
+import { BusyBar } from "@/components/crm/BusyBar";
 
 function passportLabel(doc: CrmTravelDocument) {
   return [DOC_TYPE_LABELS[doc.doc_type], doc.number, doc.expires_on ? `exp. ${formatDateFr(doc.expires_on)}` : null]
@@ -112,6 +113,7 @@ export function TripPassportPicker({
       )}
       {warn ? <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm">{warn}</p> : null}
       {error ? <p className="text-sm text-accent">{error}</p> : null}
+      <BusyBar active={busyId != null} label="Enregistrement…" />
       <ul className="space-y-3">
         {travelers.map((traveler) => {
           const tripDocs = tripDocumentsForTraveler(documents, traveler);

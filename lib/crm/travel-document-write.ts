@@ -109,6 +109,7 @@ export async function insertTravelDocument(
   const identity: DocumentIdentityFields = {
     first_name: emptyToNull(input.first_name),
     last_name: emptyToNull(input.last_name),
+    usage_name: emptyToNull(input.usage_name),
     birth_date: emptyToNull(input.birth_date),
     nationality: resolveNationality(input.nationality, input.issuingCountry),
     sex: input.sex === "M" || input.sex === "F" || input.sex === "X" ? input.sex : null,
@@ -178,6 +179,7 @@ export async function cloneTravelDocument(
     personalNumber: source.personal_number,
     first_name: source.first_name,
     last_name: source.last_name,
+    usage_name: source.usage_name,
     birth_date: source.birth_date,
     nationality: source.nationality,
     sex: source.sex,
@@ -233,6 +235,7 @@ export async function applyIdentityFromIdentity(
   const filled = filledIdentity({
     first_name: emptyToNull(identity.first_name),
     last_name: emptyToNull(identity.last_name),
+    usage_name: emptyToNull(identity.usage_name),
     birth_date: emptyToNull(identity.birth_date),
     nationality: resolveNationality(identity.nationality),
     sex: identity.sex === "M" || identity.sex === "F" || identity.sex === "X" ? identity.sex : null,

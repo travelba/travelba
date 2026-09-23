@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { CrmCustomer } from "@/lib/crm/types";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { fieldControlClass, DateFrInput } from "@/components/crm/fields";
+import { BusyBar } from "@/components/crm/BusyBar";
 import { IssuesList } from "@/components/crm/IssuesList";
 import { issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
 
@@ -123,6 +124,9 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
       <div className="sm:col-span-3">
         <IssuesList issues={issues} />
         {error && !issues.length ? <p className="text-sm text-accent">{error}</p> : null}
+      </div>
+      <div className="sm:col-span-3">
+        <BusyBar active={saving} label="Création…" />
       </div>
       <button type="submit" disabled={saving} className="admin-af-btn rounded-xl px-4 py-2.5 text-sm sm:col-span-3">
         {saving ? "Création…" : "Créer la réservation"}

@@ -31,6 +31,7 @@ import {
 } from "@/components/crm/CompanyBillingFields";
 import { CompanyRoleFields } from "@/components/crm/CompanyRoleFields";
 import { PersonPassportCard } from "@/components/crm/PersonPassportCard";
+import { BusyBar } from "@/components/crm/BusyBar";
 import { type ScanResult } from "@/components/crm/IdentityScan";
 import { vaultDocumentsForPerson } from "@/lib/crm/trip-documents";
 
@@ -39,6 +40,7 @@ function applyIdentityState(
   setters: {
     setFirstName: (v: string) => void;
     setLastName: (v: string) => void;
+    setUsageName: (v: string) => void;
     setBirthDate: (v: string) => void;
     setSex: (v: string) => void;
     setNationality: (v: string) => void;
@@ -46,6 +48,7 @@ function applyIdentityState(
 ) {
   if (id.first_name) setters.setFirstName(id.first_name);
   if (id.last_name) setters.setLastName(id.last_name);
+  setters.setUsageName(id.usage_name || "");
   if (id.birth_date) setters.setBirthDate(id.birth_date);
   if (id.sex) setters.setSex(id.sex);
   const nationalityIso = nationalityFromIdentity(id);
@@ -66,6 +69,7 @@ export function CustomerEditor({
   const router = useRouter();
   const [firstName, setFirstName] = useState(customer.first_name);
   const [lastName, setLastName] = useState(customer.last_name);
+  const [usageName, setUsageName] = useState(customer.usage_name || "");
   const [phone, setPhone] = useState(customer.phone || "");
   const [phoneSecondary, setPhoneSecondary] = useState(customer.phone_secondary || "");
   const [birthDate, setBirthDate] = useState(customer.birth_date || "");
@@ -120,6 +124,7 @@ export function CustomerEditor({
       body: JSON.stringify({
         first_name: firstName,
         last_name: lastName,
+        usage_name: usageName,
         phone,
         phone_secondary: phoneSecondary,
         birth_date: birthDate,
@@ -172,6 +177,7 @@ export function CustomerEditor({
             applyIdentityState(id, {
               setFirstName,
               setLastName,
+              setUsageName,
               setBirthDate,
               setSex,
               setNationality,
@@ -198,8 +204,11 @@ export function CustomerEditor({
           <Field label="Prénom(s)" hint="Tous les prénoms, dans l’ordre du passeport">
             <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
           </Field>
-          <Field label="Nom" hint="Comme sur le passeport">
+          <Field label="Nom" hint="Nom de naissance, comme sur la pièce">
             <input value={lastName} onChange={(e) => setLastName(e.target.value)} className={fieldControlClass} />
+          </Field>
+          <Field label="Nom d'épouse" hint="Nom d'usage s'il est imprimé sur le passeport ou la CNI" className="sm:col-span-2">
+            <input value={usageName} onChange={(e) => setUsageName(e.target.value)} className={fieldControlClass} />
           </Field>
           <Field label="Naissance">
             <DateFrInput
@@ -275,6 +284,7 @@ export function CustomerEditor({
 
         {saveError ? <p className="text-sm text-accent">{saveError}</p> : null}
         <div className="sticky bottom-4 z-20 -mx-1 rounded-2xl border border-[#e5e3dc] bg-white/95 p-3 shadow-lg backdrop-blur">
+          <BusyBar active={saving} label="Enregistrement…" />
           <button className="admin-af-btn w-full rounded-full px-4 py-2 text-sm" disabled={saving}>
             {saving ? "Enregistrement…" : "Enregistrer"}
           </button>
@@ -314,6 +324,7 @@ function CompanionCard({
   const router = useRouter();
   const [firstName, setFirstName] = useState(companion.first_name);
   const [lastName, setLastName] = useState(companion.last_name);
+  const [usageName, setUsageName] = useState(companion.usage_name || "");
   const [relationship, setRelationship] = useState(companion.relationship || "");
   const [nationality, setNationality] = useState(
     identityNationalityFromSources(
@@ -336,6 +347,7 @@ function CompanionCard({
         customer_id: customerId,
         first_name: firstName,
         last_name: lastName,
+        usage_name: usageName,
         relationship,
         nationality,
         birth_date: birthDate,
@@ -372,6 +384,7 @@ function CompanionCard({
           applyIdentityState(id, {
             setFirstName,
             setLastName,
+            setUsageName,
             setBirthDate,
             setSex,
             setNationality,
@@ -387,8 +400,11 @@ function CompanionCard({
         <Field label="Prénom(s)" hint="Tous les prénoms, dans l’ordre du passeport">
           <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
         </Field>
-        <Field label="Nom" hint="Comme sur le passeport">
+        <Field label="Nom" hint="Nom de naissance, comme sur la pièce">
           <input value={lastName} onChange={(e) => setLastName(e.target.value)} className={fieldControlClass} />
+        </Field>
+        <Field label="Nom d'épouse" hint="Nom d'usage s'il est imprimé" className="sm:col-span-2">
+          <input value={usageName} onChange={(e) => setUsageName(e.target.value)} className={fieldControlClass} />
         </Field>
         <Field label="Lien">
           <RelationshipSelect name="relationship" value={relationship} onChange={setRelationship} />
@@ -407,6 +423,7 @@ function CompanionCard({
           <SexSelect name="sex" value={sex} onChange={setSex} />
         </Field>
       </div>
+      <BusyBar active={saving} label="Enregistrement…" />
       <button
         type="button"
         onClick={() => void save()}
@@ -423,6 +440,7 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
   const router = useRouter();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [usageName, setUsageName] = useState("");
   const [relationship, setRelationship] = useState("");
   const [nationality, setNationality] = useState("");
   const [birthDate, setBirthDate] = useState("");
@@ -436,6 +454,7 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
     setOpen(false);
     setFirstName("");
     setLastName("");
+    setUsageName("");
     setRelationship("");
     setNationality("");
     setBirthDate("");
@@ -456,6 +475,7 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
               ...identity,
               first_name: firstName || identity.first_name,
               last_name: lastName || identity.last_name,
+              usage_name: usageName || identity.usage_name,
               birth_date: birthDate || identity.birth_date,
               nationality: nationality || identity.nationality,
               sex: (sex as ExtractedIdentity["sex"]) || identity.sex,
@@ -486,6 +506,7 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
         customer_id: customerId,
         first_name: firstName,
         last_name: lastName,
+        usage_name: usageName,
         relationship,
         nationality,
         birth_date: birthDate,
@@ -548,6 +569,7 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
           applyIdentityState(id, {
             setFirstName,
             setLastName,
+            setUsageName,
             setBirthDate,
             setSex,
             setNationality,
@@ -565,6 +587,9 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
         </Field>
         <Field label="Nom">
           <input required={listedIdentities(scan?.identity, scan?.identities).length < 2} value={lastName} onChange={(e) => setLastName(e.target.value)} className={fieldControlClass} />
+        </Field>
+        <Field label="Nom d'épouse" hint="Nom d'usage s'il est imprimé" className="sm:col-span-2">
+          <input value={usageName} onChange={(e) => setUsageName(e.target.value)} className={fieldControlClass} />
         </Field>
         <Field label="Lien">
           <RelationshipSelect name="relationship" value={relationship} onChange={setRelationship} />
@@ -584,6 +609,7 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
         </Field>
       </div>
       {error ? <p className="text-sm text-accent">{error}</p> : null}
+      <BusyBar active={saving} label="Enregistrement…" />
       <button className="admin-af-btn rounded-full px-4 py-2 text-sm" disabled={saving}>
         {saving ? "Enregistrement…" : "Ajouter l’accompagnateur"}
       </button>

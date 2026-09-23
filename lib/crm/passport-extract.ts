@@ -18,6 +18,7 @@ export function emptyIdentity(): ExtractedIdentity {
     expires_on: null,
     first_name: null,
     last_name: null,
+    usage_name: null,
     birth_date: null,
     place_of_birth: null,
     nationality: null,
@@ -75,6 +76,49 @@ export function cleanPersonalNumber(value: string | null | undefined) {
   return text || null;
 }
 
+function tidyName(value: string | null | undefined) {
+  const text = emptyToNull(value);
+  return text ? humanizeMrzName(text) : null;
+}
+
+/** « DUPONT épouse MARTIN » = naissance DUPONT, épouse MARTIN. « MARTIN née DUPONT » = l’inverse. */
+export function parseSpouseLine(value: string | null | undefined): {
+  birth: string | null;
+  usage: string | null;
+} | null {
+  const text = emptyToNull(value);
+  if (!text) return null;
+  const leading = text.match(/^(?:nom d['’]usage|épouse|epouse|ép\.|ep\.)\s*[:\s]\s*(.+)$/i);
+  if (leading) return { birth: null, usage: tidyName(leading[1]) };
+  const married = text.match(/^(.+?)\s+(?:épouse|epouse|ép\.|ep\.)\s+(.+)$/i);
+  if (married) return { birth: tidyName(married[1]), usage: tidyName(married[2]) };
+  const born = text.match(/^(.+?)\s+(?:née|nee)\s+(.+)$/i);
+  if (born) return { birth: tidyName(born[2]), usage: tidyName(born[1]) };
+  return null;
+}
+
+/**
+ * Le nom de naissance reste le nom. Le nom d’épouse / d’usage est enregistré à part.
+ * La MRZ ne contient que le nom de naissance : s’il diffère du nom imprimé, l’autre est le nom d’épouse.
+ */
+export function spouseFamilyNames(input: {
+  birthName?: string | null;
+  printedName?: string | null;
+  usageName?: string | null;
+}): { last_name: string | null; usage_name: string | null } {
+  const fromBirth = parseSpouseLine(input.birthName);
+  const fromPrinted = parseSpouseLine(input.printedName);
+  const fromUsage = parseSpouseLine(input.usageName);
+  const birth = fromBirth?.birth || fromPrinted?.birth || tidyName(input.birthName);
+  const explicitUsage = fromUsage?.usage || fromPrinted?.usage || fromBirth?.usage || tidyName(input.usageName);
+  const printedPlain = fromPrinted ? null : tidyName(input.printedName);
+  let usage = explicitUsage;
+  if (!usage && printedPlain && birth && !lastNamesMatch(printedPlain, birth)) usage = printedPlain;
+  const last = birth || printedPlain || tidyName(input.printedName);
+  if (usage && last && lastNamesMatch(usage, last)) usage = null;
+  return { last_name: last, usage_name: usage };
+}
+
 export function fieldScore(identity: ExtractedIdentity) {
   const keys: (keyof ExtractedIdentity)[] = [
     "number",
@@ -95,7 +139,11 @@ export function identityFromVision(raw: Record<string, unknown>): ExtractedIdent
     issued_on: isoDate(emptyToNull(raw.issued_on)),
     expires_on: isoDate(emptyToNull(raw.expires_on)),
     first_name: normalizeGivenNames(emptyToNull(raw.first_name)),
-    last_name: emptyToNull(raw.last_name) ? humanizeMrzName(String(raw.last_name)) : null,
+    ...spouseFamilyNames({
+      birthName: emptyToNull(raw.last_name),
+      printedName: emptyToNull(raw.last_name),
+      usageName: emptyToNull(raw.usage_name),
+    }),
     birth_date: isoDate(emptyToNull(raw.birth_date)),
     place_of_birth: emptyToNull(raw.place_of_birth),
     nationality: resolveNationality(
@@ -281,8 +329,15 @@ export function mergePassportIdentities(
   const merged = preferMrz
     ? ({ ...vision, ...filledEntries(mrz) } as ExtractedIdentity)
     : ({ ...mrz, ...filledEntries(vision) } as ExtractedIdentity);
+  const names = spouseFamilyNames({
+    birthName: mrz.last_name,
+    printedName: vision.last_name,
+    usageName: vision.usage_name,
+  });
   return {
     ...merged,
+    last_name: names.last_name,
+    usage_name: names.usage_name,
     first_name: completeGivenNames(mrz.first_name, vision.first_name),
     nationality: resolveNationality(merged.nationality, merged.issuing_country),
     issuing_country: resolveNationality(merged.issuing_country),
@@ -302,6 +357,7 @@ export function identitySummary(id: ExtractedIdentity) {
     id.number ? `n° ${id.number}` : null,
     id.birth_date ? `né(e) ${id.birth_date}` : null,
     id.place_of_birth ? `à ${id.place_of_birth}` : null,
+    id.usage_name ? `ép. ${id.usage_name}` : null,
     id.sex,
     id.nationality,
     id.issued_on ? `délivré ${id.issued_on}` : null,
@@ -330,6 +386,7 @@ export function appendPassportForm(
   form.set("personal_number", id.personal_number || "");
   form.set("first_name", id.first_name || "");
   form.set("last_name", id.last_name || "");
+  form.set("usage_name", id.usage_name || "");
   form.set("birth_date", id.birth_date || "");
   form.set("nationality", id.nationality || "");
   form.set("sex", id.sex || "");

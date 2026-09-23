@@ -66,6 +66,7 @@ function toIdentity(result: ReturnType<typeof parse>): ExtractedIdentity {
     expires_on: mrzDateToIso(fields.expirationDate, "expiry"),
     first_name: fields.firstName ? normalizeGivenNames(fields.firstName) : null,
     last_name: fields.lastName ? humanizeMrzName(fields.lastName) : null,
+    usage_name: null,
     birth_date: mrzDateToIso(fields.birthDate, "birth"),
     place_of_birth: null,
     nationality: resolveNationality(fields.nationality, fields.issuingState),

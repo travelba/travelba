@@ -6,6 +6,7 @@ import type { CrmCustomer } from "@/lib/crm/types";
 import { resolveCountryCode } from "@/lib/crm/countries";
 import { formatIbanInput, ibanError, normalizeIban } from "@/lib/crm/billing";
 import { Field, fieldControlClass } from "@/components/crm/fields";
+import { BusyBar } from "@/components/crm/BusyBar";
 import {
   billingJson,
   billingSameAsProfile,
@@ -107,6 +108,7 @@ export function BillingForm({ customer }: { customer: CrmCustomer }) {
       {error ? <p className="text-sm text-accent">{error}</p> : null}
       <div className="sticky bottom-20 z-20 border-t border-[#e5e3dc] bg-[rgba(250,249,246,0.95)] py-3 backdrop-blur md:bottom-4">
         {saved ? <p className="mb-2 text-sm text-[var(--admin-navy)]">Enregistré.</p> : null}
+        <BusyBar active={saving} label="Enregistrement…" />
         <button className="admin-af-btn w-full rounded-full px-5 py-2.5 text-sm" disabled={saving}>
           {saving ? "Enregistrement…" : "Enregistrer"}
         </button>

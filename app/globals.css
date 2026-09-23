@@ -307,3 +307,13 @@ button:disabled,
 .admin-af ::-webkit-scrollbar-thumb:hover {
   background: #9aa8bc;
 }
+
+@keyframes tb-busy-slide {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(380%); }
+}
+
+.tb-busy-bar {
+  width: 40%;
+  animation: tb-busy-slide 1.15s ease-in-out infinite;
+}

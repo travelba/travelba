@@ -30,6 +30,7 @@ description: >-
 - Scan : photo JPEG/PNG/HEIC **ou PDF** → `/api/admin/travel-documents/scan` ou `/api/client/documents/scan`. MRZ Tesseract + `mrz`. PDF : texte MRZ si calque, sinon raster 1–2 pages via **unpdf/pdfjs** (jamais `pdfjs-dist` 5.7). `getDocumentProxy` clone les octets (sinon DataCloneError au 2ᵉ passage). **Pas** le dropzone résa.
 - PDF passeport souvent sans calque : rasteriser ou photo de la bande MRZ. L’upload **accepte** le PDF.
 - **Prénoms** : tous ceux imprimés (ligne Prénoms / Given names), **dans l’ordre du document** — jamais seulement le premier. Fusion MRZ + zone visuelle : on garde la liste la plus complète si l’ordre est conservé (`normalizeGivenNames` / `completeGivenNames`). La MRZ tronque souvent.
+- **Nom d'épouse** : la MRZ n'a que le nom de naissance (`last_name`). Le nom d'usage / « épouse » / « ép. » / « née » va dans `usage_name` (`spouseFamilyNames`). Ne pas le perdre au merge. Null si la pièce n'en a pas.
 - **Nationalité** : toujours un code ISO 2 (`FR`) sur la fiche Identité (`CountrySelect`). Vision/MRZ peuvent renvoyer « Française », FRA ou seulement le pays d’émission — `resolveNationality` (+ fallback `issuing_country`). Ne jamais stocker l’adjectif. Toute erreur de nationalité se corrige dans `lib/crm/countries.ts` + un test.
 - Ne **pas** logger numéro / MRZ.
 - Champs : n°, nationalité, naissance, expiration, `place_of_birth`, `authority`, `personal_number` (migration passport_fields).

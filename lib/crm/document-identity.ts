@@ -4,6 +4,7 @@ import { emptyToNull } from "./identity";
 export type DocumentIdentityFields = {
   first_name: string | null;
   last_name: string | null;
+  usage_name: string | null;
   birth_date: string | null;
   nationality: string | null;
   sex: string | null;
@@ -14,6 +15,7 @@ export function identityFieldsFromForm(form: FormData): DocumentIdentityFields {
   return {
     first_name: emptyToNull(form.get("first_name")),
     last_name: emptyToNull(form.get("last_name")),
+    usage_name: emptyToNull(form.get("usage_name")),
     birth_date: emptyToNull(form.get("birth_date")),
     nationality: resolveNationality(
       emptyToNull(form.get("nationality")),
@@ -52,6 +54,7 @@ export function appendIdentityFields(
   fields: {
     first_name?: string | null;
     last_name?: string | null;
+    usage_name?: string | null;
     birth_date?: string | null;
     nationality?: string | null;
     sex?: string | null;
@@ -60,6 +63,7 @@ export function appendIdentityFields(
 ) {
   form.set("first_name", fields.first_name || "");
   form.set("last_name", fields.last_name || "");
+  form.set("usage_name", fields.usage_name || "");
   form.set("birth_date", fields.birth_date || "");
   form.set("nationality", fields.nationality || "");
   form.set("sex", fields.sex || "");

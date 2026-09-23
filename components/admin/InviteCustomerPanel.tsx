@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PortalAccess } from "@/lib/crm/invite";
 import { formatDateTimeFr } from "@/lib/crm/money";
+import { BusyBar } from "@/components/crm/BusyBar";
 
 const STATUS_COPY: Record<PortalAccess["status"], { label: string; hint: string }> = {
   none: {
@@ -95,6 +96,7 @@ export function InviteCustomerPanel({
           </p>
         ) : null}
       </div>
+      <BusyBar active={loading} label="Envoi…" />
       <div className="flex shrink-0 flex-wrap gap-2">
         {link ? (
           <button

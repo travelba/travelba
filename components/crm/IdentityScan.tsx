@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { AlertTriangle, Camera, CheckCircle2, Loader2, ScanLine } from "lucide-react";
 import type { ExtractedIdentity } from "@/lib/crm/identity";
 import { listedIdentities, identitySummary } from "@/lib/crm/passport-extract";
+import { BusyBar } from "@/components/crm/BusyBar";
 
 export type ScanResult = {
   file: File;
@@ -144,6 +145,11 @@ export function IdentityScan({
           }}
         />
       </div>
+      {busy ? (
+        <div className="mt-3">
+          <BusyBar label="Lecture du document…" />
+        </div>
+      ) : null}
       {error ? (
         <p className="mt-3 flex items-center gap-2 text-sm text-accent">
           <AlertTriangle className="h-4 w-4 shrink-0" />

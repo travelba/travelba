@@ -7,6 +7,7 @@ import {
   identitySummary,
   mergePassportIdentities,
   mergePassportSets,
+  spouseFamilyNames,
   uniquePassports,
   distinctPassportPeople,
   listedIdentities,
@@ -44,6 +45,43 @@ test("vision extract fills every passport field", () => {
   assert.equal(identity.authority, "MINISTERE DE L'INTERIEUR");
   assert.equal(identity.personal_number, "1234567890");
   assert.match(identitySummary(identity), /18D151774/);
+});
+
+test("le nom d’épouse est enregistré à part du nom de naissance", () => {
+  assert.deepEqual(spouseFamilyNames({ birthName: "DUPONT épouse MARTIN" }), {
+    last_name: "Dupont",
+    usage_name: "Martin",
+  });
+  assert.deepEqual(spouseFamilyNames({ printedName: "MARTIN née DUPONT" }), {
+    last_name: "Dupont",
+    usage_name: "Martin",
+  });
+  const fromLines = identityFromVision({
+    number: "12AB34567",
+    last_name: "DUPONT",
+    usage_name: "MARTIN",
+    first_name: "MARIE",
+  });
+  assert.equal(fromLines?.last_name, "Dupont");
+  assert.equal(fromLines?.usage_name, "Martin");
+
+  const mrz = {
+    ...emptyIdentity(),
+    number: "12AB34567",
+    last_name: "Dupont",
+    first_name: "Marie",
+    valid: true,
+    format: "TD3",
+  };
+  const vision = identityFromVision({
+    number: "12AB34567",
+    last_name: "MARTIN",
+    first_name: "MARIE",
+  });
+  const merged = mergePassportIdentities(mrz, vision);
+  assert.equal(merged?.last_name, "Dupont");
+  assert.equal(merged?.usage_name, "Martin");
+  assert.match(identitySummary(merged!), /ép\. Martin/);
 });
 
 test("merge keeps every given name in passport order even if MRZ truncates", () => {

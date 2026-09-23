@@ -4,6 +4,7 @@ import { FormEvent, Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { BrandMark } from "@/components/crm/ui";
+import { BusyBar } from "@/components/crm/BusyBar";
 
 function LoginForm() {
   const router = useRouter();
@@ -85,6 +86,7 @@ function LoginForm() {
         />
       </label>
       {error ? <p className="text-sm text-[var(--admin-red)]">{error}</p> : null}
+      <BusyBar active={loading} label="Connexion…" />
       <button
         type="submit"
         disabled={loading}

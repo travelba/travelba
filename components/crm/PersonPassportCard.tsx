@@ -21,6 +21,7 @@ import { identityForPerson } from "@/lib/crm/passport-assign";
 import type { PersonName } from "@/lib/crm/person-match";
 import { vaultDocumentsForPerson } from "@/lib/crm/trip-documents";
 import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
+import { BusyBar } from "@/components/crm/BusyBar";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
 import { Icon } from "@/components/crm/icons";
 import { StatusChip } from "@/components/crm/ui";
@@ -33,6 +34,7 @@ type PassportSource = {
   expires_on?: string | null;
   first_name?: string | null;
   last_name?: string | null;
+  usage_name?: string | null;
   birth_date?: string | null;
   place_of_birth?: string | null;
   nationality?: string | null;
@@ -54,6 +56,7 @@ export function passportDetailRows(source: PassportSource) {
     ["Type", type],
     ["N° de document", source.number],
     ["Nom", source.last_name],
+    ["Nom d'épouse", source.usage_name],
     ["Prénom(s)", source.first_name],
     ["Date de naissance", source.birth_date ? formatDateFr(source.birth_date) : null],
     ["Lieu de naissance", source.place_of_birth],
@@ -309,6 +312,7 @@ export function PersonPassportCard({
         </button>
       )}
 
+      <BusyBar active={busy} label="Enregistrement…" />
       {notice ? (
         <p className="rounded-xl bg-[#fbf7ec] px-3 py-2 text-sm text-[var(--admin-navy)]">{notice}</p>
       ) : null}

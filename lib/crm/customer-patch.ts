@@ -11,6 +11,7 @@ const COUNTRY_KEYS = new Set(["nationality", "country", "billing_country"]);
 export const CUSTOMER_PATCH_KEYS = [
   "first_name",
   "last_name",
+  "usage_name",
   "email",
   "phone",
   "phone_secondary",

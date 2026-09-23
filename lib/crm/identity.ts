@@ -24,6 +24,8 @@ export type ExtractedIdentity = {
   expires_on: string | null;
   first_name: string | null;
   last_name: string | null;
+  /** Nom d'usage / nom d'épouse, s'il est imprimé à part du nom de naissance. */
+  usage_name: string | null;
   birth_date: string | null;
   place_of_birth: string | null;
   nationality: string | null;

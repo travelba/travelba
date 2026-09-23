@@ -12,6 +12,7 @@ import type { BookingExtract } from "@/lib/crm/ingest-types";
 import { itemDetailsLine, itemWhen } from "@/lib/crm/booking-display";
 import { hotelDisplayName, itemPriceLabel } from "@/lib/crm/carnet";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
+import { BusyBar } from "@/components/crm/BusyBar";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
 import { Icon } from "@/components/crm/icons";
 import { documentsForItem } from "@/lib/crm/carnet";
@@ -195,6 +196,9 @@ export function BookingItemsPanel({
         </button>
       </div>
       <p className="mt-1 text-xs text-muted">Glissez pour l’ordre du carnet. Par défaut : chronologique.</p>
+      <div className="mt-3">
+        <BusyBar active={busy} label="Enregistrement…" />
+      </div>
       <ul className="mt-2 space-y-2 text-sm">
         {rows.map((item, index) => (
           <li
@@ -377,6 +381,7 @@ function ItemAttachments({
         </div>
       ))}
       <form onSubmit={upload} className="flex flex-wrap items-center gap-2">
+        <BusyBar active={busy} label="Envoi…" />
         <input name="file" type="file" required className="text-xs" />
         <button type="submit" disabled={busy} className="text-xs font-semibold text-[var(--admin-navy)]">
           {busy ? "Envoi…" : "Joindre"}

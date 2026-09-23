@@ -1,6 +1,7 @@
 export type PersonName = {
   first_name: string | null;
   last_name: string | null;
+  usage_name?: string | null;
 };
 
 export function foldName(value: string | null | undefined) {
@@ -77,18 +78,29 @@ function givenNamesClose(a: string | null | undefined, b: string | null | undefi
   return left.some((token) => right.some((other) => givenTokenClose(token, other)));
 }
 
+function familyValues(person: PersonName) {
+  return [person.last_name, person.usage_name].filter((value) => foldName(value));
+}
+
+function familiesMatch(a: PersonName, b: PersonName) {
+  const left = familyValues(a);
+  const right = familyValues(b);
+  if (!left.length || !right.length) return false;
+  return left.some((name) => right.some((other) => lastNamesMatch(name, other)));
+}
+
 function combinedTokens(person: PersonName) {
-  return nameTokens(`${person.first_name || ""} ${person.last_name || ""}`);
+  return nameTokens(`${person.first_name || ""} ${person.last_name || ""} ${person.usage_name || ""}`);
 }
 
 /** Le nom entier est dans un seul champ : « Simon, Albilia » ou « ALBILIA Simon ». */
 function nameFoldedIntoOneField(structured: PersonName, blob: PersonName) {
-  const family = foldName(structured.last_name).replace(/ /g, "");
+  const families = familyValues(structured);
   const givens = nameTokens(structured.first_name);
-  if (!family || !givens.length) return false;
+  if (!families.length || !givens.length) return false;
   const tokens = combinedTokens(blob);
   if (!tokens.length) return false;
-  const familyHit = tokens.some((token) => lastNamesMatch(structured.last_name, token));
+  const familyHit = tokens.some((token) => families.some((name) => lastNamesMatch(name, token)));
   const givenHit = givens.some((given) =>
     tokens.some((token) => givenTokenClose(given, token) && !lastNamesMatch(structured.last_name, token))
   );
@@ -102,7 +114,7 @@ export function namesReferToSamePerson(a: PersonName, b: PersonName) {
   ) {
     return false;
   }
-  if (lastNamesMatch(a.last_name, b.last_name) && givenNamesClose(a.first_name, b.first_name)) {
+  if (familiesMatch(a, b) && givenNamesClose(a.first_name, b.first_name)) {
     return true;
   }
   if (lastNamesMatch(a.last_name, b.first_name) && givenNamesClose(a.first_name, b.last_name)) {

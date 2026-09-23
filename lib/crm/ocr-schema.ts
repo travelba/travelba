@@ -12,6 +12,7 @@ export const identityExtractSchema = z.object({
   expires_on: nullableString,
   first_name: nullableString,
   last_name: nullableString,
+  usage_name: nullableString,
   birth_date: nullableString,
   place_of_birth: nullableString,
   nationality: nullableString,

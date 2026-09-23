@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { BusyBar } from "@/components/crm/BusyBar";
 
 export function DeleteCustomerButton({
   customerId,
@@ -40,6 +41,7 @@ export function DeleteCustomerButton({
 
   return (
     <div className={compact ? "flex flex-col items-end gap-1" : "space-y-2"}>
+      <BusyBar active={busy} label="Suppression…" />
       <div className="flex flex-wrap items-center justify-end gap-2">
         {confirming ? (
           <button

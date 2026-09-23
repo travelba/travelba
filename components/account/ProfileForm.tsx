@@ -21,6 +21,7 @@ import {
   SexSelect,
 } from "@/components/crm/fields";
 import { PersonPassportCard } from "@/components/crm/PersonPassportCard";
+import { BusyBar } from "@/components/crm/BusyBar";
 import { LoyaltyFields } from "@/components/crm/LoyaltyFields";
 
 function Fold({
@@ -68,6 +69,7 @@ export function ProfileForm({
   const [saved, setSaved] = useState(false);
   const [firstName, setFirstName] = useState(customer.first_name);
   const [lastName, setLastName] = useState(customer.last_name);
+  const [usageName, setUsageName] = useState(customer.usage_name || "");
   const [birthDate, setBirthDate] = useState(customer.birth_date || "");
   const [sex, setSex] = useState(customer.sex || "");
   const [nationality, setNationality] = useState(
@@ -92,6 +94,7 @@ export function ProfileForm({
     setNameWarn(warn);
     if (id.first_name) setFirstName(id.first_name);
     if (id.last_name) setLastName(id.last_name);
+    setUsageName(id.usage_name || "");
     if (id.birth_date) setBirthDate(id.birth_date);
     if (id.sex) setSex(id.sex);
     const nationalityIso = nationalityFromIdentity(id);
@@ -109,6 +112,7 @@ export function ProfileForm({
       body: JSON.stringify({
         first_name: firstName,
         last_name: lastName,
+        usage_name: usageName,
         birth_date: birthDate,
         sex,
         nationality,
@@ -191,6 +195,14 @@ export function ProfileForm({
             required
           />
         </Field>
+        <Field label="Nom d'épouse" hint="Nom d'usage s'il est imprimé sur le passeport ou la CNI">
+          <input
+            spellCheck={false}
+            value={usageName}
+            onChange={(event) => setUsageName(event.target.value)}
+            className={fieldControlClass}
+          />
+        </Field>
         <Field label="Date de naissance">
           <DateFrInput
             autoComplete="bday"
@@ -237,6 +249,7 @@ export function ProfileForm({
       {error ? <p className="py-2 text-sm text-accent">{error}</p> : null}
       <div className="sticky bottom-20 z-20 -mx-4 border-t border-[#e5e3dc] bg-[rgba(250,249,246,0.95)] px-4 py-3 backdrop-blur md:bottom-4">
         {saved ? <p className="mb-2 text-sm text-[var(--admin-navy)]">Enregistré.</p> : null}
+        <BusyBar active={saving} label="Enregistrement…" />
         <button className="admin-af-btn w-full rounded-full px-5 py-2.5 text-sm" disabled={saving}>
           {saving ? "Enregistrement…" : "Enregistrer"}
         </button>

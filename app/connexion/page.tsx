@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { siteConfig } from "@/lib/site";
 import { BrandMark } from "@/components/crm/ui";
+import { BusyBar } from "@/components/crm/BusyBar";
 
 const fieldClass =
   "w-full rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-3 text-[var(--admin-navy)] outline-none focus:border-[var(--admin-gold)] focus:bg-white focus:ring-2 focus:ring-[var(--admin-gold)]/30";
@@ -133,6 +134,7 @@ function LoginForm() {
           />
         </label>
         {error ? <p className="text-sm text-[var(--admin-red)]">{error}</p> : null}
+        <BusyBar active={loading} label="Envoi…" />
         <button
           type="submit"
           disabled={loading}
@@ -172,6 +174,7 @@ function LoginForm() {
           />
         </label>
         {error ? <p className="text-sm text-[var(--admin-red)]">{error}</p> : null}
+        <BusyBar active={loading} label="Envoi…" />
         <button
           type="submit"
           disabled={loading}
@@ -235,6 +238,7 @@ function LoginForm() {
         />
       </label>
       {error ? <p className="text-sm text-[var(--admin-red)]">{error}</p> : null}
+      <BusyBar active={loading} label="Connexion…" />
       <button
         type="submit"
         disabled={loading}

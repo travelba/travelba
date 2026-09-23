@@ -7,6 +7,7 @@ import { formatDateFr, formatMoney, netAfterAgencyFee, agencyFeeFromGross } from
 import { revolutInboxEmptyMessage } from "@/lib/crm/launch-status";
 import { revolutInboxCopy } from "@/lib/crm/revolut-inbox";
 import { StatusChip } from "@/components/crm/ui";
+import { BusyBar } from "@/components/crm/BusyBar";
 import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
 import { Icon } from "@/components/crm/icons";
 import {
@@ -142,6 +143,7 @@ export function RevolutInbox({
           </p>
         </div>
       ) : null}
+      <BusyBar active={busy} label="Synchronisation…" />
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
@@ -209,6 +211,9 @@ export function RevolutInbox({
                 </div>
                 {r.status === "unmatched" ? (
                   <div className="flex flex-wrap items-center gap-2">
+                    <div className="w-full">
+                      <BusyBar active={rowBusy === r.id} label="Rapprochement…" />
+                    </div>
                     <button
                       type="button"
                       disabled={rowBusy === r.id}

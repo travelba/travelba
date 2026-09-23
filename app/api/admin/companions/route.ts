@@ -9,6 +9,7 @@ function companionPatch(body: Record<string, unknown>) {
   return {
     first_name: String(body.first_name || "").trim(),
     last_name: String(body.last_name || "").trim(),
+    usage_name: emptyToNull(body.usage_name),
     birth_date: emptyToNull(body.birth_date),
     sex: sex === "M" || sex === "F" || sex === "X" ? sex : null,
     nationality: resolveNationality(String(body.nationality || "")),

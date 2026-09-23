@@ -16,6 +16,7 @@ import {
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { bookingCoverUrl } from "@/lib/crm/covers";
+import { BusyBar } from "@/components/crm/BusyBar";
 import { formatMoney, jMinusLabel } from "@/lib/crm/money";
 import { bookingTotalFromItems } from "@/lib/crm/bookings";
 import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
@@ -232,6 +233,11 @@ export function BookingEditor({
           {flash ? <p className="mt-2 text-sm text-[var(--admin-navy)]">{flash}</p> : null}
           <IssuesList issues={issues} className="mt-2" />
         </div>
+        <div className="min-w-[12rem] shrink-0 space-y-2">
+          <BusyBar
+            active={busy !== "idle"}
+            label={busy === "publish" ? "Publication…" : "Enregistrement…"}
+          />
         <div className="flex shrink-0 flex-wrap gap-2">
           <button
             type="submit"
@@ -260,6 +266,7 @@ export function BookingEditor({
               {busy === "publish" ? "Publication…" : "Publier les mises à jour"}
             </button>
           ) : null}
+        </div>
         </div>
       </section>
 
@@ -368,6 +375,9 @@ export function BookingEditor({
         <p className="sm:col-span-2 text-xs text-muted">
           Enregistrer ne publie pas. Le statut confirmé crée le débit au grand livre.
         </p>
+        <div className="sm:col-span-2">
+          <BusyBar active={busy === "save"} label="Enregistrement…" />
+        </div>
         <button
           type="submit"
           disabled={busy !== "idle"}

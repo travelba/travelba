@@ -29,6 +29,7 @@ export async function POST(request: Request) {
       customer_id: auth.customer.id,
       first_name: first,
       last_name: last,
+      usage_name: emptyToNull(body?.usage_name),
       birth_date: emptyToNull(body?.birth_date),
       sex: emptyToNull(body?.sex),
       nationality: resolveNationality(String(body?.nationality || "")),
@@ -51,6 +52,7 @@ export async function PATCH(request: Request) {
     .update({
       first_name: body.first_name,
       last_name: body.last_name,
+      usage_name: emptyToNull(body.usage_name),
       birth_date: emptyToNull(body.birth_date),
       sex: emptyToNull(body.sex),
       nationality: resolveNationality(String(body.nationality || "")),

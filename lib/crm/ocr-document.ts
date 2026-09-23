@@ -32,7 +32,8 @@ Pays émetteur : même règle ISO 2.
 sex : M, F ou X.
 doc_type : passport | id_card | visa | insurance | other.
 first_name : TOUS les prénoms imprimés (ligne « Prénoms » / Given names), dans l’ordre du document, séparés par un espace. Ne jamais n’en garder qu’un. Ne pas réordonner. Conserver les traits d’union (Jean-Pierre).
-last_name : nom de famille.
+last_name : nom de naissance (ligne « Nom » / Surname). Pas le nom d’usage.
+usage_name : nom d’épouse ou nom d’usage, s’il est imprimé (ligne « Nom d’usage », « épouse », « ép. », « née »). Null s’il n’y en a pas. Ne jamais l’inventer, ne pas le mettre dans last_name ni dans les prénoms.
 place_of_birth : lieu de naissance (ville / pays), tel qu’imprimé.
 issued_on : date de délivrance.
 expires_on : date d’expiration.

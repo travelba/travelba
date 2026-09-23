@@ -131,6 +131,23 @@ test("le rattachement exige un seul candidat", () => {
   );
 });
 
+test("le nom d’épouse désigne la même personne que le nom de naissance", () => {
+  assert.equal(
+    namesReferToSamePerson(
+      { first_name: "Marie", last_name: "Martin" },
+      { first_name: "Marie", last_name: "Dupont", usage_name: "Martin" }
+    ),
+    true
+  );
+  assert.equal(
+    namesReferToSamePerson(
+      { first_name: "Marie", last_name: "Dupont", usage_name: "Martin" },
+      { first_name: "Claire", last_name: "Martin" }
+    ),
+    false
+  );
+});
+
 test("un second import ne dédouble pas la même personne", () => {
   assert.equal(
     sameRecordedTraveler(

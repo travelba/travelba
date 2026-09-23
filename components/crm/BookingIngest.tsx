@@ -51,6 +51,7 @@ import {
 } from "@/lib/crm/ingest-types";
 import { findMatchingItem, mergeExtractItems } from "@/lib/crm/item-match";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
+import { BusyBar } from "@/components/crm/BusyBar";
 
 const EMPTY_COMPANIONS: CrmCompanion[] = [];
 
@@ -556,6 +557,17 @@ export function BookingIngest({
 
   const failedSlots = slots.filter((slot) => slot.status === "error");
   const reading = busy === "read" || busy === "upload";
+  const uploadAverage = slots.length
+    ? Math.round(
+        slots.reduce((sum, slot) => {
+          if (slot.status === "uploading") return sum + slot.uploadPct;
+          if (slot.status === "queued") return sum;
+          return sum + 100;
+        }, 0) / slots.length
+      )
+    : 0;
+  const readPct =
+    progress && progress.total > 0 ? Math.round((progress.done / Math.max(progress.total, 1)) * 100) : null;
 
   function startManual() {
     setExtract(emptyBookingExtract());
@@ -590,11 +602,21 @@ export function BookingIngest({
                 Lecture IA indisponible ici : seuls les documents reconnus (billets Amadeus, confirmations hôtel connues) sont lus. Le reste se saisit à la main.
               </p>
             ) : null}
-            {progress ? (
-              <p className="mt-2 text-sm font-medium text-[var(--admin-navy)]">
-                {progress.done} / {progress.total}
-                {progress.current ? ` — ${progress.current}` : ""}
-              </p>
+            {busy !== "idle" ? (
+              <div className="mt-3">
+                <BusyBar
+                  value={busy === "upload" ? uploadAverage : busy === "read" ? readPct : null}
+                  label={
+                    busy === "save"
+                      ? "Enregistrement…"
+                      : busy === "upload"
+                        ? "Envoi des fichiers…"
+                        : progress
+                          ? `Lecture… ${progress.done} / ${progress.total}${progress.current ? ` — ${progress.current}` : ""}`
+                          : "Lecture des documents…"
+                  }
+                />
+              </div>
             ) : null}
           </div>
           <button
@@ -645,9 +667,13 @@ export function BookingIngest({
                     {slot.file.type ? ` · ${slot.file.type.replace("application/", "")}` : ""}
                     {" · "}
                     {statusLabel(slot.status)}
-                    {slot.status === "uploading" ? ` ${slot.uploadPct}%` : ""}
                     {slot.message ? ` — ${slot.message}` : ""}
                   </p>
+                  {slot.status === "uploading" || slot.status === "reading" ? (
+                    <div className="mt-1.5">
+                      <BusyBar value={slot.status === "uploading" ? slot.uploadPct : null} />
+                    </div>
+                  ) : null}
                 </div>
                 <button
                   type="button"

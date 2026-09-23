@@ -31,7 +31,7 @@ export async function persistImportedPassports(
 ): Promise<{ documents: CrmTravelDocument[]; createdCompanions: number }> {
   const { data: companions, error } = await supabase
     .from("crm_travel_companions")
-    .select("id, first_name, last_name")
+        .select("id, first_name, last_name, usage_name")
     .eq("customer_id", opts.customerId);
   if (error) throw new Error(error.message);
 
@@ -77,6 +77,7 @@ export async function persistImportedPassports(
           customer_id: opts.customerId,
           first_name: first,
           last_name: last,
+          usage_name: emptyToNull(assignment.identity.usage_name),
           birth_date: assignment.identity.birth_date,
           sex: assignment.identity.sex,
           nationality: resolveNationality(
@@ -104,6 +105,7 @@ export async function persistImportedPassports(
       personalNumber: assignment.identity.personal_number,
       first_name: assignment.identity.first_name,
       last_name: assignment.identity.last_name,
+      usage_name: assignment.identity.usage_name,
       birth_date: assignment.identity.birth_date,
       nationality: assignment.identity.nationality,
       sex: assignment.identity.sex,
@@ -135,13 +137,14 @@ export async function persistPassportsFromForm(
   if (!resolvedHolder) {
     const { data, error } = await supabase
       .from("crm_customers")
-      .select("first_name, last_name")
+      .select("first_name, last_name, usage_name")
       .eq("id", customerId)
       .maybeSingle();
     if (error) throw new Error(error.message);
     resolvedHolder = {
       first_name: data?.first_name || null,
       last_name: data?.last_name || null,
+      usage_name: data?.usage_name || null,
     };
   }
   const file = form.get("file");

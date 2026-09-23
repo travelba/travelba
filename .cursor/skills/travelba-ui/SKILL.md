@@ -44,6 +44,7 @@ Admin : Tableau de bord, Clients, Réservations, Transactions, Revolut (badge un
 ## Perf perçue
 
 - `loading.tsx` à côté de chaque `page.tsx` liste/détail CRM.
+- Toute attente (enregistrer, envoyer, lire, publier, supprimer) affiche `BusyBar` : pourcentage réel si on l’a (envoi de fichier), sinon barre animée. Pas seulement le libellé du bouton.
 - Actions carnet dans le **header** éditeur (pas de barre `fixed`/`sticky` qui recouvre l’ingest).
 - `next/font` : ne pas preloader trop de familles (Space Grotesk déjà off).
 

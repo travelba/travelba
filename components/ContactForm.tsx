@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { Send, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { SERVICE_KEYS, siteConfig } from "@/lib/site";
 import { PhoneField } from "@/components/crm/fields";
+import { BusyBar } from "@/components/crm/BusyBar";
 
 type Status = "idle" | "loading" | "success" | "undelivered" | "error";
 
@@ -121,6 +122,7 @@ export function ContactForm() {
         />
       </div>
 
+      <BusyBar active={status === "loading"} label={t("submitting")} />
       <button
         type="submit"
         disabled={status === "loading"}

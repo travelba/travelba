@@ -18,6 +18,7 @@ import {
   SexSelect,
 } from "@/components/crm/fields";
 import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
+import { BusyBar } from "@/components/crm/BusyBar";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
 import { Icon } from "@/components/crm/icons";
 
@@ -43,6 +44,7 @@ export function DocumentsManager({
   const [personalNumber, setPersonalNumber] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [usageName, setUsageName] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [nationality, setNationality] = useState("");
   const [sex, setSex] = useState("");
@@ -71,6 +73,7 @@ export function DocumentsManager({
     }
     if (id.first_name) setFirstName(id.first_name);
     if (id.last_name) setLastName(id.last_name);
+    setUsageName(id.usage_name || "");
     if (id.birth_date) setBirthDate(id.birth_date);
     const nationalityIso = nationalityFromIdentity(id);
     if (nationalityIso) setNationality(nationalityIso);
@@ -97,6 +100,7 @@ export function DocumentsManager({
               personal_number: personalNumber || identity.personal_number,
               first_name: firstName || identity.first_name,
               last_name: lastName || identity.last_name,
+              usage_name: usageName || identity.usage_name,
               birth_date: birthDate || identity.birth_date,
               nationality: nationality || identity.nationality,
               sex: (sex as typeof identity.sex) || identity.sex,
@@ -126,6 +130,7 @@ export function DocumentsManager({
       setIssuingCountry("");
       setFirstName("");
       setLastName("");
+      setUsageName("");
       setBirthDate("");
       setNationality("");
       setSex("");
@@ -145,6 +150,7 @@ export function DocumentsManager({
     form.set("personal_number", personalNumber);
     form.set("first_name", firstName);
     form.set("last_name", lastName);
+    form.set("usage_name", usageName);
     form.set("birth_date", birthDate);
     form.set("nationality", nationality);
     form.set("sex", sex);
@@ -170,6 +176,7 @@ export function DocumentsManager({
     setIssuingCountry("");
     setFirstName("");
     setLastName("");
+    setUsageName("");
     setBirthDate("");
     setNationality("");
     setSex("");
@@ -349,6 +356,9 @@ export function DocumentsManager({
                 <Field label="Nom">
                   <input value={lastName} onChange={(event) => setLastName(event.target.value)} className={fieldControlClass} />
                 </Field>
+                <Field label="Nom d'épouse" hint="Nom d'usage s'il est imprimé" className="sm:col-span-2">
+                  <input value={usageName} onChange={(event) => setUsageName(event.target.value)} className={fieldControlClass} />
+                </Field>
                 <Field label="Naissance">
                   <DateFrInput value={birthDate} onChange={setBirthDate} />
                 </Field>
@@ -371,6 +381,7 @@ export function DocumentsManager({
             ) : null}
 
             {error ? <p className="text-sm text-accent">{error}</p> : null}
+            <BusyBar active={saving} label="Enregistrement…" />
             <button className="admin-af-btn h-11 w-full rounded-full px-4 text-sm" disabled={saving}>
               {saving ? "Enregistrement…" : "Ajouter un document"}
             </button>

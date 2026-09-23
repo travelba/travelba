@@ -7,6 +7,7 @@ import { TX_KIND_LABELS, customerFullName, isCreditTransfer } from "@/lib/crm/ty
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { StatusChip } from "@/components/crm/ui";
 import { DateFrInput, MoneyInput } from "@/components/crm/fields";
+import { BusyBar } from "@/components/crm/BusyBar";
 import { ledgerEmptyMessage } from "@/lib/crm/launch-status";
 
 const STATUS_LABELS: Record<CrmTransaction["status"], string> = {
@@ -115,6 +116,9 @@ export function Ledger({
             className={fieldClass}
           />
         </label>
+        <div className="sm:col-span-3">
+          <BusyBar active={saving} label="Enregistrement…" />
+        </div>
         <button
           type="submit"
           disabled={saving}

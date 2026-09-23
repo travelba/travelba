@@ -121,6 +121,7 @@ export type CrmCustomer = {
   auth_user_id: string | null;
   first_name: string;
   last_name: string;
+  usage_name?: string | null;
   email: string;
   phone: string | null;
   phone_secondary: string | null;
@@ -160,6 +161,7 @@ export type CrmCompanion = {
   customer_id: string;
   first_name: string;
   last_name: string;
+  usage_name?: string | null;
   birth_date: string | null;
   sex: string | null;
   nationality: string | null;
@@ -181,6 +183,7 @@ export type CrmTravelDocument = {
   expires_on: string | null;
   first_name: string | null;
   last_name: string | null;
+  usage_name?: string | null;
   birth_date: string | null;
   nationality: string | null;
   sex: string | null;

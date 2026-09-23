@@ -20,6 +20,7 @@ import {
   type ExtraLeg,
 } from "@/lib/crm/extras";
 import { formatMoney } from "@/lib/crm/money";
+import { BusyBar } from "@/components/crm/BusyBar";
 import type { CrmBooking, CrmBookingItem, CrmBookingTraveler, CrmCompanion, CrmCustomer } from "@/lib/crm/types";
 export function ExtrasPanel({
   variant,
@@ -139,6 +140,11 @@ export function ExtrasPanel({
             </button>
           )}
         </div>
+        {busy === `${kind}:${leg}` || (existing && busy === `cancel:${existing.id}`) ? (
+          <div className="mt-2">
+            <BusyBar label={busy?.startsWith("cancel") ? "Annulation…" : "Demande…"} />
+          </div>
+        ) : null}
       </div>
     );
   }
