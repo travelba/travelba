@@ -10,8 +10,7 @@ import {
 } from "@/lib/crm/types";
 import { customerFullName } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
-import { bookingCoverUrl } from "@/lib/crm/covers";
-import { CoverPhoto } from "@/components/crm/CoverPhoto";
+import { BookingHero } from "@/components/crm/BookingHero";
 import { StatusChip, bookingStatusTone } from "@/components/crm/ui";
 import { bookingsListEmptyMessage } from "@/lib/crm/launch-status";
 import { DeleteBookingButton } from "@/components/admin/DeleteBookingButton";
@@ -70,9 +69,12 @@ export function BookingsTable({
               className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="flex min-w-0 items-center gap-3">
-              <div className="relative h-12 w-16 shrink-0 overflow-hidden rounded-xl">
-                <CoverPhoto src={bookingCoverUrl(b, 240)} alt={b.destination || b.title} />
-              </div>
+              <BookingHero
+                booking={b}
+                width={240}
+                plain
+                className="aspect-video w-24 shrink-0 rounded-xl"
+              />
                 <div className="min-w-0">
                   <p className="font-semibold text-[var(--admin-navy)]">
                     {b.reference} · {b.title}

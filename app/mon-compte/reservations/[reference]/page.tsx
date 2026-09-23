@@ -15,7 +15,6 @@ import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
 import { bookingHasFlight } from "@/lib/crm/extras";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { BookingStatusBadge } from "@/components/crm/ui";
-import { bookingCoverUrl } from "@/lib/crm/covers";
 import {
   carnetVisible,
   itemPriceLabel,
@@ -26,7 +25,7 @@ import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { siteConfig } from "@/lib/site";
-import { CoverPhoto } from "@/components/crm/CoverPhoto";
+import { BookingHero } from "@/components/crm/BookingHero";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
 import { Icon } from "@/components/crm/icons";
 import { TripPassportPicker } from "@/components/crm/TripPassportPicker";
@@ -84,7 +83,6 @@ export default async function ReservationDetailPage({ params }: Props) {
     b.reference,
     b.destination
   );
-  const cover = bookingCoverUrl(b, 960);
   const headline = b.destination || b.title;
   const sameTitle =
     (b.title || "").trim().toLowerCase() === (b.destination || "").trim().toLowerCase();
@@ -99,9 +97,11 @@ export default async function ReservationDetailPage({ params }: Props) {
         ← Mes réservations
       </Link>
 
-      <article className="relative min-h-[180px] overflow-hidden rounded-2xl bg-[var(--admin-navy)] text-white shadow-[0_16px_36px_rgba(11,31,58,0.25)]">
-        <CoverPhoto src={cover} alt={headline} className="absolute inset-0 h-full w-full object-cover opacity-50" priority />
-        <div className="absolute inset-0 bg-gradient-to-t from-[var(--admin-navy)] via-[var(--admin-navy)]/70 to-transparent" />
+      <BookingHero
+        booking={b}
+        priority
+        className="min-h-[180px] rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]"
+      >
         <div className="relative space-y-2 p-4 pb-5 pt-6">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <BookingStatusBadge label={BOOKING_STATUS_LABELS[b.status]} />
@@ -115,7 +115,7 @@ export default async function ReservationDetailPage({ params }: Props) {
             {formatDateFr(b.start_date)} — {formatDateFr(b.end_date)}
           </p>
         </div>
-      </article>
+      </BookingHero>
 
       {missingPassports ? (
         <a

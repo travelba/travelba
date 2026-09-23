@@ -73,11 +73,11 @@ RLS : le client ne `select` que `visible_to_client`. Preview admin ≠ URL clien
 La photo = **la ville / station d’arrivée**, jamais le hub de départ.
 
 - `coverQuery` (`lib/crm/carnet.ts`) : premier token qui n’est **pas** Paris / CDG / ORY / LBG / BVA / France. `Paris · Marrakech` → Marrakech. `CDG → RAK` → RAK. `Avoriaz - Haute Savoie` → Avoriaz.
-- **Interdit** : photo de Paris (Tour Eiffel) sur un séjour Avoriaz / Marrakech / ski. Le vol part souvent de CDG — ce n’est pas la destination.
-- Unsplash d’abord (`lib/crm/covers.ts` `BY_KEYWORD`) : une **photo de ce lieu**. Station ski (Avoriaz, Morzine, Châtel, Les Gets, Portes du Soleil) = entrée **avant** le filet générique `alpes|zermatt`. Zermatt ≠ Avoriaz.
-- **Nouvelle ville / station** : ajouter le regex + un ID Unsplash **de cette station** (vérifier l’URL `images.unsplash.com/photo-…`). Tests : `coverQuery` + `unsplashKeywordMatch`. Sans match, l’IA invente un paysage faux — ne pas laisser `cover_image_path` si ça ne ressemble pas au lieu (vider le champ pour retomber sur Unsplash).
-- IA (`cover-generate.ts`) seulement si `needsAiCover` (aucun mot-clé Unsplash). Prompt = le lieu d’arrivée, pas « Alps » / « France ».
-- `<CoverPhoto>` img natif, repli Unsplash si `/api/files` casse. Puppeteer : `domcontentloaded` — skill verify.
+- **Interdit** : photo de Paris sur un séjour Avoriaz. Le vol part souvent de CDG — ce n’est pas la destination. Avoriaz n’est pas Zermatt. Marrakech n’est pas une photo générique du Maroc. Panama n’est pas Miami.
+- Catalogue (`lib/crm/cover-catalog.ts`) : jeton d’arrivée entier. **Ville d’abord** (photo de ce lieu), **sinon le pays**. Provence sans photo de ville → France. Florence → Italie. Venise garde sa photo. Pays sans photo vérifiée : fond marine, pas une image d’un autre pays.
+- **Nouvelle ville** : une clé + le code pays, et une photo seulement si elle montre ce lieu. Test : `unsplashKeywordMatch`.
+- Import agence seulement : `cover_image_path` (`POST/DELETE /api/admin/bookings/[id]/cover`, WebP 1600×900). L’URL porte `?v=` = `updated_at`. Sinon le catalogue gagne. Pas de génération automatique.
+- `<BookingHero>` + `<CoverPhoto>` img natif. Si l’import casse, repli sur la photo du lieu, puis le fond marine. Puppeteer : `domcontentloaded` — skill verify.
 
 ## Fichiers séjour
 

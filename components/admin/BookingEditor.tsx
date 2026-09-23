@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useRef, useState } from "react";
+import { FormEvent, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -15,14 +15,13 @@ import {
   type CrmCustomer,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
-import { bookingCoverUrl } from "@/lib/crm/covers";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { formatMoney, jMinusLabel } from "@/lib/crm/money";
 import { bookingTotalFromItems } from "@/lib/crm/bookings";
 import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
 import { documentLabel } from "@/lib/crm/carnet";
 import { BookingIngest } from "@/components/crm/BookingIngest";
-import { CoverPhoto } from "@/components/crm/CoverPhoto";
+import { BookingHero } from "@/components/crm/BookingHero";
 import { Icon } from "@/components/crm/icons";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
@@ -61,7 +60,7 @@ export function BookingEditor({
   const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
   const unpublishedItems = items.filter((item) => !item.visible_to_client);
   const needsReview = items.some((item) => item.details?.needs_review === true);
-  const [busy, setBusy] = useState<"idle" | "save" | "publish">("idle");
+  const [busy, setBusy] = useState<"idle" | "save" | "publish" | "cover">("idle");
   const [flash, setFlash] = useState<string | null>(null);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
   const documentChoices = peopleNotOnStay(
@@ -194,15 +193,67 @@ export function BookingEditor({
     router.refresh();
   }
 
+  async function uploadCover(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setBusy("cover");
+    setFlash(null);
+    const body = new FormData();
+    body.set("file", file);
+    const res = await fetch(`/api/admin/bookings/${booking.id}/cover`, {
+      method: "POST",
+      body,
+    });
+    const json = await res.json().catch(() => ({}));
+    setBusy("idle");
+    if (!res.ok) {
+      setFlash(typeof json.error === "string" ? json.error : "Photo non importée.");
+      return;
+    }
+    setFlash("Photo importée.");
+    router.refresh();
+  }
+
+  async function clearCover() {
+    setBusy("cover");
+    setFlash(null);
+    const res = await fetch(`/api/admin/bookings/${booking.id}/cover`, { method: "DELETE" });
+    const json = await res.json().catch(() => ({}));
+    setBusy("idle");
+    if (!res.ok) {
+      setFlash(typeof json.error === "string" ? json.error : "Photo du lieu indisponible.");
+      return;
+    }
+    setFlash("Photo du lieu.");
+    router.refresh();
+  }
+
   return (
     <div className="space-y-6">
-      <div className="relative h-36 overflow-hidden rounded-3xl sm:h-48">
-        <CoverPhoto
-          src={bookingCoverUrl(booking, 960)}
-          alt={booking.destination || booking.title}
-          priority
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-[var(--admin-navy)]/90 via-[var(--admin-navy)]/20 to-transparent" />
+      <BookingHero booking={booking} priority className="h-36 rounded-3xl sm:h-48">
+        <div className="absolute right-3 top-3 z-10 flex flex-wrap justify-end gap-2">
+          <label className="cursor-pointer rounded-full bg-white/95 px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)]">
+            {busy === "cover" ? "Photo…" : "Importer une photo"}
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="sr-only"
+              disabled={busy !== "idle"}
+              onChange={uploadCover}
+            />
+          </label>
+          {booking.cover_image_path ? (
+            <button
+              type="button"
+              disabled={busy !== "idle"}
+              onClick={clearCover}
+              className="rounded-full bg-[var(--admin-navy)]/80 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              Photo du lieu
+            </button>
+          ) : null}
+        </div>
         <div className="absolute bottom-4 left-5 right-5 text-white">
           <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">
             {booking.reference}
@@ -210,7 +261,7 @@ export function BookingEditor({
           </p>
           <h1 className="font-display text-2xl font-bold leading-tight">{booking.title}</h1>
         </div>
-      </div>
+      </BookingHero>
 
       <section className="admin-af-card flex flex-col gap-3 rounded-3xl p-5 sm:flex-row sm:items-center sm:justify-between">
         <div>

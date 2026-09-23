@@ -30,7 +30,6 @@ import {
 } from "@/lib/crm/ingest-types";
 import { assertStaffIngestPath, ingestBatchPrefix } from "@/lib/crm/ingest-storage";
 import { sortItemsByOrder } from "@/lib/crm/carnet";
-import { scheduleBookingCover } from "@/lib/crm/cover-generate";
 import { findMatchingItem } from "@/lib/crm/item-match";
 import { inferAirlineIata } from "@/lib/crm/brand-marks";
 import {
@@ -520,10 +519,6 @@ export async function persistNewBookingFromExtract(opts: {
     .maybeSingle();
   const booked = (withTotal || booking) as CrmBooking;
   await syncBookingLedger(admin, booked);
-  const hotel = extract.items?.find((row) => row.kind === "hotel");
-  scheduleBookingCover(booked, {
-    hotel: hotel?.details?.hotel_name || hotel?.title || null,
-  });
   return booked;
 }
 
@@ -598,15 +593,6 @@ export async function applyExtractToBooking(opts: {
     .maybeSingle();
   const next = (refreshed || booking) as CrmBooking;
   await syncBookingLedger(admin, next, booking.status as BookingStatus);
-  const hotel = opts.extract.items?.find((item) => item.kind === "hotel");
-  scheduleBookingCover(
-    {
-      ...next,
-      destination: (patch.destination as string) || next.destination,
-      title: (patch.title as string) || next.title,
-    } as CrmBooking,
-    { hotel: hotel?.details?.hotel_name || hotel?.title || null }
-  );
   return next;
 }
 

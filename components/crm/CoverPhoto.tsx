@@ -1,15 +1,14 @@
 "use client";
 
-const FALLBACK =
-  "https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=960&h=720&q=70";
-
 export function CoverPhoto({
   src,
+  fallbackSrc = null,
   alt,
   className = "absolute inset-0 h-full w-full object-cover",
   priority = false,
 }: {
   src: string;
+  fallbackSrc?: string | null;
   alt: string;
   className?: string;
   priority?: boolean;
@@ -26,9 +25,16 @@ export function CoverPhoto({
       referrerPolicy="no-referrer"
       onError={(event) => {
         const img = event.currentTarget;
-        if (img.dataset.fallback === "1" || img.src === FALLBACK) return;
-        img.dataset.fallback = "1";
-        img.src = FALLBACK;
+        if (img.dataset.fallback === "1") {
+          img.style.display = "none";
+          return;
+        }
+        if (fallbackSrc && img.src !== fallbackSrc) {
+          img.dataset.fallback = "1";
+          img.src = fallbackSrc;
+          return;
+        }
+        img.style.display = "none";
       }}
     />
   );

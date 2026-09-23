@@ -5,10 +5,9 @@ import { ensureCustomerForUser } from "@/lib/crm/auth";
 import type { CrmBalance, CrmBookingTraveler, CrmTravelDocument } from "@/lib/crm/types";
 import { encoursCaption, formatDateRangeShort, formatMoney, isUpcomingBooking, jMinusLabel } from "@/lib/crm/money";
 import { isCompanyMember } from "@/lib/crm/company-role";
-import { bookingCoverUrl } from "@/lib/crm/covers";
 import { loadVisibleCarnets } from "@/lib/crm/carnet-query";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
-import { CoverPhoto } from "@/components/crm/CoverPhoto";
+import { BookingHero } from "@/components/crm/BookingHero";
 import { Icon } from "@/components/crm/icons";
 import { ConciergeBanner } from "@/components/crm/ui";
 import { greetingGivenName } from "@/lib/crm/identity";
@@ -52,7 +51,6 @@ export default async function AccountHomePage() {
   const shownBalances = balanceRows.length ? balanceRows : [{ currency: "EUR", value: 0 }];
   const owes = shownBalances.some((row) => row.value < 0);
   const firstName = greetingGivenName(customer.first_name) || customer.email.split("@")[0];
-  const cover = nextTrip ? bookingCoverUrl(nextTrip, 960) : null;
   const countdown = nextTrip ? jMinusLabel(nextTrip.start_date) : null;
   const tripHref = nextTrip ? `/mon-compte/reservations/${nextTrip.reference}` : "/mon-compte/reservations";
 
@@ -62,16 +60,9 @@ export default async function AccountHomePage() {
         Bonjour {firstName}
       </h1>
 
-      {nextTrip && cover ? (
-        <article className="relative min-h-[220px] overflow-hidden rounded-2xl bg-[var(--admin-navy)] text-white shadow-xl">
-          <CoverPhoto
-            src={cover}
-            alt={nextTrip.destination || nextTrip.title}
-            className="absolute inset-0 h-full w-full object-cover"
-            priority
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-[var(--admin-navy)] via-[var(--admin-navy)]/55 to-black/20" />
-          <div className="relative flex min-h-[220px] flex-col justify-end gap-3 p-4">
+      {nextTrip ? (
+        <BookingHero booking={nextTrip} priority className="min-h-[220px] rounded-2xl shadow-xl">
+          <div className="flex min-h-[220px] flex-col justify-end gap-3 p-4">
             {countdown ? (
               <p className="w-fit rounded-full bg-white/95 px-3 py-1 text-[12px] font-bold text-[var(--admin-navy)]">
                 {countdown}
@@ -102,7 +93,7 @@ export default async function AccountHomePage() {
               <Icon name="arrow_forward" className="h-5 w-5 text-[var(--admin-gold)]" />
             </Link>
           </div>
-        </article>
+        </BookingHero>
       ) : (
         <article className="rounded-2xl border border-[#e5e3dc] bg-white p-5">
           <h2 className="font-display text-xl font-bold text-[var(--admin-navy)]">Aucun voyage planifié</h2>

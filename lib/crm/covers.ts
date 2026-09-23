@@ -1,74 +1,47 @@
 import type { CrmBooking } from "@/lib/crm/types";
 import { coverQuery } from "@/lib/crm/carnet";
+import { lookupCoverPhoto } from "@/lib/crm/cover-catalog";
 
 const UNSPLASH = (id: string, width = 960) => {
-  const height = Math.max(160, Math.round((width * 3) / 4));
+  const height = Math.max(160, Math.round((width * 9) / 16));
   return `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&h=${height}&q=70`;
 };
 
-/** Photo du lieu d’arrivée (Avoriaz ≠ Zermatt ≠ Paris). Skill travelba-carnet. */
-const BY_KEYWORD: Array<[RegExp, string]> = [
-  [/papagayo|guanacaste|andaz|nicoya|costa rica|heredia|belen|san jos[eé]|sjo|arenal|manuel antonio/i, "photo-1687304527563-74c180d8ced7"],
-  [/bocas|colon|panama|casco|tocumen|pty|panama city/i, "photo-1507525428034-b723cf961d3e"],
-  [/lugano|tessin|ticino|lago/i, "photo-1756755510958-9f02ec73445c"],
-  [/avoriaz|morzine|ch[aâ]tel|les gets|portes du soleil/i, "photo-1674043613875-eabfa5a45425"],
-  [/suisse|switzerland|alpes|alps|zermatt/i, "photo-1661302504642-d74954f9fb6b"],
-  [/marrakech|maroc|morocco|rak|menara|atlas/i, "photo-1677837488142-a85ffbffe408"],
-  [/miami|floride|florida|south beach/i, "photo-1507525428034-b723cf961d3e"],
-  [/venise|venice|venezia/i, "photo-1523906834658-6e24ef2386f9"],
-  [/tokyo|japon|japan|nrt|hnd/i, "photo-1540959733332-eab4deabeeaf"],
-  [/londres|london|lhr|lgw/i, "photo-1513635269975-59663e0ac1ad"],
-  [/rome|roma|italie|italy|fco/i, "photo-1552832230-c0197dd311b5"],
-  [/dubai|dxb|emirats|émirats/i, "photo-1512453979798-5ea266f8880c"],
-  [/paris|provence/i, "photo-1502602898657-3e91760cbb34"],
-  [/bali|indon|lombok/i, "photo-1537996194471-e657df975ab4"],
-  [/safari|tanzanie|kenya|africa|serengeti/i, "photo-1516426122078-c23e76319801"],
-  [/maldives|seychell|bora|tahiti|polyn/i, "photo-1514282401047-d79a71a590e8"],
-  [/new york|new-york|manhattan/i, "photo-1496442226666-8d4d0e62e6e9"],
-  [/grèce|grece|greece|santorin|mykonos/i, "photo-1533105079780-92b9be482077"],
-];
+export type CoverBooking = Pick<CrmBooking, "destination" | "title" | "cover_image_path"> & {
+  updated_at?: string | null;
+};
 
-const FALLBACKS = [
-  "photo-1488646953014-85cb44e25828",
-  "photo-1476514525535-07fb3b4ae5f1",
-  "photo-1469854523086-cc02fe5d8800",
-  "photo-1507525428034-b723cf961d3e",
-];
-
-function hashKey(value: string) {
-  let n = 0;
-  for (let i = 0; i < value.length; i++) n = (n + value.charCodeAt(i) * (i + 1)) % 997;
-  return n;
+/** Comparaison sur le lieu entier, accents et tirets ignorés. */
+export function placeKey(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/['’.]/g, " ")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-export function unsplashKeywordMatch(
-  booking: Pick<CrmBooking, "destination" | "title">
-) {
-  const key = coverQuery(booking.destination, booking.title);
-  for (const [re, id] of BY_KEYWORD) {
-    if (re.test(key)) return id;
-  }
-  return null;
+export function unsplashKeywordMatch(booking: Pick<CrmBooking, "destination" | "title">) {
+  const key = placeKey(coverQuery(booking.destination, booking.title));
+  return lookupCoverPhoto(key);
 }
 
-/** IA seulement s’il n’y a pas déjà une photo Unsplash de lieu. */
-export function needsAiCover(
+export function placeCoverUrl(
   booking: Pick<CrmBooking, "destination" | "title">,
-  force?: boolean
-) {
-  if (force) return true;
-  return !unsplashKeywordMatch(booking);
-}
-
-export function bookingCoverUrl(
-  booking: Pick<CrmBooking, "destination" | "title" | "cover_image_path">,
   width = 960
 ) {
-  if (booking.cover_image_path) {
-    return `/api/files?path=${encodeURIComponent(booking.cover_image_path)}`;
-  }
-  const key = coverQuery(booking.destination, booking.title);
   const match = unsplashKeywordMatch(booking);
-  if (match) return UNSPLASH(match, width);
-  return UNSPLASH(FALLBACKS[hashKey(key) % FALLBACKS.length], width);
+  return match ? UNSPLASH(match, width) : null;
+}
+
+/** Import agence, sinon photo du lieu. Lieu inconnu : null (fond marine). */
+export function bookingCoverUrl(booking: CoverBooking, width = 960) {
+  if (booking.cover_image_path) {
+    const path = `/api/files?path=${encodeURIComponent(booking.cover_image_path)}`;
+    if (!booking.updated_at) return path;
+    return `${path}&v=${encodeURIComponent(booking.updated_at)}`;
+  }
+  return placeCoverUrl(booking, width);
 }

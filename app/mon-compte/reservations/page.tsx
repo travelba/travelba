@@ -11,9 +11,8 @@ import {
   tripDurationDays,
 } from "@/lib/crm/money";
 import { BookingStatusBadge, EmptyState } from "@/components/crm/ui";
-import { bookingCoverUrl } from "@/lib/crm/covers";
 import { loadVisibleCarnets } from "@/lib/crm/carnet-query";
-import { CoverPhoto } from "@/components/crm/CoverPhoto";
+import { BookingHero } from "@/components/crm/BookingHero";
 import { Icon } from "@/components/crm/icons";
 
 export default async function ReservationsPage({
@@ -108,14 +107,11 @@ export default async function ReservationsPage({
       <ul className="space-y-6">
         {list.map((b) => {
           const countdown = !showPast ? jMinusLabel(b.start_date) : null;
-          const img = bookingCoverUrl(b, 800);
           const nights = tripDurationDays(b.start_date, b.end_date);
           return (
             <li key={b.id}>
               <article className="relative overflow-hidden rounded-xl border border-[#c5c6cd]/35 bg-white shadow-sm">
-                <div className="relative h-44 overflow-hidden">
-                  <CoverPhoto src={img} alt={b.destination || b.title} />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[var(--admin-navy)]/90 via-[var(--admin-navy)]/30 to-transparent" />
+                <BookingHero booking={b} width={800} className="h-44">
                   <div className="absolute left-3 right-3 top-3 flex items-center justify-between gap-2">
                     {countdown ? (
                       <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--admin-gold)]/30 bg-[#faf9f6]/95 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--admin-navy)] shadow-sm">
@@ -136,7 +132,7 @@ export default async function ReservationsPage({
                       {b.title || b.destination || "Séjour"}
                     </h2>
                   </div>
-                </div>
+                </BookingHero>
                 <div className="flex flex-col gap-3 bg-white p-4">
                   <div className="grid grid-cols-2 gap-2 rounded-lg border border-[#c5c6cd]/25 bg-[#f4f3f0] p-2.5">
                     <div className="flex flex-col">

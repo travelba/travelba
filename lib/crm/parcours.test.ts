@@ -3,7 +3,8 @@ import test from "node:test";
 import { identityOverwriteWarning } from "./identity";
 import { loyaltyFromCustomer, normalizeLoyaltyMap, normalizeLoyaltyNumber } from "./loyalty";
 import { encoursCaption, formatEncours, formatMoney, jMinusLabel, postedLedgerTotals } from "./money";
-import { needsAiCover, unsplashKeywordMatch } from "./covers";
+import { unsplashKeywordMatch, bookingCoverUrl } from "./covers";
+import { countriesWithPhoto, COUNTRY_CODES } from "./cover-catalog";
 import { vaultDocumentsForPerson } from "./trip-documents";
 import { filterCreditTransfers, isCreditTransfer, type CrmTravelDocument } from "./types";
 
@@ -80,25 +81,77 @@ test("ledger totals stay honest from posted movements", () => {
   assert.equal(settledPct, 64);
 });
 
-test("Unsplash keyword match skips AI cover", () => {
-  assert.ok(unsplashKeywordMatch({ destination: "Paris", title: "Week-end" }));
-  assert.equal(needsAiCover({ destination: "Paris", title: "Week-end" }), false);
-  assert.equal(needsAiCover({ destination: "Paris", title: "Week-end" }, true), true);
+test("cover catalogue matches the arrival place only", () => {
+  const paris = unsplashKeywordMatch({ destination: "Paris", title: "Week-end" });
   const marrakech = unsplashKeywordMatch({
     destination: "Paris · Marrakech",
     title: "Voyage",
   });
+  assert.ok(paris);
   assert.ok(marrakech);
-  assert.notEqual(
-    marrakech,
-    unsplashKeywordMatch({ destination: "Paris", title: "Week-end" })
-  );
+  assert.notEqual(marrakech, paris);
   assert.equal(
     unsplashKeywordMatch({ destination: "Avoriaz", title: "Avoriaz" }),
     "photo-1674043613875-eabfa5a45425"
   );
+  assert.equal(
+    unsplashKeywordMatch({ destination: "CDG → RAK", title: "Vol" }),
+    marrakech
+  );
+  assert.equal(
+    unsplashKeywordMatch({ destination: "Tel Aviv", title: "Tel Aviv" }),
+    "photo-1528791075103-b149f525eb22"
+  );
+  assert.equal(unsplashKeywordMatch({ destination: "Provence", title: "Séjour" }), paris);
+  assert.equal(unsplashKeywordMatch({ destination: "Italie", title: "Voyage" }), "photo-1552832230-c0197dd311b5");
+  assert.equal(
+    unsplashKeywordMatch({ destination: "Florence", title: "Séjour" }),
+    unsplashKeywordMatch({ destination: "Italie", title: "Voyage" })
+  );
+  assert.notEqual(
+    unsplashKeywordMatch({ destination: "Venise", title: "Séjour" }),
+    unsplashKeywordMatch({ destination: "Italie", title: "Voyage" })
+  );
+  assert.notEqual(
+    unsplashKeywordMatch({ destination: "Avoriaz", title: "Avoriaz" }),
+    paris
+  );
+  assert.notEqual(
+    unsplashKeywordMatch({ destination: "Marrakech", title: "Séjour" }),
+    unsplashKeywordMatch({ destination: "Maroc", title: "Séjour" })
+  );
+  assert.equal(unsplashKeywordMatch({ destination: "Alpes", title: "Ski" }), null);
+  assert.equal(
+    unsplashKeywordMatch({ destination: "Lago di Como", title: "Lac" }),
+    unsplashKeywordMatch({ destination: "Italie", title: "Voyage" })
+  );
+  assert.notEqual(
+    unsplashKeywordMatch({ destination: "Miami", title: "Miami" }),
+    unsplashKeywordMatch({ destination: "Panama City", title: "Panama" })
+  );
   assert.equal(unsplashKeywordMatch({ destination: "Xyzzy", title: "Inconnu" }), null);
-  assert.equal(needsAiCover({ destination: "Xyzzy", title: "Inconnu" }), true);
+  assert.equal(
+    bookingCoverUrl({
+      destination: "Xyzzy",
+      title: "Inconnu",
+      cover_image_path: null,
+    }),
+    null
+  );
+  const uploaded = bookingCoverUrl(
+    {
+      destination: "Marrakech",
+      title: "Voyage",
+      cover_image_path: "bookings/abc/cover.webp",
+      updated_at: "2026-09-23T10:00:00.000Z",
+    },
+    960
+  );
+  if (!uploaded) throw new Error("couverture importée attendue");
+  assert.match(uploaded, /^\/api\/files\?path=/);
+  assert.match(uploaded, /v=2026-09-23/);
+  assert.ok(COUNTRY_CODES.length >= 190);
+  assert.ok(countriesWithPhoto() >= 30);
 });
 
 test("vault documents for a person ignore trip clones", () => {

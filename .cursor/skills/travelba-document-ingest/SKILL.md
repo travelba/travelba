@@ -140,7 +140,7 @@ Réimport même clé = **remplace** la carte. Dans un même extract, 10 duplicat
 - Hôtel : `normalizeHotelExtractItem` force `title = hotel_name`.
 - Confirmation → dossier **confirmé** (inédit client) + `total_amount` + transactions. Devis → `quoted` sans débit.
 - Cartes manuelles OK. Drag `sort_order` après persist.
-- Fichiers : upload signé `ingest-tmp/` puis copie `bookings/{id}/`. Lecture via `/api/files` (pas d’URL signed longue). Cover `scheduleBookingCover`.
+- Fichiers : upload signé `ingest-tmp/` puis copie `bookings/{id}/`. Lecture via `/api/files` (pas d’URL signed longue). La couverture vient du catalogue du lieu, ou d’un import agence — pas d’une génération à l’enregistrement.
 - Identity extract → ne pas `persistNewBookingFromExtract`.
 
 ## Fichiers

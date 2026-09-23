@@ -8,7 +8,6 @@ import {
   parseIncludeInLedger,
 } from "@/lib/crm/bookings";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
-import { scheduleBookingCover } from "@/lib/crm/cover-generate";
 import { BookingDeleteError, deleteBookingById } from "@/lib/crm/delete-booking";
 import type { BookingStatus, CrmBooking, CrmCustomer } from "@/lib/crm/types";
 
@@ -116,14 +115,6 @@ export async function PATCH(request: Request, ctx: Ctx) {
     await syncBookingLedger(auth.supabase, booking, prev.status as BookingStatus);
   } catch (err) {
     return jsonError(err instanceof Error ? err.message : "Écritures non retirées", 400);
-  }
-  if (
-    ("destination" in patch || "title" in patch) &&
-    (booking.destination !== prev.destination || booking.title !== prev.title)
-  ) {
-    scheduleBookingCover(booking, { force: true });
-  } else if (!booking.cover_image_path) {
-    scheduleBookingCover(booking);
   }
   return NextResponse.json({ booking });
 }

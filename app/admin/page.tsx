@@ -19,8 +19,7 @@ import { revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
 import { stripeConfigured, stripeWebhookConfigured } from "@/lib/crm/stripe";
 import { buildLaunchItems } from "@/lib/crm/launch-status";
 import { AdminLaunchStatus } from "@/components/admin/AdminLaunchStatus";
-import { CoverPhoto } from "@/components/crm/CoverPhoto";
-import { bookingCoverUrl } from "@/lib/crm/covers";
+import { BookingHero } from "@/components/crm/BookingHero";
 import {
   EmptyState,
   PageEyebrow,
@@ -207,13 +206,7 @@ export default async function AdminHomePage() {
             href={`/admin/reservations/${featured.id}`}
             className="admin-af-card relative block overflow-hidden rounded-2xl"
           >
-            <div className="relative h-44 sm:h-52">
-              <CoverPhoto
-                src={bookingCoverUrl(featured, 960)}
-                alt={featured.destination || featured.title}
-                priority
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-[var(--admin-navy)] via-[var(--admin-navy)]/55 to-black/10" />
+            <BookingHero booking={featured} priority className="h-44 sm:h-52">
               <div className="absolute inset-0 flex flex-col justify-between p-5 text-white">
                 <div className="flex items-start justify-between gap-3">
                   <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">
@@ -237,7 +230,7 @@ export default async function AdminHomePage() {
                   </p>
                 </div>
               </div>
-            </div>
+            </BookingHero>
           </Link>
         ) : (
           <EmptyState

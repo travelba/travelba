@@ -22,7 +22,7 @@ Espace client : colonne ~480px (`AccountChrome`). Admin : sidebar `AdminNav`.
 
 - Fonts `app/layout.tsx` : Plus Jakarta + Inter preload ; Space Grotesk `preload: false`.
 - Icons : `components/crm/icons.tsx` (Lucide, **noms historiques** `flight`, `hotel`, `chat`…). Ajouter un mapping, pas un import Material.
-- Couvertures et scans : `components/crm/CoverPhoto.tsx` = `<img>` natif (`referrerPolicy=no-referrer`). Pas de `next/image` sur Unsplash/signed (layout shift + puppeteer).
+- Couvertures : `components/crm/BookingHero.tsx` + `CoverPhoto.tsx` = `<img>` natif (`referrerPolicy=no-referrer`). Pas de `next/image` sur Unsplash. Repli : photo du lieu, puis fond marine.
 - Fichiers : `src="/api/files?path=..."` uniquement. Jamais coller une signed URL Supabase dans le DOM (expire + fuite).
 
 ## Copy

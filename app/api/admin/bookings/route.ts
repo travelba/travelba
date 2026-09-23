@@ -3,7 +3,6 @@ import { dbError, jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
 import { collectManualCreateIssues } from "@/lib/crm/booking-issues";
 import { nextBookingReference, parseIncludeInLedger, syncBookingLedger } from "@/lib/crm/bookings";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
-import { scheduleBookingCover } from "@/lib/crm/cover-generate";
 import type { CrmBooking, CrmCustomer } from "@/lib/crm/types";
 
 export async function GET() {
@@ -67,6 +66,5 @@ export async function POST(request: Request) {
   if (error) return dbError(error, 400);
   const booking = data as CrmBooking;
   await syncBookingLedger(auth.supabase, booking);
-  scheduleBookingCover(booking);
   return NextResponse.json({ booking });
 }
