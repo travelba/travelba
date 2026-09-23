@@ -77,36 +77,41 @@ export function BookingEditor({
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const form = event.currentTarget;
     setBusy("save");
     setFlash(null);
-    if (saveOpenCard.current) {
-      const cardOk = await saveOpenCard.current();
-      if (!cardOk) {
-        setBusy("idle");
-        setFlash("La carte ouverte n’a pas été enregistrée.");
+    try {
+      if (saveOpenCard.current) {
+        const cardOk = await saveOpenCard.current();
+        if (!cardOk) {
+          setFlash("La carte ouverte n’a pas été enregistrée.");
+          return;
+        }
+      }
+      const fd = new FormData(form);
+      const body = Object.fromEntries(fd.entries());
+      const res = await fetch(`/api/admin/bookings/${booking.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...body,
+          include_in_ledger: fd.get("include_in_ledger") === "on",
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setIssues(issuesFromResponse(json));
+        setFlash(null);
         return;
       }
+      setIssues([]);
+      setFlash("Enregistré. Le carnet n’est pas publié pour autant.");
+      router.refresh();
+    } catch {
+      setFlash("Enregistrement impossible. Réessayez.");
+    } finally {
+      setBusy("idle");
     }
-    const fd = new FormData(event.currentTarget);
-    const body = Object.fromEntries(fd.entries());
-    const res = await fetch(`/api/admin/bookings/${booking.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...body,
-        include_in_ledger: fd.get("include_in_ledger") === "on",
-      }),
-    });
-    const json = await res.json().catch(() => ({}));
-    setBusy("idle");
-    if (!res.ok) {
-      setIssues(issuesFromResponse(json));
-      setFlash(null);
-      return;
-    }
-    setIssues([]);
-    setFlash("Enregistré. Le carnet n’est pas publié pour autant.");
-    router.refresh();
   }
 
   async function setPublished(visible: boolean) {
