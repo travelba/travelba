@@ -13,7 +13,7 @@ Produit FR pour agence de voyage : back-office `/admin` (clients, réservations,
 - **Langue UI / copy client** : français. Voix **l’agence**.
 - **Secrets** : `.env.local` / Vercel env — jamais commit.
 - **Next.js 16** : lire `node_modules/next/dist/docs/` avant APIs nouvelles. Pas de Cache Components. Session = `proxy.ts`.
-- **Skills** : commencer par `.cursor/skills/travelba-voyage-crm/SKILL.md` puis **un** skill de la table ci-dessous. PDF / photos / import → `travelba-document-ingest` **tout de suite** (qualité carnet = qualité import). Confirmation Gmail → `travelba-email-ingest`.
+- **Skills** : commencer par `.cursor/skills/travelba-voyage-crm/SKILL.md` puis **un** skill de la table ci-dessous. PDF / photos / dropzone → `travelba-document-ingest` **tout de suite**. Gmail labels / `crm_email_ingest` → `travelba-email-ingest`.
 - **Design** : Stitch Portail Client (`10475551423344387411`) Sovereign Horizon (marine `#0B192C` + champagne `#C5A880`). Pas Aura, pas la feuille Travelba CRM.
 
 | Tâche | Skill |
@@ -23,8 +23,8 @@ Produit FR pour agence de voyage : back-office `/admin` (clients, réservations,
 | Schema / RLS / bucket | `travelba-supabase` |
 | Invite, magique, sessions | `travelba-auth` |
 | Carnet / publier / timeline | `travelba-carnet` |
-| **Import PDF/photos → cartes** (qualité) | `travelba-document-ingest` |
-| **Mail Gmail confirmation → dossier** | `travelba-email-ingest` |
+| **Import PDF/photos** (dropzone, relecture humaine) | `travelba-document-ingest` |
+| **Gmail / `crm_email_ingest`** (Little Emperors, Expedia TAAP) | `travelba-email-ingest` |
 | Ledger / Stripe / Revolut | `travelba-money` |
 | UI Stitch / fichiers | `travelba-ui` |
 | Fiche / passeports | `travelba-identity` |

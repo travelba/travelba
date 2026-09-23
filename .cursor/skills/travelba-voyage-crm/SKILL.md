@@ -13,8 +13,8 @@ Produit : back-office `/admin` + espace client `/mon-compte`. UI française.
 Site public : `https://travelba.fr`. Compte : Travel Business Agency (TBA).
 
 Lire **ce fichier en premier**, puis **un seul** skill spécialisé ci-dessous.
-PDF / photos / « entraîne l’import » → **`travelba-document-ingest`** (qualité carnet = qualité import).
-Confirmation Gmail → **`travelba-email-ingest`** (auto-rattacher / créer le dossier).
+PDF / photos / « entraîne l’import » → **`travelba-document-ingest`** (dropzone admin, relecture humaine avant Enregistrer).
+Gmail / `crm_email_ingest` / labels Little Emperors & Expedia TAAP → **`travelba-email-ingest`** (parse → **auto** match/apply ou create).
 Ne pas ré-ouvrir le QCM produit : les règles sont déjà ancrées dans les skills.
 
 ## Quel skill charger
@@ -26,8 +26,8 @@ Ne pas ré-ouvrir le QCM produit : les règles sont déjà ancrées dans les ski
 | Schema, RLS, bucket, Auth dashboard, migrations | `.cursor/skills/travelba-supabase/SKILL.md` |
 | Invitation, magique, mot de passe, sessions, staff | `.cursor/skills/travelba-auth/SKILL.md` |
 | Carnet, timeline, publier, cartes vol/hôtel | `.cursor/skills/travelba-carnet/SKILL.md` |
-| **Import PDF/photos** (qualité / fiabilité des cartes) | `.cursor/skills/travelba-document-ingest/SKILL.md` |
-| **Mail Gmail confirmation → dossier CRM** | `.cursor/skills/travelba-email-ingest/SKILL.md` |
+| **Import PDF/photos** (dropzone admin, relecture puis Enregistrer) | `.cursor/skills/travelba-document-ingest/SKILL.md` |
+| **Gmail / `crm_email_ingest`** (labels Little Emperors & Expedia TAAP → auto dossier) | `.cursor/skills/travelba-email-ingest/SKILL.md` |
 | Ledger, encours, Stripe, Revolut | `.cursor/skills/travelba-money/SKILL.md` |
 | Stitch, Lucide, `/api/files`, copy FR | `.cursor/skills/travelba-ui/SKILL.md` |
 | Fiche, passeports, compagnons, facturation | `.cursor/skills/travelba-identity/SKILL.md` |
@@ -84,7 +84,7 @@ IDs prod :
 | Invitation | `lib/crm/invite.ts` |
 | Carnet | `lib/crm/carnet.ts` |
 | Import docs | `lib/crm/ingest-booking.ts`, `ingest-parse.ts`, skill `travelba-document-ingest` |
-| Mails Gmail | `lib/crm/email-ingest.ts`, `email-match.ts`, skill `travelba-email-ingest` |
+| Mails Gmail | `lib/crm/email-ingest.ts`, `email-match.ts`, `gmail.ts`, skill `travelba-email-ingest` |
 | Couvertures | `lib/crm/covers.ts` + skill `travelba-carnet` (arrivée, pas Paris) |
 | Identité | `lib/crm/ocr-document.ts` |
 | Fichiers | `lib/crm/files.ts` + `app/api/files/route.ts` |
