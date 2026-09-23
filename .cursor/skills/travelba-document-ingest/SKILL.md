@@ -16,6 +16,7 @@ L’IA ne publie jamais.
 
 Agence **seule**. `app/api/client/bookings/**/ingest` = 404.
 Identité / MRZ : skill `travelba-identity` — **pas** ce dropzone.
+Confirmation Gmail (labels, `crm_email_ingest`, auto-dossier) : skill `travelba-email-ingest`.
 
 ## Contrat (non négociable)
 

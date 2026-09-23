@@ -9,6 +9,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - Always-on : `.cursor/rules/travelba-core.mdc`
 - Index CRM : `.cursor/skills/travelba-voyage-crm/SKILL.md` (charger **un** skill spécialisé ensuite)
 - Import PDF/photos (qualité carnet) : `.cursor/skills/travelba-document-ingest/SKILL.md`
+- Mail Gmail confirmation → dossier : `.cursor/skills/travelba-email-ingest/SKILL.md`
 - Création / clone local : `.cursor/skills/travelba-bootstrap/SKILL.md`
 - Prod `travelba.fr` : `.cursor/skills/travelba-go-live/SKILL.md`
 - Prefer shipping working CRM flows over speculative refactors.
