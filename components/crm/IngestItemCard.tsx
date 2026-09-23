@@ -1,8 +1,12 @@
 "use client";
 
 import type { BookingExtract } from "@/lib/crm/ingest-types";
-import type { BookingItemKind } from "@/lib/crm/types";
-import { BOOKING_ITEM_KINDS, BOOKING_ITEM_LABELS, isExtraItemKind } from "@/lib/crm/types";
+import {
+  BOOKING_ITEM_KINDS,
+  BOOKING_ITEM_LABELS,
+  isExtraItemKind,
+  isLedgerExpenseKind,
+} from "@/lib/crm/types";
 import { DateFrInput, Field, MoneyInput, fieldControlClass } from "@/components/crm/fields";
 import { BrandMark } from "@/components/crm/BrandMark";
 import { applyRoomGuestLabels, guestsLabelFromKeys, type HouseholdMember } from "@/lib/crm/household";
@@ -97,7 +101,9 @@ export function IngestItemCard({
   const d = item.details || {};
   const included = Array.isArray(d.included) ? d.included.join("\n") : String(d.included || "");
   const roomRows = Array.isArray(d.rooms) ? d.rooms : [];
-  const kinds = BOOKING_ITEM_KINDS.filter((kind) => !isExtraItemKind(kind) || item.kind === kind);
+  const kinds = BOOKING_ITEM_KINDS.filter(
+    (kind) => !isLedgerExpenseKind(kind) && (!isExtraItemKind(kind) || item.kind === kind)
+  );
 
   return (
     <div className="space-y-3 rounded-2xl border border-border p-3">
@@ -106,7 +112,7 @@ export function IngestItemCard({
           {item.kind === "flight" || item.kind === "car" ? <BrandMark item={item} className="h-9 w-9" /> : null}
           <select
             value={item.kind}
-            onChange={(e) => onChange({ ...item, kind: e.target.value as BookingItemKind })}
+            onChange={(e) => onChange({ ...item, kind: e.target.value as typeof item.kind })}
             className={`${fieldControlClass} max-w-[12rem]`}
           >
             {kinds.map((kind) => (

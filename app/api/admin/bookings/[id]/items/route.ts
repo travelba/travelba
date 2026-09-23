@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { parseIncludeInLedger, refreshBookingLedger } from "@/lib/crm/bookings";
 import { parseMoney } from "@/lib/crm/money";
+import { BOOKING_ITEM_KINDS, isLedgerExpenseKind, type BookingItemKind } from "@/lib/crm/types";
+
+function knownKind(value: unknown) {
+  const kind = String(value || "");
+  return (BOOKING_ITEM_KINDS as readonly string[]).includes(kind) ? (kind as BookingItemKind) : null;
+}
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -11,8 +17,13 @@ export async function POST(request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   const body = await request.json().catch(() => null);
   const title = String(body?.title || "").trim();
-  const kind = String(body?.kind || "fee");
+  const kind = knownKind(body?.kind || "fee");
+  if (!kind) return jsonError("Type de carte inconnu");
   if (!title) return jsonError("Titre requis");
+  const amount = parseMoney(body?.amount);
+  if (isLedgerExpenseKind(kind) && (amount == null || amount <= 0)) {
+    return jsonError("Montant requis");
+  }
   const { data: existing } = await auth.supabase
     .from("crm_booking_items")
     .select("sort_order")
@@ -35,8 +46,10 @@ export async function POST(request: Request, ctx: Ctx) {
       confirmation_ref: body?.confirmation_ref || null,
       start_at: body?.start_at || null,
       end_at: body?.end_at || null,
-      amount: parseMoney(body?.amount),
-      include_in_ledger: parseIncludeInLedger(body?.include_in_ledger, false),
+      amount,
+      include_in_ledger: isLedgerExpenseKind(kind)
+        ? true
+        : parseIncludeInLedger(body?.include_in_ledger, false),
       sort_order: sortOrder,
       details: body?.details || {},
       visible_to_client: false,
@@ -67,8 +80,18 @@ export async function PATCH(request: Request, ctx: Ctx) {
   }
   const itemId = String(body?.id || "");
   if (!itemId) return jsonError("id requis");
+  const { data: current, error: currentError } = await auth.supabase
+    .from("crm_booking_items")
+    .select("kind, amount")
+    .eq("id", itemId)
+    .eq("booking_id", bookingId)
+    .maybeSingle();
+  if (currentError) return dbError(currentError, 400);
+  if (!current) return jsonError("Carte introuvable", 404);
+  const nextKind = body.kind != null ? knownKind(body.kind) : knownKind(current.kind);
+  if (!nextKind) return jsonError("Type de carte inconnu");
   const patch: Record<string, unknown> = {};
-  if (body.kind != null) patch.kind = body.kind;
+  if (body.kind != null) patch.kind = nextKind;
   if (body.title != null) patch.title = body.title;
   if ("supplier" in body) patch.supplier = body.supplier;
   if ("confirmation_ref" in body) patch.confirmation_ref = body.confirmation_ref;
@@ -77,6 +100,12 @@ export async function PATCH(request: Request, ctx: Ctx) {
   if ("amount" in body) patch.amount = parseMoney(body.amount);
   if ("include_in_ledger" in body) {
     patch.include_in_ledger = parseIncludeInLedger(body.include_in_ledger, false);
+  }
+  if (isLedgerExpenseKind(nextKind)) {
+    const amount = "amount" in body ? parseMoney(body.amount) : parseMoney(current.amount);
+    if (amount == null || amount <= 0) return jsonError("Montant requis");
+    patch.include_in_ledger = true;
+    if ("amount" in body) patch.amount = amount;
   }
   if (body.sort_order != null) patch.sort_order = Number(body.sort_order);
   if ("details" in body) patch.details = body.details || {};

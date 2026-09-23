@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  coversStayRollup,
+  isFreeExpenseDebit,
   isStayRollupDebit,
   ledgerMovementTitle,
   ledgerPlace,
@@ -53,6 +55,30 @@ test("le montant global du séjour disparaît dès qu’une dépense du dossier 
   assert.deepEqual(
     visibleLedgerRows(rows).map((row) => row.id),
     ["flight", "fee", "alone", "wire"]
+  );
+});
+
+test("une dépense libre reste à côté du montant du séjour", () => {
+  const stay = {
+    id: "stay",
+    booking_id: "b1",
+    direction: "debit",
+    kind: "booking",
+    external_id: null,
+  };
+  const expense = {
+    id: "extra",
+    booking_id: "b1",
+    direction: "debit",
+    kind: "booking",
+    external_id: "booking:b1:expense:e1",
+  };
+  assert.equal(isFreeExpenseDebit(expense), true);
+  assert.equal(coversStayRollup(expense), false);
+  assert.equal(coversStayRollup(stay), false);
+  assert.deepEqual(
+    visibleLedgerRows([stay, expense]).map((row) => row.id),
+    ["stay", "extra"]
   );
 });
 

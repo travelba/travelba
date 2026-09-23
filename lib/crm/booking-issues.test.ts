@@ -30,6 +30,7 @@ test("carte sans titre et publication sans carte métier", () => {
   const empty = collectExtractIssues({ items: [{ title: "  " }] });
   assert.match(empty[0].message, /titre/);
   assert.equal(collectPublishIssues([{ kind: "fee" }]).length, 1);
+  assert.equal(collectPublishIssues([{ kind: "expense" }]).length, 1);
   assert.equal(collectPublishIssues([{ kind: "hotel" }]).length, 0);
   assert.match(issuesSummary([{ field: "a", message: "Un" }, { field: "b", message: "Deux" }]), /2 points/);
 });

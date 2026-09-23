@@ -1,7 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   BOOKING_ITEM_LABELS,
+  countsAsCarnetCard,
   isExtraItemKind,
+  isLedgerExpenseKind,
   type BookingItemKind,
   type BookingStatus,
   type CrmBooking,
@@ -16,7 +18,7 @@ import {
   ticketingFeeLabel,
   ticketingTicketCount,
 } from "@/lib/crm/ticketing-fee";
-import { isStayRollupDebit } from "@/lib/crm/ledger-display";
+import { coversStayRollup, isStayRollupDebit } from "@/lib/crm/ledger-display";
 
 export function parseIncludeInLedger(value: unknown, fallback: boolean) {
   if (value === true || value === "on" || value === "true") return true;
@@ -54,13 +56,13 @@ export function itemSellingAmount(item: {
   return Math.round(total * 100) / 100;
 }
 
-/** Montant du séjour : toujours la somme des prix vendus. Chauffeur, greeter, demande de visa et frais de billeterie restent hors total. */
+/** Montant du séjour : toujours la somme des prix vendus. Chauffeur, greeter, visa, dépense libre et frais de billeterie restent hors total. */
 export function bookingTotalFromItems(
   items: { kind?: string | null; amount?: number | null; details?: Record<string, unknown> | null }[]
 ): number {
   let sum = 0;
   for (const item of items) {
-    if (isExtraItemKind(item.kind)) continue;
+    if (isExtraItemKind(item.kind) || isLedgerExpenseKind(item.kind)) continue;
     const n = itemSellingAmount(item);
     if (n == null) continue;
     sum += n;
@@ -79,6 +81,20 @@ export async function syncBookingTotalFromItems(supabase: SupabaseClient, bookin
 
 export function bookingItemDebitExternalId(bookingId: string, itemId: string) {
   return `booking:${bookingId}:item:${itemId}`;
+}
+
+/** Dépense libre : ne couvre pas le montant global du séjour. */
+export function bookingExpenseDebitExternalId(bookingId: string, itemId: string) {
+  return `booking:${bookingId}:expense:${itemId}`;
+}
+
+export function bookingChargeExternalId(
+  bookingId: string,
+  item: { id: string; kind?: string | null }
+) {
+  return isLedgerExpenseKind(item.kind)
+    ? bookingExpenseDebitExternalId(bookingId, item.id)
+    : bookingItemDebitExternalId(bookingId, item.id);
 }
 
 export function bookingItemDebitLabel(
@@ -249,7 +265,8 @@ export async function syncBookingItemDebits(supabase: SupabaseClient, booking: C
     .select("*")
     .eq("booking_id", booking.id);
   const rows = (items || []) as CrmBookingItem[];
-  const prefix = `booking:${booking.id}:item:`;
+  const itemPrefix = `booking:${booking.id}:item:`;
+  const expensePrefix = `booking:${booking.id}:expense:`;
   const { data: existingRows } = await supabase
     .from("crm_transactions")
     .select("*")
@@ -259,25 +276,26 @@ export async function syncBookingItemDebits(supabase: SupabaseClient, booking: C
     .eq("direction", "debit");
   const byExternal = new Map<string, CrmTransaction>();
   for (const row of (existingRows || []) as CrmTransaction[]) {
-    if ((row.external_id || "").startsWith(prefix)) {
-      byExternal.set(row.external_id as string, row);
+    const externalId = row.external_id || "";
+    if (externalId.startsWith(itemPrefix) || externalId.startsWith(expensePrefix)) {
+      byExternal.set(externalId, row);
     }
   }
 
-  const billedIds = new Set<string>();
+  const billed = new Set<string>();
   const payerId = booking.billing_customer_id || booking.customer_id;
 
   for (const item of rows) {
     const amount = itemSellingAmount(item) || 0;
-    const externalId = bookingItemDebitExternalId(booking.id, item.id);
-    billedIds.add(item.id);
+    const externalId = bookingChargeExternalId(booking.id, item);
+    billed.add(externalId);
     const debit = byExternal.get(externalId) || null;
     // A voided line still occupies unique(source, external_id) — update it, don't insert.
     const intent = bookingDebitIntent({
       status: booking.status,
       amount,
       hasOpenDebit: Boolean(debit),
-      includeInLedger: Boolean(item.include_in_ledger),
+      includeInLedger: isLedgerExpenseKind(item.kind) || Boolean(item.include_in_ledger),
     });
     const label = bookingItemDebitLabel(item, booking.reference);
 
@@ -317,14 +335,13 @@ export async function syncBookingItemDebits(supabase: SupabaseClient, booking: C
   }
 
   for (const [externalId, debit] of byExternal) {
-    const itemId = externalId.slice(prefix.length);
-    if (billedIds.has(itemId)) continue;
+    if (billed.has(externalId)) continue;
     if (debit.status === "void") continue;
     await supabase.from("crm_transactions").update({ status: "void" }).eq("id", debit.id);
   }
 }
 
-/** Le montant global du séjour quitte le livre dès qu’une dépense du dossier est postée. */
+/** Le montant global du séjour quitte le livre dès qu’une carte ou un frais du dossier est posté. Une dépense libre ne le retire pas. */
 export async function dropCoveredStayRollup(supabase: SupabaseClient, bookingId: string) {
   const { data, error } = await supabase
     .from("crm_transactions")
@@ -334,7 +351,7 @@ export async function dropCoveredStayRollup(supabase: SupabaseClient, bookingId:
     .eq("status", "posted");
   if (error) throw new Error(error.message);
   const rows = (data || []) as Pick<CrmTransaction, "id" | "direction" | "kind" | "external_id" | "status">[];
-  if (!rows.some((row) => !isStayRollupDebit(row))) return;
+  if (!rows.some((row) => coversStayRollup({ ...row, booking_id: bookingId }))) return;
   const rollupIds = rows.filter((row) => isStayRollupDebit(row)).map((row) => row.id);
   if (!rollupIds.length) return;
   const { error: deleteError } = await supabase.from("crm_transactions").delete().in("id", rollupIds);
@@ -364,7 +381,7 @@ export async function refreshTicketingFee(supabase: SupabaseClient, bookingId: s
 }
 
 export function canPublishCarnet(items: { kind: string }[]) {
-  return items.some((item) => item.kind !== "fee" && !isExtraItemKind(item.kind));
+  return items.some((item) => countsAsCarnetCard(item.kind));
 }
 
 export async function setCarnetPublished(

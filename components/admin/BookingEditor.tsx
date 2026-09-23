@@ -7,6 +7,7 @@ import {
   BOOKING_STATUSES,
   BOOKING_STATUS_LABELS,
   customerFullName,
+  isLedgerExpenseKind,
   type CrmBooking,
   type CrmBookingDocument,
   type CrmBookingItem,
@@ -23,6 +24,7 @@ import { documentLabel } from "@/lib/crm/carnet";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { Icon } from "@/components/crm/icons";
+import { BookingExpensesPanel } from "@/components/admin/BookingExpensesPanel";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
@@ -543,6 +545,13 @@ export function BookingEditor({
         }}
       />
 
+      <BookingExpensesPanel
+        bookingId={booking.id}
+        items={items}
+        status={booking.status}
+        currency={booking.currency}
+      />
+
       {customers.find((row) => row.id === booking.customer_id) && bookingHasFlight(items) ? (
         <section className="admin-af-card space-y-4 rounded-3xl p-5">
           <TripFormalities trip={formalities} />
@@ -567,7 +576,7 @@ export function BookingEditor({
         </section>
       ) : null}
 
-      {items.length ? (
+      {items.some((item) => !isLedgerExpenseKind(item.kind)) ? (
         <section className="admin-af-card space-y-3 rounded-3xl p-5">
           <h2 className="font-display text-lg font-bold">Aperçu client</h2>
           <p className="text-sm text-muted">Les mêmes cartes, dans l’ordre du carnet. Invisible tant que vous ne publiez pas.</p>

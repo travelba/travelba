@@ -18,7 +18,8 @@ export const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
   cancelled: "Annulée",
 };
 
-export const BOOKING_ITEM_KINDS = [
+/** Kinds que l’import peut produire. La dépense libre n’en fait pas partie. */
+export const INGEST_ITEM_KINDS = [
   "flight",
   "hotel",
   "transfer",
@@ -32,6 +33,8 @@ export const BOOKING_ITEM_KINDS = [
   "greeter",
   "visa",
 ] as const;
+
+export const BOOKING_ITEM_KINDS = [...INGEST_ITEM_KINDS, "expense"] as const;
 
 export type BookingItemKind = (typeof BOOKING_ITEM_KINDS)[number];
 
@@ -48,6 +51,7 @@ export const BOOKING_ITEM_LABELS: Record<BookingItemKind, string> = {
   chauffeur: "Chauffeur",
   greeter: "Greeter",
   visa: "Visa",
+  expense: "Dépense",
 };
 
 /** Cartes hors séjour (total + publication). */
@@ -55,6 +59,16 @@ export const EXTRA_ITEM_KINDS = ["chauffeur", "greeter", "visa"] as const;
 
 export function isExtraItemKind(kind: string | null | undefined) {
   return kind === "chauffeur" || kind === "greeter" || kind === "visa";
+}
+
+/** Dépense libre : au grand livre, absente de l’itinéraire. */
+export function isLedgerExpenseKind(kind: string | null | undefined): kind is "expense" {
+  return kind === "expense";
+}
+
+/** Carte métier exigée pour publier le carnet. */
+export function countsAsCarnetCard(kind: string | null | undefined) {
+  return Boolean(kind) && kind !== "fee" && !isLedgerExpenseKind(kind) && !isExtraItemKind(kind);
 }
 
 export const DOC_TYPES = [
