@@ -1312,6 +1312,16 @@ export function parsedItemsFromText(text: string): {
       "Toucan Discovery : activités uniquement ; les étapes du cadre ne sont pas des hôtels."
     );
   }
+  if (travelers.length) {
+    const passengers = travelers.map((row) => ({
+      first_name: row.first_name,
+      last_name: row.last_name,
+    }));
+    for (const item of items) {
+      if (item.kind !== "flight") continue;
+      item.details = { ...(item.details || {}), passengers };
+    }
+  }
   return { items: mergeExtractItems(items), status, notes, travelers, title, destination };
 }
 

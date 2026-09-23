@@ -871,6 +871,8 @@ describe("parseTransaviaConfirmation", () => {
     assert.equal(parsed.items[1]?.details?.from, "TLV");
     assert.equal(parsed.items[1]?.details?.to, "ORY");
     assert.equal(parsed.items[1]?.start_at, "2026-12-23T14:10:00");
+    assert.equal(parsed.items[0]?.details?.passengers?.length, 4);
+    assert.equal(parsed.items[1]?.details?.passengers?.length, 4);
     assert.notEqual(parsed.items[1]?.start_at, "2026-12-23T04:00:00");
     assert.deepEqual(
       parsed.travelers.map((row) => `${row.first_name} ${row.last_name}`),

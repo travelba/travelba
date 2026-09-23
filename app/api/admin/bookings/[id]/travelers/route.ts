@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { dbError, jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
 import { refreshTicketingFee } from "@/lib/crm/bookings";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
+import { sameRecordedTraveler } from "@/lib/crm/person-match";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -12,11 +13,14 @@ export async function POST(request: Request, ctx: Ctx) {
   const body = await request.json().catch(() => null);
   const companionId = String(body?.companion_id || "").trim();
   const isHolder = Boolean(body?.is_account_holder);
-  if (!companionId && !isHolder) {
+  let firstName = String(body?.first_name || "").trim() || null;
+  let lastName = String(body?.last_name || "").trim() || null;
+  const fromDocument = !companionId && !isHolder;
+  if (fromDocument && !firstName && !lastName) {
     return jsonIssues([
       {
         field: "companion_id",
-        message: "Choisissez un voyageur du foyer (titulaire ou accompagnateur).",
+        message: "Choisissez un voyageur du foyer ou un passager identifié dans les documents.",
       },
     ]);
   }
@@ -26,8 +30,6 @@ export async function POST(request: Request, ctx: Ctx) {
     .eq("id", id)
     .maybeSingle();
   if (!booking) return jsonError("Réservation introuvable", 404);
-  let firstName = String(body?.first_name || "").trim() || null;
-  let lastName = String(body?.last_name || "").trim() || null;
   if (isHolder) {
     const { data: holder } = await auth.supabase
       .from("crm_customers")
@@ -36,7 +38,7 @@ export async function POST(request: Request, ctx: Ctx) {
       .maybeSingle();
     firstName = holder?.first_name || firstName;
     lastName = holder?.last_name || lastName;
-  } else {
+  } else if (companionId) {
     const { data: companion } = await auth.supabase
       .from("crm_travel_companions")
       .select("first_name, last_name")
@@ -49,11 +51,22 @@ export async function POST(request: Request, ctx: Ctx) {
     firstName = companion.first_name;
     lastName = companion.last_name;
   }
+  const { data: already } = await auth.supabase
+    .from("crm_booking_travelers")
+    .select("first_name, last_name")
+    .eq("booking_id", id);
+  if (
+    (already || []).some((row) =>
+      sameRecordedTraveler(row, { first_name: firstName, last_name: lastName })
+    )
+  ) {
+    return jsonIssues([{ field: "travelers", message: "Ce voyageur est déjà sur le séjour." }]);
+  }
   const { data, error } = await auth.supabase
     .from("crm_booking_travelers")
     .insert({
       booking_id: id,
-      companion_id: isHolder ? null : companionId,
+      companion_id: isHolder || fromDocument ? null : companionId,
       is_account_holder: isHolder,
       first_name: firstName,
       last_name: lastName,

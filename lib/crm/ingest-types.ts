@@ -56,6 +56,14 @@ const detailsSchemaLoose = z
     document_amount: looseNumber,
     document_currency: looseString,
     ticket_count: looseNumber,
+    passengers: z
+      .array(
+        z.object({
+          first_name: looseString,
+          last_name: looseString,
+        })
+      )
+      .optional(),
   })
   .optional()
   .default({});

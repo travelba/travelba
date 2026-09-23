@@ -299,6 +299,17 @@ async function upsertItemsAndTravelers(
         flight_number: typeof details.flight_number === "string" ? details.flight_number : null,
       });
       if (iata) details.airline_iata = iata;
+      const named = (extract.travelers || []).filter(
+        (row) =>
+          (row.first_name || row.last_name) &&
+          !isPlaceholderTraveler(row.first_name, row.last_name)
+      );
+      if (named.length && !Array.isArray(details.passengers)) {
+        details.passengers = named.map((row) => ({
+          first_name: row.first_name,
+          last_name: row.last_name,
+        }));
+      }
     }
     if (kind === "hotel" && Array.isArray(details.rooms)) {
       details.rooms = applyRoomGuestLabels(
