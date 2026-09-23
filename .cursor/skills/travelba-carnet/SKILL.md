@@ -30,24 +30,31 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 
 ## Timeline
 
-- Grouper par jour (`groupByDay`). **Hôtel répété chaque nuit** de stay (`stayNightDates` : start inclus, checkout **exclu**).
+- Grouper par jour (`groupByDay`). **Hôtel et location** répétés chaque jour de stay (`stayNightDates` : start inclus, fin **exclue**). Vol = jour de départ.
 - Jours **sans aucune** carte : **sautés** (pas de ligne vide entre deux villes).
-- Hôtel : **pas d’horloge**. `itemClock` ignore `T00:00:00` (timestamptz minuit ≠ 00h00 check-in).
+- Hôtel : **pas d’horloge**. `itemClock` ignore `T00:00:00` (timestamptz minuit ≠ 00h00 check-in). Carte compacte : **nom d’établissement** (`details.hotel_name` / `hotelDisplayName`) en titre, **ville** (`hotelCityLine`) en dessous. Jamais la ville à la place du nom.
 - Vol : ligne 1 `CDG → RAK` (`flightIata`), ligne 2 villes (`flightCities`).
-- Clic carte = détail + **Voir la confirmation** (PDF `source_document_id`).
+- Clic carte = détail + **Voir la confirmation** (PDF `source_document_id`) + **Ajouter à l’agenda** (.ics).
+- En-tête itinéraire : **Ajouter tout le séjour** (`GET /api/client/bookings/[reference]/calendrier`). Horaires seulement s’ils existent ; hôtel = journée entière.
 - Ordre : `sort_order` agent (drag / monter-descendre), défaut **chrono**. PATCH `{ order: [ids] }` sur `/api/admin/bookings/[id]/items`.
 - Kinds : `flight` `hotel` `transfer` `activity` `rail` `car` `cruise` `insurance` `fee`. Train / voiture / bateau = cartes métier, pas un jour par escale bateau.
 
 ## Prix
 
-- `sanitizeExtractedPrices` : `total_amount` et `item.amount` extraits = **null**.
-- **Prix vendu** saisi par l’agent (total dossier). Jamais le net PDF ($858…) sur la carte client.
+- Prix vendu (`item.amount`) : **uniquement le premier jour** de l’événement (check-in hôtel, départ vol, prise en charge location). Les nuits / jours suivants gardent la carte, sans recompter le montant.
+- **Vols** : plusieurs e-tickets du même segment = **une** carte, `details.ticket_count`. `item.amount` = **prix unitaire par billet**. Affichage `5 × 250 €`, total séjour = unitaire × billets. Aller-retour : saisir le prix sur **un** vol.
+- Carte vol compacte : **IATA** (`CDG → RAK`) en titre, villes en dessous. Prix **sous** la route en mobile (pas à droite : ça déborde).
+- **Montant du séjour** (`booking.total_amount`) = somme des prix vendus des cartes dès qu’un `item.amount > 0` (vols : unitaire × billets). Sinon saisie manuelle / total import.
+- `item.amount` extrait = **null** (jamais le net fournisseur sur la carte client).
+- Montant PDF → `details.document_amount` (relecture agent). `sanitizeExtractedPrices` **préremplit** `total_amount` = somme **un montant par fichier**. Un extract à 0 ne masque pas cette somme.
+- **Enregistrer** un extract `document_status=confirmed` : écrit `booking.total_amount` et passe le dossier en **confirmé** (toujours `visible_to_client=false` jusqu’à Publier) → `syncBookingLedger` poste le débit + frais billeterie.
+- Devis (`quote`) : montant proposé, statut `quoted`, **pas** de débit.
 - Inclus (`details.included`) **seulement si la phrase est écrite**. Pas de petit-déj inventé. Sinon pas de bloc Inclus.
 - N’extraire **pas** annulation / barème / conditions : le PDF suffit.
 
 ## Cartes
 
-- **Un hôtel** par établissement même si 2 chambres / 2 réf. → `details.rooms[]`.
+- **Un hôtel** par établissement même si 2 chambres / 2 réf. → `details.rooms[]`. `title` = nom d’hôtel, pas la ville.
 - Cartes **à la main** autorisées (mêmes types que l’ingest).
 - Réimport **même réf.** (vol : réf. + n° + date) = **remplace** la carte, n’ajoute pas un doublon.
 - Illisible : on **enregistre** + bandeau **À vérifier** (`details.needs_review`), pas un refus global.
@@ -63,7 +70,14 @@ RLS : le client ne `select` que `visible_to_client`. Preview admin ≠ URL clien
 
 ## Couverture
 
-`coverQuery` = **ville d’arrivée** : on ignore Paris / CDG / ORY s’il y a une autre ville (`Paris · Marrakech` → Marrakech). Unsplash (`lib/crm/covers.ts`) puis IA si besoin. `<CoverPhoto>` img natif, repli Unsplash si `/api/files` casse. En Puppeteer, Unsplash peut casser `networkidle0` — skill verify.
+La photo = **la ville / station d’arrivée**, jamais le hub de départ.
+
+- `coverQuery` (`lib/crm/carnet.ts`) : premier token qui n’est **pas** Paris / CDG / ORY / LBG / BVA / France. `Paris · Marrakech` → Marrakech. `CDG → RAK` → RAK. `Avoriaz - Haute Savoie` → Avoriaz.
+- **Interdit** : photo de Paris (Tour Eiffel) sur un séjour Avoriaz / Marrakech / ski. Le vol part souvent de CDG — ce n’est pas la destination.
+- Unsplash d’abord (`lib/crm/covers.ts` `BY_KEYWORD`) : une **photo de ce lieu**. Station ski (Avoriaz, Morzine, Châtel, Les Gets, Portes du Soleil) = entrée **avant** le filet générique `alpes|zermatt`. Zermatt ≠ Avoriaz.
+- **Nouvelle ville / station** : ajouter le regex + un ID Unsplash **de cette station** (vérifier l’URL `images.unsplash.com/photo-…`). Tests : `coverQuery` + `unsplashKeywordMatch`. Sans match, l’IA invente un paysage faux — ne pas laisser `cover_image_path` si ça ne ressemble pas au lieu (vider le champ pour retomber sur Unsplash).
+- IA (`cover-generate.ts`) seulement si `needsAiCover` (aucun mot-clé Unsplash). Prompt = le lieu d’arrivée, pas « Alps » / « France ».
+- `<CoverPhoto>` img natif, repli Unsplash si `/api/files` casse. Puppeteer : `domcontentloaded` — skill verify.
 
 ## Fichiers séjour
 

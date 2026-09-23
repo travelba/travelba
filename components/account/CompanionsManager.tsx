@@ -4,8 +4,9 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import type { CrmCompanion, CrmTravelDocument } from "@/lib/crm/types";
+import { nationalityFromIdentity } from "@/lib/crm/document-identity";
 import { identityOverwriteWarning, RELATIONSHIP_OPTIONS } from "@/lib/crm/identity";
-import { appendPassportForm } from "@/lib/crm/passport-extract";
+import { appendPassportForm, appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-extract";
 import { documentsForPerson, primaryIdentityDoc } from "@/lib/crm/trip-documents";
 import {
   CountrySelect,
@@ -59,6 +60,36 @@ export function CompanionsManager({
     event.preventDefault();
     setSaving(true);
     setError(null);
+    const identities = listedIdentities(scan?.identity, scan?.identities);
+    if (identities.length > 1 && scan?.file) {
+      const patched = identities.map((identity, index) =>
+        index === 0
+          ? {
+              ...identity,
+              first_name: firstName || identity.first_name,
+              last_name: lastName || identity.last_name,
+              birth_date: birthDate || identity.birth_date,
+              nationality: nationality || identity.nationality,
+              sex: (sex as typeof identity.sex) || identity.sex,
+            }
+          : identity
+      );
+      const form = appendPassportImportForm(new FormData(), {
+        identities: patched,
+        file: scan.file,
+        createUnmatchedOnly: true,
+      });
+      const docs = await fetch("/api/client/documents", { method: "POST", body: form });
+      const docsJson = await docs.json().catch(() => ({}));
+      setSaving(false);
+      if (!docs.ok) {
+        setError(docsJson.error || "Impossible d’importer les passeports");
+        return;
+      }
+      closeForm();
+      router.refresh();
+      return;
+    }
     const res = await fetch("/api/client/companions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -95,7 +126,7 @@ export function CompanionsManager({
   }
 
   return (
-    <div className="mt-6 space-y-4">
+    <div id="accompagnateurs" className="mt-6 space-y-4">
       {companions.length === 0 && !open ? (
         <p className="rounded-2xl border border-dashed border-[var(--border)] bg-white/70 px-4 py-4 text-center text-sm text-muted">
           Aucun voyageur.
@@ -128,7 +159,7 @@ export function CompanionsManager({
               </div>
               {expanded ? (
                 <div className="mt-3">
-                  <PersonPassportCard variant="client" companionId={c.id} documents={documents} />
+                  <PersonPassportCard variant="client" companionId={c.id} documents={documents} person={c} />
                 </div>
               ) : null}
             </li>
@@ -150,6 +181,7 @@ export function CompanionsManager({
           variant="client"
           documents={[]}
           persist={false}
+          person={{ first_name: firstName, last_name: lastName }}
           onIdentity={(id) => {
             setNameWarn(
               identityOverwriteWarning({ first_name: firstName, last_name: lastName }, id)
@@ -157,15 +189,20 @@ export function CompanionsManager({
             if (id.first_name) setFirstName(id.first_name);
             if (id.last_name) setLastName(id.last_name);
             if (id.birth_date) setBirthDate(id.birth_date);
-            if (id.nationality) setNationality(id.nationality);
+            const nationalityIso = nationalityFromIdentity(id);
+            if (nationalityIso) setNationality(nationalityIso);
             if (id.sex) setSex(id.sex);
           }}
           onScan={setScan}
+          onImported={() => {
+            closeForm();
+            router.refresh();
+          }}
         />
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Prénom" hint="Comme sur le passeport">
+          <Field label="Prénom(s)" hint="Tous les prénoms, dans l’ordre du passeport">
             <input
-              required
+              required={listedIdentities(scan?.identity, scan?.identities).length < 2}
               autoComplete="off"
               value={firstName}
               onChange={(event) => setFirstName(event.target.value)}
@@ -174,7 +211,7 @@ export function CompanionsManager({
           </Field>
           <Field label="Nom" hint="Comme sur le passeport">
             <input
-              required
+              required={listedIdentities(scan?.identity, scan?.identities).length < 2}
               autoComplete="off"
               value={lastName}
               onChange={(event) => setLastName(event.target.value)}

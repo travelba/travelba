@@ -39,7 +39,7 @@ export function NewCustomerForm() {
   return (
     <form onSubmit={onSubmit} className="admin-af-card grid gap-3 rounded-2xl p-5 sm:grid-cols-4">
       <label className={labelClass}>
-        Prénom
+        Prénom(s)
         <input name="first_name" required autoComplete="off" disabled={saving} className={fieldClass} />
       </label>
       <label className={labelClass}>

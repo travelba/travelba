@@ -5,9 +5,17 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmCustomer, CrmStaff } from "@/lib/crm/types";
 import { isStaffRole } from "@/lib/crm/session";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
+import { issuesSummary, type BookingIssue } from "@/lib/crm/booking-issues";
 
 export function jsonError(message: string, status = 400, details?: unknown) {
   return NextResponse.json({ error: message, details }, { status });
+}
+
+export function jsonIssues(issues: BookingIssue[], status = 400, message?: string) {
+  return NextResponse.json(
+    { error: message || issuesSummary(issues) || "Opération impossible", issues },
+    { status }
+  );
 }
 
 export function dbError(error: DbErrorLike, status = 400, fallback?: string) {

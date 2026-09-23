@@ -16,16 +16,23 @@ import {
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { bookingCoverUrl } from "@/lib/crm/covers";
-import { jMinusLabel } from "@/lib/crm/money";
+import { formatMoney, jMinusLabel } from "@/lib/crm/money";
+import { bookingTotalFromItems } from "@/lib/crm/bookings";
+import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
 import { documentLabel } from "@/lib/crm/carnet";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { CoverPhoto } from "@/components/crm/CoverPhoto";
 import { Icon } from "@/components/crm/icons";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
-import { DateFrInput, MoneyInput, fieldControlClass } from "@/components/crm/fields";
+import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
 import { TripPassportPicker } from "@/components/crm/TripPassportPicker";
+import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
+import { IssuesList } from "@/components/crm/IssuesList";
+import { collectPublishIssues, issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
+import { householdMembers } from "@/lib/crm/household";
+import { bookingHasFlight } from "@/lib/crm/extras";
 
 export function BookingEditor({
   booking,
@@ -54,6 +61,11 @@ export function BookingEditor({
   const needsReview = items.some((item) => item.details?.needs_review === true);
   const [busy, setBusy] = useState<"idle" | "save" | "publish">("idle");
   const [flash, setFlash] = useState<string | null>(null);
+  const [issues, setIssues] = useState<BookingIssue[]>([]);
+  const documentChoices = peopleNotOnStay(
+    items.flatMap((item) => passengersFromDetails(item.details)),
+    travelers
+  );
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -67,36 +79,50 @@ export function BookingEditor({
         return;
       }
     }
-    const body = Object.fromEntries(new FormData(event.currentTarget).entries());
+    const fd = new FormData(event.currentTarget);
+    const body = Object.fromEntries(fd.entries());
     const res = await fetch(`/api/admin/bookings/${booking.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        ...body,
+        include_in_ledger: fd.get("include_in_ledger") === "on",
+      }),
     });
+    const json = await res.json().catch(() => ({}));
     setBusy("idle");
     if (!res.ok) {
-      setFlash("Enregistrement impossible.");
+      setIssues(issuesFromResponse(json));
+      setFlash(null);
       return;
     }
+    setIssues([]);
     setFlash("Enregistré. Le carnet n’est pas publié pour autant.");
     router.refresh();
   }
 
   async function setPublished(visible: boolean) {
-    if (visible && !items.some((item) => item.kind !== "fee")) {
-      setFlash("Ajoutez au moins une carte avant de publier le carnet.");
-      return;
+    if (visible) {
+      const publishIssues = collectPublishIssues(items);
+      if (publishIssues.length) {
+        setIssues(publishIssues);
+        setFlash(null);
+        return;
+      }
     }
     setBusy("publish");
     setFlash(null);
+    setIssues([]);
     const res = await fetch(`/api/admin/bookings/${booking.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ visible_to_client: visible }),
     });
+    const json = await res.json().catch(() => ({}));
     setBusy("idle");
     if (!res.ok) {
-      setFlash(visible ? "Publication impossible." : "Masquage impossible.");
+      setIssues(issuesFromResponse(json));
+      setFlash(null);
       return;
     }
     setFlash(visible ? "Carnet publié." : "Carnet masqué.");
@@ -107,19 +133,38 @@ export function BookingEditor({
     event.preventDefault();
     const form = event.currentTarget;
     const fd = new FormData(form);
-    const companionId = String(fd.get("companion_id") || "");
-    const companion = companions.find((c) => c.id === companionId);
-    await fetch(`/api/admin/bookings/${booking.id}/travelers`, {
+    const key = String(fd.get("party_key") || "");
+    const isHolder = key === "holder";
+    const companionId = key.startsWith("companion:") ? key.slice("companion:".length) : "";
+    const documentIndex = key.startsWith("doc:") ? Number(key.slice(4)) : -1;
+    const fromDocument = documentChoices[documentIndex];
+    const res = await fetch(`/api/admin/bookings/${booking.id}/travelers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        companion_id: companionId || null,
-        is_account_holder: fd.get("is_account_holder") === "on",
-        first_name: companion?.first_name || fd.get("first_name"),
-        last_name: companion?.last_name || fd.get("last_name"),
-      }),
+      body: JSON.stringify(
+        fromDocument
+          ? { first_name: fromDocument.first_name, last_name: fromDocument.last_name }
+          : {
+              companion_id: companionId || null,
+              is_account_holder: isHolder,
+            }
+      ),
     });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setIssues(issuesFromResponse(json));
+      return;
+    }
+    setIssues([]);
     form.reset();
+    router.refresh();
+  }
+
+  async function removeTraveler(travelerId: string) {
+    await fetch(
+      `/api/admin/bookings/${booking.id}/travelers?travelerId=${encodeURIComponent(travelerId)}`,
+      { method: "DELETE" }
+    );
     router.refresh();
   }
 
@@ -184,6 +229,7 @@ export function BookingEditor({
             <p className="mt-2 text-sm text-accent">Certaines cartes sont marquées lecture douteuse.</p>
           ) : null}
           {flash ? <p className="mt-2 text-sm text-[var(--admin-navy)]">{flash}</p> : null}
+          <IssuesList issues={issues} className="mt-2" />
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           <button
@@ -219,6 +265,8 @@ export function BookingEditor({
       <BookingIngest
         role="admin"
         mode="append"
+        householdHolder={customers.find((row) => row.id === booking.customer_id) || holderName}
+        householdCompanions={companions}
         ingestUrl="/api/admin/bookings/ingest"
         saveUrl={`/api/admin/bookings/${booking.id}/from-ingest`}
         aiConfigured={aiConfigured}
@@ -240,14 +288,31 @@ export function BookingEditor({
           Retour
           <DateFrInput name="end_date" aria-label="Date de retour" defaultValue={booking.end_date || ""} className="rounded-xl border border-border px-3 py-2" />
         </label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-          Montant total (€)
-          <MoneyInput
-            name="total_amount"
-            defaultValue={booking.total_amount}
-            aria-label="Montant total"
-            className="rounded-xl border border-border px-3 py-2"
+        <div className="flex flex-col gap-1 text-xs font-semibold text-muted">
+          Montant du séjour
+          <p className="rounded-xl border border-border bg-[#f7f6f2] px-3 py-2 text-sm font-semibold text-[var(--admin-navy)]">
+            {formatMoney(bookingTotalFromItems(items), booking.currency)}
+          </p>
+          <span className="font-normal text-muted">
+            Somme des prix vendus de chaque carte. Le frais de billeterie n’est pas inclus.
+          </span>
+        </div>
+        <label className="flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-2">
+          <input
+            type="checkbox"
+            name="include_in_ledger"
+            defaultChecked={booking.include_in_ledger !== false}
+            className="mt-1"
           />
+          <span>
+            Inclure le montant du séjour dans les transactions
+            <span className="mt-0.5 block text-xs font-normal text-muted">
+              Décochez pour afficher le prix au carnet sans impacter l’encours client.
+              {items.some((item) => item.include_in_ledger)
+                ? " Des cartes sont déjà comptabilisées : laissez décoché pour éviter un double compte."
+                : ""}
+            </span>
+          </span>
         </label>
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
           Statut
@@ -260,7 +325,7 @@ export function BookingEditor({
           </select>
         </label>
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted sm:col-span-2">
-          Client
+          Client voyageur (titulaire)
           <select
             name="customer_id"
             defaultValue={booking.customer_id}
@@ -269,6 +334,24 @@ export function BookingEditor({
             {customers.map((c) => (
               <option key={c.id} value={c.id}>
                 {customerFullName(c)} — {c.email}
+                {c.company_role === "member" ? " · rattaché" : ""}
+                {c.company_role === "admin" ? " · admin société" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted sm:col-span-2">
+          Facturé à (wallet / société)
+          <select
+            name="billing_customer_id"
+            defaultValue={booking.billing_customer_id || booking.customer_id}
+            className="rounded-xl border border-border bg-white px-3 py-2"
+          >
+            {customers.map((c) => (
+              <option key={c.id} value={c.id}>
+                {customerFullName(c)}
+                {c.company_name ? ` · ${c.company_name}` : ""}
+                {c.company_role === "admin" ? " · admin société" : ""}
               </option>
             ))}
           </select>
@@ -323,40 +406,93 @@ export function BookingEditor({
         >
           Joindre les pièces sur la fiche client
         </Link>
-        <form onSubmit={addTraveler} className="grid gap-2 sm:grid-cols-2">
-          <select name="companion_id" className={fieldControlClass}>
-            <option value="">Saisie libre</option>
-            {companions.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.first_name} {c.last_name}
-              </option>
+        {travelers.length ? (
+          <ul className="space-y-1 text-sm">
+            {travelers.map((traveler) => (
+              <li key={traveler.id} className="flex items-center justify-between gap-2">
+                <span>
+                  {[traveler.first_name, traveler.last_name].filter(Boolean).join(" ") || "Voyageur"}
+                  {traveler.is_account_holder ? " · titulaire" : ""}
+                </span>
+                <button
+                  type="button"
+                  className="text-xs font-semibold text-accent"
+                  onClick={() => void removeTraveler(traveler.id)}
+                >
+                  Retirer
+                </button>
+              </li>
             ))}
+          </ul>
+        ) : null}
+        <form onSubmit={addTraveler} className="grid gap-2 sm:grid-cols-[1fr_auto]">
+          <select name="party_key" required className={fieldControlClass}>
+            <option value="">Ajouter un voyageur…</option>
+            {documentChoices.length ? (
+              <optgroup label="Dans les documents">
+                {documentChoices.map((person, index) => (
+                  <option key={`doc-${person.first_name}-${person.last_name}`} value={`doc:${index}`}>
+                    {[person.first_name, person.last_name].filter(Boolean).join(" ")}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            <optgroup label="Foyer">
+              {travelers.some((row) => row.is_account_holder) ? null : (
+                <option value="holder">
+                  {holderName.first_name} {holderName.last_name} (titulaire)
+                </option>
+              )}
+              {companions
+                .filter((companion) => !travelers.some((row) => row.companion_id === companion.id))
+                .map((companion) => (
+                  <option key={companion.id} value={`companion:${companion.id}`}>
+                    {companion.first_name} {companion.last_name}
+                  </option>
+                ))}
+            </optgroup>
           </select>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="is_account_holder" /> Titulaire du dossier
-          </label>
-          <input name="first_name" placeholder="Prénom" className={fieldControlClass} />
-          <input name="last_name" placeholder="Nom" className={fieldControlClass} />
-          <button className="admin-af-btn rounded-full px-3 py-2 text-sm sm:col-span-2">
-            Ajouter un voyageur
-          </button>
+          <button className="admin-af-btn rounded-full px-3 py-2 text-sm">Ajouter</button>
         </form>
       </section>
 
       <BookingItemsPanel
         bookingId={booking.id}
-        currency={booking.currency}
         items={items}
+        documents={documents}
+        household={householdMembers(
+          customers.find((row) => row.id === booking.customer_id) || holderName,
+          companions
+        )}
+        currency={booking.currency}
         onBindDraftSave={(save) => {
           saveOpenCard.current = save;
         }}
       />
 
+      {customers.find((row) => row.id === booking.customer_id) && bookingHasFlight(items) ? (
+        <section className="admin-af-card rounded-3xl p-5">
+          <ExtrasPanel
+            variant="admin"
+            booking={booking}
+            items={items}
+            travelers={travelers}
+            holder={customers.find((row) => row.id === booking.customer_id)!}
+            companions={companions}
+          />
+        </section>
+      ) : null}
+
       {items.length ? (
         <section className="admin-af-card space-y-3 rounded-3xl p-5">
           <h2 className="font-display text-lg font-bold">Aperçu client</h2>
           <p className="text-sm text-muted">Les mêmes cartes, dans l’ordre du carnet. Invisible tant que vous ne publiez pas.</p>
-          <CarnetItinerary booking={booking} items={items} docs={documents} />
+          <CarnetItinerary
+            booking={booking}
+            items={items}
+            docs={documents}
+            calendarBase={`/api/admin/bookings/${booking.id}/calendrier`}
+          />
         </section>
       ) : null}
 

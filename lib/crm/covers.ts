@@ -6,10 +6,12 @@ const UNSPLASH = (id: string, width = 960) => {
   return `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&h=${height}&q=70`;
 };
 
+/** Photo du lieu d’arrivée (Avoriaz ≠ Zermatt ≠ Paris). Skill travelba-carnet. */
 const BY_KEYWORD: Array<[RegExp, string]> = [
   [/papagayo|guanacaste|andaz|nicoya|costa rica|heredia|belen|san jos[eé]|sjo|arenal|manuel antonio/i, "photo-1687304527563-74c180d8ced7"],
   [/bocas|colon|panama|casco|tocumen|pty|panama city/i, "photo-1507525428034-b723cf961d3e"],
   [/lugano|tessin|ticino|lago/i, "photo-1756755510958-9f02ec73445c"],
+  [/avoriaz|morzine|ch[aâ]tel|les gets|portes du soleil/i, "photo-1674043613875-eabfa5a45425"],
   [/suisse|switzerland|alpes|alps|zermatt/i, "photo-1661302504642-d74954f9fb6b"],
   [/marrakech|maroc|morocco|rak|menara|atlas/i, "photo-1677837488142-a85ffbffe408"],
   [/miami|floride|florida|south beach/i, "photo-1507525428034-b723cf961d3e"],

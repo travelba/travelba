@@ -1,3 +1,4 @@
+import { inferAirlineIata } from "./brand-marks";
 import { redactIngestText } from "./ingest-redact";
 import type { BookingExtract } from "./ingest-types";
 import { findMatchingItem, mergeExtractItems } from "./item-match";
@@ -10,6 +11,8 @@ const AIRPORTS: { re: RegExp; iata: string; city: string }[] = [
   { re: /ENRIQUE MALEK/i, iata: "DAV", city: "David" },
   { re: /TOCUMEN/i, iata: "PTY", city: "Panama" },
   { re: /CHARLES-DE-GAULLE|CHARLES DE GAULLE/i, iata: "CDG", city: "Paris" },
+  { re: /\bORLY\b/i, iata: "ORY", city: "Paris" },
+  { re: /TEL AVIV|BEN GOURION|BEN GURION/i, iata: "TLV", city: "Tel Aviv" },
   { re: /A[ÉE]ROPORT DE GEN[ÈE]VE|GEN[ÈE]VE GEN[ÈE]VE/i, iata: "GVA", city: "Genève" },
   { re: /HEATHROW/i, iata: "LHR", city: "Londres" },
   { re: /MARSEILLE PROVENCE/i, iata: "MRS", city: "Marseille" },
@@ -61,6 +64,71 @@ export function inferAirportIata(label: string): ParsedAirport | null {
     if (row.re.test(label)) return { iata: row.iata, city: row.city };
   }
   return null;
+}
+
+const CURRENCY_CODE: Record<string, string> = {
+  "€": "EUR",
+  eur: "EUR",
+  $: "USD",
+  usd: "USD",
+  "£": "GBP",
+  gbp: "GBP",
+  chf: "CHF",
+};
+
+function parsePrintedAmount(raw: string): number | null {
+  const compact = raw.replace(/[\s\u00a0]/g, "");
+  if (!compact) return null;
+  const normalized = /,\d{1,2}$/.test(compact)
+    ? compact.replace(/\./g, "").replace(",", ".")
+    : compact.replace(/,/g, "");
+  const n = Number(normalized);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.round(n * 100) / 100;
+}
+
+/** Montant visible sur un PDF/photo (total imprimé). Ignore les lignes NET fournisseur. */
+export function parseDocumentMoney(text: string): { amount: number; currency: string } | null {
+  const lines = text.split(/\n+/);
+  const scored: { amount: number; currency: string; score: number }[] = [];
+  const pattern =
+    /(?:(total|tarif|montant|fare|amount|prix)[^\n]{0,80}?)?([€$£]|USD|EUR|CHF|GBP)?\s*\b([0-9]{1,3}(?:[.\s\u00a0][0-9]{3})+[.,][0-9]{2}|[0-9]{2,}[.,][0-9]{2})\s*(USD|EUR|CHF|GBP|€|\$|£)?/gi;
+
+  for (const line of lines) {
+    if (/\bNET\b/i.test(line) && !/\btotal\b/i.test(line)) continue;
+    if (/total forfaits|total mat[eé]riel|total prestations|total assurances/i.test(line)) {
+      continue;
+    }
+    pattern.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(line))) {
+      const amount = parsePrintedAmount(match[3] || "");
+      if (!amount) continue;
+      const code = (match[4] || match[2] || "").trim();
+      const currency = CURRENCY_CODE[code.toLowerCase()] || CURRENCY_CODE[code] || "EUR";
+      const labeled = Boolean(match[1]);
+      scored.push({ amount, currency, score: labeled ? 2 : 1 });
+    }
+  }
+
+  if (!scored.length) return null;
+  scored.sort((a, b) => b.score - a.score || b.amount - a.amount);
+  return { amount: scored[0].amount, currency: scored[0].currency };
+}
+
+function withDocumentPrice<T extends { details?: Record<string, unknown> | null }>(
+  item: T,
+  money: { amount: number; currency: string } | null
+): T {
+  if (!money) return item;
+  return {
+    ...item,
+    details: {
+      ...(item.details || {}),
+      document_amount: money.amount,
+      document_currency: money.currency,
+    },
+  };
 }
 
 function monthNum(token: string) {
@@ -227,6 +295,107 @@ export function parseAmadeusReceipt(text: string): ParsedAmadeusFlight | null {
   return parseAmadeusFlights(text)[0] || null;
 }
 
+function titleCasePerson(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/(^|[\s'-])([a-zà-ÿ])/g, (_match, sep: string, ch: string) => sep + ch.toUpperCase());
+}
+
+function splitPersonName(raw: string) {
+  const parts = titleCasePerson(raw).split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return null;
+  return {
+    first_name: parts.slice(0, -1).join(" "),
+    last_name: parts[parts.length - 1],
+  };
+}
+
+function parseDmyClock(date: string, time: string) {
+  const day = date.match(/^(\d{2})-(\d{2})-(20\d{2})$/);
+  const clock = time.match(/^(\d{1,2}):(\d{2})$/);
+  if (!day || !clock) return null;
+  return `${day[3]}-${day[2]}-${day[1]}T${clock[1].padStart(2, "0")}:${clock[2]}:00`;
+}
+
+export type ParsedTransavia = {
+  confirmation_ref: string;
+  flights: ParsedAmadeusFlight[];
+  travelers: { first_name: string; last_name: string }[];
+  title: string | null;
+  destination: string | null;
+};
+
+/** Confirmation Transavia : vols aller/retour + passagers imprimés, une fois chacun. */
+export function parseTransaviaConfirmation(text: string): ParsedTransavia | null {
+  if (!/transavia/i.test(text) || !/num[eé]ro de r[eé]servation/i.test(text)) return null;
+  const ref = text.match(/Num[eé]ro de r[eé]servation\s+([A-Z0-9]{5,6})\b/i);
+  if (!ref) return null;
+  const confirmation_ref = ref[1].toUpperCase();
+  const flightRe =
+    /Num[eé]ro de vol\s+([A-Z0-9]{2})\s*(\d{2,4})\s+Date\s+(\d{2}-\d{2}-20\d{2})\s+Heure de d[eé]part\s+(\d{1,2}:\d{2})\s+Heure d['’]arriv[eé]e\s+(\d{1,2}:\d{2})/gi;
+  const specs = [...text.matchAll(flightRe)];
+  if (!specs.length) return null;
+  const routes = [...text.matchAll(/Vol\s+[A-Za-zÀ-ÿ]+\s*:\s*([^\n]+?)\s[-–]\s*([^\n]+)/gi)].map(
+    (match) => ({
+      from: match[1].replace(/\s+/g, " ").trim(),
+      to: match[2].replace(/\s+/g, " ").trim(),
+    })
+  );
+  const baggage =
+    /bagage à main/i.test(text) && /40\s*x\s*30\s*x\s*20/i.test(text)
+      ? "1 bagage à main 40 × 30 × 20 cm"
+      : null;
+  const cabin = /tarif\s+Basic/i.test(text) ? "Basic" : null;
+  const flights: ParsedAmadeusFlight[] = specs.map((spec, index) => {
+    const route =
+      routes[index] ||
+      (index > 0 && routes[0] ? { from: routes[0].to, to: routes[0].from } : null);
+    const fromApt = route ? inferAirportIata(route.from) : null;
+    const toApt = route ? inferAirportIata(route.to) : null;
+    return {
+      confirmation_ref,
+      pnr: confirmation_ref,
+      supplier: "Transavia",
+      airline: "Transavia",
+      flight_number: `${spec[1].toUpperCase()} ${spec[2]}`,
+      from: fromApt?.iata || null,
+      to: toApt?.iata || null,
+      city_from: fromApt?.city || route?.from || null,
+      city_to: toApt?.city || route?.to || null,
+      start_at: parseDmyClock(spec[3], spec[4]),
+      end_at: parseDmyClock(spec[3], spec[5]),
+      cabin,
+      baggage,
+      terminal: null,
+      seat: null,
+    };
+  });
+  const travelers: ParsedTransavia["travelers"] = [];
+  const seen = new Set<string>();
+  for (const match of text.matchAll(
+    /\b(?:MR|MRS|MS|MISS|CHD|INF|MSTR)\s*\.\s*([A-Z][A-Z'’ -]{2,}?)\s*\(\s*\d{2}\/\d{2}\/\d{4}\s*\)/gi
+  )) {
+    const person = splitPersonName(match[1]);
+    if (!person) continue;
+    const key = `${person.first_name}|${person.last_name}`.toLocaleLowerCase("fr");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    travelers.push(person);
+  }
+  const destination =
+    flights.map((flight) => flight.city_to).find((city) => city && !/^paris$/i.test(city)) ||
+    flights[0]?.city_to ||
+    null;
+  return {
+    confirmation_ref,
+    flights,
+    travelers,
+    title: destination,
+    destination,
+  };
+}
+
 export type ParsedHotel = {
   hotel_name: string | null;
   confirmation_ref: string | null;
@@ -237,6 +406,9 @@ export type ParsedHotel = {
   included: string[];
   rooms: { room: string | null; guests: string | null }[];
   needs_review?: boolean;
+  supplier?: string | null;
+  occupancy?: string | null;
+  board?: string | null;
 };
 
 export function parseLittleEmperorsHotel(text: string): ParsedHotel | null {
@@ -429,6 +601,280 @@ export function isToucanActivities(text: string) {
   return /TOUCAN DISCOVERY/i.test(text);
 }
 
+export function isMaevaStay(text: string) {
+  if (!/maeva\.com/i.test(text)) return false;
+  return (
+    /N[°ºo]?\s*DE DOSSIER/i.test(text) ||
+    /VOS OPTIONS/i.test(text) ||
+    /Forfaits Remont[ée]es M[ée]caniques/i.test(text) ||
+    /Pierre\s*&\s*Vacances/i.test(text)
+  );
+}
+
+const MAEVA_MONEY = /([0-9]{1,3}(?:[\s\u00a0.][0-9]{3})*,[0-9]{2}|[0-9]+,[0-9]{2})\s*€/;
+
+function tidyMaevaLabel(label: string) {
+  return label
+    .replace(/\(Forfaits?\s+\d+\s+[Jj]ours cons[eé]cutifs\)/gi, "")
+    .replace(/\(\s+/g, "(")
+    .replace(/\s+\)/g, ")")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseMaevaDateOnly(chunk: string, yearHint?: string | null): string | null {
+  const full = parseFrEnDate(chunk, yearHint);
+  if (full) return full.slice(0, 10);
+  const named = chunk.match(/(\d{1,2})\s+([A-Za-zàâéèêëïîôùûüç.]+)/i);
+  if (!named || !yearHint) return null;
+  const mm = monthNum(named[2]);
+  if (!mm) return null;
+  return `${yearHint}-${mm}-${named[1].padStart(2, "0")}`;
+}
+
+function isMaevaNoise(line: string) {
+  return /cagnotte|r[eé]seaux sociaux|instagram|bon d['’][eé]change|compte voyageur|je t[eé]l[eé]charge|suivez-nous|vacances d['’][eé]t[eé]|#maeva|je fonce|c['’]est parti|modifier ma r[eé]servation|annuler ma r[eé]servation/i.test(
+    line
+  );
+}
+
+function maevaIncludedLine(label: string, qty: number) {
+  const clean = tidyMaevaLabel(label);
+  const adulte = clean.match(/Adulte de (\d+)\s+[àa]\s+(\d+)/i);
+  if (adulte) return `${qty} × Adulte ${adulte[1]}–${adulte[2]} ans`;
+  const enfant = clean.match(/Enfant de (\d+)\s+[àa]\s+(\d+)/i);
+  if (enfant) return `${qty} × Enfant ${enfant[1]}–${enfant[2]} ans`;
+  if (/casque enfant/i.test(clean)) return `${qty} × Casque enfant`;
+  if (/cours collectifs/i.test(clean) || /ski journ[eé]e/i.test(clean)) {
+    return `${qty} × Cours collectifs journée`;
+  }
+  return `${qty} × ${clean}`;
+}
+
+function parseMaevaOptionRows(block: string) {
+  const raw = block
+    .split(/\n/)
+    .map((line) => line.replace(/[\t\u00a0]+/g, " ").replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  const rows: { label: string; qty: number; amount: number }[] = [];
+  let i = 0;
+  while (i < raw.length) {
+    if (isMaevaNoise(raw[i])) {
+      i += 1;
+      continue;
+    }
+    let end = i;
+    let joined = raw[i];
+    while (end < raw.length && !MAEVA_MONEY.test(joined)) {
+      end += 1;
+      if (end - i > 3 || end >= raw.length) break;
+      if (isMaevaNoise(raw[end])) break;
+      joined = `${joined} ${raw[end]}`;
+    }
+    if (!MAEVA_MONEY.test(joined)) {
+      i += 1;
+      continue;
+    }
+    const withQty = joined.match(
+      new RegExp(String.raw`^(.*?)\s+(\d+)\s+${MAEVA_MONEY.source}\s*$`, "i")
+    );
+    const withoutQty = joined.match(
+      new RegExp(String.raw`^(.*?)\s+${MAEVA_MONEY.source}\s*$`, "i")
+    );
+    const label = (withQty?.[1] || withoutQty?.[1] || "").replace(/\s+/g, " ").trim();
+    const amount = parsePrintedAmount(withQty?.[3] || withoutQty?.[2] || "");
+    const qty = withQty ? Number(withQty[2]) : 1;
+    if (label && amount) rows.push({ label, qty: Number.isFinite(qty) ? qty : 1, amount });
+    i = MAEVA_MONEY.test(raw[i]) ? i + 1 : end + 1;
+  }
+  return rows;
+}
+
+export type ParsedMaevaExtra = {
+  kind: "activity" | "insurance";
+  title: string;
+  start_at: string | null;
+  end_at: string | null;
+  duration: string | null;
+  included: string[];
+  city: string | null;
+};
+
+export type ParsedMaevaStay = {
+  hotel: ParsedHotel;
+  extras: ParsedMaevaExtra[];
+  destination: string | null;
+  confirmed: boolean;
+};
+
+function parseMaevaHotelName(text: string): string | null {
+  const skipNext =
+    /^(arriv[eé]e|retour|d[eé]part|avoriaz|appartement|r[eé]sidences de prestige|n[°ºo]|votre|maeva)/i;
+  const oneLine = text.match(
+    /R[ée]sidence\s+Pierre\s*&\s*Vacances(?:\s+Premium)?\s+L['’]Amara(?:\s*\*{2,})?/i
+  );
+  if (oneLine) {
+    return oneLine[0].replace(/\s*\*{2,}/g, "").replace(/\s+/g, " ").trim();
+  }
+  const head = text.match(/((?:R[ée]sidence(?:s)?\s+)?Pierre\s*&\s*Vacances[^\n]*)/i);
+  if (!head || head.index == null) return null;
+  let name = head[1].replace(/\s*\*{2,}/g, "").replace(/\s+/g, " ").trim();
+  const after = text.slice(head.index + head[0].length);
+  const next = after.match(/^\s*\n\s*([^\n]+)/);
+  const nextLine = (next?.[1] || "").replace(/\s*\*{2,}/g, "").trim();
+  if (nextLine && !skipNext.test(nextLine) && nextLine.length < 80) {
+    name = `${name} ${nextLine}`.replace(/\s+/g, " ").trim();
+  }
+  return name || null;
+}
+
+function parseMaevaExtras(
+  text: string,
+  startAt: string | null,
+  endAt: string | null,
+  city: string | null
+): ParsedMaevaExtra[] {
+  const section = text.split(/VOS OPTIONS/i)[1] || "";
+  const totalAt = section.search(/\n\s*TOTAL\s+[0-9]/i);
+  const block = totalAt >= 0 ? section.slice(0, totalAt) : section;
+  const rows = parseMaevaOptionRows(block);
+  type Group = ParsedMaevaExtra & { key: "forfaits" | "gear" | "lessons" | "insurance" };
+  const groups: Group[] = [];
+  let current: Group | null = null;
+
+  function ensure(key: Group["key"], title: string, kind: Group["kind"]): Group {
+    const hit = groups.find((row) => row.key === key);
+    if (hit) return hit;
+    const created: Group = {
+      key,
+      kind,
+      title,
+      start_at: startAt,
+      end_at: endAt,
+      duration: null,
+      included: [],
+      city,
+    };
+    groups.push(created);
+    return created;
+  }
+
+  for (const row of rows) {
+    if (row.amount <= 0) {
+      current = null;
+      continue;
+    }
+    if (/frais de dossier/i.test(row.label)) continue;
+    if (
+      /^TOTAL$/i.test(row.label) ||
+      /^D[ée]j[àa] r[ée]gl[ée]/i.test(row.label) ||
+      /^Reste [àa] r[ée]gler/i.test(row.label)
+    ) {
+      break;
+    }
+    const durationHit = row.label.match(/(\d+)\s*[Jj]ours cons[eé]cutifs/i);
+    const duration = durationHit ? `${durationHit[1]} jours consécutifs` : null;
+
+    if (/^Total\s+Forfaits/i.test(row.label) || /remont[eé]es m[eé]caniques/i.test(row.label)) {
+      current = ensure("forfaits", "Forfaits Remontées Mécaniques", "activity");
+      if (duration) current.duration = current.duration || duration;
+      continue;
+    }
+    if (/^Total\s+Mat[eé]riel/i.test(row.label) || /mat[eé]riel de glisse/i.test(row.label)) {
+      current = ensure("gear", "Location matériel de ski", "activity");
+      continue;
+    }
+    if (/^Total\s+/i.test(row.label)) {
+      current = null;
+      continue;
+    }
+    if (/casque/i.test(row.label)) {
+      const gear = ensure("gear", "Location matériel de ski", "activity");
+      gear.included.push(maevaIncludedLine(row.label, row.qty));
+      continue;
+    }
+    if (/assurance/i.test(row.label)) {
+      const ins = ensure("insurance", tidyMaevaLabel(row.label) || "Assurance", "insurance");
+      if (!ins.included.length) ins.title = tidyMaevaLabel(row.label) || ins.title;
+      continue;
+    }
+    if (/cours collectifs/i.test(row.label) || /ski journ[eé]e/i.test(row.label)) {
+      const lessons = ensure("lessons", "Cours collectifs journée", "activity");
+      lessons.included.push(maevaIncludedLine(row.label, row.qty));
+      current = lessons;
+      continue;
+    }
+    if (/forfait/i.test(row.label) || /portes du soleil/i.test(row.label)) {
+      const forfaits = ensure("forfaits", "Forfaits Les Portes du Soleil", "activity");
+      if (/portes du soleil/i.test(row.label)) {
+        forfaits.title = "Forfaits Les Portes du Soleil";
+      }
+      if (duration) forfaits.duration = forfaits.duration || duration;
+      forfaits.included.push(maevaIncludedLine(row.label, row.qty));
+      current = forfaits;
+      continue;
+    }
+    if (current) {
+      current.included.push(maevaIncludedLine(row.label, row.qty));
+    }
+  }
+
+  return groups.filter((group) => group.kind === "insurance" || group.included.length);
+}
+
+export function parseMaevaStay(text: string): ParsedMaevaStay | null {
+  if (!isMaevaStay(text)) return null;
+  const year =
+    text.match(/arriv[eé]e le\s*:\s*\d{1,2}\s+[A-Za-zàâéèêëïîôùûüç.]+\s+(20\d{2})/i)?.[1] ||
+    text.match(/\b(20\d{2})\b/)?.[1] ||
+    null;
+  const arrival =
+    text.match(/arriv[eé]e le\s*:?\s*(\d{1,2}\s+[A-Za-zàâéèêëïîôùûüç.]+(?:\s+20\d{2})?)/i)?.[1] ||
+    "";
+  const departure =
+    text.match(
+      /(?:d[eé]part|retour) le\s*:?\s*(\d{1,2}\s+[A-Za-zàâéèêëïîôùûüç.]+(?:\s+20\d{2})?)/i
+    )?.[1] || "";
+  const start_at = parseMaevaDateOnly(arrival, year);
+  const end_at = parseMaevaDateOnly(departure, year);
+  const destination =
+    text.match(/Votre r[eé]servation [àa]\s+([A-Za-zàâéèêëïîôùûüç -]+?)\s+est/i)?.[1]?.trim() ||
+    text.match(/^([A-Za-zàâéèêëïîôùûüç -]+)\s+-\s+Haute[-\s]Savoie/im)?.[1]?.trim() ||
+    null;
+  const city = destination || (text.match(/\bAvoriaz\b/i)?.[0] ?? null);
+  const room = text.match(
+    /Appartement\s+\d+\s+personnes(?:\s*-\s*\d+\s+chambres?)?(?:\s*-\s*Balcon)?/i
+  );
+  const occupancy =
+    room?.[0]?.match(/(\d+)\s+personnes/i)?.[0] ||
+    text.match(/(\d+)\s+pers\.?/i)?.[0]?.replace(/pers\.?/i, "personnes") ||
+    null;
+  const board = /Logement seul/i.test(text) ? "Logement seul" : null;
+  const ref = text.match(/N[°ºo]?\s*DE DOSSIER\s*:?\s*(\d{5,})/i)?.[1] || null;
+  const hotel_name = parseMaevaHotelName(text);
+  const extras = parseMaevaExtras(text, start_at, end_at, city);
+  return {
+    hotel: {
+      hotel_name,
+      confirmation_ref: ref,
+      city,
+      address: null,
+      start_at,
+      end_at,
+      included: [],
+      rooms: room
+        ? [{ room: room[0].replace(/\s+/g, " ").trim(), guests: occupancy }]
+        : [],
+      supplier: "maeva.com",
+      occupancy,
+      board,
+    },
+    extras,
+    destination: city,
+    confirmed: /est confirm[ée]e|est valid[ée]e/i.test(text),
+  };
+}
+
 export const INGEST_FAMILIES = [
   "amadeus",
   "little_emperors",
@@ -438,6 +884,8 @@ export const INGEST_FAMILIES = [
   "transfer",
   "quote",
   "toucan",
+  "maeva",
+  "transavia",
   "identity",
   "unknown",
 ] as const;
@@ -453,7 +901,15 @@ export function classifyIngestFamily(text: string, filename = ""): IngestFamily 
     return "identity";
   }
   if (isToucanActivities(text)) return "toucan";
+  if (isMaevaStay(text)) return "maeva";
   if (/Reçu de Billet Electronique/i.test(text)) return "amadeus";
+  if (
+    /transavia/i.test(text) &&
+    /num[eé]ro de r[eé]servation/i.test(text) &&
+    /passagers/i.test(text)
+  ) {
+    return "transavia";
+  }
   if (/\bSIXT\b/i.test(text) && /Pickup on/i.test(text)) return "sixt";
   if (
     (/TRANSFER CONFIRMATION/i.test(text) || /DROPOFF/i.test(text)) &&
@@ -476,20 +932,25 @@ function isIata(value: unknown): value is string {
   return typeof value === "string" && /^[A-Z]{3}$/.test(value);
 }
 
+function flightItemComplete(item: BookingExtract["items"][number]) {
+  return (
+    item.kind === "flight" &&
+    Boolean(item.details?.flight_number) &&
+    Boolean(item.start_at) &&
+    Boolean(item.confirmation_ref || item.details?.pnr) &&
+    (isIata(item.details?.from) || Boolean(item.details?.city_from))
+  );
+}
+
 export function parserItemsComplete(
   family: IngestFamily,
-  items: BookingExtract["items"]
+  items: BookingExtract["items"],
+  travelers: BookingExtract["travelers"] = []
 ): boolean {
   if (!items.length) return false;
-  if (family === "amadeus") {
-    return items.every(
-      (item) =>
-        item.kind === "flight" &&
-        Boolean(item.details?.flight_number) &&
-        Boolean(item.start_at) &&
-        Boolean(item.confirmation_ref || item.details?.pnr) &&
-        (isIata(item.details?.from) || Boolean(item.details?.city_from))
-    );
+  if (family === "amadeus") return items.every(flightItemComplete);
+  if (family === "transavia") {
+    return items.every(flightItemComplete) && travelers.some((row) => row.first_name || row.last_name);
   }
   if (
     family === "little_emperors" ||
@@ -514,6 +975,18 @@ export function parserItemsComplete(
         item.kind === "transfer" &&
         Boolean(item.details?.pickup || item.details?.dropoff)
     );
+  }
+  if (family === "maeva") {
+    const hotelOk = items.some(
+      (item) =>
+        item.kind === "hotel" &&
+        Boolean(item.details?.hotel_name || item.title) &&
+        Boolean(item.start_at)
+    );
+    if (!hotelOk) return false;
+    return items
+      .filter((item) => item.kind === "activity" || item.kind === "insurance")
+      .every((item) => Boolean(item.title) && Boolean(item.start_at));
   }
   return false;
 }
@@ -540,7 +1013,7 @@ export function structuredHintFromPdfText(text: string): string {
   for (const flight of flights) bits.push(`VOL ${JSON.stringify(flight)}`);
   if (flights.length) {
     bits.push(
-      "Plusieurs e-tickets du même vol (même n°, même jour) = UN item. Aller-retour dans UN PDF = DEUX items. IATA 8 chiffres = code agence, pas un PNR. « Scan for check-in » n’est pas un hôtel. Ne pas extraire la carte fidélité."
+      "Plusieurs e-tickets du même vol (même n°, même jour) = UN item, details.ticket_count = nombre de billets. Prix unitaire saisi par l’agent. Aller-retour dans UN PDF = DEUX items. IATA 8 chiffres = code agence, pas un PNR. « Scan for check-in » n’est pas un hôtel. Ne pas extraire la carte fidélité."
     );
   }
   const hotel =
@@ -563,6 +1036,26 @@ export function structuredHintFromPdfText(text: string): string {
       "Toucan Discovery = activités. Les étapes hôtel du cadre ne sont pas des réservations."
     );
   }
+  const transavia = parseTransaviaConfirmation(clean);
+  if (transavia) {
+    bits.push(
+      `TRANSAVIA ${JSON.stringify({
+        ref: transavia.confirmation_ref,
+        flights: transavia.flights,
+        travelers: transavia.travelers,
+      })}`
+    );
+    bits.push(
+      "Transavia : un item par vol. Les passagers imprimés vont dans travelers, une fois chacun. « Début de l’enregistrement » n’est pas l’heure du vol. Le total des services additionnels n’est pas le prix des billets."
+    );
+  }
+  const maeva = parseMaevaStay(clean);
+  if (maeva) {
+    bits.push(`MAEVA ${JSON.stringify({ hotel: maeva.hotel, extras: maeva.extras })}`);
+    bits.push(
+      "maeva.com = résidence + prestations (forfaits, matériel, cours, assurance). confirmation_ref = n° de dossier sur l’hôtel seulement. Dates sans heure. Pas de frais de dossier ni de PAN."
+    );
+  }
   return bits.join("\n");
 }
 
@@ -583,6 +1076,10 @@ function flightToItem(flight: ParsedAmadeusFlight): ExtractItem {
     amount: null,
     details: {
       airline: flight.airline,
+      airline_iata: inferAirlineIata({
+        airline: flight.airline,
+        flight_number: flight.flight_number,
+      }),
       flight_number: flight.flight_number,
       pnr: flight.pnr,
       from: flight.from,
@@ -601,7 +1098,7 @@ function hotelToItem(hotel: ParsedHotel): ExtractItem {
   return {
     kind: "hotel",
     title: hotel.hotel_name || "Hôtel",
-    supplier: null,
+    supplier: hotel.supplier || null,
     confirmation_ref: hotel.confirmation_ref,
     start_at: hotel.start_at,
     end_at: hotel.end_at,
@@ -610,9 +1107,29 @@ function hotelToItem(hotel: ParsedHotel): ExtractItem {
       hotel_name: hotel.hotel_name,
       city: hotel.city,
       address: hotel.address,
+      board: hotel.board || undefined,
+      occupancy: hotel.occupancy || undefined,
       included: hotel.included,
       rooms: hotel.rooms,
       needs_review: hotel.needs_review || undefined,
+    },
+  };
+}
+
+function maevaExtraToItem(extra: ParsedMaevaExtra): ExtractItem {
+  return {
+    kind: extra.kind,
+    title: extra.title,
+    supplier: "maeva.com",
+    confirmation_ref: null,
+    start_at: extra.start_at,
+    end_at: extra.end_at,
+    amount: null,
+    details: {
+      city: extra.city,
+      duration: extra.duration,
+      included: extra.included,
+      meeting_point: extra.city,
     },
   };
 }
@@ -682,6 +1199,9 @@ function overlayItem(target: ExtractItem, incoming: ExtractItem) {
   if (incoming.details?.airline && !current.airline) {
     current.airline = incoming.details.airline;
   }
+  if (incoming.details?.airline_iata && !current.airline_iata) {
+    current.airline_iata = incoming.details.airline_iata;
+  }
   if (incoming.details?.pnr && !current.pnr) current.pnr = incoming.details.pnr;
   if (incoming.details?.city_from && !current.city_from) {
     current.city_from = incoming.details.city_from;
@@ -694,6 +1214,11 @@ function overlayItem(target: ExtractItem, incoming: ExtractItem) {
     current.terminal = incoming.details.terminal;
   }
   if (incoming.details?.seat && !current.seat) current.seat = incoming.details.seat;
+  if (incoming.details?.document_amount != null && current.document_amount == null) {
+    current.document_amount = incoming.details.document_amount;
+    current.document_currency =
+      incoming.details.document_currency || current.document_currency;
+  }
   if (incoming.kind === "hotel") {
     const roomsA = Array.isArray(current.rooms) ? current.rooms : [];
     const roomsB = Array.isArray(incoming.details?.rooms) ? incoming.details.rooms : [];
@@ -701,6 +1226,25 @@ function overlayItem(target: ExtractItem, incoming: ExtractItem) {
     const includedA = Array.isArray(current.included) ? current.included : [];
     const includedB = Array.isArray(incoming.details?.included) ? incoming.details.included : [];
     current.included = [...new Set([...includedA, ...includedB].filter(Boolean))];
+    if (incoming.details?.hotel_name && !current.hotel_name) {
+      current.hotel_name = incoming.details.hotel_name;
+    }
+    if (incoming.details?.city && !current.city) current.city = incoming.details.city;
+    if (incoming.details?.board && !current.board) current.board = incoming.details.board;
+    if (incoming.details?.occupancy && !current.occupancy) {
+      current.occupancy = incoming.details.occupancy;
+    }
+    const hotelName =
+      typeof current.hotel_name === "string" ? current.hotel_name.trim() : "";
+    if (hotelName) target.title = hotelName;
+  }
+  if (incoming.kind === "activity" || incoming.kind === "insurance") {
+    const includedA = Array.isArray(current.included) ? current.included : [];
+    const includedB = Array.isArray(incoming.details?.included) ? incoming.details.included : [];
+    current.included = [...new Set([...includedA, ...includedB].filter(Boolean))];
+    if (incoming.details?.duration && !current.duration) {
+      current.duration = incoming.details.duration;
+    }
   }
   target.details = current;
 }
@@ -715,28 +1259,50 @@ export function parsedItemsFromText(text: string): {
   items: ExtractItem[];
   status: BookingExtract["document_status"];
   notes: string[];
+  travelers: BookingExtract["travelers"];
+  title: string | null;
+  destination: string | null;
 } {
   const items: ExtractItem[] = [];
   const notes: string[] = [];
+  let travelers: BookingExtract["travelers"] = [];
+  let title: string | null = null;
+  let destination: string | null = null;
   let status: BookingExtract["document_status"] = null;
   const clean = redactIngestText(text);
-  for (const flight of parseAmadeusFlights(clean)) {
-    items.push(flightToItem(flight));
+  const money = parseDocumentMoney(clean);
+  const transavia = parseTransaviaConfirmation(clean);
+  if (transavia) {
+    for (const flight of transavia.flights) items.push(flightToItem(flight));
+    travelers = transavia.travelers;
+    title = transavia.title;
+    destination = transavia.destination;
+    status = "confirmed";
   }
-  const hotel =
-    parseLittleEmperorsHotel(clean) ||
-    parseNantipaConfirmation(clean) ||
-    parseHotelConfirmationLetter(clean);
-  if (hotel) {
-    items.push(hotelToItem(hotel));
-    if (hotel.needs_review) {
-      notes.push("Hôtel : réservation provisoire (tentative), à confirmer.");
+  for (const flight of parseAmadeusFlights(clean)) {
+    items.push(withDocumentPrice(flightToItem(flight), money));
+  }
+  const maeva = parseMaevaStay(clean);
+  if (maeva) {
+    items.push(withDocumentPrice(hotelToItem(maeva.hotel), money));
+    for (const extra of maeva.extras) items.push(maevaExtraToItem(extra));
+    if (maeva.confirmed) status = status || "confirmed";
+  } else {
+    const hotel =
+      parseLittleEmperorsHotel(clean) ||
+      parseNantipaConfirmation(clean) ||
+      parseHotelConfirmationLetter(clean);
+    if (hotel) {
+      items.push(withDocumentPrice(hotelToItem(hotel), money));
+      if (hotel.needs_review) {
+        notes.push("Hôtel : réservation provisoire (tentative), à confirmer.");
+      }
     }
   }
   const transfer = parseTransferConfirmation(clean);
-  if (transfer) items.push(transferToItem(transfer));
+  if (transfer) items.push(withDocumentPrice(transferToItem(transfer), money));
   const car = parseSixtCar(clean);
-  if (car) items.push(carToItem(car));
+  if (car) items.push(withDocumentPrice(carToItem(car), money));
   if (isQuoteDocument(clean)) {
     status = "quote";
     notes.push("Devis — tarifs non bloqués, à confirmer.");
@@ -746,7 +1312,17 @@ export function parsedItemsFromText(text: string): {
       "Toucan Discovery : activités uniquement ; les étapes du cadre ne sont pas des hôtels."
     );
   }
-  return { items: mergeExtractItems(items), status, notes };
+  if (travelers.length) {
+    const passengers = travelers.map((row) => ({
+      first_name: row.first_name,
+      last_name: row.last_name,
+    }));
+    for (const item of items) {
+      if (item.kind !== "flight") continue;
+      item.details = { ...(item.details || {}), passengers };
+    }
+  }
+  return { items: mergeExtractItems(items), status, notes, travelers, title, destination };
 }
 
 export function tagSourceFileName(items: ExtractItem[], name: string): ExtractItem[] {
@@ -767,12 +1343,18 @@ export function applyStructuredHints(
   const items: ExtractItem[] = [...(extract.items || [])];
   const extraNotes: string[] = [];
   let status = extract.document_status;
+  let travelers = [...(extract.travelers || [])];
+  let title = extract.title || "";
+  let destination = extract.destination || "";
 
   for (const raw of texts) {
     const parsed = parsedItemsFromText(raw);
     for (const item of parsed.items) upsertHint(items, item);
     if (parsed.status) status = status || parsed.status;
     extraNotes.push(...parsed.notes);
+    if (!travelers.length && parsed.travelers.length) travelers = parsed.travelers;
+    if (!title && parsed.title) title = parsed.title;
+    if (!destination && parsed.destination) destination = parsed.destination;
   }
 
   const notes =
@@ -785,7 +1367,10 @@ export function applyStructuredHints(
   return {
     ...extract,
     document_status: status,
+    title: title || extract.title,
+    destination: destination || extract.destination,
     notes_client: notes,
+    travelers,
     items: mergeExtractItems(items),
   };
 }

@@ -8,8 +8,11 @@ import {
   type CrmBookingDocument,
   type CrmBookingItem,
   type CrmBookingTraveler,
+  type CrmCompanion,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
+import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
+import { bookingHasFlight } from "@/lib/crm/extras";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { BookingStatusBadge } from "@/components/crm/ui";
 import { bookingCoverUrl } from "@/lib/crm/covers";
@@ -50,7 +53,8 @@ export default async function ReservationDetailPage({ params }: Props) {
   const b = booking as CrmBooking;
   await reconcileCustomerParty(customer.id);
 
-  const [{ data: items }, { data: travelers }, { data: docs }, { data: identityDocs }] = await Promise.all([
+  const [{ data: items }, { data: travelers }, { data: docs }, { data: identityDocs }, { data: companions }] =
+    await Promise.all([
     supabase
       .from("crm_booking_items")
       .select("*")
@@ -63,6 +67,7 @@ export default async function ReservationDetailPage({ params }: Props) {
       .eq("booking_id", b.id)
       .eq("visible_to_client", true),
     supabase.from("crm_travel_documents").select("*").eq("customer_id", customer.id),
+    supabase.from("crm_travel_companions").select("*").eq("customer_id", customer.id),
   ]);
 
   const visibleItems = (items || []) as CrmBookingItem[];
@@ -134,7 +139,12 @@ export default async function ReservationDetailPage({ params }: Props) {
         </p>
       ) : null}
 
-      <CarnetItinerary booking={b} items={visibleItems} docs={visibleDocs} />
+      <CarnetItinerary
+        booking={b}
+        items={visibleItems}
+        docs={visibleDocs}
+        calendarBase={`/mon-compte/reservations/${b.reference}/agenda.ics`}
+      />
 
       {extraDocs.length ? (
         <section className="aura-card space-y-3 rounded-[1.35rem] bg-white p-4">
@@ -163,6 +173,20 @@ export default async function ReservationDetailPage({ params }: Props) {
         </section>
       ) : null}
 
+      {bookingHasFlight(visibleItems) ? (
+        <section className="aura-card rounded-[1.35rem] bg-white p-4">
+          <ExtrasPanel
+            variant="client"
+            booking={b}
+            items={visibleItems}
+            travelers={party}
+            holder={customer}
+            companions={(companions || []) as CrmCompanion[]}
+            whatsappHref={modifyHref}
+          />
+        </section>
+      ) : null}
+
       <section className="aura-card space-y-2 rounded-[1.35rem] bg-white p-4">
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
           Montant du séjour
@@ -177,16 +201,6 @@ export default async function ReservationDetailPage({ params }: Props) {
           </p>
         ))}
       </section>
-
-      {b.start_date || visibleItems.some((item) => item.start_at) ? (
-        <a
-          href={`/mon-compte/reservations/${b.reference}/agenda.ics`}
-          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full border border-[var(--admin-gold)]/40 bg-white px-5 text-sm font-semibold text-[var(--admin-navy)]"
-        >
-          <Icon name="event" className="h-5 w-5 text-[var(--admin-gold)]" />
-          Ajouter à l’agenda
-        </a>
-      ) : null}
 
       <a
         href={modifyHref}

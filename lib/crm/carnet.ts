@@ -1,6 +1,7 @@
 import type { CrmBooking, CrmBookingDocument, CrmBookingItem } from "@/lib/crm/types";
 import { BOOKING_ITEM_LABELS } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
+import { itemTicketCount } from "./item-match";
 
 export function detailStr(item: CrmBookingItem, key: string) {
   const value = item.details?.[key];
@@ -25,6 +26,7 @@ export function hotelRooms(item: CrmBookingItem): {
   room: string;
   guests: string;
   confirmation_ref: string;
+  party_keys: string[];
 }[] {
   const raw = item.details?.rooms;
   if (Array.isArray(raw) && raw.length) {
@@ -34,6 +36,9 @@ export function hotelRooms(item: CrmBookingItem): {
         room: String(rec.room || rec.type || "").trim(),
         guests: String(rec.guests || "").trim(),
         confirmation_ref: String(rec.confirmation_ref || "").trim(),
+        party_keys: Array.isArray(rec.party_keys)
+          ? rec.party_keys.map((key) => String(key || "")).filter(Boolean)
+          : [],
       };
     });
   }
@@ -44,6 +49,7 @@ export function hotelRooms(item: CrmBookingItem): {
         room,
         guests: detailStr(item, "guests"),
         confirmation_ref: item.confirmation_ref || "",
+        party_keys: [],
       },
     ];
   }
@@ -70,6 +76,24 @@ export function hotelStayLabel(item: CrmBookingItem) {
   return range;
 }
 
+/** Nom d’établissement en premier (details.hotel_name), jamais la ville seule. */
+export function hotelDisplayName(item: CrmBookingItem) {
+  const name = detailStr(item, "hotel_name");
+  const title = (item.title || "").trim();
+  const city = detailStr(item, "city");
+  if (name) return name;
+  if (title && title.toLowerCase() !== city.toLowerCase()) return title;
+  return title || city || "Hôtel";
+}
+
+/** Ville sous le nom, omise si elle duplique le titre. */
+export function hotelCityLine(item: CrmBookingItem) {
+  const city = detailStr(item, "city");
+  if (!city) return "";
+  if (city.toLowerCase() === hotelDisplayName(item).toLowerCase()) return "";
+  return city;
+}
+
 export function stayNightDates(start: string | null, end: string | null) {
   const from = (start || "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return [] as string[];
@@ -89,9 +113,26 @@ export function stayNightDates(start: string | null, end: string | null) {
   return dates.length ? dates : [from];
 }
 
-export function itemDayKey(item: CrmBookingItem) {
+export function itemDayKey(item: Pick<CrmBookingItem, "start_at">) {
   if (!item.start_at) return null;
   return item.start_at.slice(0, 10);
+}
+
+/** Premier jour de l’événement (check-in / départ / prise en charge). */
+export function itemFirstDayKey(item: Pick<CrmBookingItem, "kind" | "start_at" | "end_at">) {
+  if (item.kind === "hotel" || item.kind === "car") {
+    return stayNightDates(item.start_at, item.end_at)[0] || itemDayKey(item);
+  }
+  return itemDayKey(item);
+}
+
+/** Jours où la carte apparaît : hôtel et location répétés, vol/autres = jour de début. */
+export function itemTimelineDays(item: Pick<CrmBookingItem, "kind" | "start_at" | "end_at">) {
+  if (item.kind === "hotel" || item.kind === "car") {
+    const nights = stayNightDates(item.start_at, item.end_at);
+    return nights.length ? nights : [itemDayKey(item)];
+  }
+  return [itemDayKey(item)];
 }
 
 export function isTimelineKind(kind: string) {
@@ -134,9 +175,7 @@ export function groupByDay(items: CrmBookingItem[]) {
   const map = new Map<string, CrmBookingItem[]>();
   for (const item of items) {
     if (item.kind === "insurance" || item.kind === "fee") continue;
-    const keys =
-      item.kind === "hotel" ? stayNightDates(item.start_at, item.end_at) : [itemDayKey(item)];
-    for (const key of keys) {
+    for (const key of itemTimelineDays(item)) {
       if (!key) continue;
       const list = map.get(key) || [];
       list.push(item);
@@ -151,10 +190,7 @@ export function groupByDay(items: CrmBookingItem[]) {
 
 export function undatedTimeline(items: CrmBookingItem[]) {
   return sortItemsByOrder(
-    timelineItems(items).filter((item) => {
-      if (item.kind === "hotel") return stayNightDates(item.start_at, item.end_at).length === 0;
-      return !itemDayKey(item);
-    })
+    timelineItems(items).filter((item) => itemTimelineDays(item).every((key) => !key))
   );
 }
 
@@ -190,14 +226,23 @@ export function documentLabel(doc: CrmBookingDocument, items: CrmBookingItem[]) 
 /** Pièces publiées qui ne sont rattachées à aucune carte : à lister à part dans le carnet client. */
 export function unlinkedDocuments(docs: CrmBookingDocument[], items: CrmBookingItem[]) {
   const linked = new Set(items.map((item) => item.source_document_id).filter(Boolean));
-  return docs.filter((doc) => !linked.has(doc.id));
+  return docs.filter((doc) => !linked.has(doc.id) && !doc.booking_item_id);
+}
+
+export function documentsForItem(item: CrmBookingItem, docs: CrmBookingDocument[]) {
+  const seen = new Set<string>();
+  const list: CrmBookingDocument[] = [];
+  for (const doc of docs) {
+    const hit = doc.booking_item_id === item.id || doc.id === item.source_document_id;
+    if (!hit || seen.has(doc.id)) continue;
+    seen.add(doc.id);
+    list.push(doc);
+  }
+  return list;
 }
 
 export function confirmationForItem(item: CrmBookingItem, docs: CrmBookingDocument[]) {
-  if (item.source_document_id) {
-    return docs.find((doc) => doc.id === item.source_document_id) || null;
-  }
-  return null;
+  return documentsForItem(item, docs)[0] || null;
 }
 
 export function kindIcon(kind: string) {
@@ -218,6 +263,10 @@ export function kindIcon(kind: string) {
       return "local_activity";
     case "insurance":
       return "health_and_safety";
+    case "chauffeur":
+      return "airport_shuttle";
+    case "greeter":
+      return "verified_user";
     default:
       return "event";
   }
@@ -240,6 +289,18 @@ export function flightRoute(item: CrmBookingItem) {
   return flightIata(item) || flightCities(item);
 }
 
+/** Titre compact : IATA, sinon villes — évite « Paris → Marrakech » en double. */
+export function flightCardTitle(item: CrmBookingItem) {
+  return flightIata(item) || flightCities(item) || item.title;
+}
+
+export function flightCardSubtitle(item: CrmBookingItem) {
+  const iata = flightIata(item);
+  const cities = flightCities(item);
+  if (iata && cities) return cities;
+  return "";
+}
+
 export function carnetVisible(
   booking: Pick<CrmBooking, "visible_to_client">,
   items: CrmBookingItem[]
@@ -248,9 +309,22 @@ export function carnetVisible(
   return items.some((item) => item.visible_to_client !== false && item.kind !== "fee");
 }
 
-export function itemPriceLabel(item: CrmBookingItem, currency: string) {
+export function itemPriceLabel(
+  item: Pick<CrmBookingItem, "kind" | "start_at" | "end_at" | "amount"> & {
+    details?: Record<string, unknown> | null;
+  },
+  currency: string,
+  onDay?: string | null
+) {
   if (item.amount == null || Number.isNaN(Number(item.amount))) return null;
-  return formatMoney(Number(item.amount), currency);
+  if (onDay) {
+    const first = itemFirstDayKey(item);
+    if (first && onDay !== first) return null;
+  }
+  const money = formatMoney(Number(item.amount), currency);
+  const count = itemTicketCount(item);
+  if (count > 1) return `${count} × ${money}`;
+  return money;
 }
 
 /** Gares / aéroports de départ FR — jamais une couverture (le client part de Paris). */
@@ -259,7 +333,7 @@ const ORIGIN_HUBS =
 
 function coverTokens(value: string) {
   return value
-    .split(/\s*(?:·|\||\/|→|->|—|–)\s*/)
+    .split(/\s*(?:·|\||\/|→|->|—|–| - )\s*/)
     .map((part) => part.split(",")[0]?.trim())
     .filter((part): part is string => Boolean(part));
 }

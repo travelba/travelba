@@ -2,19 +2,31 @@ import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { redactIngestText } from "./ingest-redact";
-import { keepAgentPrices, sanitizeExtractedPrices } from "./ingest-types";
+import {
+  bookingStatusFromExtract,
+  keepAgentPrices,
+  normalizeHotelExtractItem,
+  sanitizeExtractedPrices,
+  sellingTotalFromExtract,
+} from "./ingest-types";
 import {
   applyStructuredHints,
+  classifyIngestFamily,
   inferAirportIata,
   parseAmadeusFlights,
   parseAmadeusReceipt,
   parseDdMonYy,
   parseHotelConfirmationLetter,
   parseLittleEmperorsHotel,
+  parseMaevaStay,
   parseNantipaConfirmation,
+  parserItemsComplete,
   parseSixtCar,
   parseTransferConfirmation,
   parseUsMonthDayYear,
+  parsedItemsFromText,
+  parseDocumentMoney,
+  shouldUseVision,
   structuredHintFromPdfText,
 } from "./ingest-parse";
 import { findMatchingItem, mergeExtractItems } from "./item-match";
@@ -124,10 +136,16 @@ describe("redactIngestText", () => {
       items: [],
       travelers: [],
     });
-    assert.equal(cleaned.total_amount, null);
+    assert.equal(cleaned.total_amount, 0);
     assert.equal(cleaned.document_status, "quote");
     assert.equal((cleaned.notes_client || "").includes("8445"), false);
     assert.match(cleaned.notes_client || "", /Devis/);
+  });
+
+  it("masque une ligne Numéro de la carte maeva", () => {
+    const out = redactIngestText("Numéro de la carte \t**** #### #### ##**");
+    assert.match(out, /masqué|\[carte\]/);
+    assert.equal(out.includes("####"), false);
   });
 });
 
@@ -204,6 +222,40 @@ describe("parseAmadeusReceipt", () => {
     assert.equal(parsed.from, "DAV");
     assert.equal(parsed.to, "PTY");
     assert.equal(parsed.start_at, "2026-08-12T09:50:00");
+  });
+});
+
+describe("parseDocumentMoney", () => {
+  it("lit le total hôtel Little Emperors sans le coller au prix vendu", () => {
+    assert.deepEqual(parseDocumentMoney(LE_HOTEL), { amount: 858.8, currency: "USD" });
+    const items = parsedItemsFromText(LE_HOTEL).items;
+    assert.equal(items[0]?.amount, null);
+    assert.equal(items[0]?.details?.document_amount, 858.8);
+    assert.equal(items[0]?.details?.document_currency, "USD");
+    const cleaned = sanitizeExtractedPrices({
+      document_status: "confirmed",
+      title: "Costa Rica",
+      destination: "Costa Rica",
+      start_date: "2026-08-10",
+      end_date: "2026-08-11",
+      currency: "USD",
+      total_amount: 858.8,
+      notes_client: null,
+      customer_email: null,
+      customer_first_name: null,
+      customer_last_name: null,
+      items,
+      travelers: [],
+    });
+    assert.equal(cleaned.total_amount, 0);
+    assert.equal(cleaned.items[0].amount, null);
+    assert.equal(cleaned.items[0].details?.document_amount, 858.8);
+  });
+
+  it("lit le tarif transfert USD", () => {
+    assert.deepEqual(parseDocumentMoney(TRANSFER), { amount: 85, currency: "USD" });
+    const items = parsedItemsFromText(TRANSFER).items;
+    assert.equal(items[0]?.details?.document_amount, 85);
   });
 });
 
@@ -334,6 +386,7 @@ describe("mergeExtractItems", () => {
       }))
     );
     assert.equal(merged.length, 1);
+    assert.equal((merged[0]?.details as { ticket_count?: number } | undefined)?.ticket_count, 5);
   });
 });
 
@@ -424,6 +477,53 @@ RESERVATION CONFIRMATION
 Cancellation Policy : Reservation must be cancelled 48 hours prior
 `;
 
+const MAEVA = `
+1 / 6 pers. 	Appartement 	63 m2
+Votre réservation à Avoriaz est validée
+maeva.com <serviceclients@maeva.com>
+Bonjour Alex,
+Merci d'avoir choisi maeva.com !
+Vous venez de régler le solde de votre séjour.
+Votre réservation à Avoriaz est confirmée.
+N° DE DOSSIER : 15000001
+Avoriaz - Haute Savoie - Savoie Mont Blanc
+Résidence Pierre & Vacances Premium L'Amara *****
+Résidences de Prestige
+Arrivée le :
+20 mars
+Retour le :
+27 mars
+RÉCAPITULATIF DE VOTRE COMMANDE - N° DOSSIER : 15000001
+Arrivée le : 20 mars 2027
+Départ le : 27 mars 2027
+Résidence Pierre & Vacances Premium
+L'Amara *****
+Avoriaz
+Appartement Appartement
+Appartement 6 personnes - 2 chambres - Balcon 3 836,00 €
+Logement seul 	1 	3 836,00 €
+VOS OPTIONS
+Total Forfaits Remontées Mécaniques 	3 	710,00 €
+Forfait Les Portes du Soleil Adulte de 26 à 64 Ans inclus
+(Forfaits 6 Jours consécutifs) 1 	284,00 €
+Forfait Les Portes du Soleil Enfant de 5 à 15 Ans inclus
+(Forfaits 6 Jours consécutifs) 2 	426,00 €
+Total Matériel de Glisse 	3 	168,00 €
+Cagnotte fidélité 	Réseaux Sociaux
+Gamme Eco - skis 	1 	76,00 €
+Pack Mini-Kid ( moins de 6 ans) - skis + chaussures 	2 	92,00 €
+Total Prestations Packfood 	0 	0,00 €
+Total Assurances 	0 	0,00 €
+Casque enfant 	2 	28,00 €
+Assurance Multirisques 	1 	189,00 €
+SKI JOURNEE - COURS COLLECTIFS JOURNEE 	2 	654,00 €
+Frais de dossier 	41,00 €
+TOTAL 	5 626,00 €
+Déjà réglé : 	5 626,00 €
+Numéro de la carte 	**** #### #### ##**
+Reste à régler : 	0,00 €
+`;
+
 describe("parseAmadeusFlights aller-retour", () => {
   it("crée deux segments CDG → GVA et GVA → CDG", () => {
     const flights = parseAmadeusFlights(AMADEUS_AF_RT);
@@ -473,6 +573,74 @@ describe("parseHotelConfirmationLetter", () => {
     assert.match(parsed.hotel_name || "", /Leela Mumbai/i);
     assert.equal(parsed.needs_review, true);
     assert.equal(JSON.stringify(parsed).includes("13750"), false);
+  });
+});
+
+describe("parseMaevaStay", () => {
+  it("lit la résidence et les prestations ski, sans frais ni PAN", () => {
+    assert.equal(classifyIngestFamily(MAEVA, "maeva.pdf"), "maeva");
+    const parsed = parseMaevaStay(MAEVA);
+    assert.ok(parsed);
+    assert.match(parsed.hotel.hotel_name || "", /L['’]Amara/i);
+    assert.equal(parsed.hotel.city, "Avoriaz");
+    assert.equal(parsed.hotel.confirmation_ref, "15000001");
+    assert.equal(parsed.hotel.start_at, "2027-03-20");
+    assert.equal(parsed.hotel.end_at, "2027-03-27");
+    assert.equal(parsed.hotel.start_at?.includes("T"), false);
+    assert.equal(parsed.hotel.board, "Logement seul");
+    assert.match(parsed.hotel.rooms[0]?.room || "", /6 personnes/);
+    assert.equal(parsed.confirmed, true);
+
+    const titles = parsed.extras.map((row) => row.title);
+    assert.equal(titles.includes("Forfaits Les Portes du Soleil"), true);
+    assert.equal(titles.includes("Location matériel de ski"), true);
+    assert.equal(titles.includes("Cours collectifs journée"), true);
+    assert.equal(titles.some((title) => /Assurance Multirisques/i.test(title)), true);
+    assert.equal(titles.some((title) => /frais/i.test(title)), false);
+
+    const forfaits = parsed.extras.find((row) => row.title === "Forfaits Les Portes du Soleil");
+    assert.equal(forfaits?.duration, "6 jours consécutifs");
+    assert.equal(forfaits?.included.some((row) => /1 × Adulte 26–64/.test(row)), true);
+    assert.equal(forfaits?.included.some((row) => /2 × Enfant 5–15/.test(row)), true);
+
+    const gear = parsed.extras.find((row) => row.title === "Location matériel de ski");
+    assert.equal(gear?.included.some((row) => /Gamme Eco/i.test(row)), true);
+    assert.equal(gear?.included.some((row) => /Mini-Kid/i.test(row)), true);
+    assert.equal(gear?.included.some((row) => /Casque enfant/i.test(row)), true);
+
+    const items = parsedItemsFromText(MAEVA).items;
+    assert.equal(parserItemsComplete("maeva", items), true);
+    assert.equal(
+      shouldUseVision({
+        denseChars: 4000,
+        itemCount: items.length,
+        family: "maeva",
+        isImage: false,
+        parserComplete: true,
+      }),
+      false
+    );
+    assert.equal(items.filter((item) => item.kind === "hotel").length, 1);
+    assert.equal(items.filter((item) => item.kind === "activity").length, 3);
+    assert.equal(items.filter((item) => item.kind === "insurance").length, 1);
+    assert.equal(items.filter((item) => item.kind === "fee").length, 0);
+    assert.equal(
+      items.every((item) => !item.start_at || !item.start_at.includes("T")),
+      true
+    );
+    const hotel = items.find((item) => item.kind === "hotel");
+    assert.equal(hotel?.amount, null);
+    assert.equal(hotel?.details?.document_amount, 5626);
+    assert.equal(hotel?.confirmation_ref, "15000001");
+    assert.equal(
+      items.filter((item) => item.kind !== "hotel").every((item) => !item.confirmation_ref),
+      true
+    );
+    assert.equal(items.filter((item) => item.kind !== "hotel").every((item) => item.details?.document_amount == null), true);
+    assert.equal(parseDocumentMoney(MAEVA)?.amount, 5626);
+    assert.equal(JSON.stringify(items).includes("####"), false);
+    const hint = structuredHintFromPdfText(MAEVA);
+    assert.match(hint, /MAEVA/);
   });
 });
 
@@ -562,5 +730,209 @@ describe("PDF déposés (upload)", () => {
     assert.equal(parsed.start_at, "2026-09-14");
     assert.equal(parsed.end_at, "2026-09-17");
     assert.equal(parseTransferConfirmation(text), null);
+  });
+});
+
+describe("sellingTotalFromExtract", () => {
+  it("somme les prix vendus des cartes, pas les montants PDF", () => {
+    const extract = {
+      document_status: "confirmed" as const,
+      title: "Costa Rica",
+      destination: "Costa Rica",
+      start_date: "2026-08-02",
+      end_date: "2026-08-07",
+      currency: "USD",
+      total_amount: null,
+      notes_client: null,
+      customer_email: null,
+      customer_first_name: null,
+      customer_last_name: null,
+      items: [
+        {
+          kind: "hotel" as const,
+          title: "Santa Teresa",
+          supplier: null,
+          confirmation_ref: "18093",
+          start_at: "2026-08-02",
+          end_at: "2026-08-07",
+          amount: null,
+          details: {
+            hotel_name: "Nantipa",
+            city: "Santa Teresa",
+            document_amount: 858.8,
+            source_file_name: "hotel.pdf",
+          },
+        },
+        {
+          kind: "hotel" as const,
+          title: "Nantipa",
+          supplier: null,
+          confirmation_ref: "18093b",
+          start_at: "2026-08-02",
+          end_at: "2026-08-07",
+          amount: null,
+          details: {
+            hotel_name: "Nantipa",
+            document_amount: 858.8,
+            source_file_name: "hotel.pdf",
+          },
+        },
+        {
+          kind: "transfer" as const,
+          title: "Aéroport → Hôtel",
+          supplier: null,
+          confirmation_ref: null,
+          start_at: "2026-08-02",
+          end_at: null,
+          amount: null,
+          details: { document_amount: 85, source_file_name: "transfer.pdf" },
+        },
+      ],
+      travelers: [],
+    };
+    assert.equal(sellingTotalFromExtract(extract), 0);
+    assert.equal(
+      sellingTotalFromExtract({
+        ...extract,
+        total_amount: 2100,
+        items: extract.items.map((item, index) =>
+          index === 0 ? { ...item, amount: 400 } : { ...item, amount: 85 }
+        ),
+      }),
+      570
+    );
+    assert.equal(sellingTotalFromExtract({ ...extract, items: [] }), 0);
+    assert.equal(bookingStatusFromExtract(extract, "draft"), "confirmed");
+    assert.equal(
+      bookingStatusFromExtract({ ...extract, document_status: "quote" }, "draft"),
+      "quoted"
+    );
+  });
+
+  it("met le nom d’hôtel en title, pas la ville", () => {
+    const item = normalizeHotelExtractItem({
+      kind: "hotel",
+      title: "Santa Teresa",
+      supplier: null,
+      confirmation_ref: "18093",
+      start_at: "2026-08-02",
+      end_at: "2026-08-07",
+      amount: null,
+      details: { hotel_name: "Nantipa", city: "Santa Teresa" },
+    });
+    assert.equal(item.title, "Nantipa");
+    assert.equal(item.details?.hotel_name, "Nantipa");
+    const cleaned = sanitizeExtractedPrices({
+      document_status: "confirmed",
+      title: "Costa Rica",
+      destination: "Costa Rica",
+      start_date: "2026-08-02",
+      end_date: "2026-08-07",
+      currency: "USD",
+      total_amount: null,
+      notes_client: null,
+      customer_email: null,
+      customer_first_name: null,
+      customer_last_name: null,
+      items: [item],
+      travelers: [],
+    });
+    assert.equal(cleaned.items[0].title, "Nantipa");
+  });
+});
+
+const TRANSAVIA = `
+votre confirmation de réservation
+Numéro de réservation ABC123 Date de réservation 14-09-2026
+Paris (Orly)
+Tel Aviv
+Vol aller : Paris (Orly) - Tel Aviv
+Vol retour : Tel Aviv - Paris (Orly)
+Numéro de vol
+TO 1001
+Date
+14-12-2026
+Heure de départ
+11:30
+Heure d'arrivée
+17:10
+Début de l'enregistrement 3h00 heures avant le départ de votre vol.
+Numéro de vol
+TO 1002
+Date
+23-12-2026
+Heure de départ
+14:10
+Heure d'arrivée
+18:25
+Début de l'enregistrement 4h00 avant le départ de votre vol.
+Passagers
+MR . PAUL MARTIN ( 01/02/1980 )
+Votre tarif Basic contient :
+MRS . ANNE MARTIN ( 03/04/1990 )
+Votre tarif Basic contient :
+CHD . LEA MARTIN ( 05/06/2020 )
+Votre tarif Basic contient :
+CHD . NOAH MARTIN ( 05/06/2020 )
+MR . PAUL MARTIN ( 01/02/1980 )
+MRS . ANNE MARTIN ( 03/04/1990 )
+CHD . LEA MARTIN ( 05/06/2020 )
+CHD . NOAH MARTIN ( 05/06/2020 )
+1 bagage à main de max. 40 x 30 x 20 cm
+bagage de soute: 25 kg € 61.99
+Total des services additionnels 247.96 €
+Total 247.96 €
+© 2026, Transavia
+`;
+
+describe("parseTransaviaConfirmation", () => {
+  it("importe les deux vols et chaque passager une seule fois", () => {
+    assert.equal(classifyIngestFamily(TRANSAVIA, "confirmation.pdf"), "transavia");
+    const parsed = parsedItemsFromText(TRANSAVIA);
+    assert.equal(parserItemsComplete("transavia", parsed.items, parsed.travelers), true);
+    assert.equal(parsed.destination, "Tel Aviv");
+    assert.equal(parsed.items.length, 2);
+    assert.equal(parsed.items[0]?.kind, "flight");
+    assert.equal(parsed.items[0]?.confirmation_ref, "ABC123");
+    assert.equal(parsed.items[0]?.details?.flight_number, "TO 1001");
+    assert.equal(parsed.items[0]?.details?.from, "ORY");
+    assert.equal(parsed.items[0]?.details?.to, "TLV");
+    assert.equal(parsed.items[0]?.start_at, "2026-12-14T11:30:00");
+    assert.equal(parsed.items[0]?.end_at, "2026-12-14T17:10:00");
+    assert.equal(parsed.items[0]?.details?.baggage, "1 bagage à main 40 × 30 × 20 cm");
+    assert.equal(parsed.items[0]?.details?.document_amount, undefined);
+    assert.equal(parsed.items[1]?.details?.flight_number, "TO 1002");
+    assert.equal(parsed.items[1]?.details?.from, "TLV");
+    assert.equal(parsed.items[1]?.details?.to, "ORY");
+    assert.equal(parsed.items[1]?.start_at, "2026-12-23T14:10:00");
+    assert.equal(parsed.items[0]?.details?.passengers?.length, 4);
+    assert.equal(parsed.items[1]?.details?.passengers?.length, 4);
+    assert.notEqual(parsed.items[1]?.start_at, "2026-12-23T04:00:00");
+    assert.deepEqual(
+      parsed.travelers.map((row) => `${row.first_name} ${row.last_name}`),
+      ["Paul Martin", "Anne Martin", "Lea Martin", "Noah Martin"]
+    );
+    const hinted = applyStructuredHints(
+      {
+        document_status: "confirmed",
+        title: "",
+        destination: "",
+        start_date: null,
+        end_date: null,
+        currency: "EUR",
+        total_amount: null,
+        notes_client: null,
+        customer_email: null,
+        customer_first_name: null,
+        customer_last_name: null,
+        items: [],
+        travelers: [],
+      },
+      [TRANSAVIA]
+    );
+    assert.equal(hinted.travelers.length, 4);
+    assert.equal(hinted.destination, "Tel Aviv");
+    assert.equal(inferAirportIata("Paris (Orly)")?.iata, "ORY");
+    assert.equal(inferAirportIata("Tel Aviv")?.iata, "TLV");
   });
 });

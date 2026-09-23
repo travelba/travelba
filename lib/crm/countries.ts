@@ -220,7 +220,167 @@ const MRZ_ALIASES: Record<string, string> = {
   GBP: "GB",
   GBS: "GB",
   EUE: "FR",
+  UK: "GB",
 };
+
+/** Adjectifs / dénominations fréquents sur un passeport (vision OCR). */
+const NATIONALITY_ALIASES: Record<string, string> = {
+  francais: "FR",
+  francaise: "FR",
+  french: "FR",
+  marocain: "MA",
+  marocaine: "MA",
+  moroccan: "MA",
+  tunisien: "TN",
+  tunisienne: "TN",
+  tunisian: "TN",
+  algerien: "DZ",
+  algerienne: "DZ",
+  algerian: "DZ",
+  belge: "BE",
+  belgian: "BE",
+  suisse: "CH",
+  swiss: "CH",
+  luxembourgeois: "LU",
+  luxembourgeoise: "LU",
+  monegasque: "MC",
+  allemand: "DE",
+  allemande: "DE",
+  german: "DE",
+  italien: "IT",
+  italienne: "IT",
+  italian: "IT",
+  espagnol: "ES",
+  espagnole: "ES",
+  spanish: "ES",
+  portugais: "PT",
+  portugaise: "PT",
+  portuguese: "PT",
+  britannique: "GB",
+  british: "GB",
+  anglais: "GB",
+  anglaise: "GB",
+  english: "GB",
+  neerlandais: "NL",
+  neerlandaise: "NL",
+  hollandais: "NL",
+  hollandaise: "NL",
+  dutch: "NL",
+  americain: "US",
+  americaine: "US",
+  american: "US",
+  canadien: "CA",
+  canadienne: "CA",
+  canadian: "CA",
+  senegalais: "SN",
+  senegalaise: "SN",
+  senegalese: "SN",
+  ivoirien: "CI",
+  ivoirienne: "CI",
+  ivorian: "CI",
+  emirati: "AE",
+  emiratie: "AE",
+  australien: "AU",
+  australienne: "AU",
+  australian: "AU",
+  bresilien: "BR",
+  bresilienne: "BR",
+  brazilian: "BR",
+  turc: "TR",
+  turque: "TR",
+  turkish: "TR",
+  chinois: "CN",
+  chinoise: "CN",
+  chinese: "CN",
+  japonais: "JP",
+  japonaise: "JP",
+  japanese: "JP",
+  indien: "IN",
+  indienne: "IN",
+  indian: "IN",
+  israelien: "IL",
+  israelienne: "IL",
+  israeli: "IL",
+  russe: "RU",
+  russian: "RU",
+  grec: "GR",
+  grecque: "GR",
+  greek: "GR",
+  irlandais: "IE",
+  irlandaise: "IE",
+  irish: "IE",
+  polonais: "PL",
+  polonaise: "PL",
+  polish: "PL",
+  roumain: "RO",
+  roumaine: "RO",
+  romanian: "RO",
+  libanais: "LB",
+  libanaise: "LB",
+  lebanese: "LB",
+  egyptien: "EG",
+  egyptienne: "EG",
+  egyptian: "EG",
+  malien: "ML",
+  malienne: "ML",
+  camerounais: "CM",
+  camerounaise: "CM",
+  haitien: "HT",
+  haitienne: "HT",
+  haitian: "HT",
+  malgache: "MG",
+  mauricien: "MU",
+  mauricienne: "MU",
+  mexicain: "MX",
+  mexicaine: "MX",
+  mexican: "MX",
+  thailandais: "TH",
+  thailandaise: "TH",
+  vietnamien: "VN",
+  vietnamienne: "VN",
+  vietnamese: "VN",
+  coreen: "KR",
+  coreenne: "KR",
+  korean: "KR",
+  suedois: "SE",
+  suedoise: "SE",
+  swedish: "SE",
+  norvegien: "NO",
+  norvegienne: "NO",
+  norwegian: "NO",
+  danois: "DK",
+  danoise: "DK",
+  danish: "DK",
+  autrichien: "AT",
+  autrichienne: "AT",
+  austrian: "AT",
+};
+
+const DEMONYM_SUFFIXES = [
+  "iennes",
+  "ienne",
+  "iens",
+  "ien",
+  "aises",
+  "aise",
+  "ais",
+  "oises",
+  "oise",
+  "ois",
+  "euses",
+  "euse",
+  "aines",
+  "aine",
+  "ains",
+  "ain",
+  "iques",
+  "ique",
+  "eses",
+  "ese",
+  "ians",
+  "ian",
+  "ish",
+];
 
 function normalizeCountryKey(value: string) {
   return value
@@ -261,6 +421,58 @@ export function resolveCountryCode(value: string | null | undefined): string | n
   if (byName) return byName.iso2;
   const starts = COUNTRIES.find((c) => normalizeCountryKey(c.name).startsWith(normalizeCountryKey(raw)));
   return starts?.iso2 || null;
+}
+
+function peelNationalityLabel(value: string) {
+  return value
+    .trim()
+    .replace(/^(nationalit[eé]|nationality|citoyennet[eé]|citizenship)\s*[:=-]?\s*/i, "")
+    .replace(/^(de la|de l['’]|des|du|de|d['’]|of the|of)\s+/i, "")
+    .replace(/^(r[eé]publique|republic)\s+(de la|de l['’]|des|du|de|d['’]|of the|of)?\s*/i, "")
+    .split(/[/,;|]/)[0]
+    .trim();
+}
+
+function matchCountryStem(normalized: string): string | null {
+  if (normalized.length < 4) return null;
+  let stem = normalized;
+  for (const suffix of DEMONYM_SUFFIXES) {
+    if (stem.length - suffix.length >= 4 && stem.endsWith(suffix)) {
+      stem = stem.slice(0, -suffix.length);
+      break;
+    }
+  }
+  const hits = COUNTRIES.filter((country) => {
+    const name = normalizeCountryKey(country.name);
+    return name === stem || name.startsWith(stem);
+  });
+  if (hits.length === 1) return hits[0].iso2;
+  const exact = hits.filter((country) => normalizeCountryKey(country.name) === stem);
+  return exact.length === 1 ? exact[0].iso2 : null;
+}
+
+function resolveNationalityToken(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const peeled = peelNationalityLabel(value);
+  if (!peeled) return null;
+  const direct = resolveCountryCode(peeled);
+  if (direct) return direct;
+  const key = normalizeCountryKey(peeled);
+  if (!key) return null;
+  if (NATIONALITY_ALIASES[key]) return NATIONALITY_ALIASES[key];
+  return matchCountryStem(key);
+}
+
+/**
+ * Nationalité fiche / passeport → ISO2 uniquement (CountrySelect).
+ * Accepte FR, FRA, France, « Française », « Nationalité : FR »,
+ * et se rabat sur le pays d’émission si la mention est illisible.
+ */
+export function resolveNationality(
+  value: string | null | undefined,
+  fallback?: string | null | undefined
+): string | null {
+  return resolveNationalityToken(value) || resolveNationalityToken(fallback);
 }
 
 export function countriesForSelect(priorityFirst = true): Country[] {

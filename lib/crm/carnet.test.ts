@@ -4,17 +4,23 @@ import type { CrmBookingItem } from "./types";
 import {
   carnetVisible,
   coverQuery,
+  flightCardSubtitle,
+  flightCardTitle,
   flightCities,
   flightIata,
   groupByDay,
+  hotelCityLine,
+  hotelDisplayName,
   hotelStayLabel,
   itemClock,
+  itemPriceLabel,
   unlinkedDocuments,
   whatsappModifyHref,
 } from "./carnet";
 import { canPublishCarnet } from "./bookings";
 import { bookingCoverUrl } from "./covers";
 import { sanitizeExtractedPrices } from "./ingest-types";
+import { formatMoney } from "./money";
 
 function item(partial: Partial<CrmBookingItem>): CrmBookingItem {
   return {
@@ -27,6 +33,7 @@ function item(partial: Partial<CrmBookingItem>): CrmBookingItem {
     start_at: null,
     end_at: null,
     amount: null,
+    include_in_ledger: false,
     sort_order: 0,
     details: {},
     visible_to_client: true,
@@ -66,6 +73,20 @@ describe("carnet", () => {
     assert.match(label, /3 nuits/);
   });
 
+  it("affiche le nom d’hôtel avant la ville", () => {
+    const hotel = item({
+      kind: "hotel",
+      title: "Santa Teresa",
+      details: { hotel_name: "Nantipa", city: "Santa Teresa" },
+    });
+    assert.equal(hotelDisplayName(hotel), "Nantipa");
+    assert.equal(hotelCityLine(hotel), "Santa Teresa");
+    assert.equal(
+      hotelDisplayName(item({ kind: "hotel", title: "Andaz", details: { city: "Marrakech" } })),
+      "Andaz"
+    );
+  });
+
   it("saute les jours sans prestation", () => {
     const groups = groupByDay([
       item({ start_at: "2026-08-12T10:00:00Z", title: "Aller" }),
@@ -91,6 +112,72 @@ describe("carnet", () => {
     assert.equal(groups[1][1].some((row) => row.title === "Aller"), false);
   });
 
+  it("n’affiche l’activité ski que le jour d’arrivée", () => {
+    const groups = groupByDay([
+      item({
+        id: "h",
+        kind: "hotel",
+        title: "L'Amara",
+        start_at: "2027-03-20",
+        end_at: "2027-03-27",
+      }),
+      item({
+        id: "a",
+        kind: "activity",
+        title: "Forfaits Les Portes du Soleil",
+        start_at: "2027-03-20",
+        end_at: "2027-03-27",
+      }),
+    ]);
+    assert.equal(groups.map(([day]) => day).join(","), "2027-03-20,2027-03-21,2027-03-22,2027-03-23,2027-03-24,2027-03-25,2027-03-26");
+    assert.equal(groups[0][1].some((row) => row.kind === "activity"), true);
+    assert.equal(groups[1][1].some((row) => row.kind === "activity"), false);
+  });
+
+  it("répète la location chaque jour, sans le jour de restitution", () => {
+    const groups = groupByDay([
+      item({
+        id: "c",
+        kind: "car",
+        title: "Hertz",
+        start_at: "2026-08-12",
+        end_at: "2026-08-15",
+      }),
+    ]);
+    assert.equal(groups.map(([day]) => day).join(","), "2026-08-12,2026-08-13,2026-08-14");
+  });
+
+  it("affiche le prix vendu seulement le premier jour", () => {
+    const hotel = item({
+      kind: "hotel",
+      amount: 800,
+      start_at: "2026-08-12",
+      end_at: "2026-08-15",
+    });
+    assert.equal(itemPriceLabel(hotel, "EUR", "2026-08-12"), formatMoney(800, "EUR"));
+    assert.equal(itemPriceLabel(hotel, "EUR", "2026-08-13"), null);
+    assert.equal(itemPriceLabel(hotel, "EUR", "2026-08-14"), null);
+    assert.equal(itemPriceLabel(hotel, "EUR"), formatMoney(800, "EUR"));
+
+    const flight = item({
+      kind: "flight",
+      amount: 250,
+      start_at: "2026-08-12T22:00:00",
+      end_at: "2026-08-13T08:00:00",
+    });
+    assert.equal(itemPriceLabel(flight, "EUR", "2026-08-12"), formatMoney(250, "EUR"));
+    assert.equal(itemPriceLabel(flight, "EUR", "2026-08-13"), null);
+
+    const car = item({
+      kind: "car",
+      amount: 400,
+      start_at: "2026-08-12",
+      end_at: "2026-08-18",
+    });
+    assert.equal(itemPriceLabel(car, "EUR", "2026-08-12"), formatMoney(400, "EUR"));
+    assert.equal(itemPriceLabel(car, "EUR", "2026-08-15"), null);
+  });
+
   it("cache un séjour sans carte visible", () => {
     assert.equal(
       carnetVisible({ visible_to_client: true }, [
@@ -112,6 +199,7 @@ describe("carnet", () => {
     assert.equal(coverQuery("CDG → RAK", "Vol"), "RAK");
     assert.equal(coverQuery("Paris", "Week-end"), "Paris");
     assert.equal(coverQuery("Nice, France", null), "Nice");
+    assert.equal(coverQuery("Avoriaz - Haute Savoie", "Séjour"), "Avoriaz");
   });
 
   it("sert une couverture Unsplash légère", () => {
@@ -146,18 +234,35 @@ describe("carnet", () => {
 
   it("sépare IATA et villes sur le vol", () => {
     const flight = item({
+      title: "Paris → Marrakech",
       details: { from: "CDG", to: "RAK", city_from: "Paris", city_to: "Marrakech" },
     });
     assert.equal(flightIata(flight), "CDG → RAK");
     assert.equal(flightCities(flight), "Paris → Marrakech");
+    assert.equal(flightCardTitle(flight), "CDG → RAK");
+    assert.equal(flightCardSubtitle(flight), "Paris → Marrakech");
+  });
+
+  it("affiche le prix unitaire × billets", () => {
+    const flight = item({
+      kind: "flight",
+      amount: 250,
+      details: { ticket_count: 5 },
+    });
+    assert.equal(itemPriceLabel(flight, "EUR"), `5 × ${formatMoney(250, "EUR")}`);
+    assert.equal(
+      itemPriceLabel(item({ kind: "flight", amount: 250 }), "EUR"),
+      formatMoney(250, "EUR")
+    );
   });
 
   it("refuse de publier un carnet sans carte métier", () => {
     assert.equal(canPublishCarnet([{ kind: "fee" }]), false);
     assert.equal(canPublishCarnet([{ kind: "hotel" }]), true);
+    assert.equal(canPublishCarnet([{ kind: "chauffeur" }, { kind: "fee" }]), false);
   });
 
-  it("efface les prix extraits pour laisser l’agent saisir le vendu", () => {
+  it("garde le montant document hors du prix vendu et du total séjour", () => {
     const cleaned = sanitizeExtractedPrices({
       document_status: "confirmed",
       title: "Marrakech",
@@ -184,7 +289,9 @@ describe("carnet", () => {
       ],
       travelers: [],
     });
-    assert.equal(cleaned.total_amount, null);
+    assert.equal(cleaned.total_amount, 0);
     assert.equal(cleaned.items[0].amount, null);
+    assert.equal(cleaned.items[0].details?.document_amount, 858.8);
+    assert.equal(cleaned.items[0].details?.document_currency, "EUR");
   });
 });

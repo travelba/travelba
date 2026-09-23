@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
+import { parseIncludeInLedger, refreshBookingLedger } from "@/lib/crm/bookings";
 import { parseMoney } from "@/lib/crm/money";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -35,6 +36,7 @@ export async function POST(request: Request, ctx: Ctx) {
       start_at: body?.start_at || null,
       end_at: body?.end_at || null,
       amount: parseMoney(body?.amount),
+      include_in_ledger: parseIncludeInLedger(body?.include_in_ledger, false),
       sort_order: sortOrder,
       details: body?.details || {},
       visible_to_client: false,
@@ -42,6 +44,7 @@ export async function POST(request: Request, ctx: Ctx) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
+  await refreshBookingLedger(auth.supabase, id);
   return NextResponse.json({ item: data });
 }
 
@@ -72,6 +75,9 @@ export async function PATCH(request: Request, ctx: Ctx) {
   if ("start_at" in body) patch.start_at = body.start_at;
   if ("end_at" in body) patch.end_at = body.end_at;
   if ("amount" in body) patch.amount = parseMoney(body.amount);
+  if ("include_in_ledger" in body) {
+    patch.include_in_ledger = parseIncludeInLedger(body.include_in_ledger, false);
+  }
   if (body.sort_order != null) patch.sort_order = Number(body.sort_order);
   if ("details" in body) patch.details = body.details || {};
   if (!Object.keys(patch).length) return jsonError("Rien à mettre à jour");
@@ -83,6 +89,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
+  await refreshBookingLedger(auth.supabase, bookingId);
   return NextResponse.json({ item: data });
 }
 
@@ -90,8 +97,7 @@ export async function DELETE(request: Request, ctx: Ctx) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
   const { id: bookingId } = await ctx.params;
-  const url = new URL(request.url);
-  const itemId = url.searchParams.get("itemId");
+  const itemId = new URL(request.url).searchParams.get("itemId");
   if (!itemId) return jsonError("itemId requis");
   const { error } = await auth.supabase
     .from("crm_booking_items")
@@ -99,5 +105,6 @@ export async function DELETE(request: Request, ctx: Ctx) {
     .eq("id", itemId)
     .eq("booking_id", bookingId);
   if (error) return dbError(error, 400);
+  await refreshBookingLedger(auth.supabase, bookingId);
   return NextResponse.json({ ok: true });
 }

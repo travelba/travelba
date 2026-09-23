@@ -3,19 +3,24 @@ import { notFound } from "next/navigation";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { CustomerEditor } from "@/components/admin/CustomerEditor";
 import { DeleteBookingButton } from "@/components/admin/DeleteBookingButton";
+import { ClientRevolutSuggestions } from "@/components/admin/ClientRevolutSuggestions";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import { InviteCustomerPanel } from "@/components/admin/InviteCustomerPanel";
 import { getPortalAccess } from "@/lib/crm/invite";
+import { suggestionsForCustomer } from "@/lib/crm/revolut-match";
+import { createServiceClient } from "@/lib/supabase/admin";
 import {
   customerFullName,
   type CrmBalance,
   type CrmBooking,
   type CrmCompanion,
   type CrmCustomer,
+  type CrmRevolutTransaction,
   type CrmTransaction,
   type CrmTravelDocument,
+  filterCreditTransfers,
 } from "@/lib/crm/types";
-import { formatDateFr, formatMoney } from "@/lib/crm/money";
+import { formatDateFr, formatMoney, formatCreditDisponible } from "@/lib/crm/money";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -30,20 +35,51 @@ export default async function AdminClientDetailPage({ params }: Props) {
   if (!customer) notFound();
   const c = customer as CrmCustomer;
 
-  const [{ data: companions }, { data: documents }, { data: bookings }, { data: txs }, { data: balances }, portal] =
-    await Promise.all([
-      supabase.from("crm_travel_companions").select("*").eq("customer_id", id),
-      supabase.from("crm_travel_documents").select("*").eq("customer_id", id),
-      supabase.from("crm_bookings").select("*").eq("customer_id", id).order("start_date", { ascending: false }),
-      supabase
-        .from("crm_transactions")
-        .select("*")
-        .eq("customer_id", id)
-        .order("occurred_on", { ascending: false }),
-      supabase.from("crm_customer_balances").select("*").eq("customer_id", id),
-      getPortalAccess(c),
-    ]);
+  const [
+    { data: companions },
+    { data: documents },
+    { data: bookings },
+    { data: txs },
+    { data: balances },
+    { data: companyAdmins },
+    portal,
+    unmatchedRevolut,
+  ] = await Promise.all([
+    supabase.from("crm_travel_companions").select("*").eq("customer_id", id),
+    supabase.from("crm_travel_documents").select("*").eq("customer_id", id),
+    supabase.from("crm_bookings").select("*").eq("customer_id", id).order("start_date", { ascending: false }),
+    supabase
+      .from("crm_transactions")
+      .select("*")
+      .eq("customer_id", id)
+      .eq("kind", "transfer")
+      .eq("direction", "credit")
+      .order("occurred_on", { ascending: false }),
+    supabase.from("crm_customer_balances").select("*").eq("customer_id", id),
+    supabase
+      .from("crm_customers")
+      .select("*")
+      .eq("company_role", "admin")
+      .order("last_name"),
+    getPortalAccess(c),
+    (async () => {
+      try {
+        const admin = createServiceClient();
+        const { data } = await admin
+          .from("crm_revolut_transactions")
+          .select("*")
+          .eq("status", "unmatched")
+          .eq("direction", "credit")
+          .order("booked_at", { ascending: false, nullsFirst: false })
+          .limit(100);
+        return (data || []) as CrmRevolutTransaction[];
+      } catch {
+        return [] as CrmRevolutTransaction[];
+      }
+    })(),
+  ]);
   const bookingRows = (bookings || []) as CrmBooking[];
+  const revolutSuggestions = suggestionsForCustomer(c, unmatchedRevolut);
 
   return (
     <div className="space-y-6">
@@ -55,16 +91,22 @@ export default async function AdminClientDetailPage({ params }: Props) {
       </div>
       <InviteCustomerPanel customerId={c.id} initial={portal} />
       <div className="flex flex-wrap gap-3">
-        {((balances || []) as CrmBalance[]).map((b) => (
-          <div key={b.currency} className="admin-af-card rounded-2xl px-4 py-3">
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">
-              Encours {b.currency}
-            </p>
-            <p className="font-display text-xl font-bold text-[var(--admin-navy)]">
-              {formatMoney(Number(b.balance), b.currency)}
-            </p>
-          </div>
-        ))}
+        {((balances || []) as CrmBalance[]).map((b) => {
+          const value = Number(b.balance);
+          return (
+            <div key={b.currency} className="admin-af-card rounded-2xl px-4 py-3">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">
+                {value > 0 ? `Crédit disponible ${b.currency}` : `Encours ${b.currency}`}
+              </p>
+              <p className="font-display text-xl font-bold text-[var(--admin-navy)]">
+                {value > 0 ? formatCreditDisponible(value, b.currency) : formatMoney(value, b.currency)}
+              </p>
+              {value > 0 ? (
+                <p className="mt-1 text-xs text-[#9e7e51]">Frais d’agence 10 % déduits</p>
+              ) : null}
+            </div>
+          );
+        })}
         <div className="admin-af-card rounded-2xl px-4 py-3">
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Dossiers</p>
           <p className="font-display text-xl font-bold text-[var(--admin-navy)]">{bookingRows.length}</p>
@@ -86,7 +128,9 @@ export default async function AdminClientDetailPage({ params }: Props) {
         customer={c}
         companions={(companions || []) as CrmCompanion[]}
         documents={(documents || []) as CrmTravelDocument[]}
+        companyAdmins={(companyAdmins || []) as CrmCustomer[]}
       />
+      <ClientRevolutSuggestions suggestions={revolutSuggestions} />
       <section className="admin-af-card rounded-3xl p-5">
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-display text-lg font-bold">Réservations</h2>
@@ -123,22 +167,19 @@ export default async function AdminClientDetailPage({ params }: Props) {
         )}
       </section>
       <section className="admin-af-card rounded-3xl p-5">
-        <h2 className="font-display text-lg font-bold">Transactions</h2>
+        <h2 className="font-display text-lg font-bold">Virements crédit</h2>
         {!(txs || []).length ? (
           <p className="mt-2 text-sm text-muted">
-            Aucune écriture. Les débits sont créés à la confirmation d’un dossier, les crédits au rapprochement Revolut ou à la saisie manuelle.
+            Aucun virement crédit. Ils apparaissent après rapprochement Revolut ou saisie manuelle.
           </p>
         ) : null}
         <ul className="mt-2 divide-y divide-border text-sm">
-          {((txs || []) as CrmTransaction[]).map((t) => (
+          {filterCreditTransfers((txs || []) as CrmTransaction[]).map((t) => (
             <li key={t.id} className="flex justify-between py-2">
               <span>
                 {t.label} · {formatDateFr(t.occurred_on)}
               </span>
-              <span>
-                {t.direction === "credit" ? "+" : "−"}
-                {formatMoney(Number(t.amount), t.currency)}
-              </span>
+              <span>+{formatMoney(Number(t.amount), t.currency)}</span>
             </li>
           ))}
         </ul>

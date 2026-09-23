@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { resolveCountryCode } from "./countries";
+import { resolveNationality } from "./countries";
 import {
   filledIdentity,
   identityFieldsFromForm,
@@ -110,8 +110,7 @@ export async function insertTravelDocument(
     first_name: emptyToNull(input.first_name),
     last_name: emptyToNull(input.last_name),
     birth_date: emptyToNull(input.birth_date),
-    nationality:
-      resolveCountryCode(String(input.nationality || "")) || emptyToNull(input.nationality),
+    nationality: resolveNationality(input.nationality, input.issuingCountry),
     sex: input.sex === "M" || input.sex === "F" || input.sex === "X" ? input.sex : null,
   };
   const { data, error } = await supabase
@@ -123,9 +122,7 @@ export async function insertTravelDocument(
       traveler_id: travelerId,
       doc_type: docType,
       number: emptyToNull(input.number),
-      issuing_country:
-        resolveCountryCode(String(input.issuingCountry || "")) ||
-        emptyToNull(input.issuingCountry),
+      issuing_country: resolveNationality(input.issuingCountry) || emptyToNull(input.issuingCountry),
       issued_on: emptyToNull(input.issuedOn),
       expires_on: emptyToNull(input.expiresOn),
       place_of_birth: emptyToNull(input.placeOfBirth),
@@ -217,7 +214,29 @@ export async function applyIdentityFromForm(
   travelerId?: string | null
 ) {
   if (String(form.get("apply_identity") || "1") !== "1") return;
-  const filled = filledIdentity(identityFieldsFromForm(form));
+  await applyIdentityFromIdentity(
+    supabase,
+    customerId,
+    companionId,
+    identityFieldsFromForm(form),
+    travelerId
+  );
+}
+
+export async function applyIdentityFromIdentity(
+  supabase: SupabaseClient,
+  customerId: string,
+  companionId: string | null,
+  identity: Partial<DocumentIdentityFields>,
+  travelerId?: string | null
+) {
+  const filled = filledIdentity({
+    first_name: emptyToNull(identity.first_name),
+    last_name: emptyToNull(identity.last_name),
+    birth_date: emptyToNull(identity.birth_date),
+    nationality: resolveNationality(identity.nationality),
+    sex: identity.sex === "M" || identity.sex === "F" || identity.sex === "X" ? identity.sex : null,
+  });
   if (Object.keys(filled).length === 0) return;
   if (companionId) {
     const { error } = await supabase

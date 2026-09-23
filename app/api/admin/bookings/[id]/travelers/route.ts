@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
+import { dbError, jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
+import { refreshTicketingFee } from "@/lib/crm/bookings";
+import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
+import { sameRecordedTraveler } from "@/lib/crm/person-match";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -8,18 +11,71 @@ export async function POST(request: Request, ctx: Ctx) {
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
   const body = await request.json().catch(() => null);
+  const companionId = String(body?.companion_id || "").trim();
+  const isHolder = Boolean(body?.is_account_holder);
+  let firstName = String(body?.first_name || "").trim() || null;
+  let lastName = String(body?.last_name || "").trim() || null;
+  const fromDocument = !companionId && !isHolder;
+  if (fromDocument && !firstName && !lastName) {
+    return jsonIssues([
+      {
+        field: "companion_id",
+        message: "Choisissez un voyageur du foyer ou un passager identifié dans les documents.",
+      },
+    ]);
+  }
+  const { data: booking } = await auth.supabase
+    .from("crm_bookings")
+    .select("customer_id")
+    .eq("id", id)
+    .maybeSingle();
+  if (!booking) return jsonError("Réservation introuvable", 404);
+  if (isHolder) {
+    const { data: holder } = await auth.supabase
+      .from("crm_customers")
+      .select("first_name, last_name")
+      .eq("id", booking.customer_id)
+      .maybeSingle();
+    firstName = holder?.first_name || firstName;
+    lastName = holder?.last_name || lastName;
+  } else if (companionId) {
+    const { data: companion } = await auth.supabase
+      .from("crm_travel_companions")
+      .select("first_name, last_name")
+      .eq("id", companionId)
+      .eq("customer_id", booking.customer_id)
+      .maybeSingle();
+    if (!companion) {
+      return jsonIssues([{ field: "companion_id", message: "Ce voyageur n’est pas sur le compte client." }]);
+    }
+    firstName = companion.first_name;
+    lastName = companion.last_name;
+  }
+  const { data: already } = await auth.supabase
+    .from("crm_booking_travelers")
+    .select("first_name, last_name")
+    .eq("booking_id", id);
+  if (
+    (already || []).some((row) =>
+      sameRecordedTraveler(row, { first_name: firstName, last_name: lastName })
+    )
+  ) {
+    return jsonIssues([{ field: "travelers", message: "Ce voyageur est déjà sur le séjour." }]);
+  }
   const { data, error } = await auth.supabase
     .from("crm_booking_travelers")
     .insert({
       booking_id: id,
-      companion_id: body?.companion_id || null,
-      is_account_holder: Boolean(body?.is_account_holder),
-      first_name: body?.first_name || null,
-      last_name: body?.last_name || null,
+      companion_id: isHolder || fromDocument ? null : companionId,
+      is_account_holder: isHolder,
+      first_name: firstName,
+      last_name: lastName,
     })
     .select("*")
     .single();
   if (error) return dbError(error, 400);
+  await reconcileCustomerParty(booking.customer_id, auth.supabase);
+  await refreshTicketingFee(auth.supabase, id);
   return NextResponse.json({ traveler: data });
 }
 
@@ -35,5 +91,6 @@ export async function DELETE(request: Request, ctx: Ctx) {
     .eq("id", travelerId)
     .eq("booking_id", id);
   if (error) return dbError(error, 400);
+  await refreshTicketingFee(auth.supabase, id);
   return NextResponse.json({ ok: true });
 }

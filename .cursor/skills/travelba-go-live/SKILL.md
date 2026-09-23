@@ -91,14 +91,14 @@ OIDC Vercel : `aiGatewayConfigured()` peut être vrai sur Vercel sans `sk-`. L�
 - **Pas** `REVOLUT_SANDBOX=1` en prod.
 - Relier l’app via `/admin/revolut` (OAuth, tokens dans `crm_integrations`, service_role only).
 - Cron Vercel : `vercel.json` → `GET /api/cron/revolut-sync` toutes les 15 min. Header `Authorization: Bearer $CRON_SECRET`.
-- Inbox `crm_revolut_transactions` status `unmatched` → l’agent **rapproche** (crédit `crm_transactions`) ou ignore. **Aucun** crédit automatique.
+- Inbox `crm_revolut_transactions` status `unmatched` → auto-crédit si match unique certain (`revolut-match`) ; sinon l’agent rapproche ou ignore (inbox + fiche client).
 - Webhook `/api/webhooks/revolut` si l’app Revolut le pointe ; le cron reste la source de rattrapage.
 
 ## Fichiers / OpenAI
 
 - Bucket `crm-files` **privé**.
 - Ingest : `unpdf` + `gpt-4o`. Plafond 30 fichiers / 25 Mo.
-- Couverture : Unsplash ville d’abord (`lib/crm/covers.ts`), IA ensuite (`cover-generate.ts`) dans `bookings/{id}/cover.webp`.
+- Couverture : Unsplash **ville d’arrivée** (`lib/crm/covers.ts`), jamais Paris/CDG. IA seulement sans match. `bookings/{id}/cover.webp`. Skill `travelba-carnet`.
 
 ## Interdits prod
 
@@ -117,7 +117,7 @@ OIDC Vercel : `aiGatewayConfigured()` peut être vrai sur Vercel sans `sk-`. L�
 2. `/admin/clients` liste les vrais clients (pas un seed).
 3. `/connexion` mot de passe + magique (Regarder Resend, pas les logs pour le lien).
 4. Un carnet **déjà publié** s’affiche ; un brouillon reste invisible. **S’il n’y a aucun séjour publié, ne pas en inventer** — skip ce check. L’agent importe un vrai dossier, Enregistrer, puis Publier. `/admin` affiche alors « Mise en service ».
-5. `/admin/revolut` : **Connecter Revolut** (SCA Business) si `crm_integrations` est vide. Ensuite le cron insère des unmatched **sans** les créditer. Inbox vide tant que l’OAuth n’est pas fait = normal.
+5. `/admin/revolut` : **Connecter Revolut** (SCA Business) si `crm_integrations` est vide. Ensuite le cron remplit l’inbox et auto-crédite les matches uniques certains. Inbox vide tant que l’OAuth n’est pas fait = normal.
 6. Contact vitrine → e-mail `CONTACT_TO_EMAIL`.
 7. WhatsApp header client → `wa.me/33756841315`.
 

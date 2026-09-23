@@ -28,6 +28,8 @@ export const BOOKING_ITEM_KINDS = [
   "cruise",
   "insurance",
   "fee",
+  "chauffeur",
+  "greeter",
 ] as const;
 
 export type BookingItemKind = (typeof BOOKING_ITEM_KINDS)[number];
@@ -42,7 +44,16 @@ export const BOOKING_ITEM_LABELS: Record<BookingItemKind, string> = {
   cruise: "Bateau",
   insurance: "Assurance",
   fee: "Frais",
+  chauffeur: "Chauffeur",
+  greeter: "Greeter",
 };
+
+/** Cartes hors séjour (total + publication). */
+export const EXTRA_ITEM_KINDS = ["chauffeur", "greeter"] as const;
+
+export function isExtraItemKind(kind: string | null | undefined) {
+  return kind === "chauffeur" || kind === "greeter";
+}
 
 export const DOC_TYPES = [
   "passport",
@@ -80,6 +91,20 @@ export const TX_KIND_LABELS: Record<TransactionKind, string> = {
   card_payment: "Carte",
 };
 
+/** Espace agence : uniquement les virements reçus (pas les débits résa / frais). */
+export function isCreditTransfer(row: { direction: string; kind: string }) {
+  return row.direction === "credit" && row.kind === "transfer";
+}
+
+export function filterCreditTransfers<T extends { direction: string; kind: string }>(
+  rows: T[]
+) {
+  return rows.filter(isCreditTransfer);
+}
+
+/** Libellé ledger pour le prélèvement 10 % sur les crédits Revolut. */
+export const AGENCY_FEE_LABEL = "Frais d’agence 10 %";
+
 export type CrmStaff = {
   id: string;
   auth_user_id: string;
@@ -88,6 +113,8 @@ export type CrmStaff = {
   created_at: string;
   updated_at: string;
 };
+
+export type CompanyRole = "admin" | "member";
 
 export type CrmCustomer = {
   id: string;
@@ -116,8 +143,16 @@ export type CrmCustomer = {
   billing_postal_code: string | null;
   billing_city: string | null;
   billing_country: string | null;
+  /** null = particulier ; admin = voit revenus société ; member = frais de ses voyages seulement */
+  company_role: CompanyRole | null;
+  /** Pour member : wallet / admin société qui paie */
+  billing_parent_id: string | null;
   language: string;
   stripe_customer_id: string | null;
+  /** Badge / filtre admin — aucun effet côté espace client. */
+  on_hold?: boolean;
+  /** Accès greeter aéroport. */
+  is_vip?: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -164,6 +199,8 @@ export type CrmTravelDocument = {
 export type CrmBooking = {
   id: string;
   customer_id: string;
+  /** Wallet facturé (admin société ou titulaire). */
+  billing_customer_id: string;
   reference: string;
   title: string;
   destination: string | null;
@@ -172,6 +209,8 @@ export type CrmBooking = {
   end_date: string | null;
   currency: string;
   total_amount: number;
+  /** Si false : montant du séjour affiché au carnet, pas au grand livre. */
+  include_in_ledger: boolean;
   cover_image_path: string | null;
   notes_client: string | null;
   notes_internal: string | null;
@@ -190,6 +229,8 @@ export type CrmBookingItem = {
   start_at: string | null;
   end_at: string | null;
   amount: number | null;
+  /** Si true : ce prix vendu apparaît dans Transactions et l’encours. */
+  include_in_ledger: boolean;
   sort_order: number;
   details: Record<string, unknown>;
   visible_to_client: boolean;
@@ -211,6 +252,7 @@ export type CrmBookingTraveler = {
 export type CrmBookingDocument = {
   id: string;
   booking_id: string;
+  booking_item_id?: string | null;
   kind: string;
   file_name: string | null;
   mime_type: string | null;
@@ -253,6 +295,7 @@ export type CrmRevolutTransaction = {
   revolut_transaction_id: string;
   amount: number;
   currency: string;
+  direction: "credit" | "debit";
   counterparty_name: string | null;
   counterparty_iban: string | null;
   reference: string | null;

@@ -62,7 +62,8 @@ export function itemMatchKey(item: MatchableItem): string | null {
     kind === "rail" ||
     kind === "car" ||
     kind === "cruise" ||
-    kind === "activity"
+    kind === "activity" ||
+    kind === "insurance"
   ) {
     if (ref) return `${kind}:${ref}`;
     const title = norm(item.title);
@@ -102,6 +103,17 @@ function fillEmpty<T>(current: T, incoming: T): T {
 function mergeHotelConfirmation(a?: string | null, b?: string | null) {
   const tokens = [...new Set([...hotelRefTokens(a), ...hotelRefTokens(b)])].sort();
   return tokens.join(";") || a || b || null;
+}
+
+/** Vols fusionnés : 1 e-ticket = 1 billet. Autres cartes = 1. */
+export function itemTicketCount(item: {
+  kind?: string | null;
+  details?: Record<string, unknown> | null;
+}): number {
+  if ((item.kind || "") !== "flight") return 1;
+  const n = Number(item.details?.ticket_count);
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(99, Math.round(n));
 }
 
 function mergeDetails(
@@ -154,7 +166,12 @@ export function mergeExtractItems<T extends MatchableItem>(items: T[]): T[] {
     } else {
       hit.confirmation_ref = fillEmpty(hit.confirmation_ref, item.confirmation_ref);
     }
+    const currentCount = itemTicketCount(hit);
+    const incomingCount = itemTicketCount(item);
     hit.details = mergeDetails(hit.details, item.details);
+    if ((hit.kind || "") === "flight") {
+      hit.details = { ...(hit.details || {}), ticket_count: currentCount + incomingCount };
+    }
   }
   return out;
 }

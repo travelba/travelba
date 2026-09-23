@@ -1,182 +1,161 @@
-import { detailStr, flightCities, flightIata, itemClock } from "./carnet";
-import { BOOKING_ITEM_LABELS, type BookingItemKind, type CrmBooking, type CrmBookingItem } from "./types";
+import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
+import { BOOKING_ITEM_LABELS } from "@/lib/crm/types";
+import { itemClock, flightIata, flightCities, hotelDisplayName } from "@/lib/crm/carnet";
 
-const SKIP_KINDS = new Set(["fee", "insurance"]);
-
-function icsText(value: string) {
+function icsEscape(value: string) {
   return value
     .replace(/\\/g, "\\\\")
-    .replace(/\r?\n/g, "\\n")
+    .replace(/;/g, "\\;")
     .replace(/,/g, "\\,")
-    .replace(/;/g, "\\;");
+    .replace(/\r?\n/g, "\\n");
 }
 
-function fold(line: string) {
-  if (line.length <= 73) return line;
-  const parts = [line.slice(0, 73)];
-  let rest = line.slice(73);
-  while (rest.length) {
-    parts.push(` ${rest.slice(0, 72)}`);
-    rest = rest.slice(72);
+function icsStampUtc(date = new Date()) {
+  return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+}
+
+function allDay(iso: string) {
+  return iso.slice(0, 10).replace(/-/g, "");
+}
+
+function addDays(isoDate: string, days: number) {
+  const d = new Date(`${isoDate.slice(0, 10)}T12:00:00`);
+  d.setDate(d.getDate() + days);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function hasRealTime(iso: string | null | undefined) {
+  return Boolean(itemClock(iso));
+}
+
+function timedStamp(iso: string) {
+  const date = iso.slice(0, 10).replace(/-/g, "");
+  const clock = iso.match(/T(\d{2}):(\d{2})/);
+  if (!clock) return `${date}T000000`;
+  return `${date}T${clock[1]}${clock[2]}00`;
+}
+
+export function itemHasCalendarDate(item: Pick<CrmBookingItem, "kind" | "start_at" | "end_at">) {
+  if (item.kind === "fee") return false;
+  return Boolean((item.start_at || "").slice(0, 10).match(/^\d{4}-\d{2}-\d{2}$/));
+}
+
+function itemSummary(item: CrmBookingItem) {
+  const kind = BOOKING_ITEM_LABELS[item.kind] || item.kind;
+  if (item.kind === "flight") {
+    return `${kind} ${flightIata(item) || item.title}`.trim();
   }
-  return parts.join("\r\n");
-}
-
-function dateStamp(isoDate: string) {
-  return isoDate.slice(0, 10).replace(/-/g, "");
-}
-
-function nextDate(isoDate: string) {
-  const [y, m, d] = isoDate.slice(0, 10).split("-").map(Number);
-  const date = new Date(y, (m || 1) - 1, d || 1);
-  date.setDate(date.getDate() + 1);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}${p(date.getMonth() + 1)}${p(date.getDate())}`;
-}
-
-/** Heure imprimée, sans fuseau : l’iPhone affiche 09:40 comme sur le billet. */
-function floatingStamp(iso: string | null | undefined) {
-  if (!iso || !itemClock(iso)) return null;
-  const match = iso.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/);
-  if (!match) return null;
-  return `${match[1].replace(/-/g, "")}T${match[2]}${match[3]}00`;
-}
-
-function plusOneHour(stamp: string) {
-  const y = Number(stamp.slice(0, 4));
-  const m = Number(stamp.slice(4, 6)) - 1;
-  const d = Number(stamp.slice(6, 8));
-  const hh = Number(stamp.slice(9, 11));
-  const mm = Number(stamp.slice(11, 13));
-  const date = new Date(y, m, d, hh, mm);
-  date.setHours(date.getHours() + 1);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}${p(date.getMonth() + 1)}${p(date.getDate())}T${p(date.getHours())}${p(date.getMinutes())}00`;
-}
-
-function utcStamp(date: Date) {
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${date.getUTCFullYear()}${p(date.getUTCMonth() + 1)}${p(date.getUTCDate())}T${p(date.getUTCHours())}${p(date.getUTCMinutes())}${p(date.getUTCSeconds())}Z`;
-}
-
-function locationOf(item: CrmBookingItem) {
-  if (item.kind === "flight" || item.kind === "rail") {
-    return flightIata(item) || flightCities(item);
+  if (item.kind === "hotel") {
+    return `${kind} · ${hotelDisplayName(item)}`.trim();
   }
-  return detailStr(item, "city") || detailStr(item, "meeting_point") || item.supplier || "";
+  return `${kind} · ${item.title}`.trim();
 }
 
-function summaryOf(item: CrmBookingItem) {
-  const kind = BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || "Étape";
-  return `${kind} · ${item.title}`;
+function itemDescription(item: CrmBookingItem, booking: CrmBooking) {
+  const bits = [
+    booking.title,
+    booking.reference,
+    item.kind === "flight" ? flightCities(item) : "",
+    item.confirmation_ref ? `Réf. ${item.confirmation_ref}` : "",
+  ].filter(Boolean);
+  return bits.join("\n");
 }
 
-function descriptionOf(item: CrmBookingItem) {
-  return [item.supplier, item.confirmation_ref ? `Réf. ${item.confirmation_ref}` : ""]
-    .filter(Boolean)
-    .join("\n");
-}
-
-function eventLines(input: {
-  uid: string;
-  stamp: string;
-  summary: string;
-  start: string;
-  end: string;
-  allDay: boolean;
-  location?: string;
-  description?: string;
-}) {
+export function veventFromItem(item: CrmBookingItem, booking: CrmBooking): string | null {
+  if (!itemHasCalendarDate(item)) return null;
+  const start = (item.start_at || "").slice(0, 10);
+  const uid = `${item.id}@travelba.fr`;
+  const summary = icsEscape(itemSummary(item));
+  const description = icsEscape(itemDescription(item, booking));
   const lines = [
     "BEGIN:VEVENT",
-    `UID:${input.uid}`,
-    `DTSTAMP:${input.stamp}`,
-    input.allDay
-      ? `DTSTART;VALUE=DATE:${input.start}`
-      : `DTSTART:${input.start}`,
-    input.allDay ? `DTEND;VALUE=DATE:${input.end}` : `DTEND:${input.end}`,
-    `SUMMARY:${icsText(input.summary)}`,
+    `UID:${uid}`,
+    `DTSTAMP:${icsStampUtc()}`,
+    `SUMMARY:${summary}`,
+    `DESCRIPTION:${description}`,
   ];
-  if (input.location) lines.push(`LOCATION:${icsText(input.location)}`);
-  if (input.description) lines.push(`DESCRIPTION:${icsText(input.description)}`);
+
+  if (item.kind === "hotel" || !hasRealTime(item.start_at)) {
+    const endExclusive = item.end_at
+      ? item.end_at.slice(0, 10)
+      : addDays(start, 1);
+    const end = endExclusive > start ? endExclusive : addDays(start, 1);
+    lines.push(`DTSTART;VALUE=DATE:${allDay(start)}`);
+    lines.push(`DTEND;VALUE=DATE:${allDay(end)}`);
+  } else {
+    lines.push(`DTSTART:${timedStamp(item.start_at!)}`);
+    if (item.end_at && hasRealTime(item.end_at)) {
+      lines.push(`DTEND:${timedStamp(item.end_at)}`);
+    }
+  }
+
   lines.push("END:VEVENT");
-  return lines;
+  return lines.join("\r\n");
 }
 
-function itemEvent(item: CrmBookingItem, stamp: string) {
-  const startDay = (item.start_at || "").slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDay)) return null;
-  const startClock = floatingStamp(item.start_at);
-  const endClock = floatingStamp(item.end_at);
-  const endDay = (item.end_at || "").slice(0, 10);
-  if (startClock) {
-    return eventLines({
-      uid: `${item.id}@travelba.fr`,
-      stamp,
-      summary: summaryOf(item),
-      start: startClock,
-      end: endClock || plusOneHour(startClock),
-      allDay: false,
-      location: locationOf(item),
-      description: descriptionOf(item),
-    });
-  }
-  const end =
-    /^\d{4}-\d{2}-\d{2}$/.test(endDay) && endDay > startDay
-      ? dateStamp(endDay)
-      : nextDate(startDay);
-  return eventLines({
-    uid: `${item.id}@travelba.fr`,
-    stamp,
-    summary: summaryOf(item),
-    start: dateStamp(startDay),
-    end,
-    allDay: true,
-    location: locationOf(item),
-    description: descriptionOf(item),
-  });
+export function veventFromStay(booking: CrmBooking): string | null {
+  const start = (booking.start_date || "").slice(0, 10);
+  const end = (booking.end_date || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return null;
+  const endExclusive = /^\d{4}-\d{2}-\d{2}$/.test(end) && end > start ? addDays(end, 1) : addDays(start, 1);
+  const summary = icsEscape(`Séjour · ${booking.title}`);
+  const description = icsEscape([booking.reference, booking.destination].filter(Boolean).join(" · "));
+  return [
+    "BEGIN:VEVENT",
+    `UID:stay-${booking.id}@travelba.fr`,
+    `DTSTAMP:${icsStampUtc()}`,
+    `SUMMARY:${summary}`,
+    `DESCRIPTION:${description}`,
+    `DTSTART;VALUE=DATE:${allDay(start)}`,
+    `DTEND;VALUE=DATE:${allDay(endExclusive)}`,
+    "END:VEVENT",
+  ].join("\r\n");
 }
 
-export function buildBookingIcs(
-  booking: Pick<CrmBooking, "id" | "reference" | "title" | "destination" | "start_date" | "end_date">,
-  items: CrmBookingItem[],
-  now = new Date()
-) {
-  const stamp = utcStamp(now);
-  const events = items
-    .filter((item) => !SKIP_KINDS.has(item.kind) && item.visible_to_client !== false)
-    .map((item) => itemEvent(item, stamp))
-    .filter((row): row is string[] => Boolean(row));
-
-  if (!events.length && booking.start_date) {
-    const start = dateStamp(booking.start_date);
-    const end =
-      booking.end_date && booking.end_date > booking.start_date
-        ? dateStamp(booking.end_date)
-        : nextDate(booking.start_date);
-    events.push(
-      eventLines({
-        uid: `${booking.id}@travelba.fr`,
-        stamp,
-        summary: booking.destination || booking.title,
-        start,
-        end,
-        allDay: true,
-        description: booking.reference,
-      })
-    );
+export function buildBookingIcs(opts: {
+  booking: CrmBooking;
+  items: CrmBookingItem[];
+  itemId?: string | null;
+}) {
+  const events: string[] = [];
+  if (opts.itemId) {
+    const item = opts.items.find((row) => row.id === opts.itemId);
+    const event = item ? veventFromItem(item, opts.booking) : null;
+    if (event) events.push(event);
+  } else {
+    const stay = veventFromStay(opts.booking);
+    if (stay) events.push(stay);
+    for (const item of opts.items) {
+      const event = veventFromItem(item, opts.booking);
+      if (event) events.push(event);
+    }
   }
-
-  const name = [booking.reference, booking.destination || booking.title].filter(Boolean).join(" — ");
-  const lines = [
+  const name = icsEscape(opts.booking.title || opts.booking.reference);
+  return [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
     "PRODID:-//Travelba//Carnet//FR",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
-    `X-WR-CALNAME:${icsText(name)}`,
-    ...events.flat(),
+    `X-WR-CALNAME:${name}`,
+    ...events,
     "END:VCALENDAR",
-  ];
-  return lines.map(fold).join("\r\n") + "\r\n";
+  ].join("\r\n");
 }
+
+export function icsFileName(booking: CrmBooking, itemId?: string | null) {
+  const ref = booking.reference.replace(/[^A-Za-z0-9_-]/g, "");
+  return itemId ? `travelba-${ref}-etape.ics` : `travelba-${ref}.ics`;
+}
+
+export function icsHttpHeaders(fileName: string) {
+  return {
+    "Content-Type": "text/calendar; charset=utf-8",
+    "Content-Disposition": `inline; filename="${fileName}"`,
+    "Cache-Control": "private, no-store",
+  };
+}
+

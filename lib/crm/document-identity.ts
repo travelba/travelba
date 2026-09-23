@@ -1,4 +1,4 @@
-import { resolveCountryCode } from "./countries";
+import { resolveNationality } from "./countries";
 import { emptyToNull } from "./identity";
 
 export type DocumentIdentityFields = {
@@ -15,15 +15,36 @@ export function identityFieldsFromForm(form: FormData): DocumentIdentityFields {
     first_name: emptyToNull(form.get("first_name")),
     last_name: emptyToNull(form.get("last_name")),
     birth_date: emptyToNull(form.get("birth_date")),
-    nationality:
-      resolveCountryCode(String(form.get("nationality") || "")) ||
+    nationality: resolveNationality(
       emptyToNull(form.get("nationality")),
+      emptyToNull(form.get("issuing_country"))
+    ),
     sex: sex === "M" || sex === "F" || sex === "X" ? sex : null,
   };
 }
 
 export function filledIdentity(fields: DocumentIdentityFields) {
   return Object.fromEntries(Object.entries(fields).filter(([, value]) => value != null));
+}
+
+export function nationalityFromIdentity(fields: {
+  nationality?: string | null;
+  issuing_country?: string | null;
+}): string | null {
+  return resolveNationality(fields.nationality, fields.issuing_country);
+}
+
+export function identityNationalityFromSources(
+  personNationality: string | null | undefined,
+  docs?: { nationality?: string | null; issuing_country?: string | null }[]
+): string {
+  const fromPerson = resolveNationality(personNationality);
+  if (fromPerson) return fromPerson;
+  for (const doc of docs || []) {
+    const code = resolveNationality(doc.nationality, doc.issuing_country);
+    if (code) return code;
+  }
+  return "";
 }
 
 export function appendIdentityFields(

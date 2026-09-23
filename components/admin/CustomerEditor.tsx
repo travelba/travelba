@@ -3,10 +3,11 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
-import type { CrmCompanion, CrmCustomer, CrmTravelDocument } from "@/lib/crm/types";
+import type { CrmCompanion, CrmCustomer, CrmTravelDocument, CompanyRole } from "@/lib/crm/types";
 import { resolveCountryCode } from "@/lib/crm/countries";
+import { identityNationalityFromSources, nationalityFromIdentity } from "@/lib/crm/document-identity";
 import { identityOverwriteWarning, type ExtractedIdentity } from "@/lib/crm/identity";
-import { appendPassportForm } from "@/lib/crm/passport-extract";
+import { appendPassportForm, appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-extract";
 import { formatIbanInput, ibanError, normalizeIban } from "@/lib/crm/billing";
 import { loyaltyFromCustomer, type LoyaltyMap } from "@/lib/crm/loyalty";
 import { LoyaltyFields } from "@/components/crm/LoyaltyFields";
@@ -28,8 +29,10 @@ import {
   CompanyBillingFields,
   type CompanyBillingValues,
 } from "@/components/crm/CompanyBillingFields";
+import { CompanyRoleFields } from "@/components/crm/CompanyRoleFields";
 import { PersonPassportCard } from "@/components/crm/PersonPassportCard";
 import { type ScanResult } from "@/components/crm/IdentityScan";
+import { vaultDocumentsForPerson } from "@/lib/crm/trip-documents";
 
 function applyIdentityState(
   id: ExtractedIdentity,
@@ -45,17 +48,20 @@ function applyIdentityState(
   if (id.last_name) setters.setLastName(id.last_name);
   if (id.birth_date) setters.setBirthDate(id.birth_date);
   if (id.sex) setters.setSex(id.sex);
-  if (id.nationality) setters.setNationality(id.nationality);
+  const nationalityIso = nationalityFromIdentity(id);
+  if (nationalityIso) setters.setNationality(nationalityIso);
 }
 
 export function CustomerEditor({
   customer,
   companions,
   documents,
+  companyAdmins = [],
 }: {
   customer: CrmCustomer;
   companions: CrmCompanion[];
   documents: CrmTravelDocument[];
+  companyAdmins?: CrmCustomer[];
 }) {
   const router = useRouter();
   const [firstName, setFirstName] = useState(customer.first_name);
@@ -64,13 +70,17 @@ export function CustomerEditor({
   const [phoneSecondary, setPhoneSecondary] = useState(customer.phone_secondary || "");
   const [birthDate, setBirthDate] = useState(customer.birth_date || "");
   const [sex, setSex] = useState(customer.sex || "");
-  const [nationality, setNationality] = useState(resolveCountryCode(customer.nationality) || "");
+  const [nationality, setNationality] = useState(
+    identityNationalityFromSources(customer.nationality, vaultDocumentsForPerson(documents, null))
+  );
   const [country, setCountry] = useState(resolveCountryCode(customer.country) || "FR");
   const [addressLine, setAddressLine] = useState(customer.address_line || "");
   const [postalCode, setPostalCode] = useState(customer.postal_code || "");
   const [city, setCity] = useState(customer.city || "");
   const [loyalty, setLoyalty] = useState<LoyaltyMap>(() => loyaltyFromCustomer(customer));
   const [iban, setIban] = useState(() => formatIbanInput(customer.iban || ""));
+  const [companyRole, setCompanyRole] = useState<CompanyRole | null>(customer.company_role || null);
+  const [billingParentId, setBillingParentId] = useState(customer.billing_parent_id || "");
   const [nameWarn, setNameWarn] = useState<string | null>(null);
   const [billing, setBilling] = useState<CompanyBillingValues>(() =>
     companyBillingFromCustomer(customer)
@@ -85,6 +95,8 @@ export function CustomerEditor({
   );
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [onHold, setOnHold] = useState(Boolean(customer.on_hold));
+  const [isVip, setIsVip] = useState(Boolean(customer.is_vip));
 
   const profileAddress = {
     country,
@@ -121,6 +133,10 @@ export function CustomerEditor({
         loyalty,
         flying_blue: loyalty.flying_blue,
         iban: normalizedIban,
+        company_role: companyRole,
+        billing_parent_id: companyRole === "member" ? billingParentId || null : null,
+        on_hold: onHold,
+        is_vip: isVip,
         ...billingJson(billing, profileAddress, sameBillingAddress),
       }),
     });
@@ -152,6 +168,7 @@ export function CustomerEditor({
           variant="admin"
           customerId={customer.id}
           documents={documents}
+          person={{ first_name: firstName, last_name: lastName }}
           onIdentity={(id) => {
             setNameWarn(identityOverwriteWarning({ first_name: firstName, last_name: lastName }, id));
             applyIdentityState(id, {
@@ -173,7 +190,21 @@ export function CustomerEditor({
           <p className="sm:col-span-2 font-display text-base font-bold text-[var(--admin-navy)]">
             Identité
           </p>
-          <Field label="Prénom" hint="Comme sur le passeport">
+          <label className="flex items-start gap-2 text-sm text-[var(--admin-navy)]">
+            <input type="checkbox" className="mt-1" checked={isVip} onChange={(e) => setIsVip(e.target.checked)} />
+            <span>
+              <span className="font-semibold">Client VIP</span>
+              <span className="mt-0.5 block text-xs text-muted">Accès greeter aéroport depuis l’espace client.</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-sm text-[var(--admin-navy)]">
+            <input type="checkbox" className="mt-1" checked={onHold} onChange={(e) => setOnHold(e.target.checked)} />
+            <span>
+              <span className="font-semibold">Compte en veille</span>
+              <span className="mt-0.5 block text-xs text-muted">Badge interne. Aucun changement pour le client.</span>
+            </span>
+          </label>
+          <Field label="Prénom(s)" hint="Tous les prénoms, dans l’ordre du passeport">
             <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
           </Field>
           <Field label="Nom" hint="Comme sur le passeport">
@@ -231,6 +262,18 @@ export function CustomerEditor({
           />
         </section>
 
+        <CompanyRoleFields
+          role={companyRole}
+          onRoleChange={(role) => {
+            setCompanyRole(role);
+            if (role !== "member") setBillingParentId("");
+          }}
+          billingParentId={billingParentId}
+          onBillingParentChange={setBillingParentId}
+          companyAdmins={companyAdmins}
+          selfId={customer.id}
+        />
+
         <CompanyBillingFields
           values={billing}
           onChange={setBilling}
@@ -247,7 +290,7 @@ export function CustomerEditor({
         </div>
       </form>
 
-      <section className="space-y-4">
+      <section id="accompagnateurs" className="space-y-4">
         <div>
           <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Accompagnateurs</h2>
           <p className="mt-1 text-sm text-muted">
@@ -281,7 +324,12 @@ function CompanionCard({
   const [firstName, setFirstName] = useState(companion.first_name);
   const [lastName, setLastName] = useState(companion.last_name);
   const [relationship, setRelationship] = useState(companion.relationship || "");
-  const [nationality, setNationality] = useState(resolveCountryCode(companion.nationality) || "");
+  const [nationality, setNationality] = useState(
+    identityNationalityFromSources(
+      companion.nationality,
+      vaultDocumentsForPerson(documents, companion.id)
+    )
+  );
   const [birthDate, setBirthDate] = useState(companion.birth_date || "");
   const [sex, setSex] = useState(companion.sex || "");
   const [saving, setSaving] = useState(false);
@@ -327,6 +375,7 @@ function CompanionCard({
         customerId={customerId}
         companionId={companion.id}
         documents={documents}
+        person={{ first_name: firstName, last_name: lastName }}
         onIdentity={(id) => {
           setNameWarn(identityOverwriteWarning({ first_name: firstName, last_name: lastName }, id));
           applyIdentityState(id, {
@@ -344,7 +393,7 @@ function CompanionCard({
         </p>
       ) : null}
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Prénom" hint="Comme sur le passeport">
+        <Field label="Prénom(s)" hint="Tous les prénoms, dans l’ordre du passeport">
           <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
         </Field>
         <Field label="Nom" hint="Comme sur le passeport">
@@ -408,6 +457,37 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
     event.preventDefault();
     setSaving(true);
     setError(null);
+    const identities = listedIdentities(scan?.identity, scan?.identities);
+    if (identities.length > 1 && scan?.file) {
+      const patched = identities.map((identity, index) =>
+        index === 0
+          ? {
+              ...identity,
+              first_name: firstName || identity.first_name,
+              last_name: lastName || identity.last_name,
+              birth_date: birthDate || identity.birth_date,
+              nationality: nationality || identity.nationality,
+              sex: (sex as ExtractedIdentity["sex"]) || identity.sex,
+            }
+          : identity
+      );
+      const form = appendPassportImportForm(new FormData(), {
+        identities: patched,
+        file: scan.file,
+        customerId,
+        createUnmatchedOnly: true,
+      });
+      const docs = await fetch("/api/admin/travel-documents", { method: "POST", body: form });
+      const docsJson = await docs.json().catch(() => ({}));
+      setSaving(false);
+      if (!docs.ok) {
+        setError(docsJson.error || "Impossible d’importer les passeports");
+        return;
+      }
+      closeForm();
+      router.refresh();
+      return;
+    }
     const res = await fetch("/api/admin/companions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -472,6 +552,7 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
         customerId={customerId}
         documents={[]}
         persist={false}
+        person={{ first_name: firstName, last_name: lastName }}
         onIdentity={(id) =>
           applyIdentityState(id, {
             setFirstName,
@@ -482,13 +563,17 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
           })
         }
         onScan={setScan}
+        onImported={() => {
+          closeForm();
+          router.refresh();
+        }}
       />
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Prénom">
-          <input required value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
+        <Field label="Prénom(s)" hint="Tous les prénoms, dans l’ordre du passeport">
+          <input required={listedIdentities(scan?.identity, scan?.identities).length < 2} value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
         </Field>
         <Field label="Nom">
-          <input required value={lastName} onChange={(e) => setLastName(e.target.value)} className={fieldControlClass} />
+          <input required={listedIdentities(scan?.identity, scan?.identities).length < 2} value={lastName} onChange={(e) => setLastName(e.target.value)} className={fieldControlClass} />
         </Field>
         <Field label="Lien">
           <RelationshipSelect name="relationship" value={relationship} onChange={setRelationship} />

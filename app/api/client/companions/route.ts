@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireCustomer } from "@/lib/crm/auth";
-import { resolveCountryCode } from "@/lib/crm/countries";
+import { resolveNationality } from "@/lib/crm/countries";
 import { emptyToNull } from "@/lib/crm/identity";
 import { deleteTravelDocuments } from "@/lib/crm/travel-document-write";
 
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       last_name: last,
       birth_date: emptyToNull(body?.birth_date),
       sex: emptyToNull(body?.sex),
-      nationality: resolveCountryCode(String(body?.nationality || "")) || emptyToNull(body?.nationality),
+      nationality: resolveNationality(String(body?.nationality || "")),
       relationship: emptyToNull(body?.relationship),
     })
     .select("*")
@@ -53,7 +53,7 @@ export async function PATCH(request: Request) {
       last_name: body.last_name,
       birth_date: emptyToNull(body.birth_date),
       sex: emptyToNull(body.sex),
-      nationality: resolveCountryCode(String(body.nationality || "")) || emptyToNull(body.nationality),
+      nationality: resolveNationality(String(body.nationality || "")),
       relationship: emptyToNull(body.relationship),
     })
     .eq("id", id)

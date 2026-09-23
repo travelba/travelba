@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
-import { resolveCountryCode } from "@/lib/crm/countries";
+import { resolveNationality } from "@/lib/crm/countries";
 import { emptyToNull } from "@/lib/crm/identity";
 import { deleteTravelDocuments } from "@/lib/crm/travel-document-write";
 
@@ -11,9 +11,23 @@ function companionPatch(body: Record<string, unknown>) {
     last_name: String(body.last_name || "").trim(),
     birth_date: emptyToNull(body.birth_date),
     sex: sex === "M" || sex === "F" || sex === "X" ? sex : null,
-    nationality: resolveCountryCode(String(body.nationality || "")) || emptyToNull(body.nationality),
+    nationality: resolveNationality(String(body.nationality || "")),
     relationship: emptyToNull(body.relationship),
   };
+}
+
+export async function GET(request: Request) {
+  const auth = await requireStaff();
+  if (auth instanceof NextResponse) return auth;
+  const customerId = new URL(request.url).searchParams.get("customer_id") || "";
+  if (!customerId) return jsonError("customer_id requis");
+  const { data, error } = await auth.supabase
+    .from("crm_travel_companions")
+    .select("*")
+    .eq("customer_id", customerId)
+    .order("last_name");
+  if (error) return dbError(error, 500);
+  return NextResponse.json({ companions: data || [] });
 }
 
 export async function POST(request: Request) {

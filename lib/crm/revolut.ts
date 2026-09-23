@@ -1,5 +1,9 @@
 import { createPrivateKey, createSign, createHmac, timingSafeEqual } from "crypto";
 import { createServiceClient } from "@/lib/supabase/admin";
+import {
+  senderFromRevolutPayload,
+  shouldIngestRevolutForRapprochement,
+} from "@/lib/crm/revolut-inbox";
 
 const PROVIDER = "revolut";
 
@@ -161,6 +165,7 @@ export type RevolutTx = {
   legs?: Array<{
     amount: number;
     currency: string;
+    description?: string;
     account_id?: string;
     counterparty?: { name?: string; account_no?: string; iban?: string };
   }>;
@@ -170,16 +175,32 @@ export async function fetchRevolutTransactions(fromIso: string) {
   const token = await getRevolutAccessToken();
   const out: RevolutTx[] = [];
   let to: string | undefined;
+  // Sans filtre type : les crédits clients SEPA arrivent souvent en `topup`,
+  // alors que `type=transfer` ne renvoie que les sorties (montants négatifs).
   for (let i = 0; i < 20; i++) {
     const url = new URL(`${apiBase()}/api/1.0/transactions`);
     url.searchParams.set("from", fromIso);
     url.searchParams.set("count", "1000");
-    url.searchParams.set("type", "transfer");
     if (to) url.searchParams.set("to", to);
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!res.ok) throw new Error(`Revolut transactions ${res.status}`);
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      let detail = "";
+      try {
+        const json = JSON.parse(body) as { code?: number; message?: string };
+        if (json.code === 9002) {
+          detail =
+            " : whitelist IP / scope sensible — reconnectez avec le scope READ uniquement (liste IP vide).";
+        } else if (json.message) {
+          detail = ` : ${json.message}`;
+        }
+      } catch {
+        if (body) detail = ` : ${body.slice(0, 180)}`;
+      }
+      throw new Error(`Revolut transactions ${res.status}${detail}`);
+    }
     const page = (await res.json()) as RevolutTx[];
     if (!page.length) break;
     out.push(...page);
@@ -194,27 +215,53 @@ export async function upsertRevolutInbox(txs: RevolutTx[]) {
   const supabase = createServiceClient();
   let inserted = 0;
   for (const tx of txs) {
+    const txType = (tx.type || "").toLowerCase();
     const leg = tx.legs?.[0];
-    const amount = Number(leg?.amount || 0);
-    if (!tx.id || amount <= 0) continue;
+    if (!tx.id || !leg) continue;
+    const signed = Number(leg.amount || 0);
+    if (
+      !shouldIngestRevolutForRapprochement({
+        type: txType,
+        signedAmount: signed,
+        reference: tx.reference,
+      })
+    ) {
+      continue;
+    }
+
+    const amount = Math.abs(signed);
+    const reference = (tx.reference || "").trim();
+    const counterpartyName = senderFromRevolutPayload({
+      description: leg.description,
+      counterpartyName: leg.counterparty?.name,
+    });
+    const fields = {
+      amount,
+      currency: leg.currency || "EUR",
+      direction: "credit" as const,
+      counterparty_name: counterpartyName,
+      counterparty_iban: leg.counterparty?.iban || leg.counterparty?.account_no || null,
+      reference: reference || null,
+      booked_at: tx.completed_at || tx.created_at || null,
+      raw: tx,
+    };
     const { error, data } = await supabase
       .from("crm_revolut_transactions")
       .upsert(
         {
           revolut_transaction_id: tx.id,
-          amount,
-          currency: leg?.currency || "EUR",
-          counterparty_name: leg?.counterparty?.name || null,
-          counterparty_iban:
-            leg?.counterparty?.iban || leg?.counterparty?.account_no || null,
-          reference: tx.reference || null,
-          booked_at: tx.completed_at || tx.created_at || null,
-          raw: tx,
+          ...fields,
         },
         { onConflict: "revolut_transaction_id", ignoreDuplicates: true }
       )
       .select("id");
     if (!error && data?.length) inserted += data.length;
+    else {
+      await supabase
+        .from("crm_revolut_transactions")
+        .update(fields)
+        .eq("revolut_transaction_id", tx.id);
+    }
   }
   return inserted;
 }

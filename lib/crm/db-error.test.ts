@@ -16,9 +16,24 @@ test("auth password errors are explained in French", () => {
 test("postgres codes map to neutral French messages", () => {
   assert.equal(dbErrorMessage({ code: "23505", message: "duplicate key value violates" }), "Cette valeur existe déjà.");
   assert.equal(dbErrorMessage({ code: "23503" }), "Élément lié introuvable.");
+  assert.match(
+    dbErrorMessage({
+      code: "23502",
+      message: 'null value in column "title" of relation "crm_bookings" violates not-null constraint',
+    }),
+    /titre/
+  );
+  assert.match(
+    dbErrorMessage({
+      code: "23505",
+      message: 'duplicate key value violates unique constraint, Key (email)=()',
+    }),
+    /existe déjà/
+  );
   assert.equal(dbErrorMessage({ code: "22P02" }), "Format de valeur invalide.");
   assert.equal(dbErrorMessage({ code: "PGRST116" }), "Élément introuvable.");
   assert.equal(dbErrorMessage({ code: "42501" }), "Accès refusé.");
+  assert.match(dbErrorMessage({ code: "42P10" }), /contrainte de dossier/);
 });
 
 test("unknown errors never leak the raw message", () => {

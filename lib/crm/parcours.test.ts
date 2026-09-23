@@ -5,7 +5,7 @@ import { loyaltyFromCustomer, normalizeLoyaltyMap, normalizeLoyaltyNumber } from
 import { encoursCaption, formatEncours, formatMoney, jMinusLabel, postedLedgerTotals } from "./money";
 import { needsAiCover, unsplashKeywordMatch } from "./covers";
 import { vaultDocumentsForPerson } from "./trip-documents";
-import type { CrmTravelDocument } from "./types";
+import { filterCreditTransfers, isCreditTransfer, type CrmTravelDocument } from "./types";
 
 test("identity overwrite warns only when names differ", () => {
   assert.equal(
@@ -55,6 +55,21 @@ test("J-minus uses the real start date", () => {
   assert.equal(jMinusLabel(ymd(-2)), null);
 });
 
+test("agency ledger keeps only credit transfers", () => {
+  assert.equal(isCreditTransfer({ direction: "credit", kind: "transfer" }), true);
+  assert.equal(isCreditTransfer({ direction: "debit", kind: "transfer" }), false);
+  assert.equal(isCreditTransfer({ direction: "credit", kind: "adjustment" }), false);
+  assert.equal(isCreditTransfer({ direction: "debit", kind: "booking" }), false);
+  const kept = filterCreditTransfers([
+    { direction: "credit", kind: "transfer" },
+    { direction: "debit", kind: "booking" },
+    { direction: "debit", kind: "adjustment" },
+    { direction: "credit", kind: "adjustment" },
+  ]);
+  assert.equal(kept.length, 1);
+  assert.equal(kept[0].kind, "transfer");
+});
+
 test("ledger totals stay honest from posted movements", () => {
   const { credits, debits, settledPct } = postedLedgerTotals([
     { direction: "credit", amount: "9500" },
@@ -77,6 +92,10 @@ test("Unsplash keyword match skips AI cover", () => {
   assert.notEqual(
     marrakech,
     unsplashKeywordMatch({ destination: "Paris", title: "Week-end" })
+  );
+  assert.equal(
+    unsplashKeywordMatch({ destination: "Avoriaz", title: "Avoriaz" }),
+    "photo-1674043613875-eabfa5a45425"
   );
   assert.equal(unsplashKeywordMatch({ destination: "Xyzzy", title: "Inconnu" }), null);
   assert.equal(needsAiCover({ destination: "Xyzzy", title: "Inconnu" }), true);

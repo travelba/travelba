@@ -17,7 +17,11 @@ export function itemDetailsLine(item: CrmBookingItem) {
       detail(item, "from") && detail(item, "to")
         ? `${detail(item, "from")} → ${detail(item, "to")}`
         : "";
+    const tickets = Number(item.details?.ticket_count);
     parts.push(detail(item, "flight_number"), route, detail(item, "cabin"));
+    if (item.kind === "flight" && Number.isFinite(tickets) && tickets > 1) {
+      parts.push(`${Math.round(tickets)} billets`);
+    }
   }
   if (item.kind === "hotel") {
     parts.push(detail(item, "hotel_name") || item.supplier || "", detail(item, "room"));

@@ -11,6 +11,8 @@ export default async function AdminTransactionsPage() {
     supabase
       .from("crm_transactions")
       .select("*")
+      .eq("kind", "transfer")
+      .eq("direction", "credit")
       .order("occurred_on", { ascending: false })
       .limit(200),
     supabase.from("crm_customers").select("*").order("last_name"),
@@ -18,40 +20,36 @@ export default async function AdminTransactionsPage() {
   const stripeReady = stripeConfigured() && stripeWebhookConfigured();
   const rows = (transactions || []) as CrmTransaction[];
   const posted = rows.filter((row) => row.status === "posted");
-  const { credits, debits, settledPct } = postedLedgerTotals(posted);
+  const { credits } = postedLedgerTotals(posted);
 
   return (
     <div>
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
         title="Transactions"
-        subtitle="Débits réservations, crédits Revolut et ajustements — seules les écritures comptabilisées impactent l’encours."
+        subtitle="Virements crédit uniquement — rapprochement Revolut ou saisie manuelle. Les débits de séjour et frais restent sur le dossier."
       />
-      <div className="mt-6 grid gap-3 sm:grid-cols-3">
+      <div className="mt-6 grid gap-3 sm:grid-cols-2">
         <div className="admin-af-card rounded-2xl px-4 py-3">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Débits</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">
+            Virements
+          </p>
           <p className="mt-1 font-display text-xl font-bold text-[var(--admin-navy)]">
-            {formatMoney(debits)}
+            {posted.length}
           </p>
         </div>
         <div className="rounded-2xl border border-[var(--admin-gold)]/40 bg-[#f8f4ed] px-4 py-3">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Crédits</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">
+            Total reçu
+          </p>
           <p className="mt-1 font-display text-xl font-bold text-[var(--admin-navy)]">
             {formatMoney(credits)}
-          </p>
-        </div>
-        <div className="rounded-2xl bg-[var(--admin-navy)] px-4 py-3 text-white">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
-            Réglé
-          </p>
-          <p className="mt-1 font-display text-xl font-bold">
-            {settledPct != null ? `${settledPct} %` : "—"}
           </p>
         </div>
       </div>
       {!stripeReady ? (
         <p className="mt-4 rounded-2xl border border-dashed border-[var(--border)] bg-white/70 px-4 py-3 text-sm text-muted">
-          Cartes Stripe non ouvertes. Le grand livre manuel et le rapprochement Revolut suffisent.
+          Cartes Stripe non ouvertes. Le rapprochement Revolut et la saisie d’un virement suffisent.
         </p>
       ) : null}
       <div className="mt-6">

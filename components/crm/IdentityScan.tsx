@@ -3,12 +3,13 @@
 import { useRef, useState } from "react";
 import { AlertTriangle, Camera, CheckCircle2, Loader2, ScanLine } from "lucide-react";
 import type { ExtractedIdentity } from "@/lib/crm/identity";
-import { identitySummary } from "@/lib/crm/passport-extract";
+import { listedIdentities, identitySummary } from "@/lib/crm/passport-extract";
 
 export type ScanResult = {
   file: File;
   preview: string | null;
   identity: ExtractedIdentity | null;
+  identities: ExtractedIdentity[];
   warning: string | null;
 };
 
@@ -18,6 +19,7 @@ async function readScanJson(res: Response) {
     return JSON.parse(text) as {
       error?: string;
       identity?: ExtractedIdentity | null;
+      identities?: ExtractedIdentity[] | null;
       warning?: string | null;
     };
   } catch {
@@ -56,8 +58,8 @@ async function compressPhoto(file: File) {
 
 export function IdentityScan({
   endpoint = "/api/client/documents/scan",
-  title = "Photographier le passeport ou la pièce d’identité",
-  description = "Nous lisons toutes les mentions du document : nom, naissance, n°, dates, nationalité, lieu de naissance et autorité.",
+  title = "Photographier ou importer le passeport",
+  description = "Photo ou PDF : un ou plusieurs passeports sur le même fichier. Chaque personne est importée.",
   compact = false,
   onResult,
 }: {
@@ -83,14 +85,16 @@ export function IdentityScan({
       const res = await fetch(endpoint, { method: "POST", body });
       const json = await readScanJson(res);
       if (!res.ok) throw new Error(json.error || "Lecture impossible");
+      const identities = listedIdentities(json.identity, json.identities);
       onResult({
         file: prepared,
         preview,
-        identity: json.identity || null,
+        identity: identities[0] || null,
+        identities,
         warning: json.warning || null,
       });
     } catch (err) {
-      onResult({ file: prepared, preview, identity: null, warning: null });
+      onResult({ file: prepared, preview, identity: null, identities: [], warning: null });
       setError(err instanceof Error ? err.message : "Lecture impossible");
     } finally {
       setBusy(false);
@@ -126,12 +130,12 @@ export function IdentityScan({
           className="admin-af-btn inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm"
         >
           <Camera className="h-4 w-4" />
-          {busy ? "Lecture…" : "Choisir une photo"}
+          {busy ? "Lecture…" : "Choisir un fichier"}
         </button>
         <input
           ref={inputRef}
           type="file"
-          accept="image/*"
+          accept="image/*,application/pdf,.pdf"
           className="hidden"
           onChange={(event) => {
             const file = event.target.files?.[0];
@@ -152,13 +156,16 @@ export function IdentityScan({
 
 export function ScanStatus({
   identity,
+  identities,
   warning,
 }: {
   identity: ExtractedIdentity | null;
+  identities?: ExtractedIdentity[] | null;
   warning: string | null;
 }) {
-  if (!identity && !warning) return null;
-  if (!identity) {
+  const list = listedIdentities(identity, identities);
+  if (!list.length && !warning) return null;
+  if (!list.length) {
     return (
       <p className="flex items-start gap-2 rounded-2xl border border-accent/30 bg-[#fdf0ed] px-3 py-2 text-sm text-accent">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -166,10 +173,14 @@ export function ScanStatus({
       </p>
     );
   }
+  const summary =
+    list.length > 1
+      ? `${list.length} passeports lus : ${list.map((item) => identitySummary(item)).join(" · ")}`
+      : identitySummary(list[0]) || "Document lu. Vérifiez les informations, puis enregistrez.";
   return (
     <p className="flex items-start gap-2 rounded-2xl border border-[var(--admin-gold)]/40 bg-[#fbf7ec] px-3 py-2 text-sm text-[var(--admin-navy)]">
       <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[var(--admin-navy)]" />
-      {warning || identitySummary(identity) || "Document lu. Vérifiez les informations, puis enregistrez."}
+      {warning || summary}
     </p>
   );
 }

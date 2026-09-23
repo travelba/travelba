@@ -4,8 +4,10 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DOC_TYPE_LABELS, type CrmCompanion, type CrmTravelDocument, type TravelDocType } from "@/lib/crm/types";
 import { countryName } from "@/lib/crm/countries";
+import { nationalityFromIdentity } from "@/lib/crm/document-identity";
 import { documentExpiryStatus, documentExpiryWarning, identityOverwriteWarning } from "@/lib/crm/identity";
 import { formatDateFr } from "@/lib/crm/money";
+import { appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-extract";
 import { isVaultDocument } from "@/lib/crm/trip-documents";
 import { StatusChip } from "@/components/crm/ui";
 import {
@@ -70,7 +72,8 @@ export function DocumentsManager({
     if (id.first_name) setFirstName(id.first_name);
     if (id.last_name) setLastName(id.last_name);
     if (id.birth_date) setBirthDate(id.birth_date);
-    if (id.nationality) setNationality(id.nationality);
+    const nationalityIso = nationalityFromIdentity(id);
+    if (nationalityIso) setNationality(nationalityIso);
     if (id.sex) setSex(id.sex);
   }
 
@@ -78,6 +81,57 @@ export function DocumentsManager({
     event.preventDefault();
     setSaving(true);
     setError(null);
+    const identities = listedIdentities(scan?.identity, scan?.identities);
+    if (identities.length > 1 && scan?.file) {
+      const patched = identities.map((identity, index) =>
+        index === 0
+          ? {
+              ...identity,
+              doc_type: docType || identity.doc_type,
+              number: number || identity.number,
+              issuing_country: issuingCountry || identity.issuing_country,
+              issued_on: docIssued || identity.issued_on,
+              expires_on: docExpiry || identity.expires_on,
+              place_of_birth: placeOfBirth || identity.place_of_birth,
+              authority: authority || identity.authority,
+              personal_number: personalNumber || identity.personal_number,
+              first_name: firstName || identity.first_name,
+              last_name: lastName || identity.last_name,
+              birth_date: birthDate || identity.birth_date,
+              nationality: nationality || identity.nationality,
+              sex: (sex as typeof identity.sex) || identity.sex,
+            }
+          : identity
+      );
+      const form = appendPassportImportForm(new FormData(), {
+        identities: patched,
+        file: scan.file,
+        companionId: companionId || null,
+        applyIdentity,
+      });
+      const res = await fetch("/api/client/documents", { method: "POST", body: form });
+      const json = await res.json();
+      setSaving(false);
+      if (!res.ok) {
+        setError(json.error || "Erreur");
+        return;
+      }
+      setScan(null);
+      setNumber("");
+      setDocIssued("");
+      setDocExpiry("");
+      setPlaceOfBirth("");
+      setAuthority("");
+      setPersonalNumber("");
+      setIssuingCountry("");
+      setFirstName("");
+      setLastName("");
+      setBirthDate("");
+      setNationality("");
+      setSex("");
+      router.refresh();
+      return;
+    }
     const form = new FormData();
     if (scan?.file) form.set("file", scan.file);
     form.set("doc_type", docType);
@@ -194,7 +248,7 @@ export function DocumentsManager({
       <form onSubmit={onSubmit} className="admin-af-card space-y-4 rounded-3xl p-5">
         <IdentityScan
           title="Scanner un passeport"
-          description="Photo de la page d’identité : lecture automatique, fichier chiffré dans le coffre."
+          description="Photo ou PDF : un ou plusieurs passeports sur le même fichier. Chaque personne est importée."
           onResult={applyScan}
         />
         {scan ? (
@@ -202,9 +256,11 @@ export function DocumentsManager({
             {scan.preview ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={scan.preview} alt="" className="h-20 w-14 rounded-lg object-cover" />
+            ) : scan.file ? (
+              <p className="text-xs font-medium text-[var(--admin-navy)]">{scan.file.name}</p>
             ) : null}
             <div className="min-w-0 flex-1 space-y-2">
-              <ScanStatus identity={scan.identity} warning={scan.warning} />
+              <ScanStatus identity={scan.identity} identities={scan.identities} warning={scan.warning} />
               {expiryWarn ? <p className="text-sm text-accent">{expiryWarn}</p> : null}
               {nameWarn ? (
                 <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
@@ -287,7 +343,7 @@ export function DocumentsManager({
 
             {applyIdentity ? (
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Prénom">
+                <Field label="Prénom(s)" hint="Tous les prénoms, dans l’ordre du passeport">
                   <input value={firstName} onChange={(event) => setFirstName(event.target.value)} className={fieldControlClass} />
                 </Field>
                 <Field label="Nom">
@@ -305,7 +361,14 @@ export function DocumentsManager({
               </div>
             ) : null}
 
-            {otherDoc ? <input name="extra_file" type="file" className="block text-sm" /> : null}
+            {otherDoc ? (
+              <input
+                name="extra_file"
+                type="file"
+                accept="image/*,application/pdf,.pdf"
+                className="block text-sm"
+              />
+            ) : null}
 
             {error ? <p className="text-sm text-accent">{error}</p> : null}
             <button className="admin-af-btn h-11 w-full rounded-full px-4 text-sm" disabled={saving}>

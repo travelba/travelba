@@ -43,9 +43,10 @@ Produit FR pour agence de voyage : back-office `/admin` (clients, réservations,
 ## Interdits récurrents
 
 - URL signed Supabase longues côté client — signed URL courte via `/api/files`
-- Créditer un client Revolut sans rapprochement agent
+- Créditer un client Revolut en cas d’ambiguïté (plusieurs clients possibles) — auto seulement si match unique certain
 - Stocker un PAN / CVC — références Stripe uniquement
 - `npm run seed:demo` en production — ne pas vider `crm_staff`
 - Inventer horaires / inclus / nets PDF
+- Couverture = ville / station d’arrivée (Avoriaz, pas Paris / CDG) — skill `travelba-carnet`
 - Ingest documents côté client
 - Committer des PDF d’entraînement ou de la PII (PAN, noms) — skill `travelba-document-ingest`

@@ -28,6 +28,8 @@ export async function GET(request: Request) {
   dest.searchParams.set("client_id", clientId);
   dest.searchParams.set("redirect_uri", redirectUri);
   dest.searchParams.set("response_type", "code");
+  // READ only — READ_SENSITIVE_CARD_DATA force une whitelist IP incompatible avec Vercel.
+  dest.searchParams.set("scope", "READ");
   // client_assertion is used later at token exchange
   void createClientAssertion;
   return NextResponse.redirect(dest);

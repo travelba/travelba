@@ -2,13 +2,13 @@ import "server-only";
 import { generateText, Output, APICallError } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import {
-  definePDFJSModule,
   extractImages,
   extractText,
   getDocumentProxy,
   renderPageAsImage,
 } from "unpdf";
 import { trySharp } from "@/lib/crm/sharp";
+import { openPdf } from "@/lib/crm/pdf-raster";
 import { downloadCrmFile } from "@/lib/crm/files";
 import {
   applyStructuredHints,
@@ -58,7 +58,10 @@ Règles d’honnêteté :
 - Un PDF peut produire PLUSIEURS cartes.
 - details.source_file_name = nom exact du fichier source.
 - details.needs_review = true si lecture douteuse.
-- amount des items : toujours null. total_amount : toujours null.
+- amount des items : toujours null (pas le net client).
+- details.document_amount = montant imprimé sur CE fichier (total visible). Absent = null. Pas une ligne « NET » fournisseur seule.
+- total_amount : somme des prix vendus saisis sur les cartes. Ne pas le remplir avec le total PDF.
+- details.document_currency = EUR | USD | CHF | GBP selon le symbole / code imprimé.
 
 Voyageurs :
 - Noms imprimés, casse normale.
@@ -70,10 +73,10 @@ title : villes séparées par « · ». destination : mêmes villes.`;
 
 const PROMPT_FLIGHT = `Vol :
 - Aller et retour = DEUX items si les deux sont imprimés (même PDF). Correspondance = DEUX items. Pas de retour fantôme.
-- Plusieurs e-tickets passagers pour le MÊME vol (même n°, même jour) = UN item. Les noms vont dans travelers.
+- Plusieurs e-tickets passagers pour le MÊME vol (même n°, même jour) = UN item. Les noms vont dans travelers. Le nombre de billets est compté à la fusion (details.ticket_count). L’agent saisit un prix unitaire par billet.
 - confirmation_ref = PNR GDS 6 lettres. details.pnr = réf. compagnie. Jamais l’IATA 8 chiffres agence (20287864, 20255270, 96020293, 20289905).
-- details.airline = transporteur opérant. supplier = émetteur du billet (Hahn Air ≠ Air Panama ; Copa opérant = Copa).
-- details.from / to = IATA. Souvent absent du PDF : Gelabert/Albrook=PAC, Isla Colón=BOC, Enrique Malek=DAV, Tocumen=PTY, Charles-de-Gaulle=CDG, Genève=GVA, Heathrow=LHR, Marseille Provence=MRS.
+- details.airline = transporteur opérant. details.airline_iata = code IATA 2 lettres s’il est imprimé (AF, CM). Sinon null. supplier = émetteur du billet (Hahn Air ≠ Air Panama ; Copa opérant = Copa).
+- details.from / to = IATA. Souvent absent du PDF : Gelabert/Albrook=PAC, Isla Colón=BOC, Enrique Malek=DAV, Tocumen=PTY, Charles-de-Gaulle=CDG, Orly=ORY, Tel Aviv=TLV, Genève=GVA, Heathrow=LHR, Marseille Provence=MRS.
 - details.city_from / city_to = villes. « 03 August 09:45 » : année = ligne « Lundi 03 août 2026 ».
 - Terminal / siège seulement s’ils sont imprimés. « Heure limite d’enregistrement » n’est pas l’horaire du vol.
 - Carte fidélité : ne pas extraire.
@@ -83,7 +86,7 @@ const PROMPT_FLIGHT = `Vol :
 const PROMPT_HOTEL = `Hôtel :
 - UN item même s’il y a deux chambres / deux réf. : details.rooms = [{room, guests, confirmation_ref}, …].
 - confirmation_ref = première réf. ou les deux séparées par « ; » (ex. 97620170;97620172).
-- details.hotel_name, details.city, details.address, details.board si écrite.
+- title de la carte = details.hotel_name (nom de l’établissement), PAS la ville. details.city = ville. details.address, details.board si écrite.
 - Nantipa / vouchers Costa Rica : 08/02/2026 = 2 août (MM/JJ), pas 8 février. Check-in 15:00 dans les CGV ≠ heure de la carte (date only).
 - Confirmation type The Leela : Check In 14-SEP-26 = date only. Ignorer 14:00/12:00 de politique et Pick Up / Drop Off 00:00. TENTATIVE → details.needs_review.
 - Devis Passion Collection / « none are on hold » : document_status=quote, un item hôtel, rooms = les options. Pas de NET.`;
@@ -94,6 +97,24 @@ Train (rail) : comme un vol (n°, gares, horaires si écrits).
 Voiture (SIXT / loueur) : kind=car. confirmation_ref = n° de réservation. start_at / end_at = prise et restitution. details.pickup / dropoff / vehicle. Pas de franchise, caution, TTC, protection.
 Bateau (cruise) : une carte pour la traversée, pas un jour par port.`;
 
+const PROMPT_TRANSAVIA = `Confirmation Transavia :
+- Aller et retour imprimés = DEUX items. confirmation_ref = numéro de réservation (6 caractères).
+- Passagers (MR / MRS / CHD) → travelers, une fois chacun, casse normale. Ne pas les remplacer par « Adulte N ».
+- Heure de départ et heure d’arrivée seulement. « Début de l’enregistrement » n’est pas l’horaire du vol.
+- Paris (Orly) = ORY. Tel Aviv = TLV. title / destination = ville d’arrivée, pas Paris.
+- Tarif Basic : bagage à main si la phrase est imprimée. Le bagage en soute payant n’est pas inclus.
+- « Total des services additionnels » n’est pas le prix des billets : document_amount null si le tarif des vols n’est pas imprimé.`;
+
+const PROMPT_MAEVA = `Confirmation maeva.com / Pierre & Vacances :
+- UN hôtel (résidence). title = details.hotel_name (établissement), PAS la ville. details.city = station.
+- Arrivée / départ en date only. Pas d’horaire inventé (15:00 / 12:00).
+- confirmation_ref = N° de dossier, UNIQUEMENT sur la carte hôtel. Les extras n’ont pas cette réf.
+- VOS OPTIONS = cartes séparées : forfaits (activity), matériel de ski (activity), cours (activity), assurance (insurance).
+- Lignes d’un même total → details.included (ex. « 1 × Adulte 26–64 ans »). details.duration si « 6 jours consécutifs » est écrit.
+- Ignorer totaux à 0 €, frais de dossier, CGV, cagnotte, PAN, n° de transaction bancaire.
+- E-mail agence ≠ customer_email. Pas d’enfants sans nom.
+- amount des items = null. details.document_amount = total TTC du dossier, une seule fois.`;
+
 const FAMILY_PROMPT: Record<IngestFamily, string> = {
   amadeus: PROMPT_FLIGHT,
   little_emperors: PROMPT_HOTEL,
@@ -103,8 +124,10 @@ const FAMILY_PROMPT: Record<IngestFamily, string> = {
   sixt: PROMPT_OTHER,
   transfer: PROMPT_OTHER,
   toucan: PROMPT_OTHER,
+  maeva: `${PROMPT_HOTEL}\n${PROMPT_MAEVA}`,
+  transavia: `${PROMPT_FLIGHT}\n${PROMPT_TRANSAVIA}`,
   identity: "C’est une pièce d’identité. document_status=identity. Aucun item de réservation.",
-  unknown: `${PROMPT_FLIGHT}\n${PROMPT_HOTEL}\n${PROMPT_OTHER}`,
+  unknown: `${PROMPT_FLIGHT}\n${PROMPT_HOTEL}\n${PROMPT_OTHER}\n${PROMPT_MAEVA}\n${PROMPT_TRANSAVIA}`,
 };
 
 type UserPart =
@@ -174,23 +197,6 @@ async function imagePart(bytes: Uint8Array, mediaType: string): Promise<UserPart
   return { type: "image", image: bytes, mediaType };
 }
 
-let officialPdfjs = false;
-
-async function ensureOfficialPdfjs() {
-  if (officialPdfjs) return;
-  try {
-    await definePDFJSModule(() => import("pdfjs-dist/legacy/build/pdf.mjs"));
-    officialPdfjs = true;
-  } catch {
-    try {
-      await definePDFJSModule(() => import("pdfjs-dist"));
-      officialPdfjs = true;
-    } catch {
-      /* bundled unpdf pdfjs */
-    }
-  }
-}
-
 async function jpegFromRaw(
   data: Uint8Array,
   raw?: { width: number; height: number; channels: 1 | 3 | 4 }
@@ -238,8 +244,7 @@ async function embeddedPdfImages(
 }
 
 async function rasterPdfPages(bytes: Uint8Array, pageCount: number): Promise<UserPart[]> {
-  await ensureOfficialPdfjs();
-  const pdf = await getDocumentProxy(bytes);
+  const pdf = await openPdf(bytes);
   const parts: UserPart[] = [];
   const max = Math.min(pageCount, MAX_RASTER_PAGES);
   for (let page = 1; page <= max; page++) {
@@ -451,7 +456,7 @@ Voici les cartes déjà extraites (JSON compact). Complète UNIQUEMENT les champ
 
 async function readPdfText(bytes: Uint8Array): Promise<{ text: string; pages: number }> {
   try {
-    const pdf = await getDocumentProxy(bytes);
+    const pdf = await openPdf(bytes);
     const extracted = await extractText(pdf, { mergePages: true });
     return {
       text: redactIngestText(extracted.text || ""),
@@ -501,15 +506,19 @@ async function processPreparedFile(
   }
 
   const parsed = parsedItemsFromText(text);
-  const complete = parserItemsComplete(family, parsed.items);
-  if (complete) {
-    const extract = sanitizeExtractedPrices({
+  const complete = parserItemsComplete(family, parsed.items, parsed.travelers);
+  const fromParser = () =>
+    sanitizeExtractedPrices({
       ...emptyBookingExtract(),
       document_status: parsed.status || (family === "quote" ? "quote" : "confirmed"),
+      title: parsed.title || "",
+      destination: parsed.destination || "",
       notes_client: parsed.notes.join("\n"),
+      travelers: parsed.travelers,
       items: tagSourceFileName(parsed.items, name),
     });
-    return { name, family, extract };
+  if (complete) {
+    return { name, family, extract: fromParser() };
   }
 
   const dense = text.replace(/\s/g, "").length;
@@ -551,12 +560,7 @@ async function processPreparedFile(
       return {
         name,
         family,
-        extract: sanitizeExtractedPrices({
-          ...emptyBookingExtract(),
-          document_status: parsed.status || (family === "quote" ? "quote" : "confirmed"),
-          notes_client: parsed.notes.join("\n"),
-          items: tagSourceFileName(parsed.items, name),
-        }),
+        extract: fromParser(),
         warning: "Lecture IA indisponible : cartes du parseur uniquement, à relire.",
       };
     }
@@ -588,12 +592,7 @@ async function processPreparedFile(
       return {
         name,
         family,
-        extract: sanitizeExtractedPrices({
-          ...emptyBookingExtract(),
-          document_status: parsed.status || "confirmed",
-          notes_client: parsed.notes.join("\n"),
-          items: tagSourceFileName(parsed.items, name),
-        }),
+        extract: fromParser(),
         warning: "Lecture IA incomplète : cartes du parseur uniquement, à relire.",
       };
     }

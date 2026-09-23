@@ -39,6 +39,7 @@ import {
   User,
   Users,
   Wallet,
+  X,
 } from "lucide-react";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -86,6 +87,7 @@ const ICONS: Record<string, LucideIcon> = {
   local_activity: Sparkles,
   event: Calendar,
   minus: Minus,
+  close: X,
 };
 
 export function Icon({

@@ -26,9 +26,11 @@ description: >-
 
 ## Passeport / pièces
 
-- **Un passeport par personne** (titulaire ou compagnon), pas un passeport « du dossier » générique.
-- Scan : photo JPEG/PNG/HEIC → `/api/admin/travel-documents/scan` ou `/api/client/documents/scan`. MRZ Tesseract + `mrz`. **Pas** le dropzone résa (skill `travelba-document-ingest`).
-- PDF passeport souvent sans calque : rasteriser ou photo de la bande MRZ.
+- **Un passeport par personne** (titulaire ou compagnon), pas un passeport « du dossier » générique. Un PDF / une photo avec **plusieurs passeports** (couple, deux livrets ouverts sur une page paysage ~A4) → extraire **chaque** personne (découpe gauche/droite + bas). Le titulaire ne reçoit une pièce **que si le nom correspond** ; **chaque autre personne devient un accompagnateur**.
+- Scan : photo JPEG/PNG/HEIC **ou PDF** → `/api/admin/travel-documents/scan` ou `/api/client/documents/scan`. MRZ Tesseract + `mrz`. PDF : texte MRZ si calque, sinon raster 1–2 pages via **unpdf/pdfjs** (jamais `pdfjs-dist` 5.7). `getDocumentProxy` clone les octets (sinon DataCloneError au 2ᵉ passage). **Pas** le dropzone résa.
+- PDF passeport souvent sans calque : rasteriser ou photo de la bande MRZ. L’upload **accepte** le PDF.
+- **Prénoms** : tous ceux imprimés (ligne Prénoms / Given names), **dans l’ordre du document** — jamais seulement le premier. Fusion MRZ + zone visuelle : on garde la liste la plus complète si l’ordre est conservé (`normalizeGivenNames` / `completeGivenNames`). La MRZ tronque souvent.
+- **Nationalité** : toujours un code ISO 2 (`FR`) sur la fiche Identité (`CountrySelect`). Vision/MRZ peuvent renvoyer « Française », FRA ou seulement le pays d’émission — `resolveNationality` (+ fallback `issuing_country`). Ne jamais stocker l’adjectif. Toute erreur de nationalité se corrige dans `lib/crm/countries.ts` + un test.
 - Ne **pas** logger numéro / MRZ.
 - Champs : n°, nationalité, naissance, expiration, `place_of_birth`, `authority`, `personal_number` (migration passport_fields).
 - Pièce **pour un voyage** : `crm_travel_documents.booking_id` / `traveler_id` (docs d’identité utiles à ce séjour, en plus des confirmations `crm_booking_documents`).
@@ -41,10 +43,15 @@ UI : bloc pièce **replié** par défaut (passeport). Copy courte, pas « Upload
 - `flying_blue` normalisé (majuscules, sans espaces).
 - Société : `company_name`, `siret`, `vat_number`, `billing_email`, `billing_address_line`, `billing_postal_code`, `billing_city`, `billing_country`.
 - Adresse perso ≠ adresse de facturation. Les deux peuvent exister.
+- **Rôle société** (`company_role`) :
+  - `null` = particulier (comportement historique)
+  - `admin` = admin société : wallet / grand livre (Revolut, crédit disponible)
+  - `member` = collaborateur rattaché via `billing_parent_id` → ne voit **que** les débits de **ses** dossiers, pas les revenus société
+- Dossier : `crm_bookings.billing_customer_id` = qui paie (`syncBookingDebit` poste sur ce wallet). Défaut = `billing_parent_id` si member, sinon titulaire.
 
 ## OCR
 
-`lib/crm/ocr-document.ts`, `lib/crm/mrz-parse.ts`. Toute erreur MRZ réelle se corrige **là** + un test `lib/crm/passport-extract.test.ts` / `document-identity.test.ts`. Ne pas envoyer le scan passeport dans le prompt carnet `gpt-4o`.
+`lib/crm/ocr-document.ts`, `lib/crm/mrz-parse.ts`. Toute erreur MRZ réelle se corrige **là** + un test `lib/crm/passport-extract.test.ts` / `identity.test.ts` / `document-identity.test.ts`. Ne pas envoyer le scan passeport dans le prompt carnet `gpt-4o`. Les prénoms extraits = **tous**, dans l’ordre imprimé.
 
 ## Admin fiche
 

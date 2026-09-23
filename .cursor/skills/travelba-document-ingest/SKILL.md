@@ -20,7 +20,7 @@ Identité / MRZ : skill `travelba-identity` — **pas** ce dropzone.
 ## Contrat (non négociable)
 
 1. **Ne jamais inventer.** Absent = `null`. Pas de 15:00 / 12:00, pas de petit-déj, pas de franchise.
-2. **Prix extraits = null.** `$` / CHF / INR / € du PDF = net interne. L’agent saisit le **prix vendu**.
+2. **Prix extraits** : montant PDF/photo → `details.document_amount` (un par fichier). `item.amount` reste **null** tant que l’agent ne saisit pas le prix vendu de la carte. `total_amount` = **somme de ces prix vendus** (vol = unitaire × billets), jamais la somme des PDF. Enregistrer une confirmation écrit ce total **et** le débit ledger (`syncBookingLedger`). Pas une ligne « NET » fournisseur seule.
 3. **Pas de PAN / CVC / fidélité / paiement.** `redactIngestText` avant le modèle.
 4. **Un séjour par dépôt.** Fichiers hétérogènes : le plus complet + `notes_client`.
 5. **Relecture humaine** puis Enregistrer (`visible_to_client=false`).
@@ -74,6 +74,8 @@ Pièces iOS parfois absentes du VM : le dire, demander le trombone desktop, ou l
 | SIXT | Pickup on / Return on / catégorie | `parseSixtCar` — `kind=car` |
 | Passion Collection | Devis, NET, options | quote — **pas** de NET |
 | Toucan Discovery | étapes du cadre + excursions | `activity` — les étapes **ne sont pas** des hôtels |
+| Maeva / Pierre & Vacances | maeva.com + N° DE DOSSIER / VOS OPTIONS | `parseMaevaStay` — **1 hôtel** + forfaits / matériel / cours (`activity`) + assurance. Réf. dossier **sur l’hôtel seulement**. Dates only. Pas de frais de dossier, PAN, totaux à 0 |
+| Transavia | transavia.com, N° de réservation, Passagers | `parseTransaviaConfirmation` — **1 vol / segment**, passagers imprimés → `travelers` (une fois). Orly `ORY`, Tel Aviv `TLV`. Heure de départ / arrivée seulement. Total « services additionnels » ≠ prix des billets |
 | Passeport | MRZ `P<FRA` | **identité**, pas une résa |
 
 IATA **8 chiffres** (20287864, 20255270, 96020293, 20289905) = code agence, **jamais** un PNR.
@@ -81,7 +83,7 @@ IATA **8 chiffres** (20287864, 20255270, 96020293, 20289905) = code agence, **ja
 ## Vol
 
 - Aller + retour **imprimés** (même PDF) = **deux** cartes. Correspondance = deux. Pas de retour fantôme.
-- 10 e-tickets passagers du **même n° + jour** = **une** carte. Noms → `travelers`.
+- 10 e-tickets passagers du **même n° + jour** = **une** carte. Noms → `travelers`. `details.ticket_count` = nombre de billets. Prix vendu = **unitaire par billet**.
 - `confirmation_ref` = PNR GDS. `details.pnr` = réf. compagnie (`AF/AB12CD`).
 - `details.airline` = **opérant**. `supplier` = émetteur (Hahn Air ≠ Air Panama).
 - `details.from` / `to` = IATA (souvent absent du PDF) ; `city_from` / `city_to` = villes.
@@ -90,7 +92,7 @@ IATA **8 chiffres** (20287864, 20255270, 96020293, 20289905) = code agence, **ja
 - « Scan for check-in » ≠ hôtel. Carte fidélité : masquer, ne pas extraire.
 - Email agence ≠ `customer_email`.
 
-Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Colón `BOC`, Enrique Malek `DAV`, Tocumen `PTY`, Charles-de-Gaulle `CDG`, Genève `GVA`, Heathrow `LHR`, Marseille Provence `MRS`. **Nouveau nom d’aéroport sans IATA → une entrée + un test**, pas un guess LLM.
+Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Colón `BOC`, Enrique Malek `DAV`, Tocumen `PTY`, Charles-de-Gaulle `CDG`, Orly `ORY`, Tel Aviv `TLV`, Genève `GVA`, Heathrow `LHR`, Marseille Provence `MRS`. **Nouveau nom d’aéroport sans IATA → une entrée + un test**, pas un guess LLM.
 
 ## Hôtel
 
@@ -98,7 +100,7 @@ Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Co
 
 - `details.rooms = [{ room, guests, confirmation_ref }, …]`
 - `confirmation_ref` = `97620170;97620172` — `findMatchingItem` par **recouvrement** de réf.
-- `included[]` seulement si phrase explicite (Daily breakfast…). Sinon `[]`.
+- `details.hotel_name` + `title` = nom de l’établissement (**pas** la ville). `details.city` = ville (sous-titre itinéraire).
 - Dates header → `start_at` / `end_at` **sans heure** si seule la date est une date de séjour.
 - Politique 15:00 / 14:00 / 12:00 / Pick Up 00:00 → **ignorer** (pas l’horloge de la carte, pas un transfert).
 - Nantipa `08/02/2026` = 2 août (US), pas 8 février.
@@ -109,6 +111,8 @@ Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Co
 - Transfert : `pickup` / `dropoff` (pas `from`/`to`). « 2 h 30 avant le vol » → `pickup_note`, pas d’heure inventée. Vol sur le bon → `flight` seulement s’il y a un e-ticket.
 - SIXT : `kind=car`, n° résa, prise/restitution (`18 Septembre 2026 at 16:00`), `vehicle` = catégorie. **Pas** CHF TTC, caution, protection, plein.
 - Train / bateau : horaires **écrits**. Croisière = une carte, pas un jour par port.
+- Maeva / Pierre & Vacances : **1 hôtel** (nom d’établissement, ville = station) + cartes `activity` (forfaits, matériel, cours) et `insurance`. `included` = lignes d’option imprimées. Dates **sans heure**. Réf. dossier **uniquement** sur l’hôtel. Pas de frais de dossier, totaux à 0, PAN.
+- Transavia : passagers `MR` / `MRS` / `CHD` → voyageurs du dossier, casse normale, dédupliqués aller/retour. On les enregistre même s’ils ne sont pas encore dans le foyer. « Début de l’enregistrement » ≠ horaire. Bagage soute payant ≠ inclus. `document_amount` null si seul le total des services additionnels est imprimé.
 - `YANIK` / `YANNICK` = même personne.
 
 ## Fusion (`item-match.ts`)
@@ -117,20 +121,24 @@ Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Co
 |------|-----|
 | flight | `flight_number` + jour, sinon PNR + jour |
 | hotel | recouvrement des réf. `;`, sinon nom + jour |
-| car / transfer / activity / rail | réf. sinon titre + jour |
+| car / transfer / activity / rail / insurance | réf. sinon titre + jour |
 
 Réimport même clé = **remplace** la carte. Dans un même extract, 10 duplicatas → 1 item (`mergeExtractItems`). Aller et retour (n° ou jours différents) → 2 items.
 
 ## Voyageurs / titre
 
 - Noms imprimés, casse normale. « 2 adults » sans noms → Adulte 1 / Adulte 2.
+- Ces passagers restent proposés dans **Ajouter → Dans les documents**, même s’ils ne sont pas dans le foyer. Les retirer de la liste ne les efface pas du document.
 - Pas d’enfant sans nom.
-- `title` / `destination` : villes séparées par ` · `.
+- `title` séjour / `destination` : villes séparées par ` · `. **Ville d’arrivée** (Avoriaz, Marrakech), pas Paris / CDG même si le PDF commence par le départ. Title d’une **carte hôtel** = nom d’établissement. Couverture = cette arrivée — skill `travelba-carnet`.
 
 ## UI persist
 
 - Dropzone : progression par fichier, Annuler, retry des erreurs, succès partiel. Filtre cartes par `source_file_name`.
 - Sous-fiche par `kind`. Bandeau devis. Bandeau **À vérifier** (`needs_review`) : on **enregistre**, on ne refuse pas tout le lot.
+- **Montant du séjour** = somme des prix vendus des cartes, affiché en lecture seule. `parseExtractPayload` ne copie pas le PDF dans `item.amount`.
+- Hôtel : `normalizeHotelExtractItem` force `title = hotel_name`.
+- Confirmation → dossier **confirmé** (inédit client) + `total_amount` + transactions. Devis → `quoted` sans débit.
 - Cartes manuelles OK. Drag `sort_order` après persist.
 - Fichiers : upload signé `ingest-tmp/` puis copie `bookings/{id}/`. Lecture via `/api/files` (pas d’URL signed longue). Cover `scheduleBookingCover`.
 - Identity extract → ne pas `persistNewBookingFromExtract`.

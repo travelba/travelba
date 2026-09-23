@@ -11,7 +11,7 @@ export async function POST(request: Request) {
   const form = await request.formData();
   const file = form.get("file");
   if (!(file instanceof File) || file.size === 0) {
-    return jsonError("Photo requise");
+    return jsonError("Fichier requis");
   }
   try {
     const result = await scanTravelDocument(file);

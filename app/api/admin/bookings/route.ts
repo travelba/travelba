@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
-import { nextBookingReference, syncBookingDebit } from "@/lib/crm/bookings";
+import { dbError, jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
+import { collectManualCreateIssues } from "@/lib/crm/booking-issues";
+import { nextBookingReference, parseIncludeInLedger, syncBookingLedger } from "@/lib/crm/bookings";
+import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { scheduleBookingCover } from "@/lib/crm/cover-generate";
-import { parseMoney } from "@/lib/crm/money";
-import type { CrmBooking } from "@/lib/crm/types";
+import type { CrmBooking, CrmCustomer } from "@/lib/crm/types";
 
 export async function GET() {
   const auth = await requireStaff();
@@ -22,7 +23,20 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const customerId = String(body?.customer_id || "");
   const title = String(body?.title || "").trim();
-  if (!customerId || !title) return jsonError("Client et titre requis");
+  const createIssues = collectManualCreateIssues({ customerId, title });
+  if (createIssues.length) return jsonIssues(createIssues);
+  const { data: traveler, error: travelerError } = await auth.supabase
+    .from("crm_customers")
+    .select("id, company_role, billing_parent_id")
+    .eq("id", customerId)
+    .maybeSingle();
+  if (travelerError) return dbError(travelerError, 500);
+  if (!traveler) {
+    return jsonIssues([{ field: "customer_id", message: "Client introuvable." }], 404);
+  }
+  const billingCustomerId = body?.billing_customer_id
+    ? String(body.billing_customer_id)
+    : resolveBillingCustomerId(traveler as CrmCustomer);
   let reference: string;
   try {
     reference = await nextBookingReference(auth.supabase);
@@ -34,6 +48,7 @@ export async function POST(request: Request) {
     .from("crm_bookings")
     .insert({
       customer_id: customerId,
+      billing_customer_id: billingCustomerId,
       reference,
       title,
       destination: body?.destination || null,
@@ -41,7 +56,8 @@ export async function POST(request: Request) {
       start_date: body?.start_date || null,
       end_date: body?.end_date || null,
       currency: body?.currency || "EUR",
-      total_amount: parseMoney(body?.total_amount) ?? 0,
+      total_amount: 0,
+      include_in_ledger: parseIncludeInLedger(body?.include_in_ledger, true),
       notes_client: body?.notes_client || null,
       notes_internal: body?.notes_internal || null,
       visible_to_client: false,
@@ -50,7 +66,7 @@ export async function POST(request: Request) {
     .single();
   if (error) return dbError(error, 400);
   const booking = data as CrmBooking;
-  await syncBookingDebit(auth.supabase, booking);
+  await syncBookingLedger(auth.supabase, booking);
   scheduleBookingCover(booking);
   return NextResponse.json({ booking });
 }

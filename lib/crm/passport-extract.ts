@@ -1,5 +1,12 @@
-import { resolveCountryCode } from "./countries";
-import { emptyToNull, humanizeMrzName, type ExtractedIdentity } from "./identity";
+import { resolveNationality } from "./countries";
+import {
+  completeGivenNames,
+  emptyToNull,
+  humanizeMrzName,
+  normalizeGivenNames,
+  type ExtractedIdentity,
+} from "./identity";
+import { foldName, lastNamesMatch, nameTokens, namesReferToSamePerson } from "./person-match";
 import { DOC_TYPES, type TravelDocType } from "./types";
 
 export function emptyIdentity(): ExtractedIdentity {
@@ -84,15 +91,17 @@ export function identityFromVision(raw: Record<string, unknown>): ExtractedIdent
   const identity: ExtractedIdentity = {
     doc_type: mapDocType(emptyToNull(raw.doc_type)),
     number: emptyToNull(raw.number)?.replace(/\s/g, "") || null,
-    issuing_country:
-      resolveCountryCode(String(raw.issuing_country || "")) || emptyToNull(raw.issuing_country),
+    issuing_country: resolveNationality(emptyToNull(raw.issuing_country)),
     issued_on: isoDate(emptyToNull(raw.issued_on)),
     expires_on: isoDate(emptyToNull(raw.expires_on)),
-    first_name: emptyToNull(raw.first_name) ? humanizeMrzName(String(raw.first_name)) : null,
+    first_name: normalizeGivenNames(emptyToNull(raw.first_name)),
     last_name: emptyToNull(raw.last_name) ? humanizeMrzName(String(raw.last_name)) : null,
     birth_date: isoDate(emptyToNull(raw.birth_date)),
     place_of_birth: emptyToNull(raw.place_of_birth),
-    nationality: resolveCountryCode(String(raw.nationality || "")) || emptyToNull(raw.nationality),
+    nationality: resolveNationality(
+      emptyToNull(raw.nationality),
+      emptyToNull(raw.issuing_country)
+    ),
     sex: mapSex(emptyToNull(raw.sex)),
     authority: emptyToNull(raw.authority),
     personal_number: cleanPersonalNumber(emptyToNull(raw.personal_number)),
@@ -108,6 +117,160 @@ function filledEntries(identity: ExtractedIdentity) {
   );
 }
 
+export function passportNumberKey(value: string | null | undefined) {
+  return (value || "").replace(/[^A-Z0-9]/gi, "").toUpperCase();
+}
+
+export function identityPersonKey(identity: ExtractedIdentity) {
+  const number = passportNumberKey(identity.number);
+  if (number) return `n:${number}`;
+  const last = foldName(identity.last_name);
+  const first = nameTokens(identity.first_name).join(" ");
+  const birth = identity.birth_date || "";
+  if (last && first) return `p:${last}|${first}|${birth}`;
+  return "";
+}
+
+export function passportsReferToSame(a: ExtractedIdentity, b: ExtractedIdentity) {
+  const left = passportNumberKey(a.number);
+  const right = passportNumberKey(b.number);
+  if (left && right) return left === right;
+  return namesReferToSamePerson(a, b);
+}
+
+export function uniquePassports(identities: ExtractedIdentity[]): ExtractedIdentity[] {
+  const best = new Map<string, ExtractedIdentity>();
+  const extras: ExtractedIdentity[] = [];
+  for (const identity of identities) {
+    const key = identityPersonKey(identity);
+    if (!key) {
+      extras.push(identity);
+      continue;
+    }
+    const prev = best.get(key);
+    const nextScore = fieldScore(identity) + (identity.valid ? 2 : 0);
+    const prevScore = prev ? fieldScore(prev) + (prev.valid ? 2 : 0) : -1;
+    if (!prev || nextScore > prevScore) best.set(key, identity);
+  }
+  return [...best.values(), ...extras];
+}
+
+function compactEditDistance(left: string, right: string) {
+  if (left === right) return 0;
+  if (Math.abs(left.length - right.length) > 2) return 99;
+  const prev = new Array<number>(right.length + 1);
+  const curr = new Array<number>(right.length + 1);
+  for (let j = 0; j <= right.length; j++) prev[j] = j;
+  for (let i = 1; i <= left.length; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= right.length; j++) {
+      const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+    }
+    for (let j = 0; j <= right.length; j++) prev[j] = curr[j];
+  }
+  return prev[right.length];
+}
+
+function numbersLookLikeSameDocument(a: string | null | undefined, b: string | null | undefined) {
+  const left = passportNumberKey(a);
+  const right = passportNumberKey(b);
+  if (!left || !right) return false;
+  if (left === right) return true;
+  if (left.length < 8 || right.length < 8) return false;
+  if (Math.abs(left.length - right.length) > 1) return false;
+  return compactEditDistance(left, right) <= 2;
+}
+
+export function hasPersonName(identity: ExtractedIdentity) {
+  return Boolean((identity.first_name || "").trim() && (identity.last_name || "").trim());
+}
+
+function identityQuality(identity: ExtractedIdentity) {
+  const typeBoost = identity.doc_type === "passport" ? 4 : identity.doc_type === "id_card" ? 1 : 0;
+  return (
+    fieldScore(identity) +
+    (identity.valid ? 2 : 0) +
+    typeBoost +
+    (identity.first_name ? 2 : 0)
+  );
+}
+
+function identitiesAreSamePerson(a: ExtractedIdentity, b: ExtractedIdentity) {
+  if (passportsReferToSame(a, b)) return true;
+  if (namesReferToSamePerson(a, b)) return true;
+  if (!numbersLookLikeSameDocument(a.number, b.number)) return false;
+  if (hasPersonName(a) && hasPersonName(b)) return namesReferToSamePerson(a, b);
+  if (a.last_name && b.last_name && !lastNamesMatch(a.last_name, b.last_name)) return false;
+  return true;
+}
+
+/** Une personne par passeport : prénom + nom, sans doublon OCR ni carte au nom seul. */
+export function distinctPassportPeople(identities: ExtractedIdentity[]): ExtractedIdentity[] {
+  const unique = uniquePassports(identities.filter(Boolean));
+  const groups: ExtractedIdentity[][] = [];
+  for (const identity of unique) {
+    const group = groups.find((members) =>
+      members.some((member) => identitiesAreSamePerson(member, identity))
+    );
+    if (group) group.push(identity);
+    else groups.push([identity]);
+  }
+  const best = groups.map((group) =>
+    group.reduce((winner, identity) =>
+      identityQuality(identity) > identityQuality(winner) ? identity : winner
+    )
+  );
+  const named = best.filter(hasPersonName);
+  return named.length ? named : best;
+}
+
+export function listedIdentities(
+  identity: ExtractedIdentity | null | undefined,
+  identities?: ExtractedIdentity[] | null
+): ExtractedIdentity[] {
+  const raw = identities && identities.length ? identities.filter(Boolean) : identity ? [identity] : [];
+  const people = distinctPassportPeople(raw);
+  return people.length ? people : raw;
+}
+
+export function identitiesFromUnknown(raw: unknown): ExtractedIdentity[] {
+  if (!Array.isArray(raw)) return [];
+  return distinctPassportPeople(
+    raw
+      .map((item) =>
+        item && typeof item === "object" ? identityFromVision(item as Record<string, unknown>) : null
+      )
+      .filter((identity): identity is ExtractedIdentity => Boolean(identity))
+  );
+}
+
+export function identitiesFromForm(form: FormData): ExtractedIdentity[] {
+  const raw = form.get("identities");
+  if (typeof raw !== "string" || !raw.trim()) return [];
+  try {
+    return identitiesFromUnknown(JSON.parse(raw));
+  } catch {
+    return [];
+  }
+}
+
+export function mergePassportSets(
+  mrzList: ExtractedIdentity[],
+  visionList: ExtractedIdentity[]
+): ExtractedIdentity[] {
+  const unused = [...visionList];
+  const merged: ExtractedIdentity[] = [];
+  for (const mrz of mrzList) {
+    const idx = unused.findIndex((vision) => passportsReferToSame(mrz, vision));
+    const vision = idx >= 0 ? unused.splice(idx, 1)[0] : null;
+    const identity = mergePassportIdentities(mrz, vision);
+    if (identity) merged.push(identity);
+  }
+  merged.push(...unused);
+  return uniquePassports(merged);
+}
+
 export function mergePassportIdentities(
   mrz: ExtractedIdentity | null,
   vision: ExtractedIdentity | null
@@ -120,6 +283,9 @@ export function mergePassportIdentities(
     : ({ ...mrz, ...filledEntries(vision) } as ExtractedIdentity);
   return {
     ...merged,
+    first_name: completeGivenNames(mrz.first_name, vision.first_name),
+    nationality: resolveNationality(merged.nationality, merged.issuing_country),
+    issuing_country: resolveNationality(merged.issuing_country),
     issued_on: vision.issued_on || mrz.issued_on,
     place_of_birth: vision.place_of_birth || mrz.place_of_birth,
     authority: vision.authority || mrz.authority,
@@ -168,5 +334,25 @@ export function appendPassportForm(
   form.set("nationality", id.nationality || "");
   form.set("sex", id.sex || "");
   form.set("apply_identity", applyIdentity ? "1" : "0");
+  return form;
+}
+
+export function appendPassportImportForm(
+  form: FormData,
+  opts: {
+    identities: ExtractedIdentity[];
+    file?: File | null;
+    customerId?: string;
+    companionId?: string | null;
+    applyIdentity?: boolean;
+    createUnmatchedOnly?: boolean;
+  }
+) {
+  if (opts.customerId) form.set("customer_id", opts.customerId);
+  if (opts.companionId) form.set("companion_id", opts.companionId);
+  if (opts.file) form.set("file", opts.file);
+  form.set("identities", JSON.stringify(opts.identities));
+  form.set("import_party", opts.createUnmatchedOnly ? "new" : "1");
+  appendPassportForm(form, opts.identities[0], opts.applyIdentity !== false);
   return form;
 }

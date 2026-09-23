@@ -46,6 +46,8 @@ Adults
 2
 Booking name
 Guest A
+Total
+$858.80
 `;
 
 const QUOTE = `
@@ -66,6 +68,16 @@ describe("classifyIngestFamily", () => {
 
   it("reconnaît une MRZ comme identité", () => {
     assert.equal(classifyIngestFamily("P<FRADUPONT<<JEAN<<<<<<<<", "scan.jpg"), "identity");
+  });
+
+  it("reconnaît une confirmation maeva", () => {
+    assert.equal(
+      classifyIngestFamily(
+        "maeva.com\nN° DE DOSSIER : 15000001\nVOS OPTIONS\nTotal Forfaits Remontées Mécaniques 3 710,00 €",
+        "maeva.pdf"
+      ),
+      "maeva"
+    );
   });
 });
 
@@ -149,7 +161,11 @@ describe("mergeFileExtracts", () => {
       },
     ]);
     assert.equal(merged.extract.document_status, "confirmed");
-    assert.equal(merged.extract.total_amount, null);
+    assert.equal(merged.extract.total_amount, 0);
+    assert.equal(
+      merged.extract.items.find((item) => item.kind === "hotel")?.details?.document_amount,
+      858.8
+    );
     const devis = merged.extract.items.find(
       (item) => item.details?.source_file_name === "devis.pdf"
     );

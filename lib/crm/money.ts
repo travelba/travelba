@@ -5,6 +5,28 @@ export function formatMoney(amount: number, currency = "EUR") {
   });
 }
 
+/** Frais d’agence prélevés sur chaque versement client (crédits). */
+export const AGENCY_FEE_RATE = 0.1;
+
+export function agencyFeeFromGross(gross: number) {
+  const n = Number(gross);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.round(n * AGENCY_FEE_RATE * 100) / 100;
+}
+
+export function netAfterAgencyFee(gross: number) {
+  const n = Number(gross);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.round((n - agencyFeeFromGross(n)) * 100) / 100;
+}
+
+/** Crédit disponible = avoir positif (déjà net des frais d’agence 10 % sur les versements). */
+export function creditDisponible(balance: number) {
+  const n = Number(balance);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.round(n * 100) / 100;
+}
+
 export function formatEncours(amount: number, currency = "EUR") {
   return `Encours ${formatMoney(amount, currency)}`;
 }
@@ -13,6 +35,10 @@ export function encoursCaption(amount: number) {
   if (!Number.isFinite(amount) || amount === 0) return "Compte à jour";
   if (amount < 0) return "Reste à régler";
   return "Avoir";
+}
+
+export function formatCreditDisponible(balance: number, currency = "EUR") {
+  return formatMoney(creditDisponible(balance), currency);
 }
 
 export function formatDateFr(value: string | null | undefined) {

@@ -3,7 +3,7 @@
 import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CrmCustomer, CrmTransaction } from "@/lib/crm/types";
-import { TX_KIND_LABELS, customerFullName } from "@/lib/crm/types";
+import { TX_KIND_LABELS, customerFullName, isCreditTransfer } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { StatusChip } from "@/components/crm/ui";
 import { DateFrInput, MoneyInput } from "@/components/crm/fields";
@@ -38,6 +38,7 @@ export function Ledger({
 
   const filtered = useMemo(() => {
     return transactions.filter((t) => {
+      if (!isCreditTransfer(t)) return false;
       if (customerId && t.customer_id !== customerId) return false;
       if (status !== "all" && t.status !== status) return false;
       if (from && t.occurred_on < from) return false;
@@ -57,15 +58,19 @@ export function Ledger({
       const res = await fetch("/api/admin/transactions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          ...body,
+          direction: "credit",
+          kind: "transfer",
+        }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(json.error || "Écriture impossible. Réessayez.");
+        setError(json.error || "Virement impossible. Réessayez.");
         return;
       }
       form.reset();
-      setNotice("Écriture enregistrée.");
+      setNotice("Virement enregistré.");
       router.refresh();
     } catch {
       setError("Connexion interrompue. Réessayez.");
@@ -92,22 +97,6 @@ export function Ledger({
           </select>
         </label>
         <label className={labelClass}>
-          Sens
-          <select name="direction" disabled={saving} className={fieldClass}>
-            <option value="debit">Débit</option>
-            <option value="credit">Crédit</option>
-          </select>
-        </label>
-        <label className={labelClass}>
-          Type
-          <select name="kind" disabled={saving} className={fieldClass}>
-            <option value="adjustment">Ajustement</option>
-            <option value="booking">Réservation</option>
-            <option value="transfer">Virement</option>
-            <option value="refund">Remboursement</option>
-          </select>
-        </label>
-        <label className={labelClass}>
           Montant (€)
           <MoneyInput
             name="amount"
@@ -117,12 +106,12 @@ export function Ledger({
             className={fieldClass}
           />
         </label>
-        <label className={`${labelClass} sm:col-span-2`}>
+        <label className={labelClass}>
           Libellé
           <input
             name="label"
             disabled={saving}
-            placeholder="Ex. Acompte séjour Bali"
+            placeholder="Ex. Acompte virement reçu"
             className={fieldClass}
           />
         </label>
@@ -131,7 +120,7 @@ export function Ledger({
           disabled={saving}
           className="admin-af-btn h-[54px] rounded-full px-4 text-sm sm:col-span-3"
         >
-          {saving ? "Enregistrement…" : "Saisir une écriture"}
+          {saving ? "Enregistrement…" : "Saisir un virement"}
         </button>
         {error ? <p className="text-sm text-accent sm:col-span-3">{error}</p> : null}
         {notice ? <p className="text-sm text-muted sm:col-span-3">{notice}</p> : null}
@@ -184,7 +173,6 @@ export function Ledger({
                 <th className="px-5 py-3">Date</th>
                 <th className="px-5 py-3">Client</th>
                 <th className="px-5 py-3">Libellé</th>
-                <th className="px-5 py-3 text-right">Débit</th>
                 <th className="px-5 py-3 text-right">Crédit</th>
                 <th className="px-5 py-3">Statut</th>
               </tr>
@@ -200,11 +188,8 @@ export function Ledger({
                     <p className="font-medium text-[var(--admin-navy)]">{t.label}</p>
                     <p className="text-xs text-muted">{TX_KIND_LABELS[t.kind]}</p>
                   </td>
-                  <td className="px-5 py-3 text-right font-semibold text-[var(--admin-red)]">
-                    {t.direction === "debit" ? formatMoney(Number(t.amount), t.currency) : "—"}
-                  </td>
                   <td className="px-5 py-3 text-right font-semibold text-[var(--admin-navy)]">
-                    {t.direction === "credit" ? formatMoney(Number(t.amount), t.currency) : "—"}
+                    {formatMoney(Number(t.amount), t.currency)}
                   </td>
                   <td className="px-5 py-3">
                     <StatusChip
@@ -217,7 +202,7 @@ export function Ledger({
               ))}
               {!filtered.length ? (
                 <tr>
-                  <td colSpan={6} className="px-5 py-8 text-center text-muted">
+                  <td colSpan={5} className="px-5 py-8 text-center text-muted">
                     {ledgerEmptyMessage(transactions.length > 0)}
                   </td>
                 </tr>

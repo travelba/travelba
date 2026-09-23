@@ -3,13 +3,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
 import type { CrmBalance, CrmBookingTraveler, CrmTravelDocument } from "@/lib/crm/types";
-import {
-  encoursCaption,
-  formatDateRangeShort,
-  formatMoney,
-  isUpcomingBooking,
-  jMinusLabel,
-} from "@/lib/crm/money";
+import { encoursCaption, formatDateRangeShort, formatMoney, isUpcomingBooking, jMinusLabel } from "@/lib/crm/money";
+import { isCompanyMember } from "@/lib/crm/company-role";
 import { bookingCoverUrl } from "@/lib/crm/covers";
 import { loadVisibleCarnets } from "@/lib/crm/carnet-query";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
@@ -26,8 +21,11 @@ export default async function AccountHomePage() {
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");
 
+  const member = isCompanyMember(customer);
   const [{ data: balances }, bookings] = await Promise.all([
-    supabase.from("crm_customer_balances").select("*").eq("customer_id", customer.id),
+    member
+      ? Promise.resolve({ data: [] as CrmBalance[] })
+      : supabase.from("crm_customer_balances").select("*").eq("customer_id", customer.id),
     loadVisibleCarnets(supabase, customer.id),
   ]);
 
@@ -111,34 +109,45 @@ export default async function AccountHomePage() {
         </article>
       )}
 
-      <Link
-        href="/mon-compte/transactions"
-        className={`block rounded-2xl border p-4 shadow-sm ${
-          owes
-            ? "border-[var(--admin-gold)]/50 bg-[var(--admin-peach)]"
-            : "border-[#e5e3dc] bg-white"
-        }`}
-      >
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9c7c4e]">Encours</p>
-        <ul className="mt-2 space-y-3">
-          {shownBalances.map((row, index) => (
-            <li key={row.currency}>
-              <p
-                className={`font-display font-bold tracking-tight text-[var(--admin-navy)] ${
-                  index === 0 ? "text-[1.75rem] leading-none" : "text-xl"
-                }`}
-              >
-                {formatMoney(row.value, row.currency)}
-              </p>
-              <p className="mt-1 text-xs text-muted">{encoursCaption(row.value)}</p>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-3 flex items-center justify-between text-sm font-semibold text-[var(--admin-navy)]">
-          Voir les mouvements
-          <Icon name="arrow_forward" className="h-4 w-4 text-[var(--admin-gold)]" />
-        </p>
-      </Link>
+      {member ? (
+        <Link
+          href="/mon-compte/transactions"
+          className="block rounded-2xl border border-[#e5e3dc] bg-white p-4 text-sm font-semibold text-[var(--admin-navy)] shadow-sm"
+        >
+          Voir les frais de vos voyages
+        </Link>
+      ) : (
+        <Link
+          href="/mon-compte/transactions"
+          className={`block rounded-2xl border p-4 shadow-sm ${
+            owes
+              ? "border-[var(--admin-gold)]/50 bg-[var(--admin-peach)]"
+              : "border-[#e5e3dc] bg-white"
+          }`}
+        >
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9c7c4e]">Encours</p>
+          <ul className="mt-2 space-y-3">
+            {shownBalances.map((row, index) => (
+              <li key={row.currency}>
+                <p
+                  className={`font-display font-bold tracking-tight text-[var(--admin-navy)] ${
+                    index === 0 ? "text-[1.75rem] leading-none" : "text-xl"
+                  }`}
+                >
+                  {formatMoney(row.value, row.currency)}
+                </p>
+                <p className="mt-1 text-xs text-muted">
+                  {row.value > 0 ? "Crédit disponible · frais d’agence 10 % déduits" : encoursCaption(row.value)}
+                </p>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 flex items-center justify-between text-sm font-semibold text-[var(--admin-navy)]">
+            Voir les mouvements
+            <Icon name="arrow_forward" className="h-4 w-4 text-[var(--admin-gold)]" />
+          </p>
+        </Link>
+      )}
 
       <ConciergeBanner />
     </div>

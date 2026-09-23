@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import type { CrmCustomer, CrmTravelDocument } from "@/lib/crm/types";
 import { resolveCountryCode } from "@/lib/crm/countries";
+import { identityNationalityFromSources, nationalityFromIdentity } from "@/lib/crm/document-identity";
 import { identityOverwriteWarning, type ExtractedIdentity } from "@/lib/crm/identity";
 import { loyaltyFromCustomer, type LoyaltyMap } from "@/lib/crm/loyalty";
 import { formatDateFr } from "@/lib/crm/money";
@@ -69,7 +70,9 @@ export function ProfileForm({
   const [lastName, setLastName] = useState(customer.last_name);
   const [birthDate, setBirthDate] = useState(customer.birth_date || "");
   const [sex, setSex] = useState(customer.sex || "");
-  const [nationality, setNationality] = useState(resolveCountryCode(customer.nationality) || "");
+  const [nationality, setNationality] = useState(
+    identityNationalityFromSources(customer.nationality, vaultDocumentsForPerson(documents, null))
+  );
   const [phone, setPhone] = useState(customer.phone || "");
   const [phoneSecondary, setPhoneSecondary] = useState(customer.phone_secondary || "");
   const [country, setCountry] = useState(resolveCountryCode(customer.country) || "FR");
@@ -91,7 +94,8 @@ export function ProfileForm({
     if (id.last_name) setLastName(id.last_name);
     if (id.birth_date) setBirthDate(id.birth_date);
     if (id.sex) setSex(id.sex);
-    if (id.nationality) setNationality(id.nationality);
+    const nationalityIso = nationalityFromIdentity(id);
+    if (nationalityIso) setNationality(nationalityIso);
   }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -138,7 +142,12 @@ export function ProfileForm({
   return (
     <form onSubmit={onSubmit} className="rounded-xl border border-[#e3e2e0]/70 bg-white px-4">
       <div className="py-3">
-        <PersonPassportCard variant="client" documents={documents} onIdentity={applyIdentity} />
+        <PersonPassportCard
+          variant="client"
+          documents={documents}
+          person={{ first_name: firstName, last_name: lastName }}
+          onIdentity={applyIdentity}
+        />
       </div>
       {nameWarn ? (
         <p className="mb-3 rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
@@ -162,7 +171,7 @@ export function ProfileForm({
         open={openIdentity}
         onToggle={() => setOpenIdentity((value) => !value)}
       >
-        <Field label="Prénom">
+        <Field label="Prénom(s)" hint="Tous les prénoms, dans l’ordre du passeport">
           <input
             autoComplete="given-name"
             spellCheck={false}

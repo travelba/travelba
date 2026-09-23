@@ -1,9 +1,10 @@
 import { z } from "zod";
+import { bookingTotalFromItems } from "./bookings";
 import { sortItemsByOrder } from "./carnet";
 import { redactIngestValue } from "./ingest-redact";
 import { mergeExtractItems } from "./item-match";
 import { parseMoney } from "./money";
-import { BOOKING_ITEM_KINDS } from "./types";
+import { BOOKING_ITEM_KINDS, type BookingStatus } from "./types";
 
 const looseString = z.string().nullable().optional();
 const looseNumber = z.number().nullable().optional();
@@ -14,12 +15,14 @@ const roomSchemaLoose = z
     type: looseString,
     guests: looseString,
     confirmation_ref: looseString,
+    party_keys: z.array(z.string()).optional(),
   })
   .optional();
 
 const detailsSchemaLoose = z
   .object({
     airline: looseString,
+    airline_iata: looseString,
     flight_number: looseString,
     pnr: looseString,
     from: looseString,
@@ -51,6 +54,17 @@ const detailsSchemaLoose = z
     notes: looseString,
     source_file_name: looseString,
     needs_review: z.boolean().nullable().optional(),
+    document_amount: looseNumber,
+    document_currency: looseString,
+    ticket_count: looseNumber,
+    passengers: z
+      .array(
+        z.object({
+          first_name: looseString,
+          last_name: looseString,
+        })
+      )
+      .optional(),
   })
   .optional()
   .default({});
@@ -78,6 +92,7 @@ export const bookingExtractSchema = z.object({
         start_at: looseString,
         end_at: looseString,
         amount: looseNumber,
+        include_in_ledger: z.boolean().optional(),
         details: detailsSchemaLoose,
       })
     )
@@ -87,6 +102,8 @@ export const bookingExtractSchema = z.object({
       z.object({
         first_name: looseString,
         last_name: looseString,
+        companion_id: looseString,
+        is_account_holder: z.boolean().nullable().optional(),
       })
     )
     .default([]),
@@ -108,6 +125,7 @@ const roomSchemaStrict = z.object({
 
 const detailsSchemaStrict = z.object({
   airline: strictString,
+  airline_iata: strictString,
   flight_number: strictString,
   pnr: strictString,
   from: strictString,
@@ -139,6 +157,8 @@ const detailsSchemaStrict = z.object({
   notes: strictString,
   source_file_name: strictString,
   needs_review: strictBoolean,
+  document_amount: strictNumber,
+  document_currency: strictString,
 });
 
 /** Schéma strict pour Output.object (OpenAI). */
@@ -197,9 +217,15 @@ export function guessIngestMime(name: string) {
   return "image/jpeg";
 }
 
-export function isAllowedIngestType(type: string | null | undefined, name: string) {
+export function isPdfFile(type: string | null | undefined, name: string) {
   const mime = type || guessIngestMime(name);
-  return mime === "application/pdf" || mime.startsWith("image/");
+  return mime === "application/pdf" || name.toLowerCase().endsWith(".pdf");
+}
+
+export function isAllowedIngestType(type: string | null | undefined, name: string) {
+  if (isPdfFile(type, name)) return true;
+  const mime = type || guessIngestMime(name);
+  return mime.startsWith("image/");
 }
 
 export type IngestStreamEvent =
@@ -240,14 +266,90 @@ export function emptyBookingExtract(): BookingExtract {
   };
 }
 
+function asPositiveMoney(value: unknown): number | null {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.round(n * 100) / 100;
+}
+
+function textDetail(details: Record<string, unknown> | undefined, key: string) {
+  const value = details?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+/** Montant du séjour = somme des prix vendus des cartes. Le montant PDF n’entre pas dans ce total. */
+export function sellingTotalFromExtract(extract: BookingExtract): number {
+  return bookingTotalFromItems(extract.items || []);
+}
+
+export function bookingStatusFromExtract(
+  extract: BookingExtract,
+  fallback: BookingStatus
+): BookingStatus {
+  if (extract.document_status === "quote") return "quoted";
+  if (extract.document_status === "confirmed") return "confirmed";
+  return fallback;
+}
+
+/** Carte hôtel : title = nom d’établissement, ville dans details.city. */
+export function normalizeHotelExtractItem(
+  item: BookingExtract["items"][number]
+): BookingExtract["items"][number] {
+  if (item.kind !== "hotel") return item;
+  const details = { ...(item.details || {}) };
+  const hotelName = textDetail(details, "hotel_name");
+  const city = textDetail(details, "city");
+  const title = String(item.title || "").trim();
+  const name =
+    hotelName || (title && title.toLowerCase() !== city.toLowerCase() ? title : "");
+  if (name) {
+    if (!hotelName) details.hotel_name = name;
+    return { ...item, title: name, details };
+  }
+  return { ...item, title: title || city || "Hôtel", details };
+}
+
+function keepDocumentPrice(
+  item: BookingExtract["items"][number],
+  fallbackCurrency: string | null | undefined,
+  fallbackAmount: number | null
+): BookingExtract["items"][number] {
+  const details = { ...(item.details || {}) };
+  const existing = asPositiveMoney(details.document_amount);
+  const fromItem = asPositiveMoney(item.amount);
+  const amount = existing || fromItem || fallbackAmount;
+  if (amount) details.document_amount = amount;
+  if (!details.document_currency && (amount || details.document_amount)) {
+    details.document_currency =
+      (typeof details.document_currency === "string" && details.document_currency) ||
+      fallbackCurrency ||
+      "EUR";
+  }
+  return { ...item, amount: null, details };
+}
+
+/** item.amount reste null à l’extraction. total_amount = somme des prix vendus saisis sur les cartes. */
 export function sanitizeExtractedPrices(extract: BookingExtract): BookingExtract {
-  const merged = mergeExtractItems(
-    (extract.items || []).map((item) => ({ ...item, amount: null }))
+  const fallbackTotal = asPositiveMoney(extract.total_amount);
+  const rawItems = extract.items || [];
+  const items = rawItems.map((item, index) =>
+    normalizeHotelExtractItem(
+      keepDocumentPrice(
+        item,
+        extract.currency,
+        rawItems.length === 1 && index === 0 ? fallbackTotal : null
+      )
+    )
   );
+  const merged = mergeExtractItems(items);
+  const priced: BookingExtract = {
+    ...extract,
+    items: merged,
+  };
   const next: BookingExtract = {
     ...extract,
     currency: extract.currency || "EUR",
-    total_amount: null,
+    total_amount: sellingTotalFromExtract(priced),
     items: sortItemsByOrder(merged),
   };
   return redactIngestValue(next);

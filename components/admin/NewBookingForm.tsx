@@ -4,7 +4,9 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CrmCustomer } from "@/lib/crm/types";
 import { BookingIngest } from "@/components/crm/BookingIngest";
-import { fieldControlClass, DateFrInput, MoneyInput } from "@/components/crm/fields";
+import { fieldControlClass, DateFrInput } from "@/components/crm/fields";
+import { IssuesList } from "@/components/crm/IssuesList";
+import { issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
 
 export function NewBookingForm({
   customers,
@@ -41,22 +43,28 @@ export function NewBookingForm({
 function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [issues, setIssues] = useState<BookingIssue[]>([]);
   const [saving, setSaving] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const body = Object.fromEntries(new FormData(event.currentTarget).entries());
+    const fd = new FormData(event.currentTarget);
+    const body = Object.fromEntries(fd.entries());
     setSaving(true);
     setError(null);
     try {
       const res = await fetch("/api/admin/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          ...body,
+          include_in_ledger: fd.get("include_in_ledger") === "on",
+        }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(json.error || "Création impossible. Réessayez.");
+        setIssues(issuesFromResponse(json));
+        setError(null);
         return;
       }
       router.push(`/admin/reservations/${json.booking.id}`);
@@ -77,7 +85,9 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
           <option value="">Choisir un client…</option>
           {customers.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.last_name} {c.first_name} — {c.email}
+      {c.last_name} {c.first_name} — {c.email}
+              {c.company_role === "member" ? " · rattaché" : ""}
+              {c.company_role === "admin" ? " · admin société" : ""}
             </option>
           ))}
         </select>
@@ -90,9 +100,17 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
         Destination
         <input name="destination" disabled={saving} placeholder="Ville, pays" className={fieldControlClass} />
       </label>
-      <label className={labelClass}>
-        Montant total (€)
-        <MoneyInput name="total_amount" disabled={saving} aria-label="Montant total" className={fieldControlClass} />
+      <p className="text-xs text-muted sm:col-span-3">
+        Le montant du séjour sera la somme des prix vendus des cartes.
+      </p>
+      <label className="flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-3">
+        <input type="checkbox" name="include_in_ledger" defaultChecked className="mt-1" disabled={saving} />
+        <span>
+          Inclure le montant du séjour dans les transactions
+          <span className="mt-0.5 block text-xs font-normal text-muted">
+            Décochez pour un dossier au carnet sans écriture à l’encours.
+          </span>
+        </span>
       </label>
       <label className={labelClass}>
         Départ
@@ -102,7 +120,10 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
         Retour
         <DateFrInput name="end_date" aria-label="Date de retour" className={fieldControlClass} />
       </label>
-      {error ? <p className="sm:col-span-3 text-sm text-accent">{error}</p> : null}
+      <div className="sm:col-span-3">
+        <IssuesList issues={issues} />
+        {error && !issues.length ? <p className="text-sm text-accent">{error}</p> : null}
+      </div>
       <button type="submit" disabled={saving} className="admin-af-btn rounded-xl px-4 py-2.5 text-sm sm:col-span-3">
         {saving ? "Création…" : "Créer la réservation"}
       </button>

@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
-import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
-import { setCarnetPublished, syncBookingDebit } from "@/lib/crm/bookings";
+import { dbError, jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
+import { collectPublishIssues } from "@/lib/crm/booking-issues";
+import {
+  setCarnetPublished,
+  syncBookingLedger,
+  syncBookingTotalFromItems,
+  parseIncludeInLedger,
+} from "@/lib/crm/bookings";
+import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { scheduleBookingCover } from "@/lib/crm/cover-generate";
 import { BookingDeleteError, deleteBookingById } from "@/lib/crm/delete-booking";
-import { parseMoney } from "@/lib/crm/money";
-import type { BookingStatus, CrmBooking } from "@/lib/crm/types";
+import type { BookingStatus, CrmBooking, CrmCustomer } from "@/lib/crm/types";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -43,13 +49,27 @@ export async function PATCH(request: Request, ctx: Ctx) {
     "start_date",
     "end_date",
     "currency",
-    "total_amount",
     "notes_client",
     "notes_internal",
     "customer_id",
+    "billing_customer_id",
+    "include_in_ledger",
   ]) {
     if (key in body) {
-      patch[key] = key === "total_amount" ? (parseMoney(body[key]) ?? 0) : body[key];
+      if (key === "include_in_ledger") patch[key] = parseIncludeInLedger(body[key], true);
+      else patch[key] = body[key];
+    }
+  }
+
+  if ("customer_id" in patch && !("billing_customer_id" in patch)) {
+    const travelerId = String(patch.customer_id);
+    const { data: traveler } = await auth.supabase
+      .from("crm_customers")
+      .select("id, company_role, billing_parent_id")
+      .eq("id", travelerId)
+      .maybeSingle();
+    if (traveler) {
+      patch.billing_customer_id = resolveBillingCustomerId(traveler as CrmCustomer);
     }
   }
 
@@ -66,6 +86,14 @@ export async function PATCH(request: Request, ctx: Ctx) {
   }
   if ("visible_to_client" in body) {
     try {
+      if (body.visible_to_client) {
+        const { data: publishItems } = await auth.supabase
+          .from("crm_booking_items")
+          .select("kind")
+          .eq("booking_id", id);
+        const publishIssues = collectPublishIssues(publishItems || []);
+        if (publishIssues.length) return jsonIssues(publishIssues);
+      }
       await setCarnetPublished(auth.supabase, id, Boolean(body.visible_to_client));
     } catch (err) {
       return jsonError(err instanceof Error ? err.message : "Publication impossible", 400);
@@ -78,7 +106,14 @@ export async function PATCH(request: Request, ctx: Ctx) {
     if (refreshed) booking = refreshed as CrmBooking;
   }
   try {
-    await syncBookingDebit(auth.supabase, booking, prev.status as BookingStatus);
+    await syncBookingTotalFromItems(auth.supabase, id);
+    const { data: priced } = await auth.supabase
+      .from("crm_bookings")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+    if (priced) booking = priced as CrmBooking;
+    await syncBookingLedger(auth.supabase, booking, prev.status as BookingStatus);
   } catch (err) {
     return jsonError(err instanceof Error ? err.message : "Écritures non retirées", 400);
   }

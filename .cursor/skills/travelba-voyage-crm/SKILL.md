@@ -64,7 +64,7 @@ IDs prod :
 
 - Secrets dans git (seulement `.env.local` / Vercel env)
 - URL signed Supabase longue dans le HTML — `/api/files?path=`
-- Crédit Revolut sans rapprochement agent
+- Crédit Revolut ambigu sans confirmation agent (l’auto n’est autorisé que si match unique certain)
 - PAN / CVC — références Stripe uniquement
 - `npm run seed:demo` sur la prod
 - Recréer des clients / voyages fictifs en prod
@@ -82,7 +82,7 @@ IDs prod :
 | Invitation | `lib/crm/invite.ts` |
 | Carnet | `lib/crm/carnet.ts` |
 | Import docs | `lib/crm/ingest-booking.ts`, `ingest-parse.ts`, skill `travelba-document-ingest` |
-| Couvertures | `lib/crm/covers.ts` + `lib/crm/cover-generate.ts` |
+| Couvertures | `lib/crm/covers.ts` + skill `travelba-carnet` (arrivée, pas Paris) |
 | Identité | `lib/crm/ocr-document.ts` |
 | Fichiers | `lib/crm/files.ts` + `app/api/files/route.ts` |
 | Argent | `lib/crm/money.ts`, `lib/crm/bookings.ts` (`syncBookingDebit`) |
