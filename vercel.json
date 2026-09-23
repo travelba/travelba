@@ -1,7 +1,6 @@
 {
   "installCommand": "npm install --include=optional",
   "regions": ["cdg1"],
-  "functionFailoverRegions": ["fra1"],
   "crons": [
     {
       "path": "/api/cron/revolut-sync",
