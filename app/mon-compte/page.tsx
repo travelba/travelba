@@ -1,18 +1,31 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
-import type { CrmBalance, CrmBookingTraveler, CrmTravelDocument } from "@/lib/crm/types";
-import { encoursCaption, formatDateRangeShort, formatMoney, isUpcomingBooking, jMinusLabel } from "@/lib/crm/money";
+import {
+  BOOKING_STATUS_LABELS,
+  type CrmBalance,
+  type CrmBookingItem,
+  type CrmBookingTraveler,
+  type CrmTravelDocument,
+} from "@/lib/crm/types";
+import { formatDateRangeShort, isUpcomingBooking } from "@/lib/crm/money";
 import { isCompanyMember } from "@/lib/crm/company-role";
 import { loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { tripHeadline, tripPlaceLine } from "@/lib/crm/carnet";
-import { BookingHero } from "@/components/crm/BookingHero";
-import { Icon } from "@/components/crm/icons";
-import { ConciergeBanner } from "@/components/crm/ui";
 import { greetingGivenName } from "@/lib/crm/identity";
+import {
+  homeBalanceDetail,
+  homeBalanceTitle,
+  homeDateLabel,
+  homePassportRow,
+  homeTimingLabel,
+  homeTripHighlights,
+  type HomeDossierRow,
+  type HomeHighlight,
+} from "@/lib/crm/account-home";
+import { AccountHome } from "@/components/account/AccountHome";
 
 export default async function AccountHomePage() {
   const supabase = await createClient();
@@ -32,23 +45,25 @@ export default async function AccountHomePage() {
     loadVisibleCarnets(supabase, customer.id),
   ]);
 
-  const nextTrip =
-    sortBookingsByStart(
-      bookings.filter((b) => isUpcomingBooking(b.end_date) && b.status !== "cancelled"),
-      "asc"
-    )[0] || null;
+  const upcoming = sortBookingsByStart(
+    bookings.filter((b) => isUpcomingBooking(b.end_date) && b.status !== "cancelled"),
+    "asc"
+  );
+  const nextTrip = upcoming[0] || null;
 
-  let missingPassports = 0;
+  let coverage = { ready: 0, total: 0 };
+  let highlights: HomeHighlight[] = [];
   if (nextTrip) {
-    const [{ data: travelers }, { data: identityDocs }] = await Promise.all([
+    const [{ data: travelers }, { data: identityDocs }, { data: itemRows }] = await Promise.all([
       supabase.from("crm_booking_travelers").select("*").eq("booking_id", nextTrip.id),
       supabase.from("crm_travel_documents").select("*").eq("customer_id", customer.id),
+      supabase.from("crm_booking_items").select("*").eq("booking_id", nextTrip.id),
     ]);
-    const coverage = tripDocCoverage(
+    coverage = tripDocCoverage(
       (travelers || []) as CrmBookingTraveler[],
       (identityDocs || []) as CrmTravelDocument[]
     );
-    if (coverage.total > coverage.ready) missingPassports = coverage.total - coverage.ready;
+    highlights = homeTripHighlights((itemRows || []) as CrmBookingItem[]);
   }
 
   const balanceRows = ((balances || []) as CrmBalance[]).map((row) => ({
@@ -56,110 +71,68 @@ export default async function AccountHomePage() {
     value: Number(row.balance),
   }));
   const shownBalances = balanceRows.length ? balanceRows : [{ currency: "EUR", value: 0 }];
-  const owes = shownBalances.some((row) => row.value < 0);
   const firstName = greetingGivenName(customer.first_name) || customer.email.split("@")[0];
-  const countdown = nextTrip ? jMinusLabel(nextTrip.start_date) : null;
-  const tripName = nextTrip
-    ? tripHeadline(nextTrip.title, nextTrip.destination, "Prochain séjour")
-    : "";
-  const tripPlace = nextTrip ? tripPlaceLine(nextTrip.title, nextTrip.destination) : null;
-  const tripHref = nextTrip ? `/mon-compte/reservations/${nextTrip.reference}` : "/mon-compte/reservations";
+  const tripHref = nextTrip
+    ? `/mon-compte/reservations/${nextTrip.reference}`
+    : "/mon-compte/reservations";
+
+  const dossier: HomeDossierRow[] = [];
+  if (nextTrip) {
+    dossier.push(
+      homePassportRow(
+        coverage.total > coverage.ready ? `${tripHref}#passeport` : "/mon-compte/profil/documents",
+        coverage.ready,
+        coverage.total
+      )
+    );
+  }
+  if (member) {
+    dossier.push({
+      href: "/mon-compte/transactions",
+      icon: "receipt_long",
+      label: "Frais",
+      title: "Vos dossiers société",
+      detail: "Les versements société ne sont pas affichés ici.",
+    });
+  } else {
+    dossier.push({
+      href: "/mon-compte/transactions",
+      icon: "account_balance_wallet",
+      label: "Compte",
+      title: homeBalanceTitle(shownBalances),
+      detail: homeBalanceDetail(shownBalances),
+      attention: shownBalances.some((row) => row.value < 0),
+    });
+  }
+
+  const notes = nextTrip?.notes_client?.trim() || null;
 
   return (
-    <div className="space-y-4">
-      <h1 className="font-display text-[1.5rem] font-bold tracking-tight text-[var(--admin-navy)]">
-        Bonjour {firstName}
-      </h1>
-
-      {nextTrip ? (
-        <BookingHero booking={nextTrip} priority className="min-h-[220px] rounded-2xl shadow-xl">
-          <div className="flex min-h-[220px] flex-col justify-end gap-3 p-4">
-            {countdown ? (
-              <p className="w-fit rounded-full bg-white/95 px-3 py-1 text-[12px] font-bold text-[var(--admin-navy)]">
-                {countdown}
-                {countdown.startsWith("J") ? " avant l’envol" : ""}
-              </p>
-            ) : null}
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--admin-gold)]">
-                {formatDateRangeShort(nextTrip.start_date, nextTrip.end_date)}
-              </p>
-              <h2 className="mt-1 font-display text-2xl font-bold leading-tight">{tripName}</h2>
-              {tripPlace ? <p className="text-sm text-white/80">{tripPlace}</p> : null}
-            </div>
-            {missingPassports ? (
-              <Link
-                href={`${tripHref}#passeport`}
-                className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm font-semibold text-[var(--admin-navy)]"
-              >
-                Pièce manquante pour {missingPassports} voyageur{missingPassports > 1 ? "s" : ""}.
-              </Link>
-            ) : null}
-            <Link
-              href={tripHref}
-              className="flex h-11 items-center justify-between rounded-full bg-white px-4 text-sm font-semibold text-[var(--admin-navy)]"
-            >
-              Accéder à ma réservation
-              <Icon name="arrow_forward" className="h-5 w-5 text-[var(--admin-gold)]" />
-            </Link>
-          </div>
-        </BookingHero>
-      ) : (
-        <article className="rounded-2xl border border-[#e5e3dc] bg-white p-5">
-          <h2 className="font-display text-xl font-bold text-[var(--admin-navy)]">Aucun voyage planifié</h2>
-          <p className="mt-1 text-sm text-muted">L’agence publiera le carnet ici dès que le dossier sera prêt.</p>
-        </article>
-      )}
-
-      <Link
-        href="/mon-compte/reservations"
-        className="flex h-11 items-center justify-between rounded-2xl border border-[#e5e3dc] bg-white px-4 text-sm font-semibold text-[var(--admin-navy)] shadow-sm"
-      >
-        Mes réservations
-        <Icon name="luggage" className="h-5 w-5 text-[var(--admin-gold)]" />
-      </Link>
-
-      {member ? (
-        <Link
-          href="/mon-compte/transactions"
-          className="block rounded-2xl border border-[#e5e3dc] bg-white p-4 text-sm font-semibold text-[var(--admin-navy)] shadow-sm"
-        >
-          Voir les frais de vos voyages
-        </Link>
-      ) : (
-        <Link
-          href="/mon-compte/transactions"
-          className={`block rounded-2xl border p-4 shadow-sm ${
-            owes
-              ? "border-[var(--admin-gold)]/50 bg-[var(--admin-peach)]"
-              : "border-[#e5e3dc] bg-white"
-          }`}
-        >
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9c7c4e]">Encours</p>
-          <ul className="mt-2 space-y-3">
-            {shownBalances.map((row, index) => (
-              <li key={row.currency}>
-                <p
-                  className={`font-display font-bold tracking-tight text-[var(--admin-navy)] ${
-                    index === 0 ? "text-[1.75rem] leading-none" : "text-xl"
-                  }`}
-                >
-                  {formatMoney(row.value, row.currency)}
-                </p>
-                <p className="mt-1 text-xs text-muted">
-                  {row.value > 0 ? "Crédit disponible · frais d’agence 10 % déduits" : encoursCaption(row.value)}
-                </p>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-3 flex items-center justify-between text-sm font-semibold text-[var(--admin-navy)]">
-            Voir les mouvements
-            <Icon name="arrow_forward" className="h-4 w-4 text-[var(--admin-gold)]" />
-          </p>
-        </Link>
-      )}
-
-      <ConciergeBanner />
-    </div>
+    <AccountHome
+      firstName={firstName}
+      trip={
+        nextTrip
+          ? {
+              booking: nextTrip,
+              href: tripHref,
+              name: tripHeadline(nextTrip.title, nextTrip.destination, "Prochain séjour"),
+              place: tripPlaceLine(nextTrip.title, nextTrip.destination),
+              dates: homeDateLabel(nextTrip),
+              timing: homeTimingLabel(nextTrip),
+              statusLabel: BOOKING_STATUS_LABELS[nextTrip.status],
+              reference: nextTrip.reference,
+              notes,
+              highlights,
+            }
+          : null
+      }
+      dossier={dossier}
+      others={upcoming.slice(1, 4).map((booking) => ({
+        href: `/mon-compte/reservations/${booking.reference}`,
+        dates: formatDateRangeShort(booking.start_date, booking.end_date),
+        name: tripHeadline(booking.title, booking.destination, "Séjour"),
+        place: tripPlaceLine(booking.title, booking.destination),
+      }))}
+    />
   );
 }
