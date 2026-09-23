@@ -1,13 +1,29 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
+import {
+  CUSTOMER_PICK_LIMIT,
+  CUSTOMER_PICK_SELECT,
+  type PickableCustomer,
+} from "@/lib/crm/customer-search";
 import { appOrigin, inviteCustomer } from "@/lib/crm/invite";
 import type { CrmCustomer } from "@/lib/crm/types";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: Request) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
+  const url = new URL(request.url);
+  const pickOnly = url.searchParams.get("pick") === "1";
+  if (pickOnly) {
+    const { data, error } = await auth.supabase
+      .from("crm_customers")
+      .select(CUSTOMER_PICK_SELECT)
+      .order("last_name", { ascending: true })
+      .limit(CUSTOMER_PICK_LIMIT);
+    if (error) return dbError(error, 500);
+    return NextResponse.json({ customers: (data || []) as PickableCustomer[] });
+  }
   const { data, error } = await auth.supabase
     .from("crm_customers")
     .select("*")

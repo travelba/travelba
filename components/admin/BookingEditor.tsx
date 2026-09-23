@@ -6,7 +6,6 @@ import Link from "next/link";
 import {
   BOOKING_STATUSES,
   BOOKING_STATUS_LABELS,
-  customerFullName,
   isLedgerExpenseKind,
   type CrmBooking,
   type CrmBookingDocument,
@@ -41,6 +40,8 @@ import { householdMembers } from "@/lib/crm/household";
 import { bookingHasFlight, type ServiceRefusal } from "@/lib/crm/extras";
 import type { FrenchPassportTrip } from "@/lib/crm/visa-trip";
 import { reusableDocumentsForTraveler, tripDocumentsForTraveler } from "@/lib/crm/trip-documents";
+import { CustomerPickField } from "@/components/admin/CustomerPickField";
+import { customerBillingPickLabel, customerTravelerPickLabel } from "@/lib/crm/customer-search";
 
 export function BookingEditor({
   booking,
@@ -49,7 +50,8 @@ export function BookingEditor({
   documents,
   identityDocs,
   companions,
-  customers,
+  customer,
+  billingCustomer,
   holderName,
   aiConfigured,
   formalities,
@@ -61,7 +63,8 @@ export function BookingEditor({
   documents: CrmBookingDocument[];
   identityDocs: CrmTravelDocument[];
   companions: CrmCompanion[];
-  customers: CrmCustomer[];
+  customer: CrmCustomer | null;
+  billingCustomer?: CrmCustomer | null;
   holderName: { first_name: string; last_name: string };
   aiConfigured: boolean;
   formalities: FrenchPassportTrip;
@@ -84,7 +87,7 @@ export function BookingEditor({
   const coverPlace = arrival === "voyage" ? "" : arrival;
   const [flash, setFlash] = useState<string | null>(null);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
-  const account = customers.find((row) => row.id === booking.customer_id);
+  const account = customer;
   const holderProfile = {
     first_name: account?.first_name || holderName.first_name,
     last_name: account?.last_name || holderName.last_name,
@@ -394,7 +397,7 @@ export function BookingEditor({
       <BookingIngest
         role="admin"
         mode="append"
-        householdHolder={customers.find((row) => row.id === booking.customer_id) || holderName}
+        householdHolder={account || holderName}
         householdCompanions={companions}
         ingestUrl="/api/admin/bookings/ingest"
         saveUrl={`/api/admin/bookings/${booking.id}/from-ingest`}
@@ -463,38 +466,20 @@ export function BookingEditor({
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted sm:col-span-2">
-          Client voyageur (titulaire)
-          <select
-            name="customer_id"
-            defaultValue={booking.customer_id}
-            className="rounded-xl border border-border bg-white px-3 py-2"
-          >
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {customerFullName(c)} — {c.email}
-                {c.company_role === "member" ? " · rattaché" : ""}
-                {c.company_role === "admin" ? " · admin société" : ""}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted sm:col-span-2">
-          Facturé à (wallet / société)
-          <select
-            name="billing_customer_id"
-            defaultValue={booking.billing_customer_id || booking.customer_id}
-            className="rounded-xl border border-border bg-white px-3 py-2"
-          >
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {customerFullName(c)}
-                {c.company_name ? ` · ${c.company_name}` : ""}
-                {c.company_role === "admin" ? " · admin société" : ""}
-              </option>
-            ))}
-          </select>
-        </label>
+        <CustomerPickField
+          name="customer_id"
+          label="Client voyageur (titulaire)"
+          selected={account}
+          title="Client voyageur (titulaire)"
+          formatLabel={customerTravelerPickLabel}
+        />
+        <CustomerPickField
+          name="billing_customer_id"
+          selected={billingCustomer || account}
+          title="Facturé à (wallet / société)"
+          label="Facturé à (wallet / société)"
+          formatLabel={customerBillingPickLabel}
+        />
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted sm:col-span-2">
           Notes visibles par le client
           <textarea name="notes_client" defaultValue={booking.notes_client || ""} placeholder="Conseils, horaires de rendez-vous…" className="rounded-xl border border-border px-3 py-2" />
@@ -592,10 +577,7 @@ export function BookingEditor({
         bookingId={booking.id}
         items={items}
         documents={documents}
-        household={householdMembers(
-          customers.find((row) => row.id === booking.customer_id) || holderName,
-          companions
-        )}
+        household={householdMembers(account || holderName, companions)}
         currency={booking.currency}
         onBindDraftSave={(save) => {
           saveOpenCard.current = save;
@@ -609,7 +591,7 @@ export function BookingEditor({
         currency={booking.currency}
       />
 
-      {customers.find((row) => row.id === booking.customer_id) && bookingHasFlight(items) ? (
+      {account && bookingHasFlight(items) ? (
         <section className="admin-af-card space-y-4 rounded-3xl p-5">
           <TripFormalities trip={formalities} />
           {formalities.needsFormality ? (
@@ -626,7 +608,7 @@ export function BookingEditor({
             booking={booking}
             items={items}
             travelers={travelers}
-            holder={customers.find((row) => row.id === booking.customer_id)!}
+            holder={account}
             companions={companions}
             formalities={formalities}
             refusals={refusals}

@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import { requireStaffPage } from "@/lib/crm/auth";
-import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { BookingEditor } from "@/components/admin/BookingEditor";
 import { DeleteBookingButton } from "@/components/admin/DeleteBookingButton";
 import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
@@ -28,15 +27,16 @@ export default async function AdminBookingPage({ params }: Props) {
     .maybeSingle();
   if (!booking) notFound();
   const b = booking as CrmBooking;
-  await reconcileCustomerParty(b.customer_id);
+  const relatedIds = Array.from(
+    new Set([b.customer_id, b.billing_customer_id].filter((value): value is string => Boolean(value)))
+  );
   const [
     { data: items },
     { data: travelers },
     { data: documents },
     { data: companions },
     { data: identityDocs },
-    { data: holder },
-    { data: customers },
+    { data: relatedCustomers },
     { data: declined },
   ] = await Promise.all([
     supabase.from("crm_booking_items").select("*").eq("booking_id", id).order("sort_order"),
@@ -44,14 +44,15 @@ export default async function AdminBookingPage({ params }: Props) {
     supabase.from("crm_booking_documents").select("*").eq("booking_id", id),
     supabase.from("crm_travel_companions").select("*").eq("customer_id", b.customer_id),
     supabase.from("crm_travel_documents").select("*").eq("customer_id", b.customer_id),
-    supabase
-      .from("crm_customers")
-      .select("first_name, last_name")
-      .eq("id", b.customer_id)
-      .maybeSingle(),
-    supabase.from("crm_customers").select("*").order("last_name"),
+    relatedIds.length
+      ? supabase.from("crm_customers").select("*").in("id", relatedIds)
+      : Promise.resolve({ data: [] as CrmCustomer[] }),
     supabase.from("crm_declined_services").select("kind, service_leg, place").eq("booking_id", id),
   ]);
+  const party = (relatedCustomers || []) as CrmCustomer[];
+  const customer = party.find((row) => row.id === b.customer_id) || null;
+  const billingCustomer =
+    party.find((row) => row.id === (b.billing_customer_id || b.customer_id)) || customer;
   const refusals = ((declined || []) as { kind?: string | null; service_leg?: string | null; place?: string | null }[])
     .map(serviceRefusalFromRow)
     .filter((row): row is ServiceRefusal => Boolean(row));
@@ -76,10 +77,11 @@ export default async function AdminBookingPage({ params }: Props) {
           documents={(documents || []) as CrmBookingDocument[]}
           identityDocs={allIdentity}
           companions={(companions || []) as CrmCompanion[]}
-          customers={(customers || []) as CrmCustomer[]}
+          customer={customer}
+          billingCustomer={billingCustomer}
           holderName={{
-            first_name: holder?.first_name || "",
-            last_name: holder?.last_name || "",
+            first_name: customer?.first_name || "",
+            last_name: customer?.last_name || "",
           }}
           aiConfigured={aiGatewayConfigured()}
           formalities={frenchPassportTrip(bookingItems, bookingTravelers.length)}

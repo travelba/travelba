@@ -3,7 +3,15 @@ import { customerFullName, type CrmCustomer } from "./types";
 export type PickableCustomer = Pick<
   CrmCustomer,
   "id" | "first_name" | "last_name" | "company_name" | "email" | "phone"
->;
+> &
+  Partial<Pick<CrmCustomer, "usage_name" | "company_role">>;
+
+/** Colonnes du sélecteur — pas de `select("*")` (IBAN, adresse, etc.). */
+export const CUSTOMER_PICK_SELECT =
+  "id, first_name, last_name, usage_name, company_name, email, phone, company_role";
+
+/** Plafond typeahead ; pagination liste complète = suivi. */
+export const CUSTOMER_PICK_LIMIT = 300;
 
 function fold(value: string) {
   return value
@@ -27,6 +35,21 @@ export function customerPickLabel(c: PickableCustomer) {
   const name = customerFullName(c);
   const company = c.company_name?.trim();
   return company ? `${name} · ${company}` : name;
+}
+
+export function customerRoleSuffix(c: PickableCustomer) {
+  if (c.company_role === "member") return " · rattaché";
+  if (c.company_role === "admin") return " · admin société";
+  return "";
+}
+
+export function customerTravelerPickLabel(c: PickableCustomer) {
+  return `${customerFullName(c)} — ${c.email || "—"}${customerRoleSuffix(c)}`;
+}
+
+export function customerBillingPickLabel(c: PickableCustomer) {
+  const company = c.company_name?.trim();
+  return `${customerFullName(c)}${company ? ` · ${company}` : ""}${customerRoleSuffix(c)}`;
 }
 
 export function customerMatchesQuery(c: PickableCustomer, query: string) {

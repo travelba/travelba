@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  customerBillingPickLabel,
   customerMatchesQuery,
   customerPickLabel,
+  customerTravelerPickLabel,
   filterCustomersForPick,
   type PickableCustomer,
 } from "./customer-search";
@@ -41,6 +43,17 @@ describe("customer-search", () => {
     assert.equal(customerMatchesQuery(row, "atelier.fr"), true);
     assert.equal(customerMatchesQuery(row, "061234"), true);
     assert.equal(customerMatchesQuery(row, "inconnu"), false);
+  });
+
+  it("ajoute le rôle société au libellé voyageur / facturation", () => {
+    const member = customer({ company_role: "member", email: "marie@example.com" });
+    const admin = customer({
+      company_role: "admin",
+      company_name: "TBA SAS",
+      email: "dir@tba.fr",
+    });
+    assert.equal(customerTravelerPickLabel(member), "Marie Dupont — marie@example.com · rattaché");
+    assert.equal(customerBillingPickLabel(admin), "Marie Dupont · TBA SAS · admin société");
   });
 
   it("place les propositions en tête de liste", () => {
