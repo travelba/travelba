@@ -9,15 +9,12 @@ import {
   CHECKIN_EUR,
   checkinFeeAmount,
   findCheckinExtra,
-  findVisaExtra,
   isServiceRefused,
-  VISA_EUR,
   type ServiceRefusal,
 } from "@/lib/crm/extras";
 import { formatMoney } from "@/lib/crm/money";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { Icon } from "@/components/crm/icons";
-import type { FrenchPassportTrip } from "@/lib/crm/visa-trip";
 import type { CrmBooking, CrmBookingItem, CrmBookingTraveler, CrmCompanion, CrmCustomer } from "@/lib/crm/types";
 
 export function ExtrasPanel({
@@ -25,7 +22,6 @@ export function ExtrasPanel({
   booking,
   items,
   travelers,
-  formalities = null,
   refusals = [],
 }: {
   variant: "admin" | "client";
@@ -35,7 +31,6 @@ export function ExtrasPanel({
   holder: CrmCustomer;
   companions: CrmCompanion[];
   whatsappHref?: string;
-  formalities?: Pick<FrenchPassportTrip, "needsFormality" | "passengers" | "amount"> | null;
   refusals?: ServiceRefusal[];
 }) {
   const router = useRouter();
@@ -44,9 +39,9 @@ export function ExtrasPanel({
   const [issues, setIssues] = useState<BookingIssue[]>([]);
   if (!bookingHasFlight(items)) return null;
   const isAdmin = variant === "admin";
-  const passengers = Math.max(1, travelers.length || formalities?.passengers || 1);
+  const passengers = Math.max(1, travelers.length || 1);
 
-  async function request(kind: "checkin" | "visa") {
+  async function request(kind: "checkin") {
     setBusy(kind);
     setIssues([]);
     const url =
@@ -67,7 +62,7 @@ export function ExtrasPanel({
     router.refresh();
   }
 
-  async function refuse(kind: "checkin" | "visa") {
+  async function refuse(kind: "checkin") {
     if (isAdmin || busy) return;
     setHidden((current) => (current.includes(kind) ? current : [...current, kind]));
     setIssues([]);
@@ -85,7 +80,7 @@ export function ExtrasPanel({
     router.refresh();
   }
 
-  async function cancel(kind: "checkin" | "visa", itemId: string) {
+  async function cancel(kind: "checkin", itemId: string) {
     if (busy) return;
     setBusy(`cancel:${itemId}`);
     setIssues([]);
@@ -108,7 +103,7 @@ export function ExtrasPanel({
   }
 
   function serviceCard(input: {
-    kind: "checkin" | "visa";
+    kind: "checkin";
     title: string;
     icon: string;
     note: string;
@@ -195,13 +190,9 @@ export function ExtrasPanel({
   }
 
   const checkin = findCheckinExtra(items) as CrmBookingItem | null;
-  const visa = findVisaExtra(items) as CrmBookingItem | null;
   const checkinGone =
     !checkin && (hidden.includes("checkin") || isServiceRefused(refusals, { kind: "checkin" }));
-  const visaGone =
-    !visa && (hidden.includes("visa") || isServiceRefused(refusals, { kind: "visa" }));
-  const showVisa = Boolean(formalities?.needsFormality) && !visaGone;
-  if (checkinGone && !showVisa) return null;
+  if (checkinGone) return null;
 
   return (
     <section className="space-y-3">
@@ -210,7 +201,7 @@ export function ExtrasPanel({
           Services de l’agence
         </p>
         <h2 className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">À la carte</h2>
-        <p className="mt-1 text-sm text-muted">Enregistrement et formalités, par passager.</p>
+        <p className="mt-1 text-sm text-muted">Enregistrement, par passager.</p>
       </div>
       {checkinGone
         ? null
@@ -223,17 +214,6 @@ export function ExtrasPanel({
             count: passengers,
             existing: checkin,
           })}
-      {showVisa
-        ? serviceCard({
-            kind: "visa",
-            title: "Obtention du visa",
-            icon: "description",
-            note: `${VISA_EUR} € par passager, hors frais du visa`,
-            amount: formalities?.amount || (formalities?.passengers || passengers) * VISA_EUR,
-            count: formalities?.passengers || passengers,
-            existing: visa,
-          })
-        : null}
       <IssuesList issues={issues} />
     </section>
   );

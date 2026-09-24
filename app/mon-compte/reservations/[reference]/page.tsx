@@ -11,14 +11,10 @@ import {
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
-import { TripFormalities } from "@/components/crm/TripFormalities";
-import { TripVisaUploads } from "@/components/crm/TripVisaUploads";
-import { bookingHasFlight, serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
+import { VisaSection } from "@/components/crm/VisaSection";
+import { bookingHasFlight, findVisaExtra, serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
-import { VisaAsk } from "@/components/account/VisaAsk";
-import { VisaProgress } from "@/components/account/VisaProgress";
 import type { ClientVisaStep } from "@/lib/crm/visa-flow";
-import type { VisaCorridor } from "@/lib/crm/visa-fees";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { BookingStatusBadge } from "@/components/crm/ui";
 import {
@@ -127,28 +123,6 @@ export default async function ReservationDetailPage({ params }: Props) {
         </div>
       </BookingHero>
 
-      {bookingHasFlight(visibleItems)
-        ? formalities.entries
-            .filter((entry) => entry.iso === "IL" || entry.iso === "US" || entry.iso === "GB")
-            .map((entry) => {
-              const row = ((visaRows || []) as { country: VisaCorridor; step?: ClientVisaStep; status: string }[]).find(
-                (item) => item.country === entry.iso
-              );
-              return (
-                <section key={entry.iso} className="aura-card space-y-3 rounded-[1.35rem] bg-white p-4">
-                  {row ? (
-                    <VisaProgress
-                      countryName={entry.name}
-                      step={row.step || (row.status === "piece" ? "piece" : "preparation")}
-                    />
-                  ) : (
-                    <VisaAsk reference={b.reference} country={entry.iso as VisaCorridor} />
-                  )}
-                </section>
-              );
-            })
-        : null}
-
       {missingPassports ? (
         <a
           href="#passeport"
@@ -215,9 +189,8 @@ export default async function ReservationDetailPage({ params }: Props) {
           holder={customer}
           companions={(companions || []) as CrmCompanion[]}
           whatsappHref={modifyHref}
-            formalities={formalities}
-            refusals={refusals}
-          />
+          refusals={refusals}
+        />
       ) : null}
 
       <section className="aura-card space-y-2 rounded-[1.35rem] bg-white p-4">
@@ -253,19 +226,16 @@ export default async function ReservationDetailPage({ params }: Props) {
       />
 
       {bookingHasFlight(visibleItems) ? (
-        <section className="aura-card space-y-3 rounded-[1.35rem] bg-white p-4">
-          <TripFormalities trip={formalities} />
-          {formalities.needsFormality ? (
-            <TripVisaUploads
-              variant="client"
-              bookingId={b.id}
-              reference={b.reference}
-              travelers={party}
-              documents={(identityDocs || []) as CrmTravelDocument[]}
-              entries={formalities.entries}
-            />
-          ) : null}
-        </section>
+        <VisaSection
+          variant="client"
+          bookingId={b.id}
+          reference={b.reference}
+          trip={formalities}
+          requests={(visaRows || []) as { country: string; step?: ClientVisaStep; status?: string }[]}
+          travelers={party}
+          documents={(identityDocs || []) as CrmTravelDocument[]}
+          visaBooked={Boolean(findVisaExtra(visibleItems))}
+        />
       ) : null}
     </div>
   );

@@ -81,6 +81,13 @@ export function corridorNeedsAnswers(country: VisaCorridor) {
   return country === "US" || country === "GB";
 }
 
+/** Israël part sans questionnaire. États-Unis et Royaume-Uni attendent les réponses. */
+export function agencyLaunchReady(country: VisaCorridor, answers: Partial<EstaAnswers> | null | undefined) {
+  if (country === "IL") return true;
+  if (country === "GB") return Boolean(answers?.priorRefusal?.trim());
+  return estaReady(answers);
+}
+
 export function confirmAllowed(input: {
   already: VisaCorridor[];
   country: VisaCorridor;

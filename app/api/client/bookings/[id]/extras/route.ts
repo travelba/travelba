@@ -4,6 +4,7 @@ import { BookingIssuesError } from "@/lib/crm/booking-issues";
 import { carnetVisible } from "@/lib/crm/carnet";
 import {
   cancelBookingExtra,
+  clearServiceRefusal,
   createBookingExtra,
   declineBookingService,
   parseExtraRequest,
@@ -56,6 +57,9 @@ export async function POST(request: Request, ctx: Ctx) {
         moment: extra.moment,
       });
       return NextResponse.json(declined);
+    }
+    if (body?.resume === true) {
+      await clearServiceRefusal(admin, b.id, extra.kind, extra.leg, extra.place, extra.moment);
     }
     const [{ data: travelers }, { data: companions }] = await Promise.all([
       admin.from("crm_booking_travelers").select("*").eq("booking_id", b.id),

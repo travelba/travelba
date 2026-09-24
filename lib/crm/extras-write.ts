@@ -283,6 +283,31 @@ function refusalColumns(
   };
 }
 
+export async function clearServiceRefusal(
+  supabase: SupabaseClient,
+  bookingId: string,
+  kind: ExtraKind | "visa" | "checkin",
+  leg: ExtraLeg | null,
+  place: ServicePlace | null | undefined,
+  moment?: GreeterMoment | null
+) {
+  const columns = refusalColumns(kind, leg, place, moment);
+  const { error } = await supabase
+    .from("crm_declined_services")
+    .delete()
+    .eq("booking_id", bookingId)
+    .eq("kind", columns.kind)
+    .eq("service_leg", columns.service_leg)
+    .eq("place", columns.place)
+    .eq("moment", columns.moment);
+  if (error) {
+    console.error("[crm] clear decline:", error.code ?? "?", error.message ?? "");
+    throw new BookingIssuesError("Service non enregistré.", [
+      { field: "form", message: "Le service n’a pas pu être repris. Réessayez." },
+    ]);
+  }
+}
+
 async function assertNotRefused(
   supabase: SupabaseClient,
   bookingId: string,

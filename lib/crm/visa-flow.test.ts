@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  agencyLaunchReady,
   clientVisaPhase,
   clientVisaStepCopy,
   clientVisaTrack,
@@ -9,6 +10,22 @@ import {
   paymentHold,
   visibilityOnRequest,
 } from "./visa-flow";
+
+test("le bouton agence attend les réponses États-Unis et Royaume-Uni", () => {
+  assert.equal(agencyLaunchReady("IL", null), true);
+  assert.equal(agencyLaunchReady("GB", { priorRefusal: "" }), false);
+  assert.equal(agencyLaunchReady("GB", { priorRefusal: "non" }), true);
+  assert.equal(agencyLaunchReady("US", { priorRefusal: "non" }), false);
+  assert.equal(
+    agencyLaunchReady("US", {
+      usAddress: "hôtel",
+      employment: "agence",
+      countriesVisited: "France",
+      priorRefusal: "non",
+    }),
+    true
+  );
+});
 
 test("le client voit préparer, en cours, puis le coffre", () => {
   assert.equal(clientVisaPhase({ started: false, filed: false }), "à préparer");
