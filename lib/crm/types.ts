@@ -357,6 +357,37 @@ export type EmailIngestCandidate = {
   score: number;
 };
 
+export type LeBookingLinkStatus = "unmatched" | "linked" | "ignored";
+
+/** Réservation lue sur l’API de test Little Emperors. Pas de téléphone ni d’e-mail d’hôtel. */
+export type CrmLeBooking = {
+  id: string;
+  le_booking_id: number;
+  confirmation_number: string | null;
+  state: string | null;
+  hotel_id: number | null;
+  hotel_name: string | null;
+  address: string | null;
+  city: string | null;
+  website: string | null;
+  check_in: string | null;
+  check_out: string | null;
+  currency: string | null;
+  total_cost: string | null;
+  is_cancellable: boolean | null;
+  cancellation_deadline: string | null;
+  guest_names: string[];
+  cancellation_policies: string[];
+  room_types: string[];
+  crm_booking_id: string | null;
+  status: LeBookingLinkStatus;
+  candidates: EmailIngestCandidate[];
+  last_event: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type EmailIngestAttachment = {
   name: string;
   path: string;

@@ -13,6 +13,7 @@ const LINKS = [
   { href: "/admin/clients", label: "Clients", icon: "group" },
   { href: "/admin/reservations", label: "Réservations", icon: "event" },
   { href: "/admin/emails", label: "E-mails", icon: "mail" },
+  { href: "/admin/little-emperors", label: "Little Emperors", icon: "hotel" },
   { href: "/admin/transactions", label: "Transactions", icon: "account_balance" },
   { href: "/admin/revolut", label: "Revolut", icon: "sync_alt" },
 ];
@@ -20,12 +21,14 @@ const LINKS = [
 export function AdminNav({
   unmatchedCount = 0,
   emailCount = 0,
+  leCount = 0,
   staffName = "",
   staffRole = "",
   children,
 }: {
   unmatchedCount?: number;
   emailCount?: number;
+  leCount?: number;
   staffName?: string;
   staffRole?: "admin" | "agent" | "";
   children?: React.ReactNode;
@@ -69,7 +72,9 @@ export function AdminNav({
         ? unmatchedCount
         : link.href === "/admin/emails" && emailCount > 0
           ? emailCount
-          : null;
+          : link.href === "/admin/little-emperors" && leCount > 0
+            ? leCount
+            : null;
     const dark = variant === "dark";
     return (
       <Link

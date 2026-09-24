@@ -15,6 +15,7 @@ export default async function AdminLayout({
 }) {
   let unmatched = 0;
   let emailPending = 0;
+  let lePending = 0;
   let staffName = "";
   const { user } = await getSessionUser();
   const staff = user ? await getStaffForUser(user.id) : null;
@@ -35,6 +36,11 @@ export default async function AdminLayout({
       ]);
       unmatched = revolut.count ?? 0;
       emailPending = emails.count ?? 0;
+      const le = await admin
+        .from("crm_le_bookings")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "unmatched");
+      if (!le.error) lePending = le.count ?? 0;
     } catch {
       unmatched = 0;
       emailPending = 0;
@@ -46,6 +52,7 @@ export default async function AdminLayout({
       <AdminNav
         unmatchedCount={unmatched}
         emailCount={emailPending}
+        leCount={lePending}
         staffName={staffName}
         staffRole={staff?.role}
       >

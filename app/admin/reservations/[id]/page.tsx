@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { BookingEditor } from "@/components/admin/BookingEditor";
 import { DeleteBookingButton } from "@/components/admin/DeleteBookingButton";
+import { LittleEmperorsCancel } from "@/components/admin/LittleEmperorsCancel";
 import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { readEstaAnswers, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
@@ -42,6 +43,7 @@ export default async function AdminBookingPage({ params }: Props) {
     { data: relatedCustomers },
     { data: declined },
     { data: visaRows },
+    { data: leRows },
   ] = await Promise.all([
     supabase.from("crm_booking_items").select("*").eq("booking_id", id).order("sort_order"),
     supabase.from("crm_booking_travelers").select("*").eq("booking_id", id),
@@ -53,6 +55,11 @@ export default async function AdminBookingPage({ params }: Props) {
       : Promise.resolve({ data: [] as CrmCustomer[] }),
     supabase.from("crm_declined_services").select("kind, service_leg, place, moment").eq("booking_id", id),
     supabase.from("crm_visa_requests").select("country, step, status, answers").eq("booking_id", id),
+    supabase
+      .from("crm_le_bookings")
+      .select("id, hotel_name, is_cancellable, cancellation_deadline, cancellation_policies, state")
+      .eq("crm_booking_id", id)
+      .limit(1),
   ]);
   const party = (relatedCustomers || []) as CrmCustomer[];
   const customer = party.find((row) => row.id === b.customer_id) || null;
@@ -77,6 +84,17 @@ export default async function AdminBookingPage({ params }: Props) {
         </div>
         <DeleteBookingButton bookingId={b.id} label={`${b.reference} — ${b.title}`} />
       </div>
+      {(leRows || []).slice(0, 1).map((row) => (
+        <LittleEmperorsCancel
+          key={row.id}
+          id={row.id}
+          hotelName={row.hotel_name}
+          isCancellable={row.is_cancellable}
+          deadline={row.cancellation_deadline}
+          policies={row.cancellation_policies || []}
+          state={row.state}
+        />
+      ))}
       <div className="mt-6">
         <BookingEditor
           booking={b}
