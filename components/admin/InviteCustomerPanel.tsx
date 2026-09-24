@@ -13,7 +13,7 @@ const STATUS_COPY: Record<PortalAccess["status"], { label: string; hint: string 
   },
   invited: {
     label: "Invitation envoyée",
-    hint: "Lien valable 30 jours. Copiez-le ou renvoyez l’e-mail.",
+    hint: "Lien valable 30 jours. Copiez-le ou renvoyez l’invitation.",
   },
   ready: {
     label: "Espace actif",

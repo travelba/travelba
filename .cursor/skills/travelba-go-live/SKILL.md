@@ -49,6 +49,8 @@ Reprendre `.env.example`. Toutes **sauf** `NEXT_PUBLIC_*` sont server-only.
 | `REVOLUT_SANDBOX` | `0` |
 | `REVOLUT_WEBHOOK_SECRET` | si webhook Revolut activé |
 | `CRON_SECRET` | aléatoire long ; Vercel Cron envoie `Authorization: Bearer …` |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_FROM` | compte WhatsApp déjà en Production |
+| `TWILIO_CONTENT_CONNEXION` | SID du modèle Utility `connexion_espace`. Hors git. Sans elle, l’invitation reste e-mail seul. `npx tsx scripts/arm-whatsapp-connexion.ts`, puis approbation Meta |
 
 Preview : `NEXT_PUBLIC_SITE_URL` d’une preview **ne doit pas** rester `https://travelba.fr` si on envoie des invitations depuis la preview (liens cassés). En doute : désactiver Resend sur Preview.
 

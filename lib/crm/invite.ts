@@ -156,26 +156,36 @@ export async function inviteCustomer(
     otpType: linkType,
     nextPath: SET_PASSWORD_PATH,
   });
-  await admin
-    .from("crm_customers")
-    .update({ whatsapp_opt_in_at: new Date().toISOString() })
-    .eq("id", linked.id)
-    .is("whatsapp_opt_in_at", null);
-  const whatsapp = await sendConnexionWhatsapp({
-    phone: linked.phone,
-    firstName: linked.first_name,
-    link,
-  });
-  if (whatsapp.ok || whatsapp.reason === "rejected") {
-    await admin.from("crm_whatsapp_messages").insert({
-      customer_id: linked.id,
-      direction: "outbound",
-      template_key: "connexion",
-      body: connexionMessage(greetingForWhatsapp(linked.first_name) || ""),
-      twilio_sid: whatsapp.ok ? whatsapp.sid : null,
-      status: whatsapp.ok ? "sent" : "failed",
-      error: whatsapp.ok ? null : whatsapp.detail || whatsapp.reason,
+  let whatsapp: WhatsappSendResult = { ok: false, reason: "rejected" };
+  try {
+    await admin
+      .from("crm_customers")
+      .update({ whatsapp_opt_in_at: new Date().toISOString() })
+      .eq("id", linked.id)
+      .is("whatsapp_opt_in_at", null);
+    whatsapp = await sendConnexionWhatsapp({
+      phone: linked.phone,
+      firstName: linked.first_name,
+      link,
     });
+    if (!whatsapp.ok && whatsapp.reason === "not_configured") {
+      console.info("[invite] TWILIO_CONTENT_CONNEXION absente — WhatsApp non envoyé");
+    }
+    if (whatsapp.ok || (!whatsapp.ok && whatsapp.reason === "rejected")) {
+      const { error: logError } = await admin.from("crm_whatsapp_messages").insert({
+        customer_id: linked.id,
+        direction: "outbound",
+        template_key: "connexion",
+        body: connexionMessage(greetingForWhatsapp(linked.first_name) || ""),
+        twilio_sid: whatsapp.ok ? whatsapp.sid : null,
+        status: whatsapp.ok ? "sent" : "failed",
+        error: whatsapp.ok ? null : whatsapp.detail || whatsapp.reason,
+      });
+      if (logError) console.error("[invite] journal WhatsApp:", logError.message);
+    }
+  } catch (err) {
+    console.error("[invite] WhatsApp:", err instanceof Error ? err.message : "échec");
+    whatsapp = { ok: false, reason: "rejected" };
   }
   let delivered = false;
   try {
