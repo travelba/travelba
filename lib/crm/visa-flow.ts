@@ -13,6 +13,11 @@ export function visibilityOnRequest(current: { visible: boolean; prices: boolean
   return { visible: true, prices: current.prices };
 }
 
+export function paymentHold(pliantReady: boolean) {
+  if (pliantReady) return null;
+  return "Le parcours s’arrête au paiement : la carte Pliant n’est pas branchée. Le séjour est ouvert, sans les prix.";
+}
+
 export function nextPayAttempt(previous: number): "pay" | "retry" | "alert" {
   if (previous <= 0) return "pay";
   if (previous === 1) return "retry";

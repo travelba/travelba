@@ -1,17 +1,25 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { buildEtaIlDraft, publicEtaIlDraft } from "@/lib/crm/eta-il-draft";
 import { etaIlPliantCard, pliantCardName } from "@/lib/crm/eta-il-fee";
 import { issuePliantCard, pliantConfigured, raisePliantLimit } from "@/lib/crm/pliant";
 import { postVisaCharge } from "@/lib/crm/visa-post";
 import { euroRates } from "@/lib/crm/visa-ecb";
-import { confirmAllowed, visibilityOnRequest, type EstaAnswers } from "@/lib/crm/visa-flow";
+import { confirmAllowed, paymentHold, visibilityOnRequest, type EstaAnswers } from "@/lib/crm/visa-flow";
 import {
   centsToEur,
   combinedCeilingCents,
   VISA_OFFICIAL,
   type VisaCorridor,
 } from "@/lib/crm/visa-fees";
-import type { CrmBooking, CrmBookingTraveler, CrmCustomer, CrmTravelDocument } from "@/lib/crm/types";
+import type {
+  CrmBooking,
+  CrmBookingItem,
+  CrmBookingTraveler,
+  CrmCustomer,
+  CrmTravelDocument,
+} from "@/lib/crm/types";
+import { officialVisaApplyUrl } from "@/lib/crm/visa-fr";
 
 export const runtime = "nodejs";
 
@@ -39,6 +47,34 @@ export async function POST(request: Request, ctx: Ctx) {
   const { data: booking } = await auth.supabase.from("crm_bookings").select("*").eq("id", id).maybeSingle();
   if (!booking) return jsonError("Réservation introuvable", 404);
   const b = booking as CrmBooking;
+
+  if (body.action === "run" && country === "IL") {
+    const [{ data: items }, { data: travelers }, { data: documents }, { data: customer }] = await Promise.all([
+      auth.supabase.from("crm_booking_items").select("*").eq("booking_id", b.id),
+      auth.supabase.from("crm_booking_travelers").select("*").eq("booking_id", b.id),
+      auth.supabase.from("crm_travel_documents").select("*").eq("customer_id", b.customer_id),
+      auth.supabase.from("crm_customers").select("first_name, last_name, usage_name").eq("id", b.customer_id).maybeSingle(),
+    ]);
+    const draft = buildEtaIlDraft({
+      items: (items || []) as CrmBookingItem[],
+      travelers: (travelers || []) as CrmBookingTraveler[],
+      documents: (documents || []) as CrmTravelDocument[],
+      holder: customer as Pick<CrmCustomer, "first_name" | "last_name" | "usage_name"> | null,
+      startDate: b.start_date,
+      endDate: b.end_date,
+    });
+    return NextResponse.json({ ...publicEtaIlDraft(draft), country, portal: officialVisaApplyUrl("IL") });
+  }
+
+  if (body.action === "run") {
+    return NextResponse.json({
+      country,
+      phase: "à confirmer",
+      portal: officialVisaApplyUrl(country),
+      reason: "Récapitulatif prêt. Confirmez pour ouvrir le séjour. Le paiement attendra Pliant.",
+      travelers: [],
+    });
+  }
 
   if (body.action === "charge") {
     const tx = (body.pliantTransactionId || "").trim();
@@ -149,13 +185,16 @@ export async function POST(request: Request, ctx: Ctx) {
     answers: body.answers || {},
   });
 
+  const pliant = pliantConfigured();
   return NextResponse.json({
     country,
+    phase: pliant ? "paiement" : "paiement",
     ceilingEur: centsToEur(cents),
     fee: `${VISA_OFFICIAL[country].amount} ${VISA_OFFICIAL[country].currency}`,
     rateDate: fx.date,
     liveRate: fx.live,
     cardId,
-    pliant: pliantConfigured(),
+    pliant,
+    hold: paymentHold(pliant),
   });
 }

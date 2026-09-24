@@ -31,7 +31,8 @@ import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
 import { PlaceField } from "@/components/crm/PlaceField";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
 import { TripPassportPicker } from "@/components/crm/TripPassportPicker";
-import { EtaIlPanel } from "@/components/admin/EtaIlPanel";
+import { VisaRunPanel } from "@/components/admin/VisaRunPanel";
+import type { VisaCorridor } from "@/lib/crm/visa-fees";
 import { TripFormalities } from "@/components/crm/TripFormalities";
 import { TripVisaUploads } from "@/components/crm/TripVisaUploads";
 import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
@@ -595,17 +596,13 @@ export function BookingEditor({
       {account && bookingHasFlight(items) ? (
         <section className="admin-af-card space-y-4 rounded-3xl p-5">
           <TripFormalities trip={formalities} />
-          {formalities.entries.some((entry) => entry.iso === "IL") ? (
-            <EtaIlPanel
-              bookingId={booking.id}
-              firstName={customer?.first_name || holderName.first_name}
-              lastName={customer?.last_name || holderName.last_name}
-              travelerCount={Math.max(1, travelers.length)}
-              bookingReference={booking.reference}
-              startDate={booking.start_date}
-              endDate={booking.end_date}
-            />
-          ) : null}
+          {formalities.entries
+            .filter((entry): entry is typeof entry & { iso: VisaCorridor } =>
+              entry.iso === "IL" || entry.iso === "US" || entry.iso === "GB"
+            )
+            .map((entry) => (
+              <VisaRunPanel key={entry.iso} bookingId={booking.id} country={entry.iso} />
+            ))}
           {formalities.needsFormality ? (
             <TripVisaUploads
               variant="admin"

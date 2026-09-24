@@ -4,6 +4,7 @@ import {
   clientVisaPhase,
   confirmAllowed,
   nextPayAttempt,
+  paymentHold,
   visibilityOnRequest,
 } from "./visa-flow";
 
@@ -19,6 +20,11 @@ test("ouvrir la demande ne révèle pas les prix", () => {
     prices: false,
   });
   assert.equal(visibilityOnRequest({ visible: true, prices: true }).prices, true);
+});
+
+test("sans Pliant le parcours s’arrête au paiement", () => {
+  assert.match(paymentHold(false) || "", /paiement/);
+  assert.equal(paymentHold(true), null);
 });
 
 test("un second paiement échoué alerte, un second pays identique ne part pas", () => {
