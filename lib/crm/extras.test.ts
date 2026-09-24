@@ -9,6 +9,8 @@ import {
   extraAmount,
   extraFlightAt,
   extraNoticeOk,
+  extraAgencyStatus,
+  extraItemPayload,
   extraPlaceOf,
   extraTitle,
   findExtra,
@@ -43,6 +45,31 @@ test("fenêtre 48 h et unicité par trajet", () => {
   const now = new Date("2026-08-10T10:00:00Z");
   assert.equal(extraNoticeOk("2026-08-13T10:00:00Z", now), true);
   assert.equal(extraNoticeOk("2026-08-11T10:00:00Z", now), false);
+  assert.equal(extraAgencyStatus({ details: {} }), "pending");
+  assert.equal(extraAgencyStatus({ details: { agency_status: "confirmed" } }), "confirmed");
+  assert.equal(
+    extraItemPayload({
+      kind: "greeter",
+      leg: "departure",
+      moment: "depart",
+      startAt: null,
+      amount: 100,
+      visibleToClient: true,
+    }).details.agency_status,
+    "pending"
+  );
+  assert.equal(
+    extraItemPayload({
+      kind: "chauffeur",
+      leg: "departure",
+      place: "home",
+      startAt: null,
+      amount: 150,
+      visibleToClient: true,
+      agencyStatus: "confirmed",
+    }).details.agency_status,
+    "confirmed"
+  );
   const items = [
     { kind: "flight", start_at: "2026-08-12T08:00:00" },
     { kind: "flight", start_at: "2026-08-20T18:00:00" },

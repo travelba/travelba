@@ -35,6 +35,7 @@ import { ServiceOfferCard } from "@/components/crm/ServiceOfferCard";
 import {
   bookingHasFlight,
   composeItineraryDay,
+  extraAgencyStatus,
   extraAmount,
   extraFlightAt,
   extraHeadsFromBooking,
@@ -289,11 +290,19 @@ export function CarnetItinerary({
 }) {
   const days = groupByDay(items);
   const undated = undatedTimeline(items);
+  const now = new Date();
   const offers =
     services && bookingHasFlight(items)
-      ? itineraryOffers(items).filter((offer) => !isServiceRefused(refusals, offer))
+      ? itineraryOffers(items).filter((offer) => {
+          if (isServiceRefused(refusals, offer)) return false;
+          const booked = findExtra(items, offer.kind, offer.leg, offer.place, offer.moment);
+          if (booked) return true;
+          if (services.variant === "client" && !extraNoticeOk(extraFlightAt(items, offer.leg, booking.start_date || booking.end_date), now)) {
+            return false;
+          }
+          return true;
+        })
       : [];
-  const now = new Date();
   const heads = services
     ? extraHeadsFromBooking({
         travelers: services.travelers,
@@ -334,7 +343,6 @@ export function CarnetItinerary({
         price={price}
         currency={booking.currency}
         locked={services.variant === "client" && !extraNoticeOk(at, now)}
-        whatsappHref={services.whatsappHref}
         addressLabel={
           offer.kind === "chauffeur"
             ? offer.place === "hotel"
@@ -356,11 +364,23 @@ export function CarnetItinerary({
       return row?.id ? [row.id] : [];
     })
   );
+  const bookedOffers = offers
+    .filter((offer) => findExtra(items, offer.kind, offer.leg, offer.place, offer.moment))
+    .sort((a, b) => {
+      const rank = (offer: ServiceOffer) => {
+        const row = findExtra(items, offer.kind, offer.leg, offer.place, offer.moment);
+        return row && extraAgencyStatus(row) === "confirmed" ? 1 : 0;
+      };
+      return rank(a) - rank(b);
+    });
+  const openOffers = offers.filter(
+    (offer) => !findExtra(items, offer.kind, offer.leg, offer.place, offer.moment)
+  );
   const seenDays = new Set(days.map(([key]) => key));
-  const offerDays = [...new Set(offers.map((offer) => offer.day).filter((day) => !seenDays.has(day)))];
+  const offerDays = [...new Set(openOffers.map((offer) => offer.day).filter((day) => !seenDays.has(day)))];
   const timeline = [
-    ...days.map(([day, rows]) => [day, composeItineraryDay(day, rows, offers)] as const),
-    ...offerDays.map((day) => [day, composeItineraryDay(day, [], offers)] as const),
+    ...days.map(([day, rows]) => [day, composeItineraryDay(day, rows, openOffers)] as const),
+    ...offerDays.map((day) => [day, composeItineraryDay(day, [], openOffers)] as const),
   ].sort(([a], [b]) => a.localeCompare(b));
 
   return (
@@ -372,6 +392,9 @@ export function CarnetItinerary({
             <AgendaLink href={calendarBase}>Ajouter tout le séjour</AgendaLink>
           ) : null}
         </div>
+        {bookedOffers.length ? (
+          <div className="space-y-2">{bookedOffers.map((offer) => offerCard(offer))}</div>
+        ) : null}
         {timeline.map(([day, rows]) => (
           <div key={day} className="space-y-2">
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">

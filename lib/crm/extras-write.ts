@@ -10,6 +10,7 @@ import {
   extraHeadsFromBooking,
   extraItemPayload,
   extraNoticeOk,
+  extraAgencyStatus,
   extraTitle,
   findCheckinExtra,
   findExtra,
@@ -248,6 +249,7 @@ export async function createBookingExtra(
     adults: heads.adults,
     children: heads.children,
     visibleToClient: opts.booking.visible_to_client,
+    agencyStatus: opts.enforceWindow === false ? "confirmed" : "pending",
   });
   const { data, error } = await supabase
     .from("crm_booking_items")
@@ -415,6 +417,14 @@ export async function cancelBookingExtra(
       { field: "kind", message: "Ce service n’est pas validé." },
     ]);
   }
+  if (
+    (opts.kind === "chauffeur" || opts.kind === "greeter") &&
+    extraAgencyStatus(item) === "confirmed"
+  ) {
+    throw new BookingIssuesError("Service confirmé.", [
+      { field: "kind", message: "Ce service est confirmé par l’agence et ne peut plus être annulé." },
+    ]);
+  }
   const { error } = await supabase
     .from("crm_booking_items")
     .delete()
@@ -428,6 +438,46 @@ export async function cancelBookingExtra(
   }
   await refreshBookingLedger(supabase, opts.booking.id);
   return { cancelled: true as const };
+}
+
+/** L’agence confirme une demande client de chauffeur ou de greeter. */
+export async function confirmBookingExtra(
+  supabase: SupabaseClient,
+  opts: {
+    booking: CrmBooking;
+    items: CrmBookingItem[];
+    kind: ExtraKind;
+    leg: ExtraLeg | null;
+    place?: ServicePlace | null;
+    moment?: GreeterMoment | null;
+  }
+) {
+  if (!opts.leg) {
+    throw new BookingIssuesError("Service invalide.", [
+      { field: "leg", message: "Indiquez un trajet (départ ou arrivée)." },
+    ]);
+  }
+  const place = opts.kind === "chauffeur" ? opts.place || null : null;
+  const moment = opts.kind === "greeter" ? opts.moment || "depart" : null;
+  const item = findExtra(opts.items, opts.kind, opts.leg, place, moment) as CrmBookingItem | null;
+  if (!item?.id) {
+    throw new BookingIssuesError("Service introuvable.", [
+      { field: "kind", message: "Ce service n’est pas en attente." },
+    ]);
+  }
+  const details = { ...(item.details || {}), agency_status: "confirmed" };
+  const { error } = await supabase
+    .from("crm_booking_items")
+    .update({ details })
+    .eq("id", item.id)
+    .eq("booking_id", opts.booking.id);
+  if (error) {
+    console.error("[crm] confirm extra:", error.code ?? "?", error.message ?? "");
+    throw new BookingIssuesError("Confirmation impossible.", [
+      { field: "form", message: "Le service n’a pas pu être confirmé. Réessayez." },
+    ]);
+  }
+  return { confirmed: true as const };
 }
 
 export function parseExtraRequest(body: Record<string, unknown> | null) {
