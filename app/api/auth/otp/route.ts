@@ -3,6 +3,7 @@ import { Resend } from "resend";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { agencyEmailHtml } from "@/lib/crm/email-html";
+import { connexionMessage, greetingForWhatsapp, sendConnexionWhatsapp } from "@/lib/crm/whatsapp";
 
 export const runtime = "nodejs";
 
@@ -17,13 +18,14 @@ function authErrorMessage(message: string) {
 }
 
 export async function POST(request: Request) {
-  let body: { email?: string };
+  let body: { email?: string; channel?: string };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Requête invalide" }, { status: 400 });
   }
 
+  const channel = body.channel === "whatsapp" ? "whatsapp" : "email";
   const email = body.email?.trim().toLowerCase();
   if (!email || !EMAIL_RE.test(email)) {
     return NextResponse.json({ error: "Adresse e-mail invalide" }, { status: 400 });
@@ -42,7 +44,7 @@ export async function POST(request: Request) {
     const supabase = createServiceClient();
     const { data: customer } = await supabase
       .from("crm_customers")
-      .select("id, auth_user_id")
+      .select("id, auth_user_id, first_name, phone, whatsapp_opt_in_at")
       .eq("email", email)
       .maybeSingle();
     if (!customer?.auth_user_id) {
@@ -63,6 +65,31 @@ export async function POST(request: Request) {
     callback.searchParams.set("token_hash", data.properties.hashed_token);
     callback.searchParams.set("type", "magiclink");
     callback.searchParams.set("next", "/mon-compte");
+
+    if (channel === "whatsapp") {
+      if (!customer.whatsapp_opt_in_at) {
+        await supabase
+          .from("crm_customers")
+          .update({ whatsapp_opt_in_at: new Date().toISOString() })
+          .eq("id", customer.id);
+      }
+      const sent = await sendConnexionWhatsapp({
+        phone: customer.phone,
+        firstName: customer.first_name,
+        link: callback.toString(),
+      });
+      if (sent.ok) {
+        await supabase.from("crm_whatsapp_messages").insert({
+          customer_id: customer.id,
+          direction: "outbound",
+          template_key: "connexion",
+          body: connexionMessage(greetingForWhatsapp(customer.first_name) || ""),
+          twilio_sid: sent.sid,
+          status: "sent",
+        });
+      }
+      return NextResponse.json({ ok: true });
+    }
 
     if (!apiKey) {
       console.info("[auth/otp] RESEND_API_KEY manquante — e-mail non envoyé");
