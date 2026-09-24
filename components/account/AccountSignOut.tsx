@@ -17,7 +17,7 @@ export function AccountSignOut({ className }: { className?: string }) {
   return (
     <button type="button" onClick={signOut} className={className}>
       <Icon name="logout" className="h-5 w-5" />
-      Déconnexion sécurisée
+      Déconnexion
     </button>
   );
 }
