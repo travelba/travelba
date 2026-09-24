@@ -16,7 +16,7 @@ Deux mondes, un Supabase Auth.
 | Entrée | `/admin/login` | `/connexion` |
 | Preuve | ligne `crm_staff` | ligne `crm_customers.auth_user_id` |
 | Rôle JWT | `app_metadata.crm_role` = `admin` \| `agent` | `crm_role=client` |
-| Après login | `/admin` | mot de passe à définir → profil, sinon `/mon-compte` |
+| Après login | `/admin` | mot de passe à définir → bienvenue (une fois) → profil si pas de téléphone, sinon `/mon-compte` |
 
 Compagnons = **fiche seulement**, pas de compte Auth. Pas d’auto-signup : `ensureCustomerForUser` **lie** un user à un customer existant par email, ne crée pas de fiche.
 
@@ -32,7 +32,7 @@ Compagnons = **fiche seulement**, pas de compte Auth. Pas d’auto-signup : `ens
 
 Copy « 30 jours » ; TTL réel = Supabase Auth. Ne pas stocker le lien en base.
 
-Après succès mot de passe (`/api/client/password`) : `app_metadata.must_set_password=false` + `refreshSession`. Redirection : **`/mon-compte/profil`** seulement si `crm_customers.phone` est vide, sinon **`/mon-compte`**. Le mur téléphone reste le filet si l’accueil est ouvert sans numéro.
+Après succès mot de passe (`/api/client/password`) : `app_metadata.must_set_password=false` + `refreshSession`. Si `client_onboarding_done` n’est pas déjà vrai, poser `client_onboarding_pending` (app_metadata seulement) et ouvrir **`/mon-compte/bienvenue`**. Passer ou terminer (`POST /api/client/onboarding`) pose `client_onboarding_done` et retire le pending. Ensuite : **`/mon-compte/profil`** seulement si `crm_customers.phone` est vide, sinon **`/mon-compte`**. Une seule fois, y compris après un mot de passe oublié. Le mur téléphone reste le filet si l’accueil est ouvert sans numéro. La bienvenue ne montre pas les brouillons ni les cartes.
 
 ## Flag mot de passe
 

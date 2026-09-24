@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { BrandMark, PhoneWallBanner } from "@/components/crm/ui";
 import { Icon } from "@/components/crm/icons";
 import { siteConfig } from "@/lib/site";
+import { ONBOARDING_PATH } from "@/lib/crm/session";
 
 const TABS = [
   { href: "/mon-compte", label: "Accueil", exact: true, icon: "explore" },
@@ -36,6 +37,10 @@ export function AccountChrome({
   const router = useRouter();
   const title = pageTitle(pathname);
   const phoneWall = needsPhone && !pathname.startsWith("/mon-compte/profil");
+
+  if (pathname === ONBOARDING_PATH) {
+    return <div className="account-app admin-af min-h-screen">{children}</div>;
+  }
 
   async function signOut() {
     const supabase = createClient();

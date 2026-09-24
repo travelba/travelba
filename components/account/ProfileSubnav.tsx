@@ -2,13 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-
-const LINKS = [
-  { href: "/mon-compte/profil", label: "Vous", exact: true },
-  { href: "/mon-compte/profil/documents", label: "Pièces" },
-  { href: "/mon-compte/profil/compagnons", label: "Voyageurs" },
-  { href: "/mon-compte/profil/facturation", label: "Facturation" },
-];
+import { CLIENT_PROFILE_NAV } from "@/lib/crm/profile-nav";
 
 export function ProfileSubnav() {
   const pathname = usePathname();
@@ -18,7 +12,7 @@ export function ProfileSubnav() {
       className="flex rounded-full bg-[#efeeeb] p-1 shadow-[0_1px_2px_rgba(11,25,44,0.04)]"
       aria-label="Sections du compte"
     >
-      {LINKS.map((link) => {
+      {CLIENT_PROFILE_NAV.map((link) => {
         const active = link.exact
           ? pathname === link.href
           : pathname.startsWith(link.href);

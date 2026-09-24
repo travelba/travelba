@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError } from "@/lib/crm/auth";
-import { MIN_PASSWORD_LENGTH, pathAfterPassword } from "@/lib/crm/session";
+import {
+  MIN_PASSWORD_LENGTH,
+  destinationAfterPassword,
+  pathAfterPassword,
+  withOnboardingPending,
+} from "@/lib/crm/session";
 import { passwordErrorMessage } from "@/lib/crm/db-error";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -31,12 +36,13 @@ export async function POST(request: Request) {
   const admin = createServiceClient();
   const { data: fresh } = await admin.auth.admin.getUserById(user.id);
   const meta = fresh.user?.app_metadata || user.app_metadata || {};
+  const appMeta = withOnboardingPending({
+    ...meta,
+    must_set_password: false,
+    password_set_at: new Date().toISOString(),
+  });
   const { error: metaError } = await admin.auth.admin.updateUserById(user.id, {
-    app_metadata: {
-      ...meta,
-      must_set_password: false,
-      password_set_at: new Date().toISOString(),
-    },
+    app_metadata: appMeta,
   });
   if (metaError) return dbError(metaError, 400);
 
@@ -46,6 +52,7 @@ export async function POST(request: Request) {
     .select("phone")
     .eq("auth_user_id", user.id)
     .maybeSingle();
-  const next = pathAfterPassword(customer?.phone);
-  return NextResponse.json({ ok: true, needsPhone: next !== "/mon-compte", next });
+  const home = pathAfterPassword(customer?.phone);
+  const next = destinationAfterPassword(appMeta, customer?.phone);
+  return NextResponse.json({ ok: true, needsPhone: home !== "/mon-compte", next });
 }
