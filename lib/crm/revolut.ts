@@ -1,4 +1,5 @@
 import { createPrivateKey, createSign, createHmac, timingSafeEqual } from "crypto";
+import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 import { createServiceClient } from "@/lib/supabase/admin";
 import {
   senderFromRevolutPayload,
@@ -15,11 +16,15 @@ function apiBase() {
 }
 
 function pemKey() {
-  return (process.env.REVOLUT_PRIVATE_KEY || "").replace(/\\n/g, "\n").trim();
+  return productionOnlySecret(process.env.REVOLUT_PRIVATE_KEY).replace(/\\n/g, "\n");
+}
+
+export function revolutClientId() {
+  return productionOnlySecret(process.env.REVOLUT_CLIENT_ID);
 }
 
 export function revolutConfigured() {
-  return Boolean(process.env.REVOLUT_CLIENT_ID && pemKey());
+  return Boolean(revolutClientId() && pemKey());
 }
 
 export async function revolutConnected() {
@@ -28,7 +33,7 @@ export async function revolutConnected() {
 }
 
 export function createClientAssertion() {
-  const clientId = process.env.REVOLUT_CLIENT_ID;
+  const clientId = revolutClientId();
   const iss = process.env.REVOLUT_ISS || clientId;
   const key = pemKey();
   if (!clientId || !key) throw new Error("Revolut n’est pas configuré");
@@ -267,7 +272,7 @@ export async function upsertRevolutInbox(txs: RevolutTx[]) {
 }
 
 export function verifyRevolutWebhook(rawBody: string, timestamp: string, signatureHeader: string) {
-  const secret = process.env.REVOLUT_WEBHOOK_SECRET?.trim();
+  const secret = productionOnlySecret(process.env.REVOLUT_WEBHOOK_SECRET);
   if (!secret) throw new Error("REVOLUT_WEBHOOK_SECRET manquant");
   const payloadToSign = `v1.${timestamp}.${rawBody}`;
   const digest = createHmac("sha256", secret).update(payloadToSign).digest("hex");

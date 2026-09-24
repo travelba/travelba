@@ -13,6 +13,7 @@ import {
 } from "@/lib/crm/whatsapp";
 import { createEntryLink } from "@/lib/crm/entry-link";
 import { greetingGivenName } from "@/lib/crm/identity";
+import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 
 export type PortalAccess = {
   status: "none" | "invited" | "ready";
@@ -60,7 +61,7 @@ function inviteEmailHtml(customer: CrmCustomer, link: string) {
 }
 
 async function sendInviteEmail(customer: CrmCustomer, link: string) {
-  const apiKey = process.env.RESEND_API_KEY;
+  const apiKey = productionOnlySecret(process.env.RESEND_API_KEY);
   if (!apiKey) {
     console.info("[invite] RESEND_API_KEY manquante — e-mail non envoyé, lien renvoyé à l’écran admin");
     return false;

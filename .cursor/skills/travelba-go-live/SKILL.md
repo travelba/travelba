@@ -52,7 +52,7 @@ Reprendre `.env.example`. Toutes **sauf** `NEXT_PUBLIC_*` sont server-only.
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_FROM` | compte WhatsApp déjà en Production |
 | `TWILIO_CONTENT_CONNEXION` | SID du modèle Utility `connexion_espace`. Hors git. Sans elle, l’invitation reste e-mail seul. `npx tsx scripts/arm-whatsapp-connexion.ts`, puis approbation Meta |
 
-Preview : `NEXT_PUBLIC_SITE_URL` d’une preview **ne doit pas** rester `https://travelba.fr` si on envoie des invitations depuis la preview (liens cassés). En doute : désactiver Resend sur Preview.
+Preview : `NEXT_PUBLIC_SITE_URL` d’une preview **ne doit pas** rester `https://travelba.fr` si on envoie des invitations depuis la preview (liens cassés). Les secrets de production sont **Production seulement** : `SUPABASE_SERVICE_ROLE_KEY`, Revolut (`REVOLUT_CLIENT_ID`, `REVOLUT_PRIVATE_KEY`, `REVOLUT_API_URL`, `REVOLUT_SANDBOX`, `REVOLUT_ISS`, `REVOLUT_WEBHOOK_SECRET`), Gmail (`GOOGLE_SA_JSON`, `GMAIL_PUSH_TOKEN`, `GMAIL_IMPERSONATE`, `GMAIL_PUBSUB_TOPIC`, `GMAIL_LABELS`), `RESEND_API_KEY`, `OPENAI_API_KEY`, `CRON_SECRET`. Le code les ignore si `VERCEL_ENV=preview` (`productionOnlySecret`). Resend reste coupé sur Preview.
 
 OIDC Vercel : `aiGatewayConfigured()` peut être vrai sur Vercel sans `sk-`. L’ingest PDF exige quand même un `OPENAI_API_KEY` `sk-` (`openaiApiKey()`). Ne pas « migrer l’ingest sur le Gateway » tant que la clé OpenAI est là.
 
