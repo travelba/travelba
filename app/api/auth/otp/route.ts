@@ -76,8 +76,9 @@ export async function POST(request: Request) {
       replyTo: siteConfig.contactEmail,
       subject: `Votre lien de connexion ${siteConfig.shortName}`,
       html: agencyEmailHtml({
-        title: siteConfig.shortName,
-        bodyHtml: `<p style="margin:0 0 16px;line-height:1.5">Cliquez sur le bouton pour ouvrir votre espace. Le lien expire sous 24&nbsp;heures.</p>`,
+        title: "Votre lien de connexion",
+        preheader: "Le lien expire sous 24 heures.",
+        bodyHtml: `<p style="margin:0;line-height:1.5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#0B192C">Cliquez sur le bouton pour ouvrir votre espace. Le lien expire sous 24&nbsp;heures.</p>`,
         ctaLabel: "Me connecter",
         ctaHref: callback.toString(),
         footnote: "Si vous n’êtes pas à l’origine de cette demande, ignorez cet e-mail.",

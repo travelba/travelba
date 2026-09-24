@@ -4,6 +4,7 @@ import { siteConfig } from "@/lib/site";
 import { customerFullName, type CrmCustomer } from "@/lib/crm/types";
 import { SET_PASSWORD_PATH, mustSetPassword } from "@/lib/crm/session";
 import { agencyEmailHtml, escapeHtml } from "@/lib/crm/email-html";
+import { greetingGivenName } from "@/lib/crm/identity";
 
 export type PortalAccess = {
   status: "none" | "invited" | "ready";
@@ -29,13 +30,14 @@ function isAlreadyRegistered(message: string) {
 }
 
 function inviteEmailHtml(customer: CrmCustomer, link: string) {
-  const name = escapeHtml(customer.first_name || "Bonjour");
+  const who = greetingGivenName(customer.first_name);
+  const hello = who ? `Bonjour ${escapeHtml(who)},` : "Bonjour,";
   return agencyEmailHtml({
-    kicker: "L’agence",
-    title: siteConfig.shortName,
+    title: "Votre espace est prêt",
+    preheader: "Définissez votre mot de passe — le lien reste valable 30 jours.",
     bodyHtml: `
-      <p style="margin:0 0 16px;line-height:1.5">Bonjour ${name},</p>
-      <p style="margin:0 0 16px;line-height:1.5">
+      <p style="margin:0 0 16px;line-height:1.5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#0B192C">${hello}</p>
+      <p style="margin:0;line-height:1.5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#0B192C">
         Votre espace ${escapeHtml(siteConfig.name)} est prêt.
         Définissez votre mot de passe pour y accéder — le lien reste valable 30&nbsp;jours.
       </p>
@@ -60,7 +62,7 @@ async function sendInviteEmail(customer: CrmCustomer, link: string) {
     from: `${siteConfig.name} <${from}>`,
     to: [customer.email],
     replyTo: siteConfig.contactEmail,
-    subject: `Votre espace voyageur ${siteConfig.shortName}`,
+    subject: "Votre espace voyageur est prêt",
     html: inviteEmailHtml(customer, link),
   });
   if (error) {
