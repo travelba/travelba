@@ -26,6 +26,8 @@ export type TravelDocumentInput = {
   storagePath?: string | null;
   fileName?: string | null;
   mimeType?: string | null;
+  /** false : conserver les visas déjà déposés pour ce voyageur. */
+  replacePrevious?: boolean;
 } & Partial<DocumentIdentityFields>;
 
 function asDocType(value: string | null | undefined): TravelDocType {
@@ -137,7 +139,7 @@ export async function insertTravelDocument(
     .select("*")
     .single();
   if (error) throw new Error(error.message);
-  if (bookingId) {
+  if (bookingId && input.replacePrevious !== false) {
     await retirePreviousSameType(supabase, {
       customerId: input.customerId,
       companionId,

@@ -65,3 +65,28 @@ export function destinationCountryName(iso2: string) {
 export function frenchEntryNeedsFormality(rule: FrenchEntryRule) {
   return rule.status === "authorization" || rule.status === "visa";
 }
+
+/**
+ * Portail d’État vérifié pour déposer la demande.
+ * Pas d’URL si le site officiel n’est pas unique et confirmé.
+ */
+const APPLY_URLS: Record<string, string> = {
+  US: "https://esta.cbp.dhs.gov/",
+  PR: "https://esta.cbp.dhs.gov/",
+  VI: "https://esta.cbp.dhs.gov/",
+  GU: "https://esta.cbp.dhs.gov/",
+  MP: "https://esta.cbp.dhs.gov/",
+  GB: "https://www.gov.uk/eta",
+  CA: "https://www.canada.ca/fr/immigration-refugies-citoyennete/services/visiter-canada/ave/demande.html",
+  AU: "https://immi.homeaffairs.gov.au/visas/getting-a-visa/visa-listing/evisitor-651",
+  NZ: "https://www.immigration.govt.nz/nzeta",
+  KR: "https://www.k-eta.go.kr/portal/apply/index.do",
+  IL: "https://israel-entry.piba.gov.il/",
+  KE: "https://www.etakenya.go.ke/",
+  IN: "https://indianvisaonline.gov.in/evisa/tvoa.html",
+};
+
+export function officialVisaApplyUrl(iso2: string | null | undefined) {
+  const iso = String(iso2 || "").trim().toUpperCase();
+  return APPLY_URLS[iso] || null;
+}

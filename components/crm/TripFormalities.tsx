@@ -30,11 +30,23 @@ export function TripFormalities({ trip }: { trip: FrenchPassportTrip }) {
         Passeport français
       </p>
       {trip.needsFormality ? (
-        <ul className="space-y-1 text-sm text-[var(--admin-navy)]">
+        <ul className="space-y-2 text-sm text-[var(--admin-navy)]">
           {trip.entries.map((entry) => (
-            <li key={entry.iso}>
-              <span className="font-semibold">{entry.name}</span>
-              {entry.formality ? ` — ${entry.formality}` : ""}
+            <li key={entry.iso} className="flex flex-wrap items-center justify-between gap-2">
+              <span>
+                <span className="font-semibold">{entry.name}</span>
+                {entry.formality ? ` — ${entry.formality}` : ""}
+              </span>
+              {entry.applyUrl ? (
+                <a
+                  href={entry.applyUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-7 items-center rounded-full bg-[var(--admin-navy)] px-3 text-xs font-semibold text-white"
+                >
+                  Faire la demande
+                </a>
+              ) : null}
             </li>
           ))}
         </ul>

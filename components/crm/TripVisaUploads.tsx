@@ -11,95 +11,127 @@ const MAX_BYTES = 15 * 1024 * 1024;
 
 export function TripVisaUploads({
   variant,
-  customerId,
   bookingId,
+  reference,
   travelers,
   documents,
+  entries,
 }: {
   variant: "admin" | "client";
-  customerId?: string;
   bookingId: string;
+  reference?: string;
   travelers: CrmBookingTraveler[];
   documents: CrmTravelDocument[];
+  entries: { iso: string; name: string }[];
 }) {
   const router = useRouter();
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const endpoint = variant === "admin" ? "/api/admin/travel-documents" : "/api/client/documents";
+  const [busy, setBusy] = useState(false);
+  const [errors, setErrors] = useState<string[]>([]);
+  const endpoint =
+    variant === "admin"
+      ? `/api/admin/bookings/${bookingId}/visas`
+      : `/api/client/bookings/${reference}/visas`;
 
-  async function upload(traveler: CrmBookingTraveler, file: File) {
-    if (file.size > MAX_BYTES) {
-      setError("Fichier trop lourd (15 Mo maximum).");
+  async function upload(files: File[]) {
+    const tooLarge = files.find((file) => file.size > MAX_BYTES);
+    if (tooLarge) {
+      setErrors(["Fichier trop lourd (15 Mo maximum)."]);
       return;
     }
-    setBusyId(traveler.id);
-    setError(null);
+    setBusy(true);
+    setErrors([]);
     const form = new FormData();
-    if (customerId) form.set("customer_id", customerId);
-    form.set("doc_type", "visa");
-    form.set("booking_id", bookingId);
-    form.set("traveler_id", traveler.id);
-    if (traveler.companion_id) form.set("companion_id", traveler.companion_id);
-    form.set("apply_identity", "0");
-    form.set("file", file);
+    for (const file of files) form.append("file", file);
     const res = await fetch(endpoint, { method: "POST", body: form });
     const json = await res.json().catch(() => ({}));
-    setBusyId(null);
+    setBusy(false);
+    const messages = Array.isArray(json.errors) ? json.errors.filter((row: unknown) => typeof row === "string") : [];
     if (!res.ok) {
-      setError(json.error || "Envoi impossible");
+      setErrors([json.error || "Envoi impossible"]);
       return;
     }
-    router.refresh();
+    if (messages.length) setErrors(messages);
+    if (json.saved) router.refresh();
   }
 
   return (
-    <div className="space-y-2 border-t border-[#e5e3dc] pt-3">
-      <p className="text-sm font-semibold text-[var(--admin-navy)]">Visa de chaque voyageur</p>
+    <div className="space-y-3 border-t border-[#e5e3dc] pt-3">
+      <div>
+        <p className="text-sm font-semibold text-[var(--admin-navy)]">Visas reçus</p>
+        <p className="text-xs text-muted">
+          Déposez un ou plusieurs visas, même ceux arrivés par e-mail. Nous les attribuons au voyageur.
+        </p>
+      </div>
+      <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--admin-gold)] bg-[#faf9f6] px-4 py-5 text-center">
+        <span className="text-sm font-semibold text-[var(--admin-navy)]">
+          {busy ? "Lecture…" : "Déposer les visas"}
+        </span>
+        <span className="mt-1 text-xs text-muted">PDF ou photo, plusieurs fichiers possibles</span>
+        <input
+          type="file"
+          accept="image/*,application/pdf,.pdf"
+          multiple
+          className="sr-only"
+          disabled={busy || !travelers.length}
+          onChange={(event) => {
+            const files = [...(event.target.files || [])];
+            event.target.value = "";
+            if (files.length) void upload(files);
+          }}
+        />
+      </label>
       {!travelers.length ? (
-        <p className="text-sm text-muted">Ajoutez les voyageurs du séjour pour déposer chaque visa.</p>
+        <p className="text-sm text-muted">Ajoutez les voyageurs du séjour pour déposer les visas.</p>
       ) : (
         <ul className="space-y-3">
           {travelers.map((traveler) => {
-            const visa =
-              tripDocumentsForTraveler(documents, traveler).find((doc) => doc.doc_type === "visa") || null;
+            const visas = tripDocumentsForTraveler(documents, traveler).filter((doc) => doc.doc_type === "visa");
             return (
-              <li key={traveler.id} className="flex flex-wrap items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
-                    {travelerDisplayName(traveler)}
-                  </p>
-                  {visa?.storage_path ? (
-                    <FileOpenLink
-                      path={visa.storage_path}
-                      className="text-xs font-semibold text-[var(--aura-blue)]"
-                    >
-                      {visa.file_name || "Voir le visa"}
-                    </FileOpenLink>
-                  ) : (
-                    <p className="text-xs text-muted">Aucun visa déposé</p>
-                  )}
-                </div>
-                <label className="cursor-pointer rounded-full bg-[var(--admin-navy)] px-3 py-1.5 text-xs font-semibold text-white">
-                  {busyId === traveler.id ? "…" : visa ? "Remplacer" : "Déposer"}
-                  <input
-                    type="file"
-                    accept="image/*,application/pdf,.pdf"
-                    className="sr-only"
-                    disabled={busyId !== null}
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      event.target.value = "";
-                      if (file) void upload(traveler, file);
-                    }}
-                  />
-                </label>
+              <li key={traveler.id}>
+                <p className="text-sm font-semibold text-[var(--admin-navy)]">{travelerDisplayName(traveler)}</p>
+                <ul className="mt-1 space-y-1">
+                  {entries.map((entry) => {
+                    const matched = visas.filter((doc) => doc.issuing_country === entry.iso);
+                    return (
+                      <li key={entry.iso} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <span className="text-muted">{entry.name}</span>
+                        {matched.length ? (
+                          <span className="inline-flex flex-wrap items-center gap-2">
+                            <span className="font-semibold text-[var(--admin-navy)]">Validé</span>
+                            {matched.map((doc) =>
+                              doc.storage_path ? (
+                                <FileOpenLink
+                                  key={doc.id}
+                                  path={doc.storage_path}
+                                  className="font-semibold text-[var(--aura-blue)]"
+                                >
+                                  {doc.file_name || "Voir le visa"}
+                                </FileOpenLink>
+                              ) : null
+                            )}
+                          </span>
+                        ) : (
+                          <span className="text-muted">En attente</span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
               </li>
             );
           })}
         </ul>
       )}
-      {error ? <p className="text-sm text-accent">{error}</p> : null}
-      <BusyBar active={busyId !== null} label="Envoi du visa…" />
+      {errors.length ? (
+        <ul className="space-y-1">
+          {errors.map((error) => (
+            <li key={error} className="text-sm text-accent">
+              {error}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <BusyBar active={busy} label="Lecture des visas…" />
     </div>
   );
 }

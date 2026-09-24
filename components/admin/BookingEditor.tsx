@@ -597,10 +597,10 @@ export function BookingEditor({
           {formalities.needsFormality ? (
             <TripVisaUploads
               variant="admin"
-              customerId={booking.customer_id}
               bookingId={booking.id}
               travelers={travelers}
               documents={identityDocs}
+              entries={formalities.entries}
             />
           ) : null}
           <ExtrasPanel
