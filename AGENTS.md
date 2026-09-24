@@ -10,6 +10,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - Index CRM : `.cursor/skills/travelba-voyage-crm/SKILL.md` (charger **un** skill spécialisé ensuite)
 - Import PDF/photos (dropzone, relecture) : `.cursor/skills/travelba-document-ingest/SKILL.md`
 - Gmail / `crm_email_ingest` (Little Emperors, Expedia TAAP) : `.cursor/skills/travelba-email-ingest/SKILL.md`
+- Formalité ETA-IL / ESTA / Royaume-Uni : `.cursor/skills/travelba-visa/SKILL.md`
 - Création / clone local : `.cursor/skills/travelba-bootstrap/SKILL.md`
 - Prod `travelba.fr` : `.cursor/skills/travelba-go-live/SKILL.md`
 - Prefer shipping working CRM flows over speculative refactors.

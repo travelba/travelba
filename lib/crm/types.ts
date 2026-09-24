@@ -236,6 +236,8 @@ export type CrmBooking = {
   notes_client: string | null;
   notes_internal: string | null;
   visible_to_client: boolean;
+  /** False : le carnet est ouvert, les prix du séjour restent masqués. */
+  prices_visible?: boolean;
   created_at: string;
   updated_at: string;
 };

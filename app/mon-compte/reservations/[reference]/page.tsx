@@ -15,6 +15,10 @@ import { TripFormalities } from "@/components/crm/TripFormalities";
 import { TripVisaUploads } from "@/components/crm/TripVisaUploads";
 import { bookingHasFlight, serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
+import { VisaAsk } from "@/components/account/VisaAsk";
+import { VisaProgress } from "@/components/account/VisaProgress";
+import type { ClientVisaStep } from "@/lib/crm/visa-flow";
+import type { VisaCorridor } from "@/lib/crm/visa-fees";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { BookingStatusBadge } from "@/components/crm/ui";
 import {
@@ -51,7 +55,7 @@ export default async function ReservationDetailPage({ params }: Props) {
   if (!booking) notFound();
   const b = booking as CrmBooking;
 
-  const [{ data: items }, { data: travelers }, { data: docs }, { data: identityDocs }, { data: companions }, { data: declined }] =
+  const [{ data: items }, { data: travelers }, { data: docs }, { data: identityDocs }, { data: companions }, { data: declined }, { data: visaRows }] =
     await Promise.all([
     supabase
       .from("crm_booking_items")
@@ -67,6 +71,7 @@ export default async function ReservationDetailPage({ params }: Props) {
     supabase.from("crm_travel_documents").select("*").eq("customer_id", customer.id),
     supabase.from("crm_travel_companions").select("*").eq("customer_id", customer.id),
     supabase.from("crm_declined_services").select("kind, service_leg, place, moment").eq("booking_id", b.id),
+    supabase.from("crm_visa_requests").select("status, country, step").eq("booking_id", b.id),
   ]);
   const refusals = ((declined || []) as { kind?: string | null; service_leg?: string | null; place?: string | null; moment?: string | null }[])
     .map(serviceRefusalFromRow)
@@ -121,6 +126,28 @@ export default async function ReservationDetailPage({ params }: Props) {
           </div>
         </div>
       </BookingHero>
+
+      {bookingHasFlight(visibleItems)
+        ? formalities.entries
+            .filter((entry) => entry.iso === "IL" || entry.iso === "US" || entry.iso === "GB")
+            .map((entry) => {
+              const row = ((visaRows || []) as { country: VisaCorridor; step?: ClientVisaStep; status: string }[]).find(
+                (item) => item.country === entry.iso
+              );
+              return (
+                <section key={entry.iso} className="aura-card space-y-3 rounded-[1.35rem] bg-white p-4">
+                  {row ? (
+                    <VisaProgress
+                      countryName={entry.name}
+                      step={row.step || (row.status === "piece" ? "piece" : "preparation")}
+                    />
+                  ) : (
+                    <VisaAsk reference={b.reference} country={entry.iso as VisaCorridor} />
+                  )}
+                </section>
+              );
+            })
+        : null}
 
       {missingPassports ? (
         <a
@@ -198,7 +225,7 @@ export default async function ReservationDetailPage({ params }: Props) {
           Montant du séjour
         </p>
         <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
-          {formatMoney(Number(b.total_amount), b.currency)}
+          {b.prices_visible === false ? "Prix à la publication" : formatMoney(Number(b.total_amount), b.currency)}
         </p>
         {insurances.map((item) => (
           <p key={item.id} className="text-sm text-muted">

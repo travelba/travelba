@@ -13,6 +13,10 @@
     {
       "path": "/api/cron/gmail-watch-renew",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/visa-desk",
+      "schedule": "0 7,8,9 * * *"
     }
   ]
 }

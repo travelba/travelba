@@ -28,6 +28,7 @@ Produit FR pour agence de voyage : back-office `/admin` (clients, réservations,
 | Ledger / Stripe / Revolut | `travelba-money` |
 | Cursor Design / fichiers | `travelba-ui` |
 | Fiche / passeports | `travelba-identity` |
+| Formalité / Astra / étapes client | `travelba-visa` |
 | Tests / verif | `travelba-verify` |
 
 ## Stack clé

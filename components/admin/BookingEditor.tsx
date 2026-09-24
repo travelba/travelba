@@ -32,6 +32,8 @@ import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
 import { PlaceField } from "@/components/crm/PlaceField";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
 import { TripPassportPicker } from "@/components/crm/TripPassportPicker";
+import { VisaRunPanel } from "@/components/admin/VisaRunPanel";
+import type { VisaCorridor } from "@/lib/crm/visa-fees";
 import { TripFormalities } from "@/components/crm/TripFormalities";
 import { TripVisaUploads } from "@/components/crm/TripVisaUploads";
 import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
@@ -377,7 +379,16 @@ export function BookingEditor({
       />
 
       <section className="admin-af-card flex flex-col gap-3 rounded-3xl p-5 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+        <div className="min-w-0 flex-1 space-y-3">
+          {bookingHasFlight(items)
+            ? formalities.entries
+                .filter((entry): entry is typeof entry & { iso: VisaCorridor } =>
+                  entry.iso === "IL" || entry.iso === "US" || entry.iso === "GB"
+                )
+                .map((entry) => (
+                  <VisaRunPanel key={entry.iso} bookingId={booking.id} country={entry.iso} />
+                ))
+            : null}
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">Carnet client</p>
           <p className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">
             {booking.visible_to_client ? "Visible dans l’espace" : "Masqué — invisible au client"}
