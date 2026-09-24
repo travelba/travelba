@@ -31,9 +31,10 @@ test("l’adresse publique est courte", () => {
 test("WhatsApp reçoit le titre sans consommer le jeton", () => {
   assert.equal(isLinkCrawler("WhatsApp/2.23"), true);
   assert.equal(isLinkCrawler("facebookexternalhit/1.1"), true);
-  assert.equal(shouldServePreview("WhatsApp/2.23", null), true);
-  assert.equal(shouldServePreview("Mozilla/5.0", null), true);
-  assert.equal(shouldServePreview("Mozilla/5.0", "?1"), true);
+  assert.equal(shouldServePreview("WhatsApp/2.23.20.72 A", null), true);
+  assert.equal(shouldServePreview("facebookexternalhit/1.1", "?1"), true);
+  assert.equal(shouldServePreview("Mozilla/5.0", null), false);
+  assert.equal(shouldServePreview("Mozilla/5.0 (iPhone) WhatsApp/2.23", "?1"), false);
   assert.equal(entryOpenRequested("?ouvrir=1"), true);
   assert.equal(entryOpenRequested(""), false);
   const html = entryPreviewHtml("https://travelba.fr", "K7MQ2PX4");
