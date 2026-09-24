@@ -4,6 +4,7 @@ import { BookingEditor } from "@/components/admin/BookingEditor";
 import { DeleteBookingButton } from "@/components/admin/DeleteBookingButton";
 import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
+import { formatDateRangeShort } from "@/lib/crm/money";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import type {
   CrmBooking,
@@ -62,10 +63,13 @@ export default async function AdminBookingPage({ params }: Props) {
 
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#e5e3dc] bg-white px-4 py-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-accent">{b.reference}</p>
-          <h1 className="font-display text-3xl font-extrabold text-[var(--admin-navy)]">{b.title}</h1>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">{b.reference}</p>
+          <p className="text-sm font-semibold text-[var(--admin-navy)]">
+            {formatDateRangeShort(b.start_date, b.end_date)}
+            {b.destination ? ` · ${b.destination}` : ""}
+          </p>
         </div>
         <DeleteBookingButton bookingId={b.id} label={`${b.reference} — ${b.title}`} />
       </div>

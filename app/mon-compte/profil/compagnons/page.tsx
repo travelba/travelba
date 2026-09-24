@@ -25,7 +25,10 @@ export default async function CompanionsPage() {
   return (
     <div className="space-y-4 pb-6">
       <ProfileSubnav />
-      <h1 className="font-display text-xl font-semibold text-[var(--admin-navy-deep)]">Voyageurs</h1>
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Foyer</p>
+        <h1 className="font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">Voyageurs</h1>
+      </div>
       <CompanionsManager
         companions={(data || []) as CrmCompanion[]}
         documents={(documents || []) as CrmTravelDocument[]}

@@ -28,7 +28,10 @@ export default async function FacturationPage() {
   return (
     <div className="space-y-4 pb-6">
       <ProfileSubnav />
-      <h1 className="font-display text-xl font-semibold text-[var(--admin-navy-deep)]">Facturation</h1>
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Société</p>
+        <h1 className="font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">Facturation</h1>
+      </div>
       {isCompanyMember(customer) ? (
         <section className="rounded-2xl border border-[#e5e3dc] bg-white p-4">
           <p className="text-[10px] font-bold uppercase tracking-wider text-[#9c7c4e]">

@@ -21,7 +21,10 @@ export default async function DocumentsPage() {
   return (
     <div className="space-y-4 pb-6">
       <ProfileSubnav />
-      <h1 className="font-display text-xl font-semibold text-[var(--admin-navy-deep)]">Pièces</h1>
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Coffre</p>
+        <h1 className="font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">Pièces</h1>
+      </div>
       <DocumentsManager
         documents={(documents || []) as CrmTravelDocument[]}
         companions={(companions || []) as CrmCompanion[]}
