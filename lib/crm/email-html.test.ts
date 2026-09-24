@@ -1,26 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { agencyEmailHtml, greetingName } from "./email-html";
-
-describe("greetingName", () => {
-  it("joins comma-separated first names with et", () => {
-    assert.equal(greetingName("Simon, Iony"), "Simon et Iony");
-  });
-
-  it("keeps a single first name", () => {
-    assert.equal(greetingName("Simon"), "Simon");
-  });
-
-  it("returns empty when missing", () => {
-    assert.equal(greetingName(""), "");
-    assert.equal(greetingName(null), "");
-  });
-});
+import { agencyEmailHtml } from "./email-html";
 
 describe("agencyEmailHtml", () => {
   const html = agencyEmailHtml({
     title: "Votre espace est prêt",
-    bodyHtml: "<p>Bonjour Simon et Iony,</p>",
+    bodyHtml: "<p>Bonjour Simon,</p>",
     ctaLabel: "Accéder à mon espace",
     ctaHref: "https://travelba.fr/auth/callback?token_hash=abc",
     footnote: "Si vous n’êtes pas à l’origine de cette invitation, ignorez cet e-mail.",

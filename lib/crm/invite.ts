@@ -3,7 +3,8 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { customerFullName, type CrmCustomer } from "@/lib/crm/types";
 import { SET_PASSWORD_PATH, mustSetPassword } from "@/lib/crm/session";
-import { agencyEmailHtml, escapeHtml, greetingName } from "@/lib/crm/email-html";
+import { agencyEmailHtml, escapeHtml } from "@/lib/crm/email-html";
+import { greetingGivenName } from "@/lib/crm/identity";
 
 export type PortalAccess = {
   status: "none" | "invited" | "ready";
@@ -29,7 +30,7 @@ function isAlreadyRegistered(message: string) {
 }
 
 function inviteEmailHtml(customer: CrmCustomer, link: string) {
-  const who = greetingName(customer.first_name);
+  const who = greetingGivenName(customer.first_name);
   const hello = who ? `Bonjour ${escapeHtml(who)},` : "Bonjour,";
   return agencyEmailHtml({
     title: "Votre espace est prêt",

@@ -14,17 +14,6 @@ function escapeHtml(value: string) {
     .replace(/"/g, "&quot;");
 }
 
-/** « Simon, Iony » → « Simon et Iony ». Un seul prénom reste tel quel. */
-export function greetingName(firstName: string | null | undefined) {
-  const parts = (firstName || "")
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (parts.length === 0) return "";
-  if (parts.length === 1) return parts[0];
-  return `${parts.slice(0, -1).join(", ")} et ${parts[parts.length - 1]}`;
-}
-
 /** E-mail transactionnel — Sovereign Horizon (pas le rouge Aura). */
 export function agencyEmailHtml(opts: {
   title: string;
