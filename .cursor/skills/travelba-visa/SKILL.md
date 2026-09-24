@@ -12,7 +12,7 @@ Israël, États-Unis, Royaume-Uni. Passeport français. Les autres pays restent 
 
 ## Où est le bouton
 
-**Lancer le parcours** est dans le header du dossier admin (`BookingEditor`), dans la carte du carnet, à côté d’Enregistrer. Pas sous les vols, pas sur la fiche client, pas au milieu de la page.
+Le client fait la demande seul, en haut de son séjour : **Faire la demande**. Ce clic lance Astra. L’agence ne remplit pas le formulaire. Elle confirme avant l’envoi, depuis le header du dossier. Le paiement s’arrête sans Pliant.
 
 Si l’utilisateur ne le voit pas : le déplacer dans ce header. Ne pas lui dire de scroller. Ne pas l’envoyer sur travelba.fr tant que le code n’y est pas. Lui donner l’URL exacte du dossier sur l’environnement qui contient le bouton.
 

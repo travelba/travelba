@@ -15,9 +15,10 @@ import { TripFormalities } from "@/components/crm/TripFormalities";
 import { TripVisaUploads } from "@/components/crm/TripVisaUploads";
 import { bookingHasFlight, serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
+import { VisaAsk } from "@/components/account/VisaAsk";
 import { VisaProgress } from "@/components/account/VisaProgress";
 import type { ClientVisaStep } from "@/lib/crm/visa-flow";
-import { VISA_OFFICIAL, type VisaCorridor } from "@/lib/crm/visa-fees";
+import type { VisaCorridor } from "@/lib/crm/visa-fees";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { BookingStatusBadge } from "@/components/crm/ui";
 import {
@@ -126,6 +127,28 @@ export default async function ReservationDetailPage({ params }: Props) {
         </div>
       </BookingHero>
 
+      {bookingHasFlight(visibleItems)
+        ? formalities.entries
+            .filter((entry) => entry.iso === "IL" || entry.iso === "US" || entry.iso === "GB")
+            .map((entry) => {
+              const row = ((visaRows || []) as { country: VisaCorridor; step?: ClientVisaStep; status: string }[]).find(
+                (item) => item.country === entry.iso
+              );
+              return (
+                <section key={entry.iso} className="aura-card space-y-3 rounded-[1.35rem] bg-white p-4">
+                  {row ? (
+                    <VisaProgress
+                      countryName={entry.name}
+                      step={row.step || (row.status === "piece" ? "piece" : "preparation")}
+                    />
+                  ) : (
+                    <VisaAsk reference={b.reference} country={entry.iso as VisaCorridor} />
+                  )}
+                </section>
+              );
+            })
+        : null}
+
       {missingPassports ? (
         <a
           href="#passeport"
@@ -232,13 +255,6 @@ export default async function ReservationDetailPage({ params }: Props) {
       {bookingHasFlight(visibleItems) ? (
         <section className="aura-card space-y-3 rounded-[1.35rem] bg-white p-4">
           <TripFormalities trip={formalities} />
-          {((visaRows || []) as { status: string; country: VisaCorridor; step?: ClientVisaStep }[]).map((row) => (
-            <VisaProgress
-              key={row.country}
-              countryName={VISA_OFFICIAL[row.country]?.countryName || row.country}
-              step={row.step || (row.status === "piece" ? "piece" : "preparation")}
-            />
-          ))}
           {formalities.needsFormality ? (
             <TripVisaUploads
               variant="client"
