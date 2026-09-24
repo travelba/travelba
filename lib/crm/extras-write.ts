@@ -368,6 +368,46 @@ export async function declineBookingService(
   return { declined: true as const };
 }
 
+/** Retire un service déjà validé par le client, sans le marquer comme refusé. */
+export async function cancelBookingExtra(
+  supabase: SupabaseClient,
+  opts: {
+    booking: CrmBooking;
+    items: CrmBookingItem[];
+    kind: ExtraKind | "visa" | "checkin";
+    leg: ExtraLeg | null;
+    place?: ServicePlace | null;
+  }
+) {
+  const place = opts.kind === "chauffeur" ? opts.place || null : null;
+  const item =
+    opts.kind === "visa"
+      ? findVisaExtra(opts.items)
+      : opts.kind === "checkin"
+        ? findCheckinExtra(opts.items)
+        : opts.leg
+          ? findExtra(opts.items, opts.kind, opts.leg, place)
+          : null;
+  if (!item || !("id" in item) || !item.id) {
+    throw new BookingIssuesError("Service introuvable.", [
+      { field: "kind", message: "Ce service n’est pas validé." },
+    ]);
+  }
+  const { error } = await supabase
+    .from("crm_booking_items")
+    .delete()
+    .eq("id", item.id)
+    .eq("booking_id", opts.booking.id);
+  if (error) {
+    console.error("[crm] cancel extra:", error.code ?? "?", error.message ?? "");
+    throw new BookingIssuesError("Annulation impossible.", [
+      { field: "form", message: "Le service n’a pas pu être annulé. Réessayez." },
+    ]);
+  }
+  await refreshBookingLedger(supabase, opts.booking.id);
+  return { cancelled: true as const };
+}
+
 export function parseExtraRequest(body: Record<string, unknown> | null) {
   const kind = String(body?.kind || "");
   if (kind === "visa") return { kind: "visa" as const, leg: null, place: null, address: null };

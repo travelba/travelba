@@ -85,13 +85,25 @@ export function ExtrasPanel({
     router.refresh();
   }
 
-  async function cancel(itemId: string) {
-    if (variant !== "admin") return;
+  async function cancel(kind: "checkin" | "visa", itemId: string) {
+    if (busy) return;
     setBusy(`cancel:${itemId}`);
-    await fetch(`/api/admin/bookings/${booking.id}/items?itemId=${encodeURIComponent(itemId)}`, {
-      method: "DELETE",
-    });
+    setIssues([]);
+    const res = isAdmin
+      ? await fetch(`/api/admin/bookings/${booking.id}/items?itemId=${encodeURIComponent(itemId)}`, {
+          method: "DELETE",
+        })
+      : await fetch(`/api/client/bookings/${booking.reference}/extras`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cancel: true, kind }),
+        });
+    const json = await res.json().catch(() => ({}));
     setBusy(null);
+    if (!res.ok) {
+      setIssues(issuesFromResponse(json));
+      return;
+    }
     router.refresh();
   }
 
@@ -119,16 +131,14 @@ export function ExtrasPanel({
         </button>
       ) : null;
     const validate = input.existing ? (
-      isAdmin ? (
-        <button
-          type="button"
-          className="text-xs font-semibold text-accent"
-          disabled={busy !== null}
-          onClick={() => void cancel(input.existing!.id)}
-        >
-          Annuler
-        </button>
-      ) : null
+      <button
+        type="button"
+        className="inline-flex h-5 items-center justify-center rounded-full bg-[var(--admin-navy)] px-2.5 text-[11px] font-semibold leading-none text-white disabled:opacity-50"
+        disabled={busy !== null}
+        onClick={() => void cancel(input.kind, input.existing!.id)}
+      >
+        {busy === `cancel:${input.existing.id}` ? "…" : "Annuler"}
+      </button>
     ) : (
       <button
         type="button"

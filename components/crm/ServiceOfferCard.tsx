@@ -91,12 +91,29 @@ export function ServiceOfferCard({
   }
 
   async function cancel() {
-    if (!existing || !isAdmin) return;
+    if (!existing || busy) return;
     setBusy("cancel");
-    await fetch(`/api/admin/bookings/${bookingId}/items?itemId=${encodeURIComponent(existing.id)}`, {
-      method: "DELETE",
-    });
+    setIssues([]);
+    const res = isAdmin
+      ? await fetch(`/api/admin/bookings/${bookingId}/items?itemId=${encodeURIComponent(existing.id)}`, {
+          method: "DELETE",
+        })
+      : await fetch(`/api/client/bookings/${reference}/extras`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cancel: true,
+            kind: offer.kind,
+            leg: offer.leg,
+            place: offer.place,
+          }),
+        });
+    const json = await res.json().catch(() => ({}));
     setBusy(null);
+    if (!res.ok) {
+      setIssues(issuesFromResponse(json));
+      return;
+    }
     router.refresh();
   }
 
@@ -147,15 +164,14 @@ export function ServiceOfferCard({
 
   function action() {
     if (existing) {
-      if (!isAdmin) return null;
       return (
         <button
           type="button"
-          className="text-xs font-semibold text-accent"
           disabled={busy !== null}
           onClick={() => void cancel()}
+          className="inline-flex h-5 items-center justify-center rounded-full bg-[var(--admin-navy)] px-2.5 text-[11px] font-semibold leading-none text-white disabled:opacity-50"
         >
-          Annuler
+          {busy === "cancel" ? "…" : "Annuler"}
         </button>
       );
     }
