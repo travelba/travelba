@@ -10,7 +10,6 @@ import { BookingHero } from "@/components/crm/BookingHero";
 import { Icon } from "@/components/crm/icons";
 import { ConciergeBanner } from "@/components/crm/ui";
 import { greetingGivenName } from "@/lib/crm/identity";
-import { siteConfig } from "@/lib/site";
 
 export default async function AccountHomePage() {
   const { supabase, user } = await getSessionUser();
@@ -45,7 +44,6 @@ export default async function AccountHomePage() {
     : "";
   const tripPlace = nextTrip ? tripPlaceLine(nextTrip.title, nextTrip.destination) : null;
   const tripHref = nextTrip ? `/mon-compte/reservations/${nextTrip.reference}` : "/mon-compte/reservations";
-  const wa = `https://wa.me/${siteConfig.whatsappNumber}`;
 
   return (
     <div className="space-y-3">
@@ -98,52 +96,6 @@ export default async function AccountHomePage() {
       )}
 
       <ConciergeBanner />
-
-      <section className="flex flex-col gap-3 pb-2">
-        <h2 className="px-1 font-display text-xl font-semibold text-[var(--admin-navy)]">
-          Services et documents
-        </h2>
-        <div className="grid grid-cols-3 gap-2.5">
-          <Link
-            href={tripHref}
-            className="flex h-28 flex-col justify-between rounded-2xl border border-[#e5e3dc] bg-white p-3 text-left shadow-sm"
-          >
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--admin-gold)]/30 bg-[#f8f3eb]">
-              <Icon name="airplane_ticket" className="h-[18px] w-[18px] text-[var(--admin-navy)]" />
-            </span>
-            <span>
-              <span className="block text-[12px] font-semibold leading-tight text-[var(--admin-navy)]">Mes billets</span>
-              <span className="text-[10px] text-[#5a5c60]">Carnet</span>
-            </span>
-          </Link>
-          <Link
-            href="/mon-compte/profil/documents"
-            className="flex h-28 flex-col justify-between rounded-2xl border border-[#e5e3dc] bg-white p-3 text-left shadow-sm"
-          >
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--admin-gold)]/30 bg-[#f8f3eb]">
-              <Icon name="description" className="h-[18px] w-[18px] text-[#9e7e51]" />
-            </span>
-            <span>
-              <span className="block text-[12px] font-semibold leading-tight text-[var(--admin-navy)]">Pièces</span>
-              <span className="text-[10px] text-[#5a5c60]">Coffre</span>
-            </span>
-          </Link>
-          <a
-            href={wa}
-            target="_blank"
-            rel="noreferrer"
-            className="flex h-28 flex-col justify-between rounded-2xl border border-[#e5e3dc] bg-white p-3 text-left shadow-sm"
-          >
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[var(--admin-gold)]">
-              <Icon name="support_agent" className="h-[18px] w-[18px]" />
-            </span>
-            <span>
-              <span className="block text-[12px] font-semibold leading-tight text-[var(--admin-navy)]">Assistance</span>
-              <span className="text-[10px] font-medium text-[#9e7e51]">WhatsApp</span>
-            </span>
-          </a>
-        </div>
-      </section>
 
       {member ? (
         <Link
