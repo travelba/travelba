@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { openEtaIlPortal } from "@/lib/crm/eta-il-browser";
-import { buildEtaIlDraft, publicEtaIlDraft } from "@/lib/crm/eta-il-draft";
+import { buildEtaIlDraft, publicEtaIlDraft, tripGoesToIsrael } from "@/lib/crm/eta-il-draft";
+import { etaIlPliantCard } from "@/lib/crm/eta-il-fee";
+import { issuePliantCard, pliantConfigured } from "@/lib/crm/pliant";
 import { runEtaIlSession } from "@/lib/crm/eta-il-session";
 import { openaiApiKey } from "@/lib/crm/ingest-types";
 import type {
@@ -22,7 +24,7 @@ export async function POST(request: Request, ctx: Ctx) {
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
   const body = (await request.json().catch(() => ({}))) as { action?: string };
-  const action = body.action === "fill" ? "fill" : "prepare";
+  const action = body.action === "fill" || body.action === "card" ? body.action : "prepare";
 
   const { data: booking } = await auth.supabase.from("crm_bookings").select("*").eq("id", id).maybeSingle();
   if (!booking) return jsonError("Réservation introuvable", 404);
@@ -42,6 +44,36 @@ export async function POST(request: Request, ctx: Ctx) {
     startDate: b.start_date,
     endDate: b.end_date,
   });
+  if (action === "card") {
+    if (!tripGoesToIsrael((items || []) as CrmBookingItem[])) {
+      return jsonError("Ce dossier n’a pas de vol vers Israël.");
+    }
+    if (!pliantConfigured()) return jsonError("Pliant n’est pas configuré.");
+    const party = (travelers || []) as CrmBookingTraveler[];
+    const spec = etaIlPliantCard({
+      firstName: holder?.first_name || party[0]?.first_name || "Client",
+      lastName: holder?.last_name || party[0]?.last_name || "Travelba",
+      travelerCount: Math.max(1, party.length),
+      bookingReference: b.reference,
+      organizationId: process.env.PLIANT_ORGANIZATION_ID || "",
+      startDate: b.start_date,
+      endDate: b.end_date,
+    });
+    try {
+      const issued = await issuePliantCard(process.env.PLIANT_CARDHOLDER_ID || "", spec.body);
+      return NextResponse.json({
+        holderName: `${spec.holderFirstName} ${spec.holderLastName}`,
+        feeIls: spec.feeIls,
+        ceilingEur: spec.ceilingEur,
+        label: spec.body.label,
+        cardId: issued.cardId,
+        status: issued.status,
+      });
+    } catch (err) {
+      return jsonError(err instanceof Error ? err.message : "Pliant n’a pas créé la carte.");
+    }
+  }
+
   if (action === "prepare" || draft.phase !== "prêt") {
     return NextResponse.json(publicEtaIlDraft(draft));
   }

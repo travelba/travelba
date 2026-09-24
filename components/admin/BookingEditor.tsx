@@ -596,7 +596,15 @@ export function BookingEditor({
         <section className="admin-af-card space-y-4 rounded-3xl p-5">
           <TripFormalities trip={formalities} />
           {formalities.entries.some((entry) => entry.iso === "IL") ? (
-            <EtaIlPanel bookingId={booking.id} />
+            <EtaIlPanel
+              bookingId={booking.id}
+              firstName={customer?.first_name || holderName.first_name}
+              lastName={customer?.last_name || holderName.last_name}
+              travelerCount={Math.max(1, travelers.length)}
+              bookingReference={booking.reference}
+              startDate={booking.start_date}
+              endDate={booking.end_date}
+            />
           ) : null}
           {formalities.needsFormality ? (
             <TripVisaUploads

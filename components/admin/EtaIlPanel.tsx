@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { EtaIlPersonView, EtaIlPhase } from "@/lib/crm/eta-il-draft";
+import { etaIlPliantCard } from "@/lib/crm/eta-il-fee";
 
 type View = {
   phase: EtaIlPhase;
@@ -13,11 +14,55 @@ type View = {
   summary?: string | null;
 };
 
-export function EtaIlPanel({ bookingId }: { bookingId: string }) {
+export function EtaIlPanel({
+  bookingId,
+  firstName,
+  lastName,
+  travelerCount,
+  bookingReference,
+  startDate,
+  endDate,
+}: {
+  bookingId: string;
+  firstName: string;
+  lastName: string;
+  travelerCount: number;
+  bookingReference: string;
+  startDate: string | null;
+  endDate: string | null;
+}) {
   const [view, setView] = useState<View | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cardMessage, setCardMessage] = useState<string | null>(null);
+  const card = etaIlPliantCard({
+    firstName,
+    lastName,
+    travelerCount,
+    bookingReference,
+    organizationId: "",
+    startDate,
+    endDate,
+  });
+
+  async function createCard() {
+    setBusy(true);
+    setError(null);
+    setCardMessage(null);
+    const res = await fetch(`/api/admin/bookings/${bookingId}/eta-il`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "card" }),
+    });
+    const json = (await res.json().catch(() => null)) as { error?: string; label?: string; ceilingEur?: number } | null;
+    setBusy(false);
+    if (!res.ok) {
+      setError(json?.error || "Pliant n’a pas créé la carte.");
+      return;
+    }
+    setCardMessage(`${json?.label || card.body.label} · plafond ${json?.ceilingEur ?? card.ceilingEur} €`);
+  }
 
   async function run(action: "prepare" | "fill") {
     setBusy(true);
@@ -49,6 +94,24 @@ export function EtaIlPanel({ bookingId }: { bookingId: string }) {
         >
           {busy ? "En cours…" : view?.phase === "prêt" ? "Remplir le portail" : "Préparer l’ETA-IL"}
         </button>
+      </div>
+      <div className="rounded-2xl bg-[#f7f4ee] px-3 py-3 text-sm text-[var(--admin-navy)]">
+        <p className="font-medium">
+          Carte Pliant · {card.holderFirstName} {card.holderLastName}
+        </p>
+        <p>
+          Frais du portail : {card.feeIls} ILS. Plafond indicatif : {card.ceilingEur} € ({card.body.maxTransactionCount}{" "}
+          paiement{card.body.maxTransactionCount > 1 ? "s" : ""}).
+        </p>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={createCard}
+          className="mt-2 inline-flex h-7 items-center rounded-full border border-[var(--admin-navy)] px-3 text-xs font-semibold disabled:opacity-50"
+        >
+          Créer la carte
+        </button>
+        {cardMessage ? <p className="mt-2">{cardMessage}</p> : null}
       </div>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       {view?.reason ? <p className="text-sm text-[var(--admin-navy)]">{view.reason}</p> : null}
