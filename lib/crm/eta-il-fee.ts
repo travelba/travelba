@@ -1,13 +1,14 @@
 import { ETA_IL_PORTAL } from "./eta-il-draft";
+import {
+  centsToEur,
+  corridorCeilingCents,
+  ECB_SNAPSHOT,
+  VISA_OFFICIAL,
+  type EurFx,
+} from "./visa-fees";
 
 /** Frais publiés sur israel-entry.piba.gov.il : 25 ILS par demande. */
-export const ETA_IL_FEE_ILS = 25;
-
-/**
- * Plafond Pliant en euros, au-dessus de 25 ILS, pour que le change ne fasse pas échouer le paiement.
- * 10 € par voyageur. Ce n’est pas le prix du portail.
- */
-export const ETA_IL_CARD_EUR = 10;
+export const ETA_IL_FEE_ILS = VISA_OFFICIAL.IL.amount;
 
 const NAME_CHARS = /[^A-Za-z0-9äöüÄÖÜ.\-]+/g;
 
@@ -20,6 +21,7 @@ export function etaIlPliantCard(input: {
   lastName: string;
   travelerCount: number;
   bookingReference: string;
+  rates?: EurFx;
   organizationId: string;
   cardConfig?: string;
   today?: string;
@@ -27,7 +29,8 @@ export function etaIlPliantCard(input: {
   endDate?: string | null;
 }) {
   const count = Math.max(1, Math.floor(Number(input.travelerCount)) || 1);
-  const cents = count * ETA_IL_CARD_EUR * 100;
+  const rates = input.rates || ECB_SNAPSHOT.rates;
+  const cents = corridorCeilingCents("IL", count, rates) || 0;
   const money = { value: cents, currency: "EUR" };
   const first = pliantCardName(input.firstName) || "Client";
   const last = pliantCardName(input.lastName) || "Travelba";
@@ -39,7 +42,7 @@ export function etaIlPliantCard(input: {
     holderFirstName: first,
     holderLastName: last,
     feeIls: count * ETA_IL_FEE_ILS,
-    ceilingEur: count * ETA_IL_CARD_EUR,
+    ceilingEur: centsToEur(cents),
     portal: ETA_IL_PORTAL,
     body: {
       organizationId: input.organizationId,

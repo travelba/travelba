@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { ECB_SNAPSHOT, corridorCeilingCents } from "./visa-fees";
 import {
   agencyFeeVisible,
   canStartCorridor,
@@ -14,9 +15,14 @@ import {
   type DeskTask,
 } from "./visa-desk";
 
-test("le plafond Israël est 10 € par voyageur, l’ESTA n’est pas inventé", () => {
-  assert.equal(combinedCeilingEur(["IL"], 4), 40);
-  assert.equal(combinedCeilingEur(["IL", "US"], 1), null);
+test("le plafond suit la dépense officielle de chaque visa", () => {
+  const rates = ECB_SNAPSHOT.rates;
+  const il = corridorCeilingCents("IL", 1, rates);
+  const us = corridorCeilingCents("US", 1, rates);
+  const gb = corridorCeilingCents("GB", 1, rates);
+  assert.ok(il && us && gb);
+  assert.equal(combinedCeilingEur(["IL", "US", "GB"], 1, rates), (il + us + gb) / 100);
+  assert.equal(combinedCeilingEur(["IL"], 4, rates), (il * 4) / 100);
 });
 
 test("les 25 € n’apparaissent que si la taxe d’État est payée", () => {

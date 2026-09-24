@@ -68,3 +68,22 @@ export async function issuePliantCard(cardholderId: string, body: unknown) {
   const json = JSON.parse(text) as { cardId?: string; id?: string; status?: string };
   return { cardId: json.cardId || json.id || null, status: json.status || null };
 }
+
+export async function raisePliantLimit(cardId: string, limit: { value: number; currency: "EUR" }, count: number) {
+  const token = await accessToken();
+  const res = await fetch(`${endpoints().api}/cards/${cardId}`, {
+    method: "PATCH",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+      "Pliant-API-Version": "2.1.0",
+    },
+    body: JSON.stringify({
+      limit,
+      transactionLimit: limit,
+      limitRenewFrequency: "TOTAL",
+      maxTransactionCount: count,
+    }),
+  });
+  if (!res.ok) throw new Error("Pliant n’a pas relevé le plafond.");
+}

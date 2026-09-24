@@ -1,4 +1,11 @@
-export type VisaCorridor = "IL" | "US" | "GB";
+import {
+  centsToEur,
+  combinedCeilingCents,
+  type EurFx,
+  type VisaCorridor,
+} from "./visa-fees";
+
+export type { EurFx, VisaCorridor };
 
 export type DeskReason = "refus" | "message";
 
@@ -11,24 +18,10 @@ export type DeskTask = {
   createdAt: string;
 };
 
-/** Plafond par voyageur. ESTA et Royaume-Uni ne sont pas figés tant que le tarif publié n’est pas branché. */
-const CEILING_EUR: Partial<Record<VisaCorridor, number>> = { IL: 10 };
-
-export function corridorCeilingEur(country: VisaCorridor, travelers: number) {
-  const unit = CEILING_EUR[country];
-  if (!unit) return null;
-  const count = Math.max(1, Math.floor(travelers) || 1);
-  return unit * count;
-}
-
-export function combinedCeilingEur(countries: VisaCorridor[], travelers: number) {
-  let total = 0;
-  for (const country of countries) {
-    const part = corridorCeilingEur(country, travelers);
-    if (part == null) return null;
-    total += part;
-  }
-  return total;
+/** Plafond EUR = dépense officielle prévue de chaque visa, couverte au cours BCE. */
+export function combinedCeilingEur(countries: VisaCorridor[], travelers: number, rates: EurFx) {
+  const cents = combinedCeilingCents(countries, travelers, rates);
+  return cents == null ? null : centsToEur(cents);
 }
 
 export function agencyFeeVisible(stateFeePaid: boolean) {

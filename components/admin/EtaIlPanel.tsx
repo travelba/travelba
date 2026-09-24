@@ -46,6 +46,23 @@ export function EtaIlPanel({
     endDate,
   });
 
+  async function confirmRequest() {
+    setBusy(true);
+    setError(null);
+    const res = await fetch(`/api/admin/bookings/${bookingId}/visa`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ country: "IL" }),
+    });
+    const json = (await res.json().catch(() => null)) as { error?: string; ceilingEur?: number; fee?: string } | null;
+    setBusy(false);
+    if (!res.ok) {
+      setError(json?.error || "Confirmation impossible.");
+      return;
+    }
+    setCardMessage(`Demande ouverte. Plafond ${json?.ceilingEur ?? card.ceilingEur} € pour ${json?.fee || "25 ILS"}.`);
+  }
+
   async function createCard() {
     setBusy(true);
     setError(null);
@@ -100,9 +117,17 @@ export function EtaIlPanel({
           Carte Pliant · {card.holderFirstName} {card.holderLastName}
         </p>
         <p>
-          Frais du portail : {card.feeIls} ILS. Plafond indicatif : {card.ceilingEur} € ({card.body.maxTransactionCount}{" "}
-          paiement{card.body.maxTransactionCount > 1 ? "s" : ""}).
+          Dépense prévue : {card.feeIls} ILS. Plafond de la carte : {card.ceilingEur} €, cours BCE du 24 septembre 2026
+          ({card.body.maxTransactionCount} paiement{card.body.maxTransactionCount > 1 ? "s" : ""}).
         </p>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={confirmRequest}
+          className="mt-2 mr-2 inline-flex h-7 items-center rounded-full bg-[var(--admin-navy)] px-3 text-xs font-semibold text-white disabled:opacity-50"
+        >
+          Confirmer et créer la carte
+        </button>
         <button
           type="button"
           disabled={busy}
