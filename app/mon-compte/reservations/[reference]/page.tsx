@@ -131,14 +131,6 @@ export default async function ReservationDetailPage({ params }: Props) {
         </a>
       ) : null}
 
-      <TripPassportPicker
-        variant="client"
-        bookingId={b.id}
-        travelers={party}
-        documents={(identityDocs || []) as CrmTravelDocument[]}
-        holder={customer}
-      />
-
       {b.notes_client ? (
         <p className="aura-card rounded-[1.25rem] bg-white p-4 text-sm leading-relaxed text-[var(--admin-navy)]">
           {b.notes_client}
@@ -238,6 +230,14 @@ export default async function ReservationDetailPage({ params }: Props) {
       >
         Demander une modification
       </a>
+
+      <TripPassportPicker
+        variant="client"
+        bookingId={b.id}
+        travelers={party}
+        documents={(identityDocs || []) as CrmTravelDocument[]}
+        holder={customer}
+      />
     </div>
   );
 }
