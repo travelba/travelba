@@ -77,12 +77,9 @@ export default async function AccountHomePage() {
               </div>
               <Link
                 href={tripHref}
-                className="flex h-12 items-center justify-between rounded-full bg-white px-5 text-sm font-semibold text-[var(--admin-navy)] shadow-md"
+                className="ml-auto flex h-12 w-fit items-center gap-3 rounded-full bg-white px-5 text-sm font-semibold text-[var(--admin-navy)] shadow-md"
               >
-                <span className="flex items-center gap-2">
-                  <Icon name="menu_book" className="h-5 w-5 text-[var(--admin-gold)]" />
-                  Voir mon carnet de voyage
-                </span>
+                Accéder à ma réservation
                 <Icon name="arrow_forward" className="h-5 w-5 text-[var(--admin-gold)]" />
               </Link>
             </div>
