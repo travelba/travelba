@@ -156,9 +156,6 @@ export default async function ReservationsPage({
                       </span>
                     </div>
                   </div>
-                  {b.destination && b.title ? (
-                    <p className="text-sm text-[var(--admin-navy)]">{b.destination}</p>
-                  ) : null}
                   <Link
                     href={`/mon-compte/reservations/${b.reference}`}
                     className="inline-flex h-11 w-full items-center justify-center rounded-full bg-[var(--admin-navy)] px-3 text-sm font-semibold text-white"
