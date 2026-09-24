@@ -2,10 +2,10 @@ import type { CrmBooking } from "@/lib/crm/types";
 import { coverQuery } from "@/lib/crm/carnet";
 import { lookupCoverPhoto } from "@/lib/crm/cover-catalog";
 
-const UNSPLASH = (id: string, width = 960) => {
-  const height = Math.max(160, Math.round((width * 9) / 16));
-  return `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&h=${height}&q=70`;
-};
+/** Photo retouchée du catalogue, ou rien (fond marine) si le fichier n’existe pas. */
+export function catalogCoverUrl(photoId: string) {
+  return `/api/covers/${photoId}`;
+}
 
 export type CoverBooking = Pick<CrmBooking, "destination" | "title" | "cover_image_path"> & {
   updated_at?: string | null;
@@ -29,12 +29,9 @@ export function unsplashKeywordMatch(booking: Pick<CrmBooking, "destination" | "
   return lookupCoverPhoto(key);
 }
 
-export function placeCoverUrl(
-  booking: Pick<CrmBooking, "destination" | "title">,
-  width = 960
-) {
+export function placeCoverUrl(booking: Pick<CrmBooking, "destination" | "title">, _width = 960) {
   const match = unsplashKeywordMatch(booking);
-  return match ? UNSPLASH(match, width) : null;
+  return match ? catalogCoverUrl(match) : null;
 }
 
 /** Import agence, sinon photo du lieu. Lieu inconnu : null (fond marine). */
