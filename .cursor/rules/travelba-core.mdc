@@ -14,7 +14,7 @@ Produit FR pour agence de voyage : back-office `/admin` (clients, réservations,
 - **Secrets** : `.env.local` / Vercel env — jamais commit.
 - **Next.js 16** : lire `node_modules/next/dist/docs/` avant APIs nouvelles. Pas de Cache Components. Session = `proxy.ts`.
 - **Skills** : commencer par `.cursor/skills/travelba-voyage-crm/SKILL.md` puis **un** skill de la table ci-dessous. PDF / photos / dropzone → `travelba-document-ingest` **tout de suite**. Gmail labels / `crm_email_ingest` → `travelba-email-ingest`.
-- **Design** : Stitch Portail Client (`10475551423344387411`) Sovereign Horizon (marine `#0B192C` + champagne `#C5A880`). Pas Aura, pas la feuille Travelba CRM.
+- **Design** : Cursor Design Mode sur l’app qui tourne (fenêtre Agents, navigateur, `Cmd+Shift+D`). Le code est la source. Palette Sovereign Horizon : marine `#0B192C`, champagne `#C5A880`. Ne pas renvoyer modifier un écran sur Stitch. Pas Aura, pas la feuille Travelba CRM.
 
 | Tâche | Skill |
 |-------|--------|
@@ -26,7 +26,7 @@ Produit FR pour agence de voyage : back-office `/admin` (clients, réservations,
 | **Import PDF/photos** (dropzone, relecture humaine) | `travelba-document-ingest` |
 | **Gmail / `crm_email_ingest`** (Little Emperors, Expedia TAAP) | `travelba-email-ingest` |
 | Ledger / Stripe / Revolut | `travelba-money` |
-| UI Stitch / fichiers | `travelba-ui` |
+| Cursor Design / fichiers | `travelba-ui` |
 | Fiche / passeports | `travelba-identity` |
 | Tests / verif | `travelba-verify` |
 

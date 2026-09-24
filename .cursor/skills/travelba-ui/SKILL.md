@@ -1,7 +1,7 @@
 ---
 name: travelba-ui
 description: >-
-  Travelba UI: Stitch Sovereign Horizon, French copy, Lucide icons, CoverPhoto
+  Travelba UI: Cursor Design Mode, Sovereign Horizon tokens, French copy, Lucide icons, CoverPhoto
   img, short /api/files URLs, loading skeletons, l’agence voice. Use when
   changing layout, styling, client chrome, admin chrome, or design tokens.
 ---
@@ -10,8 +10,10 @@ description: >-
 
 ## Design
 
-Source : Stitch **Portail Client Agence Voyage**  
-`https://stitch.withgoogle.com/projects/10475551423344387411`  
+Les retouches visuelles se font dans **Cursor Design Mode**, sur l’app qui tourne (`https://travelba.fr` ou `npm run dev`). Fenêtre Agents → navigateur → `Cmd+Shift+D`. Cliquer l’élément, décrire le changement. L’agent édite le code.
+
+Le code (tokens, composants) est la source. Stitch (`docs/design/stitch/atelier`) est une archive, plus l’endroit où l’on modifie un écran.
+
 Thème **Sovereign Horizon** : marine `#0B192C` (`--admin-navy`), champagne `#C5A880` (`--admin-gold`).
 
 **Interdit** : feuille Stitch « Travelba CRM », Aura Voyages émeraude, Material Symbols CDN.
