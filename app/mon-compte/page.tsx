@@ -1,20 +1,16 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ensureCustomerForUser, getSessionUser } from "@/lib/crm/auth";
-import type { CrmBalance, CrmBookingItem, CrmBookingTraveler, CrmTravelDocument } from "@/lib/crm/types";
+import type { CrmBalance, CrmBookingItem } from "@/lib/crm/types";
 import { encoursCaption, formatDateRangeShort, formatMoney, isUpcomingBooking, jMinusLabel } from "@/lib/crm/money";
 import { isCompanyMember } from "@/lib/crm/company-role";
 import { loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
-import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { sortItemsByOrder, tripHeadline, tripPlaceLine } from "@/lib/crm/carnet";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { Icon } from "@/components/crm/icons";
 import { ConciergeBanner } from "@/components/crm/ui";
 import { greetingGivenName } from "@/lib/crm/identity";
 import { siteConfig } from "@/lib/site";
-
-const chip =
-  "flex flex-col items-center rounded-xl border border-[#e5e3dc] bg-white p-2.5 text-center shadow-sm";
 
 export default async function AccountHomePage() {
   const { supabase, user } = await getSessionUser();
@@ -36,25 +32,14 @@ export default async function AccountHomePage() {
       "asc"
     )[0] || null;
 
-  let coverage = { ready: 0, total: 0 };
   let updates: CrmBookingItem[] = [];
-  let flightCount = 0;
   if (nextTrip) {
-    const [{ data: travelers }, { data: identityDocs }, { data: itemRows }] = await Promise.all([
-      supabase.from("crm_booking_travelers").select("*").eq("booking_id", nextTrip.id),
-      supabase.from("crm_travel_documents").select("*").eq("customer_id", customer.id),
-      supabase
-        .from("crm_booking_items")
-        .select("*")
-        .eq("booking_id", nextTrip.id)
-        .eq("visible_to_client", true),
-    ]);
-    coverage = tripDocCoverage(
-      (travelers || []) as CrmBookingTraveler[],
-      (identityDocs || []) as CrmTravelDocument[]
-    );
+    const { data: itemRows } = await supabase
+      .from("crm_booking_items")
+      .select("*")
+      .eq("booking_id", nextTrip.id)
+      .eq("visible_to_client", true);
     const visible = (itemRows || []) as CrmBookingItem[];
-    flightCount = visible.filter((item) => item.kind === "flight").length;
     updates = sortItemsByOrder(
       visible.filter((item) => item.kind === "flight" || item.kind === "hotel")
     ).slice(0, 2);
@@ -73,12 +58,6 @@ export default async function AccountHomePage() {
     : "";
   const tripPlace = nextTrip ? tripPlaceLine(nextTrip.title, nextTrip.destination) : null;
   const tripHref = nextTrip ? `/mon-compte/reservations/${nextTrip.reference}` : "/mon-compte/reservations";
-  const depositDone = member || !owes;
-  const flightsDone = flightCount > 0;
-  const passportsDone = coverage.total > 0 && coverage.ready === coverage.total;
-  const prepPct = Math.round(
-    ([depositDone, flightsDone, passportsDone].filter(Boolean).length / 3) * 100
-  );
   const wa = `https://wa.me/${siteConfig.whatsappNumber}`;
 
   return (
@@ -130,49 +109,6 @@ export default async function AccountHomePage() {
           <p className="mt-1 text-sm text-muted">L’agence publiera le carnet ici dès que le dossier sera prêt.</p>
         </article>
       )}
-
-      {nextTrip ? (
-        <section className="flex flex-col gap-3 rounded-2xl border border-[#e5e3dc] bg-[#f4f3f0] p-4 shadow-sm">
-          <div className="flex items-center justify-between gap-2">
-            <p className="flex items-center gap-2 text-base font-semibold text-[var(--admin-navy)]">
-              <Icon name="task_alt" className="h-5 w-5 text-[var(--admin-gold)]" />
-              Préparatifs du séjour
-            </p>
-            <span className="rounded-full bg-[var(--admin-navy)] px-2.5 py-0.5 text-[12px] font-semibold text-[var(--admin-gold)]">
-              {prepPct}% complet
-            </span>
-          </div>
-          <div className="h-2 overflow-hidden rounded-full bg-[#e3e2e0]">
-            <div
-              className="h-2 rounded-full bg-gradient-to-r from-[var(--admin-navy)] to-[var(--admin-gold)]"
-              style={{ width: `${prepPct}%` }}
-            />
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            <div className={chip}>
-              <Icon name="verified" className="h-[18px] w-[18px] text-[var(--admin-gold)]" />
-              <span className="mt-1 text-[10px] font-semibold text-[var(--admin-navy)]">
-                {member ? "Facturation" : "Acompte"}
-              </span>
-              <span className="text-[10px] text-[#5a5c60]">
-                {member ? "Société" : owes ? "À régler" : "À jour"}
-              </span>
-            </div>
-            <div className={chip}>
-              <Icon name="flight" className="h-[18px] w-[18px] text-[var(--admin-navy)]" />
-              <span className="mt-1 text-[10px] font-semibold text-[var(--admin-navy)]">Vols</span>
-              <span className="text-[10px] text-[#5a5c60]">{flightsDone ? "Publiés" : "À confirmer"}</span>
-            </div>
-            <Link href={`${tripHref}#passeport`} className={chip}>
-              <Icon name="description" className="h-[18px] w-[18px] text-[var(--admin-gold)]" />
-              <span className="mt-1 text-[10px] font-semibold text-[var(--admin-navy)]">Passeports</span>
-              <span className="text-[10px] text-[#9e7e51]">
-                {coverage.total ? `${coverage.ready}/${coverage.total}` : "À renseigner"}
-              </span>
-            </Link>
-          </div>
-        </section>
-      ) : null}
 
       <ConciergeBanner />
 
