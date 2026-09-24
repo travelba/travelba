@@ -26,7 +26,6 @@ export function BookingHero({
   const place = coverQuery(booking.destination, booking.title);
   const label = place && place !== "voyage" ? place : booking.title || "Séjour";
   const showPlaceName = !src && !children;
-  const credit = booking.cover_image_path ? booking.cover_credit?.trim() || "" : "";
   const alt = booking.destination || booking.title || label;
 
   return (
@@ -36,7 +35,7 @@ export function BookingHero({
           <CoverPhoto
             src={src}
             fallbackSrc={fallback}
-            alt={credit ? `${alt}. ${credit}` : alt}
+            alt={alt}
             className="absolute inset-0 h-full w-full object-cover object-[center_30%]"
             priority={priority}
           />
@@ -53,11 +52,6 @@ export function BookingHero({
         )}
         {children ? <div className="absolute inset-0">{children}</div> : null}
       </div>
-      {!plain && credit ? (
-        <p className="shrink-0 truncate bg-black/40 px-3 py-1 text-[10px] leading-tight text-white/80">
-          {credit}
-        </p>
-      ) : null}
     </div>
   );
 }

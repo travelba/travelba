@@ -189,7 +189,7 @@ export function CoverPickDialog({
                   disabled={busy}
                   onClick={() => onPick(photo.id)}
                   className="group block w-full overflow-hidden rounded-2xl border border-border text-left disabled:opacity-50"
-                  aria-label={photo.credit ? `${photo.title}. ${photo.credit}` : photo.title}
+                  aria-label={photo.title}
                 >
                   <img
                     src={photo.thumb}
@@ -200,9 +200,6 @@ export function CoverPickDialog({
                   <span className="block truncate px-2 py-1.5 text-[11px] font-medium text-[var(--admin-navy)]">
                     {photo.title}
                   </span>
-                  {photo.credit ? (
-                    <span className="block truncate px-2 pb-1.5 text-[10px] text-muted">{photo.credit}</span>
-                  ) : null}
                 </button>
               </li>
             ))}
