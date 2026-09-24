@@ -1,4 +1,3 @@
-import { entryOpenRequested, entryUserActivated } from "@/lib/crm/entry-link";
 import { entryPreviewResponse, redirectEntryToCallback } from "@/lib/crm/entry-open";
 import { siteConfig } from "@/lib/site";
 
@@ -14,14 +13,9 @@ function normalizeCode(code: string) {
   return code.trim().toUpperCase();
 }
 
-export async function GET(request: Request, ctx: Ctx) {
+export async function GET(_request: Request, ctx: Ctx) {
   const { code } = await ctx.params;
-  const url = new URL(request.url);
-  const safe = normalizeCode(code);
-  if (entryOpenRequested(url.search) || entryUserActivated(request.headers.get("sec-fetch-user"))) {
-    return redirectEntryToCallback(originOf(), safe);
-  }
-  return entryPreviewResponse(originOf(), safe);
+  return entryPreviewResponse(originOf(), normalizeCode(code));
 }
 
 export async function POST(_request: Request, ctx: Ctx) {

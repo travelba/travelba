@@ -7,7 +7,6 @@ import {
   entryButtonSuffix,
   entryLinkUrl,
   entryOpenRequested,
-  entryUserActivated,
   entryPreviewHtml,
   isLinkCrawler,
   safeNextPath,
@@ -37,8 +36,6 @@ test("WhatsApp reçoit le titre sans consommer le jeton", () => {
   assert.equal(shouldServePreview("Mozilla/5.0", "?1"), true);
   assert.equal(entryOpenRequested("?ouvrir=1"), true);
   assert.equal(entryOpenRequested(""), false);
-  assert.equal(entryUserActivated("?1"), true);
-  assert.equal(entryUserActivated(null), false);
   const html = entryPreviewHtml("https://travelba.fr", "K7MQ2PX4");
   assert.match(html, /<title>Le Concierge<\/title>/);
   assert.match(html, /og:title" content="Le Concierge"/);
@@ -48,6 +45,7 @@ test("WhatsApp reçoit le titre sans consommer le jeton", () => {
   assert.match(html, /og:image:width" content="1200"/);
   assert.match(html, /og:image:height" content="630"/);
   assert.match(html, /tba-mark\.png/);
+  assert.match(html, /method="post"/);
   assert.match(html, /name="ouvrir"/);
   assert.match(html, /value="1"/);
   assert.equal(html.includes("<script"), false);
