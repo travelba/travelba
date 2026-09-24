@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ensureCustomerForUser, getSessionUser } from "@/lib/crm/auth";
-import type { CrmBalance, CrmBookingItem } from "@/lib/crm/types";
+import type { CrmBalance } from "@/lib/crm/types";
 import { encoursCaption, formatDateRangeShort, formatMoney, isUpcomingBooking, jMinusLabel } from "@/lib/crm/money";
 import { isCompanyMember } from "@/lib/crm/company-role";
 import { loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
-import { sortItemsByOrder, tripHeadline, tripPlaceLine } from "@/lib/crm/carnet";
+import { tripHeadline, tripPlaceLine } from "@/lib/crm/carnet";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { Icon } from "@/components/crm/icons";
 import { ConciergeBanner } from "@/components/crm/ui";
@@ -31,19 +31,6 @@ export default async function AccountHomePage() {
       bookings.filter((b) => isUpcomingBooking(b.end_date) && b.status !== "cancelled"),
       "asc"
     )[0] || null;
-
-  let updates: CrmBookingItem[] = [];
-  if (nextTrip) {
-    const { data: itemRows } = await supabase
-      .from("crm_booking_items")
-      .select("*")
-      .eq("booking_id", nextTrip.id)
-      .eq("visible_to_client", true);
-    const visible = (itemRows || []) as CrmBookingItem[];
-    updates = sortItemsByOrder(
-      visible.filter((item) => item.kind === "flight" || item.kind === "hotel")
-    ).slice(0, 2);
-  }
 
   const balanceRows = ((balances || []) as CrmBalance[]).map((row) => ({
     currency: row.currency || "EUR",
@@ -111,33 +98,6 @@ export default async function AccountHomePage() {
       )}
 
       <ConciergeBanner />
-
-      {updates.length ? (
-        <section className="flex flex-col gap-2.5">
-          <h2 className="px-1 font-display text-xl font-semibold text-[var(--admin-navy)]">
-            Mises à jour
-          </h2>
-          {updates.map((item) => (
-            <Link
-              key={item.id}
-              href={tripHref}
-              className="flex items-start gap-3 rounded-2xl border border-[#e5e3dc] bg-white p-3.5 shadow-sm"
-            >
-              <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--admin-gold)]/30 bg-[#f8f3eb] text-[var(--admin-navy)]">
-                <Icon name={item.kind === "hotel" ? "hotel" : "airlines"} className="h-5 w-5" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-base font-semibold text-[var(--admin-navy)]">
-                  {item.title}
-                </span>
-                <span className="mt-0.5 block text-[13px] text-[#5a5c60]">
-                  {item.supplier || item.confirmation_ref || "Publié dans le carnet"}
-                </span>
-              </span>
-            </Link>
-          ))}
-        </section>
-      ) : null}
 
       <section className="flex flex-col gap-3 pb-2">
         <h2 className="px-1 font-display text-xl font-semibold text-[var(--admin-navy)]">
