@@ -53,9 +53,8 @@ export function isLinkCrawler(userAgent: string | null) {
 
 /**
  * L’URL du bouton reste l’aperçu, quel que soit l’agent.
- * Pas de redirection dans cette page : WhatsApp met en cache le résultat
- * du premier GET, y compris un script qui quitte la page.
- * L’ouverture humaine est `?ouvrir=1`.
+ * Pas de redirection sur le GET : WhatsApp suit un 307 et garde le domaine seul.
+ * L’ouverture humaine est le bouton, en POST.
  */
 export function shouldServePreview(_userAgent: string | null, _secFetchUser: string | null) {
   return true;
@@ -63,11 +62,6 @@ export function shouldServePreview(_userAgent: string | null, _secFetchUser: str
 
 export function entryOpenRequested(search: string) {
   return new URLSearchParams(search).get("ouvrir") === "1";
-}
-
-/** Un vrai appui (Chrome) ouvre l’espace. Le robot d’aperçu n’envoie pas cet en-tête. */
-export function entryUserActivated(secFetchUser: string | null) {
-  return secFetchUser === "?1";
 }
 
 export function safeOtpType(value: string | null | undefined) {
@@ -120,7 +114,7 @@ export function entryPreviewHtml(origin: string, code: string) {
 <body style="margin:0;background:#0B192C;color:#F3EDE2;font-family:Georgia,serif">
 <p style="margin:0;padding:48px;font-size:28px">${title}</p>
 <p style="margin:0;padding:0 48px 48px;font-size:18px">${description}</p>
-<form method="get" action="${page}">
+<form method="post" action="${page}">
 <input type="hidden" name="ouvrir" value="1">
 <button type="submit" style="background:#C5A880;color:#0B192C;border:0;padding:14px 22px;font:inherit;cursor:pointer">Ouvrir mon espace</button>
 </form>
