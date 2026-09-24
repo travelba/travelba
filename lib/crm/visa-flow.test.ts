@@ -41,6 +41,8 @@ test("le client suit les grandes étapes, jusqu’à la pièce", () => {
   assert.equal(track[4].state, "à venir");
   assert.equal(clientVisaTrack("piece").every((row) => row.state === "fait"), true);
   assert.match(clientVisaStepCopy("remplissage"), /formulaire officiel/);
+  assert.match(clientVisaStepCopy("preparation"), /pièces du voyage/);
+  assert.match(clientVisaStepCopy("piece"), /autorisation est prête/);
 });
 
 test("une demande déjà ouverte peut être confirmée", () => {

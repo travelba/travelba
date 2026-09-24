@@ -10,7 +10,9 @@ import { formatMoney } from "@/lib/crm/money";
 import { VISA_OFFICIAL, type VisaCorridor } from "@/lib/crm/visa-fees";
 import {
   agencyLaunchReady,
+  clientVisaStepCopy,
   clientVisaTrack,
+  VISA_WAIT_COPY,
   type ClientVisaStep,
   type EstaAnswers,
 } from "@/lib/crm/visa-flow";
@@ -70,6 +72,7 @@ export function VisaSection({
   const passengers = Math.max(1, trip.passengers || travelers.length || 1);
   const fee = passengers * VISA_EUR;
   const corridors = trip.entries.filter((entry) => isCorridor(entry.iso));
+  const started = corridors.some((entry) => requests.some((row) => row.country === entry.iso && (row.step || row.status)));
   const others = [
     ...trip.entries.filter((entry) => !isCorridor(entry.iso)),
     ...trip.unknownCountries,
@@ -126,7 +129,7 @@ export function VisaSection({
     <section className="aura-card space-y-4 rounded-[1.35rem] bg-white p-4">
       <div>
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">Visa</p>
-        {trip.needsFormality ? (
+        {trip.needsFormality && !started ? (
           <p className="mt-1 text-sm font-semibold text-[var(--admin-navy)]">
             {formatMoney(fee, "EUR")} · {VISA_EUR} € par passager, hors frais officiels
           </p>
@@ -151,27 +154,38 @@ export function VisaSection({
               Frais d’État : {official.amount} {official.currency}. L’agence facture {VISA_EUR} € par passager en plus.
             </p>
             {step ? (
-              <ol className="space-y-1 text-sm">
-                {clientVisaTrack(step).map((row) => (
-                  <li key={row.id} className={row.state === "à venir" ? "text-muted" : "text-[var(--admin-navy)]"}>
-                    <span className={row.state === "en cours" ? "font-semibold" : ""}>{row.label}</span>
-                    {row.state === "en cours" ? " — en cours" : row.state === "fait" ? " — fait" : ""}
-                    {row.id === "piece" && pieces.length
-                      ? pieces.map((doc) =>
-                          doc.storage_path ? (
-                            <FileOpenLink
-                              key={doc.id}
-                              path={doc.storage_path}
-                              className="ml-2 font-semibold text-[var(--aura-blue)]"
-                            >
-                              Ouvrir
-                            </FileOpenLink>
-                          ) : null
-                        )
-                      : null}
-                  </li>
-                ))}
-              </ol>
+              <div className="space-y-3">
+                {step === "piece" ? null : (
+                  <p className="text-sm font-semibold text-[var(--admin-navy)]">{VISA_WAIT_COPY}</p>
+                )}
+                <ol className="space-y-2 text-sm">
+                  {clientVisaTrack(step).map((row) => {
+                    const explain = row.state === "en cours" || (step === "piece" && row.id === "piece");
+                    return (
+                      <li key={row.id} className={row.state === "à venir" ? "text-muted" : "text-[var(--admin-navy)]"}>
+                        <p className={explain ? "font-semibold" : ""}>
+                          {row.label}
+                          {row.state === "fait" && row.id !== "piece" ? " — fait" : ""}
+                        </p>
+                        {explain ? <p className="text-sm font-normal">{clientVisaStepCopy(row.id)}</p> : null}
+                        {row.id === "piece" && pieces.length
+                          ? pieces.map((doc) =>
+                              doc.storage_path ? (
+                                <FileOpenLink
+                                  key={doc.id}
+                                  path={doc.storage_path}
+                                  className="font-semibold text-[var(--aura-blue)]"
+                                >
+                                  Ouvrir
+                                </FileOpenLink>
+                              ) : null
+                            )
+                          : null}
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
             ) : (
               <div className="space-y-2">
                 {country === "US" ? (
@@ -237,7 +251,7 @@ export function VisaSection({
                     onClick={() => void launch(entry as FormalityEntry & { iso: VisaCorridor })}
                     className="inline-flex h-10 items-center rounded-full bg-[var(--admin-navy)] px-4 text-sm font-semibold text-white disabled:opacity-50"
                   >
-                    {busy === country ? "En cours…" : "L’agence s’en charge"}
+                    {busy === country ? "Demande en cours…" : "L’agence s’en charge"}
                   </button>
                   {entry.applyUrl ? (
                     <a
@@ -296,6 +310,12 @@ export function VisaSection({
       {!trip.needsFormality && !trip.unknownIatas.length && !trip.unknownCountries.length ? (
         <p className="text-sm text-[var(--admin-navy)]">
           Aucune formalité identifiée pour un passeport français sur ces vols.
+        </p>
+      ) : null}
+
+      {started && trip.needsFormality ? (
+        <p className="border-t border-[#e5e3dc] pt-3 text-sm text-[var(--admin-navy)]">
+          {formatMoney(fee, "EUR")} · {VISA_EUR} € par passager, hors frais officiels
         </p>
       ) : null}
 
