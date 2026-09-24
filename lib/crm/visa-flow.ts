@@ -13,12 +13,14 @@ const STEP_LABEL: Record<ClientVisaStep, string> = {
 };
 
 const STEP_COPY: Record<ClientVisaStep, string> = {
-  preparation: "L’agence réunit les pièces du voyage.",
-  remplissage: "L’agence remplit le formulaire officiel.",
-  validation: "L’agence vérifie le formulaire avant l’envoi.",
-  paiement: "Paiement des frais officiels.",
-  piece: "La pièce est dans Pièces.",
+  preparation: "Nous réunissons les pièces du voyage.",
+  remplissage: "Le formulaire officiel est en cours de remplissage.",
+  validation: "Nous vérifions le formulaire avant de l’envoyer.",
+  paiement: "Le paiement des frais officiels est en cours.",
+  piece: "Votre autorisation est prête.",
 };
+
+export const VISA_WAIT_COPY = "Nous nous en occupons. Vous n’avez rien à faire pour le moment.";
 
 export function clientVisaTrack(step: ClientVisaStep) {
   const index = CLIENT_VISA_STEPS.indexOf(step);

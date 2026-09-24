@@ -21,7 +21,7 @@ Deux gestes, pour Israël, les États-Unis et le Royaume-Uni :
 - **L’agence s’en charge** — le prix est affiché avant le clic : 25 € par passager, hors frais officiels. Le clic coche le service à la carte et lance le parcours. États-Unis et Royaume-Uni : les questions sont obligatoires avant d’activer le bouton. Israël n’a pas de questions.
 - **Lien officiel** — ouvre le site de l’État. Ne coche pas le service. Ne lance pas le parcours.
 
-Après le lancement, le client ne voit que la piste : Préparation, Remplissage, Validation, Paiement, Pièce. Pièce ouvre le PDF déjà au coffre.
+Après le lancement, la piste explique l’étape en cours. Le client lit « Nous nous en occupons. Vous n’avez rien à faire pour le moment. » Les étapes à venir restent discrètes. Pièce ouvre le PDF déjà au coffre. Pendant le clic, le bouton dit « Demande en cours… ».
 
 Les autres pays : nom, formalité si elle est connue, lien officiel, dépôt du PDF. Pas de parcours Astra.
 
