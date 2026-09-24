@@ -145,30 +145,6 @@ export function ProfileForm({
 
   return (
     <form onSubmit={onSubmit} className="rounded-xl border border-[#e3e2e0]/70 bg-white px-4">
-      <div className="py-3">
-        <PersonPassportCard
-          variant="client"
-          documents={documents}
-          person={{ first_name: firstName, last_name: lastName }}
-          onIdentity={applyIdentity}
-        />
-      </div>
-      {nameWarn ? (
-        <p className="mb-3 rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
-          {nameWarn}
-        </p>
-      ) : null}
-
-      <Fold
-        title="Téléphone"
-        summary={phone || "À renseigner"}
-        open={openPhone}
-        onToggle={() => setOpenPhone((value) => !value)}
-      >
-        <PhoneField name="phone" value={phone} onChange={setPhone} required />
-        <OptionalSecondPhone value={phoneSecondary} onChange={setPhoneSecondary} />
-      </Fold>
-
       <Fold
         title="Identité"
         summary={identitySummary || "À compléter"}
@@ -220,6 +196,16 @@ export function ProfileForm({
       </Fold>
 
       <Fold
+        title="Téléphone"
+        summary={phone || "À renseigner"}
+        open={openPhone}
+        onToggle={() => setOpenPhone((value) => !value)}
+      >
+        <PhoneField name="phone" value={phone} onChange={setPhone} required />
+        <OptionalSecondPhone value={phoneSecondary} onChange={setPhoneSecondary} />
+      </Fold>
+
+      <Fold
         title="Adresse"
         summary={addressSummary || "Ajouter"}
         open={openAddress}
@@ -245,6 +231,20 @@ export function ProfileForm({
       >
         <LoyaltyFields values={loyalty} onChange={setLoyalty} onlyFilled />
       </Fold>
+
+      <div className="border-t border-[#e5e3dc] py-3">
+        <PersonPassportCard
+          variant="client"
+          documents={documents}
+          person={{ first_name: firstName, last_name: lastName }}
+          onIdentity={applyIdentity}
+        />
+      </div>
+      {nameWarn ? (
+        <p className="mb-3 rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
+          {nameWarn}
+        </p>
+      ) : null}
 
       {error ? <p className="py-2 text-sm text-accent">{error}</p> : null}
       <div className="sticky bottom-20 z-20 -mx-4 border-t border-[#e5e3dc] bg-[rgba(250,249,246,0.95)] px-4 py-3 backdrop-blur md:bottom-4">
