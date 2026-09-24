@@ -3,6 +3,7 @@ import { jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
 import { BookingIssuesError } from "@/lib/crm/booking-issues";
 import {
   cancelBookingExtra,
+  clearServiceRefusal,
   confirmBookingExtra,
   createBookingExtra,
   parseExtraRequest,
@@ -58,6 +59,9 @@ export async function POST(request: Request, ctx: Ctx) {
       return NextResponse.json(confirmed);
     }
     if (!holder) return jsonIssues([{ field: "customer_id", message: "Client introuvable." }], 404);
+    if (body?.resume === true) {
+      await clearServiceRefusal(auth.supabase, id, extra.kind, extra.leg, extra.place, extra.moment);
+    }
     const created = await createBookingExtra(auth.supabase, {
       booking: booking as CrmBooking,
       items: list,

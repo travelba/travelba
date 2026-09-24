@@ -4,6 +4,7 @@ import { BookingEditor } from "@/components/admin/BookingEditor";
 import { DeleteBookingButton } from "@/components/admin/DeleteBookingButton";
 import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
+import type { ClientVisaStep } from "@/lib/crm/visa-flow";
 import { formatDateRangeShort } from "@/lib/crm/money";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import type {
@@ -39,6 +40,7 @@ export default async function AdminBookingPage({ params }: Props) {
     { data: identityDocs },
     { data: relatedCustomers },
     { data: declined },
+    { data: visaRows },
   ] = await Promise.all([
     supabase.from("crm_booking_items").select("*").eq("booking_id", id).order("sort_order"),
     supabase.from("crm_booking_travelers").select("*").eq("booking_id", id),
@@ -49,6 +51,7 @@ export default async function AdminBookingPage({ params }: Props) {
       ? supabase.from("crm_customers").select("*").in("id", relatedIds)
       : Promise.resolve({ data: [] as CrmCustomer[] }),
     supabase.from("crm_declined_services").select("kind, service_leg, place, moment").eq("booking_id", id),
+    supabase.from("crm_visa_requests").select("country, step, status").eq("booking_id", id),
   ]);
   const party = (relatedCustomers || []) as CrmCustomer[];
   const customer = party.find((row) => row.id === b.customer_id) || null;
@@ -90,6 +93,7 @@ export default async function AdminBookingPage({ params }: Props) {
           aiConfigured={aiGatewayConfigured()}
           formalities={frenchPassportTrip(bookingItems, bookingTravelers.length)}
           refusals={refusals}
+          visaRequests={(visaRows || []) as { country: string; step?: ClientVisaStep; status?: string }[]}
         />
       </div>
     </div>

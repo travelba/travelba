@@ -34,13 +34,13 @@ import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
 import { TripPassportPicker } from "@/components/crm/TripPassportPicker";
 import { VisaRunPanel } from "@/components/admin/VisaRunPanel";
 import type { VisaCorridor } from "@/lib/crm/visa-fees";
-import { TripFormalities } from "@/components/crm/TripFormalities";
-import { TripVisaUploads } from "@/components/crm/TripVisaUploads";
+import { VisaSection } from "@/components/crm/VisaSection";
 import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
 import { IssuesList } from "@/components/crm/IssuesList";
 import { collectPublishIssues, issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
 import { householdMembers } from "@/lib/crm/household";
-import { bookingHasFlight, type ServiceRefusal } from "@/lib/crm/extras";
+import { bookingHasFlight, findVisaExtra, type ServiceRefusal } from "@/lib/crm/extras";
+import type { ClientVisaStep } from "@/lib/crm/visa-flow";
 import type { FrenchPassportTrip } from "@/lib/crm/visa-trip";
 import { reusableDocumentsForTraveler, tripDocumentsForTraveler } from "@/lib/crm/trip-documents";
 import { CustomerPickField } from "@/components/admin/CustomerPickField";
@@ -59,6 +59,7 @@ export function BookingEditor({
   aiConfigured,
   formalities,
   refusals = [],
+  visaRequests = [],
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -72,6 +73,7 @@ export function BookingEditor({
   aiConfigured: boolean;
   formalities: FrenchPassportTrip;
   refusals?: ServiceRefusal[];
+  visaRequests?: { country: string; step?: ClientVisaStep | null; status?: string | null }[];
 }) {
   const router = useRouter();
   const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
@@ -644,16 +646,16 @@ export function BookingEditor({
 
       {account && bookingHasFlight(items) ? (
         <section className="admin-af-card space-y-4 rounded-3xl p-5">
-          <TripFormalities trip={formalities} />
-          {formalities.needsFormality ? (
-            <TripVisaUploads
-              variant="admin"
-              bookingId={booking.id}
-              travelers={travelers}
-              documents={identityDocs}
-              entries={formalities.entries}
-            />
-          ) : null}
+          <VisaSection
+            variant="admin"
+            bookingId={booking.id}
+            reference={booking.reference}
+            trip={formalities}
+            requests={visaRequests}
+            travelers={travelers}
+            documents={identityDocs}
+            visaBooked={Boolean(findVisaExtra(items))}
+          />
           <ExtrasPanel
             variant="admin"
             booking={booking}
@@ -661,7 +663,6 @@ export function BookingEditor({
             travelers={travelers}
             holder={account}
             companions={companions}
-            formalities={formalities}
             refusals={refusals}
           />
         </section>

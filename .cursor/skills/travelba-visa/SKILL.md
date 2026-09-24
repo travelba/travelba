@@ -10,11 +10,22 @@ description: >-
 
 Israël, États-Unis, Royaume-Uni. Passeport français. Les autres pays restent un lien officiel et un dépôt manuel.
 
-## Où est le bouton
+## Où est la section
 
-Le client fait la demande seul, en haut de son séjour : **Faire la demande**. Ce clic lance Astra. L’agence ne remplit pas le formulaire. Elle confirme avant l’envoi, depuis le header du dossier. Le paiement s’arrête sans Pliant.
+L’itinéraire est juste sous la photo du séjour. Le bandeau « pièce manquante » et la note client restent une ligne au-dessus de l’itinéraire.
 
-Si l’utilisateur ne le voit pas : le déplacer dans ce header. Ne pas lui dire de scroller. Ne pas l’envoyer sur travelba.fr tant que le code n’y est pas. Lui donner l’URL exacte du dossier sur l’environnement qui contient le bouton.
+La section **Visa** est en bas, avec les passeports. Le même bloc est sur le séjour client et sur le dossier agence. Un refus ne cache pas la section.
+
+Deux gestes, pour Israël, les États-Unis et le Royaume-Uni :
+
+- **L’agence s’en charge** — le prix est affiché avant le clic : 25 € par passager, hors frais officiels. Le clic coche le service à la carte et lance le parcours. États-Unis et Royaume-Uni : les questions sont obligatoires avant d’activer le bouton. Israël n’a pas de questions.
+- **Lien officiel** — ouvre le site de l’État. Ne coche pas le service. Ne lance pas le parcours.
+
+Après le lancement, le client ne voit que la piste : Préparation, Remplissage, Validation, Paiement, Pièce. Pièce ouvre le PDF déjà au coffre.
+
+Les autres pays : nom, formalité si elle est connue, lien officiel, dépôt du PDF. Pas de parcours Astra.
+
+L’agence confirme avant l’envoi, depuis le header du dossier. Le paiement s’arrête sans Pliant.
 
 ## Parcours
 
@@ -32,7 +43,9 @@ Le client voit ces cinq étapes sur son séjour : Préparation, Remplissage, Val
 
 ## Interdits
 
-- Cacher l’action sous l’itinéraire.
+- Remettre le visa au-dessus de l’itinéraire.
+- Proposer « Obtention du visa » dans À la carte. Seul « L’agence s’en charge » crée ce service.
+- Un second bouton « Faire la demande » à côté du lien officiel.
 - Inventer un frais ou un horaire.
 - Envoyer un message client tant que le modèle WhatsApp n’est pas approuvé.
 - Logger un numéro de passeport.
