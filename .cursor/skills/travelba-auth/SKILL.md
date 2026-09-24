@@ -34,6 +34,8 @@ WhatsApp Le Concierge : même lien, en plus de l’e-mail. Modèle Utility `TWIL
 
 Après succès mot de passe (`/api/client/password`) : `app_metadata.must_set_password=false` + `refreshSession`. Redirection : **`/mon-compte/profil`** seulement si `crm_customers.phone` est vide, sinon **`/mon-compte`**. Le mur téléphone reste le filet si l’accueil est ouvert sans numéro.
 
+Client seulement (pas le collègue) : ce même geste envoie WhatsApp Le Concierge, lien magique vers l’espace (`magiclink`, pas `recovery`). Le lien ne contient pas le mot de passe et n’ouvre pas la création de mot de passe. L’invitation, elle, continue d’ouvrir la création.
+
 ## Flag mot de passe
 
 `must_set_password` **uniquement** dans `app_metadata` (jamais `user_metadata`, éditable par le user). Helper `mustSetPassword()` dans `lib/crm/session.ts`.
