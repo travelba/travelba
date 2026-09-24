@@ -396,6 +396,22 @@ export function BookingEditor({
         </div>
       </section>
 
+      {bookingHasFlight(items) ? (
+        <section className="admin-af-card space-y-3 rounded-3xl p-5">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">Formalité</p>
+          {formalities.entries
+            .filter((entry): entry is typeof entry & { iso: VisaCorridor } =>
+              entry.iso === "IL" || entry.iso === "US" || entry.iso === "GB"
+            )
+            .map((entry) => (
+              <VisaRunPanel key={entry.iso} bookingId={booking.id} country={entry.iso} />
+            ))}
+          {formalities.entries.some((entry) => entry.iso === "IL" || entry.iso === "US" || entry.iso === "GB") ? null : (
+            <p className="text-sm text-[var(--admin-navy)]">Aucune formalité automatique sur ces vols.</p>
+          )}
+        </section>
+      ) : null}
+
       <BookingIngest
         role="admin"
         mode="append"
@@ -596,13 +612,6 @@ export function BookingEditor({
       {account && bookingHasFlight(items) ? (
         <section className="admin-af-card space-y-4 rounded-3xl p-5">
           <TripFormalities trip={formalities} />
-          {formalities.entries
-            .filter((entry): entry is typeof entry & { iso: VisaCorridor } =>
-              entry.iso === "IL" || entry.iso === "US" || entry.iso === "GB"
-            )
-            .map((entry) => (
-              <VisaRunPanel key={entry.iso} bookingId={booking.id} country={entry.iso} />
-            ))}
           {formalities.needsFormality ? (
             <TripVisaUploads
               variant="admin"
