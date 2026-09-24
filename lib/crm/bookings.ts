@@ -441,7 +441,7 @@ export async function setCarnetPublished(
   }
   const { error: bookingError } = await supabase
     .from("crm_bookings")
-    .update({ visible_to_client: visible })
+    .update({ visible_to_client: visible, prices_visible: visible })
     .eq("id", bookingId);
   if (bookingError) throw new Error(bookingError.message);
   if (!visible) return;

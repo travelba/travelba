@@ -31,6 +31,7 @@ Ne pas ré-ouvrir le QCM produit : les règles sont déjà ancrées dans les ski
 | Ledger, encours, Stripe, Revolut | `.cursor/skills/travelba-money/SKILL.md` |
 | Cursor Design, Lucide, `/api/files`, copy FR | `.cursor/skills/travelba-ui/SKILL.md` |
 | Fiche, passeports, compagnons, facturation | `.cursor/skills/travelba-identity/SKILL.md` |
+| Formalité ETA-IL / ESTA / Royaume-Uni, Astra, étapes client | `.cursor/skills/travelba-visa/SKILL.md` |
 | Tests, build, verif navigateur, ne pas casser prod | `.cursor/skills/travelba-verify/SKILL.md` |
 
 Règle always-on : `.cursor/rules/travelba-core.mdc`.

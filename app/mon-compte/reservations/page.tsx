@@ -152,7 +152,7 @@ export default async function ReservationsPage({
                         Montant
                       </span>
                       <span className="text-[16px] font-bold text-[var(--admin-navy)]">
-                        {formatMoney(Number(b.total_amount), b.currency)}
+                        {b.prices_visible === false ? "—" : formatMoney(Number(b.total_amount), b.currency)}
                       </span>
                     </div>
                   </div>
