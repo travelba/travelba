@@ -198,7 +198,7 @@ export default async function ReservationDetailPage({ params }: Props) {
           Montant du séjour
         </p>
         <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
-          {formatMoney(Number(b.total_amount), b.currency)}
+          {b.prices_visible === false ? "Prix à la publication" : formatMoney(Number(b.total_amount), b.currency)}
         </p>
         {insurances.map((item) => (
           <p key={item.id} className="text-sm text-muted">

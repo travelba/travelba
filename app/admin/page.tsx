@@ -19,6 +19,8 @@ import { revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
 import { stripeConfigured, stripeWebhookConfigured } from "@/lib/crm/stripe";
 import { buildLaunchItems } from "@/lib/crm/launch-status";
 import { AdminLaunchStatus } from "@/components/admin/AdminLaunchStatus";
+import { VisaDesk } from "@/components/admin/VisaDesk";
+import { deskView, type DeskTask } from "@/lib/crm/visa-desk";
 import { BookingHero } from "@/components/crm/BookingHero";
 import {
   EmptyState,
@@ -107,6 +109,27 @@ export default async function AdminHomePage() {
     0
   );
   const staffFirst = (staff.full_name || "l’agence").split(" ")[0];
+  const { data: taskRows } = await supabase
+    .from("crm_visa_tasks")
+    .select("booking_id, holder_name, reference, reasons, done_at, created_at");
+  const desk = deskView(
+    ((taskRows || []) as {
+      booking_id: string;
+      holder_name: string;
+      reference: string;
+      reasons: DeskTask["reasons"];
+      done_at: string | null;
+      created_at: string;
+    }[]).map((row) => ({
+      bookingId: row.booking_id,
+      holderName: row.holder_name,
+      reference: row.reference,
+      reasons: row.reasons || [],
+      doneAt: row.done_at,
+      createdAt: row.created_at,
+    })),
+    today
+  );
   const upcoming = (bookings || []) as CrmBooking[];
   const featured = upcoming[0];
   const rest = upcoming.slice(1);
@@ -158,6 +181,8 @@ export default async function AdminHomePage() {
           }
         />
       </div>
+
+      <VisaDesk open={desk.open} grey={desk.grey} />
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {kpis.map((kpi) => (
