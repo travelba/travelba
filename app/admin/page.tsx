@@ -30,6 +30,7 @@ import {
   StatusChip,
   bookingStatusTone,
 } from "@/components/crm/ui";
+import { staffRoleLabel } from "@/lib/crm/staff-team";
 
 export default async function AdminHomePage() {
   const { supabase, staff } = await requireStaffPage();
@@ -170,7 +171,7 @@ export default async function AdminHomePage() {
         <PageEyebrow>Espace agence</PageEyebrow>
         <PageTitle
           title={`Bonjour ${staffFirst}`}
-          subtitle={`${staff.full_name || "Agent"} · ${staff.role} · ${formatDateFr(today)}`}
+          subtitle={`${staff.full_name || "Agent"} · ${staffRoleLabel(staff.role)} · ${formatDateFr(today)}`}
           actions={
             <Link
               href="/admin/reservations"
