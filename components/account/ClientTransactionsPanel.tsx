@@ -61,7 +61,7 @@ export function ClientTransactionsPanel({
                   />
                 </div>
                 <p className="mt-1.5 text-right text-[10px] font-bold text-[#9c7c4e]">
-                  {remaining > 0 ? `${remainingPct}% restant à régler` : "Soldé"}
+                  {remaining > 0 ? `${Math.max(0, 100 - remainingPct)}% réglé` : "Soldé"}
                 </p>
               </div>
             ) : null}
