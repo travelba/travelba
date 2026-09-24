@@ -48,13 +48,13 @@ export default async function AdminBookingPage({ params }: Props) {
     relatedIds.length
       ? supabase.from("crm_customers").select("*").in("id", relatedIds)
       : Promise.resolve({ data: [] as CrmCustomer[] }),
-    supabase.from("crm_declined_services").select("kind, service_leg, place").eq("booking_id", id),
+    supabase.from("crm_declined_services").select("kind, service_leg, place, moment").eq("booking_id", id),
   ]);
   const party = (relatedCustomers || []) as CrmCustomer[];
   const customer = party.find((row) => row.id === b.customer_id) || null;
   const billingCustomer =
     party.find((row) => row.id === (b.billing_customer_id || b.customer_id)) || customer;
-  const refusals = ((declined || []) as { kind?: string | null; service_leg?: string | null; place?: string | null }[])
+  const refusals = ((declined || []) as { kind?: string | null; service_leg?: string | null; place?: string | null; moment?: string | null }[])
     .map(serviceRefusalFromRow)
     .filter((row): row is ServiceRefusal => Boolean(row));
   const allIdentity = (identityDocs || []) as CrmTravelDocument[];

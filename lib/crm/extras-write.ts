@@ -16,11 +16,13 @@ import {
   findVisaExtra,
   isExtraKind,
   isExtraLeg,
+  isGreeterMoment,
   isServicePlace,
   itineraryOffers,
   visaItemPayload,
   type ExtraKind,
   type ExtraLeg,
+  type GreeterMoment,
   type ServicePlace,
 } from "@/lib/crm/extras";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
@@ -152,6 +154,7 @@ export async function createBookingExtra(
     kind: ExtraKind | "visa" | "checkin";
     leg: ExtraLeg | null;
     place?: ServicePlace | null;
+    moment?: GreeterMoment | null;
     address?: string | null;
     enforceWindow?: boolean;
     now?: Date;
@@ -179,8 +182,13 @@ export async function createBookingExtra(
       { field: "place", message: "Indiquez un transfert domicile ou hôtel." },
     ]);
   }
+  const moment = opts.kind === "greeter" ? opts.moment || "depart" : null;
   const offer = itineraryOffers(opts.items).find(
-    (row) => row.kind === opts.kind && row.leg === leg && (row.place || null) === place
+    (row) =>
+      row.kind === opts.kind &&
+      row.leg === leg &&
+      (row.place || null) === place &&
+      (row.moment || null) === moment
   );
   if (!offer) {
     throw new BookingIssuesError("Service indisponible.", [
@@ -190,7 +198,7 @@ export async function createBookingExtra(
       },
     ]);
   }
-  if (findExtra(opts.items, opts.kind, leg, place)) {
+  if (findExtra(opts.items, opts.kind, leg, place, moment)) {
     throw new BookingIssuesError("Service déjà demandé.", [
       {
         field: "leg",
@@ -198,7 +206,7 @@ export async function createBookingExtra(
       },
     ]);
   }
-  await assertNotRefused(supabase, opts.booking.id, opts.kind, leg, place);
+  await assertNotRefused(supabase, opts.booking.id, opts.kind, leg, place, moment);
   const flightAt =
     extraFlightAt(opts.items, leg, opts.booking.start_date || opts.booking.end_date) || null;
   const startAt = offer.whenIso || flightAt;
@@ -233,6 +241,7 @@ export async function createBookingExtra(
     kind: opts.kind,
     leg,
     place,
+    moment,
     startAt,
     amount,
     address: opts.address,
@@ -261,12 +270,14 @@ export async function createBookingExtra(
 function refusalColumns(
   kind: ExtraKind | "visa" | "checkin",
   leg: ExtraLeg | null,
-  place: ServicePlace | null | undefined
+  place: ServicePlace | null | undefined,
+  moment?: GreeterMoment | null
 ) {
   return {
     kind,
     service_leg: kind === "visa" || kind === "checkin" ? "" : leg || "",
     place: kind === "chauffeur" ? place || "" : "",
+    moment: kind === "greeter" ? moment || "depart" : "",
   };
 }
 
@@ -275,9 +286,10 @@ async function assertNotRefused(
   bookingId: string,
   kind: ExtraKind | "visa" | "checkin",
   leg: ExtraLeg | null,
-  place: ServicePlace | null | undefined
+  place: ServicePlace | null | undefined,
+  moment?: GreeterMoment | null
 ) {
-  const columns = refusalColumns(kind, leg, place);
+  const columns = refusalColumns(kind, leg, place, moment);
   const { data, error } = await supabase
     .from("crm_declined_services")
     .select("id")
@@ -285,6 +297,7 @@ async function assertNotRefused(
     .eq("kind", columns.kind)
     .eq("service_leg", columns.service_leg)
     .eq("place", columns.place)
+    .eq("moment", columns.moment)
     .maybeSingle();
   if (error) {
     console.error("[crm] decline lookup:", error.code ?? "?", error.message ?? "");
@@ -307,6 +320,7 @@ export async function declineBookingService(
     kind: ExtraKind | "visa" | "checkin";
     leg: ExtraLeg | null;
     place?: ServicePlace | null;
+    moment?: GreeterMoment | null;
   }
 ) {
   if (!bookingHasFlight(opts.items)) {
@@ -321,20 +335,25 @@ export async function declineBookingService(
       ]);
     }
     const place = opts.kind === "chauffeur" ? opts.place || null : null;
+    const moment = opts.kind === "greeter" ? opts.moment || "depart" : null;
     if (opts.kind === "chauffeur" && !place) {
       throw new BookingIssuesError("Service invalide.", [
         { field: "place", message: "Indiquez un transfert domicile ou hôtel." },
       ]);
     }
     const offer = itineraryOffers(opts.items).find(
-      (row) => row.kind === opts.kind && row.leg === opts.leg && (row.place || null) === place
+      (row) =>
+        row.kind === opts.kind &&
+        row.leg === opts.leg &&
+        (row.place || null) === place &&
+        (row.moment || null) === moment
     );
     if (!offer) {
       throw new BookingIssuesError("Service indisponible.", [
         { field: "leg", message: "Ce service ne correspond pas aux vols du dossier." },
       ]);
     }
-    if (findExtra(opts.items, opts.kind, opts.leg, place)) {
+    if (findExtra(opts.items, opts.kind, opts.leg, place, moment)) {
       throw new BookingIssuesError("Service déjà demandé.", [
         { field: "leg", message: "Ce service est déjà validé." },
       ]);
@@ -349,15 +368,16 @@ export async function declineBookingService(
     ]);
   }
 
-  const columns = refusalColumns(opts.kind, opts.leg, opts.place);
+  const columns = refusalColumns(opts.kind, opts.leg, opts.place, opts.moment);
   const { error } = await supabase.from("crm_declined_services").upsert(
     {
       booking_id: opts.booking.id,
       kind: columns.kind,
       service_leg: columns.service_leg,
       place: columns.place,
+      moment: columns.moment,
     },
-    { onConflict: "booking_id,kind,service_leg,place", ignoreDuplicates: true }
+    { onConflict: "booking_id,kind,service_leg,place,moment", ignoreDuplicates: true }
   );
   if (error) {
     console.error("[crm] decline:", error.code ?? "?", error.message ?? "");
@@ -377,16 +397,18 @@ export async function cancelBookingExtra(
     kind: ExtraKind | "visa" | "checkin";
     leg: ExtraLeg | null;
     place?: ServicePlace | null;
+    moment?: GreeterMoment | null;
   }
 ) {
   const place = opts.kind === "chauffeur" ? opts.place || null : null;
+  const moment = opts.kind === "greeter" ? opts.moment || "depart" : null;
   const item =
     opts.kind === "visa"
       ? findVisaExtra(opts.items)
       : opts.kind === "checkin"
         ? findCheckinExtra(opts.items)
         : opts.leg
-          ? findExtra(opts.items, opts.kind, opts.leg, place)
+          ? findExtra(opts.items, opts.kind, opts.leg, place, moment)
           : null;
   if (!item || !("id" in item) || !item.id) {
     throw new BookingIssuesError("Service introuvable.", [
@@ -410,11 +432,12 @@ export async function cancelBookingExtra(
 
 export function parseExtraRequest(body: Record<string, unknown> | null) {
   const kind = String(body?.kind || "");
-  if (kind === "visa") return { kind: "visa" as const, leg: null, place: null, address: null };
-  if (kind === "checkin") return { kind: "checkin" as const, leg: null, place: null, address: null };
+  if (kind === "visa") return { kind: "visa" as const, leg: null, place: null, moment: null, address: null };
+  if (kind === "checkin") return { kind: "checkin" as const, leg: null, place: null, moment: null, address: null };
   const leg = String(body?.leg || "");
   const placeRaw = String(body?.place || "");
   const place = isServicePlace(placeRaw) ? placeRaw : null;
+  const moment = isGreeterMoment(String(body?.moment || "")) ? (String(body?.moment) as GreeterMoment) : null;
   if (!isExtraKind(kind) || !isExtraLeg(leg) || (kind === "chauffeur" && !place)) {
     throw new BookingIssuesError("Service invalide.", [
       {
@@ -427,6 +450,7 @@ export function parseExtraRequest(body: Record<string, unknown> | null) {
     kind,
     leg,
     place: kind === "chauffeur" ? place : null,
+    moment: kind === "greeter" ? moment || "depart" : null,
     address: String(body?.address || "").trim() || null,
   };
 }

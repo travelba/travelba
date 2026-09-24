@@ -87,11 +87,13 @@ test("le domicile encadre le vol, l’hôtel s’ajoute, le greeter est juste av
   };
   const bare = itineraryOffers([outbound, inbound]);
   assert.deepEqual(
-    bare.map((offer) => `${offer.kind}:${offer.place || "greet"}:${offer.route}`),
+    bare.map((offer) => `${offer.kind}:${offer.moment || offer.place || "greet"}:${offer.route}`),
     [
       "chauffeur:home:Domicile → ORY",
-      "greeter:greet:Aéroport ORY · Paris",
-      "greeter:greet:Aéroport TLV · Tel Aviv",
+      "greeter:depart:Aéroport ORY · Paris",
+      "greeter:arrive:Aéroport TLV · Tel Aviv",
+      "greeter:depart:Aéroport TLV · Tel Aviv",
+      "greeter:arrive:Aéroport ORY · Paris",
       "chauffeur:home:ORY → Domicile",
     ]
   );
@@ -100,9 +102,11 @@ test("le domicile encadre le vol, l’hôtel s’ajoute, le greeter est juste av
   assert.equal(bare[0].slot, "before");
   assert.equal(bare[1].flightLine, "Vol TO 3458 · départ 11h30");
   assert.equal(bare[1].slot, "before");
-  assert.equal(bare[3].flightLine, "Vol TO 3451 · arrivée 18h25");
-  assert.equal(bare[3].slot, "after");
-  assert.equal(bare[3].whenIso, "2026-12-23 18:25:00+00");
+  assert.equal(bare[2].flightLine, "Vol TO 3458 · arrivée 17h10");
+  assert.equal(bare[2].slot, "after");
+  assert.equal(bare[5].flightLine, "Vol TO 3451 · arrivée 18h25");
+  assert.equal(bare[5].slot, "after");
+  assert.equal(bare[5].whenIso, "2026-12-23 18:25:00+00");
 
   const hotel = {
     kind: "hotel",
@@ -116,35 +120,37 @@ test("le domicile encadre le vol, l’hôtel s’ajoute, le greeter est juste av
   });
   const withHotel = itineraryOffers([outbound, inbound, hotel]);
   assert.deepEqual(
-    withHotel.map((offer) => `${offer.kind}:${offer.place || "greet"}:${offer.route}`),
+    withHotel.map((offer) => `${offer.kind}:${offer.moment || offer.place || "greet"}:${offer.route}`),
     [
       "chauffeur:home:Domicile → ORY",
-      "greeter:greet:Aéroport ORY · Paris",
+      "greeter:depart:Aéroport ORY · Paris",
+      "greeter:arrive:Aéroport TLV · Tel Aviv",
       "chauffeur:hotel:The Norman → TLV",
-      "greeter:greet:Aéroport TLV · Tel Aviv",
+      "greeter:depart:Aéroport TLV · Tel Aviv",
+      "greeter:arrive:Aéroport ORY · Paris",
       "chauffeur:home:ORY → Domicile",
     ]
   );
   assert.equal(withHotel.some((offer) => offer.route.startsWith("TLV →")), false);
-  assert.equal(withHotel[2].address, "The Norman, 23 Rothschild, Tel Aviv");
-  assert.equal(withHotel[2].flightLine, "Prise en charge 11h40 · Vol TO 3451 · départ 14h10");
-  assert.equal(withHotel[2].whenIso, "2026-12-23T11:40:00");
-  assert.equal(withHotel[2].slot, "before");
+  assert.equal(withHotel[3].address, "The Norman, 23 Rothschild, Tel Aviv");
+  assert.equal(withHotel[3].flightLine, "Prise en charge 11h40 · Vol TO 3451 · départ 14h10");
+  assert.equal(withHotel[3].whenIso, "2026-12-23T11:40:00");
+  assert.equal(withHotel[3].slot, "before");
 
   const oneWay = itineraryOffers([outbound]);
   assert.deepEqual(
-    oneWay.map((offer) => `${offer.kind}:${offer.place || "greet"}`),
-    ["chauffeur:home", "greeter:greet"]
+    oneWay.map((offer) => `${offer.kind}:${offer.moment || offer.place}`),
+    ["chauffeur:home", "greeter:depart", "greeter:arrive"]
   );
   const placed = composeItineraryDay("2026-12-14", [outbound], withHotel);
   assert.deepEqual(
     placed.map((row) => (row.type === "offer" ? row.offer.route : "VOL")),
-    ["Domicile → ORY", "Aéroport ORY · Paris", "VOL"]
+    ["Domicile → ORY", "Aéroport ORY · Paris", "VOL", "Aéroport TLV · Tel Aviv"]
   );
   const back = composeItineraryDay("2026-12-23", [inbound], withHotel);
   assert.deepEqual(
     back.map((row) => (row.type === "offer" ? row.offer.route : "VOL")),
-    ["The Norman → TLV", "Aéroport TLV · Tel Aviv", "VOL", "ORY → Domicile"]
+    ["The Norman → TLV", "Aéroport TLV · Tel Aviv", "VOL", "Aéroport ORY · Paris", "ORY → Domicile"]
   );
 });
 
@@ -162,12 +168,22 @@ test("un refus masque ce service, pas les autres", () => {
     kind: "chauffeur",
     leg: "arrival",
     place: "hotel",
+    moment: null,
   });
   assert.deepEqual(serviceRefusalFromRow({ kind: "visa", service_leg: "", place: "" }), {
     kind: "visa",
     leg: null,
     place: null,
+    moment: null,
   });
+  assert.equal(
+    isServiceRefused([{ kind: "greeter", leg: "departure", moment: "arrive" }], {
+      kind: "greeter",
+      leg: "departure",
+      moment: "depart",
+    }),
+    false
+  );
 });
 
 test("chauffeur et greeter seulement s’il y a un vol", () => {

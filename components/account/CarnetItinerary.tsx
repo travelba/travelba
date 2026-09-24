@@ -313,7 +313,7 @@ export function CarnetItinerary({
 
   function offerCard(offer: ServiceOffer) {
     if (!services || !heads) return null;
-    const existing = findExtra(items, offer.kind, offer.leg, offer.place) as CrmBookingItem | null;
+    const existing = findExtra(items, offer.kind, offer.leg, offer.place, offer.moment) as CrmBookingItem | null;
     const at = extraFlightAt(items, offer.leg, booking.start_date || booking.end_date);
     const price =
       offer.kind === "chauffeur" ? extraAmount("chauffeur") : extraAmount("greeter", heads.adults, heads.children);
@@ -352,7 +352,7 @@ export function CarnetItinerary({
 
   const coveredExtraIds = new Set(
     offers.flatMap((offer) => {
-      const row = findExtra(items, offer.kind, offer.leg, offer.place) as CrmBookingItem | null;
+      const row = findExtra(items, offer.kind, offer.leg, offer.place, offer.moment) as CrmBookingItem | null;
       return row?.id ? [row.id] : [];
     })
   );
