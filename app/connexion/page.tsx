@@ -16,6 +16,7 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<"login" | "forgot" | "magic" | "sent">("login");
+  const [channel, setChannel] = useState<"email" | "whatsapp">("email");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -67,7 +68,7 @@ function LoginForm() {
     const res = await fetch("/api/auth/otp", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email.trim() }),
+      body: JSON.stringify({ email: email.trim(), channel }),
     });
     const json = await res.json().catch(() => ({}));
     setLoading(false);
@@ -100,7 +101,7 @@ function LoginForm() {
     return (
       <div className="mt-6 space-y-5">
         <div className="rounded-2xl border border-[var(--admin-gold)]/30 bg-[var(--admin-peach)] px-3.5 py-3 text-sm text-[var(--admin-navy)]">
-          Si un compte existe pour <strong>{email}</strong>, un lien vient d’être envoyé.
+          Si un accès existe, vous recevrez un message.
         </div>
         <button
           type="button"
@@ -173,6 +174,34 @@ function LoginForm() {
             className={fieldClass}
           />
         </label>
+        <fieldset className="space-y-2">
+          <legend className="text-xs font-semibold uppercase tracking-wider text-muted">
+            Recevoir le lien
+          </legend>
+          <div className="grid grid-cols-2 gap-2">
+            {(
+              [
+                ["email", "E-mail"],
+                ["whatsapp", "WhatsApp"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={channel === value}
+                onClick={() => setChannel(value)}
+                className={`rounded-full px-3 py-2.5 text-sm font-semibold transition ${
+                  channel === value
+                    ? "bg-[var(--admin-navy)] text-white"
+                    : "bg-[var(--surface-2)] text-[var(--admin-navy)] ring-1 ring-[var(--border)]"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+        <p className="text-sm text-muted">Si un accès existe, vous recevrez un message.</p>
         {error ? <p className="text-sm text-[var(--admin-red)]">{error}</p> : null}
         <BusyBar active={loading} label="Envoi…" />
         <button
