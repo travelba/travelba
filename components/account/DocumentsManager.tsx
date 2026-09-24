@@ -8,6 +8,7 @@ import { nationalityFromIdentity } from "@/lib/crm/document-identity";
 import { documentExpiryStatus, documentExpiryWarning, identityOverwriteWarning } from "@/lib/crm/identity";
 import { formatDateFr } from "@/lib/crm/money";
 import { appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-extract";
+import { documentHolderName } from "@/lib/crm/document-identity";
 import { isVaultDocument } from "@/lib/crm/trip-documents";
 import { StatusChip } from "@/components/crm/ui";
 import {
@@ -25,9 +26,11 @@ import { Icon } from "@/components/crm/icons";
 export function DocumentsManager({
   documents,
   companions,
+  holder,
 }: {
   documents: CrmTravelDocument[];
   companions: CrmCompanion[];
+  holder: { first_name: string | null; last_name: string | null };
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -197,19 +200,25 @@ export function DocumentsManager({
         {vault.map((d) => {
           const status = documentExpiryStatus(d.expires_on);
           const open = openId === d.id;
+          const holderName = documentHolderName(d, holder, companions);
           const line = [DOC_TYPE_LABELS[d.doc_type], d.number, d.expires_on ? `exp. ${formatDateFr(d.expires_on)}` : null]
             .filter(Boolean)
             .join(" · ");
           return (
             <li key={d.id} className="admin-af-card rounded-2xl px-4 py-3">
-              <div className="flex items-center gap-2">
+              <div className="flex items-start gap-2">
                 <button
                   type="button"
                   onClick={() => setOpenId(open ? null : d.id)}
-                  className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left"
+                  className="flex min-w-0 flex-1 items-start justify-between gap-2 text-left"
                   aria-expanded={open}
                 >
-                  <span className="truncate text-sm font-semibold text-[var(--admin-navy)]">{line}</span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold leading-snug text-[var(--admin-navy)]">
+                      {holderName || "Titulaire à renseigner"}
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-muted">{line}</span>
+                  </span>
                   <StatusChip tone={status.tone}>{status.label}</StatusChip>
                 </button>
                 <button
