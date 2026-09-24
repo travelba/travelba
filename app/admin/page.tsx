@@ -189,8 +189,8 @@ export default async function AdminHomePage() {
         ))}
       </section>
 
-      <AdminLaunchStatus items={launchItems} />
-
+      <div className="grid items-start gap-6 xl:grid-cols-12">
+      <div className="space-y-6 xl:col-span-8">
       <section className="space-y-3">
         <div className="flex items-center justify-between px-1">
           <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">
@@ -279,7 +279,10 @@ export default async function AdminHomePage() {
           </ul>
         ) : null}
       </section>
+      </div>
 
+      <aside className="space-y-4 xl:col-span-4">
+      <AdminLaunchStatus items={launchItems} />
       <section className="admin-af-card overflow-hidden rounded-2xl">
         <div className="border-b border-[var(--border)] px-5 py-4">
           <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">
@@ -305,6 +308,8 @@ export default async function AdminHomePage() {
           ) : null}
         </ul>
       </section>
+      </aside>
+      </div>
     </div>
   );
 }

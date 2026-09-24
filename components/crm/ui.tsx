@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { siteConfig } from "@/lib/site";
+import { Icon } from "@/components/crm/icons";
 
 export function BrandMark({
   href = "/",
@@ -160,14 +161,16 @@ export function ConciergeBanner({
           href={`tel:+${siteConfig.whatsappNumber}`}
           className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#e5e3dc] bg-[var(--surface-2)] text-xs font-semibold uppercase tracking-[0.06em] text-[var(--admin-navy)]"
         >
-          Appeler
+          <Icon name="call" className="h-[18px] w-[18px] text-[var(--admin-gold-dark)]" />
+          Appel direct
         </a>
         <a
           href={wa}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[var(--admin-navy)] text-xs font-semibold uppercase tracking-[0.06em] text-white"
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[var(--admin-gold)]/30 bg-[var(--admin-navy)] text-xs font-semibold uppercase tracking-[0.06em] text-white"
         >
+          <Icon name="chat" className="h-[18px] w-[18px] text-[var(--admin-gold)]" />
           {label}
         </a>
       </div>

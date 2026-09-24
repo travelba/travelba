@@ -18,8 +18,11 @@ import {
   type CrmRevolutTransaction,
   type CrmTransaction,
   type CrmTravelDocument,
+  DOC_TYPE_LABELS,
   filterCreditTransfers,
 } from "@/lib/crm/types";
+import { documentExpiryStatus } from "@/lib/crm/identity";
+import { StatusChip } from "@/components/crm/ui";
 import { clientLedgerAdminHref } from "@/lib/crm/client-ledger";
 import { formatDateFr, formatMoney, formatCreditDisponible } from "@/lib/crm/money";
 
@@ -133,6 +136,34 @@ export default async function AdminClientDetailPage({ params }: Props) {
           </p>
         </div>
       </div>
+      <section className="admin-af-card overflow-hidden rounded-3xl">
+        <div className="border-b border-[var(--border)] px-5 py-4">
+          <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Validation des pièces</h2>
+        </div>
+        <ul className="divide-y divide-border text-sm">
+          {((documents || []) as CrmTravelDocument[]).map((doc) => {
+            const expiry = documentExpiryStatus(doc.expires_on);
+            return (
+              <li key={doc.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                <span>
+                  <span className="block font-medium text-[var(--admin-navy)]">
+                    {DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type}
+                    {doc.number ? ` · ${doc.number}` : ""}
+                  </span>
+                  <span className="text-xs text-muted">
+                    {[doc.first_name, doc.last_name].filter(Boolean).join(" ") || "Titulaire"}
+                    {doc.expires_on ? ` · expire le ${formatDateFr(doc.expires_on)}` : ""}
+                  </span>
+                </span>
+                <StatusChip tone={expiry.tone}>{expiry.label}</StatusChip>
+              </li>
+            );
+          })}
+          {!documents?.length ? (
+            <li className="px-5 py-8 text-center text-muted">Aucune pièce au coffre.</li>
+          ) : null}
+        </ul>
+      </section>
       <CustomerEditor
         customer={c}
         companions={(companions || []) as CrmCompanion[]}

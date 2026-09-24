@@ -26,10 +26,13 @@ export default async function ProfilPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="truncate font-display text-xl font-semibold text-[var(--admin-navy)]">{name}</h1>
+      <section className="rounded-2xl border border-[#e5e3dc] bg-white p-4 shadow-sm">
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Vous</p>
+        <h1 className="mt-1 truncate font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">
+          {name}
+        </h1>
         <p className="truncate text-sm text-muted">{customer.email}</p>
-      </div>
+      </section>
 
       <ProfileSubnav />
 

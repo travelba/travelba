@@ -9,6 +9,7 @@ export function BookingHero({
   priority = false,
   plain = false,
   className = "",
+  frameClassName = "relative h-60 w-full sm:h-72",
   children,
 }: {
   booking: CoverBooking;
@@ -17,6 +18,7 @@ export function BookingHero({
   /** Vignette : photo seule, sans dégradé. */
   plain?: boolean;
   className?: string;
+  frameClassName?: string;
   children?: ReactNode;
 }) {
   const src = bookingCoverUrl(booking, width);
@@ -29,7 +31,7 @@ export function BookingHero({
 
   return (
     <div className={`relative overflow-hidden bg-[var(--admin-navy)] text-white ${className}`}>
-      <div className={plain ? "absolute inset-0" : "relative h-60 w-full sm:h-72"}>
+      <div className={plain ? "absolute inset-0" : frameClassName}>
         {src ? (
           <CoverPhoto
             src={src}
