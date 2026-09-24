@@ -5,6 +5,7 @@ import { siteConfig } from "@/lib/site";
 import { agencyEmailHtml } from "@/lib/crm/email-html";
 import { connexionMessage, greetingForWhatsapp, sendConnexionWhatsapp } from "@/lib/crm/whatsapp";
 import { createEntryLink } from "@/lib/crm/entry-link";
+import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 
 export const runtime = "nodejs";
 
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Adresse e-mail invalide" }, { status: 400 });
   }
 
-  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const apiKey = productionOnlySecret(process.env.RESEND_API_KEY);
   const fromAddress =
     process.env.CONTACT_FROM_EMAIL?.trim() || "contact@travelba.fr";
   const siteUrl = (

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { cronAuthorized } from "@/lib/crm/cron-auth";
+import { cronAuthorized, cronSecret } from "@/lib/crm/cron-auth";
 import {
   gmailConfigured,
   gmailLabelNames,
@@ -14,7 +14,7 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 function authorized(request: Request) {
-  const secret = process.env.CRON_SECRET?.trim();
+  const secret = cronSecret();
   return cronAuthorized(request.headers.get("authorization"), secret);
 }
 

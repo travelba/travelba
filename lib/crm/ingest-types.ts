@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { productionOnlySecret } from "./preview-secrets";
 import { bookingTotalFromItems } from "./bookings";
 import { sortItemsByOrder } from "./carnet";
 import { redactIngestValue } from "./ingest-redact";
@@ -400,7 +401,7 @@ export function keepAgentPrices(extract: BookingExtract): BookingExtract {
 }
 
 export function openaiApiKey() {
-  const key = process.env.OPENAI_API_KEY?.trim() || "";
+  const key = productionOnlySecret(process.env.OPENAI_API_KEY);
   return key.startsWith("sk-") ? key : "";
 }
 

@@ -1,7 +1,7 @@
 import { requireStaffPage } from "@/lib/crm/auth";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { RevolutInbox } from "@/components/admin/RevolutInbox";
-import { revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
+import { revolutClientId, revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
 import type { CrmRevolutTransaction } from "@/lib/crm/types";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
@@ -38,7 +38,7 @@ export default async function AdminRevolutPage({
     rows = [];
   }
 
-  const hasClientId = Boolean(process.env.REVOLUT_CLIENT_ID?.trim());
+  const hasClientId = Boolean(revolutClientId());
 
   return (
     <div>

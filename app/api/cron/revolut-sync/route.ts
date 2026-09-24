@@ -6,13 +6,13 @@ import {
   upsertRevolutInbox,
 } from "@/lib/crm/revolut";
 import { autoMatchUnmatchedRevolut } from "@/lib/crm/revolut-match";
-import { cronAuthorized } from "@/lib/crm/cron-auth";
+import { cronAuthorized, cronSecret } from "@/lib/crm/cron-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 function authorized(request: Request) {
-  const secret = process.env.CRON_SECRET?.trim();
+  const secret = cronSecret();
   return cronAuthorized(request.headers.get("authorization"), secret);
 }
 

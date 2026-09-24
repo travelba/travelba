@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { cronAuthorized } from "@/lib/crm/cron-auth";
+import { cronAuthorized, cronSecret } from "@/lib/crm/cron-auth";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { retryStillDue, shouldCloseCard } from "@/lib/crm/visa-desk";
 import { raisePliantLimit } from "@/lib/crm/pliant";
@@ -7,7 +7,7 @@ import { raisePliantLimit } from "@/lib/crm/pliant";
 export const runtime = "nodejs";
 
 function authorized(request: Request) {
-  return cronAuthorized(request.headers.get("authorization"), process.env.CRON_SECRET?.trim());
+  return cronAuthorized(request.headers.get("authorization"), cronSecret());
 }
 
 export async function GET(request: Request) {

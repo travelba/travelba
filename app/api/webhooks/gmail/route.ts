@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { decodeGmailPushBody } from "@/lib/crm/gmail-parse";
 import { gmailConfigured } from "@/lib/crm/gmail";
 import { captureGmailHistory } from "@/lib/crm/email-ingest";
+import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 function tokenAuthorized(request: Request) {
-  const expected = (process.env.GMAIL_PUSH_TOKEN || "").trim();
+  const expected = productionOnlySecret(process.env.GMAIL_PUSH_TOKEN);
   if (!expected) return false;
   const token = new URL(request.url).searchParams.get("token") || "";
   return token === expected;
