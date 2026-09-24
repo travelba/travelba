@@ -41,10 +41,12 @@ export function isLinkCrawler(userAgent: string | null) {
   return CRAWLER.test(userAgent || "");
 }
 
-/** Aperçu (WhatsApp, collage) : pas de redirection, le jeton n’est pas consommé. */
-export function shouldServePreview(userAgent: string | null, secFetchUser: string | null) {
-  if (isLinkCrawler(userAgent)) return true;
-  return secFetchUser !== "?1";
+/**
+ * Seul un robot d’aperçu reste sur la page. Le navigateur de WhatsApp
+ * (sans en-tête de navigation) doit être redirigé, sinon le lien n’ouvre pas l’espace.
+ */
+export function shouldServePreview(userAgent: string | null, _secFetchUser: string | null) {
+  return isLinkCrawler(userAgent);
 }
 
 export function safeOtpType(value: string | null | undefined) {
@@ -58,44 +60,46 @@ export function safeNextPath(value: string | null | undefined) {
   return value;
 }
 
+export const ENTRY_PREVIEW_TITLE = "Le Concierge";
+export const ENTRY_PREVIEW_DESCRIPTION = "Votre espace personnel vous attend.";
+
 export function entryPreviewHtml(origin: string, code: string) {
   const base = origin.replace(/\/$/, "");
   const page = entryLinkUrl(base, code);
-  const title = "Le Concierge TBA";
-  const description = "Votre espace vous attend.";
+  const title = ENTRY_PREVIEW_TITLE;
+  const description = ENTRY_PREVIEW_DESCRIPTION;
+  const image = `${base}/og-concierge.png`;
+  const icon = `${base}/favicon.png`;
   return `<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="utf-8">
 <title>${title}</title>
 <meta name="description" content="${description}">
+<meta name="robots" content="noindex">
 <meta property="og:locale" content="fr_FR">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Travel Business Agency">
 <meta property="og:title" content="${title}">
 <meta property="og:description" content="${description}">
 <meta property="og:url" content="${page}">
-<meta property="og:image" content="${base}/og-concierge.png">
-<meta property="og:image:secure_url" content="${base}/og-concierge.png">
+<meta property="og:image" content="${image}">
+<meta property="og:image:secure_url" content="${image}">
 <meta property="og:image:type" content="image/png">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
 <meta property="og:image:alt" content="${title}">
-<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="${title}">
 <meta name="twitter:description" content="${description}">
-<meta name="twitter:image" content="${base}/og-concierge.png">
+<meta name="twitter:image" content="${image}">
+<link rel="icon" href="${icon}" type="image/png" sizes="512x512">
 <link rel="icon" href="${base}/favicon.ico" sizes="any">
-<link rel="icon" href="${base}/favicon-32.png" type="image/png" sizes="32x32">
-<link rel="icon" href="${base}/favicon.png" type="image/png" sizes="512x512">
 <link rel="apple-touch-icon" href="${base}/apple-touch-icon.png" sizes="180x180">
 </head>
 <body style="margin:0;background:#0B192C;color:#F3EDE2;font-family:Georgia,serif">
-<form id="go" method="post" action="${page}" style="padding:48px">
-<p style="margin:0 0 24px;font-size:28px">${title}</p>
-<button type="submit" style="background:#C5A880;color:#0B192C;border:0;padding:14px 22px;font:inherit;cursor:pointer">Ouvrir mon espace</button>
-</form>
-<script>document.getElementById("go").submit()</script>
+<p style="margin:0;padding:48px;font-size:28px">${title}</p>
+<p style="margin:0;padding:0 48px 48px;font-size:18px">${description}</p>
 </body>
 </html>`;
 }

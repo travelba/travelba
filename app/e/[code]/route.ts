@@ -29,14 +29,19 @@ async function redirectToCallback(code: string) {
     : { data: null };
 
   if (!data?.token_hash) {
-    return NextResponse.redirect(new URL("/connexion?error=auth", origin));
+    return noStore(NextResponse.redirect(new URL("/connexion?error=auth", origin)));
   }
 
   const callback = new URL("/auth/callback", origin);
   callback.searchParams.set("token_hash", data.token_hash);
   callback.searchParams.set("type", safeOtpType(data.otp_type));
   callback.searchParams.set("next", safeNextPath(data.next_path));
-  return NextResponse.redirect(callback);
+  return noStore(NextResponse.redirect(callback));
+}
+
+function noStore(response: NextResponse) {
+  response.headers.set("Cache-Control", "private, no-store");
+  return response;
 }
 
 export async function GET(request: Request, ctx: Ctx) {
@@ -46,7 +51,8 @@ export async function GET(request: Request, ctx: Ctx) {
     return new NextResponse(entryPreviewHtml(origin, normalizeCode(code) || "00000000"), {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
-        "Cache-Control": "public, max-age=300",
+        "Cache-Control": "private, no-store",
+        Vary: "User-Agent",
       },
     });
   }

@@ -26,17 +26,20 @@ test("l’adresse publique est courte", () => {
 
 test("WhatsApp reçoit le titre sans consommer le jeton", () => {
   assert.equal(isLinkCrawler("WhatsApp/2.23"), true);
+  assert.equal(isLinkCrawler("facebookexternalhit/1.1"), true);
   assert.equal(shouldServePreview("WhatsApp/2.23", null), true);
-  assert.equal(shouldServePreview("Mozilla/5.0", null), true);
+  assert.equal(shouldServePreview("Mozilla/5.0", null), false);
   assert.equal(shouldServePreview("Mozilla/5.0", "?1"), false);
   const html = entryPreviewHtml("https://travelba.fr", "K7MQ2PX4");
-  assert.match(html, /<title>Le Concierge TBA<\/title>/);
-  assert.match(html, /og:title" content="Le Concierge TBA"/);
-  assert.match(html, /og:description" content="Votre espace vous attend."/);
+  assert.match(html, /<title>Le Concierge<\/title>/);
+  assert.match(html, /og:title" content="Le Concierge"/);
+  assert.match(html, /og:description" content="Votre espace personnel vous attend."/);
   assert.match(html, /og:image" content="https:\/\/travelba\.fr\/og-concierge\.png"/);
-  assert.match(html, /favicon\.ico/);
+  assert.match(html, /og:image:width" content="512"/);
+  assert.match(html, /og:image:height" content="512"/);
   assert.match(html, /favicon\.png/);
   assert.match(html, /apple-touch-icon\.png/);
+  assert.equal(html.includes("<script"), false);
   assert.equal(html.includes("token"), false);
   assert.equal(html.includes("hashed"), false);
 });
