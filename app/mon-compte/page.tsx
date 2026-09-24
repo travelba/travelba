@@ -10,6 +10,7 @@ import { BookingHero } from "@/components/crm/BookingHero";
 import { Icon } from "@/components/crm/icons";
 import { ConciergeBanner } from "@/components/crm/ui";
 import { greetingGivenName } from "@/lib/crm/identity";
+import { destinationWeather } from "@/lib/crm/destination-weather";
 
 export default async function AccountHomePage() {
   const { supabase, user } = await getSessionUser();
@@ -44,6 +45,9 @@ export default async function AccountHomePage() {
     : "";
   const tripPlace = nextTrip ? tripPlaceLine(nextTrip.title, nextTrip.destination) : null;
   const tripHref = nextTrip ? `/mon-compte/reservations/${nextTrip.reference}` : "/mon-compte/reservations";
+  const weather = nextTrip
+    ? await destinationWeather(nextTrip.destination, nextTrip.title)
+    : null;
 
   return (
     <div className="space-y-3">
@@ -64,6 +68,13 @@ export default async function AccountHomePage() {
                 <Icon name="timer" className="h-[15px] w-[15px] text-[var(--admin-gold)]" />
                 <span className="font-bold">{countdown}</span>
                 {countdown.startsWith("J") ? <span className="font-normal text-[#5a5c60]">avant l’envol</span> : null}
+              </p>
+            ) : null}
+            {weather ? (
+              <p className="absolute right-5 top-5 z-10 inline-flex items-center gap-1.5 rounded-full border border-white/40 bg-white/90 px-3 py-1 text-[12px] font-semibold text-[var(--admin-navy)] shadow-sm">
+                <Icon name={weather.icon} className="h-[15px] w-[15px] text-[var(--admin-gold)]" />
+                <span className="font-bold">{weather.tempC}°</span>
+                <span className="font-normal text-[#5a5c60]">{weather.label}</span>
               </p>
             ) : null}
             <div className="absolute inset-x-0 bottom-0 flex flex-col gap-3 p-5">
