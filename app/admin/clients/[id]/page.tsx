@@ -23,6 +23,7 @@ import {
 } from "@/lib/crm/types";
 import { documentExpiryStatus } from "@/lib/crm/identity";
 import { StatusChip } from "@/components/crm/ui";
+import { BookingHero } from "@/components/crm/BookingHero";
 import { clientLedgerAdminHref } from "@/lib/crm/client-ledger";
 import { formatDateFr, formatMoney, formatCreditDisponible } from "@/lib/crm/money";
 
@@ -187,9 +188,12 @@ export default async function AdminClientDetailPage({ params }: Props) {
               <li key={b.id} className="flex items-center justify-between gap-3 py-2">
                 <Link
                   href={`/admin/reservations/${b.id}`}
-                  className="text-[var(--admin-navy)] underline-offset-2 hover:underline"
+                  className="flex min-w-0 items-center gap-3 text-[var(--admin-navy)] underline-offset-2 hover:underline"
                 >
-                  {b.reference} · {b.title} · {formatDateFr(b.start_date)}
+                  <BookingHero booking={b} plain className="h-12 w-20 shrink-0 rounded-lg" />
+                  <span className="min-w-0 truncate">
+                    {b.reference} · {b.title} · {formatDateFr(b.start_date)}
+                  </span>
                 </Link>
                 <DeleteBookingButton
                   compact

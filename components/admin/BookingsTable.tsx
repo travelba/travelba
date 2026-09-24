@@ -71,9 +71,8 @@ export function BookingsTable({
               <div className="flex min-w-0 items-center gap-3">
               <BookingHero
                 booking={b}
-                width={240}
                 plain
-                className="aspect-video w-24 shrink-0 rounded-xl"
+                className="h-16 w-28 shrink-0 rounded-xl"
               />
                 <div className="min-w-0">
                   <p className="font-semibold text-[var(--admin-navy)]">

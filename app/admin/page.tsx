@@ -255,7 +255,9 @@ export default async function AdminHomePage() {
                   href={`/admin/reservations/${b.id}`}
                   className="flex flex-col gap-2 px-5 py-3.5 transition hover:bg-[var(--admin-sky)]/40 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <BookingHero booking={b} plain className="h-14 w-24 shrink-0 rounded-xl" />
+                    <div className="min-w-0">
                     <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9e7e51]">
                       {b.reference}
                       {jMinusLabel(b.start_date) ? ` · ${jMinusLabel(b.start_date)}` : ""}
@@ -264,6 +266,7 @@ export default async function AdminHomePage() {
                     <p className="text-xs text-muted">
                       {byId.get(b.customer_id) || "Client"} · {formatDateFr(b.start_date)}
                     </p>
+                    </div>
                   </div>
                   <div className="flex items-center gap-3">
                     <StatusChip tone={bookingStatusTone(b.status)}>

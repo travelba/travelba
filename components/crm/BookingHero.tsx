@@ -30,7 +30,7 @@ export function BookingHero({
 
   return (
     <div className={`relative overflow-hidden bg-[var(--admin-navy)] text-white ${className}`}>
-      <div className={plain ? "absolute inset-0" : frameClassName}>
+      <div className={plain ? "relative h-full w-full" : frameClassName}>
         {src ? (
           <CoverPhoto
             src={src}
