@@ -60,6 +60,37 @@ export default async function AccountHomePage() {
         </h1>
       </section>
 
+      {member ? (
+        <Link
+          href="/mon-compte/transactions"
+          className="flex h-11 items-center justify-between rounded-2xl border border-[var(--admin-gold)]/55 bg-white px-4 text-sm font-semibold text-[var(--admin-navy)] shadow-sm"
+        >
+          Voir les frais de vos voyages
+          <Icon name="arrow_forward" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
+        </Link>
+      ) : (
+        <Link
+          href="/mon-compte/transactions"
+          className={`block rounded-2xl border p-4 shadow-sm ${
+            owes ? "border-[var(--admin-gold)] bg-[#f8f3eb]" : "border-[#e5e3dc] bg-white"
+          }`}
+        >
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Encours</p>
+          <ul className="mt-2 space-y-2">
+            {shownBalances.map((row) => (
+              <li key={row.currency}>
+                <p className="font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">
+                  {formatMoney(row.value, row.currency)}
+                </p>
+                <p className="text-xs text-muted">
+                  {row.value > 0 ? "Crédit disponible · frais d’agence 10 % déduits" : encoursCaption(row.value)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </Link>
+      )}
+
       {nextTrip ? (
         <article className="overflow-hidden rounded-2xl border border-[#e5e3dc] shadow-xl">
           <BookingHero booking={nextTrip} priority frameClassName="relative h-[22rem] w-full">
@@ -104,37 +135,6 @@ export default async function AccountHomePage() {
       )}
 
       <ConciergeBanner />
-
-      {member ? (
-        <Link
-          href="/mon-compte/transactions"
-          className="flex h-11 items-center justify-between rounded-2xl border border-[var(--admin-gold)]/55 bg-white px-4 text-sm font-semibold text-[var(--admin-navy)] shadow-sm"
-        >
-          Voir les frais de vos voyages
-          <Icon name="arrow_forward" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
-        </Link>
-      ) : (
-        <Link
-          href="/mon-compte/transactions"
-          className={`block rounded-2xl border p-4 shadow-sm ${
-            owes ? "border-[var(--admin-gold)] bg-[#f8f3eb]" : "border-[#e5e3dc] bg-white"
-          }`}
-        >
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Encours</p>
-          <ul className="mt-2 space-y-2">
-            {shownBalances.map((row) => (
-              <li key={row.currency}>
-                <p className="font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">
-                  {formatMoney(row.value, row.currency)}
-                </p>
-                <p className="text-xs text-muted">
-                  {row.value > 0 ? "Crédit disponible · frais d’agence 10 % déduits" : encoursCaption(row.value)}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </Link>
-      )}
     </div>
   );
 }
