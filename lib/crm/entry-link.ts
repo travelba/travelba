@@ -69,8 +69,10 @@ export function entryPreviewHtml(origin: string, code: string) {
 <meta name="twitter:title" content="${title}">
 <meta name="twitter:description" content="${description}">
 <meta name="twitter:image" content="${base}/og-concierge.png">
+<link rel="icon" href="${base}/favicon.ico" sizes="any">
+<link rel="icon" href="${base}/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="icon" href="${base}/favicon.png" type="image/png" sizes="512x512">
-<link rel="apple-touch-icon" href="${base}/apple-touch-icon.png">
+<link rel="apple-touch-icon" href="${base}/apple-touch-icon.png" sizes="180x180">
 </head>
 <body style="margin:0;background:#0B192C;color:#F3EDE2;font-family:Georgia,serif">
 <form id="go" method="post" action="${page}" style="padding:48px">
