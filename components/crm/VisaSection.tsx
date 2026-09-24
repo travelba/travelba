@@ -185,6 +185,16 @@ export function VisaSection({
                     );
                   })}
                 </ol>
+                {entry.applyUrl ? (
+                  <a
+                    href={entry.applyUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex h-10 items-center rounded-full bg-[var(--surface-2)] px-4 text-sm font-semibold text-[var(--admin-navy)] ring-1 ring-[#e5e3dc]"
+                  >
+                    Lien officiel
+                  </a>
+                ) : null}
               </div>
             ) : (
               <div className="space-y-2">
@@ -290,14 +300,14 @@ export function VisaSection({
         </div>
       ))}
 
-      {others.length ? (
+      {trip.entries.length ? (
         <TripVisaUploads
           variant={variant}
           bookingId={bookingId}
           reference={reference}
           travelers={travelers}
           documents={documents}
-          entries={others}
+          entries={trip.entries}
         />
       ) : null}
 
