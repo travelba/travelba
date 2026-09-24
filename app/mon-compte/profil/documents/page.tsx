@@ -28,6 +28,7 @@ export default async function DocumentsPage() {
       <DocumentsManager
         documents={(documents || []) as CrmTravelDocument[]}
         companions={(companions || []) as CrmCompanion[]}
+        holder={{ first_name: customer.first_name, last_name: customer.last_name }}
       />
     </div>
   );
