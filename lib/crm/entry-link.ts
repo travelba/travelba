@@ -52,12 +52,15 @@ export function isLinkCrawler(userAgent: string | null) {
 }
 
 /**
- * L’URL du bouton reste l’aperçu, quel que soit l’agent.
- * Pas de redirection sur le GET : WhatsApp suit un 307 et garde le domaine seul.
- * L’ouverture humaine est le bouton, en POST.
+ * Le robot d’aperçu (WhatsApp/…, facebookexternalhit) reste sur la page.
+ * Un navigateur, même ouvert depuis WhatsApp, entre dans l’espace.
  */
-export function shouldServePreview(_userAgent: string | null, _secFetchUser: string | null) {
-  return true;
+export function shouldServePreview(userAgent: string | null, _secFetchUser: string | null) {
+  const ua = userAgent || "";
+  if (/^WhatsApp\//i.test(ua.trim())) return true;
+  return /facebookexternalhit|facebot|meta-externalagent|twitterbot|linkedinbot|slackbot|telegrambot|discordbot|embedly|skypeuripreview|iframely|pinterest|redditbot|vkshare/i.test(
+    ua
+  );
 }
 
 export function entryOpenRequested(search: string) {

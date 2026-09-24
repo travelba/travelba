@@ -1,4 +1,5 @@
 import { entryPreviewResponse, redirectEntryToCallback } from "@/lib/crm/entry-open";
+import { shouldServePreview } from "@/lib/crm/entry-link";
 import { siteConfig } from "@/lib/site";
 
 export const runtime = "nodejs";
@@ -9,10 +10,14 @@ function originOf() {
   return (process.env.NEXT_PUBLIC_SITE_URL || siteConfig.url).replace(/\/$/, "");
 }
 
-/** Le GET reste l’aperçu, même si le client ressemble à un appui. */
-export async function GET(_request: Request, ctx: Ctx) {
+/** Le robot reste sur l’aperçu. Un visiteur entre dans l’espace. */
+export async function GET(request: Request, ctx: Ctx) {
   const { code } = await ctx.params;
-  return entryPreviewResponse(originOf(), code.trim().toUpperCase());
+  const safe = code.trim().toUpperCase();
+  if (shouldServePreview(request.headers.get("user-agent"), request.headers.get("sec-fetch-user"))) {
+    return entryPreviewResponse(originOf(), safe);
+  }
+  return redirectEntryToCallback(originOf(), safe);
 }
 
 export async function POST(_request: Request, ctx: Ctx) {
