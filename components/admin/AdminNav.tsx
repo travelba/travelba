@@ -21,13 +21,19 @@ export function AdminNav({
   unmatchedCount = 0,
   emailCount = 0,
   staffName = "",
+  staffRole = "",
   children,
 }: {
   unmatchedCount?: number;
   emailCount?: number;
   staffName?: string;
+  staffRole?: "admin" | "agent" | "";
   children?: React.ReactNode;
 }) {
+  const links =
+    staffRole === "admin"
+      ? [...LINKS, { href: "/admin/equipe", label: "Équipe", icon: "person_add" }]
+      : LINKS;
   const pathname = usePathname();
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -56,7 +62,7 @@ export function AdminNav({
     router.push(q ? `/admin/clients?q=${encodeURIComponent(q)}` : "/admin/clients");
   }
 
-  function navLink(link: (typeof LINKS)[number], variant: "dark" | "light") {
+  function navLink(link: (typeof links)[number], variant: "dark" | "light") {
     const active = link.exact ? pathname === link.href : pathname.startsWith(link.href);
     const badge =
       link.href === "/admin/revolut" && unmatchedCount > 0
@@ -113,7 +119,7 @@ export function AdminNav({
           </div>
         </div>
         <nav className="no-scrollbar flex gap-1 overflow-x-auto px-3 pb-2">
-          {LINKS.map((link) => navLink(link, "dark"))}
+          {links.map((link) => navLink(link, "dark"))}
         </nav>
         <form onSubmit={onSearch} className="relative px-3 pb-3">
           <Icon
@@ -143,7 +149,7 @@ export function AdminNav({
             </span>
           </Link>
 
-          <nav className="flex flex-col gap-1">{LINKS.map((link) => navLink(link, "dark"))}</nav>
+          <nav className="flex flex-col gap-1">{links.map((link) => navLink(link, "dark"))}</nav>
         </div>
 
         <div className="mt-6 flex flex-col gap-3">

@@ -41,11 +41,14 @@ export async function POST(request: Request) {
   if (metaError) return dbError(metaError, 400);
 
   await supabase.auth.refreshSession();
-  const { data: customer } = await admin
-    .from("crm_customers")
-    .select("phone")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-  const next = pathAfterPassword(customer?.phone);
-  return NextResponse.json({ ok: true, needsPhone: next !== "/mon-compte", next });
+  const [{ data: customer }, { data: staffRow }] = await Promise.all([
+    admin.from("crm_customers").select("phone").eq("auth_user_id", user.id).maybeSingle(),
+    admin.from("crm_staff").select("id").eq("auth_user_id", user.id).maybeSingle(),
+  ]);
+  const next = pathAfterPassword(customer?.phone, staffRow ? "staff" : "client");
+  return NextResponse.json({
+    ok: true,
+    needsPhone: !staffRow && next !== "/mon-compte",
+    next,
+  });
 }

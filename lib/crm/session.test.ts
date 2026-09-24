@@ -29,6 +29,11 @@ test("après le mot de passe, la fiche ne s’ouvre que sans téléphone", () =>
   assert.equal(pathAfterPassword(null), "/mon-compte/profil");
 });
 
+test("un collègue arrive dans l’espace agence", () => {
+  assert.equal(pathAfterPassword(null, "staff"), "/admin");
+  assert.equal(pathAfterPassword("+33600000000", "staff"), "/admin");
+});
+
 test("PKCE reset without type still forces password when next is the set-password page", () => {
   assert.equal(
     shouldForcePasswordSetup({
