@@ -19,7 +19,7 @@ export function SignOutButton() {
       onClick={signOut}
       className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[#e5e3dc] bg-[var(--surface-2)] px-4 py-3.5 text-sm font-bold text-[var(--admin-navy)] transition hover:bg-white"
     >
-      Déconnexion sécurisée
+      Déconnexion
     </button>
   );
 }
