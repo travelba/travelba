@@ -31,7 +31,6 @@ import { siteConfig } from "@/lib/site";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
 import { Icon } from "@/components/crm/icons";
-import { TripPassportPicker } from "@/components/crm/TripPassportPicker";
 
 type Props = { params: Promise<{ reference: string }> };
 
@@ -125,7 +124,7 @@ export default async function ReservationDetailPage({ params }: Props) {
 
       {missingPassports ? (
         <a
-          href="#passeport"
+          href="/mon-compte/profil/documents"
           className="block rounded-2xl bg-[var(--admin-peach)] px-4 py-2.5 text-sm font-semibold text-[var(--admin-navy)]"
         >
           Pièce manquante pour {missingCount} voyageur{missingCount > 1 ? "s" : ""}.
@@ -217,14 +216,6 @@ export default async function ReservationDetailPage({ params }: Props) {
       >
         Demander une modification
       </a>
-
-      <TripPassportPicker
-        variant="client"
-        bookingId={b.id}
-        travelers={party}
-        documents={(identityDocs || []) as CrmTravelDocument[]}
-        holder={customer}
-      />
 
       {bookingHasFlight(visibleItems) ? (
         <VisaSection
