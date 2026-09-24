@@ -15,7 +15,7 @@ Circular monogram only. No compass rose. No subtitle.
 |------|-----|
 | `logo-tba.png` | UI (1024 master) |
 | `travelba-whatsapp-badge-only.png` | WhatsApp profile crop (640, same mark) |
-| `/favicon.ico` | Browser tab (`public/` + `app/favicon.ico`) |
-| `/favicon-16.png` `/favicon-32.png` `/favicon-48.png` | PNG favicons |
+| `/favicon.ico` | Favicon du domaine, lu par WhatsApp (`public/` + `app/`). ICO 32, 16 et 48 : monogramme opaque sur marine, pas de fond transparent |
+| `/favicon-16.png` `/favicon-32.png` `/favicon-48.png` | Mêmes tailles en PNG opaque |
 | `/favicon.png` | 512 source (also `app/icon.png`) |
 | `/apple-touch-icon.png` | iOS home screen (180, also `app/apple-icon.png`) |
