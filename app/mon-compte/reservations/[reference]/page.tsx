@@ -189,6 +189,7 @@ export default async function ReservationDetailPage({ params }: Props) {
           holder={customer}
           companions={(companions || []) as CrmCompanion[]}
           whatsappHref={modifyHref}
+          formalities={formalities}
           refusals={refusals}
         />
       ) : null}
