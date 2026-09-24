@@ -41,11 +41,13 @@ test("sans clés Twilio, le lien n’est pas envoyé", async () => {
     token: process.env.TWILIO_AUTH_TOKEN,
     from: process.env.TWILIO_WHATSAPP_FROM,
     content: process.env.TWILIO_CONTENT_CONNEXION,
+    legacy: process.env.TWILIO_WHATSAPP_CONTENT_SID,
   };
   delete process.env.TWILIO_ACCOUNT_SID;
   delete process.env.TWILIO_AUTH_TOKEN;
   delete process.env.TWILIO_WHATSAPP_FROM;
   delete process.env.TWILIO_CONTENT_CONNEXION;
+  delete process.env.TWILIO_WHATSAPP_CONTENT_SID;
   let called = false;
   const result = await sendConnexionWhatsapp({
     phone: "+33601020304",
@@ -63,4 +65,5 @@ test("sans clés Twilio, le lien n’est pas envoyé", async () => {
   if (previous.token) process.env.TWILIO_AUTH_TOKEN = previous.token;
   if (previous.from) process.env.TWILIO_WHATSAPP_FROM = previous.from;
   if (previous.content) process.env.TWILIO_CONTENT_CONNEXION = previous.content;
+  if (previous.legacy) process.env.TWILIO_WHATSAPP_CONTENT_SID = previous.legacy;
 });

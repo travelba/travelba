@@ -35,12 +35,20 @@ export function whatsappAddress(phone: string | null | undefined) {
   return `whatsapp:${valid}`;
 }
 
+export function connexionContentSid() {
+  return (
+    process.env.TWILIO_CONTENT_CONNEXION?.trim() ||
+    process.env.TWILIO_WHATSAPP_CONTENT_SID?.trim() ||
+    ""
+  );
+}
+
 export function whatsappConfigured() {
   return Boolean(
     process.env.TWILIO_ACCOUNT_SID?.trim() &&
       process.env.TWILIO_AUTH_TOKEN?.trim() &&
       process.env.TWILIO_WHATSAPP_FROM?.trim() &&
-      process.env.TWILIO_CONTENT_CONNEXION?.trim()
+      connexionContentSid()
   );
 }
 
@@ -66,7 +74,7 @@ export async function sendConnexionWhatsapp(input: {
   const accountSid = process.env.TWILIO_ACCOUNT_SID!.trim();
   const token = process.env.TWILIO_AUTH_TOKEN!.trim();
   const from = process.env.TWILIO_WHATSAPP_FROM!.trim();
-  const contentSid = process.env.TWILIO_CONTENT_CONNEXION!.trim();
+  const contentSid = connexionContentSid();
   const firstName = greetingForWhatsapp(input.firstName);
   const body = new URLSearchParams({
     From: from.startsWith("whatsapp:") ? from : `whatsapp:${from}`,
