@@ -180,22 +180,6 @@ export default async function ReservationDetailPage({ params }: Props) {
       ) : null}
 
       {bookingHasFlight(visibleItems) ? (
-        <section className="aura-card space-y-3 rounded-[1.35rem] bg-white p-4">
-          <TripFormalities trip={formalities} />
-          {formalities.needsFormality ? (
-            <TripVisaUploads
-              variant="client"
-              bookingId={b.id}
-              reference={b.reference}
-              travelers={party}
-              documents={(identityDocs || []) as CrmTravelDocument[]}
-              entries={formalities.entries}
-            />
-          ) : null}
-        </section>
-      ) : null}
-
-      {bookingHasFlight(visibleItems) ? (
         <ExtrasPanel
           variant="client"
           booking={b}
@@ -240,6 +224,22 @@ export default async function ReservationDetailPage({ params }: Props) {
         documents={(identityDocs || []) as CrmTravelDocument[]}
         holder={customer}
       />
+
+      {bookingHasFlight(visibleItems) ? (
+        <section className="aura-card space-y-3 rounded-[1.35rem] bg-white p-4">
+          <TripFormalities trip={formalities} />
+          {formalities.needsFormality ? (
+            <TripVisaUploads
+              variant="client"
+              bookingId={b.id}
+              reference={b.reference}
+              travelers={party}
+              documents={(identityDocs || []) as CrmTravelDocument[]}
+              entries={formalities.entries}
+            />
+          ) : null}
+        </section>
+      ) : null}
     </div>
   );
 }
