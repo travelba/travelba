@@ -14,6 +14,22 @@ export function entryCode(length = ENTRY_CODE_LENGTH) {
   return code;
 }
 
+export function isEntryCode(value: string) {
+  return new RegExp(`^[${ALPHABET}]{${ENTRY_CODE_LENGTH}}$`).test(value);
+}
+
+/** Code du lien `/e/CODE`, quel que soit l’hôte. */
+export function entryCodeFromLink(link: string) {
+  try {
+    const path = new URL(link).pathname.replace(/\/+$/, "");
+    const code = path.split("/").pop() || "";
+    if (path !== `/e/${code}` || !isEntryCode(code)) return null;
+    return code;
+  } catch {
+    return null;
+  }
+}
+
 export function entryLinkUrl(origin: string, code: string) {
   return `${origin.replace(/\/$/, "")}/e/${code}`;
 }

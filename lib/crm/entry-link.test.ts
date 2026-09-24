@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   ENTRY_CODE_LENGTH,
   entryCode,
+  entryCodeFromLink,
   entryLinkUrl,
   entryPreviewHtml,
   isLinkCrawler,
@@ -19,6 +20,8 @@ test("le code tient en huit signes", () => {
 test("l’adresse publique est courte", () => {
   assert.equal(entryLinkUrl("https://travelba.fr/", "K7MQ2PX4"), "https://travelba.fr/e/K7MQ2PX4");
   assert.equal("https://travelba.fr/e/K7MQ2PX4".length < 40, true);
+  assert.equal(entryCodeFromLink("https://travelba.fr/e/K7MQ2PX4"), "K7MQ2PX4");
+  assert.equal(entryCodeFromLink("https://travelba.fr/auth/callback?token_hash=secret"), null);
 });
 
 test("WhatsApp reçoit le titre sans consommer le jeton", () => {
