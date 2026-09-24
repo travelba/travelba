@@ -4,6 +4,7 @@ import {
   destinationCountryName,
   entryForFrenchPassport,
   frenchEntryNeedsFormality,
+  officialVisaApplyUrl,
   VISA_RULES_AS_OF,
   type FrenchEntryStatus,
 } from "@/lib/crm/visa-fr";
@@ -13,6 +14,8 @@ export type FormalityEntry = {
   name: string;
   status: FrenchEntryStatus;
   formality: string | null;
+  /** Portail d’État. Null s’il n’y a pas d’URL vérifiée. */
+  applyUrl: string | null;
 };
 
 export type FrenchPassportTrip = {
@@ -83,6 +86,7 @@ export function frenchPassportTrip(
       name: destinationCountryName(iso),
       status: rule.status,
       formality: rule.formality,
+      applyUrl: officialVisaApplyUrl(iso),
     };
     if (rule.status === "unknown" || !frenchEntryNeedsFormality(rule)) {
       unknownCountries.push(row);

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { countryForIata } from "./airports";
 import { visaFeeAmount, visaFeeTitle, visaPassengerCount } from "./extras";
-import { entryForFrenchPassport } from "./visa-fr";
+import { entryForFrenchPassport, officialVisaApplyUrl } from "./visa-fr";
 import { frenchPassportTrip } from "./visa-trip";
 
 function flight(to: string, from = "CDG") {
@@ -50,6 +50,10 @@ test("New York needs ESTA and prices the visa service per passenger", () => {
   );
   assert.equal(trip.passengers, 3);
   assert.equal(trip.amount, 75);
+  assert.equal(trip.entries[0]?.applyUrl, "https://esta.cbp.dhs.gov/");
+  assert.equal(officialVisaApplyUrl("IN"), "https://indianvisaonline.gov.in/evisa/tvoa.html");
+  assert.equal(officialVisaApplyUrl("DZ"), null);
+  assert.equal(officialVisaApplyUrl("KN"), null);
   assert.equal(visaFeeAmount(0), 25);
   assert.equal(visaPassengerCount(0), 1);
   assert.equal(visaFeeTitle(2), "Obtention du visa (2 passagers)");

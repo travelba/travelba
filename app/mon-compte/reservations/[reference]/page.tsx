@@ -186,8 +186,10 @@ export default async function ReservationDetailPage({ params }: Props) {
             <TripVisaUploads
               variant="client"
               bookingId={b.id}
+              reference={b.reference}
               travelers={party}
               documents={(identityDocs || []) as CrmTravelDocument[]}
+              entries={formalities.entries}
             />
           ) : null}
         </section>
