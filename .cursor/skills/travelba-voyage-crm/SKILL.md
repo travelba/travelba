@@ -29,7 +29,7 @@ Ne pas ré-ouvrir le QCM produit : les règles sont déjà ancrées dans les ski
 | **Import PDF/photos** (dropzone admin, relecture puis Enregistrer) | `.cursor/skills/travelba-document-ingest/SKILL.md` |
 | **Gmail / `crm_email_ingest`** (labels Little Emperors & Expedia TAAP → auto dossier) | `.cursor/skills/travelba-email-ingest/SKILL.md` |
 | Ledger, encours, Stripe, Revolut | `.cursor/skills/travelba-money/SKILL.md` |
-| Stitch, Lucide, `/api/files`, copy FR | `.cursor/skills/travelba-ui/SKILL.md` |
+| Cursor Design, Lucide, `/api/files`, copy FR | `.cursor/skills/travelba-ui/SKILL.md` |
 | Fiche, passeports, compagnons, facturation | `.cursor/skills/travelba-identity/SKILL.md` |
 | Tests, build, verif navigateur, ne pas casser prod | `.cursor/skills/travelba-verify/SKILL.md` |
 

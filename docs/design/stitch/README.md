@@ -1,6 +1,8 @@
 # Travelba × Google Stitch
 
-Source de vérité : **Portail Client Agence Voyage**  
+Archive. Les retouches visuelles se font dans **Cursor Design Mode** sur l’app qui tourne, pas dans ce projet.
+
+Ancien export : **Portail Client Agence Voyage**  
 ID : `10475551423344387411`  
 URL : https://stitch.withgoogle.com/projects/10475551423344387411
 
@@ -37,9 +39,7 @@ Dock : Accueil / Réservations / Transactions / Mon Compte.
 
 Revolut (rapprochement) n’a pas de maquette Stitch : même chrome, route `/admin/revolut`.
 
-Porter **composition et tokens**, jamais le copy fictif (Privilège, cloche, 24/7, points club, GDS Sabre, Cellule VIP).
-
-Export : `@google/stitch-sdk` + `STITCH_API_KEY` dans `.env.local` (jamais git).
+Ne plus exporter ni porter un écran depuis Stitch. Les textes fictifs de ces HTML (Privilège, cloche, météo, conseiller nommé) ne sont pas du copy produit.
 
 ## Portage Next.js
 
