@@ -36,7 +36,7 @@ export function BookingHero({
             src={src}
             fallbackSrc={fallback}
             alt={alt}
-            className="absolute inset-0 h-full w-full object-cover object-[center_30%]"
+            className="absolute inset-0 h-full w-full origin-bottom scale-[2.3] object-cover object-bottom"
             priority={priority}
           />
         ) : null}
