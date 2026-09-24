@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
 import { BookingIssuesError } from "@/lib/crm/booking-issues";
-import { createBookingExtra, parseExtraRequest } from "@/lib/crm/extras-write";
+import {
+  cancelBookingExtra,
+  confirmBookingExtra,
+  createBookingExtra,
+  parseExtraRequest,
+} from "@/lib/crm/extras-write";
 import type { CrmBooking, CrmBookingItem, CrmBookingTraveler, CrmCompanion, CrmCustomer } from "@/lib/crm/types";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -26,10 +31,36 @@ export async function POST(request: Request, ctx: Ctx) {
         auth.supabase.from("crm_customers").select("*").eq("id", booking.customer_id).maybeSingle(),
         auth.supabase.from("crm_travel_companions").select("*").eq("customer_id", booking.customer_id),
       ]);
+    const list = (items || []) as CrmBookingItem[];
+    if (body?.cancel === true) {
+      const cancelled = await cancelBookingExtra(auth.supabase, {
+        booking: booking as CrmBooking,
+        items: list,
+        kind: extra.kind,
+        leg: extra.leg,
+        place: extra.place,
+        moment: extra.moment,
+      });
+      return NextResponse.json(cancelled);
+    }
+    if (body?.confirm === true) {
+      if (extra.kind !== "chauffeur" && extra.kind !== "greeter") {
+        return jsonError("Seuls le chauffeur et le greeter se confirment.");
+      }
+      const confirmed = await confirmBookingExtra(auth.supabase, {
+        booking: booking as CrmBooking,
+        items: list,
+        kind: extra.kind,
+        leg: extra.leg,
+        place: extra.place,
+        moment: extra.moment,
+      });
+      return NextResponse.json(confirmed);
+    }
     if (!holder) return jsonIssues([{ field: "customer_id", message: "Client introuvable." }], 404);
     const created = await createBookingExtra(auth.supabase, {
       booking: booking as CrmBooking,
-      items: (items || []) as CrmBookingItem[],
+      items: list,
       travelers: (travelers || []) as CrmBookingTraveler[],
       holder: holder as CrmCustomer,
       companions: (companions || []) as CrmCompanion[],

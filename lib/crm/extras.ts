@@ -183,6 +183,15 @@ export function extraNoticeOk(at: string | Date | null | undefined, now = new Da
   return when.getTime() - now.getTime() >= EXTRA_NOTICE_MS;
 }
 
+export type ExtraAgencyStatus = "pending" | "confirmed";
+
+/** Sans statut agence, une demande client reste en attente. */
+export function extraAgencyStatus(item: {
+  details?: Record<string, unknown> | null;
+}): ExtraAgencyStatus {
+  return item.details?.agency_status === "confirmed" ? "confirmed" : "pending";
+}
+
 export function bookingHasFlight(
   items: { kind?: string | null }[] | null | undefined
 ) {
@@ -635,6 +644,7 @@ export function extraItemPayload(input: {
   adults?: number;
   children?: number;
   visibleToClient: boolean;
+  agencyStatus?: ExtraAgencyStatus;
 }) {
   const place = input.kind === "chauffeur" ? input.place || null : null;
   return {
@@ -654,6 +664,7 @@ export function extraItemPayload(input: {
       adults: input.kind === "greeter" ? input.adults ?? 1 : null,
       children: input.kind === "greeter" ? input.children ?? 0 : null,
       extra: true,
+      agency_status: input.agencyStatus === "confirmed" ? "confirmed" : "pending",
     },
     visible_to_client: input.visibleToClient,
   };

@@ -7,7 +7,7 @@ import { Icon } from "@/components/crm/icons";
 import { IssuesList } from "@/components/crm/IssuesList";
 import { issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
 import { kindIcon } from "@/lib/crm/carnet";
-import { serviceClock, type ServiceOffer } from "@/lib/crm/extras";
+import { extraAgencyStatus, serviceClock, type ServiceOffer } from "@/lib/crm/extras";
 import { formatMoney } from "@/lib/crm/money";
 import { BOOKING_ITEM_LABELS, type CrmBookingItem } from "@/lib/crm/types";
 
@@ -20,7 +20,6 @@ export function ServiceOfferCard({
   price,
   currency,
   locked,
-  whatsappHref,
   addressLabel,
   initialAddress,
   detail,
@@ -33,14 +32,13 @@ export function ServiceOfferCard({
   price: number;
   currency: string;
   locked: boolean;
-  whatsappHref?: string;
   addressLabel?: string | null;
   initialAddress?: string | null;
   detail?: string | null;
 }) {
   const router = useRouter();
   const [address, setAddress] = useState(initialAddress || "");
-  const [busy, setBusy] = useState<"validate" | "cancel" | null>(null);
+  const [busy, setBusy] = useState<"validate" | "cancel" | "confirm" | null>(null);
   const [gone, setGone] = useState(false);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
   const isAdmin = variant === "admin";
@@ -50,14 +48,14 @@ export function ServiceOfferCard({
     existing && offer.kind === "chauffeur" && existing.details?.pickup
       ? String(existing.details.pickup)
       : "";
-  const subtitle = [
-    existing ? "Validé" : locked ? "Jusqu’à 48 h avant le vol" : "Non validé",
-    detail,
-    pickup,
-    offer.flightLine,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const confirmed = existing ? extraAgencyStatus(existing) === "confirmed" : false;
+  const statusLabel = !existing
+    ? locked
+      ? "Jusqu’à 48 h avant le vol"
+      : "Non validé"
+    : confirmed
+      ? "Confirmé"
+      : "En attente de confirmation";
   const priceLabel = formatMoney(price, currency);
 
   async function request() {
@@ -92,24 +90,23 @@ export function ServiceOfferCard({
   }
 
   async function cancel() {
-    if (!existing || busy) return;
+    if (!existing || busy || confirmed) return;
     setBusy("cancel");
     setIssues([]);
-    const res = isAdmin
-      ? await fetch(`/api/admin/bookings/${bookingId}/items?itemId=${encodeURIComponent(existing.id)}`, {
-          method: "DELETE",
-        })
-      : await fetch(`/api/client/bookings/${reference}/extras`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            cancel: true,
-            kind: offer.kind,
-            leg: offer.leg,
-            place: offer.place,
-            moment: offer.moment,
-          }),
-        });
+    const res = await fetch(
+      isAdmin ? `/api/admin/bookings/${bookingId}/extras` : `/api/client/bookings/${reference}/extras`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cancel: true,
+          kind: offer.kind,
+          leg: offer.leg,
+          place: offer.place,
+          moment: offer.moment,
+        }),
+      }
+    );
     const json = await res.json().catch(() => ({}));
     setBusy(null);
     if (!res.ok) {
@@ -144,6 +141,30 @@ export function ServiceOfferCard({
     router.refresh();
   }
 
+  async function confirm() {
+    if (!existing || !isAdmin || busy || confirmed) return;
+    setBusy("confirm");
+    setIssues([]);
+    const res = await fetch(`/api/admin/bookings/${bookingId}/extras`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        confirm: true,
+        kind: offer.kind,
+        leg: offer.leg,
+        place: offer.place,
+        moment: offer.moment,
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    setBusy(null);
+    if (!res.ok) {
+      setIssues(issuesFromResponse(json));
+      return;
+    }
+    router.refresh();
+  }
+
   function controls() {
     const refuseButton =
       !existing && !isAdmin ? (
@@ -167,30 +188,31 @@ export function ServiceOfferCard({
 
   function action() {
     if (existing) {
+      if (confirmed) return null;
       return (
-        <button
-          type="button"
-          disabled={busy !== null}
-          onClick={() => void cancel()}
-          className="inline-flex h-5 items-center justify-center rounded-full bg-[var(--admin-navy)] px-2.5 text-[11px] font-semibold leading-none text-white disabled:opacity-50"
-        >
-          {busy === "cancel" ? "…" : "Annuler"}
-        </button>
+        <span className="inline-flex items-center gap-2">
+          {isAdmin ? (
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void confirm()}
+              className="inline-flex h-5 items-center justify-center rounded-full bg-[var(--admin-navy)] px-2.5 text-[11px] font-semibold leading-none text-white disabled:opacity-50"
+            >
+              {busy === "confirm" ? "…" : "Confirmer"}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            disabled={busy !== null}
+            onClick={() => void cancel()}
+            className="inline-flex h-5 items-center justify-center rounded-full bg-[var(--admin-navy)] px-2.5 text-[11px] font-semibold leading-none text-white disabled:opacity-50"
+          >
+            {busy === "cancel" ? "…" : "Annuler"}
+          </button>
+        </span>
       );
     }
-    if (locked) {
-      if (!whatsappHref) return null;
-      return (
-        <a
-          href={whatsappHref}
-          className="text-xs font-semibold text-[var(--admin-navy)] underline"
-          target="_blank"
-          rel="noreferrer"
-        >
-          WhatsApp
-        </a>
-      );
-    }
+    if (locked) return null;
     return (
       <button
         type="button"
@@ -218,23 +240,25 @@ export function ServiceOfferCard({
           <Icon name={kindIcon(offer.kind)} className="h-5 w-5" />
         </span>
         <div className="min-w-0 flex-1 overflow-hidden">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--admin-gold)]">
+            {statusLabel}
+          </p>
           <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--aura-blue)]">
             {kindLabel}
             {clock ? ` · ${clock}` : ""}
           </p>
           <p className="break-words text-sm font-semibold leading-snug text-[var(--admin-navy)]">{offer.route}</p>
-          <p className="flex min-w-0 items-center gap-1 text-xs text-muted" title={subtitle}>
-            <span className="shrink-0">{existing ? "Validé" : locked ? "48 h" : "Non validé"}</span>
+          <p className="truncate text-xs text-muted">
             {!existing && addressLabel ? (
               <input
                 value={address}
                 onChange={(event) => setAddress(event.target.value)}
                 aria-label={addressLabel}
                 placeholder={addressLabel}
-                className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-xs text-muted outline-none placeholder:text-muted"
+                className="min-w-0 w-full truncate border-0 bg-transparent p-0 text-xs text-muted outline-none placeholder:text-muted"
               />
             ) : (
-              <span className="truncate">{[pickup, detail, offer.flightLine].filter(Boolean).join(" · ")}</span>
+              [pickup, detail, offer.flightLine].filter(Boolean).join(" · ")
             )}
           </p>
           <p className="mt-1 flex items-center justify-between gap-2 sm:hidden">
@@ -249,7 +273,9 @@ export function ServiceOfferCard({
       </div>
       {busy ? (
         <div className="px-3.5 pb-3">
-          <BusyBar label={busy === "cancel" ? "Annulation…" : "Validation…"} />
+          <BusyBar
+            label={busy === "cancel" ? "Annulation…" : busy === "confirm" ? "Confirmation…" : "Validation…"}
+          />
         </div>
       ) : null}
       {issues.length ? (
