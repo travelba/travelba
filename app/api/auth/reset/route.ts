@@ -75,8 +75,9 @@ export async function POST(request: Request) {
       replyTo: siteConfig.contactEmail,
       subject: `Réinitialiser votre mot de passe ${siteConfig.shortName}`,
       html: agencyEmailHtml({
-        title: siteConfig.shortName,
-        bodyHtml: `<p style="margin:0 0 16px;line-height:1.5">Cliquez sur le bouton pour choisir un nouveau mot de passe.</p>`,
+        title: "Choisissez un nouveau mot de passe",
+        preheader: "Ce lien ouvre la page pour définir votre mot de passe.",
+        bodyHtml: `<p style="margin:0;line-height:1.5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#0B192C">Cliquez sur le bouton pour choisir un nouveau mot de passe.</p>`,
         ctaLabel: "Définir mon mot de passe",
         ctaHref: callback.toString(),
         footnote: "Si vous n’êtes pas à l’origine de cette demande, ignorez cet e-mail.",
