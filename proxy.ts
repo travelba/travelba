@@ -43,6 +43,10 @@ export default async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  if (path === "/e" || path.startsWith("/e/")) {
+    return NextResponse.next();
+  }
+
   if (
     path.startsWith("/admin") ||
     path.startsWith("/mon-compte") ||

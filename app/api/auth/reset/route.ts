@@ -4,6 +4,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { SET_PASSWORD_PATH } from "@/lib/crm/session";
 import { agencyEmailHtml } from "@/lib/crm/email-html";
+import { createEntryLink } from "@/lib/crm/entry-link";
 
 export const runtime = "nodejs";
 
@@ -58,10 +59,11 @@ export async function POST(request: Request) {
       app_metadata: { ...meta, must_set_password: true },
     });
 
-    const callback = new URL("/auth/callback", siteUrl);
-    callback.searchParams.set("token_hash", data.properties.hashed_token);
-    callback.searchParams.set("type", "recovery");
-    callback.searchParams.set("next", SET_PASSWORD_PATH);
+    const link = await createEntryLink(supabase, siteUrl, {
+      tokenHash: data.properties.hashed_token,
+      otpType: "recovery",
+      nextPath: SET_PASSWORD_PATH,
+    });
 
     if (!apiKey) {
       console.info("[auth/reset] RESEND_API_KEY manquante — e-mail non envoyé");
@@ -79,7 +81,7 @@ export async function POST(request: Request) {
         preheader: "Ce lien ouvre la page pour définir votre mot de passe.",
         bodyHtml: `<p style="margin:0;line-height:1.5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#0B192C">Cliquez sur le bouton pour choisir un nouveau mot de passe.</p>`,
         ctaLabel: "Définir mon mot de passe",
-        ctaHref: callback.toString(),
+        ctaHref: link,
         footnote: "Si vous n’êtes pas à l’origine de cette demande, ignorez cet e-mail.",
       }),
     });
