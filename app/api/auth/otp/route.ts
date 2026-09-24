@@ -4,6 +4,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { agencyEmailHtml } from "@/lib/crm/email-html";
 import { connexionMessage, greetingForWhatsapp, sendConnexionWhatsapp } from "@/lib/crm/whatsapp";
+import { createEntryLink } from "@/lib/crm/entry-link";
 
 export const runtime = "nodejs";
 
@@ -61,10 +62,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true });
     }
 
-    const callback = new URL("/auth/callback", siteUrl);
-    callback.searchParams.set("token_hash", data.properties.hashed_token);
-    callback.searchParams.set("type", "magiclink");
-    callback.searchParams.set("next", "/mon-compte");
+    const link = await createEntryLink(supabase, siteUrl, {
+      tokenHash: data.properties.hashed_token,
+      otpType: "magiclink",
+      nextPath: "/mon-compte",
+    });
 
     if (channel === "whatsapp") {
       if (!customer.whatsapp_opt_in_at) {
@@ -76,7 +78,7 @@ export async function POST(request: Request) {
       const sent = await sendConnexionWhatsapp({
         phone: customer.phone,
         firstName: customer.first_name,
-        link: callback.toString(),
+        link,
       });
       if (sent.ok) {
         await supabase.from("crm_whatsapp_messages").insert({
@@ -107,7 +109,7 @@ export async function POST(request: Request) {
         preheader: "Le lien expire sous 24 heures.",
         bodyHtml: `<p style="margin:0;line-height:1.5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#0B192C">Cliquez sur le bouton pour ouvrir votre espace. Le lien expire sous 24&nbsp;heures.</p>`,
         ctaLabel: "Me connecter",
-        ctaHref: callback.toString(),
+        ctaHref: link,
         footnote: "Si vous n’êtes pas à l’origine de cette demande, ignorez cet e-mail.",
       }),
     });

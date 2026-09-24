@@ -11,6 +11,7 @@ import {
   sendConnexionWhatsapp,
   type WhatsappSendResult,
 } from "@/lib/crm/whatsapp";
+import { createEntryLink } from "@/lib/crm/entry-link";
 import { greetingGivenName } from "@/lib/crm/identity";
 
 export type PortalAccess = {
@@ -150,12 +151,11 @@ export async function inviteCustomer(
     linked = updated as CrmCustomer;
   }
 
-  const callback = new URL("/auth/callback", origin);
-  callback.searchParams.set("token_hash", hashedToken);
-  callback.searchParams.set("type", linkType);
-  callback.searchParams.set("next", SET_PASSWORD_PATH);
-
-  const link = callback.toString();
+  const link = await createEntryLink(admin, origin, {
+    tokenHash: hashedToken,
+    otpType: linkType,
+    nextPath: SET_PASSWORD_PATH,
+  });
   await admin
     .from("crm_customers")
     .update({ whatsapp_opt_in_at: new Date().toISOString() })
