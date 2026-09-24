@@ -15,7 +15,8 @@ import { TripFormalities } from "@/components/crm/TripFormalities";
 import { TripVisaUploads } from "@/components/crm/TripVisaUploads";
 import { bookingHasFlight, serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
-import { clientVisaPhase } from "@/lib/crm/visa-flow";
+import { VisaProgress } from "@/components/account/VisaProgress";
+import type { ClientVisaStep } from "@/lib/crm/visa-flow";
 import { VISA_OFFICIAL, type VisaCorridor } from "@/lib/crm/visa-fees";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { BookingStatusBadge } from "@/components/crm/ui";
@@ -69,7 +70,7 @@ export default async function ReservationDetailPage({ params }: Props) {
     supabase.from("crm_travel_documents").select("*").eq("customer_id", customer.id),
     supabase.from("crm_travel_companions").select("*").eq("customer_id", customer.id),
     supabase.from("crm_declined_services").select("kind, service_leg, place, moment").eq("booking_id", b.id),
-    supabase.from("crm_visa_requests").select("status, country").eq("booking_id", b.id),
+    supabase.from("crm_visa_requests").select("status, country, step").eq("booking_id", b.id),
   ]);
   const refusals = ((declined || []) as { kind?: string | null; service_leg?: string | null; place?: string | null; moment?: string | null }[])
     .map(serviceRefusalFromRow)
@@ -231,16 +232,13 @@ export default async function ReservationDetailPage({ params }: Props) {
       {bookingHasFlight(visibleItems) ? (
         <section className="aura-card space-y-3 rounded-[1.35rem] bg-white p-4">
           <TripFormalities trip={formalities} />
-          {((visaRows || []) as { status: string; country: VisaCorridor }[]).length ? (
-            <ul className="space-y-1 text-sm text-[var(--admin-navy)]">
-              {((visaRows || []) as { status: string; country: VisaCorridor }[]).map((row) => (
-                <li key={row.country}>
-                  {VISA_OFFICIAL[row.country]?.countryName || row.country} —{" "}
-                  {clientVisaPhase({ started: true, filed: row.status === "piece" })}
-                </li>
-              ))}
-            </ul>
-          ) : null}
+          {((visaRows || []) as { status: string; country: VisaCorridor; step?: ClientVisaStep }[]).map((row) => (
+            <VisaProgress
+              key={row.country}
+              countryName={VISA_OFFICIAL[row.country]?.countryName || row.country}
+              step={row.step || (row.status === "piece" ? "piece" : "preparation")}
+            />
+          ))}
           {formalities.needsFormality ? (
             <TripVisaUploads
               variant="client"

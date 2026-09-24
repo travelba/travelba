@@ -43,7 +43,7 @@ export async function POST(request: Request, ctx: Ctx) {
       for (const row of (open || []) as { country: VisaCorridor }[]) {
         await auth.supabase
           .from("crm_visa_requests")
-          .update({ status: "piece" })
+          .update({ status: "piece", step: "piece" })
           .eq("booking_id", b.id)
           .eq("country", row.country);
         for (const traveler of party) {

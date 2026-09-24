@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   clientVisaPhase,
+  clientVisaStepCopy,
+  clientVisaTrack,
   confirmAllowed,
   nextPayAttempt,
   paymentHold,
@@ -12,6 +14,20 @@ test("le client voit préparer, en cours, puis le coffre", () => {
   assert.equal(clientVisaPhase({ started: false, filed: false }), "à préparer");
   assert.equal(clientVisaPhase({ started: true, filed: false }), "en cours");
   assert.equal(clientVisaPhase({ started: true, filed: true }), "au coffre");
+});
+
+test("le client suit les grandes étapes, jusqu’à la pièce", () => {
+  const track = clientVisaTrack("remplissage");
+  assert.equal(track[0].state, "fait");
+  assert.equal(track[1].state, "en cours");
+  assert.equal(track[1].label, "Remplissage");
+  assert.equal(track[4].state, "à venir");
+  assert.equal(clientVisaTrack("piece").every((row) => row.state === "fait"), true);
+  assert.match(clientVisaStepCopy("remplissage"), /formulaire officiel/);
+});
+
+test("une demande déjà ouverte peut être confirmée", () => {
+  assert.equal(confirmAllowed({ already: ["IL"], country: "IL", frenchPassports: 1, resumable: true }), null);
 });
 
 test("ouvrir la demande ne révèle pas les prix", () => {

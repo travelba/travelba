@@ -5,7 +5,13 @@ import { etaIlPliantCard, pliantCardName } from "@/lib/crm/eta-il-fee";
 import { issuePliantCard, pliantConfigured, raisePliantLimit } from "@/lib/crm/pliant";
 import { postVisaCharge } from "@/lib/crm/visa-post";
 import { euroRates } from "@/lib/crm/visa-ecb";
-import { confirmAllowed, paymentHold, visibilityOnRequest, type EstaAnswers } from "@/lib/crm/visa-flow";
+import {
+  confirmAllowed,
+  paymentHold,
+  visibilityOnRequest,
+  type ClientVisaStep,
+  type EstaAnswers,
+} from "@/lib/crm/visa-flow";
 import {
   centsToEur,
   combinedCeilingCents,
@@ -27,6 +33,40 @@ type Ctx = { params: Promise<{ id: string }> };
 
 function corridor(value: unknown): VisaCorridor | null {
   return value === "IL" || value === "US" || value === "GB" ? value : null;
+}
+
+async function publishTrip(
+  supabase: { from: (table: string) => any },
+  booking: CrmBooking
+) {
+  const opened = visibilityOnRequest({
+    visible: booking.visible_to_client,
+    prices: booking.prices_visible !== false && booking.visible_to_client,
+  });
+  await supabase
+    .from("crm_bookings")
+    .update({ visible_to_client: opened.visible, prices_visible: opened.prices })
+    .eq("id", booking.id);
+  await supabase.from("crm_booking_items").update({ visible_to_client: true }).eq("booking_id", booking.id);
+}
+
+async function saveVisaStep(
+  supabase: { from: (table: string) => any },
+  bookingId: string,
+  country: VisaCorridor,
+  step: ClientVisaStep,
+  answers?: Partial<EstaAnswers>
+) {
+  await supabase.from("crm_visa_requests").upsert(
+    {
+      booking_id: bookingId,
+      country,
+      status: step === "piece" ? "piece" : "en_cours",
+      step,
+      answers: answers || {},
+    },
+    { onConflict: "booking_id,country" }
+  );
 }
 
 export async function POST(request: Request, ctx: Ctx) {
@@ -63,16 +103,21 @@ export async function POST(request: Request, ctx: Ctx) {
       startDate: b.start_date,
       endDate: b.end_date,
     });
-    return NextResponse.json({ ...publicEtaIlDraft(draft), country, portal: officialVisaApplyUrl("IL") });
+    await publishTrip(auth.supabase, b);
+    await saveVisaStep(auth.supabase, b.id, "IL", "preparation");
+    return NextResponse.json({ ...publicEtaIlDraft(draft), country, portal: officialVisaApplyUrl("IL"), step: "preparation" });
   }
 
   if (body.action === "run") {
+    await publishTrip(auth.supabase, b);
+    await saveVisaStep(auth.supabase, b.id, country, "validation", body.answers);
     return NextResponse.json({
       country,
       phase: "à confirmer",
       portal: officialVisaApplyUrl(country),
       reason: "Récapitulatif prêt. Confirmez pour ouvrir le séjour. Le paiement attendra Pliant.",
       travelers: [],
+      step: "validation",
     });
   }
 
@@ -106,7 +151,7 @@ export async function POST(request: Request, ctx: Ctx) {
 
   const [{ data: existing }, { data: travelers }, { data: documents }, { data: customer }, { data: card }] =
     await Promise.all([
-      auth.supabase.from("crm_visa_requests").select("country").eq("booking_id", b.id),
+      auth.supabase.from("crm_visa_requests").select("country, step").eq("booking_id", b.id),
       auth.supabase.from("crm_booking_travelers").select("id").eq("booking_id", b.id),
       auth.supabase
         .from("crm_travel_documents")
@@ -115,7 +160,9 @@ export async function POST(request: Request, ctx: Ctx) {
       auth.supabase.from("crm_customers").select("first_name, last_name").eq("id", b.customer_id).maybeSingle(),
       auth.supabase.from("crm_visa_cards").select("pliant_card_id, ceiling_cents, countries").eq("booking_id", b.id).maybeSingle(),
     ]);
-  const already = ((existing || []) as { country: VisaCorridor }[]).map((row) => row.country);
+  const rows = (existing || []) as { country: VisaCorridor; step?: ClientVisaStep }[];
+  const already = rows.map((row) => row.country);
+  const current = rows.find((row) => row.country === country);
   const french = ((documents || []) as Pick<CrmTravelDocument, "doc_type" | "issuing_country" | "number">[]).filter(
     (row) => row.doc_type === "passport" && row.issuing_country === "FR" && row.number
   ).length;
@@ -125,11 +172,12 @@ export async function POST(request: Request, ctx: Ctx) {
     country,
     frenchPassports: french,
     esta: body.answers,
+    resumable: current?.step === "preparation" || current?.step === "remplissage" || current?.step === "validation",
   });
   if (block) return jsonError(block);
 
   const fx = await euroRates();
-  const countries = [...already, country];
+  const countries = already.includes(country) ? already : [...already, country];
   const count = Math.max(1, party.length);
   const cents = combinedCeilingCents(countries, count, fx.rates);
   if (cents == null) return jsonError("Cours indisponible.");
@@ -169,21 +217,8 @@ export async function POST(request: Request, ctx: Ctx) {
     }
   }
 
-  const opened = visibilityOnRequest({
-    visible: b.visible_to_client,
-    prices: b.prices_visible !== false && b.visible_to_client,
-  });
-  await auth.supabase
-    .from("crm_bookings")
-    .update({ visible_to_client: opened.visible, prices_visible: opened.prices })
-    .eq("id", b.id);
-  await auth.supabase.from("crm_booking_items").update({ visible_to_client: true }).eq("booking_id", b.id);
-  await auth.supabase.from("crm_visa_requests").insert({
-    booking_id: b.id,
-    country,
-    status: "en_cours",
-    answers: body.answers || {},
-  });
+  await publishTrip(auth.supabase, b);
+  await saveVisaStep(auth.supabase, b.id, country, "paiement", body.answers);
 
   const pliant = pliantConfigured();
   return NextResponse.json({

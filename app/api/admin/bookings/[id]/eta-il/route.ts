@@ -78,6 +78,12 @@ export async function POST(request: Request, ctx: Ctx) {
     return NextResponse.json(publicEtaIlDraft(draft));
   }
 
+  await auth.supabase
+    .from("crm_visa_requests")
+    .update({ step: "remplissage" })
+    .eq("booking_id", b.id)
+    .eq("country", "IL");
+
   const apiKey = openaiApiKey();
   if (!apiKey) {
     return NextResponse.json({
@@ -97,6 +103,11 @@ export async function POST(request: Request, ctx: Ctx) {
   }
   try {
     const session = await runEtaIlSession({ apiKey, draft, page: portal });
+    await auth.supabase
+      .from("crm_visa_requests")
+      .update({ step: session.phase === "à confirmer" ? "validation" : "remplissage" })
+      .eq("booking_id", b.id)
+      .eq("country", "IL");
     return NextResponse.json({
       ...publicEtaIlDraft(draft),
       phase: session.phase,

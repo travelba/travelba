@@ -1,5 +1,41 @@
 import type { VisaCorridor } from "./visa-fees";
 
+export const CLIENT_VISA_STEPS = ["preparation", "remplissage", "validation", "paiement", "piece"] as const;
+
+export type ClientVisaStep = (typeof CLIENT_VISA_STEPS)[number];
+
+const STEP_LABEL: Record<ClientVisaStep, string> = {
+  preparation: "Préparation",
+  remplissage: "Remplissage",
+  validation: "Validation",
+  paiement: "Paiement",
+  piece: "Pièce",
+};
+
+const STEP_COPY: Record<ClientVisaStep, string> = {
+  preparation: "L’agence réunit les pièces du voyage.",
+  remplissage: "L’agence remplit le formulaire officiel.",
+  validation: "L’agence vérifie le formulaire avant l’envoi.",
+  paiement: "Paiement des frais officiels.",
+  piece: "La pièce est dans Pièces.",
+};
+
+export function clientVisaTrack(step: ClientVisaStep) {
+  const index = CLIENT_VISA_STEPS.indexOf(step);
+  return CLIENT_VISA_STEPS.map((id, position) => ({
+    id,
+    label: STEP_LABEL[id],
+    state: (step === "piece" || position < index ? "fait" : position === index ? "en cours" : "à venir") as
+      | "fait"
+      | "en cours"
+      | "à venir",
+  }));
+}
+
+export function clientVisaStepCopy(step: ClientVisaStep) {
+  return STEP_COPY[step];
+}
+
 export type ClientVisaPhase = "à préparer" | "en cours" | "au coffre";
 
 export function clientVisaPhase(input: { started: boolean; filed: boolean }): ClientVisaPhase {
@@ -50,8 +86,9 @@ export function confirmAllowed(input: {
   country: VisaCorridor;
   frenchPassports: number;
   esta?: Partial<EstaAnswers> | null;
+  resumable?: boolean;
 }) {
-  if (input.already.includes(input.country)) return "déjà demandé";
+  if (input.already.includes(input.country) && !input.resumable) return "déjà demandé";
   if (input.frenchPassports < 1) return "passeport français manquant";
   if (input.country === "US" && !estaReady(input.esta)) return "questionnaire ESTA incomplet";
   if (input.country === "GB" && !input.esta?.priorRefusal?.trim()) return "antécédent de refus manquant";
