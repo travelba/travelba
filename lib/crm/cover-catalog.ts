@@ -537,6 +537,18 @@ export function countriesWithPhoto() {
   return [...countryPhoto.values()].filter((photo): photo is string => Boolean(photo)).length;
 }
 
+/** Une entrée par photo Unsplash, libellé du premier lieu qui l’utilise. */
+export function catalogRetouchJobs() {
+  const jobs = new Map<string, string>();
+  for (const [, photo, names] of COUNTRIES) {
+    if (photo && !jobs.has(photo)) jobs.set(photo, names[0] ?? photo);
+  }
+  for (const [name, , photo] of CITIES) {
+    if (photo && !jobs.has(photo)) jobs.set(photo, name);
+  }
+  return [...jobs.entries()].map(([id, label]) => ({ id, label }));
+}
+
 /** Ville d’abord, sinon le pays du lieu, sinon le pays nommé tel quel. */
 export function lookupCoverPhoto(key: string) {
   const city = cities.get(key);

@@ -20,6 +20,7 @@ import { formatMoney, jMinusLabel } from "@/lib/crm/money";
 import { bookingTotalFromItems } from "@/lib/crm/bookings";
 import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
 import { coverQuery, documentLabel } from "@/lib/crm/carnet";
+import { unsplashKeywordMatch } from "@/lib/crm/covers";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
@@ -260,7 +261,35 @@ export function BookingEditor({
       return;
     }
     setCoverOpen(false);
-    setFlash("Photo importée.");
+    setFlash(json.retouched === false ? "Photo d’origine conservée." : "Photo importée.");
+    router.refresh();
+  }
+
+  async function regenerateCover() {
+    setBusy("cover");
+    setFlash(null);
+    setCoverNotice(null);
+    const catalog = !booking.cover_image_path && unsplashKeywordMatch(booking);
+    const res = await fetch(
+      catalog
+        ? `/api/admin/bookings/${booking.id}/cover/catalog`
+        : `/api/admin/bookings/${booking.id}/cover`,
+      catalog
+        ? { method: "POST" }
+        : {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ regenerate: true }),
+          }
+    );
+    const json = await res.json().catch(() => ({}));
+    setBusy("idle");
+    if (!res.ok) {
+      setCoverNotice(typeof json.error === "string" ? json.error : "Retouche indisponible.");
+      return;
+    }
+    setCoverOpen(false);
+    setFlash("Nouvelle version enregistrée.");
     router.refresh();
   }
 
@@ -306,6 +335,16 @@ export function BookingEditor({
           >
             {busy === "cover" ? "Photo…" : "Importer une photo"}
           </button>
+          {booking.cover_image_path || unsplashKeywordMatch(booking) ? (
+            <button
+              type="button"
+              disabled={busy !== "idle"}
+              onClick={() => void regenerateCover()}
+              className="rounded-full bg-white/95 px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)] disabled:opacity-50"
+            >
+              {busy === "cover" ? "Retouche…" : "Autre version"}
+            </button>
+          ) : null}
           {booking.cover_image_path ? (
             <button
               type="button"
@@ -334,6 +373,7 @@ export function BookingEditor({
         onClose={() => setCoverOpen(false)}
         onPick={pickCover}
         onFile={uploadCoverFile}
+        onRegenerate={() => void regenerateCover()}
       />
 
       <section className="admin-af-card flex flex-col gap-3 rounded-3xl p-5 sm:flex-row sm:items-center sm:justify-between">

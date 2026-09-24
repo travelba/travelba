@@ -22,6 +22,7 @@ export function CoverPickDialog({
   onClose,
   onPick,
   onFile,
+  onRegenerate,
 }: {
   open: boolean;
   bookingId: string;
@@ -31,6 +32,7 @@ export function CoverPickDialog({
   onClose: () => void;
   onPick: (photoId: string) => void;
   onFile: (file: File) => void;
+  onRegenerate: () => void;
 }) {
   const titleId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -142,7 +144,7 @@ export function CoverPickDialog({
               Importer une photo
             </p>
             <p className="text-sm text-muted">
-              Recherchez une photo de {placeLabel}, puis sélectionnez-la.
+              Recherchez une photo de {placeLabel}. Elle est embellie à l’enregistrement.
             </p>
           </div>
           <button
@@ -216,6 +218,14 @@ export function CoverPickDialog({
               onChange={chooseFile}
             />
           </label>
+          <button
+            type="button"
+            onClick={onRegenerate}
+            disabled={busy}
+            className="text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
+          >
+            Autre version
+          </button>
           <button
             type="button"
             onClick={onClose}

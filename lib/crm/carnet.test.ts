@@ -234,15 +234,14 @@ describe("carnet", () => {
     assert.equal(tripPlaceLine("", "Marrakech"), null);
   });
 
-  it("sert une couverture Unsplash légère", () => {
+  it("sert la photo catalogue du lieu, pas Unsplash", () => {
     const url = bookingCoverUrl(
       { destination: "Marrakech", title: "Voyage", cover_image_path: null },
       800
     );
     if (!url) throw new Error("couverture attendue");
-    assert.match(url, /w=800/);
-    assert.match(url, /h=450/);
-    assert.match(url, /q=70/);
+    assert.match(url, /^\/api\/covers\/photo-/);
+    assert.doesNotMatch(url, /unsplash/);
   });
 
   it("respecte l’ordre agent dans un même jour", () => {

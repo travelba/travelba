@@ -241,6 +241,7 @@ const IMAGE_TYPES = new Set([
   "image/jpg",
   "image/png",
   "image/webp",
+  "image/avif",
   "application/octet-stream",
   "binary/octet-stream",
 ]);
