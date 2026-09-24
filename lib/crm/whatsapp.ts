@@ -35,12 +35,9 @@ export function whatsappAddress(phone: string | null | undefined) {
   return `whatsapp:${valid}`;
 }
 
+/** Uniquement le modèle « Enchanté… Le Concierge ». L’ancien SID générique dit autre chose. */
 export function connexionContentSid() {
-  return (
-    process.env.TWILIO_CONTENT_CONNEXION?.trim() ||
-    process.env.TWILIO_WHATSAPP_CONTENT_SID?.trim() ||
-    ""
-  );
+  return process.env.TWILIO_CONTENT_CONNEXION?.trim() || "";
 }
 
 export function whatsappConfigured() {
