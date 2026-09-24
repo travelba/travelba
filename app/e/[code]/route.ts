@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/admin";
-import { entryPreviewHtml, safeNextPath, safeOtpType, shouldServePreview } from "@/lib/crm/entry-link";
+import { entryOpenRequested, entryPreviewHtml, safeNextPath, safeOtpType } from "@/lib/crm/entry-link";
 import { siteConfig } from "@/lib/site";
 
 export const runtime = "nodejs";
@@ -46,17 +46,15 @@ function noStore(response: NextResponse) {
 
 export async function GET(request: Request, ctx: Ctx) {
   const { code } = await ctx.params;
+  const url = new URL(request.url);
+  if (entryOpenRequested(url.search)) return redirectToCallback(code);
   const origin = originOf();
-  if (shouldServePreview(request.headers.get("user-agent"), request.headers.get("sec-fetch-user"))) {
-    return new NextResponse(entryPreviewHtml(origin, normalizeCode(code) || "00000000"), {
-      headers: {
-        "Content-Type": "text/html; charset=utf-8",
-        "Cache-Control": "private, no-store",
-        Vary: "User-Agent",
-      },
-    });
-  }
-  return redirectToCallback(code);
+  return new NextResponse(entryPreviewHtml(origin, normalizeCode(code) || "00000000"), {
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "private, no-store",
+    },
+  });
 }
 
 export async function POST(_request: Request, ctx: Ctx) {
