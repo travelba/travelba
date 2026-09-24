@@ -663,6 +663,7 @@ export function BookingEditor({
             travelers={travelers}
             holder={account}
             companions={companions}
+            formalities={formalities}
             refusals={refusals}
           />
         </section>

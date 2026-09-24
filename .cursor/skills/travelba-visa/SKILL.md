@@ -44,7 +44,7 @@ Le client voit ces cinq étapes sur son séjour : Préparation, Remplissage, Val
 ## Interdits
 
 - Remettre le visa au-dessus de l’itinéraire.
-- Proposer « Obtention du visa » dans À la carte. Seul « L’agence s’en charge » crée ce service.
+- Retirer Enregistrement ou Obtention du visa de À la carte.
 - Un second bouton « Faire la demande » à côté du lien officiel.
 - Inventer un frais ou un horaire.
 - Envoyer un message client tant que le modèle WhatsApp n’est pas approuvé.
