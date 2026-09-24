@@ -12,7 +12,7 @@ test("les frais officiels restent ceux publiés", () => {
 });
 
 test("le plafond couvre le cours, au centime supérieur", () => {
-  assert.equal(coverCents(25, 4), Math.ceil((25 / 4) * 1.03 * 100));
+  assert.equal(coverCents(25, 4), Math.ceil((25 / 4) * 1.3 * 100));
   assert.equal(coverCents(0, 4), null);
 });
 

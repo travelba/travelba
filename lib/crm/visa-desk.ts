@@ -18,7 +18,7 @@ export type DeskTask = {
   createdAt: string;
 };
 
-/** Plafond EUR = dépense officielle prévue de chaque visa, couverte au cours BCE. */
+/** Plafond EUR = dépense officielle prévue de chaque visa, plus 30 %, au cours BCE. */
 export function combinedCeilingEur(countries: VisaCorridor[], travelers: number, rates: EurFx) {
   const cents = combinedCeilingCents(countries, travelers, rates);
   return cents == null ? null : centsToEur(cents);

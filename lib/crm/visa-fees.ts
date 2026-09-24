@@ -10,8 +10,8 @@ export const VISA_OFFICIAL = {
 /** Unités de devise étrangère pour 1 euro (cours BCE). */
 export type EurFx = { USD: number; GBP: number; ILS: number };
 
-/** Marge sur le cours BCE pour que la carte encaisse le change du jour. */
-export const FX_COVER = 1.03;
+/** Le plafond carte est toujours 30 % au-dessus de la dépense prévue. */
+export const FX_COVER = 1.3;
 
 /** Dernier cours lu (24 septembre 2026) si le flux BCE est injoignable. */
 export const ECB_SNAPSHOT: { date: string; rates: EurFx } = {
