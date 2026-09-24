@@ -61,7 +61,12 @@ export async function retouchCoverBytes(
       const next = await generate(prompt, bytes);
       if (next?.byteLength) return next;
     } catch (err) {
-      console.error("[cover-retouch]", attempt === 0 ? "retry" : "failed", err instanceof Error ? err.name : "error");
+      const detail = err instanceof Error ? err.message : "error";
+      console.error(
+        "[cover-retouch]",
+        attempt === 0 ? "retry" : "failed",
+        detail.replace(/sk-\S+/g, "sk-REDACTED").slice(0, 240)
+      );
     }
   }
   return null;

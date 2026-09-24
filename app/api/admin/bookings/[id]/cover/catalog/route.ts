@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { coverQuery } from "@/lib/crm/carnet";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { unsplashKeywordMatch } from "@/lib/crm/covers";
-import { toCoverWebp, writePublicCover } from "@/lib/crm/cover-file";
+import { toCoverJpeg, toCoverWebp, writePublicCover } from "@/lib/crm/cover-file";
 import { downloadCoverImage } from "@/lib/crm/cover-search";
 import { catalogCachePath, retouchCoverBytes } from "@/lib/crm/cover-retouch";
 import { uploadCrmFile } from "@/lib/crm/files";
@@ -37,7 +37,8 @@ export async function POST(_request: Request, ctx: Ctx) {
     console.error("[cover] catalog download", err instanceof Error ? err.name : "error");
     return jsonError("Photo du lieu inaccessible.", 502);
   }
-  const retouched = await retouchCoverBytes(source, place);
+  const jpeg = await toCoverJpeg(source);
+  const retouched = await retouchCoverBytes(jpeg, place);
   if (!retouched) return jsonError("Retouche indisponible.", 502);
   const webp = await toCoverWebp(retouched);
   if (!webp) return jsonError("Conversion photo indisponible.", 500);

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { coverQuery } from "@/lib/crm/carnet";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
-import { coverSourceId, toCoverWebp } from "@/lib/crm/cover-file";
+import { coverSourceId, toCoverJpeg, toCoverWebp } from "@/lib/crm/cover-file";
 import { downloadCoverImage, isCoverPhotoId, loadCoverPhoto } from "@/lib/crm/cover-search";
 import { retouchCachePath, retouchCoverBytes } from "@/lib/crm/cover-retouch";
 import { downloadCrmFile, uploadCrmFile } from "@/lib/crm/files";
@@ -97,7 +97,8 @@ export async function POST(request: Request, ctx: Ctx) {
     }
   }
   if (!webp && bytes) {
-    const out = await retouchCoverBytes(bytes, place);
+    const jpeg = await toCoverJpeg(bytes);
+    const out = await retouchCoverBytes(jpeg, place);
     if (out) {
       webp = await toCoverWebp(out);
       retouched = Boolean(webp);

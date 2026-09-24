@@ -1,11 +1,13 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { trySharp } from "@/lib/crm/sharp";
+export async function toCoverJpeg(bytes: Buffer) {
+  const sharp = (await import("sharp")).default;
+  return sharp(bytes, { failOn: "none" }).rotate().jpeg({ quality: 90 }).toBuffer();
+}
 
 export async function toCoverWebp(bytes: Buffer) {
-  const sharp = await trySharp();
-  if (!sharp) return null;
+  const sharp = (await import("sharp")).default;
   return sharp(bytes, { failOn: "none" })
     .rotate()
     .resize({ width: 1600, height: 900, fit: "cover", position: "attention" })
