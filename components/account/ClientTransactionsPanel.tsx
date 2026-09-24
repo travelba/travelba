@@ -65,16 +65,6 @@ export function ClientTransactionsPanel({
                 </p>
               </div>
             ) : null}
-            {remaining > 0 ? (
-              <div className="mt-3 rounded-xl border border-[var(--admin-gold)]/40 bg-[#f8f3eb] px-3 py-2.5">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9c7c4e]">
-                  Reste à payer
-                </p>
-                <p className="font-display text-xl font-bold text-[var(--admin-navy)]">
-                  {formatMoney(remaining, currency)}
-                </p>
-              </div>
-            ) : null}
             {billingHref ? (
               <Link
                 href={billingHref}
