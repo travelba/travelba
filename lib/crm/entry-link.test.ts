@@ -5,6 +5,7 @@ import {
   entryCode,
   entryCodeFromLink,
   entryLinkUrl,
+  entryOpenRequested,
   entryPreviewHtml,
   isLinkCrawler,
   safeNextPath,
@@ -28,8 +29,10 @@ test("WhatsApp reçoit le titre sans consommer le jeton", () => {
   assert.equal(isLinkCrawler("WhatsApp/2.23"), true);
   assert.equal(isLinkCrawler("facebookexternalhit/1.1"), true);
   assert.equal(shouldServePreview("WhatsApp/2.23", null), true);
-  assert.equal(shouldServePreview("Mozilla/5.0", null), false);
-  assert.equal(shouldServePreview("Mozilla/5.0", "?1"), false);
+  assert.equal(shouldServePreview("Mozilla/5.0", null), true);
+  assert.equal(shouldServePreview("Mozilla/5.0", "?1"), true);
+  assert.equal(entryOpenRequested("?ouvrir=1"), true);
+  assert.equal(entryOpenRequested(""), false);
   const html = entryPreviewHtml("https://travelba.fr", "K7MQ2PX4");
   assert.match(html, /<title>Le Concierge<\/title>/);
   assert.match(html, /og:title" content="Le Concierge"/);
@@ -39,7 +42,8 @@ test("WhatsApp reçoit le titre sans consommer le jeton", () => {
   assert.match(html, /og:image:height" content="512"/);
   assert.match(html, /favicon\.png/);
   assert.match(html, /apple-touch-icon\.png/);
-  assert.equal(html.includes("<script"), false);
+  assert.match(html, /ouvrir=1/);
+  assert.equal(html.includes("noindex"), false);
   assert.equal(html.includes("token"), false);
   assert.equal(html.includes("hashed"), false);
 });

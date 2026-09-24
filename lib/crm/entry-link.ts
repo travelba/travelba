@@ -42,11 +42,16 @@ export function isLinkCrawler(userAgent: string | null) {
 }
 
 /**
- * Seul un robot d’aperçu reste sur la page. Le navigateur de WhatsApp
- * (sans en-tête de navigation) doit être redirigé, sinon le lien n’ouvre pas l’espace.
+ * L’URL du bouton reste l’aperçu, quel que soit l’agent.
+ * WhatsApp prévisualise ce GET sans l’agent « WhatsApp » et conserve un 307.
+ * L’ouverture humaine est `?ouvrir=1`, pas ce GET.
  */
-export function shouldServePreview(userAgent: string | null, _secFetchUser: string | null) {
-  return isLinkCrawler(userAgent);
+export function shouldServePreview(_userAgent: string | null, _secFetchUser: string | null) {
+  return true;
+}
+
+export function entryOpenRequested(search: string) {
+  return new URLSearchParams(search).get("ouvrir") === "1";
 }
 
 export function safeOtpType(value: string | null | undefined) {
@@ -76,7 +81,6 @@ export function entryPreviewHtml(origin: string, code: string) {
 <meta charset="utf-8">
 <title>${title}</title>
 <meta name="description" content="${description}">
-<meta name="robots" content="noindex">
 <meta property="og:locale" content="fr_FR">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Travel Business Agency">
@@ -100,6 +104,11 @@ export function entryPreviewHtml(origin: string, code: string) {
 <body style="margin:0;background:#0B192C;color:#F3EDE2;font-family:Georgia,serif">
 <p style="margin:0;padding:48px;font-size:28px">${title}</p>
 <p style="margin:0;padding:0 48px 48px;font-size:18px">${description}</p>
+<form method="get" action="${page}">
+<input type="hidden" name="ouvrir" value="1">
+<button type="submit" style="background:#C5A880;color:#0B192C;border:0;padding:14px 22px;font:inherit;cursor:pointer">Ouvrir mon espace</button>
+</form>
+<script>location.replace(location.pathname+"?ouvrir=1")</script>
 </body>
 </html>`;
 }
