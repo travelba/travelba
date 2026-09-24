@@ -4,7 +4,7 @@ import { householdMembers, memberFromTravelerLink } from "./household";
 export const CHAUFFEUR_EUR = 150;
 export const GREETER_ADULT_EUR = 100;
 export const GREETER_CHILD_EUR = 25;
-export const VISA_EUR = 50;
+export const VISA_EUR = 25;
 export const CHECKIN_EUR = 10;
 export const EXTRA_CHILD_AGE = 12;
 export const EXTRA_NOTICE_MS = 48 * 60 * 60 * 1000;

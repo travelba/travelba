@@ -49,8 +49,8 @@ test("New York needs ESTA and prices the visa service per passenger", () => {
     ["ESTA"]
   );
   assert.equal(trip.passengers, 3);
-  assert.equal(trip.amount, 150);
-  assert.equal(visaFeeAmount(0), 50);
+  assert.equal(trip.amount, 75);
+  assert.equal(visaFeeAmount(0), 25);
   assert.equal(visaPassengerCount(0), 1);
   assert.equal(visaFeeTitle(2), "Obtention du visa (2 passagers)");
 });
