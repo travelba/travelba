@@ -14,8 +14,6 @@ import { BookingStatusBadge, EmptyState } from "@/components/crm/ui";
 import { loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { Icon } from "@/components/crm/icons";
-import { sortItemsByOrder, timelineItems } from "@/lib/crm/carnet";
-import type { CrmBookingItem } from "@/lib/crm/types";
 
 export default async function ReservationsPage({
   searchParams,
@@ -47,16 +45,6 @@ export default async function ReservationsPage({
   );
   const showPast = tab === "passes";
   const list = showPast ? past : upcoming;
-  const ids = list.map((row) => row.id);
-  const { data: itemRows } = ids.length
-    ? await supabase.from("crm_booking_items").select("*").in("booking_id", ids).eq("visible_to_client", true)
-    : { data: [] as CrmBookingItem[] };
-  const itemsByBooking = new Map<string, CrmBookingItem[]>();
-  for (const item of (itemRows || []) as CrmBookingItem[]) {
-    const bucket = itemsByBooking.get(item.booking_id) || [];
-    bucket.push(item);
-    itemsByBooking.set(item.booking_id, bucket);
-  }
 
   return (
     <div className="space-y-4">
@@ -124,7 +112,6 @@ export default async function ReservationsPage({
         {list.map((b) => {
           const countdown = !showPast ? jMinusLabel(b.start_date) : null;
           const nights = tripDurationDays(b.start_date, b.end_date);
-          const excerpt = sortItemsByOrder(timelineItems(itemsByBooking.get(b.id) || [])).slice(0, 3);
           return (
             <li key={b.id}>
               <article className="relative overflow-hidden rounded-xl border border-[#c5c6cd]/35 bg-white shadow-sm">
@@ -171,19 +158,6 @@ export default async function ReservationsPage({
                   </div>
                   {b.destination && b.title ? (
                     <p className="text-sm text-[var(--admin-navy)]">{b.destination}</p>
-                  ) : null}
-                  {excerpt.length ? (
-                    <ol className="space-y-2 border-t border-[#e5e3dc] pt-3">
-                      {excerpt.map((item) => (
-                        <li key={item.id} className="flex items-center gap-2 text-sm text-[var(--admin-navy)]">
-                          <Icon
-                            name={item.kind === "hotel" ? "hotel" : item.kind === "flight" ? "flight" : "local_activity"}
-                            className="h-4 w-4 shrink-0 text-[var(--admin-gold-dark)]"
-                          />
-                          <span className="truncate">{item.title}</span>
-                        </li>
-                      ))}
-                    </ol>
                   ) : null}
                   <Link
                     href={`/mon-compte/reservations/${b.reference}`}
