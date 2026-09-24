@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { jsonError, jsonIssues, requireCustomer } from "@/lib/crm/auth";
 import { BookingIssuesError } from "@/lib/crm/booking-issues";
 import { carnetVisible } from "@/lib/crm/carnet";
-import { createBookingExtra, declineBookingService, parseExtraRequest } from "@/lib/crm/extras-write";
+import {
+  cancelBookingExtra,
+  createBookingExtra,
+  declineBookingService,
+  parseExtraRequest,
+} from "@/lib/crm/extras-write";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmBooking, CrmBookingItem, CrmBookingTraveler, CrmCompanion, CrmCustomer } from "@/lib/crm/types";
 
@@ -30,6 +35,16 @@ export async function POST(request: Request, ctx: Ctx) {
   try {
     const extra = parseExtraRequest(body);
     const admin = createServiceClient();
+    if (body?.cancel === true) {
+      const cancelled = await cancelBookingExtra(admin, {
+        booking: b,
+        items: list,
+        kind: extra.kind,
+        leg: extra.leg,
+        place: extra.place,
+      });
+      return NextResponse.json(cancelled);
+    }
     if (body?.decline === true) {
       const declined = await declineBookingService(admin, {
         booking: b,
