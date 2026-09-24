@@ -1,4 +1,4 @@
-import { entryCodeFromLink } from "./entry-link";
+import { entryButtonSuffix, entryCodeFromLink } from "./entry-link";
 import { greetingGivenName } from "./identity";
 import { toE164 } from "./phone";
 
@@ -75,8 +75,9 @@ export function connexionContentCreateBody() {
 }
 
 /**
- * {{1}} prénom, {{2}} code de `/e/CODE`.
- * L’URL complète reste dans le modèle (`CONNEXION_BUTTON_URL`), pas dans l’envoi.
+ * {{1}} prénom, {{2}} suffixe `c/CODE`.
+ * Le bouton approuvé est `https://travelba.fr/e/{{2}}`, donc l’adresse
+ * prévisualisée devient `https://travelba.fr/e/c/CODE`.
  */
 export function connexionContentVariables(
   firstName: string | null | undefined,
@@ -85,7 +86,7 @@ export function connexionContentVariables(
   const code = entryCodeFromLink(link);
   if (!code) return null;
   const name = (greetingForWhatsapp(firstName) || "").replace(/[\r\n]+/g, " ").trim();
-  return { "1": name || " ", "2": code };
+  return { "1": name || " ", "2": entryButtonSuffix(code) };
 }
 
 /** Uniquement le modèle « Enchanté… Le Concierge ». L’ancien SID générique dit autre chose. */
