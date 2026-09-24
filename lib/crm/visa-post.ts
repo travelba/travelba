@@ -2,7 +2,49 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CrmBooking } from "./types";
 import { ledgerAfterCharge, type VisaLedgerLine } from "./visa-ledger";
+import { depositAdvancesToPiece } from "./visa-flow";
 import type { VisaCorridor } from "./visa-fees";
+
+function corridorOf(value: string): VisaCorridor | null {
+  return value === "IL" || value === "US" || value === "GB" ? value : null;
+}
+
+/** La pièce clôt seulement un paiement déjà enregistré. Le PDF reste au coffre dans tous les cas. */
+export async function markPaidVisasFiled(
+  supabase: SupabaseClient,
+  bookingId: string,
+  countries: string[],
+  travelers: { id: string; first_name: string | null; last_name: string | null }[]
+) {
+  const wanted = countries.map(corridorOf).filter((row): row is VisaCorridor => Boolean(row));
+  if (!wanted.length) return;
+  const { data } = await supabase
+    .from("crm_visa_requests")
+    .select("country, status")
+    .eq("booking_id", bookingId)
+    .in("country", wanted);
+  for (const row of (data || []) as { country: VisaCorridor; status: string }[]) {
+    if (!depositAdvancesToPiece(row.status)) continue;
+    await supabase
+      .from("crm_visa_requests")
+      .update({ status: "piece", step: "piece" })
+      .eq("booking_id", bookingId)
+      .eq("country", row.country);
+    for (const traveler of travelers) {
+      const name = `${traveler.first_name} ${traveler.last_name}`.trim();
+      await supabase.from("crm_visa_notices").upsert(
+        {
+          booking_id: bookingId,
+          traveler_key: traveler.id,
+          kind: "piece",
+          country: row.country,
+          holder_name: name || "Voyageur",
+        },
+        { onConflict: "booking_id,traveler_key,kind,country" }
+      );
+    }
+  }
+}
 
 async function upsertLine(
   supabase: SupabaseClient,

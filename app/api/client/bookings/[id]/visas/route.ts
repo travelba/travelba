@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { jsonError, requireCustomer } from "@/lib/crm/auth";
 import { carnetVisible } from "@/lib/crm/carnet";
 import { saveVisaUploads } from "@/lib/crm/visa-save";
+import { markPaidVisasFiled } from "@/lib/crm/visa-post";
+import { createServiceClient } from "@/lib/supabase/admin";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import type { CrmBooking, CrmBookingItem, CrmBookingTraveler } from "@/lib/crm/types";
 
@@ -41,6 +43,9 @@ export async function POST(request: Request, ctx: Ctx) {
       countries: trip.entries.map((entry) => ({ iso: entry.iso, name: entry.name })),
       files,
     });
+    if (result.saved > 0) {
+      await markPaidVisasFiled(createServiceClient(), b.id, result.countries, party);
+    }
     return NextResponse.json(result);
   } catch (err) {
     return jsonError(err instanceof Error ? err.message : "Envoi impossible", 400);

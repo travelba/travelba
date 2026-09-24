@@ -10,8 +10,9 @@ import { formatMoney } from "@/lib/crm/money";
 import { VISA_OFFICIAL, type VisaCorridor } from "@/lib/crm/visa-fees";
 import {
   agencyLaunchReady,
-  clientVisaStepCopy,
+  clientVisaStepNote,
   clientVisaTrack,
+  paymentHold,
   VISA_WAIT_COPY,
   type ClientVisaStep,
   type EstaAnswers,
@@ -55,6 +56,7 @@ export function VisaSection({
   travelers,
   documents,
   visaBooked,
+  pliantReady = false,
 }: {
   variant: "admin" | "client";
   bookingId: string;
@@ -64,6 +66,8 @@ export function VisaSection({
   travelers: CrmBookingTraveler[];
   documents: CrmTravelDocument[];
   visaBooked: boolean;
+  /** Vrai seulement si les clés Pliant sont présentes. Sinon le paiement reste un geste explicite. */
+  pliantReady?: boolean;
 }) {
   const router = useRouter();
   const [answers, setAnswers] = useState<Record<string, EstaAnswers>>({});
@@ -140,6 +144,8 @@ export function VisaSection({
         const country = entry.iso as VisaCorridor;
         const request = requests.find((row) => row.country === country);
         const step = (request?.step || (request?.status === "piece" ? "piece" : null)) as ClientVisaStep | null;
+        const paid = request?.status === "paye" || request?.status === "piece";
+        const paymentHeld = step === "paiement" && !paid && !pliantReady;
         const current = fields(country);
         const ready = agencyLaunchReady(country, current);
         const pieces = piecePaths(documents, country);
@@ -155,19 +161,29 @@ export function VisaSection({
             </p>
             {step ? (
               <div className="space-y-3">
-                {step === "piece" ? null : (
+                {step === "piece" ? null : paymentHeld ? (
+                  <p className="text-sm font-semibold text-[var(--admin-navy)]">{paymentHold(false)}</p>
+                ) : paid && step === "paiement" ? (
+                  <p className="text-sm font-semibold text-[var(--admin-navy)]">
+                    {clientVisaStepNote("paiement", { paid: true })}
+                  </p>
+                ) : (
                   <p className="text-sm font-semibold text-[var(--admin-navy)]">{VISA_WAIT_COPY}</p>
                 )}
                 <ol className="space-y-2 text-sm">
                   {clientVisaTrack(step).map((row) => {
                     const explain = row.state === "en cours" || (step === "piece" && row.id === "piece");
+                    const note =
+                      explain && row.id !== "paiement"
+                        ? clientVisaStepNote(row.id, { paid, paymentHeld: !pliantReady })
+                        : null;
                     return (
                       <li key={row.id} className={row.state === "à venir" ? "text-muted" : "text-[var(--admin-navy)]"}>
                         <p className={explain ? "font-semibold" : ""}>
                           {row.label}
                           {row.state === "fait" && row.id !== "piece" ? " — fait" : ""}
                         </p>
-                        {explain ? <p className="text-sm font-normal">{clientVisaStepCopy(row.id)}</p> : null}
+                        {note ? <p className="text-sm font-normal">{note}</p> : null}
                         {row.id === "piece" && pieces.length
                           ? pieces.map((doc) =>
                               doc.storage_path ? (
