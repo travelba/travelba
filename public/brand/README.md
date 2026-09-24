@@ -15,7 +15,7 @@ Circular monogram only. No compass rose.
 |------|-----|
 | `logo-tba.png` | UI (1024 master) |
 | `travelba-whatsapp-badge-only.png` | WhatsApp profile crop (640) |
-| `/favicon.ico` | Browser tab |
+| `/favicon.ico` | Browser tab (`public/` + `app/favicon.ico`) |
 | `/favicon-16.png` `/favicon-32.png` `/favicon-48.png` | PNG favicons |
-| `/favicon.png` | 512 source |
-| `/apple-touch-icon.png` | iOS home screen (180) |
+| `/favicon.png` | 512 source (also `app/icon.png`) |
+| `/apple-touch-icon.png` | iOS home screen (180, also `app/apple-icon.png`) |
