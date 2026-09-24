@@ -22,6 +22,24 @@ const STEP_COPY: Record<ClientVisaStep, string> = {
 
 export const VISA_WAIT_COPY = "Nous nous en occupons. Vous n’avez rien à faire pour le moment.";
 
+/** Paliers d’avancement, pas une durée. Le paiement tenu par Pliant reste à 80. */
+const PROGRESS_MARK: Record<ClientVisaStep, number> = {
+  preparation: 20,
+  remplissage: 45,
+  validation: 65,
+  paiement: 80,
+  piece: 100,
+};
+
+export function clientVisaProgress(step: ClientVisaStep) {
+  return PROGRESS_MARK[step];
+}
+
+/** Astra ne remplit que le portail ETA-IL. */
+export function astraFillsCountry(country: VisaCorridor) {
+  return country === "IL";
+}
+
 export function clientVisaTrack(step: ClientVisaStep) {
   const index = CLIENT_VISA_STEPS.indexOf(step);
   return CLIENT_VISA_STEPS.map((id, position) => ({

@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   agencyLaunchReady,
+  astraFillsCountry,
   clientVisaPhase,
+  clientVisaProgress,
   clientVisaStepCopy,
   clientVisaStepNote,
   clientVisaTrack,
@@ -91,6 +93,17 @@ test("Israël, États-Unis et Royaume-Uni suivent le parcours jusqu’au paiemen
   assert.equal(headerVisaLabel("prêt", "GB"), "Préparer le récapitulatif");
   assert.equal(headerVisaLabel("à confirmer", "US"), "Confirmer");
   assert.equal(headerVisaLabel("paiement", "IL"), "Paiement en attente");
+});
+
+test("le pourcentage suit le palier, Astra ne couvre qu’Israël", () => {
+  assert.equal(clientVisaProgress("preparation"), 20);
+  assert.equal(clientVisaProgress("remplissage"), 45);
+  assert.equal(clientVisaProgress("validation"), 65);
+  assert.equal(clientVisaProgress("paiement"), 80);
+  assert.equal(clientVisaProgress("piece"), 100);
+  assert.equal(astraFillsCountry("IL"), true);
+  assert.equal(astraFillsCountry("US"), false);
+  assert.equal(astraFillsCountry("GB"), false);
 });
 
 test("les réponses déjà données restent, le dépôt n’avance qu’après paiement", () => {
