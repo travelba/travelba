@@ -339,7 +339,16 @@ export function BookingEditor({
       />
 
       <section className="admin-af-card flex flex-col gap-3 rounded-3xl p-5 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+        <div className="min-w-0 flex-1 space-y-3">
+          {bookingHasFlight(items)
+            ? formalities.entries
+                .filter((entry): entry is typeof entry & { iso: VisaCorridor } =>
+                  entry.iso === "IL" || entry.iso === "US" || entry.iso === "GB"
+                )
+                .map((entry) => (
+                  <VisaRunPanel key={entry.iso} bookingId={booking.id} country={entry.iso} />
+                ))
+            : null}
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">Carnet client</p>
           <p className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">
             {booking.visible_to_client ? "Visible dans l’espace" : "Masqué — invisible au client"}
@@ -395,22 +404,6 @@ export function BookingEditor({
         </div>
         </div>
       </section>
-
-      {bookingHasFlight(items) ? (
-        <section className="admin-af-card space-y-3 rounded-3xl p-5">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">Formalité</p>
-          {formalities.entries
-            .filter((entry): entry is typeof entry & { iso: VisaCorridor } =>
-              entry.iso === "IL" || entry.iso === "US" || entry.iso === "GB"
-            )
-            .map((entry) => (
-              <VisaRunPanel key={entry.iso} bookingId={booking.id} country={entry.iso} />
-            ))}
-          {formalities.entries.some((entry) => entry.iso === "IL" || entry.iso === "US" || entry.iso === "GB") ? null : (
-            <p className="text-sm text-[var(--admin-navy)]">Aucune formalité automatique sur ces vols.</p>
-          )}
-        </section>
-      ) : null}
 
       <BookingIngest
         role="admin"

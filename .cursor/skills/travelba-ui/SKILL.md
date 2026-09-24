@@ -48,6 +48,7 @@ Admin : Tableau de bord, Clients, Réservations, Transactions, Revolut (badge un
 - `loading.tsx` à côté de chaque `page.tsx` liste/détail CRM.
 - Toute attente (enregistrer, envoyer, lire, publier, supprimer) affiche `BusyBar` : pourcentage réel si on l’a (envoi de fichier), sinon barre animée. Pas seulement le libellé du bouton.
 - Actions carnet dans le **header** éditeur (pas de barre `fixed`/`sticky` qui recouvre l’ingest).
+- Une action que l’agent doit cliquer (lancer une formalité, confirmer, envoyer) est dans ce header, à côté d’Enregistrer. Jamais sous les cartes du séjour. Si l’utilisateur dit qu’il ne voit pas le bouton, on le déplace. On ne lui demande pas de descendre dans la page.
 - `next/font` : ne pas preloader trop de familles (Space Grotesk déjà off).
 
 ## Accessibilité minimale

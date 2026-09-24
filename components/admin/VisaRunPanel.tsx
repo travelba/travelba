@@ -97,7 +97,7 @@ export function VisaRunPanel({ bookingId, country }: { bookingId: string; countr
             if (view?.phase === "prêt") return confirm();
             return run();
           }}
-          className="inline-flex h-7 items-center rounded-full bg-[var(--admin-navy)] px-3 text-xs font-semibold text-white disabled:opacity-50"
+          className="inline-flex h-9 items-center rounded-full bg-[var(--admin-navy)] px-4 text-sm font-semibold text-white disabled:opacity-50"
         >
           {busy
             ? "En cours…"
