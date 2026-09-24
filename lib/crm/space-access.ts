@@ -14,16 +14,18 @@ export function spaceAccessNextPath(phone: string | null | undefined) {
  * Après l’enregistrement du mot de passe client : même modèle Le Concierge,
  * vers l’espace, pas vers la page mot de passe. N’échoue pas l’enregistrement.
  */
+export type SpaceAccessResult = "sent" | "failed" | "skipped";
+
 export async function sendSpaceAccessWhatsapp(input: {
   customerId: string;
   email: string;
   phone: string | null | undefined;
   firstName: string | null | undefined;
   origin: string;
-}) {
+}): Promise<SpaceAccessResult> {
   const phone = input.phone?.trim();
   const email = input.email.trim().toLowerCase();
-  if (!phone || !email) return;
+  if (!phone || !email) return "skipped";
 
   const admin = createServiceClient();
   const generated = await admin.auth.admin.generateLink({
@@ -31,7 +33,7 @@ export async function sendSpaceAccessWhatsapp(input: {
     email,
   });
   const tokenHash = generated.data?.properties?.hashed_token;
-  if (generated.error || !tokenHash) return;
+  if (generated.error || !tokenHash) return "failed";
 
   const link = await createEntryLink(admin, input.origin, {
     tokenHash,
@@ -43,7 +45,7 @@ export async function sendSpaceAccessWhatsapp(input: {
     firstName: input.firstName,
     link,
   });
-  if (whatsapp.ok || whatsapp.reason === "rejected") {
+  if (whatsapp.ok || whatsapp.reason !== "no_phone") {
     await admin.from("crm_whatsapp_messages").insert({
       customer_id: input.customerId,
       direction: "outbound",
@@ -54,4 +56,5 @@ export async function sendSpaceAccessWhatsapp(input: {
       error: whatsapp.ok ? null : whatsapp.detail || whatsapp.reason,
     });
   }
+  return whatsapp.ok ? "sent" : whatsapp.reason === "no_phone" ? "skipped" : "failed";
 }

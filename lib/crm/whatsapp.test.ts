@@ -58,9 +58,9 @@ test("le modèle reprend le texte du concierge et un bouton à domaine fixe", ()
   assert.equal(draft.language, "fr");
   assert.equal(draft.types["twilio/call-to-action"].actions[0].url, CONNEXION_BUTTON_URL);
   assert.equal(draft.types["twilio/call-to-action"].body.includes("http"), false);
-  assert.deepEqual(connexionContentVariables("Simon, Iony", "https://travelba.fr/e/K7MQ2PX4"), {
+  assert.deepEqual(connexionContentVariables("Simon, Iony", "https://travelba.fr/e/c/K7MQ2PX4"), {
     "1": "Simon",
-    "2": "K7MQ2PX4",
+    "2": "c/K7MQ2PX4",
   });
   assert.equal(connexionContentVariables("Simon", "https://travelba.fr/auth/callback?token_hash=secret"), null);
 });
@@ -140,7 +140,7 @@ describe("envoi Twilio", { concurrency: false }, () => {
       assert.equal(params.get("To"), "whatsapp:+33601020304");
       assert.deepEqual(JSON.parse(params.get("ContentVariables") || "{}"), {
         "1": "Simon",
-        "2": "K7MQ2PX4",
+        "2": "c/K7MQ2PX4",
       });
       assert.equal(raw.includes("http"), false);
       assert.equal(raw.includes("token"), false);

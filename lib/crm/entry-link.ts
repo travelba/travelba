@@ -18,20 +18,30 @@ export function isEntryCode(value: string) {
   return new RegExp(`^[${ALPHABET}]{${ENTRY_CODE_LENGTH}}$`).test(value);
 }
 
-/** Code du lien `/e/CODE`, quel que soit l’hôte. */
+/**
+ * Code du lien, quel que soit l’hôte.
+ * L’aperçu WhatsApp est `/e/c/CODE` : une autre adresse que `/e/CODE`,
+ * pour ne pas réutiliser une carte déjà mise en cache.
+ */
 export function entryCodeFromLink(link: string) {
   try {
     const path = new URL(link).pathname.replace(/\/+$/, "");
     const code = path.split("/").pop() || "";
-    if (path !== `/e/${code}` || !isEntryCode(code)) return null;
+    if (!isEntryCode(code)) return null;
+    if (path !== `/e/${code}` && path !== `/e/c/${code}`) return null;
     return code;
   } catch {
     return null;
   }
 }
 
+/** Suffixe du bouton `https://travelba.fr/e/{{2}}`. */
+export function entryButtonSuffix(code: string) {
+  return `c/${code}`;
+}
+
 export function entryLinkUrl(origin: string, code: string) {
-  return `${origin.replace(/\/$/, "")}/e/${code}`;
+  return `${origin.replace(/\/$/, "")}/e/c/${code}`;
 }
 
 const CRAWLER =
@@ -43,8 +53,9 @@ export function isLinkCrawler(userAgent: string | null) {
 
 /**
  * L’URL du bouton reste l’aperçu, quel que soit l’agent.
- * WhatsApp prévisualise ce GET sans l’agent « WhatsApp » et conserve un 307.
- * L’ouverture humaine est `?ouvrir=1`, pas ce GET.
+ * Pas de redirection dans cette page : WhatsApp met en cache le résultat
+ * du premier GET, y compris un script qui quitte la page.
+ * L’ouverture humaine est `?ouvrir=1`.
  */
 export function shouldServePreview(_userAgent: string | null, _secFetchUser: string | null) {
   return true;
@@ -52,6 +63,11 @@ export function shouldServePreview(_userAgent: string | null, _secFetchUser: str
 
 export function entryOpenRequested(search: string) {
   return new URLSearchParams(search).get("ouvrir") === "1";
+}
+
+/** Un vrai appui (Chrome) ouvre l’espace. Le robot d’aperçu n’envoie pas cet en-tête. */
+export function entryUserActivated(secFetchUser: string | null) {
+  return secFetchUser === "?1";
 }
 
 export function safeOtpType(value: string | null | undefined) {
@@ -73,8 +89,8 @@ export function entryPreviewHtml(origin: string, code: string) {
   const page = entryLinkUrl(base, code);
   const title = ENTRY_PREVIEW_TITLE;
   const description = ENTRY_PREVIEW_DESCRIPTION;
-  const image = `${base}/og-concierge.png`;
-  const icon = `${base}/favicon.png`;
+  const image = `${base}/og-concierge.jpg`;
+  const icon = `${base}/tba-mark.png`;
   return `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -89,9 +105,9 @@ export function entryPreviewHtml(origin: string, code: string) {
 <meta property="og:url" content="${page}">
 <meta property="og:image" content="${image}">
 <meta property="og:image:secure_url" content="${image}">
-<meta property="og:image:type" content="image/png">
-<meta property="og:image:width" content="512">
-<meta property="og:image:height" content="512">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="${title}">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="${title}">
@@ -108,7 +124,6 @@ export function entryPreviewHtml(origin: string, code: string) {
 <input type="hidden" name="ouvrir" value="1">
 <button type="submit" style="background:#C5A880;color:#0B192C;border:0;padding:14px 22px;font:inherit;cursor:pointer">Ouvrir mon espace</button>
 </form>
-<script>location.replace(location.pathname+"?ouvrir=1")</script>
 </body>
 </html>`;
 }

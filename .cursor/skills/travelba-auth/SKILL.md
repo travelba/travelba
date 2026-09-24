@@ -30,7 +30,7 @@ Compagnons = **fiche seulement**, pas de compte Auth. Pas d’auto-signup : `ens
 
 Copy « 30 jours » ; TTL réel = Supabase Auth. Ne pas stocker le lien en base.
 
-WhatsApp Le Concierge : même lien, en plus de l’e-mail. Modèle Utility `TWILIO_CONTENT_CONNEXION` (`connexion_espace`) : {{1}} prénom, bouton « Ouvrir mon espace » = `https://travelba.fr/e/{{2}}`. Sans ce SID, l’e-mail part quand même. Ne pas réutiliser `TWILIO_WHATSAPP_CONTENT_SID`. Création : `npx tsx scripts/arm-whatsapp-connexion.ts` — le SID reste hors git. Meta doit approuver avant le premier envoi.
+WhatsApp Le Concierge : même lien, en plus de l’e-mail. Modèle Utility `TWILIO_CONTENT_CONNEXION` (`connexion_espace`) : {{1}} prénom, bouton « Ouvrir mon espace » = `https://travelba.fr/e/{{2}}`. {{2}} vaut `c/` + le code, donc l’adresse prévisualisée est `https://travelba.fr/e/c/CODE` (autre carte que `/e/CODE`). Cette page porte le titre, le descriptif et l’image, sans redirection. L’ouverture de l’espace est `?ouvrir=1`. Sans ce SID, l’e-mail part quand même. Ne pas réutiliser `TWILIO_WHATSAPP_CONTENT_SID`. Création : `npx tsx scripts/arm-whatsapp-connexion.ts` — le SID reste hors git. Meta doit approuver avant le premier envoi.
 
 Après succès mot de passe (`/api/client/password`) : `app_metadata.must_set_password=false` + `refreshSession`. Redirection : **`/mon-compte/profil`** seulement si `crm_customers.phone` est vide, sinon **`/mon-compte`**. Le mur téléphone reste le filet si l’accueil est ouvert sans numéro.
 
