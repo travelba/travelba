@@ -13,6 +13,10 @@ const nextConfig: NextConfig = {
     ],
   },
   serverExternalPackages: ["sharp", "unpdf", "@napi-rs/canvas", "pdfjs-dist", "puppeteer-core", "@sparticuz/chromium"],
+  outputFileTracingIncludes: {
+    "/api/admin/bookings/[id]/eta-il": ["./node_modules/@sparticuz/chromium/bin/**"],
+    "/api/client/bookings/[id]/visa": ["./node_modules/@sparticuz/chromium/bin/**"],
+  },
   async redirects() {
     return [
       {

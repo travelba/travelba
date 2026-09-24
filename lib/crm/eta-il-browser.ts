@@ -1,4 +1,6 @@
 import "server-only";
+import chromium from "@sparticuz/chromium";
+import puppeteer from "puppeteer-core";
 import { ETA_IL_PORTAL } from "./eta-il-draft";
 import { portalUrlAllowed, type PortalPage } from "./eta-il-session";
 
@@ -13,50 +15,36 @@ type ChromeBrowser = { newPage(): Promise<ChromePage>; close(): Promise<void> };
 
 export type PortalSession = PortalPage & { close(): Promise<void> };
 
-async function chromeLaunch(): Promise<{ puppeteer: { launch(opts: object): Promise<ChromeBrowser> }; executablePath: string; args: string[] } | null> {
-  const load = new Function("name", "return import(name)") as (name: string) => Promise<unknown>;
-  let puppeteer: { launch(opts: object): Promise<ChromeBrowser> };
-  try {
-    puppeteer = (await load("puppeteer-core")) as { launch(opts: object): Promise<ChromeBrowser> };
-  } catch {
-    return null;
-  }
-  const local = process.env.CHROME_PATH || "/usr/bin/google-chrome";
-  try {
-    const { access } = await import("node:fs/promises");
-    await access(local);
-    return { puppeteer, executablePath: local, args: ["--no-sandbox", "--disable-dev-shm-usage"] };
-  } catch {
-    // Chromium empaqueté pour la fonction Vercel.
+async function launchBrowser(): Promise<ChromeBrowser | null> {
+  const local = process.env.CHROME_PATH;
+  if (local) {
+    try {
+      return await puppeteer.launch({
+        executablePath: local,
+        headless: true,
+        args: ["--no-sandbox", "--disable-dev-shm-usage"],
+      });
+    } catch (err) {
+      console.error("[eta-il] chrome local", err instanceof Error ? err.message : "échec");
+    }
   }
   try {
-    const chromium = (await load("@sparticuz/chromium")) as {
-      args: string[];
-      executablePath: () => Promise<string>;
-      setGraphicsMode: boolean;
-    };
     chromium.setGraphicsMode = false;
-    const executablePath = await chromium.executablePath();
-    return { puppeteer, executablePath, args: chromium.args };
-  } catch {
+    return await puppeteer.launch({
+      executablePath: await chromium.executablePath(),
+      headless: true,
+      args: chromium.args,
+      defaultViewport: { width: 1280, height: 720 },
+    });
+  } catch (err) {
+    console.error("[eta-il] chromium", err instanceof Error ? err.message : "échec");
     return null;
   }
 }
 
 export async function openEtaIlPortal(): Promise<PortalSession | null> {
-  const launch = await chromeLaunch();
-  if (!launch) return null;
-  const { puppeteer } = launch;
-  let browser: ChromeBrowser;
-  try {
-    browser = await puppeteer.launch({
-      executablePath: launch.executablePath,
-      headless: true,
-      args: launch.args,
-    });
-  } catch {
-    return null;
-  }
+  const browser = await launchBrowser();
+  if (!browser) return null;
   try {
     const page = await browser.newPage();
     await page.goto(ETA_IL_PORTAL, { waitUntil: "domcontentloaded", timeout: 20000 });
@@ -88,7 +76,8 @@ export async function openEtaIlPortal(): Promise<PortalSession | null> {
         await browser.close().catch(() => undefined);
       },
     };
-  } catch {
+  } catch (err) {
+    console.error("[eta-il] portail", err instanceof Error ? err.message : "échec");
     await browser.close().catch(() => undefined);
     return null;
   }
