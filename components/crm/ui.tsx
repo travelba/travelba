@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AgencyLogo } from "@/components/AgencyLogo";
 import { siteConfig } from "@/lib/site";
 import { Icon } from "@/components/crm/icons";
 
@@ -13,9 +14,7 @@ export function BrandMark({
 }) {
   return (
     <Link href={href} className="flex items-center gap-2.5">
-      <span className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-[var(--admin-navy)] font-display text-[11px] font-extrabold tracking-wider text-[var(--admin-gold)] shadow-sm">
-        TBA
-      </span>
+      <AgencyLogo className="h-9 w-9" />
       <span className="flex min-w-0 flex-col leading-tight">
         <span className="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
           Travel Business Agency
@@ -146,9 +145,7 @@ export function ConciergeBanner({
         </span>
       </div>
       <div className="flex items-center gap-3">
-        <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[var(--admin-navy)] font-display text-[11px] font-extrabold tracking-wider text-[var(--admin-gold)] ring-2 ring-[var(--admin-gold)]/30">
-          TBA
-        </span>
+        <AgencyLogo className="h-14 w-14" />
         <div className="min-w-0">
           <p className="truncate font-display text-base font-semibold text-[var(--admin-navy)]">
             Travel Business Agency

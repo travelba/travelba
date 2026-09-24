@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { AgencyLogo } from "@/components/AgencyLogo";
 import { Icon } from "@/components/crm/icons";
 import { siteConfig } from "@/lib/site";
 
@@ -96,9 +97,7 @@ export function AdminNav({
       <header className="sticky top-0 z-50 bg-[var(--admin-navy)] text-white lg:hidden">
         <div className="flex items-center justify-between gap-3 px-4 py-3">
           <Link href="/admin" className="flex min-w-0 items-center gap-2">
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[var(--admin-gold)]/40 font-display text-[11px] font-extrabold tracking-wider text-[var(--admin-gold)]">
-              TBA
-            </span>
+            <AgencyLogo className="h-9 w-9" />
             <span className="truncate font-display text-sm font-semibold">Espace agence</span>
           </Link>
           <div className="flex shrink-0 items-center gap-2">
@@ -135,9 +134,7 @@ export function AdminNav({
       <aside className="z-50 hidden w-72 flex-col justify-between bg-[var(--admin-navy)] px-5 py-6 text-white lg:fixed lg:left-0 lg:top-0 lg:flex lg:h-full lg:shrink-0">
         <div className="flex flex-col gap-6">
           <Link href="/admin" className="flex items-center gap-3 px-1">
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-[var(--admin-gold)]/40 font-display text-[11px] font-extrabold tracking-wider text-[var(--admin-gold)]">
-              TBA
-            </span>
+            <AgencyLogo className="h-10 w-10" />
             <span className="flex flex-col leading-tight">
               <span className="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">
                 Travel Business

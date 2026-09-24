@@ -31,7 +31,9 @@ test("WhatsApp reçoit le titre sans consommer le jeton", () => {
   assert.match(html, /og:title" content="Le Concierge TBA"/);
   assert.match(html, /og:description" content="Votre espace vous attend."/);
   assert.match(html, /og:image" content="https:\/\/travelba\.fr\/og-concierge\.png"/);
+  assert.match(html, /favicon\.ico/);
   assert.match(html, /favicon\.png/);
+  assert.match(html, /apple-touch-icon\.png/);
   assert.equal(html.includes("token"), false);
   assert.equal(html.includes("hashed"), false);
 });
