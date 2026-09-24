@@ -13,6 +13,7 @@ export type ExtraKind = "chauffeur" | "greeter";
 export type ExtraLeg = "departure" | "arrival";
 export type ServicePlace = "home" | "hotel";
 export type OfferSlot = "before" | "after";
+export type GreeterMoment = "depart" | "arrive";
 
 export function isExtraKind(value: string | null | undefined): value is ExtraKind {
   return value === "chauffeur" || value === "greeter";
@@ -77,15 +78,27 @@ export function extraPlaceOf(item: {
   return null;
 }
 
+export function isGreeterMoment(value: string | null | undefined): value is GreeterMoment {
+  return value === "depart" || value === "arrive";
+}
+
+/** Les greeters déjà validés sans moment sont ceux du départ. */
+export function extraMomentOf(item: { details?: Record<string, unknown> | null }): GreeterMoment {
+  const value = item.details?.moment;
+  return typeof value === "string" && isGreeterMoment(value) ? value : "depart";
+}
+
 export function findExtra(
   items: { kind?: string | null; details?: Record<string, unknown> | null }[],
   kind: ExtraKind,
   leg: ExtraLeg,
-  place?: ServicePlace | null
+  place?: ServicePlace | null,
+  moment?: GreeterMoment | null
 ) {
   return (
     items.find((item) => {
       if (item.kind !== kind || extraServiceLeg(item) !== leg) return false;
+      if (kind === "greeter") return extraMomentOf(item) === (moment || "depart");
       if (kind !== "chauffeur" || place == null) return true;
       return extraPlaceOf(item) === place;
     }) || null
@@ -240,6 +253,7 @@ export type ServiceOffer = {
   kind: ExtraKind;
   leg: ExtraLeg;
   place: ServicePlace | null;
+  moment: GreeterMoment | null;
   slot: OfferSlot;
   flightId: string;
   day: string;
@@ -331,12 +345,16 @@ function transferLine(leg: ServiceFlightLeg) {
 
 function offerBase(
   leg: ServiceFlightLeg,
-  input: Pick<ServiceOffer, "kind" | "place" | "slot" | "day" | "route" | "flightLine" | "airport" | "whenIso" | "address">
+  input: Pick<
+    ServiceOffer,
+    "kind" | "place" | "moment" | "slot" | "day" | "route" | "flightLine" | "airport" | "whenIso" | "address"
+  >
 ): ServiceOffer {
   return {
     kind: input.kind,
     leg: leg.leg,
     place: input.place,
+    moment: input.moment,
     slot: input.slot,
     flightId: leg.id,
     day: input.day,
@@ -364,6 +382,7 @@ export function itineraryOffers(items: ServiceFlightRow[]): ServiceOffer[] {
         offerBase(outbound, {
           kind: "chauffeur",
           place: "home",
+          moment: null,
           slot: "before",
           day: departDay,
           route: outbound.fromIata ? `Domicile → ${outbound.fromIata}` : "Domicile → aéroport",
@@ -377,12 +396,31 @@ export function itineraryOffers(items: ServiceFlightRow[]): ServiceOffer[] {
         offerBase(outbound, {
           kind: "greeter",
           place: null,
+          moment: "depart",
           slot: "before",
           day: departDay,
           route: fromAirport ? `Aéroport ${fromAirport}` : "Aéroport",
           flightLine: flightMomentLine(outbound, "depart"),
           airport: fromAirport,
           whenIso: outbound.departAt,
+          address: null,
+        })
+      );
+    }
+    const arriveDay = dayKey(outbound.arriveAt);
+    const toAirport = serviceAirportLabel(outbound.toIata, outbound.cityTo);
+    if (arriveDay) {
+      offers.push(
+        offerBase(outbound, {
+          kind: "greeter",
+          place: null,
+          moment: "arrive",
+          slot: "after",
+          day: arriveDay,
+          route: toAirport ? `Aéroport ${toAirport}` : "Aéroport",
+          flightLine: flightMomentLine(outbound, "arrive"),
+          airport: toAirport,
+          whenIso: outbound.arriveAt,
           address: null,
         })
       );
@@ -402,6 +440,7 @@ export function itineraryOffers(items: ServiceFlightRow[]): ServiceOffer[] {
         offerBase(inbound, {
           kind: "chauffeur",
           place: "hotel",
+          moment: null,
           slot: "before",
           day: pickupDay,
           route: inbound.fromIata ? `${stay.name} → ${inbound.fromIata}` : `${stay.name} → aéroport`,
@@ -417,6 +456,7 @@ export function itineraryOffers(items: ServiceFlightRow[]): ServiceOffer[] {
         offerBase(inbound, {
           kind: "greeter",
           place: null,
+          moment: "depart",
           slot: "before",
           day: departDay,
           route: fromAirport ? `Aéroport ${fromAirport}` : "Aéroport",
@@ -430,8 +470,23 @@ export function itineraryOffers(items: ServiceFlightRow[]): ServiceOffer[] {
     if (arriveDay) {
       offers.push(
         offerBase(inbound, {
+          kind: "greeter",
+          place: null,
+          moment: "arrive",
+          slot: "after",
+          day: arriveDay,
+          route: toAirport ? `Aéroport ${toAirport}` : "Aéroport",
+          flightLine: flightMomentLine(inbound, "arrive"),
+          airport: toAirport,
+          whenIso: inbound.arriveAt,
+          address: null,
+        })
+      );
+      offers.push(
+        offerBase(inbound, {
           kind: "chauffeur",
           place: "home",
+          moment: null,
           slot: "after",
           day: arriveDay,
           route: inbound.toIata ? `${inbound.toIata} → Domicile` : "Aéroport → domicile",
@@ -447,14 +502,15 @@ export function itineraryOffers(items: ServiceFlightRow[]): ServiceOffer[] {
   return offers;
 }
 
-export function offerKey(offer: Pick<ServiceOffer, "kind" | "leg" | "place">) {
-  return `${offer.kind}:${offer.leg}:${offer.place || "none"}`;
+export function offerKey(offer: Pick<ServiceOffer, "kind" | "leg" | "place" | "moment">) {
+  return `${offer.kind}:${offer.leg}:${offer.place || "none"}:${offer.moment || "none"}`;
 }
 
 export type ServiceRefusal = {
   kind: ExtraKind | "visa" | "checkin";
   leg: ExtraLeg | null;
   place: ServicePlace | null;
+  moment: GreeterMoment | null;
 };
 
 export function isRefusalKind(value: string | null | undefined): value is ServiceRefusal["kind"] {
@@ -466,15 +522,17 @@ export function serviceRefusalKey(row: {
   kind: string;
   leg?: string | null;
   place?: string | null;
+  moment?: string | null;
 }) {
   const leg = row.kind === "visa" || row.kind === "checkin" ? "" : row.leg || "";
   const place = row.kind === "chauffeur" ? row.place || "" : "";
-  return `${row.kind}:${leg}:${place}`;
+  const moment = row.kind === "greeter" ? (isGreeterMoment(row.moment) ? row.moment : "depart") : "";
+  return `${row.kind}:${leg}:${place}:${moment}`;
 }
 
 export function isServiceRefused(
-  refusals: Array<{ kind: string; leg?: string | null; place?: string | null }> | null | undefined,
-  row: { kind: string; leg?: string | null; place?: string | null }
+  refusals: Array<{ kind: string; leg?: string | null; place?: string | null; moment?: string | null }> | null | undefined,
+  row: { kind: string; leg?: string | null; place?: string | null; moment?: string | null }
 ) {
   const key = serviceRefusalKey(row);
   return (refusals || []).some((item) => serviceRefusalKey(item) === key);
@@ -484,12 +542,14 @@ export function serviceRefusalFromRow(row: {
   kind?: string | null;
   service_leg?: string | null;
   place?: string | null;
+  moment?: string | null;
 }): ServiceRefusal | null {
   const kind = String(row.kind || "");
   if (!isRefusalKind(kind)) return null;
   const leg = isExtraLeg(row.service_leg || "") ? (row.service_leg as ExtraLeg) : null;
   const place = kind === "chauffeur" && isServicePlace(row.place || "") ? (row.place as ServicePlace) : null;
-  return { kind, leg, place };
+  const moment = kind === "greeter" ? (isGreeterMoment(row.moment) ? row.moment : "depart") : null;
+  return { kind, leg, place, moment };
 }
 
 /** Cartes du jour : propositions collées au vol, sinon en tête de journée (arrivée la veille ou le lendemain). */
@@ -568,6 +628,7 @@ export function extraItemPayload(input: {
   kind: ExtraKind;
   leg: ExtraLeg;
   place?: ServicePlace | null;
+  moment?: GreeterMoment | null;
   startAt: string | null;
   amount: number;
   address?: string | null;
@@ -588,6 +649,7 @@ export function extraItemPayload(input: {
     details: {
       service_leg: input.leg,
       place,
+      moment: input.kind === "greeter" ? input.moment || "depart" : null,
       pickup: input.kind === "chauffeur" ? input.address || null : null,
       adults: input.kind === "greeter" ? input.adults ?? 1 : null,
       children: input.kind === "greeter" ? input.children ?? 0 : null,

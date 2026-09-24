@@ -66,9 +66,9 @@ export default async function ReservationDetailPage({ params }: Props) {
       .eq("visible_to_client", true),
     supabase.from("crm_travel_documents").select("*").eq("customer_id", customer.id),
     supabase.from("crm_travel_companions").select("*").eq("customer_id", customer.id),
-    supabase.from("crm_declined_services").select("kind, service_leg, place").eq("booking_id", b.id),
+    supabase.from("crm_declined_services").select("kind, service_leg, place, moment").eq("booking_id", b.id),
   ]);
-  const refusals = ((declined || []) as { kind?: string | null; service_leg?: string | null; place?: string | null }[])
+  const refusals = ((declined || []) as { kind?: string | null; service_leg?: string | null; place?: string | null; moment?: string | null }[])
     .map(serviceRefusalFromRow)
     .filter((row): row is ServiceRefusal => Boolean(row));
 

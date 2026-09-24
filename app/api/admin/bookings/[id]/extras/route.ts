@@ -36,6 +36,7 @@ export async function POST(request: Request, ctx: Ctx) {
       kind: extra.kind,
       leg: extra.leg,
       place: extra.place,
+      moment: extra.moment,
       address: extra.address,
       enforceWindow: false,
     });

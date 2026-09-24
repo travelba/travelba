@@ -78,6 +78,7 @@ export function ServiceOfferCard({
         kind: offer.kind,
         leg: offer.leg,
         place: offer.place,
+        moment: offer.moment,
         address: offer.kind === "chauffeur" ? address : null,
       }),
     });
@@ -106,6 +107,7 @@ export function ServiceOfferCard({
             kind: offer.kind,
             leg: offer.leg,
             place: offer.place,
+            moment: offer.moment,
           }),
         });
     const json = await res.json().catch(() => ({}));
@@ -130,6 +132,7 @@ export function ServiceOfferCard({
         kind: offer.kind,
         leg: offer.leg,
         place: offer.place,
+        moment: offer.moment,
       }),
     });
     const json = await res.json().catch(() => ({}));
