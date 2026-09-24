@@ -3,9 +3,18 @@
 import { useState } from "react";
 import type { EtaIlPersonView, EtaIlPhase } from "@/lib/crm/eta-il-draft";
 import { VISA_OFFICIAL, type VisaCorridor } from "@/lib/crm/visa-fees";
+import {
+  agencyLaunchReady,
+  headerVisaLabel,
+  paymentHold,
+  phaseForSavedStep,
+  type ClientVisaStep,
+  type EstaAnswers,
+  type VisaRunPhase,
+} from "@/lib/crm/visa-flow";
 
 type View = {
-  phase: EtaIlPhase | "paiement";
+  phase: EtaIlPhase | VisaRunPhase;
   portal?: string | null;
   reason: string | null;
   travelers?: EtaIlPersonView[];
@@ -14,17 +23,48 @@ type View = {
   fee?: string;
 };
 
-export function VisaRunPanel({ bookingId, country }: { bookingId: string; country: VisaCorridor }) {
-  const [view, setView] = useState<View | null>(null);
+const EMPTY: EstaAnswers = {
+  usAddress: "",
+  employment: "",
+  countriesVisited: "",
+  priorRefusal: "",
+};
+
+export function VisaRunPanel({
+  bookingId,
+  country,
+  step = null,
+  initialAnswers = null,
+  pliantReady = false,
+}: {
+  bookingId: string;
+  country: VisaCorridor;
+  step?: ClientVisaStep | null;
+  initialAnswers?: Partial<EstaAnswers> | null;
+  pliantReady?: boolean;
+}) {
+  const savedPhase = phaseForSavedStep(step);
+  const [view, setView] = useState<View | null>(
+    savedPhase
+      ? {
+          phase: savedPhase,
+          reason: savedPhase === "paiement" ? paymentHold(pliantReady) : null,
+          hold: savedPhase === "paiement" ? paymentHold(pliantReady) : null,
+        }
+      : null
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [answers, setAnswers] = useState({
-    usAddress: "",
-    employment: "",
-    countriesVisited: "",
-    priorRefusal: "",
+  const [answers, setAnswers] = useState<EstaAnswers>({
+    ...EMPTY,
+    usAddress: initialAnswers?.usAddress || "",
+    employment: initialAnswers?.employment || "",
+    countriesVisited: initialAnswers?.countriesVisited || "",
+    priorRefusal: initialAnswers?.priorRefusal || "",
   });
   const official = VISA_OFFICIAL[country];
+  const phase = view?.phase || null;
+  const recapReady = country === "IL" || agencyLaunchReady(country, answers);
 
   async function run() {
     setBusy(true);
@@ -32,7 +72,7 @@ export function VisaRunPanel({ bookingId, country }: { bookingId: string; countr
     const res = await fetch(`/api/admin/bookings/${bookingId}/visa`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "run", country }),
+      body: JSON.stringify({ action: "run", country, answers }),
     });
     const json = (await res.json().catch(() => null)) as View | { error?: string } | null;
     setBusy(false);
@@ -43,7 +83,7 @@ export function VisaRunPanel({ bookingId, country }: { bookingId: string; countr
     setView(json);
   }
 
-  async function fill() {
+  async function fillIsrael() {
     setBusy(true);
     setError(null);
     const res = await fetch(`/api/admin/bookings/${bookingId}/eta-il`, {
@@ -55,6 +95,23 @@ export function VisaRunPanel({ bookingId, country }: { bookingId: string; countr
     setBusy(false);
     if (!res.ok || !json || !("phase" in json)) {
       setError(json && "error" in json && json.error ? json.error : "Remplissage impossible");
+      return;
+    }
+    setView(json);
+  }
+
+  async function fillRecap() {
+    setBusy(true);
+    setError(null);
+    const res = await fetch(`/api/admin/bookings/${bookingId}/visa`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "fill", country, answers }),
+    });
+    const json = (await res.json().catch(() => null)) as View | { error?: string } | null;
+    setBusy(false);
+    if (!res.ok || !json || !("phase" in json)) {
+      setError(json && "error" in json && json.error ? json.error : "Récapitulatif impossible");
       return;
     }
     setView(json);
@@ -81,6 +138,16 @@ export function VisaRunPanel({ bookingId, country }: { bookingId: string; countr
     setView({ ...(json as View), phase: "paiement" });
   }
 
+  function advance() {
+    if (phase === "paiement" || phase === "piece") return;
+    if (phase === "à confirmer") return confirm();
+    if (phase === "bloqué" || (country === "IL" && (phase === "prêt" || phase === "brouillon"))) return fillIsrael();
+    if (phase === "prêt") return fillRecap();
+    return run();
+  }
+
+  const showAnswers = country !== "IL" && phase !== "paiement" && phase !== "piece" && phase !== "à confirmer";
+
   return (
     <div className="space-y-3 border-t border-[#e5e3dc] pt-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -89,41 +156,42 @@ export function VisaRunPanel({ bookingId, country }: { bookingId: string; countr
         </p>
         <button
           type="button"
-          disabled={busy || view?.phase === "paiement"}
-          onClick={() => {
-            if (view?.phase === "paiement") return;
-            if (view?.phase === "à confirmer") return confirm();
-            if (view?.phase === "prêt" && country === "IL") return fill();
-            if (view?.phase === "prêt") return confirm();
-            return run();
-          }}
+          disabled={busy || phase === "paiement" || phase === "piece" || (phase === "prêt" && !recapReady)}
+          onClick={() => advance()}
           className="inline-flex h-9 items-center rounded-full bg-[var(--admin-navy)] px-4 text-sm font-semibold text-white disabled:opacity-50"
         >
-          {busy
-            ? "En cours…"
-            : view?.phase === "paiement"
-              ? "Paiement en attente"
-              : view?.phase === "à confirmer" || (view?.phase === "prêt" && country !== "IL")
-                ? "Confirmer"
-                : view?.phase === "prêt"
-                  ? "Remplir le portail"
-                  : "Lancer le parcours"}
+          {busy ? "En cours…" : headerVisaLabel(phase as VisaRunPhase | null, country)}
         </button>
       </div>
-      {country === "US" ? (
+      {showAnswers && country === "US" ? (
         <div className="grid gap-2 text-sm">
-          <input className="rounded-xl border px-3 py-2" placeholder="Adresse du séjour aux États-Unis" value={answers.usAddress} onChange={(event) => setAnswers({ ...answers, usAddress: event.target.value })} />
-          <input className="rounded-xl border px-3 py-2" placeholder="Emploi" value={answers.employment} onChange={(event) => setAnswers({ ...answers, employment: event.target.value })} />
-          <input className="rounded-xl border px-3 py-2" placeholder="Pays visités" value={answers.countriesVisited} onChange={(event) => setAnswers({ ...answers, countriesVisited: event.target.value })} />
-          <input className="rounded-xl border px-3 py-2" placeholder="Refus antérieur" value={answers.priorRefusal} onChange={(event) => setAnswers({ ...answers, priorRefusal: event.target.value })} />
+          <label className="grid gap-1 text-xs font-semibold text-[var(--admin-navy)]">
+            Adresse du séjour aux États-Unis
+            <input className="rounded-xl border px-3 py-2 text-sm font-normal" value={answers.usAddress} onChange={(event) => setAnswers({ ...answers, usAddress: event.target.value })} />
+          </label>
+          <label className="grid gap-1 text-xs font-semibold text-[var(--admin-navy)]">
+            Emploi
+            <input className="rounded-xl border px-3 py-2 text-sm font-normal" value={answers.employment} onChange={(event) => setAnswers({ ...answers, employment: event.target.value })} />
+          </label>
+          <label className="grid gap-1 text-xs font-semibold text-[var(--admin-navy)]">
+            Pays visités
+            <input className="rounded-xl border px-3 py-2 text-sm font-normal" value={answers.countriesVisited} onChange={(event) => setAnswers({ ...answers, countriesVisited: event.target.value })} />
+          </label>
+          <label className="grid gap-1 text-xs font-semibold text-[var(--admin-navy)]">
+            Refus de visa antérieur
+            <input className="rounded-xl border px-3 py-2 text-sm font-normal" value={answers.priorRefusal} onChange={(event) => setAnswers({ ...answers, priorRefusal: event.target.value })} />
+          </label>
         </div>
       ) : null}
-      {country === "GB" ? (
-        <input className="w-full rounded-xl border px-3 py-2 text-sm" placeholder="Refus antérieur" value={answers.priorRefusal} onChange={(event) => setAnswers({ ...answers, priorRefusal: event.target.value })} />
+      {showAnswers && country === "GB" ? (
+        <label className="grid gap-1 text-xs font-semibold text-[var(--admin-navy)]">
+          Refus de visa antérieur
+          <input className="w-full rounded-xl border px-3 py-2 text-sm font-normal" value={answers.priorRefusal} onChange={(event) => setAnswers({ ...answers, priorRefusal: event.target.value })} />
+        </label>
       ) : null}
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       {view?.reason ? <p className="text-sm text-[var(--admin-navy)]">{view.reason}</p> : null}
-      {view?.hold ? <p className="text-sm text-[var(--admin-navy)]">{view.hold}</p> : null}
+      {view?.hold && view.hold !== view.reason ? <p className="text-sm text-[var(--admin-navy)]">{view.hold}</p> : null}
       {view?.ceilingEur ? (
         <p className="text-sm text-[var(--admin-navy)]">
           Plafond prévu {view.ceilingEur} € · dépense {view.fee}. Le débit partira au paiement.

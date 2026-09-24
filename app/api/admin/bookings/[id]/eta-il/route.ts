@@ -98,7 +98,7 @@ export async function POST(request: Request, ctx: Ctx) {
     return NextResponse.json({
       ...publicEtaIlDraft(draft),
       phase: "bloqué",
-      reason: "Navigateur indisponible. Le remplissage n’a pas été lancé.",
+      reason: "Le navigateur n’a pas pu ouvrir le portail. Le remplissage n’a pas été lancé.",
     });
   }
   try {

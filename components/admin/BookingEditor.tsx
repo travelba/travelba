@@ -40,7 +40,7 @@ import { IssuesList } from "@/components/crm/IssuesList";
 import { collectPublishIssues, issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
 import { householdMembers } from "@/lib/crm/household";
 import { bookingHasFlight, findVisaExtra, type ServiceRefusal } from "@/lib/crm/extras";
-import type { ClientVisaStep } from "@/lib/crm/visa-flow";
+import { readEstaAnswers, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import type { FrenchPassportTrip } from "@/lib/crm/visa-trip";
 import { reusableDocumentsForTraveler, tripDocumentsForTraveler } from "@/lib/crm/trip-documents";
 import { CustomerPickField } from "@/components/admin/CustomerPickField";
@@ -60,6 +60,7 @@ export function BookingEditor({
   formalities,
   refusals = [],
   visaRequests = [],
+  pliantReady = false,
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -73,7 +74,13 @@ export function BookingEditor({
   aiConfigured: boolean;
   formalities: FrenchPassportTrip;
   refusals?: ServiceRefusal[];
-  visaRequests?: { country: string; step?: ClientVisaStep | null; status?: string | null }[];
+  visaRequests?: {
+    country: string;
+    step?: ClientVisaStep | null;
+    status?: string | null;
+    answers?: Partial<EstaAnswers> | null;
+  }[];
+  pliantReady?: boolean;
 }) {
   const router = useRouter();
   const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
@@ -387,9 +394,19 @@ export function BookingEditor({
                 .filter((entry): entry is typeof entry & { iso: VisaCorridor } =>
                   entry.iso === "IL" || entry.iso === "US" || entry.iso === "GB"
                 )
-                .map((entry) => (
-                  <VisaRunPanel key={entry.iso} bookingId={booking.id} country={entry.iso} />
-                ))
+                .map((entry) => {
+                  const request = visaRequests.find((row) => row.country === entry.iso);
+                  return (
+                    <VisaRunPanel
+                      key={`${entry.iso}-${request?.step || "none"}-${request?.status || ""}`}
+                      bookingId={booking.id}
+                      country={entry.iso}
+                      step={request?.step}
+                      initialAnswers={readEstaAnswers(request?.answers)}
+                      pliantReady={pliantReady}
+                    />
+                  );
+                })
             : null}
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">Carnet client</p>
           <p className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">
@@ -655,6 +672,7 @@ export function BookingEditor({
             travelers={travelers}
             documents={identityDocs}
             visaBooked={Boolean(findVisaExtra(items))}
+            pliantReady={pliantReady}
           />
           <ExtrasPanel
             variant="admin"

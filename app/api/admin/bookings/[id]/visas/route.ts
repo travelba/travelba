@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { saveVisaUploads } from "@/lib/crm/visa-save";
-import type { VisaCorridor } from "@/lib/crm/visa-fees";
+import { markPaidVisasFiled } from "@/lib/crm/visa-post";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import type { CrmBooking, CrmBookingItem, CrmBookingTraveler } from "@/lib/crm/types";
 
@@ -35,31 +35,7 @@ export async function POST(request: Request, ctx: Ctx) {
       files,
     });
     if (result.saved > 0) {
-      const { data: open } = await auth.supabase
-        .from("crm_visa_requests")
-        .select("country")
-        .eq("booking_id", b.id)
-        .eq("status", "en_cours");
-      for (const row of (open || []) as { country: VisaCorridor }[]) {
-        await auth.supabase
-          .from("crm_visa_requests")
-          .update({ status: "piece", step: "piece" })
-          .eq("booking_id", b.id)
-          .eq("country", row.country);
-        for (const traveler of party) {
-          const name = `${traveler.first_name} ${traveler.last_name}`.trim();
-          await auth.supabase.from("crm_visa_notices").upsert(
-            {
-              booking_id: b.id,
-              traveler_key: traveler.id,
-              kind: "piece",
-              country: row.country,
-              holder_name: name,
-            },
-            { onConflict: "booking_id,traveler_key,kind,country" }
-          );
-        }
-      }
+      await markPaidVisasFiled(auth.supabase, b.id, result.countries, party);
     }
     return NextResponse.json(result);
   } catch (err) {

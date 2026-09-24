@@ -56,6 +56,81 @@ export function paymentHold(pliantReady: boolean) {
   return "Le parcours s’arrête au paiement : la carte Pliant n’est pas branchée. Le séjour est ouvert, sans les prix.";
 }
 
+export type VisaRunPhase = "prêt" | "à confirmer" | "paiement" | "piece" | "brouillon" | "bloqué";
+
+/** Étape enregistrée → geste du header. Préparation et remplissage attendent la suite, pas un second lancement. */
+export function phaseForSavedStep(step: ClientVisaStep | null | undefined): VisaRunPhase | null {
+  if (!step) return null;
+  if (step === "validation") return "à confirmer";
+  if (step === "paiement") return "paiement";
+  if (step === "piece") return "piece";
+  return "prêt";
+}
+
+/** Un nouveau lancement ne revient pas en arrière une fois le récapitulatif, le paiement ou la pièce atteints. */
+export function launchWouldRewind(step: ClientVisaStep | null | undefined) {
+  return step === "remplissage" || step === "validation" || step === "paiement" || step === "piece";
+}
+
+/** Israël reste au remplissage du portail. États-Unis et Royaume-Uni passent au récapitulatif : Astra ne couvre que l’ETA-IL. */
+export function stepAfterPrepare(country: VisaCorridor): ClientVisaStep {
+  return country === "IL" ? "remplissage" : "validation";
+}
+
+export function headerVisaLabel(phase: VisaRunPhase | null, country: VisaCorridor) {
+  if (phase === "piece") return "Pièce au coffre";
+  if (phase === "paiement") return "Paiement en attente";
+  if (phase === "à confirmer") return "Confirmer";
+  if (phase === "bloqué" || (phase === "prêt" && country === "IL") || phase === "brouillon") return "Remplir le portail";
+  if (phase === "prêt") return "Préparer le récapitulatif";
+  return "Lancer le parcours";
+}
+
+export function readEstaAnswers(value: unknown): Partial<EstaAnswers> {
+  if (!value || typeof value !== "object") return {};
+  const row = value as Record<string, unknown>;
+  const text = (key: keyof EstaAnswers) => (typeof row[key] === "string" ? row[key].trim() : "");
+  return {
+    usAddress: text("usAddress"),
+    employment: text("employment"),
+    countriesVisited: text("countriesVisited"),
+    priorRefusal: text("priorRefusal"),
+  };
+}
+
+export function mergeEstaAnswers(
+  stored: Partial<EstaAnswers> | null | undefined,
+  incoming: Partial<EstaAnswers> | null | undefined
+): Partial<EstaAnswers> {
+  const pick = (key: keyof EstaAnswers) => incoming?.[key]?.trim() || stored?.[key]?.trim() || "";
+  return {
+    usAddress: pick("usAddress"),
+    employment: pick("employment"),
+    countriesVisited: pick("countriesVisited"),
+    priorRefusal: pick("priorRefusal"),
+  };
+}
+
+export function hasEstaAnswers(answers: Partial<EstaAnswers> | null | undefined) {
+  return Boolean(
+    answers?.usAddress?.trim() ||
+      answers?.employment?.trim() ||
+      answers?.countriesVisited?.trim() ||
+      answers?.priorRefusal?.trim()
+  );
+}
+
+/** La pièce ne clôt le parcours qu’après un paiement enregistré. Sinon le suivi reste au paiement. */
+export function depositAdvancesToPiece(status: string | null | undefined) {
+  return status === "paye";
+}
+
+export function clientVisaStepNote(step: ClientVisaStep, input?: { paid?: boolean; paymentHeld?: boolean }) {
+  if (step === "paiement" && input?.paymentHeld && !input.paid) return paymentHold(false);
+  if (step === "paiement" && input?.paid) return "Le frais d’État est enregistré. La pièce arrive au coffre.";
+  return clientVisaStepCopy(step);
+}
+
 export function nextPayAttempt(previous: number): "pay" | "retry" | "alert" {
   if (previous <= 0) return "pay";
   if (previous === 1) return "retry";

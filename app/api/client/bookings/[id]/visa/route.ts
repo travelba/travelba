@@ -1,17 +1,12 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireCustomer } from "@/lib/crm/auth";
 import { carnetVisible } from "@/lib/crm/carnet";
-import { openEtaIlPortal } from "@/lib/crm/eta-il-browser";
-import { buildEtaIlDraft } from "@/lib/crm/eta-il-draft";
-import { runEtaIlSession } from "@/lib/crm/eta-il-session";
-import { openaiApiKey } from "@/lib/crm/ingest-types";
 import { createServiceClient } from "@/lib/supabase/admin";
-import { confirmAllowed, visibilityOnRequest, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
+import { confirmAllowed, hasEstaAnswers, mergeEstaAnswers, readEstaAnswers, visibilityOnRequest, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import type { VisaCorridor } from "@/lib/crm/visa-fees";
-import type { CrmBooking, CrmBookingItem, CrmBookingTraveler, CrmCustomer, CrmTravelDocument } from "@/lib/crm/types";
+import type { CrmBooking, CrmBookingItem, CrmTravelDocument } from "@/lib/crm/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -38,18 +33,18 @@ export async function POST(request: Request, ctx: Ctx) {
     .maybeSingle();
   if (!booking) return jsonError("Séjour introuvable", 404);
   const b = booking as CrmBooking;
-  const [{ data: items }, { data: travelers }, { data: documents }, { data: existing }] = await Promise.all([
+  const [{ data: items }, { data: documents }, { data: existing }] = await Promise.all([
     auth.supabase.from("crm_booking_items").select("*").eq("booking_id", b.id),
-    auth.supabase.from("crm_booking_travelers").select("*").eq("booking_id", b.id),
-    auth.supabase.from("crm_travel_documents").select("*").eq("customer_id", auth.customer.id),
-    auth.supabase.from("crm_visa_requests").select("country, step").eq("booking_id", b.id).eq("country", country).maybeSingle(),
+    auth.supabase.from("crm_travel_documents").select("doc_type, issuing_country, number").eq("customer_id", auth.customer.id),
+    auth.supabase.from("crm_visa_requests").select("country, step, answers").eq("booking_id", b.id).eq("country", country).maybeSingle(),
   ]);
   const list = (items || []) as CrmBookingItem[];
   if (!carnetVisible(b, list)) return jsonError("Séjour introuvable", 404);
 
-  const current = existing as { step?: ClientVisaStep } | null;
+  const current = existing as { step?: ClientVisaStep; answers?: unknown } | null;
   if (current?.step) return NextResponse.json({ country, step: current.step });
 
+  const answers = mergeEstaAnswers(readEstaAnswers(current?.answers), body.answers);
   const french = ((documents || []) as Pick<CrmTravelDocument, "doc_type" | "issuing_country" | "number">[]).filter(
     (row) => row.doc_type === "passport" && row.issuing_country === "FR" && row.number
   ).length;
@@ -57,7 +52,7 @@ export async function POST(request: Request, ctx: Ctx) {
     already: [],
     country,
     frenchPassports: french,
-    esta: body.answers,
+    esta: answers,
   });
   if (block) return jsonError(block);
 
@@ -70,37 +65,15 @@ export async function POST(request: Request, ctx: Ctx) {
     .from("crm_bookings")
     .update({ visible_to_client: opened.visible, prices_visible: opened.prices })
     .eq("id", b.id);
-  let step: ClientVisaStep = country === "IL" ? "remplissage" : "validation";
-  if (country === "IL") {
-    const draft = buildEtaIlDraft({
-      items: list,
-      travelers: (travelers || []) as CrmBookingTraveler[],
-      documents: (documents || []) as CrmTravelDocument[],
-      holder: auth.customer as Pick<CrmCustomer, "first_name" | "last_name" | "usage_name">,
-      startDate: b.start_date,
-      endDate: b.end_date,
-    });
-    if (draft.phase !== "prêt") step = "preparation";
-    const apiKey = openaiApiKey();
-    const portal = step === "remplissage" && apiKey ? await openEtaIlPortal() : null;
-    if (portal) {
-      try {
-        const session = await runEtaIlSession({ apiKey, draft, page: portal });
-        step = session.phase === "à confirmer" ? "validation" : "remplissage";
-      } finally {
-        await portal.close();
-      }
-    }
-  }
   await service.from("crm_visa_requests").upsert(
     {
       booking_id: b.id,
       country,
       status: "en_cours",
-      step,
-      answers: body.answers || {},
+      step: "preparation",
+      ...(hasEstaAnswers(answers) ? { answers } : {}),
     },
     { onConflict: "booking_id,country" }
   );
-  return NextResponse.json({ country, step });
+  return NextResponse.json({ country, step: "preparation" });
 }
