@@ -54,7 +54,16 @@ export function whatsappConfigured() {
 
 export type WhatsappSendResult =
   | { ok: true; sid: string }
-  | { ok: false; reason: "not_configured" | "no_phone" | "rejected" };
+  | { ok: false; reason: "not_configured" | "no_phone" | "rejected"; detail?: string };
+
+export function inviteWhatsappNotice(result: WhatsappSendResult) {
+  if (result.ok) return "Invitation envoyée par e-mail et sur WhatsApp.";
+  if (result.reason === "no_phone") {
+    return "E-mail envoyé. Ce client n’a pas de téléphone valide pour WhatsApp.";
+  }
+  if (result.reason === "not_configured") return "E-mail envoyé. WhatsApp n’est pas configuré.";
+  return "E-mail envoyé. WhatsApp a refusé le message.";
+}
 
 /**
  * Envoie le modèle Utility « connexion ».
@@ -98,7 +107,18 @@ export async function sendConnexionWhatsapp(input: {
       body,
     }
   );
-  if (!response.ok) return { ok: false, reason: "rejected" };
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as {
+      message?: string;
+    } | null;
+    const detail = (payload?.message || "")
+      .replace(/https?:\/\/\S+/g, "")
+      .replace(/\+?\d{8,}/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 160);
+    return { ok: false, reason: "rejected", detail: detail || undefined };
+  }
   const payload = (await response.json().catch(() => null)) as { sid?: string } | null;
   if (!payload?.sid) return { ok: false, reason: "rejected" };
   return { ok: true, sid: payload.sid };

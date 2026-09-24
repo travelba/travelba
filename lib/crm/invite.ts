@@ -4,6 +4,13 @@ import { siteConfig } from "@/lib/site";
 import { customerFullName, type CrmCustomer } from "@/lib/crm/types";
 import { SET_PASSWORD_PATH, mustSetPassword } from "@/lib/crm/session";
 import { agencyEmailHtml, escapeHtml } from "@/lib/crm/email-html";
+import {
+  connexionMessage,
+  greetingForWhatsapp,
+  inviteWhatsappNotice,
+  sendConnexionWhatsapp,
+  type WhatsappSendResult,
+} from "@/lib/crm/whatsapp";
 import { greetingGivenName } from "@/lib/crm/identity";
 
 export type PortalAccess = {
@@ -15,6 +22,8 @@ export type InviteResult = {
   customer: CrmCustomer;
   delivered: boolean;
   link: string;
+  whatsapp: WhatsappSendResult;
+  notice: string;
 };
 
 export function appOrigin(request: Request) {
@@ -147,6 +156,38 @@ export async function inviteCustomer(
   callback.searchParams.set("next", SET_PASSWORD_PATH);
 
   const link = callback.toString();
-  const delivered = await sendInviteEmail(linked, link);
-  return { customer: linked, delivered, link };
+  await admin
+    .from("crm_customers")
+    .update({ whatsapp_opt_in_at: new Date().toISOString() })
+    .eq("id", linked.id)
+    .is("whatsapp_opt_in_at", null);
+  const whatsapp = await sendConnexionWhatsapp({
+    phone: linked.phone,
+    firstName: linked.first_name,
+    link,
+  });
+  if (whatsapp.ok || whatsapp.reason === "rejected") {
+    await admin.from("crm_whatsapp_messages").insert({
+      customer_id: linked.id,
+      direction: "outbound",
+      template_key: "connexion",
+      body: connexionMessage(greetingForWhatsapp(linked.first_name) || ""),
+      twilio_sid: whatsapp.ok ? whatsapp.sid : null,
+      status: whatsapp.ok ? "sent" : "failed",
+      error: whatsapp.ok ? null : whatsapp.detail || whatsapp.reason,
+    });
+  }
+  let delivered = false;
+  try {
+    delivered = await sendInviteEmail(linked, link);
+  } catch (err) {
+    console.error("[invite] e-mail:", err instanceof Error ? err.message : "échec");
+  }
+  return {
+    customer: linked,
+    delivered,
+    link,
+    whatsapp,
+    notice: inviteWhatsappNotice(whatsapp),
+  };
 }

@@ -4,6 +4,7 @@ import {
   CONCIERGE_SIGNATURE,
   connexionMessage,
   greetingForWhatsapp,
+  inviteWhatsappNotice,
   sendConnexionWhatsapp,
   whatsappAddress,
   withConciergeSignature,
@@ -33,6 +34,14 @@ test("un téléphone invalide ne devient pas une adresse WhatsApp", () => {
   assert.equal(whatsappAddress(""), null);
   assert.equal(whatsappAddress("123"), null);
   assert.equal(whatsappAddress("+33601020304"), "whatsapp:+33601020304");
+});
+
+test("l’invitation dit si WhatsApp est parti", () => {
+  assert.equal(
+    inviteWhatsappNotice({ ok: true, sid: "SM1" }),
+    "Invitation envoyée par e-mail et sur WhatsApp."
+  );
+  assert.match(inviteWhatsappNotice({ ok: false, reason: "no_phone" }), /téléphone/);
 });
 
 test("sans clés Twilio, le lien n’est pas envoyé", async () => {

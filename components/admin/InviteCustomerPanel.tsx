@@ -56,9 +56,11 @@ export function InviteCustomerPanel({
     setStatus("invited");
     setLink(typeof json.link === "string" ? json.link : null);
     setInfo(
-      json.invited
-        ? "Invitation envoyée par e-mail."
-        : "Compte préparé. E-mail non envoyé (clé Resend manquante en local)."
+      typeof json.notice === "string"
+        ? json.notice
+        : json.invited
+          ? "Invitation envoyée par e-mail."
+          : "Compte préparé. E-mail non envoyé (clé Resend manquante en local)."
     );
     router.refresh();
   }

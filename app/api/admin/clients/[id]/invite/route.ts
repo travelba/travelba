@@ -25,6 +25,7 @@ export async function POST(request: Request, ctx: Ctx) {
       customer: result.customer,
       invited: result.delivered,
       link: result.link,
+      notice: result.notice,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Invitation impossible";
