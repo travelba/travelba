@@ -522,11 +522,7 @@ export async function fillLeHotelDetails(items: CrmBookingItem[], fetchImpl?: ty
   const ids = [
     ...new Set(
       items
-        .filter((item) => {
-          if (item.kind !== "hotel") return false;
-          const contact = hotelContact(item);
-          return !contact.website || contact.people.length === 0;
-        })
+        .filter((item) => item.kind === "hotel" && !hotelContact(item).website)
         .map(leHotelIdFromItem)
         .filter((id): id is number => id != null)
     ),
