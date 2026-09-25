@@ -39,7 +39,7 @@ export const MISSING_PRICE = "Je n’ai pas ce prix dans votre dossier.";
 export const MISSING_DRIVER = "Je n’ai pas de chauffeur dans votre dossier.";
 export const MISSING_FORMALITY = "Je n’ai pas de formalité déposée dans votre dossier.";
 
-export const HANDOFF_KINDS = ["change", "cancel", "payment", "formality", "chauffeur"] as const;
+export const HANDOFF_KINDS = ["change", "cancel", "payment", "formality", "chauffeur", "complaint"] as const;
 export type HandoffKind = (typeof HANDOFF_KINDS)[number];
 
 export const HANDOFF_LABELS: Record<HandoffKind, string> = {
@@ -48,7 +48,13 @@ export const HANDOFF_LABELS: Record<HandoffKind, string> = {
   payment: "Rapprochement d’un paiement",
   formality: "Dépôt d’une formalité",
   chauffeur: "Chauffeur",
+  complaint: "Plainte",
 };
+
+/** Ces cinq demandes partent à l’agent. Le ton du retour ne sert qu’à elles. */
+const AGENCY_HANDOFF = new Set<HandoffKind>(["change", "cancel", "payment", "formality", "chauffeur"]);
+
+export type ReplyLang = "fr" | "en";
 
 const VISA_STEPS = new Set<ClientVisaStep>([
   "preparation",
@@ -127,7 +133,10 @@ export type ConciergeTurn = {
   handoff: HandoffKind | null;
   bookingId: string | null;
   text: string;
-  cover: ConciergeCover | null;
+  /** Toujours vide : la photo reste sur le message proactif du séjour. */
+  cover: null;
+  optOut: boolean;
+  access: boolean;
 };
 
 type RawBooking = Pick<
@@ -169,10 +178,60 @@ function fold(value: string) {
     .toLowerCase();
 }
 
-function dateLabel(value: string | null | undefined) {
+function dateLabel(value: string | null | undefined, lang: ReplyLang = "fr") {
   if (!value) return "";
+  if (lang === "en") {
+    const d = new Date(value.length === 10 ? `${value.slice(0, 10)}T12:00:00` : value);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleDateString("en-GB", { dateStyle: "medium" });
+  }
   const label = formatDateFr(value.slice(0, 10));
   return label === "—" ? "" : label;
+}
+
+export function transactionsClientUrl() {
+  return `${siteConfig.url}/mon-compte/transactions`;
+}
+
+/** Messages proactifs seulement. Un Stop les coupe ; une réponse au client, non. */
+export function proactiveWhatsappAllowed(row: {
+  whatsapp_opt_in_at?: string | null;
+  whatsapp_opt_out_at?: string | null;
+}) {
+  return Boolean(row.whatsapp_opt_in_at) && !row.whatsapp_opt_out_at;
+}
+
+export function messageLanguage(message: string): ReplyLang {
+  const text = fold(message);
+  const french =
+    /[àâäéèêëïîôùûüçœ]/i.test(message) ||
+    /\b(je|vous|bonjour|bonsoir|sejour|merci|quel|quelle|mon|ma|mes|pas|pour|agence|horaire|prix|chauffeur|annul|encours|virement|arret|piece|coffre|souhaitez)\b/.test(
+      text
+    );
+  const english =
+    /\b(hello|hi|please|what|when|where|the|my|your|cancel|change|price|driver|balance|thanks|thank|stay|flight|hotel|unsubscribe)\b/.test(
+      text
+    );
+  if (english && !french) return "en";
+  return "fr";
+}
+
+export function isConciergeStop(message: string) {
+  const text = fold(message)
+    .replace(/[.!]+$/g, "")
+    .trim();
+  if (/^(please |svp )?(stop|arret|arrete|arretez|stoppez|desabonnez|unsubscribe)$/.test(text)) return true;
+  return (
+    /\b(stop|arret|arretez|stoppez|unsubscribe|desabonnez)\b/.test(text) &&
+    /\b(message|messages|whatsapp|notif|notification|sms|proactif)\b/.test(text)
+  );
+}
+
+export function asksForSpaceAccess(message: string) {
+  const text = fold(message);
+  if (/\b(password|magic link|log in|login|sign in|access link)\b/.test(text)) return true;
+  if (/\bmot de passe\b/.test(text)) return true;
+  return /\b(ouvr|acces|connexion|connecter|lien)\w*/.test(text) && /\b(espace|compte|connexion)\b/.test(text);
 }
 
 function publishedCover(booking: RawBooking): ConciergeCover | null {
@@ -354,35 +413,44 @@ export function conciergeContextText(dossier: ConciergeDossier) {
 
 export function classifyHandoff(message: string): HandoffKind | null {
   const text = fold(message);
-  if (/\b(annuler|annulez|annulation|annule)\b/.test(text)) return "cancel";
+  if (/\b(annuler|annulez|annulation|annule|cancel|cancellation)\b/.test(text)) return "cancel";
   if (
     /\b(modifier|modification|modifiez|changer|changez|changement|decalez|decaler|reporter|reportez|deplacer|deplacez)\b/.test(
       text
-    )
+    ) ||
+    (/\b(change|modify|reschedule)\b/.test(text) && /\b(trip|stay|booking|dates?|hotel|flight|sejour)\b/.test(text))
   ) {
     return "change";
   }
   if (/rapproch/.test(text)) return "payment";
-  if (/\b(vire|virement)\b/.test(text) && /\b(fait|effectue|envoye|recu|passe)\b/.test(text)) {
+  if (/\b(vire|virement|transfer|wire)\b/.test(text) && /\b(fait|effectue|envoye|recu|passe|sent|made|paid)\b/.test(text)) {
     return "payment";
   }
-  if (/\b(creditez|crediter)\b/.test(text)) return "payment";
+  if (/\b(creditez|crediter|reconcile)\b/.test(text)) return "payment";
   const aboutFormality = /visa|esta|\beta\b|formalit|autorisation/.test(text);
   if (
     aboutFormality &&
-    (/\b(depos|lanc|rempli)\w*/.test(text) ||
+    (/\b(depos|lanc|rempli|file|submit|apply)\w*/.test(text) ||
       /faire la demande|fais la demande|occupez/.test(text) ||
-      /\bje (veux|voudrais|souhaite)\b/.test(text))
+      /\bje (veux|voudrais|souhaite)\b/.test(text) ||
+      /\bi (want|would like) to\b/.test(text))
   ) {
     return "formality";
   }
   if (
-    /chauffeur|\bvtc\b/.test(text) &&
-    /command|reserv|envoy|besoin|voudrais|veux|prend|organis/.test(text)
+    /chauffeur|\bvtc\b|\bdriver\b/.test(text) &&
+    /command|reserv|envoy|besoin|voudrais|veux|prend|organis|book|need|want|arrange/.test(text)
   ) {
     return "chauffeur";
   }
   return null;
+}
+
+export function isComplaint(message: string) {
+  const text = fold(message);
+  return /plainte|mecontent|decu|inacceptable|scandale|pas content|complaint|unhappy|unacceptable|disappointed|disgusted/.test(
+    text
+  );
 }
 
 function focusStay(message: string, stays: ConciergeStay[]) {
@@ -411,16 +479,18 @@ function nextStay(stays: ConciergeStay[]) {
   return [...stays].sort((a, b) => (b.startDate || "").localeCompare(a.startDate || ""))[0];
 }
 
-function stayHeadline(stay: ConciergeStay) {
+function stayHeadline(stay: ConciergeStay, lang: ReplyLang) {
   const place = stay.destination || stay.title;
-  const start = dateLabel(stay.startDate);
-  const end = dateLabel(stay.endDate);
-  const dates = start && end ? `du ${start} au ${end}` : start || end;
-  return [`Séjour ${stay.reference}`, place, dates].filter(Boolean).join(", ");
+  const start = dateLabel(stay.startDate, lang);
+  const end = dateLabel(stay.endDate, lang);
+  const dates =
+    start && end ? (lang === "en" ? `${start} to ${end}` : `du ${start} au ${end}`) : start || end;
+  const label = lang === "en" ? "Stay" : "Séjour";
+  return [`${label} ${stay.reference}`, place, dates].filter(Boolean).join(", ");
 }
 
-function describeStay(stay: ConciergeStay) {
-  const lines = [stayHeadline(stay)];
+function describeStay(stay: ConciergeStay, lang: ReplyLang) {
+  const lines = [stayHeadline(stay, lang)];
   for (const item of stay.items) {
     if (!item.lines.length) continue;
     lines.push(`${item.label} — ${item.lines.join(", ")}`);
@@ -429,6 +499,21 @@ function describeStay(stay: ConciergeStay) {
   if (stay.notesClient) lines.push(stay.notesClient);
   lines.push(stayClientUrl(stay.reference));
   return lines.join("\n");
+}
+
+function whichStayText(stays: ConciergeStay[], lang: ReplyLang) {
+  const refs = stays
+    .map((stay) => (stay.destination ? `${stay.reference} (${stay.destination})` : stay.reference))
+    .join(", ");
+  if (lang === "en") {
+    return `You have several published stays: ${refs}. Which one do you mean?`;
+  }
+  return `Vous avez plusieurs séjours publiés : ${refs}. Lequel vous intéresse ?`;
+}
+
+function moneyLabel(amount: number, currency: string, lang: ReplyLang) {
+  if (lang === "fr") return formatMoney(amount, currency);
+  return amount.toLocaleString("en-GB", { style: "currency", currency: currency || "EUR" });
 }
 
 function sign(body: string) {
@@ -440,186 +525,324 @@ function sign(body: string) {
 }
 
 /** Une seule réponse : le ton du retour, puis ce que l’agence reprend. */
-export function conciergeFollowUp(detail: string) {
-  return sign(`${FOLLOW_UP_TONE}\n${detail.trim()}`);
+export function conciergeFollowUp(detail: string, lang: ReplyLang = "fr") {
+  const tone =
+    lang === "en" ? "I’ll look into it and come back to you shortly" : FOLLOW_UP_TONE;
+  return sign(`${tone}\n${detail.trim()}`);
 }
 
 function topicOf(message: string) {
   const text = fold(message);
-  if (/encours|solde|reste a payer|avoir|credit disponible|combien je dois/.test(text)) return "balance";
-  if (/transaction|virement|releve|mouvement/.test(text)) return "transactions";
-  if (/passeport|piece|document|carte d.identite|coffre/.test(text)) return "documents";
+  if (/encours|solde|reste a payer|avoir|credit disponible|combien je dois|balance|amount due|how much do i owe/.test(text)) {
+    return "balance";
+  }
+  if (/transaction|virement|releve|mouvement|statement/.test(text)) return "transactions";
+  if (/passeport|piece|document|carte d.identite|coffre|passport/.test(text)) return "documents";
   if (/visa|esta|\beta\b|formalit|autorisation/.test(text)) return "formality";
-  if (/horaire|a quelle heure|quelle heure|a quelle h/.test(text)) return "schedule";
-  if (/inclus|petit.dejeuner|pension|demi.pension/.test(text)) return "included";
-  if (/prix|tarif|combien coute|montant/.test(text)) return "price";
-  if (/chauffeur|\bvtc\b/.test(text)) return "chauffeur";
-  if (/sejour|voyage|hotel|vol\b|train|reservation|carnet|destination|quand|ou est|ou sejour/.test(text)) {
+  if (/horaire|a quelle heure|quelle heure|a quelle h|what time|which time|departure time|arrival time/.test(text)) {
+    return "schedule";
+  }
+  if (/inclus|petit.dejeuner|pension|demi.pension|included|breakfast|half board/.test(text)) return "included";
+  if (/prix|tarif|combien coute|montant|price|how much|cost/.test(text)) return "price";
+  if (/chauffeur|\bvtc\b|\bdriver\b/.test(text)) return "chauffeur";
+  if (
+    /sejour|voyage|hotel|vol\b|train|reservation|carnet|destination|quand|ou est|ou sejour|stay|flight|trip|when is|where is/.test(
+      text
+    )
+  ) {
     return "stay";
   }
-  if (/^\s*(bonjour|bonsoir|salut|hello|coucou)\b/.test(text)) return "hello";
+  if (/^\s*(bonjour|bonsoir|salut|hello|hi|coucou|good morning|good evening)\b/.test(text)) return "hello";
   return "unknown";
 }
 
-function balanceText(dossier: ConciergeDossier) {
-  if (!dossier.balances.length) return "Je n’ai pas d’encours enregistré sur votre compte.";
-  return dossier.balances
-    .map((row) => `${encoursCaption(row.balance)} : ${formatMoney(row.balance, row.currency)}`)
-    .join("\n");
+const THIN_FR = [
+  MISSING_FACT,
+  MISSING_CLOCK,
+  MISSING_INCLUDED,
+  MISSING_PRICE,
+  MISSING_DRIVER,
+  MISSING_FORMALITY,
+  "Je n’ai pas de séjour publié",
+  "Je n’ai pas d’encours",
+  "Je n’ai aucun mouvement",
+  "Je n’ai aucune pièce",
+  "Je n’ai pas cette information",
+];
+
+function answerIsThin(body: string) {
+  return THIN_FR.some((sentence) => body.includes(sentence)) || body.includes("I don’t have");
 }
 
-function movementText(dossier: ConciergeDossier) {
-  if (!dossier.movements.length) return "Je n’ai aucun mouvement enregistré sur votre compte.";
+/** Conseil général, jamais un fait du séjour. */
+function generalAdvice(message: string, lang: ReplyLang) {
+  const text = fold(message);
+  if (/hotel|sejour|chambre|vol\b|flight|booking|chauffeur|driver|visa|esta|prix|price|horaire/.test(text)) {
+    return null;
+  }
+  if (/prise|adaptateur|voltage|\bplug\b|adapter/.test(text)) {
+    return lang === "en"
+      ? "In mainland France, sockets are type C and E, 230 volts. A simple adapter is enough for most European plugs."
+      : "En France métropolitaine, les prises sont de type C et E, en 230 volts. Un adaptateur simple suffit pour la plupart des prises européennes.";
+  }
+  return null;
+}
+
+function balanceCaption(amount: number, lang: ReplyLang) {
+  if (lang === "fr") return encoursCaption(amount);
+  if (!Number.isFinite(amount) || amount === 0) return "Account settled";
+  if (amount < 0) return "Amount due";
+  return "Credit";
+}
+
+function balanceText(dossier: ConciergeDossier, lang: ReplyLang) {
+  const link = transactionsClientUrl();
+  if (!dossier.balances.length) {
+    return lang === "en"
+      ? `I don’t have a balance on your account.\n${link}`
+      : `Je n’ai pas d’encours enregistré sur votre compte.\n${link}`;
+  }
+  const lines = dossier.balances.map(
+    (row) => `${balanceCaption(row.balance, lang)} : ${moneyLabel(row.balance, row.currency, lang)}`
+  );
+  return `${lines.join("\n")}\n${link}`;
+}
+
+function movementText(dossier: ConciergeDossier, lang: ReplyLang) {
+  const link = transactionsClientUrl();
+  if (!dossier.movements.length) {
+    return lang === "en"
+      ? `I don’t have any posted movements on your account.\n${link}`
+      : `Je n’ai aucun mouvement enregistré sur votre compte.\n${link}`;
+  }
   const lines = dossier.movements.slice(0, 8).map((row) => {
     const signMark = row.direction === "credit" ? "+" : "−";
     const stay = row.stayReference ? ` · ${row.stayReference}` : "";
-    return `• ${dateLabel(row.date)} — ${row.label}${stay} — ${signMark}${formatMoney(row.amount, row.currency)}`;
+    return `• ${dateLabel(row.date, lang)} — ${row.label}${stay} — ${signMark}${moneyLabel(row.amount, row.currency, lang)}`;
   });
-  return `Vos derniers mouvements :\n${lines.join("\n")}`;
+  const title = lang === "en" ? "Your latest movements :" : "Vos derniers mouvements :";
+  return `${title}\n${lines.join("\n")}\n${link}`;
 }
 
-function documentText(dossier: ConciergeDossier) {
-  if (!dossier.documents.length) return "Je n’ai aucune pièce au coffre.";
+function documentText(dossier: ConciergeDossier, lang: ReplyLang) {
+  if (!dossier.documents.length) {
+    return lang === "en" ? "I don’t have any papers in your file." : "Je n’ai aucune pièce au coffre.";
+  }
   const lines = dossier.documents.map((doc) => {
     const who = doc.holder ? `, ${doc.holder}` : "";
-    const expiry = dateLabel(doc.expiresOn);
-    return expiry ? `${doc.label}${who}, expire le ${expiry}` : `${doc.label}${who}`;
+    const expiry = dateLabel(doc.expiresOn, lang);
+    if (!expiry) return `${doc.label}${who}`;
+    return lang === "en" ? `${doc.label}${who}, expires ${expiry}` : `${doc.label}${who}, expire le ${expiry}`;
   });
-  return `Au coffre :\n${lines.join("\n")}`;
+  const title = lang === "en" ? "In your file :" : "Au coffre :";
+  return `${title}\n${lines.join("\n")}`;
 }
 
-function formalityText(message: string, dossier: ConciergeDossier) {
+function formalityText(message: string, dossier: ConciergeDossier, lang: ReplyLang) {
   const stay = focusStay(message, dossier.stays);
+  if (!stay && dossier.stays.length > 1) return whichStayText(dossier.stays, lang);
   const pool = stay ? [stay] : dossier.stays;
-  const rows = pool.flatMap((row) =>
-    row.formalities.map((formality) => ({ stay: row, formality }))
-  );
-  if (!rows.length) return MISSING_FORMALITY;
+  const rows = pool.flatMap((row) => row.formalities.map((formality) => ({ stay: row, formality })));
+  if (!rows.length) return lang === "en" ? "I don’t have a filed formality in your file." : MISSING_FORMALITY;
   return rows
-    .map(
-      (row) =>
-        `Séjour ${row.stay.reference}, ${row.formality.name} : ${row.formality.copy}\n${stayClientUrl(row.stay.reference)}`
-    )
+    .map((row) => {
+      const label = lang === "en" ? "Stay" : "Séjour";
+      return `${label} ${row.stay.reference}, ${row.formality.name} : ${row.formality.copy}\n${stayClientUrl(row.stay.reference)}`;
+    })
     .join("\n\n");
 }
 
-function scheduleText(message: string, dossier: ConciergeDossier) {
+function scheduleText(message: string, dossier: ConciergeDossier, lang: ReplyLang) {
   const stay = focusStay(message, dossier.stays);
+  if (!stay && dossier.stays.length > 1) return whichStayText(dossier.stays, lang);
   const pool = stay ? [stay] : dossier.stays;
   const known = pool.flatMap((row) =>
-    row.items
-      .filter((item) => item.clock)
-      .map((item) => `${row.reference} — ${item.label} — ${item.lines.join(", ")}`)
+    row.items.filter((item) => item.clock).map((item) => `${row.reference} — ${item.label} — ${item.lines.join(", ")}`)
   );
-  if (!known.length) return MISSING_CLOCK;
+  if (!known.length) return lang === "en" ? "I don’t have the time in your file." : MISSING_CLOCK;
   const link = stay ? `\n${stayClientUrl(stay.reference)}` : "";
   return `${known.join("\n")}${link}`;
 }
 
-function includedText(message: string, dossier: ConciergeDossier) {
+function includedText(message: string, dossier: ConciergeDossier, lang: ReplyLang) {
   const stay = focusStay(message, dossier.stays);
+  if (!stay && dossier.stays.length > 1) return whichStayText(dossier.stays, lang);
   const pool = stay ? [stay] : dossier.stays;
   const known = pool.flatMap((row) =>
     row.items
       .filter((item) => item.included.length)
       .map((item) => `${row.reference} — ${item.label} — ${item.included.join(", ")}`)
   );
-  if (!known.length) return MISSING_INCLUDED;
+  if (!known.length) return lang === "en" ? "I don’t have the inclusions in your file." : MISSING_INCLUDED;
   const link = stay ? `\n${stayClientUrl(stay.reference)}` : "";
   return `${known.join("\n")}${link}`;
 }
 
-function priceText(message: string, dossier: ConciergeDossier) {
+function priceText(message: string, dossier: ConciergeDossier, lang: ReplyLang) {
   const stay = focusStay(message, dossier.stays);
+  if (!stay && dossier.stays.length > 1) return whichStayText(dossier.stays, lang);
   if (!stay) {
     const priced = dossier.stays.filter((row) => row.totalAmount != null);
-    if (!priced.length) return MISSING_PRICE;
+    if (!priced.length) return lang === "en" ? "I don’t have that price in your file." : MISSING_PRICE;
     return priced
-      .map(
-        (row) =>
-          `${row.reference} : ${formatMoney(row.totalAmount || 0, row.currency)}\n${stayClientUrl(row.reference)}`
-      )
+      .map((row) => `${row.reference} : ${moneyLabel(row.totalAmount || 0, row.currency, lang)}\n${stayClientUrl(row.reference)}`)
       .join("\n");
   }
-  if (stay.totalAmount == null) return MISSING_PRICE;
-  return `${stay.reference} : ${formatMoney(stay.totalAmount, stay.currency)}\n${stayClientUrl(stay.reference)}`;
+  if (stay.totalAmount == null) return lang === "en" ? "I don’t have that price in your file." : MISSING_PRICE;
+  return `${stay.reference} : ${moneyLabel(stay.totalAmount, stay.currency, lang)}\n${stayClientUrl(stay.reference)}`;
 }
 
-function chauffeurText(message: string, dossier: ConciergeDossier) {
+function chauffeurText(message: string, dossier: ConciergeDossier, lang: ReplyLang) {
   const stay = focusStay(message, dossier.stays);
+  if (!stay && dossier.stays.length > 1) return whichStayText(dossier.stays, lang);
   const pool = stay ? [stay] : dossier.stays;
   const known = pool.flatMap((row) =>
     row.items
       .filter((item) => item.kind === "chauffeur")
       .map((item) => `${row.reference} — ${item.lines.join(", ") || item.label}`)
   );
-  if (!known.length) return MISSING_DRIVER;
+  if (!known.length) return lang === "en" ? "I don’t have a driver in your file." : MISSING_DRIVER;
   const link = stay ? `\n${stayClientUrl(stay.reference)}` : "";
   return `${known.join("\n")}${link}`;
 }
 
-function stayText(message: string, dossier: ConciergeDossier) {
-  const stay = focusStay(message, dossier.stays) || (dossier.stays.length === 1 ? dossier.stays[0] : null);
-  if (stay) return describeStay(stay);
-  if (!dossier.stays.length) return "Je n’ai pas de séjour publié sur votre compte.";
-  return dossier.stays.map((row) => describeStay(row)).join("\n\n");
+function stayText(message: string, dossier: ConciergeDossier, lang: ReplyLang) {
+  const stay = focusStay(message, dossier.stays);
+  if (stay) return describeStay(stay, lang);
+  if (!dossier.stays.length) {
+    return lang === "en" ? "I don’t have a published stay on your account." : "Je n’ai pas de séjour publié sur votre compte.";
+  }
+  if (dossier.stays.length > 1) return whichStayText(dossier.stays, lang);
+  return describeStay(dossier.stays[0], lang);
 }
 
-function helloText(dossier: ConciergeDossier) {
-  const hello = dossier.firstName ? `Bonjour ${dossier.firstName},` : "Bonjour,";
-  const stay = nextStay(dossier.stays);
-  if (!stay) return `${hello}\nJe n’ai pas de séjour publié sur votre compte.`;
-  return `${hello}\n${describeStay(stay)}`;
+function helloText(dossier: ConciergeDossier, lang: ReplyLang) {
+  const hello =
+    lang === "en"
+      ? dossier.firstName
+        ? `Hello ${dossier.firstName},`
+        : "Hello,"
+      : dossier.firstName
+        ? `Bonjour ${dossier.firstName},`
+        : "Bonjour,";
+  if (dossier.stays.length > 1) return `${hello}\n${whichStayText(dossier.stays, lang)}`;
+  const stay = dossier.stays.length === 1 ? dossier.stays[0] : nextStay(dossier.stays);
+  if (!stay) {
+    const none = lang === "en" ? "I don’t have a published stay on your account." : "Je n’ai pas de séjour publié sur votre compte.";
+    return `${hello}\n${none}`;
+  }
+  return `${hello}\n${describeStay(stay, lang)}`;
 }
 
 function subjectStay(message: string, dossier: ConciergeDossier, topic: string) {
-  if (topic === "balance" || topic === "transactions" || topic === "documents") return null;
-  if (topic === "hello") {
-    const stay = nextStay(dossier.stays);
-    return dossier.stays.length === 1 ? stay : null;
-  }
+  if (topic === "balance" || topic === "transactions" || topic === "documents" || topic === "unknown") return null;
   const focused = focusStay(message, dossier.stays);
   if (focused) return focused;
-  if (dossier.stays.length === 1 && (topic === "stay" || topic === "formality" || topic === "schedule")) {
-    return dossier.stays[0];
-  }
+  if (dossier.stays.length === 1) return dossier.stays[0];
   return null;
 }
 
+function offerAgency(lang: ReplyLang) {
+  return lang === "en"
+    ? "I don’t have that information. Would you like me to ask the agency?"
+    : "Je n’ai pas cette information. Souhaitez-vous que j’en parle à l’agence ?";
+}
+
+function handoffSentence(lang: ReplyLang) {
+  return lang === "en" ? "I’m passing this to the agency." : HANDOFF_SENTENCE;
+}
+
+function stopText(lang: ReplyLang) {
+  return lang === "en"
+    ? "The agency’s proactive messages are stopped. Write whenever you like, I will still reply."
+    : "Les messages de l’agence sont coupés. Écrivez quand vous voulez, je vous réponds.";
+}
+
+export function accessLinkReply(lang: ReplyLang, url: string | null) {
+  if (url && !url.startsWith("https://")) return accessLinkReply(lang, null);
+  if (lang === "en") {
+    if (!url) return sign("I can’t open your space from here. I can ask the agency for a new access link.");
+    return sign(`Here is a new access link. It is not your password.\n${url}`);
+  }
+  if (!url) return sign("Je n’ouvre pas votre espace d’ici. Je peux demander à l’agence un nouveau lien d’accès.");
+  return sign(`Voici un nouveau lien d’accès. Ce n’est pas votre mot de passe.\n${url}`);
+}
+
+export function pieceSavedLine(lang: ReplyLang) {
+  return lang === "en" ? "Your document is saved with your papers." : "Votre pièce est enregistrée dans votre coffre.";
+}
+
+export function panRefusedReply(lang: ReplyLang) {
+  const body =
+    lang === "en"
+      ? "I don’t keep card numbers. Send the document without them, or I can ask the agency."
+      : "Je ne conserve pas de numéro de carte. Envoyez la pièce sans ces chiffres, ou je peux en parler à l’agence.";
+  return sign(body);
+}
+
 export function planConciergeTurn(message: string, dossier: ConciergeDossier): ConciergeTurn {
+  const lang = messageLanguage(message);
+  const empty = { cover: null as null, optOut: false, access: false };
+
+  if (isConciergeStop(message) && !classifyHandoff(message)) {
+    return { ...empty, handoff: null, bookingId: null, text: sign(stopText(lang)), optOut: true };
+  }
+  if (asksForSpaceAccess(message) && !classifyHandoff(message)) {
+    return { ...empty, handoff: null, bookingId: null, text: "", access: true };
+  }
+
   const handoff = classifyHandoff(message);
-  if (handoff) {
+  if (handoff && AGENCY_HANDOFF.has(handoff)) {
     const stay = focusStay(message, dossier.stays);
-    const text = stay
-      ? `${HANDOFF_SENTENCE}\nCela concerne le séjour ${stay.reference}.\n${stayClientUrl(stay.reference)}`
-      : HANDOFF_SENTENCE;
+    const sentence = handoffSentence(lang);
+    const which = !stay && dossier.stays.length > 1 ? `\n${whichStayText(dossier.stays, lang)}` : "";
+    const focused = stay
+      ? lang === "en"
+        ? `\nThis is about stay ${stay.reference}.\n${stayClientUrl(stay.reference)}`
+        : `\nCela concerne le séjour ${stay.reference}.\n${stayClientUrl(stay.reference)}`
+      : "";
     return {
+      ...empty,
       handoff,
       bookingId: stay?.id || null,
-      text: conciergeFollowUp(text),
-      cover: null,
+      text: conciergeFollowUp(`${sentence}${focused}${which}`, lang),
     };
   }
 
   const topic = topicOf(message);
-  let body = MISSING_FACT;
-  if (topic === "balance") body = balanceText(dossier);
-  else if (topic === "transactions") body = movementText(dossier);
-  else if (topic === "documents") body = documentText(dossier);
-  else if (topic === "formality") body = formalityText(message, dossier);
-  else if (topic === "schedule") body = scheduleText(message, dossier);
-  else if (topic === "included") body = includedText(message, dossier);
-  else if (topic === "price") body = priceText(message, dossier);
-  else if (topic === "chauffeur") body = chauffeurText(message, dossier);
-  else if (topic === "stay") body = stayText(message, dossier);
-  else if (topic === "hello") body = helloText(dossier);
+  let body = lang === "en" ? "I don’t have that information in your file." : MISSING_FACT;
+  if (topic === "balance") body = balanceText(dossier, lang);
+  else if (topic === "transactions") body = movementText(dossier, lang);
+  else if (topic === "documents") body = documentText(dossier, lang);
+  else if (topic === "formality") body = formalityText(message, dossier, lang);
+  else if (topic === "schedule") body = scheduleText(message, dossier, lang);
+  else if (topic === "included") body = includedText(message, dossier, lang);
+  else if (topic === "price") body = priceText(message, dossier, lang);
+  else if (topic === "chauffeur") body = chauffeurText(message, dossier, lang);
+  else if (topic === "stay") body = stayText(message, dossier, lang);
+  else if (topic === "hello") body = helloText(dossier, lang);
+  else {
+    body = generalAdvice(message, lang) || offerAgency(lang);
+  }
+
+  const complaint = isComplaint(message);
+  const thin = answerIsThin(body) || body.includes("Lequel vous intéresse") || body.includes("Which one do you mean");
+  if (complaint && thin) {
+    body = `${body}\n${handoffSentence(lang)}`;
+    const stay = subjectStay(message, dossier, topic);
+    return {
+      ...empty,
+      handoff: "complaint",
+      bookingId: stay?.id || null,
+      text: sign(body),
+    };
+  }
 
   const stay = subjectStay(message, dossier, topic);
-  const linked = Boolean(stay && topic !== "price" && body.includes(stayClientUrl(stay.reference)));
   return {
+    ...empty,
     handoff: null,
     bookingId: stay?.id || null,
     text: sign(body),
-    cover: linked && stay?.cover ? stay.cover : null,
   };
 }

@@ -6,6 +6,7 @@ import { createEntryLink, entryButtonSuffix, entryCodeFromLink } from "./entry-l
 import { tripDocCoverage } from "./trip-documents";
 import { entryForFrenchPassport } from "./visa-fr";
 import { frenchPassportTrip } from "./visa-trip";
+import { proactiveWhatsappAllowed } from "./whatsapp-concierge";
 import { sendContentTemplate, type WhatsappSendResult } from "./whatsapp";
 import type { CrmBooking, CrmBookingItem, CrmBookingTraveler, CrmTravelDocument } from "./types";
 import {
@@ -30,6 +31,7 @@ type CustomerRow = {
   phone: string | null;
   first_name: string | null;
   whatsapp_opt_in_at: string | null;
+  whatsapp_opt_out_at?: string | null;
 };
 
 type QueuePayload = {
@@ -78,7 +80,7 @@ async function loadBooking(admin: Admin, bookingId: string) {
 async function loadCustomer(admin: Admin, customerId: string) {
   const { data } = await admin
     .from("crm_customers")
-    .select("id, email, phone, first_name, whatsapp_opt_in_at")
+    .select("id, email, phone, first_name, whatsapp_opt_in_at, whatsapp_opt_out_at")
     .eq("id", customerId)
     .maybeSingle();
   return (data as CustomerRow | null) || null;
@@ -171,7 +173,7 @@ async function deliverTemplate(admin: Admin, input: {
   sentDedupe?: string;
 }) {
   const contentSid = conciergeContentSid(input.template);
-  if (!contentSid || !input.customer.email || !input.customer.phone || !input.customer.whatsapp_opt_in_at) {
+  if (!contentSid || !input.customer.email || !input.customer.phone || !proactiveWhatsappAllowed(input.customer)) {
     return;
   }
   const suffix = await buttonSuffix(admin, input.customer.email, input.path);

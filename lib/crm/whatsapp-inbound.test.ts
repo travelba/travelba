@@ -11,8 +11,12 @@ import {
   buildConciergeDossier,
   conciergeContextText,
   planConciergeTurn,
+  proactiveWhatsappAllowed,
+  transactionsClientUrl,
 } from "./whatsapp-concierge";
+import { bytesContainPan, burstReply, downloadTwilioMedia } from "./whatsapp-inbound";
 import { sendWhatsappSession } from "./whatsapp-session";
+import { issueConciergeMagicLink } from "./whatsapp-access";
 
 const URL_HOOK = "https://travelba.fr/api/webhooks/twilio/whatsapp";
 const TOKEN = "twilio-test-token";
@@ -22,10 +26,12 @@ function signed(params: Record<string, string>, signature = "") {
 }
 
 function storeFrom(opts: {
-  customers?: { id: string; first_name: string | null }[];
+  customers?: { id: string; first_name: string | null; email?: string | null }[];
   dossier?: Parameters<WhatsappStore["loadDossier"]>[0] extends never ? never : Awaited<ReturnType<WhatsappStore["loadDossier"]>>;
   writes: { table: string; row?: Record<string, unknown> }[];
   onCall?: (name: string) => void;
+  optOut?: (customerId: string) => Promise<void>;
+  savePiece?: WhatsappStore["savePiece"];
 }): WhatsappStore {
   return {
     async findBySid() {
@@ -49,6 +55,8 @@ function storeFrom(opts: {
       opts.onCall?.("insertRequest");
       opts.writes.push({ table: "crm_whatsapp_requests", row: row as unknown as Record<string, unknown> });
     },
+    optOut: opts.optOut,
+    savePiece: opts.savePiece,
   };
 }
 
@@ -337,7 +345,7 @@ test("sans horaire, sans prix publié et sans couverture, rien n’est inventé"
     bookings: [{ ...published, cover_image_path: "bookings/stay-pub/cover.webp" }],
   });
   const withPhoto = planConciergeTurn("Parlez-moi de mon séjour", covered);
-  assert.deepEqual(withPhoto.cover, { kind: "file", path: "bookings/stay-pub/cover.webp" });
+  assert.equal(withPhoto.cover, null);
   assert.equal(withPhoto.text.includes("cover.webp"), false);
 
   const formality = planConciergeTurn("Où en est mon ESTA ?", dossier);
@@ -401,4 +409,280 @@ test("la réponse de chat est du texte libre, pas un modèle", async () => {
       else process.env[key] = value;
     }
   }
+});
+
+test("plusieurs séjours : il demande lequel, l’encours a le lien", () => {
+  const dossier = buildConciergeDossier({
+    firstName: "Simon",
+    bookings: [
+      published,
+      {
+        ...published,
+        id: "stay-2",
+        reference: "PUB-2",
+        title: "Kyoto",
+        destination: "Kyoto",
+        start_date: "2026-04-01",
+        end_date: "2026-04-08",
+      },
+    ],
+    balances: [{ currency: "EUR", balance: -120 }],
+  });
+  const stay = planConciergeTurn("Parlez-moi de mon séjour", dossier);
+  assert.match(stay.text, /Lequel vous intéresse/);
+  assert.match(stay.text, /PUB-1/);
+  assert.match(stay.text, /PUB-2/);
+  assert.equal(stay.text.includes("Hôtel des Dromonts"), false);
+  assert.equal(stay.text.includes(FOLLOW_UP_TONE), false);
+  assert.equal(stay.cover, null);
+  assert.match(stay.text, /vous/);
+  assert.equal(/\btu\b/i.test(stay.text), false);
+
+  const named = planConciergeTurn("Parlez-moi du séjour PUB-2", dossier);
+  assert.match(named.text, /PUB-2/);
+  assert.equal(named.text.includes("Lequel vous intéresse"), false);
+
+  const balance = planConciergeTurn("Quel est mon encours ?", dossier);
+  assert.match(balance.text, /120/);
+  assert.match(balance.text, new RegExp(transactionsClientUrl().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.equal(balance.handoff, null);
+  assert.equal(balance.text.includes(FOLLOW_UP_TONE), false);
+});
+
+test("hors dossier : conseil sans fait inventé, sinon l’agence", () => {
+  const dossier = buildConciergeDossier({ firstName: "Simon", ...mixedDossier() });
+  const advice = planConciergeTurn("Quel adaptateur de prise prévoir ?", dossier);
+  assert.match(advice.text, /230 volts/);
+  assert.equal(advice.text.includes("00h"), false);
+  assert.equal(advice.text.includes("9999"), false);
+  assert.equal(advice.handoff, null);
+
+  const unknown = planConciergeTurn("Comment vont les baleines cette année ?", dossier);
+  assert.match(unknown.text, /Souhaitez-vous que j’en parle à l’agence/);
+  assert.equal(unknown.text.includes("00h"), false);
+  assert.equal(unknown.handoff, null);
+
+  const complaint = planConciergeTurn("C’est inacceptable, à quelle heure part mon vol ?", dossier);
+  assert.match(complaint.text, new RegExp(MISSING_CLOCK.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(complaint.text, /Je transmets à l’agence/);
+  assert.equal(complaint.handoff, "complaint");
+  assert.equal(complaint.text.includes(FOLLOW_UP_TONE), false);
+});
+
+test("anglais, stop, et lien d’accès sans mot de passe", async () => {
+  const dossier = buildConciergeDossier({ firstName: "Simon", ...mixedDossier() });
+  const english = planConciergeTurn("What time is my flight?", dossier);
+  assert.match(english.text, /I don’t have the time/);
+  assert.match(english.text, /Le Concierge/);
+  assert.equal(english.text.includes("00h"), false);
+  assert.equal(english.text.includes(FOLLOW_UP_TONE), false);
+
+  assert.equal(proactiveWhatsappAllowed({ whatsapp_opt_in_at: "2026-01-01", whatsapp_opt_out_at: null }), true);
+  assert.equal(proactiveWhatsappAllowed({ whatsapp_opt_in_at: "2026-01-01", whatsapp_opt_out_at: "2026-02-01" }), false);
+
+  let opted = false;
+  const writes: { table: string; row?: Record<string, unknown> }[] = [];
+  const sent: { body: string; mediaUrl?: string | null }[] = [];
+  const stop = {
+    From: "whatsapp:+33601020304",
+    Body: "Stop",
+    MessageSid: "SMstop",
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(stop),
+    params: stop,
+    authToken: TOKEN,
+    store: storeFrom({
+      writes,
+      customers: [{ id: "cust-1", first_name: "Simon" }],
+      dossier: mixedDossier(),
+      optOut: async () => {
+        opted = true;
+      },
+    }),
+    send: async (message) => {
+      sent.push(message);
+      return { ok: true, sid: "SMstopout" };
+    },
+  });
+  assert.equal(opted, true);
+  assert.match(sent[0].body, /coupés/);
+  assert.equal(sent[0].body.includes(FOLLOW_UP_TONE), false);
+  assert.equal(sent[0].mediaUrl, null);
+
+  const again = { ...stop, Body: "Bonjour", MessageSid: "SMencore" };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(again),
+    params: again,
+    authToken: TOKEN,
+    store: storeFrom({
+      writes,
+      customers: [{ id: "cust-1", first_name: "Simon" }],
+      dossier: mixedDossier(),
+    }),
+    send: async (message) => {
+      sent.push(message);
+      return { ok: true, sid: "SMencoreout" };
+    },
+  });
+  assert.equal(sent.length, 2);
+  assert.match(sent[1].body, /Bonjour Simon/);
+
+  const access = {
+    From: "whatsapp:+33601020304",
+    Body: "Ouvrez mon espace, j’ai perdu le mot de passe",
+    MessageSid: "SMacces",
+  };
+  const secret = "Secret123";
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(access),
+    params: access,
+    authToken: TOKEN,
+    store: storeFrom({
+      writes,
+      customers: [{ id: "cust-1", first_name: "Simon", email: "simon@example.com" }],
+      dossier: mixedDossier(),
+    }),
+    openAccess: async () => "https://travelba.fr/e/c/AB23EFGH",
+    send: async (message) => {
+      sent.push(message);
+      return { ok: true, sid: "SMaccesout" };
+    },
+  });
+  assert.match(sent[2].body, /https:\/\/travelba\.fr\/e\/c\/AB23EFGH/);
+  assert.equal(sent[2].body.includes(secret), false);
+  assert.equal(sent[2].body.includes(FOLLOW_UP_TONE), false);
+  assert.equal(writes.some((write) => write.table === "crm_whatsapp_requests" && write.row?.kind === "complaint"), false);
+});
+
+test("photo ou pdf : coffre privé, pas de pan, une seule réponse au paquet", async () => {
+  const pan = new TextEncoder().encode("carte 4111111111111111");
+  assert.equal(bytesContainPan(pan), true);
+  assert.equal(bytesContainPan(new TextEncoder().encode("0000000000 65535 xref")), false);
+  assert.equal(bytesContainPan(new TextEncoder().encode("4111111111 111111")), false);
+  assert.equal(bytesContainPan(new TextEncoder().encode("4111 1111 1111 1111")), true);
+  const pieces: { contentType: string; bytes: Uint8Array }[] = [];
+  const sent: { body: string; mediaUrl?: string | null }[] = [];
+  const writes: { table: string; row?: Record<string, unknown> }[] = [];
+  const pdf = {
+    From: "whatsapp:+33601020304",
+    Body: "",
+    NumMedia: "1",
+    MediaUrl0: "https://api.twilio.com/2010-04-01/Accounts/ACtest/Media/ME1",
+    MediaContentType0: "application/pdf",
+    MessageSid: "SMpdf",
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(pdf),
+    params: pdf,
+    authToken: TOKEN,
+    accountSid: "ACtest",
+    store: storeFrom({
+      writes,
+      customers: [{ id: "cust-1", first_name: "Simon" }],
+      dossier: mixedDossier(),
+      savePiece: async (piece) => {
+        pieces.push(piece);
+        if (bytesContainPan(piece.bytes)) return "pan";
+        return "saved";
+      },
+    }),
+    fetchImpl: async () => new Response(pan, { status: 200, headers: { "content-type": "application/pdf" } }),
+    send: async (message) => {
+      sent.push(message);
+      return { ok: true, sid: "SMpdfout" };
+    },
+  });
+  assert.equal(pieces.length, 0);
+  assert.match(sent[0].body, /numéro de carte/i);
+  assert.equal(sent[0].body.includes("4111"), false);
+  assert.equal(JSON.stringify(writes).includes("4111"), false);
+  assert.equal(sent[0].mediaUrl, null);
+  assert.equal(writes.some((write) => write.table === "crm_whatsapp_requests"), false);
+
+  const photo = { ...pdf, MessageSid: "SMphoto", MediaContentType0: "image/jpeg" };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(photo),
+    params: photo,
+    authToken: TOKEN,
+    accountSid: "ACtest",
+    store: storeFrom({
+      writes,
+      customers: [{ id: "cust-1", first_name: "Simon" }],
+      dossier: mixedDossier(),
+      savePiece: async (piece) => {
+        pieces.push(piece);
+        return "saved";
+      },
+    }),
+    fetchImpl: async (url) => {
+      assert.equal(String(url).includes("Media"), true);
+      return new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { "content-type": "image/jpeg" } });
+    },
+    send: async (message) => {
+      sent.push(message);
+      return { ok: true, sid: "SMphotoout" };
+    },
+  });
+  assert.equal(pieces.length, 1);
+  assert.equal(pieces[0].contentType, "image/jpeg");
+  assert.match(sent[1].body, /coffre/);
+  assert.equal(sent[1].body.includes(FOLLOW_UP_TONE), false);
+  assert.equal(sent[1].mediaUrl, null);
+
+  const first = burstReply("SM1", [
+    { direction: "inbound", body: "Bonjour", twilio_sid: "SM1", created_at: "2026-09-25T10:00:00Z" },
+    { direction: "inbound", body: "Quel est mon encours ?", twilio_sid: "SM2", created_at: "2026-09-25T10:00:01Z" },
+  ]);
+  assert.equal(first.send, false);
+  const second = burstReply("SM2", [
+    { direction: "inbound", body: "Bonjour", twilio_sid: "SM1", created_at: "2026-09-25T10:00:00Z" },
+    { direction: "inbound", body: "Quel est mon encours ?", twilio_sid: "SM2", created_at: "2026-09-25T10:00:01Z" },
+  ]);
+  assert.equal(second.send, true);
+  assert.match(second.text || "", /encours/);
+
+  const blocked = await downloadTwilioMedia({
+    url: "https://example.com/secret.pdf",
+    accountSid: "ACtest",
+    authToken: TOKEN,
+    fetchImpl: async () => {
+      assert.fail("hors Twilio");
+    },
+  });
+  assert.equal(blocked, null);
+});
+
+test("le lien d’accès est un magic link", async () => {
+  let otp = "";
+  const admin = {
+    auth: {
+      admin: {
+        generateLink: async (args: { type: string; email: string }) => {
+          otp = args.type;
+          assert.equal(args.email, "simon@example.com");
+          return { data: { properties: { hashed_token: "hash" } }, error: null };
+        },
+      },
+    },
+    from(table: string) {
+      assert.equal(table, "crm_entry_links");
+      return {
+        insert: async (row: { otp_type: string; next_path: string }) => {
+          assert.equal(row.otp_type, "magiclink");
+          assert.equal(row.next_path, "/mon-compte");
+          return { error: null };
+        },
+      };
+    },
+  };
+  const link = await issueConciergeMagicLink(admin as never, "simon@example.com");
+  assert.equal(otp, "magiclink");
+  assert.match(link || "", /^https:\/\/travelba\.fr\/e\/c\/[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{8}$/);
+  assert.equal((link || "").includes("password"), false);
 });

@@ -1,15 +1,19 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { toE164 } from "./phone";
-import { signedCrmUrl } from "./files";
-import { siteConfig } from "../site";
+import { uploadCrmFile } from "./files";
+import { redactIngestText } from "./ingest-redact";
 import { formParams, verifyTwilioSignature } from "./twilio-signature";
+import { withConciergeSignature } from "./whatsapp";
 import {
+  accessLinkReply,
   buildConciergeDossier,
   HANDOFF_SENTENCE,
-  conciergeFollowUp,
+  isConciergeStop,
+  messageLanguage,
+  panRefusedReply,
+  pieceSavedLine,
   planConciergeTurn,
   UNKNOWN_NUMBER_REPLY,
-  type ConciergeCover,
   type HandoffKind,
 } from "./whatsapp-concierge";
 import { sessionAddress } from "./whatsapp-session";
@@ -33,7 +37,16 @@ export type WhatsappRequestInsert = {
   body: string;
 };
 
-export type WhatsappCustomer = { id: string; first_name: string | null };
+export type WhatsappCustomer = { id: string; first_name: string | null; email?: string | null };
+
+export type WhatsappPieceResult = "saved" | "pan" | "skipped";
+
+export type WhatsappThreadRow = {
+  direction: "inbound" | "outbound";
+  body: string;
+  twilio_sid: string | null;
+  created_at: string;
+};
 
 export type WhatsappStore = {
   findBySid(sid: string): Promise<boolean>;
@@ -43,23 +56,112 @@ export type WhatsappStore = {
     row: WhatsappMessageInsert
   ): Promise<{ id: string } | { duplicate: true }>;
   insertRequest(row: WhatsappRequestInsert): Promise<void>;
+  optOut?(customerId: string): Promise<void>;
+  savePiece?(input: {
+    customerId: string;
+    bytes: Uint8Array;
+    contentType: string;
+  }): Promise<WhatsappPieceResult>;
+  recentThread?(customerId: string): Promise<WhatsappThreadRow[]>;
+  tagMessage?(id: string, bookingId: string): Promise<void>;
 };
+
+const PIECE_TYPES = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+  "application/pdf",
+]);
+
+const PIECE_MARK = "Pièce reçue sur WhatsApp.";
+
+function luhnOk(digits: string) {
+  let sum = 0;
+  let alt = false;
+  for (let i = digits.length - 1; i >= 0; i -= 1) {
+    let n = digits.charCodeAt(i) - 48;
+    if (n < 0 || n > 9) return false;
+    if (alt) {
+      n *= 2;
+      if (n > 9) n -= 9;
+    }
+    sum += n;
+    alt = !alt;
+  }
+  return digits.length >= 13 && digits.length <= 19 && sum % 10 === 0;
+}
+
+/** Vrai si le fichier contient un PAN. Ne journalise pas les chiffres. */
+export function bytesContainPan(bytes: Uint8Array) {
+  const text = Buffer.from(bytes).toString("latin1");
+  const matches = text.match(/\d(?:[ \t.-]?\d){12,18}/g) || [];
+  return matches.some((raw) => {
+    const digits = raw.replace(/\D/g, "");
+    if (!luhnOk(digits)) return false;
+    const groups = raw.split(/[ \t.-]+/).filter(Boolean);
+    if (groups.length === 1) return true;
+    return groups.every((group) => group.length >= 3 && group.length <= 6);
+  });
+}
+
+export function pieceContentType(value: string | null | undefined) {
+  const type = (value || "").split(";")[0].trim().toLowerCase();
+  return PIECE_TYPES.has(type) ? type : null;
+}
+
+export async function downloadTwilioMedia(input: {
+  url: string;
+  accountSid: string;
+  authToken: string;
+  fetchImpl?: typeof fetch;
+}) {
+  let parsed: URL;
+  try {
+    parsed = new URL(input.url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:" || parsed.hostname !== "api.twilio.com") return null;
+  const auth = Buffer.from(`${input.accountSid}:${input.authToken}`).toString("base64");
+  const response = await (input.fetchImpl || fetch)(parsed.toString(), {
+    headers: { Authorization: `Basic ${auth}` },
+  });
+  if (!response.ok) return null;
+  const contentType = pieceContentType(response.headers.get("content-type"));
+  if (!contentType) return null;
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (!bytes.byteLength || bytes.byteLength > 8_000_000) return null;
+  return { bytes, contentType };
+}
+
+/** Le dernier message du paquet répond, avec le texte des précédents. */
+export function burstReply(sid: string, rows: WhatsappThreadRow[]) {
+  if (!rows.length) return { send: true as const, text: null as string | null };
+  const index = rows.findIndex((row) => row.twilio_sid === sid);
+  if (index === -1) return { send: true as const, text: null as string | null };
+  if (rows.slice(index + 1).some((row) => row.direction === "inbound")) {
+    return { send: false as const, text: null as string | null };
+  }
+  let start = 0;
+  rows.forEach((row, i) => {
+    if (row.direction === "outbound" && i < index) start = i + 1;
+  });
+  const text = rows
+    .slice(start, index + 1)
+    .filter((row) => row.direction === "inbound")
+    .map((row) => row.body.trim())
+    .filter(Boolean)
+    .join("\n");
+  return { send: true as const, text };
+}
 
 export function phoneFromWhatsapp(from: string | null | undefined) {
   const raw = (from || "").replace(/^whatsapp:/i, "").trim();
   if (!raw) return null;
   return toE164(raw, "FR");
-}
-
-export async function conciergeCoverUrl(cover: ConciergeCover | null) {
-  if (!cover) return null;
-  if (cover.kind === "catalog") return `${siteConfig.url}/api/covers/${cover.photoId}`;
-  try {
-    const signed = await signedCrmUrl(cover.path, 600);
-    return signed.startsWith("https://") ? signed : null;
-  } catch {
-    return null;
-  }
 }
 
 function inboundBody(params: Record<string, string>) {
@@ -68,6 +170,12 @@ function inboundBody(params: Record<string, string>) {
   const media = Number(params.NumMedia || "0");
   if (Number.isFinite(media) && media > 0) return "Document reçu sur WhatsApp.";
   return "";
+}
+
+function prefixSigned(signed: string, line: string) {
+  const signature = `\n\n${"Le Concierge"}`;
+  const body = signed.endsWith(signature) ? signed.slice(0, -signature.length).trim() : signed.trim();
+  return withConciergeSignature(`${line}\n${body}`.trim());
 }
 
 function statusCallbackOnly(params: Record<string, string>) {
@@ -79,13 +187,16 @@ export async function receiveWhatsappWebhook(input: {
   signature: string | null;
   params: URLSearchParams | Record<string, string>;
   authToken: string | null | undefined;
+  accountSid?: string | null;
+  burstWaitMs?: number;
+  fetchImpl?: typeof fetch;
+  openAccess?(customer: WhatsappCustomer): Promise<string | null>;
   store: WhatsappStore;
   send(message: { to: string; body: string; mediaUrl?: string | null }): Promise<{
     ok: boolean;
     sid?: string;
     detail?: string;
   }>;
-  mediaUrl?(cover: ConciergeCover | null): Promise<string | null>;
 }): Promise<{ status: number }> {
   const token = input.authToken?.trim() || "";
   if (!token) return { status: 503 };
@@ -101,50 +212,102 @@ export async function receiveWhatsappWebhook(input: {
 
   const e164 = phoneFromWhatsapp(params.From);
   const to = e164 ? sessionAddress(e164) : null;
-  const said = inboundBody(params) || "Message vide.";
+  const clientText = redactIngestText(inboundBody(params) || "Message vide.");
   if (!to) return { status: 200 };
 
   const customers = await input.store.customersByPhone(e164!);
   const customer = customers.length === 1 ? customers[0] : null;
-  let bookingId: string | null = null;
-  let handoff: HandoffKind | null = null;
-  let reply = UNKNOWN_NUMBER_REPLY;
-  let cover: ConciergeCover | null = null;
-
-  if (customer) {
-    const raw = await input.store.loadDossier(customer.id);
-    const dossier = buildConciergeDossier({ ...raw, firstName: customer.first_name });
-    const turn = planConciergeTurn(said, dossier);
-    bookingId = turn.bookingId;
-    handoff = turn.handoff;
-    reply = turn.text;
-    cover = turn.cover;
-  } else if (customers.length > 1) {
-    reply = conciergeFollowUp(HANDOFF_SENTENCE);
+  const mediaCount = Number(params.NumMedia || "0");
+  const mediaOnly = !(params.Body || "").trim() && Number.isFinite(mediaCount) && mediaCount > 0;
+  let piece: WhatsappPieceResult | null = null;
+  if (customer && mediaCount > 0 && input.store.savePiece && input.accountSid && token) {
+    piece = await storeInboundPieces({
+      params,
+      customerId: customer.id,
+      accountSid: input.accountSid,
+      authToken: token,
+      fetchImpl: input.fetchImpl,
+      savePiece: input.store.savePiece.bind(input.store),
+    });
   }
 
-  const mediaOnly = !(params.Body || "").trim() && Number(params.NumMedia || "0") > 0;
-  if (mediaOnly && customer) {
-    reply = conciergeFollowUp(HANDOFF_SENTENCE);
-    handoff = null;
-    cover = null;
-    bookingId = null;
-  }
+  let journal = clientText;
+  if (mediaOnly && piece === "saved") journal = PIECE_MARK;
+  if (piece === "pan") journal = "Numéro de carte non conservé.";
 
   const inbound = await input.store.insertMessage({
     customer_id: customer?.id || null,
-    booking_id: bookingId,
+    booking_id: null,
     direction: "inbound",
     template_key: null,
-    body: said,
+    body: journal,
     twilio_sid: sid,
     status: "received",
     error: null,
   });
   if ("duplicate" in inbound) return { status: 200 };
 
-  const mediaUrl = cover ? await (input.mediaUrl || conciergeCoverUrl)(cover) : null;
-  const sent = await input.send({ to, body: reply, mediaUrl });
+  let said = journal;
+  if (customer && input.store.recentThread) {
+    const wait = input.burstWaitMs || 0;
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+    const decision = burstReply(sid, await input.store.recentThread(customer.id));
+    if (!decision.send) return { status: 200 };
+    if (decision.text) said = decision.text;
+  }
+
+  let bookingId: string | null = null;
+  let handoff: HandoffKind | null = null;
+  let reply = UNKNOWN_NUMBER_REPLY;
+  const lang = messageLanguage(clientText);
+
+  if (!customer) {
+    if (customers.length > 1) reply = withConciergeSignature(HANDOFF_SENTENCE);
+  } else if (piece === "pan") {
+    reply = panRefusedReply(lang);
+  } else {
+    const parts = said
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const stopping = parts.some((line) => isConciergeStop(line));
+    const hadPiece = piece === "saved" || parts.some((line) => line === PIECE_MARK);
+    const content = parts.filter((line) => !isConciergeStop(line) && line !== PIECE_MARK).join("\n");
+    const raw = await input.store.loadDossier(customer.id);
+    const dossier = buildConciergeDossier({ ...raw, firstName: customer.first_name });
+    if (!content && hadPiece && !stopping) {
+      reply = withConciergeSignature(pieceSavedLine(lang));
+    } else {
+      const turn = planConciergeTurn(content || said, dossier);
+      bookingId = turn.bookingId;
+      handoff = turn.handoff;
+      const replyLang = messageLanguage(content || said);
+      reply = turn.access ? accessLinkReply(replyLang, (await input.openAccess?.(customer)) || null) : turn.text;
+      if (hadPiece && !turn.access) reply = prefixSigned(reply, pieceSavedLine(replyLang));
+      if (stopping) {
+        await input.store.optOut?.(customer.id);
+        if (content && !turn.optOut) {
+          const stopLine =
+            lang === "en"
+              ? "The agency’s proactive messages are stopped."
+              : "Les messages de l’agence sont coupés.";
+          reply = prefixSigned(reply, stopLine);
+        }
+      }
+    }
+    if (mediaOnly && piece === "skipped") {
+      reply = withConciergeSignature(
+        lang === "en"
+          ? "I couldn’t save that document. You can send it again, or I can ask the agency."
+          : "Je n’ai pas pu enregistrer cette pièce. Vous pouvez la renvoyer, ou j’en parle à l’agence."
+      );
+      handoff = null;
+    }
+  }
+
+  if (customer && bookingId) await input.store.tagMessage?.(inbound.id, bookingId);
+
+  const sent = await input.send({ to, body: reply, mediaUrl: null });
   const outbound = await input.store.insertMessage({
     customer_id: customer?.id || null,
     booking_id: bookingId,
@@ -161,10 +324,42 @@ export async function receiveWhatsappWebhook(input: {
       booking_id: bookingId,
       message_id: inbound.id,
       kind: handoff,
-      body: said,
+      body: redactIngestText(clientText),
     });
   }
   return { status: 200 };
+}
+
+async function storeInboundPieces(input: {
+  params: Record<string, string>;
+  customerId: string;
+  accountSid: string;
+  authToken: string;
+  fetchImpl?: typeof fetch;
+  savePiece: NonNullable<WhatsappStore["savePiece"]>;
+}): Promise<WhatsappPieceResult> {
+  const count = Math.min(Number(input.params.NumMedia || "0") || 0, 5);
+  let result: WhatsappPieceResult = "skipped";
+  for (let i = 0; i < count; i += 1) {
+    const url = input.params[`MediaUrl${i}`] || "";
+    if (!url) continue;
+    const file = await downloadTwilioMedia({
+      url,
+      accountSid: input.accountSid,
+      authToken: input.authToken,
+      fetchImpl: input.fetchImpl,
+    });
+    if (!file) continue;
+    if (file.contentType === "application/pdf" && bytesContainPan(file.bytes)) return "pan";
+    const saved = await input.savePiece({
+      customerId: input.customerId,
+      bytes: file.bytes,
+      contentType: file.contentType,
+    });
+    if (saved === "pan") return "pan";
+    if (saved === "saved") result = "saved";
+  }
+  return result;
 }
 
 export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStore {
@@ -180,14 +375,14 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
     },
     async customersByPhone(e164) {
       const [primary, secondary] = await Promise.all([
-        admin.from("crm_customers").select("id, first_name").eq("phone", e164),
-        admin.from("crm_customers").select("id, first_name").eq("phone_secondary", e164),
+        admin.from("crm_customers").select("id, first_name, email").eq("phone", e164),
+        admin.from("crm_customers").select("id, first_name, email").eq("phone_secondary", e164),
       ]);
       if (primary.error) throw primary.error;
       if (secondary.error) throw secondary.error;
       const map = new Map<string, WhatsappCustomer>();
       for (const row of [...(primary.data || []), ...(secondary.data || [])]) {
-        map.set(row.id, { id: row.id, first_name: row.first_name });
+        map.set(row.id, { id: row.id, first_name: row.first_name, email: row.email });
       }
       return [...map.values()];
     },
@@ -258,6 +453,46 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
     async insertRequest(row) {
       const { error } = await admin.from("crm_whatsapp_requests").insert(row);
       if (error) throw error;
+    },
+    async optOut(customerId) {
+      const { error } = await admin
+        .from("crm_customers")
+        .update({ whatsapp_opt_out_at: new Date().toISOString() })
+        .eq("id", customerId);
+      if (error) throw error;
+    },
+    async recentThread(customerId) {
+      const since = new Date(Date.now() - 60_000).toISOString();
+      const { data, error } = await admin
+        .from("crm_whatsapp_messages")
+        .select("direction, body, twilio_sid, created_at")
+        .eq("customer_id", customerId)
+        .gte("created_at", since)
+        .order("created_at", { ascending: true })
+        .limit(30);
+      if (error) throw error;
+      return (data || []) as WhatsappThreadRow[];
+    },
+    async tagMessage(id, bookingId) {
+      const { error } = await admin.from("crm_whatsapp_messages").update({ booking_id: bookingId }).eq("id", id);
+      if (error) throw error;
+    },
+    async savePiece({ customerId, bytes, contentType }) {
+      const type = pieceContentType(contentType);
+      if (!type) return "skipped";
+      if (type === "application/pdf" && bytesContainPan(bytes)) return "pan";
+      const ext = type === "application/pdf" ? "pdf" : type === "image/png" ? "png" : type === "image/webp" ? "webp" : "jpg";
+      const path = `customers/${customerId}/whatsapp/${crypto.randomUUID()}.${ext}`;
+      await uploadCrmFile(path, Buffer.from(bytes), type);
+      const { error } = await admin.from("crm_travel_documents").insert({
+        customer_id: customerId,
+        doc_type: "other",
+        storage_path: path,
+        file_name: `piece-whatsapp.${ext}`,
+        mime_type: type,
+      });
+      if (error) throw error;
+      return "saved";
     },
   };
 }
