@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { CrmBookingItem } from "./types";
 import {
+  applyStoredHotelSources,
   clearLittleEmperorsContacts,
+  contactsFromLeHotelPayload,
   extractHotelEmail,
   extractHotelPhone,
   extractHotelWebsite,
+  fillLeHotelDetails,
   hotelContact,
 } from "./hotel-contact";
 
@@ -83,7 +86,7 @@ describe("hotelContact", () => {
     assert.equal(contact.website, "");
   });
 
-  it("masque téléphone et e-mail pour Little Emperors", () => {
+  it("montre le site, le téléphone et l’e-mail déjà sur la fiche, y compris Little Emperors", () => {
     const contact = hotelContact(
       hotel({
         hotel_name: "Maison Test",
@@ -96,9 +99,26 @@ describe("hotelContact", () => {
       })
     );
     assert.equal(contact.website, "https://www.maison-test.example/");
-    assert.equal(contact.phone, "");
-    assert.equal(contact.email, "");
+    assert.equal(contact.phone, "+506 2222 1111");
+    assert.equal(contact.email, "stay@maison-test.example");
     assert.equal(contact.address, "Rue du lac");
+  });
+
+  it("lit un hôtel imbriqué et ignore l’e-mail du fournisseur", () => {
+    const contact = hotelContact(
+      hotel({
+        hotel_name: "Maison Test",
+        hotel: {
+          website: "www.maison-test.example/hotel",
+          phone: "+33 1 00 00 00 00",
+          email: "reservations@little-emperors.com",
+          reservations_email: "stay@maison-test.example",
+        },
+      })
+    );
+    assert.equal(contact.website, "https://www.maison-test.example/hotel");
+    assert.equal(contact.phone, "+33 1 00 00 00 00");
+    assert.equal(contact.email, "stay@maison-test.example");
   });
 
   it("garde le téléphone d’une confirmation qui l’imprime", () => {
@@ -112,6 +132,110 @@ describe("hotelContact", () => {
     );
     assert.equal(contact.phone, "+91 22 0000 0000");
     assert.equal(contact.email, "stay@maison-test.example");
+  });
+});
+
+describe("sources déjà stockées et détail Little Emperors", () => {
+  it("recopie le site stocké sans inventer téléphone ni e-mail", () => {
+    const [item] = applyStoredHotelSources(
+      [hotel({ hotel_name: "Maison Test", city: "Megève", address: "Rue du lac" })],
+      [{ hotel_id: 8481, hotel_name: "Maison Test", website: "https://www.maison-test.example" }]
+    );
+    const contact = hotelContact(item);
+    assert.equal(contact.website, "https://www.maison-test.example/");
+    assert.equal(contact.phone, "");
+    assert.equal(contact.email, "");
+    assert.equal(item.details?.le_hotel_id, 8481);
+  });
+
+  it("ne colle pas le site d’un autre hôtel", () => {
+    const [item] = applyStoredHotelSources(
+      [hotel({ hotel_name: "Les Fermes de Marie", city: "Megève" })],
+      [{ hotel_id: 7327, hotel_name: "Four Seasons Resort Megeve", website: "https://www.autre-hotel.example" }]
+    );
+    assert.equal(hotelContact(item).website, "");
+    assert.equal(item.details?.le_hotel_id, undefined);
+  });
+
+  it("montre un téléphone déjà stocké à côté, et rien d’autre", () => {
+    const [item] = applyStoredHotelSources(
+      [hotel({ hotel_name: "Maison Test" })],
+      [
+        {
+          hotel_id: 12,
+          hotel_name: "Maison Test",
+          website: null,
+          phone: "+33 1 00 00 00 00",
+          email: null,
+        },
+      ]
+    );
+    const contact = hotelContact(item);
+    assert.equal(contact.phone, "+33 1 00 00 00 00");
+    assert.equal(contact.email, "");
+    assert.equal(contact.website, "");
+  });
+
+  it("le détail hôtel donne le site et laisse téléphone et e-mail absents", () => {
+    const contact = contactsFromLeHotelPayload({
+      id: 8481,
+      name: "Maison Test",
+      website: "https://www.maison-test.example",
+      reservations_email: null,
+      hotel_contact_email: null,
+      concierge_email: null,
+      enquiries_email: null,
+      whatsapp: null,
+      country: { phone_code: "+33" },
+      contact_details: [],
+    });
+    assert.equal(contact.website, "https://www.maison-test.example/");
+    assert.equal(contact.phone, "");
+    assert.equal(contact.email, "");
+  });
+
+  it("prend l’e-mail du détail seulement s’il est renseigné", () => {
+    const contact = contactsFromLeHotelPayload({
+      website: "https://www.little-emperors.com/hotels/1",
+      reservations_email: "stay@maison-test.example",
+      phone: "+44 20",
+    });
+    assert.equal(contact.website, "");
+    assert.equal(contact.email, "stay@maison-test.example");
+    assert.equal(contact.phone, "");
+  });
+
+  it("complète la fiche depuis l’API sans écraser un téléphone déjà noté", async () => {
+    const fetchImpl: typeof fetch = async (input) => {
+      assert.match(String(input), /\/api\/hotels\/8481$/);
+      return new Response(
+        JSON.stringify({
+          website: "https://www.maison-test.example",
+          reservations_email: null,
+          hotel_contact_email: null,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    };
+    const [item] = await fillLeHotelDetails(
+      [hotel({ hotel_name: "Maison Test", le_hotel_id: 8481, phone: "+33 1 00 00 00 00" })],
+      fetchImpl
+    );
+    const contact = hotelContact(item);
+    assert.equal(contact.website, "https://www.maison-test.example/");
+    assert.equal(contact.phone, "+33 1 00 00 00 00");
+    assert.equal(contact.email, "");
+  });
+
+  it("n’appelle pas l’API sans identifiant hôtel", async () => {
+    let called = false;
+    const fetchImpl: typeof fetch = async () => {
+      called = true;
+      return new Response("{}", { status: 200 });
+    };
+    const [item] = await fillLeHotelDetails([hotel({ hotel_name: "Maison Test", city: "Megève" })], fetchImpl);
+    assert.equal(called, false);
+    assert.equal(hotelContact(item).website, "");
   });
 });
 

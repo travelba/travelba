@@ -31,6 +31,7 @@ import { siteConfig } from "@/lib/site";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
+import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
 
 type Props = { params: Promise<{ reference: string }> };
 
@@ -72,8 +73,9 @@ export default async function ReservationDetailPage({ params }: Props) {
     .map(serviceRefusalFromRow)
     .filter((row): row is ServiceRefusal => Boolean(row));
 
-  const visibleItems = (items || []) as CrmBookingItem[];
-  if (!carnetVisible(b, visibleItems)) notFound();
+  const rawItems = (items || []) as CrmBookingItem[];
+  if (!carnetVisible(b, rawItems)) notFound();
+  const visibleItems = await loadHotelContacts(b.id, rawItems);
 
   const insurances = visibleItems.filter((item) => item.kind === "insurance");
   const visibleDocs = (docs || []) as CrmBookingDocument[];

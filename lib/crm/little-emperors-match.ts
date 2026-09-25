@@ -49,6 +49,9 @@ export function leBookingExtract(booking: LeBooking): BookingExtract {
         hotel_name: booking.hotel_name,
         city: booking.city,
         address: booking.address,
+        website: booking.website,
+        le_hotel_id: booking.hotel_id,
+        source_family: "little_emperors",
         rooms: booking.room_types.map((type) => ({
           room: null,
           type,

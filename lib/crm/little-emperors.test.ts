@@ -188,6 +188,11 @@ describe("little emperors staging client", () => {
     assert.equal(isLeCancelled(cancelled.state), true);
     assert.equal(isLeCancelled("booked", "hotel_booking_cancel"), true);
     assert.equal(leBookingExtract(cancelled).document_status, "cancelled");
+    const withSite = leBookingExtract({ ...cancelled, website: "https://www.maison-test.example/hotel" });
+    assert.equal(withSite.items[0]?.details?.website, "https://www.maison-test.example/hotel");
+    assert.equal(withSite.items[0]?.details?.le_hotel_id, cancelled.hotel_id);
+    assert.equal(withSite.items[0]?.details?.phone, undefined);
+    assert.equal(withSite.items[0]?.details?.email, undefined);
     assert.equal(canRemoteCancel({ is_cancellable: false }), false);
     assert.equal(canRemoteCancel({ is_cancellable: null }), false);
     assert.equal(splitGuestName("Nico Santos")?.last_name, "Santos");
