@@ -4,6 +4,7 @@ import { carnetVisible } from "@/lib/crm/carnet";
 import { saveVisaUploads } from "@/lib/crm/visa-save";
 import { markPaidVisasFiled } from "@/lib/crm/visa-post";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { notifyFormalitiesReady, safeConcierge } from "@/lib/crm/concierge-send";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import type { CrmBooking, CrmBookingItem, CrmBookingTraveler } from "@/lib/crm/types";
 
@@ -45,6 +46,7 @@ export async function POST(request: Request, ctx: Ctx) {
     });
     if (result.saved > 0) {
       await markPaidVisasFiled(createServiceClient(), b.id, result.countries, party);
+      await safeConcierge(() => notifyFormalitiesReady(b.id, result.countries));
     }
     return NextResponse.json(result);
   } catch (err) {
