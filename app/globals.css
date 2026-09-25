@@ -72,16 +72,20 @@
 
 .account-tabbar {
   position: fixed;
-  bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  /* Toujours au-dessus de la barre système, avec un vide visible. */
+  bottom: calc(1.75rem + env(safe-area-inset-bottom, 0px));
   left: 50%;
   z-index: 50;
-  width: min(28rem, calc(100% - 1.5rem));
+  width: min(26.5rem, calc(100% - 2rem));
   transform: translateX(-50%);
-  border: 1px solid rgba(229, 227, 220, 0.85);
-  border-radius: 1.5rem;
-  background: rgba(250, 249, 246, 0.72);
-  backdrop-filter: blur(18px);
-  box-shadow: 0 10px 28px rgba(11, 25, 44, 0.14);
+  border: 1px solid rgba(197, 168, 128, 0.72);
+  border-radius: 1.75rem;
+  background: rgba(255, 252, 248, 0.97);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  box-shadow:
+    0 10px 22px rgba(11, 25, 44, 0.16),
+    0 1px 3px rgba(11, 25, 44, 0.08);
 }
 
 .account-app .aura-card {

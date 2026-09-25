@@ -100,12 +100,12 @@ export function AccountChrome({
         </nav>
       </header>
 
-      <main className="mx-auto max-w-[480px] px-4 pb-28 pt-4 sm:px-5">
+      <main className="mx-auto max-w-[480px] px-4 pb-[calc(9.5rem+env(safe-area-inset-bottom,0px))] pt-4 sm:px-5 md:pb-28">
         {phoneWall ? <PhoneWallBanner href="/mon-compte/profil" /> : children}
       </main>
 
       <nav className="account-tabbar md:hidden" aria-label="Navigation compte">
-        <div className="mx-auto flex h-16 max-w-[480px] items-center justify-around px-1">
+        <div className="mx-auto flex max-w-[480px] items-end justify-around px-1.5 py-2">
           {TABS.map((tab) => {
             const active =
               "exact" in tab && tab.exact
@@ -115,15 +115,26 @@ export function AccountChrome({
               <Link
                 key={tab.href}
                 href={tab.href}
-                className={`flex h-12 min-w-[64px] flex-col items-center justify-center gap-0.5 text-[10px] font-bold tracking-tight transition ${
-                  active ? "text-[var(--admin-navy)]" : "text-[#5a5c60] hover:text-[var(--admin-navy)]"
+                className={`flex min-h-12 min-w-[68px] flex-col items-center justify-center gap-1 rounded-2xl px-1 py-1 text-[11px] leading-none tracking-tight transition ${
+                  active
+                    ? "font-bold text-[var(--admin-navy)]"
+                    : "font-semibold text-[#1a2740] hover:text-[var(--admin-navy)]"
                 }`}
               >
-                <Icon
-                  name={tab.icon}
-                  className="h-6 w-6"
-                  filled={active}
-                />
+                <span
+                  className={`flex h-9 w-9 items-center justify-center rounded-2xl ${
+                    active
+                      ? "bg-[var(--admin-navy)] text-[var(--admin-gold)] shadow-[0_8px_16px_rgba(11,25,44,0.28)]"
+                      : "bg-[rgba(11,25,44,0.08)] text-[var(--admin-navy)]"
+                  }`}
+                >
+                  <Icon
+                    name={tab.icon}
+                    className="h-[1.35rem] w-[1.35rem]"
+                    filled={active}
+                    strokeWidth={active ? 2.4 : 2.15}
+                  />
+                </span>
                 {tab.label}
               </Link>
             );
