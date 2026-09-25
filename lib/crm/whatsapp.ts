@@ -133,16 +133,62 @@ export async function sendConnexionWhatsapp(input: {
 
   const variables = connexionContentVariables(input.firstName, input.link);
   if (!variables) return { ok: false, reason: "rejected", detail: "lien court absent" };
+  return deliverTwilioContent({
+    to,
+    contentSid: connexionContentSid(),
+    variables,
+    fetchImpl: input.fetchImpl,
+  });
+}
 
+export function twilioFromNumber() {
+  const from = process.env.TWILIO_WHATSAPP_FROM?.trim() || "";
+  if (!from) return "";
+  return from.startsWith("whatsapp:") ? from : `whatsapp:${from}`;
+}
+
+export function twilioReady() {
+  return Boolean(
+    process.env.TWILIO_ACCOUNT_SID?.trim() &&
+      process.env.TWILIO_AUTH_TOKEN?.trim() &&
+      twilioFromNumber()
+  );
+}
+
+/** Modèle Utility déjà approuvé. Sans SID, aucun appel Twilio. */
+export async function sendContentTemplate(input: {
+  phone: string | null | undefined;
+  contentSid: string;
+  variables: Record<string, string> | null;
+  fetchImpl?: typeof fetch;
+}): Promise<WhatsappSendResult> {
+  const to = whatsappAddress(input.phone);
+  if (!to) return { ok: false, reason: "no_phone" };
+  const contentSid = input.contentSid.trim();
+  if (!contentSid || !twilioReady()) return { ok: false, reason: "not_configured" };
+  if (!input.variables) return { ok: false, reason: "rejected", detail: "variables absentes" };
+  return deliverTwilioContent({
+    to,
+    contentSid,
+    variables: input.variables,
+    fetchImpl: input.fetchImpl,
+  });
+}
+
+async function deliverTwilioContent(input: {
+  to: string;
+  contentSid: string;
+  variables: Record<string, string>;
+  fetchImpl?: typeof fetch;
+}): Promise<WhatsappSendResult> {
   const accountSid = process.env.TWILIO_ACCOUNT_SID!.trim();
   const token = process.env.TWILIO_AUTH_TOKEN!.trim();
-  const from = process.env.TWILIO_WHATSAPP_FROM!.trim();
-  const contentSid = connexionContentSid();
+  const from = twilioFromNumber();
   const body = new URLSearchParams({
-    From: from.startsWith("whatsapp:") ? from : `whatsapp:${from}`,
-    To: to,
-    ContentSid: contentSid,
-    ContentVariables: JSON.stringify(variables),
+    From: from,
+    To: input.to,
+    ContentSid: input.contentSid,
+    ContentVariables: JSON.stringify(input.variables),
   });
 
   const fetchImpl = input.fetchImpl ?? fetch;

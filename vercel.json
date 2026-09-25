@@ -21,6 +21,10 @@
     {
       "path": "/api/cron/little-emperors-sync",
       "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/concierge",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

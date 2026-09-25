@@ -10,6 +10,13 @@ import {
 import { parseBillingCompanyId } from "@/lib/crm/billing-companies";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { BookingDeleteError, deleteBookingById } from "@/lib/crm/delete-booking";
+import { normalizePieceKind } from "@/lib/crm/concierge-notices";
+import {
+  notifyStayPublished,
+  queuePublishedPieces,
+  remindMissingPieces,
+  safeConcierge,
+} from "@/lib/crm/concierge-send";
 import type { BookingStatus, CrmBooking, CrmCustomer } from "@/lib/crm/types";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -81,6 +88,36 @@ export async function PATCH(request: Request, ctx: Ctx) {
     if (error) return dbError(error, 400);
     booking = data as CrmBooking;
   }
+  let revealedPieces: { id: string; kind: string | null }[] = [];
+  if ("visible_to_client" in body && body.visible_to_client && prev.visible_to_client) {
+    const { data: hidden } = await auth.supabase
+      .from("crm_booking_documents")
+      .select("id, kind, booking_item_id")
+      .eq("booking_id", id)
+      .eq("visible_to_client", false);
+    const itemIds = [
+      ...new Set(
+        ((hidden || []) as { booking_item_id?: string | null }[])
+          .map((doc) => doc.booking_item_id)
+          .filter((value): value is string => Boolean(value))
+      ),
+    ];
+    const kinds = new Map<string, string>();
+    if (itemIds.length) {
+      const { data: linked } = await auth.supabase
+        .from("crm_booking_items")
+        .select("id, kind")
+        .in("id", itemIds);
+      for (const item of (linked || []) as { id: string; kind: string }[]) kinds.set(item.id, item.kind);
+    }
+    revealedPieces = ((hidden || []) as { id: string; kind: string; booking_item_id?: string | null }[])
+      .map((doc) => ({
+        id: doc.id,
+        kind: (doc.booking_item_id && kinds.get(doc.booking_item_id)) || doc.kind,
+      }))
+      .filter((doc) => normalizePieceKind(doc.kind));
+  }
+
   if ("visible_to_client" in body) {
     try {
       if (body.visible_to_client) {
@@ -101,6 +138,12 @@ export async function PATCH(request: Request, ctx: Ctx) {
       .eq("id", id)
       .maybeSingle();
     if (refreshed) booking = refreshed as CrmBooking;
+    if (body.visible_to_client && !prev.visible_to_client) {
+      await safeConcierge(() => notifyStayPublished(id));
+      await safeConcierge(() => remindMissingPieces(id));
+    } else if (revealedPieces.length) {
+      await safeConcierge(() => queuePublishedPieces(id, revealedPieces));
+    }
   }
   try {
     await syncBookingTotalFromItems(auth.supabase, id);
