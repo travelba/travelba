@@ -114,17 +114,19 @@ export function Icon({
   name,
   className,
   filled = false,
+  strokeWidth,
 }: {
   name: string;
   className?: string;
   filled?: boolean;
+  strokeWidth?: number;
 }) {
   const Cmp = ICONS[name] || File;
   return (
     <Cmp
       aria-hidden
       className={className}
-      strokeWidth={filled ? 2.4 : 1.75}
+      strokeWidth={strokeWidth ?? (filled ? 2.4 : 1.75)}
     />
   );
 }

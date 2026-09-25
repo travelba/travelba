@@ -247,7 +247,7 @@ export function ProfileForm({
       ) : null}
 
       {error ? <p className="py-2 text-sm text-accent">{error}</p> : null}
-      <div className="sticky bottom-20 z-20 -mx-4 border-t border-[#e5e3dc] bg-[rgba(250,249,246,0.95)] px-4 py-3 backdrop-blur md:bottom-4">
+      <div className="sticky bottom-[calc(7rem+env(safe-area-inset-bottom,0px))] z-20 -mx-4 border-t border-[#e5e3dc] bg-[rgba(250,249,246,0.95)] px-4 py-3 backdrop-blur md:bottom-4">
         {saved ? <p className="mb-2 text-sm text-[var(--admin-navy)]">Enregistré.</p> : null}
         <BusyBar active={saving} label="Enregistrement…" />
         <button className="admin-af-btn w-full rounded-full px-5 py-2.5 text-sm" disabled={saving}>
