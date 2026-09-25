@@ -59,7 +59,7 @@ export default async function AdminBookingPage({ params }: Props) {
       ? supabase.from("crm_customers").select("*").in("id", relatedIds)
       : Promise.resolve({ data: [] as CrmCustomer[] }),
     supabase.from("crm_declined_services").select("kind, service_leg, place, moment").eq("booking_id", id),
-    supabase.from("crm_visa_requests").select("country, step, status, answers").eq("booking_id", id),
+    supabase.from("crm_visa_requests").select("country, step, status, answers, accepted_at").eq("booking_id", id),
     supabase
       .from("crm_le_bookings")
       .select("id, hotel_name, is_cancellable, cancellation_deadline, cancellation_policies, state")
@@ -135,11 +135,12 @@ export default async function AdminBookingPage({ params }: Props) {
           aiConfigured={aiGatewayConfigured()}
           formalities={frenchPassportTrip(bookingItems, bookingTravelers.length)}
           refusals={refusals}
-          visaRequests={((visaRows || []) as { country: string; step?: ClientVisaStep; status?: string; answers?: unknown }[]).map(
+          visaRequests={((visaRows || []) as { country: string; step?: ClientVisaStep; status?: string; answers?: unknown; accepted_at?: string | null }[]).map(
             (row) => ({
               country: row.country,
               step: row.step,
               status: row.status,
+              accepted_at: row.accepted_at,
               answers: readEstaAnswers(row.answers) as Partial<EstaAnswers>,
             })
           )}

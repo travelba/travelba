@@ -1,11 +1,14 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
-import { buildEtaIlDraft, publicEtaIlDraft } from "@/lib/crm/eta-il-draft";
+import { continueEtaIlRequest } from "@/lib/crm/eta-il-continue";
 import { etaIlPliantCard, pliantCardName } from "@/lib/crm/eta-il-fee";
 import { issuePliantCard, pliantConfigured, raisePliantLimit } from "@/lib/crm/pliant";
+import { openAcceptedVisa } from "@/lib/crm/visa-accept";
 import { postVisaCharge } from "@/lib/crm/visa-post";
 import { euroRates } from "@/lib/crm/visa-ecb";
 import {
+  acceptVisaDecision,
+  astraFillsCountry,
   confirmAllowed,
   hasEstaAnswers,
   launchWouldRewind,
@@ -28,6 +31,7 @@ import type {
   CrmBooking,
   CrmBookingItem,
   CrmBookingTraveler,
+  CrmCompanion,
   CrmCustomer,
   CrmTravelDocument,
 } from "@/lib/crm/types";
@@ -87,6 +91,11 @@ function resumePayload(country: VisaCorridor, step: ClientVisaStep) {
   };
 }
 
+function idList(value: unknown) {
+  if (!Array.isArray(value)) return null;
+  return value.filter((id): id is string => typeof id === "string" && id.length > 0);
+}
+
 function frenchPassportCount(documents: Pick<CrmTravelDocument, "doc_type" | "issuing_country" | "number">[] | null) {
   return (documents || []).filter((row) => row.doc_type === "passport" && row.issuing_country === "FR" && row.number)
     .length;
@@ -103,6 +112,8 @@ export async function POST(request: Request, ctx: Ctx) {
     pliantTransactionId?: string;
     paidCents?: number;
     refusedTravelerIds?: string[];
+    confirm?: boolean;
+    travelerIds?: string[];
   };
   const country = corridor(body.country);
   if (!country) return jsonError("Pays non pris en charge.");
@@ -111,85 +122,122 @@ export async function POST(request: Request, ctx: Ctx) {
   if (!booking) return jsonError("Réservation introuvable", 404);
   const b = booking as CrmBooking;
 
-  if (body.action === "run" || body.action === "fill") {
+  if (body.action === "run") {
+    if (body.confirm !== true) return jsonError("Confirmez la demande avant de lancer le parcours.");
+    const [{ data: prior }, { data: travelers }, { data: items }, { data: documents }, { data: customer }, { data: companions }] =
+      await Promise.all([
+        auth.supabase.from("crm_visa_requests").select("step, status, answers, accepted_at").eq("booking_id", b.id).eq("country", country).maybeSingle(),
+        auth.supabase.from("crm_booking_travelers").select("*").eq("booking_id", b.id),
+        auth.supabase.from("crm_booking_items").select("*").eq("booking_id", b.id),
+        auth.supabase.from("crm_travel_documents").select("doc_type, issuing_country, number").eq("customer_id", b.customer_id),
+        auth.supabase.from("crm_customers").select("*").eq("id", b.customer_id).maybeSingle(),
+        auth.supabase.from("crm_travel_companions").select("*").eq("customer_id", b.customer_id),
+      ]);
+    const priorRow = prior as { step?: ClientVisaStep; status?: string; answers?: unknown; accepted_at?: string | null } | null;
+    const party = (travelers || []) as CrmBookingTraveler[];
+    const partyIds = party.map((row) => row.id);
+    const decision = acceptVisaDecision({
+      confirm: true,
+      travelerIds: idList(body.travelerIds) ?? partyIds,
+      partyIds,
+      alreadyAccepted: Boolean(priorRow?.accepted_at),
+      step: priorRow?.step || null,
+      status: priorRow?.status || null,
+    });
+    if (!decision.start) {
+      if (priorRow?.accepted_at && priorRow.step) return NextResponse.json(resumePayload(country, priorRow.step));
+      return jsonError(decision.error);
+    }
+    const answers = mergeEstaAnswers(readEstaAnswers(priorRow?.answers), body.answers);
+    const block = confirmAllowed({
+      already: [],
+      country,
+      frenchPassports: frenchPassportCount(documents as Pick<CrmTravelDocument, "doc_type" | "issuing_country" | "number">[]),
+      esta: answers,
+      resumable: Boolean(priorRow?.step),
+    });
+    if (block) return jsonError(block);
+    if (!customer) return jsonError("Client introuvable", 404);
+    const opened = visibilityOnRequest({
+      visible: b.visible_to_client,
+      prices: b.prices_visible !== false && b.visible_to_client,
+    });
+    b.visible_to_client = opened.visible;
+    b.prices_visible = opened.prices;
+    await publishTrip(auth.supabase, b);
+    await openAcceptedVisa(auth.supabase, {
+      booking: b,
+      country,
+      step: decision.step,
+      status: decision.status,
+      travelerIds: decision.travelerIds,
+      travelers: party,
+      items: (items || []) as CrmBookingItem[],
+      holder: customer as CrmCustomer,
+      companions: (companions || []) as CrmCompanion[],
+      answers,
+      enforceWindow: false,
+    });
+    if (astraFillsCountry(country) && decision.step === "preparation") after(() => continueEtaIlRequest(b.id));
+    const phase = phaseForSavedStep(decision.step);
+    return NextResponse.json({
+      country,
+      accepted: true,
+      step: decision.step,
+      phase,
+      hold: phase === "paiement" ? paymentHold(pliantConfigured()) : null,
+    });
+  }
+
+  if (body.action === "fill") {
     const { data: prior } = await auth.supabase
       .from("crm_visa_requests")
-      .select("step, answers")
+      .select("step, answers, accepted_at")
       .eq("booking_id", b.id)
       .eq("country", country)
       .maybeSingle();
-    const priorRow = prior as { step?: ClientVisaStep; answers?: unknown } | null;
-    const priorStep = priorRow?.step || null;
-    if (
-      priorStep &&
-      (priorStep === "paiement" || priorStep === "piece" || (body.action === "run" && launchWouldRewind(priorStep)))
-    ) {
+    const priorRow = prior as { step?: ClientVisaStep; answers?: unknown; accepted_at?: string | null } | null;
+    if (!priorRow?.accepted_at) return jsonError("Confirmez la demande avant de lancer le parcours.");
+    const priorStep = priorRow.step || null;
+    if (priorStep && (priorStep === "paiement" || priorStep === "piece" || launchWouldRewind(priorStep))) {
       return NextResponse.json(resumePayload(country, priorStep));
     }
-
-    if (body.action === "fill" && country !== "IL") {
-      const merged = mergeEstaAnswers(readEstaAnswers(priorRow?.answers), body.answers);
-      const { data: documents } = await auth.supabase
-        .from("crm_travel_documents")
-        .select("doc_type, issuing_country, number")
-        .eq("customer_id", b.customer_id);
-      const block = confirmAllowed({
-        already: [],
-        country,
-        frenchPassports: frenchPassportCount(documents as Pick<CrmTravelDocument, "doc_type" | "issuing_country" | "number">[]),
-        esta: merged,
-        resumable: true,
-      });
-      if (block) return jsonError(block);
-      await publishTrip(auth.supabase, b);
-      await saveVisaStep(auth.supabase, b.id, country, stepAfterPrepare(country), merged);
-      return NextResponse.json({
-        country,
-        phase: "à confirmer",
-        portal: officialVisaApplyUrl(country),
-        reason: "Récapitulatif prêt. Confirmez avant l’envoi.",
-        travelers: [],
-        step: "validation",
-      });
-    }
-
-    if (body.action === "fill") return jsonError("Le remplissage ETA-IL passe par le portail.");
-  }
-
-  if (body.action === "run" && country === "IL") {
-    const [{ data: items }, { data: travelers }, { data: documents }, { data: customer }] = await Promise.all([
-      auth.supabase.from("crm_booking_items").select("*").eq("booking_id", b.id),
-      auth.supabase.from("crm_booking_travelers").select("*").eq("booking_id", b.id),
-      auth.supabase.from("crm_travel_documents").select("*").eq("customer_id", b.customer_id),
-      auth.supabase.from("crm_customers").select("first_name, last_name, usage_name").eq("id", b.customer_id).maybeSingle(),
-    ]);
-    const draft = buildEtaIlDraft({
-      items: (items || []) as CrmBookingItem[],
-      travelers: (travelers || []) as CrmBookingTraveler[],
-      documents: (documents || []) as CrmTravelDocument[],
-      holder: customer as Pick<CrmCustomer, "first_name" | "last_name" | "usage_name"> | null,
-      startDate: b.start_date,
-      endDate: b.end_date,
+    if (country === "IL") return jsonError("Le remplissage ETA-IL passe par le portail.");
+    const merged = mergeEstaAnswers(readEstaAnswers(priorRow.answers), body.answers);
+    const { data: documents } = await auth.supabase
+      .from("crm_travel_documents")
+      .select("doc_type, issuing_country, number")
+      .eq("customer_id", b.customer_id);
+    const block = confirmAllowed({
+      already: [],
+      country,
+      frenchPassports: frenchPassportCount(documents as Pick<CrmTravelDocument, "doc_type" | "issuing_country" | "number">[]),
+      esta: merged,
+      resumable: true,
     });
+    if (block) return jsonError(block);
     await publishTrip(auth.supabase, b);
-    await saveVisaStep(auth.supabase, b.id, "IL", "preparation");
-    return NextResponse.json({ ...publicEtaIlDraft(draft), country, portal: officialVisaApplyUrl("IL"), step: "preparation" });
-  }
-
-  if (body.action === "run") {
-    await publishTrip(auth.supabase, b);
-    await saveVisaStep(auth.supabase, b.id, country, "preparation", body.answers);
+    await saveVisaStep(auth.supabase, b.id, country, stepAfterPrepare(country), merged);
     return NextResponse.json({
       country,
-      phase: "prêt",
+      phase: "à confirmer",
       portal: officialVisaApplyUrl(country),
-      reason: "Préparation ouverte. Le séjour est visible, sans les prix.",
+      reason: "Récapitulatif prêt. Confirmez avant l’envoi.",
       travelers: [],
-      step: "preparation",
+      step: "validation",
     });
   }
 
   if (body.action === "charge") {
+    const { data: accepted } = await auth.supabase
+      .from("crm_visa_requests")
+      .select("accepted_at")
+      .eq("booking_id", b.id)
+      .eq("country", country)
+      .maybeSingle();
+    if (!(accepted as { accepted_at?: string | null } | null)?.accepted_at) {
+      return jsonError("Confirmez la demande avant de lancer le parcours.");
+    }
     const tx = (body.pliantTransactionId || "").trim();
     const paid = Math.floor(Number(body.paidCents) || 0);
     if (!tx || paid <= 0) return jsonError("Paiement Pliant incomplet.");
@@ -219,7 +267,7 @@ export async function POST(request: Request, ctx: Ctx) {
 
   const [{ data: existing }, { data: travelers }, { data: documents }, { data: customer }, { data: card }] =
     await Promise.all([
-      auth.supabase.from("crm_visa_requests").select("country, step, answers").eq("booking_id", b.id),
+      auth.supabase.from("crm_visa_requests").select("country, step, answers, accepted_at").eq("booking_id", b.id),
       auth.supabase.from("crm_booking_travelers").select("id").eq("booking_id", b.id),
       auth.supabase
         .from("crm_travel_documents")
@@ -228,9 +276,15 @@ export async function POST(request: Request, ctx: Ctx) {
       auth.supabase.from("crm_customers").select("first_name, last_name").eq("id", b.customer_id).maybeSingle(),
       auth.supabase.from("crm_visa_cards").select("pliant_card_id, ceiling_cents, countries").eq("booking_id", b.id).maybeSingle(),
     ]);
-  const rows = (existing || []) as { country: VisaCorridor; step?: ClientVisaStep; answers?: unknown }[];
+  const rows = (existing || []) as {
+    country: VisaCorridor;
+    step?: ClientVisaStep;
+    answers?: unknown;
+    accepted_at?: string | null;
+  }[];
   const already = rows.map((row) => row.country);
   const current = rows.find((row) => row.country === country);
+  if (!current?.accepted_at) return jsonError("Confirmez la demande avant de lancer le parcours.");
   const french = frenchPassportCount(documents as Pick<CrmTravelDocument, "doc_type" | "issuing_country" | "number">[]);
   const party = (travelers || []) as Pick<CrmBookingTraveler, "id">[];
   const esta = mergeEstaAnswers(readEstaAnswers(current?.answers), body.answers);

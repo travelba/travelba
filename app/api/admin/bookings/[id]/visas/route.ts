@@ -3,6 +3,7 @@ import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { saveVisaUploads } from "@/lib/crm/visa-save";
 import { markPaidVisasFiled } from "@/lib/crm/visa-post";
 import { notifyFormalitiesReady, safeConcierge } from "@/lib/crm/concierge-send";
+import { whatsappOnVisa } from "@/lib/crm/visa-flow";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import type { CrmBooking, CrmBookingItem, CrmBookingTraveler } from "@/lib/crm/types";
 
@@ -35,7 +36,7 @@ export async function POST(request: Request, ctx: Ctx) {
       countries: trip.entries.map((entry) => ({ iso: entry.iso, name: entry.name })),
       files,
     });
-    if (result.saved > 0) {
+    if (result.saved > 0 && whatsappOnVisa("piece")) {
       await markPaidVisasFiled(auth.supabase, b.id, result.countries, party);
       await safeConcierge(() => notifyFormalitiesReady(b.id, result.countries));
     }

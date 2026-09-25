@@ -426,8 +426,19 @@ export async function notifyFormalitiesReady(bookingId: string, countries: strin
   const admin = createServiceClient();
   const booking = await loadBooking(admin, bookingId);
   if (!booking?.visible_to_client) return;
+  const { data: papers } = await admin
+    .from("crm_travel_documents")
+    .select("doc_type, issuing_country, booking_id")
+    .eq("customer_id", booking.customer_id)
+    .eq("doc_type", "visa");
+  const filed = new Set(
+    ((papers || []) as { issuing_country?: string | null; booking_id?: string | null }[])
+      .filter((row) => row.issuing_country && (!row.booking_id || row.booking_id === booking.id))
+      .map((row) => String(row.issuing_country).toUpperCase())
+  );
   for (const iso of countries) {
     const code = iso.trim().toUpperCase();
+    if (!filed.has(code)) continue;
     const plan = planFormalityReady({
       published: true,
       formality: entryForFrenchPassport(code).formality,

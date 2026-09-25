@@ -21,7 +21,7 @@ const ESTA = {
 
 test("le visa s’arrête au paiement, seulement après un fichier de passeport", () => {
   resetExampleState();
-  assert.throws(() => launchExampleVisa("US", ESTA), (err: unknown) => {
+  assert.throws(() => launchExampleVisa("US", ESTA, { confirm: true }), (err: unknown) => {
     assert.ok(err instanceof ExampleStop);
     assert.match(err.message, /passeport français manquant/);
     return true;
@@ -42,9 +42,16 @@ test("le visa s’arrête au paiement, seulement après un fichier de passeport"
   assert.equal(doc.issuing_country, "FR");
   assert.ok(doc.storage_path?.startsWith("exemple/"));
   assert.ok(readExampleFile(doc.storage_path || ""));
-  const visa = launchExampleVisa("US", ESTA);
+  assert.throws(() => launchExampleVisa("US", ESTA), (err: unknown) => {
+    assert.ok(err instanceof ExampleStop);
+    assert.match(err.message, /Confirmez/);
+    return true;
+  });
+  assert.equal(readExample().visaRequests.length, 0);
+  const visa = launchExampleVisa("US", ESTA, { confirm: true });
   assert.equal(visa.step, "paiement");
   assert.equal(visa.status, "en_cours");
+  assert.ok(visa.accepted_at);
   assert.equal(launchExampleVisa("US", ESTA).step, "paiement");
 });
 
