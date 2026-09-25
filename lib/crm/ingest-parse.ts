@@ -1,4 +1,5 @@
 import { inferAirlineIata } from "./brand-marks";
+import { extractHotelEmail, extractHotelPhone, extractHotelWebsite } from "./hotel-contact";
 import { redactIngestText } from "./ingest-redact";
 import { detectCancellationDocument, type BookingExtract } from "./ingest-types";
 import { findMatchingItem, mergeExtractItems } from "./item-match";
@@ -409,6 +410,10 @@ export type ParsedHotel = {
   supplier?: string | null;
   occupancy?: string | null;
   board?: string | null;
+  website?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  source_family?: string | null;
 };
 
 export function parseLittleEmperorsHotel(text: string): ParsedHotel | null {
@@ -447,6 +452,10 @@ export function parseLittleEmperorsHotel(text: string): ParsedHotel | null {
     end_at: checkOut ? parseFrEnDate(checkOut[1]) : null,
     included,
     rooms: rooms.length ? rooms : [],
+    website: extractHotelWebsite(text),
+    phone: null,
+    email: null,
+    source_family: "little_emperors",
   };
 }
 
@@ -468,6 +477,9 @@ export function parseNantipaConfirmation(text: string): ParsedHotel | null {
     end_at: dates ? parseUsMonthDayYear(dates[2]) : null,
     included: [],
     rooms: villa ? [{ room: villa[1].replace(/\s+/g, " ").trim(), guests: null }] : [],
+    website: extractHotelWebsite(text),
+    phone: extractHotelPhone(text),
+    email: extractHotelEmail(text),
   };
 }
 
@@ -509,6 +521,9 @@ export function parseHotelConfirmationLetter(text: string): ParsedHotel | null {
       },
     ],
     needs_review: /TENTATIVE/i.test(text),
+    website: extractHotelWebsite(text),
+    phone: extractHotelPhone(text),
+    email: extractHotelEmail(text),
   };
 }
 
@@ -1098,7 +1113,10 @@ function hotelToItem(hotel: ParsedHotel): ExtractItem {
   return {
     kind: "hotel",
     title: hotel.hotel_name || "Hôtel",
-    supplier: hotel.supplier || null,
+    supplier:
+      hotel.source_family === "little_emperors"
+        ? hotel.supplier || "Little Emperors"
+        : hotel.supplier || null,
     confirmation_ref: hotel.confirmation_ref,
     start_at: hotel.start_at,
     end_at: hotel.end_at,
@@ -1107,6 +1125,10 @@ function hotelToItem(hotel: ParsedHotel): ExtractItem {
       hotel_name: hotel.hotel_name,
       city: hotel.city,
       address: hotel.address,
+      website: hotel.website || undefined,
+      phone: hotel.phone || undefined,
+      email: hotel.email || undefined,
+      source_family: hotel.source_family || undefined,
       board: hotel.board || undefined,
       occupancy: hotel.occupancy || undefined,
       included: hotel.included,
@@ -1230,6 +1252,23 @@ function overlayItem(target: ExtractItem, incoming: ExtractItem) {
       current.hotel_name = incoming.details.hotel_name;
     }
     if (incoming.details?.city && !current.city) current.city = incoming.details.city;
+    if (incoming.details?.address && !current.address) current.address = incoming.details.address;
+    if (incoming.details?.website && !current.website) current.website = incoming.details.website;
+    if (current.source_family === "little_emperors") {
+      current.phone = null;
+      current.email = null;
+    } else if (
+      incoming.details?.source_family === "little_emperors" &&
+      !current.phone &&
+      !current.email
+    ) {
+      current.source_family = "little_emperors";
+      current.phone = null;
+      current.email = null;
+    } else {
+      if (incoming.details?.phone && !current.phone) current.phone = incoming.details.phone;
+      if (incoming.details?.email && !current.email) current.email = incoming.details.email;
+    }
     if (incoming.details?.board && !current.board) current.board = incoming.details.board;
     if (incoming.details?.occupancy && !current.occupancy) {
       current.occupancy = incoming.details.occupancy;

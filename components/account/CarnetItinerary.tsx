@@ -9,10 +9,10 @@ import type {
 import { BOOKING_ITEM_LABELS, visibleServiceCopy, type BookingItemKind } from "@/lib/crm/types";
 import { Icon } from "@/components/crm/icons";
 import { BrandMark } from "@/components/crm/BrandMark";
-import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
+import { FilePreviewTile } from "@/components/crm/FilePreview";
+import { HotelContactButton } from "@/components/crm/HotelContact";
 import {
   documentsForItem,
-  confirmationForItem,
   dayHeading,
   detailList,
   detailStr,
@@ -67,26 +67,6 @@ function AgendaLink({
   );
 }
 
-function ConfirmLink({
-  item,
-  docs,
-}: {
-  item: CrmBookingItem;
-  docs: CrmBookingDocument[];
-}) {
-  const doc = confirmationForItem(item, docs);
-  if (!doc) return null;
-  return (
-    <a
-      href={`/api/files?path=${encodeURIComponent(doc.storage_path)}`}
-      className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--aura-blue)]"
-    >
-      Voir la confirmation
-      <Icon name="picture_as_pdf" className="h-4 w-4" />
-    </a>
-  );
-}
-
 function CardBody({
   item,
   currency,
@@ -127,7 +107,8 @@ function CardBody({
   const hotelCity = item.kind === "hotel" ? hotelCityLine(item) : "";
 
   return (
-    <details className="group min-w-0 overflow-hidden rounded-2xl border border-[#e5e3dc] bg-white">
+    <div className="min-w-0 overflow-hidden rounded-2xl border border-[#e5e3dc] bg-white">
+    <details className="group min-w-0">
       <summary className="flex min-w-0 cursor-pointer list-none items-start gap-3 overflow-hidden px-3.5 py-3 [&::-webkit-details-marker]:hidden">
         <BrandMark item={item} className="h-10 w-10" />
         <div className="min-w-0 flex-1 overflow-hidden">
@@ -248,22 +229,30 @@ function CardBody({
         {item.confirmation_ref ? (
           <p className="text-xs text-muted">Réf. {item.confirmation_ref}</p>
         ) : null}
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-end gap-3">
           {documentsForItem(item, docs).map((doc) => (
-            <FileOpenLink
+            <FilePreviewTile
               key={doc.id}
-              path={doc.storage_path}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--aura-blue)]"
-            >
-              <Icon name={fileKindIcon(doc.mime_type, doc.file_name)} className="h-4 w-4" />
-              {doc.id === item.source_document_id ? "Voir la confirmation" : doc.file_name || "Pièce jointe"}
-            </FileOpenLink>
+              file={{
+                id: doc.id,
+                path: doc.storage_path,
+                fileName: doc.file_name || "document",
+                mimeType: doc.mime_type,
+                label: doc.id === item.source_document_id ? "Confirmation" : doc.file_name || "Pièce jointe",
+                shareText: "Bonjour, je vous transmets une pièce de la réservation.",
+              }}
+            />
           ))}
-          {!documentsForItem(item, docs).length ? <ConfirmLink item={item} docs={docs} /> : null}
           {calendarHref ? <AgendaLink href={calendarHref}>Ajouter à l’agenda</AgendaLink> : null}
         </div>
       </div>
     </details>
+    {item.kind === "hotel" ? (
+      <div className="px-3.5 pb-3">
+        <HotelContactButton item={item} />
+      </div>
+    ) : null}
+    </div>
   );
 }
 

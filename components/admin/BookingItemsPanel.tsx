@@ -12,12 +12,11 @@ import {
 } from "@/lib/crm/types";
 import type { BookingExtract } from "@/lib/crm/ingest-types";
 import { itemDetailsLine, itemWhen } from "@/lib/crm/booking-display";
-import { hotelDisplayName, itemPriceLabel } from "@/lib/crm/carnet";
+import { documentsForItem, hotelDisplayName, itemPriceLabel } from "@/lib/crm/carnet";
+import { HotelContactButton } from "@/components/crm/HotelContact";
+import { FilePreviewTile } from "@/components/crm/FilePreview";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
 import { BusyBar } from "@/components/crm/BusyBar";
-import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
-import { Icon } from "@/components/crm/icons";
-import { documentsForItem } from "@/lib/crm/carnet";
 import type { CrmBookingDocument } from "@/lib/crm/types";
 import type { HouseholdMember } from "@/lib/crm/household";
 
@@ -274,6 +273,7 @@ export function BookingItemsPanel({
                         </span>
                       ) : null}
                     </p>
+                    {item.kind === "hotel" ? <HotelContactButton item={item} /> : null}
                     <p className="text-xs text-muted">
                       {[itemWhen(item), itemDetailsLine(item), itemPriceLabel(item, currency)]
                         .filter(Boolean)
@@ -376,15 +376,21 @@ function ItemAttachments({
   return (
     <div className="mt-2 space-y-1">
       <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted">Pièces jointes</p>
-      {docs.map((doc) => (
-        <div key={doc.id} className="flex items-center justify-between gap-2 text-xs">
-          <span className="truncate">{doc.file_name || "Document"}</span>
-          <FileOpenLink path={doc.storage_path} className="inline-flex items-center gap-1 font-semibold">
-            <Icon name={fileKindIcon(doc.mime_type, doc.file_name)} className="h-3.5 w-3.5" />
-            Ouvrir
-          </FileOpenLink>
-        </div>
-      ))}
+      <div className="flex flex-wrap gap-3">
+        {docs.map((doc) => (
+          <FilePreviewTile
+            key={doc.id}
+            file={{
+              id: doc.id,
+              path: doc.storage_path,
+              fileName: doc.file_name || "document",
+              mimeType: doc.mime_type,
+              label: doc.file_name || "Pièce jointe",
+              shareText: "Bonjour, je vous transmets une pièce de la réservation.",
+            }}
+          />
+        ))}
+      </div>
       <form onSubmit={upload} className="flex flex-wrap items-center gap-2">
         <BusyBar active={busy} label="Envoi…" />
         <input name="file" type="file" required className="text-xs" />

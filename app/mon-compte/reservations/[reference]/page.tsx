@@ -23,15 +23,14 @@ import {
   itemPriceLabel,
   tripHeadline,
   tripPlaceLine,
-  unlinkedDocuments,
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { siteConfig } from "@/lib/site";
 import { BookingHero } from "@/components/crm/BookingHero";
-import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
-import { Icon } from "@/components/crm/icons";
+import { ReservationFiles } from "@/components/crm/ReservationFiles";
+import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
 
 type Props = { params: Promise<{ reference: string }> };
 
@@ -78,7 +77,6 @@ export default async function ReservationDetailPage({ params }: Props) {
 
   const insurances = visibleItems.filter((item) => item.kind === "insurance");
   const visibleDocs = (docs || []) as CrmBookingDocument[];
-  const extraDocs = unlinkedDocuments(visibleDocs, visibleItems);
   const party = (travelers || []) as CrmBookingTraveler[];
   const coverage = tripDocCoverage(party, (identityDocs || []) as CrmTravelDocument[]);
   const missingPassports = coverage.total > 0 && coverage.ready < coverage.total;
@@ -153,32 +151,15 @@ export default async function ReservationDetailPage({ params }: Props) {
         refusals={refusals}
       />
 
-      {extraDocs.length ? (
-        <section className="aura-card space-y-3 rounded-[1.35rem] bg-white p-4">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
-            Documents du voyage
-          </p>
-          <ul className="space-y-2">
-            {extraDocs.map((doc) => (
-              <li key={doc.id} className="flex items-center justify-between gap-3">
-                <span className="flex min-w-0 items-center gap-2 text-sm text-[var(--admin-navy)]">
-                  <Icon
-                    name={fileKindIcon(doc.mime_type, doc.file_name)}
-                    className="h-5 w-5 shrink-0 text-[var(--admin-gold)]"
-                  />
-                  <span className="truncate">{doc.file_name || "Document"}</span>
-                </span>
-                <FileOpenLink
-                  path={doc.storage_path}
-                  className="inline-flex shrink-0 items-center rounded-full bg-[var(--surface-2)] px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)] ring-1 ring-[#e5e3dc]"
-                >
-                  Ouvrir
-                </FileOpenLink>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+      <ReservationFiles
+        passports={passportPreviewsForStay(
+          party,
+          (identityDocs || []) as CrmTravelDocument[],
+          customer,
+          b.reference
+        )}
+        attachments={attachmentPreviews(visibleDocs, visibleItems, b.reference)}
+      />
 
       {bookingHasFlight(visibleItems) ? (
         <ExtrasPanel

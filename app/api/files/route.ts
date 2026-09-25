@@ -1,7 +1,26 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireCustomer, requireStaff } from "@/lib/crm/auth";
-import { signedCrmUrl } from "@/lib/crm/files";
+import { safeFileName, signedCrmUrl } from "@/lib/crm/files";
 import { customerPathScope, isSafeCrmPath } from "@/lib/crm/files-access";
+
+async function sendCrmFile(path: string, requestUrl: URL) {
+  const signed = await signedCrmUrl(path);
+  const download = requestUrl.searchParams.get("download") === "1";
+  const inline = requestUrl.searchParams.get("inline") === "1";
+  if (!download && !inline) return NextResponse.redirect(signed);
+  const upstream = await fetch(signed);
+  if (!upstream.ok || !upstream.body) return jsonError("Fichier introuvable", 404);
+  const filename = safeFileName(requestUrl.searchParams.get("name") || "document");
+  return new NextResponse(upstream.body, {
+    status: 200,
+    headers: {
+      "Content-Type": upstream.headers.get("content-type") || "application/octet-stream",
+      "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${filename}"`,
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -11,8 +30,7 @@ export async function GET(request: Request) {
 
   const staff = await requireStaff();
   if (!(staff instanceof NextResponse)) {
-    const signed = await signedCrmUrl(path);
-    return NextResponse.redirect(signed);
+    return sendCrmFile(path, url);
   }
 
   const client = await requireCustomer();
@@ -31,8 +49,7 @@ export async function GET(request: Request) {
       .maybeSingle();
     if (!booking) return jsonError("Accès refusé", 403);
     if (booking.cover_image_path === path) {
-      const signed = await signedCrmUrl(path);
-      return NextResponse.redirect(signed);
+      return sendCrmFile(path, url);
     }
     const { data: doc } = await client.supabase
       .from("crm_booking_documents")
@@ -44,6 +61,5 @@ export async function GET(request: Request) {
     if (!doc) return jsonError("Document non publié", 403);
   }
 
-  const signed = await signedCrmUrl(path);
-  return NextResponse.redirect(signed);
+  return sendCrmFile(path, url);
 }

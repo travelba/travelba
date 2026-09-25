@@ -281,6 +281,30 @@ describe("parseLittleEmperorsHotel", () => {
     assert.equal(parsed.rooms.length, 2);
     assert.equal(parsed.included.includes("Petit-déjeuner"), true);
     assert.equal(JSON.stringify(parsed).includes("858"), false);
+    assert.equal(parsed.phone, null);
+    assert.equal(parsed.email, null);
+  });
+
+  it("Little Emperors garde le site et ignore téléphone et e-mail", () => {
+    const parsed = parseLittleEmperorsHotel(`${LE_HOTEL}
+Website
+https://www.maison-test.example/hotel
+Phone: +506 2222 1111
+Email: stay@maison-test.example
+`);
+    assert.equal(parsed?.website, "https://www.maison-test.example/hotel");
+    assert.equal(parsed?.phone, null);
+    assert.equal(parsed?.email, null);
+    const item = parsedItemsFromText(`${LE_HOTEL}
+Website
+https://www.maison-test.example/hotel
+Phone: +506 2222 1111
+Email: stay@maison-test.example
+`).items.find((row) => row.kind === "hotel");
+    assert.equal(item?.details?.phone ?? null, null);
+    assert.equal(item?.details?.email ?? null, null);
+    assert.equal(item?.details?.website, "https://www.maison-test.example/hotel");
+    assert.equal(item?.details?.source_family, "little_emperors");
   });
 });
 

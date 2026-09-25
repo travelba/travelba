@@ -24,6 +24,8 @@ import {
 import { documentExpiryStatus } from "@/lib/crm/identity";
 import { StatusChip } from "@/components/crm/ui";
 import { BookingHero } from "@/components/crm/BookingHero";
+import { FilePreviewTile } from "@/components/crm/FilePreview";
+import { identityPreview } from "@/lib/crm/preview-files";
 import { clientLedgerAdminHref } from "@/lib/crm/client-ledger";
 import { formatDateFr, formatMoney, formatCreditDisponible } from "@/lib/crm/money";
 
@@ -151,6 +153,18 @@ export default async function AdminClientDetailPage({ params }: Props) {
             const expiry = documentExpiryStatus(doc.expires_on);
             return (
               <li key={doc.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                {doc.storage_path ? (
+                  <FilePreviewTile
+                    file={
+                      identityPreview(
+                        doc,
+                        [doc.first_name, doc.last_name].filter(Boolean).join(" ") ||
+                          DOC_TYPE_LABELS[doc.doc_type] ||
+                          "Pièce"
+                      )!
+                    }
+                  />
+                ) : null}
                 <span>
                   <span className="block font-medium text-[var(--admin-navy)]">
                     {DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type}

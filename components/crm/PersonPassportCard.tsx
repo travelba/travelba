@@ -22,8 +22,8 @@ import type { PersonName } from "@/lib/crm/person-match";
 import { vaultDocumentsForPerson } from "@/lib/crm/trip-documents";
 import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
 import { BusyBar } from "@/components/crm/BusyBar";
-import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
-import { Icon } from "@/components/crm/icons";
+import { FilePreviewTile } from "@/components/crm/FilePreview";
+import { identityPreview } from "@/lib/crm/preview-files";
 import { StatusChip } from "@/components/crm/ui";
 
 type PassportSource = {
@@ -232,13 +232,27 @@ export function PersonPassportCard({
               <>
                 <PassportDetails source={current} />
                 {current.storage_path ? (
-                  <FileOpenLink
-                    path={current.storage_path}
-                    className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)] ring-1 ring-[#e5e3dc]"
-                  >
-                    <Icon name={fileKindIcon(current.mime_type, current.file_name)} className="h-4 w-4" />
-                    Ouvrir le fichier
-                  </FileOpenLink>
+                  <FilePreviewTile
+                    file={
+                      identityPreview(
+                        {
+                          id: current.id,
+                          storage_path: current.storage_path,
+                          file_name: current.file_name,
+                          mime_type: current.mime_type,
+                          doc_type: current.doc_type || "passport",
+                        },
+                        "Passeport"
+                      ) || {
+                        id: current.id,
+                        path: current.storage_path,
+                        fileName: current.file_name || "passeport",
+                        mimeType: current.mime_type,
+                        label: "Passeport",
+                        shareText: "Bonjour, je vous transmets un passeport.",
+                      }
+                    }
+                  />
                 ) : null}
                 <button
                   type="button"
