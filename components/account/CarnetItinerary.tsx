@@ -27,10 +27,10 @@ import {
   hotelStayLabel,
   itemClock,
   itemPriceLabel,
-  kindIcon,
   undatedTimeline,
 } from "@/lib/crm/carnet";
 import { itemTicketCount } from "@/lib/crm/item-match";
+import { ChauffeurRolzoCard } from "@/components/crm/ChauffeurRolzoCard";
 import { ServiceOfferCard } from "@/components/crm/ServiceOfferCard";
 import {
   bookingHasFlight,
@@ -185,7 +185,14 @@ function CardBody({
             {special ? <p>Demandes : {special}</p> : null}
           </>
         ) : null}
-        {item.kind === "chauffeur" || item.kind === "greeter" ? (
+        {item.kind === "chauffeur" && item.details?.rolzo === true ? (
+          <>
+            {detailStr(item, "vehicle") ? <p>{detailStr(item, "vehicle")}</p> : null}
+            {detailStr(item, "driver") ? <p>Chauffeur {detailStr(item, "driver")}</p> : null}
+            {detailStr(item, "cancellation_policy") ? <p>{detailStr(item, "cancellation_policy")}</p> : null}
+          </>
+        ) : null}
+        {item.kind === "greeter" || (item.kind === "chauffeur" && item.details?.rolzo !== true) ? (
           <>
             {detailStr(item, "pickup") ? <p>{detailStr(item, "pickup")}</p> : null}
             {item.kind === "greeter" ? (
@@ -321,6 +328,21 @@ export function CarnetItinerary({
             heads.missingBirth ? ` · ${heads.missingBirth} sans date de naissance (compté adulte)` : ""
           }`
         : null;
+    const locked = services.variant === "client" && !extraNoticeOk(at, now);
+    if (offer.kind === "chauffeur" && (!existing || existing.details?.rolzo === true)) {
+      return (
+        <ChauffeurRolzoCard
+          key={`${offerKey(offer)}-${offer.day}`}
+          offer={offer}
+          existing={existing}
+          variant={services.variant}
+          bookingId={booking.id}
+          reference={booking.reference}
+          currency={booking.currency}
+          locked={locked}
+        />
+      );
+    }
     return (
       <ServiceOfferCard
         key={`${offerKey(offer)}-${offer.day}`}
@@ -331,7 +353,7 @@ export function CarnetItinerary({
         reference={booking.reference}
         price={price}
         currency={booking.currency}
-        locked={services.variant === "client" && !extraNoticeOk(at, now)}
+        locked={locked}
         addressLabel={
           offer.kind === "chauffeur"
             ? offer.place === "hotel"
