@@ -41,8 +41,8 @@ export async function entryPreviewResponse(origin: string, code: string) {
   return new NextResponse(entryPreviewHtml(origin, safe, stay), {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "public, max-age=600",
-      Vary: "User-Agent",
+      "Cache-Control": "private, no-store",
+      Vary: "User-Agent, Sec-Fetch-Dest, Sec-Fetch-Mode, Sec-Fetch-Site, Sec-Fetch-User",
     },
   });
 }

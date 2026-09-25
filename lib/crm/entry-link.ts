@@ -51,16 +51,39 @@ export function isLinkCrawler(userAgent: string | null) {
   return CRAWLER.test(userAgent || "");
 }
 
+const PREVIEW_CRAWLER =
+  /facebookexternalhit|facebot|meta-externalagent|twitterbot|linkedinbot|slackbot|telegrambot|discordbot|embedly|skypeuripreview|iframely|pinterest|redditbot|vkshare/i;
+
+/** Robot d’aperçu documenté par Meta : `WhatsApp/2.x.x.x` puis A, I ou N. */
+const WHATSAPP_PREVIEW = /^WhatsApp\/[\d.]+ [AIN]$/i;
+
+export type PreviewNavigation = {
+  mode?: string | null;
+  dest?: string | null;
+  site?: string | null;
+};
+
 /**
- * Le robot d’aperçu (WhatsApp/…, facebookexternalhit) reste sur la page.
- * Un navigateur, même ouvert depuis WhatsApp, entre dans l’espace.
+ * Le robot d’aperçu reste sur la page (titre, description, favicon).
+ * Un tap, même depuis WhatsApp, entre dans l’espace. Pas de page à bouton.
  */
-export function shouldServePreview(userAgent: string | null, _secFetchUser: string | null) {
-  const ua = userAgent || "";
-  if (/^WhatsApp\//i.test(ua.trim())) return true;
-  return /facebookexternalhit|facebot|meta-externalagent|twitterbot|linkedinbot|slackbot|telegrambot|discordbot|embedly|skypeuripreview|iframely|pinterest|redditbot|vkshare/i.test(
-    ua
-  );
+export function shouldServePreview(
+  userAgent: string | null,
+  secFetchUser: string | null,
+  navigation?: PreviewNavigation | null
+) {
+  const ua = (userAgent || "").trim();
+  if (PREVIEW_CRAWLER.test(ua)) return true;
+  if (isUserNavigation(secFetchUser, navigation)) return false;
+  return WHATSAPP_PREVIEW.test(ua);
+}
+
+function isUserNavigation(secFetchUser: string | null, navigation?: PreviewNavigation | null) {
+  if (secFetchUser === "?1") return true;
+  if (navigation?.mode === "navigate") return true;
+  if (navigation?.dest === "document") return true;
+  if (navigation?.site === "none" || navigation?.site === "cross-site") return true;
+  return false;
 }
 
 export function entryOpenRequested(search: string) {

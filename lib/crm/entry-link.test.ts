@@ -34,6 +34,12 @@ test("WhatsApp reçoit le titre sans consommer le jeton", () => {
   assert.equal(isLinkCrawler("WhatsApp/2.23"), true);
   assert.equal(isLinkCrawler("facebookexternalhit/1.1"), true);
   assert.equal(shouldServePreview("WhatsApp/2.23.20.72 A", null), true);
+  assert.equal(shouldServePreview("WhatsApp/2.23.20.72 I", null), true);
+  assert.equal(shouldServePreview("WhatsApp/2.23.20.72 A", "?1"), false);
+  assert.equal(
+    shouldServePreview("WhatsApp/2.23.20.72 A", null, { mode: "navigate", dest: "document" }),
+    false
+  );
   assert.equal(shouldServePreview("facebookexternalhit/1.1", "?1"), true);
   assert.equal(shouldServePreview("Mozilla/5.0", null), false);
   assert.equal(shouldServePreview("Mozilla/5.0 (iPhone) WhatsApp/2.23", "?1"), false);

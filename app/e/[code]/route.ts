@@ -17,7 +17,13 @@ function normalizeCode(code: string) {
 export async function GET(request: Request, ctx: Ctx) {
   const { code } = await ctx.params;
   const safe = normalizeCode(code);
-  if (shouldServePreview(request.headers.get("user-agent"), request.headers.get("sec-fetch-user"))) {
+  if (
+    shouldServePreview(request.headers.get("user-agent"), request.headers.get("sec-fetch-user"), {
+      mode: request.headers.get("sec-fetch-mode"),
+      dest: request.headers.get("sec-fetch-dest"),
+      site: request.headers.get("sec-fetch-site"),
+    })
+  ) {
     return entryPreviewResponse(originOf(), safe);
   }
   return redirectEntryToCallback(originOf(), safe);
