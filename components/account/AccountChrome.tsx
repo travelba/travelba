@@ -100,7 +100,7 @@ export function AccountChrome({
         </nav>
       </header>
 
-      <main className="mx-auto max-w-[480px] px-4 pb-[calc(9rem+env(safe-area-inset-bottom,0px))] pt-4 sm:px-5 md:pb-28">
+      <main className="mx-auto max-w-[480px] px-4 pb-[calc(9.5rem+env(safe-area-inset-bottom,0px))] pt-4 sm:px-5 md:pb-28">
         {phoneWall ? <PhoneWallBanner href="/mon-compte/profil" /> : children}
       </main>
 
