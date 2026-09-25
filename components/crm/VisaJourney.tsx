@@ -45,25 +45,24 @@ async function readError(res: Response) {
 }
 
 function ProgressRing({ value }: { value: number }) {
-  const radius = 58;
+  const radius = 28;
   const turn = 2 * Math.PI * radius;
   const offset = turn - (Math.max(0, Math.min(100, value)) / 100) * turn;
   return (
-    <svg viewBox="0 0 148 148" className="h-44 w-44" aria-hidden>
-      <circle cx="74" cy="74" r="70" fill="none" stroke="rgba(197,168,128,0.16)" strokeWidth="1" />
-      <circle cx="74" cy="74" r={radius} fill="none" stroke="rgba(250,249,246,0.1)" strokeWidth="6" />
+    <svg viewBox="0 0 72 72" className="h-16 w-16" aria-hidden>
+      <circle cx="36" cy="36" r={radius} fill="none" stroke="rgba(250,249,246,0.14)" strokeWidth="3" />
       <circle
-        cx="74"
-        cy="74"
+        cx="36"
+        cy="36"
         r={radius}
         fill="none"
         stroke="#C5A880"
-        strokeWidth="6"
+        strokeWidth="3"
         strokeLinecap="round"
         strokeDasharray={turn}
         strokeDashoffset={offset}
-        transform="rotate(-90 74 74)"
-        style={{ transition: "stroke-dashoffset 800ms cubic-bezier(.22,1,.36,1)" }}
+        transform="rotate(-90 36 36)"
+        style={{ transition: "stroke-dashoffset 600ms ease" }}
       />
     </svg>
   );
@@ -75,31 +74,31 @@ function StepRail({ step }: { step: ClientVisaStep }) {
   const span = Math.max(1, track.length - 1);
   const fill = (index / span) * 80;
   return (
-    <ol className="relative mt-9 grid grid-cols-5">
-      <span aria-hidden className="absolute top-2 right-[10%] left-[10%] h-px bg-white/15" />
+    <ol className="relative mt-4 grid grid-cols-5">
+      <span aria-hidden className="absolute top-1.5 right-[10%] left-[10%] h-px bg-white/15" />
       <span
         aria-hidden
-        className="absolute top-2 left-[10%] h-px bg-[#C5A880] transition-[width] duration-700"
+        className="absolute top-1.5 left-[10%] h-px bg-[#C5A880] transition-[width] duration-700"
         style={{ width: `${fill}%` }}
       />
       {track.map((row) => {
         const current = row.state === "en cours" || (step === "piece" && row.id === "piece");
         return (
           <li key={row.id} className="relative flex flex-col items-center">
-            <span className="flex h-4 items-center justify-center">
+            <span className="flex h-3 items-center justify-center">
               <span
                 className={
                   current
-                    ? "z-10 h-3.5 w-3.5 rounded-full bg-[#C5A880] shadow-[0_0_0_6px_rgba(197,168,128,0.2)]"
+                    ? "z-10 h-2 w-2 rounded-full bg-[#C5A880] ring-2 ring-[#C5A880]/30"
                     : row.state === "fait"
-                      ? "z-10 h-2 w-2 rounded-full bg-[#C5A880]"
-                      : "z-10 h-2 w-2 rounded-full bg-[#0B192C] ring-1 ring-white/40"
+                      ? "z-10 h-1.5 w-1.5 rounded-full bg-[#C5A880]"
+                      : "z-10 h-1.5 w-1.5 rounded-full bg-[#0B192C] ring-1 ring-white/35"
                 }
               />
             </span>
             <span
-              className={`mt-2 w-full px-0.5 text-center text-[9px] leading-tight font-semibold tracking-tight ${
-                current ? "text-[#faf9f6]" : row.state === "fait" ? "text-[#C5A880]" : "text-white/35"
+              className={`mt-1.5 w-full px-0.5 text-center text-[9px] leading-tight font-medium ${
+                current ? "text-[#faf9f6]" : row.state === "fait" ? "text-[#C5A880]" : "text-white/40"
               }`}
             >
               {row.label}
@@ -201,54 +200,54 @@ export function VisaJourney({
         return (
           <article
             key={country}
-            className="overflow-hidden rounded-[1.75rem] bg-[#0B192C] text-[#faf9f6] shadow-[0_28px_70px_rgba(11,25,44,0.28)]"
+            className="overflow-hidden rounded-2xl bg-[#0B192C] text-[#faf9f6] shadow-[0_8px_22px_rgba(11,25,44,0.14)]"
           >
-            <div className="px-5 pb-6 pt-6 sm:px-7">
-              <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#C5A880]">
+            <div className="px-4 py-4">
+              <p className="text-[10px] font-semibold tracking-[0.14em] text-[#C5A880] uppercase">
                 {entry.formality || "Formalité"}
               </p>
-              <h2 className="font-display mt-2 text-[2rem] font-extrabold leading-none tracking-tight">{entry.name}</h2>
+              <h2 className="font-display mt-1 text-base leading-none font-semibold">{entry.name}</h2>
               {step ? (
-                <div className="mt-8">
-                  <div className="relative mx-auto w-fit">
-                    <div
-                      aria-hidden
-                      className="pointer-events-none absolute top-1/2 left-1/2 h-40 w-40 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#C5A880]/15 blur-3xl"
-                    />
-                    <ProgressRing value={percent} />
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <p className="font-display text-[3.25rem] leading-none font-extrabold tabular-nums">
-                        {percent}
-                        <span className="ml-0.5 align-top text-xl font-semibold text-[#C5A880]">%</span>
+                <div className="mt-3">
+                  <div className="flex items-center gap-3">
+                    <div className="relative shrink-0">
+                      <ProgressRing value={percent} />
+                      <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <p className="font-display text-base leading-none font-semibold tabular-nums">
+                          {percent}
+                          <span className="text-[10px] font-medium text-[#C5A880]">%</span>
+                        </p>
+                        <p className="mt-0.5 text-[8px] font-medium tracking-wide text-[#C5A880] uppercase">environ</p>
+                      </div>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold">
+                        {clientVisaTrack(step).find((row) => row.state === "en cours")?.label || "Pièce"}
                       </p>
-                      <p className="mt-1 text-[10px] font-semibold tracking-[0.22em] text-[#C5A880] uppercase">environ</p>
+                      <p
+                        className="mt-1 text-xs leading-snug text-[#faf9f6]/75"
+                        role="progressbar"
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={percent}
+                        aria-label={`Avancement de la formalité, environ ${percent} pour cent`}
+                      >
+                        {paymentHeld ? paymentHold(false) : headline}
+                      </p>
                     </div>
                   </div>
-                  <p className="font-display mt-7 text-center text-[1.65rem] leading-none font-extrabold tracking-tight">
-                    {clientVisaTrack(step).find((row) => row.state === "en cours")?.label || "Pièce"}
-                  </p>
-                  <p
-                    className="mx-auto mt-3 max-w-[22rem] text-center text-sm leading-relaxed text-[#faf9f6]/80"
-                    role="progressbar"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={percent}
-                    aria-label={`Avancement de la formalité, environ ${percent} pour cent`}
-                  >
-                    {paymentHeld ? paymentHold(false) : headline}
-                  </p>
                   {step !== "piece" && !paymentHeld ? (
-                    <p className="mt-4 text-center text-sm text-[#C5A880]">{VISA_WAIT_COPY}</p>
+                    <p className="mt-2 text-xs text-[#C5A880]">{VISA_WAIT_COPY}</p>
                   ) : null}
                   <StepRail step={step} />
                   {pieces.length ? (
-                    <div className="mt-7 flex flex-wrap justify-center gap-2">
+                    <div className="mt-3 flex flex-wrap gap-2">
                       {pieces.map((doc) =>
                         doc.storage_path ? (
                           <FileOpenLink
                             key={doc.id}
                             path={doc.storage_path}
-                            className="inline-flex h-12 items-center rounded-full bg-[#C5A880] px-5 text-sm font-semibold text-[#0B192C]"
+                            className="inline-flex h-9 items-center rounded-full bg-[#C5A880] px-3 text-xs font-semibold text-[#0B192C]"
                           >
                             Ouvrir l’autorisation
                           </FileOpenLink>
@@ -257,31 +256,27 @@ export function VisaJourney({
                     </div>
                   ) : null}
                   {entry.applyUrl ? (
-                    <div className="mt-6 text-center">
-                      <a
-                        href={entry.applyUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-sm font-semibold text-[#C5A880] underline decoration-[#C5A880]/40 underline-offset-4"
-                      >
-                        Lien officiel
-                      </a>
-                    </div>
+                    <a
+                      href={entry.applyUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-3 inline-flex text-xs font-semibold text-[#C5A880] underline decoration-[#C5A880]/40 underline-offset-4"
+                    >
+                      Lien officiel
+                    </a>
                   ) : null}
                 </div>
               ) : (
-                <div className="mt-6 space-y-4">
-                  <p className="max-w-[26rem] text-[15px] leading-relaxed text-[#faf9f6]/85">
+                <div className="mt-3 space-y-3">
+                  <p className="text-sm leading-snug text-[#faf9f6]/85">
                     Deux chemins. Le site de l’État, si vous déposez la demande vous-même. Ou nous la prenons, et vous
                     suivez l’avancement ici.
                     {astraFillsCountry(country) ? " La demande part ensuite, sans que vous restiez devant l’écran." : ""}
                   </p>
-                  <div className="rounded-[1.35rem] bg-white/[0.04] p-4 ring-1 ring-[#C5A880]/30">
-                    <p className="text-[10px] font-bold tracking-[0.18em] text-[#C5A880] uppercase">Avec l’agence</p>
-                    <p className="font-display mt-2 text-[1.85rem] leading-none font-extrabold tracking-tight">
-                      {formatMoney(fee, "EUR")}
-                    </p>
-                    <p className="mt-2 text-sm leading-relaxed text-[#faf9f6]/70">
+                  <div className="rounded-xl bg-white/[0.04] p-3 ring-1 ring-[#C5A880]/25">
+                    <p className="text-[10px] font-semibold tracking-[0.12em] text-[#C5A880] uppercase">Avec l’agence</p>
+                    <p className="font-display mt-1 text-base leading-none font-semibold">{formatMoney(fee, "EUR")}</p>
+                    <p className="mt-1.5 text-xs leading-snug text-[#faf9f6]/70">
                       {VISA_EUR} € par passager, hors frais officiels. Frais d’État : {official.amount} {official.currency}.
                     </p>
                     {country === "US" ? (
@@ -321,7 +316,7 @@ export function VisaJourney({
                       type="button"
                       disabled={busy !== null || !ready}
                       onClick={() => void launch(entry as FormalityEntry & { iso: VisaCorridor })}
-                      className="mt-4 inline-flex h-12 w-full items-center justify-center rounded-full bg-[#C5A880] px-5 text-sm font-semibold text-[#0B192C] disabled:opacity-50"
+                      className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-full bg-[#C5A880] px-4 text-sm font-semibold text-[#0B192C] disabled:opacity-50"
                     >
                       {busy === country ? "Demande en cours…" : "L’agence s’en charge"}
                     </button>
@@ -332,7 +327,7 @@ export function VisaJourney({
                       href={entry.applyUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex h-12 items-center justify-center rounded-full text-sm font-semibold text-[#faf9f6] ring-1 ring-white/25"
+                      className="flex h-10 items-center justify-center rounded-full text-sm font-semibold text-[#faf9f6] ring-1 ring-white/25"
                     >
                       Lien officiel
                     </a>
