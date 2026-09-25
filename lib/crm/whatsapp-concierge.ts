@@ -30,6 +30,8 @@ import { CONCIERGE_SIGNATURE, withConciergeSignature } from "./whatsapp";
 
 export const UNKNOWN_NUMBER_REPLY = "L’espace s’ouvre sur invitation.";
 export const HANDOFF_SENTENCE = "Je transmets à l’agence.";
+/** Ton du retour, dans la même réponse, seulement si l’agence doit revenir. */
+export const FOLLOW_UP_TONE = "Je regarde, je vous fais un retour rapide";
 export const MISSING_FACT = "Je n’ai pas cette information dans votre dossier.";
 export const MISSING_CLOCK = "Je n’ai pas l’horaire dans votre dossier.";
 export const MISSING_INCLUDED = "Je n’ai pas le détail des inclus dans votre dossier.";
@@ -437,6 +439,11 @@ function sign(body: string) {
   return withConciergeSignature(trimmed.slice(0, room).trim());
 }
 
+/** Une seule réponse : le ton du retour, puis ce que l’agence reprend. */
+export function conciergeFollowUp(detail: string) {
+  return sign(`${FOLLOW_UP_TONE}\n${detail.trim()}`);
+}
+
 function topicOf(message: string) {
   const text = fold(message);
   if (/encours|solde|reste a payer|avoir|credit disponible|combien je dois/.test(text)) return "balance";
@@ -589,7 +596,7 @@ export function planConciergeTurn(message: string, dossier: ConciergeDossier): C
     return {
       handoff,
       bookingId: stay?.id || null,
-      text: sign(text),
+      text: conciergeFollowUp(text),
       cover: null,
     };
   }

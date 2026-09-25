@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { twilioRequestSignature } from "./twilio-signature";
 import { receiveWhatsappWebhook, type WhatsappStore } from "./whatsapp-inbound";
 import {
+  FOLLOW_UP_TONE,
   MISSING_CLOCK,
   MISSING_FORMALITY,
   MISSING_PRICE,
@@ -201,6 +202,7 @@ test("numéro inconnu : une phrase, pas de dossier", async () => {
   assert.equal(result.status, 200);
   assert.equal(sent.length, 1);
   assert.equal(sent[0].body, UNKNOWN_NUMBER_REPLY);
+  assert.equal(sent[0].body.includes(FOLLOW_UP_TONE), false);
   assert.equal(sent[0].mediaUrl ?? null, null);
   assert.deepEqual(
     writes.map((write) => write.table),
@@ -247,6 +249,9 @@ test("le contexte du Concierge ignore le brouillon", async () => {
       return { ok: true, sid: "SMreply" };
     },
   });
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].body.includes(FOLLOW_UP_TONE), false);
+  assert.match(sent[0].body, /Le Concierge/);
   assert.match(sent[0].body, /Hôtel des Dromonts|Je n’ai pas de formalité/);
   assert.equal(sent[0].body.includes("brouillon"), false);
   assert.equal(sent[0].body.includes("secret"), false);
@@ -279,8 +284,11 @@ test("une demande d’annulation est transmise sans écriture métier", async ()
     },
   });
   assert.equal(result.status, 200);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].body, new RegExp(`^${FOLLOW_UP_TONE}`));
   assert.match(sent[0].body, /Je transmets à l’agence/);
   assert.match(sent[0].body, /PUB-1/);
+  assert.match(sent[0].body, /Le Concierge/);
   assert.equal(sent[0].body.includes("brouillon"), false);
   assert.equal(sent[0].mediaUrl ?? null, null);
   assert.deepEqual(
@@ -299,6 +307,7 @@ test("une demande d’annulation est transmise sans écriture métier", async ()
 test("sans horaire, sans prix publié et sans couverture, rien n’est inventé", () => {
   const dossier = buildConciergeDossier({ firstName: "Simon", ...mixedDossier() });
   const clock = planConciergeTurn("À quelle heure part mon vol ?", dossier);
+  assert.equal(clock.text.includes(FOLLOW_UP_TONE), false);
   assert.match(clock.text, new RegExp(MISSING_CLOCK.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.equal(clock.text.includes("00h"), false);
   assert.equal(clock.text.includes("00:00"), false);
@@ -320,6 +329,8 @@ test("sans horaire, sans prix publié et sans couverture, rien n’est inventé"
   });
   const stay = planConciergeTurn("Parlez-moi de mon séjour", bare);
   assert.equal(stay.cover, null);
+  assert.equal(stay.text.includes(FOLLOW_UP_TONE), false);
+  assert.match(stay.text, /Le Concierge/);
   assert.match(stay.text, /https:\/\/travelba\.fr\/mon-compte\/reservations\/PUB-1/);
 
   const covered = buildConciergeDossier({
@@ -346,7 +357,9 @@ test("changer, rapprocher, déposer ou commander part à l’agence", () => {
   for (const [message, kind] of cases) {
     const turn = planConciergeTurn(message, dossier);
     assert.equal(turn.handoff, kind);
+    assert.match(turn.text, new RegExp(`^${FOLLOW_UP_TONE}`));
     assert.match(turn.text, /Je transmets à l’agence/);
+    assert.match(turn.text, /Le Concierge/);
     assert.equal(turn.cover, null);
     assert.equal(turn.text.includes("brouillon"), false);
   }
