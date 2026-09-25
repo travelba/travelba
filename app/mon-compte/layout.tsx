@@ -1,6 +1,8 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { ensureCustomerForUser, ensureStaff, getSessionUser } from "@/lib/crm/auth";
 import { customerFullName } from "@/lib/crm/types";
+import { isClientShellUserAgent } from "@/lib/native/client-shell";
 import { siteConfig } from "@/lib/site";
 import { AccountChrome } from "@/components/account/AccountChrome";
 
@@ -19,7 +21,17 @@ export default async function AccountLayout({
   const customer = await ensureCustomerForUser(user);
   if (!customer) {
     const staff = await ensureStaff(user);
-    if (staff) redirect("/admin");
+    if (staff) {
+      const ua = (await headers()).get("user-agent");
+      if (isClientShellUserAgent(ua)) {
+        return (
+          <main className="grid min-h-screen place-items-center bg-[#0B192C] px-6 text-center text-[#C5A880]">
+            <p>Cette application est réservée à l’espace client.</p>
+          </main>
+        );
+      }
+      redirect("/admin");
+    }
     redirect("/connexion?error=no-account");
   }
 

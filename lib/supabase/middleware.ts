@@ -9,6 +9,7 @@ import {
   needsClientOnboarding,
   signedInClientDestination,
 } from "@/lib/crm/session";
+import { clientShellHome } from "@/lib/native/client-shell";
 import { publicSupabaseEnv } from "@/lib/supabase/env";
 
 export async function updateSession(request: NextRequest) {
@@ -45,6 +46,14 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const pathname = request.nextUrl.pathname;
+  const shellHome = clientShellHome(pathname, request.headers.get("user-agent"));
+  if (shellHome) {
+    const url = request.nextUrl.clone();
+    url.pathname = shellHome;
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
   const isAdmin = pathname.startsWith("/admin");
   const isAdminLogin = pathname === "/admin/login";
   const isClient = pathname.startsWith("/mon-compte");

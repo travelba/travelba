@@ -20,7 +20,8 @@ import {
 } from "@/components/crm/fields";
 import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
 import { BusyBar } from "@/components/crm/BusyBar";
-import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
+import { fileKindIcon } from "@/components/crm/FileOpen";
+import { PieceLink } from "@/components/account/PieceSheet";
 import { Icon } from "@/components/crm/icons";
 
 export function DocumentsManager({
@@ -241,13 +242,14 @@ export function DocumentsManager({
                       .join(" · ")}
                   </p>
                   {d.storage_path ? (
-                    <FileOpenLink
+                    <PieceLink
                       path={d.storage_path}
+                      title={d.file_name || "Pièce"}
                       className="inline-flex items-center gap-1 rounded-full bg-[#efebe0] px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-[var(--admin-navy)]"
                     >
                       <Icon name={fileKindIcon(d.mime_type, d.file_name)} className="h-4 w-4" />
                       Ouvrir
-                    </FileOpenLink>
+                    </PieceLink>
                   ) : null}
                 </div>
               ) : null}
