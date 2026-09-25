@@ -6,13 +6,13 @@ import { formParams, verifyTwilioSignature } from "./twilio-signature";
 import {
   buildConciergeDossier,
   HANDOFF_SENTENCE,
+  conciergeFollowUp,
   planConciergeTurn,
   UNKNOWN_NUMBER_REPLY,
   type ConciergeCover,
   type HandoffKind,
 } from "./whatsapp-concierge";
 import { sessionAddress } from "./whatsapp-session";
-import { withConciergeSignature } from "./whatsapp";
 
 export type WhatsappMessageInsert = {
   customer_id: string | null;
@@ -120,12 +120,12 @@ export async function receiveWhatsappWebhook(input: {
     reply = turn.text;
     cover = turn.cover;
   } else if (customers.length > 1) {
-    reply = withConciergeSignature(HANDOFF_SENTENCE);
+    reply = conciergeFollowUp(HANDOFF_SENTENCE);
   }
 
   const mediaOnly = !(params.Body || "").trim() && Number(params.NumMedia || "0") > 0;
   if (mediaOnly && customer) {
-    reply = withConciergeSignature(HANDOFF_SENTENCE);
+    reply = conciergeFollowUp(HANDOFF_SENTENCE);
     handoff = null;
     cover = null;
     bookingId = null;
