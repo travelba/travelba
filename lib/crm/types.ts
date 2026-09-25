@@ -396,6 +396,7 @@ export type CrmLeBooking = {
   hotel_name: string | null;
   address: string | null;
   city: string | null;
+  country: string | null;
   website: string | null;
   check_in: string | null;
   check_out: string | null;
