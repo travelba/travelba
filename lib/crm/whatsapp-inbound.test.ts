@@ -561,6 +561,9 @@ test("anglais, stop, et lien d’accès sans mot de passe", async () => {
 test("photo ou pdf : coffre privé, pas de pan, une seule réponse au paquet", async () => {
   const pan = new TextEncoder().encode("carte 4111111111111111");
   assert.equal(bytesContainPan(pan), true);
+  assert.equal(bytesContainPan(new TextEncoder().encode("0000000000 65535 xref")), false);
+  assert.equal(bytesContainPan(new TextEncoder().encode("4111111111 111111")), false);
+  assert.equal(bytesContainPan(new TextEncoder().encode("4111 1111 1111 1111")), true);
   const pieces: { contentType: string; bytes: Uint8Array }[] = [];
   const sent: { body: string; mediaUrl?: string | null }[] = [];
   const writes: { table: string; row?: Record<string, unknown> }[] = [];

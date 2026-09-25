@@ -97,8 +97,14 @@ function luhnOk(digits: string) {
 /** Vrai si le fichier contient un PAN. Ne journalise pas les chiffres. */
 export function bytesContainPan(bytes: Uint8Array) {
   const text = Buffer.from(bytes).toString("latin1");
-  const matches = text.match(/(?:\d[ \t.-]?){13,19}/g) || [];
-  return matches.some((raw) => luhnOk(raw.replace(/\D/g, "")));
+  const matches = text.match(/\d(?:[ \t.-]?\d){12,18}/g) || [];
+  return matches.some((raw) => {
+    const digits = raw.replace(/\D/g, "");
+    if (!luhnOk(digits)) return false;
+    const groups = raw.split(/[ \t.-]+/).filter(Boolean);
+    if (groups.length === 1) return true;
+    return groups.every((group) => group.length >= 3 && group.length <= 6);
+  });
 }
 
 export function pieceContentType(value: string | null | undefined) {
