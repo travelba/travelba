@@ -115,7 +115,7 @@ export function HotelContactDialog({
           ) : null}
           {contact.website ? (
             <div className="space-y-2">
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#C5A880]">Site</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#C5A880]">Site internet</p>
               <p className="break-all text-sm text-[#0B192C]">{contact.website}</p>
               <iframe
                 title={`Site de ${contact.name}`}

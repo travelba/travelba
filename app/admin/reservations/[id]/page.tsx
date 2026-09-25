@@ -9,6 +9,7 @@ import { readEstaAnswers, type ClientVisaStep, type EstaAnswers } from "@/lib/cr
 import { pliantConfigured } from "@/lib/crm/pliant";
 import { formatDateRangeShort } from "@/lib/crm/money";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
+import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
 import type {
   CrmBooking,
   CrmBookingDocument,
@@ -69,7 +70,7 @@ export default async function AdminBookingPage({ params }: Props) {
     .map(serviceRefusalFromRow)
     .filter((row): row is ServiceRefusal => Boolean(row));
   const allIdentity = (identityDocs || []) as CrmTravelDocument[];
-  const bookingItems = (items || []) as CrmBookingItem[];
+  const bookingItems = await loadHotelContacts(id, (items || []) as CrmBookingItem[]);
   const bookingTravelers = (travelers || []) as CrmBookingTraveler[];
 
   return (

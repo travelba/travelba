@@ -323,14 +323,17 @@ export async function attachLittleEmperorsBooking(opts: {
       notes_internal: "Réservation importée depuis Little Emperors (environnement de test).",
     })
     .eq("id", created.id);
-  if (booking.website) {
+  if (booking.website || booking.hotel_id != null) {
     const { data: items } = await admin
       .from("crm_booking_items")
       .select("id, details")
       .eq("booking_id", created.id)
       .eq("kind", "hotel");
     for (const item of items || []) {
-      const details = { ...(item.details || {}), website: booking.website };
+      const details = { ...(item.details || {}) } as Record<string, unknown>;
+      if (booking.website && !details.website) details.website = booking.website;
+      if (booking.hotel_id != null && details.le_hotel_id == null) details.le_hotel_id = booking.hotel_id;
+      if (!details.source_family) details.source_family = "little_emperors";
       await admin.from("crm_booking_items").update({ details }).eq("id", item.id);
     }
   }

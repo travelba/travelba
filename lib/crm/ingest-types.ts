@@ -42,6 +42,7 @@ const detailsSchemaLoose = z
     phone: looseString,
     email: looseString,
     source_family: looseString,
+    le_hotel_id: looseNumber,
     board: looseString,
     occupancy: looseString,
     guests: looseString,
