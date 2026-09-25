@@ -29,6 +29,7 @@ import { FilePreviewTile } from "@/components/crm/FilePreview";
 import { identityPreview } from "@/lib/crm/preview-files";
 import { clientLedgerAdminHref } from "@/lib/crm/client-ledger";
 import { formatDateFr, formatMoney, formatCreditDisponible } from "@/lib/crm/money";
+import { WhatsappThread } from "@/components/admin/WhatsappThread";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -53,6 +54,8 @@ export default async function AdminClientDetailPage({ params }: Props) {
     { data: billingCompanies },
     portal,
     unmatchedRevolut,
+    whatsappMessages,
+    whatsappRequests,
   ] = await Promise.all([
     supabase.from("crm_travel_companions").select("*").eq("customer_id", id),
     supabase.from("crm_travel_documents").select("*").eq("customer_id", id),
@@ -87,8 +90,27 @@ export default async function AdminClientDetailPage({ params }: Props) {
         return [] as CrmRevolutTransaction[];
       }
     })(),
+    supabase
+      .from("crm_whatsapp_messages")
+      .select("id, direction, body, status, created_at, booking_id")
+      .eq("customer_id", id)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("crm_whatsapp_requests")
+      .select("id, kind, body, booking_id, created_at")
+      .eq("customer_id", id)
+      .order("created_at", { ascending: false }),
   ]);
   const bookingRows = (bookings || []) as CrmBooking[];
+  const threadMessages = whatsappMessages.error
+    ? (
+        await supabase
+          .from("crm_whatsapp_messages")
+          .select("id, direction, body, status, created_at")
+          .eq("customer_id", id)
+          .order("created_at", { ascending: true })
+      ).data || []
+    : whatsappMessages.data || [];
   const revolutSuggestions = suggestionsForCustomer(c, unmatchedRevolut);
 
   return (
@@ -108,6 +130,11 @@ export default async function AdminClientDetailPage({ params }: Props) {
         </div>
       </div>
       <InviteCustomerPanel customerId={c.id} initial={portal} />
+      <WhatsappThread
+        messages={threadMessages}
+        requests={whatsappRequests.error ? [] : whatsappRequests.data || []}
+        bookings={bookingRows.map((booking) => ({ id: booking.id, reference: booking.reference }))}
+      />
       <div className="flex flex-wrap gap-3">
         {((balances || []) as CrmBalance[]).map((b) => {
           const value = Number(b.balance);
