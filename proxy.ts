@@ -47,6 +47,17 @@ export default async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Aperçu local : aucune session, aucune écriture. Fermé en production.
+  if (path === "/exemple" || path.startsWith("/exemple/")) {
+    if (process.env.VERCEL_ENV === "production") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/connexion";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+    return NextResponse.next();
+  }
+
   if (
     path.startsWith("/admin") ||
     path.startsWith("/mon-compte") ||

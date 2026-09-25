@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireCustomer, requireStaff } from "@/lib/crm/auth";
+import { exampleSessionEnabled } from "@/lib/crm/example-session";
+import { readExampleFile } from "@/lib/crm/example-store";
 import { safeFileName, signedCrmUrl } from "@/lib/crm/files";
 import { customerPathScope, isSafeCrmPath } from "@/lib/crm/files-access";
 
@@ -27,6 +29,21 @@ export async function GET(request: Request) {
   const path = url.searchParams.get("path");
   if (!path) return jsonError("path requis");
   if (!isSafeCrmPath(path)) return jsonError("Chemin invalide", 400);
+
+  if (path.startsWith("exemple/") && exampleSessionEnabled()) {
+    const file = readExampleFile(path);
+    if (!file) return jsonError("Fichier introuvable", 404);
+    const filename = safeFileName(url.searchParams.get("name") || file.name);
+    return new NextResponse(Buffer.from(file.bytes), {
+      status: 200,
+      headers: {
+        "Content-Type": file.mime || "application/octet-stream",
+        "Content-Disposition": `inline; filename="${filename}"`,
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  }
 
   const staff = await requireStaff();
   if (!(staff instanceof NextResponse)) {
