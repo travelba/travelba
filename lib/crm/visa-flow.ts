@@ -1,4 +1,5 @@
-import type { VisaCorridor } from "./visa-fees";
+import { VISA_EUR } from "./extras";
+import { VISA_OFFICIAL, type VisaCorridor } from "./visa-fees";
 
 export const CLIENT_VISA_STEPS = ["preparation", "remplissage", "validation", "paiement", "piece"] as const;
 
@@ -181,6 +182,87 @@ export function agencyLaunchReady(country: VisaCorridor, answers: Partial<EstaAn
   if (country === "IL") return true;
   if (country === "GB") return Boolean(answers?.priorRefusal?.trim());
   return estaReady(answers);
+}
+
+/** Un palier seul (45 % ou autre) n’ouvre pas le parcours. Il faut une validation explicite. */
+export function journeyStarted(
+  request: { step?: ClientVisaStep | null; accepted?: boolean | null; accepted_at?: string | null } | null | undefined
+) {
+  if (!request) return false;
+  return request.accepted === true || Boolean(request.accepted_at);
+}
+
+/** Après validation, la carte de départ ne revient pas. */
+export function canReturnToOffer(
+  request: { accepted?: boolean | null; accepted_at?: string | null } | null | undefined
+) {
+  return !journeyStarted(request);
+}
+
+/** Le prix n’est pas sur la carte. Il n’existe que pour la confirmation. */
+export function visaPriceOnCard() {
+  return null;
+}
+
+export function visaConfirmationQuote(input: { travelers: number; country: VisaCorridor }) {
+  const travelers = Math.max(0, Math.floor(input.travelers));
+  const official = VISA_OFFICIAL[input.country];
+  return {
+    travelers,
+    agencyTotalEur: travelers * VISA_EUR,
+    perPassengerEur: VISA_EUR,
+    officialAmount: official.amount,
+    officialCurrency: official.currency,
+  };
+}
+
+export function visaConfirmationCopy(input: { travelers: number; country: VisaCorridor }) {
+  const quote = visaConfirmationQuote(input);
+  const people =
+    quote.travelers > 1 ? `${quote.travelers} voyageurs` : quote.travelers === 1 ? "1 voyageur" : "aucun voyageur";
+  return `Nous prenons la demande pour ${people}. ${quote.agencyTotalEur} €, ${quote.perPassengerEur} € par passager, hors frais officiels. Frais d’État : ${quote.officialAmount} ${quote.officialCurrency}.`;
+}
+
+export type VisaAcceptDecision =
+  | { start: false; error: string }
+  | {
+      start: true;
+      travelerIds: string[];
+      step: ClientVisaStep;
+      status: "en_cours" | "paye" | "piece" | "refuse";
+    };
+
+/** Rien ne part avant la confirmation. Un parcours déjà validé ne recule pas. */
+export function acceptVisaDecision(input: {
+  confirm: boolean;
+  travelerIds: string[];
+  partyIds: string[];
+  alreadyAccepted: boolean;
+  step?: ClientVisaStep | null;
+  status?: string | null;
+}): VisaAcceptDecision {
+  if (input.alreadyAccepted) return { start: false, error: "Le parcours est déjà lancé." };
+  if (!input.confirm) return { start: false, error: "Confirmez la demande avant de lancer le parcours." };
+  const allowed = new Set(input.partyIds);
+  const travelerIds = input.partyIds.length ? input.travelerIds.filter((id) => allowed.has(id)) : [];
+  if (input.partyIds.length && travelerIds.length < 1) {
+    return { start: false, error: "Choisissez au moins un voyageur." };
+  }
+  const filed = input.status === "piece" || input.step === "piece";
+  const paying = input.status === "paye" || input.step === "paiement";
+  const step: ClientVisaStep = filed ? "piece" : paying ? "paiement" : "preparation";
+  const status =
+    input.status === "paye" || input.status === "piece" || input.status === "refuse"
+      ? input.status
+      : step === "piece"
+        ? "piece"
+        : "en_cours";
+  return { start: true, travelerIds, step, status };
+}
+
+/** WhatsApp seulement quand la pièce est dans l’espace, pas à la validation. */
+export function whatsappOnVisa(event: "validation" | "piece") {
+  return event === "piece";
 }
 
 export function confirmAllowed(input: {

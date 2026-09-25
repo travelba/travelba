@@ -39,7 +39,7 @@ export class ExampleStop extends Error {
   }
 }
 
-type VisaRequest = { country: string; step: ClientVisaStep; status: string };
+type VisaRequest = { country: string; step: ClientVisaStep; status: string; accepted_at?: string | null };
 
 type Box = ReturnType<typeof exampleSession> & {
   version: number;
@@ -229,13 +229,18 @@ function uploadedFrenchPassport(state: Box) {
   );
 }
 
-export function launchExampleVisa(country: string, answers: Partial<EstaAnswers> | null) {
+export function launchExampleVisa(
+  country: string,
+  answers: Partial<EstaAnswers> | null,
+  options?: { confirm?: boolean }
+) {
   if (country !== "US" && country !== "IL" && country !== "GB") {
     throw new ExampleStop("Pays non pris en charge.");
   }
   const state = box();
   const existing = state.visaRequests.find((row) => row.country === country);
-  if (existing?.step) return existing;
+  if (existing?.accepted_at) return existing;
+  if (!options?.confirm) throw new ExampleStop("Confirmez la demande avant de lancer le parcours.");
   const block = confirmAllowed({
     already: [],
     country,
@@ -243,10 +248,21 @@ export function launchExampleVisa(country: string, answers: Partial<EstaAnswers>
     esta: answers,
   });
   if (block) throw new ExampleStop(block);
-  const request: VisaRequest = { country, step: "paiement", status: "en_cours" };
-  state.visaRequests.push(request);
+  const request: VisaRequest = {
+    country,
+    step: "paiement",
+    status: "en_cours",
+    accepted_at: new Date().toISOString(),
+  };
+  if (existing) {
+    existing.step = request.step;
+    existing.status = request.status;
+    existing.accepted_at = request.accepted_at;
+  } else {
+    state.visaRequests.push(request);
+  }
   publish(state);
-  return request;
+  return existing || request;
 }
 
 type OrderBody = {

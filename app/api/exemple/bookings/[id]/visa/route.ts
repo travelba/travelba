@@ -14,9 +14,10 @@ export async function POST(request: Request, ctx: Ctx) {
   const body = (await request.json().catch(() => ({}))) as {
     country?: string;
     answers?: Partial<EstaAnswers>;
+    confirm?: boolean;
   };
   try {
-    const requestRow = launchExampleVisa(body.country || "", body.answers || null);
+    const requestRow = launchExampleVisa(body.country || "", body.answers || null, { confirm: body.confirm === true });
     return NextResponse.json({ country: requestRow.country, step: requestRow.step });
   } catch (err) {
     if (err instanceof ExampleStop) return NextResponse.json({ error: err.message }, { status: 400 });

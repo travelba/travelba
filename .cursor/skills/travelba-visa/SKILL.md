@@ -16,12 +16,13 @@ L’itinéraire est juste sous la photo du séjour. Le bandeau « pièce manquan
 
 La section **Visa** est en bas, avec les passeports. Le même bloc est sur le séjour client et sur le dossier agence. Un refus ne cache pas la section.
 
-Deux gestes, pour Israël, les États-Unis et le Royaume-Uni :
+Deux gestes, pour Israël, les États-Unis et le Royaume-Uni, même règle client et agence :
 
-- **L’agence s’en charge** — le prix est affiché avant le clic : 25 € par passager, hors frais officiels. Le clic coche le service à la carte et lance le parcours. États-Unis et Royaume-Uni : les questions sont obligatoires avant d’activer le bouton. Israël n’a pas de questions.
-- **Lien officiel** — ouvre le site de l’État. Ne coche pas le service. Ne lance pas le parcours.
+- **Avant validation** — carte avec le nom de la formalité, le lien officiel, et le bouton « L’agence s’en charge ». Pas de pourcentage, pas de rail, pas de « Nous nous en occupons ». Le prix n’est pas affiché : il apparaît dans la confirmation, au clic (`VISA_EUR`, frais d’État de `VISA_OFFICIAL`). États-Unis et Royaume-Uni : les questions sont obligatoires avant d’activer le bouton. Israël n’a pas de questions.
+- **Confirmation** — un bouton, puis le prix, tous les voyageurs cochés (on peut en retirer). Rien ne démarre avant cette confirmation. Une carte déjà à 45 % (ou toute étape) sans `accepted_at` revient à cette carte.
+- **Après confirmation** — le parcours et le remplissage en arrière-plan (ETA-IL) partent ensemble. Le lien officiel disparaît. Pas de retour arrière. Sans Pliant, le parcours s’arrête au paiement. Pendant le clic, le bouton dit « Demande en cours… ».
 
-Après le lancement, la piste explique l’étape en cours. Le client lit « Nous nous en occupons. Vous n’avez rien à faire pour le moment. » Les étapes à venir restent discrètes. Pièce ouvre le PDF déjà au coffre. Pendant le clic, le bouton dit « Demande en cours… ». Le lien officiel et le dépôt du visa restent dans la section, y compris pour Israël, les États-Unis et le Royaume-Uni.
+WhatsApp seulement quand la pièce est dans l’espace, pas à la validation.
 
 Les autres pays : nom, formalité si elle est connue, lien officiel, dépôt du PDF. Pas de parcours Astra.
 

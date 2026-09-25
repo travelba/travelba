@@ -78,6 +78,16 @@ export async function POST(request: Request, ctx: Ctx) {
     return NextResponse.json(publicEtaIlDraft(draft));
   }
 
+  const { data: accepted } = await auth.supabase
+    .from("crm_visa_requests")
+    .select("accepted_at")
+    .eq("booking_id", b.id)
+    .eq("country", "IL")
+    .maybeSingle();
+  if (!(accepted as { accepted_at?: string | null } | null)?.accepted_at) {
+    return jsonError("Confirmez la demande avant de lancer le parcours.");
+  }
+
   await auth.supabase
     .from("crm_visa_requests")
     .update({ step: "remplissage" })

@@ -5,16 +5,18 @@ import { useRouter } from "next/navigation";
 import { FileOpenLink } from "@/components/crm/FileOpen";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { TripVisaUploads } from "@/components/crm/TripVisaUploads";
-import { VISA_EUR } from "@/lib/crm/extras";
-import { formatMoney } from "@/lib/crm/money";
-import { VISA_OFFICIAL, type VisaCorridor } from "@/lib/crm/visa-fees";
+import { travelerDisplayName } from "@/lib/crm/trip-documents";
+import type { VisaCorridor } from "@/lib/crm/visa-fees";
 import {
   agencyLaunchReady,
   astraFillsCountry,
+  canReturnToOffer,
   clientVisaProgress,
   clientVisaStepNote,
   clientVisaTrack,
+  journeyStarted,
   paymentHold,
+  visaConfirmationCopy,
   VISA_WAIT_COPY,
   type ClientVisaStep,
   type EstaAnswers,
@@ -22,7 +24,12 @@ import {
 import type { FormalityEntry, FrenchPassportTrip } from "@/lib/crm/visa-trip";
 import type { CrmBookingTraveler, CrmTravelDocument } from "@/lib/crm/types";
 
-type VisaRequest = { country: string; step?: ClientVisaStep | null; status?: string | null };
+type VisaRequest = {
+  country: string;
+  step?: ClientVisaStep | null;
+  status?: string | null;
+  accepted_at?: string | null;
+};
 
 const EMPTY: EstaAnswers = {
   usAddress: "",
@@ -111,15 +118,16 @@ function StepRail({ step }: { step: ClientVisaStep }) {
 }
 
 export function VisaJourney({
+  variant = "client",
   bookingId,
   reference,
   trip,
   requests,
   travelers,
   documents,
-  visaBooked,
   pliantReady = false,
 }: {
+  variant?: "admin" | "client";
   bookingId: string;
   reference: string;
   trip: FrenchPassportTrip;
@@ -131,6 +139,8 @@ export function VisaJourney({
 }) {
   const router = useRouter();
   const [answers, setAnswers] = useState<Record<string, EstaAnswers>>({});
+  const [picked, setPicked] = useState<Record<string, string[]>>({});
+  const [confirming, setConfirming] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -140,14 +150,14 @@ export function VisaJourney({
       [country]: { ...EMPTY, ...prev[country], [key]: value },
     }));
   }
-  const passengers = Math.max(1, trip.passengers || travelers.length || 1);
-  const fee = passengers * VISA_EUR;
+
   const corridors = trip.entries.filter((entry) => isCorridor(entry.iso));
   const others = [...trip.entries.filter((entry) => !isCorridor(entry.iso)), ...trip.unknownCountries];
   const liveIsrael = corridors.some((entry) => {
     if (entry.iso !== "IL") return false;
-    const step = requests.find((row) => row.country === "IL")?.step;
-    return step === "preparation" || step === "remplissage";
+    const request = requests.find((row) => row.country === "IL");
+    if (!journeyStarted(request)) return false;
+    return request?.step === "preparation" || request?.step === "remplissage";
   });
 
   useEffect(() => {
@@ -160,33 +170,41 @@ export function VisaJourney({
     return answers[iso] || EMPTY;
   }
 
-  async function launch(entry: FormalityEntry & { iso: VisaCorridor }) {
-    const current = fields(entry.iso);
-    if (!agencyLaunchReady(entry.iso, current)) return;
-    setBusy(entry.iso);
+  function selection(country: string) {
+    return picked[country] ?? travelers.map((row) => row.id);
+  }
+
+  function toggleTraveler(country: string, id: string) {
+    const current = selection(country);
+    const next = current.includes(id) ? current.filter((row) => row !== id) : [...current, id];
+    setPicked((prev) => ({ ...prev, [country]: next }));
+  }
+
+  async function confirm(entry: FormalityEntry & { iso: VisaCorridor }) {
+    const country = entry.iso;
+    const current = fields(country);
+    const ids = selection(country);
+    if (!agencyLaunchReady(country, current)) return;
+    if (travelers.length && ids.length < 1) return;
+    setBusy(country);
     setError(null);
-    if (!visaBooked) {
-      const extra = await fetch(`/api/client/bookings/${reference}/extras`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ kind: "visa", resume: true }),
-      });
-      if (!extra.ok) {
-        setBusy(null);
-        setError(await readError(extra));
-        return;
-      }
-    }
-    const res = await fetch(`/api/client/bookings/${reference}/visa`, {
+    const visaUrl =
+      variant === "admin" ? `/api/admin/bookings/${bookingId}/visa` : `/api/client/bookings/${reference}/visa`;
+    const payload =
+      variant === "admin"
+        ? { action: "run", country, answers: current, confirm: true, travelerIds: ids }
+        : { country, answers: current, confirm: true, travelerIds: ids };
+    const res = await fetch(visaUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ country: entry.iso, answers: current }),
+      body: JSON.stringify(payload),
     });
     setBusy(null);
     if (!res.ok) {
       setError(await readError(res));
       return;
     }
+    setConfirming(null);
     router.refresh();
   }
 
@@ -195,15 +213,20 @@ export function VisaJourney({
       {corridors.map((entry) => {
         const country = entry.iso as VisaCorridor;
         const request = requests.find((row) => row.country === country);
-        const step = (request?.step || (request?.status === "piece" ? "piece" : null)) as ClientVisaStep | null;
+        const started = journeyStarted(request);
+        const step = (
+          started && !canReturnToOffer(request)
+            ? request?.step || (request?.status === "piece" ? "piece" : "preparation")
+            : null
+        ) as ClientVisaStep | null;
         const paid = request?.status === "paye" || request?.status === "piece";
         const paymentHeld = step === "paiement" && !paid && !pliantReady;
         const pieces = piecePaths(documents, country);
-        const official = VISA_OFFICIAL[country];
         const current = fields(country);
         const ready = agencyLaunchReady(country, current);
-        const percent = step ? clientVisaProgress(step) : 0;
-        const headline = step ? clientVisaStepNote(step, { paid, paymentHeld: !pliantReady }) : null;
+        const chosen = selection(country);
+        const count = travelers.length ? chosen.length : Math.max(1, trip.passengers || 1);
+        const open = confirming === country;
         return (
           <article
             key={country}
@@ -215,119 +238,92 @@ export function VisaJourney({
               </p>
               <h2 className="font-display mt-1 text-base leading-none font-semibold">{entry.name}</h2>
               {step ? (
-                <div className="mt-3">
-                  <div className="flex items-center gap-3">
-                    <div className="relative shrink-0">
-                      <ProgressRing value={percent} />
-                      <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <p className="font-display text-base leading-none font-semibold tabular-nums">
-                          {percent}
-                          <span className="text-[10px] font-medium text-[#C5A880]">%</span>
-                        </p>
-                      </div>
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold">
-                        {clientVisaTrack(step).find((row) => row.state === "en cours")?.label || "Pièce"}
-                      </p>
-                      <p
-                        className="mt-1 text-xs leading-snug text-[#faf9f6]/75"
-                        role="progressbar"
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-valuenow={percent}
-                        aria-label={`Avancement de la formalité, ${percent} pour cent`}
-                      >
-                        {paymentHeld ? paymentHold(false) : headline}
-                      </p>
-                    </div>
-                  </div>
-                  {step !== "piece" && !paymentHeld ? (
-                    <p className="mt-2 text-xs text-[#C5A880]">{VISA_WAIT_COPY}</p>
-                  ) : null}
-                  <StepRail step={step} />
-                  {pieces.length ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {pieces.map((doc) =>
-                        doc.storage_path ? (
-                          <FileOpenLink
-                            key={doc.id}
-                            path={doc.storage_path}
-                            className="inline-flex h-9 items-center rounded-full bg-[#C5A880] px-3 text-xs font-semibold text-[#0B192C]"
-                          >
-                            Ouvrir l’autorisation
-                          </FileOpenLink>
-                        ) : null
-                      )}
-                    </div>
-                  ) : null}
-                  {entry.applyUrl ? (
-                    <a
-                      href={entry.applyUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-3 inline-flex text-xs font-semibold text-[#C5A880] underline decoration-[#C5A880]/40 underline-offset-4"
-                    >
-                      Lien officiel
-                    </a>
-                  ) : null}
-                </div>
+                <JourneyBody step={step} paid={paid} paymentHeld={paymentHeld} pieces={pieces} pliantReady={pliantReady} />
               ) : (
                 <div className="mt-3 space-y-3">
                   <p className="text-sm leading-snug text-[#faf9f6]/85">
-                    Deux chemins. Le site de l’État, si vous déposez la demande vous-même. Ou nous la prenons, et vous
-                    suivez l’avancement ici.
-                    {astraFillsCountry(country) ? " La demande part ensuite, sans que vous restiez devant l’écran." : ""}
+                    Le site de l’État, si vous déposez la demande vous-même. Ou nous la prenons.
+                    {astraFillsCountry(country) ? " Le formulaire se remplit ensuite, sans que vous restiez devant l’écran." : ""}
                   </p>
-                  <div className="rounded-xl bg-white/[0.04] p-3 ring-1 ring-[#C5A880]/25">
-                    <p className="text-[10px] font-semibold tracking-[0.12em] text-[#C5A880] uppercase">Avec l’agence</p>
-                    <p className="font-display mt-1 text-base leading-none font-semibold">{formatMoney(fee, "EUR")}</p>
-                    <p className="mt-1.5 text-xs leading-snug text-[#faf9f6]/70">
-                      {VISA_EUR} € par passager, hors frais officiels. Frais d’État : {official.amount} {official.currency}.
-                    </p>
-                    {country === "US" ? (
-                      <div className="mt-4 grid gap-3">
-                        <Field
-                          label="Adresse du séjour aux États-Unis"
-                          value={current.usAddress}
-                          onChange={(value) => patchAnswer("US", "usAddress", value)}
-                        />
-                        <Field
-                          label="Emploi"
-                          value={current.employment}
-                          onChange={(value) => patchAnswer("US", "employment", value)}
-                        />
-                        <Field
-                          label="Pays visités"
-                          value={current.countriesVisited}
-                          onChange={(value) => patchAnswer("US", "countriesVisited", value)}
-                        />
-                        <Field
-                          label="Refus de visa antérieur"
-                          value={current.priorRefusal}
-                          onChange={(value) => patchAnswer("US", "priorRefusal", value)}
-                        />
-                      </div>
-                    ) : null}
-                    {country === "GB" ? (
-                      <div className="mt-4">
-                        <Field
-                          label="Refus de visa antérieur"
-                          value={current.priorRefusal}
-                          onChange={(value) => patchAnswer("GB", "priorRefusal", value)}
-                        />
-                      </div>
-                    ) : null}
+                  {country === "US" ? (
+                    <div className="grid gap-3">
+                      <Field
+                        label="Adresse du séjour aux États-Unis"
+                        value={current.usAddress}
+                        onChange={(value) => patchAnswer("US", "usAddress", value)}
+                      />
+                      <Field
+                        label="Emploi"
+                        value={current.employment}
+                        onChange={(value) => patchAnswer("US", "employment", value)}
+                      />
+                      <Field
+                        label="Pays visités"
+                        value={current.countriesVisited}
+                        onChange={(value) => patchAnswer("US", "countriesVisited", value)}
+                      />
+                      <Field
+                        label="Refus de visa antérieur"
+                        value={current.priorRefusal}
+                        onChange={(value) => patchAnswer("US", "priorRefusal", value)}
+                      />
+                    </div>
+                  ) : null}
+                  {country === "GB" ? (
+                    <Field
+                      label="Refus de visa antérieur"
+                      value={current.priorRefusal}
+                      onChange={(value) => patchAnswer("GB", "priorRefusal", value)}
+                    />
+                  ) : null}
+                  {open ? (
+                    <div className="rounded-xl bg-white/[0.04] p-3 ring-1 ring-[#C5A880]/25">
+                      <p className="text-sm leading-snug text-[#faf9f6]/90">{visaConfirmationCopy({ travelers: count, country })}</p>
+                      {travelers.length ? (
+                        <ul className="mt-3 space-y-2">
+                          {travelers.map((traveler) => (
+                            <li key={traveler.id}>
+                              <label className="flex items-center gap-2 text-sm">
+                                <input
+                                  type="checkbox"
+                                  checked={chosen.includes(traveler.id)}
+                                  onChange={() => toggleTraveler(country, traveler.id)}
+                                  className="h-4 w-4 accent-[#C5A880]"
+                                />
+                                {travelerDisplayName(traveler)}
+                              </label>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      <button
+                        type="button"
+                        disabled={busy !== null || !ready || (travelers.length > 0 && chosen.length < 1)}
+                        onClick={() => void confirm(entry as FormalityEntry & { iso: VisaCorridor })}
+                        className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-full bg-[#C5A880] px-4 text-sm font-semibold text-[#0B192C] disabled:opacity-50"
+                      >
+                        {busy === country ? "Demande en cours…" : "Confirmer"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy !== null}
+                        onClick={() => setConfirming(null)}
+                        className="mt-2 inline-flex h-10 w-full items-center justify-center rounded-full text-sm font-semibold text-[#faf9f6]/80"
+                      >
+                        Pas maintenant
+                      </button>
+                      <BusyBar active={busy === country} label="Demande en cours…" tone="light" />
+                    </div>
+                  ) : (
                     <button
                       type="button"
                       disabled={busy !== null || !ready}
-                      onClick={() => void launch(entry as FormalityEntry & { iso: VisaCorridor })}
-                      className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-full bg-[#C5A880] px-4 text-sm font-semibold text-[#0B192C] disabled:opacity-50"
+                      onClick={() => setConfirming(country)}
+                      className="inline-flex h-10 w-full items-center justify-center rounded-full bg-[#C5A880] px-4 text-sm font-semibold text-[#0B192C] disabled:opacity-50"
                     >
-                      {busy === country ? "Demande en cours…" : "L’agence s’en charge"}
+                      L’agence s’en charge
                     </button>
-                    <BusyBar active={busy === country} label="Demande en cours…" tone="light" />
-                  </div>
+                  )}
                   {entry.applyUrl ? (
                     <a
                       href={entry.applyUrl}
@@ -367,7 +363,7 @@ export function VisaJourney({
       {trip.entries.length ? (
         <div className="rounded-[1.35rem] bg-white p-4">
           <TripVisaUploads
-            variant="client"
+            variant={variant}
             bookingId={bookingId}
             reference={reference}
             travelers={travelers}
@@ -391,6 +387,71 @@ export function VisaJourney({
 
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
     </section>
+  );
+}
+
+function JourneyBody({
+  step,
+  paid,
+  paymentHeld,
+  pieces,
+  pliantReady,
+}: {
+  step: ClientVisaStep;
+  paid: boolean;
+  paymentHeld: boolean;
+  pieces: CrmTravelDocument[];
+  pliantReady: boolean;
+}) {
+  const percent = clientVisaProgress(step);
+  const headline = clientVisaStepNote(step, { paid, paymentHeld: !pliantReady });
+  const held = paymentHeld && !pliantReady;
+  return (
+    <div className="mt-3">
+      <div className="flex items-center gap-3">
+        <div className="relative shrink-0">
+          <ProgressRing value={percent} />
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <p className="font-display text-base leading-none font-semibold tabular-nums">
+              {percent}
+              <span className="text-[10px] font-medium text-[#C5A880]">%</span>
+            </p>
+          </div>
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold">
+            {clientVisaTrack(step).find((row) => row.state === "en cours")?.label || "Pièce"}
+          </p>
+          <p
+            className="mt-1 text-xs leading-snug text-[#faf9f6]/75"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={percent}
+            aria-label={`Avancement de la formalité, ${percent} pour cent`}
+          >
+            {held ? paymentHold(false) : headline}
+          </p>
+        </div>
+      </div>
+      {step !== "piece" && !held ? <p className="mt-2 text-xs text-[#C5A880]">{VISA_WAIT_COPY}</p> : null}
+      <StepRail step={step} />
+      {pieces.length ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {pieces.map((doc) =>
+            doc.storage_path ? (
+              <FileOpenLink
+                key={doc.id}
+                path={doc.storage_path}
+                className="inline-flex h-9 items-center rounded-full bg-[#C5A880] px-3 text-xs font-semibold text-[#0B192C]"
+              >
+                Ouvrir l’autorisation
+              </FileOpenLink>
+            ) : null
+          )}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

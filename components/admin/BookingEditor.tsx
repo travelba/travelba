@@ -40,7 +40,7 @@ import { IssuesList } from "@/components/crm/IssuesList";
 import { collectPublishIssues, issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
 import { householdMembers } from "@/lib/crm/household";
 import { bookingHasFlight, findVisaExtra, type ServiceRefusal } from "@/lib/crm/extras";
-import { readEstaAnswers, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
+import { journeyStarted, readEstaAnswers, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import type { FrenchPassportTrip } from "@/lib/crm/visa-trip";
 import { reusableDocumentsForTraveler, tripDocumentsForTraveler } from "@/lib/crm/trip-documents";
 import { CustomerPickField } from "@/components/admin/CustomerPickField";
@@ -78,6 +78,7 @@ export function BookingEditor({
     country: string;
     step?: ClientVisaStep | null;
     status?: string | null;
+    accepted_at?: string | null;
     answers?: Partial<EstaAnswers> | null;
   }[];
   pliantReady?: boolean;
@@ -398,10 +399,11 @@ export function BookingEditor({
                   const request = visaRequests.find((row) => row.country === entry.iso);
                   return (
                     <VisaRunPanel
-                      key={`${entry.iso}-${request?.step || "none"}-${request?.status || ""}`}
+                      key={`${entry.iso}-${request?.step || "none"}-${request?.status || ""}-${request?.accepted_at || ""}`}
                       bookingId={booking.id}
                       country={entry.iso}
-                      step={request?.step}
+                      step={journeyStarted(request) ? request?.step : null}
+                      acceptedAt={request?.accepted_at}
                       initialAnswers={readEstaAnswers(request?.answers)}
                       pliantReady={pliantReady}
                     />

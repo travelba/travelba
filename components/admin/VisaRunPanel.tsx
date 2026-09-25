@@ -6,6 +6,7 @@ import { VISA_OFFICIAL, type VisaCorridor } from "@/lib/crm/visa-fees";
 import {
   agencyLaunchReady,
   headerVisaLabel,
+  journeyStarted,
   paymentHold,
   phaseForSavedStep,
   type ClientVisaStep,
@@ -34,16 +35,18 @@ export function VisaRunPanel({
   bookingId,
   country,
   step = null,
+  acceptedAt = null,
   initialAnswers = null,
   pliantReady = false,
 }: {
   bookingId: string;
   country: VisaCorridor;
   step?: ClientVisaStep | null;
+  acceptedAt?: string | null;
   initialAnswers?: Partial<EstaAnswers> | null;
   pliantReady?: boolean;
 }) {
-  const savedPhase = phaseForSavedStep(step);
+  const savedPhase = phaseForSavedStep(journeyStarted({ step, accepted_at: acceptedAt }) ? step : null);
   const [view, setView] = useState<View | null>(
     savedPhase
       ? {
@@ -62,6 +65,7 @@ export function VisaRunPanel({
     countriesVisited: initialAnswers?.countriesVisited || "",
     priorRefusal: initialAnswers?.priorRefusal || "",
   });
+  if (!journeyStarted({ step, accepted_at: acceptedAt })) return null;
   const official = VISA_OFFICIAL[country];
   const phase = view?.phase || null;
   const recapReady = country === "IL" || agencyLaunchReady(country, answers);
