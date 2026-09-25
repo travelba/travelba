@@ -71,7 +71,7 @@ export default async function AccountHomePage() {
       ) : (
         <Link
           href="/mon-compte/transactions"
-          className={`block rounded-2xl border p-4 shadow-sm ${
+          className={`block rounded-2xl border p-4 shadow-sm transition hover:border-[var(--admin-gold)] ${
             owes ? "border-[var(--admin-gold)] bg-[#f8f3eb]" : "border-[#e5e3dc] bg-white"
           }`}
         >
@@ -88,6 +88,10 @@ export default async function AccountHomePage() {
               </li>
             ))}
           </ul>
+          <p className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-[var(--admin-navy)]">
+            Voir les transactions
+            <Icon name="arrow_forward" className="h-3.5 w-3.5 text-[var(--admin-gold-dark)]" />
+          </p>
         </Link>
       )}
 
