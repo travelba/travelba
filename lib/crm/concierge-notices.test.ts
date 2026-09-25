@@ -4,6 +4,9 @@ import {
   conciergeContentDrafts,
   conciergeContentSid,
   conciergeContentVariables,
+  conciergeExemplars,
+  noticeCardTemplate,
+  pieceCardTemplate,
   PIECES_PATH,
   planFormalityReady,
   planMissingPieceNotices,
@@ -297,6 +300,104 @@ test("les modèles n’embarquent aucun SID", () => {
     if (previous === undefined) delete process.env.TWILIO_CONTENT_SEJOUR;
     else process.env.TWILIO_CONTENT_SEJOUR = previous;
   }
+});
+
+test("chaque exemplaire a une photo de séjour et un bouton, sans monogramme", () => {
+  const exemplars = conciergeExemplars();
+  assert.ok(exemplars.length >= 14);
+  const names = new Set<string>();
+  for (const draft of exemplars) {
+    assert.equal(names.has(draft.friendlyName), false);
+    names.add(draft.friendlyName);
+    const card = draft.create.types["whatsapp/card"] as {
+      body: string;
+      media: string[];
+      actions: { type: string; title: string; url: string }[];
+    };
+    assert.ok(card);
+    assert.equal(card.actions.length, 1);
+    assert.equal(card.actions[0].type, "URL");
+    assert.ok(card.actions[0].title.length > 0);
+    assert.ok(card.actions[0].title.length <= 25);
+    assert.equal(card.actions[0].url, "https://travelba.fr/e/{{" + card.actions[0].url.match(/\{\{(\d+)\}\}/)?.[1] + "}}");
+    assert.equal(card.media.length, 1);
+    assert.match(card.media[0], /^\{\{\d+\}\}$/);
+    assert.equal(/https?:|travelba\.fr/i.test(card.body), false);
+    assert.match(card.body, /Le Concierge/);
+    assert.equal(JSON.stringify(draft.create).includes("og-concierge"), false);
+    assert.equal(JSON.stringify(draft.create).includes("tba-mark"), false);
+    const sampleCover = Object.values(draft.create.variables).find((value) =>
+      String(value).includes("/api/covers/sejour/")
+    );
+    assert.match(String(sampleCover), /\/api\/covers\/sejour\/TB-2026-0028$/);
+  }
+  assert.equal(
+    conciergeContentDrafts().some((draft) => JSON.stringify(draft.create).includes("og-concierge")),
+    false
+  );
+});
+
+test("la carte hôtel, vol, transfert ou document reprend la photo du séjour", () => {
+  const cover = "https://travelba.fr/api/covers/sejour/TB-2026-0004";
+  assert.equal(
+    pieceCardTemplate({ template: "piece", variable: "confirmation d'hôtel" }),
+    "piece_hotel"
+  );
+  assert.equal(pieceCardTemplate({ template: "piece", variable: "billet" }), "piece_vol");
+  assert.equal(pieceCardTemplate({ template: "piece", variable: "transfert" }), "piece_transfert");
+  assert.equal(pieceCardTemplate({ template: "piece", variable: "pièce" }), "document");
+  assert.equal(
+    pieceCardTemplate({
+      template: "pieces_composees",
+      variable: "billet, la confirmation d'hôtel et le transfert",
+    }),
+    "pieces_regroupees"
+  );
+  assert.equal(pieceCardTemplate({ template: "piece", variable: "assurance" }), null);
+  assert.equal(noticeCardTemplate("passeport"), "passeport_carte");
+  assert.equal(noticeCardTemplate("formalite_prete"), "formalite_prete_carte");
+  assert.equal(noticeCardTemplate("formalite_manquante"), "formalite_manquante_carte");
+  const hotel = conciergeContentVariables({
+    template: "piece_hotel",
+    buttonSuffix: "c/K7MQ2PX4",
+    place: "Avoriaz",
+    reference,
+    mediaUrl: cover,
+  });
+  assert.equal(hotel?.["1"], "Avoriaz, réservation TB-2026-0004,");
+  assert.equal(hotel?.["2"], cover);
+  assert.equal(hotel?.["3"], "c/K7MQ2PX4");
+  assert.equal(
+    conciergeContentVariables({
+      template: "piece_hotel",
+      buttonSuffix: "c/K7MQ2PX4",
+      place: "Avoriaz",
+      reference,
+      mediaUrl: "https://travelba.fr/og-concierge.jpg",
+    }),
+    null
+  );
+  const esta = conciergeContentVariables({
+    template: "formalite_prete_carte",
+    buttonSuffix: "c/K7MQ2PX4",
+    variable: "ESTA",
+    place: "Avoriaz",
+    reference,
+    mediaUrl: cover,
+  });
+  assert.equal(esta?.["1"], "ESTA");
+  assert.equal(esta?.["2"], "Avoriaz, réservation TB-2026-0004,");
+  assert.equal(esta?.["4"], "c/K7MQ2PX4");
+  const invite = conciergeContentVariables({
+    template: "connexion_carte",
+    buttonSuffix: "c/K7MQ2PX4",
+    variable: "Voyageur",
+    place: "Avoriaz",
+    reference,
+    mediaUrl: cover,
+  });
+  assert.equal(invite?.["1"], "Voyageur");
+  assert.equal(invite?.["2"].includes("http"), false);
 });
 
 test("sans SID approuvé, Twilio n’est pas appelé", async () => {
