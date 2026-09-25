@@ -20,8 +20,8 @@ import {
 } from "@/components/crm/fields";
 import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
 import { BusyBar } from "@/components/crm/BusyBar";
-import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
-import { Icon } from "@/components/crm/icons";
+import { FilePreviewTile } from "@/components/crm/FilePreview";
+import { identityPreview } from "@/lib/crm/preview-files";
 
 export function DocumentsManager({
   documents,
@@ -241,13 +241,18 @@ export function DocumentsManager({
                       .join(" · ")}
                   </p>
                   {d.storage_path ? (
-                    <FileOpenLink
-                      path={d.storage_path}
-                      className="inline-flex items-center gap-1 rounded-full bg-[#efebe0] px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-[var(--admin-navy)]"
-                    >
-                      <Icon name={fileKindIcon(d.mime_type, d.file_name)} className="h-4 w-4" />
-                      Ouvrir
-                    </FileOpenLink>
+                    <FilePreviewTile
+                      file={
+                        identityPreview(d, holderName || "Passeport") || {
+                          id: d.id,
+                          path: d.storage_path,
+                          fileName: d.file_name || "passeport",
+                          mimeType: d.mime_type,
+                          label: holderName || "Passeport",
+                          shareText: "Bonjour, je vous transmets un passeport.",
+                        }
+                      }
+                    />
                   ) : null}
                 </div>
               ) : null}

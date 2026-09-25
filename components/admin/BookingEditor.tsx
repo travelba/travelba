@@ -19,18 +19,18 @@ import { BusyBar } from "@/components/crm/BusyBar";
 import { formatMoney, jMinusLabel } from "@/lib/crm/money";
 import { bookingTotalFromItems } from "@/lib/crm/bookings";
 import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
-import { coverQuery, documentLabel } from "@/lib/crm/carnet";
+import { coverQuery } from "@/lib/crm/carnet";
 import { unsplashKeywordMatch } from "@/lib/crm/covers";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
-import { Icon } from "@/components/crm/icons";
 import { BookingExpensesPanel } from "@/components/admin/BookingExpensesPanel";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
 import { PlaceField } from "@/components/crm/PlaceField";
-import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
+import { ReservationFiles } from "@/components/crm/ReservationFiles";
+import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
 import { TripPassportPicker } from "@/components/crm/TripPassportPicker";
 import { VisaRunPanel } from "@/components/admin/VisaRunPanel";
 import type { VisaCorridor } from "@/lib/crm/visa-fees";
@@ -711,28 +711,16 @@ export function BookingEditor({
         </section>
       ) : null}
 
+      <ReservationFiles
+        variant="admin"
+        passports={passportPreviewsForStay(travelers, identityDocs, holderName, booking.reference)}
+        attachments={attachmentPreviews(documents, items, booking.reference)}
+      />
       <section className="admin-af-card rounded-3xl p-5">
-        <h2 className="font-display text-lg font-bold">Billets, vouchers et devis</h2>
-        <p className="mt-1 text-sm text-muted">Justificatifs du dossier. Visibles au client seulement après publication du carnet.</p>
-        <ul className="mt-2 space-y-2 text-sm">
-          {documents.map((d) => (
-            <li key={d.id} className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2">
-              <div className="min-w-0">
-                <p className="truncate font-medium">{documentLabel(d, items)}</p>
-                <p className="text-xs text-muted">
-                  {d.visible_to_client ? "Publié avec le carnet" : "Masqué jusqu’à publication"}
-                </p>
-              </div>
-              <FileOpenLink
-                path={d.storage_path}
-                className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--admin-sky)] px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)]"
-              >
-                <Icon name={fileKindIcon(d.mime_type, d.file_name)} className="h-4 w-4" />
-                Ouvrir
-              </FileOpenLink>
-            </li>
-          ))}
-        </ul>
+        <h2 className="font-display text-lg font-bold">Joindre un justificatif</h2>
+        <p className="mt-1 text-sm text-muted">
+          Billets, vouchers et devis. Visibles au client seulement après publication du carnet.
+        </p>
         <form onSubmit={addDoc} className="mt-3 flex flex-wrap gap-2">
           <input name="file" type="file" required />
           <button className="admin-af-btn rounded-full px-3 py-2 text-sm">Joindre</button>

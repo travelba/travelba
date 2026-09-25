@@ -1,8 +1,7 @@
 import type { ReactNode } from "react";
+import { fileHref } from "@/lib/crm/file-href";
 
-export function fileHref(path: string) {
-  return `/api/files?path=${encodeURIComponent(path)}`;
-}
+export { fileHref, fileDownloadHref } from "@/lib/crm/file-href";
 
 export function FileOpenLink({
   path,

@@ -10,6 +10,7 @@ import {
 import { trySharp } from "@/lib/crm/sharp";
 import { openPdf } from "@/lib/crm/pdf-raster";
 import { downloadCrmFile } from "@/lib/crm/files";
+import { clearLittleEmperorsContacts } from "@/lib/crm/hotel-contact";
 import {
   applyStructuredHints,
   classifyIngestFamily,
@@ -89,6 +90,8 @@ const PROMPT_HOTEL = `Hôtel :
 - UN item même s’il y a deux chambres / deux réf. : details.rooms = [{room, guests, confirmation_ref}, …].
 - confirmation_ref = première réf. ou les deux séparées par « ; » (ex. 97620170;97620172).
 - title de la carte = details.hotel_name (nom de l’établissement), PAS la ville. details.city = ville. details.address, details.board si écrite.
+- details.website, details.phone, details.email seulement s’ils sont imprimés. Ne jamais inventer un téléphone ou un e-mail.
+- Little Emperors : nom, adresse, ville, site s’il est écrit. Pas de téléphone, pas d’e-mail.
 - Nantipa / vouchers Costa Rica : 08/02/2026 = 2 août (MM/JJ), pas 8 février. Check-in 15:00 dans les CGV ≠ heure de la carte (date only).
 - Confirmation type The Leela : Check In 14-SEP-26 = date only. Ignorer 14:00/12:00 de politique et Pick Up / Drop Off 00:00. TENTATIVE → details.needs_review.
 - Devis Passion Collection / « none are on hold » : document_status=quote, un item hôtel, rooms = les options. Pas de NET.`;
@@ -293,7 +296,9 @@ async function llmExtract(opts: {
     if (!result.output) {
       throw new Error("Lecture incomplète. Réessayez avec des fichiers plus lisibles.");
     }
-    return finalizeExtract(result.output as BookingExtract, opts.texts, opts.name);
+    const extracted = finalizeExtract(result.output as BookingExtract, opts.texts, opts.name);
+    if (opts.family !== "little_emperors") return extracted;
+    return { ...extracted, items: clearLittleEmperorsContacts(extracted.items) };
   };
 
   try {
@@ -529,7 +534,10 @@ async function processPreparedFile(
       destination: parsed.destination || "",
       notes_client: parsed.notes.join("\n"),
       travelers: parsed.travelers,
-      items: tagSourceFileName(parsed.items, name),
+      items:
+        family === "little_emperors"
+          ? clearLittleEmperorsContacts(tagSourceFileName(parsed.items, name))
+          : tagSourceFileName(parsed.items, name),
     });
   if (complete) {
     return { name, family, extract: fromParser() };
