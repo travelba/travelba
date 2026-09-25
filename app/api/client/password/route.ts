@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError } from "@/lib/crm/auth";
-import { MIN_PASSWORD_LENGTH, pathAfterPassword } from "@/lib/crm/session";
+import {
+  MIN_PASSWORD_LENGTH,
+  destinationAfterPassword,
+  pathAfterPassword,
+  withOnboardingPending,
+} from "@/lib/crm/session";
 import { passwordErrorMessage } from "@/lib/crm/db-error";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -32,17 +37,6 @@ export async function POST(request: Request) {
 
   const admin = createServiceClient();
   const { data: fresh } = await admin.auth.admin.getUserById(user.id);
-  const meta = fresh.user?.app_metadata || user.app_metadata || {};
-  const { error: metaError } = await admin.auth.admin.updateUserById(user.id, {
-    app_metadata: {
-      ...meta,
-      must_set_password: false,
-      password_set_at: new Date().toISOString(),
-    },
-  });
-  if (metaError) return dbError(metaError, 400);
-
-  await supabase.auth.refreshSession();
   const [{ data: customer }, { data: staffRow }] = await Promise.all([
     admin
       .from("crm_customers")
@@ -51,7 +45,21 @@ export async function POST(request: Request) {
       .maybeSingle(),
     admin.from("crm_staff").select("id").eq("auth_user_id", user.id).maybeSingle(),
   ]);
-  if (!staffRow && customer?.id && user.email) {
+  const staff = Boolean(staffRow);
+  const meta = fresh.user?.app_metadata || user.app_metadata || {};
+  const stamped = {
+    ...meta,
+    must_set_password: false,
+    password_set_at: new Date().toISOString(),
+  };
+  const appMeta = staff ? { ...stamped, client_onboarding_pending: false } : withOnboardingPending(stamped);
+  const { error: metaError } = await admin.auth.admin.updateUserById(user.id, {
+    app_metadata: appMeta,
+  });
+  if (metaError) return dbError(metaError, 400);
+
+  await supabase.auth.refreshSession();
+  if (!staff && customer?.id && user.email) {
     try {
       await sendSpaceAccessWhatsapp({
         customerId: customer.id,
@@ -65,10 +73,11 @@ export async function POST(request: Request) {
       console.error("[client/password] whatsapp:", message.replace(/https?:\/\/\S+/g, ""));
     }
   }
-  const next = pathAfterPassword(customer?.phone, staffRow ? "staff" : "client");
+  const home = pathAfterPassword(customer?.phone, staff ? "staff" : "client");
+  const next = staff ? home : destinationAfterPassword(appMeta, customer?.phone);
   return NextResponse.json({
     ok: true,
-    needsPhone: !staffRow && next !== "/mon-compte",
+    needsPhone: !staff && home !== "/mon-compte",
     next,
   });
 }

@@ -1,7 +1,14 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { AUTH_COOKIE_OPTIONS } from "@/lib/supabase/cookie-options";
-import { SET_PASSWORD_PATH, isStaffRole, mustSetPassword } from "@/lib/crm/session";
+import {
+  SET_PASSWORD_PATH,
+  clientAreaRedirect,
+  isStaffRole,
+  mustSetPassword,
+  needsClientOnboarding,
+  signedInClientDestination,
+} from "@/lib/crm/session";
 import { publicSupabaseEnv } from "@/lib/supabase/env";
 
 export async function updateSession(request: NextRequest) {
@@ -89,9 +96,13 @@ export async function updateSession(request: NextRequest) {
       url.searchParams.set("next", pathname);
       return NextResponse.redirect(url);
     }
-    if (mustSetPassword(user)) {
+    const dest = clientAreaRedirect(pathname, {
+      mustSetPassword: mustSetPassword(user),
+      needsOnboarding: needsClientOnboarding(user),
+    });
+    if (dest) {
       const url = request.nextUrl.clone();
-      url.pathname = SET_PASSWORD_PATH;
+      url.pathname = dest;
       url.search = "";
       return NextResponse.redirect(url);
     }
@@ -103,11 +114,11 @@ export async function updateSession(request: NextRequest) {
       return supabaseResponse;
     }
     const url = request.nextUrl.clone();
-    url.pathname = mustSetPassword(user)
-      ? SET_PASSWORD_PATH
-      : staff
-        ? "/admin"
-        : "/mon-compte";
+    url.pathname = signedInClientDestination({
+      mustSetPassword: mustSetPassword(user),
+      needsOnboarding: needsClientOnboarding(user),
+      staff,
+    });
     url.search = "";
     return NextResponse.redirect(url);
   }

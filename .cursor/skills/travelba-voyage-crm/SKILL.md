@@ -46,6 +46,7 @@ Règle always-on : `.cursor/rules/travelba-core.mdc`.
 | Transactions + demander un relevé | `/mon-compte/transactions` |
 | Connexion mot de passe + magique | `/connexion` |
 | Définir mot de passe | `/connexion/mot-de-passe` |
+| Bienvenue (une fois, après le mot de passe) | `/mon-compte/bienvenue` |
 | Admin | `/admin` → clients, réservations, transactions, Revolut |
 | Login staff | `/admin/login` |
 
