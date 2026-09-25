@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
-import type { CrmCompanion, CrmCustomer, CrmTravelDocument, CompanyRole } from "@/lib/crm/types";
+import type { CrmBillingCompany, CrmCompanion, CrmCustomer, CrmTravelDocument, CompanyRole } from "@/lib/crm/types";
 import { resolveCountryCode } from "@/lib/crm/countries";
 import { identityNationalityFromSources, nationalityFromIdentity } from "@/lib/crm/document-identity";
 import { identityOverwriteWarning, type ExtractedIdentity } from "@/lib/crm/identity";
@@ -23,12 +23,10 @@ import {
   SexSelect,
 } from "@/components/crm/fields";
 import {
-  billingJson,
-  billingSameAsProfile,
-  companyBillingFromCustomer,
-  CompanyBillingFields,
-  type CompanyBillingValues,
-} from "@/components/crm/CompanyBillingFields";
+  billingCompaniesPayload,
+  billingCompanyDrafts,
+  BillingCompaniesTabs,
+} from "@/components/crm/BillingCompaniesTabs";
 import { CompanyRoleFields } from "@/components/crm/CompanyRoleFields";
 import { PersonPassportCard } from "@/components/crm/PersonPassportCard";
 import { BusyBar } from "@/components/crm/BusyBar";
@@ -60,11 +58,13 @@ export function CustomerEditor({
   companions,
   documents,
   companyAdmins = [],
+  billingCompanies = [],
 }: {
   customer: CrmCustomer;
   companions: CrmCompanion[];
   documents: CrmTravelDocument[];
   companyAdmins?: CrmCustomer[];
+  billingCompanies?: CrmBillingCompany[];
 }) {
   const router = useRouter();
   const [firstName, setFirstName] = useState(customer.first_name);
@@ -86,11 +86,8 @@ export function CustomerEditor({
   const [companyRole, setCompanyRole] = useState<CompanyRole | null>(customer.company_role || null);
   const [billingParentId, setBillingParentId] = useState(customer.billing_parent_id || "");
   const [nameWarn, setNameWarn] = useState<string | null>(null);
-  const [billing, setBilling] = useState<CompanyBillingValues>(() =>
-    companyBillingFromCustomer(customer)
-  );
-  const [sameBillingAddress, setSameBillingAddress] = useState(() =>
-    billingSameAsProfile(companyBillingFromCustomer(customer), {
+  const [companyDrafts, setCompanyDrafts] = useState(() =>
+    billingCompanyDrafts(billingCompanies, customer, {
       country: resolveCountryCode(customer.country) || "FR",
       line: customer.address_line || "",
       postal: customer.postal_code || "",
@@ -140,7 +137,7 @@ export function CustomerEditor({
         company_role: companyRole,
         billing_parent_id: companyRole === "member" ? billingParentId || null : null,
         on_hold: onHold,
-        ...billingJson(billing, profileAddress, sameBillingAddress),
+        billing_companies: billingCompaniesPayload(companyDrafts, profileAddress),
       }),
     });
     const json = await res.json().catch(() => ({}));
@@ -274,11 +271,9 @@ export function CustomerEditor({
           selfId={customer.id}
         />
 
-        <CompanyBillingFields
-          values={billing}
-          onChange={setBilling}
-          sameAsProfile={sameBillingAddress}
-          onSameAsProfileChange={setSameBillingAddress}
+        <BillingCompaniesTabs
+          drafts={companyDrafts}
+          onChange={setCompanyDrafts}
           profileAddress={profileAddress}
         />
 

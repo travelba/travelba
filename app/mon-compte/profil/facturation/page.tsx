@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
 import { isCompanyMember } from "@/lib/crm/company-role";
-import { customerFullName, type CrmCustomer } from "@/lib/crm/types";
+import { customerFullName, type CrmBillingCompany, type CrmCustomer } from "@/lib/crm/types";
 import { ProfileSubnav } from "@/components/account/ProfileSubnav";
 import { BillingForm } from "@/components/account/BillingForm";
 
@@ -14,6 +14,13 @@ export default async function FacturationPage() {
   if (!user) redirect("/connexion");
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");
+
+  const { data: companyRows } = await supabase
+    .from("crm_billing_companies")
+    .select("*")
+    .eq("customer_id", customer.id)
+    .order("sort_order");
+  const companies = (companyRows || []) as CrmBillingCompany[];
 
   let billingParent: CrmCustomer | null = null;
   if (isCompanyMember(customer) && customer.billing_parent_id) {
@@ -51,7 +58,7 @@ export default async function FacturationPage() {
           </p>
         </section>
       ) : (
-        <BillingForm customer={customer} />
+        <BillingForm customer={customer} companies={companies} />
       )}
     </div>
   );

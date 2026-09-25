@@ -14,10 +14,12 @@ import {
   formatMoney,
   postedLedgerTotals,
 } from "@/lib/crm/money";
+import { transactionCompanyLabel } from "@/lib/crm/billing-companies";
 import {
   TX_KIND_LABELS,
   type CompanyRole,
   type CrmBalance,
+  type CrmBillingCompany,
   type CrmCustomer,
   type CrmTransaction,
 } from "@/lib/crm/types";
@@ -57,6 +59,8 @@ export function shapeClientLedger(input: {
   currency: string;
   bookings: ClientLedgerBooking[];
   audience: ClientLedgerAudience;
+  billingCompanyCount?: number;
+  companyNames?: Map<string, string | null>;
 }): ClientLedgerView {
   const member = isCompanyMember({ company_role: input.companyRole ?? null });
   const scoped = filterClientLedgerRows(input.rows, {
@@ -77,6 +81,9 @@ export function shapeClientLedger(input: {
     const reference = visibleBooking?.reference || null;
     const rawTitle = ledgerMovementTitle(row, TX_KIND_LABELS[row.kind] || row.kind);
     const carnet = carnetLink(booking, input.audience);
+    const companyName = row.billing_company_id
+      ? input.companyNames?.get(row.billing_company_id)
+      : null;
     return {
       id: row.id,
       credit,
@@ -88,6 +95,7 @@ export function shapeClientLedger(input: {
       reference,
       carnetHref: carnet.href,
       carnetLabel: carnet.label,
+      companyLabel: transactionCompanyLabel(input.billingCompanyCount || 0, companyName),
     };
   });
 
@@ -179,6 +187,13 @@ export async function loadClientLedger(
       travelerBookingIds: bookingIds,
     })
   );
+  const { data: companyRows } = await supabase
+    .from("crm_billing_companies")
+    .select("id, company_name")
+    .eq("customer_id", customer.id)
+    .order("sort_order");
+  const billingCompanies = (companyRows || []) as Pick<CrmBillingCompany, "id" | "company_name">[];
+  const companyNames = new Map(billingCompanies.map((company) => [company.id, company.company_name]));
   const contextIds = [...new Set(shown.map((row) => row.booking_id).filter(Boolean))] as string[];
   let bookings: ClientLedgerBooking[] = [];
   if (contextIds.length) {
@@ -197,5 +212,7 @@ export async function loadClientLedger(
     currency,
     bookings,
     audience,
+    billingCompanyCount: billingCompanies.length,
+    companyNames,
   });
 }

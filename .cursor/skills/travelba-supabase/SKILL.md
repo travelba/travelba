@@ -32,6 +32,7 @@ Avant d’écrire du SQL : lister les tables (`crm_*`), lire la **dernière** mi
 | `20260922140000_booking_total_from_items.sql` | backfill `total_amount` = somme des prix vendus cartes si séjour à 0 |
 | `20260922150000_item_booking_debits.sql` | plusieurs débits cartes par dossier (plus un unique stays-only) |
 | `20260923180000_booking_item_kind_expense.sql` | kind `expense` — dépense libre, hors itinéraire |
+| `20260925120000_billing_companies.sql` | `crm_billing_companies` + `billing_company_id` (attribution, encours inchangé) |
 
 Toute évolution = **nouveau fichier** `supabase/migrations/YYYYMMDDHHMMSS_slug.sql` (idempotent : `if not exists`, `drop policy if exists`). Appliquer via MCP `apply_migration` ou SQL Editor. Ne pas éditer une migration déjà poussée en prod.
 

@@ -142,4 +142,66 @@ test("le carnet non publié reste fermé dans l’espace client", () => {
 
   assert.equal(view.movements[0].title, "Séjour");
   assert.equal(view.movements[0].carnetHref, null);
+  assert.equal(view.movements[0].companyLabel, null);
+});
+
+test("la société est absente du mouvement s’il n’y en a qu’une", () => {
+  const view = shapeClientLedger({
+    companyRole: null,
+    travelerBookingIds: [],
+    walletBalance: -40,
+    currency: "EUR",
+    audience: "client",
+    bookings: [],
+    billingCompanyCount: 1,
+    companyNames: new Map([["co", "Atelier"]]),
+    rows: [
+      tx({
+        id: "fee",
+        direction: "debit",
+        kind: "booking",
+        amount: 40,
+        billing_company_id: "co",
+        label: "Dépense",
+      }),
+    ],
+  });
+  assert.equal(view.balanceValue, -40);
+  assert.equal(view.movements[0].companyLabel, null);
+});
+
+test("la société est précisée quand le compte en a plusieurs", () => {
+  const view = shapeClientLedger({
+    companyRole: null,
+    travelerBookingIds: [],
+    walletBalance: 35,
+    currency: "EUR",
+    audience: "staff",
+    bookings: [],
+    billingCompanyCount: 2,
+    companyNames: new Map([
+      ["a", "Atelier"],
+      ["b", "Bureau"],
+    ]),
+    rows: [
+      tx({
+        id: "wire",
+        direction: "credit",
+        kind: "transfer",
+        amount: 100,
+        label: "Virement",
+      }),
+      tx({
+        id: "fee",
+        direction: "debit",
+        kind: "booking",
+        amount: 40,
+        billing_company_id: "b",
+        label: "Dépense",
+      }),
+    ],
+  });
+  assert.equal(view.balanceValue, 35);
+  assert.equal(view.movements[0].companyLabel, null);
+  assert.equal(view.movements[1].companyLabel, "Bureau");
 });

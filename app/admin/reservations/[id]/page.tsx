@@ -9,8 +9,11 @@ import { readEstaAnswers, type ClientVisaStep, type EstaAnswers } from "@/lib/cr
 import { pliantConfigured } from "@/lib/crm/pliant";
 import { formatDateRangeShort } from "@/lib/crm/money";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
+import { StayBillingChoice } from "@/components/crm/StayBillingChoice";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
+import { isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
 import type {
+  CrmBillingCompany,
   CrmBooking,
   CrmBookingDocument,
   CrmBookingItem,
@@ -45,6 +48,7 @@ export default async function AdminBookingPage({ params }: Props) {
     { data: declined },
     { data: visaRows },
     { data: leRows },
+    { data: billingCompanies },
   ] = await Promise.all([
     supabase.from("crm_booking_items").select("*").eq("booking_id", id).order("sort_order"),
     supabase.from("crm_booking_travelers").select("*").eq("booking_id", id),
@@ -61,6 +65,11 @@ export default async function AdminBookingPage({ params }: Props) {
       .select("id, hotel_name, is_cancellable, cancellation_deadline, cancellation_policies, state")
       .eq("crm_booking_id", id)
       .limit(1),
+    supabase
+      .from("crm_billing_companies")
+      .select("id, company_name, sort_order, customer_id")
+      .eq("customer_id", b.billing_customer_id || b.customer_id)
+      .order("sort_order"),
   ]);
   const party = (relatedCustomers || []) as CrmCustomer[];
   const customer = party.find((row) => row.id === b.customer_id) || null;
@@ -96,7 +105,20 @@ export default async function AdminBookingPage({ params }: Props) {
           state={row.state}
         />
       ))}
-      <div className="mt-6">
+      <div className="mt-6 space-y-6">
+        <StayBillingChoice
+          endpoint="admin"
+          bookingId={b.id}
+          companies={(billingCompanies || []) as Pick<CrmBillingCompany, "id" | "company_name">[]}
+          bookingCompanyId={b.billing_company_id || null}
+          expenses={bookingItems
+            .filter((item) => isLedgerExpenseKind(item.kind))
+            .map((item) => ({
+              id: item.id,
+              title: visibleServiceCopy(item.title),
+              billing_company_id: item.billing_company_id || null,
+            }))}
+        />
         <BookingEditor
           booking={b}
           items={bookingItems}

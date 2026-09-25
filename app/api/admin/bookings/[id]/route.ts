@@ -7,6 +7,7 @@ import {
   syncBookingLedger,
   syncBookingTotalFromItems,
 } from "@/lib/crm/bookings";
+import { parseBillingCompanyId } from "@/lib/crm/billing-companies";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { BookingDeleteError, deleteBookingById } from "@/lib/crm/delete-booking";
 import type { BookingStatus, CrmBooking, CrmCustomer } from "@/lib/crm/types";
@@ -53,6 +54,20 @@ export async function PATCH(request: Request, ctx: Ctx) {
     if (traveler) {
       patch.billing_customer_id = resolveBillingCustomerId(traveler as CrmCustomer);
     }
+  }
+
+  if ("billing_company_id" in patch && patch.billing_company_id) {
+    const parsed = parseBillingCompanyId(patch.billing_company_id);
+    if ("error" in parsed) return jsonError(parsed.error);
+    const payerId = String(patch.billing_customer_id || prev.billing_customer_id || prev.customer_id);
+    const { data: company } = await auth.supabase
+      .from("crm_billing_companies")
+      .select("id")
+      .eq("id", parsed.id)
+      .eq("customer_id", payerId)
+      .maybeSingle();
+    if (!company) return jsonError("Cette société n’est pas sur le compte facturé.");
+    patch.billing_company_id = parsed.id;
   }
 
   let booking = prev;

@@ -131,12 +131,14 @@ export function CompanyBillingFields({
   sameAsProfile,
   onSameAsProfileChange,
   profileAddress,
+  heading = true,
 }: {
   values: CompanyBillingValues;
   onChange: (next: CompanyBillingValues) => void;
   sameAsProfile: boolean;
   onSameAsProfileChange: (same: boolean) => void;
   profileAddress: { country: string; line: string; postal: string; city: string };
+  heading?: boolean;
 }) {
   const siretDigits = normalizeSiret(values.siret);
   const siretHint = siretFieldError(siretDigits);
@@ -190,14 +192,16 @@ export function CompanyBillingFields({
 
   return (
     <section className="space-y-4">
-      <div>
-        <p className="font-display text-base font-bold text-[var(--admin-navy)]">
-          Facturation société
-        </p>
-        <p className="mt-1 text-sm text-muted">
-          Raison sociale, SIRET et adresse à faire figurer sur les factures.
-        </p>
-      </div>
+      {heading ? (
+        <div>
+          <p className="font-display text-base font-bold text-[var(--admin-navy)]">
+            Facturation société
+          </p>
+          <p className="mt-1 text-sm text-muted">
+            Raison sociale, SIRET et adresse à faire figurer sur les factures.
+          </p>
+        </div>
+      ) : null}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Raison sociale" className="sm:col-span-2">
           <div className="relative">

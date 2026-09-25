@@ -64,6 +64,7 @@ async function upsertLine(
     const { error } = await supabase.from("crm_transactions").insert({
       customer_id: booking.billing_customer_id || booking.customer_id,
       booking_id: booking.id,
+      billing_company_id: booking.billing_company_id || null,
       direction: "debit",
       kind: "booking",
       amount: line.amount,
@@ -80,6 +81,7 @@ async function upsertLine(
     .from("crm_transactions")
     .update({
       customer_id: booking.billing_customer_id || booking.customer_id,
+      billing_company_id: booking.billing_company_id || null,
       amount: line.amount,
       label: line.label,
       status,

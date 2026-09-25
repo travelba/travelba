@@ -20,6 +20,8 @@ import {
   ticketingTicketCount,
 } from "@/lib/crm/ticketing-fee";
 import { coversStayRollup, isStayRollupDebit } from "@/lib/crm/ledger-display";
+import { debitBillingCompanyId } from "@/lib/crm/billing-companies";
+import { emptyToNull } from "@/lib/crm/identity";
 
 export function parseIncludeInLedger(value: unknown, fallback: boolean) {
   if (value === true || value === "on" || value === "true") return true;
@@ -38,6 +40,7 @@ const BOOKING_META_KEYS = [
   "notes_internal",
   "customer_id",
   "billing_customer_id",
+  "billing_company_id",
   "include_in_ledger",
 ] as const;
 
@@ -48,6 +51,10 @@ export function bookingMetaPatch(body: Record<string, unknown>) {
     if (!(key in body)) continue;
     if (key === "include_in_ledger") {
       patch[key] = parseIncludeInLedger(body[key], true);
+      continue;
+    }
+    if (key === "billing_company_id") {
+      patch[key] = emptyToNull(body[key]);
       continue;
     }
     if (key === "title") {
@@ -203,10 +210,13 @@ export async function syncBookingDebit(
     return;
   }
 
+  const companyId = debitBillingCompanyId(booking);
+
   if (intent === "insert") {
     await supabase.from("crm_transactions").insert({
       customer_id: booking.billing_customer_id || booking.customer_id,
       booking_id: booking.id,
+      billing_company_id: companyId,
       direction: "debit",
       kind: "booking",
       amount,
@@ -225,11 +235,13 @@ export async function syncBookingDebit(
   const statusChanged = Boolean(previousStatus && previousStatus !== booking.status);
   const payerChanged = debit.customer_id !== payerId;
   const labelChanged = (debit.label || "") !== label;
-  if (amountChanged || statusChanged || payerChanged || labelChanged || debit.status !== "posted") {
+  const companyChanged = (debit.billing_company_id || null) !== companyId;
+  if (amountChanged || statusChanged || payerChanged || labelChanged || companyChanged || debit.status !== "posted") {
     await supabase
       .from("crm_transactions")
       .update({
         customer_id: payerId,
+        billing_company_id: companyId,
         amount,
         currency: booking.currency || "EUR",
         label,
@@ -263,6 +275,7 @@ export async function syncTicketingFee(supabase: SupabaseClient, booking: CrmBoo
   const label = ticketingFeeLabel(ticketCount);
   const debit = existing as CrmTransaction | null;
   const payerId = booking.billing_customer_id || booking.customer_id;
+  const companyId = debitBillingCompanyId(booking);
 
   if (!shouldPost) {
     if (debit && debit.status !== "void") {
@@ -275,6 +288,7 @@ export async function syncTicketingFee(supabase: SupabaseClient, booking: CrmBoo
     await supabase.from("crm_transactions").insert({
       customer_id: payerId,
       booking_id: booking.id,
+      billing_company_id: companyId,
       direction: "debit",
       kind: "adjustment",
       amount,
@@ -291,6 +305,7 @@ export async function syncTicketingFee(supabase: SupabaseClient, booking: CrmBoo
     .from("crm_transactions")
     .update({
       customer_id: payerId,
+      billing_company_id: companyId,
       amount,
       currency: booking.currency || "EUR",
       label,
@@ -338,6 +353,7 @@ export async function syncBookingItemDebits(supabase: SupabaseClient, booking: C
       includeInLedger: isLedgerExpenseKind(item.kind) || Boolean(item.include_in_ledger),
     });
     const label = bookingItemDebitLabel(item, booking.reference);
+    const companyId = debitBillingCompanyId(booking, item);
 
     if (intent === "void" && debit && debit.status !== "void") {
       const { error } = await supabase.from("crm_transactions").update({ status: "void" }).eq("id", debit.id);
@@ -348,6 +364,7 @@ export async function syncBookingItemDebits(supabase: SupabaseClient, booking: C
       const { error } = await supabase.from("crm_transactions").insert({
         customer_id: payerId,
         booking_id: booking.id,
+        billing_company_id: companyId,
         direction: "debit",
         kind: "booking",
         amount,
@@ -365,6 +382,7 @@ export async function syncBookingItemDebits(supabase: SupabaseClient, booking: C
       .from("crm_transactions")
       .update({
         customer_id: payerId,
+        billing_company_id: companyId,
         amount,
         currency: booking.currency || "EUR",
         label,

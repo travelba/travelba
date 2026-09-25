@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
+import { parseBillingCompanyId } from "@/lib/crm/billing-companies";
 import { parseIncludeInLedger, refreshBookingLedger } from "@/lib/crm/bookings";
 import { parseMoney } from "@/lib/crm/money";
 import { BOOKING_ITEM_KINDS, isLedgerExpenseKind, type BookingItemKind } from "@/lib/crm/types";
@@ -10,6 +12,28 @@ function knownKind(value: unknown) {
 }
 
 type Ctx = { params: Promise<{ id: string }> };
+
+async function billingCompanyPatch(supabase: SupabaseClient, bookingId: string, value: unknown) {
+  if (value === undefined) return {};
+  const parsed = parseBillingCompanyId(value);
+  if ("error" in parsed) return { error: parsed.error };
+  if (!parsed.id) return { billing_company_id: null };
+  const { data: booking } = await supabase
+    .from("crm_bookings")
+    .select("customer_id, billing_customer_id")
+    .eq("id", bookingId)
+    .maybeSingle();
+  const payerId = booking?.billing_customer_id || booking?.customer_id;
+  if (!payerId) return { error: "Séjour introuvable" };
+  const { data: company } = await supabase
+    .from("crm_billing_companies")
+    .select("id")
+    .eq("id", parsed.id)
+    .eq("customer_id", payerId)
+    .maybeSingle();
+  if (!company) return { error: "Cette société n’est pas sur le compte facturé." };
+  return { billing_company_id: parsed.id };
+}
 
 export async function POST(request: Request, ctx: Ctx) {
   const auth = await requireStaff();
@@ -36,6 +60,8 @@ export async function POST(request: Request, ctx: Ctx) {
     body?.sort_order == null || body.sort_order === ""
       ? maxSort + 1
       : Number(body.sort_order);
+  const company = await billingCompanyPatch(auth.supabase, id, body?.billing_company_id);
+  if ("error" in company && company.error) return jsonError(company.error);
   const { data, error } = await auth.supabase
     .from("crm_booking_items")
     .insert({
@@ -53,6 +79,7 @@ export async function POST(request: Request, ctx: Ctx) {
       sort_order: sortOrder,
       details: body?.details || {},
       visible_to_client: false,
+      ...("billing_company_id" in company ? { billing_company_id: company.billing_company_id } : {}),
     })
     .select("*")
     .single();
@@ -109,6 +136,11 @@ export async function PATCH(request: Request, ctx: Ctx) {
   }
   if (body.sort_order != null) patch.sort_order = Number(body.sort_order);
   if ("details" in body) patch.details = body.details || {};
+  if ("billing_company_id" in body) {
+    const company = await billingCompanyPatch(auth.supabase, bookingId, body.billing_company_id);
+    if ("error" in company && company.error) return jsonError(company.error);
+    if ("billing_company_id" in company) patch.billing_company_id = company.billing_company_id;
+  }
   if (!Object.keys(patch).length) return jsonError("Rien à mettre à jour");
   const { data, error } = await auth.supabase
     .from("crm_booking_items")

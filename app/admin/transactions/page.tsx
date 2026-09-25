@@ -1,13 +1,16 @@
 import { Ledger } from "@/components/admin/Ledger";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireStaffPage } from "@/lib/crm/auth";
+import { companyLabelForTransaction } from "@/lib/crm/billing-companies";
+import type { CrmBillingCompany } from "@/lib/crm/types";
 import { stripeConfigured, stripeWebhookConfigured } from "@/lib/crm/stripe";
 import { formatDateFr, formatMoney, postedLedgerTotals } from "@/lib/crm/money";
 import { customerFullName, visibleServiceCopy, type CrmCustomer, type CrmTransaction } from "@/lib/crm/types";
 
 export default async function AdminTransactionsPage() {
   const { supabase } = await requireStaffPage();
-  const [{ data: transactions }, { data: expenses }, { data: customers }] = await Promise.all([
+  const [{ data: transactions }, { data: expenses }, { data: customers }, { data: billingCompanies }] =
+    await Promise.all([
     supabase
       .from("crm_transactions")
       .select("*")
@@ -23,7 +26,12 @@ export default async function AdminTransactionsPage() {
       .order("occurred_on", { ascending: false })
       .limit(80),
     supabase.from("crm_customers").select("*").order("last_name"),
+    supabase.from("crm_billing_companies").select("id, customer_id, company_name"),
   ]);
+  const companies = (billingCompanies || []) as Pick<
+    CrmBillingCompany,
+    "id" | "customer_id" | "company_name"
+  >[];
   const stripeReady = stripeConfigured() && stripeWebhookConfigured();
   const rows = (transactions || []) as CrmTransaction[];
   const expenseRows = (expenses || []) as CrmTransaction[];
@@ -67,7 +75,11 @@ export default async function AdminTransactionsPage() {
       <div className="mt-6 grid items-start gap-6 xl:grid-cols-2">
         <section>
           <h2 className="mb-3 font-display text-lg font-bold text-[var(--admin-navy)]">Encaissements</h2>
-          <Ledger transactions={rows} customers={(customers || []) as CrmCustomer[]} />
+          <Ledger
+            transactions={rows}
+            customers={(customers || []) as CrmCustomer[]}
+            billingCompanies={companies}
+          />
         </section>
         <section className="admin-af-card overflow-hidden rounded-2xl">
           <div className="border-b border-[var(--border)] px-5 py-4">
@@ -80,6 +92,9 @@ export default async function AdminTransactionsPage() {
                   <span className="block font-medium text-[var(--admin-navy)]">{visibleServiceCopy(row.label || "")}</span>
                   <span className="text-xs text-muted">
                     {names.get(row.customer_id) || "Client"} · {formatDateFr(row.occurred_on)}
+                    {companyLabelForTransaction(row, companies)
+                      ? ` · ${companyLabelForTransaction(row, companies)}`
+                      : ""}
                   </span>
                 </span>
                 <span className="shrink-0 font-semibold text-[var(--admin-navy)]">

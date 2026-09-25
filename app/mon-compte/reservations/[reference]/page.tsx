@@ -31,7 +31,10 @@ import { siteConfig } from "@/lib/site";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
+import { StayBillingChoice } from "@/components/crm/StayBillingChoice";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
+import { createServiceClient } from "@/lib/supabase/admin";
+import { isLedgerExpenseKind, visibleServiceCopy, type CrmBillingCompany } from "@/lib/crm/types";
 
 type Props = { params: Promise<{ reference: string }> };
 
@@ -91,6 +94,35 @@ export default async function ReservationDetailPage({ params }: Props) {
   const placeLine = tripPlaceLine(b.title, b.destination);
   const missingCount = coverage.total - coverage.ready;
   const formalities = frenchPassportTrip(visibleItems, party.length);
+  let billingCompanies: Pick<CrmBillingCompany, "id" | "company_name">[] = [];
+  let expenseChoices: { id: string; title: string; billing_company_id: string | null }[] = [];
+  try {
+    const admin = createServiceClient();
+    const payerId = b.billing_customer_id || customer.id;
+    const [{ data: companyRows }, { data: expenseRows }] = await Promise.all([
+      admin
+        .from("crm_billing_companies")
+        .select("id, company_name, sort_order")
+        .eq("customer_id", payerId)
+        .order("sort_order"),
+      admin
+        .from("crm_booking_items")
+        .select("id, title, kind, billing_company_id")
+        .eq("booking_id", b.id)
+        .eq("kind", "expense"),
+    ]);
+    billingCompanies = (companyRows || []) as Pick<CrmBillingCompany, "id" | "company_name">[];
+    expenseChoices = ((expenseRows || []) as { id: string; title: string; kind: string; billing_company_id: string | null }[])
+      .filter((item) => isLedgerExpenseKind(item.kind))
+      .map((item) => ({
+        id: item.id,
+        title: visibleServiceCopy(item.title),
+        billing_company_id: item.billing_company_id || null,
+      }));
+  } catch {
+    billingCompanies = [];
+    expenseChoices = [];
+  }
 
   return (
     <div className="space-y-5">
@@ -131,6 +163,14 @@ export default async function ReservationDetailPage({ params }: Props) {
           Pièce manquante pour {missingCount} voyageur{missingCount > 1 ? "s" : ""}.
         </a>
       ) : null}
+
+      <StayBillingChoice
+        endpoint="client"
+        bookingId={b.id}
+        companies={billingCompanies}
+        bookingCompanyId={b.billing_company_id || null}
+        expenses={expenseChoices}
+      />
 
       {b.notes_client ? (
         <p className="aura-card rounded-[1.25rem] bg-white p-4 text-sm leading-relaxed text-[var(--admin-navy)]">

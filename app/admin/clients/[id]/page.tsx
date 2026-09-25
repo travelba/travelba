@@ -17,6 +17,7 @@ import {
   type CrmCustomer,
   type CrmRevolutTransaction,
   type CrmTransaction,
+  type CrmBillingCompany,
   type CrmTravelDocument,
   DOC_TYPE_LABELS,
   filterCreditTransfers,
@@ -49,6 +50,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
     { data: txs },
     { data: balances },
     { data: companyAdmins },
+    { data: billingCompanies },
     portal,
     unmatchedRevolut,
   ] = await Promise.all([
@@ -68,6 +70,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
       .select("*")
       .eq("company_role", "admin")
       .order("last_name"),
+    supabase.from("crm_billing_companies").select("*").eq("customer_id", id).order("sort_order"),
     getPortalAccess(c),
     (async () => {
       try {
@@ -189,6 +192,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         companions={(companions || []) as CrmCompanion[]}
         documents={(documents || []) as CrmTravelDocument[]}
         companyAdmins={(companyAdmins || []) as CrmCustomer[]}
+        billingCompanies={(billingCompanies || []) as CrmBillingCompany[]}
       />
       <ClientRevolutSuggestions suggestions={revolutSuggestions} />
       <section className="admin-af-card rounded-3xl p-5">
