@@ -1,3 +1,5 @@
+import { visibleServiceCopy } from "@/lib/crm/types";
+
 type LedgerKindRow = {
   direction: string;
   kind: string;
@@ -82,5 +84,5 @@ export function ledgerMovementTitle(
   fallback: string
 ) {
   if (isStayRollupDebit(row)) return "Séjour";
-  return (row.label || "").trim() || fallback;
+  return visibleServiceCopy((row.label || "").trim() || fallback);
 }

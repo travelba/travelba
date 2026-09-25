@@ -3,7 +3,7 @@ import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { stripeConfigured, stripeWebhookConfigured } from "@/lib/crm/stripe";
 import { formatDateFr, formatMoney, postedLedgerTotals } from "@/lib/crm/money";
-import { customerFullName, type CrmCustomer, type CrmTransaction } from "@/lib/crm/types";
+import { customerFullName, visibleServiceCopy, type CrmCustomer, type CrmTransaction } from "@/lib/crm/types";
 
 export default async function AdminTransactionsPage() {
   const { supabase } = await requireStaffPage();
@@ -77,7 +77,7 @@ export default async function AdminTransactionsPage() {
             {expenseRows.map((row) => (
               <li key={row.id} className="flex items-start justify-between gap-3 px-5 py-3">
                 <span>
-                  <span className="block font-medium text-[var(--admin-navy)]">{row.label}</span>
+                  <span className="block font-medium text-[var(--admin-navy)]">{visibleServiceCopy(row.label || "")}</span>
                   <span className="text-xs text-muted">
                     {names.get(row.customer_id) || "Client"} · {formatDateFr(row.occurred_on)}
                   </span>

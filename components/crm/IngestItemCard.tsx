@@ -4,6 +4,7 @@ import type { BookingExtract } from "@/lib/crm/ingest-types";
 import {
   BOOKING_ITEM_KINDS,
   BOOKING_ITEM_LABELS,
+  visibleServiceCopy,
   isExtraItemKind,
   isLedgerExpenseKind,
 } from "@/lib/crm/types";
@@ -139,7 +140,10 @@ export function IngestItemCard({
 
       <div className="grid gap-2 sm:grid-cols-2">
         <Field label="Libellé">
-          <Text value={item.title} onChange={(title) => onChange({ ...item, title })} />
+          <Text
+            value={visibleServiceCopy(item.title)}
+            onChange={(title) => onChange({ ...item, title: visibleServiceCopy(title) })}
+          />
         </Field>
         <Field label={item.kind === "flight" ? "PNR" : "Référence"}>
           <Text

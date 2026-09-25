@@ -6,7 +6,7 @@ import type {
   CrmCompanion,
   CrmCustomer,
 } from "@/lib/crm/types";
-import { BOOKING_ITEM_LABELS, type BookingItemKind } from "@/lib/crm/types";
+import { BOOKING_ITEM_LABELS, visibleServiceCopy, type BookingItemKind } from "@/lib/crm/types";
 import { Icon } from "@/components/crm/icons";
 import { BrandMark } from "@/components/crm/BrandMark";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
@@ -132,7 +132,7 @@ function CardBody({
         <BrandMark item={item} className="h-10 w-10" />
         <div className="min-w-0 flex-1 overflow-hidden">
           <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--aura-blue)]">
-            {BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind}
+            {visibleServiceCopy(BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind)}
             {item.kind !== "hotel" && clock ? ` · ${clock}` : ""}
             {endClock && item.kind !== "hotel" ? ` → ${endClock}` : ""}
             {item.kind === "flight" && tickets > 1 ? ` · ${tickets} billets` : ""}
@@ -142,7 +142,7 @@ function CardBody({
               ? hotelName
               : item.kind === "flight" || item.kind === "rail"
                 ? flightTitle
-                : item.title}
+                : visibleServiceCopy(item.title)}
           </p>
           {item.kind === "flight" || item.kind === "rail" ? (
             flightSubtitle ? (

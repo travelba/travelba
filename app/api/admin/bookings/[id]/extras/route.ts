@@ -46,7 +46,7 @@ export async function POST(request: Request, ctx: Ctx) {
     }
     if (body?.confirm === true) {
       if (extra.kind !== "chauffeur" && extra.kind !== "greeter") {
-        return jsonError("Seuls le chauffeur et le greeter se confirment.");
+        return jsonError("Seuls le chauffeur et VIP Airport se confirment.");
       }
       const confirmed = await confirmBookingExtra(auth.supabase, {
         booking: booking as CrmBooking,
