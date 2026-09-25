@@ -418,8 +418,8 @@ function signed(body: string) {
   return `${body}\n\n${CONCIERGE_SIGNATURE}`;
 }
 
-/** Carte : {{1}} séjour, {{2}} photo, {{3}} bouton. */
-function stayCardDraft(input: {
+/** Bouton sans photo : {{1}} séjour, {{2}} suffixe du lien. */
+function stayButtonDraft(input: {
   template: ConciergeTemplate;
   friendlyName: string;
   body: string;
@@ -432,8 +432,8 @@ function stayCardDraft(input: {
     exemplar: true as const,
     create: contentDraft({
       friendlyName: input.friendlyName,
-      variables: { "1": SAMPLE_STAY, "2": SAMPLE_COVER, "3": SAMPLE_CODE },
-      types: mediaTemplate(signed(input.body), input.button, "2", "3"),
+      variables: { "1": SAMPLE_STAY, "2": SAMPLE_CODE },
+      types: textTemplate(signed(input.body), input.button, "2"),
     }),
   };
 }
@@ -581,107 +581,105 @@ export function conciergeContentDrafts() {
         types: textTemplate(`Votre {{1}} est dans vos pièces.${signature}`, "Voir les pièces", "2"),
       }),
     },
-    stayCardDraft({
+    stayButtonDraft({
       template: "piece_hotel",
-      friendlyName: "piece_hotel",
+      friendlyName: "piece_hotel_bouton",
       body: "Votre confirmation d'hôtel pour le séjour à {{1}} est dans votre espace.",
       button: "Voir l'hôtel",
     }),
-    stayCardDraft({
+    stayButtonDraft({
       template: "piece_vol",
-      friendlyName: "piece_vol",
+      friendlyName: "piece_vol_bouton",
       body: "Votre billet pour le séjour à {{1}} est dans votre espace.",
       button: "Voir le billet",
     }),
-    stayCardDraft({
+    stayButtonDraft({
       template: "piece_transfert",
-      friendlyName: "piece_transfert",
+      friendlyName: "piece_transfert_bouton",
       body: "Votre transfert pour le séjour à {{1}} est dans votre espace.",
       button: "Voir le transfert",
     }),
-    stayCardDraft({
+    stayButtonDraft({
       template: "pieces_regroupees",
-      friendlyName: "pieces_regroupees",
+      friendlyName: "pieces_regroupees_bouton",
       body: "Vos billets, la confirmation d'hôtel et le transfert pour le séjour à {{1}} sont dans votre espace.",
       button: "Ouvrir la réservation",
     }),
-    stayCardDraft({
+    stayButtonDraft({
       template: "passeport_carte",
-      friendlyName: "passeport_sejour",
+      friendlyName: "passeport_sejour_bouton",
       body: "Avant le départ du séjour à {{1}} le passeport manque. Déposez-le dans vos pièces.",
       button: "Déposer le passeport",
     }),
-    stayCardDraft({
+    stayButtonDraft({
       template: "passeports_carte",
-      friendlyName: "passeports_sejour",
+      friendlyName: "passeports_sejour_bouton",
       body: "Avant le départ du séjour à {{1}} des passeports manquent. Déposez-les dans vos pièces.",
       button: "Déposer les passeports",
     }),
-    stayCardDraft({
+    stayButtonDraft({
       template: "encours",
-      friendlyName: "encours_sejour",
+      friendlyName: "encours_sejour_bouton",
       body: "Votre encours pour le séjour à {{1}} est dans votre espace.",
       button: "Voir l'encours",
     }),
-    stayCardDraft({
+    stayButtonDraft({
       template: "chauffeur",
-      friendlyName: "chauffeur_sejour",
+      friendlyName: "chauffeur_sejour_bouton",
       body: "Votre chauffeur pour le séjour à {{1}} est dans votre espace.",
       button: "Voir le chauffeur",
     }),
-    stayCardDraft({
+    stayButtonDraft({
       template: "rappel",
-      friendlyName: "rappel_depart",
+      friendlyName: "rappel_depart_bouton",
       body: "Votre séjour à {{1}} approche. Tout est dans votre espace.",
       button: "Voir le séjour",
     }),
-    stayCardDraft({
+    stayButtonDraft({
       template: "document",
-      friendlyName: "document_sejour",
+      friendlyName: "document_sejour_bouton",
       body: "Une pièce pour le séjour à {{1}} est dans votre espace.",
       button: "Voir la pièce",
     }),
     {
       template: "formalite_prete_carte" as const,
       env: CONCIERGE_TEMPLATE_ENV.formalite_prete_carte,
-      friendlyName: "formalite_prete_sejour",
+      friendlyName: "formalite_prete_bouton",
       exemplar: true as const,
       create: contentDraft({
-        friendlyName: "formalite_prete_sejour",
-        variables: { "1": "ESTA", "2": SAMPLE_STAY, "3": SAMPLE_COVER, "4": SAMPLE_CODE },
-        types: mediaTemplate(
+        friendlyName: "formalite_prete_bouton",
+        variables: { "1": "ESTA", "2": SAMPLE_STAY, "3": SAMPLE_CODE },
+        types: textTemplate(
           signed("Votre {{1}} pour le séjour à {{2}} est dans vos pièces."),
           "Voir la formalité",
-          "3",
-          "4"
+          "3"
         ),
       }),
     },
     {
       template: "formalite_manquante_carte" as const,
       env: CONCIERGE_TEMPLATE_ENV.formalite_manquante_carte,
-      friendlyName: "formalite_manquante_sejour",
+      friendlyName: "formalite_manquante_bouton",
       exemplar: true as const,
       create: contentDraft({
-        friendlyName: "formalite_manquante_sejour",
-        variables: { "1": "visa", "2": SAMPLE_STAY, "3": SAMPLE_COVER, "4": SAMPLE_CODE },
-        types: mediaTemplate(
+        friendlyName: "formalite_manquante_bouton",
+        variables: { "1": "visa", "2": SAMPLE_STAY, "3": SAMPLE_CODE },
+        types: textTemplate(
           signed("Votre {{1}} pour le séjour à {{2}} manque avant le départ."),
           "Voir la formalité",
-          "3",
-          "4"
+          "3"
         ),
       }),
     },
     {
       template: "connexion_carte" as const,
       env: CONCIERGE_TEMPLATE_ENV.connexion_carte,
-      friendlyName: "connexion_sejour",
+      friendlyName: "connexion_sejour_bouton",
       exemplar: true as const,
       create: contentDraft({
-        friendlyName: "connexion_sejour",
-        variables: { "1": "Voyageur", "2": SAMPLE_STAY, "3": SAMPLE_COVER, "4": SAMPLE_CODE },
-        types: mediaTemplate(
+        friendlyName: "connexion_sejour_bouton",
+        variables: { "1": "Voyageur", "2": SAMPLE_STAY, "3": SAMPLE_CODE },
+        types: textTemplate(
           signed(
             [
               "Enchanté {{1}},",
@@ -691,15 +689,14 @@ export function conciergeContentDrafts() {
             ].join("\n")
           ),
           "Ouvrir mon espace",
-          "3",
-          "4"
+          "3"
         ),
       }),
     },
   ];
 }
 
-/** Modèles à montrer une fois : image du séjour et bouton, pas les replis texte. */
+/** Modèles à montrer une fois. Seul « Votre séjour » porte la photo. */
 export function conciergeExemplars() {
   return conciergeContentDrafts().filter((draft) => "exemplar" in draft && draft.exemplar);
 }
@@ -752,18 +749,15 @@ export function conciergeContentVariables(input: {
   }
   if (STAY_CARDS.has(input.template)) {
     if (!place || !REFERENCE.test(reference) || HUB.test(place)) return null;
-    if (!isStayCoverMedia(media)) return null;
-    return { "1": stayTemplateSlot(place, reference), "2": media, "3": suffix };
+    return { "1": stayTemplateSlot(place, reference), "2": suffix };
   }
   if (input.template === "formalite_prete_carte" || input.template === "formalite_manquante_carte") {
     if (!text || !place || !REFERENCE.test(reference) || HUB.test(place)) return null;
-    if (!isStayCoverMedia(media)) return null;
-    return { "1": text, "2": stayTemplateSlot(place, reference), "3": media, "4": suffix };
+    return { "1": text, "2": stayTemplateSlot(place, reference), "3": suffix };
   }
   if (input.template === "connexion_carte") {
     if (!text || !place || !REFERENCE.test(reference) || HUB.test(place)) return null;
-    if (!isStayCoverMedia(media)) return null;
-    return { "1": text, "2": stayTemplateSlot(place, reference), "3": media, "4": suffix };
+    return { "1": text, "2": stayTemplateSlot(place, reference), "3": suffix };
   }
   if (!text) return null;
   return { "1": text, "2": suffix };
@@ -782,7 +776,7 @@ const STAY_CARDS = new Set<ConciergeTemplate>([
   "document",
 ]);
 
-/** Carte illustrée quand la pièce est un hôtel, un vol, un transfert ou le trio regroupé. */
+/** Modèle du bouton quand la pièce est un hôtel, un vol, un transfert ou le trio regroupé. */
 export function pieceCardTemplate(plan: { template: string; variable: string }): ConciergeTemplate | null {
   if (plan.template === "piece" && plan.variable === "confirmation d'hôtel") return "piece_hotel";
   if (plan.template === "piece" && plan.variable === "billet") return "piece_vol";
@@ -797,7 +791,7 @@ export function pieceCardTemplate(plan: { template: string; variable: string }):
   return null;
 }
 
-/** Carte illustrée des rappels déjà envoyés en texte. */
+/** Modèle du bouton pour les rappels déjà envoyés en texte. */
 export function noticeCardTemplate(template: ConciergeTemplate): ConciergeTemplate | null {
   if (template === "passeport") return "passeport_carte";
   if (template === "passeports") return "passeports_carte";
