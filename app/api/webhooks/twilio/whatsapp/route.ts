@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { issueConciergeMagicLink } from "@/lib/crm/whatsapp-access";
 import { createWhatsappSupabaseStore, receiveWhatsappWebhook } from "@/lib/crm/whatsapp-inbound";
 import { sendWhatsappSession } from "@/lib/crm/whatsapp-session";
 import { twilioWebhookUrl } from "@/lib/crm/twilio-signature";
@@ -24,8 +25,11 @@ export async function POST(request: Request) {
       signature: request.headers.get("x-twilio-signature"),
       params: new URLSearchParams(raw),
       authToken: token,
+      accountSid: process.env.TWILIO_ACCOUNT_SID,
+      burstWaitMs: 1200,
       store,
-      send: (message) => sendWhatsappSession(message),
+      openAccess: (customer) => issueConciergeMagicLink(createServiceClient(), customer.email),
+      send: (message) => sendWhatsappSession({ to: message.to, body: message.body }),
     });
     return new NextResponse(null, { status: result.status });
   } catch {
