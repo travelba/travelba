@@ -225,6 +225,8 @@ export type CrmBooking = {
   customer_id: string;
   /** Wallet facturé (admin société ou titulaire). */
   billing_customer_id: string;
+  /** Société de facturation du séjour. N’entre pas dans l’encours. */
+  billing_company_id?: string | null;
   reference: string;
   title: string;
   destination: string | null;
@@ -259,6 +261,8 @@ export type CrmBookingItem = {
   amount: number | null;
   /** Si true : ce prix vendu apparaît dans Transactions et l’encours. */
   include_in_ledger: boolean;
+  /** Société de facturation de la dépense, si elle diffère du séjour. */
+  billing_company_id?: string | null;
   sort_order: number;
   details: Record<string, unknown>;
   visible_to_client: boolean;
@@ -302,6 +306,24 @@ export type CrmTransaction = {
   source: "manual" | "revolut" | "stripe";
   external_id: string | null;
   status: "pending" | "posted" | "void";
+  /** Société affichée sur la ligne. Ignorée par l’encours. */
+  billing_company_id?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CrmBillingCompany = {
+  id: string;
+  customer_id: string;
+  company_name: string | null;
+  siret: string | null;
+  vat_number: string | null;
+  billing_email: string | null;
+  billing_address_line: string | null;
+  billing_postal_code: string | null;
+  billing_city: string | null;
+  billing_country: string | null;
+  sort_order: number;
   created_at: string;
   updated_at: string;
 };

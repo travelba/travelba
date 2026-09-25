@@ -2,46 +2,40 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CrmCustomer } from "@/lib/crm/types";
+import type { CrmBillingCompany, CrmCustomer } from "@/lib/crm/types";
 import { resolveCountryCode } from "@/lib/crm/countries";
 import { formatIbanInput, ibanError, normalizeIban } from "@/lib/crm/billing";
 import { Field, fieldControlClass } from "@/components/crm/fields";
 import { BusyBar } from "@/components/crm/BusyBar";
 import {
-  billingJson,
-  billingSameAsProfile,
-  companyBillingFromCustomer,
-  CompanyBillingFields,
-  type CompanyBillingValues,
-} from "@/components/crm/CompanyBillingFields";
+  billingCompaniesPayload,
+  billingCompanyDrafts,
+  BillingCompaniesTabs,
+} from "@/components/crm/BillingCompaniesTabs";
 
-export function BillingForm({ customer }: { customer: CrmCustomer }) {
+export function BillingForm({
+  customer,
+  companies = [],
+}: {
+  customer: CrmCustomer;
+  companies?: CrmBillingCompany[];
+}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [iban, setIban] = useState(() => formatIbanInput(customer.iban || ""));
-  const [billing, setBilling] = useState<CompanyBillingValues>(() =>
-    companyBillingFromCustomer(customer)
-  );
   const profileAddress = {
     country: resolveCountryCode(customer.country) || "FR",
     line: customer.address_line || "",
     postal: customer.postal_code || "",
     city: customer.city || "",
   };
-  const [sameBillingAddress, setSameBillingAddress] = useState(() =>
-    billingSameAsProfile(companyBillingFromCustomer(customer), profileAddress)
+  const [companyDrafts, setCompanyDrafts] = useState(() =>
+    billingCompanyDrafts(companies, customer, profileAddress)
   );
   const ibanHint = ibanError(normalizeIban(iban));
-  const hasBilling = Boolean(
-    normalizeIban(iban) ||
-      billing.companyName ||
-      billing.siret ||
-      billing.vatNumber ||
-      billing.billingEmail ||
-      billing.billingLine
-  );
+  const hasBilling = Boolean(normalizeIban(iban) || companyDrafts.length);
   const [open, setOpen] = useState(hasBilling);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -60,7 +54,7 @@ export function BillingForm({ customer }: { customer: CrmCustomer }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         iban: normalized,
-        ...billingJson(billing, profileAddress, sameBillingAddress),
+        billing_companies: billingCompaniesPayload(companyDrafts, profileAddress),
       }),
     });
     const json = await res.json();
@@ -98,11 +92,9 @@ export function BillingForm({ customer }: { customer: CrmCustomer }) {
           placeholder="FR76 XXXX XXXX XXXX XXXX XXXX XXX"
         />
       </Field>
-      <CompanyBillingFields
-        values={billing}
-        onChange={setBilling}
-        sameAsProfile={sameBillingAddress}
-        onSameAsProfileChange={setSameBillingAddress}
+      <BillingCompaniesTabs
+        drafts={companyDrafts}
+        onChange={setCompanyDrafts}
         profileAddress={profileAddress}
       />
       {error ? <p className="text-sm text-accent">{error}</p> : null}

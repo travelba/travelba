@@ -3,8 +3,9 @@
 import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { companyLabelForTransaction } from "@/lib/crm/billing-companies";
 import { clientLedgerAdminHref } from "@/lib/crm/client-ledger";
-import type { CrmCustomer, CrmTransaction } from "@/lib/crm/types";
+import type { CrmBillingCompany, CrmCustomer, CrmTransaction } from "@/lib/crm/types";
 import { TX_KIND_LABELS, customerFullName, isCreditTransfer } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { StatusChip } from "@/components/crm/ui";
@@ -21,9 +22,11 @@ const STATUS_LABELS: Record<CrmTransaction["status"], string> = {
 export function Ledger({
   transactions,
   customers,
+  billingCompanies = [],
 }: {
   transactions: CrmTransaction[];
   customers: CrmCustomer[];
+  billingCompanies?: Pick<CrmBillingCompany, "id" | "customer_id" | "company_name">[];
 }) {
   const router = useRouter();
   const [customerId, setCustomerId] = useState("");
@@ -206,7 +209,12 @@ export function Ledger({
                   </td>
                   <td className="px-5 py-3">
                     <p className="font-medium text-[var(--admin-navy)]">{t.label}</p>
-                    <p className="text-xs text-muted">{TX_KIND_LABELS[t.kind]}</p>
+                    <p className="text-xs text-muted">
+                      {TX_KIND_LABELS[t.kind]}
+                      {companyLabelForTransaction(t, billingCompanies)
+                        ? ` · ${companyLabelForTransaction(t, billingCompanies)}`
+                        : ""}
+                    </p>
                   </td>
                   <td className="px-5 py-3 text-right font-semibold text-[var(--admin-navy)]">
                     {formatMoney(Number(t.amount), t.currency)}

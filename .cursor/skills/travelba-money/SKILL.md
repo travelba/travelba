@@ -42,7 +42,8 @@ PDF relevé = bouton **Demander un relevé** (`mailto:`), **pas** de génératio
 - **Dépense libre** (`kind=expense`) : bloc **Dépenses** du dossier, libellé + montant. Absente de l’itinéraire, du calendrier et du total séjour. `include_in_ledger` forcé. Débit `external_id=booking:{id}:expense:{itemId}`. Elle **ne retire pas** le montant global du séjour. Postée seulement si le dossier est confirmé, en voyage ou terminé. L’import PDF ne crée pas ce kind.
 - À l’import, `item.amount` reste null (le PDF va dans `document_amount`). Le montant du séjour reste 0 tant que l’agent n’a pas saisi le prix vendu de chaque carte. `sellingTotalFromExtract` = cette somme, jamais le total PDF.
 - Import `document_status=confirmed` : `bookingStatusFromExtract` → **confirmed** (même si `from-ingest` envoie `draft`) pour que le débit parte. Toujours `visible_to_client=false` jusqu’à Publier.
-- `customer_id` du débit = `booking.billing_customer_id` (payeur / société), pas forcément le voyageur
+- `customer_id` du débit = `booking.billing_customer_id` (payeur / wallet), pas forcément le voyageur
+- **Plusieurs sociétés** (`crm_billing_companies`) : attribution `billing_company_id` sur le séjour, la dépense et la ligne du livre. L’encours **ne se découpe pas** (la vue `crm_customer_balances` reste crédits − débits `posted`). Transactions : libellé société **seulement** si le compte en a au moins deux. Une seule société → pas de précision.
 - `syncTicketingFee` : dès qu’il y a un vol, débit **25 € × passagers** (`external_id=booking:{id}:ticketing-fee`), void si plus de vol ou dossier annulé. 1 passager = 1 billet même avec plusieurs segments.
 
 Ajustements / remboursements : lignes manuelles admin `kind=adjustment|refund`.

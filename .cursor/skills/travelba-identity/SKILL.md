@@ -42,7 +42,7 @@ UI : bloc pièce **replié** par défaut (passeport). Copy courte, pas « Upload
 ## Flying Blue / facturation
 
 - `flying_blue` normalisé (majuscules, sans espaces).
-- Société : `company_name`, `siret`, `vat_number`, `billing_email`, `billing_address_line`, `billing_postal_code`, `billing_city`, `billing_country`.
+- Société : `crm_billing_companies` (plusieurs par client, onglets Facturation). La première est recopiée sur `company_name`, `siret`, `vat_number`, `billing_email`, `billing_address_line`, `billing_postal_code`, `billing_city`, `billing_country` pour la recherche. L’encours reste global.
 - Adresse perso ≠ adresse de facturation. Les deux peuvent exister.
 - **Rôle société** (`company_role`) :
   - `null` = particulier (comportement historique)

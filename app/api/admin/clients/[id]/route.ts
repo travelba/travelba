@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
+import { saveCustomerBillingCompanies } from "@/lib/crm/billing-companies";
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
 import { CustomerDeleteError, deleteCustomerById } from "@/lib/crm/delete-customer";
 
@@ -68,6 +69,10 @@ export async function PATCH(request: Request, ctx: Ctx) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
+  if ("billing_companies" in body) {
+    const saved = await saveCustomerBillingCompanies(auth.supabase, id, body.billing_companies);
+    if ("error" in saved) return jsonError(saved.error);
+  }
   return NextResponse.json({ customer: data });
 }
 

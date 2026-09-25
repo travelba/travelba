@@ -9,4 +9,6 @@ export type LedgerMovementRow = {
   reference: string | null;
   carnetHref: string | null;
   carnetLabel?: string | null;
+  /** Raison sociale, seulement si le compte a plusieurs sociétés. */
+  companyLabel?: string | null;
 };

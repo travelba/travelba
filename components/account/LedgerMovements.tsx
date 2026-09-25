@@ -45,6 +45,11 @@ export function LedgerMovements({ rows }: { rows: LedgerMovementRow[] }) {
                   <span className="mt-0.5 block text-[13px] leading-snug text-muted">
                     {row.whenWhere || row.occurredLabel}
                   </span>
+                  {row.companyLabel ? (
+                    <span className="mt-0.5 block text-[13px] leading-snug text-[var(--admin-navy)]">
+                      Facturé à {row.companyLabel}
+                    </span>
+                  ) : null}
                 </span>
               </span>
               <span className="flex shrink-0 flex-col items-end">
@@ -82,6 +87,12 @@ export function LedgerMovements({ rows }: { rows: LedgerMovementRow[] }) {
                   <p>
                     <span className="text-muted">Référence · </span>
                     {row.reference}
+                  </p>
+                ) : null}
+                {row.companyLabel ? (
+                  <p>
+                    <span className="text-muted">Société · </span>
+                    {row.companyLabel}
                   </p>
                 ) : null}
                 {row.carnetHref ? (
