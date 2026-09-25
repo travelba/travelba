@@ -138,6 +138,25 @@ export function reusableDocumentsForTraveler(
   return unique.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
 }
 
+/** Liste admin : coffre + copies de séjour du même numéro = une seule ligne. */
+export function reviewDocuments(docs: CrmTravelDocument[]) {
+  const unique: CrmTravelDocument[] = [];
+  for (const doc of docs) {
+    const number = documentNumber(doc.number);
+    const index = number
+      ? unique.findIndex(
+          (kept) => documentNumber(kept.number) === number && kept.doc_type === doc.doc_type
+        )
+      : -1;
+    if (index === -1) {
+      unique.push(doc);
+      continue;
+    }
+    unique[index] = preferVaultCopy(unique[index], doc);
+  }
+  return unique.sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+}
+
 export function primaryIdentityDoc(docs: CrmTravelDocument[]) {
   return docs.find((doc) => doc.doc_type === "passport") || docs[0] || null;
 }

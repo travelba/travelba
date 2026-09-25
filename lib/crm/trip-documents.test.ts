@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   primaryIdentityDoc,
+  reviewDocuments,
   reusableDocumentsForTraveler,
   tripDocCoverage,
   tripDocumentsForTraveler,
@@ -184,6 +185,47 @@ test("un voyageur sans lien retrouve le passeport du coffre par le nom", () => {
   assert.equal(reusableDocumentsForTraveler(docs, camille)[0]?.id, "camille");
   assert.equal(reusableDocumentsForTraveler(docs, ghost).length, 0);
   assert.deepEqual(tripDocCoverage([jeremy, camille, ghost], []), { ready: 0, total: 2 });
+});
+
+test("la validation admin ne répète pas le coffre et les copies de séjour", () => {
+  const vault = doc({ id: "vault", number: "24HH", created_at: "2026-09-22T12:00:00Z" });
+  const avoriaz = doc({
+    id: "avoriaz",
+    number: "24HH",
+    booking_id: "b1",
+    traveler_id: "t1",
+    storage_path: "customers/x/passport.jpg",
+    created_at: "2026-09-23T08:00:00Z",
+  });
+  const telaviv = doc({
+    id: "telaviv",
+    number: "24HH",
+    booking_id: "b2",
+    traveler_id: "t2",
+    storage_path: "customers/x/passport.jpg",
+    created_at: "2026-09-23T12:00:00Z",
+  });
+  const sibling = doc({
+    id: "sibling",
+    number: "22DD",
+    companion_id: "comp",
+    storage_path: "customers/x/two-passports.jpg",
+    first_name: "Leoh",
+    created_at: "2026-09-22T17:00:00Z",
+  });
+  const otherOnSameScan = doc({
+    id: "other",
+    number: "22DE",
+    companion_id: "comp-2",
+    storage_path: "customers/x/two-passports.jpg",
+    first_name: "Ezra",
+    created_at: "2026-09-22T17:01:00Z",
+  });
+  const pieces = reviewDocuments([telaviv, sibling, avoriaz, vault, otherOnSameScan]);
+  assert.deepEqual(
+    pieces.map((item) => item.id),
+    ["vault", "sibling", "other"]
+  );
 });
 
 test("le passeport Iony du profil Simon, Iony est celui du titulaire Simon", () => {

@@ -22,6 +22,7 @@ import {
   filterCreditTransfers,
 } from "@/lib/crm/types";
 import { documentExpiryStatus } from "@/lib/crm/identity";
+import { reviewDocuments } from "@/lib/crm/trip-documents";
 import { StatusChip } from "@/components/crm/ui";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { clientLedgerAdminHref } from "@/lib/crm/client-ledger";
@@ -84,6 +85,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
     })(),
   ]);
   const bookingRows = (bookings || []) as CrmBooking[];
+  const pieceRows = reviewDocuments((documents || []) as CrmTravelDocument[]);
   const revolutSuggestions = suggestionsForCustomer(c, unmatchedRevolut);
 
   return (
@@ -138,7 +140,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         <div className="admin-af-card rounded-2xl px-4 py-3">
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Pièces</p>
           <p className="font-display text-xl font-bold text-[var(--admin-navy)]">
-            {((documents || []) as CrmTravelDocument[]).length}
+            {pieceRows.length}
           </p>
         </div>
       </div>
@@ -147,7 +149,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
           <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Validation des pièces</h2>
         </div>
         <ul className="divide-y divide-border text-sm">
-          {((documents || []) as CrmTravelDocument[]).map((doc) => {
+          {pieceRows.map((doc) => {
             const expiry = documentExpiryStatus(doc.expires_on);
             return (
               <li key={doc.id} className="flex items-center justify-between gap-3 px-5 py-3">
