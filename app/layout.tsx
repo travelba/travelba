@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Space_Grotesk, Inter, Plus_Jakarta_Sans } from "next/font/google";
 import { siteConfig } from "@/lib/site";
+import { ClientShellBridge } from "@/components/account/ClientShellBridge";
 import "./globals.css";
 
 const spaceGrotesk = Space_Grotesk({
@@ -49,7 +50,10 @@ export default function RootLayout({
       lang="fr"
       className={`${spaceGrotesk.variable} ${inter.variable} ${plusJakarta.variable}`}
     >
-      <body className="bg-background text-foreground antialiased">{children}</body>
+      <body className="bg-background text-foreground antialiased">
+        <ClientShellBridge />
+        {children}
+      </body>
     </html>
   );
 }

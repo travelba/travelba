@@ -10,6 +10,7 @@ import { BOOKING_ITEM_LABELS, visibleServiceCopy, type BookingItemKind } from "@
 import { Icon } from "@/components/crm/icons";
 import { BrandMark } from "@/components/crm/BrandMark";
 import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
+import { PieceLink } from "@/components/account/PieceSheet";
 import {
   documentsForItem,
   confirmationForItem,
@@ -70,17 +71,25 @@ function AgendaLink({
 function ConfirmLink({
   item,
   docs,
+  sheet,
 }: {
   item: CrmBookingItem;
   docs: CrmBookingDocument[];
+  sheet: boolean;
 }) {
   const doc = confirmationForItem(item, docs);
   if (!doc) return null;
+  const className = "inline-flex items-center gap-1 text-xs font-semibold text-[var(--aura-blue)]";
+  if (sheet) {
+    return (
+      <PieceLink path={doc.storage_path} title={doc.file_name || "Confirmation"} className={className}>
+        Voir la confirmation
+        <Icon name="picture_as_pdf" className="h-4 w-4" />
+      </PieceLink>
+    );
+  }
   return (
-    <a
-      href={`/api/files?path=${encodeURIComponent(doc.storage_path)}`}
-      className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--aura-blue)]"
-    >
+    <a href={`/api/files?path=${encodeURIComponent(doc.storage_path)}`} className={className}>
       Voir la confirmation
       <Icon name="picture_as_pdf" className="h-4 w-4" />
     </a>
@@ -94,6 +103,7 @@ function CardBody({
   compactHotel = false,
   calendarHref = null,
   day = null,
+  sheet = false,
 }: {
   item: CrmBookingItem;
   currency: string;
@@ -101,6 +111,7 @@ function CardBody({
   compactHotel?: boolean;
   calendarHref?: string | null;
   day?: string | null;
+  sheet?: boolean;
 }) {
   const price = itemPriceLabel(item, currency, day);
   const included = detailList(item, "included");
@@ -249,17 +260,23 @@ function CardBody({
           <p className="text-xs text-muted">Réf. {item.confirmation_ref}</p>
         ) : null}
         <div className="flex flex-wrap items-center gap-3">
-          {documentsForItem(item, docs).map((doc) => (
-            <FileOpenLink
-              key={doc.id}
-              path={doc.storage_path}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--aura-blue)]"
-            >
-              <Icon name={fileKindIcon(doc.mime_type, doc.file_name)} className="h-4 w-4" />
-              {doc.id === item.source_document_id ? "Voir la confirmation" : doc.file_name || "Pièce jointe"}
-            </FileOpenLink>
-          ))}
-          {!documentsForItem(item, docs).length ? <ConfirmLink item={item} docs={docs} /> : null}
+          {documentsForItem(item, docs).map((doc) => {
+            const label = doc.id === item.source_document_id ? "Voir la confirmation" : doc.file_name || "Pièce jointe";
+            const className = "inline-flex items-center gap-1 text-xs font-semibold text-[var(--aura-blue)]";
+            const icon = <Icon name={fileKindIcon(doc.mime_type, doc.file_name)} className="h-4 w-4" />;
+            return sheet ? (
+              <PieceLink key={doc.id} path={doc.storage_path} title={doc.file_name || label} className={className}>
+                {icon}
+                {label}
+              </PieceLink>
+            ) : (
+              <FileOpenLink key={doc.id} path={doc.storage_path} className={className}>
+                {icon}
+                {label}
+              </FileOpenLink>
+            );
+          })}
+          {!documentsForItem(item, docs).length ? <ConfirmLink item={item} docs={docs} sheet={sheet} /> : null}
           {calendarHref ? <AgendaLink href={calendarHref}>Ajouter à l’agenda</AgendaLink> : null}
         </div>
       </div>
@@ -288,6 +305,7 @@ export function CarnetItinerary({
     whatsappHref?: string;
   } | null;
 }) {
+  const sheet = services?.variant === "client";
   const days = groupByDay(items);
   const undated = undatedTimeline(items);
   const now = new Date();
@@ -411,6 +429,7 @@ export function CarnetItinerary({
                     compactHotel={row.item.kind === "hotel"}
                     calendarHref={itemHref(row.item.id)}
                     day={day}
+                    sheet={sheet}
                   />
                 )
               ) : (
@@ -431,6 +450,7 @@ export function CarnetItinerary({
                 currency={booking.currency}
                 docs={docs}
                 calendarHref={itemHref(item.id)}
+                sheet={sheet}
               />
             ))}
           </div>

@@ -30,7 +30,8 @@ import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { siteConfig } from "@/lib/site";
 import { BookingHero } from "@/components/crm/BookingHero";
-import { FileOpenLink, fileKindIcon } from "@/components/crm/FileOpen";
+import { fileKindIcon } from "@/components/crm/FileOpen";
+import { PieceLink } from "@/components/account/PieceSheet";
 import { Icon } from "@/components/crm/icons";
 
 type Props = { params: Promise<{ reference: string }> };
@@ -168,12 +169,13 @@ export default async function ReservationDetailPage({ params }: Props) {
                   />
                   <span className="truncate">{doc.file_name || "Document"}</span>
                 </span>
-                <FileOpenLink
+                <PieceLink
                   path={doc.storage_path}
+                  title={doc.file_name || "Document"}
                   className="inline-flex shrink-0 items-center rounded-full bg-[var(--surface-2)] px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)] ring-1 ring-[#e5e3dc]"
                 >
                   Ouvrir
-                </FileOpenLink>
+                </PieceLink>
               </li>
             ))}
           </ul>
