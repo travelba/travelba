@@ -1,12 +1,14 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { jsonError, requireCustomer } from "@/lib/crm/auth";
 import { carnetVisible } from "@/lib/crm/carnet";
+import { continueEtaIlRequest } from "@/lib/crm/eta-il-continue";
 import { createServiceClient } from "@/lib/supabase/admin";
-import { confirmAllowed, hasEstaAnswers, mergeEstaAnswers, readEstaAnswers, visibilityOnRequest, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
+import { astraFillsCountry, confirmAllowed, hasEstaAnswers, mergeEstaAnswers, readEstaAnswers, visibilityOnRequest, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import type { VisaCorridor } from "@/lib/crm/visa-fees";
 import type { CrmBooking, CrmBookingItem, CrmTravelDocument } from "@/lib/crm/types";
 
 export const runtime = "nodejs";
+export const maxDuration = 120;
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -75,5 +77,6 @@ export async function POST(request: Request, ctx: Ctx) {
     },
     { onConflict: "booking_id,country" }
   );
+  if (astraFillsCountry(country)) after(() => continueEtaIlRequest(b.id));
   return NextResponse.json({ country, step: "preparation" });
 }

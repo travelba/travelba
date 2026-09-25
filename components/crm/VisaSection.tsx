@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FileOpenLink } from "@/components/crm/FileOpen";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { TripVisaUploads } from "@/components/crm/TripVisaUploads";
+import { VisaJourney } from "@/components/crm/VisaJourney";
 import { VISA_EUR } from "@/lib/crm/extras";
 import { formatMoney } from "@/lib/crm/money";
 import { VISA_OFFICIAL, type VisaCorridor } from "@/lib/crm/visa-fees";
@@ -82,6 +83,20 @@ export function VisaSection({
     ...trip.unknownCountries,
   ];
   if (!trip.hasFlight) return null;
+  if (variant === "client") {
+    return (
+      <VisaJourney
+        bookingId={bookingId}
+        reference={reference}
+        trip={trip}
+        requests={requests}
+        travelers={travelers}
+        documents={documents}
+        visaBooked={visaBooked}
+        pliantReady={pliantReady}
+      />
+    );
+  }
 
   function fields(iso: string) {
     return answers[iso] || EMPTY;
