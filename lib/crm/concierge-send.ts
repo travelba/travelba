@@ -17,6 +17,7 @@ import {
   planFormalityReady,
   planMissingPieceNotices,
   planPiecesNotices,
+  liveStayCover,
   planStayNotice,
   stayHasPublishedCover,
   type ConciergeTemplate,
@@ -168,6 +169,7 @@ async function deliverTemplate(admin: Admin, input: {
   path: string;
   body: string;
   place?: string | null;
+  reference?: string | null;
   mediaUrl?: string | null;
   variable?: string | null;
   sentDedupe?: string;
@@ -182,6 +184,7 @@ async function deliverTemplate(admin: Admin, input: {
         template: input.template,
         buttonSuffix: suffix,
         place: input.place,
+        reference: input.reference,
         mediaUrl: input.mediaUrl,
         variable: input.variable,
       })
@@ -229,14 +232,21 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       await dropQueue(admin, row.id);
       return;
     }
+    let template = plan.template;
+    let mediaUrl = plan.mediaUrl;
+    if (template === "sejour") {
+      mediaUrl = await liveStayCover(mediaUrl);
+      if (!mediaUrl) template = "sejour_texte";
+    }
     await deliverTemplate(admin, {
       row,
       customer,
-      template: plan.template,
+      template,
       path: plan.path,
       body: plan.body,
       place: plan.place,
-      mediaUrl: plan.mediaUrl,
+      reference: booking.reference,
+      mediaUrl,
     });
     return;
   }
@@ -248,6 +258,8 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
     const plans = planPiecesNotices({
       published: true,
       reference: booking.reference,
+      destination: booking.destination,
+      title: booking.title,
       pieces,
     });
     const plan = plans[0];
@@ -261,6 +273,8 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       template: plan.template,
       path: plan.path,
       body: plan.body,
+      place: plan.place,
+      reference: booking.reference,
       variable: plan.variable,
       sentDedupe: `pieces-sent:${booking.id}:${pieces[0].at}`,
     });
@@ -411,7 +425,13 @@ export async function queuePublishedPieces(
     .gte("created_at", pieces[0].at)
     .limit(1);
   if (sent?.length) return;
-  const plans = planPiecesNotices({ published: true, reference: booking.reference, pieces });
+  const plans = planPiecesNotices({
+    published: true,
+    reference: booking.reference,
+    destination: booking.destination,
+    title: booking.title,
+    pieces,
+  });
   const plan = plans[0];
   if (!plan) return;
   await saveQueue(admin, {

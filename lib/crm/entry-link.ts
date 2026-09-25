@@ -81,13 +81,72 @@ export function safeNextPath(value: string | null | undefined) {
 export const ENTRY_PREVIEW_TITLE = "Le Concierge";
 export const ENTRY_PREVIEW_DESCRIPTION = "Votre espace personnel vous attend.";
 
-export function entryPreviewHtml(origin: string, code: string) {
+export type EntryPreview = {
+  title: string;
+  description: string;
+  image: string | null;
+};
+
+/** Référence derrière `/mon-compte/reservations/TB-…`. */
+export function referenceFromNextPath(path: string | null | undefined) {
+  if (!path) return null;
+  const match = /^\/mon-compte\/reservations\/([A-Za-z0-9-]{4,40})$/.exec(path);
+  return match?.[1] || null;
+}
+
+export function stayPreviewCopy(input: {
+  origin: string;
+  reference: string;
+  place: string | null;
+  hasCover: boolean;
+}): EntryPreview {
+  const base = input.origin.replace(/\/$/, "");
+  const title = input.place ? `Séjour à ${input.place}` : `Réservation ${input.reference}`;
+  return {
+    title,
+    description: `Réservation ${input.reference} · Travel Business Agency`,
+    image: input.hasCover ? `${base}/api/covers/sejour/${input.reference}` : null,
+  };
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** Couverture du séjour uniquement. Pas de monogramme à la place. */
+function previewImage(image: string | null | undefined) {
+  if (!image || /og-concierge|tba-mark/i.test(image)) return null;
+  try {
+    const url = new URL(image);
+    if (url.protocol !== "https:") return null;
+    if (!/^\/api\/covers\/sejour\/[A-Za-z0-9-]{4,40}$/.test(url.pathname)) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+export function entryPreviewHtml(origin: string, code: string, stay?: EntryPreview | null) {
   const base = origin.replace(/\/$/, "");
   const page = entryLinkUrl(base, code);
-  const title = ENTRY_PREVIEW_TITLE;
-  const description = ENTRY_PREVIEW_DESCRIPTION;
-  const image = `${base}/og-concierge.jpg`;
-  const icon = `${base}/tba-mark.png`;
+  const title = escapeHtml((stay?.title || ENTRY_PREVIEW_TITLE).trim());
+  const description = escapeHtml((stay?.description || ENTRY_PREVIEW_DESCRIPTION).trim());
+  const image = previewImage(stay?.image);
+  const imageTags = image
+    ? `<meta property="og:image" content="${escapeHtml(image)}">
+<meta property="og:image:secure_url" content="${escapeHtml(image)}">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="${title}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="${escapeHtml(image)}">`
+    : `<meta name="twitter:card" content="summary">`;
+  const icon = `${base}/favicon.ico`;
   return `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -100,19 +159,10 @@ export function entryPreviewHtml(origin: string, code: string) {
 <meta property="og:title" content="${title}">
 <meta property="og:description" content="${description}">
 <meta property="og:url" content="${page}">
-<meta property="og:image" content="${image}">
-<meta property="og:image:secure_url" content="${image}">
-<meta property="og:image:type" content="image/jpeg">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="${title}">
-<meta name="twitter:card" content="summary">
+${imageTags}
 <meta name="twitter:title" content="${title}">
 <meta name="twitter:description" content="${description}">
-<meta name="twitter:image" content="${image}">
-<link rel="icon" href="${icon}" type="image/png" sizes="512x512">
-<link rel="icon" href="${base}/favicon.ico" sizes="any">
-<link rel="apple-touch-icon" href="${base}/apple-touch-icon.png" sizes="180x180">
+<link rel="icon" href="${icon}" type="image/x-icon" sizes="any">
 </head>
 <body style="margin:0;background:#0B192C;color:#F3EDE2;font-family:Georgia,serif">
 <p style="margin:0;padding:48px;font-size:28px">${title}</p>

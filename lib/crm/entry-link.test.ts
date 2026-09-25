@@ -9,8 +9,10 @@ import {
   entryOpenRequested,
   entryPreviewHtml,
   isLinkCrawler,
+  referenceFromNextPath,
   safeNextPath,
   shouldServePreview,
+  stayPreviewCopy,
 } from "./entry-link";
 
 test("le code tient en huit signes", () => {
@@ -37,15 +39,28 @@ test("WhatsApp reçoit le titre sans consommer le jeton", () => {
   assert.equal(shouldServePreview("Mozilla/5.0 (iPhone) WhatsApp/2.23", "?1"), false);
   assert.equal(entryOpenRequested("?ouvrir=1"), true);
   assert.equal(entryOpenRequested(""), false);
-  const html = entryPreviewHtml("https://travelba.fr", "K7MQ2PX4");
-  assert.match(html, /<title>Le Concierge<\/title>/);
-  assert.match(html, /og:title" content="Le Concierge"/);
-  assert.match(html, /og:description" content="Votre espace personnel vous attend."/);
+  const stay = stayPreviewCopy({
+    origin: "https://travelba.fr",
+    reference: "TB-2026-0004",
+    place: "Avoriaz",
+    hasCover: true,
+  });
+  assert.equal(stay.title, "Séjour à Avoriaz");
+  assert.equal(stay.description, "Réservation TB-2026-0004 · Travel Business Agency");
+  assert.equal(stay.image, "https://travelba.fr/api/covers/sejour/TB-2026-0004");
+  assert.equal(referenceFromNextPath("/mon-compte/reservations/TB-2026-0004"), "TB-2026-0004");
+  assert.equal(referenceFromNextPath("/mon-compte"), null);
+  const html = entryPreviewHtml("https://travelba.fr", "K7MQ2PX4", stay);
+  assert.match(html, /<title>Séjour à Avoriaz<\/title>/);
+  assert.match(html, /og:title" content="Séjour à Avoriaz"/);
+  assert.match(html, /og:description" content="Réservation TB-2026-0004 · Travel Business Agency"/);
   assert.match(html, /og:url" content="https:\/\/travelba\.fr\/e\/c\/K7MQ2PX4"/);
-  assert.match(html, /og:image" content="https:\/\/travelba\.fr\/og-concierge\.jpg"/);
+  assert.match(html, /og:image" content="https:\/\/travelba\.fr\/api\/covers\/sejour\/TB-2026-0004"/);
   assert.match(html, /og:image:width" content="1200"/);
   assert.match(html, /og:image:height" content="630"/);
-  assert.match(html, /tba-mark\.png/);
+  assert.match(html, /favicon\.ico/);
+  assert.equal(html.includes("og-concierge"), false);
+  assert.equal(html.includes("tba-mark"), false);
   assert.match(html, /method="post"/);
   assert.match(html, /name="ouvrir"/);
   assert.match(html, /value="1"/);
@@ -55,6 +70,23 @@ test("WhatsApp reçoit le titre sans consommer le jeton", () => {
   assert.equal(html.includes("noindex"), false);
   assert.equal(html.includes("token"), false);
   assert.equal(html.includes("hashed"), false);
+  const bare = entryPreviewHtml("https://travelba.fr", "K7MQ2PX4");
+  assert.match(bare, /<title>Le Concierge<\/title>/);
+  assert.equal(bare.includes("og:image"), false);
+  assert.equal(bare.includes("og-concierge"), false);
+  assert.match(bare, /favicon\.ico/);
+  const noCover = entryPreviewHtml(
+    "https://travelba.fr",
+    "K7MQ2PX4",
+    stayPreviewCopy({
+      origin: "https://travelba.fr",
+      reference: "TB-2026-0004",
+      place: "Avoriaz",
+      hasCover: false,
+    })
+  );
+  assert.match(noCover, /Séjour à Avoriaz/);
+  assert.equal(noCover.includes("og:image"), false);
 });
 
 test("le chemin de retour reste interne", () => {
