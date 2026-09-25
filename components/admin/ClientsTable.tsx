@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import type { CrmBalance, CrmCustomer } from "@/lib/crm/types";
 import { customerFullName } from "@/lib/crm/types";
+import { clientLedgerAdminHref } from "@/lib/crm/client-ledger";
 import { formatCreditDisponible, formatMoney } from "@/lib/crm/money";
 import { formatPhoneDisplay } from "@/lib/crm/phone";
 
@@ -111,7 +112,10 @@ export function ClientsTable({
                       }`}
                     >
                       {rows.length ? (
-                        <span className="inline-flex flex-col items-end gap-0.5">
+                        <Link
+                          href={clientLedgerAdminHref(c.id)}
+                          className="inline-flex flex-col items-end gap-0.5 underline-offset-2 hover:underline"
+                        >
                           <span>
                             {value > 0
                               ? rows
@@ -128,7 +132,7 @@ export function ClientsTable({
                               Frais d’agence 10 % déduits
                             </span>
                           ) : null}
-                        </span>
+                        </Link>
                       ) : (
                         "—"
                       )}

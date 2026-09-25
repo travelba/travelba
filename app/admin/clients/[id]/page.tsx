@@ -107,7 +107,11 @@ export default async function AdminClientDetailPage({ params }: Props) {
         {((balances || []) as CrmBalance[]).map((b) => {
           const value = Number(b.balance);
           return (
-            <div key={b.currency} className="admin-af-card rounded-2xl px-4 py-3">
+            <Link
+              key={b.currency}
+              href={clientLedgerAdminHref(c.id)}
+              className="admin-af-card block rounded-2xl px-4 py-3 transition hover:border-[var(--admin-gold)]"
+            >
               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">
                 {value > 0 ? `Crédit disponible ${b.currency}` : `Encours ${b.currency}`}
               </p>
@@ -117,7 +121,8 @@ export default async function AdminClientDetailPage({ params }: Props) {
               {value > 0 ? (
                 <p className="mt-1 text-xs text-[#9e7e51]">Frais d’agence 10 % déduits</p>
               ) : null}
-            </div>
+              <p className="mt-2 text-xs font-semibold text-[var(--admin-navy)]">Voir les transactions</p>
+            </Link>
           );
         })}
         <div className="admin-af-card rounded-2xl px-4 py-3">

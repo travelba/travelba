@@ -152,7 +152,7 @@ export default async function AdminHomePage() {
     {
       label: "Soldes à encaisser",
       value: formatMoney(remainingDue),
-      hint: "Encours négatifs",
+      hint: "Encours négatifs · voir les transactions",
       href: "/admin/transactions",
       tone: "gold" as const,
     },
