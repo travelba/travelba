@@ -312,25 +312,6 @@ export function exampleExtraCharges() {
   ] as const;
 }
 
-function transactions(): CrmTransaction[] {
-  return exampleExtraCharges().map((row) => ({
-    id: row.id,
-    customer_id: CUSTOMER_ID,
-    booking_id: BOOKING_ID,
-    direction: "debit" as const,
-    kind: "booking" as const,
-    amount: row.amount,
-    currency: "EUR",
-    occurred_on: "2026-09-01",
-    label: row.label,
-    source: "manual" as const,
-    external_id: `exemple:${row.id}`,
-    status: "posted" as const,
-    created_at: STAMP,
-    updated_at: STAMP,
-  }));
-}
-
 export function exampleSession() {
   const holder = customer();
   const people = travelers();
@@ -350,15 +331,14 @@ export function exampleSession() {
   };
 }
 
-export function exampleLedgerView() {
+export function exampleLedgerView(rows: CrmTransaction[] = []) {
   const session = exampleSession();
-  const rows = transactions();
   const total = rows.reduce((sum, row) => sum + row.amount, 0);
   const view = shapeClientLedger({
     companyRole: null,
     travelerBookingIds: [session.booking.id],
     rows,
-    walletBalance: -total,
+    walletBalance: rows.length ? -total : 0,
     currency: "EUR",
     bookings: [session.booking],
     audience: "client",

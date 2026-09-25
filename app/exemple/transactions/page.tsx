@@ -1,8 +1,10 @@
 import { ClientTransactionsPanel } from "@/components/account/ClientTransactionsPanel";
-import { EXAMPLE_BASE, exampleLedgerView } from "@/lib/crm/example-session";
+import { EXAMPLE_BASE } from "@/lib/crm/example-session";
+import { readExample } from "@/lib/crm/example-store";
+
+export const dynamic = "force-dynamic";
 
 export default function ExampleTransactionsPage() {
-  return (
-    <ClientTransactionsPanel view={exampleLedgerView()} billingHref={`${EXAMPLE_BASE}/profil/facturation`} />
-  );
+  const { ledger } = readExample();
+  return <ClientTransactionsPanel view={ledger} billingHref={`${EXAMPLE_BASE}/profil/facturation`} />;
 }

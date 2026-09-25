@@ -1,10 +1,13 @@
 import { ProfileForm } from "@/components/account/ProfileForm";
 import { ProfileSubnav } from "@/components/account/ProfileSubnav";
-import { EXAMPLE_BASE, exampleSession } from "@/lib/crm/example-session";
+import { EXAMPLE_BASE } from "@/lib/crm/example-session";
+import { readExample } from "@/lib/crm/example-store";
+
+export const dynamic = "force-dynamic";
 import { customerFullName } from "@/lib/crm/types";
 
 export default function ExampleProfilPage() {
-  const session = exampleSession();
+  const session = readExample();
   const name = customerFullName(session.customer);
 
   return (

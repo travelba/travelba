@@ -4,14 +4,17 @@ import { Icon } from "@/components/crm/icons";
 import { ConciergeBanner } from "@/components/crm/ui";
 import { tripHeadline, tripPlaceLine } from "@/lib/crm/carnet";
 import { destinationWeather } from "@/lib/crm/destination-weather";
-import { EXAMPLE_BASE, exampleExtraCharges, exampleSession } from "@/lib/crm/example-session";
+import { EXAMPLE_BASE } from "@/lib/crm/example-session";
+import { readExample } from "@/lib/crm/example-store";
+
+export const dynamic = "force-dynamic";
 import { greetingGivenName } from "@/lib/crm/identity";
 import { encoursCaption, formatDateRangeShort, formatMoney, jMinusLabel } from "@/lib/crm/money";
 
 export default async function ExampleHomePage() {
-  const session = exampleSession();
+  const session = readExample();
   const nextTrip = session.booking;
-  const balance = -exampleExtraCharges().reduce((sum, row) => sum + row.amount, 0);
+  const balance = session.ledger.balanceValue;
   const firstName = greetingGivenName(session.customer.first_name) || "Camille";
   const countdown = jMinusLabel(nextTrip.start_date);
   const tripName = tripHeadline(nextTrip.title, nextTrip.destination, "Prochain séjour");

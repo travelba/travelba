@@ -58,13 +58,13 @@ test("le séjour d’exemple n’a pas de prix hors extras, ni d’horaire", () 
   assert.ok(trip.entries.some((entry) => entry.iso === "US"));
 });
 
-test("les mouvements d’exemple sont les tarifs extras déjà prévus", () => {
+test("le grand livre d’exemple est vide avant un geste", () => {
   const view = exampleLedgerView();
+  assert.equal(view.movements.length, 0);
+  assert.equal(view.balanceValue, 0);
   const charges = exampleExtraCharges();
-  assert.equal(view.movements.length, charges.length);
-  assert.equal(
-    view.balanceValue,
-    -charges.reduce((sum, row) => sum + row.amount, 0)
-  );
-  assert.ok(view.movements.every((row) => row.carnetHref?.startsWith("/exemple/")));
+  assert.equal(charges.find((row) => row.label === "Chauffeur")?.amount, 150);
+  assert.equal(charges.find((row) => row.label === "VIP Airport")?.amount, 125);
+  assert.equal(charges.find((row) => row.label === "Obtention du visa")?.amount, 50);
+  assert.equal(charges.find((row) => row.label === "Enregistrement")?.amount, 20);
 });

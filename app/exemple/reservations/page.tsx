@@ -2,7 +2,10 @@ import Link from "next/link";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { Icon } from "@/components/crm/icons";
 import { BookingStatusBadge, EmptyState } from "@/components/crm/ui";
-import { EXAMPLE_BASE, exampleSession } from "@/lib/crm/example-session";
+import { EXAMPLE_BASE } from "@/lib/crm/example-session";
+import { readExample } from "@/lib/crm/example-store";
+
+export const dynamic = "force-dynamic";
 import {
   formatDateRangeShort,
   formatMoney,
@@ -18,7 +21,7 @@ export default async function ExampleReservationsPage({
   searchParams: Promise<{ tab?: string }>;
 }) {
   const { tab } = await searchParams;
-  const session = exampleSession();
+  const session = readExample();
   const all = session.bookings;
   const upcoming = all.filter((b) => isUpcomingBooking(b.end_date) && b.status !== "cancelled");
   const past = all.filter(

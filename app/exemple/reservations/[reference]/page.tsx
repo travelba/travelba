@@ -8,9 +8,11 @@ import { BookingStatusBadge } from "@/components/crm/ui";
 import { VisaSection } from "@/components/crm/VisaSection";
 import { carnetVisible, itemPriceLabel, tripHeadline, tripPlaceLine, whatsappModifyHref } from "@/lib/crm/carnet";
 import { bookingHasFlight, findVisaExtra } from "@/lib/crm/extras";
-import { EXAMPLE_BASE, EXAMPLE_REFERENCE, exampleSession } from "@/lib/crm/example-session";
+import { EXAMPLE_BASE, EXAMPLE_REFERENCE } from "@/lib/crm/example-session";
+import { readExample } from "@/lib/crm/example-store";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
-import { pliantConfigured } from "@/lib/crm/pliant";
+
+export const dynamic = "force-dynamic";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
 import { siteConfig } from "@/lib/site";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
@@ -22,7 +24,7 @@ type Props = { params: Promise<{ reference: string }> };
 export default async function ExampleReservationPage({ params }: Props) {
   const { reference } = await params;
   if (reference !== EXAMPLE_REFERENCE) notFound();
-  const session = exampleSession();
+  const session = readExample();
   const b = session.booking;
   const visibleItems = session.items;
   if (!carnetVisible(b, visibleItems)) notFound();
@@ -88,6 +90,7 @@ export default async function ExampleReservationPage({ params }: Props) {
           companions: session.companions,
           whatsappHref: modifyHref,
         }}
+        refusals={session.refusals}
       />
 
       <ReservationFiles
@@ -105,6 +108,7 @@ export default async function ExampleReservationPage({ params }: Props) {
           companions={session.companions}
           whatsappHref={modifyHref}
           formalities={formalities}
+          refusals={session.refusals}
         />
       ) : null}
 
@@ -138,11 +142,11 @@ export default async function ExampleReservationPage({ params }: Props) {
           bookingId={b.id}
           reference={b.reference}
           trip={formalities}
-          requests={[]}
+          requests={session.visaRequests}
           travelers={party}
           documents={session.documents}
           visaBooked={Boolean(findVisaExtra(visibleItems))}
-          pliantReady={pliantConfigured()}
+          pliantReady={false}
         />
       ) : null}
     </div>

@@ -1,9 +1,12 @@
 import { CompanionsManager } from "@/components/account/CompanionsManager";
 import { ProfileSubnav } from "@/components/account/ProfileSubnav";
-import { EXAMPLE_BASE, exampleSession } from "@/lib/crm/example-session";
+import { EXAMPLE_BASE } from "@/lib/crm/example-session";
+import { readExample } from "@/lib/crm/example-store";
+
+export const dynamic = "force-dynamic";
 
 export default function ExampleCompanionsPage() {
-  const session = exampleSession();
+  const session = readExample();
   return (
     <div className="space-y-4 pb-6">
       <ProfileSubnav basePath={EXAMPLE_BASE} />
