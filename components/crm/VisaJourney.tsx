@@ -133,6 +133,13 @@ export function VisaJourney({
   const [answers, setAnswers] = useState<Record<string, EstaAnswers>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  function patchAnswer(country: string, key: keyof EstaAnswers, value: string) {
+    setAnswers((prev) => ({
+      ...prev,
+      [country]: { ...EMPTY, ...prev[country], [key]: value },
+    }));
+  }
   const passengers = Math.max(1, trip.passengers || travelers.length || 1);
   const fee = passengers * VISA_EUR;
   const corridors = trip.entries.filter((entry) => isCorridor(entry.iso));
@@ -283,22 +290,22 @@ export function VisaJourney({
                         <Field
                           label="Adresse du séjour aux États-Unis"
                           value={current.usAddress}
-                          onChange={(value) => setAnswers({ ...answers, US: { ...current, usAddress: value } })}
+                          onChange={(value) => patchAnswer("US", "usAddress", value)}
                         />
                         <Field
                           label="Emploi"
                           value={current.employment}
-                          onChange={(value) => setAnswers({ ...answers, US: { ...current, employment: value } })}
+                          onChange={(value) => patchAnswer("US", "employment", value)}
                         />
                         <Field
                           label="Pays visités"
                           value={current.countriesVisited}
-                          onChange={(value) => setAnswers({ ...answers, US: { ...current, countriesVisited: value } })}
+                          onChange={(value) => patchAnswer("US", "countriesVisited", value)}
                         />
                         <Field
                           label="Refus de visa antérieur"
                           value={current.priorRefusal}
-                          onChange={(value) => setAnswers({ ...answers, US: { ...current, priorRefusal: value } })}
+                          onChange={(value) => patchAnswer("US", "priorRefusal", value)}
                         />
                       </div>
                     ) : null}
@@ -307,7 +314,7 @@ export function VisaJourney({
                         <Field
                           label="Refus de visa antérieur"
                           value={current.priorRefusal}
-                          onChange={(value) => setAnswers({ ...answers, GB: { ...current, priorRefusal: value } })}
+                          onChange={(value) => patchAnswer("GB", "priorRefusal", value)}
                         />
                       </div>
                     ) : null}
