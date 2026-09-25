@@ -6,13 +6,34 @@ const SKIP_URL =
 
 const SKIP_EMAIL = /little-?emperors|expedia|travelba|taap/i;
 
+export type HotelPersonContact = {
+  type: string;
+  last_name: string;
+  first_name: string;
+  email: string;
+  phone: string;
+};
+
 export type HotelContact = {
   name: string;
   address: string;
   city: string;
+  country: string;
   phone: string;
   email: string;
   website: string;
+  people: HotelPersonContact[];
+};
+
+export type LeHotelCatalog = {
+  hotel_id: number | null;
+  hotel_name: string;
+  city: string;
+  country: string;
+  website: string;
+  phone: string;
+  email: string;
+  contacts: HotelPersonContact[];
 };
 
 export function safeWebsite(value: string | null | undefined) {
@@ -120,15 +141,102 @@ function usableEmail(value: string) {
   return trimmed;
 }
 
+function richerPerson(current: HotelPersonContact, incoming: HotelPersonContact) {
+  const score = (row: HotelPersonContact) =>
+    Number(Boolean(row.last_name)) + Number(Boolean(row.first_name)) + Number(Boolean(row.type)) + Number(Boolean(row.phone));
+  return score(incoming) > score(current) ? incoming : current;
+}
+
+export function dedupePeople(people: HotelPersonContact[]) {
+  const byEmailType = new Map<string, HotelPersonContact>();
+  for (const person of people) {
+    const typed = `${person.email.toLowerCase()}|${person.type.toLowerCase()}`;
+    const current = byEmailType.get(typed);
+    byEmailType.set(typed, current ? richerPerson(current, person) : person);
+  }
+  const collapsed = [...byEmailType.values()];
+  return collapsed.filter((row) => {
+    if (row.type || !row.email) return true;
+    return !collapsed.some(
+      (other) => other !== row && other.email.toLowerCase() === row.email.toLowerCase() && other.type
+    );
+  });
+}
+
+function splitPersonName(full: string, first = "", last = "") {
+  if (first || last) return { first_name: first, last_name: last };
+  const trimmed = full.trim();
+  if (!trimmed) return { first_name: "", last_name: "" };
+  if (trimmed.includes(",")) {
+    const [surname, given] = trimmed.split(",").map((part) => part.trim());
+    return { first_name: given || "", last_name: surname || "" };
+  }
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return { first_name: "", last_name: parts[0] };
+  return { first_name: parts[0], last_name: parts.slice(1).join(" ") };
+}
+
+export function normalizePerson(value: unknown): HotelPersonContact | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  const type = text(row.type || row.role || row.department || row.title || row.contact_type);
+  const email = usableEmail(text(row.email));
+  const phone = usablePhone(text(row.phone || row.telephone || row.phone_number));
+  const names = splitPersonName(
+    text(row.name || row.full_name || row.contact_name),
+    text(row.first_name || row.prenom || row.firstName),
+    text(row.last_name || row.nom || row.lastName || row.surname)
+  );
+  if (!type && !email && !phone && !names.first_name && !names.last_name) return null;
+  if (!email && !phone && !names.first_name && !names.last_name) return null;
+  return {
+    type,
+    last_name: names.last_name,
+    first_name: names.first_name,
+    email,
+    phone,
+  };
+}
+
+function cityCountry(location: string, cityHint = "") {
+  const parts = location
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length >= 2) {
+    return {
+      city: cityHint || parts.slice(0, -1).join(", "),
+      country: parts[parts.length - 1],
+    };
+  }
+  return { city: cityHint || location, country: "" };
+}
+
+export function peopleFromDetails(details: Record<string, unknown> | null | undefined): HotelPersonContact[] {
+  const raw = details?.hotel_contacts;
+  if (!Array.isArray(raw)) return [];
+  const people: HotelPersonContact[] = [];
+  for (const entry of raw) {
+    const person = normalizePerson(entry);
+    if (person) people.push(person);
+  }
+  return dedupePeople(people);
+}
+
 /** Coordonnées déjà sur la fiche. Un champ vide reste vide. */
 export function hotelContact(item: CrmBookingItem): HotelContact {
+  const people = peopleFromDetails(item.details);
+  const email = firstUsable(item, EMAIL_KEYS, usableEmail) || people.find((row) => row.email)?.email || "";
+  const phone = firstUsable(item, PHONE_KEYS, usablePhone) || people.find((row) => row.phone)?.phone || "";
   return {
     name: hotelDisplayName(item),
     address: detailStr(item, "address") || ownString(nestedHotel(item), "address"),
     city: hotelCityLine(item),
-    phone: firstUsable(item, PHONE_KEYS, usablePhone),
-    email: firstUsable(item, EMAIL_KEYS, usableEmail),
+    country: detailStr(item, "country") || ownString(nestedHotel(item), "country"),
+    phone,
+    email,
     website: firstUsable(item, ["website"], safeWebsite),
+    people,
   };
 }
 
@@ -147,6 +255,9 @@ export type StoredHotelSource = {
   website: string | null;
   phone?: string | null;
   email?: string | null;
+  city?: string | null;
+  country?: string | null;
+  contacts?: HotelPersonContact[];
 };
 
 function foldName(value: string) {
@@ -166,7 +277,19 @@ function sourceMatches(item: CrmBookingItem, row: StoredHotelSource) {
   return Boolean(left && right && left === right);
 }
 
-function withContact(item: CrmBookingItem, extra: { website?: string; phone?: string; email?: string; hotelId?: number | null }) {
+function withContact(
+  item: CrmBookingItem,
+  extra: {
+    website?: string;
+    phone?: string;
+    email?: string;
+    hotelId?: number | null;
+    city?: string;
+    country?: string;
+    hotelName?: string;
+    people?: HotelPersonContact[];
+  }
+) {
   const current = hotelContact(item);
   const details = { ...(item.details || {}) };
   let changed = false;
@@ -182,9 +305,28 @@ function withContact(item: CrmBookingItem, extra: { website?: string; phone?: st
     details.email = extra.email;
     changed = true;
   }
+  if (!current.city && extra.city) {
+    details.city = extra.city;
+    changed = true;
+  }
+  if (!current.country && extra.country) {
+    details.country = extra.country;
+    changed = true;
+  }
+  if (!hotelDisplayName(item) && extra.hotelName) {
+    details.hotel_name = extra.hotelName;
+    changed = true;
+  }
   if (extra.hotelId != null && leHotelIdFromItem(item) == null) {
     details.le_hotel_id = extra.hotelId;
     changed = true;
+  }
+  if ((current.people.length === 0 || extra.people?.length) && extra.people?.length) {
+    const next = dedupePeople(extra.people);
+    if (JSON.stringify(current.people) !== JSON.stringify(next)) {
+      details.hotel_contacts = next;
+      changed = true;
+    }
   }
   return changed ? { ...item, details } : item;
 }
@@ -201,6 +343,10 @@ export function applyStoredHotelSources(items: CrmBookingItem[], rows: StoredHot
       phone: usablePhone(row.phone || ""),
       email: usableEmail(row.email || ""),
       hotelId: row.hotel_id,
+      city: (row.city || "").trim(),
+      country: (row.country || "").trim(),
+      hotelName: (row.hotel_name || "").trim(),
+      people: row.contacts,
     });
   });
 }
@@ -220,56 +366,177 @@ function unwrapHotelPayload(payload: unknown) {
   return row;
 }
 
-function fromContactList(value: unknown, key: "phone" | "email") {
-  if (!Array.isArray(value)) return "";
+const LABELED_EMAILS: { key: string; type: string }[] = [
+  { key: "reservations_email", type: "Reservations" },
+  { key: "reservation_email", type: "Reservations" },
+  { key: "concierge_email", type: "Concierge" },
+  { key: "hotel_contact_email", type: "Hotel contact" },
+  { key: "enquiries_email", type: "Enquiries" },
+];
+
+function peopleFromUnknownList(value: unknown, fallbackType = ""): HotelPersonContact[] {
+  if (!Array.isArray(value)) return [];
+  const people: HotelPersonContact[] = [];
   for (const entry of value) {
-    if (!entry || typeof entry !== "object") continue;
-    const raw = text((entry as Record<string, unknown>)[key]);
-    const clean = key === "phone" ? usablePhone(raw) : usableEmail(raw);
-    if (clean) return clean;
+    if (typeof entry === "string") {
+      const email = usableEmail(entry);
+      if (email) people.push({ type: fallbackType, last_name: "", first_name: "", email, phone: "" });
+      continue;
+    }
+    const person = normalizePerson(entry);
+    if (!person) continue;
+    people.push(person.type ? person : { ...person, type: fallbackType });
   }
-  return "";
+  return people;
+}
+
+function peopleFromSections(value: unknown): HotelPersonContact[] {
+  if (!Array.isArray(value)) return [];
+  const people: HotelPersonContact[] = [];
+  for (const section of value) {
+    if (!section || typeof section !== "object") continue;
+    const row = section as Record<string, unknown>;
+    const type = text(row.title || row.type || row.name || row.label);
+    const nested = row.contacts || row.contact_details || row.people || row.emails || row.items;
+    if (Array.isArray(nested)) {
+      people.push(...peopleFromUnknownList(nested, type));
+      continue;
+    }
+    const person = normalizePerson(row);
+    if (person) people.push(person.type ? person : { ...person, type });
+  }
+  return people;
+}
+
+function integerId(value: unknown): number | null {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) return value;
+  if (typeof value === "string" && /^\d+$/.test(value)) return Number(value);
+  return null;
+}
+
+/** Catalogue public Little Emperors : nom, ville, pays et contacts typés s’ils sont renvoyés. */
+export function hotelCatalogFromLePayload(payload: unknown): LeHotelCatalog {
+  const row = unwrapHotelPayload(payload);
+  const place = cityCountry(text(row.location), text(row.city));
+  const people = dedupePeople([
+    ...peopleFromUnknownList(row.contact_details),
+    ...peopleFromUnknownList(row.rate_type_contact_details),
+    ...peopleFromSections(row.hotel_contact_sections),
+    ...peopleFromUnknownList(row.hotel_group_contact_emails),
+    ...LABELED_EMAILS.flatMap(({ key, type }) => {
+      const email = usableEmail(text(row[key]));
+      const name = key === "enquiries_email" ? splitPersonName(text(row.enquiries_name)) : { first_name: "", last_name: "" };
+      return email
+        ? [{ type, last_name: name.last_name, first_name: name.first_name, email, phone: "" }]
+        : [];
+    }),
+  ]);
+  const email =
+    EMAIL_KEYS.map((key) => usableEmail(text(row[key]))).find(Boolean) ||
+    people.find((person) => person.email)?.email ||
+    "";
+  const phone =
+    PHONE_KEYS.map((key) => usablePhone(text(row[key]))).find(Boolean) ||
+    people.find((person) => person.phone)?.phone ||
+    "";
+  return {
+    hotel_id: integerId(row.id),
+    hotel_name: text(row.name),
+    city: place.city,
+    country: place.country,
+    website: safeWebsite(text(row.website)),
+    phone,
+    email,
+    contacts: people,
+  };
 }
 
 /** Détail hôtel Little Emperors : le site s’il est renvoyé. Téléphone et e-mail seulement s’ils sont renseignés. */
 export function contactsFromLeHotelPayload(payload: unknown) {
-  const row = unwrapHotelPayload(payload);
-  const email =
-    EMAIL_KEYS.map((key) => usableEmail(text(row[key]))).find(Boolean) ||
-    fromContactList(row.contact_details, "email");
-  const phone =
-    PHONE_KEYS.map((key) => usablePhone(text(row[key]))).find(Boolean) ||
-    fromContactList(row.contact_details, "phone");
+  const catalog = hotelCatalogFromLePayload(payload);
   return {
-    website: safeWebsite(text(row.website)),
-    phone,
-    email,
+    website: catalog.website,
+    phone: catalog.phone,
+    email: catalog.email,
+    people: catalog.contacts,
+    city: catalog.city,
+    country: catalog.country,
+    hotelName: catalog.hotel_name,
+    hotelId: catalog.hotel_id,
   };
 }
 
-const PUBLIC_HOTEL = "https://api.littleemperors.com/api/hotels";
+export type HotelContactRow = {
+  le_hotel_id: number;
+  hotel_name: string | null;
+  city: string | null;
+  country: string | null;
+  contact_type: string | null;
+  last_name: string | null;
+  first_name: string | null;
+  email: string | null;
+  phone: string | null;
+  source: string;
+};
+
+export function rowsFromHotelCatalog(catalog: LeHotelCatalog): HotelContactRow[] {
+  if (catalog.hotel_id == null) return [];
+  return catalog.contacts.map((person) => ({
+    le_hotel_id: catalog.hotel_id as number,
+    hotel_name: catalog.hotel_name || null,
+    city: catalog.city || null,
+    country: catalog.country || null,
+    contact_type: person.type || null,
+    last_name: person.last_name || null,
+    first_name: person.first_name || null,
+    email: person.email || null,
+    phone: person.phone || null,
+    source: "little_emperors",
+  }));
+}
+
+export function peopleFromContactRows(rows: HotelContactRow[]): HotelPersonContact[] {
+  return rows.map((row) => ({
+    type: row.contact_type || "",
+    last_name: row.last_name || "",
+    first_name: row.first_name || "",
+    email: row.email || "",
+    phone: row.phone || "",
+  }));
+}
+
+export const LE_PUBLIC_HOTEL = "https://api.littleemperors.com/api/hotels";
+
+export async function fetchLePublicHotel(hotelId: number, fetchImpl?: typeof fetch) {
+  const fetchFn = fetchImpl || fetch;
+  const response = await fetchFn(`${LE_PUBLIC_HOTEL}/${hotelId}`, {
+    headers: { Accept: "application/json", "App-Version": "Website" },
+    signal: AbortSignal.timeout(6000),
+  });
+  if (!response.ok) return null;
+  return hotelCatalogFromLePayload(await response.json());
+}
 
 /** Complète les fiches dont l’identifiant hôtel est déjà connu. Échec réseau : la fiche reste telle quelle. */
 export async function fillLeHotelDetails(items: CrmBookingItem[], fetchImpl?: typeof fetch) {
-  const fetchFn = fetchImpl || fetch;
   const ids = [
     ...new Set(
       items
-        .filter((item) => item.kind === "hotel" && !hotelContact(item).website)
+        .filter((item) => {
+          if (item.kind !== "hotel") return false;
+          const contact = hotelContact(item);
+          return !contact.website || contact.people.length === 0;
+        })
         .map(leHotelIdFromItem)
         .filter((id): id is number => id != null)
     ),
   ];
-  const found = new Map<number, ReturnType<typeof contactsFromLeHotelPayload>>();
+  const found = new Map<number, LeHotelCatalog>();
   await Promise.all(
     ids.map(async (id) => {
       try {
-        const response = await fetchFn(`${PUBLIC_HOTEL}/${id}`, {
-          headers: { Accept: "application/json", "App-Version": "Website" },
-          signal: AbortSignal.timeout(4000),
-        });
-        if (!response.ok) return;
-        found.set(id, contactsFromLeHotelPayload(await response.json()));
+        const catalog = await fetchLePublicHotel(id, fetchImpl);
+        if (catalog) found.set(id, catalog);
       } catch {
         return;
       }
@@ -280,7 +547,16 @@ export async function fillLeHotelDetails(items: CrmBookingItem[], fetchImpl?: ty
     const id = leHotelIdFromItem(item);
     const extra = id != null ? found.get(id) : undefined;
     if (!extra) return item;
-    return withContact(item, extra);
+    return withContact(item, {
+      website: extra.website,
+      phone: extra.phone,
+      email: extra.email,
+      hotelId: extra.hotel_id,
+      city: extra.city,
+      country: extra.country,
+      hotelName: extra.hotel_name,
+      people: extra.contacts,
+    });
   });
 }
 
