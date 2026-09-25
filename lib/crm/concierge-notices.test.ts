@@ -8,9 +8,11 @@ import {
   planFormalityReady,
   planMissingPieceNotices,
   planPiecesNotices,
+  liveStayCover,
   planStayNotice,
   stayCoverUrl,
   stayHasPublishedCover,
+  stayNoticeLine,
 } from "./concierge-notices";
 import { sendContentTemplate } from "./whatsapp";
 
@@ -68,17 +70,62 @@ test("sans couverture, le séjour part sans image", () => {
   assert.ok(plan);
   assert.equal(plan.mediaUrl, null);
   assert.equal(plan.template, "sejour_texte");
-  assert.match(plan.body, /Votre séjour à Avoriaz est dans votre espace\./);
+  assert.match(plan.body, /Votre séjour à Avoriaz, réservation TB-2026-0004, est dans votre espace\./);
+  assert.equal(plan.body.includes("http"), false);
+  assert.equal(plan.body.includes("travelba.fr"), false);
   assert.equal(plan.path, `/mon-compte/reservations/${reference}`);
-  assert.equal(plan.path.startsWith("/mon-compte/reservations/"), true);
   const variables = conciergeContentVariables({
     template: plan.template,
     buttonSuffix: "c/K7MQ2PX4",
     place: plan.place,
+    reference,
     mediaUrl: plan.mediaUrl,
   });
-  assert.deepEqual(variables, { "1": "Avoriaz", "2": "c/K7MQ2PX4" });
+  assert.deepEqual(variables, { "1": "Avoriaz, réservation TB-2026-0004,", "2": "c/K7MQ2PX4" });
+  assert.equal(
+    stayNoticeLine("Avoriaz", reference),
+    "Votre séjour à Avoriaz, réservation TB-2026-0004, est dans votre espace."
+  );
   assert.equal(JSON.stringify(variables).includes("mot de passe"), false);
+  assert.equal(JSON.stringify(variables).includes("og-concierge"), false);
+});
+
+test("sans ville d’arrivée, aucun message séjour", () => {
+  assert.equal(
+    planStayNotice({
+      published: true,
+      reference,
+      destination: "Paris",
+      title: "CDG",
+      hasCover: true,
+    }),
+    null
+  );
+  assert.equal(
+    planStayNotice({
+      published: true,
+      reference,
+      destination: "CDG → ORY",
+      title: null,
+      hasCover: false,
+    }),
+    null
+  );
+  assert.equal(
+    conciergeContentVariables({
+      template: "sejour_sans_lieu",
+      buttonSuffix: "c/K7MQ2PX4",
+      mediaUrl: `https://travelba.fr/api/covers/sejour/${reference}`,
+    }),
+    null
+  );
+  assert.equal(
+    conciergeContentVariables({
+      template: "sejour_sans_lieu_texte",
+      buttonSuffix: "c/K7MQ2PX4",
+    }),
+    null
+  );
 });
 
 test("la couverture publiée est une URL HTTPS, pas une signed URL", () => {
@@ -95,12 +142,53 @@ test("la couverture publiée est une URL HTTPS, pas une signed URL", () => {
   assert.match(plan.mediaUrl, /^https:\/\//);
   assert.equal(/token=|supabase\.co/i.test(plan.mediaUrl), false);
   assert.equal(plan.template, "sejour");
+  assert.match(plan.body, /Votre séjour à Marrakech, réservation TB-2026-0004, est dans votre espace\./);
+  assert.equal(plan.mediaUrl.includes("og-concierge"), false);
+  const variables = conciergeContentVariables({
+    template: "sejour",
+    buttonSuffix: "c/K7MQ2PX4",
+    place: plan.place,
+    reference,
+    mediaUrl: plan.mediaUrl,
+  });
+  assert.deepEqual(variables, {
+    "1": "Marrakech, réservation TB-2026-0004,",
+    "2": plan.mediaUrl,
+    "3": "c/K7MQ2PX4",
+  });
+  assert.equal(
+    conciergeContentVariables({
+      template: "sejour",
+      buttonSuffix: "c/K7MQ2PX4",
+      place: "Avoriaz",
+      reference,
+      mediaUrl: "https://travelba.fr/og-concierge.jpg",
+    }),
+    null
+  );
+});
+
+test("une couverture en 404 laisse le message en texte", async () => {
+  const missing = await liveStayCover(`https://travelba.fr/api/covers/sejour/${reference}`, async () => {
+    return new Response(null, { status: 404 });
+  });
+  assert.equal(missing, null);
+  const logo = await liveStayCover("https://travelba.fr/og-concierge.jpg", async () => {
+    return new Response("x", { status: 200, headers: { "content-type": "image/jpeg" } });
+  });
+  assert.equal(logo, null);
+  const ok = await liveStayCover(`https://travelba.fr/api/covers/sejour/${reference}`, async () => {
+    return new Response(new Uint8Array([1]), { status: 200, headers: { "content-type": "image/jpeg" } });
+  });
+  assert.equal(ok, `https://travelba.fr/api/covers/sejour/${reference}`);
 });
 
 test("plusieurs pièces dans l’heure tiennent dans un seul message", () => {
   const plans = planPiecesNotices({
     published: true,
     reference,
+    destination: "CDG → Avoriaz",
+    title: "Neige",
     pieces: [
       { id: "a", kind: "flight", at: "2026-09-25T10:00:00.000Z" },
       { id: "b", kind: "flight", at: "2026-09-25T10:10:00.000Z" },
@@ -109,7 +197,23 @@ test("plusieurs pièces dans l’heure tiennent dans un seul message", () => {
   });
   assert.equal(plans.length, 1);
   assert.equal(plans[0].ids.length, 3);
-  assert.match(plans[0].body, /Vos billets et la confirmation d'hôtel sont dans la réservation\./);
+  assert.equal(plans[0].place, "Avoriaz");
+  assert.match(
+    plans[0].body,
+    /Vos billets et la confirmation d'hôtel sont dans la réservation TB-2026-0004, séjour à Avoriaz\./
+  );
+  assert.equal(plans[0].body.includes("http"), false);
+  const slot = conciergeContentVariables({
+    template: plans[0].template,
+    buttonSuffix: "c/K7MQ2PX4",
+    variable: plans[0].variable,
+    place: plans[0].place,
+    reference,
+  });
+  assert.deepEqual(slot, {
+    "1": "billets et la confirmation d'hôtel, réservation TB-2026-0004, séjour à Avoriaz,",
+    "2": "c/K7MQ2PX4",
+  });
   assert.equal(plans[0].path, `/mon-compte/reservations/${reference}`);
   assert.equal(plans[0].body.includes("%"), false);
   const later = planPiecesNotices({
@@ -121,6 +225,39 @@ test("plusieurs pièces dans l’heure tiennent dans un seul message", () => {
     ],
   });
   assert.equal(later.length, 2);
+});
+
+test("l’hôtel et le transfert nomment la réservation et le séjour", () => {
+  const plans = planPiecesNotices({
+    published: true,
+    reference,
+    destination: "Paris · Avoriaz",
+    title: "Semaine",
+    pieces: [
+      { id: "h", kind: "hotel", at: "2026-09-25T10:00:00.000Z" },
+      { id: "t", kind: "transfer", at: "2026-09-25T10:15:00.000Z" },
+    ],
+  });
+  assert.equal(plans.length, 1);
+  assert.equal(plans[0].template, "pieces_composees");
+  assert.equal(plans[0].place, "Avoriaz");
+  assert.match(
+    plans[0].body,
+    /Votre confirmation d'hôtel et le transfert sont dans la réservation TB-2026-0004, séjour à Avoriaz\./
+  );
+  assert.equal(/https?:|travelba\.fr/i.test(plans[0].body), false);
+  const variables = conciergeContentVariables({
+    template: plans[0].template,
+    buttonSuffix: "c/K7MQ2PX4",
+    variable: plans[0].variable,
+    place: plans[0].place,
+    reference,
+  });
+  assert.equal(
+    variables?.["1"],
+    "confirmation d'hôtel et le transfert, réservation TB-2026-0004, séjour à Avoriaz,"
+  );
+  assert.equal(variables?.["1"].includes("http"), false);
 });
 
 test("la formalité terminée nomme la pièce, sans pourcentage", () => {
