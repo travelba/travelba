@@ -14,8 +14,34 @@ export function entryCode(length = ENTRY_CODE_LENGTH) {
   return code;
 }
 
+export function isEntryCode(value: string) {
+  return new RegExp(`^[${ALPHABET}]{${ENTRY_CODE_LENGTH}}$`).test(value);
+}
+
+/**
+ * Code du lien, quel que soit l’hôte.
+ * L’aperçu WhatsApp est `/e/c/CODE` : une autre adresse que `/e/CODE`,
+ * pour ne pas réutiliser une carte déjà mise en cache.
+ */
+export function entryCodeFromLink(link: string) {
+  try {
+    const path = new URL(link).pathname.replace(/\/+$/, "");
+    const code = path.split("/").pop() || "";
+    if (!isEntryCode(code)) return null;
+    if (path !== `/e/${code}` && path !== `/e/c/${code}`) return null;
+    return code;
+  } catch {
+    return null;
+  }
+}
+
+/** Suffixe du bouton `https://travelba.fr/e/{{2}}`. */
+export function entryButtonSuffix(code: string) {
+  return `c/${code}`;
+}
+
 export function entryLinkUrl(origin: string, code: string) {
-  return `${origin.replace(/\/$/, "")}/e/${code}`;
+  return `${origin.replace(/\/$/, "")}/e/c/${code}`;
 }
 
 const CRAWLER =
@@ -25,10 +51,20 @@ export function isLinkCrawler(userAgent: string | null) {
   return CRAWLER.test(userAgent || "");
 }
 
-/** Aperçu (WhatsApp, collage) : pas de redirection, le jeton n’est pas consommé. */
-export function shouldServePreview(userAgent: string | null, secFetchUser: string | null) {
-  if (isLinkCrawler(userAgent)) return true;
-  return secFetchUser !== "?1";
+/**
+ * Le robot d’aperçu (WhatsApp/…, facebookexternalhit) reste sur la page.
+ * Un navigateur, même ouvert depuis WhatsApp, entre dans l’espace.
+ */
+export function shouldServePreview(userAgent: string | null, _secFetchUser: string | null) {
+  const ua = userAgent || "";
+  if (/^WhatsApp\//i.test(ua.trim())) return true;
+  return /facebookexternalhit|facebot|meta-externalagent|twitterbot|linkedinbot|slackbot|telegrambot|discordbot|embedly|skypeuripreview|iframely|pinterest|redditbot|vkshare/i.test(
+    ua
+  );
+}
+
+export function entryOpenRequested(search: string) {
+  return new URLSearchParams(search).get("ouvrir") === "1";
 }
 
 export function safeOtpType(value: string | null | undefined) {
@@ -42,11 +78,16 @@ export function safeNextPath(value: string | null | undefined) {
   return value;
 }
 
+export const ENTRY_PREVIEW_TITLE = "Le Concierge";
+export const ENTRY_PREVIEW_DESCRIPTION = "Votre espace personnel vous attend.";
+
 export function entryPreviewHtml(origin: string, code: string) {
   const base = origin.replace(/\/$/, "");
   const page = entryLinkUrl(base, code);
-  const title = "Le Concierge TBA";
-  const description = "Votre espace vous attend.";
+  const title = ENTRY_PREVIEW_TITLE;
+  const description = ENTRY_PREVIEW_DESCRIPTION;
+  const image = `${base}/og-concierge.jpg`;
+  const icon = `${base}/tba-mark.png`;
   return `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -59,27 +100,27 @@ export function entryPreviewHtml(origin: string, code: string) {
 <meta property="og:title" content="${title}">
 <meta property="og:description" content="${description}">
 <meta property="og:url" content="${page}">
-<meta property="og:image" content="${base}/og-concierge.png">
-<meta property="og:image:secure_url" content="${base}/og-concierge.png">
-<meta property="og:image:type" content="image/png">
+<meta property="og:image" content="${image}">
+<meta property="og:image:secure_url" content="${image}">
+<meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="${title}">
-<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="${title}">
 <meta name="twitter:description" content="${description}">
-<meta name="twitter:image" content="${base}/og-concierge.png">
+<meta name="twitter:image" content="${image}">
+<link rel="icon" href="${icon}" type="image/png" sizes="512x512">
 <link rel="icon" href="${base}/favicon.ico" sizes="any">
-<link rel="icon" href="${base}/favicon-32.png" type="image/png" sizes="32x32">
-<link rel="icon" href="${base}/favicon.png" type="image/png" sizes="512x512">
 <link rel="apple-touch-icon" href="${base}/apple-touch-icon.png" sizes="180x180">
 </head>
 <body style="margin:0;background:#0B192C;color:#F3EDE2;font-family:Georgia,serif">
-<form id="go" method="post" action="${page}" style="padding:48px">
-<p style="margin:0 0 24px;font-size:28px">${title}</p>
+<p style="margin:0;padding:48px;font-size:28px">${title}</p>
+<p style="margin:0;padding:0 48px 48px;font-size:18px">${description}</p>
+<form method="post" action="${page}">
+<input type="hidden" name="ouvrir" value="1">
 <button type="submit" style="background:#C5A880;color:#0B192C;border:0;padding:14px 22px;font:inherit;cursor:pointer">Ouvrir mon espace</button>
 </form>
-<script>document.getElementById("go").submit()</script>
 </body>
 </html>`;
 }

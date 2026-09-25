@@ -1,8 +1,26 @@
 import "server-only";
+import { existsSync } from "node:fs";
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
 import { ETA_IL_PORTAL } from "./eta-il-draft";
 import { portalUrlAllowed, type PortalPage } from "./eta-il-session";
+
+/** Chrome local d’abord (machine de l’agence), puis Chromium empaqueté sur Vercel. */
+export function localChromePaths() {
+  const found: string[] = [];
+  for (const value of [
+    process.env.CHROME_PATH,
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+  ]) {
+    const path = value?.trim();
+    if (!path || found.includes(path) || !existsSync(path)) continue;
+    found.push(path);
+  }
+  return found;
+}
 
 type ChromePage = {
   url(): string;
@@ -16,8 +34,7 @@ type ChromeBrowser = { newPage(): Promise<ChromePage>; close(): Promise<void> };
 export type PortalSession = PortalPage & { close(): Promise<void> };
 
 async function launchBrowser(): Promise<ChromeBrowser | null> {
-  const local = process.env.CHROME_PATH;
-  if (local) {
+  for (const local of localChromePaths()) {
     try {
       return await puppeteer.launch({
         executablePath: local,

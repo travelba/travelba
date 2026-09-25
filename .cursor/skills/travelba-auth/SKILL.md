@@ -26,13 +26,15 @@ Compagnons = **fiche seulement**, pas de compte Auth. Pas d’auto-signup : `ens
 - Invitation : `InviteCustomerPanel` → `POST /api/admin/clients/[id]/invite` → `inviteCustomer()`.
 - Copier le lien toujours disponible après génération (Resend down / local).
 
-`generateLink({ type: "invite" })` ; si déjà inscrit → `type: "recovery"`. URL :
-
-`/auth/callback?token_hash=…&type=invite|recovery&next=/connexion/mot-de-passe`
+`generateLink({ type: "invite" })` ; si déjà inscrit → `type: "recovery"`. URL courte `/e/CODE` (jeton en `crm_entry_links`), puis mot de passe.
 
 Copy « 30 jours » ; TTL réel = Supabase Auth. Ne pas stocker le lien en base.
 
-Après succès mot de passe (`/api/client/password`) : `app_metadata.must_set_password=false` + `refreshSession`. Si `client_onboarding_done` n’est pas déjà vrai, poser `client_onboarding_pending` (app_metadata seulement) et ouvrir **`/mon-compte/bienvenue`**. Passer ou terminer (`POST /api/client/onboarding`) pose `client_onboarding_done` et retire le pending. Ensuite : **`/mon-compte/profil`** seulement si `crm_customers.phone` est vide, sinon **`/mon-compte`**. Une seule fois, y compris après un mot de passe oublié. Le mur téléphone reste le filet si l’accueil est ouvert sans numéro. La bienvenue ne montre pas les brouillons ni les cartes.
+WhatsApp Le Concierge : même lien, en plus de l’e-mail. Modèle Utility `TWILIO_CONTENT_CONNEXION` (`connexion_espace`) : {{1}} prénom, bouton « Ouvrir mon espace » = `https://travelba.fr/e/{{2}}`. {{2}} vaut `c/` + le code, donc l’adresse prévisualisée est `https://travelba.fr/e/c/CODE` (autre carte que `/e/CODE`). Cette page porte le titre, le descriptif et l’image. Le robot (WhatsApp/, facebookexternalhit) reste sur cet aperçu. Un navigateur qui ouvre le bouton entre dans l’espace. Le bouton de la page, en POST, ouvre aussi. Sans ce SID, l’e-mail part quand même. Ne pas réutiliser `TWILIO_WHATSAPP_CONTENT_SID`. Création : `npx tsx scripts/arm-whatsapp-connexion.ts` — le SID reste hors git. Meta doit approuver avant le premier envoi.
+
+Après succès mot de passe (`/api/client/password`) : `app_metadata.must_set_password=false` + `refreshSession`. Un collègue (`crm_staff`) va sur **`/admin`**, sans bienvenue. Pour un client, si `client_onboarding_done` n’est pas déjà vrai, poser `client_onboarding_pending` (app_metadata seulement) et ouvrir **`/mon-compte/bienvenue`**. Passer ou terminer (`POST /api/client/onboarding`) pose `client_onboarding_done` et retire le pending. Ensuite : **`/mon-compte/profil`** seulement si `crm_customers.phone` est vide, sinon **`/mon-compte`**. Une seule fois, y compris après un mot de passe oublié. Le mur téléphone reste le filet si l’accueil est ouvert sans numéro. La bienvenue ne montre pas les brouillons ni les cartes. Le WhatsApp d’accès part dans le même geste, sans bloquer l’enregistrement.
+
+Client seulement (pas le collègue) : ce même geste envoie WhatsApp Le Concierge, lien magique vers l’espace (`magiclink`, pas `recovery`). Le lien ne contient pas le mot de passe et n’ouvre pas la création de mot de passe. L’invitation, elle, continue d’ouvrir la création.
 
 ## Flag mot de passe
 
@@ -71,4 +73,4 @@ Pas de bouton « supprimer mon compte ». L’agence peut supprimer une fiche ad
 
 ## Fichiers
 
-`lib/crm/invite.ts`, `lib/crm/auth.ts`, `lib/crm/session.ts`, `lib/supabase/middleware.ts`, `app/auth/callback/route.ts`, `app/api/auth/otp/route.ts`, `app/api/client/password/route.ts`, `proxy.ts`.
+`lib/crm/invite.ts`, `lib/crm/whatsapp.ts`, `lib/crm/auth.ts`, `lib/crm/session.ts`, `lib/supabase/middleware.ts`, `app/auth/callback/route.ts`, `app/api/auth/otp/route.ts`, `app/api/client/password/route.ts`, `proxy.ts`.

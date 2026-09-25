@@ -4,7 +4,7 @@ import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmCustomer, CrmStaff } from "@/lib/crm/types";
-import { isStaffRole } from "@/lib/crm/session";
+import { STAFF_COPY } from "@/lib/crm/staff-team";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
 import { issuesSummary, type BookingIssue } from "@/lib/crm/booking-issues";
 
@@ -31,6 +31,20 @@ export function jsonIssues(issues: BookingIssue[], status = 400, message?: strin
 export function dbError(error: DbErrorLike, status = 400, fallback?: string) {
   console.error("[crm] db:", error?.code ?? "?", error?.message ?? "");
   return jsonError(dbErrorMessage(error, fallback), status);
+}
+
+export async function requireAdmin(): Promise<
+  | {
+      user: User;
+      supabase: Awaited<ReturnType<typeof createClient>>;
+      staff: CrmStaff;
+    }
+  | NextResponse
+> {
+  const auth = await requireStaff();
+  if (auth instanceof NextResponse) return auth;
+  if (auth.staff.role !== "admin") return jsonError(STAFF_COPY.forbidden, 403);
+  return auth;
 }
 
 export async function requireStaff(): Promise<
@@ -108,8 +122,8 @@ export async function ensureStaff(user: User): Promise<CrmStaff | null> {
 }
 
 async function stampStaffRole(user: User, role: CrmStaff["role"]) {
-  if (isStaffRole(user)) return;
   const crmRole = role === "agent" ? "agent" : "admin";
+  if (user.app_metadata?.crm_role === crmRole) return;
   try {
     const admin = createServiceClient();
     await admin.auth.admin.updateUserById(user.id, {
@@ -184,4 +198,12 @@ export async function requireStaffPage(): Promise<{
     redirect(customer ? "/mon-compte" : "/connexion?error=no-account");
   }
   return { supabase, user: authedUser, staff: staff as CrmStaff };
+}
+
+/** Écran d’équipe : les agents ouvrent l’espace, seuls les administrateurs gèrent les collègues. */
+export async function requireAdminPage() {
+  const { redirect } = await import("next/navigation");
+  const ctx = await requireStaffPage();
+  if (ctx.staff.role !== "admin") redirect("/admin");
+  return ctx;
 }

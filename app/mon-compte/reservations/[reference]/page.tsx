@@ -11,8 +11,11 @@ import {
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
-import { bookingHasFlight, serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
+import { VisaSection } from "@/components/crm/VisaSection";
+import { bookingHasFlight, findVisaExtra, serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
+import type { ClientVisaStep } from "@/lib/crm/visa-flow";
+import { pliantConfigured } from "@/lib/crm/pliant";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { BookingStatusBadge } from "@/components/crm/ui";
 import {
@@ -48,7 +51,7 @@ export default async function ReservationDetailPage({ params }: Props) {
   if (!booking) notFound();
   const b = booking as CrmBooking;
 
-  const [{ data: items }, { data: travelers }, { data: docs }, { data: identityDocs }, { data: companions }, { data: declined }] =
+  const [{ data: items }, { data: travelers }, { data: docs }, { data: identityDocs }, { data: companions }, { data: declined }, { data: visaRows }] =
     await Promise.all([
     supabase
       .from("crm_booking_items")
@@ -64,6 +67,7 @@ export default async function ReservationDetailPage({ params }: Props) {
     supabase.from("crm_travel_documents").select("*").eq("customer_id", customer.id),
     supabase.from("crm_travel_companions").select("*").eq("customer_id", customer.id),
     supabase.from("crm_declined_services").select("kind, service_leg, place, moment").eq("booking_id", b.id),
+    supabase.from("crm_visa_requests").select("country, step, status").eq("booking_id", b.id),
   ]);
   const refusals = ((declined || []) as { kind?: string | null; service_leg?: string | null; place?: string | null; moment?: string | null }[])
     .map(serviceRefusalFromRow)
@@ -213,7 +217,20 @@ export default async function ReservationDetailPage({ params }: Props) {
       >
         Demander une modification
       </a>
-      {/* Section visa masquée côté client pour l’instant. */}
+
+      {bookingHasFlight(visibleItems) ? (
+        <VisaSection
+          variant="client"
+          bookingId={b.id}
+          reference={b.reference}
+          trip={formalities}
+          requests={(visaRows || []) as { country: string; step?: ClientVisaStep; status?: string }[]}
+          travelers={party}
+          documents={(identityDocs || []) as CrmTravelDocument[]}
+          visaBooked={Boolean(findVisaExtra(visibleItems))}
+          pliantReady={pliantConfigured()}
+        />
+      ) : null}
     </div>
   );
 }

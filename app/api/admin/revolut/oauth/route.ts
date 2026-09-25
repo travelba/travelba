@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
-import { createClientAssertion, exchangeRevolutAuthCode } from "@/lib/crm/revolut";
+import { createClientAssertion, exchangeRevolutAuthCode, revolutClientId } from "@/lib/crm/revolut";
 
 export async function GET(request: Request) {
   const auth = await requireStaff();
@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     }
   }
 
-  const clientId = process.env.REVOLUT_CLIENT_ID;
+  const clientId = revolutClientId();
   if (!clientId) return jsonError("REVOLUT_CLIENT_ID manquant", 503);
   const sandbox = process.env.REVOLUT_SANDBOX === "1";
   const authorize = sandbox

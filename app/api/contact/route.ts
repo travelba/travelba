@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { siteConfig } from "@/lib/site";
+import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 
 export const runtime = "nodejs";
 
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
   const phone = body.phone?.trim() || "—";
   const service = body.service?.trim() || "—";
 
-  const apiKey = process.env.RESEND_API_KEY;
+  const apiKey = productionOnlySecret(process.env.RESEND_API_KEY);
   // Sans RESEND_API_KEY (dev), la demande n’est pas envoyée ; on ne logue pas les
   // coordonnées du visiteur.
   if (!apiKey) {

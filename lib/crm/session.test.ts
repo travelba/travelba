@@ -41,6 +41,11 @@ test("après le mot de passe, la fiche ne s’ouvre que sans téléphone", () =>
   assert.equal(pathAfterPassword(null), "/mon-compte/profil");
 });
 
+test("un collègue arrive dans l’espace agence", () => {
+  assert.equal(pathAfterPassword(null, "staff"), "/admin");
+  assert.equal(pathAfterPassword("+33600000000", "staff"), "/admin");
+});
+
 test("onboarding lives only in app_metadata and only until it is dismissed", () => {
   assert.equal(needsClientOnboarding({ app_metadata: {} }), false);
   assert.equal(needsClientOnboarding({ app_metadata: { client_onboarding_pending: true } }), true);

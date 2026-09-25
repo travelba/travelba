@@ -43,7 +43,11 @@ export function shouldForcePasswordSetup(opts: {
   return path === SET_PASSWORD_PATH;
 }
 
-export function pathAfterPassword(phone: string | null | undefined) {
+export function pathAfterPassword(
+  phone: string | null | undefined,
+  audience: "client" | "staff" = "client"
+) {
+  if (audience === "staff") return "/admin";
   return phone?.trim() ? "/mon-compte" : "/mon-compte/profil";
 }
 

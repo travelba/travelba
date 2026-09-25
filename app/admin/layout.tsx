@@ -47,6 +47,7 @@ export default async function AdminLayout({
         unmatchedCount={unmatched}
         emailCount={emailPending}
         staffName={staffName}
+        staffRole={staff?.role}
       >
         {children}
       </AdminNav>

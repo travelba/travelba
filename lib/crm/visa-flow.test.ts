@@ -4,10 +4,19 @@ import {
   agencyLaunchReady,
   clientVisaPhase,
   clientVisaStepCopy,
+  clientVisaStepNote,
   clientVisaTrack,
   confirmAllowed,
+  depositAdvancesToPiece,
+  hasEstaAnswers,
+  headerVisaLabel,
+  launchWouldRewind,
+  mergeEstaAnswers,
   nextPayAttempt,
   paymentHold,
+  phaseForSavedStep,
+  readEstaAnswers,
+  stepAfterPrepare,
   visibilityOnRequest,
 } from "./visa-flow";
 
@@ -60,6 +69,40 @@ test("ouvrir la demande ne révèle pas les prix", () => {
 test("sans Pliant le parcours s’arrête au paiement", () => {
   assert.match(paymentHold(false) || "", /paiement/);
   assert.equal(paymentHold(true), null);
+  assert.match(clientVisaStepNote("paiement", { paymentHeld: true }) || "", /Pliant/);
+  assert.match(clientVisaStepNote("paiement", { paid: true }) || "", /enregistré/);
+  assert.match(clientVisaStepNote("remplissage") || "", /formulaire officiel/);
+});
+
+test("Israël, États-Unis et Royaume-Uni suivent le parcours jusqu’au paiement", () => {
+  assert.equal(stepAfterPrepare("IL"), "remplissage");
+  assert.equal(stepAfterPrepare("US"), "validation");
+  assert.equal(stepAfterPrepare("GB"), "validation");
+  assert.equal(phaseForSavedStep(null), null);
+  assert.equal(phaseForSavedStep("preparation"), "prêt");
+  assert.equal(phaseForSavedStep("remplissage"), "prêt");
+  assert.equal(phaseForSavedStep("validation"), "à confirmer");
+  assert.equal(phaseForSavedStep("paiement"), "paiement");
+  assert.equal(phaseForSavedStep("piece"), "piece");
+  assert.equal(launchWouldRewind("preparation"), false);
+  assert.equal(launchWouldRewind("validation"), true);
+  assert.equal(headerVisaLabel(null, "US"), "Lancer le parcours");
+  assert.equal(headerVisaLabel("prêt", "IL"), "Remplir le portail");
+  assert.equal(headerVisaLabel("prêt", "GB"), "Préparer le récapitulatif");
+  assert.equal(headerVisaLabel("à confirmer", "US"), "Confirmer");
+  assert.equal(headerVisaLabel("paiement", "IL"), "Paiement en attente");
+});
+
+test("les réponses déjà données restent, le dépôt n’avance qu’après paiement", () => {
+  assert.deepEqual(
+    mergeEstaAnswers({ priorRefusal: "non", usAddress: "hôtel" }, { usAddress: "  " }),
+    { usAddress: "hôtel", employment: "", countriesVisited: "", priorRefusal: "non" }
+  );
+  assert.equal(readEstaAnswers({ priorRefusal: " oui ", noise: 1 }).priorRefusal, "oui");
+  assert.equal(hasEstaAnswers({ employment: "agence" }), true);
+  assert.equal(hasEstaAnswers({}), false);
+  assert.equal(depositAdvancesToPiece("paye"), true);
+  assert.equal(depositAdvancesToPiece("en_cours"), false);
 });
 
 test("un second paiement échoué alerte, un second pays identique ne part pas", () => {

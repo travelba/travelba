@@ -1,3 +1,9 @@
+import { productionOnlySecret } from "./preview-secrets";
+
+export function cronSecret() {
+  return productionOnlySecret(process.env.CRON_SECRET);
+}
+
 export function cronAuthorized(
   authorizationHeader: string | null | undefined,
   secret: string | null | undefined

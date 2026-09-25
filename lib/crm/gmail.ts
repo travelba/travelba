@@ -1,5 +1,6 @@
 import "server-only";
 import { createPrivateKey, createSign } from "crypto";
+import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 import {
   buildGmailHistorySearchParams,
   collectHistoryMessageIds,
@@ -16,11 +17,11 @@ const DEFAULT_LABELS = ["little-emperors", "expedia-taap"];
 type ServiceAccount = { client_email: string; private_key: string };
 
 function impersonateEmail() {
-  return (process.env.GMAIL_IMPERSONATE || "").trim();
+  return productionOnlySecret(process.env.GMAIL_IMPERSONATE);
 }
 
 function serviceAccountRaw() {
-  return (process.env.GOOGLE_SA_JSON || "").trim();
+  return productionOnlySecret(process.env.GOOGLE_SA_JSON);
 }
 
 export function gmailConfigured() {
@@ -28,7 +29,7 @@ export function gmailConfigured() {
 }
 
 export function gmailPubsubTopic() {
-  return (process.env.GMAIL_PUBSUB_TOPIC || "").trim();
+  return productionOnlySecret(process.env.GMAIL_PUBSUB_TOPIC);
 }
 
 /** Labels Gmail suivis (filtres agence). Défaut : little-emperors, expedia-taap. */
