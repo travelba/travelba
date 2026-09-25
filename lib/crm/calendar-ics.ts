@@ -1,5 +1,5 @@
 import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
-import { BOOKING_ITEM_LABELS, isLedgerExpenseKind } from "@/lib/crm/types";
+import { BOOKING_ITEM_LABELS, isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
 import { itemClock, flightIata, flightCities, hotelDisplayName } from "@/lib/crm/carnet";
 
 function icsEscape(value: string) {
@@ -44,14 +44,14 @@ export function itemHasCalendarDate(item: Pick<CrmBookingItem, "kind" | "start_a
 }
 
 function itemSummary(item: CrmBookingItem) {
-  const kind = BOOKING_ITEM_LABELS[item.kind] || item.kind;
+  const kind = visibleServiceCopy(BOOKING_ITEM_LABELS[item.kind] || item.kind);
   if (item.kind === "flight") {
-    return `${kind} ${flightIata(item) || item.title}`.trim();
+    return visibleServiceCopy(`${kind} ${flightIata(item) || item.title}`.trim());
   }
   if (item.kind === "hotel") {
-    return `${kind} · ${hotelDisplayName(item)}`.trim();
+    return visibleServiceCopy(`${kind} · ${hotelDisplayName(item)}`.trim());
   }
-  return `${kind} · ${item.title}`.trim();
+  return visibleServiceCopy(`${kind} · ${item.title}`.trim());
 }
 
 function itemDescription(item: CrmBookingItem, booking: CrmBooking) {

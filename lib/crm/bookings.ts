@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   BOOKING_ITEM_LABELS,
   countsAsCarnetCard,
+  visibleServiceCopy,
   isExtraItemKind,
   isLedgerExpenseKind,
   type BookingItemKind,
@@ -138,9 +139,10 @@ export function bookingItemDebitLabel(
   item: Pick<CrmBookingItem, "kind" | "title"> & { details?: Record<string, unknown> | null },
   reference: string
 ) {
-  const kind = BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind;
-  const title =
-    item.kind === "hotel" ? hotelDisplayName(item as CrmBookingItem) : item.title;
+  const kind = visibleServiceCopy(BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind);
+  const title = visibleServiceCopy(
+    item.kind === "hotel" ? hotelDisplayName(item as CrmBookingItem) : item.title
+  );
   return `${kind} · ${title} — ${reference}`;
 }
 

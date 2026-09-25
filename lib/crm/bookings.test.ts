@@ -115,6 +115,14 @@ test("item debit posts only when flagged on a confirmed stay", () => {
     /Dépense · Pourboire/
   );
   assert.match(bookingItemDebitLabel({ kind: "hotel", title: "Nantipa" }, "TBA-1042"), /Hôtel/);
+  assert.equal(
+    bookingItemDebitLabel({ kind: "greeter", title: "Accueil VIP et Fastpass aller" }, "TB-1"),
+    "VIP Airport · Accueil VIP et Fastpass aller — TB-1"
+  );
+  assert.equal(
+    bookingItemDebitLabel({ kind: "greeter", title: "Greeter" }, "TB-1"),
+    "VIP Airport · VIP Airport — TB-1"
+  );
   assert.match(
     bookingItemDebitLabel(
       { kind: "hotel", title: "Aghouatim", details: { hotel_name: "The Ranch resort" } },

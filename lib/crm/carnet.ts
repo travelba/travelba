@@ -1,5 +1,5 @@
 import type { CrmBooking, CrmBookingDocument, CrmBookingItem } from "@/lib/crm/types";
-import { BOOKING_ITEM_LABELS, isLedgerExpenseKind } from "@/lib/crm/types";
+import { BOOKING_ITEM_LABELS, isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { itemTicketCount } from "./item-match";
 
@@ -220,7 +220,7 @@ export function documentLabel(doc: CrmBookingDocument, items: CrmBookingItem[]) 
       ? "Confirmation"
       : doc.kind;
   const name = doc.file_name || "";
-  return name ? `${metier} · ${name}` : metier;
+  return visibleServiceCopy(name ? `${metier} · ${name}` : metier);
 }
 
 /** Pièces publiées qui ne sont rattachées à aucune carte : à lister à part dans le carnet client. */

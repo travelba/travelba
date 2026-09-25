@@ -50,7 +50,7 @@ export const BOOKING_ITEM_LABELS: Record<BookingItemKind, string> = {
   insurance: "Assurance",
   fee: "Frais",
   chauffeur: "Chauffeur",
-  greeter: "Greeter",
+  greeter: "VIP Airport",
   visa: "Visa",
   expense: "Dépense",
   checkin: "Enregistrement",
@@ -61,6 +61,11 @@ export const EXTRA_ITEM_KINDS = ["chauffeur", "greeter", "visa", "checkin"] as c
 
 export function isExtraItemKind(kind: string | null | undefined) {
   return kind === "chauffeur" || kind === "greeter" || kind === "visa" || kind === "checkin";
+}
+
+/** Libellé visible. La clé `greeter` et les textes déjà en base restent inchangés. */
+export function visibleServiceCopy(text: string) {
+  return text.replace(/\bgreeter\b/gi, "VIP Airport");
 }
 
 /** Dépense libre : au grand livre, absente de l’itinéraire. */

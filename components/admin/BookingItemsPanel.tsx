@@ -6,6 +6,7 @@ import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import {
   BOOKING_ITEM_LABELS,
   isLedgerExpenseKind,
+  visibleServiceCopy,
   type BookingItemKind,
   type CrmBookingItem,
 } from "@/lib/crm/types";
@@ -260,8 +261,8 @@ export function BookingItemsPanel({
                   </span>
                   <div className="min-w-0">
                     <p className="font-medium">
-                      {BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind} ·{" "}
-                      {item.kind === "hotel" ? hotelDisplayName(item) : item.title}
+                      {visibleServiceCopy(BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind)} ·{" "}
+                      {item.kind === "hotel" ? hotelDisplayName(item) : visibleServiceCopy(item.title)}
                       {!item.visible_to_client ? (
                         <span className="ml-2 rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase">
                           Brouillon

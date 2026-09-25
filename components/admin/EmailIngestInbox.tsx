@@ -7,6 +7,7 @@ import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
 import { EmptyState } from "@/components/crm/ui";
 import {
   BOOKING_ITEM_LABELS,
+  visibleServiceCopy,
   type BookingItemKind,
   type CrmEmailIngest,
 } from "@/lib/crm/types";
@@ -194,7 +195,7 @@ export function EmailIngestInbox({
                       {itemLabel(item.kind)}
                     </span>
                     <span className="min-w-0 flex-1 text-[var(--admin-navy)]">
-                      <span className="block truncate">{item.title || "—"}</span>
+                      <span className="block truncate">{visibleServiceCopy(item.title || "—")}</span>
                       {item.confirmation_ref ? (
                         <span className="block truncate text-xs text-muted">
                           Réf. {item.confirmation_ref}

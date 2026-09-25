@@ -173,7 +173,7 @@ export async function createBookingExtra(
     throw new BookingIssuesError("Vol requis.", [
       {
         field: "items",
-        message: "Chauffeur et greeter se proposent uniquement s’il y a un vol sur le dossier.",
+        message: "Chauffeur et VIP Airport se proposent uniquement s’il y a un vol sur le dossier.",
       },
     ]);
   }
@@ -517,7 +517,7 @@ export function parseExtraRequest(body: Record<string, unknown> | null) {
     throw new BookingIssuesError("Service invalide.", [
       {
         field: "kind",
-        message: "Indiquez un service (transfert, greeter, enregistrement ou visa) et un trajet si besoin.",
+        message: "Indiquez un service (transfert, VIP Airport, enregistrement ou visa) et un trajet si besoin.",
       },
     ]);
   }

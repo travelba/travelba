@@ -109,6 +109,19 @@ test("le montant global du séjour se lit comme une dépense", () => {
     ),
     "Vol · Paris → Tel Aviv — TB-2026-0031"
   );
+  assert.equal(
+    ledgerMovementTitle(
+      {
+        booking_id: "b1",
+        direction: "debit",
+        kind: "booking",
+        external_id: "booking:b1:item:g1",
+        label: "Greeter · Accueil VIP et Fastpass aller — TB-2026-0031",
+      },
+      "Réservation"
+    ),
+    "VIP Airport · Accueil VIP et Fastpass aller — TB-2026-0031"
+  );
 });
 
 test("le titre dit de quoi il s’agit, la ligne du dessous la date et le lieu", () => {

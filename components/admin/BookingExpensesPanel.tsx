@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { Field, MoneyInput, fieldControlClass } from "@/components/crm/fields";
 import { formatMoney } from "@/lib/crm/money";
-import { isLedgerExpenseKind, type BookingStatus, type CrmBookingItem } from "@/lib/crm/types";
+import { isLedgerExpenseKind, visibleServiceCopy, type BookingStatus, type CrmBookingItem } from "@/lib/crm/types";
 
 function postsNow(status: BookingStatus) {
   return status === "confirmed" || status === "travelling" || status === "completed";
@@ -39,7 +39,7 @@ export function BookingExpensesPanel({
 
   function beginEdit(item: CrmBookingItem) {
     setEditingId(item.id);
-    setTitle(item.title);
+    setTitle(visibleServiceCopy(item.title));
     setAmount(item.amount);
     setError(null);
   }
@@ -172,7 +172,7 @@ export function BookingExpensesPanel({
               >
                 <div className="min-w-0">
                   <p className="font-medium">
-                    {item.title}
+                    {visibleServiceCopy(item.title)}
                     <span className="ml-2 rounded-full bg-[var(--admin-sky)] px-2 py-0.5 text-[10px] font-bold uppercase">
                       Transactions
                     </span>
