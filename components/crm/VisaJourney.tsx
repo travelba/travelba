@@ -217,7 +217,6 @@ export function VisaJourney({
                           {percent}
                           <span className="text-[10px] font-medium text-[#C5A880]">%</span>
                         </p>
-                        <p className="mt-0.5 text-[8px] font-medium tracking-wide text-[#C5A880] uppercase">environ</p>
                       </div>
                     </div>
                     <div className="min-w-0">
@@ -230,7 +229,7 @@ export function VisaJourney({
                         aria-valuemin={0}
                         aria-valuemax={100}
                         aria-valuenow={percent}
-                        aria-label={`Avancement de la formalité, environ ${percent} pour cent`}
+                        aria-label={`Avancement de la formalité, ${percent} pour cent`}
                       >
                         {paymentHeld ? paymentHold(false) : headline}
                       </p>
