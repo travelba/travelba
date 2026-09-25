@@ -8,35 +8,44 @@ import { Icon } from "@/components/crm/icons";
 import { siteConfig } from "@/lib/site";
 import { ONBOARDING_PATH } from "@/lib/crm/session";
 
-const TABS = [
-  { href: "/mon-compte", label: "Accueil", exact: true, icon: "explore" },
-  { href: "/mon-compte/reservations", label: "Réservations", icon: "luggage" },
-  { href: "/mon-compte/transactions", label: "Transactions", icon: "receipt_long" },
-  { href: "/mon-compte/profil", label: "Mon compte", icon: "badge" },
+const TAB_DEFS = [
+  { suffix: "", label: "Accueil", exact: true, icon: "explore" },
+  { suffix: "/reservations", label: "Réservations", exact: false, icon: "luggage" },
+  { suffix: "/transactions", label: "Transactions", exact: false, icon: "receipt_long" },
+  { suffix: "/profil", label: "Mon compte", exact: false, icon: "badge" },
 ] as const;
 
-function pageTitle(pathname: string) {
-  const hit = TABS.find((t) =>
-    "exact" in t && t.exact ? pathname === t.href : pathname.startsWith(t.href)
-  );
-  return hit?.label ?? "Espace client";
+function tabsFor(basePath: string) {
+  return TAB_DEFS.map((tab) => ({
+    ...tab,
+    href: `${basePath}${tab.suffix}`,
+  }));
 }
 
 export function AccountChrome({
   customerName,
   initials,
   needsPhone,
+  basePath = "/mon-compte",
+  preview = false,
   children,
 }: {
   customerName: string;
   initials: string;
   needsPhone: boolean;
+  /** Racine des liens. `/exemple` pour l’aperçu local, sans session. */
+  basePath?: string;
+  /** Pas d’appel Auth : l’aperçu ne déconnecte pas une session réelle. */
+  preview?: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const title = pageTitle(pathname);
-  const phoneWall = needsPhone && !pathname.startsWith("/mon-compte/profil");
+  const tabs = tabsFor(basePath);
+  const title =
+    tabs.find((tab) => (tab.exact ? pathname === tab.href : pathname.startsWith(tab.href)))?.label ??
+    "Espace client";
+  const phoneWall = needsPhone && !pathname.startsWith(`${basePath}/profil`);
 
   if (pathname === ONBOARDING_PATH) {
     return <div className="account-app admin-af min-h-screen">{children}</div>;
@@ -53,7 +62,7 @@ export function AccountChrome({
     <div className="account-app admin-af min-h-screen">
       <header className="sticky top-0 z-40 border-b border-[#e5e3dc] bg-[rgba(250,249,246,0.9)] shadow-[0_1px_8px_rgba(11,25,44,0.04)] backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-[480px] items-center justify-between gap-3 px-4 sm:px-5">
-          <BrandMark href="/mon-compte" subtitle={title} compact />
+          <BrandMark href={basePath} subtitle={title} compact />
           <div className="flex items-center gap-0.5">
             <a
               href={`https://wa.me/${siteConfig.whatsappNumber}`}
@@ -76,7 +85,7 @@ export function AccountChrome({
           </div>
         </div>
         <nav className="mx-auto hidden max-w-[480px] items-center gap-5 px-4 pb-3 sm:px-6 md:flex">
-          {TABS.map((tab) => {
+          {tabs.map((tab) => {
             const active =
               "exact" in tab && tab.exact
                 ? pathname === tab.href
@@ -95,13 +104,15 @@ export function AccountChrome({
               </Link>
             );
           })}
-          <button
-            type="button"
-            onClick={signOut}
-            className="ml-auto text-xs font-semibold text-muted hover:text-[var(--admin-navy)]"
-          >
-            Déconnexion
-          </button>
+          {preview ? null : (
+            <button
+              type="button"
+              onClick={signOut}
+              className="ml-auto text-xs font-semibold text-muted hover:text-[var(--admin-navy)]"
+            >
+              Déconnexion
+            </button>
+          )}
         </nav>
       </header>
 
@@ -111,7 +122,7 @@ export function AccountChrome({
 
       <nav className="account-tabbar md:hidden" aria-label="Navigation compte">
         <div className="mx-auto flex max-w-[480px] items-end justify-around px-1.5 py-2">
-          {TABS.map((tab) => {
+          {tabs.map((tab) => {
             const active =
               "exact" in tab && tab.exact
                 ? pathname === tab.href

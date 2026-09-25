@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CLIENT_PROFILE_NAV } from "@/lib/crm/profile-nav";
 
-export function ProfileSubnav() {
+export function ProfileSubnav({ basePath = "/mon-compte" }: { basePath?: string }) {
   const pathname = usePathname();
 
   return (
@@ -13,13 +13,12 @@ export function ProfileSubnav() {
       aria-label="Sections du compte"
     >
       {CLIENT_PROFILE_NAV.map((link) => {
-        const active = link.exact
-          ? pathname === link.href
-          : pathname.startsWith(link.href);
+        const href = link.href.replace("/mon-compte", basePath);
+        const active = link.exact ? pathname === href : pathname.startsWith(href);
         return (
           <Link
             key={link.href}
-            href={link.href}
+            href={href}
             className={`flex-1 rounded-full px-2 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.04em] transition ${
               active
                 ? "bg-[var(--admin-navy)] text-white shadow-sm"
