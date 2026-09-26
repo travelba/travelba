@@ -7,12 +7,14 @@ import {
   entryButtonSuffix,
   entryLinkUrl,
   entryOpenRequested,
+  entryDestination,
   entryPreviewHtml,
   isLinkCrawler,
   referenceFromNextPath,
   safeNextPath,
   shouldServePreview,
   stayPreviewCopy,
+  storedEntryEmail,
 } from "./entry-link";
 
 test("le code tient en huit signes", () => {
@@ -34,15 +36,7 @@ test("WhatsApp reçoit le titre sans consommer le jeton", () => {
   assert.equal(isLinkCrawler("WhatsApp/2.23"), true);
   assert.equal(isLinkCrawler("facebookexternalhit/1.1"), true);
   assert.equal(shouldServePreview("WhatsApp/2.23.20.72 A", null), true);
-  assert.equal(shouldServePreview("WhatsApp/2.23.20.72 I", null), true);
-  assert.equal(shouldServePreview("WhatsApp/2.23.20.72 A", "?1"), false);
-  assert.equal(
-    shouldServePreview("WhatsApp/2.23.20.72 A", null, { mode: "navigate", dest: "document" }),
-    false
-  );
-  assert.equal(shouldServePreview("facebookexternalhit/1.1", "?1"), true);
-  assert.equal(shouldServePreview("Mozilla/5.0", null), false);
-  assert.equal(shouldServePreview("Mozilla/5.0 (iPhone) WhatsApp/2.23", "?1"), false);
+  assert.equal(shouldServePreview("Mozilla/5.0", "?1", { mode: "navigate", dest: "document" }), true);
   assert.equal(entryOpenRequested("?ouvrir=1"), true);
   assert.equal(entryOpenRequested(""), false);
   const stay = stayPreviewCopy({
@@ -70,9 +64,10 @@ test("WhatsApp reçoit le titre sans consommer le jeton", () => {
   assert.match(html, /method="post"/);
   assert.match(html, /name="ouvrir"/);
   assert.match(html, /value="1"/);
-  assert.equal(html.includes("<script"), false);
+  assert.match(html, /<script>document\.forms\[0\]\.submit\(\)<\/script>/);
   assert.equal(html.includes("location.replace"), false);
   assert.equal(html.includes("http-equiv"), false);
+  assert.equal(html.includes("/connexion"), false);
   assert.equal(html.includes("noindex"), false);
   assert.equal(html.includes("token"), false);
   assert.equal(html.includes("hashed"), false);
@@ -99,4 +94,40 @@ test("le chemin de retour reste interne", () => {
   assert.equal(safeNextPath("/mon-compte"), "/mon-compte");
   assert.equal(safeNextPath("https://evil.example"), "/mon-compte");
   assert.equal(safeNextPath("//evil.example"), "/mon-compte");
+});
+
+test("l’e-mail du lien est celui du titulaire, et l’entrée n’ouvre pas la connexion", () => {
+  assert.equal(storedEntryEmail("  Benjamin@Travelba.fr "), "benjamin@travelba.fr");
+  assert.equal(storedEntryEmail("pas une adresse"), null);
+  assert.equal(storedEntryEmail("a@\nb.fr"), null);
+  assert.equal(
+    entryDestination({
+      nextPath: "/mon-compte/reservations/TB-2026-0028",
+      otpType: "magiclink",
+      staff: false,
+      mustSetPassword: false,
+    }),
+    "/mon-compte/reservations/TB-2026-0028"
+  );
+  assert.equal(
+    entryDestination({
+      nextPath: "/connexion?error=auth",
+      otpType: "magiclink",
+      staff: false,
+      mustSetPassword: false,
+    }),
+    "/mon-compte"
+  );
+  assert.equal(
+    entryDestination({
+      nextPath: "/mon-compte",
+      otpType: "invite",
+      staff: false,
+      mustSetPassword: false,
+    }),
+    "/connexion/mot-de-passe"
+  );
+  const held = entryPreviewHtml("https://travelba.fr", "K7MQ2PX4", null, false);
+  assert.equal(held.includes("<script"), false);
+  assert.equal(held.includes("/connexion"), false);
 });

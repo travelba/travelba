@@ -64,6 +64,7 @@ export async function POST(request: Request) {
       tokenHash: data.properties.hashed_token,
       otpType: "recovery",
       nextPath: SET_PASSWORD_PATH,
+      email,
     });
 
     if (!apiKey) {

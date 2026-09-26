@@ -156,6 +156,7 @@ export async function inviteCustomer(
     tokenHash: hashedToken,
     otpType: linkType,
     nextPath: SET_PASSWORD_PATH,
+    email,
   });
   let whatsapp: WhatsappSendResult = { ok: false, reason: "rejected" };
   try {

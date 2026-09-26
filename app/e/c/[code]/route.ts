@@ -1,5 +1,4 @@
-import { entryPreviewResponse, redirectEntryToCallback } from "@/lib/crm/entry-open";
-import { shouldServePreview } from "@/lib/crm/entry-link";
+import { entryPreviewResponse, openEntry } from "@/lib/crm/entry-open";
 import { siteConfig } from "@/lib/site";
 
 export const runtime = "nodejs";
@@ -10,23 +9,18 @@ function originOf() {
   return (process.env.NEXT_PUBLIC_SITE_URL || siteConfig.url).replace(/\/$/, "");
 }
 
-/** Le robot reste sur l’aperçu. Un visiteur entre dans l’espace, déjà connecté. */
-export async function GET(request: Request, ctx: Ctx) {
+function normalizeCode(code: string) {
+  return code.trim().toUpperCase();
+}
+
+/** Aperçu pour tout le monde. Le script poste ; le robot ne l’exécute pas. */
+export async function GET(_request: Request, ctx: Ctx) {
   const { code } = await ctx.params;
-  const safe = code.trim().toUpperCase();
-  if (previewFor(request)) return entryPreviewResponse(originOf(), safe);
-  return redirectEntryToCallback(originOf(), safe);
+  return entryPreviewResponse(originOf(), normalizeCode(code));
 }
 
-function previewFor(request: Request) {
-  return shouldServePreview(request.headers.get("user-agent"), request.headers.get("sec-fetch-user"), {
-    mode: request.headers.get("sec-fetch-mode"),
-    dest: request.headers.get("sec-fetch-dest"),
-    site: request.headers.get("sec-fetch-site"),
-  });
-}
-
+/** Vérifie le jeton, pose la session, ouvre la réservation. Jamais /connexion. */
 export async function POST(_request: Request, ctx: Ctx) {
   const { code } = await ctx.params;
-  return redirectEntryToCallback(originOf(), code.trim().toUpperCase());
+  return openEntry(originOf(), normalizeCode(code));
 }

@@ -67,6 +67,7 @@ export async function POST(request: Request) {
       tokenHash: data.properties.hashed_token,
       otpType: "magiclink",
       nextPath: "/mon-compte",
+      email,
     });
 
     if (channel === "whatsapp") {

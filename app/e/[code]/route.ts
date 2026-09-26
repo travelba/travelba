@@ -1,5 +1,4 @@
-import { entryPreviewResponse, redirectEntryToCallback } from "@/lib/crm/entry-open";
-import { shouldServePreview } from "@/lib/crm/entry-link";
+import { entryPreviewResponse, openEntry } from "@/lib/crm/entry-open";
 import { siteConfig } from "@/lib/site";
 
 export const runtime = "nodejs";
@@ -14,22 +13,13 @@ function normalizeCode(code: string) {
   return code.trim().toUpperCase();
 }
 
-export async function GET(request: Request, ctx: Ctx) {
+/** Même règle que /e/c : le GET n’ouvre pas le jeton. */
+export async function GET(_request: Request, ctx: Ctx) {
   const { code } = await ctx.params;
-  const safe = normalizeCode(code);
-  if (
-    shouldServePreview(request.headers.get("user-agent"), request.headers.get("sec-fetch-user"), {
-      mode: request.headers.get("sec-fetch-mode"),
-      dest: request.headers.get("sec-fetch-dest"),
-      site: request.headers.get("sec-fetch-site"),
-    })
-  ) {
-    return entryPreviewResponse(originOf(), safe);
-  }
-  return redirectEntryToCallback(originOf(), safe);
+  return entryPreviewResponse(originOf(), normalizeCode(code));
 }
 
 export async function POST(_request: Request, ctx: Ctx) {
   const { code } = await ctx.params;
-  return redirectEntryToCallback(originOf(), normalizeCode(code));
+  return openEntry(originOf(), normalizeCode(code));
 }

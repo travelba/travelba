@@ -19,5 +19,6 @@ export async function issueConciergeMagicLink(
     tokenHash,
     otpType: "magiclink",
     nextPath: "/mon-compte",
+    email: clean,
   });
 }

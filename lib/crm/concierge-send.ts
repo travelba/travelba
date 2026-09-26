@@ -60,10 +60,11 @@ function quiet(err: unknown) {
   console.error("[concierge]", message.replace(/https?:\/\/\S+/g, "").slice(0, 180));
 }
 
-async function buttonSuffix(admin: Admin, email: string, path: string) {
+async function buttonSuffix(admin: Admin, email: string, path: string, showCover = false) {
+  const cleanEmail = email.trim().toLowerCase();
   const generated = await admin.auth.admin.generateLink({
     type: "magiclink",
-    email: email.trim().toLowerCase(),
+    email: cleanEmail,
   });
   const tokenHash = generated.data?.properties?.hashed_token;
   if (generated.error || !tokenHash) return null;
@@ -71,6 +72,8 @@ async function buttonSuffix(admin: Admin, email: string, path: string) {
     tokenHash,
     otpType: "magiclink",
     nextPath: path,
+    email: cleanEmail,
+    showCover,
   });
   const code = entryCodeFromLink(link);
   if (!code) return null;
@@ -182,7 +185,12 @@ async function deliverTemplate(admin: Admin, input: {
   if (!input.customer.email || !input.customer.phone || !proactiveWhatsappAllowed(input.customer)) {
     return;
   }
-  const suffix = await buttonSuffix(admin, input.customer.email, input.path);
+  const suffix = await buttonSuffix(
+    admin,
+    input.customer.email,
+    input.path,
+    input.template === "sejour"
+  );
   if (!suffix) {
     await markResult(admin, input.row.id, { ok: false, reason: "rejected", detail: "lien absent" });
     return;

@@ -673,9 +673,11 @@ test("le lien d’accès est un magic link", async () => {
     from(table: string) {
       assert.equal(table, "crm_entry_links");
       return {
-        insert: async (row: { otp_type: string; next_path: string }) => {
+        insert: async (row: { otp_type: string; next_path: string; email: string; show_cover: boolean }) => {
           assert.equal(row.otp_type, "magiclink");
           assert.equal(row.next_path, "/mon-compte");
+          assert.equal(row.email, "simon@example.com");
+          assert.equal(row.show_cover, false);
           return { error: null };
         },
       };
