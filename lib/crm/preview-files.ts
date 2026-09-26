@@ -10,6 +10,8 @@ export type FilePreviewModel = {
   mimeType: string | null;
   label: string;
   shareText: string;
+  /** Code /v/CODE : la pièce se lit sans session, toujours via /api/files. */
+  partage?: string | null;
 };
 
 export function isPreviewImage(mime?: string | null, name?: string | null) {

@@ -189,6 +189,8 @@ export type CrmCompanion = {
   sex: string | null;
   nationality: string | null;
   relationship: string | null;
+  /** E.164. Absent : le lien du voyage reste copiable, WhatsApp ne part pas. */
+  phone?: string | null;
   created_at: string;
   updated_at: string;
 };

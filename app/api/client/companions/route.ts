@@ -2,7 +2,15 @@ import { NextResponse } from "next/server";
 import { dbError, jsonError, requireCustomer } from "@/lib/crm/auth";
 import { resolveNationality } from "@/lib/crm/countries";
 import { emptyToNull } from "@/lib/crm/identity";
+import { storedCompanionPhone } from "@/lib/crm/trip-share";
 import { deleteTravelDocuments } from "@/lib/crm/travel-document-write";
+
+function phonePatch(body: Record<string, unknown> | null) {
+  if (!body || !Object.prototype.hasOwnProperty.call(body, "phone")) return {};
+  const stored = storedCompanionPhone(body.phone);
+  if (!stored.ok) return null;
+  return { phone: stored.phone };
+}
 
 export async function GET() {
   const auth = await requireCustomer();
@@ -23,6 +31,8 @@ export async function POST(request: Request) {
   const first = String(body?.first_name || "").trim();
   const last = String(body?.last_name || "").trim();
   if (!first || !last) return jsonError("Nom et prénom requis");
+  const phone = phonePatch(body || {});
+  if (!phone) return jsonError("Téléphone invalide");
   const { data, error } = await auth.supabase
     .from("crm_travel_companions")
     .insert({
@@ -34,6 +44,7 @@ export async function POST(request: Request) {
       sex: emptyToNull(body?.sex),
       nationality: resolveNationality(String(body?.nationality || "")),
       relationship: emptyToNull(body?.relationship),
+      ...phone,
     })
     .select("*")
     .single();
@@ -45,8 +56,11 @@ export async function PATCH(request: Request) {
   const auth = await requireCustomer();
   if (auth instanceof NextResponse) return auth;
   const body = await request.json().catch(() => null);
-  const id = String(body?.id || "");
+  if (!body || typeof body !== "object") return jsonError("id requis");
+  const id = String(body.id || "");
   if (!id) return jsonError("id requis");
+  const phone = phonePatch(body);
+  if (!phone) return jsonError("Téléphone invalide");
   const { data, error } = await auth.supabase
     .from("crm_travel_companions")
     .update({
@@ -57,6 +71,7 @@ export async function PATCH(request: Request) {
       sex: emptyToNull(body.sex),
       nationality: resolveNationality(String(body.nationality || "")),
       relationship: emptyToNull(body.relationship),
+      ...phone,
     })
     .eq("id", id)
     .eq("customer_id", auth.customer.id)

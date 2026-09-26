@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { resolveNationality } from "@/lib/crm/countries";
 import { emptyToNull } from "@/lib/crm/identity";
+import { storedCompanionPhone } from "@/lib/crm/trip-share";
 import { deleteTravelDocuments } from "@/lib/crm/travel-document-write";
 
 function companionPatch(body: Record<string, unknown>) {
@@ -15,6 +16,13 @@ function companionPatch(body: Record<string, unknown>) {
     nationality: resolveNationality(String(body.nationality || "")),
     relationship: emptyToNull(body.relationship),
   };
+}
+
+function withPhone(body: Record<string, unknown>, patch: ReturnType<typeof companionPatch>) {
+  if (!Object.prototype.hasOwnProperty.call(body, "phone")) return patch;
+  const stored = storedCompanionPhone(body.phone);
+  if (!stored.ok) return null;
+  return { ...patch, phone: stored.phone };
 }
 
 export async function GET(request: Request) {
@@ -36,7 +44,8 @@ export async function POST(request: Request) {
   if (auth instanceof NextResponse) return auth;
   const body = await request.json().catch(() => null);
   const customerId = String(body?.customer_id || "");
-  const patch = companionPatch(body || {});
+  const patch = withPhone(body || {}, companionPatch(body || {}));
+  if (!patch) return jsonError("Téléphone invalide");
   if (!customerId || !patch.first_name || !patch.last_name) return jsonError("Champs requis");
   const { data, error } = await auth.supabase
     .from("crm_travel_companions")
@@ -56,7 +65,8 @@ export async function PATCH(request: Request) {
   const body = await request.json().catch(() => null);
   const id = String(body?.id || "");
   const customerId = String(body?.customer_id || "");
-  const patch = companionPatch(body || {});
+  const patch = withPhone(body || {}, companionPatch(body || {}));
+  if (!patch) return jsonError("Téléphone invalide");
   if (!id || !customerId || !patch.first_name || !patch.last_name) return jsonError("Champs requis");
   const { data, error } = await auth.supabase
     .from("crm_travel_companions")

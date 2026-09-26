@@ -35,11 +35,16 @@ export function placeCoverUrl(booking: Pick<CrmBooking, "destination" | "title">
 }
 
 /** Import agence, sinon photo du lieu. Lieu inconnu : null (fond marine). */
-export function bookingCoverUrl(booking: CoverBooking, width = 960) {
+export function bookingCoverUrl(
+  booking: CoverBooking,
+  width = 960,
+  access?: { partage?: string | null }
+) {
   if (booking.cover_image_path) {
-    const path = `/api/files?path=${encodeURIComponent(booking.cover_image_path)}`;
-    if (!booking.updated_at) return path;
-    return `${path}&v=${encodeURIComponent(booking.updated_at)}`;
+    const params = new URLSearchParams({ path: booking.cover_image_path });
+    if (booking.updated_at) params.set("v", booking.updated_at);
+    if (access?.partage) params.set("partage", access.partage);
+    return `/api/files?${params.toString()}`;
   }
   return placeCoverUrl(booking, width);
 }

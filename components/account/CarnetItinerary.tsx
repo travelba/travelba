@@ -74,6 +74,7 @@ function CardBody({
   compactHotel = false,
   calendarHref = null,
   day = null,
+  partage = null,
 }: {
   item: CrmBookingItem;
   currency: string;
@@ -81,6 +82,7 @@ function CardBody({
   compactHotel?: boolean;
   calendarHref?: string | null;
   day?: string | null;
+  partage?: string | null;
 }) {
   const price = itemPriceLabel(item, currency, day);
   const included = detailList(item, "included");
@@ -240,6 +242,7 @@ function CardBody({
                 mimeType: doc.mime_type,
                 label: doc.id === item.source_document_id ? "Confirmation" : doc.file_name || "Pièce jointe",
                 shareText: "Bonjour, je vous transmets une pièce de la réservation.",
+                partage,
               }}
             />
           ))}
@@ -263,11 +266,14 @@ export function CarnetItinerary({
   calendarBase = null,
   services = null,
   refusals = [],
+  partage = null,
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
   docs: CrmBookingDocument[];
   calendarBase?: string | null;
+  /** Lien public : les confirmations passent par /api/files, sans session. */
+  partage?: string | null;
   refusals?: ServiceRefusal[];
   services?: {
     variant: "admin" | "client";
@@ -400,6 +406,7 @@ export function CarnetItinerary({
                     compactHotel={row.item.kind === "hotel"}
                     calendarHref={itemHref(row.item.id)}
                     day={day}
+                    partage={partage}
                   />
                 )
               ) : (
@@ -420,6 +427,7 @@ export function CarnetItinerary({
                 currency={booking.currency}
                 docs={docs}
                 calendarHref={itemHref(item.id)}
+                partage={partage}
               />
             ))}
           </div>

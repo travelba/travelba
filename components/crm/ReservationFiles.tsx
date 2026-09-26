@@ -2,13 +2,19 @@ import { FilePreviewGrid } from "@/components/crm/FilePreview";
 import type { FilePreviewModel } from "@/lib/crm/preview-files";
 
 export function ReservationFiles({
-  passports,
+  passports = [],
   attachments,
   variant = "client",
+  showPassports = true,
+  attachmentsLabel = "Pièces jointes de la réservation",
+  emptyLabel = "Aucune pièce jointe sur cette réservation.",
 }: {
-  passports: FilePreviewModel[];
+  passports?: FilePreviewModel[];
   attachments: FilePreviewModel[];
   variant?: "admin" | "client";
+  showPassports?: boolean;
+  attachmentsLabel?: string;
+  emptyLabel?: string;
 }) {
   const card =
     variant === "admin"
@@ -16,6 +22,7 @@ export function ReservationFiles({
       : "aura-card space-y-3 rounded-[1.35rem] bg-white p-4";
   return (
     <div className="space-y-4">
+      {showPassports ? (
       <section className={card}>
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
           Passeports des voyageurs
@@ -26,14 +33,15 @@ export function ReservationFiles({
           <p className="text-sm text-muted">Aucun passeport n’est joint pour ces voyageurs.</p>
         )}
       </section>
+      ) : null}
       <section className={card}>
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
-          Pièces jointes de la réservation
+          {attachmentsLabel}
         </p>
         {attachments.length ? (
           <FilePreviewGrid files={attachments} />
         ) : (
-          <p className="text-sm text-muted">Aucune pièce jointe sur cette réservation.</p>
+          <p className="text-sm text-muted">{emptyLabel}</p>
         )}
       </section>
     </div>
