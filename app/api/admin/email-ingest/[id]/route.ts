@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
 import { BookingIssuesError } from "@/lib/crm/booking-issues";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { applyEditedExtractTitle } from "@/lib/crm/ingest-title";
 import { parseExtractPayloadSafe } from "@/lib/crm/ingest-types";
 import {
   applyExtractToBooking,
@@ -20,7 +21,7 @@ export async function POST(request: Request, ctx: Ctx) {
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
 
-  let body: { action?: string; customer_id?: string; booking_id?: string };
+  let body: { action?: string; customer_id?: string; booking_id?: string; title?: string };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -57,7 +58,25 @@ export async function POST(request: Request, ctx: Ctx) {
       return NextResponse.json({ ok: true, row: next });
     }
 
-    const extract = parseExtractPayloadSafe(row.extract);
+    const editedTitle = typeof body.title === "string" ? body.title.trim() : null;
+    const storedExtract =
+      editedTitle != null
+        ? applyEditedExtractTitle(
+            row.extract && typeof row.extract === "object" && !Array.isArray(row.extract)
+              ? (row.extract as Record<string, unknown>)
+              : {},
+            editedTitle
+          )
+        : row.extract;
+    if (editedTitle) {
+      await admin.from("crm_email_ingest").update({ extract: storedExtract }).eq("id", id);
+    }
+    if (action === "save_title") {
+      if (!editedTitle) return jsonError("Indiquez le titre du dossier");
+      return NextResponse.json({ ok: true });
+    }
+
+    const extract = parseExtractPayloadSafe(storedExtract);
     const files = await loadEmailIngestFiles(row);
 
     if (action === "attach_booking") {

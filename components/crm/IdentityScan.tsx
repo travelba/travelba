@@ -128,7 +128,7 @@ export function IdentityScan({
           type="button"
           disabled={busy}
           onClick={() => inputRef.current?.click()}
-          className="admin-af-btn inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm"
+          className="admin-af-btn admin-tap inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm"
         >
           <Camera className="h-4 w-4" />
           {busy ? "Lecture…" : "Choisir un fichier"}

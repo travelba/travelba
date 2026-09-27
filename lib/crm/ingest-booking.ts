@@ -12,6 +12,8 @@ import {
   uploadCrmFile,
 } from "@/lib/crm/files";
 import { emptyToNull } from "@/lib/crm/identity";
+import { dossierTitle } from "@/lib/crm/ingest-title";
+import { stayCurrency } from "@/lib/crm/stay-currency";
 import { parseMoney } from "@/lib/crm/money";
 import { extractBookingFromFiles } from "@/lib/crm/ingest-file";
 import {
@@ -468,10 +470,7 @@ export async function persistNewBookingFromExtract(opts: {
   if (persistIssues.length) throw new BookingIssuesError(issuesSummary(persistIssues), persistIssues);
   const reference = await nextBookingReference(opts.referenceClient ?? admin);
   const extract = opts.extract;
-  const title =
-    emptyToNull(extract.title) ||
-    emptyToNull(extract.destination) ||
-    "Voyage";
+  const title = dossierTitle(extract);
   const totalAmount = sellingTotalFromExtract(extract);
   const status = bookingStatusFromExtract(extract, opts.status);
   const { data, error } = await admin
@@ -485,7 +484,7 @@ export async function persistNewBookingFromExtract(opts: {
       status,
       start_date: emptyToNull(extract.start_date),
       end_date: emptyToNull(extract.end_date),
-      currency: emptyToNull(extract.currency) || "EUR",
+      currency: stayCurrency(extract.currency),
       total_amount: totalAmount,
       notes_client: emptyToNull(extract.notes_client),
       notes_internal:
@@ -541,6 +540,8 @@ export async function applyExtractToBooking(opts: {
   staffUserId?: string;
   batchId?: string;
   visibleToClient: boolean;
+  /** Relecture du formulaire : titre et devise choisis, pas ceux du PDF. */
+  applyStayFields?: boolean;
 }) {
   const admin = createServiceClient();
   const { data: booking } = await admin
@@ -585,7 +586,10 @@ export async function applyExtractToBooking(opts: {
     docs
   );
   const patch: Record<string, unknown> = {};
-  if (!booking.title && opts.extract.title) patch.title = opts.extract.title;
+  const chosenTitle = emptyToNull(opts.extract.title);
+  if (opts.applyStayFields && chosenTitle) patch.title = chosenTitle;
+  else if (!booking.title && chosenTitle) patch.title = chosenTitle;
+  if (opts.applyStayFields) patch.currency = stayCurrency(opts.extract.currency);
   if (!booking.destination && opts.extract.destination) patch.destination = opts.extract.destination;
   if (!booking.start_date && opts.extract.start_date) patch.start_date = opts.extract.start_date;
   if (!booking.end_date && opts.extract.end_date) patch.end_date = opts.extract.end_date;

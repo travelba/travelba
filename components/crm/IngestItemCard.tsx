@@ -40,14 +40,14 @@ function StampField({
     return <DateFrInput value={date} onChange={(next) => onChange(next)} />;
   }
   return (
-    <div className="grid grid-cols-[1fr_auto] gap-2">
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
       <DateFrInput value={date} onChange={(next) => onChange(joinStamp(next, time))} />
       <input
         type="time"
         lang="fr-FR"
         value={time}
         onChange={(event) => onChange(joinStamp(date, event.target.value))}
-        className={`${fieldControlClass} w-[7.5rem]`}
+        className={`${fieldControlClass} w-full sm:w-[7.5rem]`}
         aria-label="Heure"
       />
     </div>

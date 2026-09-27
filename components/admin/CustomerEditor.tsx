@@ -70,6 +70,7 @@ export function CustomerEditor({
   const [firstName, setFirstName] = useState(customer.first_name);
   const [lastName, setLastName] = useState(customer.last_name);
   const [usageName, setUsageName] = useState(customer.usage_name || "");
+  const [email, setEmail] = useState(customer.email || "");
   const [phone, setPhone] = useState(customer.phone || "");
   const [phoneSecondary, setPhoneSecondary] = useState(customer.phone_secondary || "");
   const [birthDate, setBirthDate] = useState(customer.birth_date || "");
@@ -122,6 +123,7 @@ export function CustomerEditor({
         first_name: firstName,
         last_name: lastName,
         usage_name: usageName,
+        email,
         phone,
         phone_secondary: phoneSecondary,
         birth_date: birthDate,
@@ -227,7 +229,20 @@ export function CustomerEditor({
           <p className="sm:col-span-2 font-display text-base font-bold text-[var(--admin-navy)]">
             Coordonnées
           </p>
-          <p className="sm:col-span-2 text-sm text-muted">E-mail (identifiant) : {customer.email}</p>
+          <Field
+            label="E-mail"
+            hint="Adresse de connexion. L’invitation et l’accès suivent ce changement."
+            className="sm:col-span-2"
+          >
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="off"
+              className={`${fieldControlClass} admin-tap`}
+            />
+          </Field>
           <PhoneField name="phone" value={phone} onChange={setPhone} />
           <OptionalSecondPhone value={phoneSecondary} onChange={setPhoneSecondary} />
         </div>
@@ -280,7 +295,7 @@ export function CustomerEditor({
         {saveError ? <p className="text-sm text-accent">{saveError}</p> : null}
         <div className="sticky bottom-4 z-20 -mx-1 rounded-2xl border border-[#e5e3dc] bg-white/95 p-3 shadow-lg backdrop-blur">
           <BusyBar active={saving} label="Enregistrement…" />
-          <button className="admin-af-btn w-full rounded-full px-4 py-2 text-sm" disabled={saving}>
+          <button className="admin-af-btn admin-tap w-full rounded-full px-4 py-2 text-sm" disabled={saving}>
             {saving ? "Enregistrement…" : "Enregistrer"}
           </button>
         </div>

@@ -22,7 +22,9 @@ import {
 } from "@/lib/crm/document-passengers";
 import type { PersonName } from "@/lib/crm/person-match";
 import { sortItemsByOrder } from "@/lib/crm/carnet";
+import { stayTitleForExtract } from "@/lib/crm/ingest-title";
 import { formatMoney } from "@/lib/crm/money";
+import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
 import { customerFullName, type CrmCompanion, type CrmCustomer } from "@/lib/crm/types";
 import { DateFrInput, Field, fieldControlClass } from "@/components/crm/fields";
 import { PlaceField } from "@/components/crm/PlaceField";
@@ -179,7 +181,8 @@ function mergeRetryExtract(
   const merged = sanitizeExtractedPrices({
     ...previous,
     ...incoming,
-    title: incoming.title || previous.title,
+    title: previous.title || incoming.title,
+    currency: previous.currency || incoming.currency,
     destination: incoming.destination || previous.destination,
     notes_client: [previous.notes_client, incoming.notes_client]
       .map((row) => (row || "").trim())
@@ -208,6 +211,7 @@ export function BookingIngest({
   saveUrl,
   aiConfigured,
   redirectTo,
+  preserveTitle,
 }: {
   role: "admin" | "client";
   mode: "create" | "append";
@@ -218,11 +222,14 @@ export function BookingIngest({
   saveUrl: string;
   aiConfigured: boolean;
   redirectTo?: (booking: { id: string; reference: string }) => string;
+  /** Titre déjà choisi (dossier ou carte e-mail). La relecture ne le remplace pas par le sujet. */
+  preserveTitle?: string | null;
 }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const dragItem = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const titleEdited = useRef(false);
   const [batchId, setBatchId] = useState(() => newId());
   const [slots, setSlots] = useState<Slot[]>([]);
   const [busy, setBusy] = useState<"idle" | "upload" | "read" | "save">("idle");
@@ -430,7 +437,15 @@ export function BookingIngest({
               ...event.extract,
               items: sortItemsByOrder(event.extract.items || []),
             };
-            return retryNames ? mergeRetryExtract(prev, incoming, retryNames) : incoming;
+            const merged = retryNames ? mergeRetryExtract(prev, incoming, retryNames) : incoming;
+            const chosenTitle = titleEdited.current ? prev?.title || "" : preserveTitle || prev?.title;
+            return {
+              ...merged,
+              title: titleEdited.current
+                ? prev?.title || ""
+                : stayTitleForExtract({ chosen: chosenTitle, incoming: merged.title }),
+              currency: prev?.currency ? stayCurrency(prev.currency) : stayCurrency(merged.currency),
+            };
           });
           setWarnings(event.warnings || []);
           if (event.suggested_customer_id) setCustomerId(event.suggested_customer_id);
@@ -524,6 +539,7 @@ export function BookingIngest({
   }
 
   function patch<K extends keyof BookingExtract>(key: K, value: BookingExtract[K]) {
+    if (key === "title") titleEdited.current = true;
     setExtract((prev) => (prev ? { ...prev, [key]: value } : prev));
   }
 
@@ -814,15 +830,25 @@ export function BookingIngest({
               hint="Somme des prix vendus de chaque carte. Saisissez le prix sur la carte, pas ici."
             >
               <p className={`${fieldControlClass} bg-[#f7f6f2] font-semibold text-[var(--admin-navy)]`}>
-                {formatMoney(bookingTotalFromItems(extract.items || []), extract.currency || "EUR")}
+                {formatMoney(bookingTotalFromItems(extract.items || []), stayCurrency(extract.currency))}
               </p>
             </Field>
-            <Field label="Devise">
-              <input
-                value={extract.currency || "EUR"}
+            <Field
+              label="Devise"
+              hint="Devise du séjour. La monnaie imprimée sur une carte ne la remplace pas."
+            >
+              <select
+                value={stayCurrency(extract.currency)}
                 onChange={(e) => patch("currency", e.target.value)}
-                className={fieldControlClass}
-              />
+                className={`${fieldControlClass} admin-tap bg-white`}
+                aria-label="Devise du séjour"
+              >
+                {STAY_CURRENCIES.map((code) => (
+                  <option key={code} value={code}>
+                    {code}
+                  </option>
+                ))}
+              </select>
             </Field>
           </div>
 
@@ -834,7 +860,7 @@ export function BookingIngest({
                   <select
                     value={sourceFilter}
                     onChange={(event) => setSourceFilter(event.target.value)}
-                    className={`${fieldControlClass} w-auto min-w-[10rem] py-1.5`}
+                    className={`${fieldControlClass} w-full max-w-full py-1.5 sm:w-auto sm:min-w-[10rem]`}
                   >
                     <option value="all">Tous les fichiers</option>
                     {sources.map((name) => (
@@ -846,7 +872,7 @@ export function BookingIngest({
                 ) : null}
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1 text-xs font-semibold"
+                  className="admin-tap inline-flex items-center gap-1 text-xs font-semibold"
                   onClick={() => patch("items", [...extract.items, emptyItem()])}
                 >
                   <Plus className="h-3.5 w-3.5" /> Carte manuelle

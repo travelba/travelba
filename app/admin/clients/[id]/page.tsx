@@ -116,7 +116,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <h1 className="font-display text-3xl font-extrabold text-[var(--admin-navy)]">
+        <h1 className="min-w-0 break-words font-display text-3xl font-extrabold text-[var(--admin-navy)]">
           {customerFullName(c)}
         </h1>
         <div className="flex flex-wrap items-center gap-2">
@@ -182,7 +182,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
           {((documents || []) as CrmTravelDocument[]).map((doc) => {
             const expiry = documentExpiryStatus(doc.expires_on);
             return (
-              <li key={doc.id} className="flex items-center justify-between gap-3 px-5 py-3">
+              <li key={doc.id} className="flex min-w-0 flex-wrap items-center justify-between gap-3 px-5 py-3">
                 {doc.storage_path ? (
                   <FilePreviewTile
                     file={
@@ -195,8 +195,8 @@ export default async function AdminClientDetailPage({ params }: Props) {
                     }
                   />
                 ) : null}
-                <span>
-                  <span className="block font-medium text-[var(--admin-navy)]">
+                <span className="min-w-0 flex-1">
+                  <span className="block break-words font-medium text-[var(--admin-navy)]">
                     {DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type}
                     {doc.number ? ` · ${doc.number}` : ""}
                   </span>
@@ -235,7 +235,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         {bookingRows.length ? (
           <ul className="mt-2 divide-y divide-border text-sm">
             {bookingRows.map((b) => (
-              <li key={b.id} className="flex items-center justify-between gap-3 py-2">
+              <li key={b.id} className="flex min-w-0 flex-wrap items-center justify-between gap-3 py-2">
                 <Link
                   href={`/admin/reservations/${b.id}`}
                   className="flex min-w-0 items-center gap-3 text-[var(--admin-navy)] underline-offset-2 hover:underline"
@@ -277,8 +277,8 @@ export default async function AdminClientDetailPage({ params }: Props) {
         ) : null}
         <ul className="mt-2 divide-y divide-border text-sm">
           {filterCreditTransfers((txs || []) as CrmTransaction[]).map((t) => (
-            <li key={t.id} className="flex justify-between py-2">
-              <span>
+            <li key={t.id} className="flex min-w-0 flex-wrap items-baseline justify-between gap-2 py-2">
+              <span className="min-w-0 break-words">
                 {t.label} · {formatDateFr(t.occurred_on)}
               </span>
               <span>+{formatMoney(Number(t.amount), t.currency)}</span>

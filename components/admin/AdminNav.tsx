@@ -80,7 +80,7 @@ export function AdminNav({
       <Link
         key={`${variant}-${link.href}`}
         href={link.href}
-        className={`flex shrink-0 items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-sm transition ${
+        className={`admin-tap flex shrink-0 items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-sm transition ${
           dark
             ? active
               ? "bg-white/10 font-semibold text-[var(--admin-gold)]"
@@ -105,7 +105,7 @@ export function AdminNav({
 
   return (
     <>
-      <header className="sticky top-0 z-50 bg-[var(--admin-navy)] text-white lg:hidden">
+      <header className="sticky top-0 z-50 w-full max-w-full overflow-hidden bg-[var(--admin-navy)] text-white lg:hidden">
         <div className="flex items-center justify-between gap-3 px-4 py-3">
           <Link href="/admin" className="flex min-w-0 items-center gap-2">
             <AgencyLogo className="h-9 w-9" />
@@ -114,16 +114,16 @@ export function AdminNav({
           <div className="flex shrink-0 items-center gap-2">
             <Link
               href="/admin/reservations"
-              className="admin-af-btn-accent rounded-md px-3 py-2 text-xs"
+              className="admin-af-btn-accent admin-tap rounded-md px-3 py-2 text-xs"
             >
               + Résa
             </Link>
-            <button type="button" onClick={signOut} className="text-xs font-semibold text-[#c5c6cd]">
+            <button type="button" onClick={signOut} className="admin-tap px-2 text-xs font-semibold text-[#c5c6cd]">
               Sortir
             </button>
           </div>
         </div>
-        <nav className="no-scrollbar flex gap-1 overflow-x-auto px-3 pb-2">
+        <nav className="no-scrollbar flex w-full min-w-0 max-w-full gap-1 overflow-x-auto overscroll-x-contain px-3 pb-2">
           {links.map((link) => navLink(link, "dark"))}
         </nav>
         <form onSubmit={onSearch} className="relative px-3 pb-3">
@@ -224,7 +224,7 @@ export function AdminNav({
           </span>
         </div>
       </header>
-      <main className="px-4 py-6 sm:px-6 sm:py-8 lg:pl-[calc(18rem+2rem)] lg:pr-8 lg:pt-8">
+      <main className="min-w-0 max-w-full px-4 py-6 sm:px-6 sm:py-8 lg:pl-[calc(18rem+2rem)] lg:pr-8 lg:pt-8">
         {children}
       </main>
     </>

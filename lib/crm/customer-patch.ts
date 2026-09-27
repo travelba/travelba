@@ -1,4 +1,5 @@
 import { normalizeFlyingBlue, normalizeIban, ibanError, normalizeSiret, normalizeVat, siretError } from "./billing";
+import { customerEmailError, normalizeCustomerEmail } from "./customer-email";
 import { resolveCountryCode, resolveNationality } from "./countries";
 import { emptyToNull } from "./identity";
 import { normalizeLoyaltyMap } from "./loyalty";
@@ -46,7 +47,10 @@ export function customerPatchFromBody(
     if (!(key in body)) continue;
     if (key === "email") {
       if (!opts.allowEmail) continue;
-      patch.email = String(body.email || "").trim().toLowerCase();
+      const email = normalizeCustomerEmail(String(body.email || ""));
+      const emailErr = customerEmailError(email);
+      if (emailErr) return { patch, error: emailErr };
+      patch.email = email;
       continue;
     }
     if (PHONE_KEYS.has(key)) {

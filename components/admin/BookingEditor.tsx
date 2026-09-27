@@ -343,7 +343,7 @@ export function BookingEditor({
               setCoverNotice(null);
               setCoverOpen(true);
             }}
-            className="rounded-full bg-white/95 px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)] disabled:opacity-50"
+            className="admin-tap rounded-full bg-white/95 px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)] disabled:opacity-50"
           >
             {busy === "cover" ? "Photo…" : "Importer une photo"}
           </button>
@@ -352,7 +352,7 @@ export function BookingEditor({
               type="button"
               disabled={busy !== "idle"}
               onClick={() => void regenerateCover()}
-              className="rounded-full bg-white/95 px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)] disabled:opacity-50"
+              className="admin-tap rounded-full bg-white/95 px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)] disabled:opacity-50"
             >
               {busy === "cover" ? "Retouche…" : "Autre version"}
             </button>
@@ -362,7 +362,7 @@ export function BookingEditor({
               type="button"
               disabled={busy !== "idle"}
               onClick={clearCover}
-              className="rounded-full bg-[var(--admin-navy)]/80 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+              className="admin-tap rounded-full bg-[var(--admin-navy)]/80 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
             >
               Photo du lieu
             </button>
@@ -373,7 +373,7 @@ export function BookingEditor({
             {booking.reference}
             {jMinusLabel(booking.start_date) ? ` · ${jMinusLabel(booking.start_date)}` : ""}
           </p>
-          <h1 className="font-display text-2xl font-bold leading-tight">{titleDraft || booking.title}</h1>
+          <h1 className="break-words font-display text-2xl font-bold leading-tight">{titleDraft || booking.title}</h1>
         </div>
       </BookingHero>
       <CoverPickDialog
@@ -429,7 +429,7 @@ export function BookingEditor({
           {flash ? <p className="mt-2 text-sm text-[var(--admin-navy)]">{flash}</p> : null}
           <IssuesList issues={issues} className="mt-2" />
         </div>
-        <div className="min-w-[12rem] shrink-0 space-y-2">
+        <div className="min-w-0 space-y-2 sm:min-w-[12rem] sm:shrink-0">
           <BusyBar
             active={busy !== "idle"}
             label={busy === "publish" ? "Publication…" : "Enregistrement…"}
@@ -439,11 +439,11 @@ export function BookingEditor({
             type="submit"
             form="booking-meta"
             disabled={busy !== "idle"}
-            className="rounded-full border border-border px-4 py-2 text-sm font-semibold disabled:opacity-50"
+            className="admin-tap rounded-full border border-border px-4 py-2 text-sm font-semibold disabled:opacity-50"
           >
             {busy === "save" ? "Enregistrement…" : "Enregistrer"}
           </button>
-          <label className="flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-semibold">
+          <label className="admin-tap flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-semibold">
             <input
               type="checkbox"
               checked={booking.visible_to_client}
@@ -474,6 +474,7 @@ export function BookingEditor({
         ingestUrl="/api/admin/bookings/ingest"
         saveUrl={`/api/admin/bookings/${booking.id}/from-ingest`}
         aiConfigured={aiConfigured}
+        preserveTitle={booking.title}
       />
       <form id="booking-meta" onSubmit={save} className="admin-af-card grid gap-3 rounded-3xl p-5 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
@@ -569,7 +570,7 @@ export function BookingEditor({
         <button
           type="submit"
           disabled={busy !== "idle"}
-          className="admin-af-btn rounded-full px-4 py-2 text-sm sm:col-span-2 sm:justify-self-start disabled:opacity-50"
+          className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm sm:col-span-2 sm:justify-self-start disabled:opacity-50"
         >
           {busy === "save" ? "Enregistrement…" : "Enregistrer le dossier"}
         </button>
