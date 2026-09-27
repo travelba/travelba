@@ -1,6 +1,7 @@
 "use client";
 
 import type { BookingExtract } from "@/lib/crm/ingest-types";
+import { itemRequiresDocumentPrice, readDocumentAmount } from "@/lib/crm/booking-issues";
 import {
   BOOKING_ITEM_KINDS,
   BOOKING_ITEM_LABELS,
@@ -8,6 +9,7 @@ import {
   isExtraItemKind,
   isLedgerExpenseKind,
 } from "@/lib/crm/types";
+import { parseMoney } from "@/lib/crm/money";
 import { DateFrInput, Field, MoneyInput, fieldControlClass } from "@/components/crm/fields";
 import { BrandMark } from "@/components/crm/BrandMark";
 import { applyRoomGuestLabels, guestsLabelFromKeys, type HouseholdMember } from "@/lib/crm/household";
@@ -100,6 +102,13 @@ export function IngestItemCard({
     (item.kind === "activity" &&
       (stampHasClock(item.start_at || "") || stampHasClock(item.end_at || "")));
   const d = item.details || {};
+  const documentAmount = parseMoney(
+    typeof d.document_amount === "number" || typeof d.document_amount === "string"
+      ? d.document_amount
+      : null
+  );
+  const missingDocumentPrice =
+    itemRequiresDocumentPrice(item.kind) && readDocumentAmount(d) == null;
   const included = Array.isArray(d.included) ? d.included.join("\n") : String(d.included || "");
   const roomRows = Array.isArray(d.rooms) ? d.rooms : [];
   const kinds = BOOKING_ITEM_KINDS.filter(
@@ -107,7 +116,11 @@ export function IngestItemCard({
   );
 
   return (
-    <div className="space-y-3 rounded-2xl border border-border p-3">
+    <div
+      className={`space-y-3 rounded-2xl border p-3 ${
+        missingDocumentPrice ? "border-accent" : "border-border"
+      }`}
+    >
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           {item.kind === "flight" || item.kind === "car" ? <BrandMark item={item} className="h-9 w-9" /> : null}
@@ -165,9 +178,14 @@ export function IngestItemCard({
             withTime={withTime}
           />
         </Field>
-        <Field label="Prix document">
+        <Field
+          label="Prix document"
+          error={
+            missingDocumentPrice ? "Indiquez le prix imprimé sur le document." : null
+          }
+        >
           <MoneyInput
-            value={typeof d.document_amount === "number" ? d.document_amount : null}
+            value={documentAmount}
             onChange={(amount) =>
               onChange({
                 ...item,
@@ -178,6 +196,8 @@ export function IngestItemCard({
               })
             }
             aria-label="Prix document"
+            placeholder="Montant imprimé"
+            className={`${fieldControlClass}${missingDocumentPrice ? " border-accent" : ""}`}
           />
         </Field>
         <Field label="Devise document">

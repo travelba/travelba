@@ -5,6 +5,13 @@ import { useRouter } from "next/navigation";
 import { Icon } from "@/components/crm/icons";
 import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
 import { EmptyState } from "@/components/crm/ui";
+import { Field, MoneyInput } from "@/components/crm/fields";
+import {
+  documentPriceIssues,
+  itemRequiresDocumentPrice,
+  readDocumentAmount,
+  type BookingIssue,
+} from "@/lib/crm/booking-issues";
 import {
   BOOKING_ITEM_LABELS,
   visibleServiceCopy,
@@ -16,14 +23,32 @@ import {
   type PickableCustomer,
 } from "@/lib/crm/customer-search";
 import { emailCardTitle } from "@/lib/crm/ingest-title";
-import { formatDateFr, formatDateRangeShort } from "@/lib/crm/money";
+import { formatDateFr, formatDateRangeShort, formatMoney } from "@/lib/crm/money";
 import { fieldControlClass } from "@/components/crm/fields";
 
 type ExtractItem = {
   kind?: string;
   title?: string;
   confirmation_ref?: string | null;
+  amount?: number | null;
+  details?: {
+    document_amount?: number | string | null;
+    document_currency?: string | null;
+  } | null;
 };
+
+function formatDocumentPrice(amount: number, currency: string) {
+  if (/^[A-Z]{3}$/.test(currency)) {
+    try {
+      return formatMoney(amount, currency);
+    } catch {
+      return `${amount.toLocaleString("fr-FR")} ${currency}`;
+    }
+  }
+  return currency
+    ? `${amount.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`
+    : amount.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 type ExtractView = {
   title?: string | null;
@@ -61,6 +86,7 @@ export function EmailIngestInbox({
   const [bookings, setBookings] = useState<Record<string, BookingOption[]>>({});
   const [selectedBooking, setSelectedBooking] = useState<Record<string, string>>({});
   const [titles, setTitles] = useState<Record<string, string>>({});
+  const [drafts, setDrafts] = useState<Record<string, ExtractView>>({});
 
   const chosenCustomer = useCallback(
     (row: CrmEmailIngest) => chosen[row.id] ?? row.suggested_customer_id ?? "",
@@ -91,9 +117,31 @@ export function EmailIngestInbox({
     []
   );
 
+  function viewOf(row: CrmEmailIngest): ExtractView {
+    return drafts[row.id] || ((row.extract || {}) as ExtractView);
+  }
+
+  function setDocumentAmount(row: CrmEmailIngest, index: number, amount: number | null) {
+    const base = viewOf(row);
+    const items = [...(base.items || [])];
+    const current = items[index];
+    if (!current) return;
+    items[index] = {
+      ...current,
+      details: { ...(current.details || {}), document_amount: amount },
+    };
+    setDrafts((prev) => ({ ...prev, [row.id]: { ...base, items } }));
+  }
+
   async function act(
     rowId: string,
-    payload: { action: string; customer_id?: string; booking_id?: string; title?: string },
+    payload: {
+      action: string;
+      customer_id?: string;
+      booking_id?: string;
+      title?: string;
+      extract?: ExtractView;
+    },
     opts?: { refresh?: boolean }
   ) {
     setBusy(rowId);
@@ -104,9 +152,13 @@ export function EmailIngestInbox({
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        issues?: BookingIssue[];
+      };
       if (!res.ok) {
-        setError(data.error || "Opération impossible");
+        const detail = (data.issues || []).map((issue) => issue.message).filter(Boolean).join(" ");
+        setError(detail || data.error || "Opération impossible");
         return;
       }
       if (opts?.refresh !== false) router.refresh();
@@ -135,8 +187,9 @@ export function EmailIngestInbox({
       ) : null}
 
       {rows.map((row) => {
-        const extract = (row.extract || {}) as ExtractView;
+        const extract = viewOf(row);
         const items = Array.isArray(extract.items) ? extract.items : [];
+        const priceIssues = documentPriceIssues(extract);
         const customerId = chosenCustomer(row);
         const customerName = customerId
           ? customerLabelById.get(customerId) || "Client choisi"
@@ -215,22 +268,56 @@ export function EmailIngestInbox({
             )}
 
             {items.length ? (
-              <ul className="mt-2 space-y-1">
-                {items.map((item, index) => (
-                  <li key={index} className="flex items-start gap-2 text-sm">
-                    <span className="mt-0.5 rounded bg-[var(--surface-2)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
-                      {itemLabel(item.kind)}
-                    </span>
-                    <span className="min-w-0 flex-1 text-[var(--admin-navy)]">
-                      <span className="block truncate">{visibleServiceCopy(item.title || "—")}</span>
-                      {item.confirmation_ref ? (
-                        <span className="block truncate text-xs text-muted">
-                          Réf. {item.confirmation_ref}
+              <ul className="mt-2 space-y-2">
+                {items.map((item, index) => {
+                  const amount = readDocumentAmount(item.details);
+                  const currency =
+                    typeof item.details?.document_currency === "string"
+                      ? item.details.document_currency.trim()
+                      : "";
+                  const needsPrice = itemRequiresDocumentPrice(item.kind);
+                  return (
+                    <li key={index} className="text-sm">
+                      <div className="flex items-start gap-2">
+                        <span className="mt-0.5 rounded bg-[var(--surface-2)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                          {itemLabel(item.kind)}
                         </span>
+                        <span className="min-w-0 flex-1 text-[var(--admin-navy)]">
+                          <span className="block truncate">{visibleServiceCopy(item.title || "—")}</span>
+                          {item.confirmation_ref ? (
+                            <span className="block truncate text-xs text-muted">
+                              Réf. {item.confirmation_ref}
+                            </span>
+                          ) : null}
+                        </span>
+                      </div>
+                      {needsPrice ? (
+                        <div className="mt-1 max-w-xs pl-1">
+                          <Field
+                            label="Prix document"
+                            error={amount == null ? "Indiquez le prix imprimé sur le document." : null}
+                          >
+                            <div className="flex items-center gap-2">
+                              <MoneyInput
+                                value={amount}
+                                onChange={(next) => setDocumentAmount(row, index, next)}
+                                aria-label={`Prix document ${itemLabel(item.kind)}`}
+                                placeholder="Montant imprimé"
+                              />
+                              {currency ? (
+                                <span className="shrink-0 text-xs font-semibold text-muted">{currency}</span>
+                              ) : null}
+                            </div>
+                          </Field>
+                        </div>
+                      ) : amount != null ? (
+                        <p className="mt-1 pl-1 text-xs text-muted">
+                          Prix document : {formatDocumentPrice(amount, currency)}
+                        </p>
                       ) : null}
-                    </span>
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
               <p className="mt-2 text-sm text-muted">
@@ -242,6 +329,17 @@ export function EmailIngestInbox({
               <p className="mt-2 text-xs text-accent">
                 {row.warnings.map((w) => w.message).join(" · ")}
               </p>
+            ) : null}
+
+            {priceIssues.length ? (
+              <div
+                className="mt-2 rounded-2xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]"
+                role="alert"
+              >
+                <p className="font-semibold">
+                  Indiquez le prix du document sur chaque hôtel, vol et transfert avant d’enregistrer le dossier.
+                </p>
+              </div>
             ) : null}
 
             <div className="mt-3 rounded-xl border border-border bg-[var(--surface-2)]/60 p-3">
@@ -288,12 +386,14 @@ export function EmailIngestInbox({
                   </select>
                   <button
                     type="button"
-                    disabled={isBusy || !selectedBooking[row.id]}
+                    disabled={isBusy || !selectedBooking[row.id] || priceIssues.length > 0}
                     className="admin-af-btn-accent admin-tap rounded-lg px-3 py-2 text-sm disabled:opacity-50"
                     onClick={() =>
                       act(row.id, {
                         action: "attach_booking",
                         booking_id: selectedBooking[row.id],
+                        title: cardTitle.trim(),
+                        ...(drafts[row.id] ? { extract: drafts[row.id] } : {}),
                       })
                     }
                   >
@@ -305,13 +405,14 @@ export function EmailIngestInbox({
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  disabled={isBusy || !customerId}
+                  disabled={isBusy || !customerId || priceIssues.length > 0}
                   className="admin-tap inline-flex items-center gap-1 rounded-lg border border-[var(--admin-navy)] px-3 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-40"
                   onClick={() =>
                     act(row.id, {
                       action: "new_booking",
                       customer_id: customerId,
                       title: cardTitle.trim(),
+                      ...(drafts[row.id] ? { extract: drafts[row.id] } : {}),
                     })
                   }
                 >

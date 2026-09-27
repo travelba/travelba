@@ -1,5 +1,11 @@
 import type { ZodError } from "zod";
-import { countsAsCarnetCard } from "./types";
+import { parseMoney } from "./money";
+import {
+  BOOKING_ITEM_LABELS,
+  countsAsCarnetCard,
+  visibleServiceCopy,
+  type BookingItemKind,
+} from "./types";
 
 export type BookingIssue = { field: string; message: string };
 
@@ -37,6 +43,7 @@ const FIELD_LABELS: Record<string, string> = {
   document_status: "Type de document",
   "items.title": "Titre de la carte",
   "items.kind": "Type de carte",
+  "items.details.document_amount": "Prix document",
   email: "E-mail",
   first_name: "Prénom",
   last_name: "Nom",
@@ -79,10 +86,53 @@ export function collectManualCreateIssues(input: {
   return issues;
 }
 
+/** Hôtel, vol, transfert : le montant imprimé est exigé. Une formalité sans prix ne l’est pas. */
+export function itemRequiresDocumentPrice(kind: string | null | undefined) {
+  return kind === "flight" || kind === "hotel" || kind === "transfer";
+}
+
+/** Montant positif lu ou saisi. 0 et l’absence restent vides — on n’invente pas un prix. */
+export function readDocumentAmount(details: { document_amount?: unknown } | null | undefined) {
+  const raw = details?.document_amount;
+  if (typeof raw !== "number" && typeof raw !== "string") return null;
+  const amount = parseMoney(raw);
+  if (amount == null || amount <= 0) return null;
+  return amount;
+}
+
+type ExtractPriceItem = {
+  title?: string | null;
+  kind?: string | null;
+  /** Prix vendu : ne remplace pas le prix document. */
+  amount?: number | null;
+  details?: { document_amount?: unknown; document_currency?: unknown } | null;
+};
+
+export function documentPriceIssues(extract: {
+  document_status?: string | null;
+  items?: ExtractPriceItem[];
+}): BookingIssue[] {
+  if (extract.document_status === "identity") return [];
+  const issues: BookingIssue[] = [];
+  (extract.items || []).forEach((item, index) => {
+    if (!itemRequiresDocumentPrice(item.kind)) return;
+    if (readDocumentAmount(item.details) != null) return;
+    const kindLabel =
+      BOOKING_ITEM_LABELS[(item.kind || "fee") as BookingItemKind] || "Carte";
+    const title = visibleServiceCopy(String(item.title || "").trim());
+    const who = title ? `${kindLabel} « ${title} »` : `${kindLabel} (carte ${index + 1})`;
+    issues.push({
+      field: `items.${index}.details.document_amount`,
+      message: `${who} : indiquez le prix du document.`,
+    });
+  });
+  return issues;
+}
+
 export function collectExtractIssues(
   extract: {
     document_status?: string | null;
-    items?: { title?: string | null; kind?: string | null }[];
+    items?: ExtractPriceItem[];
   },
   opts: { customerId?: string; requireCustomer?: boolean } = {}
 ): BookingIssue[] {
@@ -104,6 +154,7 @@ export function collectExtractIssues(
       });
     }
   });
+  issues.push(...documentPriceIssues(extract));
   return issues;
 }
 
