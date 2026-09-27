@@ -312,6 +312,21 @@ describe("parseDocumentMoney", () => {
     const items = parsedItemsFromText(TRANSFER).items;
     assert.equal(items[0]?.details?.document_amount, 85);
   });
+
+  it("ne coupe pas un total 5,920.33 en 920.33", () => {
+    assert.deepEqual(parseDocumentMoney("Amount due\n£5,920.33\n"), {
+      amount: 5920.33,
+      currency: "GBP",
+    });
+    assert.deepEqual(parseDocumentMoney("Total 5.920,33 EUR"), {
+      amount: 5920.33,
+      currency: "EUR",
+    });
+    assert.deepEqual(parseDocumentMoney("Prix 920,33 EUR"), {
+      amount: 920.33,
+      currency: "EUR",
+    });
+  });
 });
 
 describe("parseLittleEmperorsHotel", () => {

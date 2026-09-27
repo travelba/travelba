@@ -157,6 +157,13 @@ test("le titre du dossier est trimé et une date vide ne bloque pas l’enregist
   assert.equal("ignored" in patch, false);
 });
 
+test("la devise du séjour reste EUR USD CHF ou GBP, même si le formulaire envoie autre chose", () => {
+  assert.equal(bookingMetaPatch({ currency: "usd" }).currency, "USD");
+  assert.equal(bookingMetaPatch({ currency: "£" }).currency, "GBP");
+  assert.equal(bookingMetaPatch({ currency: "CHF" }).currency, "CHF");
+  assert.equal(bookingMetaPatch({ currency: "JPY" }).currency, "EUR");
+});
+
 test("stay total is always the sum of card selling prices", () => {
   assert.equal(bookingTotalFromItems([]), 0);
   assert.equal(bookingTotalFromItems([{ amount: null }, { amount: 0 }]), 0);

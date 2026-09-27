@@ -10,6 +10,7 @@ import {
   isLedgerExpenseKind,
 } from "@/lib/crm/types";
 import { parseMoney } from "@/lib/crm/money";
+import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
 import { DateFrInput, Field, MoneyInput, fieldControlClass } from "@/components/crm/fields";
 import { BrandMark } from "@/components/crm/BrandMark";
 import { applyRoomGuestLabels, guestsLabelFromKeys, type HouseholdMember } from "@/lib/crm/household";
@@ -200,11 +201,31 @@ export function IngestItemCard({
             className={`${fieldControlClass}${missingDocumentPrice ? " border-accent" : ""}`}
           />
         </Field>
-        <Field label="Devise document">
-          <Text
-            value={String(d.document_currency || "")}
-            onChange={(v) => onChange(patchDetails(item, "document_currency", v))}
-          />
+        <Field
+          label="Devise du document"
+          hint="Monnaie imprimée sur le PDF. Elle ne change pas la devise du séjour."
+        >
+          <select
+            value={
+              d.document_currency
+                ? (STAY_CURRENCIES as readonly string[]).includes(
+                    String(d.document_currency).trim().toUpperCase()
+                  )
+                  ? String(d.document_currency).trim().toUpperCase()
+                  : stayCurrency(d.document_currency)
+                : ""
+            }
+            onChange={(event) => onChange(patchDetails(item, "document_currency", event.target.value))}
+            aria-label="Devise du document"
+            className={`${fieldControlClass} admin-tap bg-white`}
+          >
+            <option value="">Choisir</option>
+            {STAY_CURRENCIES.map((code) => (
+              <option key={code} value={code}>
+                {code}
+              </option>
+            ))}
+          </select>
         </Field>
         {item.kind === "flight" ? (
           <Field label="Nombre de billets">
@@ -306,6 +327,22 @@ export function IngestItemCard({
                 const keys = Array.isArray(room.party_keys) ? room.party_keys : [];
                 return (
                   <div key={index} className="space-y-2 rounded-xl border border-border p-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold text-muted">Chambre {index + 1}</p>
+                      {roomRows.length ? (
+                        <button
+                          type="button"
+                          className="admin-tap rounded-full px-3 text-xs font-semibold text-accent"
+                          aria-label={`Retirer la chambre ${index + 1}`}
+                          onClick={() => {
+                            const next = roomRows.filter((_, roomIndex) => roomIndex !== index);
+                            onChange({ ...item, details: { ...item.details, rooms: next } });
+                          }}
+                        >
+                          Retirer
+                        </button>
+                      ) : null}
+                    </div>
                     <div className="grid gap-2 sm:grid-cols-2">
                       <Text
                         value={room.room || room.type || ""}

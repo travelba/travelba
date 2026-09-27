@@ -6,6 +6,8 @@ import { Icon } from "@/components/crm/icons";
 import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
 import { EmptyState } from "@/components/crm/ui";
 import { Field, MoneyInput } from "@/components/crm/fields";
+import { FilePreviewGrid } from "@/components/crm/FilePreview";
+import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
 import {
   documentPriceIssues,
   itemRequiresDocumentPrice,
@@ -56,6 +58,7 @@ type ExtractView = {
   start_date?: string | null;
   end_date?: string | null;
   document_status?: string | null;
+  currency?: string | null;
   items?: ExtractItem[];
 };
 
@@ -87,6 +90,7 @@ export function EmailIngestInbox({
   const [selectedBooking, setSelectedBooking] = useState<Record<string, string>>({});
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [drafts, setDrafts] = useState<Record<string, ExtractView>>({});
+  const [currencyChosen, setCurrencyChosen] = useState<Record<string, boolean>>({});
 
   const chosenCustomer = useCallback(
     (row: CrmEmailIngest) => chosen[row.id] ?? row.suggested_customer_id ?? "",
@@ -121,16 +125,31 @@ export function EmailIngestInbox({
     return drafts[row.id] || ((row.extract || {}) as ExtractView);
   }
 
-  function setDocumentAmount(row: CrmEmailIngest, index: number, amount: number | null) {
-    const base = viewOf(row);
-    const items = [...(base.items || [])];
+  function writeDraft(row: CrmEmailIngest, patch: ExtractView) {
+    const base =
+      row.extract && typeof row.extract === "object" && !Array.isArray(row.extract)
+        ? (row.extract as ExtractView)
+        : {};
+    setDrafts((prev) => ({
+      ...prev,
+      [row.id]: { ...base, ...(prev[row.id] || {}), ...patch },
+    }));
+  }
+
+  function patchItem(
+    row: CrmEmailIngest,
+    index: number,
+    details: ExtractItem["details"]
+  ) {
+    const items = [...(viewOf(row).items || [])];
     const current = items[index];
     if (!current) return;
-    items[index] = {
-      ...current,
-      details: { ...(current.details || {}), document_amount: amount },
-    };
-    setDrafts((prev) => ({ ...prev, [row.id]: { ...base, items } }));
+    items[index] = { ...current, details: { ...(current.details || {}), ...details } };
+    writeDraft(row, { items });
+  }
+
+  function removeItem(row: CrmEmailIngest, index: number) {
+    writeDraft(row, { items: (viewOf(row).items || []).filter((_, i) => i !== index) });
   }
 
   async function act(
@@ -141,6 +160,7 @@ export function EmailIngestInbox({
       booking_id?: string;
       title?: string;
       extract?: ExtractView;
+      apply_stay_currency?: boolean;
     },
     opts?: { refresh?: boolean }
   ) {
@@ -267,19 +287,47 @@ export function EmailIngestInbox({
               </p>
             )}
 
+            <div className="mt-3 max-w-xs">
+              <Field
+                label="Devise du séjour"
+                hint="EUR, USD, CHF ou GBP. Le PDF ne remplace pas ce choix."
+              >
+                <select
+                  value={stayCurrency(extract.currency)}
+                  onChange={(event) => {
+                    writeDraft(row, { currency: event.target.value });
+                    setCurrencyChosen((prev) => ({ ...prev, [row.id]: true }));
+                  }}
+                  aria-label="Devise du séjour"
+                  className={`${fieldControlClass} admin-tap bg-white`}
+                >
+                  {STAY_CURRENCIES.map((code) => (
+                    <option key={code} value={code}>
+                      {code}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+
             {items.length ? (
               <ul className="mt-2 space-y-2">
                 {items.map((item, index) => {
                   const amount = readDocumentAmount(item.details);
                   const currency =
                     typeof item.details?.document_currency === "string"
-                      ? item.details.document_currency.trim()
+                      ? item.details.document_currency.trim().toUpperCase()
+                      : "";
+                  const documentCurrency = (STAY_CURRENCIES as readonly string[]).includes(currency)
+                    ? currency
+                    : currency
+                      ? stayCurrency(currency)
                       : "";
                   const needsPrice = itemRequiresDocumentPrice(item.kind);
                   return (
-                    <li key={index} className="text-sm">
-                      <div className="flex items-start gap-2">
-                        <span className="mt-0.5 rounded bg-[var(--surface-2)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                    <li key={index} className="rounded-xl border border-border p-2 text-sm">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+                        <span className="mt-0.5 w-fit rounded bg-[var(--surface-2)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
                           {itemLabel(item.kind)}
                         </span>
                         <span className="min-w-0 flex-1 text-[var(--admin-navy)]">
@@ -290,29 +338,50 @@ export function EmailIngestInbox({
                             </span>
                           ) : null}
                         </span>
+                        <button
+                          type="button"
+                          className="admin-tap self-start rounded-full px-3 text-xs font-semibold text-accent"
+                          aria-label={`Retirer ${itemLabel(item.kind)}`}
+                          onClick={() => removeItem(row, index)}
+                        >
+                          Retirer
+                        </button>
                       </div>
                       {needsPrice ? (
-                        <div className="mt-1 max-w-xs pl-1">
+                        <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_7.5rem]">
                           <Field
-                            label="Prix document"
+                            label="Prix imprimé sur le document"
                             error={amount == null ? "Indiquez le prix imprimé sur le document." : null}
+                            hint="Montant lu sur le PDF. Corrigez-le s’il a été coupé."
                           >
-                            <div className="flex items-center gap-2">
-                              <MoneyInput
-                                value={amount}
-                                onChange={(next) => setDocumentAmount(row, index, next)}
-                                aria-label={`Prix document ${itemLabel(item.kind)}`}
-                                placeholder="Montant imprimé"
-                              />
-                              {currency ? (
-                                <span className="shrink-0 text-xs font-semibold text-muted">{currency}</span>
-                              ) : null}
-                            </div>
+                            <MoneyInput
+                              value={amount}
+                              onChange={(next) => patchItem(row, index, { document_amount: next })}
+                              aria-label={`Prix document ${itemLabel(item.kind)}`}
+                              placeholder="Montant imprimé"
+                            />
+                          </Field>
+                          <Field label="Devise du document">
+                            <select
+                              value={documentCurrency}
+                              onChange={(event) =>
+                                patchItem(row, index, { document_currency: event.target.value })
+                              }
+                              aria-label={`Devise du document ${itemLabel(item.kind)}`}
+                              className={`${fieldControlClass} admin-tap bg-white`}
+                            >
+                              <option value="">Choisir</option>
+                              {STAY_CURRENCIES.map((code) => (
+                                <option key={code} value={code}>
+                                  {code}
+                                </option>
+                              ))}
+                            </select>
                           </Field>
                         </div>
                       ) : amount != null ? (
-                        <p className="mt-1 pl-1 text-xs text-muted">
-                          Prix document : {formatDocumentPrice(amount, currency)}
+                        <p className="mt-1 text-xs text-muted">
+                          Prix imprimé sur le document : {formatDocumentPrice(amount, currency)}
                         </p>
                       ) : null}
                     </li>
@@ -324,6 +393,26 @@ export function EmailIngestInbox({
                 Aucune carte extraite — à saisir après rattachement.
               </p>
             )}
+
+            {row.attachments?.length ? (
+              <div className="mt-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+                  Pièces jointes
+                </p>
+                <div className="mt-2">
+                  <FilePreviewGrid
+                    files={row.attachments.map((file, index) => ({
+                      id: `${row.id}-${index}`,
+                      path: file.path,
+                      fileName: file.name || "document",
+                      mimeType: file.mime_type,
+                      label: file.name || "Pièce jointe",
+                      shareText: "Bonjour, je vous transmets une pièce du dossier.",
+                    }))}
+                  />
+                </div>
+              </div>
+            ) : null}
 
             {row.warnings?.length ? (
               <p className="mt-2 text-xs text-accent">
@@ -393,7 +482,12 @@ export function EmailIngestInbox({
                         action: "attach_booking",
                         booking_id: selectedBooking[row.id],
                         title: cardTitle.trim(),
-                        ...(drafts[row.id] ? { extract: drafts[row.id] } : {}),
+                        ...(drafts[row.id]
+                          ? {
+                              extract: drafts[row.id],
+                              apply_stay_currency: Boolean(currencyChosen[row.id]),
+                            }
+                          : {}),
                       })
                     }
                   >
@@ -412,7 +506,12 @@ export function EmailIngestInbox({
                       action: "new_booking",
                       customer_id: customerId,
                       title: cardTitle.trim(),
-                      ...(drafts[row.id] ? { extract: drafts[row.id] } : {}),
+                      ...(drafts[row.id]
+                        ? {
+                            extract: drafts[row.id],
+                            apply_stay_currency: Boolean(currencyChosen[row.id]),
+                          }
+                        : {}),
                     })
                   }
                 >
