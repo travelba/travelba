@@ -4,6 +4,8 @@ import { exampleSessionEnabled } from "@/lib/crm/example-session";
 import { readExampleFile } from "@/lib/crm/example-store";
 import { safeFileName, signedCrmUrl } from "@/lib/crm/files";
 import { customerPathScope, isSafeCrmPath } from "@/lib/crm/files-access";
+import { isTripShareCode } from "@/lib/crm/trip-share";
+import { sharePathAllowed } from "@/lib/crm/trip-share-load";
 
 async function sendCrmFile(path: string, requestUrl: URL) {
   const signed = await signedCrmUrl(path);
@@ -43,6 +45,11 @@ export async function GET(request: Request) {
         "X-Content-Type-Options": "nosniff",
       },
     });
+  }
+
+  const partage = url.searchParams.get("partage");
+  if (partage && isTripShareCode(partage) && (await sharePathAllowed(partage, path))) {
+    return sendCrmFile(path, url);
   }
 
   const staff = await requireStaff();

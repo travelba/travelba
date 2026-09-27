@@ -53,6 +53,9 @@ test("les aperçus passent par une URL courte", () => {
   assert.equal(fileHref("bookings/b1/a.pdf").includes("token"), false);
   assert.match(fileInlineHref("bookings/b1/a.pdf"), /inline=1/);
   assert.equal(fileInlineHref("bookings/b1/a.pdf").includes("supabase"), false);
+  const shared = fileInlineHref("bookings/b1/a.pdf", { partage: "ABCDEFGH" });
+  assert.match(shared, /partage=ABCDEFGH/);
+  assert.equal(shared.includes("supabase.co"), false);
 });
 
 test("un passeport sans fichier n’apparaît pas, et le partage ignore le numéro", () => {

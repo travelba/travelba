@@ -11,6 +11,10 @@ function whatsappHref(text: string) {
   return `https://wa.me/${siteConfig.whatsappNumber}?text=${encodeURIComponent(text)}`;
 }
 
+function accessOf(file: FilePreviewModel) {
+  return file.partage ? { partage: file.partage } : undefined;
+}
+
 export function FilePreviewTile({ file }: { file: FilePreviewModel }) {
   const [open, setOpen] = useState(false);
   const image = isPreviewImage(file.mimeType, file.fileName);
@@ -27,7 +31,7 @@ export function FilePreviewTile({ file }: { file: FilePreviewModel }) {
           {image && !imageFailed ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={fileInlineHref(file.path)}
+              src={fileInlineHref(file.path, accessOf(file))}
               alt=""
               referrerPolicy="no-referrer"
               className="h-full w-full object-cover"
@@ -76,8 +80,8 @@ function FilePreviewDialog({
   const [notice, setNotice] = useState<string | null>(null);
   const image = isPreviewImage(file.mimeType, file.fileName);
   const pdf = isPreviewPdf(file.mimeType, file.fileName);
-  const href = fileInlineHref(file.path);
-  const downloadHref = fileDownloadHref(file.path, file.fileName);
+  const href = fileInlineHref(file.path, accessOf(file));
+  const downloadHref = fileDownloadHref(file.path, file.fileName, accessOf(file));
 
   useEffect(() => {
     const previous = document.body.style.overflow;
@@ -177,6 +181,7 @@ function FilePreviewDialog({
               <Icon name="download" className="h-4 w-4" />
               Télécharger
             </a>
+            {file.partage ? null : (
             <button
               type="button"
               disabled={sharing}
@@ -186,6 +191,7 @@ function FilePreviewDialog({
               <Icon name="share" className="h-4 w-4" />
               {sharing ? "Partage…" : "Partager sur WhatsApp"}
             </button>
+            )}
           </div>
         </div>
       </div>

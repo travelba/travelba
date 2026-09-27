@@ -34,6 +34,9 @@ import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-f
 import { StayBillingChoice } from "@/components/crm/StayBillingChoice";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { TripSharePanel } from "@/components/account/TripSharePanel";
+import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
+import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
 import { isLedgerExpenseKind, visibleServiceCopy, type CrmBillingCompany } from "@/lib/crm/types";
 
 type Props = { params: Promise<{ reference: string }> };
@@ -90,6 +93,15 @@ export default async function ReservationDetailPage({ params }: Props) {
     b.reference,
     b.destination
   );
+  const shareCompanions = companionsForShare(party, (companions || []) as CrmCompanion[]);
+  let shareUrl: string | null = null;
+  try {
+    const shareAdmin = createServiceClient();
+    const shareCode = await ensureTripShareCode(shareAdmin, b.id);
+    if (shareCode) shareUrl = tripShareUrl(siteConfig.url, shareCode);
+  } catch {
+    shareUrl = null;
+  }
   const headline = tripHeadline(b.title, b.destination);
   const placeLine = tripPlaceLine(b.title, b.destination);
   const missingCount = coverage.total - coverage.ready;
@@ -154,6 +166,10 @@ export default async function ReservationDetailPage({ params }: Props) {
           </div>
         </div>
       </BookingHero>
+
+      {shareUrl ? (
+        <TripSharePanel bookingId={b.id} shareUrl={shareUrl} companions={shareCompanions} />
+      ) : null}
 
       {missingPassports ? (
         <a

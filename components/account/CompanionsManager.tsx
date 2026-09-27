@@ -13,12 +13,63 @@ import {
   DateFrInput,
   Field,
   fieldControlClass,
+  PhoneField,
   RelationshipSelect,
   SexSelect,
 } from "@/components/crm/fields";
 import { type ScanResult } from "@/components/crm/IdentityScan";
 import { PersonPassportCard } from "@/components/crm/PersonPassportCard";
 import { BusyBar } from "@/components/crm/BusyBar";
+
+function CompanionPhoneEditor({ companion }: { companion: CrmCompanion }) {
+  const router = useRouter();
+  const [phone, setPhone] = useState(companion.phone || "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    const response = await fetch("/api/client/companions", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: companion.id,
+        first_name: companion.first_name,
+        last_name: companion.last_name,
+        usage_name: companion.usage_name,
+        birth_date: companion.birth_date,
+        sex: companion.sex,
+        nationality: companion.nationality,
+        relationship: companion.relationship,
+        phone,
+      }),
+    });
+    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+    setSaving(false);
+    if (!response.ok) {
+      setError(payload?.error || "Téléphone invalide");
+      return;
+    }
+    router.refresh();
+  }
+
+  return (
+    <div className="space-y-2">
+      <PhoneField name={`phone-${companion.id}`} label="Téléphone" value={phone} onChange={setPhone} />
+      {error ? <p className="text-sm text-accent">{error}</p> : null}
+      <BusyBar active={saving} label="Enregistrement…" />
+      <button
+        type="button"
+        onClick={() => void save()}
+        disabled={saving}
+        className="text-sm font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline"
+      >
+        Enregistrer le téléphone
+      </button>
+    </div>
+  );
+}
 
 function relationshipLabel(value: string | null) {
   return RELATIONSHIP_OPTIONS.find((option) => option.value === value)?.label || value || "";
@@ -41,6 +92,7 @@ export function CompanionsManager({
   const [nationality, setNationality] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [sex, setSex] = useState("");
+  const [phone, setPhone] = useState("");
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [open, setOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -55,6 +107,7 @@ export function CompanionsManager({
     setNationality("");
     setBirthDate("");
     setSex("");
+    setPhone("");
     setScan(null);
     setError(null);
   }
@@ -105,6 +158,7 @@ export function CompanionsManager({
         nationality,
         birth_date: birthDate,
         sex,
+        phone,
       }),
     });
     const json = await res.json();
@@ -163,8 +217,9 @@ export function CompanionsManager({
                 </button>
               </div>
               {expanded ? (
-                <div className="mt-3">
+                <div className="mt-3 space-y-3">
                   <PersonPassportCard variant="client" companionId={c.id} documents={documents} person={c} />
+                  <CompanionPhoneEditor companion={c} />
                 </div>
               ) : null}
             </li>
@@ -248,6 +303,10 @@ export function CompanionsManager({
           <Field label="Sexe">
             <SexSelect name="sex" value={sex} onChange={setSex} />
           </Field>
+          <div className="sm:col-span-2">
+            <PhoneField name="phone" label="Téléphone" value={phone} onChange={setPhone} />
+            <p className="mt-1 text-xs text-muted">Pour lui envoyer la page du voyage par WhatsApp.</p>
+          </div>
         </div>
         {nameWarn ? (
           <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">

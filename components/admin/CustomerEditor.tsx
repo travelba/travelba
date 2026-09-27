@@ -329,6 +329,7 @@ function CompanionCard({
   );
   const [birthDate, setBirthDate] = useState(companion.birth_date || "");
   const [sex, setSex] = useState(companion.sex || "");
+  const [phone, setPhone] = useState(companion.phone || "");
   const [saving, setSaving] = useState(false);
   const [nameWarn, setNameWarn] = useState<string | null>(null);
 
@@ -347,6 +348,7 @@ function CompanionCard({
         nationality,
         birth_date: birthDate,
         sex,
+        phone,
       }),
     });
     setSaving(false);
@@ -417,6 +419,9 @@ function CompanionCard({
         <Field label="Sexe">
           <SexSelect name="sex" value={sex} onChange={setSex} />
         </Field>
+        <div className="sm:col-span-2">
+          <PhoneField name={`companion-phone-${companion.id}`} label="Téléphone" value={phone} onChange={setPhone} />
+        </div>
       </div>
       <BusyBar active={saving} label="Enregistrement…" />
       <button
@@ -440,6 +445,7 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
   const [nationality, setNationality] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [sex, setSex] = useState("");
+  const [phone, setPhone] = useState("");
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -454,6 +460,7 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
     setNationality("");
     setBirthDate("");
     setSex("");
+    setPhone("");
     setScan(null);
     setError(null);
   }
@@ -506,6 +513,7 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
         nationality,
         birth_date: birthDate,
         sex,
+        phone,
       }),
     });
     const json = await res.json().catch(() => ({}));
@@ -602,6 +610,9 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
         <Field label="Sexe">
           <SexSelect name="sex" value={sex} onChange={setSex} />
         </Field>
+        <div className="sm:col-span-2">
+          <PhoneField name="companion-phone" label="Téléphone" value={phone} onChange={setPhone} />
+        </div>
       </div>
       {error ? <p className="text-sm text-accent">{error}</p> : null}
       <BusyBar active={saving} label="Enregistrement…" />

@@ -15,6 +15,8 @@ import { formatDateFr, formatMoney } from "@/lib/crm/money";
 export const dynamic = "force-dynamic";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
 import { siteConfig } from "@/lib/site";
+import { TripSharePanel } from "@/components/account/TripSharePanel";
+import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { BOOKING_STATUS_LABELS } from "@/lib/crm/types";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
@@ -62,6 +64,13 @@ export default async function ExampleReservationPage({ params }: Props) {
           </div>
         </div>
       </BookingHero>
+
+      <TripSharePanel
+        preview
+        bookingId={b.id}
+        shareUrl={tripShareUrl(siteConfig.url, "ABCDEFGH")}
+        companions={companionsForShare(party, session.companions)}
+      />
 
       {missingPassports ? (
         <a

@@ -10,6 +10,7 @@ export function BookingHero({
   plain = false,
   className = "",
   frameClassName = "relative h-60 w-full sm:h-72",
+  partage = null,
   children,
 }: {
   booking: CoverBooking;
@@ -19,9 +20,11 @@ export function BookingHero({
   plain?: boolean;
   className?: string;
   frameClassName?: string;
+  /** Lien public : la couverture importée passe par /api/files. */
+  partage?: string | null;
   children?: ReactNode;
 }) {
-  const src = bookingCoverUrl(booking, width);
+  const src = bookingCoverUrl(booking, width, partage ? { partage } : undefined);
   const fallback = booking.cover_image_path ? placeCoverUrl(booking, width) : null;
   const place = coverQuery(booking.destination, booking.title);
   const label = place && place !== "voyage" ? place : booking.title || "Séjour";
