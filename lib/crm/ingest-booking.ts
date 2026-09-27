@@ -13,7 +13,7 @@ import {
 } from "@/lib/crm/files";
 import { emptyToNull } from "@/lib/crm/identity";
 import { dossierTitle } from "@/lib/crm/ingest-title";
-import { stayCurrency } from "@/lib/crm/stay-currency";
+import { bookingCurrencyFromReview } from "@/lib/crm/stay-currency";
 import { parseMoney } from "@/lib/crm/money";
 import { extractBookingFromFiles } from "@/lib/crm/ingest-file";
 import {
@@ -484,7 +484,7 @@ export async function persistNewBookingFromExtract(opts: {
       status,
       start_date: emptyToNull(extract.start_date),
       end_date: emptyToNull(extract.end_date),
-      currency: stayCurrency(extract.currency),
+      currency: bookingCurrencyFromReview(extract.currency, extract.items),
       total_amount: totalAmount,
       notes_client: emptyToNull(extract.notes_client),
       notes_internal:
@@ -589,7 +589,9 @@ export async function applyExtractToBooking(opts: {
   const chosenTitle = emptyToNull(opts.extract.title);
   if (opts.applyStayFields && chosenTitle) patch.title = chosenTitle;
   else if (!booking.title && chosenTitle) patch.title = chosenTitle;
-  if (opts.applyStayFields) patch.currency = stayCurrency(opts.extract.currency);
+  if (opts.applyStayFields) {
+    patch.currency = bookingCurrencyFromReview(opts.extract.currency, opts.extract.items);
+  }
   if (!booking.destination && opts.extract.destination) patch.destination = opts.extract.destination;
   if (!booking.start_date && opts.extract.start_date) patch.start_date = opts.extract.start_date;
   if (!booking.end_date && opts.extract.end_date) patch.end_date = opts.extract.end_date;

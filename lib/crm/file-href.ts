@@ -24,3 +24,10 @@ export function fileInlineHref(path: string, access?: FileAccess) {
   withAccess(params, access);
   return `/api/files?${params.toString()}`;
 }
+
+/** Vignette première page (PDF) ou image, toujours via /api/files. */
+export function fileThumbHref(path: string, access?: FileAccess) {
+  const params = new URLSearchParams({ path, inline: "1", thumb: "1" });
+  withAccess(params, access);
+  return `/api/files?${params.toString()}`;
+}

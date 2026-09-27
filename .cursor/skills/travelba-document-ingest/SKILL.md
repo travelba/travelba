@@ -23,7 +23,7 @@ Gmail labels → `crm_email_ingest` → **auto** match/apply : skill `travelba-e
 ## Contrat (non négociable)
 
 1. **Ne jamais inventer.** Absent = `null`. Pas de 15:00 / 12:00, pas de petit-déj, pas de franchise.
-2. **Prix extraits** : montant PDF/photo → `details.document_amount` (un par fichier). `item.amount` reste **null** tant que l’agent ne saisit pas le prix vendu de la carte. `total_amount` = **somme de ces prix vendus** (vol = unitaire × billets), jamais la somme des PDF. Enregistrer une confirmation écrit ce total **et** le débit ledger (`syncBookingLedger`). Pas une ligne « NET » fournisseur seule.
+2. **Prix extraits** : montant PDF/photo → `details.document_amount` (un par fichier). `item.amount` reste **null** tant que l’agent ne saisit pas le prix vendu de la carte. `total_amount` = **somme de ces prix vendus** (vol = unitaire × billets), jamais la somme des PDF. Enregistrer une confirmation écrit ce total **et** le débit ledger (`syncBookingLedger`). Pas une ligne « NET » fournisseur seule. Un total `5,920.33` (virgule = milliers) vaut 5920.33, pas 920.33. `£` = GBP.
 3. **Pas de PAN / CVC / fidélité / paiement.** `redactIngestText` avant le modèle.
 4. **Un séjour par dépôt.** Fichiers hétérogènes : le plus complet + `notes_client`.
 5. **Relecture humaine** puis Enregistrer (`visible_to_client=false`).
@@ -101,7 +101,7 @@ Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Co
 
 **Un item par établissement**, même 2 chambres / 2 Booking name / 2 réf.
 
-- `details.rooms = [{ room, guests, confirmation_ref }, …]`
+- `details.rooms = [{ room, guests, confirmation_ref }, …]` — une ligne par chambre distincte, sans doublon. L’agent peut retirer une chambre en trop à la relecture.
 - `confirmation_ref` = `97620170;97620172` — `findMatchingItem` par **recouvrement** de réf.
 - `details.hotel_name` + `title` = nom de l’établissement (**pas** la ville). `details.city` = ville (sous-titre itinéraire).
 - Dates header → `start_at` / `end_at` **sans heure** si seule la date est une date de séjour.

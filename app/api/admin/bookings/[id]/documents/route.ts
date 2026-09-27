@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { queuePublishedPieces, safeConcierge } from "@/lib/crm/concierge-send";
 import { normalizePieceKind } from "@/lib/crm/concierge-notices";
-import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
+import { removeCrmFiles, safeFileName, uploadCrmFile } from "@/lib/crm/files";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -81,4 +81,28 @@ export async function PATCH(request: Request, ctx: Ctx) {
     }
   }
   return NextResponse.json({ document: data });
+}
+
+export async function DELETE(request: Request, ctx: Ctx) {
+  const auth = await requireStaff();
+  if (auth instanceof NextResponse) return auth;
+  const { id } = await ctx.params;
+  const docId = new URL(request.url).searchParams.get("id") || "";
+  if (!docId) return jsonError("id requis");
+  const { data: doc, error: readError } = await auth.supabase
+    .from("crm_booking_documents")
+    .select("id, storage_path")
+    .eq("id", docId)
+    .eq("booking_id", id)
+    .maybeSingle();
+  if (readError) return dbError(readError, 400);
+  if (!doc) return jsonError("Pièce introuvable", 404);
+  const { error } = await auth.supabase
+    .from("crm_booking_documents")
+    .delete()
+    .eq("id", docId)
+    .eq("booking_id", id);
+  if (error) return dbError(error, 400);
+  if (doc.storage_path) await removeCrmFiles([doc.storage_path]);
+  return NextResponse.json({ ok: true });
 }

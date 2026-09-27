@@ -28,6 +28,7 @@ export async function POST(request: Request, ctx: Ctx) {
     booking_id?: string;
     title?: string;
     extract?: unknown;
+    apply_stay_currency?: boolean;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -106,6 +107,7 @@ export async function POST(request: Request, ctx: Ctx) {
         files,
         staffUserId: auth.user.id,
         visibleToClient: false,
+        applyStayFields: body.apply_stay_currency === true,
       });
       await admin
         .from("crm_email_ingest")

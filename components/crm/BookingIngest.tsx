@@ -306,7 +306,10 @@ export function BookingIngest({
       const next = incoming.slice(0, Math.max(0, room)).map((file) => ({
         id: newId(),
         file,
-        previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+        previewUrl:
+          file.type.startsWith("image/") || file.type === "application/pdf" || /\.pdf$/i.test(file.name)
+            ? URL.createObjectURL(file)
+            : null,
         path: null,
         uploadPct: 0,
         status: "queued" as const,
@@ -679,11 +682,19 @@ export function BookingIngest({
                 key={slot.id}
                 className="flex items-center gap-3 rounded-2xl bg-white/80 px-3 py-2 text-sm"
               >
-                {slot.previewUrl ? (
+                {slot.previewUrl &&
+                (slot.file.type.includes("pdf") || slot.file.name.toLowerCase().endsWith(".pdf")) ? (
+                  <iframe
+                    title={`Aperçu de ${slot.file.name}`}
+                    src={`${slot.previewUrl}#page=1&toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+                    className="pointer-events-none h-20 w-16 rounded-lg border-0 bg-white"
+                  />
+                ) : slot.previewUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={slot.previewUrl}
                     alt=""
-                    className="h-10 w-10 rounded-lg object-cover"
+                    className="h-20 w-16 rounded-lg object-cover"
                   />
                 ) : (
                   <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--admin-sky)] text-[var(--admin-navy)]">

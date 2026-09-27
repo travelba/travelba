@@ -4,21 +4,59 @@ import { exampleSessionEnabled } from "@/lib/crm/example-session";
 import { readExampleFile } from "@/lib/crm/example-store";
 import { safeFileName, signedCrmUrl } from "@/lib/crm/files";
 import { customerPathScope, isSafeCrmPath } from "@/lib/crm/files-access";
+import { rasterPdfPages } from "@/lib/crm/pdf-raster";
 import { isTripShareCode } from "@/lib/crm/trip-share";
 import { sharePathAllowed } from "@/lib/crm/trip-share-load";
+
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
+function isPdf(path: string, contentType: string) {
+  return contentType.includes("pdf") || path.toLowerCase().endsWith(".pdf");
+}
+
+async function thumbnailResponse(bytes: Uint8Array, path: string, contentType: string) {
+  if (!isPdf(path, contentType)) {
+    return new NextResponse(Buffer.from(bytes), {
+      status: 200,
+      headers: {
+        "Content-Type": contentType || "application/octet-stream",
+        "Cache-Control": "private, max-age=120",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  }
+  const pages = await rasterPdfPages(bytes, 1);
+  const page = pages[0];
+  if (!page) return jsonError("Aperçu impossible", 422);
+  return new NextResponse(Buffer.from(page.image), {
+    status: 200,
+    headers: {
+      "Content-Type": page.mediaType,
+      "Cache-Control": "private, max-age=120",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
 
 async function sendCrmFile(path: string, requestUrl: URL) {
   const signed = await signedCrmUrl(path);
   const download = requestUrl.searchParams.get("download") === "1";
   const inline = requestUrl.searchParams.get("inline") === "1";
-  if (!download && !inline) return NextResponse.redirect(signed);
+  const thumb = requestUrl.searchParams.get("thumb") === "1";
+  if (!download && !inline && !thumb) return NextResponse.redirect(signed);
   const upstream = await fetch(signed);
   if (!upstream.ok || !upstream.body) return jsonError("Fichier introuvable", 404);
+  const contentType = upstream.headers.get("content-type") || "application/octet-stream";
+  if (thumb) {
+    const bytes = new Uint8Array(await upstream.arrayBuffer());
+    return thumbnailResponse(bytes, path, contentType.toLowerCase());
+  }
   const filename = safeFileName(requestUrl.searchParams.get("name") || "document");
   return new NextResponse(upstream.body, {
     status: 200,
     headers: {
-      "Content-Type": upstream.headers.get("content-type") || "application/octet-stream",
+      "Content-Type": contentType,
       "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${filename}"`,
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",

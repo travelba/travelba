@@ -45,6 +45,7 @@ import type { FrenchPassportTrip } from "@/lib/crm/visa-trip";
 import { reusableDocumentsForTraveler, tripDocumentsForTraveler } from "@/lib/crm/trip-documents";
 import { CustomerPickField } from "@/components/admin/CustomerPickField";
 import { customerBillingPickLabel, customerTravelerPickLabel } from "@/lib/crm/customer-search";
+import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
 
 export function BookingEditor({
   booking,
@@ -247,6 +248,14 @@ export function BookingEditor({
         last_name: holderName.last_name,
       }),
     });
+    router.refresh();
+  }
+
+  async function removeDocument(documentId: string) {
+    await fetch(
+      `/api/admin/bookings/${booking.id}/documents?id=${encodeURIComponent(documentId)}`,
+      { method: "DELETE" }
+    );
     router.refresh();
   }
 
@@ -506,12 +515,30 @@ export function BookingEditor({
         <div className="flex flex-col gap-1 text-xs font-semibold text-muted">
           Montant du séjour
           <p className="rounded-xl border border-border bg-[#f7f6f2] px-3 py-2 text-sm font-semibold text-[var(--admin-navy)]">
-            {formatMoney(bookingTotalFromItems(items), booking.currency)}
+            {formatMoney(bookingTotalFromItems(items), stayCurrency(booking.currency))}
           </p>
           <span className="font-normal text-muted">
             Somme des prix vendus de chaque carte. Le frais de billeterie n’est pas inclus.
           </span>
         </div>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+          Devise du séjour
+          <select
+            name="currency"
+            defaultValue={stayCurrency(booking.currency)}
+            aria-label="Devise du séjour"
+            className="admin-tap rounded-xl border border-border bg-white px-3 py-2"
+          >
+            {STAY_CURRENCIES.map((code) => (
+              <option key={code} value={code}>
+                {code}
+              </option>
+            ))}
+          </select>
+          <span className="font-normal text-muted">
+            EUR, USD, CHF ou GBP. La monnaie imprimée sur un document ne remplace pas ce choix.
+          </span>
+        </label>
         <label className="flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-2">
           <input
             type="checkbox"
@@ -718,6 +745,7 @@ export function BookingEditor({
         variant="admin"
         passports={passportPreviewsForStay(travelers, identityDocs, holderName, booking.reference)}
         attachments={attachmentPreviews(documents, items, booking.reference)}
+        onRemoveAttachment={(file) => void removeDocument(file.id)}
       />
       <section className="admin-af-card rounded-3xl p-5">
         <h2 className="font-display text-lg font-bold">Joindre un justificatif</h2>

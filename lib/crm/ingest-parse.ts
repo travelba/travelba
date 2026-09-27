@@ -93,7 +93,7 @@ export function parseDocumentMoney(text: string): { amount: number; currency: st
   const lines = text.split(/\n+/);
   const scored: { amount: number; currency: string; score: number }[] = [];
   const pattern =
-    /(?:(total|tarif|montant|fare|amount|prix)[^\n]{0,80}?)?([€$£]|USD|EUR|CHF|GBP)?\s*\b([0-9]{1,3}(?:[.\s\u00a0][0-9]{3})+[.,][0-9]{2}|[0-9]{2,}[.,][0-9]{2})\s*(USD|EUR|CHF|GBP|€|\$|£)?/gi;
+    /(?:(total|tarif|montant|fare|amount|prix)[^\n]{0,80}?)?([€$£]|USD|EUR|CHF|GBP)?\s*\b([0-9]{1,3}(?:,[0-9]{3})+\.[0-9]{2}|[0-9]{1,3}(?:[.\s\u00a0][0-9]{3})+[.,][0-9]{2}|[0-9]{2,}[.,][0-9]{2})\s*(USD|EUR|CHF|GBP|€|\$|£)?/gi;
 
   for (const line of lines) {
     if (/\bNET\b/i.test(line) && !/\btotal\b/i.test(line)) continue;

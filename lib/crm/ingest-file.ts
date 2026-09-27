@@ -56,7 +56,8 @@ Règles d’honnêteté :
 - Inclus (petit-déj, spa, taxes) UNIQUEMENT si une phrase l’écrit. Sinon included = [].
 - Traduire en français les libellés de chambre / inclus. Garder les noms propres.
 - Horaires ISO 8601 seulement s’ils sont imprimés (heures locales du lieu).
-- Devise : $ = USD, € = EUR, CHF = CHF.
+- Devise : $ = USD, € = EUR, £ = GBP, CHF = CHF.
+- Montant imprimé : 5,920.33 (virgule = milliers, format US/UK) = 5920.33, pas 920.33. 5.920,33 = 5920.33.
 - kind : flight | hotel | transfer | activity | rail | car | cruise | insurance | fee.
 - Un PDF peut produire PLUSIEURS cartes.
 - details.source_file_name = nom exact du fichier source.
@@ -87,7 +88,7 @@ const PROMPT_FLIGHT = `Vol :
 - Vol de nuit : start_at = décollage ; noter J+1 dans details.notes si l’arrivée est le lendemain.`;
 
 const PROMPT_HOTEL = `Hôtel :
-- UN item même s’il y a deux chambres / deux réf. : details.rooms = [{room, guests, confirmation_ref}, …].
+- UN item même s’il y a deux chambres / deux réf. : details.rooms = [{room, guests, confirmation_ref}, …]. Une ligne par chambre distincte, sans répéter le même libellé.
 - confirmation_ref = première réf. ou les deux séparées par « ; » (ex. 97620170;97620172).
 - title de la carte = details.hotel_name (nom de l’établissement), PAS la ville. details.city = ville. details.address, details.board si écrite.
 - details.website, details.phone, details.email seulement s’ils sont imprimés. Ne jamais inventer un téléphone ou un e-mail.

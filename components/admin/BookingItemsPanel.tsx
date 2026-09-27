@@ -12,7 +12,10 @@ import {
 } from "@/lib/crm/types";
 import type { BookingExtract } from "@/lib/crm/ingest-types";
 import { itemDetailsLine, itemWhen } from "@/lib/crm/booking-display";
+import { readDocumentAmount } from "@/lib/crm/booking-issues";
 import { documentsForItem, hotelDisplayName, itemPriceLabel } from "@/lib/crm/carnet";
+import { formatMoney } from "@/lib/crm/money";
+import { STAY_CURRENCIES } from "@/lib/crm/stay-currency";
 import { HotelContactButton } from "@/components/crm/HotelContact";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
@@ -48,6 +51,12 @@ function toDraft(item: CrmBookingItem): ItemDraft {
     include_in_ledger: Boolean(item.include_in_ledger),
     details: item.details || {},
   };
+}
+
+function printedPrice(amount: number, currency: string) {
+  const code = currency.trim().toUpperCase();
+  if ((STAY_CURRENCIES as readonly string[]).includes(code)) return formatMoney(amount, code);
+  return currency ? `${amount.toLocaleString("fr-FR")} ${currency}` : amount.toLocaleString("fr-FR");
 }
 
 function moveItem<T>(list: T[], from: number, to: number) {
@@ -199,7 +208,10 @@ export function BookingItemsPanel({
           Ajouter une carte
         </button>
       </div>
-      <p className="mt-1 text-xs text-muted">Glissez pour l’ordre du carnet. Par défaut : chronologique.</p>
+      <p className="mt-1 text-xs text-muted">
+        Glissez pour l’ordre du carnet. Par défaut : chronologique. Une carte hôtel revient chaque nuit
+        dans l’aperçu : retirer la carte retire toutes ces lignes. Une chambre en trop se retire dans la carte.
+      </p>
       <div className="mt-3">
         <BusyBar active={busy} label="Enregistrement…" />
       </div>
@@ -244,7 +256,7 @@ export function BookingItemsPanel({
                 </div>
               </div>
             ) : (
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex min-w-0 items-start gap-2">
                   <span
                     draggable
@@ -279,6 +291,18 @@ export function BookingItemsPanel({
                         .filter(Boolean)
                         .join(" · ")}
                     </p>
+                    {readDocumentAmount(item.details) != null ? (
+                      <p className="text-xs text-muted">
+                        Prix imprimé sur le document :{" "}
+                        {printedPrice(
+                          readDocumentAmount(item.details) as number,
+                          typeof item.details?.document_currency === "string"
+                            ? item.details.document_currency
+                            : ""
+                        )}
+                        . Corrigez-le dans la carte si la lecture a coupé le montant.
+                      </p>
+                    ) : null}
                     <ItemAttachments
                       bookingId={bookingId}
                       itemId={item.id}
@@ -286,7 +310,7 @@ export function BookingItemsPanel({
                     />
                   </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-1">
+                <div className="flex flex-wrap items-center gap-1">
                   <button
                     type="button"
                     aria-label="Monter"
@@ -314,7 +338,7 @@ export function BookingItemsPanel({
                   </button>
                   <button
                     type="button"
-                    className="text-xs font-semibold text-accent"
+                    className="admin-tap rounded-full px-3 text-xs font-semibold text-accent"
                     onClick={() => void removeItem(item.id)}
                   >
                     Retirer
@@ -373,6 +397,16 @@ function ItemAttachments({
     router.refresh();
   }
 
+  async function removeDoc(documentId: string) {
+    setBusy(true);
+    await fetch(
+      `/api/admin/bookings/${bookingId}/documents?id=${encodeURIComponent(documentId)}`,
+      { method: "DELETE" }
+    );
+    setBusy(false);
+    router.refresh();
+  }
+
   return (
     <div className="mt-2 space-y-1">
       <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted">Pièces jointes</p>
@@ -380,6 +414,7 @@ function ItemAttachments({
         {docs.map((doc) => (
           <FilePreviewTile
             key={doc.id}
+            onRemove={() => void removeDoc(doc.id)}
             file={{
               id: doc.id,
               path: doc.storage_path,

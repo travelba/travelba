@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { fileDownloadHref, fileInlineHref } from "@/lib/crm/file-href";
+import { fileDownloadHref, fileInlineHref, fileThumbHref } from "@/lib/crm/file-href";
 import { isPreviewImage, isPreviewPdf, type FilePreviewModel } from "@/lib/crm/preview-files";
 import { siteConfig } from "@/lib/site";
 import { Icon } from "@/components/crm/icons";
@@ -15,51 +15,91 @@ function accessOf(file: FilePreviewModel) {
   return file.partage ? { partage: file.partage } : undefined;
 }
 
-export function FilePreviewTile({ file }: { file: FilePreviewModel }) {
-  const [open, setOpen] = useState(false);
+function FileThumb({ file }: { file: FilePreviewModel }) {
   const image = isPreviewImage(file.mimeType, file.fileName);
-  const [imageFailed, setImageFailed] = useState(false);
+  const pdf = isPreviewPdf(file.mimeType, file.fileName);
+  const inline = fileInlineHref(file.path, accessOf(file));
+  const [mode, setMode] = useState<"thumb" | "frame" | "icon">(image || pdf ? "thumb" : "icon");
+  if (mode === "icon") {
+    return (
+      <Icon
+        name={pdf ? "picture_as_pdf" : image ? "photo" : "draft"}
+        className="h-12 w-12 text-[#C5A880]"
+      />
+    );
+  }
+  if (mode === "frame" && pdf) {
+    return (
+      <iframe
+        title={`Première page de ${file.label}`}
+        src={`${inline}#page=1&toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+        className="pointer-events-none h-full w-full border-0 bg-white"
+      />
+    );
+  }
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="flex w-[7.25rem] shrink-0 flex-col gap-1.5 text-left"
-        aria-label={`Aperçu de ${file.label}`}
-      >
-        <span className="relative flex h-28 w-full items-center justify-center overflow-hidden rounded-2xl bg-[#0B192C] ring-1 ring-[#C5A880]/50">
-          {image && !imageFailed ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={fileInlineHref(file.path, accessOf(file))}
-              alt=""
-              referrerPolicy="no-referrer"
-              className="h-full w-full object-cover"
-              onError={() => setImageFailed(true)}
-            />
-          ) : (
-            <Icon
-              name={isPreviewPdf(file.mimeType, file.fileName) ? "picture_as_pdf" : image ? "photo" : "draft"}
-              className="h-12 w-12 text-[#C5A880]"
-            />
-          )}
-        </span>
-        <span className="line-clamp-2 text-center text-xs font-semibold leading-snug text-[#0B192C]">
-          {file.label}
-        </span>
-      </button>
-      {open ? <FilePreviewDialog file={file} onClose={() => setOpen(false)} /> : null}
-    </>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={pdf ? fileThumbHref(file.path, accessOf(file)) : inline}
+      alt=""
+      referrerPolicy="no-referrer"
+      className="h-full w-full bg-white object-cover object-top"
+      onError={() => setMode(pdf ? "frame" : "icon")}
+    />
   );
 }
 
-export function FilePreviewGrid({ files }: { files: FilePreviewModel[] }) {
+export function FilePreviewTile({
+  file,
+  onRemove,
+}: {
+  file: FilePreviewModel;
+  onRemove?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="flex w-28 shrink-0 flex-col gap-1.5">
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-left"
+        aria-label={`Aperçu de ${file.label}`}
+      >
+        <span className="relative flex h-36 w-full items-center justify-center overflow-hidden rounded-2xl bg-[#0B192C] ring-1 ring-[#C5A880]/50">
+          <FileThumb file={file} />
+        </span>
+        <span className="mt-1.5 line-clamp-2 text-center text-xs font-semibold leading-snug text-[#0B192C]">
+          {file.label}
+        </span>
+      </button>
+      {onRemove ? (
+        <button
+          type="button"
+          className="admin-tap rounded-full text-xs font-semibold text-accent"
+          aria-label={`Retirer ${file.label}`}
+          onClick={onRemove}
+        >
+          Retirer
+        </button>
+      ) : null}
+      {open ? <FilePreviewDialog file={file} onClose={() => setOpen(false)} /> : null}
+    </div>
+  );
+}
+
+export function FilePreviewGrid({
+  files,
+  onRemove,
+}: {
+  files: FilePreviewModel[];
+  onRemove?: (file: FilePreviewModel) => void;
+}) {
   if (!files.length) return null;
   return (
     <ul className="flex flex-wrap gap-3">
       {files.map((file) => (
         <li key={file.id}>
-          <FilePreviewTile file={file} />
+          <FilePreviewTile file={file} onRemove={onRemove ? () => onRemove(file) : undefined} />
         </li>
       ))}
     </ul>

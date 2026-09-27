@@ -22,6 +22,7 @@ import {
 import { coversStayRollup, isStayRollupDebit } from "@/lib/crm/ledger-display";
 import { debitBillingCompanyId } from "@/lib/crm/billing-companies";
 import { emptyToNull } from "@/lib/crm/identity";
+import { stayCurrency } from "@/lib/crm/stay-currency";
 
 export function parseIncludeInLedger(value: unknown, fallback: boolean) {
   if (value === true || value === "on" || value === "true") return true;
@@ -64,6 +65,10 @@ export function bookingMetaPatch(body: Record<string, unknown>) {
     if (key === "start_date" || key === "end_date") {
       const value = String(body[key] ?? "").trim();
       patch[key] = value || null;
+      continue;
+    }
+    if (key === "currency") {
+      patch[key] = stayCurrency(body[key]);
       continue;
     }
     patch[key] = body[key];
@@ -236,7 +241,16 @@ export async function syncBookingDebit(
   const payerChanged = debit.customer_id !== payerId;
   const labelChanged = (debit.label || "") !== label;
   const companyChanged = (debit.billing_company_id || null) !== companyId;
-  if (amountChanged || statusChanged || payerChanged || labelChanged || companyChanged || debit.status !== "posted") {
+  const currencyChanged = (debit.currency || "EUR") !== (booking.currency || "EUR");
+  if (
+    amountChanged ||
+    statusChanged ||
+    payerChanged ||
+    labelChanged ||
+    companyChanged ||
+    currencyChanged ||
+    debit.status !== "posted"
+  ) {
     await supabase
       .from("crm_transactions")
       .update({
