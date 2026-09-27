@@ -75,7 +75,7 @@ export function BookingsTable({
                 className="h-16 w-28 shrink-0 rounded-xl"
               />
                 <div className="min-w-0">
-                  <p className="font-semibold text-[var(--admin-navy)]">
+                  <p className="break-words font-semibold text-[var(--admin-navy)]">
                     {b.reference} · {b.title}
                   </p>
                   <p className="text-xs text-muted">
@@ -84,7 +84,7 @@ export function BookingsTable({
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex min-w-0 flex-wrap items-center gap-3">
                 {!b.visible_to_client ? (
                   <span className="rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">
                     Brouillon

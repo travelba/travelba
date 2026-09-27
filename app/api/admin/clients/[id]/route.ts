@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { saveCustomerBillingCompanies } from "@/lib/crm/billing-companies";
+import { CUSTOMER_EMAIL_COPY, otherCustomerEmailBlock } from "@/lib/crm/customer-email";
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
 import { CustomerDeleteError, deleteCustomerById } from "@/lib/crm/delete-customer";
+import { createServiceClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
@@ -33,10 +35,33 @@ export async function PATCH(request: Request, ctx: Ctx) {
 
   const { data: current } = await auth.supabase
     .from("crm_customers")
-    .select("company_role, billing_parent_id")
+    .select("company_role, billing_parent_id, email, auth_user_id")
     .eq("id", id)
     .maybeSingle();
   if (!current) return jsonError("Client introuvable", 404);
+
+  if ("email" in patch) {
+    const email = String(patch.email || "");
+    const admin = createServiceClient();
+    const { data: matches } = await admin.from("crm_customers").select("id").eq("email", email);
+    const taken = otherCustomerEmailBlock({
+      customerId: id,
+      matches: (matches || []) as { id: string }[],
+    });
+    if (taken) return jsonError(taken);
+    if (current.auth_user_id && current.email !== email) {
+      const { error: authError } = await admin.auth.admin.updateUserById(current.auth_user_id, {
+        email,
+        email_confirm: true,
+      });
+      if (authError) {
+        const message = /already|exists|registered|duplicate/i.test(authError.message || "")
+          ? CUSTOMER_EMAIL_COPY.taken
+          : CUSTOMER_EMAIL_COPY.auth;
+        return jsonError(message);
+      }
+    }
+  }
 
   const nextRole =
     "company_role" in patch ? (patch.company_role as string | null) : current.company_role;

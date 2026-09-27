@@ -5,6 +5,7 @@ import { sortItemsByOrder } from "./carnet";
 import { redactIngestValue } from "./ingest-redact";
 import { mergeExtractItems } from "./item-match";
 import { parseMoney } from "./money";
+import { stayCurrency } from "./stay-currency";
 import { INGEST_ITEM_KINDS, type BookingStatus } from "./types";
 
 const looseString = z.string().nullable().optional();
@@ -390,7 +391,7 @@ export function sanitizeExtractedPrices(extract: BookingExtract): BookingExtract
   };
   const next: BookingExtract = {
     ...extract,
-    currency: extract.currency || "EUR",
+    currency: stayCurrency(extract.currency),
     total_amount: sellingTotalFromExtract(priced),
     items: sortItemsByOrder(merged),
   };
@@ -408,7 +409,7 @@ export function parseExtractPayloadSafe(raw: unknown): BookingExtract {
 export function keepAgentPrices(extract: BookingExtract): BookingExtract {
   const next: BookingExtract = {
     ...extract,
-    currency: extract.currency || "EUR",
+    currency: stayCurrency(extract.currency),
     total_amount: parseMoney(extract.total_amount),
     items: sortItemsByOrder(
       (extract.items || []).map((item) => ({

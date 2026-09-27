@@ -15,7 +15,9 @@ import {
   customerPickLabel,
   type PickableCustomer,
 } from "@/lib/crm/customer-search";
+import { emailCardTitle } from "@/lib/crm/ingest-title";
 import { formatDateFr, formatDateRangeShort } from "@/lib/crm/money";
+import { fieldControlClass } from "@/components/crm/fields";
 
 type ExtractItem = {
   kind?: string;
@@ -58,6 +60,7 @@ export function EmailIngestInbox({
   const [pickFor, setPickFor] = useState<string | null>(null);
   const [bookings, setBookings] = useState<Record<string, BookingOption[]>>({});
   const [selectedBooking, setSelectedBooking] = useState<Record<string, string>>({});
+  const [titles, setTitles] = useState<Record<string, string>>({});
 
   const chosenCustomer = useCallback(
     (row: CrmEmailIngest) => chosen[row.id] ?? row.suggested_customer_id ?? "",
@@ -90,7 +93,8 @@ export function EmailIngestInbox({
 
   async function act(
     rowId: string,
-    payload: { action: string; customer_id?: string; booking_id?: string }
+    payload: { action: string; customer_id?: string; booking_id?: string; title?: string },
+    opts?: { refresh?: boolean }
   ) {
     setBusy(rowId);
     setError(null);
@@ -105,7 +109,7 @@ export function EmailIngestInbox({
         setError(data.error || "Opération impossible");
         return;
       }
-      router.refresh();
+      if (opts?.refresh !== false) router.refresh();
     } catch {
       setError("Réseau indisponible, réessayez.");
     } finally {
@@ -146,6 +150,13 @@ export function EmailIngestInbox({
         ];
         const options = bookings[row.id];
         const isBusy = busy === row.id;
+        const cardTitle =
+          titles[row.id] ??
+          emailCardTitle({
+            title: extract.title,
+            destination: extract.destination,
+            subject: row.subject,
+          });
 
         return (
           <article
@@ -171,9 +182,25 @@ export function EmailIngestInbox({
                     </span>
                   ) : null}
                 </div>
-                <h3 className="mt-1 truncate font-display text-base font-semibold text-[var(--admin-navy)]">
-                  {extract.title || extract.destination || row.subject || "Réservation"}
-                </h3>
+                <label className="mt-2 block text-xs font-semibold text-muted">
+                  Titre du dossier
+                  <input
+                    value={cardTitle}
+                    onChange={(event) =>
+                      setTitles((prev) => ({ ...prev, [row.id]: event.target.value }))
+                    }
+                    onBlur={(event) => {
+                      const next = event.target.value.trim();
+                      if (!next || next === (extract.title || "").trim()) return;
+                      void act(row.id, { action: "save_title", title: next }, { refresh: false });
+                    }}
+                    className={`${fieldControlClass} admin-tap mt-1`}
+                    aria-label="Titre du dossier"
+                  />
+                </label>
+                {row.subject ? (
+                  <p className="mt-1 truncate text-xs text-muted">Sujet du mail : {row.subject}</p>
+                ) : null}
                 <p className="truncate text-xs text-muted">
                   {row.from_email || "—"}
                   {row.received_at ? ` · ${formatDateFr(row.received_at)}` : ""}
@@ -227,7 +254,7 @@ export function EmailIngestInbox({
                 </p>
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1 text-xs font-semibold text-[var(--admin-navy)] hover:bg-white"
+                  className="admin-tap inline-flex items-center gap-1 rounded-full border border-border px-3 py-1 text-xs font-semibold text-[var(--admin-navy)] hover:bg-white"
                   onClick={() => setPickFor(row.id)}
                 >
                   <Icon name="group" className="h-4 w-4" />
@@ -262,7 +289,7 @@ export function EmailIngestInbox({
                   <button
                     type="button"
                     disabled={isBusy || !selectedBooking[row.id]}
-                    className="admin-af-btn-accent rounded-lg px-3 py-2 text-sm disabled:opacity-50"
+                    className="admin-af-btn-accent admin-tap rounded-lg px-3 py-2 text-sm disabled:opacity-50"
                     onClick={() =>
                       act(row.id, {
                         action: "attach_booking",
@@ -279,9 +306,13 @@ export function EmailIngestInbox({
                 <button
                   type="button"
                   disabled={isBusy || !customerId}
-                  className="inline-flex items-center gap-1 rounded-lg border border-[var(--admin-navy)] px-3 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-40"
+                  className="admin-tap inline-flex items-center gap-1 rounded-lg border border-[var(--admin-navy)] px-3 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-40"
                   onClick={() =>
-                    act(row.id, { action: "new_booking", customer_id: customerId })
+                    act(row.id, {
+                      action: "new_booking",
+                      customer_id: customerId,
+                      title: cardTitle.trim(),
+                    })
                   }
                 >
                   <Icon name="add" className="h-4 w-4" />
@@ -290,7 +321,7 @@ export function EmailIngestInbox({
                 <button
                   type="button"
                   disabled={isBusy}
-                  className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-muted hover:text-accent disabled:opacity-40"
+                  className="admin-tap inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-muted hover:text-accent disabled:opacity-40"
                   onClick={() => act(row.id, { action: "refuse" })}
                 >
                   <Icon name="close" className="h-4 w-4" />

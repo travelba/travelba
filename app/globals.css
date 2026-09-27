@@ -317,3 +317,39 @@ button:disabled,
   width: 40%;
   animation: tb-busy-slide 1.15s ease-in-out infinite;
 }
+
+/* Admin téléphone : le bureau (lg) ne change pas. */
+@media (max-width: 1023px) {
+  .admin-af {
+    overflow-x: clip;
+  }
+
+  .admin-af main,
+  .admin-af > header {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .admin-af > header nav {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .admin-af .overflow-x-auto {
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .admin-af .overflow-x-auto > table {
+    min-width: 42rem;
+  }
+
+  .admin-af .admin-tap,
+  .admin-af .admin-af-input,
+  .admin-af select,
+  .admin-af textarea,
+  .admin-af input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]) {
+    min-height: 2.75rem;
+  }
+}

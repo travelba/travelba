@@ -59,7 +59,7 @@ export function DeleteCustomerButton({
           onClick={() => void remove()}
           className={
             compact
-              ? "text-xs font-semibold text-[var(--admin-red)]"
+              ? "admin-tap text-xs font-semibold text-[var(--admin-red)]"
               : "rounded-full px-4 py-2 text-sm font-semibold text-[var(--admin-red)] ring-1 ring-[var(--admin-red)]/30"
           }
         >

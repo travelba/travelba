@@ -56,4 +56,4 @@ UI : bloc pièce **replié** par défaut (passeport). Copy courte, pas « Upload
 
 ## Admin fiche
 
-Pas d’e-mail titulaire éditable à la légère (identifiant de connexion). Pas de scan dropzone résa sur la fiche client admin. Créer ≠ inviter : skill `travelba-auth`.
+L’agence change l’e-mail titulaire sur la fiche : `crm_customers.email` et le compte Auth suivent. Une adresse déjà prise par un autre client est refusée. Le client ne change pas son identifiant. Pas de scan dropzone résa sur la fiche client admin. Créer ≠ inviter : skill `travelba-auth`.

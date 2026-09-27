@@ -66,7 +66,7 @@ export function ClientsTable({
           {filtered.length} client{filtered.length > 1 ? "s" : ""}
         </p>
       </div>
-      <div className="admin-af-card overflow-hidden rounded-2xl">
+      <div className="admin-af-card max-w-full overflow-hidden rounded-2xl">
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-sm">
             <thead className="bg-[var(--admin-sky)]/70 font-label text-[10px] font-bold uppercase tracking-[0.12em] text-muted">

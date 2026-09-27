@@ -1,4 +1,5 @@
 import { sortItemsByOrder } from "./carnet";
+import { isEmailBodyFile } from "./ingest-title";
 import type { IngestFamily } from "./ingest-parse";
 import { tagSourceFileName } from "./ingest-parse";
 import {
@@ -149,7 +150,7 @@ export function mergeFileExtracts(results: FileExtractResult[]): {
     items = mergeExtractItems([...items, ...tagged.items]);
     travelers.push(...(tagged.travelers || []));
     if (tagged.notes_client) notes.push(tagged.notes_client);
-    if (!title && tagged.title) title = tagged.title;
+    if (!title && tagged.title && !isEmailBodyFile(row.name)) title = tagged.title;
     if (!destination && tagged.destination) destination = tagged.destination;
     if (!email && tagged.customer_email) email = tagged.customer_email;
     if (!firstName && tagged.customer_first_name) {

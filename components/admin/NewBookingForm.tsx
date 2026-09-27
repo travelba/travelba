@@ -129,7 +129,7 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
       <div className="sm:col-span-3">
         <BusyBar active={saving} label="Création…" />
       </div>
-      <button type="submit" disabled={saving} className="admin-af-btn rounded-xl px-4 py-2.5 text-sm sm:col-span-3">
+      <button type="submit" disabled={saving} className="admin-af-btn admin-tap rounded-xl px-4 py-2.5 text-sm sm:col-span-3">
         {saving ? "Création…" : "Créer la réservation"}
       </button>
     </form>

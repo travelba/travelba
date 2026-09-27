@@ -38,6 +38,7 @@ export async function POST(request: Request, ctx: Ctx) {
       staffUserId: auth.user.id,
       batchId: batchId || undefined,
       visibleToClient: false,
+      applyStayFields: true,
     });
     return NextResponse.json({ ok: true, booking_id: id });
   } catch (err) {
