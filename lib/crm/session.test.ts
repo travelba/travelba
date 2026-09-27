@@ -35,10 +35,10 @@ test("recovery and invite always force the password screen", () => {
   );
 });
 
-test("après le mot de passe, la fiche ne s’ouvre que sans téléphone", () => {
+test("après le mot de passe, l’accueil s’ouvre même sans téléphone", () => {
   assert.equal(pathAfterPassword("+33600000000"), "/mon-compte");
-  assert.equal(pathAfterPassword("  "), "/mon-compte/profil");
-  assert.equal(pathAfterPassword(null), "/mon-compte/profil");
+  assert.equal(pathAfterPassword("  "), "/mon-compte");
+  assert.equal(pathAfterPassword(null), "/mon-compte");
 });
 
 test("un collègue arrive dans l’espace agence", () => {
@@ -67,7 +67,7 @@ test("le mot de passe ouvre la bienvenue une fois, puis l’accueil ou la fiche"
   assert.equal(again.client_onboarding_pending, false);
   assert.equal(again.client_onboarding_done, true);
   assert.equal(destinationAfterPassword(again, "+33600000000"), "/mon-compte");
-  assert.equal(destinationAfterPassword(again, ""), "/mon-compte/profil");
+  assert.equal(destinationAfterPassword(again, ""), "/mon-compte");
 });
 
 test("l’espace client force la bienvenue tant qu’elle n’est pas passée", () => {

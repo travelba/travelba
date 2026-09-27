@@ -75,6 +75,7 @@ function CardBody({
   calendarHref = null,
   day = null,
   partage = null,
+  pricesVisible = true,
 }: {
   item: CrmBookingItem;
   currency: string;
@@ -83,8 +84,9 @@ function CardBody({
   calendarHref?: string | null;
   day?: string | null;
   partage?: string | null;
+  pricesVisible?: boolean;
 }) {
-  const price = itemPriceLabel(item, currency, day);
+  const price = itemPriceLabel(item, currency, day, pricesVisible);
   const included = detailList(item, "included");
   const rooms = hotelRooms(item);
   const iata = flightIata(item);
@@ -267,6 +269,7 @@ export function CarnetItinerary({
   services = null,
   refusals = [],
   partage = null,
+  pricesVisible = true,
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -274,6 +277,8 @@ export function CarnetItinerary({
   calendarBase?: string | null;
   /** Lien public : les confirmations passent par /api/files, sans session. */
   partage?: string | null;
+  /** Faux : chaque ligne qui aurait un montant affiche « Prix à la publication ». */
+  pricesVisible?: boolean;
   refusals?: ServiceRefusal[];
   services?: {
     variant: "admin" | "client";
@@ -337,6 +342,7 @@ export function CarnetItinerary({
         reference={booking.reference}
         price={price}
         currency={booking.currency}
+        pricesVisible={pricesVisible}
         locked={services.variant === "client" && !extraNoticeOk(at, now)}
         addressLabel={
           offer.kind === "chauffeur"
@@ -407,6 +413,7 @@ export function CarnetItinerary({
                     calendarHref={itemHref(row.item.id)}
                     day={day}
                     partage={partage}
+                    pricesVisible={pricesVisible}
                   />
                 )
               ) : (
@@ -427,6 +434,7 @@ export function CarnetItinerary({
                 currency={booking.currency}
                 docs={docs}
                 calendarHref={itemHref(item.id)}
+                pricesVisible={pricesVisible}
                 partage={partage}
               />
             ))}

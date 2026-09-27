@@ -2,7 +2,6 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ensureCustomerForUser, getSessionUser } from "@/lib/crm/auth";
 import {
-  BOOKING_STATUS_LABELS,
   type CrmBooking,
   type CrmBookingDocument,
   type CrmBookingItem,
@@ -16,11 +15,15 @@ import { bookingHasFlight, findVisaExtra, serviceRefusalFromRow, type ServiceRef
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import type { ClientVisaStep } from "@/lib/crm/visa-flow";
 import { pliantConfigured } from "@/lib/crm/pliant";
-import { formatDateFr, formatMoney } from "@/lib/crm/money";
+import { formatDateFr, formatMoney, todayIsoDate } from "@/lib/crm/money";
 import { BookingStatusBadge } from "@/components/crm/ui";
 import {
   carnetVisible,
+  clientBookingStatusLabel,
+  clientVisibleItems,
+  HIDDEN_PRICE_LABEL,
   itemPriceLabel,
+  nextFlightPass,
   tripHeadline,
   tripPlaceLine,
   whatsappModifyHref,
@@ -35,6 +38,9 @@ import { StayBillingChoice } from "@/components/crm/StayBillingChoice";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { TripSharePanel } from "@/components/account/TripSharePanel";
+import { BoardingPass } from "@/components/account/BoardingPass";
+import { PassportCoffre } from "@/components/crm/PassportCoffre";
+import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
 import { isLedgerExpenseKind, visibleServiceCopy, type CrmBillingCompany } from "@/lib/crm/types";
@@ -79,7 +85,7 @@ export default async function ReservationDetailPage({ params }: Props) {
     .map(serviceRefusalFromRow)
     .filter((row): row is ServiceRefusal => Boolean(row));
 
-  const rawItems = (items || []) as CrmBookingItem[];
+  const rawItems = clientVisibleItems((items || []) as CrmBookingItem[]);
   if (!carnetVisible(b, rawItems)) notFound();
   const visibleItems = await loadHotelContacts(b.id, rawItems);
 
@@ -119,13 +125,13 @@ export default async function ReservationDetailPage({ params }: Props) {
         .order("sort_order"),
       admin
         .from("crm_booking_items")
-        .select("id, title, kind, billing_company_id")
+        .select("id, title, kind, billing_company_id, visible_to_client")
         .eq("booking_id", b.id)
         .eq("kind", "expense"),
     ]);
     billingCompanies = (companyRows || []) as Pick<CrmBillingCompany, "id" | "company_name">[];
-    expenseChoices = ((expenseRows || []) as { id: string; title: string; kind: string; billing_company_id: string | null }[])
-      .filter((item) => isLedgerExpenseKind(item.kind))
+    expenseChoices = ((expenseRows || []) as { id: string; title: string; kind: string; billing_company_id: string | null; visible_to_client?: boolean | null }[])
+      .filter((item) => item.visible_to_client !== false && isLedgerExpenseKind(item.kind))
       .map((item) => ({
         id: item.id,
         title: visibleServiceCopy(item.title),
@@ -152,7 +158,7 @@ export default async function ReservationDetailPage({ params }: Props) {
       >
         <div className="absolute inset-0 flex flex-col justify-between p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <BookingStatusBadge label={BOOKING_STATUS_LABELS[b.status]} />
+            <BookingStatusBadge label={clientBookingStatusLabel(b.status)} />
             <span className="rounded-full bg-black/35 px-3 py-1 text-[11px] font-bold backdrop-blur">
               {b.reference}
             </span>
@@ -168,8 +174,22 @@ export default async function ReservationDetailPage({ params }: Props) {
       </BookingHero>
 
       {shareUrl ? (
-        <TripSharePanel bookingId={b.id} shareUrl={shareUrl} companions={shareCompanions} />
+        <TripSharePanel
+          bookingId={b.id}
+          shareUrl={shareUrl}
+          companions={shareCompanions}
+          canSend={Boolean(customer.phone)}
+        />
       ) : null}
+
+      <PassportCoffre
+        rows={passportVaultRows(party, (identityDocs || []) as CrmTravelDocument[], todayIsoDate(), {
+          first_name: customer.first_name,
+          last_name: customer.last_name,
+          usage_name: customer.usage_name,
+        })}
+        hrefFor={() => "/mon-compte/profil/documents"}
+      />
 
       {missingPassports ? (
         <a
@@ -194,10 +214,21 @@ export default async function ReservationDetailPage({ params }: Props) {
         </p>
       ) : null}
 
+      {(() => {
+        const pass = nextFlightPass(visibleItems);
+        return pass ? (
+          <BoardingPass
+            pass={pass}
+            calendarHref={`/mon-compte/reservations/${b.reference}/agenda.ics?item_id=${encodeURIComponent(pass.itemId)}`}
+          />
+        ) : null;
+      })()}
+
       <CarnetItinerary
         booking={b}
         items={visibleItems}
         docs={visibleDocs}
+        pricesVisible={b.prices_visible !== false}
         calendarBase={`/mon-compte/reservations/${b.reference}/agenda.ics`}
         services={{
           variant: "client",
@@ -238,24 +269,29 @@ export default async function ReservationDetailPage({ params }: Props) {
           Montant du séjour
         </p>
         <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
-          {b.prices_visible === false ? "Prix à la publication" : formatMoney(Number(b.total_amount), b.currency)}
+          {b.prices_visible === false ? HIDDEN_PRICE_LABEL : formatMoney(Number(b.total_amount), b.currency)}
         </p>
-        {insurances.map((item) => (
-          <p key={item.id} className="text-sm text-muted">
-            Assurance {item.title}
-            {itemPriceLabel(item, b.currency) ? ` · ${itemPriceLabel(item, b.currency)}` : ""}
-          </p>
-        ))}
+        {insurances.map((item) => {
+          const price = itemPriceLabel(item, b.currency, null, b.prices_visible !== false);
+          return (
+            <p key={item.id} className="text-sm text-muted">
+              Assurance {item.title}
+              {price ? ` · ${price}` : ""}
+            </p>
+          );
+        })}
       </section>
 
-      <a
-        href={modifyHref}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex h-12 w-full items-center justify-center rounded-full bg-[var(--admin-navy)] px-5 text-sm font-semibold text-white"
-      >
-        Demander une modification
-      </a>
+      {customer.phone ? (
+        <a
+          href={modifyHref}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex h-12 w-full items-center justify-center rounded-full bg-[var(--admin-navy)] px-5 text-sm font-semibold text-white"
+        >
+          Modifier ce voyage
+        </a>
+      ) : null}
 
       {bookingHasFlight(visibleItems) ? (
         <VisaSection

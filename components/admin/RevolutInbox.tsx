@@ -47,6 +47,8 @@ export function RevolutInbox({
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [pickerRow, setPickerRow] = useState<string | null>(null);
+  const [scope, setScope] = useState<"unmatched" | "all">("unmatched");
+  const shown = scope === "unmatched" ? rows.filter((row) => row.status === "unmatched") : rows;
 
   const byId = useMemo(
     () => new Map(customers.map((c) => [c.id, c])),
@@ -114,9 +116,10 @@ export function RevolutInbox({
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(json.error || failure);
-        return;
+        return false;
       }
       router.refresh();
+      return true;
     } catch {
       setError("Connexion interrompue. Réessayez.");
     } finally {
@@ -124,13 +127,21 @@ export function RevolutInbox({
     }
   }
 
-  function match(id: string, customerId: string) {
+  async function match(id: string, customerId: string, gross: number, currency: string) {
     if (!customerId) {
       setError("Choisissez le client à rapprocher.");
       setPickerRow(id);
       return;
     }
-    void post(id, { customer_id: customerId }, "Rapprochement impossible. Réessayez.");
+    const ok = await post(id, { customer_id: customerId }, "Rapprochement impossible. Réessayez.");
+    if (!ok) return;
+    const net = netAfterAgencyFee(gross);
+    const fee = agencyFeeFromGross(gross);
+    setMessage(
+      fee > 0
+        ? `Crédit disponible : ${formatMoney(net, currency)}. Les frais d’agence de 10 % sont déjà déduits.`
+        : `Crédit disponible : ${formatMoney(net, currency)}.`
+    );
   }
 
   return (
@@ -163,14 +174,21 @@ export function RevolutInbox({
         </button>
         {configured && connected ? (
           <p className="text-sm text-muted">
-            Uniquement les crédits reçus — Valider ou Refuser. Auto si aucun doute.
+            Crédits reçus — Valider ou Refuser. Auto si aucun doute.
           </p>
         ) : null}
+        <button
+          type="button"
+          onClick={() => setScope((current) => (current === "unmatched" ? "all" : "unmatched"))}
+          className="rounded-full border border-border px-4 py-2 text-sm font-semibold text-[var(--admin-navy)]"
+        >
+          {scope === "unmatched" ? "Voir tous les crédits" : "Seulement à rapprocher"}
+        </button>
       </div>
       {message ? <p className="text-sm text-muted">{message}</p> : null}
       {error ? <p className="text-sm text-accent">{error}</p> : null}
       <ul className="admin-af-card divide-y divide-border rounded-3xl">
-        {rows.map((r) => {
+        {shown.map((r) => {
           const candidates = suggestions.get(r.id) || [];
           const top = candidates[0];
           const chosenId = chosenFor(r.id);
@@ -232,7 +250,7 @@ export function RevolutInbox({
                       type="button"
                       disabled={rowBusy === r.id}
                       className="admin-af-btn rounded-full px-3 py-1 text-sm"
-                      onClick={() => match(r.id, chosenId)}
+                      onClick={() => void match(r.id, chosenId, Number(r.amount), r.currency)}
                     >
                       {rowBusy === r.id ? "En cours…" : "Valider"}
                     </button>
@@ -252,9 +270,13 @@ export function RevolutInbox({
             </li>
           );
         })}
-        {!rows.length ? (
+        {!shown.length ? (
           <li className="space-y-3 px-5 py-8 text-center text-sm text-muted">
-            <p>{revolutInboxEmptyMessage({ configured, connected })}</p>
+            <p>
+              {rows.length && scope === "unmatched"
+                ? "Aucun crédit à rapprocher."
+                : revolutInboxEmptyMessage({ configured, connected })}
+            </p>
             {configured && !connected ? (
               <button
                 type="button"

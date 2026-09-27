@@ -62,7 +62,7 @@ export function AdminNav({
   function onSearch(event: FormEvent) {
     event.preventDefault();
     const q = query.trim();
-    router.push(q ? `/admin/clients?q=${encodeURIComponent(q)}` : "/admin/clients");
+    router.push(q ? `/admin/recherche?q=${encodeURIComponent(q)}` : "/admin/recherche");
   }
 
   function navLink(link: (typeof links)[number], variant: "dark" | "light") {
@@ -135,8 +135,8 @@ export function AdminNav({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="w-full rounded-md bg-white/10 py-2.5 pl-10 pr-4 text-[13px] text-white outline-none placeholder:text-[#c5c6cd] focus:bg-white/15 focus:ring-2 focus:ring-[var(--admin-gold)]/40"
-            placeholder="Rechercher un client…"
-            aria-label="Rechercher un client"
+            placeholder="Client, référence TB-, hôtel, confirmation…"
+            aria-label="Rechercher un client ou un dossier"
             type="search"
           />
         </form>
@@ -193,8 +193,8 @@ export function AdminNav({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="w-full rounded-md bg-[var(--surface-2)] py-2.5 pl-10 pr-4 text-[13px] text-[var(--admin-navy)] outline-none transition focus:bg-white focus:ring-2 focus:ring-[var(--admin-gold)]/30"
-            placeholder="Rechercher un client…"
-            aria-label="Rechercher un client"
+            placeholder="Client, référence TB-, hôtel, confirmation…"
+            aria-label="Rechercher un client ou un dossier"
             type="search"
           />
         </form>

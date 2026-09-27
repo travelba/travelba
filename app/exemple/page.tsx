@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { Icon } from "@/components/crm/icons";
-import { ConciergeBanner } from "@/components/crm/ui";
 import { tripHeadline, tripPlaceLine } from "@/lib/crm/carnet";
 import { destinationWeather } from "@/lib/crm/destination-weather";
 import { EXAMPLE_BASE } from "@/lib/crm/example-session";
@@ -33,20 +32,30 @@ export default async function ExampleHomePage() {
         </h1>
       </section>
 
-      <Link
-        href={`${EXAMPLE_BASE}/transactions`}
-        className="block rounded-2xl border border-[var(--admin-gold)] bg-[#f8f3eb] p-4 shadow-sm transition hover:border-[var(--admin-gold)]"
-      >
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Encours</p>
-        <p className="mt-2 font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">
-          {formatMoney(balance, "EUR")}
-        </p>
-        <p className="text-xs text-muted">{encoursCaption(balance)}</p>
-        <p className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-[var(--admin-navy)]">
+      {balance < 0 ? (
+        <Link
+          href={`${EXAMPLE_BASE}/transactions`}
+          className="block rounded-2xl border border-[var(--admin-gold)] bg-[#f8f3eb] p-4 shadow-sm transition hover:border-[var(--admin-gold)]"
+        >
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Encours</p>
+          <p className="mt-2 font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">
+            {formatMoney(balance, "EUR")}
+          </p>
+          <p className="text-xs text-muted">{encoursCaption(balance)}</p>
+          <p className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-[var(--admin-navy)]">
+            Voir les transactions
+            <Icon name="arrow_forward" className="h-3.5 w-3.5 text-[var(--admin-gold-dark)]" />
+          </p>
+        </Link>
+      ) : (
+        <Link
+          href={`${EXAMPLE_BASE}/transactions`}
+          className="inline-flex items-center gap-1 text-sm font-semibold text-[var(--admin-navy)]"
+        >
           Voir les transactions
           <Icon name="arrow_forward" className="h-3.5 w-3.5 text-[var(--admin-gold-dark)]" />
-        </p>
-      </Link>
+        </Link>
+      )}
 
       <article className="overflow-hidden rounded-2xl border border-[#e5e3dc] shadow-xl">
         <BookingHero booking={nextTrip} priority frameClassName="relative h-[22rem] w-full">
@@ -84,7 +93,6 @@ export default async function ExampleHomePage() {
         </BookingHero>
       </article>
 
-      <ConciergeBanner />
     </div>
   );
 }

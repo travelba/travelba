@@ -13,7 +13,7 @@ import {
   jMinusLabel,
   tripDurationDays,
 } from "@/lib/crm/money";
-import { BOOKING_STATUS_LABELS } from "@/lib/crm/types";
+import { clientBookingStatusLabel, HIDDEN_PRICE_LABEL } from "@/lib/crm/carnet";
 
 export default async function ExampleReservationsPage({
   searchParams,
@@ -109,7 +109,7 @@ export default async function ExampleReservationsPage({
                     ) : (
                       <span />
                     )}
-                    <BookingStatusBadge label={BOOKING_STATUS_LABELS[b.status]} />
+                    <BookingStatusBadge label={clientBookingStatusLabel(b.status)} />
                   </div>
                   <div className="absolute bottom-3 left-3 right-3 text-white">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--admin-gold)]">
@@ -134,7 +134,7 @@ export default async function ExampleReservationsPage({
                         Montant
                       </span>
                       <span className="text-[16px] font-bold text-[var(--admin-navy)]">
-                        {b.prices_visible === false ? "—" : formatMoney(Number(b.total_amount), b.currency)}
+                        {b.prices_visible === false ? HIDDEN_PRICE_LABEL : formatMoney(Number(b.total_amount), b.currency)}
                       </span>
                     </div>
                   </div>

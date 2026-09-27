@@ -115,8 +115,8 @@ export function EmptyState({
 export function PhoneWallBanner({ href }: { href?: string }) {
   return (
     <div className="rounded-2xl bg-[var(--admin-gold)]/25 p-5 text-[var(--admin-navy)] ring-1 ring-[var(--admin-gold)]">
-      <p className="font-display text-lg font-bold">Ajoutez un téléphone pour continuer.</p>
-      <p className="mt-2 text-sm">L’agence a besoin d’un numéro pour vous joindre.</p>
+      <p className="font-display text-lg font-bold">Ajoutez un téléphone.</p>
+      <p className="mt-2 text-sm">L’agence en a besoin pour vous écrire.</p>
       {href ? (
         <a
           href={href}

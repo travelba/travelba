@@ -6,7 +6,7 @@ import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { BookingStatusBadge } from "@/components/crm/ui";
 import { VisaSection } from "@/components/crm/VisaSection";
-import { carnetVisible, itemPriceLabel, tripHeadline, tripPlaceLine, whatsappModifyHref } from "@/lib/crm/carnet";
+import { carnetVisible, clientBookingStatusLabel, clientVisibleItems, HIDDEN_PRICE_LABEL, itemPriceLabel, tripHeadline, tripPlaceLine, whatsappModifyHref } from "@/lib/crm/carnet";
 import { bookingHasFlight, findVisaExtra } from "@/lib/crm/extras";
 import { EXAMPLE_BASE, EXAMPLE_REFERENCE } from "@/lib/crm/example-session";
 import { readExample } from "@/lib/crm/example-store";
@@ -18,7 +18,6 @@ import { siteConfig } from "@/lib/site";
 import { TripSharePanel } from "@/components/account/TripSharePanel";
 import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
-import { BOOKING_STATUS_LABELS } from "@/lib/crm/types";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 
 type Props = { params: Promise<{ reference: string }> };
@@ -28,7 +27,7 @@ export default async function ExampleReservationPage({ params }: Props) {
   if (reference !== EXAMPLE_REFERENCE) notFound();
   const session = readExample();
   const b = session.booking;
-  const visibleItems = session.items;
+  const visibleItems = clientVisibleItems(session.items);
   if (!carnetVisible(b, visibleItems)) notFound();
 
   const insurances = visibleItems.filter((item) => item.kind === "insurance");
@@ -50,7 +49,7 @@ export default async function ExampleReservationPage({ params }: Props) {
       <BookingHero booking={b} priority className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]">
         <div className="absolute inset-0 flex flex-col justify-between p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <BookingStatusBadge label={BOOKING_STATUS_LABELS[b.status]} />
+            <BookingStatusBadge label={clientBookingStatusLabel(b.status)} />
             <span className="rounded-full bg-black/35 px-3 py-1 text-[11px] font-bold backdrop-blur">
               {b.reference}
             </span>
@@ -91,6 +90,7 @@ export default async function ExampleReservationPage({ params }: Props) {
         booking={b}
         items={visibleItems}
         docs={[]}
+        pricesVisible={b.prices_visible !== false}
         calendarBase={`${EXAMPLE_BASE}/reservations/${b.reference}/agenda.ics`}
         services={{
           variant: "client",
@@ -126,12 +126,14 @@ export default async function ExampleReservationPage({ params }: Props) {
           Montant du séjour
         </p>
         <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
-          {b.prices_visible === false ? "—" : formatMoney(Number(b.total_amount), b.currency)}
+          {b.prices_visible === false ? HIDDEN_PRICE_LABEL : formatMoney(Number(b.total_amount), b.currency)}
         </p>
         {insurances.map((item) => (
           <p key={item.id} className="text-sm text-muted">
             Assurance {item.title}
-            {itemPriceLabel(item, b.currency) ? ` · ${itemPriceLabel(item, b.currency)}` : ""}
+            {itemPriceLabel(item, b.currency, null, b.prices_visible !== false)
+              ? ` · ${itemPriceLabel(item, b.currency, null, b.prices_visible !== false)}`
+              : ""}
           </p>
         ))}
       </section>
@@ -142,7 +144,7 @@ export default async function ExampleReservationPage({ params }: Props) {
         rel="noreferrer"
         className="inline-flex h-12 w-full items-center justify-center rounded-full bg-[var(--admin-navy)] px-5 text-sm font-semibold text-white"
       >
-        Demander une modification
+        Modifier ce voyage
       </a>
 
       {bookingHasFlight(visibleItems) ? (

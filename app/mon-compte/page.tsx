@@ -5,10 +5,11 @@ import type { CrmBalance } from "@/lib/crm/types";
 import { encoursCaption, formatDateRangeShort, formatMoney, isUpcomingBooking, jMinusLabel } from "@/lib/crm/money";
 import { isCompanyMember } from "@/lib/crm/company-role";
 import { loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
-import { tripHeadline, tripPlaceLine } from "@/lib/crm/carnet";
+import { clientVisibleItems, nextTimelineFlight, tripHeadline, tripPlaceLine } from "@/lib/crm/carnet";
 import { BookingHero } from "@/components/crm/BookingHero";
+import { BoardingPass } from "@/components/account/BoardingPass";
 import { Icon } from "@/components/crm/icons";
-import { ConciergeBanner } from "@/components/crm/ui";
+import type { CrmBookingItem } from "@/lib/crm/types";
 import { greetingGivenName } from "@/lib/crm/identity";
 import { destinationWeather } from "@/lib/crm/destination-weather";
 
@@ -37,7 +38,7 @@ export default async function AccountHomePage() {
     value: Number(row.balance),
   }));
   const shownBalances = balanceRows.length ? balanceRows : [{ currency: "EUR", value: 0 }];
-  const owes = shownBalances.some((row) => row.value < 0);
+  const owing = shownBalances.filter((row) => row.value < 0);
   const firstName = greetingGivenName(customer.first_name) || customer.email.split("@")[0];
   const countdown = nextTrip ? jMinusLabel(nextTrip.start_date) : null;
   const tripName = nextTrip
@@ -48,6 +49,15 @@ export default async function AccountHomePage() {
   const weather = nextTrip
     ? await destinationWeather(nextTrip.destination, nextTrip.title)
     : null;
+  let homeFlight = null;
+  if (nextTrip) {
+    const { data: tripItems } = await supabase
+      .from("crm_booking_items")
+      .select("*")
+      .eq("booking_id", nextTrip.id)
+      .order("sort_order");
+    homeFlight = nextTimelineFlight(clientVisibleItems((tripItems || []) as CrmBookingItem[]));
+  }
 
   return (
     <div className="space-y-3">
@@ -68,23 +78,19 @@ export default async function AccountHomePage() {
           Voir les frais de vos voyages
           <Icon name="arrow_forward" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
         </Link>
-      ) : (
+      ) : owing.length ? (
         <Link
           href="/mon-compte/transactions"
-          className={`block rounded-2xl border p-4 shadow-sm transition hover:border-[var(--admin-gold)] ${
-            owes ? "border-[var(--admin-gold)] bg-[#f8f3eb]" : "border-[#e5e3dc] bg-white"
-          }`}
+          className="block rounded-2xl border border-[var(--admin-gold)] bg-[#f8f3eb] p-4 shadow-sm transition hover:border-[var(--admin-gold)]"
         >
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Encours</p>
           <ul className="mt-2 space-y-2">
-            {shownBalances.map((row) => (
+            {owing.map((row) => (
               <li key={row.currency}>
                 <p className="font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">
                   {formatMoney(row.value, row.currency)}
                 </p>
-                <p className="text-xs text-muted">
-                  {row.value > 0 ? "Crédit disponible · frais d’agence 10 % déduits" : encoursCaption(row.value)}
-                </p>
+                <p className="text-xs text-muted">{encoursCaption(row.value)}</p>
               </li>
             ))}
           </ul>
@@ -92,6 +98,14 @@ export default async function AccountHomePage() {
             Voir les transactions
             <Icon name="arrow_forward" className="h-3.5 w-3.5 text-[var(--admin-gold-dark)]" />
           </p>
+        </Link>
+      ) : (
+        <Link
+          href="/mon-compte/transactions"
+          className="inline-flex items-center gap-1 text-sm font-semibold text-[var(--admin-navy)]"
+        >
+          Voir les transactions
+          <Icon name="arrow_forward" className="h-3.5 w-3.5 text-[var(--admin-gold-dark)]" />
         </Link>
       )}
 
@@ -138,7 +152,12 @@ export default async function AccountHomePage() {
         </article>
       )}
 
-      <ConciergeBanner />
+      {homeFlight && nextTrip ? (
+        <BoardingPass
+          pass={homeFlight}
+          calendarHref={`/mon-compte/reservations/${nextTrip.reference}/agenda.ics?item_id=${encodeURIComponent(homeFlight.itemId)}`}
+        />
+      ) : null}
     </div>
   );
 }

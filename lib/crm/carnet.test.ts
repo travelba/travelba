@@ -6,16 +6,21 @@ import {
   coverQuery,
   tripHeadline,
   tripPlaceLine,
+  clientBookingStatusLabel,
+  clientVisibleItems,
   flightCardSubtitle,
   flightCardTitle,
   flightCities,
   flightIata,
+  flightPass,
   groupByDay,
   hotelCityLine,
   hotelDisplayName,
   hotelStayLabel,
   itemClock,
   itemPriceLabel,
+  nextFlightPass,
+  nextTimelineFlight,
   unlinkedDocuments,
   whatsappModifyHref,
 } from "./carnet";
@@ -273,6 +278,54 @@ describe("carnet", () => {
     assert.equal(flightCities(flight), "Paris → Marrakech");
     assert.equal(flightCardTitle(flight), "CDG → RAK");
     assert.equal(flightCardSubtitle(flight), "Paris → Marrakech");
+  });
+
+  it("remplace le montant par la phrase unique quand les prix sont masqués", () => {
+    const hotel = item({
+      kind: "hotel",
+      amount: 800,
+      start_at: "2026-08-12",
+      end_at: "2026-08-15",
+    });
+    assert.equal(itemPriceLabel(hotel, "EUR", "2026-08-12", false), "Prix à la publication");
+    assert.equal(itemPriceLabel(hotel, "EUR", "2026-08-13", false), null);
+    assert.equal(itemPriceLabel(item({ kind: "insurance", amount: 40 }), "EUR", null, false), "Prix à la publication");
+    assert.equal(itemPriceLabel(item({ kind: "insurance", amount: null }), "EUR", null, false), null);
+  });
+
+  it("ne montre pas un vol masqué ni une heure inventée", () => {
+    const hidden = item({
+      id: "hid",
+      kind: "flight",
+      visible_to_client: false,
+      supplier: "Air France",
+      start_at: "2026-08-12T08:40:00",
+      details: { airline: "Air France", flight_number: "AF 1" },
+    });
+    const midnight = item({
+      id: "mid",
+      kind: "flight",
+      visible_to_client: true,
+      start_at: "2026-08-12T00:00:00",
+      details: { airline: "Air France", flight_number: "AF 2" },
+    });
+    const next = item({
+      id: "next",
+      kind: "flight",
+      visible_to_client: true,
+      sort_order: 1,
+      start_at: "2026-09-01T09:15:00",
+      details: { airline: "Copa", flight_number: "CM 123" },
+    });
+    assert.equal(flightPass(hidden), null);
+    assert.equal(flightPass(midnight)?.time, null);
+    assert.equal(nextFlightPass([hidden, midnight, next], "2026-08-01")?.number, "AF 2");
+    assert.equal(nextFlightPass([hidden, next], "2026-08-20")?.number, "CM 123");
+    assert.equal(nextTimelineFlight([item({ kind: "hotel", start_at: "2026-08-02", visible_to_client: true }), next], "2026-08-01"), null);
+    assert.equal(nextTimelineFlight([next], "2026-08-01")?.airline, "Copa");
+    assert.equal(clientBookingStatusLabel("draft"), "Séjour");
+    assert.equal(clientBookingStatusLabel("confirmed"), "Confirmée");
+    assert.equal(clientVisibleItems([hidden, next]).map((row) => row.id).join(","), "next");
   });
 
   it("affiche le prix unitaire × billets", () => {

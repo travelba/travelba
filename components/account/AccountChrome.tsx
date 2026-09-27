@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { BrandMark, PhoneWallBanner } from "@/components/crm/ui";
+import { BrandMark } from "@/components/crm/ui";
 import { Icon } from "@/components/crm/icons";
 import { siteConfig } from "@/lib/site";
 import { ONBOARDING_PATH } from "@/lib/crm/session";
@@ -117,7 +117,16 @@ export function AccountChrome({
       </header>
 
       <main className="mx-auto max-w-[480px] px-4 pb-[calc(9.5rem+env(safe-area-inset-bottom,0px))] pt-4 sm:px-5 md:pb-28">
-        {phoneWall ? <PhoneWallBanner href="/mon-compte/profil" /> : children}
+        {phoneWall ? (
+          <p className="mb-3 rounded-2xl bg-[var(--admin-gold)]/25 px-4 py-3 text-sm text-[var(--admin-navy)]">
+            Ajoutez un téléphone dans{" "}
+            <Link href={`${basePath}/profil`} className="font-semibold underline">
+              Vous
+            </Link>{" "}
+            pour écrire à l’agence.
+          </p>
+        ) : null}
+        {children}
       </main>
 
       <nav className="account-tabbar md:hidden" aria-label="Navigation compte">
