@@ -180,6 +180,50 @@ describe("keepAgentPrices", () => {
     assert.equal(kept.total_amount, 1485.5);
     assert.equal(kept.items[0].amount, 742.75);
   });
+
+  it("enregistre le prix document lu sans le mélanger au prix vendu ni changer la devise", () => {
+    const kept = keepAgentPrices({
+      document_status: "confirmed",
+      title: "Tel Aviv",
+      destination: "Tel Aviv",
+      start_date: "2026-12-14",
+      end_date: "2026-12-20",
+      currency: "EUR",
+      total_amount: null,
+      notes_client: null,
+      customer_email: null,
+      customer_first_name: null,
+      customer_last_name: null,
+      items: [
+        {
+          kind: "hotel",
+          title: "Dan",
+          supplier: null,
+          confirmation_ref: "ABC",
+          start_at: "2026-12-14",
+          end_at: "2026-12-20",
+          amount: null,
+          details: { document_amount: 858.8, document_currency: "USD" },
+        },
+        {
+          kind: "visa",
+          title: "ETA",
+          supplier: null,
+          confirmation_ref: null,
+          start_at: null,
+          end_at: null,
+          amount: null,
+          details: {},
+        },
+      ],
+      travelers: [],
+    });
+    assert.equal(kept.items[0].amount, null);
+    assert.equal(kept.items[0].details?.document_amount, 858.8);
+    assert.equal(kept.items[0].details?.document_currency, "USD");
+    assert.equal(kept.currency, "EUR");
+    assert.equal(kept.items[1].details?.document_amount, undefined);
+  });
 });
 
 describe("inferAirportIata", () => {

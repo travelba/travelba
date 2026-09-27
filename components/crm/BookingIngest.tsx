@@ -540,10 +540,12 @@ export function BookingIngest({
 
   function patch<K extends keyof BookingExtract>(key: K, value: BookingExtract[K]) {
     if (key === "title") titleEdited.current = true;
+    setIssues([]);
     setExtract((prev) => (prev ? { ...prev, [key]: value } : prev));
   }
 
   function patchItem(index: number, next: ItemDraft) {
+    setIssues([]);
     setExtract((prev) => {
       if (!prev) return prev;
       const items = [...prev.items];
@@ -556,6 +558,21 @@ export function BookingIngest({
     extract?.items.some((item) => item.details?.needs_review) ||
       (extract && !extract.items.length)
   );
+  const liveIssues = useMemo(() => {
+    if (!extract) return [];
+    return collectExtractIssues(extract, {
+      customerId,
+      requireCustomer: role === "admin" && mode === "create",
+    });
+  }, [extract, customerId, role, mode]);
+  const priceIssues = liveIssues.filter((issue) => issue.field.endsWith("document_amount"));
+  const shownIssues = useMemo(() => {
+    const merged = [...liveIssues];
+    for (const issue of issues) {
+      if (!merged.some((row) => row.field === issue.field)) merged.push(issue);
+    }
+    return merged;
+  }, [liveIssues, issues]);
 
   const sources = useMemo(() => {
     const names = new Set(
@@ -786,7 +803,10 @@ export function BookingIngest({
               <select
                 required
                 value={customerId}
-                onChange={(event) => setCustomerId(event.target.value)}
+                onChange={(event) => {
+                  setIssues([]);
+                  setCustomerId(event.target.value);
+                }}
                 className={fieldControlClass}
               >
                 <option value="">Choisir…</option>
@@ -1030,11 +1050,27 @@ export function BookingIngest({
             })}
           </div>
 
+          {priceIssues.length ? (
+            <div
+              className="rounded-2xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]"
+              role="alert"
+            >
+              <p className="font-semibold">
+                Indiquez le prix du document sur chaque hôtel, vol et transfert. Le prix vendu peut rester vide.
+              </p>
+              <ul className="mt-1 list-disc pl-4">
+                {priceIssues.map((issue) => (
+                  <li key={issue.field}>{issue.message}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
           <button
             type="button"
-            disabled={busy !== "idle" || extract.document_status === "identity"}
+            disabled={busy !== "idle" || liveIssues.length > 0}
             onClick={() => void save()}
-            className="admin-af-btn rounded-full px-5 py-2.5 text-sm"
+            className="admin-af-btn rounded-full px-5 py-2.5 text-sm disabled:opacity-50"
           >
             {busy === "save"
               ? "Enregistrement…"
@@ -1045,7 +1081,7 @@ export function BookingIngest({
         </div>
       ) : null}
 
-      <IssuesList issues={issues} />
+      <IssuesList issues={shownIssues} />
       {error && !issues.length ? (
         <p className="flex items-start gap-2 text-sm text-accent">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />

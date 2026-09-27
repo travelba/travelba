@@ -494,6 +494,72 @@ describe("mergeBookingSuggestions + decideEmailIngestAction", () => {
     });
     assert.equal(decision.kind, "review");
   });
+
+  it("hôtel ou vol sans prix document → review, même si le prix vendu est saisi", () => {
+    const base = {
+      suggestedCustomerId: "c-alb",
+      suggestedBookingId: "b-tlv",
+      candidates: [
+        {
+          customer_id: "c-alb",
+          booking_id: "b-tlv",
+          label: "TB-2026-0033 — Tel Aviv",
+          reason: "Nom, destination et dates",
+          score: 88,
+        },
+      ],
+    };
+    const missing = decideEmailIngestAction({
+      ...base,
+      extract: extractWith({
+        destination: "Tel Aviv",
+        start_date: "2026-12-14",
+        items: [
+          {
+            kind: "hotel",
+            title: "Dan",
+            supplier: null,
+            confirmation_ref: null,
+            start_at: "2026-12-14",
+            end_at: null,
+            amount: 400,
+            details: {},
+          },
+        ],
+      }),
+    });
+    assert.equal(missing.kind, "review");
+    const ready = decideEmailIngestAction({
+      ...base,
+      extract: extractWith({
+        destination: "Tel Aviv",
+        start_date: "2026-12-14",
+        items: [
+          {
+            kind: "hotel",
+            title: "Dan",
+            supplier: null,
+            confirmation_ref: null,
+            start_at: "2026-12-14",
+            end_at: null,
+            amount: null,
+            details: { document_amount: 858.8, document_currency: "USD" },
+          },
+          {
+            kind: "visa",
+            title: "ETA",
+            supplier: null,
+            confirmation_ref: null,
+            start_at: null,
+            end_at: null,
+            amount: null,
+            details: {},
+          },
+        ],
+      }),
+    });
+    assert.deepEqual(ready, { kind: "apply", bookingId: "b-tlv", customerId: "c-alb" });
+  });
 });
 
 describe("executeEmailIngestDecision", () => {

@@ -1,3 +1,4 @@
+import { documentPriceIssues } from "@/lib/crm/booking-issues";
 import { isCancellationExtract, type BookingExtract } from "@/lib/crm/ingest-types";
 import { findMatchingItem } from "@/lib/crm/item-match";
 import {
@@ -559,6 +560,7 @@ export function cancellationApplyPlan(
 export function decideEmailIngestAction(input: EmailIngestSuggestionInput): EmailIngestDecision {
   const { extract } = input;
   if (extract.document_status === "identity") return { kind: "review" };
+  if (documentPriceIssues(extract).length) return { kind: "review" };
 
   const bookingCandidates = input.candidates.filter((row) => row.booking_id);
   const topBooking = [...bookingCandidates].sort((a, b) => b.score - a.score)[0];

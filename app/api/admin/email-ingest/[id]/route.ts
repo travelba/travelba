@@ -6,6 +6,7 @@ import { applyEditedExtractTitle } from "@/lib/crm/ingest-title";
 import { parseExtractPayloadSafe } from "@/lib/crm/ingest-types";
 import {
   applyExtractToBooking,
+  parseExtractPayload,
   persistNewBookingFromExtract,
 } from "@/lib/crm/ingest-booking";
 import { loadEmailIngestFiles, rematchEmailIngestRow } from "@/lib/crm/email-ingest";
@@ -21,7 +22,13 @@ export async function POST(request: Request, ctx: Ctx) {
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
 
-  let body: { action?: string; customer_id?: string; booking_id?: string; title?: string };
+  let body: {
+    action?: string;
+    customer_id?: string;
+    booking_id?: string;
+    title?: string;
+    extract?: unknown;
+  };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -59,16 +66,17 @@ export async function POST(request: Request, ctx: Ctx) {
     }
 
     const editedTitle = typeof body.title === "string" ? body.title.trim() : null;
+    const baseExtract = body.extract ?? row.extract;
     const storedExtract =
       editedTitle != null
         ? applyEditedExtractTitle(
-            row.extract && typeof row.extract === "object" && !Array.isArray(row.extract)
-              ? (row.extract as Record<string, unknown>)
+            baseExtract && typeof baseExtract === "object" && !Array.isArray(baseExtract)
+              ? (baseExtract as Record<string, unknown>)
               : {},
             editedTitle
           )
-        : row.extract;
-    if (editedTitle) {
+        : baseExtract;
+    if (editedTitle && !body.extract) {
       await admin.from("crm_email_ingest").update({ extract: storedExtract }).eq("id", id);
     }
     if (action === "save_title") {
@@ -76,8 +84,11 @@ export async function POST(request: Request, ctx: Ctx) {
       return NextResponse.json({ ok: true });
     }
 
-    const extract = parseExtractPayloadSafe(storedExtract);
+    const extract = body.extract
+      ? parseExtractPayload(storedExtract)
+      : parseExtractPayloadSafe(storedExtract);
     const files = await loadEmailIngestFiles(row);
+    const extractPatch = body.extract ? { extract } : {};
 
     if (action === "attach_booking") {
       const bookingId = String(body.booking_id || "");
@@ -98,7 +109,7 @@ export async function POST(request: Request, ctx: Ctx) {
       });
       await admin
         .from("crm_email_ingest")
-        .update({ status: "attached", created_booking_id: bookingId })
+        .update({ status: "attached", created_booking_id: bookingId, ...extractPatch })
         .eq("id", id);
       return NextResponse.json({ ok: true, booking_id: bookingId });
     }
@@ -117,7 +128,7 @@ export async function POST(request: Request, ctx: Ctx) {
       });
       await admin
         .from("crm_email_ingest")
-        .update({ status: "attached", created_booking_id: booking.id })
+        .update({ status: "attached", created_booking_id: booking.id, ...extractPatch })
         .eq("id", id);
       return NextResponse.json({ ok: true, booking_id: booking.id });
     }
