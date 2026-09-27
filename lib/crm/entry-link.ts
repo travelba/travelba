@@ -1,5 +1,6 @@
 import { randomInt } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { SET_PASSWORD_PATH, shouldForcePasswordSetup } from "./session";
 
 const ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 
@@ -51,16 +52,51 @@ export function isLinkCrawler(userAgent: string | null) {
   return CRAWLER.test(userAgent || "");
 }
 
+export type PreviewNavigation = {
+  mode?: string | null;
+  dest?: string | null;
+  site?: string | null;
+};
+
 /**
- * Le robot d’aperçu (WhatsApp/…, facebookexternalhit) reste sur la page.
- * Un navigateur, même ouvert depuis WhatsApp, entre dans l’espace.
+ * Le GET sert toujours l’aperçu. Le script de la page poste ensuite.
+ * On ne redirige plus au GET : le robot suivrait et consommerait le jeton.
  */
-export function shouldServePreview(userAgent: string | null, _secFetchUser: string | null) {
-  const ua = userAgent || "";
-  if (/^WhatsApp\//i.test(ua.trim())) return true;
-  return /facebookexternalhit|facebot|meta-externalagent|twitterbot|linkedinbot|slackbot|telegrambot|discordbot|embedly|skypeuripreview|iframely|pinterest|redditbot|vkshare/i.test(
-    ua
-  );
+export function shouldServePreview(
+  _userAgent: string | null,
+  _secFetchUser: string | null,
+  _navigation?: PreviewNavigation | null
+) {
+  return true;
+}
+
+export function storedEntryEmail(value: string | null | undefined) {
+  const email = (value || "").trim().toLowerCase();
+  if (!email || email.length > 320 || /[\s<>]/.test(email)) return null;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
+  return email;
+}
+
+/** Après la session. Jamais /connexion : le lien court ouvre l’espace ou le mot de passe. */
+export function entryDestination(input: {
+  nextPath: string | null | undefined;
+  otpType: string | null | undefined;
+  staff: boolean;
+  mustSetPassword: boolean;
+}) {
+  const next = safeNextPath(input.nextPath);
+  if (
+    shouldForcePasswordSetup({
+      flagged: input.mustSetPassword,
+      type: safeOtpType(input.otpType),
+      next,
+    })
+  ) {
+    return SET_PASSWORD_PATH;
+  }
+  if (next.startsWith("/admin") && input.staff) return next;
+  if (next.split("?")[0] === "/connexion") return "/mon-compte";
+  return next;
 }
 
 export function entryOpenRequested(search: string) {
@@ -130,7 +166,12 @@ function previewImage(image: string | null | undefined) {
   }
 }
 
-export function entryPreviewHtml(origin: string, code: string, stay?: EntryPreview | null) {
+export function entryPreviewHtml(
+  origin: string,
+  code: string,
+  stay?: EntryPreview | null,
+  enter = true
+) {
   const base = origin.replace(/\/$/, "");
   const page = entryLinkUrl(base, code);
   const title = escapeHtml((stay?.title || ENTRY_PREVIEW_TITLE).trim());
@@ -171,6 +212,7 @@ ${imageTags}
 <input type="hidden" name="ouvrir" value="1">
 <button type="submit" style="background:#C5A880;color:#0B192C;border:0;padding:14px 22px;font:inherit;cursor:pointer">Ouvrir mon espace</button>
 </form>
+${enter ? `<script>document.forms[0].submit()</script>` : ""}
 </body>
 </html>`;
 }
@@ -178,10 +220,11 @@ ${imageTags}
 export async function createEntryLink(
   supabase: SupabaseClient,
   origin: string,
-  input: { tokenHash: string; otpType: string; nextPath: string }
+  input: { tokenHash: string; otpType: string; nextPath: string; email?: string | null; showCover?: boolean }
 ) {
   const otpType = safeOtpType(input.otpType);
   const nextPath = safeNextPath(input.nextPath);
+  const email = storedEntryEmail(input.email);
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const code = entryCode();
     const { error } = await supabase.from("crm_entry_links").insert({
@@ -189,6 +232,8 @@ export async function createEntryLink(
       token_hash: input.tokenHash,
       otp_type: otpType,
       next_path: nextPath,
+      email,
+      show_cover: input.showCover === true,
     });
     if (!error) return entryLinkUrl(origin, code);
     if (!/duplicate|unique/i.test(error.message)) throw new Error("Lien court indisponible");

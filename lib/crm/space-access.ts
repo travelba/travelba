@@ -39,6 +39,7 @@ export async function sendSpaceAccessWhatsapp(input: {
     tokenHash,
     otpType: SPACE_ACCESS_OTP,
     nextPath: spaceAccessNextPath(phone),
+    email,
   });
   const whatsapp = await sendConnexionWhatsapp({
     phone,

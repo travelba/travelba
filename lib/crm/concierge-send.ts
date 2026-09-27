@@ -18,8 +18,12 @@ import {
   planMissingPieceNotices,
   planPiecesNotices,
   liveStayCover,
+  noticeCardTemplate,
+  pieceCardTemplate,
   planStayNotice,
+  stayCoverUrl,
   stayHasPublishedCover,
+  stayPlaceName,
   type ConciergeTemplate,
   type PieceStamp,
 } from "./concierge-notices";
@@ -56,10 +60,11 @@ function quiet(err: unknown) {
   console.error("[concierge]", message.replace(/https?:\/\/\S+/g, "").slice(0, 180));
 }
 
-async function buttonSuffix(admin: Admin, email: string, path: string) {
+async function buttonSuffix(admin: Admin, email: string, path: string, showCover = false) {
+  const cleanEmail = email.trim().toLowerCase();
   const generated = await admin.auth.admin.generateLink({
     type: "magiclink",
-    email: email.trim().toLowerCase(),
+    email: cleanEmail,
   });
   const tokenHash = generated.data?.properties?.hashed_token;
   if (generated.error || !tokenHash) return null;
@@ -67,6 +72,8 @@ async function buttonSuffix(admin: Admin, email: string, path: string) {
     tokenHash,
     otpType: "magiclink",
     nextPath: path,
+    email: cleanEmail,
+    showCover,
   });
   const code = entryCodeFromLink(link);
   if (!code) return null;
@@ -173,22 +180,60 @@ async function deliverTemplate(admin: Admin, input: {
   mediaUrl?: string | null;
   variable?: string | null;
   sentDedupe?: string;
+  card?: ConciergeTemplate | null;
 }) {
-  const contentSid = conciergeContentSid(input.template);
-  if (!contentSid || !input.customer.email || !input.customer.phone || !proactiveWhatsappAllowed(input.customer)) {
+  if (!input.customer.email || !input.customer.phone || !proactiveWhatsappAllowed(input.customer)) {
     return;
   }
-  const suffix = await buttonSuffix(admin, input.customer.email, input.path);
-  const variables = suffix
-    ? conciergeContentVariables({
-        template: input.template,
-        buttonSuffix: suffix,
-        place: input.place,
-        reference: input.reference,
-        mediaUrl: input.mediaUrl,
-        variable: input.variable,
-      })
-    : null;
+  const suffix = await buttonSuffix(
+    admin,
+    input.customer.email,
+    input.path,
+    input.template === "sejour"
+  );
+  if (!suffix) {
+    await markResult(admin, input.row.id, { ok: false, reason: "rejected", detail: "lien absent" });
+    return;
+  }
+  const cardSid = input.card ? conciergeContentSid(input.card) : "";
+  const cardVariables =
+    input.card && cardSid
+      ? conciergeContentVariables({
+          template: input.card,
+          buttonSuffix: suffix,
+          place: input.place,
+          reference: input.reference,
+          mediaUrl: input.mediaUrl,
+          variable: input.variable,
+        })
+      : null;
+  if (input.card && cardVariables && cardSid) {
+    if (input.body !== input.row.body) {
+      await admin.from("crm_whatsapp_messages").update({ body: input.body, template_key: input.card }).eq("id", input.row.id);
+    }
+    const cardResult = await sendContentTemplate({
+      phone: input.customer.phone,
+      contentSid: cardSid,
+      variables: cardVariables,
+    });
+    if (cardResult.ok) {
+      await markResult(admin, input.row.id, cardResult, {
+        dedupeKey: input.sentDedupe,
+        templateKey: input.card,
+      });
+      return;
+    }
+  }
+  const contentSid = conciergeContentSid(input.template);
+  if (!contentSid) return;
+  const variables = conciergeContentVariables({
+    template: input.template,
+    buttonSuffix: suffix,
+    place: input.place,
+    reference: input.reference,
+    mediaUrl: input.mediaUrl,
+    variable: input.variable,
+  });
   if (!variables) {
     await markResult(admin, input.row.id, { ok: false, reason: "rejected", detail: "lien absent" });
     return;
@@ -207,6 +252,12 @@ async function deliverTemplate(admin: Admin, input: {
     result,
     result.ok ? { dedupeKey: input.sentDedupe, templateKey: input.template } : undefined
   );
+}
+
+async function bookingCover(booking: { reference: string; destination: string | null; title: string | null; cover_image_path: string | null }) {
+  const place = stayPlaceName(booking.destination, booking.title);
+  const url = stayHasPublishedCover(booking) ? stayCoverUrl(booking.reference, true) : null;
+  return { place, mediaUrl: await liveStayCover(url) };
 }
 
 async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
@@ -267,6 +318,7 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       await dropQueue(admin, row.id);
       return;
     }
+    const cover = await bookingCover(booking);
     await deliverTemplate(admin, {
       row,
       customer,
@@ -276,6 +328,8 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       place: plan.place,
       reference: booking.reference,
       variable: plan.variable,
+      mediaUrl: cover.mediaUrl,
+      card: pieceCardTemplate(plan),
       sentDedupe: `pieces-sent:${booking.id}:${pieces[0].at}`,
     });
     return;
@@ -288,6 +342,7 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       await dropQueue(admin, row.id);
       return;
     }
+    const cover = await bookingCover(booking);
     await deliverTemplate(admin, {
       row,
       customer,
@@ -295,6 +350,10 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       path: plan.path,
       body: plan.body,
       variable: plan.variable,
+      place: cover.place,
+      reference: booking.reference,
+      mediaUrl: cover.mediaUrl,
+      card: noticeCardTemplate(plan.template),
     });
     return;
   }
@@ -306,6 +365,7 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       await dropQueue(admin, row.id);
       return;
     }
+    const cover = await bookingCover(booking);
     await deliverTemplate(admin, {
       row,
       customer,
@@ -313,6 +373,10 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       path: plan.path,
       body: plan.body,
       variable: plan.variable,
+      place: cover.place,
+      reference: booking.reference,
+      mediaUrl: cover.mediaUrl,
+      card: noticeCardTemplate(plan.template),
     });
   }
 }

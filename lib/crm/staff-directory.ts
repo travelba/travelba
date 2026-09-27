@@ -238,6 +238,7 @@ export async function addColleague(
       tokenHash: hashedToken,
       otpType: linkType,
       nextPath: "/admin",
+      email,
     });
   } catch (err) {
     await writeAppMetadata(admin, authUser.id, previousMeta, previousUserMeta);
