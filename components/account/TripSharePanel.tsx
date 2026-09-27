@@ -9,12 +9,17 @@ export function TripSharePanel({
   shareUrl,
   companions,
   preview = false,
+  canSend = true,
+  sendUrl,
 }: {
   bookingId: string;
   shareUrl: string;
   companions: ShareCompanion[];
   /** Aperçu local : le clic n’appelle pas WhatsApp. */
   preview?: boolean;
+  /** Faux : le client n’a pas de téléphone, l’envoi reste bloqué. */
+  canSend?: boolean;
+  sendUrl?: string;
 }) {
   const [copied, setCopied] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
@@ -41,7 +46,7 @@ export function TripSharePanel({
       return;
     }
     try {
-      const response = await fetch(`/api/client/bookings/${bookingId}/partage`, {
+      const response = await fetch(sendUrl || `/api/client/bookings/${bookingId}/partage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ companion_id: companion.companionId }),
@@ -94,7 +99,11 @@ export function TripSharePanel({
             return (
               <li key={companion.travelerId} className="rounded-2xl bg-[#f7f5f0] px-3 py-2.5">
                 <p className="text-sm font-semibold text-[var(--admin-navy)]">{name}</p>
-                {companion.hasPhone && companion.companionId ? (
+                {!canSend ? (
+                  <p className="mt-1 text-sm text-muted">
+                    Ajoutez un téléphone dans Vous pour envoyer ce lien.
+                  </p>
+                ) : companion.hasPhone && companion.companionId ? (
                   <button
                     type="button"
                     disabled={Boolean(sendingId)}

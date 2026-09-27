@@ -186,6 +186,23 @@ export function BookingItemsPanel({
     return () => onBindRef.current?.(null);
   }, []);
 
+  async function setCardVisible(item: CrmBookingItem, visible: boolean) {
+    setBusy(true);
+    setError(null);
+    const res = await fetch(`/api/admin/bookings/${bookingId}/items`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: item.id, visible_to_client: visible }),
+    });
+    const json = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!res.ok) {
+      setError(json.error || "La carte n’a pas pu être masquée.");
+      return;
+    }
+    router.refresh();
+  }
+
   async function removeItem(id: string) {
     setBusy(true);
     await fetch(`/api/admin/bookings/${bookingId}/items?itemId=${encodeURIComponent(id)}`, {
@@ -335,6 +352,14 @@ export function BookingItemsPanel({
                     onClick={() => startEdit(item)}
                   >
                     Modifier
+                  </button>
+                  <button
+                    type="button"
+                    className="text-xs font-semibold text-[var(--admin-navy)]"
+                    disabled={busy}
+                    onClick={() => void setCardVisible(item, !item.visible_to_client)}
+                  >
+                    {item.visible_to_client ? "Masquer" : "Afficher"}
                   </button>
                   <button
                     type="button"

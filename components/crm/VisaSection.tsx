@@ -1,8 +1,10 @@
 "use client";
 
 import { VisaJourney } from "@/components/crm/VisaJourney";
-import type { ClientVisaStep } from "@/lib/crm/visa-flow";
+import { VisaRunPanel } from "@/components/admin/VisaRunPanel";
+import { journeyStarted, readEstaAnswers, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import type { FrenchPassportTrip } from "@/lib/crm/visa-trip";
+import type { VisaCorridor } from "@/lib/crm/visa-fees";
 import type { CrmBookingTraveler, CrmTravelDocument } from "@/lib/crm/types";
 
 type VisaRequest = {
@@ -10,6 +12,7 @@ type VisaRequest = {
   step?: ClientVisaStep | null;
   status?: string | null;
   accepted_at?: string | null;
+  answers?: Partial<EstaAnswers> | null;
 };
 
 export function VisaSection({
@@ -40,6 +43,27 @@ export function VisaSection({
       {variant === "admin" ? (
         <p className="text-[10px] font-bold tracking-[0.14em] text-[var(--admin-gold)] uppercase">Visa</p>
       ) : null}
+      {variant === "admin"
+        ? trip.entries
+            .filter((entry): entry is typeof entry & { iso: VisaCorridor } =>
+              entry.iso === "IL" || entry.iso === "US" || entry.iso === "GB"
+            )
+            .map((entry) => {
+              const request = requests.find((row) => row.country === entry.iso);
+              if (!journeyStarted(request)) return null;
+              return (
+                <VisaRunPanel
+                  key={`${entry.iso}-${request?.step || ""}-${request?.accepted_at || ""}`}
+                  bookingId={bookingId}
+                  country={entry.iso}
+                  step={request?.step}
+                  acceptedAt={request?.accepted_at}
+                  initialAnswers={readEstaAnswers(request?.answers)}
+                  pliantReady={pliantReady}
+                />
+              );
+            })
+        : null}
       <VisaJourney
         variant={variant}
         bookingId={bookingId}

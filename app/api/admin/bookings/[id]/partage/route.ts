@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireCustomer } from "@/lib/crm/auth";
+import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { tripHeadline } from "@/lib/crm/carnet";
 import { planTripShareSend, sendTripShareWhatsapp, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
@@ -9,9 +9,9 @@ import type { CrmBooking } from "@/lib/crm/types";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-/** Le clic du voyageur principal envoie le lien. Rien ne part à la publication. */
+/** L’agence envoie le lien à un accompagnateur. Rien ne part tout seul. */
 export async function POST(request: Request, ctx: Ctx) {
-  const auth = await requireCustomer();
+  const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
   const body = await request.json().catch(() => null);
@@ -22,13 +22,11 @@ export async function POST(request: Request, ctx: Ctx) {
     .from("crm_bookings")
     .select("id, title, destination, visible_to_client, customer_id")
     .eq("id", id)
-    .eq("customer_id", auth.customer.id)
     .maybeSingle();
-  const booking = data as Pick<CrmBooking, "id" | "title" | "destination" | "visible_to_client"> | null;
+  const booking = data as
+    | Pick<CrmBooking, "id" | "title" | "destination" | "visible_to_client" | "customer_id">
+    | null;
   if (!booking?.visible_to_client) return jsonError("Ce voyage n’est pas publié", 404);
-  if (!auth.customer.phone?.trim()) {
-    return jsonError("Ajoutez un téléphone dans Vous pour envoyer ce lien.");
-  }
 
   let admin;
   try {
@@ -47,7 +45,7 @@ export async function POST(request: Request, ctx: Ctx) {
     auth.supabase
       .from("crm_travel_companions")
       .select("id, first_name, phone")
-      .eq("customer_id", auth.customer.id),
+      .eq("customer_id", booking.customer_id),
   ]);
 
   const plan = planTripShareSend({

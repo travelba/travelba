@@ -109,7 +109,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
   if (!itemId) return jsonError("id requis");
   const { data: current, error: currentError } = await auth.supabase
     .from("crm_booking_items")
-    .select("kind, amount")
+    .select("kind, amount, details")
     .eq("id", itemId)
     .eq("booking_id", bookingId)
     .maybeSingle();
@@ -136,6 +136,18 @@ export async function PATCH(request: Request, ctx: Ctx) {
   }
   if (body.sort_order != null) patch.sort_order = Number(body.sort_order);
   if ("details" in body) patch.details = body.details || {};
+  if ("visible_to_client" in body) {
+    const visible = Boolean(body.visible_to_client);
+    patch.visible_to_client = visible;
+    const base =
+      patch.details && typeof patch.details === "object"
+        ? (patch.details as Record<string, unknown>)
+        : ((current.details as Record<string, unknown> | null) || {});
+    const details = { ...base };
+    if (visible) delete details.client_hidden;
+    else details.client_hidden = true;
+    patch.details = details;
+  }
   if ("billing_company_id" in body) {
     const company = await billingCompanyPatch(auth.supabase, bookingId, body.billing_company_id);
     if ("error" in company && company.error) return jsonError(company.error);

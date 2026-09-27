@@ -103,6 +103,10 @@ export async function POST(request: Request, ctx: Ctx) {
   });
   if (block) return jsonError(block);
 
+  if (!b.visible_to_client && !auth.customer.phone?.trim()) {
+    return jsonError("Ajoutez un téléphone dans Vous avant d’ouvrir ce séjour.");
+  }
+
   const service = createServiceClient();
   const opened = visibilityOnRequest({
     visible: b.visible_to_client,

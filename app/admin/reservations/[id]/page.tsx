@@ -8,6 +8,10 @@ import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { readEstaAnswers, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import { pliantConfigured } from "@/lib/crm/pliant";
 import { formatDateRangeShort } from "@/lib/crm/money";
+import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
+import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
+import { createServiceClient } from "@/lib/supabase/admin";
+import { siteConfig } from "@/lib/site";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import { StayBillingChoice } from "@/components/crm/StayBillingChoice";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
@@ -81,6 +85,17 @@ export default async function AdminBookingPage({ params }: Props) {
   const allIdentity = (identityDocs || []) as CrmTravelDocument[];
   const bookingItems = await loadHotelContacts(id, (items || []) as CrmBookingItem[]);
   const bookingTravelers = (travelers || []) as CrmBookingTraveler[];
+  const shareCompanions = companionsForShare(bookingTravelers, (companions || []) as CrmCompanion[]);
+  let shareUrl: string | null = null;
+  if (b.visible_to_client) {
+    try {
+      const shareAdmin = createServiceClient();
+      const shareCode = await ensureTripShareCode(shareAdmin, b.id);
+      if (shareCode) shareUrl = tripShareUrl(siteConfig.url, shareCode);
+    } catch {
+      shareUrl = null;
+    }
+  }
 
   return (
     <div>
@@ -145,6 +160,8 @@ export default async function AdminBookingPage({ params }: Props) {
             })
           )}
           pliantReady={pliantConfigured()}
+          shareUrl={shareUrl}
+          shareCompanions={shareCompanions}
         />
       </div>
     </div>

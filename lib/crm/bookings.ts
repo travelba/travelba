@@ -12,7 +12,7 @@ import {
   type CrmTransaction,
 } from "@/lib/crm/types";
 import { itemTicketCount } from "@/lib/crm/item-match";
-import { hotelDisplayName } from "@/lib/crm/carnet";
+import { hotelDisplayName, keptHiddenFromClient } from "@/lib/crm/carnet";
 import {
   ticketingFeeAmount,
   ticketingFeeExternalId,
@@ -479,15 +479,40 @@ export async function setCarnetPublished(
     .eq("id", bookingId);
   if (bookingError) throw new Error(bookingError.message);
   if (!visible) return;
-  const { error: itemsError } = await supabase
+  const { data: rows, error: rowsError } = await supabase
     .from("crm_booking_items")
-    .update({ visible_to_client: true })
+    .select("id, details")
     .eq("booking_id", bookingId);
-  if (itemsError) throw new Error(itemsError.message);
-  const { error: docsError } = await supabase
+  if (rowsError) throw new Error(rowsError.message);
+  const hiddenIds = new Set(
+    ((rows || []) as { id: string; details?: Record<string, unknown> | null }[])
+      .filter((row) => keptHiddenFromClient(row.details))
+      .map((row) => row.id)
+  );
+  const revealIds = ((rows || []) as { id: string }[])
+    .map((row) => row.id)
+    .filter((id) => !hiddenIds.has(id));
+  if (revealIds.length) {
+    const { error: itemsError } = await supabase
+      .from("crm_booking_items")
+      .update({ visible_to_client: true })
+      .in("id", revealIds);
+    if (itemsError) throw new Error(itemsError.message);
+  }
+  const { data: docs, error: docsLookupError } = await supabase
     .from("crm_booking_documents")
-    .update({ visible_to_client: true })
+    .select("id, booking_item_id")
     .eq("booking_id", bookingId);
-  if (docsError) throw new Error(docsError.message);
+  if (docsLookupError) throw new Error(docsLookupError.message);
+  const revealDocs = ((docs || []) as { id: string; booking_item_id?: string | null }[])
+    .filter((doc) => !doc.booking_item_id || !hiddenIds.has(doc.booking_item_id))
+    .map((doc) => doc.id);
+  if (revealDocs.length) {
+    const { error: docsError } = await supabase
+      .from("crm_booking_documents")
+      .update({ visible_to_client: true })
+      .in("id", revealDocs);
+    if (docsError) throw new Error(docsError.message);
+  }
 }
 

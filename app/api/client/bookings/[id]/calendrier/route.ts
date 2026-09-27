@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireCustomer } from "@/lib/crm/auth";
 import { buildBookingIcs, icsFileName, icsHttpHeaders } from "@/lib/crm/calendar-ics";
-import { carnetVisible } from "@/lib/crm/carnet";
+import { carnetVisible, clientVisibleItems } from "@/lib/crm/carnet";
 import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -28,8 +28,10 @@ export async function GET(request: Request, ctx: Ctx) {
     .order("sort_order");
   const list = (items || []) as CrmBookingItem[];
   if (!carnetVisible(b, list)) return jsonError("Séjour introuvable", 404);
+  const visible = clientVisibleItems(list);
+  if (itemId && !visible.some((row) => row.id === itemId)) return jsonError("Séjour introuvable", 404);
 
-  const ics = buildBookingIcs({ booking: b, items: list, itemId });
+  const ics = buildBookingIcs({ booking: b, items: visible, itemId });
   if (!ics.includes("BEGIN:VEVENT")) {
     return jsonError("Aucune date à ajouter à l’agenda.", 400);
   }

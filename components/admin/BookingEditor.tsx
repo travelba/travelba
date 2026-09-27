@@ -16,10 +16,12 @@ import {
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { BusyBar } from "@/components/crm/BusyBar";
-import { formatMoney, jMinusLabel } from "@/lib/crm/money";
+import { formatMoney, jMinusLabel, todayIsoDate } from "@/lib/crm/money";
+import { PassportCoffre } from "@/components/crm/PassportCoffre";
+import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { bookingTotalFromItems } from "@/lib/crm/bookings";
 import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
-import { coverQuery } from "@/lib/crm/carnet";
+import { coverQuery, flightCardTitle, hotelDisplayName, keptHiddenFromClient } from "@/lib/crm/carnet";
 import { unsplashKeywordMatch } from "@/lib/crm/covers";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { BookingHero } from "@/components/crm/BookingHero";
@@ -32,17 +34,17 @@ import { PlaceField } from "@/components/crm/PlaceField";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
 import { TripPassportPicker } from "@/components/crm/TripPassportPicker";
-import { VisaRunPanel } from "@/components/admin/VisaRunPanel";
-import type { VisaCorridor } from "@/lib/crm/visa-fees";
 import { VisaSection } from "@/components/crm/VisaSection";
 import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
 import { IssuesList } from "@/components/crm/IssuesList";
 import { collectPublishIssues, issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
 import { householdMembers } from "@/lib/crm/household";
 import { bookingHasFlight, findVisaExtra, type ServiceRefusal } from "@/lib/crm/extras";
-import { journeyStarted, readEstaAnswers, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
+import { type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import type { FrenchPassportTrip } from "@/lib/crm/visa-trip";
 import { reusableDocumentsForTraveler, tripDocumentsForTraveler } from "@/lib/crm/trip-documents";
+import { TripSharePanel } from "@/components/account/TripSharePanel";
+import type { ShareCompanion } from "@/lib/crm/trip-share";
 import { CustomerPickField } from "@/components/admin/CustomerPickField";
 import { customerBillingPickLabel, customerTravelerPickLabel } from "@/lib/crm/customer-search";
 import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
@@ -62,6 +64,8 @@ export function BookingEditor({
   refusals = [],
   visaRequests = [],
   pliantReady = false,
+  shareUrl = null,
+  shareCompanions = [],
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -83,6 +87,8 @@ export function BookingEditor({
     answers?: Partial<EstaAnswers> | null;
   }[];
   pliantReady?: boolean;
+  shareUrl?: string | null;
+  shareCompanions?: ShareCompanion[];
 }) {
   const router = useRouter();
   const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
@@ -100,6 +106,7 @@ export function BookingEditor({
   const arrival = coverQuery(booking.destination, booking.title);
   const coverPlace = arrival === "voyage" ? "" : arrival;
   const [flash, setFlash] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<null | "publish" | "unpublish">(null);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
   const account = customer;
   const holderProfile = {
@@ -341,6 +348,26 @@ export function BookingEditor({
     router.refresh();
   }
 
+  const revealItems = items.filter(
+    (item) =>
+      !keptHiddenFromClient(item.details) &&
+      item.kind !== "fee" &&
+      !isLedgerExpenseKind(item.kind) &&
+      (!booking.visible_to_client || !item.visible_to_client)
+  );
+  const revealDocs = documents.filter((doc) => {
+    if (booking.visible_to_client && doc.visible_to_client) return false;
+    if (!doc.booking_item_id) return true;
+    const linked = items.find((item) => item.id === doc.booking_item_id);
+    return !linked || !keptHiddenFromClient(linked.details);
+  });
+
+  function cardName(item: CrmBookingItem) {
+    if (item.kind === "hotel") return hotelDisplayName(item);
+    if (item.kind === "flight" || item.kind === "rail") return flightCardTitle(item);
+    return item.title;
+  }
+
   return (
     <div className="space-y-6">
       <BookingHero booking={booking} priority className="rounded-3xl">
@@ -399,32 +426,12 @@ export function BookingEditor({
 
       <section className="admin-af-card flex flex-col gap-3 rounded-3xl p-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0 flex-1 space-y-3">
-          {bookingHasFlight(items)
-            ? formalities.entries
-                .filter((entry): entry is typeof entry & { iso: VisaCorridor } =>
-                  entry.iso === "IL" || entry.iso === "US" || entry.iso === "GB"
-                )
-                .map((entry) => {
-                  const request = visaRequests.find((row) => row.country === entry.iso);
-                  return (
-                    <VisaRunPanel
-                      key={`${entry.iso}-${request?.step || "none"}-${request?.status || ""}-${request?.accepted_at || ""}`}
-                      bookingId={booking.id}
-                      country={entry.iso}
-                      step={journeyStarted(request) ? request?.step : null}
-                      acceptedAt={request?.accepted_at}
-                      initialAnswers={readEstaAnswers(request?.answers)}
-                      pliantReady={pliantReady}
-                    />
-                  );
-                })
-            : null}
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">Carnet client</p>
           <p className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">
             {booking.visible_to_client ? "Visible dans l’espace" : "Masqué — invisible au client"}
           </p>
           <p className="text-sm text-muted">
-            Enregistrer ne publie pas. L’interrupteur rend le carnet visible dans l’espace client.
+            Enregistrer ne publie pas. Publier montre au client les cartes qui ne sont pas masquées.
           </p>
           {unpublishedItems.length > 0 && booking.visible_to_client ? (
             <p className="mt-2 rounded-2xl bg-[var(--admin-peach)] px-3 py-2 text-sm">
@@ -448,32 +455,98 @@ export function BookingEditor({
             type="submit"
             form="booking-meta"
             disabled={busy !== "idle"}
-            className="admin-tap rounded-full border border-border px-4 py-2 text-sm font-semibold disabled:opacity-50"
+            className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm disabled:opacity-50"
           >
             {busy === "save" ? "Enregistrement…" : "Enregistrer"}
           </button>
-          <label className="admin-tap flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-semibold">
-            <input
-              type="checkbox"
-              checked={booking.visible_to_client}
-              disabled={busy !== "idle"}
-              onChange={(event) => void setPublished(event.target.checked)}
-            />
-            Visible dans l’espace
-          </label>
-          {booking.visible_to_client && unpublishedItems.length > 0 ? (
+          {booking.visible_to_client ? (
             <button
               type="button"
               disabled={busy !== "idle"}
-              onClick={() => void setPublished(true)}
-              className="admin-af-btn rounded-full px-4 py-2 text-sm disabled:opacity-50"
+              onClick={() => setConfirm("unpublish")}
+              className="admin-tap rounded-full border border-border px-4 py-2 text-sm font-semibold disabled:opacity-50"
             >
-              {busy === "publish" ? "Publication…" : "Publier les mises à jour"}
+              Retirer le carnet
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={busy !== "idle"}
+              onClick={() => setConfirm("publish")}
+              className="admin-tap rounded-full border border-[var(--admin-gold)] bg-[#f8f4ed] px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
+            >
+              Publier le carnet
+            </button>
+          )}
+          {booking.visible_to_client && unpublishedItems.some((item) => !keptHiddenFromClient(item.details)) ? (
+            <button
+              type="button"
+              disabled={busy !== "idle"}
+              onClick={() => setConfirm("publish")}
+              className="admin-tap rounded-full border border-[var(--admin-gold)] bg-[#f8f4ed] px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
+            >
+              Publier les mises à jour
             </button>
           ) : null}
         </div>
         </div>
       </section>
+
+      {confirm ? (
+        <section className="admin-af-card space-y-3 rounded-3xl border border-[var(--admin-gold)]/50 p-5">
+          <p className="font-display text-lg font-bold text-[var(--admin-navy)]">
+            {confirm === "publish" ? "Publier le carnet" : "Retirer le carnet"}
+          </p>
+          {confirm === "publish" ? (
+            <>
+              <p className="text-sm text-muted">Le client verra ces éléments.</p>
+              <ul className="space-y-1 text-sm text-[var(--admin-navy)]">
+                {revealItems.map((item) => (
+                  <li key={item.id}>{cardName(item)}</li>
+                ))}
+                {revealDocs.map((doc) => (
+                  <li key={doc.id}>{doc.file_name || "Document"}</li>
+                ))}
+                {!revealItems.length && !revealDocs.length ? (
+                  <li>Aucune carte à montrer. Retirez un masquage ou ajoutez une carte.</li>
+                ) : null}
+              </ul>
+            </>
+          ) : (
+            <p className="text-sm text-muted">Le client ne verra plus ce séjour.</p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy !== "idle" || (confirm === "publish" && !revealItems.length)}
+              onClick={() => {
+                const next = confirm === "publish";
+                setConfirm(null);
+                void setPublished(next);
+              }}
+              className="admin-af-btn rounded-full px-4 py-2 text-sm disabled:opacity-50"
+            >
+              {confirm === "publish" ? "Confirmer la publication" : "Retirer de l’espace"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirm(null)}
+              className="rounded-full border border-border px-4 py-2 text-sm font-semibold"
+            >
+              Annuler
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {shareUrl ? (
+        <TripSharePanel
+          bookingId={booking.id}
+          shareUrl={shareUrl}
+          companions={shareCompanions}
+          sendUrl={`/api/admin/bookings/${booking.id}/partage`}
+        />
+      ) : null}
 
       <BookingIngest
         role="admin"
@@ -591,21 +664,15 @@ export function BookingEditor({
         <p className="sm:col-span-2 text-xs text-muted">
           Enregistrer ne publie pas. Le statut confirmé crée le débit au grand livre.
         </p>
-        <div className="sm:col-span-2">
-          <BusyBar active={busy === "save"} label="Enregistrement…" />
-        </div>
-        <button
-          type="submit"
-          disabled={busy !== "idle"}
-          className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm sm:col-span-2 sm:justify-self-start disabled:opacity-50"
-        >
-          {busy === "save" ? "Enregistrement…" : "Enregistrer le dossier"}
-        </button>
       </form>
 
       <section className="admin-af-card space-y-4 rounded-3xl p-5">
         <div>
           <h2 className="mt-1 font-display text-lg font-bold">Voyageurs</h2>
+          <PassportCoffre
+            rows={passportVaultRows(travelers, identityDocs, todayIsoDate(), holderProfile)}
+            hrefFor={() => `/admin/clients/${booking.customer_id}`}
+          />
           <p className="mt-1 text-sm text-muted">
             Le passeport déposé au coffre est repris pour chaque voyageur.
           </p>

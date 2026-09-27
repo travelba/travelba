@@ -44,14 +44,14 @@ export function shouldForcePasswordSetup(opts: {
 }
 
 export function pathAfterPassword(
-  phone: string | null | undefined,
+  _phone: string | null | undefined,
   audience: "client" | "staff" = "client"
 ) {
   if (audience === "staff") return "/admin";
-  return phone?.trim() ? "/mon-compte" : "/mon-compte/profil";
+  return "/mon-compte";
 }
 
-/** Après le mot de passe : bienvenue une fois, puis l’accueil ou la fiche si le téléphone manque. */
+/** Après le mot de passe : bienvenue une fois, puis l’accueil. Le téléphone ne ferme pas le compte. */
 export function destinationAfterPassword(
   meta: Record<string, unknown>,
   phone: string | null | undefined

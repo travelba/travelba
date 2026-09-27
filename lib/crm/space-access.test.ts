@@ -6,6 +6,6 @@ import { SPACE_ACCESS_OTP, spaceAccessNextPath } from "./space-access";
 test("le lien après mot de passe ouvre l’espace", () => {
   assert.equal(SPACE_ACCESS_OTP, "magiclink");
   assert.equal(spaceAccessNextPath("+33601020304"), "/mon-compte");
-  assert.equal(spaceAccessNextPath(""), "/mon-compte/profil");
+  assert.equal(spaceAccessNextPath(""), "/mon-compte");
   assert.notEqual(spaceAccessNextPath("+33601020304"), SET_PASSWORD_PATH);
 });

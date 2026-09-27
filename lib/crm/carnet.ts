@@ -1,6 +1,6 @@
-import type { CrmBooking, CrmBookingDocument, CrmBookingItem } from "@/lib/crm/types";
-import { BOOKING_ITEM_LABELS, isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
-import { formatDateFr, formatMoney } from "@/lib/crm/money";
+import type { BookingStatus, CrmBooking, CrmBookingDocument, CrmBookingItem } from "@/lib/crm/types";
+import { BOOKING_ITEM_LABELS, BOOKING_STATUS_LABELS, isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
+import { formatDateFr, formatMoney, todayIsoDate } from "@/lib/crm/money";
 import { itemTicketCount } from "./item-match";
 
 export function detailStr(item: CrmBookingItem, key: string) {
@@ -318,22 +318,99 @@ export function carnetVisible(
   );
 }
 
+/** Une seule phrase partout où un prix est masqué au client. */
+export const HIDDEN_PRICE_LABEL = "Prix à la publication";
+
 export function itemPriceLabel(
   item: Pick<CrmBookingItem, "kind" | "start_at" | "end_at" | "amount"> & {
     details?: Record<string, unknown> | null;
   },
   currency: string,
-  onDay?: string | null
+  onDay?: string | null,
+  pricesVisible = true
 ) {
   if (item.amount == null || Number.isNaN(Number(item.amount))) return null;
   if (onDay) {
     const first = itemFirstDayKey(item);
     if (first && onDay !== first) return null;
   }
+  if (!pricesVisible) return HIDDEN_PRICE_LABEL;
   const money = formatMoney(Number(item.amount), currency);
   const count = itemTicketCount(item);
   if (count > 1) return `${count} × ${money}`;
   return money;
+}
+
+export function clientVisibleItems<T extends { visible_to_client?: boolean | null }>(items: T[]) {
+  return items.filter((item) => item.visible_to_client !== false);
+}
+
+/** Le client qui voit le carnet ne lit jamais « Brouillon ». */
+export function clientBookingStatusLabel(status: BookingStatus) {
+  if (status === "draft") return "Séjour";
+  return BOOKING_STATUS_LABELS[status];
+}
+
+export function keptHiddenFromClient(details: Record<string, unknown> | null | undefined) {
+  return details?.client_hidden === true;
+}
+
+export function flightAirline(item: Pick<CrmBookingItem, "supplier" | "details">) {
+  const named = detailStr(item as CrmBookingItem, "airline");
+  return named || (item.supplier || "").trim();
+}
+
+export function flightNumber(item: CrmBookingItem) {
+  return detailStr(item, "flight_number");
+}
+
+export type FlightPass = {
+  itemId: string;
+  airline: string;
+  number: string;
+  time: string | null;
+};
+
+export function flightPass(item: CrmBookingItem): FlightPass | null {
+  if (item.kind !== "flight" || item.visible_to_client === false) return null;
+  const airline = flightAirline(item);
+  const number = flightNumber(item);
+  if (!airline && !number) return null;
+  return {
+    itemId: item.id,
+    airline,
+    number,
+    time: itemClock(item.start_at) || null,
+  };
+}
+
+function datedVisible(items: CrmBookingItem[], today: string) {
+  return items
+    .filter(
+      (item) =>
+        item.visible_to_client !== false &&
+        item.kind !== "fee" &&
+        !isLedgerExpenseKind(item.kind)
+    )
+    .map((item) => ({ item, day: (item.start_at || "").slice(0, 10) }))
+    .filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.day) && row.day >= today)
+    .sort(
+      (a, b) =>
+        a.day.localeCompare(b.day) || (a.item.sort_order || 0) - (b.item.sort_order || 0)
+    );
+}
+
+/** Prochain vol du séjour, horaire seulement s’il est déjà sur la carte. */
+export function nextFlightPass(items: CrmBookingItem[], today = todayIsoDate()): FlightPass | null {
+  const flight = datedVisible(items, today).find((row) => row.item.kind === "flight");
+  return flight ? flightPass(flight.item) : null;
+}
+
+/** Accueil : la carte d’embarquement seulement si la prochaine étape est un vol. */
+export function nextTimelineFlight(items: CrmBookingItem[], today = todayIsoDate()): FlightPass | null {
+  const next = datedVisible(items, today)[0];
+  if (!next || next.item.kind !== "flight") return null;
+  return flightPass(next.item);
 }
 
 /** Gares / aéroports de départ FR — jamais une couverture (le client part de Paris). */

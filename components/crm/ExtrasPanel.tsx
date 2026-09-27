@@ -14,6 +14,7 @@ import {
   VISA_EUR,
   type ServiceRefusal,
 } from "@/lib/crm/extras";
+import { HIDDEN_PRICE_LABEL } from "@/lib/crm/carnet";
 import { formatMoney } from "@/lib/crm/money";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { Icon } from "@/components/crm/icons";
@@ -44,6 +45,7 @@ export function ExtrasPanel({
   const [issues, setIssues] = useState<BookingIssue[]>([]);
   if (!bookingHasFlight(items)) return null;
   const isAdmin = variant === "admin";
+  const pricesVisible = isAdmin || booking.prices_visible !== false;
   const passengers = Math.max(1, travelers.length || formalities?.passengers || 1);
 
   async function request(kind: "checkin" | "visa") {
@@ -117,7 +119,7 @@ export function ExtrasPanel({
     existing: CrmBookingItem | null;
   }) {
     const status = input.existing ? "Validé" : "Non validé";
-    const priceLabel = formatMoney(input.amount, booking.currency);
+    const priceLabel = pricesVisible ? formatMoney(input.amount, booking.currency) : HIDDEN_PRICE_LABEL;
     const subtitle = `${status} · ${input.note} · ${input.count} passager${input.count > 1 ? "s" : ""}`;
     const pending = busy === input.kind || (input.existing && busy === `cancel:${input.existing.id}`);
     const refuseButton =
@@ -199,7 +201,7 @@ export function ExtrasPanel({
   const checkinGone =
     !checkin && (hidden.includes("checkin") || isServiceRefused(refusals, { kind: "checkin" }));
   const visaGone = !visa && (hidden.includes("visa") || isServiceRefused(refusals, { kind: "visa" }));
-  const showVisa = Boolean(formalities?.needsFormality) && !visaGone;
+  const showVisa = !formalities?.needsFormality && Boolean(visa) && !visaGone;
   if (checkinGone && !showVisa) return null;
 
   return (
@@ -209,7 +211,7 @@ export function ExtrasPanel({
           Services de l’agence
         </p>
         <h2 className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">À la carte</h2>
-        <p className="mt-1 text-sm text-muted">Enregistrement et formalités, par passager.</p>
+        <p className="mt-1 text-sm text-muted">Enregistrement, par passager.</p>
       </div>
       {checkinGone
         ? null
@@ -217,7 +219,7 @@ export function ExtrasPanel({
             kind: "checkin",
             title: "Enregistrement",
             icon: "airplane_ticket",
-            note: `${CHECKIN_EUR} € par passager`,
+            note: pricesVisible ? `${CHECKIN_EUR} € par passager` : "Par passager",
             amount: checkinFeeAmount(passengers),
             count: passengers,
             existing: checkin,
@@ -227,7 +229,7 @@ export function ExtrasPanel({
             kind: "visa",
             title: "Obtention du visa",
             icon: "description",
-            note: `${VISA_EUR} € par passager, hors frais du visa`,
+            note: pricesVisible ? `${VISA_EUR} € par passager, hors frais du visa` : "Par passager, hors frais du visa",
             amount: formalities?.amount || (formalities?.passengers || passengers) * VISA_EUR,
             count: formalities?.passengers || passengers,
             existing: visa,

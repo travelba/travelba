@@ -6,7 +6,7 @@ import { BusyBar } from "@/components/crm/BusyBar";
 import { Icon } from "@/components/crm/icons";
 import { IssuesList } from "@/components/crm/IssuesList";
 import { issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
-import { kindIcon } from "@/lib/crm/carnet";
+import { HIDDEN_PRICE_LABEL, kindIcon } from "@/lib/crm/carnet";
 import { extraAgencyStatus, serviceClock, type ServiceOffer } from "@/lib/crm/extras";
 import { formatMoney } from "@/lib/crm/money";
 import { BOOKING_ITEM_LABELS, type CrmBookingItem } from "@/lib/crm/types";
@@ -23,6 +23,7 @@ export function ServiceOfferCard({
   addressLabel,
   initialAddress,
   detail,
+  pricesVisible = true,
 }: {
   offer: ServiceOffer;
   existing: CrmBookingItem | null;
@@ -35,6 +36,7 @@ export function ServiceOfferCard({
   addressLabel?: string | null;
   initialAddress?: string | null;
   detail?: string | null;
+  pricesVisible?: boolean;
 }) {
   const router = useRouter();
   const [address, setAddress] = useState(initialAddress || "");
@@ -56,7 +58,7 @@ export function ServiceOfferCard({
     : confirmed
       ? "Confirmé"
       : "En attente de confirmation";
-  const priceLabel = formatMoney(price, currency);
+  const priceLabel = pricesVisible ? formatMoney(price, currency) : HIDDEN_PRICE_LABEL;
 
   async function request() {
     if (offer.kind === "chauffeur" && !address.trim()) {

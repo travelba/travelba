@@ -31,6 +31,8 @@ import {
   bookingStatusTone,
 } from "@/components/crm/ui";
 import { staffRoleLabel } from "@/lib/crm/staff-team";
+import { morningBriefLine } from "@/lib/crm/morning-brief";
+import { createServiceClient } from "@/lib/supabase/admin";
 
 export default async function AdminHomePage() {
   const { supabase, staff } = await requireStaffPage();
@@ -48,6 +50,8 @@ export default async function AdminHomePage() {
     { count: withPhoneCount },
     { data: balances },
     { count: departSoonCount },
+    { count: expiringCount },
+    { count: departTomorrowCount },
     revolutIsConnected,
   ] = await Promise.all([
     supabase
@@ -82,6 +86,16 @@ export default async function AdminHomePage() {
       .select("id", { count: "exact", head: true })
       .gte("start_date", today)
       .lte("start_date", isoDateInDays(7))
+      .neq("status", "cancelled"),
+    supabase
+      .from("crm_travel_documents")
+      .select("id", { count: "exact", head: true })
+      .not("expires_on", "is", null)
+      .lte("expires_on", soon),
+    supabase
+      .from("crm_bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("start_date", isoDateInDays(1))
       .neq("status", "cancelled"),
     revolutConnected(),
   ]);
@@ -131,6 +145,55 @@ export default async function AdminHomePage() {
     })),
     today
   );
+  let unmatched = 0;
+  let emailPending = 0;
+  let lePending = 0;
+  try {
+    const admin = createServiceClient();
+    const [revolut, emails, le] = await Promise.all([
+      admin
+        .from("crm_revolut_transactions")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "unmatched")
+        .eq("direction", "credit"),
+      admin
+        .from("crm_email_ingest")
+        .select("id", { count: "exact", head: true })
+        .in("status", ["parsed", "matched"]),
+      admin.from("crm_le_bookings").select("id", { count: "exact", head: true }).eq("status", "unmatched"),
+    ]);
+    unmatched = revolut.count ?? 0;
+    emailPending = emails.count ?? 0;
+    if (!le.error) lePending = le.count ?? 0;
+  } catch {
+    unmatched = 0;
+  }
+  const brief = morningBriefLine({
+    unmatched,
+    formalities: desk.open.length,
+    departTomorrow: departTomorrowCount ?? 0,
+    departWeek: departSoonCount ?? 0,
+  });
+  const queue = [
+    unmatched
+      ? { label: `${unmatched} virement${unmatched > 1 ? "s" : ""} Revolut`, href: "/admin/revolut" }
+      : null,
+    emailPending
+      ? { label: `${emailPending} e-mail${emailPending > 1 ? "s" : ""} à relire`, href: "/admin/emails" }
+      : null,
+    lePending
+      ? { label: `${lePending} séjour${lePending > 1 ? "s" : ""} Little Emperors`, href: "/admin/little-emperors" }
+      : null,
+    desk.open.length
+      ? { label: `${desk.open.length} formalité${desk.open.length > 1 ? "s" : ""}`, href: "#formalites" }
+      : null,
+    (expiringCount ?? 0) > 0
+      ? {
+          label: `${expiringCount} pièce${(expiringCount ?? 0) > 1 ? "s" : ""} à échéance`,
+          href: "/admin/clients?pieces=echeance",
+        }
+      : null,
+  ].filter((row): row is { label: string; href: string } => Boolean(row));
   const upcoming = (bookings || []) as CrmBooking[];
   const featured = upcoming[0];
   const rest = upcoming.slice(1);
@@ -144,9 +207,9 @@ export default async function AdminHomePage() {
     },
     {
       label: "Pièces à échéance",
-      value: String((docs || []).length),
+      value: String(expiringCount ?? 0),
       hint: "Passeports et pièces < 90 jours",
-      href: "/admin/clients",
+      href: "/admin/clients?pieces=echeance",
       tone: "warn" as const,
     },
     {
@@ -183,7 +246,36 @@ export default async function AdminHomePage() {
         />
       </div>
 
-      <VisaDesk open={desk.open} grey={desk.grey} />
+      {brief ? (
+        <p className="rounded-2xl bg-[#0B192C] px-4 py-3 text-sm font-semibold text-white">
+          <span className="mr-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#C5A880]">
+            Ce matin
+          </span>
+          {brief}
+        </p>
+      ) : null}
+
+      <section id="a-traiter" className="admin-af-card rounded-2xl p-5">
+        <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">À traiter</h2>
+        {queue.length ? (
+          <ul className="mt-3 divide-y divide-border text-sm">
+            {queue.map((row) => (
+              <li key={row.href}>
+                <Link href={row.href} className="flex items-center justify-between py-2.5 font-semibold text-[var(--admin-navy)]">
+                  {row.label}
+                  <span aria-hidden>→</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-sm text-muted">Rien en attente.</p>
+        )}
+      </section>
+
+      <div id="formalites">
+        <VisaDesk open={desk.open} grey={desk.grey} />
+      </div>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {kpis.map((kpi) => (
