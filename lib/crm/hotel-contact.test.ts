@@ -9,7 +9,9 @@ import {
   extractHotelPhone,
   extractHotelWebsite,
   fillLeHotelDetails,
+  hotelCatalogFromLePayload,
   hotelContact,
+  rowsFromHotelCatalog,
 } from "./hotel-contact";
 
 function hotel(details: Record<string, unknown>, supplier: string | null = null): CrmBookingItem {
@@ -84,6 +86,8 @@ describe("hotelContact", () => {
     assert.equal(contact.phone, "");
     assert.equal(contact.email, "");
     assert.equal(contact.website, "");
+    assert.equal(contact.country, "");
+    assert.deepEqual(contact.people, []);
   });
 
   it("montre le site, le téléphone et l’e-mail déjà sur la fiche, y compris Little Emperors", () => {
@@ -236,6 +240,77 @@ describe("sources déjà stockées et détail Little Emperors", () => {
     const [item] = await fillLeHotelDetails([hotel({ hotel_name: "Maison Test", city: "Megève" })], fetchImpl);
     assert.equal(called, false);
     assert.equal(hotelContact(item).website, "");
+  });
+});
+
+describe("catalogue Little Emperors — contacts typés", () => {
+  const sample = {
+    id: 7142,
+    name: "Four Seasons Resort Sharm El Sheikh",
+    location: "Sharm El Sheikh, Egypt",
+    website: "https://www.fourseasons.com/sharmelsheikh/",
+    reservations_email: "res.sharmelsheikh@fourseasons.com",
+    concierge_email: "concierge.sharmelsheikh@fourseasons.com",
+    hotel_contact_email: "gihan.mekky@fourseasons.com",
+    contact_details: [
+      { type: "Concierge", email: "concierge.sharmelsheikh@fourseasons.com" },
+      { type: "Hotel contact", name: "Omar Ezz El Din", email: "omar.ezzeldin@fourseasons.com" },
+      { type: "Hotel contact", first_name: "Gihan", last_name: "Mekky", email: "gihan.mekky@fourseasons.com" },
+      { type: "Four Seasons", name: "Vanessa Green", email: "vanessa.green@fourseasons.com" },
+      { email: "omar.ezzeldin@fourseasons.com" },
+    ],
+  };
+
+  it("lit type, nom, prénom, e-mail, ville et pays", () => {
+    const catalog = hotelCatalogFromLePayload(sample);
+    assert.equal(catalog.hotel_id, 7142);
+    assert.equal(catalog.hotel_name, "Four Seasons Resort Sharm El Sheikh");
+    assert.equal(catalog.city, "Sharm El Sheikh");
+    assert.equal(catalog.country, "Egypt");
+    const omar = catalog.contacts.find((row) => row.email === "omar.ezzeldin@fourseasons.com");
+    assert.ok(omar);
+    assert.equal(omar?.type, "Hotel contact");
+    assert.equal(omar?.first_name, "Omar");
+    assert.equal(omar?.last_name, "Ezz El Din");
+    const gihan = catalog.contacts.find((row) => row.email === "gihan.mekky@fourseasons.com" && row.type === "Hotel contact");
+    assert.equal(gihan?.first_name, "Gihan");
+    assert.equal(gihan?.last_name, "Mekky");
+    assert.ok(catalog.contacts.some((row) => row.type === "Reservations" && row.email === "res.sharmelsheikh@fourseasons.com"));
+    assert.ok(catalog.contacts.some((row) => row.type === "Concierge" && row.email === "concierge.sharmelsheikh@fourseasons.com"));
+    assert.equal(
+      catalog.contacts.some((row) => row.email === "omar.ezzeldin@fourseasons.com" && !row.type),
+      false
+    );
+  });
+
+  it("enregistre une ligne par contact, ré-import identique", () => {
+    const catalog = hotelCatalogFromLePayload(sample);
+    const first = rowsFromHotelCatalog(catalog);
+    const second = rowsFromHotelCatalog(catalog);
+    assert.ok(first.length >= 4);
+    assert.deepEqual(first, second);
+    assert.ok(first.every((row) => row.le_hotel_id === 7142 && row.country === "Egypt"));
+  });
+
+  it("colle les contacts stockés sur la fiche hôtel", () => {
+    const catalog = hotelCatalogFromLePayload(sample);
+    const [item] = applyStoredHotelSources(
+      [hotel({ hotel_name: "Four Seasons Resort Sharm El Sheikh", le_hotel_id: 7142 })],
+      [
+        {
+          hotel_id: 7142,
+          hotel_name: catalog.hotel_name,
+          website: catalog.website,
+          city: catalog.city,
+          country: catalog.country,
+          contacts: catalog.contacts,
+        },
+      ]
+    );
+    const contact = hotelContact(item);
+    assert.equal(contact.country, "Egypt");
+    assert.ok(contact.people.some((row) => row.last_name === "Ezz El Din" && row.first_name === "Omar"));
+    assert.equal(contact.people.length, catalog.contacts.length);
   });
 });
 

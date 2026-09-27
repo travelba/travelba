@@ -37,12 +37,24 @@ const detailsSchemaLoose = z
     hotel_name: looseString,
     room: looseString,
     city: looseString,
+    country: looseString,
     address: looseString,
     website: looseString,
     phone: looseString,
     email: looseString,
     source_family: looseString,
     le_hotel_id: looseNumber,
+    hotel_contacts: z
+      .array(
+        z.object({
+          type: looseString,
+          last_name: looseString,
+          first_name: looseString,
+          email: looseString,
+          phone: looseString,
+        })
+      )
+      .optional(),
     board: looseString,
     occupancy: looseString,
     guests: looseString,

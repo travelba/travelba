@@ -48,7 +48,15 @@ export function HotelContactDialog({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const contact = hotelContact(item);
-  const hasDetails = Boolean(contact.address || contact.city || contact.phone || contact.email || contact.website);
+  const hasDetails = Boolean(
+    contact.address ||
+      contact.city ||
+      contact.country ||
+      contact.phone ||
+      contact.email ||
+      contact.website ||
+      contact.people.length
+  );
 
   useEffect(() => {
     const previous = document.body.style.overflow;
@@ -96,8 +104,40 @@ export function HotelContactDialog({
         </div>
         <div className="space-y-3 overflow-auto px-4 py-4">
           {contact.city ? <Row label="Ville">{contact.city}</Row> : null}
+          {contact.country ? <Row label="Pays">{contact.country}</Row> : null}
           {contact.address ? <Row label="Adresse">{contact.address}</Row> : null}
-          {contact.phone ? (
+          {contact.people.length ? (
+            <div className="space-y-3">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#C5A880]">Contacts</p>
+              {contact.people.map((person, index) => (
+                <div
+                  key={`${person.type}-${person.email}-${person.last_name}-${index}`}
+                  className="space-y-1 rounded-2xl border border-[#e5e3dc] px-3 py-2"
+                >
+                  {person.type ? <Row label="Type">{person.type}</Row> : null}
+                  {person.last_name ? <Row label="Nom">{person.last_name}</Row> : null}
+                  {person.first_name ? <Row label="Prénom">{person.first_name}</Row> : null}
+                  {person.email ? (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#C5A880]">E-mail</p>
+                      <a href={`mailto:${person.email}`} className="text-sm font-semibold text-[#0B192C]">
+                        {person.email}
+                      </a>
+                    </div>
+                  ) : null}
+                  {person.phone ? (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#C5A880]">Téléphone</p>
+                      <a href={`tel:${person.phone.replace(/\s/g, "")}`} className="text-sm font-semibold text-[#0B192C]">
+                        {person.phone}
+                      </a>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {contact.phone && !contact.people.some((person) => person.phone === contact.phone) ? (
             <div>
               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#C5A880]">Téléphone</p>
               <a href={`tel:${contact.phone.replace(/\s/g, "")}`} className="text-sm font-semibold text-[#0B192C]">
@@ -105,7 +145,7 @@ export function HotelContactDialog({
               </a>
             </div>
           ) : null}
-          {contact.email ? (
+          {contact.email && !contact.people.some((person) => person.email === contact.email) ? (
             <div>
               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#C5A880]">E-mail</p>
               <a href={`mailto:${contact.email}`} className="text-sm font-semibold text-[#0B192C]">

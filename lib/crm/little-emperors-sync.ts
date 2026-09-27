@@ -1,5 +1,6 @@
 import { cancellationApplyPlan } from "@/lib/crm/email-match";
 import { applyCancellationToBooking, persistNewBookingFromExtract } from "@/lib/crm/ingest-booking";
+import { persistLittleEmperorsHotelContacts } from "@/lib/crm/le-hotel-contacts";
 import { leBookingExtract, suggestLittleEmperorsBooking } from "@/lib/crm/little-emperors-match";
 import {
   applyHotelPublicFields,
@@ -11,6 +12,7 @@ import {
   LittleEmperorsError,
   type LeBooking,
 } from "@/lib/crm/little-emperors";
+import type { LeHotelCatalog } from "@/lib/crm/hotel-contact";
 import { countsAsCarnetCard, type CrmBookingItem, type CrmCustomer } from "@/lib/crm/types";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -84,6 +86,33 @@ async function enrich(bookings: LeBooking[], fetchImpl?: typeof fetch) {
   return out;
 }
 
+function hotelCatalogCache(admin: SupabaseClient, fetchImpl?: typeof fetch) {
+  const seen = new Map<number, LeHotelCatalog | null>();
+  return async function remember(hotelId: number, crmBookingId?: string | null) {
+    const cached = seen.get(hotelId);
+    if (cached !== undefined) {
+      if (crmBookingId && cached) {
+        await persistLittleEmperorsHotelContacts({
+          hotelId,
+          catalog: cached,
+          crmBookingId,
+          admin,
+          fetchImpl,
+        });
+      }
+      return cached;
+    }
+    const catalog = await persistLittleEmperorsHotelContacts({
+      hotelId,
+      crmBookingId,
+      admin,
+      fetchImpl,
+    });
+    seen.set(hotelId, catalog);
+    return catalog;
+  };
+}
+
 async function loadMatchContext(admin: SupabaseClient) {
   const [{ data: bookings }, { data: items }, { data: customers }] = await Promise.all([
     admin
@@ -147,6 +176,7 @@ export async function syncLittleEmperorsBookings(fetchImpl?: typeof fetch): Prom
   }
 
   const context = await loadMatchContext(admin);
+  const rememberHotel = hotelCatalogCache(admin, fetchImpl);
   let linked = 0;
   let cancelled = 0;
   for (const booking of fetched) {
@@ -182,12 +212,15 @@ export async function syncLittleEmperorsBookings(fetchImpl?: typeof fetch): Prom
     }
     const status = autoId ? "linked" : existing?.status === "ignored" ? "ignored" : "unmatched";
     if (autoId && !existing?.crm_booking_id) linked += 1;
+    const catalog = booking.hotel_id != null ? await rememberHotel(booking.hotel_id, autoId || null) : null;
     const payload = rowFromBooking(booking, {
       crm_booking_id: autoId,
       status,
       candidates,
       last_event: cancelledRemote ? "hotel_booking_cancel" : "sync",
       last_error: lastError,
+      ...(catalog?.country ? { country: catalog.country } : {}),
+      ...(catalog?.website && !booking.website ? { website: catalog.website } : {}),
     });
     if (existing?.id) {
       await admin.from("crm_le_bookings").update(payload).eq("id", existing.id);
@@ -219,12 +252,13 @@ export async function upsertLittleEmperorsWebhook(event: string, booking: LeBook
       enriched = booking;
     }
   }
+  const catalog = booking.hotel_id != null ? await persistLittleEmperorsHotelContacts({ hotelId: booking.hotel_id, admin }) : null;
   const merged: LeBooking = {
     ...enriched,
-    website: enriched.website || existing?.website || null,
-    hotel_name: enriched.hotel_name || existing?.hotel_name || null,
+    website: enriched.website || catalog?.website || existing?.website || null,
+    hotel_name: enriched.hotel_name || catalog?.hotel_name || existing?.hotel_name || null,
     address: enriched.address || existing?.address || null,
-    city: enriched.city || existing?.city || null,
+    city: enriched.city || catalog?.city || existing?.city || null,
     state: cancelledRemote ? enriched.state || "cancelled" : enriched.state,
   };
   const context = await loadMatchContext(admin);
@@ -260,11 +294,20 @@ export async function upsertLittleEmperorsWebhook(event: string, booking: LeBook
       })),
     last_event: event,
     last_error: lastError,
+    ...(catalog?.country ? { country: catalog.country } : {}),
   });
   if (existing?.id) {
     await admin.from("crm_le_bookings").update(payload).eq("id", existing.id);
   } else {
     await admin.from("crm_le_bookings").insert(payload);
+  }
+  if (crmBookingId && catalog && booking.hotel_id != null) {
+    await persistLittleEmperorsHotelContacts({
+      hotelId: booking.hotel_id,
+      catalog,
+      crmBookingId,
+      admin,
+    });
   }
   return { cancelled, created: !existing };
 }
@@ -336,6 +379,13 @@ export async function attachLittleEmperorsBooking(opts: {
       if (!details.source_family) details.source_family = "little_emperors";
       await admin.from("crm_booking_items").update({ details }).eq("id", item.id);
     }
+  }
+  if (booking.hotel_id != null) {
+    await persistLittleEmperorsHotelContacts({
+      hotelId: booking.hotel_id,
+      crmBookingId: created.id,
+      admin,
+    });
   }
   await admin
     .from("crm_le_bookings")
