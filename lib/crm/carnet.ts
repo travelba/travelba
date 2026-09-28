@@ -436,6 +436,10 @@ export function nextTimelineFlight(items: CrmBookingItem[], today = todayIsoDate
 const ORIGIN_HUBS =
   /^(paris|cdg|ory|lbg|bva|france|ile-de-france|île-de-france)$/i;
 
+export function isOriginHub(value: string) {
+  return ORIGIN_HUBS.test(value.trim());
+}
+
 function coverTokens(value: string) {
   return value
     .split(/\s*(?:·|\||\/|→|->|—|–| - )\s*/)

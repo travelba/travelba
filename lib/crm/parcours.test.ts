@@ -157,6 +157,39 @@ test("cover catalogue matches the arrival place only", () => {
     unsplashKeywordMatch({ destination: "France", title: "Séjour" })
   );
   assert.equal(unsplashKeywordMatch({ destination: "Xyzzy", title: "Inconnu" }), null);
+  const portugal = unsplashKeywordMatch({ destination: "Portugal", title: "Séjour" });
+  assert.ok(portugal);
+  assert.equal(
+    unsplashKeywordMatch({ destination: "Inconnue · Portugal", title: "Séjour" }),
+    portugal
+  );
+  assert.equal(
+    unsplashKeywordMatch({ destination: "Inconnue, Portugal", title: "Séjour" }),
+    portugal
+  );
+  assert.equal(
+    unsplashKeywordMatch({ destination: "Paris · Inconnue · Portugal", title: "Séjour" }),
+    portugal
+  );
+  const unknownHotel = bookingCoverPlan(
+    {
+      destination: "Inconnue · Portugal",
+      title: "Séjour",
+      cover_image_path: null,
+    },
+    { items: [{ kind: "hotel", details: { city: "Inconnue" } }] }
+  );
+  assert.equal(unknownHotel.mode, "single");
+  if (unknownHotel.mode === "single") assert.match(unknownHotel.src, /photo-1585208798174-6cedd86e019a/);
+  assert.equal(unsplashKeywordMatch({ destination: "Inconnue, Belgique", title: "Séjour" }), null);
+  assert.equal(
+    bookingCoverUrl({
+      destination: "Inconnue, Belgique",
+      title: "Séjour",
+      cover_image_path: null,
+    }),
+    null
+  );
   assert.equal(
     bookingCoverUrl({
       destination: "Xyzzy",
