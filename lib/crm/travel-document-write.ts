@@ -6,7 +6,7 @@ import {
   type DocumentIdentityFields,
 } from "./document-identity";
 import { removeCrmFiles } from "./files";
-import { emptyToNull } from "./identity";
+import { emptyToNull, holderAddressPatch, printedAddressFromParts } from "./identity";
 import { cleanPersonalNumber } from "./passport-extract";
 import { DOC_TYPES, type CrmTravelDocument, type TravelDocType } from "./types";
 
@@ -139,7 +139,8 @@ export async function insertTravelDocument(
     .select("*")
     .single();
   if (error) throw new Error(error.message);
-  if (bookingId && input.replacePrevious !== false) {
+  const replacesVaultPiece = !bookingId && (docType === "passport" || docType === "id_card");
+  if (input.replacePrevious !== false && (bookingId || replacesVaultPiece)) {
     await retirePreviousSameType(supabase, {
       customerId: input.customerId,
       companionId,
@@ -222,7 +223,13 @@ export async function applyIdentityFromForm(
     supabase,
     customerId,
     companionId,
-    identityFieldsFromForm(form),
+    {
+      ...identityFieldsFromForm(form),
+      address_line: emptyToNull(form.get("address_line")),
+      postal_code: emptyToNull(form.get("postal_code")),
+      city: emptyToNull(form.get("address_city")),
+      country: emptyToNull(form.get("address_country")),
+    },
     travelerId
   );
 }
@@ -231,7 +238,12 @@ export async function applyIdentityFromIdentity(
   supabase: SupabaseClient,
   customerId: string,
   companionId: string | null,
-  identity: Partial<DocumentIdentityFields>,
+  identity: Partial<DocumentIdentityFields> & {
+    address_line?: string | null;
+    postal_code?: string | null;
+    city?: string | null;
+    country?: string | null;
+  },
   travelerId?: string | null
 ) {
   const filled = filledIdentity({
@@ -242,7 +254,10 @@ export async function applyIdentityFromIdentity(
     nationality: resolveNationality(identity.nationality),
     sex: identity.sex === "M" || identity.sex === "F" || identity.sex === "X" ? identity.sex : null,
   });
-  if (Object.keys(filled).length === 0) return;
+  if (Object.keys(filled).length === 0) {
+    if (!companionId) await applyHolderAddress(supabase, customerId, identity);
+    return;
+  }
   if (companionId) {
     const { error } = await supabase
       .from("crm_travel_companions")
@@ -264,6 +279,32 @@ export async function applyIdentityFromIdentity(
       .eq("id", travelerId);
     if (travelerUpdate.error) throw new Error(travelerUpdate.error.message);
   }
+  if (!companionId) await applyHolderAddress(supabase, customerId, identity);
+}
+
+async function applyHolderAddress(
+  supabase: SupabaseClient,
+  customerId: string,
+  identity: Partial<DocumentIdentityFields> & {
+    address_line?: string | null;
+    postal_code?: string | null;
+    city?: string | null;
+    country?: string | null;
+  }
+) {
+  const incoming = printedAddressFromParts(identity);
+  incoming.country = resolveNationality(incoming.country) || null;
+  if (!incoming.address_line && !incoming.postal_code && !incoming.city) return;
+  const { data, error } = await supabase
+    .from("crm_customers")
+    .select("address_line, postal_code, city, country")
+    .eq("id", customerId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const patch = holderAddressPatch(data || {}, incoming);
+  if (!Object.keys(patch).length) return;
+  const update = await supabase.from("crm_customers").update(patch).eq("id", customerId);
+  if (update.error) throw new Error(update.error.message);
 }
 
 /**

@@ -52,7 +52,7 @@ export default async function ExampleReservationPage({ params }: Props) {
             ← Mes réservations
           </Link>
 
-          <BookingHero booking={b} priority className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]">
+          <BookingHero booking={b} items={session.items} priority className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]">
             <div className="absolute inset-0 flex flex-col justify-between p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <BookingStatusBadge label={clientBookingStatusLabel(b.status)} />

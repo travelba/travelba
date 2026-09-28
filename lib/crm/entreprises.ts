@@ -1,13 +1,24 @@
+import { activityLabel, legalFormLabel } from "./entreprise-labels";
+
 const ANNUAIRE_URL = "https://recherche-entreprises.api.gouv.fr/search";
 
 export type OfficialCompany = {
   legalName: string;
+  tradeName: string | null;
   siret: string;
+  siren: string | null;
   vat: string | null;
   addressLine: string;
   postalCode: string;
   city: string;
   active: boolean;
+  legalForm: string | null;
+  activity: string | null;
+  site: "Siège" | "Établissement";
+  headOfficeCity: string | null;
+  createdOn: string | null;
+  openSites: number | null;
+  directors: string | null;
 };
 
 type Establishment = {
@@ -20,15 +31,32 @@ type Establishment = {
   type_voie?: string | null;
   libelle_voie?: string | null;
   complement_adresse?: string | null;
+  nom_commercial?: string | null;
+  liste_enseignes?: string[] | null;
+  activite_principale?: string | null;
 };
 
-type CompanyHit = {
+type Director = {
+  nom?: string | null;
+  prenoms?: string | null;
+  denomination?: string | null;
+  qualite?: string | null;
+};
+
+export type CompanyHit = {
   nom_complet?: string | null;
   nom_raison_sociale?: string | null;
   etat_administratif?: string | null;
   siege?: Establishment | null;
   matching_etablissements?: Establishment[] | null;
   tva?: string[] | null;
+  siren?: string | null;
+  sigle?: string | null;
+  nature_juridique?: string | null;
+  activite_principale?: string | null;
+  date_creation?: string | null;
+  nombre_etablissements_ouverts?: number | null;
+  dirigeants?: Director[] | null;
 };
 
 function digitsOnly(value: string) {
@@ -63,20 +91,73 @@ function pickPlace(hit: CompanyHit, queryDigits: string) {
   return hit.siege || matches[0] || null;
 }
 
-function toOfficial(hit: CompanyHit, queryDigits: string): OfficialCompany | null {
+function titleCase(value: string) {
+  return value
+    .toLocaleLowerCase("fr")
+    .replace(/(^|[\s'-])(\p{L})/gu, (chunk) => chunk.toLocaleUpperCase("fr"));
+}
+
+function brandOf(place: Establishment | null | undefined) {
+  const commercial = (place?.nom_commercial || "").trim();
+  const brand = (place?.liste_enseignes || []).map((name) => name.trim()).find(Boolean) || "";
+  return commercial || brand;
+}
+
+function tradeNameOf(place: Establishment | null, hit: CompanyHit) {
+  const sigle = (hit.sigle || "").trim();
+  const legal = (hit.nom_raison_sociale || hit.nom_complet || "").trim();
+  const picked = brandOf(place) || brandOf(hit.siege) || sigle;
+  if (!picked || picked.toLocaleLowerCase("fr") === legal.toLocaleLowerCase("fr")) return null;
+  return picked;
+}
+
+function directorLine(directors: Director[] | null | undefined) {
+  const labels = (directors || [])
+    .slice(0, 2)
+    .map((person) => {
+      const human = [person.prenoms, person.nom]
+        .map((part) => (part || "").trim())
+        .filter(Boolean)
+        .map(titleCase)
+        .join(" ");
+      const name = human || (person.denomination || "").trim();
+      if (!name) return null;
+      const role = (person.qualite || "").trim();
+      return role ? `${name}, ${role}` : name;
+    })
+    .filter((label): label is string => Boolean(label));
+  return labels.length ? labels.join(" · ") : null;
+}
+
+export function officialCompanyFromHit(hit: CompanyHit, queryDigits: string): OfficialCompany | null {
   const place = pickPlace(hit, queryDigits);
   const siret = digitsOnly(place?.siret || "");
   const legalName = (hit.nom_raison_sociale || hit.nom_complet || "").trim();
   if (!legalName || !/^\d{14}$/.test(siret)) return null;
   const placeActive = !place?.etat_administratif || place.etat_administratif === "A";
+  const siegeSiret = digitsOnly(hit.siege?.siret || "");
+  const isHeadOffice = Boolean(siegeSiret) && siegeSiret === siret;
+  const headCity = (hit.siege?.libelle_commune || "").trim();
+  const city = (place?.libelle_commune || "").trim();
+  const created = (hit.date_creation || "").slice(0, 10);
+  const openSites = hit.nombre_etablissements_ouverts;
   return {
     legalName,
+    tradeName: tradeNameOf(place, hit),
     siret,
+    siren: digitsOnly(hit.siren || "").slice(0, 9) || siret.slice(0, 9),
     vat: hit.tva?.[0]?.replace(/\s/g, "") || null,
     addressLine: place ? streetLine(place) : "",
     postalCode: (place?.code_postal || "").trim(),
-    city: (place?.libelle_commune || "").trim(),
+    city,
     active: hit.etat_administratif === "A" && placeActive,
+    legalForm: legalFormLabel(hit.nature_juridique),
+    activity: activityLabel(place?.activite_principale || hit.activite_principale),
+    site: isHeadOffice || !siegeSiret ? "Siège" : "Établissement",
+    headOfficeCity: !isHeadOffice && headCity && headCity.toLocaleLowerCase("fr") !== city.toLocaleLowerCase("fr") ? titleCase(headCity) : null,
+    createdOn: /^\d{4}-\d{2}-\d{2}$/.test(created) ? created : null,
+    openSites: typeof openSites === "number" && openSites > 1 ? openSites : null,
+    directors: directorLine(hit.dirigeants),
   };
 }
 
@@ -102,7 +183,7 @@ export async function searchOfficialCompanies(query: string): Promise<OfficialCo
   const seen = new Set<string>();
   const companies: OfficialCompany[] = [];
   for (const hit of json.results || []) {
-    const company = toOfficial(hit, numeric ? digits : "");
+    const company = officialCompanyFromHit(hit, numeric ? digits : "");
     if (!company || seen.has(company.siret)) continue;
     seen.add(company.siret);
     companies.push(company);

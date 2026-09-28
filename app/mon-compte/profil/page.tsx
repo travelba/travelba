@@ -42,7 +42,7 @@ export default async function ProfilPage() {
 
       {!customer.phone && !desk ? <PhoneWallBanner /> : null}
 
-      <ProfileForm customer={customer} documents={(documents || []) as CrmTravelDocument[]} />
+      <ProfileForm key={customer.updated_at} customer={customer} documents={(documents || []) as CrmTravelDocument[]} />
 
       <SignOutButton />
     </div>

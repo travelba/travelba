@@ -34,7 +34,8 @@ description: >-
 - **Nationalité** : toujours un code ISO 2 (`FR`) sur la fiche Identité (`CountrySelect`). Vision/MRZ peuvent renvoyer « Française », FRA ou seulement le pays d’émission — `resolveNationality` (+ fallback `issuing_country`). Ne jamais stocker l’adjectif. Toute erreur de nationalité se corrige dans `lib/crm/countries.ts` + un test.
 - Ne **pas** logger numéro / MRZ.
 - Champs : n°, nationalité, naissance, expiration, `place_of_birth`, `authority`, `personal_number` (migration passport_fields).
-- Pièce **pour un voyage** : `crm_travel_documents.booking_id` / `traveler_id` (docs d’identité utiles à ce séjour, en plus des confirmations `crm_booking_documents`).
+- Pièce **pour un voyage** : `crm_travel_documents.booking_id` / `traveler_id` (docs d’identité utiles à ce séjour, en plus des confirmations `crm_booking_documents`). La section **Validation des pièces** n’en montre **qu’une** par personne et par numéro (`reviewIdentityPieces`) : la copie coffre, pas chaque clone de séjour. Un nouveau passeport ou une nouvelle carte d’identité au coffre remplace la pièce du même type pour cette personne.
+- **Adresse personnelle** : si la pièce imprime un domicile (carte d’identité, titre de séjour, permis), le recopier sur la fiche du **titulaire** (`address_line`, `postal_code`, `city`, `country`) seulement dans les champs encore vides. Un passeport sans adresse ne remplit rien. Ne jamais inventer, ne pas prendre le lieu de naissance, ne pas écraser une adresse déjà saisie, ne pas toucher l’adresse de facturation. L’adresse d’un accompagnateur ne va pas sur la fiche du titulaire.
 - Rattachement : un mot du prénom suffit (« Jérémy » = « Jérémy Moïse »), une lettre d’écart dès 4 lettres (`Leoh` / `Leo`), nom égal ou à deux caractères près. Virgule, nom inversé ou nom entier dans un seul champ comptent. Le passeport du titulaire rangé sur un accompagnateur du même nom est le sien. `Louise` ≠ `Noah`. « Adulte N » n’est pas une personne. Un passeport de coffre unique et non expiré est coché pour le séjour (`lib/crm/person-match.ts`, `reconcile-party.ts`).
 
 UI : bloc pièce **replié** par défaut (passeport). Copy courte, pas « Uploadez le passeport du titulaire pour préremplir » en hint permanent.
@@ -43,6 +44,7 @@ UI : bloc pièce **replié** par défaut (passeport). Copy courte, pas « Upload
 
 - `flying_blue` normalisé (majuscules, sans espaces).
 - Société : `crm_billing_companies` (plusieurs par client, onglets Facturation). La première est recopiée sur `company_name`, `siret`, `vat_number`, `billing_email`, `billing_address_line`, `billing_postal_code`, `billing_city`, `billing_country` pour la recherche. L’encours reste global.
+- Recherche annuaire (`recherche-entreprises.api.gouv.fr`) : chaque ligne montre de quoi reconnaître la société — raison sociale, enseigne si elle diffère, forme (SAS, SARL…), activité NAF, adresse complète, SIRET, siège ou établissement (et la ville du siège si ce n’est pas le même), année de création, nombre d’établissements, dirigeant. Une société cessée est marquée.
 - Adresse perso ≠ adresse de facturation. Les deux peuvent exister.
 - **Rôle société** (`company_role`) :
   - `null` = particulier (comportement historique)

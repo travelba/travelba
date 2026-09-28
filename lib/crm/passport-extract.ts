@@ -4,6 +4,7 @@ import {
   emptyToNull,
   humanizeMrzName,
   normalizeGivenNames,
+  printedAddressFromParts,
   type ExtractedIdentity,
 } from "./identity";
 import { foldName, lastNamesMatch, nameTokens, namesReferToSamePerson } from "./person-match";
@@ -25,6 +26,10 @@ export function emptyIdentity(): ExtractedIdentity {
     sex: null,
     authority: null,
     personal_number: null,
+    address_line: null,
+    postal_code: null,
+    city: null,
+    country: null,
     format: null,
     valid: false,
   };
@@ -153,6 +158,18 @@ export function identityFromVision(raw: Record<string, unknown>): ExtractedIdent
     sex: mapSex(emptyToNull(raw.sex)),
     authority: emptyToNull(raw.authority),
     personal_number: cleanPersonalNumber(emptyToNull(raw.personal_number)),
+    ...(() => {
+      const address = printedAddressFromParts({
+        address_line: emptyToNull(raw.address_line),
+        postal_code: emptyToNull(raw.postal_code),
+        city: emptyToNull(raw.city),
+        country: emptyToNull(raw.country),
+      });
+      return {
+        ...address,
+        country: resolveNationality(address.country) || address.country,
+      };
+    })(),
     format: null,
     valid: false,
   };
@@ -345,6 +362,10 @@ export function mergePassportIdentities(
     place_of_birth: vision.place_of_birth || mrz.place_of_birth,
     authority: vision.authority || mrz.authority,
     personal_number: mrz.personal_number || vision.personal_number,
+    address_line: vision.address_line || mrz.address_line,
+    postal_code: vision.postal_code || mrz.postal_code,
+    city: vision.city || mrz.city,
+    country: vision.country || mrz.country,
     format: mrz.format || vision.format,
     valid: mrz.valid || vision.valid,
   };
@@ -390,6 +411,10 @@ export function appendPassportForm(
   form.set("birth_date", id.birth_date || "");
   form.set("nationality", id.nationality || "");
   form.set("sex", id.sex || "");
+  form.set("address_line", id.address_line || "");
+  form.set("postal_code", id.postal_code || "");
+  form.set("address_city", id.city || "");
+  form.set("address_country", id.country || "");
   form.set("apply_identity", applyIdentity ? "1" : "0");
   return form;
 }

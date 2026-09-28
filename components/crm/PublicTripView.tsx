@@ -39,6 +39,7 @@ export function PublicTripView({
 
       <BookingHero
         booking={booking}
+        items={items}
         partage={partage}
         priority
         className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]"

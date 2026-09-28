@@ -40,6 +40,10 @@ expires_on : date d’expiration.
 authority : autorité de délivrance (préfecture, ministère…).
 personal_number : n° personnel / national / optionnel s’il figure.
 number : n° du document (passeport ou CNI).
+address_line : voie du domicile, seulement si elle est imprimée (carte d’identité, titre de séjour, permis). Null sur un passeport qui n’a pas d’adresse. Ne jamais inventer, ne pas reprendre le lieu de naissance.
+postal_code : code postal du domicile, s’il est imprimé. Sinon null.
+city : ville du domicile, s’il est imprimé. Sinon null. Pas le lieu de naissance.
+country : pays du domicile en ISO 2, s’il est imprimé. Sinon null.
 mrz_text : recopie EXACTEMENT la bande MRZ de CETTE personne (lignes du bas, caractères A-Z 0-9 <), une ligne par ligne, si elle est lisible. Sinon null.`;
 
 function identityModel() {
