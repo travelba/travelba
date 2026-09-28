@@ -61,6 +61,16 @@ export function holdKeepsForm(summary: string) {
   return !/écran inattendu|captcha|accueil|sans champs|before you start|bloqu|pas été fourni|suspendue|suspendu/i.test(summary);
 }
 
+/** Le résumé doit citer chaque voyageur coché. Le représentant n’en fait pas partie. */
+export function summaryCoversApplicants(summary: string, firstNames: string[]) {
+  const hay = summary.toLowerCase();
+  if (!firstNames.length) return false;
+  return firstNames.every((name) => {
+    const token = name.trim().split(/\s+/)[0]?.toLowerCase() || "";
+    return token.length > 1 && hay.includes(token);
+  });
+}
+
 /** Une option de liste. « France » et « FR » visent « FRA (France) » quand le choix est unique. */
 export function pickOptionLabel(options: string[], query: string) {
   const wanted = query.replace(/\s+/g, " ").trim().toLowerCase();
@@ -117,8 +127,9 @@ const PORTAL_INSTRUCTIONS = [
   "N’envoie pas le formulaire. Ne paie pas. Ne saisis aucune carte.",
   "Chaque tour appelle portal_step. Pas de texte libre.",
   "Quand les champs de la demande sont remplis, appelle portal_step avec action hold.",
-  "Le résumé hold nomme les voyageurs cochés et les dates, sans numéro de passeport.",
-  "Si un demandeur est mineur, saisis le représentant adulte du champ guardian : nom, prénom, numéro et pays de délivrance.",
+  "Le résumé hold nomme uniquement les voyageurs de demandes, et les dates, sans numéro de passeport.",
+  "demandes est la liste exhaustive. N’ouvre aucune demande pour une autre personne.",
+  "Si un demandeur est mineur, saisis guardian seulement dans Your information, après Someone else. Ce n’est pas une demande ETA.",
   "Le pays de délivrance est une liste. Clique son libellé pour l’ouvrir, puis type le nom du pays (France) ou clique l’option exacte, par exemple FRA (France).",
   "Ne hold pas pour signaler une information déjà présente dans la demande.",
   "Si une image de caractères est jointe, lis ces caractères et saisis-les. Ne hold pas pour ça.",
@@ -171,8 +182,14 @@ export function buildEtaIlRequest(draft: EtaIlDraft) {
           portal: ETA_IL_PORTAL,
           startDate: draft.startDate,
           endDate: draft.endDate,
+          demandes: draft.applicants.map((row) => `${row.firstName} ${row.lastName}`.trim()),
           applicants: draft.applicants,
-          ...(draft.guardian ? { guardian: draft.guardian } : {}),
+          ...(draft.guardian
+            ? {
+                guardian: draft.guardian,
+                guardianUsage: "Your information seulement, après Someone else. Aucune demande ETA à ce nom.",
+              }
+            : {}),
         }),
       },
     ],
@@ -327,13 +344,26 @@ export async function runEtaIlSession(opts: {
         parsed.step.action === "hold"
           ? redactPassportNumbers(parsed.step.summary, numbers)
           : "Formulaire rempli. Envoi et paiement en attente de confirmation.";
-      const filled = parsed.step.action === "hold" ? holdKeepsForm(summary) : true;
+      const named =
+        parsed.step.action !== "hold" ||
+        summaryCoversApplicants(
+          summary,
+          opts.draft.applicants.map((row) => row.firstName)
+        );
+      const filled = (parsed.step.action === "hold" ? holdKeepsForm(summary) : true) && named;
       await publishFrame(opts.page, opts.onFrame);
-      if (!filled) return { phase: "bloqué", summary, message: summary, filled: false };
-      await emitPortalEvent(opts.onEvent, parsed.step, numbers);
+      if (!filled) {
+        return {
+          phase: "bloqué",
+          summary,
+          message: named ? summary : "Le formulaire ne cite pas les voyageurs cochés.",
+          filled: false,
+        };
+      }
+      await emitPortalEvent(opts.onEvent, parsed.step, numbers, opts.draft.guardian);
       return { phase: "à confirmer", summary, message: null, filled: true };
     }
-    if (decision !== "stop") await emitPortalEvent(opts.onEvent, parsed.step, numbers);
+    if (decision !== "stop") await emitPortalEvent(opts.onEvent, parsed.step, numbers, opts.draft.guardian);
     if (decision === "stop") {
       return {
         phase: "bloqué",
@@ -402,9 +432,10 @@ async function publishFrame(
 async function emitPortalEvent(
   onEvent: ((event: PortalLogEvent) => Promise<void> | void) | undefined,
   step: PortalStep,
-  numbers: string[]
+  numbers: string[],
+  guardian?: { firstName: string; lastName: string; number: string } | null
 ) {
-  const traced = eventForPortalAction(step);
+  const traced = eventForPortalAction(step, guardian);
   if (!traced || !onEvent) return;
   try {
     await onEvent(portalEvent(traced.kind, redactPassportNumbers(traced.text, numbers)));
