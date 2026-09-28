@@ -32,7 +32,7 @@ import {
   type IngestStagedFile,
 } from "@/lib/crm/ingest-types";
 import { assertStaffIngestPath, ingestBatchPrefix } from "@/lib/crm/ingest-storage";
-import { sortItemsByOrder } from "@/lib/crm/carnet";
+import { chronologicalSortOrders, sortItemsByChronology } from "@/lib/crm/carnet";
 import { cancellationApplyPlan } from "@/lib/crm/email-match";
 import { findMatchingItem } from "@/lib/crm/item-match";
 import { inferAirlineIata } from "@/lib/crm/brand-marks";
@@ -284,8 +284,15 @@ async function upsertItemsAndTravelers(
   docs: UploadedDoc[]
 ) {
   const remaining = [...existingItems];
-  let sort = existingItems.reduce((max, row) => Math.max(max, row.sort_order || 0), -1) + 1;
-  const ordered = sortItemsByOrder(extract.items || []);
+  const before = existingItems.map((row) => ({
+    id: row.id,
+    start_at: row.start_at,
+    kind: row.kind,
+    title: row.title,
+    sort_order: row.sort_order,
+  }));
+  const placed = before.map((row) => ({ ...row }));
+  const ordered = sortItemsByChronology(extract.items || []);
   let saved = 0;
   let lastError = "";
 
@@ -352,6 +359,12 @@ async function upsertItemsAndTravelers(
           .eq("id", match.id);
         if (error) throw dbFailure(error, "Carte non mise à jour.");
         Object.assign(match, payload);
+        const placedRow = placed.find((row) => row.id === match.id);
+        if (placedRow) {
+          placedRow.start_at = payload.start_at;
+          placedRow.kind = payload.kind;
+          placedRow.title = payload.title;
+        }
         if (payload.source_document_id) {
           await supabase
             .from("crm_booking_documents")
@@ -364,17 +377,24 @@ async function upsertItemsAndTravelers(
           .from("crm_booking_items")
           .insert({
             booking_id: bookingId,
-            sort_order: sort++,
+            sort_order: placed.length,
             ...payload,
           })
           .select("id")
           .single();
         if (error) throw dbFailure(error, "Carte non enregistrée.");
         if (inserted?.id) {
+          placed.push({
+            id: inserted.id,
+            start_at: payload.start_at,
+            kind: payload.kind,
+            title: payload.title,
+            sort_order: placed.length,
+          });
           remaining.push({
             id: inserted.id,
             booking_id: bookingId,
-            sort_order: sort - 1,
+            sort_order: placed.length - 1,
             created_at: "",
             updated_at: "",
             ...payload,
@@ -395,6 +415,21 @@ async function upsertItemsAndTravelers(
   }
 
   if (!saved && lastError) throw new Error(lastError);
+
+  if (saved) {
+    const orders = chronologicalSortOrders({ before, after: placed });
+    for (const row of orders) {
+      const current = placed.find((item) => item.id === row.id);
+      if (!current || current.sort_order === row.sort_order) continue;
+      const { error } = await supabase
+        .from("crm_booking_items")
+        .update({ sort_order: row.sort_order })
+        .eq("id", row.id)
+        .eq("booking_id", bookingId);
+      if (error) throw dbFailure(error, "Ordre des cartes non enregistré.");
+      current.sort_order = row.sort_order;
+    }
+  }
 
   const incoming = extract.travelers || [];
   const skipPlaceholders =

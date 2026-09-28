@@ -13,7 +13,9 @@ import {
   flightCities,
   flightIata,
   flightPass,
+  chronologicalSortOrders,
   groupByDay,
+  sortItemsByChronology,
   hotelCityLine,
   hotelDisplayName,
   hotelStayLabel,
@@ -247,6 +249,72 @@ describe("carnet", () => {
     if (!url) throw new Error("couverture attendue");
     assert.match(url, /^\/api\/covers\/photo-/);
     assert.doesNotMatch(url, /unsplash/);
+  });
+
+  it("classe un lot de confirmations par date, pas par fichier", () => {
+    const ordered = sortItemsByChronology([
+      { kind: "hotel", title: "Maison Test", start_at: "2026-08-20" },
+      { kind: "flight", title: "Retour", start_at: "2026-08-18T19:10:00" },
+      { kind: "hotel", title: "Maison Test", start_at: "2026-08-10" },
+      { kind: "transfer", title: "Arrivée", start_at: "2026-08-10T11:00:00" },
+      { kind: "flight", title: "Aller", start_at: "2026-08-10T08:30:00" },
+      { kind: "insurance", title: "Assurance", start_at: null },
+      { kind: "hotel", title: "Minuit", start_at: "2026-08-10T00:00:00" },
+    ]);
+    assert.deepEqual(
+      ordered.map((row) => row.title),
+      ["Aller", "Arrivée", "Maison Test", "Minuit", "Retour", "Maison Test", "Assurance"]
+    );
+  });
+
+  it("insère une confirmation plus tôt sans coller les nouvelles cartes à la fin", () => {
+    const orders = chronologicalSortOrders({
+      before: [
+        {
+          id: "hotel",
+          kind: "hotel",
+          title: "Maison Test",
+          start_at: "2026-08-20",
+          sort_order: 0,
+        },
+      ],
+      after: [
+        {
+          id: "hotel",
+          kind: "hotel",
+          title: "Maison Test",
+          start_at: "2026-08-20",
+        },
+        {
+          id: "flight",
+          kind: "flight",
+          title: "Aller",
+          start_at: "2026-08-12T09:40:00",
+        },
+      ],
+    });
+    assert.deepEqual(orders, [
+      { id: "flight", sort_order: 0 },
+      { id: "hotel", sort_order: 1 },
+    ]);
+  });
+
+  it("garde l’ordre manuel et insère la nouvelle carte à sa date", () => {
+    const orders = chronologicalSortOrders({
+      before: [
+        { id: "soir", kind: "activity", title: "Soir", start_at: "2026-08-12T18:00:00", sort_order: 0 },
+        { id: "matin", kind: "activity", title: "Matin", start_at: "2026-08-12T08:00:00", sort_order: 1 },
+      ],
+      after: [
+        { id: "soir", kind: "activity", title: "Soir", start_at: "2026-08-12T18:00:00" },
+        { id: "matin", kind: "activity", title: "Matin", start_at: "2026-08-12T08:00:00" },
+        { id: "hotel", kind: "hotel", title: "Maison Test", start_at: "2026-08-01" },
+      ],
+    });
+    assert.deepEqual(
+      orders.map((row) => row.id),
+      ["hotel", "soir", "matin"]
+    );
   });
 
   it("respecte l’ordre agent dans un même jour", () => {

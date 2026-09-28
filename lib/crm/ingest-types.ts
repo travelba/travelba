@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { productionOnlySecret } from "./preview-secrets";
 import { bookingTotalFromItems } from "./bookings";
-import { sortItemsByOrder } from "./carnet";
+import { sortItemsByChronology } from "./carnet";
 import { redactIngestValue } from "./ingest-redact";
 import { mergeExtractItems } from "./item-match";
 import { parseMoney } from "./money";
@@ -403,7 +403,7 @@ export function sanitizeExtractedPrices(extract: BookingExtract): BookingExtract
     ...extract,
     currency: stayCurrency(extract.currency),
     total_amount: sellingTotalFromExtract(priced),
-    items: sortItemsByOrder(merged),
+    items: sortItemsByChronology(merged),
   };
   return redactIngestValue(next);
 }
@@ -421,7 +421,7 @@ export function keepAgentPrices(extract: BookingExtract): BookingExtract {
     ...extract,
     currency: stayCurrency(extract.currency),
     total_amount: parseMoney(extract.total_amount),
-    items: sortItemsByOrder(
+    items: sortItemsByChronology(
       (extract.items || []).map((item) => ({
         ...item,
         amount: parseMoney(item.amount),

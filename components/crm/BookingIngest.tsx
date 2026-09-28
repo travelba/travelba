@@ -21,7 +21,7 @@ import {
   uniquePeople,
 } from "@/lib/crm/document-passengers";
 import type { PersonName } from "@/lib/crm/person-match";
-import { sortItemsByOrder } from "@/lib/crm/carnet";
+import { sortItemsByChronology } from "@/lib/crm/carnet";
 import { stayTitleForExtract } from "@/lib/crm/ingest-title";
 import { formatMoney } from "@/lib/crm/money";
 import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
@@ -438,7 +438,7 @@ export function BookingIngest({
             const incoming = {
               ...emptyBookingExtract(),
               ...event.extract,
-              items: sortItemsByOrder(event.extract.items || []),
+              items: sortItemsByChronology(event.extract.items || []),
             };
             const merged = retryNames ? mergeRetryExtract(prev, incoming, retryNames) : incoming;
             const chosenTitle = titleEdited.current ? prev?.title || "" : preserveTitle || prev?.title;
