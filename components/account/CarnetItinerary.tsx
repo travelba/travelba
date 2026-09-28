@@ -425,7 +425,7 @@ export function CarnetItinerary({
         {undated.length ? (
           <div className="space-y-2">
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
-              Sans horaire
+              Sans heure précise
             </p>
             {undated.map((item) => (
               <CardBody

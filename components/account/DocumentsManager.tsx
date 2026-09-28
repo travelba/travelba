@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ConfirmButton } from "@/components/crm/ConfirmButton";
 import { DOC_TYPE_LABELS, type CrmCompanion, type CrmTravelDocument, type TravelDocType } from "@/lib/crm/types";
 import { countryName } from "@/lib/crm/countries";
 import { nationalityFromIdentity } from "@/lib/crm/document-identity";
@@ -221,13 +222,11 @@ export function DocumentsManager({
                   </span>
                   <StatusChip tone={status.tone}>{status.label}</StatusChip>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => remove(d.id)}
+                <ConfirmButton
+                  onConfirm={() => remove(d.id)}
                   className="shrink-0 text-xs font-semibold text-accent"
-                >
-                  Retirer
-                </button>
+                  label="Retirer"
+                />
               </div>
               {open ? (
                 <div className="mt-2 space-y-2">

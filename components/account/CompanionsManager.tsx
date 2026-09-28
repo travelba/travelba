@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
+import { ConfirmButton } from "@/components/crm/ConfirmButton";
 import type { CrmCompanion, CrmTravelDocument } from "@/lib/crm/types";
 import { nationalityFromIdentity } from "@/lib/crm/document-identity";
 import { identityOverwriteWarning, RELATIONSHIP_OPTIONS } from "@/lib/crm/identity";
@@ -212,9 +213,11 @@ export function CompanionsManager({
                     {[relationshipLabel(c.relationship), piece].filter(Boolean).join(" · ")}
                   </p>
                 </button>
-                <button type="button" onClick={() => remove(c.id)} className="shrink-0 text-xs font-semibold text-accent">
-                  Retirer
-                </button>
+                <ConfirmButton
+                  onConfirm={() => remove(c.id)}
+                  className="shrink-0 text-xs font-semibold text-accent"
+                  label="Retirer"
+                />
               </div>
               {expanded ? (
                 <div className="mt-3 space-y-3">

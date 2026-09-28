@@ -24,7 +24,7 @@ export function ClientTransactionsPanel({
               <Icon name="verified_user" className="h-4 w-4" />
             </span>
             <span className="text-[10px] font-bold uppercase tracking-wider text-[#9c7c4e]">
-              {member ? "Frais de vos voyages" : "Grand livre"}
+              {member ? "Frais de vos voyages" : "Mon relevé"}
             </span>
           </div>
         </div>

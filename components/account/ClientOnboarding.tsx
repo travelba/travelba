@@ -142,7 +142,7 @@ function CarnetPreview() {
 function LedgerPreview() {
   return (
     <article className="rounded-2xl border border-[#e5e3dc] bg-white p-4 shadow-sm">
-      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Grand livre</p>
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Mon relevé</p>
       <div className="mt-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--admin-peach)]">
