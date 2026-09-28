@@ -17,6 +17,7 @@ import {
   remindMissingPieces,
   safeConcierge,
 } from "@/lib/crm/concierge-send";
+import { notifyEspaceCustomer } from "@/lib/crm/espace-push";
 import type { BookingStatus, CrmBooking, CrmCustomer } from "@/lib/crm/types";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -141,6 +142,12 @@ export async function PATCH(request: Request, ctx: Ctx) {
     if (body.visible_to_client && !prev.visible_to_client) {
       await safeConcierge(() => notifyStayPublished(id));
       await safeConcierge(() => remindMissingPieces(id));
+      await safeConcierge(() =>
+        notifyEspaceCustomer(booking.customer_id, "carnet", {
+          reference: booking.reference,
+          place: booking.destination || booking.title || undefined,
+        })
+      );
     } else if (revealedPieces.length) {
       await safeConcierge(() => queuePublishedPieces(id, revealedPieces));
     }
