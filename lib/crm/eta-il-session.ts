@@ -228,11 +228,12 @@ export async function runEtaIlSession(opts: {
   maxSteps?: number;
   pollMs?: number;
   onEvent?: (event: PortalLogEvent) => Promise<void> | void;
-}): Promise<{ phase: EtaIlPhase; summary: string | null; message: string | null }> {
+}): Promise<{ phase: EtaIlPhase; summary: string | null; message: string | null; filled: boolean }> {
   const fetchImpl = opts.fetchImpl || fetch;
   const pollMs = opts.pollMs ?? 750;
   const numbers = opts.draft.applicants.map((row) => row.number);
-  const maxSteps = opts.maxSteps ?? 12;
+  const maxSteps = opts.maxSteps ?? 24;
+  let misses = 0;
   let previous: string | undefined;
   let input: unknown = buildEtaIlRequest(opts.draft).input;
 
@@ -248,6 +249,7 @@ export async function runEtaIlSession(opts: {
         message: settled.text
           ? astraRefusalMessage(settled.status, settled.text)
           : "Le remplissage n’a pas abouti.",
+        filled: false,
       };
     }
     const data = settled.data;
@@ -259,6 +261,7 @@ export async function runEtaIlSession(opts: {
         phase: "bloqué",
         summary: null,
         message: "Le portail n’a pas été rempli. Reprenez la main sur le site officiel.",
+        filled: false,
       };
     }
     const decision = stepDecision(parsed.step);
@@ -268,25 +271,34 @@ export async function runEtaIlSession(opts: {
         parsed.step.action === "hold"
           ? redactPassportNumbers(parsed.step.summary, numbers)
           : "Formulaire rempli. Envoi et paiement en attente de confirmation.";
-      return { phase: "à confirmer", summary, message: null };
+      return { phase: "à confirmer", summary, message: null, filled: true };
     }
     if (decision === "stop") {
       return {
         phase: "bloqué",
         summary: null,
         message: "Action refusée : le bot reste sur le portail ETA-IL, sans paiement.",
+        filled: false,
       };
     }
+    let note: string;
     try {
       await applyStep(opts.page, parsed.step);
+      misses = 0;
+      note = redactPassportNumbers(await opts.page.describe(), numbers);
     } catch {
-      return {
-        phase: "bloqué",
-        summary: null,
-        message: "Le portail a changé ou un captcha bloque. Reprenez la main.",
-      };
+      misses += 1;
+      const seen = redactPassportNumbers(await opts.page.describe().catch(() => ""), numbers);
+      if (misses >= 3) {
+        return {
+          phase: "bloqué",
+          summary: null,
+          message: "Le portail a changé ou un captcha bloque. Reprenez la main.",
+          filled: false,
+        };
+      }
+      note = `Contrôle introuvable. Choisis un libellé listé, ou hold si un captcha bloque. ${seen}`;
     }
-    const note = redactPassportNumbers(await opts.page.describe(), numbers);
     input = [
       {
         type: "function_call_output",
@@ -299,6 +311,7 @@ export async function runEtaIlSession(opts: {
     phase: "à confirmer",
     summary: "Limite d’étapes atteinte. Vérifiez le formulaire avant l’envoi.",
     message: null,
+    filled: false,
   };
 }
 

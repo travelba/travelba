@@ -130,6 +130,7 @@ test("le résumé confirmé ne contient pas le numéro de passeport", async () =
     fetchImpl: async () => new Response(body, { status: 200 }),
   });
   assert.equal(result.phase, "à confirmer");
+  assert.equal(result.filled, true);
   assert.equal(result.summary?.includes("12AB34567"), false);
   assert.match(result.summary || "", /Ada Martin/);
 });
@@ -193,6 +194,47 @@ test("la suite renvoie l’outil et le clic est appliqué", async () => {
   assert.equal(bodies[1]?.tools?.[0]?.name, "portal_step");
   assert.equal(JSON.stringify(bodies[1]).includes("gpt-4o"), false);
   assert.equal(result.phase, "à confirmer");
+});
+
+test("un contrôle manqué laisse Astra réessayer", async () => {
+  let clicks = 0;
+  let calls = 0;
+  const result = await runEtaIlSession({
+    apiKey: "sk-test",
+    draft: draft(),
+    maxSteps: 2,
+    page: {
+      ...page(),
+      click: async () => {
+        clicks += 1;
+        throw new Error("cible");
+      },
+    },
+    fetchImpl: async () => {
+      calls += 1;
+      const body =
+        calls === 1
+          ? stepBody("resp_1", "call_1", { action: "click", target: "Commencer" })
+          : stepBody("resp_2", "call_2", { action: "hold", summary: "Ada Martin, 14 décembre" });
+      return new Response(body, { status: 200 });
+    },
+  });
+  assert.equal(clicks, 1);
+  assert.equal(result.filled, true);
+  assert.match(result.summary || "", /Ada Martin/);
+});
+
+test("la limite d’étapes n’est pas un formulaire tenu", async () => {
+  const result = await runEtaIlSession({
+    apiKey: "sk-test",
+    draft: draft(),
+    maxSteps: 1,
+    page: page(),
+    fetchImpl: async () =>
+      new Response(stepBody("resp_1", "call_1", { action: "scroll" }), { status: 200 }),
+  });
+  assert.equal(result.filled, false);
+  assert.match(result.summary || "", /Limite d’étapes/);
 });
 
 test("une réponse sans portal_step garde le message de reprise", async () => {

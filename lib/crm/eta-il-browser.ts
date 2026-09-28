@@ -148,8 +148,12 @@ async function describePortal(page: ChromePage) {
 
 async function clickLabel(page: ChromePage, target: string) {
   const ok = await page.evaluate((label) => {
-    const nodes = Array.from(document.querySelectorAll("button, a, [role='button'], label"));
-    const node = nodes.find((el) => (el.textContent || "").toLowerCase().includes(label.toLowerCase()));
+    const needle = label.toLowerCase();
+    const nodes = Array.from(document.querySelectorAll("button, a, [role='button'], label")).filter((el) =>
+      (el.textContent || "").toLowerCase().includes(needle)
+    );
+    nodes.sort((a, b) => (a.textContent || "").length - (b.textContent || "").length);
+    const node = nodes[0];
     if (!(node instanceof HTMLElement)) return false;
     node.click();
     return true;

@@ -38,6 +38,7 @@ import type {
 import { officialVisaApplyUrl } from "@/lib/crm/visa-fr";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 type Ctx = { params: Promise<{ id: string }> };
 
