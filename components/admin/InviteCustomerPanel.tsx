@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PortalAccess } from "@/lib/crm/invite";
-import { formatDateTimeFr } from "@/lib/crm/money";
+import { formatCustomerLoginAt } from "@/lib/crm/customer-login";
 import { BusyBar } from "@/components/crm/BusyBar";
 
 const STATUS_COPY: Record<PortalAccess["status"], { label: string; hint: string }> = {
@@ -87,7 +87,7 @@ export function InviteCustomerPanel({
         <p className="text-sm text-muted">{copy.hint}</p>
         {lastSignInAt ? (
           <p className="mt-1 text-xs text-muted">
-            Dernière connexion : {formatDateTimeFr(lastSignInAt)}
+            Dernière connexion : {formatCustomerLoginAt(lastSignInAt)}
           </p>
         ) : null}
         {info ? <p className="mt-2 text-sm text-[var(--admin-navy)]">{info}</p> : null}

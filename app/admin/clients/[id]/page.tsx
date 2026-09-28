@@ -6,6 +6,8 @@ import { DeleteBookingButton } from "@/components/admin/DeleteBookingButton";
 import { ClientRevolutSuggestions } from "@/components/admin/ClientRevolutSuggestions";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import { InviteCustomerPanel } from "@/components/admin/InviteCustomerPanel";
+import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
+import { formatCustomerLoginAt } from "@/lib/crm/customer-login";
 import { getPortalAccess } from "@/lib/crm/invite";
 import { suggestionsForCustomer } from "@/lib/crm/revolut-match";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -18,6 +20,7 @@ import {
   type CrmRevolutTransaction,
   type CrmTransaction,
   type CrmBillingCompany,
+  type CrmCustomerLogin,
   type CrmTravelDocument,
   DOC_TYPE_LABELS,
   filterCreditTransfers,
@@ -58,6 +61,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
     unmatchedRevolut,
     whatsappMessages,
     whatsappRequests,
+    { data: loginRows, error: loginError },
   ] = await Promise.all([
     supabase.from("crm_travel_companions").select("*").eq("customer_id", id),
     supabase.from("crm_travel_documents").select("*").eq("customer_id", id),
@@ -102,7 +106,14 @@ export default async function AdminClientDetailPage({ params }: Props) {
       .select("id, kind, body, booking_id, created_at")
       .eq("customer_id", id)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("crm_customer_logins")
+      .select("id, customer_id, auth_user_id, method, created_at")
+      .eq("customer_id", id)
+      .order("created_at", { ascending: false })
+      .limit(80),
   ]);
+  const logins = loginError ? [] : ((loginRows || []) as CrmCustomerLogin[]);
   const bookingRows = (bookings || []) as CrmBooking[];
   const identityPieces = reviewIdentityPieces((documents || []) as CrmTravelDocument[]);
   const places = await loadStayArrivalPlaces(
@@ -137,6 +148,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         </div>
       </div>
       <InviteCustomerPanel customerId={c.id} initial={portal} />
+      <CustomerLoginLog logins={logins} />
       <WhatsappThread
         messages={threadMessages}
         requests={whatsappRequests.error ? [] : whatsappRequests.data || []}
@@ -164,6 +176,12 @@ export default async function AdminClientDetailPage({ params }: Props) {
         <div className="admin-af-card rounded-2xl px-4 py-3">
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Dossiers</p>
           <p className="font-display text-xl font-bold text-[var(--admin-navy)]">{bookingRows.length}</p>
+        </div>
+        <div className="admin-af-card rounded-2xl px-4 py-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Dernière connexion</p>
+          <p className="mt-1 font-display text-base font-bold text-[var(--admin-navy)] first-letter:uppercase">
+            {formatCustomerLoginAt(logins[0]?.created_at || portal.lastSignInAt) || "Jamais"}
+          </p>
         </div>
         <div className="admin-af-card rounded-2xl px-4 py-3">
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Voyageurs</p>
