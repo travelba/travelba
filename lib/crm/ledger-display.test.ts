@@ -4,6 +4,7 @@ import {
   coversStayRollup,
   isAgencyCommissionDebit,
   isFreeExpenseDebit,
+  isFullCreditDebit,
   isStayRollupDebit,
   ledgerMovementTitle,
   ledgerPlace,
@@ -80,6 +81,29 @@ test("une dépense libre reste à côté du montant du séjour", () => {
   assert.deepEqual(
     visibleLedgerRows([stay, expense]).map((row) => row.id),
     ["stay", "extra"]
+  );
+});
+
+test("les extras d’hôtel capturés restent à côté du montant du séjour", () => {
+  const stay = {
+    id: "stay",
+    booking_id: "b1",
+    direction: "debit",
+    kind: "booking",
+    external_id: null,
+  };
+  const extras = {
+    id: "spa",
+    booking_id: "b1",
+    direction: "debit",
+    kind: "booking",
+    external_id: "full-credit:fc1",
+  };
+  assert.equal(isFullCreditDebit(extras), true);
+  assert.equal(coversStayRollup(extras), false);
+  assert.deepEqual(
+    visibleLedgerRows([stay, extras]).map((row) => row.id),
+    ["stay", "spa"]
   );
 });
 

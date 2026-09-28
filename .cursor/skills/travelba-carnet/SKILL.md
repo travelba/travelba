@@ -39,6 +39,7 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 - Ordre : `sort_order` agent (drag / monter-descendre), défaut **chrono**. PATCH `{ order: [ids] }` sur `/api/admin/bookings/[id]/items`.
 - Kinds : `flight` `hotel` `transfer` `activity` `rail` `car` `cruise` `insurance` `fee`. Train / voiture / bateau = cartes métier, pas un jour par escale bateau.
 - **Dépense libre** (`expense`) : hors timeline, hors calendrier, hors publication. Elle vit dans les transactions (skill `travelba-money`).
+- **Full credit** : sur la première nuit de chaque hôtel, si l’agence règle le séjour. Bouton « Demander le full credit » au moins 48 h avant l’arrivée (minuit Paris si pas d’horaire). Trop tard : WhatsApp, pas de bouton. Après demande : « Demande transmise. Nous contactons l’hôtel. » Pas les 500 €. Détail argent : skill `travelba-money`.
 
 ## Prix
 

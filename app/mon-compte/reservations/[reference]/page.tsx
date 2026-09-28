@@ -64,7 +64,7 @@ export default async function ReservationDetailPage({ params }: Props) {
   if (!booking) notFound();
   const b = booking as CrmBooking;
 
-  const [{ data: items }, { data: travelers }, { data: docs }, { data: identityDocs }, { data: companions }, { data: declined }, { data: visaRows }] =
+  const [{ data: items }, { data: travelers }, { data: docs }, { data: identityDocs }, { data: companions }, { data: declined }, { data: visaRows }, { data: creditRows }] =
     await Promise.all([
     supabase
       .from("crm_booking_items")
@@ -81,6 +81,7 @@ export default async function ReservationDetailPage({ params }: Props) {
     supabase.from("crm_travel_companions").select("*").eq("customer_id", customer.id),
     supabase.from("crm_declined_services").select("kind, service_leg, place, moment").eq("booking_id", b.id),
     supabase.from("crm_visa_requests").select("country, step, status, accepted_at").eq("booking_id", b.id),
+    supabase.from("crm_full_credits").select("booking_item_id, status").eq("booking_id", b.id),
   ]);
   const refusals = ((declined || []) as { kind?: string | null; service_leg?: string | null; place?: string | null; moment?: string | null }[])
     .map(serviceRefusalFromRow)
@@ -201,6 +202,17 @@ export default async function ReservationDetailPage({ params }: Props) {
           items={visibleItems}
           docs={visibleDocs}
           pricesVisible={b.prices_visible !== false}
+          fullCredit={{
+            visible: b.visible_to_client,
+            status: b.status,
+            clientSettles: b.client_settles_stay === true,
+            now: new Date().toISOString(),
+            phone: siteConfig.whatsappNumber,
+            requests: ((creditRows || []) as { booking_item_id: string; status: string }[]).map((row) => ({
+              booking_item_id: row.booking_item_id,
+              status: row.status,
+            })),
+          }}
           calendarBase={`/mon-compte/reservations/${b.reference}/agenda.ics`}
           services={{
             variant: "client",

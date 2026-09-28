@@ -7,6 +7,7 @@ import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { readEstaAnswers, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import { pliantConfigured } from "@/lib/crm/pliant";
+import { isFullCreditStatus, type FullCreditRecord } from "@/lib/crm/full-credit";
 import { formatDateRangeShort } from "@/lib/crm/money";
 import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
@@ -51,6 +52,7 @@ export default async function AdminBookingPage({ params }: Props) {
     { data: relatedCustomers },
     { data: declined },
     { data: visaRows },
+    { data: creditRows },
     { data: leRows },
     { data: billingCompanies },
   ] = await Promise.all([
@@ -64,6 +66,10 @@ export default async function AdminBookingPage({ params }: Props) {
       : Promise.resolve({ data: [] as CrmCustomer[] }),
     supabase.from("crm_declined_services").select("kind, service_leg, place, moment").eq("booking_id", id),
     supabase.from("crm_visa_requests").select("country, step, status, answers, accepted_at").eq("booking_id", id),
+    supabase
+      .from("crm_full_credits")
+      .select("id, booking_item_id, status, nights, ceiling_cents, hotel_email, draft_subject, draft_body, pliant_card_id, payment_url, captured_cents")
+      .eq("booking_id", id),
     supabase
       .from("crm_le_bookings")
       .select("id, hotel_name, is_cancellable, cancellation_deadline, cancellation_policies, state")
@@ -160,6 +166,7 @@ export default async function AdminBookingPage({ params }: Props) {
             })
           )}
           pliantReady={pliantConfigured()}
+          fullCredits={((creditRows || []) as FullCreditRecord[]).filter((row) => isFullCreditStatus(row.status))}
           shareUrl={shareUrl}
           shareCompanions={shareCompanions}
         />
