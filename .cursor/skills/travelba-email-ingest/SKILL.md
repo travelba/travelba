@@ -76,6 +76,12 @@ Document `identity` : **pas** d’auto.
 4. `crm_customers.email` est `NOT NULL UNIQUE` : sans e-mail exploitable →
    `ingest.{uuid}@invalid.local`.
 5. Candidat voyage faible (score ≥ 70) : ne pas créer un doublon → revue.
+6. Revue (prix document manquant, candidat faible, etc.) : **aucun** client
+   correspondant au nom imprimé → bouton « Créer le client et le dossier »
+   (prénom et nom de l’extract, e-mail seulement s’il est dans la source ;
+   sans e-mail, fiche quand même, l’agent complète). **Plusieurs** clients
+   possibles → pas de création, même silencieuse : l’agent choisit.
+   Même offre sur le dropzone PDF (`clientCreateOffer`).
 
 Réutiliser `applyExtractToBooking` / `persistNewBookingFromExtract`.
 Ne **pas** recopier l’upsert des cartes.

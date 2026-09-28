@@ -5,6 +5,7 @@ import {
   CUSTOMER_PICK_SELECT,
   type PickableCustomer,
 } from "@/lib/crm/customer-search";
+import { usableCustomerEmail } from "@/lib/crm/email-match";
 import { appOrigin, inviteCustomer } from "@/lib/crm/invite";
 import type { CrmCustomer } from "@/lib/crm/types";
 
@@ -36,13 +37,18 @@ export async function POST(request: Request) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
   const body = await request.json().catch(() => null);
-  const email = String(body?.email || "")
+  const allowMissingEmail = body?.allow_missing_email === true;
+  let email = String(body?.email || "")
     .trim()
     .toLowerCase();
   const firstName = String(body?.first_name || "").trim();
   const lastName = String(body?.last_name || "").trim();
-  if (!email) return jsonError("Email requis");
+  if (!email && !allowMissingEmail) return jsonError("Email requis");
+  if (allowMissingEmail && email && !usableCustomerEmail(email)) {
+    return jsonError("Cet e-mail n’est pas utilisable pour une fiche client.");
+  }
   if (!firstName || !lastName) return jsonError("Prénom et nom requis");
+  if (!email) email = `ingest.${crypto.randomUUID()}@invalid.local`;
   const { data, error } = await auth.supabase
     .from("crm_customers")
     .insert({
@@ -56,7 +62,7 @@ export async function POST(request: Request) {
     .single();
   if (error) return dbError(error, 400);
   const customer = data as CrmCustomer;
-  if (!body?.invite) {
+  if (!body?.invite || email.endsWith("@invalid.local")) {
     return NextResponse.json({ customer, invited: false });
   }
   try {

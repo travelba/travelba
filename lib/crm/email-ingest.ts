@@ -30,10 +30,12 @@ import {
 } from "@/lib/crm/ingest-types";
 import { uploadCrmFile, downloadCrmFile, safeFileName } from "@/lib/crm/files";
 import {
+  clientCreateOffer,
   decideEmailIngestAction,
   executeEmailIngestDecision,
   extractReferences,
   mergeBookingSuggestions,
+  resolveIngestClientEmail,
   suggestBookingByReference,
   suggestBookingByTripSignals,
   suggestCustomerFromExtract,
@@ -266,6 +268,40 @@ async function createCustomerFromExtract(
     if (existing?.id) return existing.id as string;
   }
   throw new Error("Création du client impossible.");
+}
+
+/**
+ * Crée la fiche seulement s’il n’y a aucun client correspondant au nom imprimé.
+ * Le nom vient de l’extract. L’e-mail vient de la saisie agent (vide = absent).
+ */
+export async function createUnmatchedIngestCustomer(
+  admin: Admin,
+  extract: BookingExtract,
+  typedEmail: string | null
+) {
+  const suggestions = await computeSuggestions(admin, extract);
+  const offer = clientCreateOffer({
+    extract,
+    candidates: suggestions.candidates,
+    selectedCustomerId: suggestions.suggested_customer_id,
+  });
+  if (!offer.available) {
+    if (offer.reason === "ambiguous") {
+      throw new Error(
+        "Plusieurs clients correspondent à ce nom. Choisissez le bon."
+      );
+    }
+    if (offer.reason === "matched") {
+      throw new Error("Un client correspond déjà à ce nom.");
+    }
+    throw new Error("Le document ne donne pas de prénom et de nom.");
+  }
+  const email = resolveIngestClientEmail(typedEmail);
+  return createCustomerFromExtract(admin, {
+    firstName: offer.firstName,
+    lastName: offer.lastName,
+    email,
+  });
 }
 
 async function autoApplyEmailIngest(

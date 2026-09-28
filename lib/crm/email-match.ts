@@ -601,6 +601,9 @@ export function decideEmailIngestAction(input: EmailIngestSuggestionInput): Emai
     return { kind: "create", customerId: input.suggestedCustomerId };
   }
 
+  // Un ou plusieurs clients déjà possibles : pas de fiche créée en silence.
+  if (customerNameMatchIds(input.candidates).size > 0) return { kind: "review" };
+
   const person = extractPrimaryPerson(extract);
   if (!person) return { kind: "review" };
   return {
@@ -609,6 +612,77 @@ export function decideEmailIngestAction(input: EmailIngestSuggestionInput): Emai
     lastName: person.last_name,
     email: usableCustomerEmail(extract.customer_email),
   };
+}
+
+/** Clients suggérés par le nom (ou l’e-mail), hors candidats « voyage ». */
+export function customerNameMatchIds(candidates: EmailIngestCandidate[]) {
+  const ids = new Set<string>();
+  for (const row of candidates) {
+    if (row.booking_id) continue;
+    if (row.customer_id) ids.add(row.customer_id);
+  }
+  return ids;
+}
+
+export type ClientCreateOffer =
+  | {
+      available: true;
+      firstName: string;
+      lastName: string;
+      email: string | null;
+    }
+  | { available: false; reason: "matched" | "ambiguous" | "no_name" };
+
+/**
+ * Offre « Créer le client » uniquement s’il n’existe aucun client correspondant
+ * au nom imprimé. Un seul client : on le choisit. Plusieurs : choix humain.
+ */
+export function clientCreateOffer(input: {
+  extract: BookingExtract;
+  candidates: EmailIngestCandidate[];
+  selectedCustomerId?: string | null;
+}): ClientCreateOffer {
+  if (input.selectedCustomerId) return { available: false, reason: "matched" };
+  const matches = customerNameMatchIds(input.candidates);
+  if (matches.size > 1) return { available: false, reason: "ambiguous" };
+  if (matches.size === 1) return { available: false, reason: "matched" };
+  const person = extractPrimaryPerson(input.extract);
+  if (!person) return { available: false, reason: "no_name" };
+  return {
+    available: true,
+    firstName: person.first_name,
+    lastName: person.last_name,
+    email: usableCustomerEmail(input.extract.customer_email),
+  };
+}
+
+export const AMBIGUOUS_CLIENT_COPY =
+  "Plusieurs clients correspondent à ce nom. Choisissez le bon. L’agence ne crée pas de fiche dans ce cas.";
+
+export const MATCHED_CLIENT_COPY =
+  "Un client correspond à ce nom. Choisissez-le avant de créer le dossier.";
+
+export const NO_NAME_CLIENT_COPY =
+  "Aucun prénom et nom lisibles. Choisissez un client existant.";
+
+export function unmatchedClientLead(firstName: string, lastName: string) {
+  return `Aucun client ne correspond à ${firstName} ${lastName}.`;
+}
+
+export function missingEmailHint(source: "message" | "document") {
+  const where = source === "message" ? "le message" : "le document";
+  return `Aucun e-mail dans ${where}. Ajoutez-le si vous l’avez, sinon la fiche sera créée sans, et vous pourrez le compléter.`;
+}
+
+/** E-mail saisi par l’agent, ou vide. N’invente rien et refuse une boîte agence. */
+export function resolveIngestClientEmail(typed: string | null | undefined): string | null {
+  const raw = String(typed ?? "").trim();
+  if (!raw) return null;
+  const usable = usableCustomerEmail(raw);
+  if (!usable) {
+    throw new Error("Cet e-mail n’est pas utilisable pour une fiche client.");
+  }
+  return usable;
 }
 
 export async function executeEmailIngestDecision(
