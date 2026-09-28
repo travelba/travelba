@@ -2,6 +2,8 @@ import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { EmailIngestInbox } from "@/components/admin/EmailIngestInbox";
 import { GmailDiagnostic } from "@/components/admin/GmailDiagnostic";
 import { requireStaffPage } from "@/lib/crm/auth";
+import { backfillEmailBodies } from "@/lib/crm/email-ingest";
+import { sanitizeEmailHtml } from "@/lib/crm/email-source";
 import type { CrmCustomer, CrmEmailIngest } from "@/lib/crm/types";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
 
@@ -19,6 +21,11 @@ export default async function AdminEmailsPage() {
       .order("last_name"),
   ]);
 
+  const inbox = (await backfillEmailBodies((rows || []) as CrmEmailIngest[])).map((row) => ({
+    ...row,
+    body_html: sanitizeEmailHtml(row.body_html),
+  }));
+
   return (
     <div>
       <PageEyebrow>Espace agence</PageEyebrow>
@@ -29,7 +36,7 @@ export default async function AdminEmailsPage() {
       <div className="mt-6">
         <GmailDiagnostic />
         <EmailIngestInbox
-          rows={(rows || []) as CrmEmailIngest[]}
+          rows={inbox}
           customers={(customers || []) as PickableCustomer[]}
         />
       </div>

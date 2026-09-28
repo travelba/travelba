@@ -46,6 +46,7 @@ export type ParsedGmailMessage = {
   subject: string;
   receivedAt: string | null;
   text: string;
+  html: string;
   attachments: GmailAttachmentRef[];
 };
 
@@ -105,9 +106,8 @@ function walkParts(
   }
 }
 
-/** Corps texte : préfère text/plain, sinon dérive du text/html. */
-export function collectBodyText(payload: GmailMessagePayload | undefined): string {
-  if (!payload) return "";
+function collectBodies(payload: GmailMessagePayload | undefined): { plain: string; html: string } {
+  if (!payload) return { plain: "", html: "" };
   let plain = "";
   let html = "";
   const consider = (mime: string | undefined, data: string | undefined, filename?: string) => {
@@ -118,9 +118,20 @@ export function collectBodyText(payload: GmailMessagePayload | undefined): strin
   };
   consider(payload.mimeType, payload.body?.data, payload.filename);
   walkParts(payload, (p) => consider(p.mimeType, p.body?.data, p.filename));
-  if (plain.trim()) return plain.trim();
-  if (html.trim()) return htmlToText(html);
+  return { plain: plain.trim(), html: html.trim() };
+}
+
+/** Corps texte : préfère text/plain, sinon dérive du text/html. */
+export function collectBodyText(payload: GmailMessagePayload | undefined): string {
+  const { plain, html } = collectBodies(payload);
+  if (plain) return plain;
+  if (html) return htmlToText(html);
   return "";
+}
+
+/** HTML d’origine du message, vide s’il n’y en a pas. */
+export function collectBodyHtml(payload: GmailMessagePayload | undefined): string {
+  return collectBodies(payload).html;
 }
 
 export function collectAttachments(
@@ -162,6 +173,7 @@ export function parseGmailMessage(raw: RawGmailMessage): ParsedGmailMessage {
     subject,
     receivedAt,
     text: collectBodyText(payload),
+    html: collectBodyHtml(payload),
     attachments: collectAttachments(payload),
   };
 }

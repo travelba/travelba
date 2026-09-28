@@ -315,18 +315,28 @@ export function bookingStatusFromExtract(
 }
 
 const CANCEL_POLICY =
-  /cancellation policy|free cancellation|conditions d['’]annulation|must be cancelled|annuler ma r[eé]servation|modifier ma r[eé]servation/i;
+  /cancellation policy|free cancellation|politique d['’]annulation|conditions d['’]annulation|annulation gratuite|frais d['’]annulation|must be cancelled|annuler ma r[eé]servation|modifier ma r[eé]servation|you can cancel|vous pouvez annuler/i;
 
 const CANCEL_EVENT =
   /\b(booking|reservation|r[eé]servation)\s+(has been\s+|was\s+|is\s+)?cancell?ed\b|\bcancellation confirmation\b|\bannulation confirm[eé]e\b|a [eé]t[eé] annul[eée]e?\b|\bcancell?ed (booking|reservation)\b|\byour booking (has been|was) cancell?ed\b|\bbooking cancelled\b|\breservation cancelled\b/i;
 
-/** Vrai mail d’annulation — pas une politique « free cancellation ». */
+const CONFIRMATION_MAIL =
+  /confirmation de voyage|booking confirmation|reservation confirmation|r[eé]servation confirm[eé]e|your (?:booking|reservation) is confirmed/i;
+
+const CANCEL_PHRASE =
+  /\b(?:r[eé]servation|booking|voyage)\s+annul[eé]e?\b|\bannulation\s+(?:de\s+)?(?:la\s+|votre\s+|cette\s+)?(?:r[eé]servation|booking)\b/i;
+
+/**
+ * Vrai mail d’annulation — pas une politique « free cancellation »
+ * ni une confirmation qui mentionne l’annulation.
+ */
 export function detectCancellationDocument(text: string | null | undefined) {
   const raw = String(text || "");
   if (!raw.trim()) return false;
   if (CANCEL_EVENT.test(raw)) return true;
   if (CANCEL_POLICY.test(raw)) return false;
-  return /\bannul(?:ation|é|ee|ée)\b/i.test(raw) && /\b(r[eé]servation|booking|confirmation)\b/i.test(raw);
+  if (CONFIRMATION_MAIL.test(raw)) return false;
+  return CANCEL_PHRASE.test(raw);
 }
 
 export function isCancellationExtract(extract: Pick<BookingExtract, "document_status" | "title" | "notes_client">) {

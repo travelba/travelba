@@ -25,7 +25,8 @@ import {
   type PickableCustomer,
 } from "@/lib/crm/customer-search";
 import { emailCardTitle } from "@/lib/crm/ingest-title";
-import { formatDateFr, formatDateRangeShort, formatMoney } from "@/lib/crm/money";
+import { formatDateFr, formatDateRangeShort, formatDateTimeFr, formatMoney } from "@/lib/crm/money";
+import { sanitizeEmailHtml } from "@/lib/crm/email-source";
 import { fieldControlClass } from "@/components/crm/fields";
 
 type ExtractItem = {
@@ -63,6 +64,49 @@ type ExtractView = {
 };
 
 type BookingOption = { id: string; reference: string; label: string; status: string };
+
+function printedTravelers(row: CrmEmailIngest) {
+  const raw = row.extract?.travelers;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((person) => {
+      if (!person || typeof person !== "object") return "";
+      const record = person as { first_name?: string | null; last_name?: string | null };
+      return [record.first_name, record.last_name].filter(Boolean).join(" ").trim();
+    })
+    .filter(Boolean);
+}
+
+function OriginalMail({ row }: { row: CrmEmailIngest }) {
+  const html = sanitizeEmailHtml(row.body_html);
+  const text = (row.body_text || "").trim();
+  return (
+    <aside className="rounded-2xl border border-[#C5A880] bg-[#FAF9F6] p-3">
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#C5A880]">
+        Message d’origine
+      </p>
+      <p className="mt-2 text-sm font-semibold text-[#0B192C]">{row.subject || "Sans objet"}</p>
+      <p className="mt-1 text-xs text-muted">
+        {row.from_email || "Expéditeur inconnu"}
+        {row.received_at ? ` · ${formatDateTimeFr(row.received_at)}` : ""}
+      </p>
+      {html ? (
+        <div
+          className="mt-3 max-h-[32rem] overflow-auto rounded-xl bg-white p-3 text-sm text-[#0B192C]"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      ) : text ? (
+        <pre className="mt-3 max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-xl bg-white p-3 font-sans text-sm text-[#0B192C]">
+          {text}
+        </pre>
+      ) : (
+        <p className="mt-3 text-sm text-muted">
+          Le corps de ce message n’a pas encore été conservé. Les prochains mails afficheront le texte reçu.
+        </p>
+      )}
+    </aside>
+  );
+}
 
 function itemLabel(kind: string | undefined) {
   return BOOKING_ITEM_LABELS[(kind || "fee") as BookingItemKind] || "Prestation";
@@ -281,6 +325,14 @@ export function EmailIngestInbox({
               </div>
             </div>
 
+            <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">
+            <div>
+            {printedTravelers(row).length ? (
+              <p className="text-sm text-[var(--admin-navy)]">
+                {printedTravelers(row).length > 1 ? "Voyageurs" : "Voyageur"} :{" "}
+                {printedTravelers(row).join(", ")}
+              </p>
+            ) : null}
             {(extract.start_date || extract.end_date) && (
               <p className="mt-2 text-sm text-[var(--admin-navy)]">
                 {formatDateRangeShort(extract.start_date, extract.end_date)}
@@ -430,6 +482,9 @@ export function EmailIngestInbox({
                 </p>
               </div>
             ) : null}
+            </div>
+            <OriginalMail row={row} />
+            </div>
 
             <div className="mt-3 rounded-xl border border-border bg-[var(--surface-2)]/60 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
