@@ -433,6 +433,8 @@ export type CrmEmailIngest = {
   from_email: string | null;
   subject: string | null;
   received_at: string | null;
+  body_text: string | null;
+  body_html: string | null;
   status: EmailIngestStatus;
   extract: Record<string, unknown> | null;
   candidates: EmailIngestCandidate[];

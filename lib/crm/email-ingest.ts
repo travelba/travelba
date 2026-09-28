@@ -15,6 +15,8 @@ import {
   extractBookingFromPrepared,
   type PreparedIngestFile,
 } from "@/lib/crm/ingest-file";
+import { clipEmailBody } from "@/lib/crm/email-source";
+import { reopenFalseSupplierCancellation } from "@/lib/crm/ingest-parse";
 import {
   aiGatewayConfigured,
   isAllowedIngestType,
@@ -361,7 +363,10 @@ export async function matchAndStoreExtract(
 /** Relance matching + auto-rattachement sur un extract déjà stocké (sans re-télécharger Gmail). */
 export async function rematchEmailIngestRow(row: CrmEmailIngest) {
   if (!row.extract) throw new Error("Extract introuvable");
-  const extract = parseExtractPayloadSafe(row.extract);
+  const extract = reopenFalseSupplierCancellation(
+    parseExtractPayloadSafe(row.extract),
+    row.subject || ""
+  );
   if (
     extract.document_status !== "identity" &&
     detectCancellationDocument(`${row.subject || ""}\n${extract.title || ""}\n${extract.notes_client || ""}`)
@@ -441,8 +446,11 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
   }
 
   const body = (message.text || "").trim();
-  if (body) {
-    prepared.push({ name: "corps-email.txt", type: "text/plain", text: body });
+  const headed = [message.subject ? `Objet : ${message.subject}` : "", body]
+    .filter(Boolean)
+    .join("\n");
+  if (headed) {
+    prepared.push({ name: "corps-email.txt", type: "text/plain", text: headed });
   }
 
   const basePatch = {
@@ -450,6 +458,8 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
     from_email: message.fromEmail || row.from_email,
     subject: message.subject || row.subject,
     received_at: message.receivedAt || row.received_at,
+    body_text: clipEmailBody(body),
+    body_html: clipEmailBody(message.html),
     attachments: stored,
   };
 
@@ -523,6 +533,37 @@ export async function loadEmailIngestFiles(
     }
   }
   return files;
+}
+
+/** Relit Gmail pour les lignes de revue dont le corps n’a pas encore été conservé. */
+export async function backfillEmailBodies(rows: CrmEmailIngest[]): Promise<CrmEmailIngest[]> {
+  if (!gmailConfigured()) return rows;
+  const admin = createServiceClient();
+  const out: CrmEmailIngest[] = [];
+  for (const row of rows) {
+    if ((row.body_text || "").trim() || (row.body_html || "").trim()) {
+      out.push(row);
+      continue;
+    }
+    if (!row.gmail_message_id || row.gmail_message_id.startsWith("sim-")) {
+      out.push(row);
+      continue;
+    }
+    try {
+      const message = await getMessage(row.gmail_message_id);
+      const body_text = clipEmailBody(message.text);
+      const body_html = clipEmailBody(message.html);
+      if (!body_text && !body_html) {
+        out.push(row);
+        continue;
+      }
+      await admin.from("crm_email_ingest").update({ body_text, body_html }).eq("id", row.id);
+      out.push({ ...row, body_text, body_html });
+    } catch {
+      out.push(row);
+    }
+  }
+  return out;
 }
 
 /** Insère une ligne simulée déjà parsée (tests / démo, sans dépendre de Gmail). */

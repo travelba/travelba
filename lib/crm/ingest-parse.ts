@@ -2,6 +2,7 @@ import { inferAirlineIata } from "./brand-marks";
 import { extractHotelEmail, extractHotelPhone, extractHotelWebsite } from "./hotel-contact";
 import { redactIngestText } from "./ingest-redact";
 import { detectCancellationDocument, type BookingExtract } from "./ingest-types";
+import { isPlaceholderTraveler } from "./person-match";
 import { findMatchingItem, mergeExtractItems } from "./item-match";
 
 export type ParsedAirport = { iata: string; city: string };
@@ -459,6 +460,240 @@ export function parseLittleEmperorsHotel(text: string): ParsedHotel | null {
   };
 }
 
+/** « Booking name » puis le nom, une ligne. Pas un libellé de chambre. */
+export function parseLittleEmperorsGuests(text: string): BookingExtract["travelers"] {
+  const travelers: BookingExtract["travelers"] = [];
+  const seen = new Set<string>();
+  const re = /Booking name\s*\n+\s*([^\n]+)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text))) {
+    const raw = match[1].replace(/\s+/g, " ").trim();
+    if (!raw || /^(adults?|guest room|check )/i.test(raw)) continue;
+    const person = splitPersonName(raw);
+    if (!person) continue;
+    if (isPlaceholderTraveler(person.first_name, person.last_name)) continue;
+    const key = `${person.first_name}|${person.last_name}`.toLocaleLowerCase("fr");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    travelers.push(person);
+  }
+  return travelers;
+}
+
+const STAY_LABEL =
+  /^(n[°ºo]?\s*de voyage|itinerary(?:\s*(?:number|#|id))?|voyageurs?|guest(?:\s*names?)?|travell?ers?|h[oô]tel|hotel|property|h[eé]bergement|adresse|address|ville|city|arriv[eé]e|check[- ]?in|d[eé]part|check[- ]?out|chambre|room(?:\s*type)?|prix total|montant total|total|politique d['’]annulation|cancellation policy|conditions d['’]annulation|inclus|inclusions?)\s*[:：]?\s*(.*)$/i;
+
+function stayLabelKey(label: string) {
+  const key = label
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+  if (/^n/.test(key) && /voyage|itinerary/.test(key)) return "ref";
+  if (/^voyageur|^guest|^travell?er/.test(key)) return "guest";
+  if (/hotel|hebergement|property/.test(key)) return "hotel";
+  if (/adresse|address/.test(key)) return "address";
+  if (/^ville|^city/.test(key)) return "city";
+  if (/arrivee|check-?in/.test(key)) return "in";
+  if (/depart|check-?out/.test(key)) return "out";
+  if (/chambre|room/.test(key)) return "room";
+  if (/prix|montant|^total/.test(key)) return "total";
+  if (/annulation|cancellation|conditions/.test(key)) return "cancel";
+  if (/inclus/.test(key)) return "included";
+  return "";
+}
+
+function isGuestCountLine(value: string) {
+  return /^\d+\s+(adultes?|adults?|guests?|voyageurs?|personnes?|children|enfants?|pax)\b/i.test(
+    value.trim()
+  );
+}
+
+function parseLooseStayDate(chunk: string): string | null {
+  const fr = parseFrEnDate(chunk);
+  if (fr) return fr.slice(0, 10);
+  const us = chunk.match(/([A-Za-z.]+)\s+(\d{1,2}),?\s+(20\d{2})/);
+  if (!us) return null;
+  const mm = monthNum(us[1]);
+  if (!mm) return null;
+  return `${us[3]}-${mm}-${us[2].padStart(2, "0")}`;
+}
+
+type StayBlocks = Record<string, string[]>;
+
+function readStayBlocks(text: string): StayBlocks {
+  const blocks: StayBlocks = {};
+  let current = "";
+  for (const line of text.split(/\n/)) {
+    const trimmed = line.trim();
+    const labeled = trimmed.match(STAY_LABEL);
+    if (labeled) {
+      current = stayLabelKey(labeled[1]);
+      const rest = (labeled[2] || "").trim();
+      if (current && rest) {
+        blocks[current] = blocks[current] || [];
+        blocks[current].push(rest);
+      }
+      continue;
+    }
+    if (!current || !trimmed) {
+      if (!trimmed) current = "";
+      continue;
+    }
+    blocks[current] = blocks[current] || [];
+    blocks[current].push(trimmed);
+  }
+  return blocks;
+}
+
+function firstBlock(blocks: StayBlocks, key: string) {
+  return (blocks[key] || []).map((line) => line.trim()).find(Boolean) || null;
+}
+
+/** Confirmation Expedia TAAP : seulement les champs imprimés. */
+export function parseExpediaTaap(text: string): {
+  hotel: ParsedHotel;
+  travelers: BookingExtract["travelers"];
+  printed_cancellation: string | null;
+  amount: number | null;
+  currency: string | null;
+} | null {
+  if (!/(\btaap\b|\bexpedia\b)/i.test(text)) return null;
+  if (/Reservation Details/i.test(text) && /Booking Reference/i.test(text)) return null;
+  const blocks = readStayBlocks(text);
+  const ref =
+    (blocks.ref || []).join(" ").match(/\d{6,}/)?.[0] ||
+    text.match(/n[°ºo]?\s*de voyage[^\d]{0,20}(\d{6,})/i)?.[1] ||
+    null;
+  const guestLines = (blocks.guest || []).filter(
+    (line) => !isGuestCountLine(line) && !/[0-9:：]/.test(line) && line.length <= 80
+  );
+  const travelers: BookingExtract["travelers"] = [];
+  const seen = new Set<string>();
+  for (const line of guestLines) {
+    const person = splitPersonName(line.replace(/\s+/g, " "));
+    if (!person || isPlaceholderTraveler(person.first_name, person.last_name)) continue;
+    const key = `${person.first_name}|${person.last_name}`.toLocaleLowerCase("fr");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    travelers.push(person);
+  }
+  const hotel_name = firstBlock(blocks, "hotel");
+  const start_at = parseLooseStayDate((blocks.in || []).join(" "));
+  const end_at = parseLooseStayDate((blocks.out || []).join(" "));
+  if (!ref && !hotel_name && !travelers.length) return null;
+  const room = firstBlock(blocks, "room");
+  const guests =
+    (blocks.room || []).find((line) => isGuestCountLine(line)) ||
+    (blocks.guest || []).find((line) => isGuestCountLine(line)) ||
+    text.match(/\b(\d+\s+adultes?)\b/i)?.[1] ||
+    null;
+  const totalLine = (blocks.total || []).join(" ");
+  const money = totalLine ? parseDocumentMoney(totalLine) : null;
+  const included = (blocks.included || [])
+    .map((line) => line.replace(/^[-•*]\s*/, "").trim())
+    .filter((line) => line && !isGuestCountLine(line))
+    .slice(0, 8);
+  const printed_cancellation = (blocks.cancel || []).join(" ").replace(/\s+/g, " ").trim().slice(0, 400) || null;
+  return {
+    hotel: {
+      hotel_name,
+      confirmation_ref: ref,
+      city: firstBlock(blocks, "city"),
+      address: (blocks.address || []).join(", ") || null,
+      start_at,
+      end_at,
+      included,
+      rooms: room || guests ? [{ room, guests }] : [],
+      supplier: "Expedia TAAP",
+      occupancy: guests,
+      source_family: "expedia_taap",
+    },
+    travelers,
+    printed_cancellation,
+    amount: money?.amount ?? null,
+    currency: money?.currency ?? null,
+  };
+}
+
+export const SUPPLIER_CANCELLATION_NOTE =
+  "Annulation fournisseur — à rattacher au dossier existant, sans créer de voyage.";
+
+/** Le nom imprimé du voyageur devient le titulaire si le mail ne l’a pas recopié. */
+export function applyPrintedGuestNames(extract: BookingExtract): BookingExtract {
+  const first = (extract.customer_first_name || "").trim();
+  const last = (extract.customer_last_name || "").trim();
+  if (first && last) return extract;
+  const person = (extract.travelers || []).find(
+    (row) =>
+      (row.first_name || "").trim() &&
+      (row.last_name || "").trim() &&
+      !isPlaceholderTraveler(row.first_name, row.last_name)
+  );
+  if (!person) return extract;
+  return {
+    ...extract,
+    customer_first_name: first || person.first_name,
+    customer_last_name: last || person.last_name,
+  };
+}
+
+function dayOf(value: string | null | undefined) {
+  const day = (value || "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : "";
+}
+
+/** Dates et ville du séjour, seulement si un item les porte déjà. */
+export function fillStayFromItems(extract: BookingExtract): BookingExtract {
+  const items = extract.items || [];
+  const starts = items.map((item) => dayOf(item.start_at)).filter(Boolean).sort();
+  const ends = items
+    .map((item) => dayOf(item.end_at) || dayOf(item.start_at))
+    .filter(Boolean)
+    .sort();
+  const hotel = items.find((item) => item.kind === "hotel");
+  const city = typeof hotel?.details?.city === "string" ? hotel.details.city.trim() : "";
+  const hotelName =
+    typeof hotel?.details?.hotel_name === "string" ? hotel.details.hotel_name.trim() : "";
+  return {
+    ...extract,
+    start_date: (extract.start_date || "").trim() || starts[0] || extract.start_date,
+    end_date: (extract.end_date || "").trim() || ends[ends.length - 1] || extract.end_date,
+    destination: (extract.destination || "").trim() || city || extract.destination,
+    title: (extract.title || "").trim() || hotelName || city || extract.title,
+  };
+}
+
+/**
+ * Une confirmation classée annulée seulement à cause de la note automatique
+ * (politique d’annulation dans le mail) redevient une confirmation.
+ */
+export function reopenFalseSupplierCancellation(
+  extract: BookingExtract,
+  subject: string
+): BookingExtract {
+  const stamped = applyPrintedGuestNames(extract);
+  const notes = (stamped.notes_client || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const onlyAutoNote = notes.length > 0 && notes.every((line) => line === SUPPLIER_CANCELLATION_NOTE);
+  const confirmation = CONFIRMATION_SUBJECT.test(subject || "");
+  if (
+    stamped.document_status === "cancelled" &&
+    onlyAutoNote &&
+    confirmation &&
+    !detectCancellationDocument(subject || "")
+  ) {
+    return { ...stamped, document_status: "confirmed", notes_client: null };
+  }
+  return stamped;
+}
+
+const CONFIRMATION_SUBJECT =
+  /confirmation de voyage|booking confirmation|reservation confirmation/i;
+
 export function parseNantipaConfirmation(text: string): ParsedHotel | null {
   if (!/NANTIPA/i.test(text) || !/Reservation Number/i.test(text)) return null;
   const ref =
@@ -901,6 +1136,7 @@ export const INGEST_FAMILIES = [
   "toucan",
   "maeva",
   "transavia",
+  "expedia_taap",
   "identity",
   "unknown",
 ] as const;
@@ -931,6 +1167,9 @@ export function classifyIngestFamily(text: string, filename = ""): IngestFamily 
     /Itin[eé]raire/i.test(text)
   ) {
     return "transfer";
+  }
+  if (/(\btaap\b|\bexpedia\b)/i.test(text) && /voyageur|guest name|n[°ºo]?\s*de voyage|itinerary/i.test(text)) {
+    return "expedia_taap";
   }
   if (/NANTIPA/i.test(text) && /Reservation Number/i.test(text)) return "nantipa";
   if (/Reservation Details/i.test(text) && /Booking Reference/i.test(text)) {
@@ -1031,10 +1270,25 @@ export function structuredHintFromPdfText(text: string): string {
       "Plusieurs e-tickets du même vol (même n°, même jour) = UN item, details.ticket_count = nombre de billets. Prix unitaire saisi par l’agent. Aller-retour dans UN PDF = DEUX items. IATA 8 chiffres = code agence, pas un PNR. « Scan for check-in » n’est pas un hôtel. Ne pas extraire la carte fidélité."
     );
   }
+  const expedia = parseExpediaTaap(clean);
   const hotel =
+    expedia?.hotel ||
     parseLittleEmperorsHotel(clean) ||
     parseNantipaConfirmation(clean) ||
     parseHotelConfirmationLetter(clean);
+  if (expedia) {
+    bits.push(
+      `EXPEDIA ${JSON.stringify({
+        hotel: expedia.hotel,
+        travelers: expedia.travelers,
+        total: expedia.amount,
+        currency: expedia.currency,
+      })}`
+    );
+    bits.push(
+      "Expedia TAAP : le voyageur imprimé va dans travelers ET customer_first_name / customer_last_name. confirmation_ref = n° de voyage. Politique d’annulation ≠ cancelled. Phrase d’annulation imprimée → details.notes, sinon null."
+    );
+  }
   if (hotel) bits.push(`HOTEL ${JSON.stringify(hotel)}`);
   const transfer = parseTransferConfirmation(clean);
   if (transfer) bits.push(`TRANSFERT ${JSON.stringify(transfer)}`);
@@ -1273,6 +1527,8 @@ function overlayItem(target: ExtractItem, incoming: ExtractItem) {
     if (incoming.details?.occupancy && !current.occupancy) {
       current.occupancy = incoming.details.occupancy;
     }
+    if (incoming.details?.notes && !current.notes) current.notes = incoming.details.notes;
+    if (incoming.supplier && !target.supplier) target.supplier = incoming.supplier;
     const hotelName =
       typeof current.hotel_name === "string" ? current.hotel_name.trim() : "";
     if (hotelName) target.title = hotelName;
@@ -1327,14 +1583,32 @@ export function parsedItemsFromText(text: string): {
     for (const extra of maeva.extras) items.push(maevaExtraToItem(extra));
     if (maeva.confirmed) status = status || "confirmed";
   } else {
+    const expedia = parseExpediaTaap(clean);
     const hotel =
+      expedia?.hotel ||
       parseLittleEmperorsHotel(clean) ||
       parseNantipaConfirmation(clean) ||
       parseHotelConfirmationLetter(clean);
     if (hotel) {
-      items.push(withDocumentPrice(hotelToItem(hotel), money));
+      const item = withDocumentPrice(hotelToItem(hotel), money);
+      if (expedia?.amount) {
+        item.details = {
+          ...(item.details || {}),
+          document_amount: expedia.amount,
+          document_currency: expedia.currency || item.details?.document_currency || "EUR",
+        };
+      }
+      if (expedia?.printed_cancellation) {
+        item.details = { ...(item.details || {}), notes: expedia.printed_cancellation };
+      }
+      items.push(item);
       if (hotel.needs_review) {
         notes.push("Hôtel : réservation provisoire (tentative), à confirmer.");
+      }
+      if (!travelers.length && expedia?.travelers.length) travelers = expedia.travelers;
+      if (!travelers.length && hotel.source_family === "little_emperors") {
+        const named = parseLittleEmperorsGuests(clean);
+        if (named.length) travelers = named;
       }
     }
   }
@@ -1348,7 +1622,7 @@ export function parsedItemsFromText(text: string): {
   }
   if (detectCancellationDocument(clean)) {
     status = "cancelled";
-    notes.push("Annulation fournisseur — à rattacher au dossier existant, sans créer de voyage.");
+    notes.push(SUPPLIER_CANCELLATION_NOTE);
   }
   if (isToucanActivities(clean)) {
     notes.push(
@@ -1401,20 +1675,27 @@ export function applyStructuredHints(
     if (!destination && parsed.destination) destination = parsed.destination;
   }
 
+  const blob = texts.join("\n");
+  if (blob.trim() && status === "cancelled" && !detectCancellationDocument(blob)) {
+    status = "confirmed";
+  }
+
   const notes =
     [extract.notes_client, ...extraNotes]
       .map((row) => (row || "").trim())
-      .filter(Boolean)
+      .filter((row) => row && (status === "cancelled" || row !== SUPPLIER_CANCELLATION_NOTE))
       .filter((row, index, all) => all.indexOf(row) === index)
       .join("\n") || null;
 
-  return {
-    ...extract,
-    document_status: status,
-    title: title || extract.title,
-    destination: destination || extract.destination,
-    notes_client: notes,
-    travelers,
-    items: mergeExtractItems(items),
-  };
+  return applyPrintedGuestNames(
+    fillStayFromItems({
+      ...extract,
+      document_status: status,
+      title: title || extract.title,
+      destination: destination || extract.destination,
+      notes_client: notes,
+      travelers,
+      items: mergeExtractItems(items),
+    })
+  );
 }

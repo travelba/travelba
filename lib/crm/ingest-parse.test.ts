@@ -17,7 +17,10 @@ import {
   parseAmadeusReceipt,
   parseDdMonYy,
   parseHotelConfirmationLetter,
+  parseExpediaTaap,
+  parseLittleEmperorsGuests,
   parseLittleEmperorsHotel,
+  reopenFalseSupplierCancellation,
   parseMaevaStay,
   parseNantipaConfirmation,
   parserItemsComplete,
@@ -29,6 +32,7 @@ import {
   shouldUseVision,
   structuredHintFromPdfText,
 } from "./ingest-parse";
+import { decideEmailIngestAction } from "./email-match";
 import { findMatchingItem, mergeExtractItems } from "./item-match";
 
 const AMADEUS_HAHN = `
@@ -277,6 +281,142 @@ describe("annulation fournisseur", () => {
     assert.equal(cancelled.status, "cancelled");
     const policy = parsedItemsFromText(LE_HOTEL);
     assert.notEqual(policy.status, "cancelled");
+    const taapPolicy = parsedItemsFromText(`Confirmation de voyage TAAP
+Politique d'annulation
+Annulation gratuite jusqu'au 10 novembre 2026
+N° de voyage : 10000000000001
+`);
+    assert.notEqual(taapPolicy.status, "cancelled");
+  });
+});
+
+const TAAP_MAIL = `
+Confirmation de voyage TAAP
+N° de voyage : 10000000000001
+Voyageur : Camille Martin
+Hôtel : Maison Exemple
+Adresse : 10 rue de l'Exemple
+Ville : Lyon
+Arrivée : 17 novembre 2026
+Départ : 20 novembre 2026
+Chambre : Superior, 1 lit king
+1 adulte
+Prix total : 412,50 €
+Inclus
+Petit-déjeuner inclus
+Politique d'annulation
+Annulation gratuite jusqu'au 10 novembre 2026.
+`;
+
+describe("Expedia TAAP", () => {
+  it("recopie le voyageur imprimé et les champs présents, sans inventer l’annulation", () => {
+    const parsed = parseExpediaTaap(TAAP_MAIL);
+    assert.ok(parsed);
+    assert.equal(parsed.travelers[0]?.first_name, "Camille");
+    assert.equal(parsed.travelers[0]?.last_name, "Martin");
+    assert.equal(parsed.hotel.hotel_name, "Maison Exemple");
+    assert.equal(parsed.hotel.city, "Lyon");
+    assert.equal(parsed.hotel.confirmation_ref, "10000000000001");
+    assert.equal(parsed.hotel.start_at, "2026-11-17");
+    assert.equal(parsed.hotel.end_at, "2026-11-20");
+    assert.equal(parsed.hotel.rooms[0]?.room, "Superior, 1 lit king");
+    assert.match(parsed.hotel.rooms[0]?.guests || "", /1 adulte/i);
+    assert.equal(parsed.amount, 412.5);
+    assert.equal(parsed.currency, "EUR");
+    assert.match(parsed.printed_cancellation || "", /Annulation gratuite/);
+    assert.equal(parsed.hotel.included.includes("Petit-déjeuner inclus"), true);
+
+    const hinted = applyStructuredHints(
+      {
+        document_status: "cancelled",
+        title: "",
+        destination: "",
+        start_date: null,
+        end_date: null,
+        currency: "EUR",
+        total_amount: null,
+        notes_client: "Annulation fournisseur — à rattacher au dossier existant, sans créer de voyage.",
+        customer_email: null,
+        customer_first_name: null,
+        customer_last_name: null,
+        items: [],
+        travelers: [],
+      },
+      [TAAP_MAIL]
+    );
+    assert.equal(hinted.document_status, "confirmed");
+    assert.equal(hinted.customer_first_name, "Camille");
+    assert.equal(hinted.customer_last_name, "Martin");
+    assert.equal(hinted.travelers[0]?.last_name, "Martin");
+    assert.equal(hinted.start_date, "2026-11-17");
+    assert.equal(hinted.end_date, "2026-11-20");
+    const hotel = hinted.items.find((item) => item.kind === "hotel");
+    assert.equal(hotel?.title, "Maison Exemple");
+    assert.equal(hotel?.confirmation_ref, "10000000000001");
+    assert.equal(hotel?.supplier, "Expedia TAAP");
+    assert.equal(hotel?.details?.document_amount, 412.5);
+    assert.equal(hotel?.details?.document_currency, "EUR");
+    assert.equal(hotel?.details?.rooms?.[0]?.room, "Superior, 1 lit king");
+    assert.match(String(hotel?.details?.notes || ""), /Annulation gratuite/);
+    assert.equal(hotel?.amount, null);
+
+    const decision = decideEmailIngestAction({
+      extract: hinted,
+      suggestedCustomerId: null,
+      suggestedBookingId: null,
+      candidates: [],
+    });
+    assert.equal(decision.kind, "create_customer");
+    if (decision.kind === "create_customer") {
+      assert.equal(decision.firstName, "Camille");
+      assert.equal(decision.lastName, "Martin");
+    }
+  });
+
+  it("laisse vide ce qui n’est pas imprimé", () => {
+    const sparse = `
+Expedia TAAP
+Confirmation de voyage
+N° de voyage : 10000000000002
+Voyageur : Lea Bernard
+Hôtel : Hotel Vide
+Ville : Nice
+Arrivée : 2 mars 2026
+Départ : 4 mars 2026
+`;
+    const parsed = parsedItemsFromText(sparse);
+    const hotel = parsed.items.find((item) => item.kind === "hotel");
+    assert.equal(parsed.travelers[0]?.first_name, "Lea");
+    assert.equal(hotel?.details?.rooms?.length || 0, 0);
+    assert.equal(hotel?.details?.included?.length || 0, 0);
+    assert.equal(hotel?.details?.notes ?? null, null);
+    assert.equal(hotel?.details?.document_amount ?? null, null);
+    assert.notEqual(parsed.status, "cancelled");
+  });
+
+  it("rouvre une confirmation classée annulée à tort", () => {
+    const reopened = reopenFalseSupplierCancellation(
+      {
+        document_status: "cancelled",
+        title: "Lyon",
+        destination: "Lyon",
+        start_date: "2026-11-17",
+        end_date: "2026-11-20",
+        currency: "EUR",
+        total_amount: null,
+        notes_client: "Annulation fournisseur — à rattacher au dossier existant, sans créer de voyage.",
+        customer_email: null,
+        customer_first_name: null,
+        customer_last_name: null,
+        items: [],
+        travelers: [{ first_name: "Camille", last_name: "Martin" }],
+      },
+      "Confirmation de voyage TAAP - 17 nov."
+    );
+    assert.equal(reopened.document_status, "confirmed");
+    assert.equal(reopened.customer_first_name, "Camille");
+    assert.equal(reopened.customer_last_name, "Martin");
+    assert.equal(reopened.notes_client, null);
   });
 });
 
@@ -338,6 +478,13 @@ describe("parseLittleEmperorsHotel", () => {
     assert.equal(parsed.start_at, "2026-08-10");
     assert.equal(parsed.end_at, "2026-08-11");
     assert.equal(parsed.rooms.length, 2);
+    assert.deepEqual(
+      parseLittleEmperorsGuests(LE_HOTEL).map((row) => `${row.first_name} ${row.last_name}`),
+      ["Guest A", "Guest B"]
+    );
+    const withGuests = parsedItemsFromText(LE_HOTEL);
+    assert.equal(withGuests.travelers[0]?.first_name, "Guest");
+    assert.equal(withGuests.travelers[0]?.last_name, "A");
     assert.equal(parsed.included.includes("Petit-déjeuner"), true);
     assert.equal(JSON.stringify(parsed).includes("858"), false);
     assert.equal(parsed.phone, null);

@@ -12,7 +12,9 @@ import { openPdf } from "@/lib/crm/pdf-raster";
 import { downloadCrmFile } from "@/lib/crm/files";
 import { clearLittleEmperorsContacts } from "@/lib/crm/hotel-contact";
 import {
+  applyPrintedGuestNames,
   applyStructuredHints,
+  fillStayFromItems,
   classifyIngestFamily,
   parsedItemsFromText,
   parserItemsComplete,
@@ -95,6 +97,7 @@ const PROMPT_HOTEL = `Hôtel :
 - Little Emperors : nom, adresse, ville, site s’il est écrit. Pas de téléphone, pas d’e-mail.
 - Nantipa / vouchers Costa Rica : 08/02/2026 = 2 août (MM/JJ), pas 8 février. Check-in 15:00 dans les CGV ≠ heure de la carte (date only).
 - Confirmation type The Leela : Check In 14-SEP-26 = date only. Ignorer 14:00/12:00 de politique et Pick Up / Drop Off 00:00. TENTATIVE → details.needs_review.
+- Expedia TAAP : le voyageur imprimé va dans travelers et dans customer_first_name / customer_last_name. confirmation_ref = n° de voyage. Une politique d’annulation ne rend pas le document cancelled. Si une phrase d’annulation est imprimée, details.notes = cette phrase, sinon null.
 - Devis Passion Collection / « none are on hold » : document_status=quote, un item hôtel, rooms = les options. Pas de NET.`;
 
 const PROMPT_OTHER = `Toucan Discovery = activités (kind=activity). Les « étapes » du cadre ne sont PAS des réservations hôtel.
@@ -132,6 +135,7 @@ const FAMILY_PROMPT: Record<IngestFamily, string> = {
   toucan: PROMPT_OTHER,
   maeva: `${PROMPT_HOTEL}\n${PROMPT_MAEVA}`,
   transavia: `${PROMPT_FLIGHT}\n${PROMPT_TRANSAVIA}`,
+  expedia_taap: `${PROMPT_HOTEL}\nExpedia TAAP : recopier le voyageur imprimé sur le client et les voyageurs. Ne pas classer cancelled à cause d’une politique d’annulation.`,
   identity: "C’est une pièce d’identité. document_status=identity. Aucun item de réservation.",
   unknown: `${PROMPT_FLIGHT}\n${PROMPT_HOTEL}\n${PROMPT_OTHER}\n${PROMPT_MAEVA}\n${PROMPT_TRANSAVIA}`,
 };
@@ -526,20 +530,24 @@ async function processPreparedFile(
   const parsed = parsedItemsFromText(text);
   const complete = parserItemsComplete(family, parsed.items, parsed.travelers);
   const fromParser = () =>
-    sanitizeExtractedPrices({
-      ...emptyBookingExtract(),
-      document_status:
-        parsed.status ||
-        (family === "quote" ? "quote" : detectCancellationDocument(text) ? "cancelled" : "confirmed"),
-      title: parsed.title || "",
-      destination: parsed.destination || "",
-      notes_client: parsed.notes.join("\n"),
-      travelers: parsed.travelers,
-      items:
-        family === "little_emperors"
-          ? clearLittleEmperorsContacts(tagSourceFileName(parsed.items, name))
-          : tagSourceFileName(parsed.items, name),
-    });
+    sanitizeExtractedPrices(
+      applyPrintedGuestNames(
+        fillStayFromItems({
+          ...emptyBookingExtract(),
+          document_status:
+            parsed.status ||
+            (family === "quote" ? "quote" : detectCancellationDocument(text) ? "cancelled" : "confirmed"),
+          title: parsed.title || "",
+          destination: parsed.destination || "",
+          notes_client: parsed.notes.join("\n") || null,
+          travelers: parsed.travelers,
+          items:
+            family === "little_emperors"
+              ? clearLittleEmperorsContacts(tagSourceFileName(parsed.items, name))
+              : tagSourceFileName(parsed.items, name),
+        })
+      )
+    );
   if (complete) {
     return { name, family, extract: fromParser() };
   }
