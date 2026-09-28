@@ -10,8 +10,10 @@ import {
   adminClientCode,
   attemptClientLogin,
   clientAddress,
+  confirmedClientUser,
   deskClearCookie,
   deskSetCookie,
+  linkCustomerAuth,
   loginRoutePlan,
   openServiceSession,
 } from "@/lib/crm/admin-client-login";
@@ -47,6 +49,7 @@ export async function POST(request: Request) {
       { email, password, ip: clientAddress(request.headers) },
       {
         findCustomer,
+        provisionAuthUser,
         openSession: (authUserId) => openClientSession(opened, authUserId),
       }
     );
@@ -83,14 +86,65 @@ export async function POST(request: Request) {
 
 async function findCustomer(email: string) {
   const admin = createServiceClient();
-  const { data } = await admin
+  const { data, error } = await admin
     .from("crm_customers")
     .select("auth_user_id")
     .eq("email", email)
-    .maybeSingle();
-  if (!data) return null;
-  const authUserId = typeof data.auth_user_id === "string" ? data.auth_user_id : null;
+    .limit(2);
+  if (error || !data || data.length !== 1) return null;
+  const authUserId = typeof data[0].auth_user_id === "string" ? data[0].auth_user_id : null;
   return { authUserId };
+}
+
+async function provisionAuthUser(email: string) {
+  const admin = createServiceClient();
+  return linkCustomerAuth(email, {
+    async listByEmail(address) {
+      const { data, error } = await admin
+        .from("crm_customers")
+        .select("id, auth_user_id")
+        .eq("email", address)
+        .limit(2);
+      if (error || !data) return null;
+      return data.map((row) => ({
+        id: String(row.id),
+        authUserId: typeof row.auth_user_id === "string" ? row.auth_user_id : null,
+      }));
+    },
+    async createConfirmedUser(address) {
+      const { data, error } = await admin.auth.admin.createUser(confirmedClientUser(address));
+      if (data.user?.id) return { id: data.user.id, alreadyExists: false };
+      const message = error?.message || "";
+      const alreadyExists = /already been registered|already registered|email_exists|user already exists/i.test(
+        message
+      );
+      return { id: null, alreadyExists };
+    },
+    async findExistingUserId(address) {
+      const { data, error } = await admin.auth.admin.generateLink({
+        type: "magiclink",
+        email: address,
+      });
+      if (error || !data.user?.id) return null;
+      return data.user.id;
+    },
+    async attach(customerId, authUserId) {
+      const { data, error } = await admin
+        .from("crm_customers")
+        .update({ auth_user_id: authUserId })
+        .eq("id", customerId)
+        .is("auth_user_id", null)
+        .select("auth_user_id")
+        .maybeSingle();
+      if (!error && typeof data?.auth_user_id === "string") return data.auth_user_id;
+      const { data: fresh } = await admin
+        .from("crm_customers")
+        .select("auth_user_id")
+        .eq("id", customerId)
+        .maybeSingle();
+      return typeof fresh?.auth_user_id === "string" ? fresh.auth_user_id : null;
+    },
+  });
 }
 
 async function openClientSession(response: NextResponse, authUserId: string) {
