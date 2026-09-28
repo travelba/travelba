@@ -6,6 +6,7 @@ import {
   normalizeGivenNames,
   type ExtractedIdentity,
 } from "./identity";
+import { reconcilePassportDates } from "./passport-dates";
 import { foldName, lastNamesMatch, nameTokens, namesReferToSamePerson } from "./person-match";
 import { DOC_TYPES, type TravelDocType } from "./types";
 
@@ -305,26 +306,45 @@ export function identitiesFromForm(form: FormData): ExtractedIdentity[] {
 
 export function mergePassportSets(
   mrzList: ExtractedIdentity[],
-  visionList: ExtractedIdentity[]
+  visionList: ExtractedIdentity[],
+  extraDates: string[] = []
 ): ExtractedIdentity[] {
   const unused = [...visionList];
   const merged: ExtractedIdentity[] = [];
   for (const mrz of mrzList) {
     const idx = unused.findIndex((vision) => passportsReferToSame(mrz, vision));
     const vision = idx >= 0 ? unused.splice(idx, 1)[0] : null;
-    const identity = mergePassportIdentities(mrz, vision);
+    const identity = mergePassportIdentities(mrz, vision, extraDates);
     if (identity) merged.push(identity);
   }
-  merged.push(...unused);
+  for (const vision of unused) {
+    const identity = mergePassportIdentities(null, vision, extraDates);
+    if (identity) merged.push(identity);
+  }
   return uniquePassports(merged);
+}
+
+function withPassportDates(
+  identity: ExtractedIdentity,
+  mrzExpires: string | null,
+  extraDates: string[]
+): ExtractedIdentity {
+  const dates = reconcilePassportDates({
+    issued: identity.issued_on,
+    expires: identity.expires_on,
+    mrzExpires,
+    extra: extraDates,
+  });
+  return { ...identity, issued_on: dates.issued_on, expires_on: dates.expires_on };
 }
 
 export function mergePassportIdentities(
   mrz: ExtractedIdentity | null,
-  vision: ExtractedIdentity | null
+  vision: ExtractedIdentity | null,
+  extraDates: string[] = []
 ): ExtractedIdentity | null {
-  if (!mrz) return vision;
-  if (!vision) return mrz;
+  if (!mrz) return vision ? withPassportDates(vision, null, extraDates) : null;
+  if (!vision) return withPassportDates(mrz, mrz.expires_on, extraDates);
   const preferMrz = mrz.valid || fieldScore(mrz) >= fieldScore(vision);
   const merged = preferMrz
     ? ({ ...vision, ...filledEntries(mrz) } as ExtractedIdentity)
@@ -334,20 +354,26 @@ export function mergePassportIdentities(
     printedName: vision.last_name,
     usageName: vision.usage_name,
   });
-  return {
-    ...merged,
-    last_name: names.last_name,
-    usage_name: names.usage_name,
-    first_name: completeGivenNames(mrz.first_name, vision.first_name),
-    nationality: resolveNationality(merged.nationality, merged.issuing_country),
-    issuing_country: resolveNationality(merged.issuing_country),
-    issued_on: vision.issued_on || mrz.issued_on,
-    place_of_birth: vision.place_of_birth || mrz.place_of_birth,
-    authority: vision.authority || mrz.authority,
-    personal_number: mrz.personal_number || vision.personal_number,
-    format: mrz.format || vision.format,
-    valid: mrz.valid || vision.valid,
-  };
+  const dated = withPassportDates(
+    {
+      ...merged,
+      last_name: names.last_name,
+      usage_name: names.usage_name,
+      first_name: completeGivenNames(mrz.first_name, vision.first_name),
+      nationality: resolveNationality(merged.nationality, merged.issuing_country),
+      issuing_country: resolveNationality(merged.issuing_country),
+      issued_on: vision.issued_on || mrz.issued_on,
+      expires_on: vision.expires_on || mrz.expires_on,
+      place_of_birth: vision.place_of_birth || mrz.place_of_birth,
+      authority: vision.authority || mrz.authority,
+      personal_number: mrz.personal_number || vision.personal_number,
+      format: mrz.format || vision.format,
+      valid: mrz.valid || vision.valid,
+    },
+    mrz.expires_on,
+    extraDates
+  );
+  return dated;
 }
 
 export function identitySummary(id: ExtractedIdentity) {
