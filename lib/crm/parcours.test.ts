@@ -129,6 +129,22 @@ test("cover catalogue matches the arrival place only", () => {
     unsplashKeywordMatch({ destination: "Miami", title: "Miami" }),
     unsplashKeywordMatch({ destination: "Panama City", title: "Panama" })
   );
+  assert.equal(
+    unsplashKeywordMatch({ destination: "Miami Beach", title: "Miami Beach" }),
+    "photo-1533106497176-45ae19e68ba2"
+  );
+  assert.equal(
+    bookingCoverUrl({
+      destination: "Miami Beach",
+      title: "Miami Beach",
+      cover_image_path: null,
+    }),
+    "/api/covers/photo-1533106497176-45ae19e68ba2"
+  );
+  assert.notEqual(
+    unsplashKeywordMatch({ destination: "Miami Beach", title: "Séjour" }),
+    unsplashKeywordMatch({ destination: "New York", title: "Séjour" })
+  );
   assert.equal(unsplashKeywordMatch({ destination: "Xyzzy", title: "Inconnu" }), null);
   assert.equal(
     bookingCoverUrl({
