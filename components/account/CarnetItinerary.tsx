@@ -313,7 +313,13 @@ export function CarnetItinerary({
     : null;
   const homeAddress = services ? formatCustomerAddress(services.holder) : "";
 
-  if (!days.length && !undated.length && !offers.length) return null;
+  if (!days.length && !undated.length && !offers.length) {
+    return (
+      <p className="rounded-2xl border border-[#e9e8e5]/60 bg-white p-4 text-sm text-muted">
+        Votre itinéraire est en préparation. L’agence ajoutera vos étapes ici très bientôt.
+      </p>
+    );
+  }
 
   function itemHref(id: string) {
     if (!calendarBase) return null;
