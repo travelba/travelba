@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { openEtaIlPortal } from "@/lib/crm/eta-il-browser";
 import { buildEtaIlDraft, publicEtaIlDraft, tripGoesToIsrael } from "@/lib/crm/eta-il-draft";
-import { etaIlPliantCard } from "@/lib/crm/eta-il-fee";
+import { customerPliantCardCount, etaIlPliantCard } from "@/lib/crm/eta-il-fee";
 import { issuePliantCard, pliantConfigured } from "@/lib/crm/pliant";
 import { runEtaIlSession } from "@/lib/crm/eta-il-session";
 import { openaiApiKey } from "@/lib/crm/ingest-types";
@@ -50,6 +50,7 @@ export async function POST(request: Request, ctx: Ctx) {
     }
     if (!pliantConfigured()) return jsonError("Pliant n’est pas configuré.");
     const party = (travelers || []) as CrmBookingTraveler[];
+    const existingCards = await customerPliantCardCount(auth.supabase, b.customer_id);
     const spec = etaIlPliantCard({
       firstName: holder?.first_name || party[0]?.first_name || "Client",
       lastName: holder?.last_name || party[0]?.last_name || "Travelba",
@@ -58,6 +59,7 @@ export async function POST(request: Request, ctx: Ctx) {
       organizationId: process.env.PLIANT_ORGANIZATION_ID || "",
       startDate: b.start_date,
       endDate: b.end_date,
+      existingCards,
     });
     try {
       const issued = await issuePliantCard(process.env.PLIANT_CARDHOLDER_ID || "", spec.body);
