@@ -4,16 +4,20 @@ import { LOGIN_FAILURE_MESSAGE } from "./login-message";
 import {
   accessWhileDesk,
   attemptClientLogin,
+  confirmedClientUser,
   deskBypass,
+  linkCustomerAuth,
   loginRoutePlan,
   openServiceSession,
   secretEquals,
   signDesk,
+  type AuthLinkAdmin,
   type ClientLoginDeps,
 } from "./admin-client-login";
 
 const FAKE_CODE = "tb-test-code";
 const USER_ID = "11111111-1111-4111-8111-111111111111";
+const NEW_USER_ID = "33333333-3333-4333-8333-333333333333";
 const EMAIL = "client@example.com";
 
 async function withCode(value: string | undefined, run: () => Promise<void>) {
@@ -26,6 +30,16 @@ async function withCode(value: string | undefined, run: () => Promise<void>) {
     if (previous === undefined) delete process.env.ADMIN_CLIENT_CODE;
     else process.env.ADMIN_CLIENT_CODE = previous;
   }
+}
+
+function linkAdmin(overrides: Partial<AuthLinkAdmin> = {}): AuthLinkAdmin {
+  return {
+    listByEmail: overrides.listByEmail ?? (async () => null),
+    createConfirmedUser:
+      overrides.createConfirmedUser ?? (async () => ({ id: null, alreadyExists: false })),
+    findExistingUserId: overrides.findExistingUserId ?? (async () => null),
+    attach: overrides.attach ?? (async () => null),
+  };
 }
 
 function deps(overrides: Partial<ClientLoginDeps> = {}): ClientLoginDeps & { calls: string[] } {
@@ -141,6 +155,9 @@ test("unknown email is a normal failure", async () => {
   await withCode(FAKE_CODE, async () => {
     const client = deps({
       findCustomer: async () => null,
+      provisionAuthUser: async () => {
+        throw new Error("pas de création");
+      },
     });
     const missing = await attemptClientLogin(
       { email: "inconnu@example.com", password: FAKE_CODE, store: new Map() },
@@ -149,16 +166,103 @@ test("unknown email is a normal failure", async () => {
     assert.equal(missing.action, "reject");
     assert.equal(loginRoutePlan(true, missing), "reject");
 
-    const unlinked = await attemptClientLogin(
-      { email: EMAIL, password: FAKE_CODE, store: new Map() },
-      deps({
-        findCustomer: async () => ({ authUserId: null }),
-      })
-    );
-    assert.equal(unlinked.action, "reject");
     assert.equal(LOGIN_FAILURE_MESSAGE, "E-mail ou mot de passe incorrect.");
     assert.equal(client.calls.includes("open"), false);
   });
+});
+
+test("customer without an auth user gets a session and no password", async () => {
+  await withCode(FAKE_CODE, async () => {
+    const calls: string[] = [];
+    const result = await attemptClientLogin(
+      { email: EMAIL, password: FAKE_CODE, store: new Map() },
+      {
+        findCustomer: async () => {
+          calls.push("find");
+          return { authUserId: null };
+        },
+        provisionAuthUser: async (email) => {
+          calls.push(`provision:${email}`);
+          return NEW_USER_ID;
+        },
+        openSession: async (authUserId) => {
+          calls.push(`open:${authUserId}`);
+          return true;
+        },
+      }
+    );
+    assert.deepEqual(result, { action: "open", authUserId: NEW_USER_ID });
+    assert.deepEqual(calls, ["find", `provision:${EMAIL}`, `open:${NEW_USER_ID}`]);
+    assert.equal("password" in confirmedClientUser(EMAIL), false);
+    assert.equal(confirmedClientUser(EMAIL).email_confirm, true);
+
+    let creates = 0;
+    const linked = await linkCustomerAuth(EMAIL, {
+      listByEmail: async () => [{ id: "cust-1", authUserId: null }],
+      createConfirmedUser: async () => {
+        creates += 1;
+        return { id: NEW_USER_ID, alreadyExists: false };
+      },
+      findExistingUserId: async () => {
+        throw new Error("pas de second compte");
+      },
+      attach: async (customerId, authUserId) => {
+        calls.push(`attach:${customerId}:${authUserId}`);
+        return authUserId;
+      },
+    });
+    assert.equal(linked, NEW_USER_ID);
+    assert.equal(creates, 1);
+    assert.equal(calls.includes(`attach:cust-1:${NEW_USER_ID}`), true);
+  });
+});
+
+test("existing auth user opens without creating a second user", async () => {
+  await withCode(FAKE_CODE, async () => {
+    let created = 0;
+    const result = await attemptClientLogin(
+      { email: EMAIL, password: FAKE_CODE, store: new Map() },
+      {
+        findCustomer: async () => ({ authUserId: USER_ID }),
+        provisionAuthUser: async () => {
+          created += 1;
+          return NEW_USER_ID;
+        },
+        openSession: async () => true,
+      }
+    );
+    assert.deepEqual(result, { action: "open", authUserId: USER_ID });
+    assert.equal(created, 0);
+
+    const reused = await linkCustomerAuth(EMAIL, linkAdmin({
+      listByEmail: async () => [{ id: "cust-1", authUserId: USER_ID }],
+      createConfirmedUser: async () => {
+        created += 1;
+        return { id: NEW_USER_ID, alreadyExists: false };
+      },
+    }));
+    assert.equal(reused, USER_ID);
+    assert.equal(created, 0);
+  });
+});
+
+test("two customers with the same email are not given an auth user", async () => {
+  let created = 0;
+  const linked = await linkCustomerAuth(
+    EMAIL,
+    linkAdmin({
+      listByEmail: async () => [
+        { id: "cust-1", authUserId: null },
+        { id: "cust-2", authUserId: null },
+      ],
+      createConfirmedUser: async () => {
+        created += 1;
+        return { id: NEW_USER_ID, alreadyExists: false };
+      },
+    })
+  );
+  assert.equal(linked, null);
+  assert.equal(created, 0);
 });
 
 test("too many code attempts stop opening a session", async () => {

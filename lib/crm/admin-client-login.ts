@@ -17,6 +17,11 @@ export type CustomerAuth = { authUserId: string | null };
 export type ClientLoginDeps = {
   findCustomer: (email: string) => Promise<CustomerAuth | null>;
   openSession: (authUserId: string) => Promise<boolean>;
+  /**
+   * Fiche sans compte : crée l’utilisateur Auth et enregistre auth_user_id.
+   * N’envoie rien, ne choisit pas de mot de passe.
+   */
+  provisionAuthUser?: (email: string) => Promise<string | null>;
 };
 
 export type ClientLoginResult =
@@ -67,6 +72,7 @@ export function clientAddress(headers: Headers) {
  * Code absent : le formulaire mot de passe actuel.
  * Code différent : le mot de passe du client.
  * Code juste et client introuvable, ou trop de tentatives : échec ordinaire.
+ * Fiche sans compte : un seul client pour cet e-mail, puis création du compte.
  * Le mot de passe du client n’est jamais réécrit.
  */
 export async function attemptClientLogin(
@@ -99,13 +105,54 @@ export async function attemptClientLogin(
   if (!allowed || !email) return { action: "reject" };
 
   const customer = await deps.findCustomer(email);
-  if (!customer?.authUserId || !USER_ID_RE.test(customer.authUserId)) {
-    return { action: "reject" };
-  }
+  if (!customer) return { action: "reject" };
 
-  const opened = await deps.openSession(customer.authUserId);
+  let authUserId = customer.authUserId;
+  if (!authUserId || !USER_ID_RE.test(authUserId)) {
+    authUserId = deps.provisionAuthUser ? await deps.provisionAuthUser(email) : null;
+  }
+  if (!authUserId || !USER_ID_RE.test(authUserId)) return { action: "reject" };
+
+  const opened = await deps.openSession(authUserId);
   if (!opened) return { action: "reject" };
-  return { action: "open", authUserId: customer.authUserId };
+  return { action: "open", authUserId };
+}
+
+export type AuthLinkRow = { id: string; authUserId: string | null };
+
+export type AuthLinkAdmin = {
+  listByEmail: (email: string) => Promise<AuthLinkRow[] | null>;
+  createConfirmedUser: (email: string) => Promise<{ id: string | null; alreadyExists: boolean }>;
+  findExistingUserId: (email: string) => Promise<string | null>;
+  attach: (customerId: string, authUserId: string) => Promise<string | null>;
+};
+
+/** Compte Auth confirmé, sans mot de passe et sans message. */
+export function confirmedClientUser(email: string) {
+  return {
+    email,
+    email_confirm: true as const,
+    app_metadata: { crm_role: "client" as const },
+  };
+}
+
+/**
+ * Une fiche sans auth_user_id reçoit un compte. Deux fiches, ou aucune : on ne crée rien.
+ * Un compte déjà lié est réutilisé.
+ */
+export async function linkCustomerAuth(email: string, admin: AuthLinkAdmin) {
+  const rows = await admin.listByEmail(email);
+  if (!rows || rows.length !== 1) return null;
+  const row = rows[0];
+  if (row.authUserId && USER_ID_RE.test(row.authUserId)) return row.authUserId;
+
+  const created = await admin.createConfirmedUser(email);
+  let userId = created.id;
+  if (!userId && created.alreadyExists) userId = await admin.findExistingUserId(email);
+  if (!userId || !USER_ID_RE.test(userId)) return null;
+  const attached = await admin.attach(row.id, userId);
+  if (!attached || !USER_ID_RE.test(attached)) return null;
+  return attached;
 }
 
 /** Feature coupée : le navigateur garde la connexion actuelle. Sinon le serveur vérifie le mot de passe. */
