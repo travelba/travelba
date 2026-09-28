@@ -20,22 +20,26 @@ export async function POST(request: Request) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
   const body = await request.json().catch(() => null);
-  const customerId = String(body?.customer_id || "");
+  const customerId = String(body?.customer_id || "").trim();
   const title = String(body?.title || "").trim();
   const createIssues = collectManualCreateIssues({ customerId, title });
   if (createIssues.length) return jsonIssues(createIssues);
-  const { data: traveler, error: travelerError } = await auth.supabase
-    .from("crm_customers")
-    .select("id, company_role, billing_parent_id")
-    .eq("id", customerId)
-    .maybeSingle();
-  if (travelerError) return dbError(travelerError, 500);
-  if (!traveler) {
-    return jsonIssues([{ field: "customer_id", message: "Client introuvable." }], 404);
+  let billingCustomerId: string | null = null;
+  if (customerId) {
+    const { data: traveler, error: travelerError } = await auth.supabase
+      .from("crm_customers")
+      .select("id, company_role, billing_parent_id")
+      .eq("id", customerId)
+      .maybeSingle();
+    if (travelerError) return dbError(travelerError, 500);
+    if (!traveler) {
+      return jsonIssues([{ field: "customer_id", message: "Client introuvable." }], 404);
+    }
+    billingCustomerId = body?.billing_customer_id
+      ? String(body.billing_customer_id)
+      : resolveBillingCustomerId(traveler as CrmCustomer);
   }
-  const billingCustomerId = body?.billing_customer_id
-    ? String(body.billing_customer_id)
-    : resolveBillingCustomerId(traveler as CrmCustomer);
+  const travelerId = customerId || null;
   let reference: string;
   try {
     reference = await nextBookingReference(auth.supabase);
@@ -46,7 +50,7 @@ export async function POST(request: Request) {
   const { data, error } = await auth.supabase
     .from("crm_bookings")
     .insert({
-      customer_id: customerId,
+      customer_id: travelerId,
       billing_customer_id: billingCustomerId,
       reference,
       title,

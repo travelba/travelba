@@ -434,7 +434,7 @@ async function missingPlans(admin: Admin, booking: CrmBooking, now: Date) {
 export async function notifyStayPublished(bookingId: string) {
   const admin = createServiceClient();
   const booking = await loadBooking(admin, bookingId);
-  if (!booking?.visible_to_client) return;
+  if (!booking?.visible_to_client || !booking.customer_id) return;
   const plan = planStayNotice({
     published: true,
     reference: booking.reference,
@@ -497,7 +497,7 @@ export async function queuePublishedPieces(
     pieces,
   });
   const plan = plans[0];
-  if (!plan) return;
+  if (!plan || !booking.customer_id) return;
   await saveQueue(admin, {
     dedupeKey,
     customerId: booking.customer_id,
@@ -511,7 +511,7 @@ export async function queuePublishedPieces(
 export async function notifyFormalitiesReady(bookingId: string, countries: string[]) {
   const admin = createServiceClient();
   const booking = await loadBooking(admin, bookingId);
-  if (!booking?.visible_to_client) return;
+  if (!booking?.visible_to_client || !booking.customer_id) return;
   const { data: papers } = await admin
     .from("crm_travel_documents")
     .select("doc_type, issuing_country, booking_id")
@@ -546,7 +546,7 @@ export async function notifyFormalitiesReady(bookingId: string, countries: strin
 export async function remindMissingPieces(bookingId: string, now = new Date()) {
   const admin = createServiceClient();
   const booking = await loadBooking(admin, bookingId);
-  if (!booking?.visible_to_client) return;
+  if (!booking?.visible_to_client || !booking.customer_id) return;
   const plans = await missingPlans(admin, booking, now);
   for (const plan of plans) {
     const row = await saveQueue(admin, {

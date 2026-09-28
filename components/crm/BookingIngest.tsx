@@ -477,7 +477,7 @@ export function BookingIngest({
     if (!extract) return;
     const blockers = collectExtractIssues(extract, {
       customerId,
-      requireCustomer: role === "admin" && mode === "create",
+      requireCustomer: false,
     });
     if (blockers.length) {
       setIssues(blockers);
@@ -565,7 +565,7 @@ export function BookingIngest({
     if (!extract) return [];
     return collectExtractIssues(extract, {
       customerId,
-      requireCustomer: role === "admin" && mode === "create",
+      requireCustomer: false,
     });
   }, [extract, customerId, role, mode]);
   const priceIssues = liveIssues.filter((issue) => issue.field.endsWith("document_amount"));
@@ -812,7 +812,6 @@ export function BookingIngest({
           {role === "admin" && mode === "create" ? (
             <Field label="Client">
               <select
-                required
                 value={customerId}
                 onChange={(event) => {
                   setIssues([]);
@@ -820,7 +819,7 @@ export function BookingIngest({
                 }}
                 className={fieldControlClass}
               >
-                <option value="">Choisir…</option>
+                <option value="">Créer le client ensuite</option>
                 {customers.map((c) => (
                   <option key={c.id} value={c.id}>
                     {customerFullName(c)} — {c.email}

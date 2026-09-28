@@ -69,11 +69,13 @@ export default async function AdminBookingPage({ params }: Props) {
       .select("id, hotel_name, is_cancellable, cancellation_deadline, cancellation_policies, state")
       .eq("crm_booking_id", id)
       .limit(1),
-    supabase
-      .from("crm_billing_companies")
-      .select("id, company_name, sort_order, customer_id")
-      .eq("customer_id", b.billing_customer_id || b.customer_id)
-      .order("sort_order"),
+    b.billing_customer_id || b.customer_id
+      ? supabase
+          .from("crm_billing_companies")
+          .select("id, company_name, sort_order, customer_id")
+          .eq("customer_id", b.billing_customer_id || b.customer_id)
+          .order("sort_order")
+      : Promise.resolve({ data: [] as Pick<CrmBillingCompany, "id" | "company_name" | "sort_order" | "customer_id">[] }),
   ]);
   const party = (relatedCustomers || []) as CrmCustomer[];
   const customer = party.find((row) => row.id === b.customer_id) || null;

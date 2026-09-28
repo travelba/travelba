@@ -276,7 +276,7 @@ export async function POST(request: Request, ctx: Ctx) {
         .eq("customer_id", b.customer_id),
       auth.supabase.from("crm_customers").select("first_name, last_name").eq("id", b.customer_id).maybeSingle(),
       auth.supabase.from("crm_visa_cards").select("pliant_card_id, ceiling_cents, countries").eq("booking_id", b.id).maybeSingle(),
-      customerPliantCardCount(auth.supabase, b.customer_id),
+      b.customer_id ? customerPliantCardCount(auth.supabase, b.customer_id) : Promise.resolve(0),
     ]);
   const rows = (existing || []) as {
     country: VisaCorridor;

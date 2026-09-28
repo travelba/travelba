@@ -24,6 +24,8 @@ Code : `lib/crm/carnet.ts`, `lib/crm/bookings.ts`, `components/admin/BookingEdit
 
 Un seul interrupteur séjour (plus de case fichier séparée). Guard serveur `canPublishCarnet` : au moins **une** carte `kind !== "fee"`.
 
+Nouvelle réservation (import ou saisie) : le client n’est pas obligatoire. Le dossier s’ouvre d’abord. Le client se crée ou se choisit ensuite sur le dossier. Publier exige un client. Sans client, pas d’écriture au grand livre.
+
 Quotes (`status=quoted`, devis Little Emperors) : dans le dossier, **invisibles** jusqu’à publication / confirmation. Pas d’écran Devis public. Pas d’e-mail auto à la publication.
 
 Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le détail.

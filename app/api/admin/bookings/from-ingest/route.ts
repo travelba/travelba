@@ -16,8 +16,7 @@ export async function POST(request: Request) {
   if (auth instanceof NextResponse) return auth;
   try {
     const form = await request.formData();
-    const customerId = String(form.get("customer_id") || "");
-    if (!customerId) return jsonError("Choisissez un client");
+    const customerId = String(form.get("customer_id") || "").trim();
     const extract = parseExtractPayload(JSON.parse(String(form.get("extract") || "{}")));
     const files = collectIngestFiles(form);
     const staged = collectStagedFiles(form);

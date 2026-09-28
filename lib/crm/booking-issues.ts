@@ -75,9 +75,7 @@ export function collectManualCreateIssues(input: {
   customerFound?: boolean;
 }): BookingIssue[] {
   const issues: BookingIssue[] = [];
-  if (!String(input.customerId || "").trim()) {
-    issues.push({ field: "customer_id", message: "Choisissez un client." });
-  } else if (input.customerFound === false) {
+  if (input.customerFound === false) {
     issues.push({ field: "customer_id", message: "Client introuvable." });
   }
   if (!String(input.title || "").trim()) {

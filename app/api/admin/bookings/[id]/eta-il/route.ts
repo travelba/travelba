@@ -71,6 +71,7 @@ export async function POST(request: Request, ctx: Ctx) {
       return jsonError("Ce dossier n’a pas de vol vers Israël.");
     }
     if (!pliantConfigured()) return jsonError("Pliant n’est pas configuré.");
+    if (!b.customer_id) return jsonError("Créez le client avant la formalité.");
     const party = (travelers || []) as CrmBookingTraveler[];
     const fx = await euroRates();
     const card = await ensureIlPliantCard({

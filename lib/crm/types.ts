@@ -224,9 +224,10 @@ export type CrmTravelDocument = {
 
 export type CrmBooking = {
   id: string;
-  customer_id: string;
-  /** Wallet facturé (admin société ou titulaire). */
-  billing_customer_id: string;
+  /** Null tant que l’agence n’a pas créé ou choisi le client. */
+  customer_id: string | null;
+  /** Wallet facturé (admin société ou titulaire). Null sans client. */
+  billing_customer_id: string | null;
   /** Société de facturation du séjour. N’entre pas dans l’encours. */
   billing_company_id?: string | null;
   reference: string;
