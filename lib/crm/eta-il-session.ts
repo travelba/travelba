@@ -7,7 +7,7 @@ import {
 } from "./eta-il-draft";
 import { eventForPortalAction, portalEvent, type PortalLogEvent } from "./eta-il-log";
 
-const SUBMIT = /submit|envoyer|envoi|pay|paiement|payment|checkout|carte bancaire|card number|אשר|שלם/i;
+const SUBMIT = /submit|envoyer|envoi|\bpay\b|paiement|\bpayment\b|checkout|carte bancaire|card number|אשר|שלם/i;
 
 export type PortalStep =
   | { action: "open"; url: string }
@@ -61,6 +61,48 @@ export function holdKeepsForm(summary: string) {
   return !/écran inattendu|captcha|accueil|sans champs|before you start|bloqu|pas été fourni|suspendue|suspendu/i.test(summary);
 }
 
+/** Une option de liste. « France » et « FR » visent « FRA (France) » quand le choix est unique. */
+export function pickOptionLabel(options: string[], query: string) {
+  const wanted = query.replace(/\s+/g, " ").trim().toLowerCase();
+  if (wanted.length < 2) return null;
+  const usable = options
+    .map((option) => option.replace(/\s+/g, " ").trim())
+    .filter((option) => option && !/^click to select$/i.test(option));
+  if (wanted.length >= 3) {
+    const included = usable.filter((option) => option.toLowerCase().includes(wanted));
+    if (included.length === 1) return included[0];
+    const named = included.filter((option) => {
+      const paren = option.toLowerCase().match(/\(([^)]+)\)/);
+      return paren?.[1] === wanted || option.toLowerCase().startsWith(wanted);
+    });
+    if (named.length === 1) return named[0];
+  }
+  const prefixed = usable.filter((option) => option.toLowerCase().startsWith(wanted));
+  return prefixed.length === 1 ? prefixed[0] : null;
+}
+
+/** Trois contrôles manqués. Le mot captcha n’apparaît que si l’écran en montre un. */
+export function blockedPortalMessage(seen: string) {
+  if (/captcha=(image|widget|texte)/.test(seen)) return "Un captcha bloque. Reprenez la main.";
+  return "Le contrôle n’a pas répondu. Reprenez la main.";
+}
+
+export function portalEye(bytes: Uint8Array) {
+  return {
+    role: "user" as const,
+    content: [
+      {
+        type: "input_text" as const,
+        text: "Écran du portail. Lis un captcha de caractères s’il est visible, puis saisis-le. Ne recopie pas un numéro de passeport.",
+      },
+      {
+        type: "input_image" as const,
+        image_url: `data:image/jpeg;base64,${Buffer.from(bytes).toString("base64")}`,
+      },
+    ],
+  };
+}
+
 export function stepDecision(step: PortalStep): "run" | "hold" | "stop" {
   if (step.action === "hold") return "hold";
   if (step.action === "open" && !portalUrlAllowed(step.url)) return "stop";
@@ -77,8 +119,10 @@ const PORTAL_INSTRUCTIONS = [
   "Quand les champs de la demande sont remplis, appelle portal_step avec action hold.",
   "Le résumé hold nomme les voyageurs cochés et les dates, sans numéro de passeport.",
   "Si un demandeur est mineur, saisis le représentant adulte du champ guardian : nom, prénom, numéro et pays de délivrance.",
+  "Le pays de délivrance est une liste. Clique son libellé pour l’ouvrir, puis type le nom du pays (France) ou clique l’option exacte, par exemple FRA (France).",
   "Ne hold pas pour signaler une information déjà présente dans la demande.",
-  "Si un captcha bloque, hold tout de suite.",
+  "Si une image de caractères est jointe, lis ces caractères et saisis-les. Ne hold pas pour ça.",
+  "Si le captcha est une grille ou une case « je ne suis pas un robot », hold et dis-le dans le résumé.",
 ].join(" ");
 
 export const portalToolChoice = { type: "function" as const, name: "portal_step" };
@@ -306,25 +350,20 @@ export async function runEtaIlSession(opts: {
       note = redactPassportNumbers(await opts.page.describe(), numbers);
     } catch (err) {
       misses += 1;
+      await publishFrame(opts.page, opts.onFrame);
       const seen = redactPassportNumbers(await opts.page.describe().catch(() => ""), numbers);
       if (misses >= 3) {
         return {
           phase: "bloqué",
           summary: null,
-          message: "Le portail a changé ou un captcha bloque. Reprenez la main.",
+          message: blockedPortalMessage(seen),
           filled: false,
         };
       }
       const why = err instanceof Error && err.message === "immobile" ? "Le clic n’a pas changé la page." : "Contrôle introuvable.";
-      note = `${why} Choisis un libellé listé, ou hold si un captcha bloque. ${seen}`;
+      note = `${why} Choisis un libellé listé. Si une image de caractères est jointe, lis-la et saisis-la. ${seen}`;
     }
-    input = [
-      {
-        type: "function_call_output",
-        call_id: parsed.callId,
-        output: note,
-      },
-    ];
+    input = await continuationInput(opts.page, parsed.callId, note, misses);
   }
   return {
     phase: "à confirmer",
@@ -332,6 +371,19 @@ export async function runEtaIlSession(opts: {
     message: null,
     filled: false,
   };
+}
+
+async function continuationInput(page: PortalPage, callId: string, note: string, misses: number) {
+  const items: unknown[] = [{ type: "function_call_output", call_id: callId, output: note }];
+  const eye = misses > 0 || /captcha=image/.test(note);
+  if (!eye || !page.capture) return items;
+  try {
+    const bytes = await page.capture();
+    if (bytes.byteLength > 0 && bytes.byteLength < 400_000) items.push(portalEye(bytes));
+  } catch (err) {
+    console.error("[eta-il] captcha", err instanceof Error ? err.message : "échec");
+  }
+  return items;
 }
 
 async function publishFrame(

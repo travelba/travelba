@@ -4,7 +4,9 @@ import { buildEtaIlDraft } from "./eta-il-draft";
 import {
   astraRefusalMessage,
   buildEtaIlRequest,
+  blockedPortalMessage,
   holdKeepsForm,
+  pickOptionLabel,
   portalToolChoice,
   portalUrlAllowed,
   readPortalStep,
@@ -88,6 +90,9 @@ test("la requête Astra reste sur gpt-6-astra et le portail officiel", () => {
   assert.equal(body.tools[0]?.name, "portal_step");
   assert.equal(JSON.stringify(body).includes("gpt-4o"), false);
   assert.match(body.instructions, /israel-entry.piba.gov.il/);
+  assert.match(body.instructions, /FRA \(France\)/);
+  assert.match(body.instructions, /lis ces caractères/);
+  assert.equal(body.instructions.includes("hold tout de suite"), false);
   assert.match(body.instructions, /Ne paie pas/);
   assert.equal(portalUrlAllowed("https://israel-entry.piba.gov.il/apply"), true);
   assert.equal(portalUrlAllowed("https://example.com/"), false);
@@ -97,6 +102,9 @@ test("la requête Astra reste sur gpt-6-astra et le portail officiel", () => {
 test("un clic d’envoi s’arrête, un autre site et une carte sont refusés", () => {
   assert.equal(stepDecision({ action: "click", target: "Envoyer la demande" }), "hold");
   assert.equal(stepDecision({ action: "click", target: "Paiement" }), "hold");
+  assert.equal(stepDecision({ action: "click", target: "Pay" }), "hold");
+  assert.equal(stepDecision({ action: "click", target: "Country of issue" }), "run");
+  assert.equal(stepDecision({ action: "click", target: "Pays" }), "run");
   assert.equal(stepDecision({ action: "open", url: "https://evil.example/" }), "stop");
   assert.equal(
     stepDecision({ action: "type", target: "Numéro de carte", text: "4242424242424242" }),
@@ -315,6 +323,79 @@ test("la trace d’échec ne recopie pas la réponse", () => {
   assert.equal(trace.includes("12AB34567"), false);
   assert.match(trace, /completed/);
   assert.match(trace, /message/);
+});
+
+test("le pays FR se choisit dans la liste FRA (France)", () => {
+  const options = ["Click to select", "AFG (Afghanistan)", "FRA (France)", "FRO (Faroe)"];
+  assert.equal(pickOptionLabel(options, "France"), "FRA (France)");
+  assert.equal(pickOptionLabel(options, "FRA"), "FRA (France)");
+  assert.equal(pickOptionLabel(options, "FR"), null);
+  assert.equal(pickOptionLabel(["FRA (France)"], "FR"), "FRA (France)");
+  assert.equal(pickOptionLabel(options, "Click to select"), null);
+});
+
+test("trois clics manqués sans captcha ne demandent pas de reprendre pour un captcha", async () => {
+  let calls = 0;
+  const result = await runEtaIlSession({
+    apiKey: "sk-test",
+    draft: draft(),
+    maxSteps: 3,
+    pollMs: 0,
+    page: {
+      ...page(),
+      click: async () => {
+        throw new Error("immobile");
+      },
+      describe: async () => "captcha=non liste=0",
+    },
+    fetchImpl: async () => {
+      calls += 1;
+      return new Response(
+        stepBody(`resp_${calls}`, `call_${calls}`, { action: "click", target: "Country of issue" }),
+        { status: 200 }
+      );
+    },
+  });
+  assert.equal(result.message, "Le contrôle n’a pas répondu. Reprenez la main.");
+  assert.equal(calls, 3);
+  assert.equal(result.filled, false);
+});
+
+test("trois contrôles manqués ne parlent de captcha que s’il est là", () => {
+  assert.equal(blockedPortalMessage("captcha=non liste=0"), "Le contrôle n’a pas répondu. Reprenez la main.");
+  assert.equal(blockedPortalMessage("captcha=image liste=0"), "Un captcha bloque. Reprenez la main.");
+});
+
+test("un contrôle manqué joint l’écran pour lire un captcha", async () => {
+  const bodies: Array<{ input?: unknown }> = [];
+  let calls = 0;
+  await runEtaIlSession({
+    apiKey: "sk-test",
+    draft: draft(),
+    maxSteps: 2,
+    pollMs: 0,
+    page: {
+      ...page(),
+      click: async () => {
+        throw new Error("cible");
+      },
+      describe: async () => "captcha=image liste=0",
+      capture: async () => new Uint8Array([1, 2, 3, 4]),
+    },
+    fetchImpl: async (_url, init) => {
+      if (init?.body) bodies.push(JSON.parse(String(init.body)) as { input?: unknown });
+      calls += 1;
+      const body =
+        calls === 1
+          ? stepBody("resp_1", "call_1", { action: "click", target: "Code" })
+          : stepBody("resp_2", "call_2", { action: "hold", summary: "Ada Martin, 14 décembre" });
+      return new Response(body, { status: 200 });
+    },
+  });
+  const second = JSON.stringify(bodies[1]);
+  assert.match(second, /input_image/);
+  assert.match(second, /data:image\/jpeg;base64,/);
+  assert.equal(second.includes("12AB34567"), false);
 });
 
 test("readPortalStep lit l’action renvoyée", () => {

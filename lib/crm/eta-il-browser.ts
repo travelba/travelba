@@ -4,7 +4,7 @@ import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
 import { CHROMIUM_BUNDLE_MESSAGE, chooseBrowserLaunch, findChromiumBin } from "./chromium-pack";
 import { ETA_IL_PORTAL } from "./eta-il-draft";
-import { portalUrlAllowed, type PortalPage } from "./eta-il-session";
+import { pickOptionLabel, portalUrlAllowed, type PortalPage } from "./eta-il-session";
 
 /** Chrome local d’abord (machine de l’agence), puis Chromium empaqueté sur Vercel. */
 export function localChromePaths() {
@@ -45,6 +45,7 @@ async function launchBrowser(): Promise<{ browser: ChromeBrowser } | { message: 
           executablePath: local,
           headless: true,
           args: ["--no-sandbox", "--disable-dev-shm-usage"],
+          defaultViewport: { width: 1280, height: 720 },
         }),
       };
     } catch (err) {
@@ -75,6 +76,11 @@ export async function openEtaIlPortal(): Promise<PortalOpen> {
   const browser = launched.browser;
   try {
     const page = await browser.newPage();
+    // Le bundler nomme les fonctions exécutées dans la page. Le helper doit survivre à chaque navigation.
+    const arm = page as ChromePage & { evaluateOnNewDocument(fn: () => void): Promise<void> };
+    await arm.evaluateOnNewDocument(() => {
+      (0, eval)("globalThis.__name = function (fn) { return fn; }");
+    });
     await page.goto(ETA_IL_PORTAL, { waitUntil: "domcontentloaded", timeout: 20000 });
     if (!portalUrlAllowed(page.url())) {
       await browser.close();
@@ -128,56 +134,199 @@ async function waitForPortal(page: ChromePage) {
 
 async function describePortal(page: ChromePage) {
   await waitForPortal(page);
-  const snapshot = await page.evaluate(() => {
+  const snapshot = await evalPage(page, () => {
     const root = document.querySelector("#root") || document.body;
     const labels: string[] = [];
-    const nodes = root.querySelectorAll("button, a, [role='button'], label, input, textarea, select");
+    const push = (raw: string) => {
+      const clean = raw.replace(/\s+/g, " ").trim().slice(0, 80);
+      if (!clean || labels.includes(clean) || labels.length >= 24) return;
+      labels.push(clean);
+    };
+    const nodes = root.querySelectorAll("button, a, [role='button'], label, input, textarea, select, [role='combobox']");
     nodes.forEach((el) => {
-      if (labels.length >= 24) return;
+      if (el.getAttribute("aria-hidden") === "true") return;
+      if (el.getAttribute("role") === "combobox") {
+        const ids = (el.getAttribute("aria-labelledby") || "").split(/\s+/);
+        const labelled = ids.map((id) => document.getElementById(id)?.textContent || "").join(" ");
+        push(labelled || el.textContent || "");
+        return;
+      }
       const field = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement;
       const raw = field
         ? el.getAttribute("aria-label") || el.getAttribute("placeholder") || el.getAttribute("name") || ""
         : el.textContent || "";
-      const clean = raw.replace(/\s+/g, " ").trim().slice(0, 80);
-      if (!clean || labels.includes(clean)) return;
-      labels.push(clean);
+      push(raw);
     });
     const excerpt = (root.textContent || "").replace(/\s+/g, " ").trim().slice(0, 400);
-    return { labels: labels.join(" | "), excerpt };
-  }, "");
-  return `url=${page.url()} contrôles=${snapshot.labels || "aucun"} extrait=${snapshot.excerpt}`;
+    const liste = document.querySelectorAll("[role='option']:not([aria-disabled='true'])").length;
+    const widget = document.querySelector(
+      "iframe[src*='recaptcha'], iframe[src*='hcaptcha'], .g-recaptcha, .h-captcha"
+    );
+    const image = Array.from(document.querySelectorAll("img, canvas")).some((el) =>
+      /captcha/i.test(`${el.getAttribute("alt") || ""} ${el.getAttribute("src") || ""} ${el.id} ${el.getAttribute("class") || ""}`)
+    );
+    const captcha = widget ? "widget" : image ? "image" : /captcha/i.test(root.textContent || "") ? "texte" : "non";
+    return { labels: labels.join(" | "), excerpt, liste, captcha };
+  });
+  return `url=${page.url()} contrôles=${snapshot.labels || "aucun"} extrait=${snapshot.excerpt} captcha=${snapshot.captcha} liste=${snapshot.liste}`;
+}
+
+async function mouseClick(page: ChromePage, x: number, y: number) {
+  const mouse = (page as ChromePage & { mouse?: { click(x: number, y: number): Promise<void> } }).mouse;
+  if (!mouse) throw new Error("cible");
+  await mouse.click(x, y);
 }
 
 async function clickLabel(page: ChromePage, target: string) {
   const before = await pageMark(page);
-  const ok = await page.evaluate((label) => {
-    const needle = label.toLowerCase();
-    const nodes = Array.from(document.querySelectorAll("button, a, [role='button'], label")).filter((el) =>
-      (el.textContent || "").toLowerCase().includes(needle)
-    );
-    nodes.sort((a, b) => (a.textContent || "").length - (b.textContent || "").length);
-    const node = nodes[0];
-    if (!(node instanceof HTMLElement)) return false;
-    const host = node.closest("button, a, [role='button']");
-    const targetNode = host instanceof HTMLElement ? host : node;
-    targetNode.click();
-    return true;
-  }, target);
-  if (!ok) throw new Error("cible");
-  const deadline = Date.now() + 8000;
-  while (Date.now() < deadline) {
-    if ((await pageMark(page)) !== before) return;
-    await new Promise((resolve) => setTimeout(resolve, 250));
+  const point = await evalPage(page, findClickPoint, target);
+  if (point) {
+    await mouseClick(page, point.x, point.y);
+  } else if (!(await chooseOption(page, target))) {
+    throw new Error("cible");
+  }
+  await waitForChange(page, before);
+}
+
+async function evalPage<T>(page: ChromePage, fn: (arg: string) => T, arg = ""): Promise<T> {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      return await page.evaluate(fn, arg);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+      if (!/context was destroyed|Execution context|navigat/i.test(message)) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
   }
   throw new Error("immobile");
 }
 
 async function pageMark(page: ChromePage) {
-  return page.evaluate(() => {
+  return evalPage(page, () => {
     const root = document.querySelector("#root") || document.body;
     const text = (root?.textContent || "").replace(/\s+/g, " ").trim().slice(0, 240);
-    return `${location.href}|${text}`;
-  }, "");
+    const checks = Array.from(document.querySelectorAll("input[type='checkbox'], input[type='radio']"))
+      .map((el) => (el instanceof HTMLInputElement && el.checked ? "1" : "0"))
+      .join("");
+    const lists = document.querySelectorAll("[role='listbox']").length;
+    const combo = Array.from(document.querySelectorAll("[role='combobox']"))
+      .map((el) => (el.textContent || "").replace(/\s+/g, " ").trim())
+      .join("|");
+    return `${location.href}|${text}|${checks}|${lists}|${combo}`;
+  });
+}
+
+async function waitForChange(page: ChromePage, before: string) {
+  const deadline = Date.now() + 8000;
+  let last = before;
+  let stable = 0;
+  while (Date.now() < deadline) {
+    const now = await pageMark(page);
+    if (now !== before && now === last) {
+      stable += 1;
+      if (stable >= 2) return;
+    } else {
+      stable = 0;
+    }
+    last = now;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  if (last !== before) return;
+  throw new Error("immobile");
+}
+
+/** Point visible d’un bouton, d’une case, d’une liste ou d’une option. Le clic réel ouvre un select MUI. */
+function findClickPoint(label: string): { x: number; y: number } | null {
+  const needle = label.replace(/\s+/g, " ").trim().toLowerCase();
+  if (!needle) return null;
+  const textOf = (el: Element) => (el.textContent || "").replace(/\s+/g, " ").trim().toLowerCase();
+  const center = (el: Element) => {
+    if (!(el instanceof HTMLElement)) return null;
+    el.scrollIntoView({ block: "center", inline: "nearest" });
+    const rect = el.getBoundingClientRect();
+    if (rect.width < 2 || rect.height < 2) return null;
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  };
+  const options = Array.from(document.querySelectorAll("[role='option']")).filter((el) => {
+    if (el.getAttribute("aria-disabled") === "true") return false;
+    return textOf(el).includes(needle);
+  });
+  options.sort((a, b) => textOf(a).length - textOf(b).length);
+  if (options[0]) return center(options[0]);
+  const boxes = Array.from(document.querySelectorAll("[role='combobox']"));
+  const box = boxes.find((el) => {
+    const ids = (el.getAttribute("aria-labelledby") || "").split(/\s+/);
+    const labelled = ids.map((id) => document.getElementById(id)?.textContent || "").join(" ");
+    const bag = `${el.id} ${el.getAttribute("aria-label") || ""} ${labelled} ${el.textContent || ""}`.toLowerCase();
+    return bag.includes(needle);
+  });
+  if (box) return center(box);
+  const nodes = Array.from(document.querySelectorAll("button, a, [role='button'], label")).filter((el) =>
+    textOf(el).includes(needle)
+  );
+  nodes.sort((a, b) => textOf(a).length - textOf(b).length);
+  const node = nodes[0];
+  if (!(node instanceof HTMLElement)) return null;
+  if (node.tagName === "LABEL") {
+    const id = node.getAttribute("for");
+    const field = id ? document.getElementById(id) : node.querySelector("[role='combobox']");
+    if (field?.getAttribute("role") === "combobox") return center(field);
+  }
+  const host = node.closest("button, a, [role='button']");
+  return center(host instanceof HTMLElement ? host : node);
+}
+
+async function chooseOption(page: ChromePage, query: string) {
+  const open = await listedOptions(page);
+  if (await clickMatchedOption(page, open, query)) return true;
+  const points = await evalPage(page, () => {
+    return Array.from(document.querySelectorAll("[role='combobox']")).flatMap((el) => {
+      if (!(el instanceof HTMLElement)) return [];
+      el.scrollIntoView({ block: "center", inline: "nearest" });
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 2 || rect.height < 2) return [];
+      return [{ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }];
+    });
+  });
+  for (const point of points) {
+    await mouseClick(page, point.x, point.y);
+    const deadline = Date.now() + 2000;
+    let options: string[] = [];
+    while (Date.now() < deadline) {
+      options = await listedOptions(page);
+      if (options.length) break;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    if (await clickMatchedOption(page, options, query)) return true;
+  }
+  return false;
+}
+
+async function listedOptions(page: ChromePage) {
+  return evalPage(page, () => {
+    return Array.from(document.querySelectorAll("[role='option']"))
+      .filter((el) => el.getAttribute("aria-disabled") !== "true")
+      .map((el) => (el.textContent || "").replace(/\s+/g, " ").trim())
+      .filter(Boolean);
+  });
+}
+
+async function clickMatchedOption(page: ChromePage, options: string[], query: string) {
+  const choice = pickOptionLabel(options, query);
+  if (!choice) return false;
+  const point = await evalPage(page, (exact) => {
+    const node = Array.from(document.querySelectorAll("[role='option']")).find(
+      (el) => (el.textContent || "").replace(/\s+/g, " ").trim() === exact
+    );
+    if (!(node instanceof HTMLElement)) return null;
+    node.scrollIntoView({ block: "center", inline: "nearest" });
+    const rect = node.getBoundingClientRect();
+    if (rect.width < 2 || rect.height < 2) return null;
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  }, choice);
+  if (!point) return false;
+  await mouseClick(page, point.x, point.y);
+  return true;
 }
 
 async function typeLabel(page: ChromePage, target: string, text: string) {
@@ -190,6 +339,7 @@ async function typeLabel(page: ChromePage, target: string, text: string) {
     const fromLabel = id ? document.getElementById(id) : match?.querySelector("input, textarea");
     const inputs = Array.from(document.querySelectorAll("input, textarea"));
     const fromAttr = inputs.find((el) => {
+      if (el.getAttribute("aria-hidden") === "true") return false;
       const bag = [el.getAttribute("aria-label"), el.getAttribute("placeholder"), el.getAttribute("name")]
         .join(" ")
         .toLowerCase();
@@ -206,6 +356,9 @@ async function typeLabel(page: ChromePage, target: string, text: string) {
     field.dispatchEvent(new Event("change", { bubbles: true }));
     return true;
   }, JSON.stringify({ label: target, value: text }));
-  if (!ok) throw new Error("champ");
+  if (ok) return;
+  const before = await pageMark(page);
+  if (!(await chooseOption(page, text))) throw new Error("champ");
+  await waitForChange(page, before);
 }
 
