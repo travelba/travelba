@@ -23,10 +23,12 @@ import { bookingTotalFromItems } from "@/lib/crm/bookings";
 import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
 import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
 import {
+  canConfirmCarnetPublish,
   coverQuery,
   flightCardTitle,
   hotelDisplayName,
   keptHiddenFromClient,
+  pendingPublishCards,
   stayArrivalPlaces,
   stayHeadline,
 } from "@/lib/crm/carnet";
@@ -100,7 +102,6 @@ export function BookingEditor({
 }) {
   const router = useRouter();
   const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
-  const unpublishedItems = items.filter((item) => !item.visible_to_client);
   const needsReview = items.some((item) => item.details?.needs_review === true);
   const [busy, setBusy] = useState<"idle" | "save" | "publish" | "cover">("idle");
   const [titleDraft, setTitleDraft] = useState(booking.title);
@@ -366,6 +367,7 @@ export function BookingEditor({
     router.refresh();
   }
 
+  const pendingCards = pendingPublishCards(items);
   const revealItems = items.filter(
     (item) =>
       !keptHiddenFromClient(item.details) &&
@@ -377,7 +379,13 @@ export function BookingEditor({
     if (booking.visible_to_client && doc.visible_to_client) return false;
     if (!doc.booking_item_id) return true;
     const linked = items.find((item) => item.id === doc.booking_item_id);
-    return !linked || !keptHiddenFromClient(linked.details);
+    if (!linked) return true;
+    return !keptHiddenFromClient(linked.details) && !isLedgerExpenseKind(linked.kind);
+  });
+  const publishReady = canConfirmCarnetPublish({
+    stayVisible: booking.visible_to_client,
+    revealCards: revealItems.length,
+    revealDocs: revealDocs.length,
   });
 
   function cardName(item: CrmBookingItem) {
@@ -457,10 +465,10 @@ export function BookingEditor({
           <p className="text-sm text-muted">
             Enregistrer ne publie pas. Publier montre au client les cartes qui ne sont pas masquées.
           </p>
-          {unpublishedItems.length > 0 && booking.visible_to_client ? (
+          {pendingCards.length > 0 && booking.visible_to_client ? (
             <p className="mt-2 rounded-2xl bg-[var(--admin-peach)] px-3 py-2 text-sm">
-              À vérifier — {unpublishedItems.length} nouvelle{unpublishedItems.length > 1 ? "s" : ""} carte
-              {unpublishedItems.length > 1 ? "s" : ""} non publiée{unpublishedItems.length > 1 ? "s" : ""}.
+              À vérifier — {pendingCards.length} nouvelle{pendingCards.length > 1 ? "s" : ""} carte
+              {pendingCards.length > 1 ? "s" : ""} non publiée{pendingCards.length > 1 ? "s" : ""}.
             </p>
           ) : null}
           {needsReview ? (
@@ -502,7 +510,7 @@ export function BookingEditor({
               Publier le carnet
             </button>
           )}
-          {booking.visible_to_client && unpublishedItems.some((item) => !keptHiddenFromClient(item.details)) ? (
+          {booking.visible_to_client && (revealItems.length > 0 || revealDocs.length > 0) ? (
             <button
               type="button"
               disabled={busy !== "idle"}
@@ -542,7 +550,7 @@ export function BookingEditor({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              disabled={busy !== "idle" || (confirm === "publish" && !revealItems.length)}
+              disabled={busy !== "idle" || (confirm === "publish" && !publishReady)}
               onClick={() => {
                 const next = confirm === "publish";
                 setConfirm(null);

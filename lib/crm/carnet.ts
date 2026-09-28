@@ -1,5 +1,11 @@
 import type { BookingStatus, CrmBooking, CrmBookingDocument, CrmBookingItem } from "@/lib/crm/types";
-import { BOOKING_ITEM_LABELS, BOOKING_STATUS_LABELS, isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
+import {
+  BOOKING_ITEM_LABELS,
+  BOOKING_STATUS_LABELS,
+  countsAsCarnetCard,
+  isLedgerExpenseKind,
+  visibleServiceCopy,
+} from "@/lib/crm/types";
 import { formatDateFr, formatMoney, todayIsoDate } from "@/lib/crm/money";
 import { itemTicketCount } from "./item-match";
 
@@ -353,6 +359,40 @@ export function clientBookingStatusLabel(status: BookingStatus) {
 
 export function keptHiddenFromClient(details: Record<string, unknown> | null | undefined) {
   return details?.client_hidden === true;
+}
+
+/** Cartes du séjour encore à montrer. Une dépense n’est pas une carte du carnet. */
+export function pendingPublishCards<
+  T extends { kind: string; visible_to_client?: boolean | null; details?: Record<string, unknown> | null },
+>(items: T[]) {
+  return items.filter(
+    (item) =>
+      item.visible_to_client === false &&
+      !keptHiddenFromClient(item.details) &&
+      countsAsCarnetCard(item.kind)
+  );
+}
+
+/**
+ * Confirmer la publication : au moins une carte, ou un document sur un séjour déjà ouvert.
+ * Un fichier seul ne publie pas un carnet encore masqué.
+ */
+export function canConfirmCarnetPublish(input: {
+  stayVisible: boolean;
+  revealCards: number;
+  revealDocs: number;
+}) {
+  if (input.revealCards > 0) return true;
+  return input.stayVisible && input.revealDocs > 0;
+}
+
+/** Ids passés visibles. Les dépenses restent au grand livre. */
+export function publishRevealIds(
+  rows: { id: string; kind: string; details?: Record<string, unknown> | null }[]
+) {
+  return rows
+    .filter((row) => !keptHiddenFromClient(row.details) && !isLedgerExpenseKind(row.kind))
+    .map((row) => row.id);
 }
 
 export function flightAirline(item: Pick<CrmBookingItem, "supplier" | "details">) {
