@@ -127,11 +127,6 @@ export function ClientsTable({
                                   .map((b) => formatMoney(Number(b.balance), b.currency))
                                   .join(" · ")}
                           </span>
-                          {value > 0 ? (
-                            <span className="text-[10px] font-semibold text-[#9e7e51]">
-                              Frais d’agence 10 % déduits
-                            </span>
-                          ) : null}
                         </Link>
                       ) : (
                         "—"

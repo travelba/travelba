@@ -761,6 +761,8 @@ export function BookingEditor({
         items={items}
         status={booking.status}
         currency={booking.currency}
+        agencyCommission={booking.agency_commission === true}
+        stayTotal={bookingTotalFromItems(items)}
       />
 
       {account && bookingHasFlight(items) ? (

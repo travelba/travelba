@@ -5,7 +5,7 @@ export function formatMoney(amount: number, currency = "EUR") {
   });
 }
 
-/** Frais d’agence prélevés sur chaque versement client (crédits). */
+/** Commission d’agence : 10 % du montant du séjour, si le voyage l’active. */
 export const AGENCY_FEE_RATE = 0.1;
 
 export function agencyFeeFromGross(gross: number) {
@@ -20,7 +20,7 @@ export function netAfterAgencyFee(gross: number) {
   return Math.round((n - agencyFeeFromGross(n)) * 100) / 100;
 }
 
-/** Crédit disponible = avoir positif (déjà net des frais d’agence 10 % sur les versements). */
+/** Crédit disponible = avoir positif du grand livre. */
 export function creditDisponible(balance: number) {
   const n = Number(balance);
   if (!Number.isFinite(n) || n <= 0) return 0;

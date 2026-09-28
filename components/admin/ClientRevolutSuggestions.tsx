@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CrmRevolutTransaction } from "@/lib/crm/types";
-import { formatDateFr, formatMoney, agencyFeeFromGross, netAfterAgencyFee } from "@/lib/crm/money";
+import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { revolutInboxCopy } from "@/lib/crm/revolut-inbox";
 import {
   matchReasonLabel,
@@ -58,8 +58,6 @@ export function ClientRevolutSuggestions({
       <ul className="mt-3 divide-y divide-border text-sm">
         {suggestions.map(({ row, candidate }) => {
           const signed = `+${formatMoney(Number(row.amount), row.currency)}`;
-          const fee = agencyFeeFromGross(Number(row.amount));
-          const net = netAfterAgencyFee(Number(row.amount));
           const { sender, designation } = revolutInboxCopy(row);
           return (
           <li key={row.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
@@ -71,12 +69,6 @@ export function ClientRevolutSuggestions({
                 {formatDateFr(row.booked_at)} · {matchReasonLabel(candidate.reason)}
                 {designation ? ` · ${designation}` : ""}
               </p>
-              {net != null ? (
-                <p className="text-xs text-[#9e7e51]">
-                  Frais 10 % {formatMoney(fee, row.currency)} → crédit dispo.{" "}
-                  {formatMoney(net, row.currency)}
-                </p>
-              ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button

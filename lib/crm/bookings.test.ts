@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  agencyCommissionAmount,
+  agencyCommissionExternalId,
   bookingDebitIntent,
   bookingExpenseDebitExternalId,
   bookingItemDebitExternalId,
@@ -162,6 +164,45 @@ test("la devise du séjour reste EUR USD CHF ou GBP, même si le formulaire envo
   assert.equal(bookingMetaPatch({ currency: "£" }).currency, "GBP");
   assert.equal(bookingMetaPatch({ currency: "CHF" }).currency, "CHF");
   assert.equal(bookingMetaPatch({ currency: "JPY" }).currency, "EUR");
+});
+
+test("la commission est 10 % du séjour seulement quand le voyage l’active", () => {
+  assert.equal(agencyCommissionExternalId("b1"), "booking:b1:agency-commission");
+  assert.equal(
+    agencyCommissionAmount({ enabled: true, status: "confirmed", totalAmount: 1000 }),
+    100
+  );
+  assert.equal(
+    agencyCommissionAmount({ enabled: true, status: "travelling", totalAmount: 1700 }),
+    170
+  );
+  assert.equal(
+    agencyCommissionAmount({ enabled: true, status: "completed", totalAmount: 80.5 }),
+    8.05
+  );
+  assert.equal(
+    agencyCommissionAmount({ enabled: false, status: "confirmed", totalAmount: 1000 }),
+    0
+  );
+  assert.equal(
+    agencyCommissionAmount({ enabled: true, status: "draft", totalAmount: 1000 }),
+    0
+  );
+  assert.equal(
+    agencyCommissionAmount({ enabled: true, status: "quoted", totalAmount: 1000 }),
+    0
+  );
+  assert.equal(
+    agencyCommissionAmount({ enabled: true, status: "cancelled", totalAmount: 1000 }),
+    0
+  );
+  assert.equal(
+    agencyCommissionAmount({ enabled: true, status: "completed", totalAmount: 0 }),
+    0
+  );
+  assert.equal(bookingMetaPatch({ agency_commission: "on" }).agency_commission, true);
+  assert.equal(bookingMetaPatch({ agency_commission: false }).agency_commission, false);
+  assert.equal("agency_commission" in bookingMetaPatch({ title: "Ski" }), false);
 });
 
 test("stay total is always the sum of card selling prices", () => {

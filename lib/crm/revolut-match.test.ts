@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  applyRevolutToCustomer,
   matchReasonLabel,
   normalizeMatchText,
   scoreRevolutMatches,
@@ -148,5 +149,45 @@ describe("revolut-match", () => {
   it("labels reasons in French", () => {
     assert.equal(matchReasonLabel("company_name"), "Société");
     assert.equal(matchReasonLabel("unique_last_name"), "Nom de famille unique");
+  });
+
+  it("crédite le virement en entier, sans débit de commission", async () => {
+    const inserts: { table: string; row: Record<string, unknown> }[] = [];
+    const admin = {
+      from(table: string) {
+        return {
+          insert(payload: Record<string, unknown>) {
+            inserts.push({ table, row: payload });
+            const result = { data: { id: "tx-1", ...payload }, error: null };
+            return {
+              select() {
+                return { single: async () => result };
+              },
+            };
+          },
+          update() {
+            return { eq: async () => ({ error: null }) };
+          },
+        };
+      },
+    };
+    const credit = row({
+      id: "inbox-1",
+      revolut_transaction_id: "rev-1000",
+      amount: 1000,
+      counterparty_name: "BENJAMIN BOUKRIS",
+    });
+    const result = await applyRevolutToCustomer(admin, credit, "customer-1");
+    assert.equal(result.ok, true);
+    assert.equal(inserts.length, 1);
+    assert.equal(inserts[0]?.table, "crm_transactions");
+    assert.equal(inserts[0]?.row.direction, "credit");
+    assert.equal(inserts[0]?.row.kind, "transfer");
+    assert.equal(inserts[0]?.row.amount, 1000);
+    assert.equal(inserts[0]?.row.external_id, "rev-1000");
+    assert.equal(
+      inserts.some((entry) => String(entry.row.external_id || "").includes("agency-fee")),
+      false
+    );
   });
 });
