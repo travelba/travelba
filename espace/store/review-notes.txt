@@ -1,0 +1,15 @@
+Application réservée aux clients invités par Travel Business Agency.
+
+Pas d’inscription publique. Compte reviewer fourni dans App Store Connect (e-mail + mot de passe).
+
+Après connexion : Accueil (prochain séjour), Réservations, Transactions, Mon compte.
+
+Un séjour déjà publié doit être visible. Ne pas inventer d’horaires.
+
+WhatsApp ouvre l’agence (pas une messagerie interne).
+
+Pas d’encaissement carte dans l’app.
+
+Politique de confidentialité : https://travelba.fr/fr/confidentialite
+
+Distribution : unlisted (lien, pas la recherche App Store). iPhone only.
