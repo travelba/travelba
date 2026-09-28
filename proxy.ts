@@ -59,7 +59,12 @@ export default async function proxy(request: NextRequest) {
       url.search = "";
       return NextResponse.redirect(url);
     }
-    return NextResponse.next();
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set(
+      "x-travelba-exemple",
+      path === "/exemple/agence" || path.startsWith("/exemple/agence/") ? "agence" : "client"
+    );
+    return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
   if (
