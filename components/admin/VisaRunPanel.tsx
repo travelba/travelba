@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { EtaIlMonitor } from "@/components/admin/EtaIlMonitor";
 import type { EtaIlPersonView, EtaIlPhase } from "@/lib/crm/eta-il-draft";
 import { VISA_OFFICIAL, type VisaCorridor } from "@/lib/crm/visa-fees";
 import {
@@ -213,6 +214,7 @@ export function VisaRunPanel({
           ))}
         </ul>
       ) : null}
+      {country === "IL" ? <EtaIlMonitor bookingId={bookingId} /> : null}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
+import { CHROMIUM_TRACE_INCLUDES } from "./lib/crm/chromium-pack";
 
 const withNextIntl = createNextIntlPlugin();
 
@@ -15,11 +16,7 @@ const nextConfig: NextConfig = {
     ],
   },
   serverExternalPackages: ["sharp", "unpdf", "@napi-rs/canvas", "pdfjs-dist", "puppeteer-core", "@sparticuz/chromium"],
-  outputFileTracingIncludes: {
-    "/api/admin/bookings/[id]/eta-il": ["./node_modules/@sparticuz/chromium/bin/**"],
-    "/api/client/bookings/[id]/visa": ["./node_modules/@sparticuz/chromium/bin/**"],
-    "/api/cron/visa-portal": ["./node_modules/@sparticuz/chromium/bin/**"],
-  },
+  outputFileTracingIncludes: CHROMIUM_TRACE_INCLUDES,
   async redirects() {
     return [
       {

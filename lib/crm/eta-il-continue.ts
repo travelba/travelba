@@ -1,7 +1,6 @@
 import "server-only";
-import { openEtaIlPortal } from "@/lib/crm/eta-il-browser";
 import { buildEtaIlDraft } from "@/lib/crm/eta-il-draft";
-import { runEtaIlSession } from "@/lib/crm/eta-il-session";
+import { executeEtaIlFill } from "@/lib/crm/eta-il-run";
 import { openaiApiKey } from "@/lib/crm/ingest-types";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { ClientVisaStep } from "@/lib/crm/visa-flow";
@@ -44,35 +43,11 @@ export async function continueEtaIlRequest(bookingId: string) {
   });
   if (draft.phase !== "prêt") return;
 
-  const apiKey = openaiApiKey();
-  if (!apiKey) return;
-
-  const { data: marked } = await service
-    .from("crm_visa_requests")
-    .update({ step: "remplissage" })
-    .eq("booking_id", b.id)
-    .eq("country", "IL")
-    .eq("step", "preparation")
-    .select("step");
-  if (!marked?.length) return;
-
-  const portal = await openEtaIlPortal();
-  if (!portal) {
-    console.error("[eta-il] le portail n’a pas pu s’ouvrir");
-    return;
-  }
-  try {
-    const session = await runEtaIlSession({ apiKey, draft, page: portal });
-    const next: ClientVisaStep = session.phase === "à confirmer" ? "validation" : "remplissage";
-    await service
-      .from("crm_visa_requests")
-      .update({ step: next })
-      .eq("booking_id", b.id)
-      .eq("country", "IL")
-      .eq("step", "remplissage");
-  } catch (err) {
-    console.error("[eta-il]", err instanceof Error ? err.message : "échec");
-  } finally {
-    await portal.close();
-  }
+  await executeEtaIlFill({
+    db: service,
+    bookingId: b.id,
+    apiKey: openaiApiKey(),
+    draft,
+    fromSteps: ["preparation"],
+  });
 }

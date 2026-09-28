@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
-import { openEtaIlPortal } from "@/lib/crm/eta-il-browser";
 import { buildEtaIlDraft, publicEtaIlDraft, tripGoesToIsrael } from "@/lib/crm/eta-il-draft";
 import { customerPliantCardCount, etaIlPliantCard } from "@/lib/crm/eta-il-fee";
+import { readPortalEvents } from "@/lib/crm/eta-il-log-store";
+import { portalMonitorNote, portalRunLive } from "@/lib/crm/eta-il-log";
+import { executeEtaIlFill } from "@/lib/crm/eta-il-run";
 import { issuePliantCard, pliantConfigured } from "@/lib/crm/pliant";
-import { runEtaIlSession } from "@/lib/crm/eta-il-session";
 import { openaiApiKey } from "@/lib/crm/ingest-types";
 import type {
   CrmBooking,
@@ -18,6 +19,23 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 type Ctx = { params: Promise<{ id: string }> };
+
+export async function GET(_request: Request, ctx: Ctx) {
+  const auth = await requireStaff();
+  if (auth instanceof NextResponse) return auth;
+  const { id } = await ctx.params;
+  const [{ data: row }, events] = await Promise.all([
+    auth.supabase.from("crm_visa_requests").select("step").eq("booking_id", id).eq("country", "IL").maybeSingle(),
+    readPortalEvents(auth.supabase, id),
+  ]);
+  const step = (row as { step?: string } | null)?.step ?? null;
+  return NextResponse.json({
+    step,
+    events,
+    live: portalRunLive(step, events),
+    note: portalMonitorNote(step, events),
+  });
+}
 
 export async function POST(request: Request, ctx: Ctx) {
   const auth = await requireStaff();
@@ -90,43 +108,17 @@ export async function POST(request: Request, ctx: Ctx) {
     return jsonError("Confirmez la demande avant de lancer le parcours.");
   }
 
-  await auth.supabase
-    .from("crm_visa_requests")
-    .update({ step: "remplissage" })
-    .eq("booking_id", b.id)
-    .eq("country", "IL");
-
-  const apiKey = openaiApiKey();
-  if (!apiKey) {
-    return NextResponse.json({
-      ...publicEtaIlDraft(draft),
-      phase: "bloqué",
-      reason: "GPT-6 Astra n’est pas disponible sur ce compte API.",
-    });
-  }
-
-  const portal = await openEtaIlPortal();
-  if (!portal) {
-    return NextResponse.json({
-      ...publicEtaIlDraft(draft),
-      phase: "bloqué",
-      reason: "Le navigateur n’a pas pu ouvrir le portail. Le remplissage n’a pas été lancé.",
-    });
-  }
-  try {
-    const session = await runEtaIlSession({ apiKey, draft, page: portal });
-    await auth.supabase
-      .from("crm_visa_requests")
-      .update({ step: session.phase === "à confirmer" ? "validation" : "remplissage" })
-      .eq("booking_id", b.id)
-      .eq("country", "IL");
-    return NextResponse.json({
-      ...publicEtaIlDraft(draft),
-      phase: session.phase,
-      reason: session.message,
-      summary: session.summary,
-    });
-  } finally {
-    await portal.close();
-  }
+  const session = await executeEtaIlFill({
+    db: auth.supabase,
+    bookingId: b.id,
+    apiKey: openaiApiKey(),
+    draft,
+    fromSteps: ["preparation", "remplissage"],
+  });
+  return NextResponse.json({
+    ...publicEtaIlDraft(draft),
+    phase: session.phase,
+    reason: session.message,
+    summary: session.summary,
+  });
 }
