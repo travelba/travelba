@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileOpenLink } from "@/components/crm/FileOpen";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { FoldedRow } from "@/components/crm/FoldedRow";
 import { travelerDisplayName, tripDocumentsForTraveler } from "@/lib/crm/trip-documents";
 import type { CrmBookingTraveler, CrmTravelDocument } from "@/lib/crm/types";
 
@@ -16,6 +17,7 @@ export function TripVisaUploads({
   travelers,
   documents,
   entries,
+  hideTitle = false,
 }: {
   variant: "admin" | "client";
   bookingId: string;
@@ -23,6 +25,8 @@ export function TripVisaUploads({
   travelers: CrmBookingTraveler[];
   documents: CrmTravelDocument[];
   entries: { iso: string; name: string }[];
+  /** Le titre est déjà sur la ligne repliée. */
+  hideTitle?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -55,9 +59,11 @@ export function TripVisaUploads({
   }
 
   return (
-    <div className="space-y-3 border-t border-[#e5e3dc] pt-3">
+    <div className={hideTitle ? "space-y-3" : "space-y-3 border-t border-[#e5e3dc] pt-3"}>
       <div>
-        <p className="text-sm font-semibold text-[var(--admin-navy)]">Visas reçus</p>
+        {hideTitle ? null : (
+          <p className="text-sm font-semibold text-[var(--admin-navy)]">Visas reçus</p>
+        )}
         <p className="text-xs text-muted">
           Déposez un ou plusieurs visas, même ceux arrivés par e-mail. Nous les attribuons au voyageur.
         </p>
@@ -134,4 +140,26 @@ export function TripVisaUploads({
       <BusyBar active={busy} label="Lecture des visas…" />
     </div>
   );
+}
+
+/** Visas déjà déposés : repliés sur le séjour client. */
+export function ReceivedVisasFold(
+  props: {
+    variant: "admin" | "client";
+    bookingId: string;
+    reference?: string;
+    travelers: CrmBookingTraveler[];
+    documents: CrmTravelDocument[];
+    entries: { iso: string; name: string }[];
+    folded?: boolean;
+  }
+) {
+  const { folded, ...uploads } = props;
+  const hasVisa = uploads.documents.some((doc) => doc.doc_type === "visa");
+  if (!uploads.entries.length && !hasVisa) return null;
+  const body = <TripVisaUploads {...uploads} hideTitle={Boolean(folded)} />;
+  if (!props.folded) {
+    return <div className="rounded-[1.35rem] bg-white p-4">{body}</div>;
+  }
+  return <FoldedRow title="Visas reçus">{body}</FoldedRow>;
 }

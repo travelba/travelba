@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { FoldedRow } from "@/components/crm/FoldedRow";
 import type { ShareCompanion } from "@/lib/crm/trip-share";
 
 export function TripSharePanel({
@@ -65,15 +66,10 @@ export function TripSharePanel({
   }
 
   return (
-    <section className="aura-card space-y-3 rounded-[1.35rem] bg-white p-4">
-      <div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
-          Partager le voyage
-        </p>
-        <p className="mt-1 text-sm text-[var(--admin-navy)]">
-          Ce lien ouvre la page du voyage, sans compte.
-        </p>
-      </div>
+    <FoldedRow title="Partager le voyage">
+      <p className="text-sm text-[var(--admin-navy)]">
+        Ce lien ouvre la page du voyage, sans compte.
+      </p>
       <div className="flex gap-2">
         <input
           readOnly
@@ -125,6 +121,6 @@ export function TripSharePanel({
       ) : null}
 
       {notice ? <p className="text-sm text-[var(--admin-navy)]">{notice}</p> : null}
-    </section>
+    </FoldedRow>
   );
 }

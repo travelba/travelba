@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileOpenLink } from "@/components/crm/FileOpen";
 import { BusyBar } from "@/components/crm/BusyBar";
-import { TripVisaUploads } from "@/components/crm/TripVisaUploads";
+import { ReceivedVisasFold } from "@/components/crm/TripVisaUploads";
 import { travelerDisplayName } from "@/lib/crm/trip-documents";
 import type { VisaCorridor } from "@/lib/crm/visa-fees";
 import {
@@ -126,6 +126,7 @@ export function VisaJourney({
   travelers,
   documents,
   pliantReady = false,
+  showReceived = true,
 }: {
   variant?: "admin" | "client";
   bookingId: string;
@@ -136,6 +137,8 @@ export function VisaJourney({
   documents: CrmTravelDocument[];
   visaBooked: boolean;
   pliantReady?: boolean;
+  /** Faux : le séjour client place les visas reçus dans le bloc suivant. */
+  showReceived?: boolean;
 }) {
   const router = useRouter();
   const [answers, setAnswers] = useState<Record<string, EstaAnswers>>({});
@@ -360,17 +363,15 @@ export function VisaJourney({
         </div>
       ))}
 
-      {trip.entries.length ? (
-        <div className="rounded-[1.35rem] bg-white p-4">
-          <TripVisaUploads
-            variant={variant}
-            bookingId={bookingId}
-            reference={reference}
-            travelers={travelers}
-            documents={documents}
-            entries={trip.entries}
-          />
-        </div>
+      {showReceived ? (
+        <ReceivedVisasFold
+          variant={variant}
+          bookingId={bookingId}
+          reference={reference}
+          travelers={travelers}
+          documents={documents}
+          entries={trip.entries}
+        />
       ) : null}
 
       {trip.unknownIatas.map((code) => (

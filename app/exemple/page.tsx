@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { Icon } from "@/components/crm/icons";
-import { tripHeadline, tripPlaceLine } from "@/lib/crm/carnet";
+import { BoardingPass } from "@/components/account/BoardingPass";
+import { clientVisibleItems, nextTimelineFlight, tripHeadline, tripPlaceLine } from "@/lib/crm/carnet";
 import { destinationWeather } from "@/lib/crm/destination-weather";
 import { EXAMPLE_BASE } from "@/lib/crm/example-session";
 import { readExample } from "@/lib/crm/example-store";
@@ -20,6 +21,7 @@ export default async function ExampleHomePage() {
   const tripPlace = tripPlaceLine(nextTrip.title, nextTrip.destination);
   const tripHref = `${EXAMPLE_BASE}/reservations/${nextTrip.reference}`;
   const weather = await destinationWeather(nextTrip.destination, nextTrip.title);
+  const homeFlight = nextTimelineFlight(clientVisibleItems(session.items));
 
   return (
     <div className="space-y-3">
@@ -93,6 +95,12 @@ export default async function ExampleHomePage() {
         </BookingHero>
       </article>
 
+      {homeFlight ? (
+        <BoardingPass
+          pass={homeFlight}
+          calendarHref={`${EXAMPLE_BASE}/reservations/${nextTrip.reference}/agenda.ics?item_id=${encodeURIComponent(homeFlight.itemId)}`}
+        />
+      ) : null}
     </div>
   );
 }

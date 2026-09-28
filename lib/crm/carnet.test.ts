@@ -319,6 +319,26 @@ describe("carnet", () => {
     });
     assert.equal(flightPass(hidden), null);
     assert.equal(flightPass(midnight)?.time, null);
+    assert.equal(flightPass(midnight)?.airports, null);
+    const routed = item({
+      id: "route",
+      kind: "flight",
+      visible_to_client: true,
+      start_at: "2026-08-12",
+      supplier: "Air France",
+      details: { flight_number: "AF 9", from: "CDG", to: "JFK", city_from: "Paris", city_to: "New York" },
+    });
+    assert.equal(flightPass(routed)?.time, null);
+    assert.equal(flightPass(routed)?.airports, "Paris CDG → New York JFK");
+    assert.equal(
+      flightPass(item({
+        kind: "flight",
+        visible_to_client: true,
+        supplier: "Air France",
+        details: { flight_number: "AF 8", from: "CDG", to: "JFK" },
+      }))?.airports,
+      "CDG → JFK"
+    );
     assert.equal(nextFlightPass([hidden, midnight, next], "2026-08-01")?.number, "AF 2");
     assert.equal(nextFlightPass([hidden, next], "2026-08-20")?.number, "CM 123");
     assert.equal(nextTimelineFlight([item({ kind: "hotel", start_at: "2026-08-02", visible_to_client: true }), next], "2026-08-01"), null);
