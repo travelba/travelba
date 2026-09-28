@@ -13,7 +13,7 @@ import {
 import type { BookingExtract } from "@/lib/crm/ingest-types";
 import { itemDetailsLine, itemWhen } from "@/lib/crm/booking-display";
 import { readDocumentAmount } from "@/lib/crm/booking-issues";
-import { documentsForItem, hotelDisplayName, itemPriceLabel } from "@/lib/crm/carnet";
+import { documentsForItem, flightCardTitle, hotelDisplayName, itemPriceLabel } from "@/lib/crm/carnet";
 import { formatMoney } from "@/lib/crm/money";
 import { STAY_CURRENCIES } from "@/lib/crm/stay-currency";
 import { HotelContactButton } from "@/components/crm/HotelContact";
@@ -290,7 +290,11 @@ export function BookingItemsPanel({
                   <div className="min-w-0">
                     <p className="font-medium">
                       {visibleServiceCopy(BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind)} ·{" "}
-                      {item.kind === "hotel" ? hotelDisplayName(item) : visibleServiceCopy(item.title)}
+                      {item.kind === "hotel"
+                        ? hotelDisplayName(item)
+                        : item.kind === "flight" || item.kind === "rail"
+                          ? flightCardTitle(item)
+                          : visibleServiceCopy(item.title)}
                       {!item.visible_to_client ? (
                         <span className="ml-2 rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase">
                           Brouillon
