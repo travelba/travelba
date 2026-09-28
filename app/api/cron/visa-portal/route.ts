@@ -9,12 +9,12 @@ export const maxDuration = 60;
 export async function GET(request: Request) {
   const ok = cronAuthorized(request.headers.get("authorization"), cronSecret());
   if (!ok) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  const portal = await openEtaIlPortal();
-  if (!portal) return NextResponse.json({ ok: false });
+  const opened = await openEtaIlPortal();
+  if (!opened.ok) return NextResponse.json({ ok: false });
   try {
-    const host = new URL(portal.url()).hostname;
+    const host = new URL(opened.session.url()).hostname;
     return NextResponse.json({ ok: host === "israel-entry.piba.gov.il", host });
   } finally {
-    await portal.close();
+    await opened.session.close();
   }
 }

@@ -2,6 +2,7 @@ import "server-only";
 import { existsSync } from "node:fs";
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
+import { CHROMIUM_BUNDLE_MESSAGE, chooseBrowserLaunch, findChromiumBin } from "./chromium-pack";
 import { ETA_IL_PORTAL } from "./eta-il-draft";
 import { portalUrlAllowed, type PortalPage } from "./eta-il-session";
 
@@ -33,70 +34,82 @@ type ChromeBrowser = { newPage(): Promise<ChromePage>; close(): Promise<void> };
 
 export type PortalSession = PortalPage & { close(): Promise<void> };
 
-async function launchBrowser(): Promise<ChromeBrowser | null> {
+export type PortalOpen = { ok: true; session: PortalSession } | { ok: false; message: string };
+
+async function launchBrowser(): Promise<{ browser: ChromeBrowser } | { message: string }> {
   for (const local of localChromePaths()) {
     try {
-      return await puppeteer.launch({
-        executablePath: local,
-        headless: true,
-        args: ["--no-sandbox", "--disable-dev-shm-usage"],
-      });
+      return {
+        browser: await puppeteer.launch({
+          executablePath: local,
+          headless: true,
+          args: ["--no-sandbox", "--disable-dev-shm-usage"],
+        }),
+      };
     } catch (err) {
       console.error("[eta-il] chrome local", err instanceof Error ? err.message : "échec");
     }
   }
+  const plan = chooseBrowserLaunch({ localPaths: [], packagedBin: findChromiumBin() });
+  if (plan.mode !== "packaged") return { message: plan.mode === "error" ? plan.message : CHROMIUM_BUNDLE_MESSAGE };
   try {
     chromium.setGraphicsMode = false;
-    return await puppeteer.launch({
-      executablePath: await chromium.executablePath(),
-      headless: true,
-      args: chromium.args,
-      defaultViewport: { width: 1280, height: 720 },
-    });
+    return {
+      browser: await puppeteer.launch({
+        executablePath: await chromium.executablePath(plan.binDir),
+        headless: true,
+        args: chromium.args,
+        defaultViewport: { width: 1280, height: 720 },
+      }),
+    };
   } catch (err) {
     console.error("[eta-il] chromium", err instanceof Error ? err.message : "échec");
-    return null;
+    return { message: CHROMIUM_BUNDLE_MESSAGE };
   }
 }
 
-export async function openEtaIlPortal(): Promise<PortalSession | null> {
-  const browser = await launchBrowser();
-  if (!browser) return null;
+export async function openEtaIlPortal(): Promise<PortalOpen> {
+  const launched = await launchBrowser();
+  if (!("browser" in launched)) return { ok: false, message: launched.message };
+  const browser = launched.browser;
   try {
     const page = await browser.newPage();
     await page.goto(ETA_IL_PORTAL, { waitUntil: "domcontentloaded", timeout: 20000 });
     if (!portalUrlAllowed(page.url())) {
       await browser.close();
-      return null;
+      return { ok: false, message: "Le portail ETA-IL n’a pas pu s’ouvrir." };
     }
     return {
-      url: () => page.url(),
-      open: async (url) => {
-        if (!portalUrlAllowed(url)) throw new Error("hôte");
-        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20000 });
-        if (!portalUrlAllowed(page.url())) throw new Error("hôte");
-      },
-      click: (target) => clickLabel(page, target),
-      type: (target, text) => typeLabel(page, target, text),
-      scroll: async () => {
-        await page.evaluate(() => window.scrollBy(0, 480), "");
-      },
-      describe: async () => {
-        const excerpt = await page.evaluate(
-          () => (document.body?.innerText || "").replace(/\s+/g, " ").slice(0, 800),
-          ""
-        );
-        return `url=${page.url()} extrait=${excerpt}`;
-      },
-      close: async () => {
-        await page.close().catch(() => undefined);
-        await browser.close().catch(() => undefined);
+      ok: true,
+      session: {
+        url: () => page.url(),
+        open: async (url) => {
+          if (!portalUrlAllowed(url)) throw new Error("hôte");
+          await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20000 });
+          if (!portalUrlAllowed(page.url())) throw new Error("hôte");
+        },
+        click: (target) => clickLabel(page, target),
+        type: (target, text) => typeLabel(page, target, text),
+        scroll: async () => {
+          await page.evaluate(() => window.scrollBy(0, 480), "");
+        },
+        describe: async () => {
+          const excerpt = await page.evaluate(
+            () => (document.body?.innerText || "").replace(/\s+/g, " ").slice(0, 800),
+            ""
+          );
+          return `url=${page.url()} extrait=${excerpt}`;
+        },
+        close: async () => {
+          await page.close().catch(() => undefined);
+          await browser.close().catch(() => undefined);
+        },
       },
     };
   } catch (err) {
     console.error("[eta-il] portail", err instanceof Error ? err.message : "échec");
     await browser.close().catch(() => undefined);
-    return null;
+    return { ok: false, message: "Le portail ETA-IL n’a pas pu s’ouvrir." };
   }
 }
 

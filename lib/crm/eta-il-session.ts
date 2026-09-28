@@ -5,6 +5,7 @@ import {
   type EtaIlDraft,
   type EtaIlPhase,
 } from "./eta-il-draft";
+import { eventForPortalAction, portalEvent, type PortalLogEvent } from "./eta-il-log";
 
 const SUBMIT = /submit|envoyer|envoi|pay|paiement|payment|checkout|carte bancaire|card number|אשר|שלם/i;
 
@@ -164,6 +165,7 @@ export async function runEtaIlSession(opts: {
   page: PortalPage;
   fetchImpl?: typeof fetch;
   maxSteps?: number;
+  onEvent?: (event: PortalLogEvent) => Promise<void> | void;
 }): Promise<{ phase: EtaIlPhase; summary: string | null; message: string | null }> {
   const fetchImpl = opts.fetchImpl || fetch;
   const numbers = opts.draft.applicants.map((row) => row.number);
@@ -199,6 +201,7 @@ export async function runEtaIlSession(opts: {
       };
     }
     const decision = stepDecision(parsed.step);
+    if (decision !== "stop") await emitPortalEvent(opts.onEvent, parsed.step, numbers);
     if (decision === "hold") {
       const summary =
         parsed.step.action === "hold"
@@ -236,6 +239,20 @@ export async function runEtaIlSession(opts: {
     summary: "Limite d’étapes atteinte. Vérifiez le formulaire avant l’envoi.",
     message: null,
   };
+}
+
+async function emitPortalEvent(
+  onEvent: ((event: PortalLogEvent) => Promise<void> | void) | undefined,
+  step: PortalStep,
+  numbers: string[]
+) {
+  const traced = eventForPortalAction(step);
+  if (!traced || !onEvent) return;
+  try {
+    await onEvent(portalEvent(traced.kind, redactPassportNumbers(traced.text, numbers)));
+  } catch (err) {
+    console.error("[eta-il] journal", err instanceof Error ? err.message : "échec");
+  }
 }
 
 async function applyStep(page: PortalPage, step: PortalStep) {

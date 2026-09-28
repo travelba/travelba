@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/stage-chromium.mjs && next build",
+    "postinstall": "node scripts/stage-chromium.mjs",
     "start": "next start",
     "test": "npx tsx --test lib/crm/*.test.ts",
     "seed:demo": "node scripts/seed-demo.mjs"
