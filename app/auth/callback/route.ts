@@ -3,7 +3,12 @@ import type { EmailOtpType } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { ensureCustomerForUser, ensureStaff } from "@/lib/crm/auth";
-import { SET_PASSWORD_PATH, mustSetPassword, shouldForcePasswordSetup } from "@/lib/crm/session";
+import {
+  PASSWORD_SETUP_COOKIE,
+  SET_PASSWORD_PATH,
+  mustSetPassword,
+  shouldForcePasswordSetup,
+} from "@/lib/crm/session";
 
 const OTP_TYPES = new Set<EmailOtpType>([
   "signup",
@@ -54,7 +59,9 @@ export async function GET(request: Request) {
 
   if (forcePassword) {
     await stampMustSetPassword(user.id);
-    return NextResponse.redirect(new URL(SET_PASSWORD_PATH, url.origin));
+    const response = NextResponse.redirect(new URL(SET_PASSWORD_PATH, url.origin));
+    response.cookies.set(PASSWORD_SETUP_COOKIE, "1", passwordSetupCookieOptions(true));
+    return response;
   }
 
   const dest =
@@ -63,7 +70,19 @@ export async function GET(request: Request) {
       : next.startsWith("/") && !next.startsWith("//")
         ? next
         : "/mon-compte";
-  return NextResponse.redirect(new URL(dest, url.origin));
+  const response = NextResponse.redirect(new URL(dest, url.origin));
+  response.cookies.set(PASSWORD_SETUP_COOKIE, "", passwordSetupCookieOptions(false));
+  return response;
+}
+
+function passwordSetupCookieOptions(active: boolean) {
+  return {
+    path: "/",
+    sameSite: "lax" as const,
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    maxAge: active ? 60 * 60 : 0,
+  };
 }
 
 async function stampMustSetPassword(userId: string) {

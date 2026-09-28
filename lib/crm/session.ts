@@ -32,15 +32,56 @@ export function withOnboardingDone(meta: Record<string, unknown>): Record<string
   };
 }
 
+/** Posé seulement par un lien d’invitation ou de récupération. Une visite de /connexion ne l’a pas. */
+export const PASSWORD_SETUP_COOKIE = "tb_pw";
+
 export function shouldForcePasswordSetup(opts: {
   flagged: boolean;
   type: string | null;
   next: string;
 }) {
-  if (opts.flagged) return true;
+  if (opts.type === "magiclink") return false;
   if (opts.type === "recovery" || opts.type === "invite") return true;
+  if (opts.type) return false;
   const path = opts.next.split("?")[0];
   return path === SET_PASSWORD_PATH;
+}
+
+/** Le mot de passe a déjà été choisi dans l’espace. Le drapeau peut rester à tort. */
+export function hasChosenPassword(user: {
+  app_metadata?: Record<string, unknown> | null;
+} | null | undefined) {
+  const stamp = user?.app_metadata?.password_set_at;
+  return typeof stamp === "string" && stamp.length > 0;
+}
+
+/**
+ * Visite de /connexion, hors lien. null = afficher le formulaire.
+ * Le drapeau seul ne renvoie jamais vers « définir un mot de passe ».
+ */
+export function destinationForConnexionVisit(opts: {
+  staff: boolean;
+  mustSetPassword: boolean;
+  needsOnboarding: boolean;
+  hasPassword: boolean;
+}) {
+  if (!opts.staff && opts.mustSetPassword && !opts.hasPassword) return null;
+  return signedInClientDestination({
+    staff: opts.staff,
+    mustSetPassword: false,
+    needsOnboarding: opts.needsOnboarding,
+  });
+}
+
+/** La page de définition n’est ouverte que pendant le lien, et pas si le mot de passe existe déjà. */
+export function mayShowPasswordSetup(opts: {
+  mustSetPassword: boolean;
+  hasPassword: boolean;
+  staff: boolean;
+  setupCookie: boolean;
+}) {
+  if (opts.staff || opts.hasPassword || !opts.mustSetPassword) return false;
+  return opts.setupCookie;
 }
 
 export function pathAfterPassword(

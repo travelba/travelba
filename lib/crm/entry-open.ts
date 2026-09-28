@@ -6,7 +6,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { AUTH_COOKIE_OPTIONS } from "@/lib/supabase/cookie-options";
 import { publicSupabaseEnv } from "@/lib/supabase/env";
 import { ensureCustomerForUser, ensureStaff } from "@/lib/crm/auth";
-import { mustSetPassword } from "@/lib/crm/session";
+import { PASSWORD_SETUP_COOKIE, mustSetPassword } from "@/lib/crm/session";
 import { stayHasPublishedCover, stayPlaceName } from "./concierge-notices";
 import {
   entryDestination,
@@ -95,7 +95,23 @@ export async function openEntry(origin: string, code: string) {
     mustSetPassword: mustSetPassword(user),
   });
   response.headers.set("Location", new URL(dest, origin).toString());
-  if (dest === "/connexion/mot-de-passe") await stampMustSetPassword(user.id);
+  if (dest === "/connexion/mot-de-passe") {
+    await stampMustSetPassword(user.id);
+    response.cookies.set(PASSWORD_SETUP_COOKIE, "1", {
+      path: "/",
+      sameSite: "lax",
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 60 * 60,
+    });
+  } else {
+    response.cookies.set(PASSWORD_SETUP_COOKIE, "", {
+      path: "/",
+      sameSite: "lax",
+      httpOnly: true,
+      maxAge: 0,
+    });
+  }
   response.headers.set("Cache-Control", "private, no-store");
   return response;
 }
