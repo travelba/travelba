@@ -1,6 +1,11 @@
 import type { CrmBooking } from "@/lib/crm/types";
 import { coverQuery, stayArrivalPlaces } from "@/lib/crm/carnet";
-import { countryCodeForPlace, countryCoverPhoto, lookupCoverPhoto } from "@/lib/crm/cover-catalog";
+import {
+  cityOwnCoverPhoto,
+  countryCodeForPlace,
+  countryCoverPhoto,
+  lookupCoverPhoto,
+} from "@/lib/crm/cover-catalog";
 
 /** Photo retouchée du catalogue, ou rien (fond marine) si le fichier n’existe pas. */
 export function catalogCoverUrl(photoId: string) {
@@ -52,7 +57,7 @@ function arrivalPlaces(
   return stayArrivalPlaces(booking.destination, booking.title);
 }
 
-/** Une ville : photo du lieu. Plusieurs villes d’un même pays : photo du pays. Deux pays : deux photos. */
+/** Une ville : sa photo. Deux villes qui ont chacune la leur : diagonale. Sinon le pays. */
 export function bookingCoverPlan(
   booking: CoverBooking,
   options?: { items?: CoverPlaceItem[]; places?: string[]; partage?: string | null }
@@ -71,6 +76,14 @@ export function bookingCoverPlan(
     if (code && !countries.includes(code)) countries.push(code);
   }
   if (places.length >= 2 && countries.length === 1) {
+    const own: string[] = [];
+    for (const place of places) {
+      const photo = cityOwnCoverPhoto(placeKey(place));
+      if (photo && !own.includes(photo)) own.push(photo);
+    }
+    if (own.length >= 2) {
+      return { mode: "split", src: catalogUrl(own[0]), srcB: catalogUrl(own[1]) };
+    }
     const photo = countryCoverPhoto(countries[0]);
     if (photo) return { mode: "single", src: catalogUrl(photo), fallback: null };
   }

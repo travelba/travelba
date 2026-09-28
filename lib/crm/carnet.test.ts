@@ -4,6 +4,7 @@ import type { CrmBookingItem } from "./types";
 import {
   carnetVisible,
   coverQuery,
+  stayHeadline,
   tripHeadline,
   tripPlaceLine,
   clientBookingStatusLabel,
@@ -237,6 +238,12 @@ describe("carnet", () => {
     assert.equal(tripPlaceLine("40 ans", "Marrakech"), "Marrakech");
     assert.equal(tripPlaceLine("Marrakech", "marrakech"), null);
     assert.equal(tripPlaceLine("", "Marrakech"), null);
+    assert.equal(
+      stayHeadline("Miami Beach", "Miami Beach", ["New York", "Miami Beach"]),
+      "New York · Miami Beach"
+    );
+    assert.equal(stayHeadline("40 ans", "Miami Beach", ["New York", "Miami Beach"]), "40 ans");
+    assert.equal(stayHeadline("Marrakech", "Marrakech", ["Marrakech"]), "Marrakech");
   });
 
   it("sert la photo catalogue du lieu, pas Unsplash", () => {

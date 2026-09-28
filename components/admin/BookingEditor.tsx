@@ -21,7 +21,14 @@ import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { bookingTotalFromItems } from "@/lib/crm/bookings";
 import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
-import { coverQuery, flightCardTitle, hotelDisplayName, keptHiddenFromClient } from "@/lib/crm/carnet";
+import {
+  coverQuery,
+  flightCardTitle,
+  hotelDisplayName,
+  keptHiddenFromClient,
+  stayArrivalPlaces,
+  stayHeadline,
+} from "@/lib/crm/carnet";
 import { unsplashKeywordMatch } from "@/lib/crm/covers";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { BookingHero } from "@/components/crm/BookingHero";
@@ -409,7 +416,13 @@ export function BookingEditor({
             {booking.reference}
             {jMinusLabel(booking.start_date) ? ` · ${jMinusLabel(booking.start_date)}` : ""}
           </p>
-          <h1 className="break-words font-display text-2xl font-bold leading-tight">{titleDraft || booking.title}</h1>
+          <h1 className="break-words font-display text-2xl font-bold leading-tight">
+            {stayHeadline(
+              titleDraft || booking.title,
+              booking.destination,
+              stayArrivalPlaces(booking.destination, booking.title, items)
+            )}
+          </h1>
         </div>
       </BookingHero>
       <CoverPickDialog

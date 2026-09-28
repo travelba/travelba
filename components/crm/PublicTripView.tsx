@@ -2,7 +2,7 @@ import { BookingHero } from "@/components/crm/BookingHero";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { BrandMark } from "@/components/crm/ui";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
-import { tripHeadline, tripPlaceLine } from "@/lib/crm/carnet";
+import { stayArrivalPlaces, stayHeadline, tripPlaceLine } from "@/lib/crm/carnet";
 import { formatDateFr } from "@/lib/crm/money";
 import { attachmentPreviews } from "@/lib/crm/preview-files";
 import { siteConfig } from "@/lib/site";
@@ -23,7 +23,11 @@ export function PublicTripView({
   calendarBase?: string | null;
 }) {
   const shown = items.map((item) => ({ ...item, amount: null }));
-  const headline = tripHeadline(booking.title, booking.destination);
+  const headline = stayHeadline(
+    booking.title,
+    booking.destination,
+    stayArrivalPlaces(booking.destination, booking.title, items)
+  );
   const placeLine = tripPlaceLine(booking.title, booking.destination);
   const attachments = attachmentPreviews(docs, shown, booking.reference).map((file) => ({
     ...file,

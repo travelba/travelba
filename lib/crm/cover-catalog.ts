@@ -466,6 +466,7 @@ const CITIES: Array<[name: string, country: string, photo?: string]> = [
   ["san francisco", "us"],
   ["las vegas", "us"],
   ["miami", "us", "photo-1533106497176-45ae19e68ba2"],
+  ["miami beach", "us", "photo-1533106497176-45ae19e68ba2"],
   ["south beach", "us", "photo-1533106497176-45ae19e68ba2"],
   ["chicago", "us"],
   ["boston", "us"],
@@ -559,6 +560,11 @@ export function lookupCoverPhoto(key: string) {
   const code = countryAlias.get(key);
   if (!code) return null;
   return countryPhoto.get(code) ?? null;
+}
+
+/** Photo propre de la ville. Le repli pays n’est pas une photo de cette ville. */
+export function cityOwnCoverPhoto(key: string) {
+  return cities.get(key)?.photo ?? null;
 }
 
 export function countryCodeForPlace(key: string) {

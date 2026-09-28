@@ -23,7 +23,8 @@ import {
   clientVisibleItems,
   HIDDEN_PRICE_LABEL,
   itemPriceLabel,
-  tripHeadline,
+  stayArrivalPlaces,
+  stayHeadline,
   tripPlaceLine,
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
@@ -108,7 +109,11 @@ export default async function ReservationDetailPage({ params }: Props) {
   } catch {
     shareUrl = null;
   }
-  const headline = tripHeadline(b.title, b.destination);
+  const headline = stayHeadline(
+    b.title,
+    b.destination,
+    stayArrivalPlaces(b.destination, b.title, visibleItems)
+  );
   const placeLine = tripPlaceLine(b.title, b.destination);
   const missingCount = coverage.total - coverage.ready;
   const formalities = frenchPassportTrip(visibleItems, party.length);

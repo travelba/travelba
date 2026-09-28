@@ -18,6 +18,7 @@ import {
 import { revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
 import { stripeConfigured, stripeWebhookConfigured } from "@/lib/crm/stripe";
 import { buildLaunchItems } from "@/lib/crm/launch-status";
+import { stayHeadline } from "@/lib/crm/carnet";
 import { AdminLaunchStatus } from "@/components/admin/AdminLaunchStatus";
 import { VisaDesk } from "@/components/admin/VisaDesk";
 import { deskView, type DeskTask } from "@/lib/crm/visa-desk";
@@ -344,7 +345,7 @@ export default async function AdminHomePage() {
                 </div>
                 <div>
                   <h3 className="font-display text-2xl font-bold leading-tight">
-                    {featured.title}
+                    {stayHeadline(featured.title, featured.destination, places[featured.id])}
                   </h3>
                   <p className="mt-1 text-sm text-white/80">
                     {byId.get(featured.customer_id) || "Client"} ·{" "}
@@ -387,7 +388,9 @@ export default async function AdminHomePage() {
                       {b.reference}
                       {jMinusLabel(b.start_date) ? ` · ${jMinusLabel(b.start_date)}` : ""}
                     </p>
-                    <p className="font-semibold text-[var(--admin-navy)]">{b.title}</p>
+                    <p className="font-semibold text-[var(--admin-navy)]">
+                      {stayHeadline(b.title, b.destination, places[b.id])}
+                    </p>
                     <p className="text-xs text-muted">
                       {byId.get(b.customer_id) || "Client"} · {formatDateFr(b.start_date)}
                     </p>

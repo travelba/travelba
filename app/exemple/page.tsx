@@ -2,7 +2,7 @@ import Link from "next/link";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { Icon } from "@/components/crm/icons";
 import { BoardingPass } from "@/components/account/BoardingPass";
-import { clientVisibleItems, nextTimelineFlight, tripHeadline, tripPlaceLine } from "@/lib/crm/carnet";
+import { clientVisibleItems, nextTimelineFlight, stayArrivalPlaces, stayHeadline, tripPlaceLine } from "@/lib/crm/carnet";
 import { destinationWeather } from "@/lib/crm/destination-weather";
 import { EXAMPLE_BASE } from "@/lib/crm/example-session";
 import { readExample } from "@/lib/crm/example-store";
@@ -17,7 +17,12 @@ export default async function ExampleHomePage() {
   const balance = session.ledger.balanceValue;
   const firstName = greetingGivenName(session.customer.first_name) || "Camille";
   const countdown = jMinusLabel(nextTrip.start_date);
-  const tripName = tripHeadline(nextTrip.title, nextTrip.destination, "Prochain séjour");
+  const tripName = stayHeadline(
+    nextTrip.title,
+    nextTrip.destination,
+    stayArrivalPlaces(nextTrip.destination, nextTrip.title, session.items),
+    "Prochain séjour"
+  );
   const tripPlace = tripPlaceLine(nextTrip.title, nextTrip.destination);
   const tripHref = `${EXAMPLE_BASE}/reservations/${nextTrip.reference}`;
   const weather = await destinationWeather(nextTrip.destination, nextTrip.title);
