@@ -94,7 +94,7 @@ export function pathAfterKnownPassword(opts: {
 }
 
 /** Retire le drapeau sans toucher au mot de passe ni au reste des métadonnées. */
-export function withoutMustSetPassword(meta: Record<string, unknown>) {
+export function withoutMustSetPassword(meta: Record<string, unknown>): Record<string, unknown> {
   if (meta.must_set_password !== true) return { ...meta };
   return { ...meta, must_set_password: false };
 }
