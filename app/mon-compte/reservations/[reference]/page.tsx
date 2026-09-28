@@ -11,7 +11,7 @@ import {
 } from "@/lib/crm/types";
 import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
 import { VisaSection } from "@/components/crm/VisaSection";
-import { bookingHasFlight, findVisaExtra, serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
+import { findVisaExtra, serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import type { ClientVisaStep } from "@/lib/crm/visa-flow";
 import { pliantConfigured } from "@/lib/crm/pliant";
@@ -23,12 +23,12 @@ import {
   clientVisibleItems,
   HIDDEN_PRICE_LABEL,
   itemPriceLabel,
-  nextFlightPass,
   tripHeadline,
   tripPlaceLine,
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
+import { ClientTripBody } from "@/components/account/ClientTripBody";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { siteConfig } from "@/lib/site";
 import { BookingHero } from "@/components/crm/BookingHero";
@@ -38,8 +38,8 @@ import { StayBillingChoice } from "@/components/crm/StayBillingChoice";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { TripSharePanel } from "@/components/account/TripSharePanel";
-import { BoardingPass } from "@/components/account/BoardingPass";
-import { PassportCoffre } from "@/components/crm/PassportCoffre";
+import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
+import { ReceivedVisasFold } from "@/components/crm/TripVisaUploads";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
@@ -142,115 +142,71 @@ export default async function ReservationDetailPage({ params }: Props) {
     expenseChoices = [];
   }
 
+  const identity = (identityDocs || []) as CrmTravelDocument[];
+  const passportRows = passportVaultRows(party, identity, todayIsoDate(), {
+    first_name: customer.first_name,
+    last_name: customer.last_name,
+    usage_name: customer.usage_name,
+  });
+
   return (
-    <div className="space-y-5">
-      <Link
-        href="/mon-compte/reservations"
-        className="inline-flex text-sm font-semibold text-[var(--aura-blue)]"
-      >
-        ← Mes réservations
-      </Link>
+    <ClientTripBody
+      intro={
+        <>
+          <Link
+            href="/mon-compte/reservations"
+            className="inline-flex text-sm font-semibold text-[var(--aura-blue)]"
+          >
+            ← Mes réservations
+          </Link>
 
-      <BookingHero
-        booking={b}
-        priority
-        className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]"
-      >
-        <div className="absolute inset-0 flex flex-col justify-between p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <BookingStatusBadge label={clientBookingStatusLabel(b.status)} />
-            <span className="rounded-full bg-black/35 px-3 py-1 text-[11px] font-bold backdrop-blur">
-              {b.reference}
-            </span>
-          </div>
-          <div>
-            <h1 className="font-display text-[1.7rem] font-extrabold leading-tight">{headline}</h1>
-            {placeLine ? <p className="text-sm text-white/75">{placeLine}</p> : null}
-            <p className="text-sm text-white/75">
-              {formatDateFr(b.start_date)} — {formatDateFr(b.end_date)}
+          <BookingHero
+            booking={b}
+            priority
+            className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]"
+          >
+            <div className="absolute inset-0 flex flex-col justify-between p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <BookingStatusBadge label={clientBookingStatusLabel(b.status)} />
+                <span className="rounded-full bg-black/35 px-3 py-1 text-[11px] font-bold backdrop-blur">
+                  {b.reference}
+                </span>
+              </div>
+              <div>
+                <h1 className="font-display text-[1.7rem] font-extrabold leading-tight">{headline}</h1>
+                {placeLine ? <p className="text-sm text-white/75">{placeLine}</p> : null}
+                <p className="text-sm text-white/75">
+                  {formatDateFr(b.start_date)} — {formatDateFr(b.end_date)}
+                </p>
+              </div>
+            </div>
+          </BookingHero>
+
+          {b.notes_client ? (
+            <p className="aura-card rounded-[1.25rem] bg-white p-4 text-sm leading-relaxed text-[var(--admin-navy)]">
+              {b.notes_client}
             </p>
-          </div>
-        </div>
-      </BookingHero>
-
-      {shareUrl ? (
-        <TripSharePanel
-          bookingId={b.id}
-          shareUrl={shareUrl}
-          companions={shareCompanions}
-          canSend={Boolean(customer.phone)}
+          ) : null}
+        </>
+      }
+      itinerary={
+        <CarnetItinerary
+          booking={b}
+          items={visibleItems}
+          docs={visibleDocs}
+          pricesVisible={b.prices_visible !== false}
+          calendarBase={`/mon-compte/reservations/${b.reference}/agenda.ics`}
+          services={{
+            variant: "client",
+            travelers: party,
+            holder: customer,
+            companions: (companions || []) as CrmCompanion[],
+            whatsappHref: modifyHref,
+          }}
+          refusals={refusals}
         />
-      ) : null}
-
-      <PassportCoffre
-        rows={passportVaultRows(party, (identityDocs || []) as CrmTravelDocument[], todayIsoDate(), {
-          first_name: customer.first_name,
-          last_name: customer.last_name,
-          usage_name: customer.usage_name,
-        })}
-        hrefFor={() => "/mon-compte/profil/documents"}
-      />
-
-      {missingPassports ? (
-        <a
-          href="/mon-compte/profil/documents"
-          className="block rounded-2xl bg-[var(--admin-peach)] px-4 py-2.5 text-sm font-semibold text-[var(--admin-navy)]"
-        >
-          Pièce manquante pour {missingCount} voyageur{missingCount > 1 ? "s" : ""}.
-        </a>
-      ) : null}
-
-      <StayBillingChoice
-        endpoint="client"
-        bookingId={b.id}
-        companies={billingCompanies}
-        bookingCompanyId={b.billing_company_id || null}
-        expenses={expenseChoices}
-      />
-
-      {b.notes_client ? (
-        <p className="aura-card rounded-[1.25rem] bg-white p-4 text-sm leading-relaxed text-[var(--admin-navy)]">
-          {b.notes_client}
-        </p>
-      ) : null}
-
-      {(() => {
-        const pass = nextFlightPass(visibleItems);
-        return pass ? (
-          <BoardingPass
-            pass={pass}
-            calendarHref={`/mon-compte/reservations/${b.reference}/agenda.ics?item_id=${encodeURIComponent(pass.itemId)}`}
-          />
-        ) : null;
-      })()}
-
-      <CarnetItinerary
-        booking={b}
-        items={visibleItems}
-        docs={visibleDocs}
-        pricesVisible={b.prices_visible !== false}
-        calendarBase={`/mon-compte/reservations/${b.reference}/agenda.ics`}
-        services={{
-          variant: "client",
-          travelers: party,
-          holder: customer,
-          companions: (companions || []) as CrmCompanion[],
-          whatsappHref: modifyHref,
-        }}
-        refusals={refusals}
-      />
-
-      <ReservationFiles
-        passports={passportPreviewsForStay(
-          party,
-          (identityDocs || []) as CrmTravelDocument[],
-          customer,
-          b.reference
-        )}
-        attachments={attachmentPreviews(visibleDocs, visibleItems, b.reference)}
-      />
-
-      {bookingHasFlight(visibleItems) ? (
+      }
+      services={
         <ExtrasPanel
           variant="client"
           booking={b}
@@ -262,38 +218,8 @@ export default async function ReservationDetailPage({ params }: Props) {
           formalities={formalities}
           refusals={refusals}
         />
-      ) : null}
-
-      <section className="aura-card space-y-2 rounded-[1.35rem] bg-white p-4">
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
-          Montant du séjour
-        </p>
-        <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
-          {b.prices_visible === false ? HIDDEN_PRICE_LABEL : formatMoney(Number(b.total_amount), b.currency)}
-        </p>
-        {insurances.map((item) => {
-          const price = itemPriceLabel(item, b.currency, null, b.prices_visible !== false);
-          return (
-            <p key={item.id} className="text-sm text-muted">
-              Assurance {item.title}
-              {price ? ` · ${price}` : ""}
-            </p>
-          );
-        })}
-      </section>
-
-      {customer.phone ? (
-        <a
-          href={modifyHref}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex h-12 w-full items-center justify-center rounded-full bg-[var(--admin-navy)] px-5 text-sm font-semibold text-white"
-        >
-          Modifier ce voyage
-        </a>
-      ) : null}
-
-      {bookingHasFlight(visibleItems) ? (
+      }
+      visaRequest={
         <VisaSection
           variant="client"
           bookingId={b.id}
@@ -301,11 +227,86 @@ export default async function ReservationDetailPage({ params }: Props) {
           trip={formalities}
           requests={(visaRows || []) as { country: string; step?: ClientVisaStep; status?: string; accepted_at?: string | null }[]}
           travelers={party}
-          documents={(identityDocs || []) as CrmTravelDocument[]}
+          documents={identity}
           visaBooked={Boolean(findVisaExtra(visibleItems))}
           pliantReady={pliantConfigured()}
+          showReceived={false}
         />
-      ) : null}
-    </div>
+      }
+      receivedVisas={
+        <ReceivedVisasFold
+          folded
+          variant="client"
+          bookingId={b.id}
+          reference={b.reference}
+          travelers={party}
+          documents={identity}
+          entries={formalities.entries}
+        />
+      }
+      passports={
+        <TripPassportGroup
+          rows={passportRows}
+          hrefFor={() => "/mon-compte/profil/documents"}
+          passports={passportPreviewsForStay(party, identity, customer, b.reference)}
+          missingHref="/mon-compte/profil/documents"
+          missingCount={missingPassports ? missingCount : 0}
+        />
+      }
+      share={
+        shareUrl ? (
+          <TripSharePanel
+            bookingId={b.id}
+            shareUrl={shareUrl}
+            companions={shareCompanions}
+            canSend={Boolean(customer.phone)}
+          />
+        ) : null
+      }
+      amount={
+        <section className="aura-card space-y-2 rounded-[1.35rem] bg-white p-4">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+            Montant du séjour
+          </p>
+          <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
+            {b.prices_visible === false ? HIDDEN_PRICE_LABEL : formatMoney(Number(b.total_amount), b.currency)}
+          </p>
+          {insurances.map((item) => {
+            const price = itemPriceLabel(item, b.currency, null, b.prices_visible !== false);
+            return (
+              <p key={item.id} className="text-sm text-muted">
+                Assurance {item.title}
+                {price ? ` · ${price}` : ""}
+              </p>
+            );
+          })}
+        </section>
+      }
+      tail={
+        <>
+          <StayBillingChoice
+            endpoint="client"
+            bookingId={b.id}
+            companies={billingCompanies}
+            bookingCompanyId={b.billing_company_id || null}
+            expenses={expenseChoices}
+          />
+          <ReservationFiles
+            showPassports={false}
+            attachments={attachmentPreviews(visibleDocs, visibleItems, b.reference)}
+          />
+          {customer.phone ? (
+            <a
+              href={modifyHref}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-12 w-full items-center justify-center rounded-full bg-[var(--admin-navy)] px-5 text-sm font-semibold text-white"
+            >
+              Modifier ce voyage
+            </a>
+          ) : null}
+        </>
+      }
+    />
   );
 }

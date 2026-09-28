@@ -22,6 +22,7 @@ export function BoardingPass({
               {pass.number}
             </p>
           ) : null}
+          {pass.airports ? <p className="mt-2 text-sm text-white/80">{pass.airports}</p> : null}
         </div>
         {pass.time ? (
           <p className="shrink-0 text-right">

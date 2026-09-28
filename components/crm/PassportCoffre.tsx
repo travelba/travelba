@@ -4,13 +4,16 @@ import type { PassportVaultRow } from "@/lib/crm/passport-vault";
 export function PassportCoffre({
   rows,
   hrefFor,
+  embedded = false,
 }: {
   rows: PassportVaultRow[];
   hrefFor: (row: PassportVaultRow) => string | null;
+  /** Dans un bloc déjà cadré, sans seconde carte. */
+  embedded?: boolean;
 }) {
   if (!rows.length) return null;
-  return (
-    <section className="rounded-2xl border border-[#e5e3dc] bg-white p-4">
+  const body = (
+    <>
       <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#C5A880]">Coffre</p>
       <ul className="mt-3 space-y-2">
         {rows.map((row) => {
@@ -37,6 +40,8 @@ export function PassportCoffre({
           );
         })}
       </ul>
-    </section>
+    </>
   );
+  if (embedded) return <div>{body}</div>;
+  return <section className="rounded-2xl border border-[#e5e3dc] bg-white p-4">{body}</section>;
 }

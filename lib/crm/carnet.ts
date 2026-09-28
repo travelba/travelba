@@ -369,7 +369,25 @@ export type FlightPass = {
   airline: string;
   number: string;
   time: string | null;
+  /** Nom ou code déjà sur la carte. Jamais un libellé déduit d’un code. */
+  airports: string | null;
 };
+
+function airportEnd(name: string, code: string) {
+  if (name && code) return `${name} ${code}`;
+  return name || code || "";
+}
+
+/** Aéroports tels qu’ils sont stockés : ville et/ou code, sans recherche externe. */
+export function storedAirports(item: CrmBookingItem): string | null {
+  const line = [
+    airportEnd(detailStr(item, "city_from"), detailStr(item, "from")),
+    airportEnd(detailStr(item, "city_to"), detailStr(item, "to")),
+  ]
+    .filter(Boolean)
+    .join(" → ");
+  return line || null;
+}
 
 export function flightPass(item: CrmBookingItem): FlightPass | null {
   if (item.kind !== "flight" || item.visible_to_client === false) return null;
@@ -381,6 +399,7 @@ export function flightPass(item: CrmBookingItem): FlightPass | null {
     airline,
     number,
     time: itemClock(item.start_at) || null,
+    airports: storedAirports(item),
   };
 }
 

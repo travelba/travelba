@@ -17,7 +17,7 @@ import {
 } from "@/lib/crm/types";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { formatMoney, jMinusLabel, todayIsoDate } from "@/lib/crm/money";
-import { PassportCoffre } from "@/components/crm/PassportCoffre";
+import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { bookingTotalFromItems } from "@/lib/crm/bookings";
 import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
@@ -539,15 +539,6 @@ export function BookingEditor({
         </section>
       ) : null}
 
-      {shareUrl ? (
-        <TripSharePanel
-          bookingId={booking.id}
-          shareUrl={shareUrl}
-          companions={shareCompanions}
-          sendUrl={`/api/admin/bookings/${booking.id}/partage`}
-        />
-      ) : null}
-
       <BookingIngest
         role="admin"
         mode="append"
@@ -585,15 +576,6 @@ export function BookingEditor({
           Retour
           <DateFrInput name="end_date" aria-label="Date de retour" defaultValue={booking.end_date || ""} className="rounded-xl border border-border px-3 py-2" />
         </label>
-        <div className="flex flex-col gap-1 text-xs font-semibold text-muted">
-          Montant du séjour
-          <p className="rounded-xl border border-border bg-[#f7f6f2] px-3 py-2 text-sm font-semibold text-[var(--admin-navy)]">
-            {formatMoney(bookingTotalFromItems(items), stayCurrency(booking.currency))}
-          </p>
-          <span className="font-normal text-muted">
-            Somme des prix vendus de chaque carte. Le frais de billeterie n’est pas inclus.
-          </span>
-        </div>
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
           Devise du séjour
           <select
@@ -667,13 +649,15 @@ export function BookingEditor({
       </form>
 
       <section className="admin-af-card space-y-4 rounded-3xl p-5">
-        <div>
-          <h2 className="mt-1 font-display text-lg font-bold">Voyageurs</h2>
-          <PassportCoffre
+        <div className="space-y-3">
+          <h2 className="font-display text-lg font-bold">Voyageurs</h2>
+          <TripPassportGroup
+            embedded
             rows={passportVaultRows(travelers, identityDocs, todayIsoDate(), holderProfile)}
             hrefFor={() => `/admin/clients/${booking.customer_id}`}
+            passports={passportPreviewsForStay(travelers, identityDocs, holderName, booking.reference)}
           />
-          <p className="mt-1 text-sm text-muted">
+          <p className="text-sm text-muted">
             Le passeport déposé au coffre est repris pour chaque voyageur.
           </p>
         </div>
@@ -738,6 +722,27 @@ export function BookingEditor({
           </select>
           <button className="admin-af-btn rounded-full px-3 py-2 text-sm">Ajouter</button>
         </form>
+      </section>
+
+      {shareUrl ? (
+        <TripSharePanel
+          bookingId={booking.id}
+          shareUrl={shareUrl}
+          companions={shareCompanions}
+          sendUrl={`/api/admin/bookings/${booking.id}/partage`}
+        />
+      ) : null}
+
+      <section className="admin-af-card space-y-2 rounded-3xl p-5">
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+          Montant du séjour
+        </p>
+        <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
+          {formatMoney(bookingTotalFromItems(items), stayCurrency(booking.currency))}
+        </p>
+        <p className="text-sm text-muted">
+          Somme des prix vendus de chaque carte. Le frais de billeterie n’est pas inclus.
+        </p>
       </section>
 
       <BookingItemsPanel
@@ -810,7 +815,7 @@ export function BookingEditor({
 
       <ReservationFiles
         variant="admin"
-        passports={passportPreviewsForStay(travelers, identityDocs, holderName, booking.reference)}
+        showPassports={false}
         attachments={attachmentPreviews(documents, items, booking.reference)}
         onRemoveAttachment={(file) => void removeDocument(file.id)}
       />

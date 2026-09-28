@@ -25,6 +25,7 @@ export function VisaSection({
   documents,
   visaBooked,
   pliantReady = false,
+  showReceived = true,
 }: {
   variant: "admin" | "client";
   bookingId: string;
@@ -36,6 +37,7 @@ export function VisaSection({
   visaBooked: boolean;
   /** Vrai seulement si les clés Pliant sont présentes. Sinon le paiement reste un geste explicite. */
   pliantReady?: boolean;
+  showReceived?: boolean;
 }) {
   if (!trip.hasFlight) return null;
   return (
@@ -74,6 +76,7 @@ export function VisaSection({
         documents={documents}
         visaBooked={visaBooked}
         pliantReady={pliantReady}
+        showReceived={showReceived}
       />
     </div>
   );
