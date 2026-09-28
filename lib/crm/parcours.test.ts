@@ -130,6 +130,14 @@ test("cover catalogue matches the arrival place only", () => {
     unsplashKeywordMatch({ destination: "Miami", title: "Miami" }),
     unsplashKeywordMatch({ destination: "Panama City", title: "Panama" })
   );
+  assert.equal(
+    unsplashKeywordMatch({ destination: "Antibes", title: "Séjour" }),
+    "photo-antibes-garoupe"
+  );
+  assert.notEqual(
+    unsplashKeywordMatch({ destination: "Antibes", title: "Séjour" }),
+    unsplashKeywordMatch({ destination: "France", title: "Séjour" })
+  );
   assert.equal(unsplashKeywordMatch({ destination: "Xyzzy", title: "Inconnu" }), null);
   assert.equal(
     bookingCoverUrl({
