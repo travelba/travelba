@@ -281,7 +281,7 @@ export async function saveCustomerBillingCompanies(
 /** Rattache un séjour ou une dépense à une société du compte facturé. */
 export async function writeBillingAssignment(
   supabase: SupabaseClient,
-  booking: { id: string; billing_customer_id?: string | null; customer_id: string },
+  booking: { id: string; billing_customer_id?: string | null; customer_id: string | null },
   body: { billing_company_id?: unknown; item_id?: unknown }
 ): Promise<{ ok: true } | { error: string; status: number }> {
   return writeBillingAssignmentInner(supabase, booking, body);
@@ -289,12 +289,13 @@ export async function writeBillingAssignment(
 
 async function writeBillingAssignmentInner(
   supabase: SupabaseClient,
-  booking: { id: string; billing_customer_id?: string | null; customer_id: string },
+  booking: { id: string; billing_customer_id?: string | null; customer_id: string | null },
   body: { billing_company_id?: unknown; item_id?: unknown }
 ) {
   const parsed = parseBillingCompanyId(body.billing_company_id);
   if ("error" in parsed) return { error: parsed.error, status: 400 };
   const payerId = booking.billing_customer_id || booking.customer_id;
+  if (!payerId) return { error: "Créez le client avant de choisir une société.", status: 400 };
   if (parsed.id) {
     const { data: company, error } = await supabase
       .from("crm_billing_companies")

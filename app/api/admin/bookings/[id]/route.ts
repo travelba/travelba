@@ -52,13 +52,18 @@ export async function PATCH(request: Request, ctx: Ctx) {
   if ("title" in patch && !patch.title) return jsonError("Le titre du voyage est obligatoire.");
 
   if ("customer_id" in patch && !("billing_customer_id" in patch)) {
-    const travelerId = String(patch.customer_id);
-    const { data: traveler } = await auth.supabase
-      .from("crm_customers")
-      .select("id, company_role, billing_parent_id")
-      .eq("id", travelerId)
-      .maybeSingle();
-    if (traveler) {
+    if (!patch.customer_id) {
+      patch.billing_customer_id = null;
+    } else {
+      const travelerId = String(patch.customer_id);
+      const { data: traveler } = await auth.supabase
+        .from("crm_customers")
+        .select("id, company_role, billing_parent_id")
+        .eq("id", travelerId)
+        .maybeSingle();
+      if (!traveler) {
+        return jsonIssues([{ field: "customer_id", message: "Client introuvable." }], 404);
+      }
       patch.billing_customer_id = resolveBillingCustomerId(traveler as CrmCustomer);
     }
   }
@@ -121,6 +126,14 @@ export async function PATCH(request: Request, ctx: Ctx) {
   if ("visible_to_client" in body) {
     try {
       if (body.visible_to_client) {
+        if (!booking.customer_id) {
+          return jsonIssues([
+            {
+              field: "customer_id",
+              message: "Créez le client avant de publier le carnet.",
+            },
+          ]);
+        }
         const { data: publishItems } = await auth.supabase
           .from("crm_booking_items")
           .select("kind")

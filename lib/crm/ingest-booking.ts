@@ -277,7 +277,7 @@ async function upsertItemsAndTravelers(
   supabase: SupabaseClient,
   bookingId: string,
   extract: BookingExtract,
-  customer: CrmCustomer,
+  customer: CrmCustomer | null,
   companions: CrmCompanion[],
   existingTravelers: { first_name: string | null; last_name: string | null }[],
   existingItems: CrmBookingItem[],
@@ -318,7 +318,7 @@ async function upsertItemsAndTravelers(
     if (kind === "hotel" && Array.isArray(details.rooms)) {
       details.rooms = applyRoomGuestLabels(
         details.rooms as { guests?: string; party_keys?: string[] }[],
-        householdMembers(customer, companions)
+        householdMembers(customer || { first_name: "", last_name: "" }, companions)
       );
     }
     const match = findMatchingItem(remaining, {
@@ -410,7 +410,11 @@ async function upsertItemsAndTravelers(
     );
 
   for (const traveler of incoming) {
-    const linked = attachTravelerToHousehold(traveler, customer, companions);
+    const linked = attachTravelerToHousehold(
+      traveler,
+      customer || { first_name: null, last_name: null },
+      companions
+    );
     const first = emptyToNull(linked.first_name);
     const last = emptyToNull(linked.last_name);
     if (!first && !last) continue;
@@ -430,11 +434,11 @@ async function upsertItemsAndTravelers(
     existingTravelers.push(recorded);
   }
 
-  await reconcileCustomerParty(customer.id, supabase);
+  if (customer) await reconcileCustomerParty(customer.id, supabase);
 }
 
 export async function persistNewBookingFromExtract(opts: {
-  customerId: string;
+  customerId?: string | null;
   extract: BookingExtract;
   files?: File[];
   staged?: IngestStagedFile[];
@@ -446,14 +450,21 @@ export async function persistNewBookingFromExtract(opts: {
   referenceClient?: SupabaseClient;
 }) {
   const admin = createServiceClient();
-  const [{ data: customer }, { data: companions }] = await Promise.all([
-    admin.from("crm_customers").select("*").eq("id", opts.customerId).maybeSingle(),
-    admin.from("crm_travel_companions").select("*").eq("customer_id", opts.customerId),
-  ]);
-  if (!customer) {
-    throw new BookingIssuesError("Client introuvable", [
-      { field: "customer_id", message: "Client introuvable." },
+  const customerId = String(opts.customerId || "").trim();
+  let customer: CrmCustomer | null = null;
+  let companions: CrmCompanion[] = [];
+  if (customerId) {
+    const [customerRow, companionRow] = await Promise.all([
+      admin.from("crm_customers").select("*").eq("id", customerId).maybeSingle(),
+      admin.from("crm_travel_companions").select("*").eq("customer_id", customerId),
     ]);
+    if (!customerRow.data) {
+      throw new BookingIssuesError("Client introuvable", [
+        { field: "customer_id", message: "Client introuvable." },
+      ]);
+    }
+    customer = customerRow.data as CrmCustomer;
+    companions = (companionRow.data || []) as CrmCompanion[];
   }
   if (isCancellationExtract(opts.extract)) {
     throw new BookingIssuesError("Annulation : rattachez à un voyage existant.", [
@@ -463,10 +474,7 @@ export async function persistNewBookingFromExtract(opts: {
       },
     ]);
   }
-  const persistIssues = collectExtractIssues(opts.extract, {
-    customerId: opts.customerId,
-    requireCustomer: true,
-  });
+  const persistIssues = collectExtractIssues(opts.extract);
   if (persistIssues.length) throw new BookingIssuesError(issuesSummary(persistIssues), persistIssues);
   const reference = await nextBookingReference(opts.referenceClient ?? admin);
   const extract = opts.extract;
@@ -476,8 +484,8 @@ export async function persistNewBookingFromExtract(opts: {
   const { data, error } = await admin
     .from("crm_bookings")
     .insert({
-      customer_id: opts.customerId,
-      billing_customer_id: resolveBillingCustomerId(customer as CrmCustomer),
+      customer_id: customer?.id || null,
+      billing_customer_id: customer ? resolveBillingCustomerId(customer) : null,
       reference,
       title,
       destination: emptyToNull(extract.destination),
@@ -514,8 +522,8 @@ export async function persistNewBookingFromExtract(opts: {
     admin,
     booking.id,
     extract,
-    customer as CrmCustomer,
-    (companions || []) as CrmCompanion[],
+    customer,
+    companions,
     [],
     [],
     docs

@@ -472,7 +472,7 @@ export function BookingEditor({
             <button
               type="button"
               disabled={busy !== "idle"}
-              onClick={() => setConfirm("publish")}
+              onClick={() => (booking.customer_id ? setConfirm("publish") : setFlash("Créez le client avant de publier le carnet."))}
               className="admin-tap rounded-full border border-[var(--admin-gold)] bg-[#f8f4ed] px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
             >
               Publier le carnet
@@ -549,6 +549,8 @@ export function BookingEditor({
         aiConfigured={aiConfigured}
         preserveTitle={booking.title}
       />
+      {!booking.customer_id ? <CreateBookingClient bookingId={booking.id} /> : null}
+
       <form id="booking-meta" onSubmit={save} className="admin-af-card grid gap-3 rounded-3xl p-5 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
           Titre du voyage
@@ -661,7 +663,7 @@ export function BookingEditor({
             Le passeport déposé au coffre est repris pour chaque voyageur.
           </p>
         </div>
-        {!travelers.length ? (
+        {!travelers.length && booking.customer_id ? (
           <button
             type="button"
             onClick={() => void addHolder()}
@@ -673,7 +675,7 @@ export function BookingEditor({
           <TripPassportPicker
             variant="admin"
             embedded
-            customerId={booking.customer_id}
+            customerId={booking.customer_id || undefined}
             bookingId={booking.id}
             travelers={travelers}
             documents={identityDocs}
@@ -832,5 +834,84 @@ export function BookingEditor({
         </form>
       </section>
     </div>
+  );
+}
+
+function CreateBookingClient({ bookingId }: { bookingId: string }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const fd = new FormData(event.currentTarget);
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await fetch("/api/admin/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          first_name: fd.get("first_name"),
+          last_name: fd.get("last_name"),
+          email: fd.get("email"),
+        }),
+      });
+      const customerJson = await created.json().catch(() => ({}));
+      if (!created.ok || !customerJson.customer?.id) {
+        setError(
+          typeof customerJson.error === "string" ? customerJson.error : "Création du client impossible."
+        );
+        return;
+      }
+      const attached = await fetch(`/api/admin/bookings/${bookingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customer_id: customerJson.customer.id }),
+      });
+      const bookingJson = await attached.json().catch(() => ({}));
+      if (!attached.ok) {
+        setError(
+          typeof bookingJson.error === "string"
+            ? bookingJson.error
+            : "Le client est créé. Le rattachement au dossier a échoué."
+        );
+        return;
+      }
+      router.refresh();
+    } catch {
+      setError("Connexion interrompue. Réessayez.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const control = "rounded-xl border border-border bg-white px-3 py-2 text-sm";
+
+  return (
+    <form onSubmit={onSubmit} className="admin-af-card space-y-3 rounded-3xl p-5">
+      <h2 className="font-display text-lg font-bold">Client</h2>
+      <p className="text-sm text-muted">
+        Le dossier est ouvert. Créez le client maintenant, ou choisissez-en un déjà en fiche plus bas.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+          Prénom
+          <input name="first_name" required disabled={busy} className={control} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+          Nom
+          <input name="last_name" required disabled={busy} className={control} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
+          Email
+          <input name="email" type="email" required disabled={busy} className={control} />
+        </label>
+      </div>
+      {error ? <p className="text-sm text-accent">{error}</p> : null}
+      <button type="submit" disabled={busy} className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm">
+        {busy ? "Création…" : "Créer le client"}
+      </button>
+    </form>
   );
 }

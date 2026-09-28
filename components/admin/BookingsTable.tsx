@@ -34,7 +34,7 @@ export function BookingsTable({
     return bookings.filter((b) => {
       if (status !== "all" && b.status !== status) return false;
       if (!needle) return true;
-      const hay = `${b.reference} ${b.title} ${b.destination || ""} ${byId.get(b.customer_id) || ""}`.toLowerCase();
+      const hay = `${b.reference} ${b.title} ${b.destination || ""} ${(b.customer_id && byId.get(b.customer_id)) || ""}`.toLowerCase();
       return hay.includes(needle);
     });
   }, [bookings, byId, q, status]);
@@ -79,7 +79,7 @@ export function BookingsTable({
                     {b.reference} · {b.title}
                   </p>
                   <p className="text-xs text-muted">
-                    {byId.get(b.customer_id) || "Client"} · {formatDateFr(b.start_date)} →{" "}
+                    {(b.customer_id && byId.get(b.customer_id)) || "Client à créer"} · {formatDateFr(b.start_date)} →{" "}
                     {formatDateFr(b.end_date)}
                   </p>
                 </div>

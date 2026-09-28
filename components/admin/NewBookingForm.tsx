@@ -84,8 +84,8 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
     <form onSubmit={onSubmit} className="admin-af-card grid gap-3 rounded-2xl p-5 sm:grid-cols-3">
       <label className={`${labelClass} sm:col-span-3`}>
         Client
-        <select name="customer_id" required disabled={saving} className={`${fieldControlClass} bg-white`}>
-          <option value="">Choisir un client…</option>
+        <select name="customer_id" disabled={saving} className={`${fieldControlClass} bg-white`}>
+          <option value="">Créer le client ensuite</option>
           {customers.map((c) => (
             <option key={c.id} value={c.id}>
       {c.last_name} {c.first_name} — {c.email}
@@ -94,6 +94,9 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
             </option>
           ))}
         </select>
+        <span className="font-normal text-muted">
+          Laissez « Créer le client ensuite » pour ouvrir le dossier d’abord.
+        </span>
       </label>
       <label className={labelClass}>
         Titre du voyage

@@ -8,12 +8,16 @@ import {
   issuesSummary,
 } from "./booking-issues";
 
-test("création manuelle : client et titre obligatoires", () => {
+test("création manuelle : le titre est obligatoire, le client peut venir ensuite", () => {
   const issues = collectManualCreateIssues({ customerId: "", title: "" });
-  assert.equal(issues.length, 2);
-  assert.match(issues[0].message, /client/i);
-  assert.match(issues[1].message, /titre/i);
+  assert.equal(issues.length, 1);
+  assert.match(issues[0].message, /titre/i);
+  assert.equal(collectManualCreateIssues({ title: "Marrakech" }).length, 0);
   assert.equal(collectManualCreateIssues({ customerId: "c1", title: "Marrakech" }).length, 0);
+  assert.match(
+    collectManualCreateIssues({ customerId: "c1", title: "Marrakech", customerFound: false })[0].message,
+    /introuvable/i
+  );
 });
 
 test("extrait identité bloque, les passagers du PDF sont enregistrés même hors foyer", () => {

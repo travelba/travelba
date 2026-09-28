@@ -340,7 +340,7 @@ export default async function AdminHomePage() {
                     {featured.title}
                   </h3>
                   <p className="mt-1 text-sm text-white/80">
-                    {byId.get(featured.customer_id) || "Client"} ·{" "}
+                    {(featured.customer_id && byId.get(featured.customer_id)) || "Client à créer"} ·{" "}
                     {formatDateFr(featured.start_date)}
                   </p>
                   <p className="mt-2 text-sm font-semibold text-[var(--admin-gold)]">
@@ -382,7 +382,7 @@ export default async function AdminHomePage() {
                     </p>
                     <p className="font-semibold text-[var(--admin-navy)]">{b.title}</p>
                     <p className="text-xs text-muted">
-                      {byId.get(b.customer_id) || "Client"} · {formatDateFr(b.start_date)}
+                      {(b.customer_id && byId.get(b.customer_id)) || "Client à créer"} · {formatDateFr(b.start_date)}
                     </p>
                     </div>
                   </div>

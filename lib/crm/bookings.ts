@@ -61,7 +61,7 @@ export function bookingMetaPatch(body: Record<string, unknown>) {
       patch[key] = parseIncludeInLedger(body[key], false);
       continue;
     }
-    if (key === "billing_company_id") {
+    if (key === "billing_company_id" || key === "customer_id" || key === "billing_customer_id") {
       patch[key] = emptyToNull(body[key]);
       continue;
     }
@@ -241,11 +241,14 @@ export async function syncBookingDebit(
     return;
   }
 
+  const payerId = booking.billing_customer_id || booking.customer_id || null;
+  if ((intent === "insert" || intent === "update") && !payerId) return;
+
   const companyId = debitBillingCompanyId(booking);
 
   if (intent === "insert") {
     await supabase.from("crm_transactions").insert({
-      customer_id: booking.billing_customer_id || booking.customer_id,
+      customer_id: payerId,
       booking_id: booking.id,
       billing_company_id: companyId,
       direction: "debit",
@@ -261,7 +264,6 @@ export async function syncBookingDebit(
 
   if (intent !== "update" || !debit) return;
 
-  const payerId = booking.billing_customer_id || booking.customer_id;
   const amountChanged = Number(debit.amount) !== amount;
   const statusChanged = Boolean(previousStatus && previousStatus !== booking.status);
   const payerChanged = debit.customer_id !== payerId;
@@ -324,6 +326,8 @@ export async function syncTicketingFee(supabase: SupabaseClient, booking: CrmBoo
     return;
   }
 
+  if (!payerId) return;
+
   if (!debit) {
     await supabase.from("crm_transactions").insert({
       customer_id: payerId,
@@ -378,6 +382,8 @@ export async function syncAgencyCommission(supabase: SupabaseClient, booking: Cr
     }
     return;
   }
+
+  if (!payerId) return;
 
   if (!debit) {
     const { error } = await supabase.from("crm_transactions").insert({
@@ -457,6 +463,7 @@ export async function syncBookingItemDebits(supabase: SupabaseClient, booking: C
       if (error) throw new Error(error.message);
       continue;
     }
+    if ((intent === "insert" || intent === "update") && !payerId) continue;
     if (intent === "insert") {
       const { error } = await supabase.from("crm_transactions").insert({
         customer_id: payerId,

@@ -26,6 +26,7 @@ export async function POST(request: Request, ctx: Ctx) {
   const party = (travelers || []) as CrmBookingTraveler[];
   const trip = frenchPassportTrip((items || []) as CrmBookingItem[], party.length);
   if (!trip.needsFormality) return jsonError("Aucune formalité de visa sur ce séjour.");
+  if (!b.customer_id) return jsonError("Créez le client avant d’enregistrer une formalité.");
   const form = await request.formData();
   const files = form.getAll("file").filter((value): value is File => value instanceof File);
   try {
