@@ -4,7 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CrmCustomer } from "@/lib/crm/types";
 import { BookingIngest } from "@/components/crm/BookingIngest";
-import { fieldControlClass, DateFrInput } from "@/components/crm/fields";
+import { fieldControlClass, DateFrInput, MoneyInput } from "@/components/crm/fields";
 import { PlaceField } from "@/components/crm/PlaceField";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { IssuesList } from "@/components/crm/IssuesList";
@@ -103,9 +103,13 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
         Destination
         <PlaceField name="destination" disabled={saving} className={fieldControlClass} />
       </label>
-      <p className="text-xs text-muted sm:col-span-3">
-        Le montant du séjour sera la somme des prix vendus des cartes.
-      </p>
+      <label className={`${labelClass} sm:col-span-3`}>
+        Montant du séjour
+        <MoneyInput name="total_amount" aria-label="Montant du séjour" disabled={saving} />
+        <span className="font-normal text-muted">
+          Prix du séjour, sans remplir chaque carte. Il part dans les transactions si le dossier est confirmé.
+        </span>
+      </label>
       <label className="flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-3">
         <input type="checkbox" name="include_in_ledger" defaultChecked className="mt-1" disabled={saving} />
         <span>

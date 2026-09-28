@@ -19,7 +19,7 @@ import { BusyBar } from "@/components/crm/BusyBar";
 import { formatMoney, jMinusLabel, todayIsoDate } from "@/lib/crm/money";
 import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
-import { bookingTotalFromItems } from "@/lib/crm/bookings";
+import { bookingTotalFromItems, stayAmount } from "@/lib/crm/bookings";
 import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
 import { coverQuery, flightCardTitle, hotelDisplayName, keptHiddenFromClient } from "@/lib/crm/carnet";
 import { unsplashKeywordMatch } from "@/lib/crm/covers";
@@ -29,7 +29,7 @@ import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
 import { BookingExpensesPanel } from "@/components/admin/BookingExpensesPanel";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
-import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
+import { DateFrInput, MoneyInput, fieldControlClass } from "@/components/crm/fields";
 import { PlaceField } from "@/components/crm/PlaceField";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
@@ -737,11 +737,23 @@ export function BookingEditor({
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
           Montant du séjour
         </p>
-        <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
-          {formatMoney(bookingTotalFromItems(items), stayCurrency(booking.currency))}
-        </p>
+        {bookingTotalFromItems(items) > 0 ? (
+          <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
+            {formatMoney(bookingTotalFromItems(items), stayCurrency(booking.currency))}
+          </p>
+        ) : (
+          <MoneyInput
+            form="booking-meta"
+            name="total_amount"
+            aria-label="Montant du séjour"
+            value={Number(booking.total_amount) > 0 ? booking.total_amount : null}
+            className="font-display w-full max-w-xs rounded-xl border border-border px-3 py-2 text-2xl font-extrabold text-[var(--admin-navy)]"
+          />
+        )}
         <p className="text-sm text-muted">
-          Somme des prix vendus de chaque carte. Le frais de billeterie n’est pas inclus.
+          {bookingTotalFromItems(items) > 0
+            ? "Somme des prix vendus des cartes. Le frais de billeterie et la commission ne sont pas inclus."
+            : "Prix du séjour, sans remplir chaque carte. Il apparaît dans les transactions dès que le dossier est confirmé."}
         </p>
       </section>
 
@@ -762,7 +774,7 @@ export function BookingEditor({
         status={booking.status}
         currency={booking.currency}
         agencyCommission={booking.agency_commission === true}
-        stayTotal={bookingTotalFromItems(items)}
+        stayTotal={stayAmount(items, booking.total_amount)}
       />
 
       {account && bookingHasFlight(items) ? (

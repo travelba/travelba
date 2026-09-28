@@ -14,7 +14,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { bookingTotalFromItems } from "@/lib/crm/bookings";
+import { bookingTotalFromItems, stayAmount } from "@/lib/crm/bookings";
 import {
   passengersFromDetails,
   peopleNotOnStay,
@@ -26,7 +26,7 @@ import { stayTitleForExtract } from "@/lib/crm/ingest-title";
 import { formatMoney } from "@/lib/crm/money";
 import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
 import { customerFullName, type CrmCompanion, type CrmCustomer } from "@/lib/crm/types";
-import { DateFrInput, Field, fieldControlClass } from "@/components/crm/fields";
+import { DateFrInput, Field, MoneyInput, fieldControlClass } from "@/components/crm/fields";
 import { PlaceField } from "@/components/crm/PlaceField";
 import { IssuesList } from "@/components/crm/IssuesList";
 import {
@@ -496,7 +496,7 @@ export function BookingIngest({
         "extract",
         JSON.stringify({
           ...extract,
-          total_amount: bookingTotalFromItems(extract.items || []),
+          total_amount: stayAmount(extract.items || [], extract.total_amount),
         })
       );
       body.set("customer_id", customerId);
@@ -858,11 +858,23 @@ export function BookingIngest({
             </Field>
             <Field
               label="Montant du séjour"
-              hint="Somme des prix vendus de chaque carte. Saisissez le prix sur la carte, pas ici."
+              hint={
+                bookingTotalFromItems(extract.items || []) > 0
+                  ? "Somme des prix vendus des cartes."
+                  : "Prix du séjour, sans remplir chaque carte. Il part dans les transactions si le dossier est confirmé."
+              }
             >
-              <p className={`${fieldControlClass} bg-[#f7f6f2] font-semibold text-[var(--admin-navy)]`}>
-                {formatMoney(bookingTotalFromItems(extract.items || []), stayCurrency(extract.currency))}
-              </p>
+              {bookingTotalFromItems(extract.items || []) > 0 ? (
+                <p className={`${fieldControlClass} bg-[#f7f6f2] font-semibold text-[var(--admin-navy)]`}>
+                  {formatMoney(bookingTotalFromItems(extract.items || []), stayCurrency(extract.currency))}
+                </p>
+              ) : (
+                <MoneyInput
+                  aria-label="Montant du séjour"
+                  value={extract.total_amount}
+                  onChange={(amount) => patch("total_amount", amount)}
+                />
+              )}
             </Field>
             <Field
               label="Devise"
