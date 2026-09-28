@@ -20,12 +20,12 @@ export async function continueEtaIlRequest(bookingId: string) {
   const b = booking as CrmBooking;
   const { data: current } = await service
     .from("crm_visa_requests")
-    .select("step")
+    .select("step, traveler_ids")
     .eq("booking_id", b.id)
     .eq("country", "IL")
     .maybeSingle();
-  const step = (current as { step?: ClientVisaStep } | null)?.step;
-  if (step !== "preparation") return;
+  const row = current as { step?: ClientVisaStep; traveler_ids?: string[] | null } | null;
+  if (row?.step !== "preparation") return;
 
   const [{ data: items }, { data: travelers }, { data: documents }, { data: customer }] = await Promise.all([
     service.from("crm_booking_items").select("*").eq("booking_id", b.id),
@@ -40,6 +40,7 @@ export async function continueEtaIlRequest(bookingId: string) {
     holder: customer as Pick<CrmCustomer, "first_name" | "last_name" | "usage_name"> | null,
     startDate: b.start_date,
     endDate: b.end_date,
+    travelerIds: row?.traveler_ids || [],
   });
   if (draft.phase !== "prêt") return;
 

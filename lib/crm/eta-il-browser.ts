@@ -27,6 +27,7 @@ type ChromePage = {
   url(): string;
   goto(url: string, opts: { waitUntil: "domcontentloaded"; timeout: number }): Promise<unknown>;
   evaluate<T>(fn: (arg: string) => T, arg: string): Promise<T>;
+  screenshot(opts: { type: "jpeg"; quality: number }): Promise<Uint8Array>;
   close(): Promise<void>;
 };
 
@@ -96,6 +97,7 @@ export async function openEtaIlPortal(): Promise<PortalOpen> {
           await page.evaluate(() => window.scrollBy(0, 480), "");
         },
         describe: () => describePortal(page),
+        capture: async () => page.screenshot({ type: "jpeg", quality: 55 }),
         close: async () => {
           await page.close().catch(() => undefined);
           await browser.close().catch(() => undefined);
@@ -147,6 +149,7 @@ async function describePortal(page: ChromePage) {
 }
 
 async function clickLabel(page: ChromePage, target: string) {
+  const before = await pageMark(page);
   const ok = await page.evaluate((label) => {
     const needle = label.toLowerCase();
     const nodes = Array.from(document.querySelectorAll("button, a, [role='button'], label")).filter((el) =>
@@ -155,10 +158,26 @@ async function clickLabel(page: ChromePage, target: string) {
     nodes.sort((a, b) => (a.textContent || "").length - (b.textContent || "").length);
     const node = nodes[0];
     if (!(node instanceof HTMLElement)) return false;
-    node.click();
+    const host = node.closest("button, a, [role='button']");
+    const targetNode = host instanceof HTMLElement ? host : node;
+    targetNode.click();
     return true;
   }, target);
   if (!ok) throw new Error("cible");
+  const deadline = Date.now() + 8000;
+  while (Date.now() < deadline) {
+    if ((await pageMark(page)) !== before) return;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error("immobile");
+}
+
+async function pageMark(page: ChromePage) {
+  return page.evaluate(() => {
+    const root = document.querySelector("#root") || document.body;
+    const text = (root?.textContent || "").replace(/\s+/g, " ").trim().slice(0, 240);
+    return `${location.href}|${text}`;
+  }, "");
 }
 
 async function typeLabel(page: ChromePage, target: string, text: string) {

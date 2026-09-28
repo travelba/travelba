@@ -80,8 +80,9 @@ export async function ensureIlPliantCard(opts: {
         },
         { onConflict: "booking_id" }
       );
-    } catch {
-      return { ...base, ceilingEur: spec.ceilingEur, issued: false, level: "erreur", journal: "Pliant n’a pas créé la carte." };
+    } catch (err) {
+      const journal = err instanceof Error && err.message.startsWith("Pliant") ? err.message : "Pliant n’a pas créé la carte.";
+      return { ...base, ceilingEur: spec.ceilingEur, issued: false, level: "erreur", journal };
     }
     return {
       issued: true,
@@ -118,7 +119,8 @@ export async function ensureIlPliantCard(opts: {
       level: "fini",
       journal,
     };
-  } catch {
-    return { ...base, ceilingEur: spec.ceilingEur, issued: false, level: "erreur", journal: "Pliant n’a pas créé la carte." };
+  } catch (err) {
+    const journal = err instanceof Error && err.message.startsWith("Pliant") ? err.message : "Pliant n’a pas créé la carte.";
+    return { ...base, ceilingEur: spec.ceilingEur, issued: false, level: "erreur", journal };
   }
 }

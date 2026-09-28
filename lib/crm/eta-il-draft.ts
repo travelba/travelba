@@ -100,6 +100,7 @@ export function buildEtaIlDraft(input: {
   startDate?: string | null;
   endDate?: string | null;
   agencyEmail?: string | null;
+  travelerIds?: string[] | null;
 }): EtaIlDraft {
   const portal = ETA_IL_PORTAL;
   const email = text(input.agencyEmail ?? siteConfig.contactEmail);
@@ -117,17 +118,21 @@ export function buildEtaIlDraft(input: {
   if (!tripGoesToIsrael(input.items)) {
     return { ...empty, reason: "Ce dossier n’a pas de vol vers Israël." };
   }
-  if (!input.travelers.length) {
+  const selected = (input.travelerIds || []).filter((id) => id.trim());
+  const party = selected.length
+    ? input.travelers.filter((row) => selected.includes(row.id))
+    : input.travelers;
+  if (!party.length) {
     return {
       ...empty,
       phase: "brouillon",
-      reason: "Ajoutez les voyageurs du séjour.",
+      reason: selected.length ? "Aucun voyageur coché pour cette demande." : "Ajoutez les voyageurs du séjour.",
     };
   }
 
   const travelers: EtaIlPersonView[] = [];
   const applicants: EtaIlApplicant[] = [];
-  for (const traveler of input.travelers) {
+  for (const traveler of party) {
     const passport = passportFor(input.documents, traveler, input.holder || null);
     const firstName = text(passport?.first_name) || text(traveler.first_name);
     const lastName = text(passport?.last_name) || text(traveler.last_name);

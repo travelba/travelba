@@ -79,3 +79,7 @@ export function portalRunLive(step: string | null | undefined, events: { kind: s
   if (!last) return false;
   return last.kind === "ouvert" || last.kind === "page" || last.kind === "champ" || last.kind === "attente";
 }
+
+export function etaIlLiveFramePath(bookingId: string) {
+  return `bookings/${bookingId}/eta-il/live.jpg`;
+}
