@@ -179,6 +179,7 @@ export function MoneyInput({
   disabled = false,
   placeholder = "0,00",
   className = fieldControlClass,
+  form,
   "aria-label": ariaLabel,
 }: {
   name?: string;
@@ -189,6 +190,7 @@ export function MoneyInput({
   disabled?: boolean;
   placeholder?: string;
   className?: string;
+  form?: string;
   "aria-label"?: string;
 }) {
   const initial = parseMoney(value ?? defaultValue ?? null);
@@ -227,10 +229,13 @@ export function MoneyInput({
 
   return (
     <>
-      {name ? <input type="hidden" name={name} value={amount == null ? "" : String(amount)} /> : null}
+      {name ? (
+        <input type="hidden" name={name} form={form} value={amount == null ? "" : String(amount)} />
+      ) : null}
       <input
         ref={inputRef}
         type="text"
+        form={form}
         inputMode="decimal"
         lang="fr-FR"
         autoComplete="off"

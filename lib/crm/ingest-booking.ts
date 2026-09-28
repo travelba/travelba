@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
-import { nextBookingReference, syncBookingLedger, syncBookingTotalFromItems } from "@/lib/crm/bookings";
+import { nextBookingReference, stayAmount, syncBookingLedger, syncBookingTotalFromItems } from "@/lib/crm/bookings";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import {
   copyCrmFile,
@@ -25,7 +25,6 @@ import {
   isCancellationExtract,
   keepAgentPrices,
   normalizeHotelExtractItem,
-  sellingTotalFromExtract,
   MAX_INGEST_BYTES,
   MAX_INGEST_FILES,
   type BookingExtract,
@@ -471,7 +470,7 @@ export async function persistNewBookingFromExtract(opts: {
   const reference = await nextBookingReference(opts.referenceClient ?? admin);
   const extract = opts.extract;
   const title = dossierTitle(extract);
-  const totalAmount = sellingTotalFromExtract(extract);
+  const totalAmount = stayAmount(extract.items || [], extract.total_amount);
   const status = bookingStatusFromExtract(extract, opts.status);
   const { data, error } = await admin
     .from("crm_bookings")

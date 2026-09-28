@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
 import { collectManualCreateIssues } from "@/lib/crm/booking-issues";
-import { nextBookingReference, parseIncludeInLedger, syncBookingLedger } from "@/lib/crm/bookings";
+import { nextBookingReference, parseIncludeInLedger, stayAmount, syncBookingLedger } from "@/lib/crm/bookings";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import type { CrmBooking, CrmCustomer } from "@/lib/crm/types";
 
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
       start_date: body?.start_date || null,
       end_date: body?.end_date || null,
       currency: body?.currency || "EUR",
-      total_amount: 0,
+      total_amount: stayAmount([], body?.total_amount),
       include_in_ledger: parseIncludeInLedger(body?.include_in_ledger, true),
       agency_commission: parseIncludeInLedger(body?.agency_commission, false),
       notes_client: body?.notes_client || null,

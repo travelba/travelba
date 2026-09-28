@@ -23,8 +23,8 @@ import {
 import { coversStayRollup, isStayRollupDebit } from "@/lib/crm/ledger-display";
 import { debitBillingCompanyId } from "@/lib/crm/billing-companies";
 import { emptyToNull } from "@/lib/crm/identity";
+import { agencyFeeFromGross, parseMoney } from "@/lib/crm/money";
 import { stayCurrency } from "@/lib/crm/stay-currency";
-import { agencyFeeFromGross } from "@/lib/crm/money";
 
 export function parseIncludeInLedger(value: unknown, fallback: boolean) {
   if (value === true || value === "on" || value === "true") return true;
@@ -46,6 +46,7 @@ const BOOKING_META_KEYS = [
   "billing_company_id",
   "include_in_ledger",
   "agency_commission",
+  "total_amount",
 ] as const;
 
 /** Champs dossier envoyés par le formulaire admin. Dates vides = null, titre trimé. */
@@ -76,6 +77,11 @@ export function bookingMetaPatch(body: Record<string, unknown>) {
     }
     if (key === "currency") {
       patch[key] = stayCurrency(body[key]);
+      continue;
+    }
+    if (key === "total_amount") {
+      const amount = parseMoney(body[key] as string | number | null);
+      patch[key] = amount != null && amount > 0 ? amount : 0;
       continue;
     }
     patch[key] = body[key];
@@ -113,7 +119,7 @@ export function itemSellingAmount(item: {
   return Math.round(total * 100) / 100;
 }
 
-/** Montant du séjour : toujours la somme des prix vendus. Transfert, greeter, enregistrement, visa, dépense libre et frais de billeterie restent hors total. */
+/** Somme des prix vendus des cartes. Transfert, greeter, enregistrement, visa, dépense libre et frais de billeterie restent hors total. */
 export function bookingTotalFromItems(
   items: { kind?: string | null; amount?: number | null; details?: Record<string, unknown> | null }[]
 ): number {
@@ -127,12 +133,27 @@ export function bookingTotalFromItems(
   return Math.round(sum * 100) / 100;
 }
 
+/**
+ * Prix du séjour. Dès qu’une carte a un prix vendu, c’est leur somme.
+ * Sinon, le montant saisi directement sur le dossier.
+ */
+export function stayAmount(
+  items: { kind?: string | null; amount?: number | null; details?: Record<string, unknown> | null }[],
+  manual: number | string | null | undefined
+): number {
+  const fromCards = bookingTotalFromItems(items);
+  if (fromCards > 0) return fromCards;
+  const typed = parseMoney(manual);
+  if (typed == null || typed <= 0) return 0;
+  return typed;
+}
+
 export async function syncBookingTotalFromItems(supabase: SupabaseClient, bookingId: string) {
-  const { data: items } = await supabase
-    .from("crm_booking_items")
-    .select("amount, kind, details")
-    .eq("booking_id", bookingId);
-  const total = bookingTotalFromItems(items || []);
+  const [{ data: items }, { data: booking }] = await Promise.all([
+    supabase.from("crm_booking_items").select("amount, kind, details").eq("booking_id", bookingId),
+    supabase.from("crm_bookings").select("total_amount").eq("id", bookingId).maybeSingle(),
+  ]);
+  const total = stayAmount(items || [], (booking as { total_amount?: number | null } | null)?.total_amount);
   await supabase.from("crm_bookings").update({ total_amount: total }).eq("id", bookingId);
 }
 

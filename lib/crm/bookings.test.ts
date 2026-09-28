@@ -10,6 +10,7 @@ import {
   bookingMetaPatch,
   bookingTotalFromItems,
   itemSellingAmount,
+  stayAmount,
   parseIncludeInLedger,
 } from "./bookings";
 
@@ -205,7 +206,16 @@ test("la commission est 10 % du séjour seulement quand le voyage l’active", (
   assert.equal("agency_commission" in bookingMetaPatch({ title: "Ski" }), false);
 });
 
-test("stay total is always the sum of card selling prices", () => {
+test("un prix de séjour saisi tient quand aucune carte n’a de prix vendu", () => {
+  assert.equal(stayAmount([{ amount: null }, { kind: "hotel", amount: 0 }], 2400), 2400);
+  assert.equal(stayAmount([{ kind: "expense", amount: 40 }], "1 500,50"), 1500.5);
+  assert.equal(stayAmount([], null), 0);
+  assert.equal(stayAmount([{ kind: "hotel", amount: 800 }], 2400), 800);
+  assert.equal(bookingMetaPatch({ total_amount: "2 400,00" }).total_amount, 2400);
+  assert.equal(bookingMetaPatch({ total_amount: "" }).total_amount, 0);
+});
+
+test("stay total is the sum of card selling prices when a card has one", () => {
   assert.equal(bookingTotalFromItems([]), 0);
   assert.equal(bookingTotalFromItems([{ amount: null }, { amount: 0 }]), 0);
   assert.equal(bookingTotalFromItems([{ amount: 858 }]), 858);
