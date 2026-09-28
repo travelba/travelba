@@ -42,6 +42,7 @@ export async function POST(request: Request, ctx: Ctx) {
     phone: customer.phone,
     firstName: customer.first_name,
     origin: appOrigin(request),
+    repeat: true,
   });
   if (result !== "sent") return jsonError("Message non envoyé", 502);
   return NextResponse.json({ ok: true });

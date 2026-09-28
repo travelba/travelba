@@ -6,8 +6,40 @@ import { connexionMessage, greetingForWhatsapp, sendConnexionWhatsapp } from "./
 /** Lien magique : le mot de passe est déjà posé, on n’ouvre pas sa création. */
 export const SPACE_ACCESS_OTP = "magiclink";
 
+/** L’invitation envoie déjà le même texte. On ne le répète pas le jour même. */
+export const CONNEXION_REPEAT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export function connexionRepeatBlocked(sentAt: string | null | undefined, now = Date.now()) {
+  if (!sentAt) return false;
+  const then = Date.parse(sentAt);
+  if (!Number.isFinite(then)) return false;
+  return now - then < CONNEXION_REPEAT_WINDOW_MS;
+}
+
 export function spaceAccessNextPath(phone: string | null | undefined) {
   return pathAfterPassword(phone, "client");
+}
+
+/** Vrai si un « Enchanté » est déjà parti dans la fenêtre. Erreur de lecture : on n’envoie pas. */
+export async function connexionAlreadySent(customerId: string) {
+  try {
+    const admin = createServiceClient();
+    const since = new Date(Date.now() - CONNEXION_REPEAT_WINDOW_MS).toISOString();
+    const { data, error } = await admin
+      .from("crm_whatsapp_messages")
+      .select("created_at")
+      .eq("customer_id", customerId)
+      .eq("direction", "outbound")
+      .eq("template_key", "connexion")
+      .eq("status", "sent")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (error) return true;
+    return (data ?? []).some((row) => connexionRepeatBlocked(row.created_at));
+  } catch {
+    return true;
+  }
 }
 
 /**
@@ -22,10 +54,13 @@ export async function sendSpaceAccessWhatsapp(input: {
   phone: string | null | undefined;
   firstName: string | null | undefined;
   origin: string;
+  /** Renvoi demandé sur la fiche : le message part même s’il vient d’être envoyé. */
+  repeat?: boolean;
 }): Promise<SpaceAccessResult> {
   const phone = input.phone?.trim();
   const email = input.email.trim().toLowerCase();
   if (!phone || !email) return "skipped";
+  if (!input.repeat && (await connexionAlreadySent(input.customerId))) return "skipped";
 
   const admin = createServiceClient();
   const generated = await admin.auth.admin.generateLink({
