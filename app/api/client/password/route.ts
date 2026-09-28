@@ -62,6 +62,7 @@ export async function POST(request: Request) {
   await supabase.auth.refreshSession();
   if (!staff && customer?.id && user.email) {
     try {
+      // L’invitation vient souvent d’envoyer le même « Enchanté ». On saute alors.
       await sendSpaceAccessWhatsapp({
         customerId: customer.id,
         email: user.email,
