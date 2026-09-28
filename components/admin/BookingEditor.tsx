@@ -11,6 +11,7 @@ import {
   type CrmBookingDocument,
   type CrmBookingItem,
   type CrmBookingTraveler,
+  type CrmHotelArrival,
   type CrmCompanion,
   type CrmCustomer,
   type CrmTravelDocument,
@@ -26,6 +27,7 @@ import { unsplashKeywordMatch } from "@/lib/crm/covers";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
+import { HotelArrivalPanel } from "@/components/admin/HotelArrivalPanel";
 import { BookingExpensesPanel } from "@/components/admin/BookingExpensesPanel";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
@@ -66,6 +68,7 @@ export function BookingEditor({
   pliantReady = false,
   shareUrl = null,
   shareCompanions = [],
+  arrivals = [],
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -89,6 +92,7 @@ export function BookingEditor({
   pliantReady?: boolean;
   shareUrl?: string | null;
   shareCompanions?: ShareCompanion[];
+  arrivals?: CrmHotelArrival[];
 }) {
   const router = useRouter();
   const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
@@ -744,6 +748,8 @@ export function BookingEditor({
           Somme des prix vendus de chaque carte. Le frais de billeterie n’est pas inclus.
         </p>
       </section>
+
+      <HotelArrivalPanel bookingId={booking.id} items={items} arrivals={arrivals} />
 
       <BookingItemsPanel
         bookingId={booking.id}

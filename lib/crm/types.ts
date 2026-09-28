@@ -273,6 +273,47 @@ export type CrmBookingItem = {
   updated_at: string;
 };
 
+export const HOTEL_ARRIVAL_STATUSES = [
+  "pending",
+  "link_requested",
+  "link_received",
+  "paying",
+  "paid",
+  "vip_sent",
+  "blocked",
+  "closed",
+] as const;
+
+export type HotelArrivalStatus = (typeof HOTEL_ARRIVAL_STATUSES)[number];
+
+export type HotelArrivalChannel = "little_emperors" | "direct" | "expedia";
+
+/** Suivi d'arrivée. Aucun champ de carte bancaire : le PAN reste chez Pliant. */
+export type CrmHotelArrival = {
+  id: string;
+  booking_id: string;
+  booking_item_id: string;
+  channel: HotelArrivalChannel;
+  status: HotelArrivalStatus;
+  net_cents: number | null;
+  amount_cents: number | null;
+  currency: string;
+  pliant_card_id: string | null;
+  card_limit_cents: number | null;
+  payment_url: string | null;
+  requested_at: string | null;
+  relance_count: number;
+  last_relance_at: string | null;
+  paid_at: string | null;
+  vip_sent_at: string | null;
+  card_closed_at: string | null;
+  blocked_reason: string | null;
+  task_open: boolean;
+  task_note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type CrmBookingTraveler = {
   id: string;
   booking_id: string;

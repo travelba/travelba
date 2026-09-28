@@ -25,6 +25,10 @@
     {
       "path": "/api/cron/concierge",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/hotel-arrival",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

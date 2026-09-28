@@ -122,6 +122,30 @@ async function pliantJson(path: string): Promise<{ data?: unknown; cardConfigs?:
   }
 }
 
+const PCI = {
+  prod: "https://pci-api.getpliant.com",
+  sandbox: "https://pci-sandbox.partner-api.getpliant.com",
+};
+
+/** Lecture éphémère. La réponse n'est pas journalisée. */
+export async function readPliantCardSecrets(cardId: string) {
+  const token = await accessToken();
+  const host = process.env.PLIANT_SANDBOX === "1" ? PCI.sandbox : PCI.prod;
+  const res = await fetch(`${host}/card-details/${encodeURIComponent(cardId)}`, {
+    headers: {
+      authorization: `Bearer ${token}`,
+      accept: "application/json",
+      "Pliant-API-Version": "2.1.0",
+    },
+  });
+  if (!res.ok) throw new Error("Pliant n’a pas renvoyé la carte.");
+  const json = (await res.json()) as unknown;
+  const { cardSecretsFromPayload } = await import("./hotel-arrival");
+  const secrets = cardSecretsFromPayload(json);
+  if (!secrets) throw new Error("Pliant n’a pas renvoyé la carte.");
+  return secrets;
+}
+
 export async function raisePliantLimit(cardId: string, limit: { value: number; currency: "EUR" }, count: number) {
   const token = await accessToken();
   const res = await fetch(`${endpoints().api}/cards/${cardId}`, {
@@ -139,4 +163,27 @@ export async function raisePliantLimit(cardId: string, limit: { value: number; c
     }),
   });
   if (!res.ok) throw new Error("Pliant n’a pas relevé le plafond.");
+}
+
+export async function setPliantCardLimit(
+  cardId: string,
+  limit: { value: number; currency: string },
+  count: number
+) {
+  const token = await accessToken();
+  const res = await fetch(`${endpoints().api}/cards/${cardId}`, {
+    method: "PATCH",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+      "Pliant-API-Version": "2.1.0",
+    },
+    body: JSON.stringify({
+      limit,
+      transactionLimit: limit,
+      limitRenewFrequency: "TOTAL",
+      maxTransactionCount: count,
+    }),
+  });
+  if (!res.ok) throw new Error("Pliant n’a pas modifié le plafond.");
 }

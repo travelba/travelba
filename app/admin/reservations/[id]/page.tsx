@@ -14,6 +14,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import { StayBillingChoice } from "@/components/crm/StayBillingChoice";
+import { ensureHotelArrivals } from "@/lib/crm/hotel-arrival-run";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
 import { isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
 import type {
@@ -24,6 +25,7 @@ import type {
   CrmBookingTraveler,
   CrmCompanion,
   CrmCustomer,
+  CrmHotelArrival,
   CrmTravelDocument,
 } from "@/lib/crm/types";
 
@@ -84,6 +86,18 @@ export default async function AdminBookingPage({ params }: Props) {
     .filter((row): row is ServiceRefusal => Boolean(row));
   const allIdentity = (identityDocs || []) as CrmTravelDocument[];
   const bookingItems = await loadHotelContacts(id, (items || []) as CrmBookingItem[]);
+  let arrivals: CrmHotelArrival[] = [];
+  try {
+    const arrivalAdmin = createServiceClient();
+    await ensureHotelArrivals(arrivalAdmin, id, bookingItems);
+    const { data: arrivalRows, error: arrivalError } = await arrivalAdmin
+      .from("crm_hotel_arrivals")
+      .select("*")
+      .eq("booking_id", id);
+    if (!arrivalError) arrivals = (arrivalRows || []) as CrmHotelArrival[];
+  } catch {
+    arrivals = [];
+  }
   const bookingTravelers = (travelers || []) as CrmBookingTraveler[];
   const shareCompanions = companionsForShare(bookingTravelers, (companions || []) as CrmCompanion[]);
   let shareUrl: string | null = null;
@@ -162,6 +176,7 @@ export default async function AdminBookingPage({ params }: Props) {
           pliantReady={pliantConfigured()}
           shareUrl={shareUrl}
           shareCompanions={shareCompanions}
+          arrivals={arrivals}
         />
       </div>
     </div>
