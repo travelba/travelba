@@ -44,6 +44,8 @@ import { ReceivedVisasFold } from "@/components/crm/TripVisaUploads";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
+import { clientStayExpenseLines } from "@/lib/crm/ledger-display";
+import { StayExpenses } from "@/components/account/StayExpenses";
 import { isLedgerExpenseKind, visibleServiceCopy, type CrmBillingCompany } from "@/lib/crm/types";
 
 type Props = { params: Promise<{ reference: string }> };
@@ -118,7 +120,8 @@ export default async function ReservationDetailPage({ params }: Props) {
   const missingCount = coverage.total - coverage.ready;
   const formalities = frenchPassportTrip(visibleItems, party.length);
   let billingCompanies: Pick<CrmBillingCompany, "id" | "company_name">[] = [];
-  let expenseChoices: { id: string; title: string; billing_company_id: string | null }[] = [];
+  let expenseChoices: { id: string; title: string; amount: number | null; billing_company_id: string | null }[] =
+    [];
   try {
     const admin = createServiceClient();
     const payerId = b.billing_customer_id || customer.id;
@@ -130,22 +133,46 @@ export default async function ReservationDetailPage({ params }: Props) {
         .order("sort_order"),
       admin
         .from("crm_booking_items")
-        .select("id, title, kind, billing_company_id, visible_to_client")
+        .select("id, title, kind, amount, billing_company_id, sort_order")
         .eq("booking_id", b.id)
-        .eq("kind", "expense"),
+        .eq("kind", "expense")
+        .order("sort_order"),
     ]);
     billingCompanies = (companyRows || []) as Pick<CrmBillingCompany, "id" | "company_name">[];
-    expenseChoices = ((expenseRows || []) as { id: string; title: string; kind: string; billing_company_id: string | null; visible_to_client?: boolean | null }[])
-      .filter((item) => item.visible_to_client !== false && isLedgerExpenseKind(item.kind))
+    expenseChoices = (
+      (expenseRows || []) as {
+        id: string;
+        title: string;
+        kind: string;
+        amount: number | null;
+        billing_company_id: string | null;
+      }[]
+    )
+      .filter((item) => isLedgerExpenseKind(item.kind))
       .map((item) => ({
         id: item.id,
         title: visibleServiceCopy(item.title),
+        amount: item.amount == null ? null : Number(item.amount),
         billing_company_id: item.billing_company_id || null,
       }));
   } catch {
     billingCompanies = [];
-    expenseChoices = [];
+    expenseChoices = visibleItems
+      .filter((item) => isLedgerExpenseKind(item.kind))
+      .map((item) => ({
+        id: item.id,
+        title: visibleServiceCopy(item.title),
+        amount: item.amount == null ? null : Number(item.amount),
+        billing_company_id: item.billing_company_id || null,
+      }));
   }
+  const expenseLines = clientStayExpenseLines({
+    expenses: expenseChoices,
+    agencyCommission: b.agency_commission === true,
+    stayTotal: Number(b.total_amount),
+    currency: b.currency,
+    pricesVisible: b.prices_visible !== false,
+  });
 
   const identity = (identityDocs || []) as CrmTravelDocument[];
   const passportRows = passportVaultRows(party, identity, todayIsoDate(), {
@@ -288,6 +315,7 @@ export default async function ReservationDetailPage({ params }: Props) {
           })}
         </section>
       }
+      expenses={expenseLines.length ? <StayExpenses lines={expenseLines} /> : null}
       tail={
         <>
           <StayBillingChoice

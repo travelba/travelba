@@ -2,12 +2,15 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { ClientTripBody } from "@/components/account/ClientTripBody";
+import { StayExpenses } from "@/components/account/StayExpenses";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { BookingStatusBadge } from "@/components/crm/ui";
 import { VisaSection } from "@/components/crm/VisaSection";
 import { carnetVisible, clientBookingStatusLabel, clientVisibleItems, HIDDEN_PRICE_LABEL, itemPriceLabel, stayArrivalPlaces, stayHeadline, tripPlaceLine, whatsappModifyHref } from "@/lib/crm/carnet";
+import { clientStayExpenseLines } from "@/lib/crm/ledger-display";
+import { isLedgerExpenseKind } from "@/lib/crm/types";
 import { findVisaExtra } from "@/lib/crm/extras";
 import { EXAMPLE_BASE, EXAMPLE_REFERENCE } from "@/lib/crm/example-session";
 import { readExample } from "@/lib/crm/example-store";
@@ -47,6 +50,19 @@ export default async function ExampleReservationPage({ params }: Props) {
   const placeLine = tripPlaceLine(b.title, b.destination);
   const missingCount = coverage.total - coverage.ready;
   const formalities = frenchPassportTrip(visibleItems, party.length);
+  const expenseLines = clientStayExpenseLines({
+    expenses: visibleItems
+      .filter((item) => isLedgerExpenseKind(item.kind))
+      .map((item) => ({
+        id: item.id,
+        title: item.title,
+        amount: item.amount == null ? null : Number(item.amount),
+      })),
+    agencyCommission: b.agency_commission === true,
+    stayTotal: Number(b.total_amount),
+    currency: b.currency,
+    pricesVisible: b.prices_visible !== false,
+  });
 
   return (
     <ClientTripBody
@@ -175,6 +191,7 @@ export default async function ExampleReservationPage({ params }: Props) {
           ))}
         </section>
       }
+      expenses={expenseLines.length ? <StayExpenses lines={expenseLines} /> : null}
       tail={
         <>
           <ReservationFiles
