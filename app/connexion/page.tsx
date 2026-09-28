@@ -3,6 +3,8 @@
 import { FormEvent, Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { LOGIN_FAILURE_MESSAGE } from "@/lib/crm/login-message";
+import { needsClientOnboarding, pathAfterKnownPassword } from "@/lib/crm/session";
 import { siteConfig } from "@/lib/site";
 import { BrandMark } from "@/components/crm/ui";
 import { BusyBar } from "@/components/crm/BusyBar";
@@ -24,20 +26,16 @@ function LoginForm() {
   const authError = searchParams.get("error") === "auth";
   const noAccount = searchParams.get("error") === "no-account";
 
-  async function loginWithPassword(event: FormEvent) {
-    event.preventDefault();
-    setLoading(true);
-    setError(null);
-    const supabase = createClient();
-    const { error: signError } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
-    setLoading(false);
-    if (signError) {
-      setError("E-mail ou mot de passe incorrect.");
+  async function goAfterClientSession() {
+    const ack = await fetch("/api/auth/known-password", { method: "POST" });
+    if (!ack.ok) {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+      setLoading(false);
+      setError("Connexion impossible.");
       return;
     }
+    const supabase = createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -48,17 +46,66 @@ function LoginForm() {
           .eq("auth_user_id", user.id)
           .maybeSingle()
       : { data: null };
-    if (staff) {
-      router.push("/admin");
-      router.refresh();
+    setLoading(false);
+    router.push(
+      pathAfterKnownPassword({
+        staff: Boolean(staff),
+        needsOnboarding: user ? needsClientOnboarding(user) : false,
+        next,
+      })
+    );
+    router.refresh();
+  }
+
+  async function completePasswordLogin(trimmedEmail: string) {
+    const supabase = createClient();
+    const { error: signError } = await supabase.auth.signInWithPassword({
+      email: trimmedEmail,
+      password,
+    });
+    if (signError) {
+      setLoading(false);
+      setError(LOGIN_FAILURE_MESSAGE);
       return;
     }
-    const safeNext =
-      next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/admin")
-        ? next
-        : "/mon-compte";
-    router.push(safeNext);
-    router.refresh();
+    await goAfterClientSession();
+  }
+
+  async function loginWithPassword(event: FormEvent) {
+    event.preventDefault();
+    setLoading(true);
+    setError(null);
+    const trimmedEmail = email.trim();
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmedEmail, password }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        fallback?: boolean;
+        ok?: boolean;
+        home?: boolean;
+      };
+      if (json.fallback) {
+        await completePasswordLogin(trimmedEmail);
+        return;
+      }
+      if (!res.ok || !json.ok) {
+        setLoading(false);
+        setError(LOGIN_FAILURE_MESSAGE);
+        return;
+      }
+      if (json.home) {
+        setLoading(false);
+        router.push("/mon-compte");
+        router.refresh();
+        return;
+      }
+      await goAfterClientSession();
+    } catch {
+      await completePasswordLogin(trimmedEmail);
+    }
   }
 
   async function sendMagic(event: FormEvent) {

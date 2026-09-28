@@ -1,6 +1,8 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
+import { DESK_COOKIE, deskBypass } from "@/lib/crm/admin-client-login";
 import { customerFullName, type CrmTravelDocument } from "@/lib/crm/types";
 import { ProfileForm } from "@/components/account/ProfileForm";
 import { ProfileSubnav } from "@/components/account/ProfileSubnav";
@@ -23,6 +25,8 @@ export default async function ProfilPage() {
     .is("companion_id", null);
 
   const name = customerFullName(customer);
+  const jar = await cookies();
+  const desk = deskBypass(jar.get(DESK_COOKIE)?.value, user.id);
 
   return (
     <div className="space-y-4">
@@ -36,7 +40,7 @@ export default async function ProfilPage() {
 
       <ProfileSubnav />
 
-      {!customer.phone ? <PhoneWallBanner /> : null}
+      {!customer.phone && !desk ? <PhoneWallBanner /> : null}
 
       <ProfileForm customer={customer} documents={(documents || []) as CrmTravelDocument[]} />
 

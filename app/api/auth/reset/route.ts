@@ -54,12 +54,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true });
     }
 
-    const { data: fresh } = await supabase.auth.admin.getUserById(data.user.id);
-    const meta = fresh.user?.app_metadata || data.user.app_metadata || {};
-    await supabase.auth.admin.updateUserById(data.user.id, {
-      app_metadata: { ...meta, must_set_password: true },
-    });
-
+    // Le drapeau est posé à l’ouverture du lien (recovery), pas ici :
+    // sinon un mot de passe déjà connu renvoie vers la page de définition.
     const link = await createEntryLink(supabase, siteUrl, {
       tokenHash: data.properties.hashed_token,
       otpType: "recovery",

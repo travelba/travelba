@@ -2,6 +2,13 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { AUTH_COOKIE_OPTIONS } from "@/lib/supabase/cookie-options";
 import {
+  DESK_COOKIE,
+  accessWhileDesk,
+  deskBypass,
+  deskClearCookie,
+} from "@/lib/crm/admin-client-login";
+import {
+  ONBOARDING_PATH,
   SET_PASSWORD_PATH,
   clientAreaRedirect,
   isStaffRole,
@@ -50,17 +57,32 @@ export async function updateSession(request: NextRequest) {
   const isClient = pathname.startsWith("/mon-compte");
   const isSetPassword = pathname === SET_PASSWORD_PATH;
   const isConnexion = pathname === "/connexion" || pathname.startsWith("/connexion/");
-  const staff = user ? await userIsStaff(supabase, user) : false;
+  const desk = Boolean(user && deskBypass(request.cookies.get(DESK_COOKIE)?.value, user.id));
+  const access = accessWhileDesk({
+    desk,
+    mustSetPassword: user ? mustSetPassword(user) : false,
+    needsOnboarding: user ? needsClientOnboarding(user) : false,
+    staff: user ? await userIsStaff(supabase, user) : false,
+  });
+  const staff = access.staff;
+
+  function seal(response: NextResponse) {
+    if (!user && request.cookies.get(DESK_COOKIE)) {
+      const clear = deskClearCookie();
+      response.cookies.set(clear.name, clear.value, clear.options);
+    }
+    return response;
+  }
 
   if (isAdmin) {
     if (!user && !isAdminLogin) {
       const url = request.nextUrl.clone();
       url.pathname = "/admin/login";
       url.searchParams.set("next", pathname);
-      return NextResponse.redirect(url);
+      return seal(NextResponse.redirect(url));
     }
     if (user && isAdminLogin) {
-      if (!staff) return supabaseResponse;
+      if (!staff) return seal(supabaseResponse);
       const url = request.nextUrl.clone();
       const next = request.nextUrl.searchParams.get("next");
       url.pathname =
@@ -74,9 +96,9 @@ export async function updateSession(request: NextRequest) {
       const url = request.nextUrl.clone();
       url.pathname = "/mon-compte";
       url.search = "";
-      return NextResponse.redirect(url);
+      return seal(NextResponse.redirect(url));
     }
-    return supabaseResponse;
+    return seal(supabaseResponse);
   }
 
   if (isSetPassword) {
@@ -84,9 +106,21 @@ export async function updateSession(request: NextRequest) {
       const url = request.nextUrl.clone();
       url.pathname = "/connexion";
       url.search = "";
-      return NextResponse.redirect(url);
+      return seal(NextResponse.redirect(url));
     }
-    return supabaseResponse;
+    if (desk || !mustSetPassword(user) || staff) {
+      const url = request.nextUrl.clone();
+      url.pathname = staff
+        ? "/admin"
+        : desk
+          ? "/mon-compte"
+          : needsClientOnboarding(user)
+            ? ONBOARDING_PATH
+            : "/mon-compte";
+      url.search = "";
+      return seal(NextResponse.redirect(url));
+    }
+    return seal(supabaseResponse);
   }
 
   if (isClient) {
@@ -94,36 +128,36 @@ export async function updateSession(request: NextRequest) {
       const url = request.nextUrl.clone();
       url.pathname = "/connexion";
       url.searchParams.set("next", pathname);
-      return NextResponse.redirect(url);
+      return seal(NextResponse.redirect(url));
     }
     const dest = clientAreaRedirect(pathname, {
-      mustSetPassword: mustSetPassword(user),
-      needsOnboarding: needsClientOnboarding(user),
+      mustSetPassword: access.mustSetPassword && !staff,
+      needsOnboarding: access.needsOnboarding,
     });
     if (dest) {
       const url = request.nextUrl.clone();
       url.pathname = dest;
       url.search = "";
-      return NextResponse.redirect(url);
+      return seal(NextResponse.redirect(url));
     }
-    return supabaseResponse;
+    return seal(supabaseResponse);
   }
 
   if (isConnexion && user) {
     if (request.nextUrl.searchParams.get("error") === "no-account") {
-      return supabaseResponse;
+      return seal(supabaseResponse);
     }
     const url = request.nextUrl.clone();
     url.pathname = signedInClientDestination({
-      mustSetPassword: mustSetPassword(user),
-      needsOnboarding: needsClientOnboarding(user),
+      mustSetPassword: access.mustSetPassword,
+      needsOnboarding: access.needsOnboarding,
       staff,
     });
     url.search = "";
-    return NextResponse.redirect(url);
+    return seal(NextResponse.redirect(url));
   }
 
-  return supabaseResponse;
+  return seal(supabaseResponse);
 }
 
 async function userIsStaff(
