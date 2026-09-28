@@ -5,7 +5,7 @@ Date : 2026-09-24. Périmètre : parcours agent (`/admin`), parcours client (`/m
 ## Méthode et limite importante
 
 - **Analyse statique exhaustive** du code (routes, composants, boutons, endpoints, modules `lib/crm`, migrations, RLS) + **inspection lecture seule de la production** (`fsmfozxgujskluxakeoq`) + suite de tests unitaires.
-- **QA interactive non réalisée** : le provisioning d'un projet Supabase de **dev** (choisi pour tester chaque bouton avec des données de démo) est **bloqué par une facturation en souffrance** sur l'organisation Supabase (« overdue invoices »). Sans ce projet — et sans identifiants staff/client de test — il est impossible de cliquer les parcours authentifiés sans risquer les données de production. Voir la section « Débloquer la QA interactive ».
+- **QA interactive réalisée** (2026-09-28) sur un **projet Supabase de dev dédié** (`travelba-dev-audit` / `urdshgiysilvxnxohdhe`) : 33 migrations appliquées, bucket `crm-files` privé, `seed:demo`, app lancée en local pointée sur le dev (jamais la prod). Parcours agent (1280 px) et client (390 + 1280 px) exercés bouton par bouton. Résultats en section « Résultats de la QA interactive ».
 - Chaque constat ci-dessous a été **vérifié dans le code** ; les faux positifs détectés en cours d'audit sont listés en fin de document par transparence.
 
 ## État de santé (points déjà solides)
@@ -30,6 +30,7 @@ Ce sont surtout des prérequis de configuration (pas des bugs de code), mais ils
 
 ## P1 — Incohérences et bugs (front + back)
 
+0. **`scripts/seed-demo.mjs` obsolète (confirmé en QA).** L'insert `crm_bookings` omet `billing_customer_id` (désormais `NOT NULL`) → `seed:demo` casse sur les bookings. Correctif : ajouter `billing_customer_id: customer.id`. Outil de démo/QA à remettre en état.
 1. **Suppression silencieuse d'une carte.** `removeItem` n'inspecte pas `res.ok` : un échec DELETE ressemble à un succès (contrairement à reorder/save qui vérifient). Réf. [components/admin/BookingItemsPanel.tsx](components/admin/BookingItemsPanel.tsx) l.180-188.
 2. **Actions destructives sans confirmation**, incohérent avec `DeleteCustomerButton`/`DeleteBookingButton` (double clic) : retirer une carte, une dépense, un voyageur, un accompagnateur, une pièce d'identité, annuler un extra, refuser un virement Revolut / un e-mail, et surtout **décocher « Visible dans l'espace »** qui **dépublie le carnet client sans confirmation**. Réf. [components/admin/BookingEditor.tsx](components/admin/BookingEditor.tsx), [components/admin/BookingExpensesPanel.tsx](components/admin/BookingExpensesPanel.tsx), [components/admin/CustomerEditor.tsx](components/admin/CustomerEditor.tsx), [components/crm/PersonPassportCard.tsx](components/crm/PersonPassportCard.tsx), [components/crm/ExtrasPanel.tsx](components/crm/ExtrasPanel.tsx), [components/account/CompanionsManager.tsx](components/account/CompanionsManager.tsx), [components/account/DocumentsManager.tsx](components/account/DocumentsManager.tsx).
 3. **PATCH accompagnateur sans retour d'erreur.** Échec réseau non signalé à l'agent. Réf. [components/admin/CustomerEditor.tsx](components/admin/CustomerEditor.tsx).
@@ -49,6 +50,8 @@ Ce sont surtout des prérequis de configuration (pas des bugs de code), mais ils
 5. **`.env.example`** : documenter `VERCEL_ENV` (garde clés live Stripe), la note AI Gateway, et les variables de démo (`CRM_DEMO_*`).
 6. **Endpoints exposés mais non utilisés par l'UI** (lecture RSC) : `GET` admin clients/bookings/transactions/revolut, `POST /api/admin/email-ingest/simulate` (dev). À documenter ou retirer.
 7. **Message « itinéraire en préparation »** quand un carnet publié n'a pas encore d'items (aujourd'hui rendu `null`). Réf. [components/account/CarnetItinerary.tsx](components/account/CarnetItinerary.tsx).
+8. **Badge « SANS HORAIRE »** du carnet client (confirmé en QA) : clarifier ou masquer quand aucune heure n'est imprimée. Réf. [components/account/CarnetItinerary.tsx](components/account/CarnetItinerary.tsx).
+9. **Erreur « e-mail déjà existant »** (création client) affichée sous le bouton plutôt que sur le champ e-mail — repositionner. Réf. [components/admin/NewCustomerForm.tsx](components/admin/NewCustomerForm.tsx).
 
 ## Faux positifs écartés (transparence)
 
@@ -74,11 +77,27 @@ Ce sont surtout des prérequis de configuration (pas des bugs de code), mais ils
 
 Chaque lot = une PR testée (`npm test`, `npx tsc --noEmit`, `npm run build`) + re-vérification du parcours impacté.
 
-## Débloquer la QA interactive (recommandé)
+## Résultats de la QA interactive (dev, 2026-09-28)
 
-Pour tester réellement chaque bouton des deux parcours avec des données de démo, deux options :
+Environnement : projet `travelba-dev-audit` + `seed:demo` (agent `agence@travelba.fr`, 6 clients démo). Parcours exercés bouton par bouton.
 
-1. **Régler la facturation Supabase en souffrance**, puis je provisionne le projet de dev, applique les migrations, crée le bucket, `seed:demo`, et j'exécute la QA agent + client (390 px et 1280 px) avec captures.
-2. **Fournir un environnement de staging** + identifiants agent et client de test.
+### Parcours agent (1280 px) — OK dans l'ensemble
 
-Sans l'un des deux, la QA reste statique + lecture seule (le présent rapport).
+- Connexion agent, tableau de bord (KPIs cliquables → bonnes pages), création client + redirection fiche, **envoi/copie du lien d'invitation**, édition fiche + « Enregistré. », création de dossier en **saisie manuelle** (réf. générée, cover auto), transactions (KPIs + saisie), Revolut (messages « non configuré » clairs), diagnostic Gmail (états rouges attendus). Aucune erreur 500.
+- Confirmé : **pas de confirmation** sur « Compte en veille » ni sur « Visible dans l'espace » (publication/dépublication). La validation « au moins une carte avant de publier » est bien présente (bon garde-fou).
+- L'« erreur console » observée sur `/admin/clients` est simplement la **validation e-mail déjà existant** (400 attendu) ; message affiché sous le bouton plutôt que sur le champ (UX mineure).
+
+### Parcours client (390 + 1280 px) — OK
+
+- Connexion mot de passe, accueil, **carnet publié** (itinéraire vol/hôtel/transfert lisible, prix formatés, total cohérent, pas d'heure 00h00, aucun débordement mobile), extras « À la carte » (Valider/Refuser), **WhatsApp** « Demander une modification », **ICS** « Ajouter tout le séjour », transactions (dépli des mouvements), profil (Vous/Pièces/Voyageurs/Facturation, édition + « Enregistré. »), déconnexion. Colonne centrée ~480 px en desktop, pas de casse.
+- **Étanchéité RLS validée** : connecté en Jean Martin, l'accès direct à `/mon-compte/reservations/TB-SEED-0003` (dossier d'un autre client) renvoie **404**, aucune fuite.
+
+### Constats runtime ajoutés
+
+- **`scripts/seed-demo.mjs` obsolète** (P1, outil de dev) : l'insert `crm_bookings` n'alimente pas `billing_customer_id` désormais `NOT NULL` (migration `20260922100000_company_role_billing.sql`), donc `seed:demo` échoue sur les bookings. Correctif trivial : `billing_customer_id: customer.id` à l'insert. À corriger pour garder l'outil de démo/QA fonctionnel.
+- **Badge « SANS HORAIRE »** sur l'itinéraire carnet (P2 UX) : peut dérouter le client ; clarifier ou masquer quand aucune heure n'est imprimée. Réf. [components/account/CarnetItinerary.tsx](components/account/CarnetItinerary.tsx).
+- Publication : rappel que **publier via l'UI/`setCarnetPublished`** rend visibles booking **et** items ([lib/crm/bookings.ts](lib/crm/bookings.ts)) — une mise à jour SQL de `crm_bookings.visible_to_client` seule ne suffit pas (comportement correct, noté pour l'exploitation).
+
+## Nettoyage après QA
+
+Le projet `travelba-dev-audit` (`urdshgiysilvxnxohdhe`) est **jetable** : à supprimer (ou mettre en pause) une fois la remédiation validée pour éviter le coût mensuel. `.env.local` (clés dev) reste local et gitignoré.
