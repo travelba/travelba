@@ -39,6 +39,18 @@ test("un champ rempli n’écrit pas la valeur, surtout pas un passeport", () =>
   assert.equal(event?.kind, "champ");
   assert.match(event?.text || "", /Numéro de passeport/);
   assert.equal(JSON.stringify(event).includes(PASSPORT), false);
+  const representative = eventForPortalAction(
+    { action: "type", target: "Last name*", text: "Martin" },
+    { firstName: "Ada", lastName: "Martin", number: PASSPORT }
+  );
+  assert.match(representative?.text || "", /pas une demande/);
+  assert.equal(JSON.stringify(representative).includes(PASSPORT), false);
+  const child = eventForPortalAction(
+    { action: "type", target: "First name*", text: "Noa" },
+    { firstName: "Ada", lastName: "Martin", number: PASSPORT }
+  );
+  assert.match(child?.text || "", /First name/);
+  assert.equal((child?.text || "").includes("pas une demande"), false);
 });
 
 test("la page journalisée n’emporte pas la requête", () => {

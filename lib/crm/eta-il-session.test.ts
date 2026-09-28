@@ -7,6 +7,7 @@ import {
   blockedPortalMessage,
   holdKeepsForm,
   pickOptionLabel,
+  summaryCoversApplicants,
   portalToolChoice,
   portalUrlAllowed,
   readPortalStep,
@@ -92,6 +93,9 @@ test("la requête Astra reste sur gpt-6-astra et le portail officiel", () => {
   assert.match(body.instructions, /israel-entry.piba.gov.il/);
   assert.match(body.instructions, /FRA \(France\)/);
   assert.match(body.instructions, /lis ces caractères/);
+  assert.match(body.instructions, /Aucune demande|N’ouvre aucune demande/);
+  const payload = JSON.parse(body.input[0]?.content || "{}") as { demandes?: string[] };
+  assert.deepEqual(payload.demandes, ["Ada Martin"]);
   assert.equal(body.instructions.includes("hold tout de suite"), false);
   assert.match(body.instructions, /Ne paie pas/);
   assert.equal(portalUrlAllowed("https://israel-entry.piba.gov.il/apply"), true);
@@ -250,6 +254,23 @@ test("un écran inattendu ne tient pas le formulaire", async () => {
   });
   assert.equal(result.filled, false);
   assert.equal(result.phase, "bloqué");
+});
+
+test("un résumé qui ne cite pas les voyageurs cochés ne tient pas le formulaire", async () => {
+  assert.equal(summaryCoversApplicants("Leoh et Ezra, départ le 14 décembre", ["Leoh", "Ezra"]), true);
+  assert.equal(summaryCoversApplicants("Simon, départ le 14 décembre", ["Leoh", "Ezra"]), false);
+  const result = await runEtaIlSession({
+    apiKey: "sk-test",
+    draft: draft(),
+    maxSteps: 1,
+    page: page(),
+    fetchImpl: async () =>
+      new Response(stepBody("resp_1", "call_1", { action: "hold", summary: "Simon, départ le 14 décembre" }), {
+        status: 200,
+      }),
+  });
+  assert.equal(result.filled, false);
+  assert.equal(result.message, "Le formulaire ne cite pas les voyageurs cochés.");
 });
 
 test("une information manquante n’est pas un formulaire tenu", () => {
