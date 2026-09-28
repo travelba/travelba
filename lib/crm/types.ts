@@ -241,6 +241,8 @@ export type CrmBooking = {
   include_in_ledger: boolean;
   /** Si true : 10 % du montant du séjour en dépense du dossier. */
   agency_commission?: boolean;
+  /** Si true : le client règle le séjour sur sa carte. Le montant sort du grand livre. */
+  client_settles_stay?: boolean;
   cover_image_path: string | null;
   /** Mention affichée avec une couverture CC BY. */
   cover_credit: string | null;

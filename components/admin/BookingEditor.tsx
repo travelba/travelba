@@ -115,6 +115,13 @@ export function BookingEditor({
   const [flash, setFlash] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<null | "publish" | "unpublish">(null);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
+  const serverSettles = booking.client_settles_stay === true;
+  const [clientSettlesFromServer, setClientSettlesFromServer] = useState(serverSettles);
+  const [clientSettles, setClientSettles] = useState(serverSettles);
+  if (serverSettles !== clientSettlesFromServer) {
+    setClientSettlesFromServer(serverSettles);
+    setClientSettles(serverSettles);
+  }
   const account = customer;
   const holderProfile = {
     first_name: account?.first_name || holderName.first_name,
@@ -138,11 +145,14 @@ export function BookingEditor({
     }
     const fd = new FormData(form);
     const title = titleDraft.trim();
-    const payload = {
+    const settles = fd.get("client_settles_stay") === "on";
+    const payload: Record<string, unknown> = {
       ...Object.fromEntries(fd.entries()),
       title,
-      include_in_ledger: fd.get("include_in_ledger") === "on",
+      client_settles_stay: settles,
     };
+    if (settles) delete payload.include_in_ledger;
+    else payload.include_in_ledger = fd.get("include_in_ledger") === "on";
     setBusy("save");
     setFlash(null);
     setIssues([]);
@@ -610,15 +620,34 @@ export function BookingEditor({
         <label className="flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-2">
           <input
             type="checkbox"
+            name="client_settles_stay"
+            checked={clientSettles}
+            onChange={(event) => setClientSettles(event.target.checked)}
+            className="mt-1"
+          />
+          <span>
+            Le client règle ce séjour
+            <span className="mt-0.5 block text-xs font-normal text-muted">
+              L’hôtel est payé sur sa carte. Le montant reste au carnet et sort des transactions et de l’encours.
+            </span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-2">
+          <input
+            key={clientSettles ? "stay-out" : "stay-in"}
+            type="checkbox"
             name="include_in_ledger"
-            defaultChecked={booking.include_in_ledger !== false}
+            defaultChecked={!clientSettles && booking.include_in_ledger !== false}
+            disabled={clientSettles}
             className="mt-1"
           />
           <span>
             Inclure le montant du séjour dans les transactions
             <span className="mt-0.5 block text-xs font-normal text-muted">
-              Décochez pour afficher le prix au carnet sans impacter l’encours client.
-              {items.some((item) => item.include_in_ledger)
+              {clientSettles
+                ? "Le client règle ce séjour : ce montant ne va pas aux transactions."
+                : "Décochez pour afficher le prix au carnet sans impacter l’encours client."}
+              {!clientSettles && items.some((item) => item.include_in_ledger)
                 ? " Des cartes sont déjà comptabilisées : laissez décoché pour éviter un double compte."
                 : ""}
             </span>
@@ -755,6 +784,9 @@ export function BookingEditor({
         </p>
         <p className="text-sm text-muted">
           Somme des prix vendus de chaque carte. Le frais de billeterie n’est pas inclus.
+          {clientSettles
+            ? " Réglé sur la carte du client : ce montant ne va pas aux transactions ni à l’encours."
+            : ""}
         </p>
       </section>
 
@@ -764,6 +796,7 @@ export function BookingEditor({
         documents={documents}
         household={householdMembers(account || holderName, companions)}
         currency={booking.currency}
+        clientSettlesStay={clientSettles}
         onBindDraftSave={(save) => {
           saveOpenCard.current = save;
         }}

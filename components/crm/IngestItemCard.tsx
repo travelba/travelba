@@ -84,12 +84,17 @@ export function IngestItemCard({
   onChange,
   onRemove,
   household = [],
+  lockStayLedger = false,
 }: {
   item: ItemDraft;
   onChange: (next: ItemDraft) => void;
   onRemove: () => void;
   household?: HouseholdMember[];
+  /** Le client règle le séjour : les cartes du montant ne vont pas au livre. */
+  lockStayLedger?: boolean;
 }) {
+  const stayLedgerLocked =
+    lockStayLedger && !isExtraItemKind(item.kind) && !isLedgerExpenseKind(item.kind);
   const stampHasClock = (value: string) => {
     const match = (value || "").match(/T(\d{2}):(\d{2})/);
     return Boolean(match && !(match[1] === "00" && match[2] === "00"));
@@ -259,13 +264,16 @@ export function IngestItemCard({
           <input
             type="checkbox"
             className="mt-1"
-            checked={Boolean(item.include_in_ledger)}
+            checked={stayLedgerLocked ? false : Boolean(item.include_in_ledger)}
+            disabled={stayLedgerLocked}
             onChange={(event) => onChange({ ...item, include_in_ledger: event.target.checked })}
           />
           <span>
             <span className="font-medium">Inclure dans les transactions</span>
             <span className="mt-0.5 block text-xs text-muted">
-              Cette dépense entre dans l’encours. Décochez le montant du séjour si vous ne voulez pas le compter deux fois.
+              {stayLedgerLocked
+                ? "Le client règle ce séjour : cette carte ne va pas aux transactions."
+                : "Cette dépense entre dans l’encours. Décochez le montant du séjour si vous ne voulez pas le compter deux fois."}
             </span>
           </span>
         </label>

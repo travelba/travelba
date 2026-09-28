@@ -46,6 +46,7 @@ const BOOKING_META_KEYS = [
   "billing_company_id",
   "include_in_ledger",
   "agency_commission",
+  "client_settles_stay",
 ] as const;
 
 /** Champs dossier envoyés par le formulaire admin. Dates vides = null, titre trimé. */
@@ -57,7 +58,7 @@ export function bookingMetaPatch(body: Record<string, unknown>) {
       patch[key] = parseIncludeInLedger(body[key], true);
       continue;
     }
-    if (key === "agency_commission") {
+    if (key === "agency_commission" || key === "client_settles_stay") {
       patch[key] = parseIncludeInLedger(body[key], false);
       continue;
     }
@@ -113,13 +114,42 @@ export function itemSellingAmount(item: {
   return Math.round(total * 100) / 100;
 }
 
+/** Carte dont le prix compose le montant du séjour. Hors extras et dépenses libres. */
+export function isStayAmountKind(kind: string | null | undefined) {
+  return !isExtraItemKind(kind) && !isLedgerExpenseKind(kind);
+}
+
+/**
+ * Le montant global entre au livre, sauf si le client règle le séjour sur sa carte.
+ */
+export function stayIncludedInLedger(booking: {
+  include_in_ledger?: boolean | null;
+  client_settles_stay?: boolean | null;
+}) {
+  if (booking.client_settles_stay) return false;
+  return booking.include_in_ledger !== false;
+}
+
+/**
+ * Dépense libre : toujours. Carte du séjour : jamais si le client règle.
+ * Extra (chauffeur, VIP, visa, enregistrement) : selon sa propre case.
+ */
+export function itemIncludedInLedger(
+  item: { kind?: string | null; include_in_ledger?: boolean | null },
+  clientSettlesStay: boolean
+) {
+  if (isLedgerExpenseKind(item.kind)) return true;
+  if (clientSettlesStay && isStayAmountKind(item.kind)) return false;
+  return Boolean(item.include_in_ledger);
+}
+
 /** Montant du séjour : toujours la somme des prix vendus. Transfert, greeter, enregistrement, visa, dépense libre et frais de billeterie restent hors total. */
 export function bookingTotalFromItems(
   items: { kind?: string | null; amount?: number | null; details?: Record<string, unknown> | null }[]
 ): number {
   let sum = 0;
   for (const item of items) {
-    if (isExtraItemKind(item.kind) || isLedgerExpenseKind(item.kind)) continue;
+    if (!isStayAmountKind(item.kind)) continue;
     const n = itemSellingAmount(item);
     if (n == null) continue;
     sum += n;
@@ -224,7 +254,7 @@ export async function syncBookingDebit(
     status: booking.status,
     amount,
     hasOpenDebit: Boolean(debit),
-    includeInLedger: booking.include_in_ledger !== false,
+    includeInLedger: stayIncludedInLedger(booking),
   });
   const label = `Réservation ${booking.reference} — ${booking.title}`;
 
@@ -447,7 +477,7 @@ export async function syncBookingItemDebits(supabase: SupabaseClient, booking: C
       status: booking.status,
       amount,
       hasOpenDebit: Boolean(debit),
-      includeInLedger: isLedgerExpenseKind(item.kind) || Boolean(item.include_in_ledger),
+      includeInLedger: itemIncludedInLedger(item, booking.client_settles_stay === true),
     });
     const label = bookingItemDebitLabel(item, booking.reference);
     const companyId = debitBillingCompanyId(booking, item);
