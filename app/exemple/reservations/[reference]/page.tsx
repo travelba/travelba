@@ -47,6 +47,8 @@ export default async function ExampleReservationPage({ params }: Props) {
   const placeLine = tripPlaceLine(b.title, b.destination);
   const missingCount = coverage.total - coverage.ready;
   const formalities = frenchPassportTrip(visibleItems, party.length);
+  const fullCreditEndpoint = `/api/exemple/bookings/${b.reference}/full-credit`;
+  const now = new Date().toISOString();
 
   return (
     <ClientTripBody
@@ -87,6 +89,18 @@ export default async function ExampleReservationPage({ params }: Props) {
           items={visibleItems}
           docs={[]}
           pricesVisible={b.prices_visible !== false}
+          fullCredit={{
+            visible: b.visible_to_client,
+            status: b.status,
+            clientSettles: b.client_settles_stay === true,
+            now,
+            phone: siteConfig.whatsappNumber,
+            requests: session.fullCredits.map((row) => ({
+              booking_item_id: row.booking_item_id,
+              status: row.status,
+            })),
+            endpoint: fullCreditEndpoint,
+          }}
           calendarBase={`${EXAMPLE_BASE}/reservations/${b.reference}/agenda.ics`}
           services={{
             variant: "client",

@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { AccountChrome } from "@/components/account/AccountChrome";
 import { ExampleFetchBridge } from "@/components/account/ExampleFetchBridge";
@@ -12,8 +13,12 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function ExampleLayout({ children }: { children: React.ReactNode }) {
+export default async function ExampleLayout({ children }: { children: React.ReactNode }) {
   if (!exampleSessionEnabled()) notFound();
+  const surface = (await headers()).get("x-travelba-exemple");
+  if (surface === "agence") {
+    return <div className="admin-af min-h-screen">{children}</div>;
+  }
   const session = readExample();
 
   return (

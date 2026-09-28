@@ -11,6 +11,8 @@ import { Icon } from "@/components/crm/icons";
 import { BrandMark } from "@/components/crm/BrandMark";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
 import { HotelContactButton } from "@/components/crm/HotelContact";
+import { FullCreditAsk } from "@/components/account/FullCreditAsk";
+import { fullCreditClientMode, fullCreditWhatsappHref } from "@/lib/crm/full-credit";
 import {
   documentsForItem,
   dayHeading,
@@ -76,6 +78,8 @@ function CardBody({
   day = null,
   partage = null,
   pricesVisible = true,
+  fullCredit = null,
+  reference = "",
 }: {
   item: CrmBookingItem;
   currency: string;
@@ -85,6 +89,16 @@ function CardBody({
   day?: string | null;
   partage?: string | null;
   pricesVisible?: boolean;
+  reference?: string;
+  fullCredit?: {
+    visible: boolean;
+    status: string;
+    clientSettles: boolean;
+    now: string;
+    phone: string;
+    requests: { booking_item_id: string; status: string }[];
+    endpoint?: string;
+  } | null;
 }) {
   const price = itemPriceLabel(item, currency, day, pricesVisible);
   const included = detailList(item, "included");
@@ -109,6 +123,20 @@ function CardBody({
   const board = detailStr(item, "board");
   const hotelName = item.kind === "hotel" ? hotelDisplayName(item) : "";
   const hotelCity = item.kind === "hotel" ? hotelCityLine(item) : "";
+  const stayStart = (item.start_at || "").slice(0, 10);
+  const creditMode =
+    fullCredit && !partage && item.kind === "hotel" && (!day || !stayStart || day === stayStart)
+      ? fullCreditClientMode({
+          visible: fullCredit.visible,
+          status: fullCredit.status,
+          clientSettles: fullCredit.clientSettles,
+          kind: item.kind,
+          startAt: item.start_at,
+          endAt: item.end_at,
+          now: new Date(fullCredit.now),
+          existingStatus: fullCredit.requests.find((row) => row.booking_item_id === item.id)?.status,
+        })
+      : "hidden";
 
   return (
     <div className="min-w-0 overflow-hidden rounded-2xl border border-[#e5e3dc] bg-white">
@@ -255,6 +283,15 @@ function CardBody({
     {item.kind === "hotel" ? (
       <div className="px-3.5 pb-3">
         <HotelContactButton item={item} />
+        {creditMode === "hidden" ? null : (
+          <FullCreditAsk
+            reference={reference}
+            itemId={item.id}
+            mode={creditMode}
+            whatsappHref={fullCreditWhatsappHref(fullCredit?.phone || "", reference, hotelName)}
+            endpoint={fullCredit?.endpoint}
+          />
+        )}
       </div>
     ) : null}
     </div>
@@ -270,6 +307,7 @@ export function CarnetItinerary({
   refusals = [],
   partage = null,
   pricesVisible = true,
+  fullCredit = null,
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -279,6 +317,15 @@ export function CarnetItinerary({
   partage?: string | null;
   /** Faux : chaque ligne qui aurait un montant affiche « Prix à la publication ». */
   pricesVisible?: boolean;
+  fullCredit?: {
+    visible: boolean;
+    status: string;
+    clientSettles: boolean;
+    now: string;
+    phone: string;
+    requests: { booking_item_id: string; status: string }[];
+    endpoint?: string;
+  } | null;
   refusals?: ServiceRefusal[];
   services?: {
     variant: "admin" | "client";
@@ -414,6 +461,8 @@ export function CarnetItinerary({
                     day={day}
                     partage={partage}
                     pricesVisible={pricesVisible}
+                    reference={booking.reference}
+                    fullCredit={fullCredit}
                   />
                 )
               ) : (
@@ -436,6 +485,8 @@ export function CarnetItinerary({
                 calendarHref={itemHref(item.id)}
                 pricesVisible={pricesVisible}
                 partage={partage}
+                reference={booking.reference}
+                fullCredit={fullCredit}
               />
             ))}
           </div>

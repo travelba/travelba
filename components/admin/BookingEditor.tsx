@@ -44,6 +44,8 @@ import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
 import { TripPassportPicker } from "@/components/crm/TripPassportPicker";
 import { VisaSection } from "@/components/crm/VisaSection";
+import { FullCreditDesk } from "@/components/admin/FullCreditDesk";
+import { isFullCreditStatus, type FullCreditRecord } from "@/lib/crm/full-credit";
 import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
 import { IssuesList } from "@/components/crm/IssuesList";
 import { collectPublishIssues, issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
@@ -73,6 +75,7 @@ export function BookingEditor({
   refusals = [],
   visaRequests = [],
   pliantReady = false,
+  fullCredits = [],
   shareUrl = null,
   shareCompanions = [],
 }: {
@@ -96,6 +99,7 @@ export function BookingEditor({
     answers?: Partial<EstaAnswers> | null;
   }[];
   pliantReady?: boolean;
+  fullCredits?: FullCreditRecord[];
   shareUrl?: string | null;
   shareCompanions?: ShareCompanion[];
 }) {
@@ -519,6 +523,14 @@ export function BookingEditor({
               Publier les mises à jour
             </button>
           ) : null}
+          {fullCredits.some((row) => row.status === "demandee") ? (
+            <a
+              href="#full-credit"
+              className="admin-tap inline-flex items-center rounded-full border border-[var(--admin-gold)] bg-[#f8f4ed] px-4 py-2 text-sm font-semibold text-[var(--admin-navy)]"
+            >
+              Full credit à envoyer
+            </a>
+          ) : null}
         </div>
         </div>
       </section>
@@ -817,6 +829,18 @@ export function BookingEditor({
         currency={booking.currency}
         agencyCommission={booking.agency_commission === true}
         stayTotal={bookingTotalFromItems(items)}
+      />
+
+      <FullCreditDesk
+        bookingId={booking.id}
+        reference={booking.reference}
+        visible={booking.visible_to_client}
+        status={booking.status}
+        clientSettles={clientSettles}
+        pliantReady={pliantReady}
+        items={items}
+        credits={fullCredits.filter((row) => isFullCreditStatus(row.status))}
+        now={new Date().toISOString()}
       />
 
       {account && bookingHasFlight(items) ? (

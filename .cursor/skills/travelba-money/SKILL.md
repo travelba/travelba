@@ -73,6 +73,12 @@ Flux : API Business → `crm_revolut_transactions` (`unmatched`, **crédits seul
 
 **Ne pas** imputer si plusieurs clients matchent ou score partiel — laisser `unmatched` pour Valider/Refuser.
 
+## Full credit hôtel
+
+Le client peut demander, au moins **48 h avant l’arrivée de cet hôtel**, que les extras (restaurant, bar, room service, spa) passent sur une carte de l’agence. Seulement si le séjour est publié, confirmé ou en voyage, et `client_settles_stay = false`. Une demande par carte hôtel (`crm_full_credits`).
+
+Le plafond est **500 € × nuits** (arrivée incluse, départ exclu). Ce n’est pas un débit et pas un budget affiché au client. Le courrier dit que la chambre est déjà réglée. Hors hôtel, avances d’espèces et dépassement restent au client sur place. L’agent relit et envoie : pas d’envoi auto, pas de PAN. Lien de paiement ou carte Pliant distincte de la carte formalité. Le grand livre ne reçoit que le montant réellement saisi (`external_id=full-credit:{id}`), sans retirer le montant du séjour. Après le départ, le cron remet les transactions de la carte à 0.
+
 ## Saisie manuelle
 
 Admin `/admin/transactions` (et fiche client) : **uniquement les virements crédit** (`kind=transfer`, `direction=credit`). Pas de débits résa, frais billeterie ni commission 10 % dans cette liste — ils restent sur le dossier et `/mon-compte/transactions`. Saisie manuelle = crédit seulement. Pas de SQL collé dans l’UI.

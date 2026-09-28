@@ -25,12 +25,18 @@ export function isAgencyCommissionDebit(row: { external_id?: string | null }) {
   return (row.external_id || "").endsWith(":agency-commission");
 }
 
+/** Extras d’hôtel réellement capturés : s’ajoutent, sans retirer le montant du séjour. */
+export function isFullCreditDebit(row: { external_id?: string | null }) {
+  return (row.external_id || "").startsWith("full-credit:");
+}
+
 /** Une carte ou un frais du dossier couvre le montant global. Une dépense libre, non. */
 export function coversStayRollup(row: LedgerKindRow & { booking_id?: string | null }) {
   if (!row.booking_id || row.direction !== "debit") return false;
   if (isStayRollupDebit(row)) return false;
   if (isFreeExpenseDebit(row)) return false;
   if (isAgencyCommissionDebit(row)) return false;
+  if (isFullCreditDebit(row)) return false;
   return true;
 }
 

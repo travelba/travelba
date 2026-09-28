@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cronAuthorized, cronSecret } from "@/lib/crm/cron-auth";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { retryStillDue, shouldCloseCard } from "@/lib/crm/visa-desk";
+import { fullCreditShouldClose } from "@/lib/crm/full-credit";
 import { raisePliantLimit } from "@/lib/crm/pliant";
 
 export const runtime = "nodejs";
@@ -37,6 +38,33 @@ export async function GET(request: Request) {
     }
   }
 
+  const { data: credits } = await supabase
+    .from("crm_full_credits")
+    .select("id, booking_item_id, pliant_card_id, ceiling_cents, closed_at")
+    .is("closed_at", null);
+  let fullCredits = 0;
+  for (const credit of credits || []) {
+    const { data: item } = await supabase
+      .from("crm_booking_items")
+      .select("end_at")
+      .eq("id", credit.booking_item_id)
+      .maybeSingle();
+    const end = (item as { end_at?: string | null } | null)?.end_at;
+    if (!fullCreditShouldClose(end, now, credit.closed_at)) continue;
+    try {
+      if (credit.pliant_card_id) {
+        await raisePliantLimit(credit.pliant_card_id, { value: credit.ceiling_cents, currency: "EUR" }, 0);
+      }
+      await supabase
+        .from("crm_full_credits")
+        .update({ status: "cloturee", closed_at: now.toISOString() })
+        .eq("id", credit.id);
+      fullCredits += 1;
+    } catch {
+      fullCredits += 0;
+    }
+  }
+
   const { data: notices } = await supabase
     .from("crm_visa_notices")
     .select("id, booking_id, first_failure_on, attempts, holder_name, country")
@@ -59,5 +87,5 @@ export async function GET(request: Request) {
     });
     tasks += 1;
   }
-  return NextResponse.json({ closed, tasks });
+  return NextResponse.json({ closed, tasks, fullCredits });
 }
