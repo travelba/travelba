@@ -1,4 +1,6 @@
-import { visibleServiceCopy } from "@/lib/crm/types";
+import { HIDDEN_PRICE_LABEL } from "@/lib/crm/carnet";
+import { agencyFeeFromGross, formatMoney } from "@/lib/crm/money";
+import { AGENCY_FEE_LABEL, visibleServiceCopy } from "@/lib/crm/types";
 
 type LedgerKindRow = {
   direction: string;
@@ -82,6 +84,77 @@ export function ledgerPlace(
 /** Date du séjour et lieu, sous le sujet du mouvement. */
 export function ledgerWhenWhere(dates: string | null | undefined, place: string | null | undefined) {
   return [dates, place].map((value) => (value || "").trim()).filter(Boolean).join(" · ") || null;
+}
+
+export type ClientExpenseLine = {
+  id: string;
+  title: string;
+  amountLabel: string | null;
+};
+
+/**
+ * Prix lu sur la réservation : cartes + frais d’agence + dépenses libres.
+ * L’assiette stockée (`total_amount`) reste la somme des cartes.
+ */
+export function stayPriceWithExpenses(input: {
+  stayTotal: number;
+  agencyCommission: boolean;
+  expenses: { amount: number | null }[];
+}) {
+  const stay = Number(input.stayTotal);
+  let sum = Number.isFinite(stay) ? stay : 0;
+  if (input.agencyCommission) sum += agencyFeeFromGross(sum);
+  for (const expense of input.expenses) {
+    const amount = Number(expense.amount);
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    sum += amount;
+  }
+  return Math.round(sum * 100) / 100;
+}
+
+export function clientStayPriceLabel(input: {
+  stayTotal: number;
+  currency: string;
+  pricesVisible: boolean;
+  agencyCommission: boolean;
+  expenses: { amount: number | null }[];
+}) {
+  if (!input.pricesVisible) return HIDDEN_PRICE_LABEL;
+  return formatMoney(stayPriceWithExpenses(input), input.currency);
+}
+
+/** Lignes lues sur la réservation client : frais d’agence, puis dépenses libres. */
+export function clientStayExpenseLines(input: {
+  expenses: { id: string; title: string; amount: number | null }[];
+  agencyCommission: boolean;
+  stayTotal: number;
+  currency: string;
+  pricesVisible: boolean;
+}): ClientExpenseLine[] {
+  const lines: ClientExpenseLine[] = [];
+  if (input.agencyCommission) {
+    lines.push({
+      id: "agency-commission",
+      title: AGENCY_FEE_LABEL,
+      amountLabel: expenseAmountLabel(agencyFeeFromGross(input.stayTotal), input.currency, input.pricesVisible),
+    });
+  }
+  for (const expense of input.expenses) {
+    const title = visibleServiceCopy((expense.title || "").trim());
+    if (!title) continue;
+    lines.push({
+      id: expense.id,
+      title,
+      amountLabel: expenseAmountLabel(expense.amount, input.currency, input.pricesVisible),
+    });
+  }
+  return lines;
+}
+
+function expenseAmountLabel(amount: number | null, currency: string, pricesVisible: boolean) {
+  if (!pricesVisible) return HIDDEN_PRICE_LABEL;
+  if (amount == null || Number.isNaN(Number(amount))) return null;
+  return formatMoney(Number(amount), currency);
 }
 
 /** Le montant global du séjour s’affiche comme une dépense, pas comme « Réservation … ». */

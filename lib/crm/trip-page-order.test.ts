@@ -3,6 +3,7 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ClientTripBody } from "../../components/account/ClientTripBody";
+import { StayExpenses } from "../../components/account/StayExpenses";
 import { TripSharePanel } from "../../components/account/TripSharePanel";
 import { FoldedRow } from "../../components/crm/FoldedRow";
 
@@ -17,6 +18,7 @@ test("le séjour client suit l’ordre itinéraire, services, visa, coffre, part
       passports: "Coffre",
       share: "Partager le voyage",
       amount: "Montant du séjour",
+      expenses: "Dépenses du séjour",
       tail: "Pièces jointes",
     })
   );
@@ -29,6 +31,7 @@ test("le séjour client suit l’ordre itinéraire, services, visa, coffre, part
     'data-section="passports"',
     'data-section="share"',
     'data-section="amount"',
+    'data-section="expenses"',
     "Pièces jointes",
   ];
   let at = -1;
@@ -37,6 +40,24 @@ test("le séjour client suit l’ordre itinéraire, services, visa, coffre, part
     assert.ok(next > at, mark);
     at = next;
   }
+});
+
+test("la section Dépenses liste le libellé et le montant", () => {
+  const html = renderToStaticMarkup(
+    createElement(StayExpenses, {
+      lines: [
+        { id: "fee", title: "Frais d’agence 10 %", amountLabel: "100,00 €" },
+        { id: "tip", title: "Pourboire", amountLabel: "40,00 €" },
+      ],
+    })
+  );
+  assert.match(html, /Dépenses/);
+  assert.match(html, /En plus du montant du séjour/);
+  assert.match(html, /Frais d’agence 10 %/);
+  assert.match(html, /100,00 €/);
+  assert.match(html, /Pourboire/);
+  assert.match(html, /40,00 €/);
+  assert.equal(renderToStaticMarkup(createElement(StayExpenses, { lines: [] })), "");
 });
 
 test("partager le voyage et les visas reçus sont repliés sur une ligne", () => {

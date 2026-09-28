@@ -38,14 +38,14 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 - En-tête itinéraire : **Ajouter tout le séjour** (`GET /api/client/bookings/[reference]/calendrier`). Horaires seulement s’ils existent ; hôtel = journée entière.
 - Ordre : `sort_order` agent (drag / monter-descendre), défaut **chrono**. PATCH `{ order: [ids] }` sur `/api/admin/bookings/[id]/items`.
 - Kinds : `flight` `hotel` `transfer` `activity` `rail` `car` `cruise` `insurance` `fee`. Train / voiture / bateau = cartes métier, pas un jour par escale bateau.
-- **Dépense libre** (`expense`) : hors timeline, hors calendrier, hors publication. Elle vit dans les transactions (skill `travelba-money`).
+- **Dépense libre** (`expense`) : hors timeline, hors calendrier, hors publication du carnet. Sur `/mon-compte/reservations/[reference]`, section **Dépenses** (libellé + montant), sous le montant du séjour. Elle vit aussi dans les transactions (skill `travelba-money`).
 
 ## Prix
 
 - Prix vendu (`item.amount`) : **uniquement le premier jour** de l’événement (check-in hôtel, départ vol, prise en charge location). Les nuits / jours suivants gardent la carte, sans recompter le montant.
 - **Vols** : plusieurs e-tickets du même segment = **une** carte, `details.ticket_count`. `item.amount` = **prix unitaire par billet**. Affichage `5 × 250 €`, total séjour = unitaire × billets. Aller-retour : saisir le prix sur **un** vol.
 - Carte vol compacte : **IATA** (`CDG → RAK`) en titre, villes en dessous. Prix **sous** la route en mobile (pas à droite : ça déborde).
-- **Montant du séjour** (`booking.total_amount`) = somme des prix vendus des cartes dès qu’un `item.amount > 0` (vols : unitaire × billets). Sinon saisie manuelle / total import.
+- **Montant du séjour affiché** = somme des prix vendus des cartes, plus les frais d’agence et les dépenses libres. `booking.total_amount` reste la somme des cartes (skill `travelba-money`).
 - `item.amount` extrait = **null** (jamais le net fournisseur sur la carte client).
 - Montant PDF → `details.document_amount` (relecture agent). `sanitizeExtractedPrices` **préremplit** `total_amount` = somme **un montant par fichier**. Un extract à 0 ne masque pas cette somme.
 - **Enregistrer** un extract `document_status=confirmed` : écrit `booking.total_amount` et passe le dossier en **confirmé** (toujours `visible_to_client=false` jusqu’à Publier) → `syncBookingLedger` poste le débit + frais billeterie.

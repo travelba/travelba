@@ -20,6 +20,7 @@ import { formatMoney, jMinusLabel, todayIsoDate } from "@/lib/crm/money";
 import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { bookingTotalFromItems } from "@/lib/crm/bookings";
+import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
 import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
 import {
   canConfirmCarnetPublish,
@@ -788,10 +789,17 @@ export function BookingEditor({
           Montant du séjour
         </p>
         <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
-          {formatMoney(bookingTotalFromItems(items), stayCurrency(booking.currency))}
+          {formatMoney(
+            stayPriceWithExpenses({
+              stayTotal: bookingTotalFromItems(items),
+              agencyCommission: booking.agency_commission === true,
+              expenses: items.filter((item) => isLedgerExpenseKind(item.kind)),
+            }),
+            stayCurrency(booking.currency)
+          )}
         </p>
         <p className="text-sm text-muted">
-          Somme des prix vendus de chaque carte. Le frais de billeterie n’est pas inclus.
+          Prix des cartes, des frais d’agence et des dépenses. Le frais de billeterie n’est pas inclus.
           {clientSettles
             ? " Réglé sur la carte du client : ce montant ne va pas aux transactions ni à l’encours."
             : ""}

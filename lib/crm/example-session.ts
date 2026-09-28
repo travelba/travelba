@@ -101,6 +101,7 @@ function booking(): CrmBooking {
     cover_credit: null,
     notes_client: "Séjour d’exemple publié par l’agence.",
     notes_internal: null,
+    agency_commission: true,
     visible_to_client: true,
     prices_visible: false,
     created_at: STAMP,
@@ -214,6 +215,13 @@ function items(): CrmBookingItem[] {
       kind: "insurance",
       title: "Assurance voyage",
       sort_order: 8,
+    }),
+    item({
+      id: "exemple-depense",
+      kind: "expense",
+      title: "Pourboire",
+      sort_order: 9,
+      amount: 40,
     }),
   ];
 }

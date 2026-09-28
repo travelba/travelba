@@ -2,14 +2,16 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
-import { clientBookingStatusLabel, HIDDEN_PRICE_LABEL, stayHeadline } from "@/lib/crm/carnet";
+import { clientBookingStatusLabel, stayHeadline } from "@/lib/crm/carnet";
+import { clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import {
   formatDateRangeShort,
-  formatMoney,
   isUpcomingBooking,
   jMinusLabel,
   tripDurationDays,
 } from "@/lib/crm/money";
+import { createServiceClient } from "@/lib/supabase/admin";
+import { isLedgerExpenseKind } from "@/lib/crm/types";
 import { BookingStatusBadge, EmptyState } from "@/components/crm/ui";
 import { loadStayArrivalPlaces, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
 import { BookingHero } from "@/components/crm/BookingHero";
@@ -30,6 +32,7 @@ export default async function ReservationsPage({
   if (!customer) redirect("/connexion");
 
   const all = await loadVisibleCarnets(supabase, customer.id);
+  const expenseAmounts = await loadExpenseAmounts(all.map((row) => row.id));
   const places = await loadStayArrivalPlaces(
     supabase,
     all.map((row) => row.id)
@@ -156,7 +159,13 @@ export default async function ReservationsPage({
                         Montant
                       </span>
                       <span className="text-[16px] font-bold text-[var(--admin-navy)]">
-                        {b.prices_visible === false ? HIDDEN_PRICE_LABEL : formatMoney(Number(b.total_amount), b.currency)}
+                        {clientStayPriceLabel({
+                          stayTotal: Number(b.total_amount),
+                          currency: b.currency,
+                          pricesVisible: b.prices_visible !== false,
+                          agencyCommission: b.agency_commission === true,
+                          expenses: expenseAmounts.get(b.id) || [],
+                        })}
                       </span>
                     </div>
                   </div>
@@ -182,4 +191,26 @@ export default async function ReservationsPage({
       </ul>
     </div>
   );
+}
+
+async function loadExpenseAmounts(bookingIds: string[]) {
+  const amounts = new Map<string, { amount: number | null }[]>();
+  if (!bookingIds.length) return amounts;
+  try {
+    const admin = createServiceClient();
+    const { data } = await admin
+      .from("crm_booking_items")
+      .select("booking_id, amount, kind")
+      .in("booking_id", bookingIds)
+      .eq("kind", "expense");
+    for (const row of (data || []) as { booking_id: string; amount: number | null; kind: string }[]) {
+      if (!isLedgerExpenseKind(row.kind)) continue;
+      const list = amounts.get(row.booking_id) || [];
+      list.push({ amount: row.amount == null ? null : Number(row.amount) });
+      amounts.set(row.booking_id, list);
+    }
+  } catch {
+    return amounts;
+  }
+  return amounts;
 }
