@@ -471,6 +471,7 @@ async function upsertBooking(customer, booking) {
       .from("crm_bookings")
       .insert({
         customer_id: customer.id,
+        billing_customer_id: customer.id,
         reference: booking.reference,
         title: booking.title,
         destination: booking.destination,
