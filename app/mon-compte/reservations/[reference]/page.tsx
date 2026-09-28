@@ -15,13 +15,12 @@ import { findVisaExtra, serviceRefusalFromRow, type ServiceRefusal } from "@/lib
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import type { ClientVisaStep } from "@/lib/crm/visa-flow";
 import { pliantConfigured } from "@/lib/crm/pliant";
-import { formatDateFr, formatMoney, todayIsoDate } from "@/lib/crm/money";
+import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
 import { BookingStatusBadge } from "@/components/crm/ui";
 import {
   carnetVisible,
   clientBookingStatusLabel,
   clientVisibleItems,
-  HIDDEN_PRICE_LABEL,
   itemPriceLabel,
   stayArrivalPlaces,
   stayHeadline,
@@ -44,7 +43,7 @@ import { ReceivedVisasFold } from "@/components/crm/TripVisaUploads";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
-import { clientStayExpenseLines } from "@/lib/crm/ledger-display";
+import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { StayExpenses } from "@/components/account/StayExpenses";
 import { isLedgerExpenseKind, visibleServiceCopy, type CrmBillingCompany } from "@/lib/crm/types";
 
@@ -302,7 +301,13 @@ export default async function ReservationDetailPage({ params }: Props) {
             Montant du séjour
           </p>
           <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
-            {b.prices_visible === false ? HIDDEN_PRICE_LABEL : formatMoney(Number(b.total_amount), b.currency)}
+            {clientStayPriceLabel({
+              stayTotal: Number(b.total_amount),
+              currency: b.currency,
+              pricesVisible: b.prices_visible !== false,
+              agencyCommission: b.agency_commission === true,
+              expenses: expenseChoices,
+            })}
           </p>
           {insurances.map((item) => {
             const price = itemPriceLabel(item, b.currency, null, b.prices_visible !== false);

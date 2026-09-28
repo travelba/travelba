@@ -4,6 +4,8 @@ import { HIDDEN_PRICE_LABEL } from "./carnet";
 import { agencyFeeFromGross, formatMoney } from "./money";
 import { AGENCY_FEE_LABEL } from "./types";
 import {
+  clientStayPriceLabel,
+  stayPriceWithExpenses,
   clientStayExpenseLines,
   coversStayRollup,
   isAgencyCommissionDebit,
@@ -176,6 +178,49 @@ test("le contexte nomme le séjour, sans formule dans le cadre", () => {
   );
   assert.equal(reservationContextLabel({ title: "  ", reference: "TB-1" }), "TB-1");
   assert.equal(reservationContextLabel(null), null);
+});
+
+test("le prix du séjour ajoute les frais d’agence et les dépenses libres", () => {
+  assert.equal(
+    stayPriceWithExpenses({
+      stayTotal: 1000,
+      agencyCommission: true,
+      expenses: [{ amount: 40 }, { amount: null }, { amount: 0 }],
+    }),
+    1140
+  );
+  assert.equal(
+    stayPriceWithExpenses({
+      stayTotal: 1000,
+      agencyCommission: false,
+      expenses: [{ amount: 40 }],
+    }),
+    1040
+  );
+  assert.equal(
+    stayPriceWithExpenses({ stayTotal: 0, agencyCommission: true, expenses: [{ amount: 40 }] }),
+    40
+  );
+  assert.equal(
+    clientStayPriceLabel({
+      stayTotal: 1000,
+      currency: "EUR",
+      pricesVisible: true,
+      agencyCommission: true,
+      expenses: [{ amount: 40 }],
+    }),
+    formatMoney(1140, "EUR")
+  );
+  assert.equal(
+    clientStayPriceLabel({
+      stayTotal: 1000,
+      currency: "EUR",
+      pricesVisible: false,
+      agencyCommission: true,
+      expenses: [{ amount: 40 }],
+    }),
+    HIDDEN_PRICE_LABEL
+  );
 });
 
 test("la réservation client liste les frais d’agence puis les dépenses libres", () => {
