@@ -1,7 +1,7 @@
 import { after, NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { continueEtaIlRequest } from "@/lib/crm/eta-il-continue";
-import { etaIlPliantCard, pliantCardName } from "@/lib/crm/eta-il-fee";
+import { customerPliantCardCount, etaIlPliantCard } from "@/lib/crm/eta-il-fee";
 import { issuePliantCard, pliantConfigured, raisePliantLimit } from "@/lib/crm/pliant";
 import { openAcceptedVisa } from "@/lib/crm/visa-accept";
 import { postVisaCharge } from "@/lib/crm/visa-post";
@@ -265,7 +265,7 @@ export async function POST(request: Request, ctx: Ctx) {
     });
   }
 
-  const [{ data: existing }, { data: travelers }, { data: documents }, { data: customer }, { data: card }] =
+  const [{ data: existing }, { data: travelers }, { data: documents }, { data: customer }, { data: card }, existingCards] =
     await Promise.all([
       auth.supabase.from("crm_visa_requests").select("country, step, answers, accepted_at").eq("booking_id", b.id),
       auth.supabase.from("crm_booking_travelers").select("id").eq("booking_id", b.id),
@@ -275,6 +275,7 @@ export async function POST(request: Request, ctx: Ctx) {
         .eq("customer_id", b.customer_id),
       auth.supabase.from("crm_customers").select("first_name, last_name").eq("id", b.customer_id).maybeSingle(),
       auth.supabase.from("crm_visa_cards").select("pliant_card_id, ceiling_cents, countries").eq("booking_id", b.id).maybeSingle(),
+      customerPliantCardCount(auth.supabase, b.customer_id),
     ]);
   const rows = (existing || []) as {
     country: VisaCorridor;
@@ -313,12 +314,12 @@ export async function POST(request: Request, ctx: Ctx) {
     organizationId: process.env.PLIANT_ORGANIZATION_ID || "",
     startDate: b.start_date,
     endDate: b.end_date,
+    existingCards,
   });
   const limit = { value: cents, currency: "EUR" as const };
   spec.body.limit = limit;
   spec.body.transactionLimit = limit;
   spec.body.maxTransactionCount = Math.max(count, countries.length * count);
-  spec.body.label = `Visa ${pliantCardName(holder?.last_name || b.reference)}`.slice(0, 40);
 
   let cardId = (card as { pliant_card_id?: string } | null)?.pliant_card_id || null;
   if (pliantConfigured()) {
