@@ -9,11 +9,14 @@ export function FullCreditAsk({
   itemId,
   mode,
   whatsappHref,
+  endpoint,
 }: {
   reference: string;
   itemId: string;
   mode: "late" | "asked" | "ask";
   whatsappHref: string;
+  /** Aperçu local. Le séjour publié appelle l’API client. */
+  endpoint?: string;
 }) {
   const router = useRouter();
   const [asked, setAsked] = useState(mode === "asked");
@@ -39,7 +42,7 @@ export function FullCreditAsk({
     setBusy(true);
     setError("");
     try {
-      const res = await fetch(`/api/client/bookings/${encodeURIComponent(reference)}/full-credit`, {
+      const res = await fetch(endpoint || `/api/client/bookings/${encodeURIComponent(reference)}/full-credit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ itemId }),

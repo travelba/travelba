@@ -97,6 +97,7 @@ function CardBody({
     now: string;
     phone: string;
     requests: { booking_item_id: string; status: string }[];
+    endpoint?: string;
   } | null;
 }) {
   const price = itemPriceLabel(item, currency, day, pricesVisible);
@@ -288,6 +289,7 @@ function CardBody({
             itemId={item.id}
             mode={creditMode}
             whatsappHref={fullCreditWhatsappHref(fullCredit?.phone || "", reference, hotelName)}
+            endpoint={fullCredit?.endpoint}
           />
         )}
       </div>
@@ -322,6 +324,7 @@ export function CarnetItinerary({
     now: string;
     phone: string;
     requests: { booking_item_id: string; status: string }[];
+    endpoint?: string;
   } | null;
   refusals?: ServiceRefusal[];
   services?: {

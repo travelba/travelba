@@ -31,6 +31,7 @@ export function FullCreditDesk({
   items,
   credits,
   now,
+  endpoint,
 }: {
   bookingId: string;
   reference: string;
@@ -41,6 +42,8 @@ export function FullCreditDesk({
   items: CrmBookingItem[];
   credits: FullCreditRecord[];
   now: string;
+  /** Aperçu local. Le dossier publié appelle l’API agence. */
+  endpoint?: string;
 }) {
   const hotels = items.filter((item) => item.kind === "hotel");
   if (!hotels.length) return null;
@@ -55,20 +58,24 @@ export function FullCreditDesk({
           tant que le montant réel n’est pas enregistré.
         </p>
       </div>
-      {hotels.map((hotel) => (
-        <HotelCredit
-          key={hotel.id}
-          bookingId={bookingId}
-          reference={reference}
-          visible={visible}
-          status={status}
-          clientSettles={clientSettles}
-          pliantReady={pliantReady}
-          hotel={hotel}
-          credit={credits.find((row) => row.booking_item_id === hotel.id) || null}
-          now={now}
-        />
-      ))}
+      {hotels.map((hotel) => {
+        const credit = credits.find((row) => row.booking_item_id === hotel.id) || null;
+        return (
+          <HotelCredit
+            key={`${hotel.id}:${credit?.id || "attente"}`}
+            bookingId={bookingId}
+            reference={reference}
+            visible={visible}
+            status={status}
+            clientSettles={clientSettles}
+            pliantReady={pliantReady}
+            hotel={hotel}
+            credit={credit}
+            now={now}
+            endpoint={endpoint}
+          />
+        );
+      })}
     </section>
   );
 }
@@ -83,6 +90,7 @@ function HotelCredit({
   hotel,
   credit,
   now,
+  endpoint,
 }: {
   bookingId: string;
   reference: string;
@@ -93,6 +101,7 @@ function HotelCredit({
   hotel: CrmBookingItem;
   credit: FullCreditRecord | null;
   now: string;
+  endpoint?: string;
 }) {
   const router = useRouter();
   const name = hotelDisplayName(hotel);
@@ -130,7 +139,7 @@ function HotelCredit({
             ? { action, creditId: credit.id, amount }
             : { action, creditId: credit.id };
     try {
-      const res = await fetch(`/api/admin/bookings/${bookingId}/full-credit`, {
+      const res = await fetch(endpoint || `/api/admin/bookings/${bookingId}/full-credit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

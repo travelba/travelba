@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { ClientTripBody } from "@/components/account/ClientTripBody";
+import { FullCreditDesk } from "@/components/admin/FullCreditDesk";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
@@ -47,6 +48,8 @@ export default async function ExampleReservationPage({ params }: Props) {
   const placeLine = tripPlaceLine(b.title, b.destination);
   const missingCount = coverage.total - coverage.ready;
   const formalities = frenchPassportTrip(visibleItems, party.length);
+  const fullCreditEndpoint = `/api/exemple/bookings/${b.reference}/full-credit`;
+  const now = new Date().toISOString();
 
   return (
     <ClientTripBody
@@ -87,6 +90,18 @@ export default async function ExampleReservationPage({ params }: Props) {
           items={visibleItems}
           docs={[]}
           pricesVisible={b.prices_visible !== false}
+          fullCredit={{
+            visible: b.visible_to_client,
+            status: b.status,
+            clientSettles: b.client_settles_stay === true,
+            now,
+            phone: siteConfig.whatsappNumber,
+            requests: session.fullCredits.map((row) => ({
+              booking_item_id: row.booking_item_id,
+              status: row.status,
+            })),
+            endpoint: fullCreditEndpoint,
+          }}
           calendarBase={`${EXAMPLE_BASE}/reservations/${b.reference}/agenda.ics`}
           services={{
             variant: "client",
@@ -177,6 +192,23 @@ export default async function ExampleReservationPage({ params }: Props) {
       }
       tail={
         <>
+          <section className="space-y-2">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+              Aperçu agence
+            </p>
+            <FullCreditDesk
+              bookingId={b.id}
+              reference={b.reference}
+              visible={b.visible_to_client}
+              status={b.status}
+              clientSettles={b.client_settles_stay === true}
+              pliantReady={false}
+              items={visibleItems}
+              credits={session.fullCredits}
+              now={now}
+              endpoint={fullCreditEndpoint}
+            />
+          </section>
           <ReservationFiles
             showPassports={false}
             attachments={attachmentPreviews([], visibleItems, b.reference)}

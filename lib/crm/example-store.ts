@@ -28,8 +28,22 @@ import {
 import { exampleLedgerView, exampleSession, EXAMPLE_REFERENCE } from "./example-session";
 import type { CrmBookingItem, CrmCompanion, CrmTransaction, CrmTravelDocument } from "./types";
 import { confirmAllowed, type ClientVisaStep, type EstaAnswers } from "./visa-flow";
+import {
+  eurosToCents,
+  fullCreditCeilingCents,
+  fullCreditLetterForItem,
+  fullCreditRefusal,
+  isFullCreditStatus,
+  redactFullCreditText,
+  statusAfterSend,
+  usableHotelEmail,
+  usablePaymentUrl,
+  type FullCreditRecord,
+  type FullCreditStatus,
+} from "./full-credit";
+import { nightsBetween } from "./carnet";
 
-const VERSION = 3;
+const VERSION = 4;
 
 export class ExampleStop extends Error {
   issues: { field: string; message: string }[];
@@ -45,6 +59,7 @@ type Box = ReturnType<typeof exampleSession> & {
   version: number;
   visaRequests: VisaRequest[];
   transactions: CrmTransaction[];
+  fullCredits: FullCreditRecord[];
   refusals: ServiceRefusal[];
 };
 
@@ -60,6 +75,7 @@ function fresh(): Box {
     holderDocuments: session.holderDocuments,
     visaRequests: [],
     transactions: [],
+    fullCredits: [],
     refusals: [],
   };
 }
@@ -458,4 +474,90 @@ export function patchExampleCustomer(patch: Record<string, unknown>) {
 
 export function exampleReferenceOk(reference: string) {
   return reference === EXAMPLE_REFERENCE;
+}
+
+function exampleCredit(itemId: string) {
+  return box().fullCredits.find((row) => row.booking_item_id === itemId) || null;
+}
+
+/** Même règle que le séjour publié. Rien n’est envoyé à un hôtel ni à Pliant. */
+export function requestExampleFullCredit(itemId: string) {
+  const state = box();
+  const item = state.items.find((row) => row.id === itemId);
+  if (!item) throw new ExampleStop("Séjour introuvable");
+  const existing = exampleCredit(itemId);
+  const refusal = fullCreditRefusal({
+    visible: state.booking.visible_to_client,
+    status: state.booking.status,
+    clientSettles: state.booking.client_settles_stay === true,
+    kind: item.kind,
+    startAt: item.start_at,
+    endAt: item.end_at,
+    now: new Date(),
+    existingStatus: existing?.status,
+  });
+  if (refusal) throw new ExampleStop(refusal);
+  const nights = nightsBetween(item.start_at, item.end_at);
+  const ceiling = nights ? fullCreditCeilingCents(nights) : null;
+  const guest = `${state.customer.first_name} ${state.customer.last_name}`.trim();
+  const letter = fullCreditLetterForItem({ guestName: guest, reference: state.booking.reference, item });
+  if (!nights || !ceiling || !letter) throw new ExampleStop("Les dates de l’hôtel ne permettent pas la demande.");
+  const row: FullCreditRecord = {
+    id: `exemple-credit-${itemId}`,
+    booking_item_id: itemId,
+    status: "demandee",
+    nights,
+    ceiling_cents: ceiling,
+    hotel_email: null,
+    draft_subject: letter.subject,
+    draft_body: letter.text,
+    pliant_card_id: null,
+    payment_url: null,
+    captured_cents: null,
+  };
+  state.fullCredits = [...state.fullCredits.filter((credit) => credit.booking_item_id !== itemId), row];
+  return row;
+}
+
+export function updateExampleFullCredit(input: {
+  creditId: string;
+  action: string;
+  hotelEmail?: string;
+  subject?: string;
+  body?: string;
+  paymentUrl?: string;
+  amount?: unknown;
+}) {
+  const state = box();
+  const credit = state.fullCredits.find((row) => row.id === input.creditId);
+  if (!credit || !isFullCreditStatus(credit.status)) throw new ExampleStop("Demande introuvable");
+  if (input.action === "send") {
+    const next = statusAfterSend(credit.status as FullCreditStatus);
+    if (!next) throw new ExampleStop("Cette demande est close.");
+    const email = usableHotelEmail(input.hotelEmail ?? credit.hotel_email);
+    if (!email) throw new ExampleStop("Indiquez l’adresse de l’hôtel.");
+    const subject = redactFullCreditText((input.subject ?? credit.draft_subject).trim());
+    const text = redactFullCreditText((input.body ?? credit.draft_body).trim());
+    if (!subject || !text) throw new ExampleStop("Le courrier est vide.");
+    credit.hotel_email = email;
+    credit.draft_subject = subject;
+    credit.draft_body = text;
+    credit.status = next;
+    return credit;
+  }
+  if (input.action === "link") {
+    if (credit.status === "cloturee") throw new ExampleStop("Cette demande est close.");
+    const url = usablePaymentUrl(input.paymentUrl);
+    if (!url) throw new ExampleStop("Le lien de paiement doit commencer par https.");
+    credit.payment_url = url;
+    return credit;
+  }
+  if (input.action === "capture") {
+    const cents = eurosToCents(input.amount);
+    if (!cents) throw new ExampleStop("Indiquez le montant réellement débité.");
+    credit.captured_cents = cents;
+    return credit;
+  }
+  if (input.action === "card") throw new ExampleStop("Pliant n’est pas branchée. Demandez un lien de paiement.");
+  throw new ExampleStop("Action inconnue.");
 }
