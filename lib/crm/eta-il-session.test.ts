@@ -224,6 +224,25 @@ test("un contrôle manqué laisse Astra réessayer", async () => {
   assert.match(result.summary || "", /Ada Martin/);
 });
 
+test("un écran inattendu ne tient pas le formulaire", async () => {
+  const result = await runEtaIlSession({
+    apiKey: "sk-test",
+    draft: draft(),
+    maxSteps: 1,
+    page: page(),
+    fetchImpl: async () =>
+      new Response(
+        stepBody("resp_1", "call_1", {
+          action: "hold",
+          summary: "Arrêt sur écran inattendu : l’accueil est encore affiché, sans champs.",
+        }),
+        { status: 200 }
+      ),
+  });
+  assert.equal(result.filled, false);
+  assert.equal(result.phase, "bloqué");
+});
+
 test("la limite d’étapes n’est pas un formulaire tenu", async () => {
   const result = await runEtaIlSession({
     apiKey: "sk-test",

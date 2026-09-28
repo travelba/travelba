@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { customerPliantCardCount, etaIlPliantCard, pliantCardName } from "./eta-il-fee";
+import { customerPliantCardCount, etaIlPliantCard, pliantCardName, pliantRefusal } from "./eta-il-fee";
 import { corridorCeilingCents, ECB_SNAPSHOT, centsToEur } from "./visa-fees";
 
 const NAME_CHARS = /^[A-Za-z0-9äöüÄÖÜ.\-]+$/;
@@ -33,8 +33,9 @@ test("la carte est au nom du client, plafonnée sur les 25 ILS au cours BCE", ()
   assert.equal(card.body.transactionLimit.value, cents);
   assert.equal(card.body.maxTransactionCount, 4);
   assert.equal(card.body.limitRenewFrequency, "TOTAL");
-  assert.equal(card.body.validFrom, "2026-12-14");
+  assert.equal(card.body.validFrom, "2026-09-24");
   assert.equal(card.body.validTo, "2026-12-23");
+  assert.equal("customFields" in card.body, false);
   assert.equal(JSON.stringify(card).includes("pan"), false);
 });
 
@@ -122,4 +123,11 @@ test("le décompte ignore les cartes sans identifiant Pliant", async () => {
     },
   };
   assert.equal(await customerPliantCardCount(empty, "cust-synthetique"), 0);
+});
+
+test("un refus Pliant reste court et sans identifiant", () => {
+  const line = pliantRefusal(400, JSON.stringify({ message: "Unknown custom field 123e4567-e89b-12d3-a456-426614174000" }));
+  assert.match(line, /Pliant a refusé la carte/);
+  assert.equal(line.includes("123e4567"), false);
+  assert.equal(pliantRefusal(500, "not-json"), "Pliant a refusé la carte (500).");
 });

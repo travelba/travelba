@@ -79,13 +79,14 @@ export function etaIlPliantCard(input: {
     existingCards: input.existingCards,
   });
   const today = input.today || new Date().toISOString().slice(0, 10);
-  const validFrom = input.startDate && input.startDate > today ? input.startDate : today;
+  const validFrom = today;
   const validTo = input.endDate && input.endDate >= validFrom ? input.endDate : validFrom;
   return {
     holderFirstName: name.customFirstName,
     holderLastName: name.customLastName,
     feeIls: count * ETA_IL_FEE_ILS,
     ceilingEur: centsToEur(cents),
+    bookingReference: input.bookingReference,
     portal: ETA_IL_PORTAL,
     body: {
       organizationId: input.organizationId,
@@ -100,10 +101,24 @@ export function etaIlPliantCard(input: {
       validFrom,
       validTo,
       validTimezone: "Europe/Paris",
-      customFields: [
-        { label: "bookingRef", defaultValue: input.bookingReference },
-        { label: "purpose", defaultValue: "ETA-IL" },
-      ],
     },
   };
+}
+
+/** Message court pour le journal. Pas de corps brut : il peut contenir des identifiants. */
+export function pliantRefusal(status: number, body: string) {
+  let message = "";
+  try {
+    const json = JSON.parse(body) as { message?: unknown; error?: unknown; title?: unknown };
+    const raw = [json.message, json.title, json.error].find((value) => typeof value === "string") as string | undefined;
+    message = (raw || "").replace(/\s+/g, " ").trim();
+  } catch {
+    message = "";
+  }
+  const safe = message
+    .replace(/\b[0-9a-f]{8}-[0-9a-f-]{20,}\b/gi, "•••")
+    .replace(/(?:\d[ -]?){13,19}/g, "•••")
+    .slice(0, 140);
+  if (!safe || safe.includes("@")) return `Pliant a refusé la carte (${status}).`;
+  return `Pliant a refusé la carte : ${safe}`;
 }

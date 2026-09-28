@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { PORTAL_KIND_LABEL, type PortalLogEvent, type PortalLogKind } from "@/lib/crm/eta-il-log";
+import { etaIlLiveFramePath, PORTAL_KIND_LABEL, type PortalLogEvent, type PortalLogKind } from "@/lib/crm/eta-il-log";
 
 type Payload = {
   step?: string | null;
@@ -26,6 +26,8 @@ export function EtaIlMonitor({ bookingId }: { bookingId: string }) {
   const [live, setLive] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [down, setDown] = useState(false);
+  const [tick, setTick] = useState(0);
+  const [frameOk, setFrameOk] = useState(false);
   const end = useRef<HTMLLIElement | null>(null);
 
   useEffect(() => {
@@ -43,6 +45,7 @@ export function EtaIlMonitor({ bookingId }: { bookingId: string }) {
       setEvents(Array.isArray(json.events) ? json.events : []);
       setLive(Boolean(json.live));
       setNote(json.note || null);
+      setTick((value) => value + 1);
     }
     void load();
     const timer = window.setInterval(() => void load(), 2000);
@@ -64,6 +67,15 @@ export function EtaIlMonitor({ bookingId }: { bookingId: string }) {
       </div>
       {down ? <p className="text-sm text-red-700">Le suivi du portail est indisponible.</p> : null}
       {note ? <p className="text-sm font-medium text-red-700">{note}</p> : null}
+      {events.length ? (
+        <img
+          src={`/api/files?path=${encodeURIComponent(etaIlLiveFramePath(bookingId))}&inline=1&v=${tick}`}
+          alt="Écran du portail ETA-IL"
+          onLoad={() => setFrameOk(true)}
+          onError={() => setFrameOk(false)}
+          className={frameOk ? "w-full rounded-xl border border-[#e5e3dc]" : "hidden"}
+        />
+      ) : null}
       {events.length ? (
         <ol className="max-h-64 space-y-2 overflow-y-auto pr-1">
           {events.map((event, index) => (

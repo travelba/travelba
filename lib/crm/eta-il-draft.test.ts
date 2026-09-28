@@ -107,3 +107,26 @@ test("un passeport non français bloque la demande", () => {
   assert.equal(draft.applicants.length, 0);
   assert.match(draft.travelers[0]?.blockedReason || "", /français/);
 });
+
+test("seuls les voyageurs cochés partent sur le portail", () => {
+  const leoh = traveler({ id: "leoh", first_name: "Noa", last_name: "Martin" });
+  const ezra = traveler({ id: "ezra", first_name: "Eli", last_name: "Martin" });
+  const iony = traveler({ id: "iony", first_name: "Ada", last_name: "Martin" });
+  const draft = buildEtaIlDraft({
+    ...stay,
+    items: [{ kind: "flight", details: { to: "TLV" } }],
+    travelers: [iony, leoh, ezra],
+    travelerIds: ["leoh", "ezra"],
+    documents: [
+      passport({ id: "p1", booking_id: "b1", traveler_id: "iony", first_name: "Ada", last_name: "Martin" }),
+      passport({ id: "p2", booking_id: "b1", traveler_id: "leoh", number: "24HH27004", first_name: "Noa", last_name: "Martin" }),
+      passport({ id: "p3", booking_id: "b1", traveler_id: "ezra", number: "24HH27005", first_name: "Eli", last_name: "Martin" }),
+    ],
+  });
+  assert.equal(draft.phase, "prêt");
+  assert.deepEqual(
+    draft.applicants.map((row) => row.travelerId),
+    ["leoh", "ezra"]
+  );
+  assert.equal(JSON.stringify(publicEtaIlDraft(draft)).includes("Ada"), false);
+});

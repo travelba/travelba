@@ -23,6 +23,7 @@ export type PortalPage = {
   type(target: string, text: string): Promise<void>;
   scroll(): Promise<void>;
   describe(): Promise<string>;
+  capture?(): Promise<Uint8Array>;
 };
 
 export function portalUrlAllowed(url: string) {
@@ -55,6 +56,11 @@ export function astraRefusalMessage(status: number, body: string) {
   return "Le remplissage n’a pas abouti.";
 }
 
+/** Un hold sur l’accueil ou un écran inattendu n’est pas un formulaire tenu. */
+export function holdKeepsForm(summary: string) {
+  return !/écran inattendu|captcha|accueil|sans champs|before you start|bloqu/i.test(summary);
+}
+
 export function stepDecision(step: PortalStep): "run" | "hold" | "stop" {
   if (step.action === "hold") return "hold";
   if (step.action === "open" && !portalUrlAllowed(step.url)) return "stop";
@@ -68,9 +74,10 @@ const PORTAL_INSTRUCTIONS = [
   `Ouvre uniquement ${ETA_IL_PORTAL} et remplis une demande ETA-IL par passeport français.`,
   "N’envoie pas le formulaire. Ne paie pas. Ne saisis aucune carte.",
   "Chaque tour appelle portal_step. Pas de texte libre.",
-  "Quand les champs sont remplis, appelle portal_step avec action hold.",
-  "Le résumé hold nomme les voyageurs et les dates, sans numéro de passeport.",
-  "Si un captcha ou un écran inattendu bloque, hold tout de suite.",
+  "Quand les champs de la demande sont remplis, appelle portal_step avec action hold.",
+  "Le résumé hold nomme les voyageurs cochés et les dates, sans numéro de passeport.",
+  "L’accueil et « Before you start » ne sont pas un formulaire tenu : clique le bouton pour continuer.",
+  "Si un captcha bloque, hold tout de suite.",
 ].join(" ");
 
 export const portalToolChoice = { type: "function" as const, name: "portal_step" };
@@ -228,6 +235,7 @@ export async function runEtaIlSession(opts: {
   maxSteps?: number;
   pollMs?: number;
   onEvent?: (event: PortalLogEvent) => Promise<void> | void;
+  onFrame?: (bytes: Uint8Array) => Promise<void> | void;
 }): Promise<{ phase: EtaIlPhase; summary: string | null; message: string | null; filled: boolean }> {
   const fetchImpl = opts.fetchImpl || fetch;
   const pollMs = opts.pollMs ?? 750;
@@ -265,14 +273,18 @@ export async function runEtaIlSession(opts: {
       };
     }
     const decision = stepDecision(parsed.step);
-    if (decision !== "stop") await emitPortalEvent(opts.onEvent, parsed.step, numbers);
     if (decision === "hold") {
       const summary =
         parsed.step.action === "hold"
           ? redactPassportNumbers(parsed.step.summary, numbers)
           : "Formulaire rempli. Envoi et paiement en attente de confirmation.";
+      const filled = parsed.step.action === "hold" ? holdKeepsForm(summary) : true;
+      await publishFrame(opts.page, opts.onFrame);
+      if (!filled) return { phase: "bloqué", summary, message: summary, filled: false };
+      await emitPortalEvent(opts.onEvent, parsed.step, numbers);
       return { phase: "à confirmer", summary, message: null, filled: true };
     }
+    if (decision !== "stop") await emitPortalEvent(opts.onEvent, parsed.step, numbers);
     if (decision === "stop") {
       return {
         phase: "bloqué",
@@ -285,8 +297,9 @@ export async function runEtaIlSession(opts: {
     try {
       await applyStep(opts.page, parsed.step);
       misses = 0;
+      await publishFrame(opts.page, opts.onFrame);
       note = redactPassportNumbers(await opts.page.describe(), numbers);
-    } catch {
+    } catch (err) {
       misses += 1;
       const seen = redactPassportNumbers(await opts.page.describe().catch(() => ""), numbers);
       if (misses >= 3) {
@@ -297,7 +310,8 @@ export async function runEtaIlSession(opts: {
           filled: false,
         };
       }
-      note = `Contrôle introuvable. Choisis un libellé listé, ou hold si un captcha bloque. ${seen}`;
+      const why = err instanceof Error && err.message === "immobile" ? "Le clic n’a pas changé la page." : "Contrôle introuvable.";
+      note = `${why} Choisis un libellé listé, ou hold si un captcha bloque. ${seen}`;
     }
     input = [
       {
@@ -313,6 +327,19 @@ export async function runEtaIlSession(opts: {
     message: null,
     filled: false,
   };
+}
+
+async function publishFrame(
+  page: PortalPage,
+  onFrame: ((bytes: Uint8Array) => Promise<void> | void) | undefined
+) {
+  if (!onFrame || !page.capture) return;
+  try {
+    const bytes = await page.capture();
+    if (bytes.byteLength) await onFrame(bytes);
+  } catch (err) {
+    console.error("[eta-il] écran", err instanceof Error ? err.message : "échec");
+  }
 }
 
 async function emitPortalEvent(

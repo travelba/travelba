@@ -48,13 +48,15 @@ export async function POST(request: Request, ctx: Ctx) {
   const { data: booking } = await auth.supabase.from("crm_bookings").select("*").eq("id", id).maybeSingle();
   if (!booking) return jsonError("Réservation introuvable", 404);
   const b = booking as CrmBooking;
-  const [{ data: items }, { data: travelers }, { data: documents }, { data: customer }] = await Promise.all([
+  const [{ data: items }, { data: travelers }, { data: documents }, { data: customer }, { data: visa }] = await Promise.all([
     auth.supabase.from("crm_booking_items").select("*").eq("booking_id", b.id),
     auth.supabase.from("crm_booking_travelers").select("*").eq("booking_id", b.id),
     auth.supabase.from("crm_travel_documents").select("*").eq("customer_id", b.customer_id),
     auth.supabase.from("crm_customers").select("first_name, last_name, usage_name").eq("id", b.customer_id).maybeSingle(),
+    auth.supabase.from("crm_visa_requests").select("accepted_at, traveler_ids").eq("booking_id", b.id).eq("country", "IL").maybeSingle(),
   ]);
   const holder = customer as Pick<CrmCustomer, "first_name" | "last_name" | "usage_name"> | null;
+  const requestRow = visa as { accepted_at?: string | null; traveler_ids?: string[] | null } | null;
   const draft = buildEtaIlDraft({
     items: (items || []) as CrmBookingItem[],
     travelers: (travelers || []) as CrmBookingTraveler[],
@@ -62,6 +64,7 @@ export async function POST(request: Request, ctx: Ctx) {
     holder,
     startDate: b.start_date,
     endDate: b.end_date,
+    travelerIds: requestRow?.traveler_ids || [],
   });
   if (action === "card") {
     if (!tripGoesToIsrael((items || []) as CrmBookingItem[])) {
@@ -97,13 +100,7 @@ export async function POST(request: Request, ctx: Ctx) {
     return NextResponse.json(publicEtaIlDraft(draft));
   }
 
-  const { data: accepted } = await auth.supabase
-    .from("crm_visa_requests")
-    .select("accepted_at")
-    .eq("booking_id", b.id)
-    .eq("country", "IL")
-    .maybeSingle();
-  if (!(accepted as { accepted_at?: string | null } | null)?.accepted_at) {
+  if (!requestRow?.accepted_at) {
     return jsonError("Confirmez la demande avant de lancer le parcours.");
   }
 

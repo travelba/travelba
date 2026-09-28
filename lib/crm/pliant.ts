@@ -1,4 +1,5 @@
 import "server-only";
+import { pliantRefusal } from "./eta-il-fee";
 
 const PROD = {
   api: "https://partner-api.getpliant.com/api",
@@ -64,7 +65,10 @@ export async function issuePliantCard(cardholderId: string, body: unknown) {
     body: JSON.stringify(body),
   });
   const text = await res.text();
-  if (!res.ok) throw new Error("Pliant n’a pas créé la carte.");
+  if (!res.ok) {
+    console.error("[eta-il] pliant", res.status);
+    throw new Error(pliantRefusal(res.status, text));
+  }
   const json = JSON.parse(text) as { cardId?: string; id?: string; status?: string };
   return { cardId: json.cardId || json.id || null, status: json.status || null };
 }

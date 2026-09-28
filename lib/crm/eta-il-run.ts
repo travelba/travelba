@@ -8,6 +8,8 @@ import { redactPassportNumbers, runEtaIlSession } from "./eta-il-session";
 import type { ClientVisaStep } from "./visa-flow";
 import { ensureIlPliantCard } from "./visa-card";
 import { euroRates } from "./visa-ecb";
+import { etaIlLiveFramePath } from "./eta-il-log";
+import { uploadCrmFile } from "./files";
 
 const ASTRA_MISSING = "GPT-6 Astra n’est pas disponible sur ce compte API.";
 
@@ -71,6 +73,7 @@ export async function executeEtaIlFill(opts: {
       onEvent: async (event) => {
         await writePortalEvent(opts.db, opts.bookingId, portalEvent(event.kind, redactPassportNumbers(event.text, numbers), event.at));
       },
+      onFrame: (bytes) => keepPortalFrame(opts.bookingId, bytes),
     });
     const card = session.filled ? await issueFilledCard(opts.db, opts.bookingId, opts.draft.applicants.length) : null;
     const next = stepAfterPortalRun(session.phase, Boolean(card?.issued));
@@ -104,6 +107,14 @@ export async function executeEtaIlFill(opts: {
     return { phase: "bloqué", summary: null, message: "Le remplissage n’a pas abouti.", ceilingEur: null, fee: null };
   } finally {
     await portal.close();
+  }
+}
+
+async function keepPortalFrame(bookingId: string, bytes: Uint8Array) {
+  try {
+    await uploadCrmFile(etaIlLiveFramePath(bookingId), Buffer.from(bytes), "image/jpeg", { upsert: true });
+  } catch (err) {
+    console.error("[eta-il] écran", err instanceof Error ? err.message : "échec");
   }
 }
 
