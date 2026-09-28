@@ -71,9 +71,12 @@ export function ClientOnboarding() {
         <p className="mt-3 text-sm leading-relaxed text-[#44474c]">{current.body}</p>
         <div className="mt-3 h-1 w-12 rounded-full bg-[var(--admin-gold)]" />
 
-        <div className="mt-6">{current.id === "carnet" ? <CarnetPreview /> : null}</div>
-        <div className="mt-6">{current.id === "transactions" ? <LedgerPreview /> : null}</div>
-        <div className="mt-6">{current.id === "profil" ? <ProfilePreview /> : null}</div>
+        <div className="mt-6">
+          {current.id === "accueil" ? <AccueilPreview /> : null}
+          {current.id === "carnet" ? <CarnetPreview /> : null}
+          {current.id === "transactions" ? <LedgerPreview /> : null}
+          {current.id === "profil" ? <ProfilePreview /> : null}
+        </div>
       </div>
 
       <div className="sticky bottom-0 mt-8 space-y-4 bg-[#faf9f6]/95 pb-4 pt-3 backdrop-blur">
@@ -109,10 +112,56 @@ export function ClientOnboarding() {
   );
 }
 
+function AccueilPreview() {
+  return (
+    <article className="overflow-hidden rounded-2xl border border-[#e5e3dc] shadow-sm">
+      <div className="relative h-44 bg-[var(--admin-navy)]">
+        <div className="absolute inset-0 bg-[linear-gradient(160deg,#07111c_0%,#0b192c_55%,#1e3a5f_100%)]" />
+        <p className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full border border-[var(--admin-gold)]/30 bg-white/95 px-3 py-1 text-[11px] font-semibold text-[var(--admin-navy)]">
+          <Icon name="timer" className="h-3.5 w-3.5 text-[var(--admin-gold)]" />
+          <span className="font-bold">J−</span>
+          <span className="font-normal text-[#5a5c60]">avant l’envol</span>
+        </p>
+        <p className="absolute right-4 top-4 inline-flex items-center gap-1.5 rounded-full border border-white/40 bg-white/90 px-3 py-1 text-[11px] font-semibold text-[var(--admin-navy)]">
+          <Icon name="sun" className="h-3.5 w-3.5 text-[var(--admin-gold)]" />
+          Météo
+        </p>
+        <div className="absolute inset-x-0 bottom-0 p-4">
+          <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--admin-gold)]">
+            <Icon name="flight_takeoff" className="h-3.5 w-3.5" />
+            Dates du séjour
+          </p>
+          <p className="mt-1 font-display text-xl font-bold text-white">Votre prochain séjour</p>
+        </div>
+      </div>
+      <div className="space-y-3 bg-white p-4">
+        <div className="rounded-xl border border-[var(--admin-gold)] bg-[#f8f3eb] px-3 py-2.5">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Encours</p>
+          <p className="mt-1 text-sm font-semibold text-[var(--admin-navy)]">Reste à régler</p>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Icon name="flight" className="h-5 w-5 text-[var(--admin-gold-dark)]" />
+            <p className="text-sm font-semibold text-[var(--admin-navy)]">Prochain vol</p>
+          </div>
+          <p className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--admin-navy)]">
+            <Icon name="event" className="h-3.5 w-3.5 text-[var(--admin-gold-dark)]" />
+            Ajouter à l’agenda
+          </p>
+        </div>
+        <p className="inline-flex items-center gap-1.5 rounded-full bg-[var(--admin-navy)] px-3 py-1.5 text-[11px] font-bold text-white">
+          <Icon name="chat" className="h-3.5 w-3.5" />
+          Écrire à l’agence
+        </p>
+      </div>
+    </article>
+  );
+}
+
 function CarnetPreview() {
   return (
     <article className="overflow-hidden rounded-2xl border border-[#e5e3dc] shadow-sm">
-      <div className="relative h-40 bg-[var(--admin-navy)]">
+      <div className="relative h-36 bg-[var(--admin-navy)]">
         <div className="absolute inset-0 bg-[linear-gradient(160deg,#07111c_0%,#0b192c_55%,#1e3a5f_100%)]" />
         <p className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-[var(--admin-gold)] px-3 py-1 text-[11px] font-bold text-[var(--admin-navy)]">
           Publié
@@ -128,28 +177,61 @@ function CarnetPreview() {
       <ul className="divide-y divide-[#e5e3dc] bg-white">
         <li className="flex items-center gap-3 px-4 py-3 text-sm text-[var(--admin-navy)]">
           <Icon name="flight" className="h-5 w-5 text-[var(--admin-gold-dark)]" />
-          Vols du séjour
+          Vols
         </li>
         <li className="flex items-center gap-3 px-4 py-3 text-sm text-[var(--admin-navy)]">
           <Icon name="hotel" className="h-5 w-5 text-[var(--admin-gold-dark)]" />
-          Hôtels du séjour
+          Hôtels
+        </li>
+        <li className="flex items-center gap-3 px-4 py-3 text-sm text-[var(--admin-navy)]">
+          <Icon name="airport_shuttle" className="h-5 w-5 text-[var(--admin-gold-dark)]" />
+          Transferts et activités
+        </li>
+        <li className="flex items-center gap-3 px-4 py-3 text-sm text-[var(--admin-navy)]">
+          <Icon name="picture_as_pdf" className="h-5 w-5 text-[var(--admin-gold-dark)]" />
+          Confirmations
+        </li>
+        <li className="flex items-center gap-3 px-4 py-3 text-sm text-[var(--admin-navy)]">
+          <Icon name="verified_user" className="h-5 w-5 text-[var(--admin-gold-dark)]" />
+          <span>
+            Formalité
+            <span className="mt-0.5 block text-xs text-muted">
+              ETA, ESTA ou Royaume-Uni, sur le séjour
+            </span>
+          </span>
         </li>
       </ul>
+      <p className="flex items-center gap-2 border-t border-[#e5e3dc] bg-[#f8f3eb] px-4 py-3 text-sm font-semibold text-[var(--admin-navy)]">
+        <Icon name="event" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
+        Ajouter tout le séjour à l’agenda
+      </p>
     </article>
   );
 }
 
 function LedgerPreview() {
   return (
-    <article className="rounded-2xl border border-[#e5e3dc] bg-white p-4 shadow-sm">
-      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Grand livre</p>
-      <div className="mt-3 flex items-center justify-between gap-3">
+    <article className="space-y-3 rounded-2xl border border-[#e5e3dc] bg-white p-4 shadow-sm">
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Encours</p>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-xl border border-[#e5e3dc] px-3 py-2">
+          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9e7e51]">Avoir</p>
+          <p className="mt-1 text-xs text-muted">Montant positif</p>
+        </div>
+        <div className="rounded-xl border border-[var(--admin-gold)] bg-[#f8f3eb] px-3 py-2">
+          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9e7e51]">
+            Reste à régler
+          </p>
+          <p className="mt-1 text-xs text-muted">Montant négatif</p>
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--admin-peach)]">
             <Icon name="receipt_long" className="h-5 w-5 text-[var(--admin-navy)]" />
           </span>
           <div>
-            <p className="text-sm font-semibold text-[var(--admin-navy)]">Écriture comptabilisée</p>
+            <p className="text-sm font-semibold text-[var(--admin-navy)]">Dépense du séjour</p>
             <p className="text-xs text-muted">Visible dans Transactions</p>
           </div>
         </div>
@@ -157,6 +239,9 @@ function LedgerPreview() {
           Passée
         </span>
       </div>
+      <p className="rounded-full border border-[#e5e3dc] px-4 py-2.5 text-center text-sm font-semibold text-[var(--admin-navy)]">
+        Demander un relevé
+      </p>
     </article>
   );
 }
