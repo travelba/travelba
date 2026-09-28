@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { dbError, jsonError } from "@/lib/crm/auth";
+import { dbError, getSessionUser, jsonError } from "@/lib/crm/auth";
 import {
   MIN_PASSWORD_LENGTH,
   PASSWORD_SETUP_COOKIE,
@@ -8,7 +8,6 @@ import {
   withOnboardingPending,
 } from "@/lib/crm/session";
 import { passwordErrorMessage } from "@/lib/crm/db-error";
-import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { appOrigin } from "@/lib/crm/invite";
 import { sendSpaceAccessWhatsapp } from "@/lib/crm/space-access";
@@ -16,15 +15,12 @@ import { sendSpaceAccessWhatsapp } from "@/lib/crm/space-access";
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getSessionUser();
   if (!user) return jsonError("Non authentifié", 401);
 
   const body = await request.json().catch(() => null);
   const password = String(body?.password || "");
-  const confirm = String(body?.confirm || "");
+  const confirm = String(body?.confirm || body?.password || "");
   if (password.length < MIN_PASSWORD_LENGTH) {
     return jsonError(`Le mot de passe doit contenir au moins ${MIN_PASSWORD_LENGTH} caractères`);
   }

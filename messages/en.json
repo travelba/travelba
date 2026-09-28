@@ -193,6 +193,7 @@
     "rights": "All rights reserved.",
     "madeWith": "Exceptional journeys, anywhere in the world.",
     "legalLink": "Legal notice",
+    "privacyLink": "Privacy",
     "accreditations": "IATA-accredited · APST member"
   },
   "Legal": {
@@ -205,7 +206,7 @@
     "ipTitle": "Intellectual property",
     "ipText": "All content on this website (text, visuals, logo, graphic identity) is protected by intellectual property law. Any reproduction, in whole or in part, without prior authorisation is prohibited.",
     "dataTitle": "Personal data",
-    "dataText": "Information submitted through the contact form is used solely to process your request. Under the GDPR, you have the right to access, rectify and delete your data by writing to {email}.",
+    "dataText": "Information submitted through the contact form is used solely to process your request. Under the GDPR, you have the right to access, rectify and delete your data by writing to {email}. The full policy is on the Privacy page.",
     "fields": {
       "legalName": "Company name",
       "legalForm": "Legal form",
@@ -222,6 +223,26 @@
       "email": "Email",
       "phone": "Phone"
     }
+  },
+  "Privacy": {
+    "title": "Privacy policy",
+    "intro": "Travel Business Agency (TBA) processes your data to organise your trips and open your client space — on the website and in the iPhone app.",
+    "controllerTitle": "Controller",
+    "controllerText": "TRAVEL BUSINESS AGENCY, SASU, 9 rue Greffulhe, 92300 Levallois-Perret, France — {email}.",
+    "dataTitle": "Data we hold",
+    "dataText": "Identity, contact details, travel documents (passport, ID), companions, trip files, balances, login traces. Never a full card number or CVC.",
+    "useTitle": "Purposes",
+    "useText": "Client file, published itinerary, formalities, billing, invitation and sign-in, trip notifications, agency WhatsApp support.",
+    "appTitle": "iPhone app",
+    "appText": "The app stores the session in the Keychain and may keep the itinerary offline, offer Face ID, Calendar, Wallet and notifications. Those permissions stay optional and tied to your trip.",
+    "shareTitle": "Recipients",
+    "shareText": "Hosts (Vercel, Supabase), email (Resend), WhatsApp (Twilio), and suppliers needed for the trip. No resale.",
+    "rightsTitle": "Your rights",
+    "rightsText": "Access, rectification, erasure, objection: write to {email}. The agency can delete your file. The app has no “delete my account” button.",
+    "retentionTitle": "Retention",
+    "retentionText": "For the life of the file and accounting duties. Session until you sign out (web cookies 400 days, app tokens refreshed).",
+    "cookiesTitle": "Cookies and tokens",
+    "cookiesText": "The website uses session cookies. The app uses an access token in the Keychain, never shared with Safari."
   },
   "Common": {
     "whatsapp": "WhatsApp",

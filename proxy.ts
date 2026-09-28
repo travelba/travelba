@@ -43,6 +43,14 @@ export default async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  if (path === "/.well-known" || path.startsWith("/.well-known/")) {
+    return NextResponse.next();
+  }
+
+  if (path === "/apple-app-site-association") {
+    return NextResponse.next();
+  }
+
   if (path === "/e" || path.startsWith("/e/")) {
     return NextResponse.next();
   }
