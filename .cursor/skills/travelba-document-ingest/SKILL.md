@@ -91,11 +91,12 @@ IATA **8 chiffres** (20287864, 20255270, 96020293, 20289905) = code agence, **ja
 - `details.airline` = **opérant**. `supplier` = émetteur (Hahn Air ≠ Air Panama).
 - `details.from` / `to` = IATA (souvent absent du PDF) ; `city_from` / `city_to` = villes.
 - Horaires ISO locaux. « 03 August 09:45 » + année de « Lundi 03 août 2026 ».
+- Bagages : nombre **et** désignation, par segment (`amadeusBaggageByRoute`). « 2PC » n’est pas une franchise. Politique du couple d’aéroports (CDGJFK, MIACDG, LGAMIA) : soute (kg, inclus ou montant imprimé) et cabine. Le « OR » golf / ski / média ne compte pas comme une pièce de plus. `0PC` en tête ne masque pas le bagage cabine imprimé.
 - Terminal / siège si imprimés. « Heure limite d’enregistrement » ≠ horaire du vol.
 - « Scan for check-in » ≠ hôtel. Carte fidélité : masquer, ne pas extraire.
 - Email agence ≠ `customer_email`.
 
-Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Colón `BOC`, Enrique Malek `DAV`, Tocumen `PTY`, Charles-de-Gaulle `CDG`, Orly `ORY`, Tel Aviv `TLV`, Genève `GVA`, Heathrow `LHR`, Marseille Provence `MRS`. **Nouveau nom d’aéroport sans IATA → une entrée + un test**, pas un guess LLM.
+Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Colón `BOC`, Enrique Malek `DAV`, Tocumen `PTY`, Charles-de-Gaulle `CDG`, Orly `ORY`, Tel Aviv `TLV`, Genève `GVA`, Heathrow `LHR`, Marseille Provence `MRS`, John F. Kennedy `JFK`, LaGuardia `LGA`, Miami `MIA`, Ménara `RAK`. **Nouveau nom d’aéroport sans IATA → une entrée + un test**, pas un guess LLM.
 
 ## Hôtel
 

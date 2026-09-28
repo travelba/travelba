@@ -10,6 +10,7 @@ import {
   sellingTotalFromExtract,
 } from "./ingest-types";
 import {
+  amadeusBaggageByRoute,
   applyStructuredHints,
   classifyIngestFamily,
   inferAirportIata,
@@ -240,6 +241,10 @@ describe("inferAirportIata", () => {
     assert.equal(inferAirportIata("AÉROPORT DE GENÈVE GENÈVE")?.iata, "GVA");
     assert.equal(inferAirportIata("HEATHROW LONDRES")?.iata, "LHR");
     assert.equal(inferAirportIata("MARSEILLE PROVENCE MARSEILLE")?.iata, "MRS");
+    assert.equal(inferAirportIata("JOHN F. KENNEDY NEW YORK")?.iata, "JFK");
+    assert.equal(inferAirportIata("LAGUARDIA NEW YORK")?.iata, "LGA");
+    assert.equal(inferAirportIata("AÉROPORT DE MIAMI MIAMI")?.iata, "MIA");
+    assert.equal(inferAirportIata("MÉNARA MARRAKECH")?.iata, "RAK");
   });
 });
 
@@ -256,7 +261,7 @@ describe("parseAmadeusReceipt", () => {
     assert.equal(parsed.to, "BOC");
     assert.equal(parsed.start_at, "2026-08-03T09:45:00");
     assert.equal(parsed.end_at, "2026-08-03T10:45:00");
-    assert.equal(parsed.baggage, "2PC");
+    assert.equal(parsed.baggage, "2 pièces en soute");
     assert.equal(parsed.cabin, "Economique (Y)");
     assert.notEqual(parsed.confirmation_ref, "20287864");
   });
@@ -270,6 +275,44 @@ describe("parseAmadeusReceipt", () => {
     assert.equal(parsed.from, "DAV");
     assert.equal(parsed.to, "PTY");
     assert.equal(parsed.start_at, "2026-08-12T09:50:00");
+  });
+});
+
+describe("amadeusBaggageByRoute", () => {
+  const policy = `
+POLITIQUE BAGAGE
+CDGJFK CHECKED BAG 1PC OF 32 KG 158CM1er enregistré Sans frais OR MEDIA EQUIPMENT UPTO50 LB 23KG OR GOLF EQUIPMENT UPTO50LB 23KG AND62LI 158LCM2ème enregistré 85.00EUR
+MIACDG CHECKED BAG 1PC OF 32 KG 158CM OR GOLF EQUIPMENT 1er enregistré Sans frais CHECKED BAG 1PC OF 32 KG 158CM OR GOLF EQUIPMENT 2ème enregistré Sans frais
+Bagage cabine:
+CDGJFK: MAX 2PC Sans frais CARRY 9KG 45LI 115LCM
+MIACDG: MAX 2PC Sans frais CARRY 9KG 45LI 115LCM
+LB = Poids en livres
+`;
+  const delta = `
+POLITIQUE BAGAGE
+LGAMIA UPTO50LB 23KG AND62LI 158LCM ASSISTIVE DEVICES OR STROLLER 1er enregistré 39.29EUR UPTO50LB 23KG AND62LI 158LCM2ème enregistré 48.02EUR
+Bagage cabine:
+LGAMIA: MAX 1PC Sans frais CARRY ON UP TO 45 LI 115 LCM
+LB = Poids en livres
+`;
+
+  it("lit le nombre, le poids et la cabine, sans compter le golf", () => {
+    const routes = amadeusBaggageByRoute(policy);
+    assert.equal(
+      routes.get("CDGJFK"),
+      "1 bagage en soute 32 kg inclus · 2e en soute 85 € · 2 bagages cabine 9 kg par personne"
+    );
+    assert.equal(
+      routes.get("MIACDG"),
+      "2 bagages en soute 32 kg inclus · 2 bagages cabine 9 kg par personne"
+    );
+  });
+
+  it("ne réduit pas un vol sans soute incluse au code 0PC", () => {
+    assert.equal(
+      amadeusBaggageByRoute(delta).get("LGAMIA"),
+      "1er en soute 23 kg 39,29 € · 2e en soute 23 kg 48,02 € · 1 bagage cabine par personne"
+    );
   });
 });
 
