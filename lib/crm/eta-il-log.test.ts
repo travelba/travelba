@@ -49,6 +49,7 @@ test("la page journalisée n’emporte pas la requête", () => {
 test("l’échec du portail quitte Remplissage", () => {
   assert.equal(stepAfterPortalRun("bloqué"), "preparation");
   assert.equal(stepAfterPortalRun("à confirmer"), "validation");
+  assert.equal(stepAfterPortalRun("à confirmer", true), "paiement");
   const line = portalEvent("echec", `échec ${PASSPORT}`);
   assert.equal(line.text.includes(PASSPORT), true);
   assert.equal(redactPassportNumbers(line.text, [PASSPORT]).includes(PASSPORT), false);

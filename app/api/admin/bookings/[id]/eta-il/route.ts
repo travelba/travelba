@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { buildEtaIlDraft, publicEtaIlDraft, tripGoesToIsrael } from "@/lib/crm/eta-il-draft";
-import { customerPliantCardCount, etaIlPliantCard } from "@/lib/crm/eta-il-fee";
 import { readPortalEvents } from "@/lib/crm/eta-il-log-store";
 import { portalMonitorNote, portalRunLive } from "@/lib/crm/eta-il-log";
 import { executeEtaIlFill } from "@/lib/crm/eta-il-run";
-import { issuePliantCard, pliantConfigured } from "@/lib/crm/pliant";
+import { pliantConfigured } from "@/lib/crm/pliant";
+import { ensureIlPliantCard } from "@/lib/crm/visa-card";
+import { euroRates } from "@/lib/crm/visa-ecb";
 import { openaiApiKey } from "@/lib/crm/ingest-types";
 import type {
   CrmBooking,
@@ -16,7 +17,7 @@ import type {
 } from "@/lib/crm/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -68,30 +69,28 @@ export async function POST(request: Request, ctx: Ctx) {
     }
     if (!pliantConfigured()) return jsonError("Pliant n’est pas configuré.");
     const party = (travelers || []) as CrmBookingTraveler[];
-    const existingCards = await customerPliantCardCount(auth.supabase, b.customer_id);
-    const spec = etaIlPliantCard({
+    const fx = await euroRates();
+    const card = await ensureIlPliantCard({
+      db: auth.supabase,
+      bookingId: b.id,
+      customerId: b.customer_id,
       firstName: holder?.first_name || party[0]?.first_name || "Client",
       lastName: holder?.last_name || party[0]?.last_name || "Travelba",
-      travelerCount: Math.max(1, party.length),
+      travelerCount: Math.max(1, draft.applicants.length || party.length),
       bookingReference: b.reference,
-      organizationId: process.env.PLIANT_ORGANIZATION_ID || "",
       startDate: b.start_date,
       endDate: b.end_date,
-      existingCards,
+      rates: fx.rates,
     });
-    try {
-      const issued = await issuePliantCard(process.env.PLIANT_CARDHOLDER_ID || "", spec.body);
-      return NextResponse.json({
-        holderName: `${spec.holderFirstName} ${spec.holderLastName}`,
-        feeIls: spec.feeIls,
-        ceilingEur: spec.ceilingEur,
-        label: spec.body.label,
-        cardId: issued.cardId,
-        status: issued.status,
-      });
-    } catch (err) {
-      return jsonError(err instanceof Error ? err.message : "Pliant n’a pas créé la carte.");
-    }
+    if (!card.issued) return jsonError(card.journal);
+    return NextResponse.json({
+      holderName: card.label,
+      feeIls: card.feeIls,
+      ceilingEur: card.ceilingEur,
+      label: card.label,
+      cardId: card.cardId,
+      status: "issued",
+    });
   }
 
   if (action === "prepare" || draft.phase !== "prêt") {
@@ -120,5 +119,7 @@ export async function POST(request: Request, ctx: Ctx) {
     phase: session.phase,
     reason: session.message,
     summary: session.summary,
+    ceilingEur: session.ceilingEur,
+    fee: session.fee,
   });
 }

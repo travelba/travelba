@@ -60,9 +60,10 @@ export function portalEvent(kind: PortalLogKind, text: string, at = new Date().t
   return { at, kind, text: clipPortalText(text) };
 }
 
-/** Succès : validation, l’agent confirme avant l’envoi. Échec : on quitte Remplissage. */
-export function stepAfterPortalRun(phase: string): ClientVisaStep {
-  return phase === "à confirmer" ? "validation" : "preparation";
+/** Formulaire tenu : paiement si la carte Pliant est émise, sinon validation. Échec : on quitte Remplissage. */
+export function stepAfterPortalRun(phase: string, cardIssued = false): ClientVisaStep {
+  if (phase !== "à confirmer") return "preparation";
+  return cardIssued ? "paiement" : "validation";
 }
 
 export function portalMonitorNote(step: string | null | undefined, events: { kind: string }[]) {

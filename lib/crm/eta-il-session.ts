@@ -64,38 +64,54 @@ export function stepDecision(step: PortalStep): "run" | "hold" | "stop" {
   return "run";
 }
 
-export function buildEtaIlRequest(draft: EtaIlDraft) {
+const PORTAL_INSTRUCTIONS = [
+  `Ouvre uniquement ${ETA_IL_PORTAL} et remplis une demande ETA-IL par passeport français.`,
+  "N’envoie pas le formulaire. Ne paie pas. Ne saisis aucune carte.",
+  "Chaque tour appelle portal_step. Pas de texte libre.",
+  "Quand les champs sont remplis, appelle portal_step avec action hold.",
+  "Le résumé hold nomme les voyageurs et les dates, sans numéro de passeport.",
+  "Si un captcha ou un écran inattendu bloque, hold tout de suite.",
+].join(" ");
+
+export const portalToolChoice = { type: "function" as const, name: "portal_step" };
+
+function portalTools() {
+  return [
+    {
+      type: "function" as const,
+      name: "portal_step",
+      description: "Une action sur le portail ETA-IL. Pas d’envoi, pas de paiement, pas d’autre site.",
+      strict: true,
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          action: { type: "string", enum: ["open", "click", "type", "scroll", "hold"] },
+          url: { type: "string" },
+          target: { type: "string" },
+          text: { type: "string" },
+          summary: { type: "string" },
+        },
+        required: ["action", "url", "target", "text", "summary"],
+      },
+    },
+  ];
+}
+
+/** Outils, consigne et choix imposés. La suite les renvoie : sans eux Astra répond en texte. */
+export function astraTurn() {
   return {
     model: ETA_IL_MODEL,
-    reasoning: { effort: "medium" },
-    tools: [
-      {
-        type: "function",
-        name: "portal_step",
-        description:
-          "Une action sur le portail ETA-IL. Pas d’envoi, pas de paiement, pas d’autre site.",
-        strict: true,
-        parameters: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            action: { type: "string", enum: ["open", "click", "type", "scroll", "hold"] },
-            url: { type: "string" },
-            target: { type: "string" },
-            text: { type: "string" },
-            summary: { type: "string" },
-          },
-          required: ["action", "url", "target", "text", "summary"],
-        },
-      },
-    ],
-    instructions: [
-      `Ouvre uniquement ${ETA_IL_PORTAL} et remplis une demande ETA-IL par passeport français.`,
-      "N’envoie pas le formulaire. Ne paie pas. Ne saisis aucune carte.",
-      "Quand les champs sont remplis, appelle portal_step avec action hold.",
-      "Le résumé hold nomme les voyageurs et les dates, sans numéro de passeport.",
-      "Si un captcha ou un écran inattendu bloque, hold tout de suite.",
-    ].join(" "),
+    reasoning: { effort: "medium" as const },
+    tools: portalTools(),
+    tool_choice: portalToolChoice,
+    instructions: PORTAL_INSTRUCTIONS,
+  };
+}
+
+export function buildEtaIlRequest(draft: EtaIlDraft) {
+  return {
+    ...astraTurn(),
     input: [
       {
         role: "user",
@@ -122,6 +138,14 @@ type ResponseOutput = {
   }>;
 };
 
+const PENDING_STATUS = new Set(["queued", "in_progress"]);
+
+/** Statut et types de sortie seulement. Le texte peut contenir un numéro de passeport. */
+export function responseTrace(data: ResponseOutput) {
+  const types = (data.output || []).map((item) => item.type || "inconnu");
+  return `${data.status || "sans statut"} ${types.join(",") || "vide"}`;
+}
+
 export function readPortalStep(data: ResponseOutput): { callId: string; step: PortalStep } | null {
   const call = (data.output || []).find((item) => item.type === "function_call" && item.name === "portal_step");
   if (!call?.call_id || !call.arguments) return null;
@@ -142,21 +166,58 @@ export function readPortalStep(data: ResponseOutput): { callId: string; step: Po
   return null;
 }
 
-async function postResponses(
+async function callResponses(
   apiKey: string,
-  body: unknown,
+  url: string,
+  init: RequestInit,
   fetchImpl: typeof fetch
 ) {
-  const res = await fetchImpl("https://api.openai.com/v1/responses", {
-    method: "POST",
+  const res = await fetchImpl(url, {
+    ...init,
     headers: {
       authorization: `Bearer ${apiKey}`,
       "content-type": "application/json",
     },
-    body: JSON.stringify(body),
   });
   const text = await res.text();
   return { ok: res.ok, status: res.status, text };
+}
+
+async function settleResponse(opts: {
+  apiKey: string;
+  body: unknown;
+  fetchImpl: typeof fetch;
+  pollMs: number;
+}): Promise<{ ok: true; data: ResponseOutput } | { ok: false; status: number; text: string }> {
+  let res = await callResponses(
+    opts.apiKey,
+    "https://api.openai.com/v1/responses",
+    { method: "POST", body: JSON.stringify(opts.body) },
+    opts.fetchImpl
+  );
+  if (!res.ok) return { ok: false, status: res.status, text: res.text };
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    let data: ResponseOutput;
+    try {
+      data = JSON.parse(res.text) as ResponseOutput;
+    } catch {
+      return { ok: false, status: res.status, text: "" };
+    }
+    if (!data.id || !data.status || !PENDING_STATUS.has(data.status)) return { ok: true, data };
+    if (opts.pollMs > 0) await new Promise((resolve) => setTimeout(resolve, opts.pollMs));
+    res = await callResponses(
+      opts.apiKey,
+      `https://api.openai.com/v1/responses/${data.id}`,
+      { method: "GET" },
+      opts.fetchImpl
+    );
+    if (!res.ok) return { ok: false, status: res.status, text: res.text };
+  }
+  try {
+    return { ok: true, data: JSON.parse(res.text) as ResponseOutput };
+  } catch {
+    return { ok: false, status: res.status, text: "" };
+  }
 }
 
 export async function runEtaIlSession(opts: {
@@ -165,39 +226,42 @@ export async function runEtaIlSession(opts: {
   page: PortalPage;
   fetchImpl?: typeof fetch;
   maxSteps?: number;
+  pollMs?: number;
   onEvent?: (event: PortalLogEvent) => Promise<void> | void;
-}): Promise<{ phase: EtaIlPhase; summary: string | null; message: string | null }> {
+}): Promise<{ phase: EtaIlPhase; summary: string | null; message: string | null; filled: boolean }> {
   const fetchImpl = opts.fetchImpl || fetch;
+  const pollMs = opts.pollMs ?? 750;
   const numbers = opts.draft.applicants.map((row) => row.number);
-  const maxSteps = opts.maxSteps ?? 12;
+  const maxSteps = opts.maxSteps ?? 24;
+  let misses = 0;
   let previous: string | undefined;
   let input: unknown = buildEtaIlRequest(opts.draft).input;
 
   for (let turn = 0; turn < maxSteps; turn += 1) {
     const request = previous
-      ? { model: ETA_IL_MODEL, previous_response_id: previous, input }
+      ? { ...astraTurn(), previous_response_id: previous, input }
       : buildEtaIlRequest(opts.draft);
-    const res = await postResponses(opts.apiKey, request, fetchImpl);
-    if (!res.ok) {
+    const settled = await settleResponse({ apiKey: opts.apiKey, body: request, fetchImpl, pollMs });
+    if (!settled.ok) {
       return {
         phase: "bloqué",
         summary: null,
-        message: astraRefusalMessage(res.status, res.text),
+        message: settled.text
+          ? astraRefusalMessage(settled.status, settled.text)
+          : "Le remplissage n’a pas abouti.",
+        filled: false,
       };
     }
-    let data: ResponseOutput;
-    try {
-      data = JSON.parse(res.text) as ResponseOutput;
-    } catch {
-      return { phase: "bloqué", summary: null, message: "Le remplissage n’a pas abouti." };
-    }
+    const data = settled.data;
     previous = data.id;
     const parsed = readPortalStep(data);
     if (!parsed) {
+      console.error("[eta-il] étape absente", responseTrace(data));
       return {
         phase: "bloqué",
         summary: null,
         message: "Le portail n’a pas été rempli. Reprenez la main sur le site officiel.",
+        filled: false,
       };
     }
     const decision = stepDecision(parsed.step);
@@ -207,25 +271,34 @@ export async function runEtaIlSession(opts: {
         parsed.step.action === "hold"
           ? redactPassportNumbers(parsed.step.summary, numbers)
           : "Formulaire rempli. Envoi et paiement en attente de confirmation.";
-      return { phase: "à confirmer", summary, message: null };
+      return { phase: "à confirmer", summary, message: null, filled: true };
     }
     if (decision === "stop") {
       return {
         phase: "bloqué",
         summary: null,
         message: "Action refusée : le bot reste sur le portail ETA-IL, sans paiement.",
+        filled: false,
       };
     }
+    let note: string;
     try {
       await applyStep(opts.page, parsed.step);
+      misses = 0;
+      note = redactPassportNumbers(await opts.page.describe(), numbers);
     } catch {
-      return {
-        phase: "bloqué",
-        summary: null,
-        message: "Le portail a changé ou un captcha bloque. Reprenez la main.",
-      };
+      misses += 1;
+      const seen = redactPassportNumbers(await opts.page.describe().catch(() => ""), numbers);
+      if (misses >= 3) {
+        return {
+          phase: "bloqué",
+          summary: null,
+          message: "Le portail a changé ou un captcha bloque. Reprenez la main.",
+          filled: false,
+        };
+      }
+      note = `Contrôle introuvable. Choisis un libellé listé, ou hold si un captcha bloque. ${seen}`;
     }
-    const note = redactPassportNumbers(await opts.page.describe(), numbers);
     input = [
       {
         type: "function_call_output",
@@ -238,6 +311,7 @@ export async function runEtaIlSession(opts: {
     phase: "à confirmer",
     summary: "Limite d’étapes atteinte. Vérifiez le formulaire avant l’envoi.",
     message: null,
+    filled: false,
   };
 }
 
