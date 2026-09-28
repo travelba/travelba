@@ -1,11 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { Field, MoneyInput, fieldControlClass } from "@/components/crm/fields";
-import { formatMoney } from "@/lib/crm/money";
-import { isLedgerExpenseKind, visibleServiceCopy, type BookingStatus, type CrmBookingItem } from "@/lib/crm/types";
+import { agencyFeeFromGross, formatMoney } from "@/lib/crm/money";
+import {
+  AGENCY_FEE_LABEL,
+  isLedgerExpenseKind,
+  visibleServiceCopy,
+  type BookingStatus,
+  type CrmBookingItem,
+} from "@/lib/crm/types";
 
 function postsNow(status: BookingStatus) {
   return status === "confirmed" || status === "travelling" || status === "completed";
@@ -16,14 +22,22 @@ export function BookingExpensesPanel({
   items,
   status,
   currency = "EUR",
+  agencyCommission = false,
+  stayTotal = 0,
 }: {
   bookingId: string;
   items: CrmBookingItem[];
   status: BookingStatus;
   currency?: string;
+  agencyCommission?: boolean;
+  stayTotal?: number;
 }) {
   const router = useRouter();
   const expenses = items.filter((item) => isLedgerExpenseKind(item.kind));
+  const [commissionOn, setCommissionOn] = useState(agencyCommission);
+  useEffect(() => {
+    setCommissionOn(agencyCommission);
+  }, [agencyCommission]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState<number | null>(null);
@@ -107,6 +121,27 @@ export function BookingExpensesPanel({
     router.refresh();
   }
 
+  async function toggleCommission(enabled: boolean) {
+    setCommissionOn(enabled);
+    setBusy(true);
+    setError(null);
+    const res = await fetch(`/api/admin/bookings/${bookingId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agency_commission: enabled }),
+    });
+    const json = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!res.ok) {
+      setCommissionOn(!enabled);
+      setError(json.error || "Commission non enregistrée.");
+      return;
+    }
+    router.refresh();
+  }
+
+  const commissionAmount = agencyFeeFromGross(stayTotal);
+
   const form = editingId ? (
     <div className="mt-3 space-y-3 rounded-2xl border border-border p-3">
       <div className="grid gap-2 sm:grid-cols-2">
@@ -157,9 +192,42 @@ export function BookingExpensesPanel({
           ? " Le dossier est confirmé : le débit part à l’enregistrement."
           : " Le débit part à la confirmation du dossier."}
       </p>
+      <label className="mt-3 flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)]">
+        <input
+          type="checkbox"
+          className="mt-1"
+          checked={commissionOn}
+          disabled={busy}
+          onChange={(event) => void toggleCommission(event.target.checked)}
+        />
+        <span>
+          Appliquer la commission de 10 %
+          <span className="mt-0.5 block text-xs font-normal text-muted">
+            10 % du montant du séjour, ajoutés aux dépenses. Le virement reçu reste crédité en entier.
+          </span>
+        </span>
+      </label>
       <div className="mt-3">
         <BusyBar active={busy} label="Enregistrement…" />
       </div>
+      {commissionOn ? (
+        <div className="mt-2 flex items-start justify-between gap-3 rounded-xl border border-border px-3 py-2 text-sm">
+          <div className="min-w-0">
+            <p className="font-medium">
+              {AGENCY_FEE_LABEL}
+              <span className="ml-2 rounded-full bg-[var(--admin-sky)] px-2 py-0.5 text-[10px] font-bold uppercase">
+                Transactions
+              </span>
+            </p>
+            <p className="text-xs text-muted">
+              {formatMoney(commissionAmount, currency)}
+              {" · "}
+              Calculée sur le montant du séjour
+              {postsNow(status) ? "" : " · débit à la confirmation"}
+            </p>
+          </div>
+        </div>
+      ) : null}
       {expenses.length ? (
         <ul className="mt-2 space-y-2 text-sm">
           {expenses.map((item) =>
@@ -203,7 +271,7 @@ export function BookingExpensesPanel({
             )
           )}
         </ul>
-      ) : (
+      ) : commissionOn ? null : (
         <p className="mt-3 text-sm text-muted">Aucune dépense hors itinéraire.</p>
       )}
       {editingId === "new" ? form : null}

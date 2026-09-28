@@ -125,7 +125,7 @@ export function filterCreditTransfers<T extends { direction: string; kind: strin
   return rows.filter(isCreditTransfer);
 }
 
-/** Libellé ledger pour le prélèvement 10 % sur les crédits Revolut. */
+/** Libellé ledger de la commission 10 % sur le montant du séjour. */
 export const AGENCY_FEE_LABEL = "Frais d’agence 10 %";
 
 export type CrmStaff = {
@@ -239,6 +239,8 @@ export type CrmBooking = {
   total_amount: number;
   /** Si false : montant du séjour affiché au carnet, pas au grand livre. */
   include_in_ledger: boolean;
+  /** Si true : 10 % du montant du séjour en dépense du dossier. */
+  agency_commission?: boolean;
   cover_image_path: string | null;
   /** Mention affichée avec une couverture CC BY. */
   cover_credit: string | null;

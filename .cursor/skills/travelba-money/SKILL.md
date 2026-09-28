@@ -18,7 +18,7 @@ Vue `crm_customer_balances` = somme crédits `posted` − débits `posted` (par 
 - Négatif = reste à payer
 - Afficher le montant **avec le signe**, pas un libellé marketing « solde à régulariser » qui inverse
 
-**Frais d’agence 10 %** (`AGENCY_FEE_RATE`) : à chaque crédit Revolut (`applyRevolutToCustomer`), poster un débit `kind=adjustment` `external_id={revolut_id}:agency-fee` — le crédit disponible = 90 % du versement. Afficher clairement « crédit disponible » / « frais 10 % » côté admin et `/mon-compte`.
+**Commission 10 %** (`AGENCY_FEE_RATE`, case `agency_commission` sur le voyage, défaut **false**) : si cochée, `syncAgencyCommission` poste un débit `kind=adjustment` `external_id=booking:{id}:agency-commission`, libellé « Frais d’agence 10 % », égal à 10 % du **montant du séjour** (somme des prix vendus). Elle s’ajoute aux dépenses : elle ne retire pas le montant global du séjour, n’entre pas dans ce total, et reste hors carnet. Postée seulement si le dossier est confirmé, en voyage ou terminé. Décocher ou annuler → `void` (ou suppression des débits à l’annulation). Le virement Revolut est crédité **en entier** — plus de débit `{revolut_id}:agency-fee` au rapprochement. Les lignes historiques restent. Le crédit disponible est l’avoir positif du grand livre.
 
 Ledger visible côté client (`/mon-compte/transactions`) : lignes `posted` seulement (RLS). L’agence ouvre **la même lecture** depuis `/admin/transactions/client/[id]` (fiche client « Transactions du client », nom du client ou bouton « Vue client » dans `/admin/transactions`). Les débits de dossier y apparaissent ; la liste agence reste limitée aux virements crédit.
 
@@ -45,6 +45,7 @@ PDF relevé = bouton **Demander un relevé** (`mailto:`), **pas** de génératio
 - `customer_id` du débit = `booking.billing_customer_id` (payeur / wallet), pas forcément le voyageur
 - **Plusieurs sociétés** (`crm_billing_companies`) : attribution `billing_company_id` sur le séjour, la dépense et la ligne du livre. L’encours **ne se découpe pas** (la vue `crm_customer_balances` reste crédits − débits `posted`). Transactions : libellé société **seulement** si le compte en a au moins deux. Une seule société → pas de précision.
 - `syncTicketingFee` : dès qu’il y a un vol, débit **25 € × passagers** (`external_id=booking:{id}:ticketing-fee`), void si plus de vol ou dossier annulé. 1 passager = 1 billet même avec plusieurs segments.
+- **Commission 10 %** : case du dossier, pas du virement. Voir encours ci-dessus. Assiette = `total_amount`, hors frais de billeterie, extras et dépenses libres.
 
 Ajustements / remboursements : lignes manuelles admin `kind=adjustment|refund`.
 
@@ -73,7 +74,7 @@ Flux : API Business → `crm_revolut_transactions` (`unmatched`, **crédits seul
 
 ## Saisie manuelle
 
-Admin `/admin/transactions` (et fiche client) : **uniquement les virements crédit** (`kind=transfer`, `direction=credit`). Pas de débits résa, frais billeterie ni frais d’agence 10 % dans cette liste — ils restent sur le dossier et `/mon-compte/transactions`. Saisie manuelle = crédit seulement. Pas de SQL collé dans l’UI.
+Admin `/admin/transactions` (et fiche client) : **uniquement les virements crédit** (`kind=transfer`, `direction=credit`). Pas de débits résa, frais billeterie ni commission 10 % dans cette liste — ils restent sur le dossier et `/mon-compte/transactions`. Saisie manuelle = crédit seulement. Pas de SQL collé dans l’UI.
 
 ## PCI / PII
 

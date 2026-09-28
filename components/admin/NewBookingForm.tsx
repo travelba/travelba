@@ -61,6 +61,7 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
         body: JSON.stringify({
           ...body,
           include_in_ledger: fd.get("include_in_ledger") === "on",
+          agency_commission: fd.get("agency_commission") === "on",
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -111,6 +112,15 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
           Inclure le montant du séjour dans les transactions
           <span className="mt-0.5 block text-xs font-normal text-muted">
             Décochez pour un dossier au carnet sans écriture à l’encours.
+          </span>
+        </span>
+      </label>
+      <label className="flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-3">
+        <input type="checkbox" name="agency_commission" className="mt-1" disabled={saving} />
+        <span>
+          Appliquer la commission de 10 %
+          <span className="mt-0.5 block text-xs font-normal text-muted">
+            Ajoute 10 % du montant du séjour aux dépenses. Le virement reçu reste crédité en entier.
           </span>
         </span>
       </label>

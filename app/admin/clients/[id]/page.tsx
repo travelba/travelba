@@ -150,9 +150,6 @@ export default async function AdminClientDetailPage({ params }: Props) {
               <p className="font-display text-xl font-bold text-[var(--admin-navy)]">
                 {value > 0 ? formatCreditDisponible(value, b.currency) : formatMoney(value, b.currency)}
               </p>
-              {value > 0 ? (
-                <p className="mt-1 text-xs text-[#9e7e51]">Frais d’agence 10 % déduits</p>
-              ) : null}
               <p className="mt-2 text-xs font-semibold text-[var(--admin-navy)]">Voir les transactions</p>
             </Link>
           );

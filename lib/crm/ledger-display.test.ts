@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   coversStayRollup,
+  isAgencyCommissionDebit,
   isFreeExpenseDebit,
   isStayRollupDebit,
   ledgerMovementTitle,
@@ -79,6 +80,29 @@ test("une dépense libre reste à côté du montant du séjour", () => {
   assert.deepEqual(
     visibleLedgerRows([stay, expense]).map((row) => row.id),
     ["stay", "extra"]
+  );
+});
+
+test("la commission 10 % reste à côté du montant du séjour", () => {
+  const stay = {
+    id: "stay",
+    booking_id: "b1",
+    direction: "debit",
+    kind: "booking",
+    external_id: null,
+  };
+  const commission = {
+    id: "fee",
+    booking_id: "b1",
+    direction: "debit",
+    kind: "adjustment",
+    external_id: "booking:b1:agency-commission",
+  };
+  assert.equal(isAgencyCommissionDebit(commission), true);
+  assert.equal(coversStayRollup(commission), false);
+  assert.deepEqual(
+    visibleLedgerRows([stay, commission]).map((row) => row.id),
+    ["stay", "fee"]
   );
 });
 

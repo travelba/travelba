@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  AGENCY_FEE_LABEL,
   BOOKING_ITEM_LABELS,
   countsAsCarnetCard,
   visibleServiceCopy,
@@ -23,6 +24,7 @@ import { coversStayRollup, isStayRollupDebit } from "@/lib/crm/ledger-display";
 import { debitBillingCompanyId } from "@/lib/crm/billing-companies";
 import { emptyToNull } from "@/lib/crm/identity";
 import { stayCurrency } from "@/lib/crm/stay-currency";
+import { agencyFeeFromGross } from "@/lib/crm/money";
 
 export function parseIncludeInLedger(value: unknown, fallback: boolean) {
   if (value === true || value === "on" || value === "true") return true;
@@ -43,6 +45,7 @@ const BOOKING_META_KEYS = [
   "billing_customer_id",
   "billing_company_id",
   "include_in_ledger",
+  "agency_commission",
 ] as const;
 
 /** Champs dossier envoyés par le formulaire admin. Dates vides = null, titre trimé. */
@@ -52,6 +55,10 @@ export function bookingMetaPatch(body: Record<string, unknown>) {
     if (!(key in body)) continue;
     if (key === "include_in_ledger") {
       patch[key] = parseIncludeInLedger(body[key], true);
+      continue;
+    }
+    if (key === "agency_commission") {
+      patch[key] = parseIncludeInLedger(body[key], false);
       continue;
     }
     if (key === "billing_company_id") {
@@ -136,6 +143,25 @@ export function bookingItemDebitExternalId(bookingId: string, itemId: string) {
 /** Dépense libre : ne couvre pas le montant global du séjour. */
 export function bookingExpenseDebitExternalId(bookingId: string, itemId: string) {
   return `booking:${bookingId}:expense:${itemId}`;
+}
+
+export function agencyCommissionExternalId(bookingId: string) {
+  return `booking:${bookingId}:agency-commission`;
+}
+
+/** 10 % du montant du séjour, seulement si le voyage l’active et qu’il est au livre. */
+export function agencyCommissionAmount(input: {
+  enabled: boolean;
+  status: BookingStatus;
+  totalAmount: number;
+}) {
+  const active =
+    input.enabled &&
+    (input.status === "confirmed" ||
+      input.status === "travelling" ||
+      input.status === "completed");
+  if (!active) return 0;
+  return agencyFeeFromGross(input.totalAmount);
 }
 
 export function bookingChargeExternalId(
@@ -328,6 +354,63 @@ export async function syncTicketingFee(supabase: SupabaseClient, booking: CrmBoo
     .eq("id", debit.id);
 }
 
+export async function syncAgencyCommission(supabase: SupabaseClient, booking: CrmBooking) {
+  const amount = agencyCommissionAmount({
+    enabled: booking.agency_commission === true,
+    status: booking.status,
+    totalAmount: Number(booking.total_amount || 0),
+  });
+  const externalId = agencyCommissionExternalId(booking.id);
+  const { data: existing } = await supabase
+    .from("crm_transactions")
+    .select("*")
+    .eq("source", "manual")
+    .eq("external_id", externalId)
+    .maybeSingle();
+  const debit = existing as CrmTransaction | null;
+  const payerId = booking.billing_customer_id || booking.customer_id;
+  const companyId = debitBillingCompanyId(booking);
+
+  if (amount <= 0) {
+    if (debit && debit.status !== "void") {
+      const { error } = await supabase.from("crm_transactions").update({ status: "void" }).eq("id", debit.id);
+      if (error) throw new Error(error.message);
+    }
+    return;
+  }
+
+  if (!debit) {
+    const { error } = await supabase.from("crm_transactions").insert({
+      customer_id: payerId,
+      booking_id: booking.id,
+      billing_company_id: companyId,
+      direction: "debit",
+      kind: "adjustment",
+      amount,
+      currency: booking.currency || "EUR",
+      label: AGENCY_FEE_LABEL,
+      source: "manual",
+      external_id: externalId,
+      status: "posted",
+    });
+    if (error) throw new Error(error.message);
+    return;
+  }
+
+  const { error } = await supabase
+    .from("crm_transactions")
+    .update({
+      customer_id: payerId,
+      billing_company_id: companyId,
+      amount,
+      currency: booking.currency || "EUR",
+      label: AGENCY_FEE_LABEL,
+      status: "posted",
+    })
+    .eq("id", debit.id);
+  if (error) throw new Error(error.message);
+}
+
 export async function syncBookingItemDebits(supabase: SupabaseClient, booking: CrmBooking) {
   const { data: items } = await supabase
     .from("crm_booking_items")
@@ -413,7 +496,7 @@ export async function syncBookingItemDebits(supabase: SupabaseClient, booking: C
   }
 }
 
-/** Le montant global du séjour quitte le livre dès qu’une carte ou un frais du dossier est posté. Une dépense libre ne le retire pas. */
+/** Le montant global du séjour quitte le livre dès qu’une carte ou un frais du dossier est posté. Une dépense libre ou la commission 10 % ne le retire pas. */
 export async function dropCoveredStayRollup(supabase: SupabaseClient, bookingId: string) {
   const { data, error } = await supabase
     .from("crm_transactions")
@@ -438,6 +521,7 @@ export async function syncBookingLedger(
   await syncBookingDebit(supabase, booking, previousStatus);
   await syncBookingItemDebits(supabase, booking);
   await syncTicketingFee(supabase, booking);
+  await syncAgencyCommission(supabase, booking);
   await dropCoveredStayRollup(supabase, booking.id);
 }
 

@@ -57,6 +57,7 @@ export async function POST(request: Request) {
       currency: body?.currency || "EUR",
       total_amount: 0,
       include_in_ledger: parseIncludeInLedger(body?.include_in_ledger, true),
+      agency_commission: parseIncludeInLedger(body?.agency_commission, false),
       notes_client: body?.notes_client || null,
       notes_internal: body?.notes_internal || null,
       visible_to_client: false,
