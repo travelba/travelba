@@ -1,4 +1,6 @@
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { DESK_COOKIE, deskBypass } from "@/lib/crm/admin-client-login";
 import { jsonError } from "@/lib/crm/auth";
 import { withoutMustSetPassword } from "@/lib/crm/session";
 import { createClient } from "@/lib/supabase/server";
@@ -17,6 +19,11 @@ export async function POST() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return jsonError("Non authentifié", 401);
+
+  const jar = await cookies();
+  if (deskBypass(jar.get(DESK_COOKIE)?.value, user.id)) {
+    return NextResponse.json({ ok: true });
+  }
 
   if (user.app_metadata?.must_set_password === true) {
     try {
