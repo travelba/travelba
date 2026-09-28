@@ -258,14 +258,14 @@ test("un écran inattendu ne tient pas le formulaire", async () => {
 
 test("un résumé qui ne cite pas les voyageurs cochés ne tient pas le formulaire", async () => {
   assert.equal(summaryCoversApplicants("Leoh et Ezra, départ le 14 décembre", ["Leoh", "Ezra"]), true);
-  assert.equal(summaryCoversApplicants("Simon, départ le 14 décembre", ["Leoh", "Ezra"]), false);
+  assert.equal(summaryCoversApplicants("Hugo, départ le 14 décembre", ["Leoh", "Ezra"]), false);
   const result = await runEtaIlSession({
     apiKey: "sk-test",
     draft: draft(),
     maxSteps: 1,
     page: page(),
     fetchImpl: async () =>
-      new Response(stepBody("resp_1", "call_1", { action: "hold", summary: "Simon, départ le 14 décembre" }), {
+      new Response(stepBody("resp_1", "call_1", { action: "hold", summary: "Hugo, départ le 14 décembre" }), {
         status: 200,
       }),
   });

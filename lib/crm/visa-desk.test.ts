@@ -36,8 +36,8 @@ test("une seconde demande pour le même pays ne part pas", () => {
 });
 
 test("les messages client sont courts et sans numéro", () => {
-  assert.equal(pieceReadyCopy("Israël", "Simon Albilila"), "Israël, Simon Albilila. La pièce est dans Pièces.");
-  assert.match(refusalCopy("Israël", "Simon Albilila"), /n’est pas acceptée/);
+  assert.equal(pieceReadyCopy("Israël", "Hugo Moreau"), "Israël, Hugo Moreau. La pièce est dans Pièces.");
+  assert.match(refusalCopy("Israël", "Hugo Moreau"), /n’est pas acceptée/);
   assert.equal(clientNoticeAllowed({ templateApproved: false, phone: "+33600000000" }), false);
   assert.equal(clientNoticeAllowed({ templateApproved: true, phone: "" }), false);
   assert.equal(clientNoticeAllowed({ templateApproved: true, phone: "+33600000000" }), true);

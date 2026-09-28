@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 
 export function isLiveStripeSecret(secret: string) {
   return secret.startsWith("sk_live_") || secret.startsWith("rk_live_");
@@ -13,7 +14,7 @@ function productionStripeOnly() {
 }
 
 export function getStripe() {
-  const key = process.env.STRIPE_SECRET_KEY?.trim();
+  const key = productionOnlySecret(process.env.STRIPE_SECRET_KEY);
   if (!key) return null;
   if (productionStripeOnly() && !isLiveStripeSecret(key)) {
     console.error("[stripe] clé test refusée en production");
@@ -23,7 +24,7 @@ export function getStripe() {
 }
 
 export function stripeConfigured() {
-  const secret = process.env.STRIPE_SECRET_KEY?.trim();
+  const secret = productionOnlySecret(process.env.STRIPE_SECRET_KEY);
   const publishable = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim();
   if (!secret || !publishable) return false;
   if (productionStripeOnly()) {

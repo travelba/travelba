@@ -6,13 +6,13 @@ import { corridorCeilingCents, ECB_SNAPSHOT, centsToEur } from "./visa-fees";
 const NAME_CHARS = /^[A-Za-z0-9äöüÄÖÜ.\-]+$/;
 
 test("le nom sur la carte Pliant n’a que les caractères acceptés", () => {
-  assert.equal(pliantCardName("Simon, Iony"), "Simon-Iony");
+  assert.equal(pliantCardName("Hugo, Jules"), "Hugo-Jules");
 });
 
 test("la carte est au nom du client, plafonnée sur les 25 ILS au cours BCE", () => {
   const card = etaIlPliantCard({
-    firstName: "Simon, Iony",
-    lastName: "Albilila",
+    firstName: "Hugo, Jules",
+    lastName: "Moreau",
     travelerCount: 4,
     bookingReference: "TB-2026-0033",
     organizationId: "org",
@@ -20,14 +20,14 @@ test("la carte est au nom du client, plafonnée sur les 25 ILS au cours BCE", ()
     startDate: "2026-12-14",
     endDate: "2026-12-23",
   });
-  assert.equal(card.holderFirstName, "Simon-Iony");
-  assert.equal(card.holderLastName, "Albilila");
-  assert.equal(card.body.label, "Simon-Iony Albilila");
+  assert.equal(card.holderFirstName, "Hugo-Jules");
+  assert.equal(card.holderLastName, "Moreau");
+  assert.equal(card.body.label, "Hugo-Jules Moreau");
   const cents = corridorCeilingCents("IL", 4, ECB_SNAPSHOT.rates) || 0;
   assert.equal(card.feeIls, 100);
   assert.equal(card.ceilingEur, centsToEur(cents));
-  assert.equal(card.body.customFirstName, "Simon-Iony");
-  assert.equal(card.body.customLastName, "Albilila");
+  assert.equal(card.body.customFirstName, "Hugo-Jules");
+  assert.equal(card.body.customLastName, "Moreau");
   assert.equal(card.body.limit.value, cents);
   assert.equal(card.body.limit.currency, "EUR");
   assert.equal(card.body.transactionLimit.value, cents);

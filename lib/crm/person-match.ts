@@ -93,7 +93,7 @@ function combinedTokens(person: PersonName) {
   return nameTokens(`${person.first_name || ""} ${person.last_name || ""} ${person.usage_name || ""}`);
 }
 
-/** Le nom entier est dans un seul champ : « Simon, Albilia » ou « ALBILIA Simon ». */
+/** Le nom entier est dans un seul champ : « Hugo, Moreau » ou « MOREAU Hugo ». */
 function nameFoldedIntoOneField(structured: PersonName, blob: PersonName) {
   const families = familyValues(structured);
   const givens = nameTokens(structured.first_name);

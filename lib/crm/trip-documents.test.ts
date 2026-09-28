@@ -119,35 +119,35 @@ test("un séjour précédent sans coffre reste proposable", () => {
 
 test("le passeport du titulaire rangé sur un accompagnateur du même nom est le sien", () => {
   const holder = traveler({
-    first_name: "Simon",
-    last_name: "Albilia",
+    first_name: "Hugo",
+    last_name: "Moreau",
   });
   const other = traveler({
     id: "t2",
     is_account_holder: false,
-    companion_id: "lisa",
-    first_name: "Lisa",
-    last_name: "Garnek",
+    companion_id: "lea",
+    first_name: "Léa",
+    last_name: "Bernard",
   });
   const docs = [
     doc({
-      id: "simon",
-      companion_id: "simon-companion",
-      first_name: "ALBILIA Simon",
+      id: "hugo",
+      companion_id: "hugo-companion",
+      first_name: "MOREAU Hugo",
       last_name: null,
       number: "22AA",
     }),
     doc({
-      id: "lisa",
-      companion_id: "lisa",
-      first_name: "Lisa Sabine",
-      last_name: "Garnek",
+      id: "lea",
+      companion_id: "lea",
+      first_name: "Léa Sabine",
+      last_name: "Bernard",
     }),
   ];
-  assert.equal(vaultDocumentsForTraveler(docs, holder)[0]?.id, "simon");
-  assert.equal(reusableDocumentsForTraveler(docs, holder)[0]?.id, "simon");
-  assert.equal(reusableDocumentsForTraveler(docs, other)[0]?.id, "lisa");
-  assert.equal(reusableDocumentsForTraveler(docs, holder).some((item) => item.id === "lisa"), false);
+  assert.equal(vaultDocumentsForTraveler(docs, holder)[0]?.id, "hugo");
+  assert.equal(reusableDocumentsForTraveler(docs, holder)[0]?.id, "hugo");
+  assert.equal(reusableDocumentsForTraveler(docs, other)[0]?.id, "lea");
+  assert.equal(reusableDocumentsForTraveler(docs, holder).some((item) => item.id === "lea"), false);
 });
 
 test("un voyageur sans lien retrouve le passeport du coffre par le nom", () => {
@@ -187,43 +187,43 @@ test("un voyageur sans lien retrouve le passeport du coffre par le nom", () => {
   assert.deepEqual(tripDocCoverage([jeremy, camille, ghost], []), { ready: 0, total: 2 });
 });
 
-test("le passeport Iony du profil Simon, Iony est celui du titulaire Simon", () => {
-  const simon = traveler({
-    first_name: "Simon",
-    last_name: "Albilia",
+test("le passeport Jules du profil Hugo, Jules est celui du titulaire Hugo", () => {
+  const hugo = traveler({
+    first_name: "Hugo",
+    last_name: "Moreau",
     is_account_holder: true,
   });
-  const lisa = traveler({
+  const lea = traveler({
     id: "t2",
     is_account_holder: false,
-    companion_id: "lisa",
-    first_name: "Lisa Sabine",
-    last_name: "Garnek",
+    companion_id: "lea",
+    first_name: "Léa Sabine",
+    last_name: "Bernard",
   });
-  const profile = { first_name: "Simon, Iony", last_name: "Albilila" };
+  const profile = { first_name: "Hugo, Jules", last_name: "Moreaud" };
   const docs = [
     doc({
-      id: "iony",
-      first_name: "Iony",
-      last_name: "Albilila",
+      id: "jules",
+      first_name: "Jules",
+      last_name: "Moreaud",
       number: "11AA",
     }),
     doc({
-      id: "lisa",
-      companion_id: "lisa",
-      first_name: "Lisa Sabine",
-      last_name: "Garnek",
+      id: "lea",
+      companion_id: "lea",
+      first_name: "Léa Sabine",
+      last_name: "Bernard",
       number: "99ZZ",
-      storage_path: "vault/lisa",
+      storage_path: "vault/lea",
     }),
   ];
-  assert.equal(reusableDocumentsForTraveler(docs, simon).length, 0);
-  assert.equal(reusableDocumentsForTraveler(docs, simon, profile)[0]?.id, "iony");
+  assert.equal(reusableDocumentsForTraveler(docs, hugo).length, 0);
+  assert.equal(reusableDocumentsForTraveler(docs, hugo, profile)[0]?.id, "jules");
   assert.equal(
-    reusableDocumentsForTraveler(docs, simon, profile).some((item) => item.id === "lisa"),
+    reusableDocumentsForTraveler(docs, hugo, profile).some((item) => item.id === "lea"),
     false
   );
-  assert.equal(reusableDocumentsForTraveler(docs, lisa, profile)[0]?.id, "lisa");
+  assert.equal(reusableDocumentsForTraveler(docs, lea, profile)[0]?.id, "lea");
 });
 
 test("la validation ne répète pas le passeport copié sur chaque séjour", () => {

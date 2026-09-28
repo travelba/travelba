@@ -9,8 +9,8 @@ function traveler(partial: Partial<CrmBookingTraveler> = {}): CrmBookingTraveler
     booking_id: "b1",
     companion_id: null,
     is_account_holder: true,
-    first_name: "Simon",
-    last_name: "Albilia",
+    first_name: "Hugo",
+    last_name: "Moreau",
     created_at: "",
     ...partial,
   };
@@ -24,12 +24,12 @@ function passport(partial: Partial<CrmTravelDocument> = {}): CrmTravelDocument {
     booking_id: null,
     traveler_id: null,
     doc_type: "passport",
-    number: "24HH27003",
+    number: "10FR44019",
     issuing_country: "FR",
     issued_on: null,
     expires_on: "2034-09-26",
-    first_name: "Iony",
-    last_name: "Albilila",
+    first_name: "Jules",
+    last_name: "Moreaud",
     birth_date: "1990-01-02",
     nationality: "FR",
     sex: "M",
@@ -49,7 +49,7 @@ const stay = {
   startDate: "2026-12-14",
   endDate: "2026-12-23",
   agencyEmail: "contact@travelba.fr",
-  holder: { first_name: "Simon, Iony", last_name: "Albilila" },
+  holder: { first_name: "Hugo, Jules", last_name: "Moreaud" },
 };
 
 test("un vol vers Tel Aviv ouvre l’ETA-IL", () => {
@@ -66,10 +66,10 @@ test("voyageur complet : prêt, le numéro reste hors de la vue publique", () =>
     documents: [passport()],
   });
   assert.equal(draft.phase, "prêt");
-  assert.equal(draft.applicants[0]?.number, "24HH27003");
+  assert.equal(draft.applicants[0]?.number, "10FR44019");
   assert.equal(draft.applicants[0]?.nationality, "FR");
   const pub = JSON.stringify(publicEtaIlDraft(draft));
-  assert.equal(pub.includes("24HH27003"), false);
+  assert.equal(pub.includes("10FR44019"), false);
   assert.equal(publicEtaIlDraft(draft).travelers[0]?.ready, true);
 });
 
@@ -119,8 +119,8 @@ test("seuls les voyageurs cochés partent sur le portail", () => {
     travelerIds: ["leoh", "ezra"],
     documents: [
       passport({ id: "p1", booking_id: "b1", traveler_id: "iony", first_name: "Ada", last_name: "Martin" }),
-      passport({ id: "p2", booking_id: "b1", traveler_id: "leoh", number: "24HH27004", first_name: "Noa", last_name: "Martin" }),
-      passport({ id: "p3", booking_id: "b1", traveler_id: "ezra", number: "24HH27005", first_name: "Eli", last_name: "Martin" }),
+      passport({ id: "p2", booking_id: "b1", traveler_id: "leoh", number: "10FR44020", first_name: "Noa", last_name: "Martin" }),
+      passport({ id: "p3", booking_id: "b1", traveler_id: "ezra", number: "10FR44021", first_name: "Eli", last_name: "Martin" }),
     ],
   });
   assert.equal(draft.phase, "prêt");

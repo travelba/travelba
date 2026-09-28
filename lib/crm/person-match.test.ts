@@ -36,29 +36,29 @@ test("un prénom parmi plusieurs et un nom à deux caractères près désignent 
 test("un nom imparfait désigne la même personne", () => {
   assert.equal(
     namesReferToSamePerson(
-      { first_name: "Simon", last_name: "Albilia" },
-      { first_name: "Simon, Albilia", last_name: null }
+      { first_name: "Hugo", last_name: "Moreau" },
+      { first_name: "Hugo, Moreau", last_name: null }
     ),
     true
   );
   assert.equal(
     namesReferToSamePerson(
-      { first_name: "Simon", last_name: "Albilia" },
-      { first_name: "ALBILIA Simon", last_name: null }
+      { first_name: "Hugo", last_name: "Moreau" },
+      { first_name: "MOREAU Hugo", last_name: null }
     ),
     true
   );
   assert.equal(
     namesReferToSamePerson(
-      { first_name: "Simon", last_name: "Albilia" },
-      { first_name: "Albilia", last_name: "Simon" }
+      { first_name: "Hugo", last_name: "Moreau" },
+      { first_name: "Moreau", last_name: "Hugo" }
     ),
     true
   );
   assert.equal(
     namesReferToSamePerson(
-      { first_name: "Leoh", last_name: "Albilia" },
-      { first_name: "Leo", last_name: "Albilia" }
+      { first_name: "Leoh", last_name: "Moreau" },
+      { first_name: "Leo", last_name: "Moreau" }
     ),
     true
   );

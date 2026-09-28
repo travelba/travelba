@@ -30,7 +30,7 @@ Identité / MRZ : skill `travelba-identity`.
 
 - Confirmation / **annulation** / devis fournisseur, labels Gmail, webhook, cron, watch
 - Table `crm_email_ingest`, matching client/voyage, rematch
-- « pourquoi ce mail n’est pas sur le dossier », Albilla / Albilila
+- « pourquoi ce mail n’est pas sur le dossier », Moreau / Moreaud
 
 ## Pipeline (contrat)
 
@@ -60,8 +60,8 @@ humaine (`matched`). Réfs fournisseur / dossier **en priorité**.
 | 1 | Réf. dossier ou `confirmation_ref` item / chambres | `suggestBookingByReference` |
 | 2 | Nom titulaire / voyageur **+** destination **+** dates (exactes ou chevauchement) | `suggestBookingByTripSignals` |
 
-Nom : égalité, distance d’édition ≤ 1, ou radical commun (`Albilla` / `Albilila`).
-Prénom aligné (`Simon` = `Simon, Iony`). Destination : ville / pays, casse,
+Nom : égalité, distance d’édition ≤ 1, ou radical commun (`Moreau` / `Moreaud`).
+Prénom aligné (`Hugo` = `Hugo, Jules`). Destination : ville / pays, casse,
 accents, inclusion (`Dan Tel Aviv Hotel` ⊃ `Tel Aviv`). `cancelled` exclus.
 Document `identity` : **pas** d’auto.
 
@@ -127,7 +127,7 @@ npx tsc --noEmit
 ```
 
 Couvrir : réf. exacte, dates+dest+nom flou → unique, deux voyages égaux → pas
-d’auto, création (persist mocké), *Albilla* / *Albilila*, annulation + match →
+d’auto, création (persist mocké), *Moreau* / *Moreaud*, annulation + match →
 apply, annulation sans match → pas de create.
 Ne pas rejouer un vrai mail prod. Echo PII interdit dans PR / logs.
 
