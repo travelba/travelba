@@ -222,6 +222,8 @@ const CITIES: Array<[name: string, country: string, photo?: string]> = [
   ["marseille", "fr"],
   ["nice", "fr"],
   ["cannes", "fr"],
+  ["antibes", "fr", "photo-antibes-garoupe"],
+  ["cap d antibes", "fr", "photo-antibes-garoupe"],
   ["bordeaux", "fr"],
   ["strasbourg", "fr"],
   ["toulouse", "fr"],
