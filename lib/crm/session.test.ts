@@ -5,6 +5,9 @@ import {
   SET_PASSWORD_PATH,
   clientAreaRedirect,
   destinationAfterPassword,
+  destinationForConnexionVisit,
+  hasChosenPassword,
+  mayShowPasswordSetup,
   mustSetPassword,
   needsClientOnboarding,
   pathAfterPassword,
@@ -160,6 +163,92 @@ test("retirer le drapeau ne réécrit pas le mot de passe", () => {
   assert.equal(cleared.client_onboarding_done, true);
   assert.equal("password" in cleared, false);
   assert.equal(withoutMustSetPassword({ crm_role: "admin" }).must_set_password, undefined);
+});
+
+test("un drapeau seul n’ouvre pas la page de définition", () => {
+  assert.equal(
+    shouldForcePasswordSetup({ flagged: true, type: null, next: "/mon-compte" }),
+    false
+  );
+  assert.equal(
+    shouldForcePasswordSetup({ flagged: true, type: "magiclink", next: SET_PASSWORD_PATH }),
+    false
+  );
+  assert.equal(
+    shouldForcePasswordSetup({ flagged: true, type: "invite", next: "/mon-compte" }),
+    true
+  );
+});
+
+test("ouvrir /connexion affiche le formulaire tant que le mot de passe n’est pas choisi", () => {
+  assert.equal(
+    destinationForConnexionVisit({
+      staff: false,
+      mustSetPassword: true,
+      needsOnboarding: false,
+      hasPassword: false,
+    }),
+    null
+  );
+  assert.equal(
+    destinationForConnexionVisit({
+      staff: false,
+      mustSetPassword: true,
+      needsOnboarding: true,
+      hasPassword: true,
+    }),
+    ONBOARDING_PATH
+  );
+  assert.equal(
+    destinationForConnexionVisit({
+      staff: true,
+      mustSetPassword: true,
+      needsOnboarding: true,
+      hasPassword: false,
+    }),
+    "/admin"
+  );
+  assert.equal(
+    destinationForConnexionVisit({
+      staff: false,
+      mustSetPassword: false,
+      needsOnboarding: false,
+      hasPassword: true,
+    }),
+    "/mon-compte"
+  );
+});
+
+test("la page de définition n’est là que pendant le lien, pas avec un mot de passe déjà choisi", () => {
+  assert.equal(hasChosenPassword({ app_metadata: { password_set_at: "2026-01-01T00:00:00.000Z" } }), true);
+  assert.equal(hasChosenPassword({ app_metadata: { must_set_password: true } }), false);
+  assert.equal(
+    mayShowPasswordSetup({
+      mustSetPassword: true,
+      hasPassword: false,
+      staff: false,
+      setupCookie: false,
+    }),
+    false
+  );
+  assert.equal(
+    mayShowPasswordSetup({
+      mustSetPassword: true,
+      hasPassword: false,
+      staff: false,
+      setupCookie: true,
+    }),
+    true
+  );
+  assert.equal(
+    mayShowPasswordSetup({
+      mustSetPassword: true,
+      hasPassword: true,
+      staff: false,
+      setupCookie: true,
+    }),
+    false
+  );
 });
 
 test("PKCE reset without type still forces password when next is the set-password page", () => {

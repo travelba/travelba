@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { dbError, jsonError } from "@/lib/crm/auth";
 import {
   MIN_PASSWORD_LENGTH,
+  PASSWORD_SETUP_COOKIE,
   destinationAfterPassword,
   pathAfterPassword,
   withOnboardingPending,
@@ -75,9 +76,16 @@ export async function POST(request: Request) {
   }
   const home = pathAfterPassword(customer?.phone, staff ? "staff" : "client");
   const next = staff ? home : destinationAfterPassword(appMeta, customer?.phone);
-  return NextResponse.json({
+  const response = NextResponse.json({
     ok: true,
     needsPhone: !staff && home !== "/mon-compte",
     next,
   });
+  response.cookies.set(PASSWORD_SETUP_COOKIE, "", {
+    path: "/",
+    sameSite: "lax",
+    httpOnly: true,
+    maxAge: 0,
+  });
+  return response;
 }

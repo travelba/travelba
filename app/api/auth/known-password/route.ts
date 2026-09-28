@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { DESK_COOKIE, deskBypass } from "@/lib/crm/admin-client-login";
 import { jsonError } from "@/lib/crm/auth";
-import { withoutMustSetPassword } from "@/lib/crm/session";
+import { PASSWORD_SETUP_COOKIE, withoutMustSetPassword } from "@/lib/crm/session";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 
@@ -44,5 +44,12 @@ export async function POST() {
     }
   }
 
-  return NextResponse.json({ ok: true });
+  const response = NextResponse.json({ ok: true });
+  response.cookies.set(PASSWORD_SETUP_COOKIE, "", {
+    path: "/",
+    sameSite: "lax",
+    httpOnly: true,
+    maxAge: 0,
+  });
+  return response;
 }
