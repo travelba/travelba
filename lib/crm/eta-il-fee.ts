@@ -105,7 +105,6 @@ export function etaIlPliantCard(input: {
   };
 }
 
-/** Message court pour le journal. Pas de corps brut : il peut contenir des identifiants. */
 export function pliantRefusal(status: number, body: string) {
   let message = "";
   try {
@@ -121,4 +120,24 @@ export function pliantRefusal(status: number, body: string) {
     .slice(0, 140);
   if (!safe || safe.includes("@")) return `Pliant a refusé la carte (${status}).`;
   return `Pliant a refusé la carte : ${safe}`;
+}
+
+/** Garde l’identifiant configuré s’il existe, sinon le seul identifiant renvoyé par Pliant. */
+export function pickListedId(preferred: string, ids: string[]) {
+  const clean = ids.filter((id) => id.trim());
+  if (preferred && clean.includes(preferred)) return preferred;
+  if (clean.length === 1) return clean[0];
+  return null;
+}
+
+export function pickTravelConfig(
+  preferred: string,
+  configs: { cardConfig?: string | null; canBeIssued?: boolean | null; type?: string | null }[]
+) {
+  const issuable = configs.filter((row) => row.canBeIssued !== false && row.cardConfig);
+  if (issuable.some((row) => row.cardConfig === preferred)) return preferred;
+  const travel = issuable.find(
+    (row) => /TRAVEL/i.test(row.cardConfig || "") && (row.type === "VIRTUAL" || /VIRTUAL/i.test(row.cardConfig || ""))
+  );
+  return travel?.cardConfig || issuable.find((row) => /TRAVEL/i.test(row.cardConfig || ""))?.cardConfig || null;
 }

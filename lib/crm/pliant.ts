@@ -1,5 +1,5 @@
 import "server-only";
-import { pliantRefusal } from "./eta-il-fee";
+import { pickListedId, pickTravelConfig, pliantRefusal } from "./eta-il-fee";
 
 const PROD = {
   api: "https://partner-api.getpliant.com/api",
@@ -54,15 +54,24 @@ async function accessToken() {
 }
 
 export async function issuePliantCard(cardholderId: string, body: unknown) {
+  const raw = (body && typeof body === "object" ? body : {}) as {
+    organizationId?: string;
+    cardConfig?: string;
+  };
+  const resolved = await resolvePliantIssue({
+    organizationId: raw.organizationId || process.env.PLIANT_ORGANIZATION_ID || "",
+    cardholderId: cardholderId || process.env.PLIANT_CARDHOLDER_ID || "",
+    cardConfig: raw.cardConfig || "PLIANT_VIRTUAL_TRAVEL",
+  });
   const token = await accessToken();
-  const res = await fetch(`${endpoints().api}/cards/${cardholderId}`, {
+  const res = await fetch(`${endpoints().api}/cards/${resolved.cardholderId}`, {
     method: "POST",
     headers: {
       authorization: `Bearer ${token}`,
       "content-type": "application/json",
       "Pliant-API-Version": "2.1.0",
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...raw, organizationId: resolved.organizationId, cardConfig: resolved.cardConfig }),
   });
   const text = await res.text();
   if (!res.ok) {
@@ -71,6 +80,46 @@ export async function issuePliantCard(cardholderId: string, body: unknown) {
   }
   const json = JSON.parse(text) as { cardId?: string; id?: string; status?: string };
   return { cardId: json.cardId || json.id || null, status: json.status || null };
+}
+
+async function resolvePliantIssue(preferred: { organizationId: string; cardholderId: string; cardConfig: string }) {
+  const organizations = await pliantJson("/organizations?status=ACTIVE&limit=100");
+  const orgIds = rows(organizations, "organizationId");
+  const organizationId = organizations ? pickListedId(preferred.organizationId, orgIds) : preferred.organizationId;
+  if (!organizationId) throw new Error("Pliant : l’organisation configurée est introuvable.");
+
+  const holders = await pliantJson(
+    `/cardholders?organizationId=${encodeURIComponent(organizationId)}&status=ACTIVE&limit=100`
+  );
+  const holderIds = rows(holders, "cardholderId");
+  const cardholderId = holders ? pickListedId(preferred.cardholderId, holderIds) : preferred.cardholderId;
+  if (!cardholderId) throw new Error("Pliant : le porteur configuré est introuvable.");
+
+  const available = await pliantJson(`/cards/available-cards?organizationId=${encodeURIComponent(organizationId)}`);
+  const configs = Array.isArray(available?.cardConfigs) ? available.cardConfigs : null;
+  const cardConfig = configs ? pickTravelConfig(preferred.cardConfig, configs) : preferred.cardConfig;
+  if (!cardConfig) throw new Error("Pliant : la configuration de carte est introuvable.");
+  return { organizationId, cardholderId, cardConfig };
+}
+
+function rows(payload: { data?: unknown } | null, key: "organizationId" | "cardholderId") {
+  if (!payload || !Array.isArray(payload.data)) return [];
+  return payload.data
+    .map((row) => (row && typeof row === "object" ? (row as Record<string, unknown>)[key] : ""))
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+}
+
+async function pliantJson(path: string): Promise<{ data?: unknown; cardConfigs?: unknown } | null> {
+  try {
+    const token = await accessToken();
+    const res = await fetch(`${endpoints().api}${path}`, {
+      headers: { authorization: `Bearer ${token}`, "Pliant-API-Version": "2.1.0" },
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as { data?: unknown; cardConfigs?: unknown };
+  } catch {
+    return null;
+  }
 }
 
 export async function raisePliantLimit(cardId: string, limit: { value: number; currency: "EUR" }, count: number) {

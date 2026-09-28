@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { customerPliantCardCount, etaIlPliantCard, pliantCardName, pliantRefusal } from "./eta-il-fee";
+import { customerPliantCardCount, etaIlPliantCard, pickListedId, pickTravelConfig, pliantCardName, pliantRefusal } from "./eta-il-fee";
 import { corridorCeilingCents, ECB_SNAPSHOT, centsToEur } from "./visa-fees";
 
 const NAME_CHARS = /^[A-Za-z0-9äöüÄÖÜ.\-]+$/;
@@ -130,4 +130,21 @@ test("un refus Pliant reste court et sans identifiant", () => {
   assert.match(line, /Pliant a refusé la carte/);
   assert.equal(line.includes("123e4567"), false);
   assert.equal(pliantRefusal(500, "not-json"), "Pliant a refusé la carte (500).");
+});
+
+test("un identifiant Pliant absent est remplacé seulement s’il n’y en a qu’un", () => {
+  assert.equal(pickListedId("configured", ["configured", "other"]), "configured");
+  assert.equal(pickListedId("missing", ["only"]), "only");
+  assert.equal(pickListedId("missing", ["a", "b"]), null);
+  assert.equal(
+    pickTravelConfig("PLIANT_VIRTUAL_TRAVEL", [
+      { cardConfig: "PLIANT_VIRTUAL", type: "VIRTUAL", canBeIssued: true },
+      { cardConfig: "PLIANT_VIRTUAL_TRAVEL", type: "VIRTUAL", canBeIssued: true },
+    ]),
+    "PLIANT_VIRTUAL_TRAVEL"
+  );
+  assert.equal(
+    pickTravelConfig("UNKNOWN", [{ cardConfig: "ORG_VIRTUAL_TRAVEL", type: "VIRTUAL", canBeIssued: true }]),
+    "ORG_VIRTUAL_TRAVEL"
+  );
 });

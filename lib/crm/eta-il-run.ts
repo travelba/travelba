@@ -38,7 +38,10 @@ export async function executeEtaIlFill(opts: {
   ceilingEur: number | null;
   fee: string | null;
 }> {
-  const numbers = opts.draft.applicants.map((row) => row.number);
+  const numbers = [
+    ...opts.draft.applicants.map((row) => row.number),
+    opts.draft.guardian?.number || "",
+  ].filter((value) => value.length > 3);
   const log = async (kind: PortalLogKind, text: string) => {
     await writePortalEvent(opts.db, opts.bookingId, portalEvent(kind, redactPassportNumbers(text, numbers)));
   };

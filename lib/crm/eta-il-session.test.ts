@@ -4,6 +4,7 @@ import { buildEtaIlDraft } from "./eta-il-draft";
 import {
   astraRefusalMessage,
   buildEtaIlRequest,
+  holdKeepsForm,
   portalToolChoice,
   portalUrlAllowed,
   readPortalStep,
@@ -241,6 +242,16 @@ test("un écran inattendu ne tient pas le formulaire", async () => {
   });
   assert.equal(result.filled, false);
   assert.equal(result.phase, "bloqué");
+});
+
+test("une information manquante n’est pas un formulaire tenu", () => {
+  assert.equal(
+    holdKeepsForm(
+      "Préparation suspendue : le portail exige le représentant adulte ; ces informations n’ont pas été fournies."
+    ),
+    false
+  );
+  assert.equal(holdKeepsForm("Formulaire rempli pour deux voyageurs, départ le 14 décembre."), true);
 });
 
 test("la limite d’étapes n’est pas un formulaire tenu", async () => {
