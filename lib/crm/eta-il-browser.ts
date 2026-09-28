@@ -79,6 +79,7 @@ export async function openEtaIlPortal(): Promise<PortalOpen> {
       await browser.close();
       return { ok: false, message: "Le portail ETA-IL n’a pas pu s’ouvrir." };
     }
+    await waitForPortal(page);
     return {
       ok: true,
       session: {
@@ -87,19 +88,14 @@ export async function openEtaIlPortal(): Promise<PortalOpen> {
           if (!portalUrlAllowed(url)) throw new Error("hôte");
           await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20000 });
           if (!portalUrlAllowed(page.url())) throw new Error("hôte");
+          await waitForPortal(page);
         },
         click: (target) => clickLabel(page, target),
         type: (target, text) => typeLabel(page, target, text),
         scroll: async () => {
           await page.evaluate(() => window.scrollBy(0, 480), "");
         },
-        describe: async () => {
-          const excerpt = await page.evaluate(
-            () => (document.body?.innerText || "").replace(/\s+/g, " ").slice(0, 800),
-            ""
-          );
-          return `url=${page.url()} extrait=${excerpt}`;
-        },
+        describe: () => describePortal(page),
         close: async () => {
           await page.close().catch(() => undefined);
           await browser.close().catch(() => undefined);
@@ -111,6 +107,43 @@ export async function openEtaIlPortal(): Promise<PortalOpen> {
     await browser.close().catch(() => undefined);
     return { ok: false, message: "Le portail ETA-IL n’a pas pu s’ouvrir." };
   }
+}
+
+/** La page est une SPA : #root est vide à domcontentloaded. On attend boutons ou texte. */
+async function waitForPortal(page: ChromePage) {
+  const deadline = Date.now() + 8000;
+  while (Date.now() < deadline) {
+    const ready = await page.evaluate(() => {
+      const root = document.querySelector("#root") || document.body;
+      const text = (root?.textContent || "").replace(/\s+/g, " ").trim();
+      const controls = root?.querySelectorAll("button, a, input, textarea, select, [role='button']").length || 0;
+      return text.length > 40 || controls > 0;
+    }, "");
+    if (ready) return;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+}
+
+async function describePortal(page: ChromePage) {
+  await waitForPortal(page);
+  const snapshot = await page.evaluate(() => {
+    const root = document.querySelector("#root") || document.body;
+    const labels: string[] = [];
+    const nodes = root.querySelectorAll("button, a, [role='button'], label, input, textarea, select");
+    nodes.forEach((el) => {
+      if (labels.length >= 24) return;
+      const field = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement;
+      const raw = field
+        ? el.getAttribute("aria-label") || el.getAttribute("placeholder") || el.getAttribute("name") || ""
+        : el.textContent || "";
+      const clean = raw.replace(/\s+/g, " ").trim().slice(0, 80);
+      if (!clean || labels.includes(clean)) return;
+      labels.push(clean);
+    });
+    const excerpt = (root.textContent || "").replace(/\s+/g, " ").trim().slice(0, 400);
+    return { labels: labels.join(" | "), excerpt };
+  }, "");
+  return `url=${page.url()} contrôles=${snapshot.labels || "aucun"} extrait=${snapshot.excerpt}`;
 }
 
 async function clickLabel(page: ChromePage, target: string) {
@@ -125,22 +158,31 @@ async function clickLabel(page: ChromePage, target: string) {
 }
 
 async function typeLabel(page: ChromePage, target: string, text: string) {
-  const ok = await page.evaluate((label) => {
+  const ok = await page.evaluate((payload) => {
+    const parsed = JSON.parse(payload) as { label: string; value: string };
+    const needle = parsed.label.replace(/\s+/g, " ").trim().toLowerCase();
     const labels = Array.from(document.querySelectorAll("label"));
-    const match = labels.find((el) => (el.textContent || "").toLowerCase().includes(label.toLowerCase()));
+    const match = labels.find((el) => (el.textContent || "").replace(/\s+/g, " ").toLowerCase().includes(needle));
     const id = match?.getAttribute("for");
-    const field = id ? document.getElementById(id) : match?.querySelector("input, textarea");
+    const fromLabel = id ? document.getElementById(id) : match?.querySelector("input, textarea");
+    const inputs = Array.from(document.querySelectorAll("input, textarea"));
+    const fromAttr = inputs.find((el) => {
+      const bag = [el.getAttribute("aria-label"), el.getAttribute("placeholder"), el.getAttribute("name")]
+        .join(" ")
+        .toLowerCase();
+      return bag.includes(needle);
+    });
+    const field = fromLabel instanceof HTMLInputElement || fromLabel instanceof HTMLTextAreaElement ? fromLabel : fromAttr;
     if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)) return false;
     field.focus();
-    field.value = "";
-    return true;
-  }, target);
-  if (!ok) throw new Error("champ");
-  await page.evaluate((value) => {
-    const field = document.activeElement;
-    if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)) return;
-    field.value = value;
+    const proto = field instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+    if (setter) setter.call(field, parsed.value);
+    else field.value = parsed.value;
     field.dispatchEvent(new Event("input", { bubbles: true }));
-  }, text);
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  }, JSON.stringify({ label: target, value: text }));
+  if (!ok) throw new Error("champ");
 }
 

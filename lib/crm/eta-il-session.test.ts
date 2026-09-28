@@ -4,9 +4,11 @@ import { buildEtaIlDraft } from "./eta-il-draft";
 import {
   astraRefusalMessage,
   buildEtaIlRequest,
+  portalToolChoice,
   portalUrlAllowed,
   readPortalStep,
   redactPassportNumbers,
+  responseTrace,
   runEtaIlSession,
   stepDecision,
   type PortalPage,
@@ -81,6 +83,8 @@ function page(): PortalPage {
 test("la requête Astra reste sur gpt-6-astra et le portail officiel", () => {
   const body = buildEtaIlRequest(draft());
   assert.equal(body.model, "gpt-6-astra");
+  assert.equal(body.tool_choice.name, portalToolChoice.name);
+  assert.equal(body.tools[0]?.name, "portal_step");
   assert.equal(JSON.stringify(body).includes("gpt-4o"), false);
   assert.match(body.instructions, /israel-entry.piba.gov.il/);
   assert.match(body.instructions, /Ne paie pas/);
@@ -141,6 +145,104 @@ test("un refus d’accès Astra ne bascule pas vers un autre modèle", async () 
   });
   assert.equal(result.phase, "bloqué");
   assert.match(result.message || "", /GPT-6 Astra/);
+});
+
+function stepBody(id: string, callId: string, step: Record<string, string>) {
+  return JSON.stringify({
+    id,
+    status: "completed",
+    output: [
+      {
+        type: "function_call",
+        name: "portal_step",
+        call_id: callId,
+        arguments: JSON.stringify({ url: "", target: "", text: "", summary: "", ...step }),
+      },
+    ],
+  });
+}
+
+test("la suite renvoie l’outil et le clic est appliqué", async () => {
+  const bodies: Array<{ model?: string; tool_choice?: { name?: string }; tools?: Array<{ name?: string }> }> = [];
+  const clicked: string[] = [];
+  let calls = 0;
+  const surface = page();
+  const result = await runEtaIlSession({
+    apiKey: "sk-test",
+    draft: draft(),
+    maxSteps: 2,
+    page: {
+      ...surface,
+      click: async (target) => {
+        clicked.push(target);
+      },
+    },
+    fetchImpl: async (_url, init) => {
+      if (init?.body) bodies.push(JSON.parse(String(init.body)));
+      calls += 1;
+      const body =
+        calls === 1
+          ? stepBody("resp_1", "call_1", { action: "open", url: "https://israel-entry.piba.gov.il/" })
+          : stepBody("resp_2", "call_2", { action: "click", target: "Commencer" });
+      return new Response(body, { status: 200 });
+    },
+  });
+  assert.equal(clicked.join(","), "Commencer");
+  assert.equal(bodies[1]?.model, "gpt-6-astra");
+  assert.equal(bodies[1]?.tool_choice?.name, "portal_step");
+  assert.equal(bodies[1]?.tools?.[0]?.name, "portal_step");
+  assert.equal(JSON.stringify(bodies[1]).includes("gpt-4o"), false);
+  assert.equal(result.phase, "à confirmer");
+});
+
+test("une réponse sans portal_step garde le message de reprise", async () => {
+  const result = await runEtaIlSession({
+    apiKey: "sk-test",
+    draft: draft(),
+    page: page(),
+    fetchImpl: async () =>
+      new Response(JSON.stringify({ id: "resp_1", status: "completed", output: [{ type: "message" }] }), {
+        status: 200,
+      }),
+  });
+  assert.equal(result.phase, "bloqué");
+  assert.equal(result.message, "Le portail n’a pas été rempli. Reprenez la main sur le site officiel.");
+});
+
+test("une réponse en cours est relue jusqu’à l’action", async () => {
+  let gets = 0;
+  const result = await runEtaIlSession({
+    apiKey: "sk-test",
+    draft: draft(),
+    pollMs: 0,
+    page: page(),
+    fetchImpl: async (_url, init) => {
+      if ((init?.method || "GET") === "GET") {
+        gets += 1;
+        return new Response(
+          stepBody("resp_1", "call_1", { action: "hold", summary: "Ada Martin, 14 décembre" }),
+          { status: 200 }
+        );
+      }
+      return new Response(
+        JSON.stringify({ id: "resp_1", status: "in_progress", output: [{ type: "reasoning" }] }),
+        { status: 200 }
+      );
+    },
+  });
+  assert.equal(gets, 1);
+  assert.equal(result.phase, "à confirmer");
+  assert.match(result.summary || "", /Ada Martin/);
+});
+
+test("la trace d’échec ne recopie pas la réponse", () => {
+  const trace = responseTrace({
+    status: "completed",
+    output: [{ type: "message", arguments: "12AB34567" }],
+  });
+  assert.equal(trace.includes("12AB34567"), false);
+  assert.match(trace, /completed/);
+  assert.match(trace, /message/);
 });
 
 test("readPortalStep lit l’action renvoyée", () => {
