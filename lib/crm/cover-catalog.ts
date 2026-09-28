@@ -464,6 +464,7 @@ const CITIES: Array<[name: string, country: string, photo?: string]> = [
   ["san francisco", "us"],
   ["las vegas", "us"],
   ["miami", "us", "photo-1533106497176-45ae19e68ba2"],
+  ["miami beach", "us", "photo-1533106497176-45ae19e68ba2"],
   ["south beach", "us", "photo-1533106497176-45ae19e68ba2"],
   ["chicago", "us"],
   ["boston", "us"],
