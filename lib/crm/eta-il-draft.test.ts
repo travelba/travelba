@@ -130,3 +130,66 @@ test("seuls les voyageurs cochés partent sur le portail", () => {
   );
   assert.equal(JSON.stringify(publicEtaIlDraft(draft)).includes("Ada"), false);
 });
+
+test("un mineur part avec le représentant adulte, sans numéro dans la vue publique", () => {
+  const adult = traveler({ id: "adult", first_name: "Ada", last_name: "Martin", is_account_holder: true });
+  const child = traveler({ id: "child", first_name: "Noa", last_name: "Martin", is_account_holder: false });
+  const draft = buildEtaIlDraft({
+    ...stay,
+    items: [{ kind: "flight", details: { to: "TLV" } }],
+    travelers: [adult, child],
+    travelerIds: ["child"],
+    documents: [
+      passport({
+        id: "pa",
+        booking_id: "b1",
+        traveler_id: "adult",
+        number: "FRADULT01",
+        birth_date: "1980-01-02",
+        first_name: "Ada",
+        last_name: "Martin",
+        issuing_country: "FR",
+      }),
+      passport({
+        id: "pc",
+        booking_id: "b1",
+        traveler_id: "child",
+        number: "FRCHILD1",
+        birth_date: "2016-04-05",
+        first_name: "Noa",
+        last_name: "Martin",
+        issuing_country: "FR",
+      }),
+    ],
+  });
+  assert.equal(draft.phase, "prêt");
+  assert.equal(draft.applicants[0]?.minor, true);
+  assert.equal(draft.guardian?.firstName, "Ada");
+  assert.equal(draft.guardian?.issuingCountry, "FR");
+  const pub = JSON.stringify(publicEtaIlDraft(draft));
+  assert.equal(pub.includes("FRADULT01"), false);
+  assert.equal(pub.includes("FRCHILD1"), false);
+});
+
+test("un mineur sans adulte ne part pas", () => {
+  const child = traveler({ id: "child", first_name: "Noa", last_name: "Martin", is_account_holder: false });
+  const draft = buildEtaIlDraft({
+    ...stay,
+    items: [{ kind: "flight", details: { to: "TLV" } }],
+    travelers: [child],
+    documents: [
+      passport({
+        id: "pc",
+        booking_id: "b1",
+        traveler_id: "child",
+        number: "FRCHILD1",
+        birth_date: "2016-04-05",
+        first_name: "Noa",
+        last_name: "Martin",
+      }),
+    ],
+  });
+  assert.equal(draft.phase, "brouillon");
+  assert.match(draft.reason || "", /représentant adulte/);
+  assert.equal(draft.applicants.length, 0);
+});

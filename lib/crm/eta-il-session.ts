@@ -58,7 +58,7 @@ export function astraRefusalMessage(status: number, body: string) {
 
 /** Un hold sur l’accueil ou un écran inattendu n’est pas un formulaire tenu. */
 export function holdKeepsForm(summary: string) {
-  return !/écran inattendu|captcha|accueil|sans champs|before you start|bloqu/i.test(summary);
+  return !/écran inattendu|captcha|accueil|sans champs|before you start|bloqu|pas été fourni|suspendue|suspendu/i.test(summary);
 }
 
 export function stepDecision(step: PortalStep): "run" | "hold" | "stop" {
@@ -76,7 +76,8 @@ const PORTAL_INSTRUCTIONS = [
   "Chaque tour appelle portal_step. Pas de texte libre.",
   "Quand les champs de la demande sont remplis, appelle portal_step avec action hold.",
   "Le résumé hold nomme les voyageurs cochés et les dates, sans numéro de passeport.",
-  "L’accueil et « Before you start » ne sont pas un formulaire tenu : clique le bouton pour continuer.",
+  "Si un demandeur est mineur, saisis le représentant adulte du champ guardian : nom, prénom, numéro et pays de délivrance.",
+  "Ne hold pas pour signaler une information déjà présente dans la demande.",
   "Si un captcha bloque, hold tout de suite.",
 ].join(" ");
 
@@ -127,6 +128,7 @@ export function buildEtaIlRequest(draft: EtaIlDraft) {
           startDate: draft.startDate,
           endDate: draft.endDate,
           applicants: draft.applicants,
+          ...(draft.guardian ? { guardian: draft.guardian } : {}),
         }),
       },
     ],
@@ -239,7 +241,10 @@ export async function runEtaIlSession(opts: {
 }): Promise<{ phase: EtaIlPhase; summary: string | null; message: string | null; filled: boolean }> {
   const fetchImpl = opts.fetchImpl || fetch;
   const pollMs = opts.pollMs ?? 750;
-  const numbers = opts.draft.applicants.map((row) => row.number);
+  const numbers = [
+    ...opts.draft.applicants.map((row) => row.number),
+    opts.draft.guardian?.number || "",
+  ].filter((value) => value.length > 3);
   const maxSteps = opts.maxSteps ?? 24;
   let misses = 0;
   let previous: string | undefined;

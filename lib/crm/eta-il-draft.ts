@@ -33,6 +33,14 @@ export type EtaIlApplicant = {
   expiresOn: string;
   nationality: "FR";
   email: string;
+  minor: boolean;
+};
+
+export type EtaIlGuardian = {
+  firstName: string;
+  lastName: string;
+  number: string;
+  issuingCountry: string;
 };
 
 export type EtaIlDraft = {
@@ -43,6 +51,7 @@ export type EtaIlDraft = {
   endDate: string | null;
   travelers: EtaIlPersonView[];
   applicants: EtaIlApplicant[];
+  guardian: EtaIlGuardian | null;
 };
 
 type FlightRow = { kind?: string | null; details?: Record<string, unknown> | null };
@@ -88,6 +97,40 @@ function sexOf(value: string | null | undefined): "M" | "F" | "X" | null {
   return null;
 }
 
+/** Mineur le jour du départ : le 18e anniversaire est déjà adulte. */
+export function isMinorOn(birthDate: string, onDate: string) {
+  const birth = birthDate.slice(0, 10);
+  const on = onDate.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(birth) || !/^\d{4}-\d{2}-\d{2}$/.test(on)) return false;
+  const [year, month, day] = birth.split("-").map(Number);
+  const adult = `${year + 18}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  return on < adult;
+}
+
+export function guardianForMinors(input: {
+  travelers: CrmBookingTraveler[];
+  documents: CrmTravelDocument[];
+  holder?: PersonName | null;
+  onDate: string;
+}): EtaIlGuardian | null {
+  const adults = input.travelers
+    .map((traveler) => {
+      const passport = passportFor(input.documents, traveler, input.holder || null);
+      const birthDate = text(passport?.birth_date);
+      const firstName = text(passport?.first_name) || text(traveler.first_name);
+      const lastName = text(passport?.last_name) || text(traveler.last_name);
+      const number = text(passport?.number);
+      const issuingCountry = iso2(passport?.issuing_country) || iso2(passport?.nationality);
+      if (!birthDate || isMinorOn(birthDate, input.onDate) || !firstName || !lastName || !number || !issuingCountry) {
+        return null;
+      }
+      return { traveler, guardian: { firstName, lastName, number, issuingCountry } };
+    })
+    .filter((row): row is { traveler: CrmBookingTraveler; guardian: EtaIlGuardian } => Boolean(row));
+  const holder = adults.find((row) => row.traveler.is_account_holder) || adults[0];
+  return holder?.guardian || null;
+}
+
 export function tripGoesToIsrael(items: FlightRow[] | null | undefined) {
   return frenchPassportTrip(items, 0).entries.some((entry) => entry.iso === "IL");
 }
@@ -114,6 +157,7 @@ export function buildEtaIlDraft(input: {
     endDate,
     travelers: [],
     applicants: [],
+    guardian: null,
   };
   if (!tripGoesToIsrael(input.items)) {
     return { ...empty, reason: "Ce dossier n’a pas de vol vers Israël." };
@@ -173,6 +217,7 @@ export function buildEtaIlDraft(input: {
         expiresOn,
         nationality: "FR",
         email,
+        minor: Boolean(startDate && birthDate && isMinorOn(birthDate, startDate)),
       });
     }
   }
@@ -186,6 +231,7 @@ export function buildEtaIlDraft(input: {
       endDate,
       travelers,
       applicants: [],
+      guardian: null,
     };
   }
   if (travelers.some((row) => !row.ready)) {
@@ -197,6 +243,28 @@ export function buildEtaIlDraft(input: {
       endDate,
       travelers,
       applicants: [],
+      guardian: null,
+    };
+  }
+  const guardian =
+    startDate && applicants.some((row) => row.minor)
+      ? guardianForMinors({
+          travelers: input.travelers,
+          documents: input.documents,
+          holder: input.holder,
+          onDate: startDate,
+        })
+      : null;
+  if (applicants.some((row) => row.minor) && !guardian) {
+    return {
+      phase: "brouillon",
+      portal,
+      reason: "Un voyageur mineur exige le passeport d’un représentant adulte.",
+      startDate,
+      endDate,
+      travelers,
+      applicants: [],
+      guardian: null,
     };
   }
   return {
@@ -207,6 +275,7 @@ export function buildEtaIlDraft(input: {
     endDate,
     travelers,
     applicants,
+    guardian,
   };
 }
 
