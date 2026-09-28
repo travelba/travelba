@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { AUTH_COOKIE_OPTIONS } from "@/lib/supabase/cookie-options";
 import {
+  ONBOARDING_PATH,
   SET_PASSWORD_PATH,
   clientAreaRedirect,
   isStaffRole,
@@ -86,6 +87,16 @@ export async function updateSession(request: NextRequest) {
       url.search = "";
       return NextResponse.redirect(url);
     }
+    if (!mustSetPassword(user)) {
+      const url = request.nextUrl.clone();
+      url.pathname = staff
+        ? "/admin"
+        : needsClientOnboarding(user)
+          ? ONBOARDING_PATH
+          : "/mon-compte";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
     return supabaseResponse;
   }
 
@@ -97,7 +108,7 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(url);
     }
     const dest = clientAreaRedirect(pathname, {
-      mustSetPassword: mustSetPassword(user),
+      mustSetPassword: mustSetPassword(user) && !staff,
       needsOnboarding: needsClientOnboarding(user),
     });
     if (dest) {

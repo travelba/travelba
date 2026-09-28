@@ -3,6 +3,7 @@
 import { FormEvent, Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { needsClientOnboarding, pathAfterKnownPassword } from "@/lib/crm/session";
 import { siteConfig } from "@/lib/site";
 import { BrandMark } from "@/components/crm/ui";
 import { BusyBar } from "@/components/crm/BusyBar";
@@ -33,11 +34,12 @@ function LoginForm() {
       email: email.trim(),
       password,
     });
-    setLoading(false);
     if (signError) {
+      setLoading(false);
       setError("E-mail ou mot de passe incorrect.");
       return;
     }
+    await fetch("/api/auth/known-password", { method: "POST" });
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -48,16 +50,14 @@ function LoginForm() {
           .eq("auth_user_id", user.id)
           .maybeSingle()
       : { data: null };
-    if (staff) {
-      router.push("/admin");
-      router.refresh();
-      return;
-    }
-    const safeNext =
-      next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/admin")
-        ? next
-        : "/mon-compte";
-    router.push(safeNext);
+    setLoading(false);
+    router.push(
+      pathAfterKnownPassword({
+        staff: Boolean(staff),
+        needsOnboarding: user ? needsClientOnboarding(user) : false,
+        next,
+      })
+    );
     router.refresh();
   }
 

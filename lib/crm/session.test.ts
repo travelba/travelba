@@ -8,8 +8,10 @@ import {
   mustSetPassword,
   needsClientOnboarding,
   pathAfterPassword,
+  pathAfterKnownPassword,
   signedInClientDestination,
   shouldForcePasswordSetup,
+  withoutMustSetPassword,
   withOnboardingDone,
   withOnboardingPending,
 } from "./session";
@@ -93,9 +95,13 @@ test("l’espace client force la bienvenue tant qu’elle n’est pas passée", 
   );
 });
 
-test("un staff ne voit pas la bienvenue, le mot de passe passe avant", () => {
+test("un staff ne voit pas la bienvenue, même si le drapeau mot de passe est encore là", () => {
   assert.equal(
     signedInClientDestination({ mustSetPassword: false, needsOnboarding: true, staff: true }),
+    "/admin"
+  );
+  assert.equal(
+    signedInClientDestination({ mustSetPassword: true, needsOnboarding: true, staff: true }),
     "/admin"
   );
   assert.equal(
@@ -110,6 +116,50 @@ test("un staff ne voit pas la bienvenue, le mot de passe passe avant", () => {
     signedInClientDestination({ mustSetPassword: false, needsOnboarding: false, staff: false }),
     "/mon-compte"
   );
+});
+
+test("un mot de passe déjà accepté ouvre l’espace, pas la page de définition", () => {
+  assert.equal(
+    pathAfterKnownPassword({ staff: false, needsOnboarding: false, next: "/mon-compte" }),
+    "/mon-compte"
+  );
+  assert.equal(
+    pathAfterKnownPassword({
+      staff: false,
+      needsOnboarding: false,
+      next: SET_PASSWORD_PATH,
+    }),
+    "/mon-compte"
+  );
+  assert.equal(
+    pathAfterKnownPassword({ staff: false, needsOnboarding: true, next: "/mon-compte" }),
+    ONBOARDING_PATH
+  );
+  assert.equal(
+    pathAfterKnownPassword({ staff: true, needsOnboarding: true, next: SET_PASSWORD_PATH }),
+    "/admin"
+  );
+  assert.equal(
+    pathAfterKnownPassword({
+      staff: false,
+      needsOnboarding: false,
+      next: "/mon-compte/reservations/TB-1",
+    }),
+    "/mon-compte/reservations/TB-1"
+  );
+});
+
+test("retirer le drapeau ne réécrit pas le mot de passe", () => {
+  const cleared = withoutMustSetPassword({
+    must_set_password: true,
+    crm_role: "client",
+    client_onboarding_done: true,
+  });
+  assert.equal(cleared.must_set_password, false);
+  assert.equal(cleared.crm_role, "client");
+  assert.equal(cleared.client_onboarding_done, true);
+  assert.equal("password" in cleared, false);
+  assert.equal(withoutMustSetPassword({ crm_role: "admin" }).must_set_password, undefined);
 });
 
 test("PKCE reset without type still forces password when next is the set-password page", () => {

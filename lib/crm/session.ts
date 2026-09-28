@@ -65,10 +65,38 @@ export function signedInClientDestination(opts: {
   needsOnboarding: boolean;
   staff: boolean;
 }) {
-  if (opts.mustSetPassword) return SET_PASSWORD_PATH;
   if (opts.staff) return "/admin";
+  if (opts.mustSetPassword) return SET_PASSWORD_PATH;
   if (opts.needsOnboarding) return ONBOARDING_PATH;
   return "/mon-compte";
+}
+
+/** Connexion par le mot de passe déjà choisi : ne jamais rouvrir la page de définition. */
+export function pathAfterKnownPassword(opts: {
+  staff: boolean;
+  needsOnboarding: boolean;
+  next?: string | null;
+}) {
+  if (opts.staff) return "/admin";
+  if (opts.needsOnboarding) return ONBOARDING_PATH;
+  const next = opts.next || "";
+  const path = next.split("?")[0];
+  if (
+    path.startsWith("/") &&
+    !path.startsWith("//") &&
+    !path.startsWith("/admin") &&
+    path !== SET_PASSWORD_PATH &&
+    path !== "/connexion"
+  ) {
+    return next;
+  }
+  return "/mon-compte";
+}
+
+/** Retire le drapeau sans toucher au mot de passe ni au reste des métadonnées. */
+export function withoutMustSetPassword(meta: Record<string, unknown>) {
+  if (meta.must_set_password !== true) return { ...meta };
+  return { ...meta, must_set_password: false };
 }
 
 /** Redirection dans /mon-compte, ou null pour laisser passer. */

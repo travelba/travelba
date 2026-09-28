@@ -31,6 +31,8 @@ function LoginForm() {
       return;
     }
 
+    await fetch("/api/auth/known-password", { method: "POST" });
+
     const {
       data: { user },
     } = await supabase.auth.getUser();
