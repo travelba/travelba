@@ -5,6 +5,7 @@ import {
   checkinFeeAmount,
   checkinFeeTitle,
   composeItineraryDay,
+  placeDestinationHotelAfterFlight,
   countExtraHeads,
   extraAmount,
   extraFlightAt,
@@ -210,6 +211,37 @@ test("un refus masque ce service, pas les autres", () => {
       moment: "depart",
     }),
     false
+  );
+});
+
+test("chauffeur et fast pass passent avant l’hôtel de destination", () => {
+  const outbound = {
+    id: "out",
+    kind: "flight",
+    start_at: "2026-10-14T08:30:00+00:00",
+    end_at: "2026-10-14T10:45:00+00:00",
+    details: {
+      from: "CDG",
+      to: "JFK",
+      city_from: "Paris",
+      city_to: "New York",
+      flight_number: "AF 2",
+    },
+  };
+  const hotel = { id: "ned", kind: "hotel" };
+  const dinner = { id: "din", kind: "activity" };
+  const offers = itineraryOffers([outbound]);
+  const placed = composeItineraryDay("2026-10-14", [hotel, outbound, dinner], offers);
+  assert.deepEqual(
+    placed.map((row) =>
+      row.type === "offer" ? `${row.offer.kind}:${row.offer.slot}` : row.item.kind
+    ),
+    ["chauffeur:before", "greeter:before", "flight", "greeter:after", "hotel", "activity"]
+  );
+  const already = placeDestinationHotelAfterFlight([outbound, hotel], offers, "2026-10-14");
+  assert.deepEqual(
+    already.map((item) => item.id),
+    ["out", "ned"]
   );
 });
 

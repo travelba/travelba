@@ -561,15 +561,40 @@ export function serviceRefusalFromRow(row: {
   return { kind, leg, place, moment };
 }
 
+/**
+ * L’hôtel posé avant le vol du jour passe juste après ce vol.
+ * Le chauffeur et le fast pass, collés au vol, restent devant l’hôtel d’arrivée.
+ */
+export function placeDestinationHotelAfterFlight<
+  T extends { id: string; kind?: string | null },
+>(items: T[], offers: ServiceOffer[], day: string): T[] {
+  const flightIds = new Set(
+    offers.filter((offer) => offer.day === day).map((offer) => offer.flightId)
+  );
+  const firstFlight = items.findIndex((item) => flightIds.has(item.id));
+  if (firstFlight < 0) return items;
+  const parked: T[] = [];
+  const rest: T[] = [];
+  items.forEach((item, index) => {
+    if (item.kind === "hotel" && index < firstFlight) parked.push(item);
+    else rest.push(item);
+  });
+  if (!parked.length) return items;
+  const at = rest.indexOf(items[firstFlight]);
+  if (at < 0) return items;
+  return [...rest.slice(0, at + 1), ...parked, ...rest.slice(at + 1)];
+}
+
 /** Cartes du jour : propositions collées au vol, sinon en tête de journée (arrivée la veille ou le lendemain). */
-export function composeItineraryDay<T extends { id: string }>(
+export function composeItineraryDay<T extends { id: string; kind?: string | null }>(
   day: string,
   items: T[],
   offers: ServiceOffer[]
 ): JourneyRow<T>[] {
+  const ordered = placeDestinationHotelAfterFlight(items, offers, day);
   const used = new Set<ServiceOffer>();
   const rows: JourneyRow<T>[] = [];
-  for (const item of items) {
+  for (const item of ordered) {
     for (const offer of offers) {
       if (used.has(offer) || offer.day !== day || offer.flightId !== item.id || offer.slot !== "before") {
         continue;
