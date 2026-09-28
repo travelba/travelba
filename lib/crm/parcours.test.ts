@@ -134,6 +134,24 @@ test("cover catalogue matches the arrival place only", () => {
     unsplashKeywordMatch({ destination: "Antibes", title: "Séjour" }),
     "photo-antibes-garoupe"
   );
+  assert.equal(
+    unsplashKeywordMatch({ destination: "Lamego · Portugal", title: "Lamego · Portugal" }),
+    "photo-lamego-remedios"
+  );
+  assert.notEqual(
+    unsplashKeywordMatch({ destination: "Lamego", title: "Séjour" }),
+    unsplashKeywordMatch({ destination: "Portugal", title: "Séjour" })
+  );
+  const lamegoStay = bookingCoverPlan(
+    {
+      destination: "Lamego · Portugal",
+      title: "Lamego · Portugal",
+      cover_image_path: null,
+    },
+    { items: [{ kind: "hotel", details: { city: "Lamego" } }] }
+  );
+  assert.equal(lamegoStay.mode, "single");
+  if (lamegoStay.mode === "single") assert.match(lamegoStay.src, /photo-lamego-remedios/);
   assert.notEqual(
     unsplashKeywordMatch({ destination: "Antibes", title: "Séjour" }),
     unsplashKeywordMatch({ destination: "France", title: "Séjour" })
