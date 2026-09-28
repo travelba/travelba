@@ -58,6 +58,7 @@ export async function POST(request: Request) {
       total_amount: 0,
       include_in_ledger: parseIncludeInLedger(body?.include_in_ledger, true),
       agency_commission: parseIncludeInLedger(body?.agency_commission, false),
+      client_settles_stay: parseIncludeInLedger(body?.client_settles_stay, false),
       notes_client: body?.notes_client || null,
       notes_internal: body?.notes_internal || null,
       visible_to_client: false,
