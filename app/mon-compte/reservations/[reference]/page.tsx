@@ -21,6 +21,7 @@ import {
   carnetVisible,
   clientBookingStatusLabel,
   clientVisibleItems,
+  hotelDisplayName,
   HIDDEN_PRICE_LABEL,
   itemPriceLabel,
   tripHeadline,
@@ -43,7 +44,9 @@ import { ReceivedVisasFold } from "@/components/crm/TripVisaUploads";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
-import { isLedgerExpenseKind, visibleServiceCopy, type CrmBillingCompany } from "@/lib/crm/types";
+import { isLedgerExpenseKind, visibleServiceCopy, type CrmBillingCompany, type CrmHotelArrival } from "@/lib/crm/types";
+import { principalGuest, stayCardFace, type StayCardFace } from "@/lib/crm/hotel-arrival";
+import { StayCard } from "@/components/crm/StayCard";
 
 type Props = { params: Promise<{ reference: string }> };
 
@@ -142,6 +145,32 @@ export default async function ReservationDetailPage({ params }: Props) {
     expenseChoices = [];
   }
 
+  let stayCards: StayCardFace[] = [];
+  try {
+    const cardAdmin = createServiceClient();
+    const { data: arrivalRows } = await cardAdmin
+      .from("crm_hotel_arrivals")
+      .select("booking_item_id, pliant_card_id, card_last4, card_closed_at")
+      .eq("booking_id", b.id);
+    const guest = principalGuest({ travelers: party, holder: customer });
+    const holder = `${guest.firstName} ${guest.lastName}`.trim();
+    const hotels = new Map(visibleItems.filter((item) => item.kind === "hotel").map((item) => [item.id, item]));
+    stayCards = ((arrivalRows || []) as Pick<CrmHotelArrival, "booking_item_id" | "pliant_card_id" | "card_last4" | "card_closed_at">[])
+      .filter((row) => row.pliant_card_id && hotels.has(row.booking_item_id))
+      .map((row) => {
+        const item = hotels.get(row.booking_item_id)!;
+        return stayCardFace({
+          itemId: row.booking_item_id,
+          hotel: hotelDisplayName(item) || item.title,
+          holder,
+          last4: row.card_last4,
+          closed: Boolean(row.card_closed_at),
+        });
+      });
+  } catch {
+    stayCards = [];
+  }
+
   const identity = (identityDocs || []) as CrmTravelDocument[];
   const passportRows = passportVaultRows(party, identity, todayIsoDate(), {
     first_name: customer.first_name,
@@ -186,6 +215,13 @@ export default async function ReservationDetailPage({ params }: Props) {
             <p className="aura-card rounded-[1.25rem] bg-white p-4 text-sm leading-relaxed text-[var(--admin-navy)]">
               {b.notes_client}
             </p>
+          ) : null}
+          {stayCards.length ? (
+            <div className="space-y-5">
+              {stayCards.map((face) => (
+                <StayCard key={face.itemId} face={face} revealUrl={`/api/client/bookings/${b.id}/hotel-card`} />
+              ))}
+            </div>
           ) : null}
         </>
       }

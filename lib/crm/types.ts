@@ -299,6 +299,8 @@ export type CrmHotelArrival = {
   amount_cents: number | null;
   currency: string;
   pliant_card_id: string | null;
+  /** Quatre derniers chiffres seulement. Jamais le PAN. */
+  card_last4: string | null;
   card_limit_cents: number | null;
   payment_url: string | null;
   requested_at: string | null;

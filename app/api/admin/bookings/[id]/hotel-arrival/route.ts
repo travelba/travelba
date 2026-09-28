@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { parseEurosToCents } from "@/lib/crm/hotel-arrival";
+import { revealStayCard } from "@/lib/crm/hotel-card-reveal";
 import { advanceHotelItem } from "@/lib/crm/hotel-arrival-run";
-import { pliantConfigured, readPliantCardSecrets } from "@/lib/crm/pliant";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmHotelArrival } from "@/lib/crm/types";
 
@@ -14,7 +14,9 @@ export async function POST(request: Request, ctx: Ctx) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
-  const body = (await request.json().catch(() => null)) as { itemId?: string; action?: string; net?: string } | null;
+  const body = (await request.json().catch(() => null)) as
+    | { itemId?: string; action?: string; net?: string; code?: string }
+    | null;
   const itemId = (body?.itemId || "").trim();
   const action = body?.action;
   if (!itemId || !action) return jsonError("Action incomplète", 400);
@@ -51,14 +53,16 @@ export async function POST(request: Request, ctx: Ctx) {
   }
 
   if (action === "card") {
-    if (!row.pliant_card_id) return jsonError("Aucune carte émise", 400);
-    if (!pliantConfigured()) return jsonError("Pliant n’est pas branché.", 400);
-    try {
-      const secrets = await readPliantCardSecrets(row.pliant_card_id);
-      return NextResponse.json(secrets);
-    } catch {
-      return jsonError("Pliant n’a pas renvoyé la carte.", 502);
-    }
+    const revealed = await revealStayCard({
+      admin,
+      rowId: row.id,
+      pliantCardId: row.pliant_card_id,
+      closed: Boolean(row.card_closed_at),
+      code: typeof body?.code === "string" ? body.code : "",
+      audience: "staff",
+    });
+    if ("error" in revealed) return jsonError(revealed.error, revealed.status);
+    return NextResponse.json(revealed.secrets);
   }
 
   return jsonError("Action inconnue", 400);

@@ -28,6 +28,7 @@ import { BookingIngest } from "@/components/crm/BookingIngest";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
 import { HotelArrivalPanel } from "@/components/admin/HotelArrivalPanel";
+import { principalGuest } from "@/lib/crm/hotel-arrival";
 import { BookingExpensesPanel } from "@/components/admin/BookingExpensesPanel";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
@@ -749,7 +750,15 @@ export function BookingEditor({
         </p>
       </section>
 
-      <HotelArrivalPanel bookingId={booking.id} items={items} arrivals={arrivals} />
+      <HotelArrivalPanel
+        bookingId={booking.id}
+        items={items}
+        arrivals={arrivals}
+        holder={(() => {
+          const guest = principalGuest({ travelers, holder: holderProfile });
+          return `${guest.firstName} ${guest.lastName}`.trim();
+        })()}
+      />
 
       <BookingItemsPanel
         bookingId={booking.id}

@@ -5,11 +5,13 @@ import {
   arrivalRowHasNoCardSecrets,
   businessDaysBefore,
   cardCloseDate,
+  cardLast4,
   cardSecretsFromPayload,
   CHECKIN_CARD_CENTS,
   classifyPaymentPage,
   countryIso,
   formatArrivalAmount,
+  groupedPan,
   holidayDatesFromNager,
   hotelChannel,
   hotelLanguage,
@@ -18,14 +20,17 @@ import {
   nagerHolidayUrl,
   nextBusinessDay,
   parisIsoDate,
+  maskedCardNumber,
   parseMoneyToCents,
   paymentUrlFromText,
   planHotelArrival,
   quotedAmount,
   replyPaymentUrl,
+  stayCardFace,
   vipMail,
   type ArrivalTick,
 } from "./hotel-arrival";
+import { agencyCodeMatches } from "./agency-card-code";
 
 const holidays = new Set(["2026-11-03", "2026-11-11"]);
 
@@ -279,4 +284,29 @@ test("échéancier : attente, envoi, Expedia sans lien, relances, paiement, clô
     ).action,
     "pay"
   );
+});
+
+test("carte visuelle : le début reste masqué, le code agence ne se devine pas à la longueur", () => {
+  assert.equal(cardLast4("4242 4242 4242 4242"), "4242");
+  assert.equal(maskedCardNumber("4242"), "•••• •••• •••• 4242");
+  assert.equal(maskedCardNumber(null), "•••• •••• •••• ••••");
+  assert.equal(maskedCardNumber("12"), "•••• •••• •••• ••••");
+  assert.equal(groupedPan("4242424242424242"), "4242 4242 4242 4242");
+  const face = stayCardFace({
+    itemId: "item-1",
+    hotel: "Le Bristol",
+    holder: "Camille Martin",
+    last4: "42424",
+    closed: false,
+  });
+  assert.equal(face.last4, null);
+  assert.equal(Object.prototype.hasOwnProperty.call(face, "pan"), false);
+  assert.equal(
+    stayCardFace({ itemId: "item-1", hotel: "Le Bristol", holder: "Camille Martin", last4: "4242", closed: true }).last4,
+    "4242"
+  );
+  assert.equal(agencyCodeMatches("code-agence", "code-agence"), true);
+  assert.equal(agencyCodeMatches("code-agence", "autre-code"), false);
+  assert.equal(agencyCodeMatches("", "code-agence"), false);
+  assert.equal(agencyCodeMatches("code", "code-agence"), false);
 });

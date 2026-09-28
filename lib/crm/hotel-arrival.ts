@@ -373,6 +373,39 @@ export function arrivalRowHasNoCardSecrets(row: Record<string, unknown>) {
   return !Object.keys(row).some((key) => SECRET_KEY.test(key));
 }
 
+export function cardLast4(pan: string) {
+  const digits = pan.replace(/\D/g, "");
+  return digits.length >= 4 ? digits.slice(-4) : "";
+}
+
+/** Début masqué. Seuls les 4 derniers chiffres restent lisibles. */
+export function maskedCardNumber(last4: string | null | undefined) {
+  const tail = (last4 || "").replace(/\D/g, "").slice(-4);
+  return `•••• •••• •••• ${tail.length === 4 ? tail : "••••"}`;
+}
+
+export function groupedPan(pan: string) {
+  return pan.replace(/\D/g, "").replace(/(\d{4})(?=\d)/g, "$1 ").trim();
+}
+
+export type StayCardFace = {
+  itemId: string;
+  hotel: string;
+  holder: string;
+  last4: string | null;
+  closed: boolean;
+};
+
+export function stayCardFace(input: StayCardFace): StayCardFace {
+  return {
+    itemId: input.itemId,
+    hotel: input.hotel,
+    holder: input.holder,
+    last4: input.last4 && /^\d{4}$/.test(input.last4) ? input.last4 : null,
+    closed: input.closed,
+  };
+}
+
 export function cardSecretsFromPayload(json: unknown) {
   if (!json || typeof json !== "object") return null;
   const row = json as Record<string, unknown>;

@@ -27,6 +27,7 @@ import {
   quotedAmount,
   replyPaymentUrl,
   vipMail,
+  cardLast4,
   classifyPaymentPage,
   type ArrivalTick,
 } from "./hotel-arrival";
@@ -234,6 +235,7 @@ async function save(admin: Admin, id: string, patch: Record<string, unknown>) {
     "amount_cents",
     "currency",
     "pliant_card_id",
+    "card_last4",
     "card_limit_cents",
     "payment_url",
     "requested_at",
@@ -729,6 +731,8 @@ async function sendVip(input: {
     await save(input.admin, row.id, { status: "paid", task_open: true, task_note: row.task_note });
     return row;
   }
+  const last4 = cardLast4(secrets.pan);
+  if (last4.length === 4) row = { ...row, card_last4: last4 };
   const guest = guestName(input.travelers, input.holder);
   const holder = `${guest.firstName} ${guest.lastName}`.trim();
   const mail = vipMail({
@@ -762,7 +766,14 @@ async function sendVip(input: {
   } catch (error) {
     console.error("[hotel-arrival] vip", error instanceof Error ? error.message : "envoi");
     row = { ...row, status: "paid", task_open: true, task_note: "L'envoi du mail VIP a échoué." };
-    await save(input.admin, row.id, { status: "paid", task_open: true, task_note: row.task_note, pliant_card_id: row.pliant_card_id, card_limit_cents: row.card_limit_cents });
+    await save(input.admin, row.id, {
+      status: "paid",
+      task_open: true,
+      task_note: row.task_note,
+      pliant_card_id: row.pliant_card_id,
+      card_limit_cents: row.card_limit_cents,
+      card_last4: row.card_last4,
+    });
     return row;
   }
   row = {

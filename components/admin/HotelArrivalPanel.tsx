@@ -7,18 +7,22 @@ import {
   ARRIVAL_CHANNEL_LABELS,
   ARRIVAL_STATUS_LABELS,
   formatArrivalAmount,
+  stayCardFace,
 } from "@/lib/crm/hotel-arrival";
 import type { CrmBookingItem, CrmHotelArrival } from "@/lib/crm/types";
 import { fieldControlClass } from "@/components/crm/fields";
+import { StayCard } from "@/components/crm/StayCard";
 
 export function HotelArrivalPanel({
   bookingId,
   items,
   arrivals,
+  holder = "",
 }: {
   bookingId: string;
   items: CrmBookingItem[];
   arrivals: CrmHotelArrival[];
+  holder?: string;
 }) {
   const hotels = items.filter((item) => item.kind === "hotel");
   if (!hotels.length) return null;
@@ -35,6 +39,7 @@ export function HotelArrivalPanel({
             bookingId={bookingId}
             item={item}
             arrival={arrivals.find((row) => row.booking_item_id === item.id) || null}
+            holder={holder}
           />
         ))}
       </div>
@@ -46,16 +51,17 @@ function HotelArrivalRow({
   bookingId,
   item,
   arrival,
+  holder,
 }: {
   bookingId: string;
   item: CrmBookingItem;
   arrival: CrmHotelArrival | null;
+  holder: string;
 }) {
   const router = useRouter();
   const [net, setNet] = useState(arrival?.net_cents != null ? (arrival.net_cents / 100).toFixed(2) : "");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [card, setCard] = useState<{ pan: string; expiry: string; cvc: string } | null>(null);
 
   async function post(action: string, extra?: { net?: string }) {
     setBusy(action);
@@ -90,11 +96,6 @@ function HotelArrivalRow({
   async function clearTask() {
     const json = await post("task_done");
     if (json) router.refresh();
-  }
-
-  async function reveal() {
-    const json = await post("card");
-    if (json?.pan && json.expiry && json.cvc) setCard({ pan: json.pan, expiry: json.expiry, cvc: json.cvc });
   }
 
   const name = hotelDisplayName(item) || item.title;
@@ -144,27 +145,24 @@ function HotelArrivalRow({
             Le règlement est fait
           </button>
         ) : null}
-        {arrival?.pliant_card_id ? (
-          <button type="button" className="admin-af-btn rounded-full px-3 py-2 text-sm" disabled={busy === "card"} onClick={reveal}>
-            Afficher la carte
-          </button>
-        ) : null}
         {arrival?.task_open ? (
           <button type="button" className="admin-af-btn rounded-full px-3 py-2 text-sm" disabled={busy === "task_done"} onClick={clearTask}>
             Tâche traitée
           </button>
         ) : null}
       </div>
-      {card ? (
-        <div className="mt-3 rounded-xl bg-[#f7f4ee] p-3 text-sm text-[var(--admin-navy)]">
-          <p>Ces chiffres ne sont pas enregistrés dans le dossier.</p>
-          <p className="mt-2 font-mono">{card.pan.replace(/(\d{4})(?=\d)/g, "$1 ")}</p>
-          <p>
-            {card.expiry} · {card.cvc}
-          </p>
-          <button type="button" className="mt-2 text-sm underline" onClick={() => setCard(null)}>
-            Masquer
-          </button>
+      {arrival?.pliant_card_id ? (
+        <div className="mt-4">
+          <StayCard
+            face={stayCardFace({
+              itemId: item.id,
+              hotel: name,
+              holder,
+              last4: arrival.card_last4,
+              closed: Boolean(arrival.card_closed_at),
+            })}
+            revealUrl={`/api/admin/bookings/${bookingId}/hotel-arrival`}
+          />
         </div>
       ) : null}
       {error ? <p className="mt-2 text-sm text-red-700">{error}</p> : null}
