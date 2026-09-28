@@ -28,7 +28,12 @@ export function ClientOnboarding() {
   const last = step === CLIENT_ONBOARDING_STEPS.length - 1;
 
   useEffect(() => {
-    window.scrollTo(0, 0);
+    const reset = () => {
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    };
+    reset();
+    const frame = requestAnimationFrame(reset);
+    return () => cancelAnimationFrame(frame);
   }, [step]);
 
   async function finish() {
@@ -101,7 +106,14 @@ export function ClientOnboarding() {
         <BusyBar active={busy} label="Enregistrement…" />
         <button
           type="button"
-          onClick={last ? finish : () => setStep((value) => value + 1)}
+          onClick={
+            last
+              ? finish
+              : () => {
+                  setStep((value) => value + 1);
+                  window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+                }
+          }
           disabled={busy}
           className="w-full rounded-full bg-[var(--admin-navy)] px-4 py-3.5 text-sm font-bold text-white transition hover:opacity-95 disabled:opacity-60"
         >
