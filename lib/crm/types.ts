@@ -452,6 +452,14 @@ export type CrmEmailIngest = {
   updated_at: string;
 };
 
+export type CrmCustomerLogin = {
+  id: string;
+  customer_id: string;
+  auth_user_id: string | null;
+  method: string;
+  created_at: string;
+};
+
 export function customerFullName(c: Pick<CrmCustomer, "first_name" | "last_name">) {
   return [c.first_name, c.last_name].filter(Boolean).join(" ").trim() || "Client";
 }

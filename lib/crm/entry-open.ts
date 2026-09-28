@@ -6,6 +6,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { AUTH_COOKIE_OPTIONS } from "@/lib/supabase/cookie-options";
 import { publicSupabaseEnv } from "@/lib/supabase/env";
 import { ensureCustomerForUser, ensureStaff } from "@/lib/crm/auth";
+import { recordCustomerLogin } from "@/lib/crm/customer-login";
 import { PASSWORD_SETUP_COOKIE, mustSetPassword } from "@/lib/crm/session";
 import { stayHasPublishedCover, stayPlaceName } from "./concierge-notices";
 import {
@@ -88,6 +89,7 @@ export async function openEntry(origin: string, code: string) {
 
   await ensureCustomerForUser(user);
   const staff = await ensureStaff(user);
+  if (!staff) await recordCustomerLogin(user.id, "entry");
   const dest = entryDestination({
     nextPath: link.next_path,
     otpType,
