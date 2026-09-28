@@ -14,6 +14,9 @@ import { aiGatewayConfigured, isAllowedIngestType, isPdfFile, openaiApiKey } fro
 import { identitiesExtractSchema } from "./ocr-schema";
 import { trySharp } from "./sharp";
 import { inspectPdf, type RasterPage } from "./pdf-raster";
+import { visualDatesFromOcr } from "./passport-dates";
+import { ocrUprightPassport } from "./passport-mrz-ocr";
+import { uprightPassport } from "./passport-orient";
 import { multiPassportCrops, type CropRect } from "./passport-split";
 
 const MAX_BYTES = 12 * 1024 * 1024;
@@ -35,8 +38,10 @@ first_name : TOUS les prénoms imprimés (ligne « Prénoms » / Given names), d
 last_name : nom de naissance (ligne « Nom » / Surname). Pas le nom d’usage.
 usage_name : nom d’épouse ou nom d’usage, s’il est imprimé (ligne « Nom d’usage », « épouse », « ép. », « née »). Null s’il n’y en a pas. Ne jamais l’inventer, ne pas le mettre dans last_name ni dans les prénoms.
 place_of_birth : lieu de naissance (ville / pays), tel qu’imprimé.
-issued_on : date de délivrance.
-expires_on : date d’expiration.
+issued_on : date de délivrance. Toujours la plus ancienne des deux dates du titre.
+expires_on : date d’expiration. Toujours la plus récente. Ne jamais y mettre la date de délivrance.
+Passeport français : l’expiration est la veille du 10e anniversaire de la délivrance (majeur) ou du 5e (mineur). Exemple fictif : délivré le 2018-03-12 → expire le 2028-03-11. Un passeport délivré en septembre 2026 expire en août 2036, pas en 2026.
+La MRZ ligne 2 contient la date d’expiration (YYMMDD après le sexe), jamais la délivrance. expires_on doit être cette date MRZ quand elle est lisible.
 authority : autorité de délivrance (préfecture, ministère…).
 personal_number : n° personnel / national / optionnel s’il figure.
 number : n° du document (passeport ou CNI).
@@ -96,6 +101,20 @@ async function toVisionImages(
   }
 
   return [{ image, mediaType: mediaType as RasterPage["mediaType"] }];
+}
+
+async function orientPages(pages: RasterPage[]): Promise<RasterPage[]> {
+  const oriented: RasterPage[] = [];
+  for (const page of pages) {
+    try {
+      const jpeg = await uprightPassport(page.image);
+      oriented.push({ image: new Uint8Array(jpeg), mediaType: "image/jpeg" });
+    } catch (err) {
+      console.error("[ocr-document] orient", err instanceof Error ? err.name : "error");
+      oriented.push(page);
+    }
+  }
+  return oriented;
 }
 
 async function cropPage(
@@ -291,17 +310,21 @@ export async function scanTravelDocument(file: File): Promise<{
     } else {
       pages = await toVisionImages(bytes, file.type, file.name);
     }
+    pages = await orientPages(pages);
 
+    const local = await Promise.all(pages.map((page) => ocrUprightPassport(Buffer.from(page.image))));
+    const localText = local.map((item) => item.text).filter(Boolean).join("\n");
     const views = await expandPassportViews(pages);
     const visionFirst = await extractWithVision(views);
     const visionMore = await extractMoreIdentities(pages, visionFirst.identities);
     const vision = uniquePassports([...visionFirst.identities, ...visionMore.identities]);
-    const mrzText = [visionFirst.mrzText, visionMore.mrzText].filter(Boolean).join("\n") || null;
+    const mrzText = [visionFirst.mrzText, visionMore.mrzText, localText].filter(Boolean).join("\n") || null;
     const mrz = uniquePassports([
       ...pdfMrz,
+      ...local.flatMap((item) => item.identities),
       ...(mrzText ? parseMrzFromOcrAll(mrzText) : []),
     ]);
-    const identities = mergePassportSets(mrz, vision);
+    const identities = mergePassportSets(mrz, vision, visualDatesFromOcr(localText));
 
     if (!identities.length) {
       return scanResult(

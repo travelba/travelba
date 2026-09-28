@@ -367,6 +367,32 @@ test("listedIdentities hides OCR extras when two people remain", () => {
   assert.equal(list.length, 2);
 });
 
+test("merge puts the délivrance back when the model stored it as the expiry", () => {
+  const mrz = {
+    ...emptyIdentity(),
+    number: "18D151774",
+    last_name: "Dupont",
+    first_name: "Jean",
+    birth_date: "1990-04-02",
+    expires_on: "2028-03-11",
+    nationality: "FR",
+    sex: "M" as const,
+    issuing_country: "FR",
+    valid: true,
+    format: "TD3",
+  };
+  const vision = identityFromVision({
+    number: "18D151774",
+    last_name: "Dupont",
+    first_name: "Jean",
+    issued_on: "2011-03-12",
+    expires_on: "2018-03-12",
+  });
+  const merged = mergePassportIdentities(mrz, vision, ["2018-03-12", "2028-03-11"]);
+  assert.equal(merged?.issued_on, "2018-03-12");
+  assert.equal(merged?.expires_on, "2028-03-11");
+});
+
 test("identitiesFromUnknown ignores a surname-only card on a two-passport file", () => {
   const people = identitiesFromUnknown([
     {
