@@ -1,5 +1,5 @@
 import type { CrmBooking } from "@/lib/crm/types";
-import { coverQuery, stayArrivalPlaces } from "@/lib/crm/carnet";
+import { coverQuery, isOriginHub, stayArrivalPlaces } from "@/lib/crm/carnet";
 import {
   cityOwnCoverPhoto,
   countryCodeForPlace,
@@ -29,9 +29,39 @@ export function placeKey(value: string) {
     .trim();
 }
 
+/** Jetons du libellé, virgule comprise : « Lamego, Portugal » garde le pays. */
+function labelTokens(value: string | null | undefined) {
+  return (value || "")
+    .split(/\s*(?:·|\||\/|→|->|—|–|,| - )\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Pays écrit à côté de la ville. Paris / CDG / France ne comptent
+ * que lorsqu’aucun autre pays n’est nommé.
+ */
+function labelCountryCodes(booking: Pick<CrmBooking, "destination" | "title">) {
+  const named: string[] = [];
+  const hubs: string[] = [];
+  const tokens = [...labelTokens(booking.destination), ...labelTokens(booking.title)];
+  for (const token of tokens) {
+    const code = countryCodeForPlace(placeKey(token));
+    if (!code) continue;
+    const bucket = isOriginHub(token) ? hubs : named;
+    if (!bucket.includes(code)) bucket.push(code);
+  }
+  return named.length ? named : hubs;
+}
+
 export function unsplashKeywordMatch(booking: Pick<CrmBooking, "destination" | "title">) {
   const key = placeKey(coverQuery(booking.destination, booking.title));
-  return lookupCoverPhoto(key);
+  const direct = lookupCoverPhoto(key);
+  if (direct) return direct;
+  if (countryCodeForPlace(key)) return null;
+  const codes = labelCountryCodes(booking);
+  if (codes.length !== 1) return null;
+  return countryCoverPhoto(codes[0]);
 }
 
 export type CoverPlaceItem = { kind?: string | null; details?: Record<string, unknown> | null };
@@ -75,6 +105,9 @@ export function bookingCoverPlan(
     const code = countryCodeForPlace(placeKey(place));
     if (code && !countries.includes(code)) countries.push(code);
   }
+  for (const code of labelCountryCodes(booking)) {
+    if (!countries.includes(code)) countries.push(code);
+  }
   if (places.length >= 2 && countries.length === 1) {
     const own: string[] = [];
     for (const place of places) {
@@ -106,7 +139,7 @@ export function placeCoverUrl(booking: Pick<CrmBooking, "destination" | "title">
   return match ? catalogCoverUrl(match) : null;
 }
 
-/** Import agence, sinon photo du lieu. Lieu inconnu : null (fond marine). */
+/** Import agence, sinon photo de la ville, sinon celle du pays. Pays sans photo : null (fond marine). */
 export function bookingCoverUrl(
   booking: CoverBooking,
   _width = 960,

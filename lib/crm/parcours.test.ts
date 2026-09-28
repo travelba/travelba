@@ -134,11 +134,62 @@ test("cover catalogue matches the arrival place only", () => {
     unsplashKeywordMatch({ destination: "Antibes", title: "Séjour" }),
     "photo-antibes-garoupe"
   );
+  assert.equal(
+    unsplashKeywordMatch({ destination: "Lamego · Portugal", title: "Lamego · Portugal" }),
+    "photo-lamego-remedios"
+  );
+  assert.notEqual(
+    unsplashKeywordMatch({ destination: "Lamego", title: "Séjour" }),
+    unsplashKeywordMatch({ destination: "Portugal", title: "Séjour" })
+  );
+  const lamegoStay = bookingCoverPlan(
+    {
+      destination: "Lamego · Portugal",
+      title: "Lamego · Portugal",
+      cover_image_path: null,
+    },
+    { items: [{ kind: "hotel", details: { city: "Lamego" } }] }
+  );
+  assert.equal(lamegoStay.mode, "single");
+  if (lamegoStay.mode === "single") assert.match(lamegoStay.src, /photo-lamego-remedios/);
   assert.notEqual(
     unsplashKeywordMatch({ destination: "Antibes", title: "Séjour" }),
     unsplashKeywordMatch({ destination: "France", title: "Séjour" })
   );
   assert.equal(unsplashKeywordMatch({ destination: "Xyzzy", title: "Inconnu" }), null);
+  const portugal = unsplashKeywordMatch({ destination: "Portugal", title: "Séjour" });
+  assert.ok(portugal);
+  assert.equal(
+    unsplashKeywordMatch({ destination: "Inconnue · Portugal", title: "Séjour" }),
+    portugal
+  );
+  assert.equal(
+    unsplashKeywordMatch({ destination: "Inconnue, Portugal", title: "Séjour" }),
+    portugal
+  );
+  assert.equal(
+    unsplashKeywordMatch({ destination: "Paris · Inconnue · Portugal", title: "Séjour" }),
+    portugal
+  );
+  const unknownHotel = bookingCoverPlan(
+    {
+      destination: "Inconnue · Portugal",
+      title: "Séjour",
+      cover_image_path: null,
+    },
+    { items: [{ kind: "hotel", details: { city: "Inconnue" } }] }
+  );
+  assert.equal(unknownHotel.mode, "single");
+  if (unknownHotel.mode === "single") assert.match(unknownHotel.src, /photo-1585208798174-6cedd86e019a/);
+  assert.equal(unsplashKeywordMatch({ destination: "Inconnue, Belgique", title: "Séjour" }), null);
+  assert.equal(
+    bookingCoverUrl({
+      destination: "Inconnue, Belgique",
+      title: "Séjour",
+      cover_image_path: null,
+    }),
+    null
+  );
   assert.equal(
     bookingCoverUrl({
       destination: "Xyzzy",

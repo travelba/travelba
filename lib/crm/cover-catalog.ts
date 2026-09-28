@@ -319,6 +319,7 @@ const CITIES: Array<[name: string, country: string, photo?: string]> = [
   ["lisbonne", "pt", "photo-1585208798174-6cedd86e019a"],
   ["lisbon", "pt", "photo-1585208798174-6cedd86e019a"],
   ["porto", "pt"],
+  ["lamego", "pt", "photo-lamego-remedios"],
   ["faro", "pt"],
   ["algarve", "pt"],
   ["athenes", "gr"],
