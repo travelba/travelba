@@ -480,24 +480,57 @@ function detailPlace(details: Record<string, unknown> | null | undefined, key: s
   return typeof value === "string" ? value.trim() : "";
 }
 
-/** Villes d’arrivée du séjour, hubs de départ exclus. Les cartes priment sur le libellé. */
+function foldPlace(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/['’.]/g, " ")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Villes d’arrivée du séjour, hubs de départ exclus. Les hôtels priment sur les vols. */
 export function stayArrivalPlaces(
   destination: string | null | undefined,
   title: string | null | undefined,
   items?: Array<{ kind?: string | null; details?: Record<string, unknown> | null }>
 ) {
-  const found: string[] = [];
+  const hotels: string[] = [];
+  const arrivals: string[] = [];
   for (const item of items || []) {
-    if (item.kind === "hotel") pushArrival(found, detailPlace(item.details, "city"));
+    if (item.kind === "hotel") pushArrival(hotels, detailPlace(item.details, "city"));
     if (item.kind === "flight" || item.kind === "rail") {
-      pushArrival(found, detailPlace(item.details, "city_to") || detailPlace(item.details, "to"));
+      pushArrival(arrivals, detailPlace(item.details, "city_to") || detailPlace(item.details, "to"));
     }
   }
+  const found = hotels.length ? hotels : arrivals;
   if (found.length) return found;
   for (const token of [...coverTokens(destination || ""), ...coverTokens(title || "")]) {
     pushArrival(found, token);
   }
   return found;
+}
+
+/**
+ * Deux hôtels : les deux villes dans le titre, si le nom saisi n’est qu’une de ces villes.
+ * Un nom choisi (« 40 ans ») reste tel quel.
+ */
+export function stayHeadline(
+  title: string | null | undefined,
+  destination: string | null | undefined,
+  places: string[] | null | undefined,
+  fallback = "Séjour"
+) {
+  const named = tripHeadline(title, destination, fallback);
+  const cities = (places || []).map((place) => place.trim()).filter(Boolean);
+  if (cities.length < 2) return named;
+  const namedKey = foldPlace(named);
+  const destinationKey = foldPlace(destination || "");
+  const cityKeys = new Set(cities.map(foldPlace));
+  if (!cityKeys.has(namedKey) && namedKey !== destinationKey) return named;
+  return cities.join(" · ");
 }
 
 /** Ville d’arrivée pour la photo : on ignore Paris / CDG / ORY s’il y a une autre ville. */

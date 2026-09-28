@@ -7,7 +7,7 @@ import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { BookingStatusBadge } from "@/components/crm/ui";
 import { VisaSection } from "@/components/crm/VisaSection";
-import { carnetVisible, clientBookingStatusLabel, clientVisibleItems, HIDDEN_PRICE_LABEL, itemPriceLabel, tripHeadline, tripPlaceLine, whatsappModifyHref } from "@/lib/crm/carnet";
+import { carnetVisible, clientBookingStatusLabel, clientVisibleItems, HIDDEN_PRICE_LABEL, itemPriceLabel, stayArrivalPlaces, stayHeadline, tripPlaceLine, whatsappModifyHref } from "@/lib/crm/carnet";
 import { findVisaExtra } from "@/lib/crm/extras";
 import { EXAMPLE_BASE, EXAMPLE_REFERENCE } from "@/lib/crm/example-session";
 import { readExample } from "@/lib/crm/example-store";
@@ -39,7 +39,11 @@ export default async function ExampleReservationPage({ params }: Props) {
   const coverage = tripDocCoverage(party, session.documents);
   const missingPassports = coverage.total > 0 && coverage.ready < coverage.total;
   const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, b.reference, b.destination);
-  const headline = tripHeadline(b.title, b.destination);
+  const headline = stayHeadline(
+    b.title,
+    b.destination,
+    stayArrivalPlaces(b.destination, b.title, visibleItems)
+  );
   const placeLine = tripPlaceLine(b.title, b.destination);
   const missingCount = coverage.total - coverage.ready;
   const formalities = frenchPassportTrip(visibleItems, party.length);

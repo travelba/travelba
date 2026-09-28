@@ -164,21 +164,24 @@ test("cover catalogue matches the arrival place only", () => {
 });
 
 test("plusieurs villes d’un pays prennent la photo du pays, deux pays se coupent", () => {
-  const miami = unsplashKeywordMatch({ destination: "Miami", title: "Miami" });
-  const usa = bookingCoverPlan({
+  const miami = unsplashKeywordMatch({ destination: "Miami Beach", title: "Miami Beach" });
+  assert.equal(miami, "photo-1533106497176-45ae19e68ba2");
+  const both = bookingCoverPlan({
     destination: "Miami Beach",
-    title: "Séjour",
+    title: "Miami Beach",
     cover_image_path: null,
   }, {
     places: stayArrivalPlaces(null, null, [
+      { kind: "flight", details: { city_to: "New York", city_from: "Paris" } },
       { kind: "hotel", details: { city: "New York" } },
+      { kind: "flight", details: { city_to: "Miami", city_from: "New York" } },
       { kind: "hotel", details: { city: "Miami Beach" } },
     ]),
   });
-  assert.equal(usa.mode, "single");
-  if (usa.mode !== "single") return;
-  assert.match(usa.src, /photo-1496442226666-8d4d0e62e6e9/);
-  assert.notEqual(usa.src, `/api/covers/${miami}`);
+  assert.equal(both.mode, "split");
+  if (both.mode !== "split") return;
+  assert.match(both.src, /photo-1496442226666-8d4d0e62e6e9/);
+  assert.match(both.srcB, /photo-1533106497176-45ae19e68ba2/);
 
   const morocco = bookingCoverPlan({
     destination: "Marrakech · Essaouira",

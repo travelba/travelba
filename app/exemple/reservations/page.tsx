@@ -13,7 +13,7 @@ import {
   jMinusLabel,
   tripDurationDays,
 } from "@/lib/crm/money";
-import { clientBookingStatusLabel, HIDDEN_PRICE_LABEL } from "@/lib/crm/carnet";
+import { clientBookingStatusLabel, HIDDEN_PRICE_LABEL, stayArrivalPlaces, stayHeadline } from "@/lib/crm/carnet";
 
 export default async function ExampleReservationsPage({
   searchParams,
@@ -117,7 +117,13 @@ export default async function ExampleReservationsPage({
                       {nights ? ` (${nights} jour${nights > 1 ? "s" : ""})` : ""}
                     </p>
                     <h2 className="font-display text-2xl font-bold leading-tight">
-                      {b.title || b.destination || "Séjour"}
+                      {stayHeadline(
+                        b.title,
+                        b.destination,
+                        b.id === session.booking.id
+                          ? stayArrivalPlaces(b.destination, b.title, session.items)
+                          : undefined
+                      )}
                     </h2>
                   </div>
                 </BookingHero>

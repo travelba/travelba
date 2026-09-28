@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
-import { clientBookingStatusLabel, HIDDEN_PRICE_LABEL } from "@/lib/crm/carnet";
+import { clientBookingStatusLabel, HIDDEN_PRICE_LABEL, stayHeadline } from "@/lib/crm/carnet";
 import {
   formatDateRangeShort,
   formatMoney,
@@ -137,7 +137,7 @@ export default async function ReservationsPage({
                       {nights ? ` (${nights} jour${nights > 1 ? "s" : ""})` : ""}
                     </p>
                     <h2 className="font-display text-2xl font-bold leading-tight">
-                      {b.title || b.destination || "Séjour"}
+                      {stayHeadline(b.title, b.destination, places[b.id])}
                     </h2>
                   </div>
                 </BookingHero>

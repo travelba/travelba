@@ -13,6 +13,7 @@ import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { StatusChip, bookingStatusTone } from "@/components/crm/ui";
 import { bookingsListEmptyMessage } from "@/lib/crm/launch-status";
+import { stayHeadline } from "@/lib/crm/carnet";
 import { DeleteBookingButton } from "@/components/admin/DeleteBookingButton";
 
 export function BookingsTable({
@@ -79,7 +80,7 @@ export function BookingsTable({
               />
                 <div className="min-w-0">
                   <p className="break-words font-semibold text-[var(--admin-navy)]">
-                    {b.reference} · {b.title}
+                    {b.reference} · {stayHeadline(b.title, b.destination, places[b.id])}
                   </p>
                   <p className="text-xs text-muted">
                     {byId.get(b.customer_id) || "Client"} · {formatDateFr(b.start_date)} →{" "}
