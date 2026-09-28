@@ -3,7 +3,8 @@ import test from "node:test";
 import { identityOverwriteWarning } from "./identity";
 import { loyaltyFromCustomer, normalizeLoyaltyMap, normalizeLoyaltyNumber } from "./loyalty";
 import { encoursCaption, formatEncours, formatMoney, jMinusLabel, postedLedgerTotals } from "./money";
-import { unsplashKeywordMatch, bookingCoverUrl } from "./covers";
+import { unsplashKeywordMatch, bookingCoverPlan, bookingCoverUrl } from "./covers";
+import { stayArrivalPlaces } from "./carnet";
 import { countriesWithPhoto, COUNTRY_CODES } from "./cover-catalog";
 import { vaultDocumentsForPerson } from "./trip-documents";
 import { filterCreditTransfers, isCreditTransfer, type CrmTravelDocument } from "./types";
@@ -152,6 +153,45 @@ test("cover catalogue matches the arrival place only", () => {
   assert.match(uploaded, /v=2026-09-23/);
   assert.ok(COUNTRY_CODES.length >= 190);
   assert.ok(countriesWithPhoto() >= 30);
+});
+
+test("plusieurs villes d’un pays prennent la photo du pays, deux pays se coupent", () => {
+  const miami = unsplashKeywordMatch({ destination: "Miami", title: "Miami" });
+  const usa = bookingCoverPlan({
+    destination: "Miami Beach",
+    title: "Séjour",
+    cover_image_path: null,
+  }, {
+    places: stayArrivalPlaces(null, null, [
+      { kind: "hotel", details: { city: "New York" } },
+      { kind: "hotel", details: { city: "Miami Beach" } },
+    ]),
+  });
+  assert.equal(usa.mode, "single");
+  if (usa.mode !== "single") return;
+  assert.match(usa.src, /photo-1496442226666-8d4d0e62e6e9/);
+  assert.notEqual(usa.src, `/api/covers/${miami}`);
+
+  const morocco = bookingCoverPlan({
+    destination: "Marrakech · Essaouira",
+    title: "Séjour",
+    cover_image_path: null,
+  });
+  assert.equal(morocco.mode, "single");
+  if (morocco.mode !== "single") return;
+  assert.match(morocco.src, /photo-1489749798305-4fea3ae63d43/);
+
+  const split = bookingCoverPlan({
+    destination: "Marrakech",
+    title: "Voyage",
+    cover_image_path: null,
+  }, {
+    places: ["Marrakech", "New York"],
+  });
+  assert.equal(split.mode, "split");
+  if (split.mode !== "split") return;
+  assert.match(split.src, /photo-1489749798305-4fea3ae63d43/);
+  assert.match(split.srcB, /photo-1496442226666-8d4d0e62e6e9/);
 });
 
 test("vault documents for a person ignore trip clones", () => {

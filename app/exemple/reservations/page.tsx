@@ -99,7 +99,7 @@ export default async function ExampleReservationsPage({
           return (
             <li key={b.id}>
               <article className="relative overflow-hidden rounded-xl border border-[#c5c6cd]/35 bg-white shadow-sm">
-                <BookingHero booking={b} width={800}>
+                <BookingHero booking={b} items={b.id === session.booking.id ? session.items : undefined} width={800}>
                   <div className="absolute left-3 right-3 top-3 flex items-center justify-between gap-2">
                     {countdown ? (
                       <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--admin-gold)]/30 bg-[#faf9f6]/95 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--admin-navy)] shadow-sm">

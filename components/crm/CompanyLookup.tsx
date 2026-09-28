@@ -91,7 +91,7 @@ export function useCompanySuggest({
     <ul
       id={listId}
       role="listbox"
-      className="absolute top-full z-20 mt-1 max-h-72 w-full overflow-auto rounded-xl border border-border bg-white py-1 shadow-lg"
+      className="absolute top-full z-20 mt-1 max-h-[28rem] w-full overflow-auto rounded-xl border border-border bg-white py-1 shadow-lg"
     >
       {loading ? <li className="px-3 py-2 text-sm text-muted">Recherche…</li> : null}
       {lookupError ? <li className="px-3 py-2 text-sm text-accent">{lookupError}</li> : null}
@@ -110,14 +110,32 @@ export function useCompanySuggest({
           >
             <span className="font-medium text-[var(--admin-navy)]">
               {company.legalName}
+              {company.tradeName ? (
+                <span className="font-normal text-muted"> · {company.tradeName}</span>
+              ) : null}
               {!company.active ? (
                 <span className="ml-2 text-xs font-semibold text-accent">Cessée</span>
               ) : null}
             </span>
+            {company.legalForm || company.activity ? (
+              <span className="text-xs text-[var(--admin-navy)]">
+                {[company.legalForm, company.activity].filter(Boolean).join(" · ")}
+              </span>
+            ) : null}
             <span className="text-xs text-muted">
-              {formatSiretInput(company.siret)}
-              {company.city ? ` · ${company.city}` : ""}
+              {[company.addressLine, [company.postalCode, company.city].filter(Boolean).join(" ")]
+                .filter(Boolean)
+                .join(", ") || "Adresse non publiée"}
             </span>
+            <span className="text-xs text-muted">
+              {company.site} · SIRET {formatSiretInput(company.siret)}
+              {company.headOfficeCity ? ` · siège à ${company.headOfficeCity}` : ""}
+              {company.createdOn ? ` · créée en ${company.createdOn.slice(0, 4)}` : ""}
+              {company.openSites ? ` · ${company.openSites} établissements` : ""}
+            </span>
+            {company.directors ? (
+              <span className="text-xs text-muted">{company.directors}</span>
+            ) : null}
           </button>
         </li>
       ))}

@@ -23,6 +23,8 @@ import {
   filterCreditTransfers,
 } from "@/lib/crm/types";
 import { documentExpiryStatus } from "@/lib/crm/identity";
+import { reviewIdentityPieces } from "@/lib/crm/trip-documents";
+import { loadStayArrivalPlaces } from "@/lib/crm/carnet-query";
 import { StatusChip } from "@/components/crm/ui";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
@@ -102,6 +104,11 @@ export default async function AdminClientDetailPage({ params }: Props) {
       .order("created_at", { ascending: false }),
   ]);
   const bookingRows = (bookings || []) as CrmBooking[];
+  const identityPieces = reviewIdentityPieces((documents || []) as CrmTravelDocument[]);
+  const places = await loadStayArrivalPlaces(
+    supabase,
+    bookingRows.map((row) => row.id)
+  );
   const threadMessages = whatsappMessages.error
     ? (
         await supabase
@@ -167,7 +174,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         <div className="admin-af-card rounded-2xl px-4 py-3">
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Pièces</p>
           <p className="font-display text-xl font-bold text-[var(--admin-navy)]">
-            {((documents || []) as CrmTravelDocument[]).length}
+            {identityPieces.length}
           </p>
         </div>
       </div>
@@ -176,7 +183,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
           <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Validation des pièces</h2>
         </div>
         <ul className="divide-y divide-border text-sm">
-          {((documents || []) as CrmTravelDocument[]).map((doc) => {
+          {identityPieces.map((doc) => {
             const expiry = documentExpiryStatus(doc.expires_on);
             return (
               <li key={doc.id} className="flex min-w-0 flex-wrap items-center justify-between gap-3 px-5 py-3">
@@ -206,12 +213,13 @@ export default async function AdminClientDetailPage({ params }: Props) {
               </li>
             );
           })}
-          {!documents?.length ? (
+          {!identityPieces.length ? (
             <li className="px-5 py-8 text-center text-muted">Aucune pièce au coffre.</li>
           ) : null}
         </ul>
       </section>
       <CustomerEditor
+        key={c.updated_at}
         customer={c}
         companions={(companions || []) as CrmCompanion[]}
         documents={(documents || []) as CrmTravelDocument[]}
@@ -237,7 +245,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
                   href={`/admin/reservations/${b.id}`}
                   className="flex min-w-0 items-center gap-3 text-[var(--admin-navy)] underline-offset-2 hover:underline"
                 >
-                  <BookingHero booking={b} plain className="h-12 w-20 shrink-0 rounded-lg" />
+                  <BookingHero booking={b} places={places[b.id]} plain className="h-12 w-20 shrink-0 rounded-lg" />
                   <span className="min-w-0 truncate">
                     {b.reference} · {b.title} · {formatDateFr(b.start_date)}
                   </span>

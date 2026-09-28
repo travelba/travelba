@@ -25,7 +25,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!trip) return { title: "Voyage", robots: hidden };
   const title = tripHeadline(trip.booking.title, trip.booking.destination);
   const description = tripDescription(trip.booking.start_date, trip.booking.end_date);
-  const cover = bookingCoverUrl(trip.booking, 1200, { partage: code });
+  const cover = bookingCoverUrl(trip.booking, 1200, { partage: code, items: trip.items });
   return {
     title,
     description,

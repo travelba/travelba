@@ -64,11 +64,36 @@ export function documentsForPerson(
   );
 }
 
+function sameReviewPiece(a: CrmTravelDocument, b: CrmTravelDocument) {
+  if ((a.companion_id || "") !== (b.companion_id || "")) return false;
+  if (a.doc_type !== b.doc_type) return false;
+  const left = documentNumber(a.number);
+  const right = documentNumber(b.number);
+  if (left && right) return left === right;
+  if (left || right) return false;
+  const name = `${a.first_name || ""}|${a.last_name || ""}|${a.expires_on || ""}`;
+  return name !== "||" && name === `${b.first_name || ""}|${b.last_name || ""}|${b.expires_on || ""}`;
+}
+
+/** Coffre + copies de séjour du même numéro : une seule ligne à valider. */
+export function reviewIdentityPieces(docs: CrmTravelDocument[]) {
+  const unique: CrmTravelDocument[] = [];
+  for (const doc of docs) {
+    const index = unique.findIndex((kept) => sameReviewPiece(kept, doc));
+    if (index === -1) {
+      unique.push(doc);
+      continue;
+    }
+    unique[index] = preferVaultCopy(unique[index], doc);
+  }
+  return unique;
+}
+
 export function vaultDocumentsForPerson(
   docs: CrmTravelDocument[],
   companionId: string | null | undefined
 ) {
-  return documentsForPerson(docs, companionId).filter(isVaultDocument);
+  return reviewIdentityPieces(documentsForPerson(docs, companionId).filter(isVaultDocument));
 }
 
 export function personDocumentsForTraveler(

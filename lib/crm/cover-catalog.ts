@@ -558,3 +558,11 @@ export function lookupCoverPhoto(key: string) {
   if (!code) return null;
   return countryPhoto.get(code) ?? null;
 }
+
+export function countryCodeForPlace(key: string) {
+  return cities.get(key)?.country || countryAlias.get(key) || null;
+}
+
+export function countryCoverPhoto(code: string) {
+  return countryPhoto.get(code) ?? null;
+}

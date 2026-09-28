@@ -5,6 +5,7 @@ import {
   reusableDocumentsForTraveler,
   tripDocCoverage,
   tripDocumentsForTraveler,
+  reviewIdentityPieces,
   vaultDocumentsForPerson,
   vaultDocumentsForTraveler,
 } from "./trip-documents";
@@ -223,4 +224,19 @@ test("le passeport Iony du profil Simon, Iony est celui du titulaire Simon", () 
     false
   );
   assert.equal(reusableDocumentsForTraveler(docs, lisa, profile)[0]?.id, "lisa");
+});
+
+test("la validation ne répète pas le passeport copié sur chaque séjour", () => {
+  const pieces = reviewIdentityPieces([
+    doc({ id: "vault", number: "12AB34567", storage_path: "customers/c1/passport.jpg" }),
+    doc({ id: "trip-a", booking_id: "b1", traveler_id: "t1", number: "12 AB 34567" }),
+    doc({ id: "trip-b", booking_id: "b2", traveler_id: "t2", number: "12AB34567" }),
+    doc({
+      id: "companion",
+      companion_id: "c2",
+      number: "99ZZ",
+      storage_path: "customers/c1/passport.jpg",
+    }),
+  ]);
+  assert.deepEqual(pieces.map((item) => item.id), ["vault", "companion"]);
 });

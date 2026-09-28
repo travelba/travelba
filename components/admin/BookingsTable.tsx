@@ -18,9 +18,11 @@ import { DeleteBookingButton } from "@/components/admin/DeleteBookingButton";
 export function BookingsTable({
   bookings,
   customers,
+  places = {},
 }: {
   bookings: CrmBooking[];
   customers: CrmCustomer[];
+  places?: Record<string, string[]>;
 }) {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<string>("all");
@@ -71,6 +73,7 @@ export function BookingsTable({
               <div className="flex min-w-0 items-center gap-3">
               <BookingHero
                 booking={b}
+                places={places[b.id]}
                 plain
                 className="h-16 w-28 shrink-0 rounded-xl"
               />

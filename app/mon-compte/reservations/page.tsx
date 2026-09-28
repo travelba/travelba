@@ -11,7 +11,7 @@ import {
   tripDurationDays,
 } from "@/lib/crm/money";
 import { BookingStatusBadge, EmptyState } from "@/components/crm/ui";
-import { loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
+import { loadStayArrivalPlaces, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { Icon } from "@/components/crm/icons";
 
@@ -30,6 +30,10 @@ export default async function ReservationsPage({
   if (!customer) redirect("/connexion");
 
   const all = await loadVisibleCarnets(supabase, customer.id);
+  const places = await loadStayArrivalPlaces(
+    supabase,
+    all.map((row) => row.id)
+  );
   const upcoming = sortBookingsByStart(
     all.filter((b) => isUpcomingBooking(b.end_date) && b.status !== "cancelled"),
     "asc"
@@ -115,7 +119,7 @@ export default async function ReservationsPage({
           return (
             <li key={b.id}>
               <article className="relative overflow-hidden rounded-xl border border-[#c5c6cd]/35 bg-white shadow-sm">
-                <BookingHero booking={b} width={800}>
+                <BookingHero booking={b} places={places[b.id]} width={800}>
                   <div className="absolute left-3 right-3 top-3 flex items-center justify-between gap-2">
                     {countdown ? (
                       <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--admin-gold)]/30 bg-[#faf9f6]/95 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--admin-navy)] shadow-sm">

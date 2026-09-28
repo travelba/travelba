@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { holderAddressPatch, splitPrintedAddress } from "./identity";
 import {
   appendPassportForm,
   emptyIdentity,
@@ -45,6 +46,37 @@ test("vision extract fills every passport field", () => {
   assert.equal(identity.authority, "MINISTERE DE L'INTERIEUR");
   assert.equal(identity.personal_number, "1234567890");
   assert.match(identitySummary(identity), /18D151774/);
+  assert.equal(identity.address_line, null);
+});
+
+test("une carte d’identité remplit le domicile vide, pas une adresse déjà saisie", () => {
+  const split = splitPrintedAddress("12 rue de Rivoli 75001 Paris");
+  assert.equal(split?.address_line, "12 rue de Rivoli");
+  assert.equal(split?.postal_code, "75001");
+  assert.equal(split?.city, "Paris");
+  const identity = identityFromVision({
+    doc_type: "id_card",
+    number: "X1",
+    first_name: "Camille",
+    last_name: "Martin",
+    address_line: "12 rue de Rivoli 75001 Paris",
+  });
+  assert.equal(identity?.address_line, "12 rue de Rivoli");
+  assert.equal(identity?.postal_code, "75001");
+  assert.equal(identity?.city, "Paris");
+  assert.equal(identity?.country, "FR");
+  assert.deepEqual(
+    holderAddressPatch(
+      { address_line: null, postal_code: null, city: "Lyon", country: "FR" },
+      {
+        address_line: identity?.address_line || null,
+        postal_code: identity?.postal_code || null,
+        city: identity?.city || null,
+        country: identity?.country || null,
+      }
+    ),
+    { address_line: "12 rue de Rivoli", postal_code: "75001" }
+  );
 });
 
 test("le nom d’épouse est enregistré à part du nom de naissance", () => {

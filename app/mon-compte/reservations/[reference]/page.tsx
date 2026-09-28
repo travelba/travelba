@@ -162,6 +162,7 @@ export default async function ReservationDetailPage({ params }: Props) {
 
           <BookingHero
             booking={b}
+            items={items || []}
             priority
             className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]"
           >

@@ -464,6 +464,42 @@ export function tripPlaceLine(title: string | null | undefined, destination: str
   return place;
 }
 
+function pushArrival(found: string[], value: string) {
+  const token = value.split(",")[0]?.trim() || "";
+  if (!token || ORIGIN_HUBS.test(token)) return;
+  const key = token
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  if (found.some((item) => item.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase() === key)) return;
+  found.push(token);
+}
+
+function detailPlace(details: Record<string, unknown> | null | undefined, key: string) {
+  const value = details?.[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+/** Villes d’arrivée du séjour, hubs de départ exclus. Les cartes priment sur le libellé. */
+export function stayArrivalPlaces(
+  destination: string | null | undefined,
+  title: string | null | undefined,
+  items?: Array<{ kind?: string | null; details?: Record<string, unknown> | null }>
+) {
+  const found: string[] = [];
+  for (const item of items || []) {
+    if (item.kind === "hotel") pushArrival(found, detailPlace(item.details, "city"));
+    if (item.kind === "flight" || item.kind === "rail") {
+      pushArrival(found, detailPlace(item.details, "city_to") || detailPlace(item.details, "to"));
+    }
+  }
+  if (found.length) return found;
+  for (const token of [...coverTokens(destination || ""), ...coverTokens(title || "")]) {
+    pushArrival(found, token);
+  }
+  return found;
+}
+
 /** Ville d’arrivée pour la photo : on ignore Paris / CDG / ORY s’il y a une autre ville. */
 export function coverQuery(destination: string | null, title: string | null) {
   const destTokens = coverTokens(destination || "");

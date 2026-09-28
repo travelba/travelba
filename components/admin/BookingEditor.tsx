@@ -370,7 +370,7 @@ export function BookingEditor({
 
   return (
     <div className="space-y-6">
-      <BookingHero booking={booking} priority className="rounded-3xl">
+      <BookingHero booking={booking} items={items} priority className="rounded-3xl">
         <div className="absolute right-3 top-3 z-10 flex flex-wrap justify-end gap-2">
           <button
             type="button"
