@@ -13,7 +13,7 @@ import {
   type CrmTransaction,
 } from "@/lib/crm/types";
 import { itemTicketCount } from "@/lib/crm/item-match";
-import { hotelDisplayName, keptHiddenFromClient } from "@/lib/crm/carnet";
+import { hotelDisplayName, publishRevealIds } from "@/lib/crm/carnet";
 import {
   ticketingFeeAmount,
   ticketingFeeExternalId,
@@ -595,17 +595,16 @@ export async function setCarnetPublished(
   if (!visible) return;
   const { data: rows, error: rowsError } = await supabase
     .from("crm_booking_items")
-    .select("id, details")
+    .select("id, kind, details")
     .eq("booking_id", bookingId);
   if (rowsError) throw new Error(rowsError.message);
-  const hiddenIds = new Set(
-    ((rows || []) as { id: string; details?: Record<string, unknown> | null }[])
-      .filter((row) => keptHiddenFromClient(row.details))
-      .map((row) => row.id)
-  );
-  const revealIds = ((rows || []) as { id: string }[])
-    .map((row) => row.id)
-    .filter((id) => !hiddenIds.has(id));
+  const typedRows = (rows || []) as {
+    id: string;
+    kind: string;
+    details?: Record<string, unknown> | null;
+  }[];
+  const revealIds = publishRevealIds(typedRows);
+  const hiddenIds = new Set(typedRows.map((row) => row.id).filter((id) => !revealIds.includes(id)));
   if (revealIds.length) {
     const { error: itemsError } = await supabase
       .from("crm_booking_items")
