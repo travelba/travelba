@@ -106,6 +106,9 @@ export function parseDocumentMoney(text: string): { amount: number; currency: st
     while ((match = pattern.exec(line))) {
       const amount = parsePrintedAmount(match[3] || "");
       if (!amount) continue;
+      const tail = line.slice((match.index ?? 0) + match[0].length);
+      // « 2 126,00 km » et « 356.29 kg » de CO2 ne sont pas un tarif.
+      if (/^\s*(?:km|kgs?|kilom(?:e|è)tres?|mi|miles)\b/i.test(tail)) continue;
       const code = (match[4] || match[2] || "").trim();
       const currency = CURRENCY_CODE[code.toLowerCase()] || CURRENCY_CODE[code] || "EUR";
       const labeled = Boolean(match[1]);

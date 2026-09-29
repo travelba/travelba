@@ -454,6 +454,21 @@ describe("parseDocumentMoney", () => {
     assert.equal(items[0]?.details?.document_amount, 85);
   });
 
+  it("ignore la distance en km et le CO2, pas un tarif imprimé", () => {
+    assert.equal(parseDocumentMoney("Distance de vol 2 126,00 km"), null);
+    assert.equal(parseDocumentMoney("Distance de vol 2\u202f126,00 km"), null);
+    assert.equal(parseDocumentMoney("Émissions de vol(s) 356.29 kg de CO2"), null);
+    assert.deepEqual(
+      parseDocumentMoney("Total 1 063,00 EUR\nDistance de vol 2 126,00 km"),
+      { amount: 1063, currency: "EUR" }
+    );
+    const items = parsedItemsFromText(
+      `${AMADEUS_HAHN}\nDistance de vol 2 126,00 km\nÉmissions de vol(s) 356.29 kg de CO2`
+    ).items;
+    assert.equal(items[0]?.kind, "flight");
+    assert.equal(items[0]?.details?.document_amount, undefined);
+  });
+
   it("ne coupe pas un total 5,920.33 en 920.33", () => {
     assert.deepEqual(parseDocumentMoney("Amount due\n£5,920.33\n"), {
       amount: 5920.33,

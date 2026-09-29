@@ -93,6 +93,7 @@ IATA **8 chiffres** (20287864, 20255270, 96020293, 20289905) = code agence, **ja
 - Horaires ISO locaux. « 03 August 09:45 » + année de « Lundi 03 août 2026 ».
 - Terminal / siège si imprimés. « Heure limite d’enregistrement » ≠ horaire du vol.
 - « Scan for check-in » ≠ hôtel. Carte fidélité : masquer, ne pas extraire.
+- « Distance de vol 2 126,00 km » et les kg de CO2 ne sont pas un prix. `document_amount` null si aucun tarif n’est imprimé.
 - Email agence ≠ `customer_email`.
 
 Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Colón `BOC`, Enrique Malek `DAV`, Tocumen `PTY`, Charles-de-Gaulle `CDG`, Orly `ORY`, Tel Aviv `TLV`, Genève `GVA`, Heathrow `LHR`, Marseille Provence `MRS`. **Nouveau nom d’aéroport sans IATA → une entrée + un test**, pas un guess LLM.
