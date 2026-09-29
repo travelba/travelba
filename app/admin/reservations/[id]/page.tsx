@@ -18,7 +18,6 @@ import { HotelDeskSummary } from "@/components/admin/HotelDesk";
 import { ensureHotelArrivals } from "@/lib/crm/hotel-arrival-run";
 import { ensureHotelRequests } from "@/lib/crm/hotel-desk-run";
 import { principalGuest } from "@/lib/crm/hotel-arrival";
-import { passportPreviewsForStay } from "@/lib/crm/preview-files";
 import { attachLittleEmperorsCatalog } from "@/lib/crm/hotel-catalog-load";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
 import { isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
@@ -121,7 +120,6 @@ export default async function AdminBookingPage({ params }: Props) {
     hotelRequests = [];
   }
   const shareCompanions = companionsForShare(bookingTravelers, (companions || []) as CrmCompanion[]);
-  const passportCount = passportPreviewsForStay(bookingTravelers, allIdentity, customer, b.reference).length;
   let shareUrl: string | null = null;
   if (b.visible_to_client) {
     try {
@@ -201,7 +199,6 @@ export default async function AdminBookingPage({ params }: Props) {
           shareCompanions={shareCompanions}
           arrivals={arrivals}
           hotelRequests={hotelRequests}
-          passportCount={passportCount}
         />
       </div>
     </div>

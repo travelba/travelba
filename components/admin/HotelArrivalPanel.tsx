@@ -9,20 +9,24 @@ import {
   formatArrivalAmount,
   stayCardFace,
 } from "@/lib/crm/hotel-arrival";
-import type { CrmBookingItem, CrmHotelArrival } from "@/lib/crm/types";
+import type { CardViewLine, CrmBookingItem, CrmHotelArrival } from "@/lib/crm/types";
 import { fieldControlClass } from "@/components/crm/fields";
 import { StayCard } from "@/components/crm/StayCard";
+import { AgencyCardPeek } from "@/components/admin/AgencyCardPeek";
 
 export function HotelArrivalPanel({
   bookingId,
   items,
   arrivals,
   holder = "",
+  cardViews = [],
 }: {
   bookingId: string;
   items: CrmBookingItem[];
   arrivals: CrmHotelArrival[];
   holder?: string;
+  hasCardCode?: boolean;
+  cardViews?: CardViewLine[];
 }) {
   const hotels = items.filter((item) => item.kind === "hotel");
   if (!hotels.length) return null;
@@ -40,6 +44,7 @@ export function HotelArrivalPanel({
             item={item}
             arrival={arrivals.find((row) => row.booking_item_id === item.id) || null}
             holder={holder}
+            cardViews={cardViews.filter((line) => line.itemId === item.id)}
           />
         ))}
       </div>
@@ -52,11 +57,13 @@ function HotelArrivalRow({
   item,
   arrival,
   holder,
+  cardViews,
 }: {
   bookingId: string;
   item: CrmBookingItem;
   arrival: CrmHotelArrival | null;
   holder: string;
+  cardViews: CardViewLine[];
 }) {
   const router = useRouter();
   const [net, setNet] = useState(arrival?.net_cents != null ? (arrival.net_cents / 100).toFixed(2) : "");
@@ -152,7 +159,7 @@ function HotelArrivalRow({
         ) : null}
       </div>
       {arrival?.pliant_card_id ? (
-        <div className="mt-4">
+        <div className="mt-2">
           <StayCard
             face={stayCardFace({
               itemId: item.id,
@@ -162,7 +169,14 @@ function HotelArrivalRow({
               closed: Boolean(arrival.card_closed_at),
             })}
             revealUrl={`/api/admin/bookings/${bookingId}/hotel-arrival`}
+            personal
+            views={cardViews.filter((line) => line.source === "pliant")}
           />
+        </div>
+      ) : null}
+      {arrival?.client_card_name ? (
+        <div className="mt-1 text-xs">
+          <AgencyCardPeek bookingId={bookingId} itemId={item.id} source="client" views={cardViews} />
         </div>
       ) : null}
       {error ? <p className="mt-2 text-sm text-red-700">{error}</p> : null}

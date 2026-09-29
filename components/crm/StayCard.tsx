@@ -4,7 +4,18 @@ import { FormEvent, useState } from "react";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { cardLast4, groupedPan, maskedCardNumber, type StayCardFace } from "@/lib/crm/hotel-arrival";
 
-export function StayCard({ face, revealUrl }: { face: StayCardFace; revealUrl: string }) {
+
+export function StayCard({
+  face,
+  revealUrl,
+  personal = false,
+}: {
+  face: StayCardFace;
+  revealUrl: string;
+  personal?: boolean;
+  needsCode?: boolean;
+  views?: { name: string; at: string }[];
+}) {
   const [code, setCode] = useState("");
   const [tail, setTail] = useState(face.last4);
   const [revealed, setRevealed] = useState<{ pan: string; expiry: string; cvc: string } | null>(null);
@@ -20,10 +31,14 @@ export function StayCard({ face, revealUrl }: { face: StayCardFace; revealUrl: s
       const res = await fetch(revealUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ itemId: face.itemId, action: "card", code }),
+        body: JSON.stringify({
+          itemId: face.itemId,
+          action: "card",
+          code,
+        }),
       });
       const json = (await res.json().catch(() => null)) as
-        | { error?: string; pan?: string; expiry?: string; cvc?: string }
+        | { error?: string; pan?: string; expiry?: string; cvc?: string; viewer?: string; viewedAt?: string }
         | null;
       if (!res.ok || !json?.pan || !json.expiry || !json.cvc) {
         setError(json?.error || "La carte n’a pas pu être lue.");
@@ -84,7 +99,17 @@ export function StayCard({ face, revealUrl }: { face: StayCardFace; revealUrl: s
           </div>
         ) : null}
       </article>
-      {face.closed || revealed ? null : (
+      {face.closed ? null : revealed ? (
+        <button type="button" className="mt-2 text-xs text-[#9e7e51]" onClick={() => setRevealed(null)}>
+          Masquer
+        </button>
+      ) : personal ? (
+        <form className="mt-2" onSubmit={reveal}>
+          <button type="submit" className="text-xs text-[#9e7e51] disabled:opacity-50" disabled={busy}>
+            {busy ? "…" : "Voir"}
+          </button>
+        </form>
+      ) : (
         <form className="mt-3 space-y-2" onSubmit={reveal}>
           <label className="block text-sm text-[var(--admin-navy)]">
             Code agence
@@ -107,15 +132,6 @@ export function StayCard({ face, revealUrl }: { face: StayCardFace; revealUrl: s
           </button>
         </form>
       )}
-      {revealed ? (
-        <button
-          type="button"
-          className="mt-3 text-sm font-semibold text-[var(--admin-navy)] underline"
-          onClick={() => setRevealed(null)}
-        >
-          Masquer
-        </button>
-      ) : null}
       {error ? <p className="mt-2 text-sm text-red-700">{error}</p> : null}
     </div>
   );

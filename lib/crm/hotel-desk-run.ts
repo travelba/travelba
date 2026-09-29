@@ -2,7 +2,8 @@ import "server-only";
 
 import { Resend } from "resend";
 import { pliantCardNomination } from "./eta-il-fee";
-import { downloadCrmFile } from "./files";
+import { downloadCrmFile, removeCrmFiles, uploadCrmFile } from "./files";
+import { agencyCardObjectPath, agencyCardSiblingPaths, clientCardMime, isAgencyCardPath, isSafeCrmPath } from "./files-access";
 import { gmailConfigured, searchInbox } from "./gmail";
 import { attachLittleEmperorsCatalog } from "./hotel-catalog-load";
 import { hotelContact } from "./hotel-contact";
@@ -35,7 +36,7 @@ import {
   outboundHotelLetter,
   replyMatchesHotel,
 } from "./hotel-desk";
-import { passportPreviewsForStay } from "./preview-files";
+import { checkinCardPdf, precheckParty, selectedPrecheckPieces } from "./hotel-precheck";
 import { issuePliantCard, pliantConfigured, readPliantCardSecrets } from "./pliant";
 import { siteConfig } from "../site";
 import type {
@@ -304,6 +305,7 @@ export async function saveHotelRequest(
     recipients: string[];
     cardChoice: "pliant" | "client" | null;
     contacts?: DeskRosterPerson[];
+    identityDocumentIds?: string[];
   }
 ) {
   if (containsCardNumber(input.body) || containsCardNumber(input.subject)) {
@@ -327,6 +329,9 @@ export async function saveHotelRequest(
       body: input.body,
       recipients,
       card_choice: input.kind === "precheckin" ? input.cardChoice || "pliant" : null,
+      ...(input.kind === "precheckin" && input.identityDocumentIds
+        ? { identity_document_ids: input.identityDocumentIds, identity_picked: true, attach_passports: input.identityDocumentIds.length > 0 }
+        : {}),
       edited: true,
       status,
     })
@@ -354,6 +359,8 @@ export async function sendHotelRequest(
     body: string;
     recipients: string[];
     cardChoice: "pliant" | "client" | null;
+    identityDocumentIds?: string[];
+    clientCard?: { filename: string; content: Buffer; mime?: string } | null;
   }
 ) {
   if (containsCardNumber(input.body) || containsCardNumber(input.subject)) {
@@ -365,17 +372,31 @@ export async function sendHotelRequest(
   const item = await loadItem(admin, input.bookingId, input.itemId);
   const lang = hotelLanguage(hotelContact(item).country);
   let note = "";
+  const attachments: { filename: string; content: Buffer }[] = [];
   if (input.kind === "precheckin") {
     const choice = input.cardChoice || row.card_choice || "pliant";
+    const pieceIds = input.identityDocumentIds ?? (row.identity_picked ? row.identity_document_ids || [] : null);
+    attachments.push(...(await identityFiles(admin, input.bookingId, pieceIds)));
     if (choice === "pliant") {
       const card = await pliantForSend(admin, input.bookingId, item);
-      note = cardSendNote("pliant", lang, card);
+      note = cardSendNote("pliant", lang);
+      attachments.push({
+        filename: lang === "fr" ? "carte-enregistrement.pdf" : "check-in-card.pdf",
+        content: checkinCardPdf({ holder: card.holder, pan: card.pan, expiry: card.expiry, cvc: card.cvc, lang }),
+      });
     } else {
-      note = cardSendNote("client", lang, null);
+      note = cardSendNote("client", lang);
+      let attachment = input.clientCard?.content?.length ? input.clientCard : null;
+      if (attachment) {
+        await storeClientStayCard(admin, input.bookingId, item, attachment);
+      } else {
+        attachment = await readStoredClientCard(admin, input.bookingId, input.itemId);
+      }
+      if (!attachment?.content?.length) throw new Error("Déposez la carte du client.");
+      attachments.push({ filename: attachment.filename, content: attachment.content });
     }
   }
   const text = outboundHotelLetter(input.body, note);
-  const attachments = row.attach_passports || input.kind === "precheckin" ? await passportFiles(admin, input.bookingId) : [];
   await deliverHotelMail({ to: recipients, subject: input.subject.trim(), text, attachments });
   const now = new Date().toISOString();
   const followUp = row.status === "follow_up";
@@ -386,6 +407,9 @@ export async function sendHotelRequest(
       body: input.body,
       recipients,
       card_choice: input.kind === "precheckin" ? input.cardChoice || "pliant" : row.card_choice,
+      ...(input.kind === "precheckin" && input.identityDocumentIds
+        ? { identity_document_ids: input.identityDocumentIds, identity_picked: true, attach_passports: input.identityDocumentIds.length > 0 }
+        : {}),
       edited: true,
       status: "sent",
       sent_at: now,
@@ -433,25 +457,109 @@ async function deliverHotelMail(mail: {
   if (error) throw new Error("L'envoi du mail a échoué.");
 }
 
-async function passportFiles(admin: Admin, bookingId: string) {
-  const { data: booking } = await admin.from("crm_bookings").select("customer_id, reference").eq("id", bookingId).maybeSingle();
-  const stay = booking as { customer_id?: string; reference?: string | null } | null;
-  if (!stay?.customer_id) return [];
-  const [{ data: travelers }, { data: documents }] = await Promise.all([
+export async function saveUploadedClientCard(
+  admin: Admin,
+  bookingId: string,
+  itemId: string,
+  file: { filename: string; content: Buffer; mime?: string }
+) {
+  const item = await loadItem(admin, bookingId, itemId);
+  return storeClientStayCard(admin, bookingId, item, file);
+}
+
+export async function clearClientStayCard(admin: Admin, bookingId: string, itemId: string) {
+  const { data } = await admin
+    .from("crm_hotel_arrivals")
+    .select("id, client_card_path")
+    .eq("booking_id", bookingId)
+    .eq("booking_item_id", itemId)
+    .maybeSingle();
+  const row = data as { id: string; client_card_path: string | null } | null;
+  const path = row?.client_card_path || "";
+  if (path && isSafeCrmPath(path) && isAgencyCardPath(path)) await removeCrmFiles([path]);
+  if (row?.id) {
+    await admin.from("crm_hotel_arrivals").update({ client_card_path: null, client_card_name: null }).eq("id", row.id);
+  }
+}
+
+async function storeClientStayCard(
+  admin: Admin,
+  bookingId: string,
+  item: CrmBookingItem,
+  file: { filename: string; content: Buffer; mime?: string }
+) {
+  const mime = clientCardMime(file.filename, file.mime);
+  const path = agencyCardObjectPath(bookingId, item.id, mime);
+  if (!path) throw new Error("Déposez une photo ou un PDF de la carte.");
+  await uploadCrmFile(path, file.content, mime, { upsert: true });
+  await removeCrmFiles(agencyCardSiblingPaths(path));
+  const name = file.filename.replace(/\d{6,}/g, "").trim().slice(0, 80) || "carte-client";
+  const { data } = await admin
+    .from("crm_hotel_arrivals")
+    .select("id")
+    .eq("booking_id", bookingId)
+    .eq("booking_item_id", item.id)
+    .maybeSingle();
+  const arrival = data as { id: string } | null;
+  if (arrival?.id) {
+    await admin.from("crm_hotel_arrivals").update({ client_card_path: path, client_card_name: name }).eq("id", arrival.id);
+  } else {
+    await admin.from("crm_hotel_arrivals").insert({
+      booking_id: bookingId,
+      booking_item_id: item.id,
+      channel: hotelDeskChannel(item),
+      client_card_path: path,
+      client_card_name: name,
+    });
+  }
+  return { name };
+}
+
+async function readStoredClientCard(admin: Admin, bookingId: string, itemId: string) {
+  const { data } = await admin
+    .from("crm_hotel_arrivals")
+    .select("client_card_path, client_card_name")
+    .eq("booking_id", bookingId)
+    .eq("booking_item_id", itemId)
+    .maybeSingle();
+  const row = data as { client_card_path: string | null; client_card_name: string | null } | null;
+  const path = row?.client_card_path || "";
+  if (!path || !isSafeCrmPath(path) || !isAgencyCardPath(path)) return null;
+  const downloaded = await downloadCrmFile(path);
+  const filename = (row?.client_card_name || "carte-client").replace(/\d{6,}/g, "").trim().slice(0, 80) || "carte-client";
+  return { filename, content: Buffer.from(downloaded.bytes) };
+}
+
+export async function issueHotelCheckinCard(admin: Admin, bookingId: string, itemId: string) {
+  const item = await loadItem(admin, bookingId, itemId);
+  const card = await pliantForSend(admin, bookingId, item);
+  return { last4: cardLast4(card.pan), holder: card.holder };
+}
+
+async function identityFiles(admin: Admin, bookingId: string, ids: string[] | null) {
+  const { data: booking } = await admin.from("crm_bookings").select("customer_id").eq("id", bookingId).maybeSingle();
+  const customerId = (booking as { customer_id?: string } | null)?.customer_id || "";
+  if (!customerId) return [];
+  const [{ data: travelers }, { data: documents }, { data: customer }] = await Promise.all([
     admin.from("crm_booking_travelers").select("*").eq("booking_id", bookingId),
-    admin.from("crm_travel_documents").select("*").eq("customer_id", stay.customer_id),
+    admin.from("crm_travel_documents").select("*").eq("customer_id", customerId),
+    admin.from("crm_customers").select("first_name, last_name").eq("id", customerId).maybeSingle(),
   ]);
-  const files = passportPreviewsForStay(
-    (travelers || []) as CrmBookingTraveler[],
-    (documents || []) as CrmTravelDocument[],
-    null,
-    stay.reference
-  );
+  const holder = customer as { first_name?: string | null; last_name?: string | null } | null;
+  const party = precheckParty((travelers || []) as CrmBookingTraveler[], (documents || []) as CrmTravelDocument[], {
+    first_name: holder?.first_name || "",
+    last_name: holder?.last_name || "",
+  });
+  const chosen = ids ? selectedPrecheckPieces(party, ids) : party.flatMap((traveler) => traveler.pieces.map((piece) => ({ ...piece, traveler: traveler.name })));
   const attachments: { filename: string; content: Buffer }[] = [];
-  for (const file of files) {
+  for (const file of chosen) {
     try {
       const downloaded = await downloadCrmFile(file.path);
-      attachments.push({ filename: (file.fileName || "passeport").slice(0, 80), content: Buffer.from(downloaded.bytes) });
+      const ext = (file.fileName.split(".").pop() || "pdf").replace(/[^\w]/g, "").slice(0, 4) || "pdf";
+      attachments.push({
+        filename: `${file.traveler} ${file.label}.${ext}`.replace(/[^\w.\- ]+/g, "").slice(0, 80),
+        content: Buffer.from(downloaded.bytes),
+      });
     } catch {
       attachments.push(...[]);
     }
