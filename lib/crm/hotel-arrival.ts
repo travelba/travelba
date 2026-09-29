@@ -477,6 +477,49 @@ export type ArrivalMail = {
   text: string;
 };
 
+/** Entrée et sortie des courriers hôtel : chaleureux, une demande, un remerciement. */
+export function hotelMailFrame(lang: "fr" | "en", relance?: boolean) {
+  if (lang === "fr") {
+    return {
+      open: relance
+        ? [
+            "Chère équipe,",
+            "",
+            "Je vous adresse à nouveau le bonjour de Travel Business Agency.",
+            "",
+            "Nous n'avons pas encore eu de retour, et votre aide nous serait précieuse.",
+          ]
+        : [
+            "Chère équipe,",
+            "",
+            "Je vous adresse le bonjour de Travel Business Agency, j'espère que ce message vous trouve en pleine forme.",
+          ],
+      close: ["Au plaisir de vous lire, et merci beaucoup pour votre aide.", "", "Bien à vous,", "Travel Business Agency"],
+    };
+  }
+  return {
+    open: relance
+      ? [
+          "Dear team,",
+          "",
+          "Warm greetings again from Travel Business Agency.",
+          "",
+          "We have not yet heard back, and we would be grateful for your help.",
+        ]
+      : [
+          "Dear team,",
+          "",
+          "Warm greetings to you from Travel Business Agency, I hope this email finds you well.",
+        ],
+    close: [
+      "We look forward to hearing from you, and many thanks for your help.",
+      "",
+      "Best regards,",
+      "Travel Business Agency",
+    ],
+  };
+}
+
 export function linkRequestMail(input: {
   lang: "fr" | "en";
   hotel: string;
@@ -488,41 +531,33 @@ export function linkRequestMail(input: {
 }): ArrivalMail {
   const stay = `${formatStayDate(input.checkIn, input.lang)} – ${formatStayDate(input.checkOut, input.lang)}`;
   const ref = input.reference || "—";
+  const frame = hotelMailFrame(input.lang, input.relance);
   if (input.lang === "fr") {
-    const opener = input.relance
-      ? "Nous revenons vers vous : nous n'avons pas encore reçu le lien de paiement."
-      : `Nous préparons l'arrivée de notre client à ${input.hotel}, du ${stay}.`;
     const lines = [
-      "Bonjour,",
+      ...frame.open,
       "",
-      opener,
+      `Pourriez-vous nous envoyer le lien de paiement de la réservation de notre client chez vous ?`,
+      "",
+      `Séjour à ${input.hotel}, du ${stay}.`,
       `Référence de confirmation : ${ref}.`,
     ];
     if (input.amount) lines.push(`Montant à régler : ${input.amount}.`);
-    lines.push(
-      "",
-      "Merci de nous transmettre un lien de paiement par carte, afin de régler la totalité de ce séjour.",
-      "",
-      "Bien à vous,",
-      "Travel Business Agency"
-    );
+    lines.push("", ...frame.close);
     return {
       subject: `${input.relance ? "Relance — " : ""}Lien de paiement — ${input.hotel} — ${ref}`,
       text: lines.join("\n"),
     };
   }
-  const opener = input.relance
-    ? "We are following up: we have not yet received the payment link."
-    : `We are preparing our guest's arrival at ${input.hotel}, ${stay}.`;
-  const lines = ["Hello,", "", opener, `Confirmation reference: ${ref}.`];
+  const lines = [
+    ...frame.open,
+    "",
+    "Could you please send us the payment link for our guest's booking with you?",
+    "",
+    `Stay at ${input.hotel}, ${stay}.`,
+    `Confirmation: ${ref}.`,
+  ];
   if (input.amount) lines.push(`Amount due: ${input.amount}.`);
-  lines.push(
-    "",
-    "Please send us a card payment link so we can settle this stay in full.",
-    "",
-    "Kind regards,",
-    "Travel Business Agency"
-  );
+  lines.push("", ...frame.close);
   return {
     subject: `${input.relance ? "Follow-up — " : ""}Payment link — ${input.hotel} — ${ref}`,
     text: lines.join("\n"),
@@ -539,6 +574,7 @@ export function vipMail(input: {
 }): ArrivalMail {
   const stay = `${formatStayDate(input.checkIn, input.lang)} – ${formatStayDate(input.checkOut, input.lang)}`;
   const ref = input.reference || "—";
+  const frame = hotelMailFrame(input.lang);
   if (input.lang === "fr") {
     const card = input.card
       ? [
@@ -553,17 +589,18 @@ export function vipMail(input: {
     return {
       subject: `Arrivée VIP — ${input.hotel} — ${ref}`,
       text: [
-        "Bonjour,",
+        ...frame.open,
         "",
-        `Le client qui séjournera à ${input.hotel} du ${stay} (confirmation ${ref}) a un statut VIP au sein de l'agence.`,
+        "Pourriez-vous signaler cette réservation à votre équipe sur place ?",
         "",
-        "Nous vous demandons qu'il soit parfaitement traité. Nous vous serions reconnaissants pour des amenities, d'autres attentions, et un surclassement si les disponibilités le permettent.",
+        `Notre client séjourne à ${input.hotel} du ${stay} (confirmation ${ref}).`,
         "",
-        "Les documents d'identité sont joints, pour que l'enregistrement se fasse en amont et que la chambre soit prête dès l'arrivée.",
+        "Pourriez-vous demander à votre équipe de préparer un bel accueil VIP dans la chambre, avec quelques attentions ? Le surclassement dépend des disponibilités au moment de l'arrivée, et s'il est possible, ce serait formidable.",
+        "",
+        "Les documents d'identité sont joints, pour que la chambre soit prête dès l'arrivée.",
         ...card,
         "",
-        "Bien à vous,",
-        "Travel Business Agency",
+        ...frame.close,
       ].join("\n"),
     };
   }
@@ -580,17 +617,18 @@ export function vipMail(input: {
   return {
     subject: `VIP arrival — ${input.hotel} — ${ref}`,
     text: [
-      "Hello,",
+      ...frame.open,
       "",
-      `The guest staying at ${input.hotel} from ${stay} (confirmation ${ref}) holds VIP status with our agency.`,
+      "Could you please flag this booking to your team on property?",
       "",
-      "We ask that they be looked after with particular care. We would be grateful for amenities, any further attention, and an upgrade if availability allows.",
+      `Our guest is staying at ${input.hotel}, ${stay} (confirmation ${ref}).`,
       "",
-      "Identity documents are attached so check-in can be completed ahead of arrival and the room is ready when they arrive.",
+      "Could you please ask your team to arrange some nice VIP welcome amenities in the room? This is subject to availability at the time of check-in, but if an upgrade is possible, it would be amazing.",
+      "",
+      "Identity documents are attached, so the room can be ready when they arrive.",
       ...card,
       "",
-      "Kind regards,",
-      "Travel Business Agency",
+      ...frame.close,
     ].join("\n"),
   };
 }

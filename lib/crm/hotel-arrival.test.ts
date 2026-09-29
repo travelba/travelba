@@ -179,7 +179,7 @@ test("mails : lien avec montant et référence, VIP avec attentions, carte seule
   } });
   assert.match(withCard.text, /4242424242424242/);
   assert.match(withCard.text, /surclassement/);
-  assert.match(withCard.text, /amenities/);
+  assert.match(withCard.text, /accueil VIP/);
 });
 
 test("lien de paiement extrait de la réponse hôtel", () => {

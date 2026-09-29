@@ -89,7 +89,9 @@ test("anglais hors de France, transfert repris sur les vols", () => {
     details: { hotel_name: "The Leela", country: "India", email: "stay@leela.test" },
   });
   const upgrade = hotelDeskDraft({ ...base, kind: "upgrade", item });
-  assert.match(upgrade.body, /VIP status/);
+  assert.match(upgrade.body, /Dear team/);
+  assert.match(upgrade.body, /VIP welcome amenities/);
+  assert.match(upgrade.body, /Best regards/);
   assert.equal(upgrade.lang, "en");
   const flights: CrmBookingItem[] = [
     {
