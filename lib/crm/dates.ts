@@ -32,6 +32,62 @@ export function frInputToIso(value: string): string | null {
   return isValidIsoDate(iso) ? iso : null;
 }
 
+const WEEKDAY_LABELS = ["lu", "ma", "me", "je", "ve", "sa", "di"] as const;
+
+export const FR_MONTHS = [
+  "janvier",
+  "février",
+  "mars",
+  "avril",
+  "mai",
+  "juin",
+  "juillet",
+  "août",
+  "septembre",
+  "octobre",
+  "novembre",
+  "décembre",
+] as const;
+
+export function weekdayLabels() {
+  return WEEKDAY_LABELS;
+}
+
+export function calendarMonthLabel(year: number, monthIndex: number) {
+  const name = FR_MONTHS[monthIndex] || "";
+  return `${name.charAt(0).toUpperCase()}${name.slice(1)} ${year}`;
+}
+
+export type CalendarCell = {
+  iso: string;
+  day: number;
+  outside: boolean;
+};
+
+/** Grille lundi → dimanche, jours du mois voisin en `outside`. */
+export function calendarCells(year: number, monthIndex: number): CalendarCell[] {
+  const first = new Date(year, monthIndex, 1);
+  const lead = (first.getDay() + 6) % 7;
+  const start = new Date(year, monthIndex, 1 - lead);
+  const cells: CalendarCell[] = [];
+  for (let i = 0; i < 42; i += 1) {
+    const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    cells.push({
+      iso: `${date.getFullYear()}-${month}-${day}`,
+      day: date.getDate(),
+      outside: date.getMonth() !== monthIndex,
+    });
+  }
+  return cells;
+}
+
+export function shiftMonth(year: number, monthIndex: number, delta: number) {
+  const date = new Date(year, monthIndex + delta, 1);
+  return { year: date.getFullYear(), monthIndex: date.getMonth() };
+}
+
 export function maskFrDate(value: string): string {
   const iso = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (iso) return isoToFrInput(value);

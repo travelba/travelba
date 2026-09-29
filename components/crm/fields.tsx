@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { FrCalendar } from "@/components/crm/FrCalendar";
 import { Phone, Plus } from "lucide-react";
 import type { CountryCode } from "libphonenumber-js";
 import { countriesForSelect, countryName, flagImageUrl, resolveCountryCode } from "@/lib/crm/countries";
@@ -101,6 +102,9 @@ export function DateFrInput({
   autoComplete?: string;
   "aria-label"?: string;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<DOMRect | null>(null);
   const [iso, setIso] = useState(value ?? defaultValue ?? "");
   const [text, setText] = useState(() => isoToFrInput(value ?? defaultValue ?? ""));
   const [syncedValue, setSyncedValue] = useState(value);
@@ -118,8 +122,14 @@ export function DateFrInput({
     onChange?.(nextIso);
   }
 
+  function openCalendar() {
+    const rect = rootRef.current?.getBoundingClientRect();
+    if (rect) setAnchor(rect);
+    setOpen(true);
+  }
+
   return (
-    <div className="relative">
+    <div className="relative" ref={rootRef}>
       {name ? <input type="hidden" name={name} value={iso} /> : null}
       <input
         type="text"
@@ -146,26 +156,29 @@ export function DateFrInput({
         }}
         className={`${className} pr-10`}
       />
-      <input
-        type="date"
-        tabIndex={-1}
-        aria-hidden="true"
-        lang="fr-FR"
-        min={min}
-        max={max}
-        value={iso}
-        onChange={(event) => commit(event.target.value)}
-        className="absolute right-2 top-1/2 h-7 w-7 -translate-y-1/2 cursor-pointer opacity-0"
-      />
-      <span
-        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted"
-        aria-hidden
+      <button
+        type="button"
+        data-fr-calendar-trigger
+        aria-label={ariaLabel ? `Calendrier, ${ariaLabel}` : "Ouvrir le calendrier"}
+        aria-expanded={open}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={openCalendar}
+        className="absolute right-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-[var(--admin-navy)] hover:bg-[var(--admin-peach)]"
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
           <rect x="3" y="5" width="18" height="16" rx="2" />
           <path d="M3 10h18M8 3v4M16 3v4" />
         </svg>
-      </span>
+      </button>
+      <FrCalendar
+        open={open}
+        anchor={anchor}
+        value={iso}
+        min={min}
+        max={max}
+        onPick={commit}
+        onClose={() => setOpen(false)}
+      />
     </div>
   );
 }
