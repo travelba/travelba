@@ -4,6 +4,8 @@ import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 import {
   buildGmailHistorySearchParams,
   collectHistoryMessageIds,
+  matchGmailLabelIds,
+  mergeGmailLabelNames,
   parseGmailMessage,
   type GmailHistoryRecord,
   type ParsedGmailMessage,
@@ -12,7 +14,6 @@ import {
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
-const DEFAULT_LABELS = ["little-emperors", "expedia-taap"];
 
 type ServiceAccount = { client_email: string; private_key: string };
 
@@ -32,15 +33,9 @@ export function gmailPubsubTopic() {
   return productionOnlySecret(process.env.GMAIL_PUBSUB_TOPIC);
 }
 
-/** Labels Gmail suivis (filtres agence). Défaut : little-emperors, expedia-taap. */
+/** Labels Gmail suivis. L'env complète les défauts (dont billet-avion). */
 export function gmailLabelNames(): string[] {
-  const raw = (process.env.GMAIL_LABELS || "").trim();
-  if (!raw) return [...DEFAULT_LABELS];
-  const names = raw
-    .split(",")
-    .map((n) => n.trim())
-    .filter(Boolean);
-  return names.length ? names : [...DEFAULT_LABELS];
+  return mergeGmailLabelNames(process.env.GMAIL_LABELS);
 }
 
 function loadServiceAccount(): ServiceAccount {
@@ -125,7 +120,7 @@ async function gmailApi(path: string, init?: RequestInit): Promise<Response> {
   return res;
 }
 
-/** Résout les labels ciblés (nom → id Gmail), insensible à la casse. */
+/** Résout les labels ciblés (nom → id Gmail). Casse et espaces/tirets ignorés. */
 export async function resolveLabelIds(
   names: string[]
 ): Promise<Map<string, string>> {
@@ -133,14 +128,7 @@ export async function resolveLabelIds(
   const json = (await res.json()) as {
     labels?: { id?: string; name?: string }[];
   };
-  const wanted = new Map(names.map((n) => [n.toLowerCase(), n]));
-  const out = new Map<string, string>();
-  for (const label of json.labels || []) {
-    const key = String(label.name || "").toLowerCase();
-    const original = wanted.get(key);
-    if (original && label.id) out.set(original, label.id);
-  }
-  return out;
+  return matchGmailLabelIds(names, json.labels || []);
 }
 
 export type GmailWatchResult = { historyId: string; expiration: string };
@@ -213,6 +201,30 @@ export async function listHistoryMessageIds(
     pageToken = json.nextPageToken;
   } while (pageToken);
   return { messageIds: [...ids], historyId: latest };
+}
+
+/** Messages d'un label, du plus récent au plus ancien (pagination Gmail). */
+export async function listMessagesByLabel(
+  labelId: string,
+  max = 40,
+  pageToken?: string
+): Promise<{ ids: string[]; nextPageToken?: string }> {
+  const params = new URLSearchParams({
+    labelIds: labelId,
+    maxResults: String(Math.min(Math.max(max, 1), 100)),
+  });
+  if (pageToken) params.set("pageToken", pageToken);
+  const res = await gmailApi(`/messages?${params.toString()}`);
+  const json = (await res.json()) as {
+    messages?: { id?: string }[];
+    nextPageToken?: string;
+  };
+  return {
+    ids: (json.messages || [])
+      .map((row) => row.id)
+      .filter((id): id is string => Boolean(id)),
+    nextPageToken: json.nextPageToken,
+  };
 }
 
 /** Recherche dans toute la boîte, pas seulement les labels fournisseurs. */

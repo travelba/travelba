@@ -1,14 +1,20 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  BILLET_AVION_LABEL,
+  BILLET_BACKFILL_DONE,
   buildGmailHistorySearchParams,
   collectAttachments,
   collectBodyText,
   collectHistoryMessageIds,
   decodeGmailPushBody,
   extractEmailAddress,
+  gmailLabelMatchKey,
   headerValue,
   htmlToText,
+  matchGmailLabelIds,
+  mergeGmailLabelNames,
+  nextBilletBackfillCursor,
   parseGmailMessage,
   type RawGmailMessage,
 } from "./gmail-parse";
@@ -209,5 +215,87 @@ describe("decodeGmailPushBody", () => {
   it("renvoie null sur un corps invalide", () => {
     assert.equal(decodeGmailPushBody({}), null);
     assert.equal(decodeGmailPushBody({ message: { data: "%%%" } }), null);
+  });
+});
+
+describe("labels Gmail billet-avion", () => {
+  it("ajoute billet-avion aux labels déjà configurés", () => {
+    assert.deepEqual(mergeGmailLabelNames("Little Emperors,Expedia TAAP"), [
+      "Little Emperors",
+      "Expedia TAAP",
+      BILLET_AVION_LABEL,
+    ]);
+  });
+
+  it("ne duplique pas un label déjà présent, espaces ou tirets", () => {
+    assert.deepEqual(mergeGmailLabelNames("billet avion, Little Emperors"), [
+      "billet avion",
+      "Little Emperors",
+      "expedia-taap",
+    ]);
+  });
+
+  it("retombe sur les trois labels par défaut", () => {
+    assert.deepEqual(mergeGmailLabelNames("  "), [
+      "little-emperors",
+      "expedia-taap",
+      BILLET_AVION_LABEL,
+    ]);
+  });
+
+  it("rapproche Billet avion de label:billet-avion", () => {
+    assert.equal(gmailLabelMatchKey("Billet avion"), BILLET_AVION_LABEL);
+    assert.equal(gmailLabelMatchKey("Little Emperors"), "little-emperors");
+    const map = matchGmailLabelIds(
+      ["billet-avion", "little-emperors"],
+      [
+        { id: "Label_BA", name: "Billet avion" },
+        { id: "Label_LE", name: "Little Emperors" },
+      ]
+    );
+    assert.equal(map.get("billet-avion"), "Label_BA");
+    assert.equal(map.get("little-emperors"), "Label_LE");
+  });
+
+  it("reste sur la page tant qu'il reste des billets à prendre", () => {
+    const step = nextBilletBackfillCursor({
+      unseenIds: ["m1", "m2", "m3"],
+      insertLimit: 2,
+      nextPageToken: "page-2",
+      resumeToken: "",
+      headOnly: false,
+    });
+    assert.deepEqual(step.insertIds, ["m1", "m2"]);
+    assert.equal(step.cursor, "");
+  });
+
+  it("en mode terminé, ne redescend pas dans l'historique", () => {
+    const step = nextBilletBackfillCursor({
+      unseenIds: ["n1", "n2"],
+      insertLimit: 1,
+      nextPageToken: "page-2",
+      resumeToken: "",
+      headOnly: true,
+    });
+    assert.deepEqual(step.insertIds, ["n1"]);
+    assert.equal(step.cursor, BILLET_BACKFILL_DONE);
+  });
+
+  it("avance puis marque le rattrapage terminé", () => {
+    const next = nextBilletBackfillCursor({
+      unseenIds: ["m9"],
+      insertLimit: 15,
+      nextPageToken: "page-2",
+      resumeToken: "",
+      headOnly: false,
+    });
+    assert.equal(next.cursor, "page-2");
+    const done = nextBilletBackfillCursor({
+      unseenIds: [],
+      insertLimit: 15,
+      resumeToken: "page-2",
+      headOnly: false,
+    });
+    assert.equal(done.cursor, BILLET_BACKFILL_DONE);
   });
 });

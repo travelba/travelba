@@ -1,7 +1,7 @@
 ---
 name: travelba-email-ingest
 description: >-
-  Travelba Gmail labels (little-emperors, expedia-taap) → crm_email_ingest →
+  Travelba Gmail labels (little-emperors, expedia-taap, billet-avion) → crm_email_ingest →
   parse → auto match/apply, create, ou annulation. Use when touching Gmail
   webhook, cron gmail-ingest / gmail-watch-renew, email-match, cancellation
   mail, or a booking confirmation. Dropzone PDF/photos (relecture humaine) :
@@ -10,7 +10,7 @@ description: >-
 
 # Travelba — e-mails fournisseur (Gmail)
 
-Push Gmail (labels **little-emperors**, **expedia-taap**) → ligne
+Push Gmail (labels **little-emperors**, **expedia-taap**, **billet-avion**) → ligne
 `crm_email_ingest` → parse extract → **auto** match / apply ou create.
 Pas d’attente d’un clic `/admin/emails` quand le hit est unique et fort.
 
@@ -35,7 +35,7 @@ Identité / MRZ : skill `travelba-identity`.
 ## Pipeline (contrat)
 
 ```
-Gmail label (little-emperors | expedia-taap)
+Gmail label (little-emperors | expedia-taap | billet-avion)
   → webhook / cron capture → crm_email_ingest status=received
   → parse extract (pièces + corps ; mêmes parseurs / LLM que l’import)
   → suggestCustomerFromExtract
@@ -49,6 +49,19 @@ Gmail label (little-emperors | expedia-taap)
 
 Après succès : `status=attached`, `created_booking_id` (enum existant, pas de
 nouvelle colonne). `matchAndStoreExtract` enchaîne matching **et** auto-apply.
+
+## Billets d'avion
+
+Label Gmail **`billet-avion`** (`label:billet-avion`). « Billet avion » compte
+aussi : la clé ignore la casse et remplace espaces / underscores par des tirets.
+`GMAIL_LABELS` est fusionné avec les défauts : le label est toujours suivi,
+même si l'env prod ne liste que Little Emperors et Expedia TAAP.
+
+L'historique Gmail ne voit pas les mails déjà labellisés. Le cron
+`gmail-ingest` appelle `backfillBilletAvionMessages` (curseur dans
+`crm_email_sync`, provider `gmail-billet-avion`). Ensuite le parse existant
+(e-ticket / Amadeus, corps + pièces) fait le match auto. Pas de parseur dédié.
+Le watch Pub/Sub se met à jour au cron `gmail-watch-renew`.
 
 ## Match voyage
 

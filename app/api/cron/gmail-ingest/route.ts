@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cronAuthorized, cronSecret } from "@/lib/crm/cron-auth";
 import {
+  backfillBilletAvionMessages,
   catchUpGmailHistory,
   emailParsingReady,
   processReceivedEmailIngest,
@@ -38,6 +39,15 @@ export async function GET(request: Request) {
         err instanceof Error ? err.message : err
       );
     }
+    let backfill = { captured: 0, scanned: 0 };
+    try {
+      backfill = await backfillBilletAvionMessages();
+    } catch (err) {
+      console.error(
+        "[cron/gmail-ingest] billet-avion",
+        err instanceof Error ? err.message : err
+      );
+    }
     const result = await processReceivedEmailIngest(10);
     let rematch = { scanned: 0, rematched: 0, failed: 0 };
     try {
@@ -48,7 +58,7 @@ export async function GET(request: Request) {
         err instanceof Error ? err.message : err
       );
     }
-    return NextResponse.json({ captured, ...result, rematch });
+    return NextResponse.json({ captured, backfill, ...result, rematch });
   } catch (err) {
     console.error("[cron/gmail-ingest]", err instanceof Error ? err.message : err);
     return NextResponse.json({ error: "Ingestion e-mail échouée" }, { status: 502 });

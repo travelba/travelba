@@ -252,6 +252,94 @@ export function collectHistoryMessageIds(
   return [...ids];
 }
 
+/** Label Gmail des confirmations de billet d'avion (`label:billet-avion`). */
+export const BILLET_AVION_LABEL = "billet-avion";
+
+/** Labels suivis si `GMAIL_LABELS` est vide. */
+export const DEFAULT_GMAIL_LABELS = [
+  "little-emperors",
+  "expedia-taap",
+  BILLET_AVION_LABEL,
+];
+
+/**
+ * Clé de comparaison Gmail : casse ignorée, espaces et underscores → tirets.
+ * `label:billet-avion` retrouve « Billet avion » comme « billet-avion ».
+ */
+export function gmailLabelMatchKey(name: string): string {
+  return name.trim().toLowerCase().replace(/[\s_]+/g, "-");
+}
+
+function splitGmailLabelList(raw: string | undefined | null): string[] {
+  return (raw || "")
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Labels à suivre. L'env est prioritaire (noms affichés Gmail), puis les
+ * défauts manquants — dont `billet-avion` — sont ajoutés.
+ */
+export function mergeGmailLabelNames(raw: string | undefined | null): string[] {
+  const used = new Set<string>();
+  const out: string[] = [];
+  for (const name of [...splitGmailLabelList(raw), ...DEFAULT_GMAIL_LABELS]) {
+    const key = gmailLabelMatchKey(name);
+    if (!key || used.has(key)) continue;
+    used.add(key);
+    out.push(name);
+  }
+  return out;
+}
+
+/** Associe chaque nom demandé à l'id Gmail (clé normalisée). */
+export function matchGmailLabelIds(
+  requested: string[],
+  labels: { id?: string; name?: string }[]
+): Map<string, string> {
+  const wanted = new Map<string, string>();
+  for (const name of requested) {
+    const key = gmailLabelMatchKey(name);
+    if (key && !wanted.has(key)) wanted.set(key, name);
+  }
+  const out = new Map<string, string>();
+  for (const label of labels) {
+    const key = gmailLabelMatchKey(String(label.name || ""));
+    const original = wanted.get(key);
+    if (original && label.id && !out.has(original)) out.set(original, label.id);
+  }
+  return out;
+}
+
+export const BILLET_BACKFILL_DONE = "done";
+
+/**
+ * Curseur de rattrapage `billet-avion`.
+ * On reste sur la page tant qu'il reste des ids à insérer.
+ * Sinon on avance, puis `done` (seule la première page est revérifiée).
+ */
+export function nextBilletBackfillCursor(input: {
+  unseenIds: string[];
+  insertLimit: number;
+  nextPageToken?: string;
+  resumeToken: string;
+  headOnly: boolean;
+}): { cursor: string; insertIds: string[] } {
+  const insertIds = input.unseenIds.slice(0, Math.max(0, input.insertLimit));
+  const moreOnPage = input.unseenIds.length > insertIds.length;
+  if (moreOnPage) {
+    return {
+      cursor: input.headOnly ? BILLET_BACKFILL_DONE : input.resumeToken,
+      insertIds,
+    };
+  }
+  if (!input.headOnly && input.nextPageToken) {
+    return { cursor: input.nextPageToken, insertIds };
+  }
+  return { cursor: BILLET_BACKFILL_DONE, insertIds };
+}
+
 /** Décode le payload push Pub/Sub Gmail → { emailAddress, historyId }. */
 export function decodeGmailPushBody(
   body: unknown

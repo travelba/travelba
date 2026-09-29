@@ -9,8 +9,15 @@ import {
   getMessage,
   GmailHistoryTooOldError,
   listHistoryMessageIds,
+  listMessagesByLabel,
   resolveLabelIds,
 } from "@/lib/crm/gmail";
+import {
+  BILLET_AVION_LABEL,
+  BILLET_BACKFILL_DONE,
+  gmailLabelMatchKey,
+  nextBilletBackfillCursor,
+} from "@/lib/crm/gmail-parse";
 import {
   extractBookingFromPrepared,
   type PreparedIngestFile,
@@ -176,6 +183,97 @@ export async function catchUpGmailHistory() {
   const current = await currentHistoryId();
   if (!current) return { captured: 0, historyId: "" };
   return captureGmailHistory(current);
+}
+
+const BILLET_BACKFILL_PROVIDER = "gmail-billet-avion";
+const BILLET_BACKFILL_PAGE = 40;
+const BILLET_BACKFILL_NEW = 15;
+
+/**
+ * Importe les confirmations déjà sous `billet-avion`.
+ * L'historique Gmail ne voit que les changements après le curseur : sans ce
+ * passage, les billets déjà labellisés ne rentrent jamais.
+ * Le curseur (page Gmail, puis `done`) vit dans `crm_email_sync`.
+ */
+export async function backfillBilletAvionMessages(): Promise<{
+  captured: number;
+  scanned: number;
+}> {
+  const target = gmailLabelNames().find(
+    (name) => gmailLabelMatchKey(name) === BILLET_AVION_LABEL
+  );
+  if (!target) return { captured: 0, scanned: 0 };
+
+  const labelIds = await resolveLabelIds([target]);
+  const labelId = labelIds.get(target);
+  if (!labelId) return { captured: 0, scanned: 0 };
+
+  const admin = createServiceClient();
+  const { data: sync } = await admin
+    .from("crm_email_sync")
+    .select("history_id")
+    .eq("provider", BILLET_BACKFILL_PROVIDER)
+    .maybeSingle();
+  const stored = String(sync?.history_id || "").trim();
+  const headOnly = stored === BILLET_BACKFILL_DONE;
+  let resumeToken = !stored || headOnly ? "" : stored;
+
+  let page: { ids: string[]; nextPageToken?: string };
+  try {
+    page = await listMessagesByLabel(
+      labelId,
+      BILLET_BACKFILL_PAGE,
+      resumeToken || undefined
+    );
+  } catch (err) {
+    if (!resumeToken) throw err;
+    resumeToken = "";
+    page = await listMessagesByLabel(labelId, BILLET_BACKFILL_PAGE);
+  }
+
+  const known = new Set<string>();
+  if (page.ids.length) {
+    const { data: existing } = await admin
+      .from("crm_email_ingest")
+      .select("gmail_message_id")
+      .in("gmail_message_id", page.ids);
+    for (const row of existing || []) {
+      if (row.gmail_message_id) known.add(String(row.gmail_message_id));
+    }
+  }
+
+  const unseen = page.ids.filter((id) => !known.has(id));
+  const { cursor, insertIds } = nextBilletBackfillCursor({
+    unseenIds: unseen,
+    insertLimit: BILLET_BACKFILL_NEW,
+    nextPageToken: page.nextPageToken,
+    resumeToken,
+    headOnly,
+  });
+
+  let captured = 0;
+  let failed = false;
+  for (const messageId of insertIds) {
+    const { error } = await admin.from("crm_email_ingest").upsert(
+      { gmail_message_id: messageId, label: target, status: "received" },
+      { onConflict: "gmail_message_id", ignoreDuplicates: true }
+    );
+    if (error) {
+      failed = true;
+      break;
+    }
+    captured += 1;
+  }
+
+  await admin.from("crm_email_sync").upsert(
+    {
+      provider: BILLET_BACKFILL_PROVIDER,
+      history_id: (failed ? resumeToken : cursor) || null,
+    },
+    { onConflict: "provider" }
+  );
+
+  return { captured, scanned: page.ids.length };
 }
 
 async function computeSuggestions(admin: Admin, extract: BookingExtract) {
