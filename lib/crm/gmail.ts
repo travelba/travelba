@@ -215,6 +215,20 @@ export async function listHistoryMessageIds(
   return { messageIds: [...ids], historyId: latest };
 }
 
+/** Recherche dans toute la boîte, pas seulement les labels fournisseurs. */
+export async function searchInbox(query: string, max = 8): Promise<ParsedGmailMessage[]> {
+  const params = new URLSearchParams({ q: query, maxResults: String(max) });
+  const res = await gmailApi(`/messages?${params.toString()}`);
+  const json = (await res.json()) as { messages?: { id?: string }[] };
+  const ids = (json.messages || [])
+    .map((row) => row.id)
+    .filter((id): id is string => Boolean(id))
+    .slice(0, max);
+  const messages: ParsedGmailMessage[] = [];
+  for (const id of ids) messages.push(await getMessage(id));
+  return messages;
+}
+
 export async function getMessage(id: string): Promise<ParsedGmailMessage> {
   const res = await gmailApi(`/messages/${id}?format=full`);
   return parseGmailMessage(await res.json());

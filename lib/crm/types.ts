@@ -277,6 +277,98 @@ export type CrmBookingItem = {
   updated_at: string;
 };
 
+export const HOTEL_ARRIVAL_STATUSES = [
+  "pending",
+  "link_requested",
+  "link_received",
+  "paying",
+  "paid",
+  "vip_sent",
+  "blocked",
+  "closed",
+] as const;
+
+export type HotelArrivalStatus = (typeof HOTEL_ARRIVAL_STATUSES)[number];
+
+export type HotelArrivalChannel = "little_emperors" | "direct" | "expedia";
+
+/** Suivi d'arrivée. Aucun champ de carte bancaire : le PAN reste chez Pliant. */
+export type CrmHotelArrival = {
+  id: string;
+  booking_id: string;
+  booking_item_id: string;
+  channel: HotelArrivalChannel;
+  status: HotelArrivalStatus;
+  net_cents: number | null;
+  amount_cents: number | null;
+  currency: string;
+  pliant_card_id: string | null;
+  /** Quatre derniers chiffres seulement. Jamais le PAN. */
+  card_last4: string | null;
+  card_limit_cents: number | null;
+  payment_url: string | null;
+  requested_at: string | null;
+  relance_count: number;
+  last_relance_at: string | null;
+  paid_at: string | null;
+  vip_sent_at: string | null;
+  card_closed_at: string | null;
+  blocked_reason: string | null;
+  task_open: boolean;
+  task_note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export const HOTEL_DESK_KINDS = [
+  "payment_link",
+  "upgrade",
+  "precheckin",
+  "full_credit",
+  "transfer",
+  "concierge",
+] as const;
+
+export type HotelDeskKind = (typeof HOTEL_DESK_KINDS)[number];
+
+export const HOTEL_DESK_STATUSES = [
+  "waiting",
+  "due",
+  "draft",
+  "sent",
+  "follow_up",
+  "replied",
+  "skipped",
+] as const;
+
+export type HotelDeskStatus = (typeof HOTEL_DESK_STATUSES)[number];
+
+/** Courrier hôtel préparé pour l'agence. Aucun numéro de carte. */
+export type CrmHotelRequest = {
+  id: string;
+  booking_id: string;
+  booking_item_id: string;
+  kind: HotelDeskKind;
+  status: HotelDeskStatus;
+  recipients: string[];
+  subject: string;
+  body: string;
+  edited: boolean;
+  card_choice: "pliant" | "client" | null;
+  attach_passports: boolean;
+  due_on: string | null;
+  sent_at: string | null;
+  follow_up_count: number;
+  last_follow_up_at: string | null;
+  replied_at: string | null;
+  reply_from: string;
+  reply_subject: string;
+  reply_body: string;
+  reply_message_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type CrmBookingTraveler = {
   id: string;
   booking_id: string;

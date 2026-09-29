@@ -11,6 +11,8 @@ import {
   type CrmBookingDocument,
   type CrmBookingItem,
   type CrmBookingTraveler,
+  type CrmHotelArrival,
+  type CrmHotelRequest,
   type CrmCompanion,
   type CrmCustomer,
   type CrmTravelDocument,
@@ -36,6 +38,8 @@ import { unsplashKeywordMatch } from "@/lib/crm/covers";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
+import { HotelArrivalPanel } from "@/components/admin/HotelArrivalPanel";
+import { principalGuest } from "@/lib/crm/hotel-arrival";
 import { BookingExpensesPanel } from "@/components/admin/BookingExpensesPanel";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
@@ -76,6 +80,9 @@ export function BookingEditor({
   pliantReady = false,
   shareUrl = null,
   shareCompanions = [],
+  arrivals = [],
+  hotelRequests = [],
+  passportCount = 0,
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -99,6 +106,9 @@ export function BookingEditor({
   pliantReady?: boolean;
   shareUrl?: string | null;
   shareCompanions?: ShareCompanion[];
+  arrivals?: CrmHotelArrival[];
+  hotelRequests?: CrmHotelRequest[];
+  passportCount?: number;
 }) {
   const router = useRouter();
   const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
@@ -806,12 +816,25 @@ export function BookingEditor({
         </p>
       </section>
 
+      <HotelArrivalPanel
+        bookingId={booking.id}
+        items={items}
+        arrivals={arrivals}
+        holder={(() => {
+          const guest = principalGuest({ travelers, holder: holderProfile });
+          return `${guest.firstName} ${guest.lastName}`.trim();
+        })()}
+      />
+
       <BookingItemsPanel
         bookingId={booking.id}
         items={items}
         documents={documents}
         household={householdMembers(account || holderName, companions)}
         currency={booking.currency}
+        hotelRequests={hotelRequests}
+        today={todayIsoDate()}
+        passportCount={passportCount}
         clientSettlesStay={clientSettles}
         onBindDraftSave={(save) => {
           saveOpenCard.current = save;
