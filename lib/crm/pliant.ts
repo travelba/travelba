@@ -165,6 +165,48 @@ export async function raisePliantLimit(cardId: string, limit: { value: number; c
   if (!res.ok) throw new Error("Pliant n’a pas relevé le plafond.");
 }
 
+async function pliantRequest(path: string, init?: { method?: string; body?: unknown }) {
+  const token = await accessToken();
+  const res = await fetch(`${endpoints().api}${path}`, {
+    method: init?.method || "GET",
+    headers: {
+      authorization: `Bearer ${token}`,
+      accept: "application/json",
+      "Pliant-API-Version": "2.1.0",
+      ...(init?.body ? { "content-type": "application/json" } : {}),
+    },
+    body: init?.body ? JSON.stringify(init.body) : undefined,
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    console.error("[pliant]", res.status, path.split("?")[0]);
+    throw new Error(pliantRefusal(res.status, text));
+  }
+  return text ? (JSON.parse(text) as { data?: unknown; hasNextPage?: boolean }) : {};
+}
+
+export async function listPliantTransactions(input: { organizationId: string; fromDate: string; page: number }) {
+  const params = new URLSearchParams({
+    organizationId: input.organizationId,
+    fromDate: input.fromDate,
+    byDateField: "createdAt",
+    limit: "100",
+    page: String(input.page),
+    sortBy: "createdAt",
+    sortDirection: "DESC",
+  });
+  return pliantRequest(`/transactions?${params.toString()}`);
+}
+
+export async function pliantTransactionDetails(transactionIds: string[]) {
+  if (!transactionIds.length) return [];
+  const json = await pliantRequest("/transactions/details", {
+    method: "POST",
+    body: { transactionIds },
+  });
+  return Array.isArray(json.data) ? json.data : [];
+}
+
 export async function setPliantCardLimit(
   cardId: string,
   limit: { value: number; currency: string },

@@ -73,6 +73,16 @@ Flux : API Business → `crm_revolut_transactions` (`unmatched`, **crédits seul
 
 **Ne pas** imputer si plusieurs clients matchent ou score partiel — laisser `unmatched` pour Valider/Refuser.
 
+## Pliant — carte de dossier
+
+Une carte par réservation, depuis le header du dossier (à côté d’Enregistrer). Nom = prénom et nom du client. Plafond saisi par l’agence (1 € à 100 000 €), modifiable : le second clic met à jour le plafond, il ne réémet pas. PAN lu à la demande (**Voir**), seuls les 4 derniers chiffres sont stockés.
+
+- `POST /api/admin/bookings/[id]/pliant-card` `{ amount }` ou `{ action: "card" }` pour révéler
+- Tables `crm_booking_pliant_cards` et `crm_pliant_transactions` : service role seulement
+- Onglet `/admin/pliant` : toutes les dépenses (achats, retraits, remboursements). Cron `/api/cron/pliant-sync` (15 min)
+- Sur le dossier : dépenses des cartes liées à cette réservation (carte du dossier, visa, arrivée hôtel)
+- Pas de débit grand livre automatique. Pas d’affichage client.
+
 ## Saisie manuelle
 
 Admin `/admin/transactions` (et fiche client) : **uniquement les virements crédit** (`kind=transfer`, `direction=credit`). Pas de débits résa, frais billeterie ni commission 10 % dans cette liste — ils restent sur le dossier et `/mon-compte/transactions`. Saisie manuelle = crédit seulement. Pas de SQL collé dans l’UI.

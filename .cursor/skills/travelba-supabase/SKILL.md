@@ -35,6 +35,7 @@ Avant d’écrire du SQL : lister les tables (`crm_*`), lire la **dernière** mi
 | `20260925120000_billing_companies.sql` | `crm_billing_companies` + `billing_company_id` (attribution, encours inchangé) |
 | `20260928140000_booking_agency_commission.sql` | `crm_bookings.agency_commission` (10 % du séjour, opt-in) |
 | `20260928150000_booking_reference_service_role.sql` | `crm_next_booking_reference` security definer (cron Gmail / service_role) |
+| `20260929193000_crm_pliant_spend.sql` | carte Pliant du dossier + dépenses (`service_role` seulement, pas de PAN) |
 
 Toute évolution = **nouveau fichier** `supabase/migrations/YYYYMMDDHHMMSS_slug.sql` (idempotent : `if not exists`, `drop policy if exists`). Appliquer via MCP `apply_migration` ou SQL Editor. Ne pas éditer une migration déjà poussée en prod.
 

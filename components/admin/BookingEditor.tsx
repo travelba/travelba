@@ -16,6 +16,7 @@ import {
   type CrmHotelRequest,
   type CrmCompanion,
   type CrmCustomer,
+  type CrmPliantTransaction,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { BusyBar } from "@/components/crm/BusyBar";
@@ -40,6 +41,7 @@ import { unsplashKeywordMatch } from "@/lib/crm/covers";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
+import { BookingPliantPanel } from "@/components/admin/BookingPliantPanel";
 import { HotelArrivalPanel } from "@/components/admin/HotelArrivalPanel";
 import { principalGuest } from "@/lib/crm/hotel-arrival";
 import { BookingExpensesPanel } from "@/components/admin/BookingExpensesPanel";
@@ -102,6 +104,9 @@ export function BookingEditor({
   hotelRequests = [],
   hasCardCode = false,
   cardViews = [],
+  pliantCeilingCents = null,
+  pliantLast4 = null,
+  pliantSpends = [],
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -129,6 +134,9 @@ export function BookingEditor({
   hotelRequests?: CrmHotelRequest[];
   hasCardCode?: boolean;
   cardViews?: CardViewLine[];
+  pliantCeilingCents?: number | null;
+  pliantLast4?: string | null;
+  pliantSpends?: CrmPliantTransaction[];
 }) {
   const router = useRouter();
   const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
@@ -501,7 +509,8 @@ export function BookingEditor({
         onRegenerate={() => void regenerateCover()}
       />
 
-      <section className="admin-af-card flex flex-col gap-3 rounded-3xl p-5 sm:flex-row sm:items-center sm:justify-between">
+      <section className="admin-af-card flex flex-col gap-4 rounded-3xl p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0 flex-1 space-y-3">
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">Carnet client</p>
           <p className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">
@@ -567,6 +576,17 @@ export function BookingEditor({
           ) : null}
         </div>
         </div>
+      </div>
+        <BookingPliantPanel
+          bookingId={booking.id}
+          firstName={holderName.first_name}
+          lastName={holderName.last_name}
+          reference={booking.reference}
+          pliantReady={pliantReady}
+          ceilingCents={pliantCeilingCents}
+          last4={pliantLast4}
+          spends={pliantSpends}
+        />
       </section>
 
       {confirm ? (

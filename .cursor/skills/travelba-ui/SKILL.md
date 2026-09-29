@@ -41,7 +41,7 @@ Espace client : colonne ~480px (`AccountChrome`). Admin : sidebar `AdminNav`.
 Client bas / header : **Accueil / Réservations / Transactions / Mon compte**.  
 Profil : **Vous / Pièces / Voyageurs / Facturation**. Pas « Cartes », pas WhatsApp champ.
 
-Admin : Tableau de bord, Clients, Réservations, Transactions, Revolut (badge unmatched). Rapprochement : popup recherche client (`CustomerPickDialog`), pas un select natif.
+Admin : Tableau de bord, Clients, Réservations, Transactions, Revolut (badge unmatched), Pliant. Rapprochement : popup recherche client (`CustomerPickDialog`), pas un select natif.
 
 ## Perf perçue
 
