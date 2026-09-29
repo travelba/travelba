@@ -83,7 +83,7 @@ describe("matchHotelDirectory", () => {
 });
 
 describe("applyMatchedCatalog", () => {
-  it("pose les contacts du catalogue et réserve Réservations pour le courrier", () => {
+  it("pose tous les contacts du catalogue sur chaque courrier", () => {
     const [item] = applyMatchedCatalog(
       [hotel({ hotel_name: "NoMad London", city: "Londres", address: "28 Bow Street" })],
       [
@@ -106,7 +106,15 @@ describe("applyMatchedCatalog", () => {
     assert.equal(contact.country, "United Kingdom");
     assert.equal(contact.address, "28 Bow Street");
     assert.equal(contact.people.length, 3);
-    assert.deepEqual(hotelDeskRecipients(contact, "payment_link"), ["reservations@nomad.test"]);
-    assert.deepEqual(hotelDeskRecipients(contact, "concierge"), ["concierge@nomad.test"]);
+    assert.deepEqual(hotelDeskRecipients(contact, "payment_link"), [
+      "concierge@nomad.test",
+      "reservations@nomad.test",
+      "ada@hilton.test",
+    ]);
+    assert.deepEqual(hotelDeskRecipients(contact, "concierge"), [
+      "concierge@nomad.test",
+      "reservations@nomad.test",
+      "ada@hilton.test",
+    ]);
   });
 });

@@ -321,7 +321,7 @@ export function BookingItemsPanel({
                     {item.kind === "hotel" ? (
                       <HotelDesk
                         bookingId={bookingId}
-                        itemId={item.id}
+                        item={item}
                         requests={hotelRequests}
                         today={today}
                         passportCount={passportCount}

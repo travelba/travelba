@@ -55,7 +55,7 @@ test("lien et full credit non proposés pour Expedia", () => {
   assert.equal(hotelDeskSuggested("payment_link", "direct"), true);
 });
 
-test("brouillon français : lien, full credit sans numéro, concierge préselectionné", () => {
+test("brouillon français : lien, full credit sans numéro, tous les contacts", () => {
   const link = hotelDeskDraft({ ...base, kind: "payment_link", item: hotel() });
   assert.match(link.subject, /HB-9/);
   assert.match(link.body, /lien de paiement/);
@@ -81,7 +81,7 @@ test("brouillon français : lien, full credit sans numéro, concierge préselect
     },
     "concierge"
   );
-  assert.deepEqual(people, ["concierge@bristol.test"]);
+  assert.deepEqual(people, ["reservations@bristol.test", "concierge@bristol.test"]);
 });
 
 test("anglais hors de France, transfert repris sur les vols", () => {
