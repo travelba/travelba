@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createEntryLink, entryButtonSuffix, entryCodeFromLink } from "./entry-link";
 import { countryForIata } from "./airports";
 import { countryName } from "./countries";
+import { ensureFlightNoticeSids } from "./flight-notice-arm";
 import { aeroApiKey, fetchAeroFlights, flightNoticeSid } from "./flight-watch-api";
 import {
   applyAeroFlight,
@@ -85,13 +86,11 @@ async function takeBudget(admin: Admin, now: Date) {
   const extra = (data?.extra || null) as { day?: string; calls?: number } | null;
   const decision = reserveAeroBudget(extra, now);
   if (!decision.ok) return decision;
+  const kept = { ...((data?.extra || {}) as Record<string, unknown>), ...decision.extra };
   if (data?.id) {
-    await admin
-      .from("crm_integrations")
-      .update({ extra: decision.extra, updated_at: now.toISOString() })
-      .eq("id", data.id);
+    await admin.from("crm_integrations").update({ extra: kept, updated_at: now.toISOString() }).eq("id", data.id);
   } else {
-    await admin.from("crm_integrations").insert({ provider: "aeroapi", extra: decision.extra });
+    await admin.from("crm_integrations").insert({ provider: "aeroapi", extra: kept });
   }
   return decision;
 }
@@ -111,10 +110,11 @@ async function notify(input: {
   kind: FlightNoticeKind;
   when?: string | null;
   place?: string | null;
+  contentSid?: string;
 }) {
   if (!input.booking.visible_to_client) return false;
   if (!input.customer?.email || !proactiveWhatsappAllowed(input.customer)) return false;
-  const contentSid = flightNoticeSid(input.kind);
+  const contentSid = input.contentSid || flightNoticeSid(input.kind);
   if (!contentSid) return false;
   const suffix = await reservationSuffix(input.admin, input.customer.email, input.booking.reference);
   if (!suffix) return false;
@@ -155,6 +155,10 @@ function groupDue(items: ItemRow[], now: Date) {
 export async function runFlightWatch(admin: Admin, deps: { now?: Date; fetchImpl?: typeof fetch } = {}) {
   const now = deps.now || new Date();
   const aero = Boolean(aeroApiKey());
+  const noticeSids = await ensureFlightNoticeSids(admin, deps.fetchImpl).catch((error) => {
+    quiet(error);
+    return {} as Partial<Record<FlightNoticeKind, string>>;
+  });
 
   const from = new Date(now.getTime() - 18 * 60 * 60 * 1000).toISOString();
   const to = new Date(now.getTime() + 31 * 24 * 60 * 60 * 1000).toISOString();
@@ -232,6 +236,7 @@ export async function runFlightWatch(admin: Admin, deps: { now?: Date; fetchImpl
           kind,
           when,
           place,
+          contentSid: noticeSids[kind],
         });
         if (sent) {
           details = markFlightNotified(details, kind, patch.start_at, now);
@@ -261,6 +266,7 @@ export async function runFlightWatch(admin: Admin, deps: { now?: Date; fetchImpl
       booking,
       customer,
       kind: "enregistrement",
+      contentSid: noticeSids.enregistrement,
     });
     const details = sent
       ? markFlightNotified(item.details, "enregistrement", item.start_at, now)
