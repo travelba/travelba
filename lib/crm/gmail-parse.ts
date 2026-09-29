@@ -270,6 +270,14 @@ export function gmailLabelMatchKey(name: string): string {
   return name.trim().toLowerCase().replace(/[\s_]+/g, "-");
 }
 
+/**
+ * Les billets restent dans la file : l'agence rattache chaque pièce à un voyage.
+ * Little Emperors et Expedia TAAP continuent le rattachement automatique.
+ */
+export function emailIngestAttachesAutomatically(label: string | null | undefined): boolean {
+  return gmailLabelMatchKey(label || "") !== BILLET_AVION_LABEL;
+}
+
 function splitGmailLabelList(raw: string | undefined | null): string[] {
   return (raw || "")
     .split(",")

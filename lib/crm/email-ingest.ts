@@ -15,6 +15,7 @@ import {
 import {
   BILLET_AVION_LABEL,
   BILLET_BACKFILL_DONE,
+  emailIngestAttachesAutomatically,
   gmailLabelMatchKey,
   nextBilletBackfillCursor,
 } from "@/lib/crm/gmail-parse";
@@ -377,6 +378,13 @@ async function autoApplyEmailIngest(
   },
   attachments: EmailIngestAttachment[]
 ) {
+  const { data: current } = await admin
+    .from("crm_email_ingest")
+    .select("label")
+    .eq("id", rowId)
+    .maybeSingle();
+  if (!emailIngestAttachesAutomatically(current?.label)) return;
+
   const decision = decideEmailIngestAction({
     extract,
     suggestedCustomerId: suggestions.suggested_customer_id,
