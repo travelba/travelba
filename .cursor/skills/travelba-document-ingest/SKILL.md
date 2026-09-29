@@ -69,7 +69,7 @@ Pièces iOS parfois absentes du VM : le dire, demander le trombone desktop, ou l
 | Famille | Indices | Sortie |
 |---------|---------|--------|
 | E-ticket Amadeus | « Reçu de Billet Electronique », PNR 6 car. | `parseAmadeusFlights` — **1 item / segment** |
-| Little Emperors booking | Reservation Details + Booking Reference | `parseLittleEmperorsHotel` — **1 hôtel**, `rooms[]` |
+| Little Emperors booking | Reservation Details + Booking Reference | `parseLittleEmperorsHotel` — **1 hôtel**, `rooms[]`, `included` = **tout** le bloc Benefits |
 | Little Emperors quote | IATA 96020293, « none are on hold » | `document_status=quote`, invisible |
 | Nantipa | NANTIPA + Reservation Number, dates `08/02/2026` | `parseNantipaConfirmation` — MM/JJ, date only |
 | The Leela / lettre EN | `14-SEP-26`, RESERVATION CONFIRMATION | `parseHotelConfirmationLetter` — date only, TENTATIVE → `needs_review` |
@@ -104,6 +104,7 @@ Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Co
 - `details.rooms = [{ room, guests, confirmation_ref }, …]` — une ligne par chambre distincte, sans doublon. L’agent peut retirer une chambre en trop à la relecture.
 - `confirmation_ref` = `97620170;97620172` — `findMatchingItem` par **recouvrement** de réf.
 - `details.hotel_name` + `title` = nom de l’établissement (**pas** la ville). `details.city` = ville (sous-titre itinéraire).
+- Little Emperors : `included` = **toutes** les lignes du bloc « Little Emperors Benefits » / « LE Benefits », en français (surclassement, petit-déjeuner, crédit, early check-in, late check-out). Pas seulement le petit-déjeuner. « Fourth Night Free » imprimé juste avant le bloc = nuit offerte. L’astérisque se rattache au bénéfice étoilé. Pas l’annulation ni le dépôt.
 - Dates header → `start_at` / `end_at` **sans heure** si seule la date est une date de séjour.
 - Politique 15:00 / 14:00 / 12:00 / Pick Up 00:00 → **ignorer** (pas l’horloge de la carte, pas un transfert).
 - Nantipa `08/02/2026` = 2 août (US), pas 8 février.

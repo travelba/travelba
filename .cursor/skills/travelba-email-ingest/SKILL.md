@@ -131,12 +131,17 @@ d’auto, création (persist mocké), *Albilla* / *Albilila*, annulation + match
 apply, annulation sans match → pas de create.
 Ne pas rejouer un vrai mail prod. Echo PII interdit dans PR / logs.
 
+## Hôtel Little Emperors
+
+`included` = **toutes** les lignes imprimées sous « LE Benefits » ou « Little Emperors Benefits », en français. Pas seulement le petit-déjeuner. « Fourth Night Free » juste avant le bloc = nuit offerte. L’astérisque se rattache au bénéfice étoilé. Pas l’annulation, pas le dépôt. Même parseur que le PDF (`parseLittleEmperorsIncluded`).
+
 ## Interdits
 
 - Auto-apply si plusieurs dossiers au même score fort
 - Créer un dossier (ou un client) depuis un mail d’annulation
 - Publier le carnet / `visible_to_client=true`
 - Inventer horaires, inclus, nets, e-mail client agence
+- Réduire un bloc Benefits au seul petit-déjeuner
 - Traiter ce flux comme le dropzone (pas de « Enregistrer » obligatoire)
 - Dupliquer l’upsert des cartes
 - **Ne pas merger** sans go-ahead explicite de Benjamin

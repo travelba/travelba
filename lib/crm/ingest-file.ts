@@ -95,6 +95,7 @@ const PROMPT_HOTEL = `Hôtel :
 - title de la carte = details.hotel_name (nom de l’établissement), PAS la ville. details.city = ville. details.address, details.board si écrite.
 - details.website, details.phone, details.email seulement s’ils sont imprimés. Ne jamais inventer un téléphone ou un e-mail.
 - Little Emperors : nom, adresse, ville, site s’il est écrit. Pas de téléphone, pas d’e-mail.
+- Little Emperors : details.included = chaque ligne imprimée sous « Little Emperors Benefits » ou « LE Benefits » (surclassement, petit-déjeuner, crédit hôtel, enregistrement anticipé, départ tardif), traduite en français. Pas seulement le petit-déjeuner. « Fourth Night Free » juste avant ce bloc = nuit offerte. L’astérisque de bas de page se rattache au bénéfice étoilé. Pas la politique d’annulation, pas le dépôt.
 - Nantipa / vouchers Costa Rica : 08/02/2026 = 2 août (MM/JJ), pas 8 février. Check-in 15:00 dans les CGV ≠ heure de la carte (date only).
 - Confirmation type The Leela : Check In 14-SEP-26 = date only. Ignorer 14:00/12:00 de politique et Pick Up / Drop Off 00:00. TENTATIVE → details.needs_review.
 - Expedia TAAP : le voyageur imprimé va dans travelers et dans customer_first_name / customer_last_name. confirmation_ref = n° de voyage. Une politique d’annulation ne rend pas le document cancelled. Si une phrase d’annulation est imprimée, details.notes = cette phrase, sinon null.

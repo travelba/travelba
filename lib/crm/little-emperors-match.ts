@@ -5,6 +5,7 @@ import {
   type BookingSuggestion,
   type TripBooking,
 } from "@/lib/crm/email-match";
+import { frenchLeBenefitLine } from "@/lib/crm/ingest-parse";
 import { emptyBookingExtract, type BookingExtract } from "@/lib/crm/ingest-types";
 import {
   isLeCancelled,
@@ -52,6 +53,7 @@ export function leBookingExtract(booking: LeBooking): BookingExtract {
         website: booking.website,
         le_hotel_id: booking.hotel_id,
         source_family: "little_emperors",
+        included: booking.benefits.map((line) => frenchLeBenefitLine(line)).filter(Boolean),
         rooms: booking.room_types.map((type) => ({
           room: null,
           type,

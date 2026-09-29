@@ -50,7 +50,7 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 - Montant PDF → `details.document_amount` (relecture agent). `sanitizeExtractedPrices` **préremplit** `total_amount` = somme **un montant par fichier**. Un extract à 0 ne masque pas cette somme.
 - **Enregistrer** un extract `document_status=confirmed` : écrit `booking.total_amount` et passe le dossier en **confirmé** (toujours `visible_to_client=false` jusqu’à Publier) → `syncBookingLedger` poste le débit + frais billeterie.
 - Devis (`quote`) : montant proposé, statut `quoted`, **pas** de débit.
-- Inclus (`details.included`) **seulement si la phrase est écrite**. Pas de petit-déj inventé. Sinon pas de bloc Inclus.
+- Inclus (`details.included`) **seulement si la phrase est écrite**. Pas de petit-déj inventé. Sinon pas de bloc Inclus. Little Emperors : **toutes** les lignes du bloc « Little Emperors Benefits » / « LE Benefits » (surclassement, petit-déjeuner, crédit, early check-in, late check-out, nuit offerte), en français — pas seulement le petit-déjeuner. Skill `travelba-document-ingest`.
 - N’extraire **pas** annulation / barème / conditions : le PDF suffit.
 
 ## Cartes
