@@ -1,20 +1,29 @@
 import "server-only";
 
 import { productionOnlySecret } from "./preview-secrets";
-import { aeroFlightUrl, parseAeroFlights, type AeroFetchResult } from "./flight-watch";
+import {
+  aeroFlightUrl,
+  parseAeroFlights,
+  type AeroFetchResult,
+  type FlightNoticeKind,
+} from "./flight-watch";
+
+const FLIGHT_NOTICE_ENV: Record<FlightNoticeKind, string> = {
+  horaire: "TWILIO_CONTENT_VOL_HORAIRE",
+  annule: "TWILIO_CONTENT_VOL_ANNULE",
+  enregistrement: "TWILIO_CONTENT_VOL_ENREGISTREMENT",
+  retard: "TWILIO_CONTENT_VOL_RETARD",
+  deroute: "TWILIO_CONTENT_VOL_DEROUTE",
+  envol: "TWILIO_CONTENT_VOL_ENVOL",
+  arrivee: "TWILIO_CONTENT_VOL_ARRIVEE",
+};
 
 export function aeroApiKey() {
   return productionOnlySecret(process.env.AEROAPI_KEY);
 }
 
-export function flightNoticeSid(kind: "horaire" | "annule" | "enregistrement") {
-  const name =
-    kind === "horaire"
-      ? "TWILIO_CONTENT_VOL_HORAIRE"
-      : kind === "annule"
-        ? "TWILIO_CONTENT_VOL_ANNULE"
-        : "TWILIO_CONTENT_VOL_ENREGISTREMENT";
-  return productionOnlySecret(process.env[name]);
+export function flightNoticeSid(kind: FlightNoticeKind) {
+  return productionOnlySecret(process.env[FLIGHT_NOTICE_ENV[kind]]);
 }
 
 export async function fetchAeroFlights(

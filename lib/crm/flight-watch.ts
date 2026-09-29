@@ -35,8 +35,19 @@ export type FlightWatchStatus =
   | "landed"
   | "unknown";
 
+export type FlightNoticeKind =
+  | "horaire"
+  | "annule"
+  | "enregistrement"
+  | "retard"
+  | "deroute"
+  | "envol"
+  | "arrivee";
+
 export type FlightWatch = {
   status: FlightWatchStatus;
+  /** Phrase AeroAPI, telle quelle. */
+  phrase: string;
   fa_flight_id: string;
   sold_out: string;
   scheduled_out: string;
@@ -46,6 +57,9 @@ export type FlightWatch = {
   checked_at: string;
   notified_out: string;
   notified_cancel: boolean;
+  notified_divert: boolean;
+  notified_airborne: boolean;
+  notified_arrival: boolean;
   checkin_notified_at: string;
   checkin_attempt_at: string;
 };
@@ -82,7 +96,7 @@ export type FlightPatch = {
   start_at: string | null;
   end_at: string | null;
   details: Record<string, unknown>;
-  event: "annule" | "horaire" | null;
+  event: FlightNoticeKind | null;
   changed: boolean;
 };
 
@@ -111,6 +125,7 @@ export function readFlightWatch(details: Record<string, unknown> | null | undefi
   const text = (key: string) => (typeof watch[key] === "string" ? String(watch[key]) : "");
   return {
     status: (text("status") || "unknown") as FlightWatchStatus,
+    phrase: text("phrase"),
     fa_flight_id: text("fa_flight_id"),
     sold_out: text("sold_out"),
     scheduled_out: text("scheduled_out"),
@@ -120,6 +135,9 @@ export function readFlightWatch(details: Record<string, unknown> | null | undefi
     checked_at: text("checked_at"),
     notified_out: text("notified_out"),
     notified_cancel: watch.notified_cancel === true,
+    notified_divert: watch.notified_divert === true,
+    notified_airborne: watch.notified_airborne === true,
+    notified_arrival: watch.notified_arrival === true,
     checkin_notified_at: text("checkin_notified_at"),
     checkin_attempt_at: text("checkin_attempt_at"),
   };
@@ -202,7 +220,8 @@ export function inAeroWindow(startAt: string | null, now: Date) {
 export function pollDue(item: FlightCard, now: Date) {
   if (!inAeroWindow(item.start_at, now)) return false;
   const watch = readFlightWatch(item.details);
-  if (watch.status === "landed") return false;
+  if (watch.status === "landed" && watch.notified_arrival) return false;
+  if (watch.status === "cancelled" && watch.notified_cancel) return false;
   if (!watch.checked_at) return true;
   const checked = Date.parse(watch.checked_at);
   if (!Number.isFinite(checked)) return true;
@@ -238,6 +257,9 @@ export function flightWatchBadge(item: FlightCard, now: Date) {
   const watch = readFlightWatch(item.details);
   if (watch.status === "cancelled") return "Annulé";
   if (watch.status === "diverted") return "Dérouté";
+  if (watch.status === "landed") return "Arrivé";
+  if (watch.status === "en_route") return "En vol";
+  if (watch.status === "delayed") return "Retard";
   if (watch.sold_out && shifted(watch.sold_out, item.start_at)) return "Horaire modifié";
   if (checkinOpen(item, now)) return "Enregistrement ouvert";
   return "";
@@ -257,21 +279,15 @@ function watchStatus(flight: AeroFlight, delayMs: number): FlightWatchStatus {
   if (flight.diverted || status.includes("divert")) return "diverted";
   if (status.includes("land") || status.includes("arriv")) return "landed";
   if (status.includes("en route") || status.includes("enroute")) return "en_route";
-  if (delayMs >= SHIFT_MS) return "delayed";
-  return "scheduled";
+  if (delayMs >= SHIFT_MS || status.includes("delay")) return "delayed";
+  if (status.includes("schedul") || status.includes("on time")) return "scheduled";
+  return "unknown";
 }
 
-export function matchAeroFlight(item: FlightCard, flights: AeroFlight[]) {
-  const from = detail(item.details, "from").toUpperCase();
-  const to = detail(item.details, "to").toUpperCase();
-  if (!from || !to) return null;
-  const candidates = flights.filter(
-    (flight) => flight.originIata.toUpperCase() === from && flight.destinationIata.toUpperCase() === to
-  );
-  const start = clockMs(item.start_at);
+function closestFlight(flights: AeroFlight[], start: number | null) {
   let best: AeroFlight | null = null;
   let bestDelta = Number.POSITIVE_INFINITY;
-  for (const flight of candidates) {
+  for (const flight of flights) {
     const local = airportLocalIso(flight.scheduledOut || flight.estimatedOut, flight.originTimezone);
     const localMs = clockMs(local);
     if (start == null || localMs == null) continue;
@@ -283,6 +299,29 @@ export function matchAeroFlight(item: FlightCard, flights: AeroFlight[]) {
   }
   if (!best || bestDelta > 18 * HOUR_MS) return null;
   return best;
+}
+
+export function matchAeroFlight(item: FlightCard, flights: AeroFlight[]) {
+  const known = readFlightWatch(item.details).fa_flight_id;
+  if (known) {
+    const same = flights.find((flight) => flight.faFlightId === known);
+    if (same) return same;
+  }
+  const from = detail(item.details, "from").toUpperCase();
+  const to = detail(item.details, "to").toUpperCase();
+  if (!from || !to) return null;
+  const start = clockMs(item.start_at);
+  const routed = closestFlight(
+    flights.filter(
+      (flight) => flight.originIata.toUpperCase() === from && flight.destinationIata.toUpperCase() === to
+    ),
+    start
+  );
+  if (routed) return routed;
+  return closestFlight(
+    flights.filter((flight) => flight.diverted && flight.originIata.toUpperCase() === from),
+    start
+  );
 }
 
 export function applyAeroFlight(item: FlightCard, flight: AeroFlight | null, now: Date): FlightPatch {
@@ -300,17 +339,10 @@ export function applyAeroFlight(item: FlightCard, flight: AeroFlight | null, now
   const localOut = airportLocalIso(departureUtc, flight.originTimezone);
   const scheduledLocal = airportLocalIso(flight.scheduledOut, flight.originTimezone);
   const delayMs = Math.max(0, (flight.departureDelay || 0) * 1000);
-  const status = watchStatus(flight, localOut && item.start_at && shifted(item.start_at, localOut) ? SHIFT_MS : delayMs);
+  const status = watchStatus(flight, delayMs);
   const sold_out = previous.sold_out || item.start_at || "";
   let start_at = item.start_at;
-  let event: FlightPatch["event"] = null;
-
-  if (status === "cancelled") {
-    event = previous.notified_cancel ? null : "annule";
-  } else if (localOut && shifted(item.start_at, localOut)) {
-    start_at = localOut;
-    event = previous.notified_out === localOut ? null : "horaire";
-  }
+  if (status !== "cancelled" && localOut && shifted(item.start_at, localOut)) start_at = localOut;
 
   let end_at = item.end_at;
   const arrivalUtc = flight.estimatedIn || flight.scheduledIn;
@@ -322,6 +354,7 @@ export function applyAeroFlight(item: FlightCard, flight: AeroFlight | null, now
     flight_watch: {
       ...previous,
       status,
+      phrase: flight.status,
       fa_flight_id: flight.faFlightId,
       sold_out,
       scheduled_out: scheduledLocal || previous.scheduled_out,
@@ -339,20 +372,51 @@ export function applyAeroFlight(item: FlightCard, flight: AeroFlight | null, now
     end_at !== item.end_at ||
     status !== previous.status ||
     (flight.gateOrigin && flight.gateOrigin !== previous.gate) ||
-    !previous.checked_at;
+    !previous.checked_at ||
+    flight.status !== previous.phrase;
+  const event = pendingFlightNotices({ ...item, start_at, end_at, details })[0] ?? null;
   return { start_at, end_at, details, event, changed };
+}
+
+export function pendingFlightNotices(item: FlightCard): FlightNoticeKind[] {
+  const watch = readFlightWatch(item.details);
+  if (watch.status === "cancelled") return watch.notified_cancel ? [] : ["annule"];
+  const events: FlightNoticeKind[] = [];
+  if (watch.status === "diverted" && !watch.notified_divert) events.push("deroute");
+  const departure = watch.estimated_out || item.start_at;
+  if (watch.status === "delayed" && departure && watch.notified_out !== departure && flightClockLabel(departure)) {
+    events.push("retard");
+  } else if (
+    watch.status !== "delayed" &&
+    watch.status !== "diverted" &&
+    watch.status !== "en_route" &&
+    watch.status !== "landed" &&
+    watch.sold_out &&
+    shifted(watch.sold_out, item.start_at) &&
+    item.start_at &&
+    watch.notified_out !== item.start_at &&
+    flightClockLabel(item.start_at)
+  ) {
+    events.push("horaire");
+  }
+  if (watch.status === "en_route" && !watch.notified_airborne) events.push("envol");
+  if (watch.status === "landed" && !watch.notified_arrival) events.push("arrivee");
+  return events;
 }
 
 export function markFlightNotified(
   details: Record<string, unknown>,
-  event: "annule" | "horaire" | "enregistrement",
+  event: FlightNoticeKind,
   startAt: string | null,
   now: Date
 ) {
   const previous = readFlightWatch(details);
   const flight_watch = { ...previous };
   if (event === "annule") flight_watch.notified_cancel = true;
-  if (event === "horaire" && startAt) flight_watch.notified_out = startAt;
+  if ((event === "horaire" || event === "retard") && startAt) flight_watch.notified_out = startAt;
+  if (event === "deroute") flight_watch.notified_divert = true;
+  if (event === "envol") flight_watch.notified_airborne = true;
+  if (event === "arrivee") flight_watch.notified_arrival = true;
   if (event === "enregistrement") flight_watch.checkin_notified_at = now.toISOString();
   flight_watch.checkin_attempt_at =
     event === "enregistrement" ? now.toISOString() : previous.checkin_attempt_at;
@@ -418,14 +482,23 @@ export type AeroFetchResult = {
   flights: AeroFlight[];
 };
 
-const NOTICE_BUTTON = "https://travelba.fr/e/{{3}}";
-const HORAIRE_BUTTON = "https://travelba.fr/e/{{4}}";
+const BUTTON_URL: Record<string, string> = {
+  "2": "https://travelba.fr/e/{{2}}",
+  "3": "https://travelba.fr/e/{{3}}",
+  "4": "https://travelba.fr/e/{{4}}",
+};
 
 function noticeBody(lines: string) {
   return `${lines}\n\nLe Concierge`;
 }
 
-function noticeDraft(friendlyName: string, body: string, buttonVariable: string, variables: Record<string, string>) {
+function noticeDraft(
+  friendlyName: string,
+  body: string,
+  buttonVariable: string,
+  variables: Record<string, string>,
+  button = "Voir le vol"
+) {
   return {
     friendly_name: friendlyName,
     language: "fr",
@@ -433,10 +506,66 @@ function noticeDraft(friendlyName: string, body: string, buttonVariable: string,
     types: {
       "twilio/call-to-action": {
         body,
-        actions: [{ type: "URL", title: "Voir le vol", url: buttonVariable === "4" ? HORAIRE_BUTTON : NOTICE_BUTTON }],
+        actions: [{ type: "URL", title: button, url: BUTTON_URL[buttonVariable] }],
       },
     },
   };
+}
+
+const MASCULINE_E = new Set(["mexique", "cambodge", "mozambique", "zimbabwe", "belize", "suriname"]);
+const AT_COUNTRY = new Set([
+  "cuba",
+  "madagascar",
+  "malte",
+  "chypre",
+  "sri lanka",
+  "singapour",
+  "monaco",
+  "haïti",
+  "haiti",
+  "maurice",
+  "bahreïn",
+  "bahrein",
+  "djibouti",
+]);
+const PLURAL_COUNTRY = new Set([
+  "états-unis",
+  "etats-unis",
+  "pays-bas",
+  "philippines",
+  "émirats arabes unis",
+  "emirats arabes unis",
+  "bahamas",
+  "seychelles",
+  "maldives",
+  "comores",
+]);
+
+function countryKey(name: string) {
+  return name
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+}
+
+/** « à Marrakech », « au Maroc », « en France », « aux États-Unis ». */
+export function welcomePlace(input: { city?: string | null; country?: string | null }) {
+  const city = (input.city || "").replace(/[\r\n]+/g, " ").trim();
+  if (city) {
+    if (/^le\s+/i.test(city)) return `au ${city.replace(/^le\s+/i, "")}`;
+    if (/^les\s+/i.test(city)) return `aux ${city.replace(/^les\s+/i, "")}`;
+    return `à ${city}`;
+  }
+  const country = (input.country || "").replace(/[\r\n]+/g, " ").trim();
+  if (!country) return null;
+  const key = countryKey(country);
+  if (PLURAL_COUNTRY.has(key)) return `aux ${country}`;
+  if (AT_COUNTRY.has(key)) return `à ${country}`;
+  if (MASCULINE_E.has(key)) return `au ${country}`;
+  if (/[eé]$/i.test(country)) return `en ${country}`;
+  if (/^[aeiouhéèêëh]/i.test(country)) return `en ${country}`;
+  return `au ${country}`;
 }
 
 /** Modèles Utility. Le SID reste dans l’environnement, jamais ici. */
@@ -472,24 +601,71 @@ export function flightNoticeDrafts() {
         { "1": "AF 1789", "2": "CDG → RAK", "3": "c/23456789" }
       ),
     },
+    {
+      env: "TWILIO_CONTENT_VOL_RETARD",
+      friendlyName: "vol_retard",
+      create: noticeDraft(
+        "vol_retard",
+        noticeBody("Le vol {{1}} {{2}} a du retard. Il part à {{3}}."),
+        "4",
+        { "1": "AF 1789", "2": "CDG → RAK", "3": "14h40", "4": "c/23456789" }
+      ),
+    },
+    {
+      env: "TWILIO_CONTENT_VOL_DEROUTE",
+      friendlyName: "vol_deroute",
+      create: noticeDraft(
+        "vol_deroute",
+        noticeBody("Le vol {{1}} {{2}} est dérouté. L'agence s'en occupe."),
+        "3",
+        { "1": "AF 1789", "2": "CDG → RAK", "3": "c/23456789" }
+      ),
+    },
+    {
+      env: "TWILIO_CONTENT_VOL_ENVOL",
+      friendlyName: "vol_envol",
+      create: noticeDraft(
+        "vol_envol",
+        noticeBody("Le vol {{1}} {{2}} a décollé. Bon vol."),
+        "3",
+        { "1": "AF 1789", "2": "CDG → RAK", "3": "c/23456789" }
+      ),
+    },
+    {
+      env: "TWILIO_CONTENT_VOL_ARRIVEE",
+      friendlyName: "vol_arrivee",
+      create: noticeDraft(
+        "vol_arrivee",
+        noticeBody("Vous êtes arrivé. Bienvenue {{1}}. Bon séjour."),
+        "2",
+        { "1": "à Marrakech", "2": "c/23456789" },
+        "Voir le séjour"
+      ),
+    },
   ];
 }
 
 export function flightNoticeVariables(input: {
-  kind: "horaire" | "annule" | "enregistrement";
+  kind: FlightNoticeKind;
   flight: string;
   route: string;
   when?: string | null;
+  place?: string | null;
   buttonSuffix: string;
 }): Record<string, string> | null {
   const suffix = input.buttonSuffix.replace(/[\r\n]+/g, " ").trim();
   const flight = input.flight.replace(/[\r\n]+/g, " ").trim();
   const route = input.route.replace(/[\r\n]+/g, " ").trim();
   const when = (input.when || "").replace(/[\r\n]+/g, " ").trim();
+  const place = (input.place || "").replace(/[\r\n]+/g, " ").trim();
   if (!suffix.startsWith("c/") || suffix.includes("://")) return null;
+  if (/https?:|travelba\.fr/i.test(`${flight} ${route} ${when} ${place}`)) return null;
+  if (input.kind === "arrivee") {
+    if (!/^(à|au|aux|en) /u.test(place)) return null;
+    return { "1": place, "2": suffix };
+  }
   if (!flight || !route) return null;
-  if (/https?:|travelba\.fr/i.test(`${flight} ${route} ${when}`)) return null;
-  if (input.kind === "horaire") {
+  if (input.kind === "horaire" || input.kind === "retard") {
     if (!/^\d{2}h\d{2}$/.test(when)) return null;
     return { "1": flight, "2": route, "3": when, "4": suffix };
   }

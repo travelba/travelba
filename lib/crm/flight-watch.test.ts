@@ -11,8 +11,10 @@ import {
   flightWatchBadge,
   matchAeroFlight,
   parseAeroFlights,
+  pendingFlightNotices,
   pollDue,
   reserveAeroBudget,
+  welcomePlace,
   type AeroFlight,
   type FlightCard,
 } from "./flight-watch";
@@ -91,10 +93,11 @@ test("un décalage d’au moins 15 minutes devient le nouvel horaire", () => {
     NOW
   );
   assert.equal(patch.start_at, "2026-09-29T14:40:00");
-  assert.equal(patch.event, "horaire");
-  const watch = patch.details.flight_watch as { sold_out: string };
+  assert.equal(patch.event, "retard");
+  const watch = patch.details.flight_watch as { sold_out: string; phrase: string };
   assert.equal(watch.sold_out, "2026-09-29T14:00:00");
-  assert.equal(flightWatchBadge({ ...card(), start_at: patch.start_at, details: patch.details }, NOW), "Horaire modifié");
+  assert.equal(watch.phrase, "Delayed");
+  assert.equal(flightWatchBadge({ ...card(), start_at: patch.start_at, details: patch.details }, NOW), "Retard");
 });
 
 test("cinq minutes de retard laissent l’heure vendue", () => {
@@ -215,5 +218,43 @@ test("les variables WhatsApp refusent un lien dans le texte", () => {
     "TWILIO_CONTENT_VOL_ANNULE",
     "TWILIO_CONTENT_VOL_HORAIRE",
     "TWILIO_CONTENT_VOL_ENREGISTREMENT",
+    "TWILIO_CONTENT_VOL_RETARD",
+    "TWILIO_CONTENT_VOL_DEROUTE",
+    "TWILIO_CONTENT_VOL_ENVOL",
+    "TWILIO_CONTENT_VOL_ARRIVEE",
   ].join(","));
+  assert.deepEqual(
+    flightNoticeVariables({
+      kind: "arrivee",
+      flight: "",
+      route: "",
+      place: "à Marrakech",
+      buttonSuffix: "c/23456789",
+    }),
+    { "1": "à Marrakech", "2": "c/23456789" }
+  );
+});
+
+test("décollage, arrivée et déroutement ont chacun leur message", () => {
+  const airborne = applyAeroFlight(card(), aero({ status: "En Route / On Time" }), NOW);
+  assert.equal(airborne.event, "envol");
+  assert.equal(flightWatchBadge({ ...card(), details: airborne.details }, NOW), "En vol");
+
+  const landed = applyAeroFlight(card(), aero({ status: "Arrived / Gate Arrival" }), NOW);
+  assert.deepEqual(pendingFlightNotices({ ...card(), details: landed.details }), ["arrivee"]);
+  assert.equal(flightWatchBadge({ ...card(), details: landed.details }, NOW), "Arrivé");
+
+  const diverted = applyAeroFlight(card(), aero({ status: "Diverted", diverted: true, destinationIata: "CMN" }), NOW);
+  assert.equal(diverted.event, "deroute");
+  assert.equal(flightWatchBadge({ ...card(), details: diverted.details }, NOW), "Dérouté");
+});
+
+test("la bienvenue vise la ville, sinon le pays", () => {
+  assert.equal(welcomePlace({ city: "Marrakech", country: "Maroc" }), "à Marrakech");
+  assert.equal(welcomePlace({ city: "Le Caire" }), "au Caire");
+  assert.equal(welcomePlace({ country: "Maroc" }), "au Maroc");
+  assert.equal(welcomePlace({ country: "France" }), "en France");
+  assert.equal(welcomePlace({ country: "États-Unis" }), "aux États-Unis");
+  assert.equal(welcomePlace({ country: "Israël" }), "en Israël");
+  assert.equal(welcomePlace({}), null);
 });

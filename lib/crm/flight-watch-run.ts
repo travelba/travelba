@@ -2,6 +2,8 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createEntryLink, entryButtonSuffix, entryCodeFromLink } from "./entry-link";
+import { countryForIata } from "./airports";
+import { countryName } from "./countries";
 import { aeroApiKey, fetchAeroFlights, flightNoticeSid } from "./flight-watch-api";
 import {
   applyAeroFlight,
@@ -14,9 +16,12 @@ import {
   markCheckinAttempt,
   markFlightNotified,
   matchAeroFlight,
+  pendingFlightNotices,
   pollDue,
   reserveAeroBudget,
+  welcomePlace,
   type FlightCard,
+  type FlightNoticeKind,
 } from "./flight-watch";
 import { siteConfig } from "../site";
 import { sendContentTemplate } from "./whatsapp";
@@ -91,13 +96,21 @@ async function takeBudget(admin: Admin, now: Date) {
   return decision;
 }
 
+function arrivalPlace(details: Record<string, unknown>) {
+  const city = typeof details.city_to === "string" ? details.city_to : "";
+  const code = typeof details.to === "string" ? details.to : "";
+  const named = typeof details.country === "string" ? details.country : "";
+  return welcomePlace({ city, country: countryName(countryForIata(code)) || named });
+}
+
 async function notify(input: {
   admin: Admin;
   item: ItemRow;
   booking: BookingRow;
   customer: CustomerRow | undefined;
-  kind: "horaire" | "annule" | "enregistrement";
+  kind: FlightNoticeKind;
   when?: string | null;
+  place?: string | null;
 }) {
   if (!input.booking.visible_to_client) return false;
   if (!input.customer?.email || !proactiveWhatsappAllowed(input.customer)) return false;
@@ -110,6 +123,7 @@ async function notify(input: {
     flight: flightNumberLabel(input.item.details),
     route: flightRouteLabel(input.item.details),
     when: input.when,
+    place: input.place,
     buttonSuffix: suffix,
   });
   if (!variables) return false;
@@ -203,17 +217,24 @@ export async function runFlightWatch(admin: Admin, deps: { now?: Date; fetchImpl
       if (!booking) continue;
       const patch = applyAeroFlight(item, result.ok ? matchAeroFlight(item, result.flights) : null, now);
       let details = patch.details;
-      if (patch.event) {
+      const noticed = { ...item, start_at: patch.start_at, end_at: patch.end_at, details };
+      for (const kind of pendingFlightNotices(noticed)) {
+        const place = kind === "arrivee" ? arrivalPlace(details) : null;
+        const when =
+          kind === "horaire" || kind === "retard" ? flightClockLabel(patch.start_at) : null;
+        if ((kind === "horaire" || kind === "retard") && !when) continue;
+        if (kind === "arrivee" && !place) continue;
         const sent = await notify({
           admin,
           item: { ...item, start_at: patch.start_at, details },
           booking,
           customer: customers.get(booking.customer_id),
-          kind: patch.event,
-          when: patch.event === "horaire" ? flightClockLabel(patch.start_at) : null,
+          kind,
+          when,
+          place,
         });
         if (sent) {
-          details = markFlightNotified(details, patch.event, patch.start_at, now);
+          details = markFlightNotified(details, kind, patch.start_at, now);
           notified += 1;
         }
       }
