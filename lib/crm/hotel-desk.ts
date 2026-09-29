@@ -506,29 +506,14 @@ export function replyMatchesHotel(input: {
   return input.hotelEmails.map((email) => emailAddress(email)).includes(from);
 }
 
-export function cardSendNote(choice: "pliant" | "client" | null, lang: "fr" | "en", card: { holder: string; pan: string; expiry: string; cvc: string } | null) {
+export function cardSendNote(choice: "pliant" | "client" | null, lang: "fr" | "en") {
   if (choice === "client") {
     return lang === "fr"
-      ? "Le client présentera sa carte personnelle à l'arrivée. Merci de ne pas encaisser le séjour sur une autre carte."
-      : "The guest will present their own card on arrival. Please do not charge the stay to another card.";
+      ? "La carte du client est jointe. Merci de ne pas encaisser le séjour sur une autre carte."
+      : "The guest's card is attached. Please do not charge the stay to another card.";
   }
-  if (choice !== "pliant" || !card) return "";
-  if (lang === "fr") {
-    return [
-      "Carte pour l'enregistrement :",
-      `Titulaire : ${card.holder}`,
-      `Numéro : ${card.pan}`,
-      `Expiration : ${card.expiry}`,
-      `Cryptogramme : ${card.cvc}`,
-    ].join("\n");
-  }
-  return [
-    "Card for check-in:",
-    `Cardholder: ${card.holder}`,
-    `Number: ${card.pan}`,
-    `Expiry: ${card.expiry}`,
-    `Security code: ${card.cvc}`,
-  ].join("\n");
+  if (choice !== "pliant") return "";
+  return lang === "fr" ? "La carte d'enregistrement est jointe." : "The check-in card is attached.";
 }
 
 export function outboundHotelLetter(body: string, note: string) {

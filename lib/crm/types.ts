@@ -356,6 +356,9 @@ export type CrmHotelRequest = {
   edited: boolean;
   card_choice: "pliant" | "client" | null;
   attach_passports: boolean;
+  /** Pièces cochées. Vide tant que l'agence n'a pas choisi. */
+  identity_document_ids?: string[];
+  identity_picked?: boolean;
   due_on: string | null;
   sent_at: string | null;
   follow_up_count: number;

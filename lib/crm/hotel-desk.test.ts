@@ -235,17 +235,13 @@ test("la réponse hôtel reste dans le dossier, sans numéro de carte", () => {
   assert.equal(stripped.toLowerCase().includes("cryptogramme"), false);
 });
 
-test("la carte n'entre dans le message qu'à l'envoi", () => {
+test("la carte n'entre pas dans le brouillon", () => {
   assert.equal(containsCardNumber("4242 4242 4242 4242"), true);
-  const note = cardSendNote("pliant", "fr", {
-    holder: "Camille Martin",
-    pan: "4242424242424242",
-    expiry: "06/28",
-    cvc: "123",
-  });
+  const note = cardSendNote("pliant", "fr");
   const stored = "Les documents d'identité sont joints.";
   assert.equal(containsCardNumber(stored), false);
-  assert.match(outboundHotelLetter(stored, note), /4242424242424242/);
-  assert.match(cardSendNote("client", "fr", null), /carte personnelle/);
-  assert.equal(cardSendNote("client", "fr", null).includes("4242"), false);
+  assert.equal(containsCardNumber(outboundHotelLetter(stored, note)), false);
+  assert.match(note, /jointe/);
+  assert.match(cardSendNote("client", "fr"), /jointe/);
+  assert.equal(note.includes("4242"), false);
 });

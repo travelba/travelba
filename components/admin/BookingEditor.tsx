@@ -99,7 +99,6 @@ export function BookingEditor({
   shareCompanions = [],
   arrivals = [],
   hotelRequests = [],
-  passportCount = 0,
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -125,7 +124,6 @@ export function BookingEditor({
   shareCompanions?: ShareCompanion[];
   arrivals?: CrmHotelArrival[];
   hotelRequests?: CrmHotelRequest[];
-  passportCount?: number;
 }) {
   const router = useRouter();
   const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
@@ -1001,7 +999,10 @@ export function BookingEditor({
         currency={booking.currency}
         hotelRequests={hotelRequests}
         today={todayIsoDate()}
-        passportCount={passportCount}
+        travelers={travelers}
+        identityDocs={identityDocs}
+        holder={holderProfile}
+        arrivals={arrivals}
         clientSettlesStay={clientSettles}
         onBindDraftSave={(save) => {
           saveOpenCard.current = save;
