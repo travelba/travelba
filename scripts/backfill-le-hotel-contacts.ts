@@ -115,12 +115,13 @@ async function main() {
     const after = enriched[index];
     if (JSON.stringify(before.details) === JSON.stringify(after.details)) {
       counts.untouched += 1;
-      continue;
+    } else {
+      const { error } = await admin.from("crm_booking_items").update({ details: after.details }).eq("id", after.id);
+      if (error) throw new Error(error.message);
+      counts.linked += 1;
     }
-    const { error } = await admin.from("crm_booking_items").update({ details: after.details }).eq("id", after.id);
-    if (error) throw new Error(error.message);
-    counts.linked += 1;
     const contact = hotelContact(after);
+    if (!contact.people.length && !contact.email) continue;
     const { data: requests, error: requestError } = await admin
       .from("crm_hotel_requests")
       .select("id, kind, status, edited, recipients, subject, body")
