@@ -5,6 +5,7 @@
  * Si la variable est déjà définie, ce modèle n’est pas recréé.
  */
 import { conciergeContentDrafts } from "../lib/crm/concierge-notices";
+import { flightNoticeDrafts } from "../lib/crm/flight-watch";
 
 const CONTENT_URL = "https://content.twilio.com/v1/Content";
 
@@ -76,7 +77,7 @@ async function main() {
     return;
   }
 
-  for (const draft of conciergeContentDrafts()) {
+  for (const draft of [...conciergeContentDrafts(), ...flightNoticeDrafts()]) {
     if (process.env[draft.env]?.trim()) {
       console.log(`${draft.env} est déjà défini. ${draft.friendlyName} n’est pas recréé.`);
       continue;

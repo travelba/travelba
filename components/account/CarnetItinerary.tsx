@@ -11,6 +11,7 @@ import { Icon } from "@/components/crm/icons";
 import { BrandMark } from "@/components/crm/BrandMark";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
 import { HotelContactButton } from "@/components/crm/HotelContact";
+import { flightGate, flightTerminal, flightWatchBadge } from "@/lib/crm/flight-watch";
 import {
   documentsForItem,
   dayHeading,
@@ -102,7 +103,9 @@ function CardBody({
   const pickupNote = detailStr(item, "pickup_note");
   const baggage = detailStr(item, "baggage");
   const seat = detailStr(item, "seat");
-  const terminal = detailStr(item, "terminal");
+  const terminal = item.kind === "flight" ? flightTerminal(item) : detailStr(item, "terminal");
+  const gate = item.kind === "flight" ? flightGate(item) : "";
+  const watchLine = item.kind === "flight" ? flightWatchBadge(item, new Date()) : "";
   const cabin = detailStr(item, "cabin");
   const airline = detailStr(item, "airline") || item.supplier || "";
   const city = detailStr(item, "city");
@@ -121,6 +124,7 @@ function CardBody({
             {item.kind !== "hotel" && clock ? ` · ${clock}` : ""}
             {endClock && item.kind !== "hotel" ? ` → ${endClock}` : ""}
             {item.kind === "flight" && tickets > 1 ? ` · ${tickets} billets` : ""}
+            {watchLine ? ` · ${watchLine}` : ""}
           </p>
           <p className="break-words text-sm font-semibold leading-snug text-[var(--admin-navy)]">
             {item.kind === "hotel"
@@ -166,6 +170,7 @@ function CardBody({
             {cabin ? <p>Classe {cabin}</p> : null}
             {baggage ? <p>Bagages {baggage}</p> : null}
             {seat ? <p>Siège {seat}</p> : null}
+            {gate ? <p>Porte {gate}</p> : null}
             {terminal ? <p>Terminal {terminal}</p> : null}
           </>
         ) : null}
