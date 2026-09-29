@@ -1,5 +1,6 @@
 import { after, NextResponse } from "next/server";
-import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
+import { BookingIssuesError } from "@/lib/crm/booking-issues";
 import { continueEtaIlRequest } from "@/lib/crm/eta-il-continue";
 import { customerPliantCardCount, etaIlPliantCard } from "@/lib/crm/eta-il-fee";
 import { issuePliantCard, pliantConfigured, raisePliantLimit } from "@/lib/crm/pliant";
@@ -179,19 +180,24 @@ export async function POST(request: Request, ctx: Ctx) {
     b.visible_to_client = opened.visible;
     b.prices_visible = opened.prices;
     await publishTrip(auth.supabase, b);
-    await openAcceptedVisa(auth.supabase, {
-      booking: b,
-      country,
-      step: decision.step,
-      status: decision.status,
-      travelerIds: decision.travelerIds,
-      travelers: party,
-      items: (items || []) as CrmBookingItem[],
-      holder: customer as CrmCustomer,
-      companions: (companions || []) as CrmCompanion[],
-      answers,
-      enforceWindow: false,
-    });
+    try {
+      await openAcceptedVisa(auth.supabase, {
+        booking: b,
+        country,
+        step: decision.step,
+        status: decision.status,
+        travelerIds: decision.travelerIds,
+        travelers: party,
+        items: (items || []) as CrmBookingItem[],
+        holder: customer as CrmCustomer,
+        companions: (companions || []) as CrmCompanion[],
+        answers,
+        enforceWindow: false,
+      });
+    } catch (err) {
+      if (err instanceof BookingIssuesError) return jsonIssues(err.issues);
+      throw err;
+    }
     if (astraFillsCountry(country) && decision.step === "preparation") after(() => continueEtaIlRequest(b.id));
     const phase = phaseForSavedStep(decision.step);
     return NextResponse.json({
