@@ -4,7 +4,7 @@ import { cardLast4 } from "./hotel-arrival";
 import { downloadCrmFile } from "./files";
 import { isAgencyCardPath, isSafeCrmPath } from "./files-access";
 import { pliantConfigured, readPliantCardSecrets } from "./pliant";
-import { hashStaffCardCode, staffCodeDecision } from "./staff-card-code";
+import { AGENCY_MASTER_CODE_HASH, staffCardCodeMatches } from "./staff-card-code";
 import type { CardViewLine, CrmHotelArrival } from "./types";
 
 type Admin = { from: (table: string) => any };
@@ -52,9 +52,26 @@ export async function loadCardViews(admin: Admin, bookingId: string): Promise<Ca
     }));
 }
 
+export async function ensureAgencyMasterCode(admin: Admin, staffId: string) {
+  const hash = AGENCY_MASTER_CODE_HASH;
+  const { data } = await admin.from("crm_staff_card_codes").select("card_code_hash").eq("staff_id", staffId).maybeSingle();
+  const stored = (data as { card_code_hash?: string | null } | null)?.card_code_hash || null;
+  if (stored === hash) return;
+  if (stored) {
+    const { error } = await admin
+      .from("crm_staff_card_codes")
+      .update({ card_code_hash: hash, updated_at: new Date().toISOString() })
+      .eq("staff_id", staffId);
+    if (error) throw error;
+    return;
+  }
+  const { error } = await admin.from("crm_staff_card_codes").insert({ staff_id: staffId, card_code_hash: hash });
+  if (error) throw error;
+}
+
 export async function staffHasCardCode(admin: Admin, staffId: string) {
-  const { data } = await admin.from("crm_staff_card_codes").select("staff_id").eq("staff_id", staffId).maybeSingle();
-  return Boolean(data);
+  await ensureAgencyMasterCode(admin, staffId);
+  return true;
 }
 
 export async function openAgencyCard(input: {
@@ -76,16 +93,12 @@ export async function openAgencyCard(input: {
     }
 > {
   const code = input.code.trim();
-  const { data: codeRow } = await input.admin
-    .from("crm_staff_card_codes")
-    .select("card_code_hash")
-    .eq("staff_id", input.staffId)
-    .maybeSingle();
-  const stored = (codeRow as { card_code_hash?: string | null } | null)?.card_code_hash || null;
-  const decision = staffCodeDecision(stored, code, Boolean(input.define));
-  if (decision === "missing") return fail("Choisissez votre code maître.", 409);
-  if (decision === "wrong") return fail("Code incorrect.", 403);
-  const nextHash = decision === "set" ? hashStaffCardCode(code) : null;
+  try {
+    await ensureAgencyMasterCode(input.admin, input.staffId);
+  } catch {
+    return fail("Le code n’a pas pu être enregistré.", 500);
+  }
+  if (!staffCardCodeMatches(code, AGENCY_MASTER_CODE_HASH)) return fail("Code incorrect.", 403);
 
   const { data } = await input.admin
     .from("crm_hotel_arrivals")
@@ -126,14 +139,6 @@ export async function openAgencyCard(input: {
     } catch {
       return fail("La carte n’a pas pu être lue.", 502);
     }
-  }
-
-  if (nextHash) {
-    const { error } = await input.admin.from("crm_staff_card_codes").insert({
-      staff_id: input.staffId,
-      card_code_hash: nextHash,
-    });
-    if (error) return fail("Le code n’a pas pu être enregistré.", 500);
   }
 
   const viewedAt = new Date().toISOString();

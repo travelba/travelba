@@ -34,13 +34,7 @@ export function StayCard({
   const [revealed, setRevealed] = useState<{ pan: string; expiry: string; cvc: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [codeReady, setCodeReady] = useState(!needsCode);
-  const [syncedNeed, setSyncedNeed] = useState(needsCode);
   const [extraViews, setExtraViews] = useState<{ name: string; at: string }[]>([]);
-  if (needsCode !== syncedNeed) {
-    setSyncedNeed(needsCode);
-    setCodeReady(!needsCode);
-  }
   const lines = [...extraViews, ...views]
     .filter((line, index, all) => all.findIndex((item) => item.at === line.at && item.name === line.name) === index)
     .slice(0, 5);
@@ -58,7 +52,6 @@ export function StayCard({
           itemId: face.itemId,
           action: "card",
           code,
-          ...(personal && !codeReady ? { define: true } : {}),
         }),
       });
       const json = (await res.json().catch(() => null)) as
@@ -72,11 +65,8 @@ export function StayCard({
       if (last4.length === 4) setTail(last4);
       setRevealed({ pan: json.pan, expiry: json.expiry, cvc: json.cvc });
       setCode("");
-      if (personal) {
-        setCodeReady(true);
-        if (json.viewer && json.viewedAt) {
-          setExtraViews((current) => [{ name: json.viewer as string, at: json.viewedAt as string }, ...current]);
-        }
+      if (personal && json.viewer && json.viewedAt) {
+        setExtraViews((current) => [{ name: json.viewer as string, at: json.viewedAt as string }, ...current]);
       }
     } catch {
       setError("La carte n’a pas pu être lue.");
@@ -132,7 +122,7 @@ export function StayCard({
       {face.closed || revealed ? null : (
         <form className="mt-3 space-y-2" onSubmit={reveal}>
           <label className="block text-sm text-[var(--admin-navy)]">
-            {personal ? "Votre code" : "Code agence"}
+            {personal ? "Code maître" : "Code agence"}
             <input
               className="mt-1 w-full rounded-xl border border-[#e5e3dc] bg-white px-3 py-2.5 text-sm text-[var(--admin-navy)] outline-none focus:border-[#0B192C]"
               type="password"
@@ -144,7 +134,7 @@ export function StayCard({
           </label>
           <p className="text-xs text-[var(--admin-navy)]/70">
             {personal
-              ? "Votre nom est noté. Les chiffres s’ouvrent avec votre code."
+              ? "Votre nom est noté. Les chiffres s’ouvrent avec le code maître."
               : "Le début du numéro s’ouvre avec le code agence."}
           </p>
           <button
@@ -152,7 +142,7 @@ export function StayCard({
             className="rounded-full bg-[#0B192C] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
             disabled={busy}
           >
-            {personal && !codeReady ? "Enregistrer mon code et voir" : "Afficher le numéro"}
+            Afficher le numéro
           </button>
         </form>
       )}

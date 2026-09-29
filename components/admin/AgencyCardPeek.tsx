@@ -32,17 +32,11 @@ export function AgencyCardPeek({
   onReady?: () => void;
 }) {
   const [code, setCode] = useState("");
-  const [ready, setReady] = useState(hasCode);
-  const [synced, setSynced] = useState(hasCode);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [secrets, setSecrets] = useState<{ pan: string; expiry: string; cvc: string } | null>(null);
   const [image, setImage] = useState<{ mime: string; name: string; image: string } | null>(null);
   const [extra, setExtra] = useState<{ name: string; at: string }[]>([]);
-  if (hasCode !== synced) {
-    setSynced(hasCode);
-    setReady(hasCode);
-  }
   const lines = [...extra, ...views.filter((line) => line.source === source)]
     .filter((line, index, all) => all.findIndex((item) => item.at === line.at && item.name === line.name) === index)
     .slice(0, 5);
@@ -61,7 +55,6 @@ export function AgencyCardPeek({
           action: "card",
           source,
           code,
-          ...(ready ? {} : { define: true }),
         }),
       });
       const json = (await res.json().catch(() => null)) as {
@@ -89,7 +82,6 @@ export function AgencyCardPeek({
         setError(json.error || "La carte n’a pas pu être lue.");
         return;
       }
-      setReady(true);
       onReady?.();
       setCode("");
       if (json.viewer && json.viewedAt) {
@@ -137,13 +129,13 @@ export function AgencyCardPeek({
             type="password"
             name="staff-card-code"
             autoComplete="off"
-            aria-label="Votre code"
-            placeholder="Votre code"
+            aria-label="Code maître"
+            placeholder="Code maître"
             value={code}
             onChange={(event) => setCode(event.target.value)}
           />
           <button type="submit" className="rounded-full bg-[#0B192C] px-2.5 py-1 font-semibold text-white disabled:opacity-50" disabled={busy}>
-            {busy ? "…" : ready ? "Voir" : "Enregistrer mon code et voir"}
+            {busy ? "…" : "Voir"}
           </button>
         </form>
       )}

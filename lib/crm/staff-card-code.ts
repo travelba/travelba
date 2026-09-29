@@ -36,3 +36,6 @@ export function staffCardCodeMatches(code: string, stored: string | null | undef
   if (actual.length !== expected.length) return false;
   return timingSafeEqual(actual, expected);
 }
+
+/** Empreinte du code maître agence. Jamais le code en clair. */
+export const AGENCY_MASTER_CODE_HASH = "scrypt$FfFJlezGTER5PomxdMXiZw==$4MgdjCKQurP54p51z2SD6ShANJtPAiUW8agZJ6+DDoo=";

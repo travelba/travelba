@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { acceptableStaffCardCode, hashStaffCardCode, staffCardCodeMatches, staffCodeDecision } from "./staff-card-code";
+import { AGENCY_MASTER_CODE_HASH, acceptableStaffCardCode, hashStaffCardCode, staffCardCodeMatches, staffCodeDecision } from "./staff-card-code";
 import { agencyCardObjectPath, agencyCardSiblingPaths, isAgencyCardPath } from "./files-access";
 
 test("le code maître est une empreinte, pas le code", () => {
@@ -26,6 +26,12 @@ test("la photo de carte ne passe pas par le lien de fichier", () => {
     `agency-cards/${id}/${id}/carte.pdf`,
   ]);
   assert.equal(isAgencyCardPath("bookings/abc/passeport.pdf"), false);
+});
+
+test("le code maître agence est une empreinte", () => {
+  assert.equal(AGENCY_MASTER_CODE_HASH.startsWith("scrypt$"), true);
+  assert.equal(AGENCY_MASTER_CODE_HASH.toLowerCase().includes("travel"), false);
+  assert.equal(staffCardCodeMatches("0000", AGENCY_MASTER_CODE_HASH), false);
 });
 
 test("un code inconnu ne s'ouvre pas, un premier code s'enregistre", () => {

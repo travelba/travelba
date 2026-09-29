@@ -120,11 +120,11 @@ export function PrecheckPack({
       <p className="text-[#9e7e51]">
         {cardChoice === "pliant"
           ? last4
-            ? "Enregistrée pour l'agence. Les chiffres s'ouvrent avec votre code."
-            : "La carte reste côté agence. Les chiffres s'ouvrent avec votre code."
+            ? "Enregistrée pour l'agence. Les chiffres s'ouvrent avec le code maître."
+            : "La carte reste côté agence. Les chiffres s'ouvrent avec le code maître."
           : clientFileName
-            ? "Enregistrée pour l'agence. La photo s'ouvre avec votre code."
-            : "La photo reste côté agence. Elle s'ouvre avec votre code."}
+            ? "Enregistrée pour l'agence. La photo s'ouvre avec le code maître."
+            : "La photo reste côté agence. Elle s'ouvre avec le code maître."}
       </p>
       {cardChoice === "pliant" && last4 ? (
         <AgencyCardPeek bookingId={bookingId} itemId={itemId} source="pliant" hasCode={hasCardCode} views={cardViews} onReady={onCodeReady} />
