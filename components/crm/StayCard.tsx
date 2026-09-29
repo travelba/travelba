@@ -4,23 +4,17 @@ import { FormEvent, useState } from "react";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { cardLast4, groupedPan, maskedCardNumber, type StayCardFace } from "@/lib/crm/hotel-arrival";
 
-function viewedWhen(iso: string) {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("fr-FR", {
-    timeZone: "Europe/Paris",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
+function whoLooked(lines: { name: string }[]) {
+  const names = [...new Set(lines.map((line) => line.name).filter(Boolean))];
+  if (!names.length) return "";
+  const shown = names.slice(0, 3).join(", ");
+  return names.length > 3 ? `Vu par ${shown} +${names.length - 3}` : `Vu par ${shown}`;
 }
 
 export function StayCard({
   face,
   revealUrl,
   personal = false,
-  needsCode = false,
   views = [],
 }: {
   face: StayCardFace;
@@ -78,6 +72,44 @@ export function StayCard({
   const number = revealed ? groupedPan(revealed.pan) : maskedCardNumber(tail);
   const expiry = revealed?.expiry || "••/••";
   const cvc = revealed?.cvc || "•••";
+  const looked = whoLooked(lines);
+
+  if (personal) {
+    return (
+      <div className="text-xs text-[var(--admin-navy)]">
+        {face.closed ? (
+          <p className="text-[#9e7e51]">Clôturée · {maskedCardNumber(tail)}</p>
+        ) : revealed ? (
+          <p className="font-mono">
+            {groupedPan(revealed.pan)} · {revealed.expiry} · {revealed.cvc}
+            <button type="button" className="ml-2 font-sans text-[#9e7e51]" onClick={() => setRevealed(null)}>
+              Masquer
+            </button>
+            {looked ? <span className="ml-2 font-sans text-[10px] text-[#9e7e51]">{looked}</span> : null}
+          </p>
+        ) : (
+          <form className="flex flex-wrap items-center gap-2" onSubmit={reveal}>
+            <span className="text-[#9e7e51]">{maskedCardNumber(tail)}</span>
+            <input
+              className="w-24 border-b border-[#e5e3dc] bg-transparent px-0 py-0.5 outline-none focus:border-[#0B192C]"
+              type="password"
+              name="staff-card-code"
+              autoComplete="off"
+              aria-label="Code maître"
+              placeholder="Code"
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+            />
+            <button type="submit" className="text-[#9e7e51] disabled:opacity-50" disabled={busy}>
+              {busy ? "…" : "Voir"}
+            </button>
+            {looked ? <span className="text-[10px] text-[#9e7e51]">{looked}</span> : null}
+          </form>
+        )}
+        {error ? <p className="text-red-700">{error}</p> : null}
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-[22rem]">
@@ -146,15 +178,6 @@ export function StayCard({
           </button>
         </form>
       )}
-      {personal && lines.length ? (
-        <ul className="mt-2 space-y-0.5 text-[11px] text-[var(--admin-navy)]/70">
-          {lines.map((line) => (
-            <li key={`${line.at}-${line.name}`}>
-              Vu par {line.name} · {viewedWhen(line.at)}
-            </li>
-          ))}
-        </ul>
-      ) : null}
       {revealed ? (
         <button
           type="button"

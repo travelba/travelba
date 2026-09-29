@@ -5,6 +5,10 @@ import { maskedCardNumber } from "@/lib/crm/hotel-arrival";
 import type { PrecheckTraveler } from "@/lib/crm/hotel-precheck";
 import type { CardViewLine } from "@/lib/crm/types";
 
+function pieceWord(label: string) {
+  return label === "Carte d'identité" ? "Identité" : label;
+}
+
 export function PrecheckPack({
   bookingId,
   itemId,
@@ -13,7 +17,6 @@ export function PrecheckPack({
   cardChoice,
   last4,
   clientFileName,
-  hasCardCode,
   cardViews = [],
   disabled,
   generating,
@@ -30,7 +33,7 @@ export function PrecheckPack({
   cardChoice: "pliant" | "client";
   last4: string | null;
   clientFileName: string | null;
-  hasCardCode: boolean;
+  hasCardCode?: boolean;
   cardViews?: CardViewLine[];
   disabled: boolean;
   generating: boolean;
@@ -41,97 +44,98 @@ export function PrecheckPack({
   onCodeReady?: () => void;
 }) {
   const chosen = new Set(selectedIds);
+  const cardReady = cardChoice === "pliant" ? Boolean(last4) : Boolean(clientFileName);
   return (
-    <div className="space-y-2 text-xs">
-      <div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#C5A880]">Pièces des voyageurs</p>
-        <ul className="mt-1 divide-y divide-[#e5e3dc] overflow-hidden rounded-lg border border-[#e5e3dc]">
-          {party.length ? (
-            party.map((traveler) =>
-              traveler.pieces.length ? (
-                traveler.pieces.map((piece) => (
-                  <li key={piece.id} className="flex items-center gap-2 px-2 py-1">
-                    <input
-                      type="checkbox"
-                      className="accent-[#0B192C]"
-                      checked={chosen.has(piece.id)}
-                      disabled={disabled}
-                      aria-label={`Joindre ${piece.label} de ${traveler.name}`}
-                      onChange={() => onToggle(piece.id)}
-                    />
-                    <span className="min-w-0 truncate">
-                      <span className="font-semibold text-[#0B192C]">{traveler.name}</span>
-                      <span className="text-[#9e7e51]"> · {piece.label}</span>
-                    </span>
-                  </li>
-                ))
-              ) : (
-                <li key={traveler.id} className="flex items-center gap-2 px-2 py-1 text-[#9e7e51]">
-                  <span className="font-semibold text-[#0B192C]">{traveler.name}</span>
-                  aucune pièce
-                </li>
-              )
+    <div className="space-y-1 text-xs text-[#0B192C]">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+        {party.length ? (
+          party.map((traveler) =>
+            traveler.pieces.length ? (
+              traveler.pieces.map((piece) => (
+                <label key={piece.id} className="inline-flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    className="accent-[#0B192C]"
+                    checked={chosen.has(piece.id)}
+                    disabled={disabled}
+                    aria-label={`Joindre ${piece.label} de ${traveler.name}`}
+                    onChange={() => onToggle(piece.id)}
+                  />
+                  <span className="font-medium">{traveler.name}</span>
+                  <span className="text-[#9e7e51]">{pieceWord(piece.label)}</span>
+                </label>
+              ))
+            ) : (
+              <span key={traveler.id} className="text-[#9e7e51]">
+                {traveler.name} · aucune pièce
+              </span>
             )
-          ) : (
-            <li className="px-2 py-1 text-[#9e7e51]">Aucun voyageur sur le dossier.</li>
-          )}
-        </ul>
+          )
+        ) : (
+          <span className="text-[#9e7e51]">Aucun voyageur</span>
+        )}
       </div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#C5A880]">Carte</span>
-        <label className="inline-flex items-center gap-1 font-semibold text-[#0B192C]">
-          <input type="radio" name={`precheck-card-${itemId}`} checked={cardChoice === "pliant"} disabled={disabled} onChange={() => onCardChoice("pliant")} />
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+        <button
+          type="button"
+          className={cardChoice === "pliant" ? "font-semibold" : "text-[#9e7e51]"}
+          aria-pressed={cardChoice === "pliant"}
+          disabled={disabled}
+          onClick={() => onCardChoice("pliant")}
+        >
           Pliant
-        </label>
-        <label className="inline-flex items-center gap-1 font-semibold text-[#0B192C]">
-          <input type="radio" name={`precheck-card-${itemId}`} checked={cardChoice === "client"} disabled={disabled} onChange={() => onCardChoice("client")} />
-          Carte du client
-        </label>
+        </button>
+        <span className="text-[#e5e3dc]">/</span>
+        <button
+          type="button"
+          className={cardChoice === "client" ? "font-semibold" : "text-[#9e7e51]"}
+          aria-pressed={cardChoice === "client"}
+          disabled={disabled}
+          onClick={() => onCardChoice("client")}
+        >
+          Client
+        </button>
         {cardChoice === "pliant" ? (
           last4 ? (
-            <span className="text-[#0B192C]">{maskedCardNumber(last4)} · jointe à l'envoi</span>
+            <span className="text-[#9e7e51]">{maskedCardNumber(last4)}</span>
           ) : (
-            <button type="button" className="rounded-full bg-[#0B192C] px-2.5 py-1 font-semibold text-white disabled:opacity-50" disabled={disabled} onClick={onGenerate}>
-              {generating ? "Génération…" : "Générer la carte"}
+            <button type="button" className="text-[#9e7e51] underline disabled:opacity-50" disabled={disabled} onClick={onGenerate}>
+              {generating ? "…" : "Générer"}
             </button>
           )
         ) : (
-          <label className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-[#C5A880] px-2.5 py-1 font-semibold text-[#0B192C]">
-            {clientFileName || "Déposer la carte"}
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp,application/pdf"
-              className="sr-only"
-              disabled={disabled}
-              onChange={(event) => {
-                const file = event.target.files?.[0] || null;
-                event.target.value = "";
-                onClientFile(file);
-              }}
-            />
-          </label>
+          <>
+            <label className="cursor-pointer text-[#9e7e51] underline">
+              {clientFileName || "Déposer"}
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,application/pdf"
+                className="sr-only"
+                disabled={disabled}
+                onChange={(event) => {
+                  const file = event.target.files?.[0] || null;
+                  event.target.value = "";
+                  onClientFile(file);
+                }}
+              />
+            </label>
+            {clientFileName ? (
+              <button type="button" className="text-[#9e7e51]" disabled={disabled} aria-label="Retirer la carte" onClick={() => onClientFile(null)}>
+                ×
+              </button>
+            ) : null}
+          </>
         )}
-        {cardChoice === "client" && clientFileName ? (
-          <button type="button" className="text-[#9e7e51] underline" disabled={disabled} onClick={() => onClientFile(null)}>
-            Retirer
-          </button>
+        {cardReady ? (
+          <AgencyCardPeek
+            bookingId={bookingId}
+            itemId={itemId}
+            source={cardChoice}
+            views={cardViews}
+            onReady={onCodeReady}
+          />
         ) : null}
       </div>
-      <p className="text-[#9e7e51]">
-        {cardChoice === "pliant"
-          ? last4
-            ? "Enregistrée pour l'agence. Les chiffres s'ouvrent avec le code maître."
-            : "La carte reste côté agence. Les chiffres s'ouvrent avec le code maître."
-          : clientFileName
-            ? "Enregistrée pour l'agence. La photo s'ouvre avec le code maître."
-            : "La photo reste côté agence. Elle s'ouvre avec le code maître."}
-      </p>
-      {cardChoice === "pliant" && last4 ? (
-        <AgencyCardPeek bookingId={bookingId} itemId={itemId} source="pliant" hasCode={hasCardCode} views={cardViews} onReady={onCodeReady} />
-      ) : null}
-      {cardChoice === "client" && clientFileName ? (
-        <AgencyCardPeek bookingId={bookingId} itemId={itemId} source="client" hasCode={hasCardCode} views={cardViews} onReady={onCodeReady} />
-      ) : null}
     </div>
   );
 }
