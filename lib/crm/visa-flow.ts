@@ -192,6 +192,20 @@ export function journeyStarted(
   return request.accepted === true || Boolean(request.accepted_at);
 }
 
+/** L’agence recommence. Le client revoit la carte de départ : rien n’est lancé. */
+export function visaResetPatch() {
+  return {
+    accepted_at: null,
+    step: "preparation" as const,
+    status: "en_cours" as const,
+    traveler_ids: [] as string[],
+    answers: {} as Record<string, never>,
+    pay_attempts: 0,
+    pliant_transaction_id: null,
+    paid_cents: null,
+  };
+}
+
 /** Après validation, la carte de départ ne revient pas. */
 export function canReturnToOffer(
   request: { accepted?: boolean | null; accepted_at?: string | null } | null | undefined

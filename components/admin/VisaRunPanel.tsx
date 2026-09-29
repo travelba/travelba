@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { EtaIlMonitor } from "@/components/admin/EtaIlMonitor";
 import type { EtaIlPersonView, EtaIlPhase } from "@/lib/crm/eta-il-draft";
 import { VISA_OFFICIAL, type VisaCorridor } from "@/lib/crm/visa-fees";
@@ -47,6 +48,7 @@ export function VisaRunPanel({
   initialAnswers?: Partial<EstaAnswers> | null;
   pliantReady?: boolean;
 }) {
+  const router = useRouter();
   const savedPhase = phaseForSavedStep(journeyStarted({ step, accepted_at: acceptedAt }) ? step : null);
   const [view, setView] = useState<View | null>(
     savedPhase
@@ -59,6 +61,8 @@ export function VisaRunPanel({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [askReset, setAskReset] = useState(false);
+  const [cleared, setCleared] = useState(false);
   const [answers, setAnswers] = useState<EstaAnswers>({
     ...EMPTY,
     usAddress: initialAnswers?.usAddress || "",
@@ -66,7 +70,7 @@ export function VisaRunPanel({
     countriesVisited: initialAnswers?.countriesVisited || "",
     priorRefusal: initialAnswers?.priorRefusal || "",
   });
-  if (!journeyStarted({ step, accepted_at: acceptedAt })) return null;
+  if (cleared || !journeyStarted({ step, accepted_at: acceptedAt })) return null;
   const official = VISA_OFFICIAL[country];
   const phase = view?.phase || null;
   const recapReady = country === "IL" || agencyLaunchReady(country, answers);
@@ -143,6 +147,24 @@ export function VisaRunPanel({
     setView({ ...(json as View), phase: "paiement" });
   }
 
+  async function resetRequest() {
+    setBusy(true);
+    setError(null);
+    const res = await fetch(`/api/admin/bookings/${bookingId}/visa`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "reset", country }),
+    });
+    const json = (await res.json().catch(() => null)) as { error?: string; reset?: boolean } | null;
+    setBusy(false);
+    if (!res.ok || !json?.reset) {
+      setError(json?.error || "La demande n’a pas pu être recommencée.");
+      return;
+    }
+    setCleared(true);
+    router.refresh();
+  }
+
   function advance() {
     if (phase === "paiement" || phase === "piece") return;
     if (phase === "à confirmer") return confirm();
@@ -159,15 +181,48 @@ export function VisaRunPanel({
         <p className="text-sm font-semibold text-[var(--admin-navy)]">
           {official.countryName} · {official.amount} {official.currency}
         </p>
-        <button
-          type="button"
-          disabled={busy || phase === "paiement" || phase === "piece" || (phase === "prêt" && !recapReady)}
-          onClick={() => advance()}
-          className="inline-flex h-9 items-center rounded-full bg-[var(--admin-navy)] px-4 text-sm font-semibold text-white disabled:opacity-50"
-        >
-          {busy ? "En cours…" : headerVisaLabel(phase as VisaRunPhase | null, country)}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setAskReset(true)}
+            className="inline-flex h-9 items-center rounded-full border border-[#e5e3dc] px-4 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
+          >
+            Recommencer
+          </button>
+          <button
+            type="button"
+            disabled={busy || phase === "paiement" || phase === "piece" || (phase === "prêt" && !recapReady)}
+            onClick={() => advance()}
+            className="inline-flex h-9 items-center rounded-full bg-[var(--admin-navy)] px-4 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {busy ? "En cours…" : headerVisaLabel(phase as VisaRunPhase | null, country)}
+          </button>
+        </div>
       </div>
+      {askReset ? (
+        <div className="rounded-2xl bg-[#f8f4ed] px-3 py-3 text-sm text-[var(--admin-navy)]">
+          <p>Le client revoit la carte de départ. Le remplissage en cours est effacé.</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void resetRequest()}
+              className="inline-flex h-9 items-center rounded-full bg-[var(--admin-navy)] px-4 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {busy ? "En cours…" : "Recommencer la demande"}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setAskReset(false)}
+              className="inline-flex h-9 items-center rounded-full px-4 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      ) : null}
       {showAnswers && country === "US" ? (
         <div className="grid gap-2 text-sm">
           <label className="grid gap-1 text-xs font-semibold text-[var(--admin-navy)]">

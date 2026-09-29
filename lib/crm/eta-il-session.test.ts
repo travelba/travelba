@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildEtaIlDraft } from "./eta-il-draft";
+import { MAILBOX_CODE_MISSING } from "./mailbox-code";
 import {
   astraRefusalMessage,
   buildEtaIlRequest,
@@ -93,6 +94,7 @@ test("la requête Astra reste sur gpt-6-astra et le portail officiel", () => {
   assert.match(body.instructions, /israel-entry.piba.gov.il/);
   assert.match(body.instructions, /FRA \(France\)/);
   assert.match(body.instructions, /lis ces caractères/);
+  assert.match(body.instructions, /boîte agence/);
   assert.match(body.instructions, /Aucune demande|N’ouvre aucune demande/);
   const payload = JSON.parse(body.input[0]?.content || "{}") as { demandes?: string[] };
   assert.deepEqual(payload.demandes, ["Ada Martin"]);
@@ -101,6 +103,105 @@ test("la requête Astra reste sur gpt-6-astra et le portail officiel", () => {
   assert.equal(portalUrlAllowed("https://israel-entry.piba.gov.il/apply"), true);
   assert.equal(portalUrlAllowed("https://example.com/"), false);
   assert.equal(portalUrlAllowed("http://israel-entry.piba.gov.il/"), false);
+});
+
+test("le code à six chiffres est saisi depuis la boîte, sans être renvoyé au modèle", async () => {
+  const bodies: string[] = [];
+  const digits: string[] = [];
+  const events: string[] = [];
+  let calls = 0;
+  let armed = false;
+  const code = "482913";
+  const result = await runEtaIlSession({
+    apiKey: "sk-test",
+    draft: draft(),
+    maxSteps: 3,
+    pollMs: 0,
+    readMailboxCode: async () => code,
+    onEvent: async (event) => {
+      events.push(event.text);
+    },
+    page: {
+      ...page(),
+      describe: async () =>
+        armed ? "page ok" : "Email Address Verification. We have sent a 6-digit code. Code to 6 digits",
+      typeDigits: async (value) => {
+        digits.push(value);
+        armed = true;
+      },
+    },
+    fetchImpl: async (_url, init) => {
+      if (init?.body) bodies.push(String(init.body));
+      calls += 1;
+      const body =
+        calls === 1
+          ? stepBody("resp_1", "call_1", { action: "click", target: "Verify Your Email" })
+          : stepBody("resp_2", "call_2", { action: "hold", summary: "Ada Martin, 14 décembre" });
+      return new Response(body, { status: 200 });
+    },
+  });
+  assert.deepEqual(digits, [code]);
+  assert.equal(bodies.some((body) => body.includes(code)), false);
+  assert.equal(events.some((text) => text.includes(code)), false);
+  assert.match(events.join(" "), /boîte agence/);
+  assert.equal(result.filled, true);
+  assert.match(result.summary || "", /Ada Martin/);
+});
+
+test("un hold qui demande le code le lit dans la boîte puis continue", async () => {
+  let calls = 0;
+  const digits: string[] = [];
+  const result = await runEtaIlSession({
+    apiKey: "sk-test",
+    draft: draft(),
+    maxSteps: 2,
+    pollMs: 0,
+    readMailboxCode: async () => "482913",
+    page: {
+      ...page(),
+      describe: async () => "page ok",
+      typeDigits: async (value) => {
+        digits.push(value);
+      },
+    },
+    fetchImpl: async () => {
+      calls += 1;
+      const body =
+        calls === 1
+          ? stepBody("resp_1", "call_1", {
+              action: "hold",
+              summary:
+                "Saisie bloquée : veuillez fournir le code de vérification à six chiffres reçu par courriel.",
+            })
+          : stepBody("resp_2", "call_2", { action: "hold", summary: "Ada Martin, 14 décembre" });
+      return new Response(body, { status: 200 });
+    },
+  });
+  assert.deepEqual(digits, ["482913"]);
+  assert.equal(result.filled, true);
+  assert.match(result.summary || "", /Ada Martin/);
+});
+
+test("sans code dans la boîte, la saisie s’arrête", async () => {
+  const result = await runEtaIlSession({
+    apiKey: "sk-test",
+    draft: draft(),
+    maxSteps: 1,
+    pollMs: 0,
+    readMailboxCode: async () => null,
+    page: page(),
+    fetchImpl: async () =>
+      new Response(
+        stepBody("resp_1", "call_1", {
+          action: "hold",
+          summary: "veuillez fournir le code de vérification à six chiffres",
+        }),
+        { status: 200 }
+      ),
+  });
+  assert.equal(result.filled, false);
+  assert.equal(result.phase, "bloqué");
+  assert.equal(result.message, MAILBOX_CODE_MISSING);
 });
 
 test("un clic d’envoi s’arrête, un autre site et une carte sont refusés", () => {

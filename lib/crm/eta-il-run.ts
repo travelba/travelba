@@ -1,6 +1,8 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { openEtaIlPortal } from "./eta-il-browser";
+import { gmailConfigured, searchInbox } from "./gmail";
+import { pollVerificationCode, verificationMailQuery } from "./mailbox-code";
 import type { EtaIlDraft, EtaIlPhase } from "./eta-il-draft";
 import { portalEvent, safePortalLabel, stepAfterPortalRun, type PortalLogKind } from "./eta-il-log";
 import { clearPortalEvents, writePortalEvent } from "./eta-il-log-store";
@@ -19,6 +21,7 @@ async function markStep(db: SupabaseClient, bookingId: string, step: ClientVisaS
     .update({ step })
     .eq("booking_id", bookingId)
     .eq("country", "IL")
+    .not("accepted_at", "is", null)
     .in("step", from)
     .select("step");
   return Boolean(data?.length);
@@ -84,6 +87,7 @@ export async function executeEtaIlFill(opts: {
         await writePortalEvent(opts.db, opts.bookingId, portalEvent(event.kind, redactPassportNumbers(event.text, numbers), event.at));
       },
       onFrame: (bytes) => keepPortalFrame(opts.bookingId, bytes),
+      readMailboxCode: () => readAgencyVerificationCode(Date.now()),
     });
     const card = session.filled ? await issueFilledCard(opts.db, opts.bookingId, opts.draft.applicants.length) : null;
     const next = stepAfterPortalRun(session.phase, Boolean(card?.issued));
@@ -117,6 +121,27 @@ export async function executeEtaIlFill(opts: {
     return { phase: "bloqué", summary: null, message: "Le remplissage n’a pas abouti.", ceilingEur: null, fee: null };
   } finally {
     await portal.close();
+  }
+}
+
+async function readAgencyVerificationCode(sinceMs: number) {
+  if (!gmailConfigured()) return null;
+  try {
+    return await pollVerificationCode({
+      sinceMs,
+      query: verificationMailQuery(),
+      search: async (query, max) => {
+        const messages = await searchInbox(query, max);
+        return messages.map((message) => ({
+          subject: message.subject,
+          text: message.text,
+          receivedAt: message.receivedAt,
+        }));
+      },
+    });
+  } catch (err) {
+    console.error("[eta-il] boîte", err instanceof Error ? err.message : "échec");
+    return null;
   }
 }
 

@@ -17,6 +17,7 @@ import {
   phaseForSavedStep,
   readEstaAnswers,
   stepAfterPrepare,
+  visaResetPatch,
   visibilityOnRequest,
   type ClientVisaStep,
   type EstaAnswers,
@@ -122,6 +123,18 @@ export async function POST(request: Request, ctx: Ctx) {
   const { data: booking } = await auth.supabase.from("crm_bookings").select("*").eq("id", id).maybeSingle();
   if (!booking) return jsonError("Réservation introuvable", 404);
   const b = booking as CrmBooking;
+
+  if (body.action === "reset") {
+    const patch = visaResetPatch();
+    const { error } = await auth.supabase
+      .from("crm_visa_requests")
+      .update(patch)
+      .eq("booking_id", b.id)
+      .eq("country", country);
+    if (error) return jsonError("La demande n’a pas pu être recommencée.");
+    await auth.supabase.from("crm_visa_portal_events").delete().eq("booking_id", b.id).eq("country", country);
+    return NextResponse.json({ reset: true, country, accepted_at: null, step: patch.step });
+  }
 
   if (body.action === "run") {
     if (body.confirm !== true) return jsonError("Confirmez la demande avant de lancer le parcours.");

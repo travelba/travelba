@@ -99,6 +99,7 @@ export async function openEtaIlPortal(): Promise<PortalOpen> {
         },
         click: (target) => clickLabel(page, target),
         type: (target, text) => typeLabel(page, target, text),
+        typeDigits: (code) => typeDigitCode(page, code),
         scroll: async () => {
           await page.evaluate(() => window.scrollBy(0, 480), "");
         },
@@ -327,6 +328,58 @@ async function clickMatchedOption(page: ChromePage, options: string[], query: st
   if (!point) return false;
   await mouseClick(page, point.x, point.y);
   return true;
+}
+
+async function typeDigitCode(page: ChromePage, code: string) {
+  const digits = code.replace(/\D/g, "");
+  if (!/^\d{6}$/.test(digits)) throw new Error("champ");
+  const focused = await evalPage(page, (countRaw) => {
+    const count = Number(countRaw) || 6;
+    const boxes = Array.from(document.querySelectorAll("input")).filter((el) => {
+      if (!(el instanceof HTMLInputElement)) return false;
+      if (el.disabled || el.type === "hidden" || el.type === "checkbox" || el.type === "radio" || el.type === "email") {
+        return false;
+      }
+      const max = el.maxLength > 0 && el.maxLength < 100 ? el.maxLength : Number(el.getAttribute("maxlength") || 0);
+      return max === 1;
+    });
+    const first = boxes[0];
+    if (boxes.length < count || !(first instanceof HTMLInputElement)) return false;
+    first.focus();
+    return true;
+  }, String(digits.length));
+  const keyboard = (page as ChromePage & { keyboard?: { type(text: string, opts?: { delay?: number }): Promise<void> } }).keyboard;
+  if (focused && keyboard) {
+    await keyboard.type(digits, { delay: 40 });
+    return;
+  }
+  if (focused) {
+    const filled = await evalPage(page, (value) => {
+      const boxes = Array.from(document.querySelectorAll("input")).filter((el) => {
+        if (!(el instanceof HTMLInputElement)) return false;
+        if (el.disabled || el.type === "hidden" || el.type === "checkbox" || el.type === "radio" || el.type === "email") {
+          return false;
+        }
+        const max = el.maxLength > 0 && el.maxLength < 100 ? el.maxLength : Number(el.getAttribute("maxlength") || 0);
+        return max === 1;
+      });
+      if (boxes.length < value.length) return false;
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      for (let index = 0; index < value.length; index += 1) {
+        const field = boxes[index];
+        if (!(field instanceof HTMLInputElement)) return false;
+        field.focus();
+        const digit = value[index] || "";
+        if (setter) setter.call(field, digit);
+        else field.value = digit;
+        field.dispatchEvent(new InputEvent("input", { bubbles: true, data: digit, inputType: "insertText" }));
+        field.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      return true;
+    }, digits);
+    if (filled) return;
+  }
+  await typeLabel(page, "Code to 6 digits", digits);
 }
 
 async function typeLabel(page: ChromePage, target: string, text: string) {

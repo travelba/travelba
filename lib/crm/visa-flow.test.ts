@@ -26,6 +26,7 @@ import {
   stepAfterPrepare,
   visaConfirmationCopy,
   visaPriceOnCard,
+  visaResetPatch,
   visibilityOnRequest,
   whatsappOnVisa,
 } from "./visa-flow";
@@ -168,6 +169,26 @@ test("le prix n’apparaît que dans la confirmation", () => {
   assert.match(copy, new RegExp(`${VISA_OFFICIAL.IL.amount} ${VISA_OFFICIAL.IL.currency}`));
   assert.match(visaConfirmationCopy({ travelers: 1, country: "US" }), new RegExp(String(VISA_OFFICIAL.US.amount)));
   assert.match(visaConfirmationCopy({ travelers: 1, country: "GB" }), new RegExp(String(VISA_OFFICIAL.GB.amount)));
+});
+
+test("recommencer remet le client sur la carte de départ", () => {
+  const fresh = visaResetPatch();
+  assert.equal(fresh.accepted_at, null);
+  assert.equal(fresh.step, "preparation");
+  assert.equal(fresh.status, "en_cours");
+  assert.deepEqual(fresh.traveler_ids, []);
+  assert.equal(journeyStarted(fresh), false);
+  assert.equal(canReturnToOffer(fresh), true);
+  const again = acceptVisaDecision({
+    confirm: true,
+    travelerIds: ["a"],
+    partyIds: ["a"],
+    alreadyAccepted: Boolean(fresh.accepted_at),
+    step: fresh.step,
+    status: fresh.status,
+  });
+  assert.equal(again.start, true);
+  if (again.start) assert.equal(again.step, "preparation");
 });
 
 test("pas de retour arrière une fois la demande confirmée", () => {
