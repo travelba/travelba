@@ -4,6 +4,7 @@ import {
   cityOwnCoverPhoto,
   countryCodeForPlace,
   countryCoverPhoto,
+  coverSearchHits,
   lookupCoverPhoto,
 } from "@/lib/crm/cover-catalog";
 
@@ -54,11 +55,35 @@ function labelCountryCodes(booking: Pick<CrmBooking, "destination" | "title">) {
   return named.length ? named : hubs;
 }
 
+/**
+ * Photo d’un texte libre : ville du catalogue, sinon résidence proche
+ * (Aghouatim → Marrakech), sinon le pays. Paris ne gagne que s’il est seul.
+ */
+export function coverPhotoInText(text: string): string | null {
+  const folded = ` ${placeKey(text).replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim()} `;
+  let best: { rank: number; len: number; photo: string } | null = null;
+  let hub: { rank: number; len: number; photo: string } | null = null;
+  for (const row of coverSearchHits()) {
+    if (!folded.includes(` ${row.key} `)) continue;
+    const candidate = { rank: row.rank, len: row.key.length, photo: row.photo };
+    const better = (current: typeof best) =>
+      !current ||
+      candidate.rank > current.rank ||
+      (candidate.rank === current.rank && candidate.len > current.len);
+    if (isOriginHub(row.key)) {
+      if (better(hub)) hub = candidate;
+    } else if (better(best)) best = candidate;
+  }
+  return (best || hub)?.photo ?? null;
+}
+
 export function unsplashKeywordMatch(booking: Pick<CrmBooking, "destination" | "title">) {
   const key = placeKey(coverQuery(booking.destination, booking.title));
   const direct = lookupCoverPhoto(key);
   if (direct) return direct;
   if (countryCodeForPlace(key)) return null;
+  const scanned = coverPhotoInText(`${booking.destination || ""} ${booking.title || ""}`);
+  if (scanned) return scanned;
   const codes = labelCountryCodes(booking);
   if (codes.length !== 1) return null;
   return countryCoverPhoto(codes[0]);
@@ -73,6 +98,29 @@ export type CoverPlan =
 
 function catalogUrl(photoId: string) {
   return catalogCoverUrl(photoId);
+}
+
+function detailText(details: Record<string, unknown> | null | undefined, key: string) {
+  const value = details?.[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+/** Ville, adresse et pays écrits sur les cartes, pour retrouver une photo. */
+function stayCoverText(
+  booking: Pick<CrmBooking, "destination" | "title">,
+  items?: CoverPlaceItem[]
+) {
+  const bits = [booking.destination || "", booking.title || ""];
+  for (const item of items || []) {
+    bits.push(
+      detailText(item.details, "city"),
+      detailText(item.details, "city_to"),
+      detailText(item.details, "address"),
+      detailText(item.details, "country"),
+      detailText(item.details, "region")
+    );
+  }
+  return bits.filter(Boolean).join(" ");
 }
 
 function arrivalPlaces(
@@ -100,17 +148,22 @@ export function bookingCoverPlan(
     return { mode: "single", src: `/api/files?${params.toString()}`, fallback };
   }
   const places = arrivalPlaces(booking, options);
+  const known = places.filter((place) => {
+    const key = placeKey(place);
+    return Boolean(lookupCoverPhoto(key) || countryCodeForPlace(key));
+  });
+  const coverPlaces = known.length ? known : places;
   const countries: string[] = [];
-  for (const place of places) {
+  for (const place of coverPlaces) {
     const code = countryCodeForPlace(placeKey(place));
     if (code && !countries.includes(code)) countries.push(code);
   }
   for (const code of labelCountryCodes(booking)) {
     if (!countries.includes(code)) countries.push(code);
   }
-  if (places.length >= 2 && countries.length === 1) {
+  if (coverPlaces.length >= 2 && countries.length === 1) {
     const own: string[] = [];
-    for (const place of places) {
+    for (const place of coverPlaces) {
       const photo = cityOwnCoverPhoto(placeKey(place));
       if (photo && !own.includes(photo)) own.push(photo);
     }
@@ -130,8 +183,14 @@ export function bookingCoverPlan(
     }
     if (photos.length === 1) return { mode: "single", src: catalogUrl(photos[0]), fallback: null };
   }
+  if (coverPlaces.length === 1) {
+    const photo = lookupCoverPhoto(placeKey(coverPlaces[0])) || coverPhotoInText(coverPlaces[0]);
+    if (photo) return { mode: "single", src: catalogUrl(photo), fallback: null };
+  }
   const single = unsplashKeywordMatch(booking);
-  return single ? { mode: "single", src: catalogUrl(single), fallback: null } : { mode: "none" };
+  if (single) return { mode: "single", src: catalogUrl(single), fallback: null };
+  const mentioned = coverPhotoInText(stayCoverText(booking, options?.items));
+  return mentioned ? { mode: "single", src: catalogUrl(mentioned), fallback: null } : { mode: "none" };
 }
 
 export function placeCoverUrl(booking: Pick<CrmBooking, "destination" | "title">, _width = 960) {
