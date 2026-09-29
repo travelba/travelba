@@ -129,6 +129,8 @@ Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Co
 
 Réimport même clé = **remplace** la carte. Dans un même extract, 10 duplicatas → 1 item (`mergeExtractItems`). Aller et retour (n° ou jours différents) → 2 items.
 
+Plusieurs PDF de confirmation : `sortItemsByChronology` classe par `start_at` (heure imprimée). Une carte sans heure, ou à minuit (`T00:00:00`), passe après les horaires du même jour. Sans date, en dernier. À l’enregistrement, `sort_order` suit cet ordre (`chronologicalSortOrders`). Si l’agent a déjà réordonné le dossier, les cartes en place gardent leur ordre ; les nouvelles s’insèrent à leur date.
+
 ## Voyageurs / titre
 
 - Noms imprimés, casse normale. « 2 adults » sans noms → Adulte 1 / Adulte 2.

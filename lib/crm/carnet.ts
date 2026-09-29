@@ -160,13 +160,114 @@ export function compareItemsByOrder<T extends { start_at?: string | null; sort_o
   const orderA = a.sort_order;
   const orderB = b.sort_order;
   if (orderA != null && orderB != null && orderA !== orderB) return orderA - orderB;
-  return (a.start_at || "9999-99-99").localeCompare(b.start_at || "9999-99-99");
+  return compareItemsByChronology(a, b);
 }
 
 export function sortItemsByOrder<T extends { start_at?: string | null; sort_order?: number | null }>(
   items: T[]
 ) {
   return [...items].sort(compareItemsByOrder);
+}
+
+/** Rang quand deux cartes partagent le même instant. L’heure imprimée prime toujours. */
+function kindChronoRank(kind: string | null | undefined) {
+  switch (kind) {
+    case "flight":
+      return 0;
+    case "rail":
+      return 1;
+    case "transfer":
+      return 2;
+    case "activity":
+      return 3;
+    case "car":
+      return 4;
+    case "cruise":
+      return 5;
+    case "hotel":
+      return 6;
+    case "insurance":
+      return 7;
+    case "fee":
+      return 8;
+    default:
+      return 9;
+  }
+}
+
+/** Jour, puis heure imprimée. Minuit et date seule passent après les horaires du jour. Sans date : en dernier. */
+export function chronologyRank(start: string | null | undefined) {
+  const raw = start || "";
+  const day = raw.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return "9999-99-99T99:99:99";
+  const match = raw.match(/T(\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!match || (match[1] === "00" && match[2] === "00")) return `${day}T99:99:00`;
+  return `${day}T${match[1]}:${match[2]}:${match[3] || "00"}`;
+}
+
+export function compareItemsByChronology<
+  T extends { start_at?: string | null; kind?: string | null; title?: string | null },
+>(a: T, b: T) {
+  const rankA = chronologyRank(a.start_at);
+  const rankB = chronologyRank(b.start_at);
+  if (rankA !== rankB) return rankA < rankB ? -1 : 1;
+  const kind = kindChronoRank(a.kind) - kindChronoRank(b.kind);
+  if (kind) return kind;
+  return (a.title || "").localeCompare(b.title || "", "fr");
+}
+
+/** Ordre d’un lot de confirmations : date, pas l’ordre des fichiers. */
+export function sortItemsByChronology<
+  T extends { start_at?: string | null; kind?: string | null; title?: string | null },
+>(items: T[]) {
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => compareItemsByChronology(a.item, b.item) || a.index - b.index)
+    .map((row) => row.item);
+}
+
+type ChronoRow = {
+  id: string;
+  start_at?: string | null;
+  kind?: string | null;
+  title?: string | null;
+  sort_order?: number | null;
+};
+
+/**
+ * Ordre enregistré après un import.
+ * Dossier déjà chronologique (ou vide) : toutes les cartes sont réécrites par date.
+ * Dossier réordonné à la main : les cartes en place gardent leur ordre relatif,
+ * les nouvelles s’insèrent à leur date.
+ */
+export function chronologicalSortOrders(input: {
+  before: ChronoRow[];
+  after: ChronoRow[];
+}): { id: string; sort_order: number }[] {
+  const beforeSorted = [...input.before].sort(
+    (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id.localeCompare(b.id)
+  );
+  const chronoBefore = sortItemsByChronology(beforeSorted);
+  const alreadyChrono = beforeSorted.every((row, index) => row.id === chronoBefore[index]?.id);
+  const afterById = new Map(input.after.map((row) => [row.id, row]));
+
+  let sequence: ChronoRow[];
+  if (alreadyChrono) {
+    sequence = sortItemsByChronology(input.after);
+  } else {
+    sequence = beforeSorted
+      .map((row) => afterById.get(row.id))
+      .filter((row): row is ChronoRow => Boolean(row));
+    const seen = new Set(sequence.map((row) => row.id));
+    const fresh = sortItemsByChronology(input.after.filter((row) => !seen.has(row.id)));
+    for (const row of fresh) {
+      const index = sequence.findIndex((current) => compareItemsByChronology(row, current) < 0);
+      if (index < 0) sequence.push(row);
+      else sequence.splice(index, 0, row);
+    }
+  }
+
+  return sequence.map((row, sort_order) => ({ id: row.id, sort_order }));
 }
 
 export function hotelsOf(items: CrmBookingItem[]) {

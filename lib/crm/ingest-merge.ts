@@ -1,4 +1,4 @@
-import { sortItemsByOrder } from "./carnet";
+import { sortItemsByChronology } from "./carnet";
 import { isEmailBodyFile } from "./ingest-title";
 import type { IngestFamily } from "./ingest-parse";
 import { tagSourceFileName } from "./ingest-parse";
@@ -185,7 +185,7 @@ export function mergeFileExtracts(results: FileExtractResult[]): {
     notes_client: [...new Set(notes.map((row) => row.trim()).filter(Boolean))].join(
       "\n"
     ),
-    items: sortItemsByOrder(items),
+    items: sortItemsByChronology(items),
     travelers: dedupeTravelers(travelers),
   };
 

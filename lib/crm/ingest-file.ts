@@ -61,7 +61,7 @@ Règles d’honnêteté :
 - Devise : $ = USD, € = EUR, £ = GBP, CHF = CHF.
 - Montant imprimé : 5,920.33 (virgule = milliers, format US/UK) = 5920.33, pas 920.33. 5.920,33 = 5920.33.
 - kind : flight | hotel | transfer | activity | rail | car | cruise | insurance | fee.
-- Un PDF peut produire PLUSIEURS cartes.
+- Un PDF peut produire PLUSIEURS cartes. L’ordre du JSON est indifférent : le carnet classe par start_at (heure imprimée, sinon date seule).
 - details.source_file_name = nom exact du fichier source.
 - details.needs_review = true si lecture douteuse.
 - amount des items : toujours null (pas le net client).

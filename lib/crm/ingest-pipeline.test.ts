@@ -173,6 +173,57 @@ describe("mergeFileExtracts", () => {
     assert.match(merged.extract.notes_client || "", /devis/i);
   });
 
+  it("classe plusieurs confirmations par date de début", () => {
+    const card = (
+      name: string,
+      kind: "flight" | "hotel" | "transfer",
+      title: string,
+      start_at: string
+    ) => ({
+      kind,
+      title,
+      supplier: null,
+      confirmation_ref: null,
+      start_at,
+      end_at: null,
+      amount: null,
+      details: { source_file_name: name },
+    });
+    const merged = mergeFileExtracts([
+      {
+        name: "hotel.pdf",
+        family: "little_emperors",
+        extract: {
+          ...emptyBookingExtract(),
+          document_status: "confirmed",
+          items: [card("hotel.pdf", "hotel", "Maison Test", "2026-08-10")],
+        },
+      },
+      {
+        name: "retour.pdf",
+        family: "amadeus",
+        extract: {
+          ...emptyBookingExtract(),
+          document_status: "confirmed",
+          items: [card("retour.pdf", "flight", "Retour", "2026-08-18T19:10:00")],
+        },
+      },
+      {
+        name: "aller.pdf",
+        family: "amadeus",
+        extract: {
+          ...emptyBookingExtract(),
+          document_status: "confirmed",
+          items: [card("aller.pdf", "flight", "Aller", "2026-08-10T08:30:00")],
+        },
+      },
+    ]);
+    assert.deepEqual(
+      merged.extract.items.map((item) => item.title),
+      ["Aller", "Maison Test", "Retour"]
+    );
+  });
+
   it("ne met pas tout le dossier en identity si un passeport est mélangé", () => {
     const hotel = parsedItemsFromText(LE_HOTEL).items;
     const merged = mergeFileExtracts([
