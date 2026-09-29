@@ -16,6 +16,7 @@ export function CustomerPickField({
   title = "Choisir un client",
   formatLabel = customerPickLabel,
   onPick,
+  controlClass = fieldControlClass,
 }: {
   name: string;
   label: string;
@@ -23,6 +24,7 @@ export function CustomerPickField({
   title?: string;
   formatLabel?: (customer: PickableCustomer) => string;
   onPick?: (customer: PickableCustomer) => void;
+  controlClass?: string;
 }) {
   const [value, setValue] = useState<PickableCustomer | null>(selected);
   const [open, setOpen] = useState(false);
@@ -55,13 +57,13 @@ export function CustomerPickField({
   }
 
   return (
-    <label className="flex flex-col gap-1.5 text-sm font-semibold text-[var(--admin-navy)]">
+    <label className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
       {label}
       <input type="hidden" name={name} value={value?.id || ""} />
       <button
         type="button"
         onClick={() => void openPicker()}
-        className={`${fieldControlClass} flex items-center justify-between gap-3 text-left font-medium`}
+        className={`${controlClass} flex items-center justify-between gap-3 text-left text-sm font-semibold normal-case tracking-normal text-[var(--admin-navy)]`}
       >
         <span className="min-w-0 truncate">
           {value ? formatLabel(value) : "Choisir un client…"}
