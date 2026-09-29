@@ -573,70 +573,70 @@ export function flightNoticeDrafts() {
   return [
     {
       env: "TWILIO_CONTENT_VOL_ANNULE",
-      friendlyName: "vol_annule_concierge",
+      friendlyName: "vol_annule_voix",
       create: noticeDraft(
-        "vol_annule_concierge",
-        noticeBody("Votre vol {{1}} {{2}} est annulé. Je transmets à l’agence."),
+        "vol_annule_voix",
+        noticeBody("Votre vol {{1}} {{2}} ne partira pas. Je m’en occupe, et je transmets à l’agence."),
         "3",
         { "1": "AF 1789", "2": "CDG → RAK", "3": "c/23456789" }
       ),
     },
     {
       env: "TWILIO_CONTENT_VOL_HORAIRE",
-      friendlyName: "vol_horaire_concierge",
+      friendlyName: "vol_horaire_voix",
       create: noticeDraft(
-        "vol_horaire_concierge",
-        noticeBody("Votre vol {{1}} {{2}} part désormais à {{3}}."),
+        "vol_horaire_voix",
+        noticeBody("Je vous préviens : votre vol {{1}} {{2}} part désormais à {{3}}."),
         "4",
         { "1": "AF 1789", "2": "CDG → RAK", "3": "11h20", "4": "c/23456789" }
       ),
     },
     {
       env: "TWILIO_CONTENT_VOL_ENREGISTREMENT",
-      friendlyName: "vol_enregistrement_concierge",
+      friendlyName: "vol_enregistrement_voix",
       create: noticeDraft(
-        "vol_enregistrement_concierge",
-        noticeBody("L’enregistrement de votre vol {{1}} {{2}} est ouvert."),
+        "vol_enregistrement_voix",
+        noticeBody("L’enregistrement de votre vol {{1}} {{2}} est ouvert. Vous pouvez vous présenter."),
         "3",
         { "1": "AF 1789", "2": "CDG → RAK", "3": "c/23456789" }
       ),
     },
     {
       env: "TWILIO_CONTENT_VOL_RETARD",
-      friendlyName: "vol_retard_concierge",
+      friendlyName: "vol_retard_voix",
       create: noticeDraft(
-        "vol_retard_concierge",
-        noticeBody("Votre vol {{1}} {{2}} a du retard. Le départ est à {{3}}."),
+        "vol_retard_voix",
+        noticeBody("Votre vol {{1}} {{2}} prend du retard. Je le vois partir à {{3}}."),
         "4",
         { "1": "AF 1789", "2": "CDG → RAK", "3": "14h40", "4": "c/23456789" }
       ),
     },
     {
       env: "TWILIO_CONTENT_VOL_DEROUTE",
-      friendlyName: "vol_deroute_concierge",
+      friendlyName: "vol_deroute_voix",
       create: noticeDraft(
-        "vol_deroute_concierge",
-        noticeBody("Votre vol {{1}} {{2}} est dérouté. Je transmets à l’agence."),
+        "vol_deroute_voix",
+        noticeBody("Votre vol {{1}} {{2}} change de destination. Je suis l’affaire et je transmets à l’agence."),
         "3",
         { "1": "AF 1789", "2": "CDG → RAK", "3": "c/23456789" }
       ),
     },
     {
       env: "TWILIO_CONTENT_VOL_ENVOL",
-      friendlyName: "vol_envol_concierge",
+      friendlyName: "vol_envol_voix",
       create: noticeDraft(
-        "vol_envol_concierge",
-        noticeBody("Votre vol {{1}} {{2}} a décollé."),
+        "vol_envol_voix",
+        noticeBody("Votre vol {{1}} {{2}} a décollé. Je vous souhaite un bon vol."),
         "3",
         { "1": "AF 1789", "2": "CDG → RAK", "3": "c/23456789" }
       ),
     },
     {
       env: "TWILIO_CONTENT_VOL_ARRIVEE",
-      friendlyName: "vol_arrivee_concierge",
+      friendlyName: "vol_arrivee_voix",
       create: noticeDraft(
-        "vol_arrivee_concierge",
-        noticeBody("Vous êtes arrivé. Bienvenue {{1}}. Votre séjour est dans votre espace."),
+        "vol_arrivee_voix",
+        noticeBody("Vous voici {{1}}. Bienvenue. Votre séjour vous attend dans votre espace."),
         "2",
         { "1": "à Marrakech", "2": "c/23456789" }
       ),
