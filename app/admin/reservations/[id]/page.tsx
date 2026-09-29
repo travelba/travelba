@@ -19,6 +19,7 @@ import { ensureHotelArrivals } from "@/lib/crm/hotel-arrival-run";
 import { ensureHotelRequests } from "@/lib/crm/hotel-desk-run";
 import { principalGuest } from "@/lib/crm/hotel-arrival";
 import { passportPreviewsForStay } from "@/lib/crm/preview-files";
+import { attachLittleEmperorsCatalog } from "@/lib/crm/hotel-catalog-load";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
 import { isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
 import type {
@@ -90,7 +91,9 @@ export default async function AdminBookingPage({ params }: Props) {
     .map(serviceRefusalFromRow)
     .filter((row): row is ServiceRefusal => Boolean(row));
   const allIdentity = (identityDocs || []) as CrmTravelDocument[];
-  const bookingItems = await loadHotelContacts(id, (items || []) as CrmBookingItem[]);
+  const bookingItems = await attachLittleEmperorsCatalog(
+    await loadHotelContacts(id, (items || []) as CrmBookingItem[])
+  );
   let arrivals: CrmHotelArrival[] = [];
   let hotelRequests: CrmHotelRequest[] = [];
   const bookingTravelers = (travelers || []) as CrmBookingTraveler[];
