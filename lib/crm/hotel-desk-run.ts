@@ -4,6 +4,7 @@ import { Resend } from "resend";
 import { pliantCardNomination } from "./eta-il-fee";
 import { downloadCrmFile } from "./files";
 import { gmailConfigured, searchInbox } from "./gmail";
+import { attachLittleEmperorsCatalog } from "./hotel-catalog-load";
 import { hotelContact } from "./hotel-contact";
 import {
   CHECKIN_CARD_CENTS,
@@ -80,7 +81,8 @@ export async function ensureHotelRequests(
     fetchImpl?: typeof fetch;
   }
 ) {
-  const hotels = input.items.filter((item) => item.kind === "hotel");
+  const items = await attachLittleEmperorsCatalog(input.items, admin);
+  const hotels = items.filter((item) => item.kind === "hotel");
   if (!hotels.length) return [] as CrmHotelRequest[];
   const { data, error } = await admin.from("crm_hotel_requests").select("*").eq("booking_id", input.bookingId);
   if (error) return [] as CrmHotelRequest[];
@@ -96,7 +98,7 @@ export async function ensureHotelRequests(
       const fresh = hotelDeskDraft({
         kind,
         item,
-        items: input.items,
+        items,
         reference: input.reference,
         guest: input.guest,
         currency: input.currency || "EUR",

@@ -1,4 +1,5 @@
 import { detailStr, hotelCityLine, hotelDisplayName } from "./carnet";
+import { matchHotelDirectory } from "./hotel-catalog";
 import type { CrmBookingItem } from "./types";
 
 const SKIP_URL =
@@ -329,6 +330,39 @@ function withContact(
     }
   }
   return changed ? { ...item, details } : item;
+}
+
+/** Complète la fiche depuis le catalogue, y compris « NoMad London » → « The NoMad Hotel, London ». */
+export function applyMatchedCatalog(items: CrmBookingItem[], rows: StoredHotelSource[]) {
+  const directory = rows.flatMap((row) =>
+    row.hotel_id != null && row.hotel_name
+      ? [
+          {
+            hotel_id: row.hotel_id,
+            hotel_name: row.hotel_name,
+            city: row.city || "",
+            country: row.country || "",
+          },
+        ]
+      : []
+  );
+  return items.map((item) => {
+    if (item.kind !== "hotel") return item;
+    const hit = matchHotelDirectory(item, directory);
+    if (!hit) return item;
+    const row = rows.find((entry) => entry.hotel_id === hit.hotel_id);
+    if (!row) return item;
+    return withContact(item, {
+      website: safeWebsite(row.website),
+      phone: usablePhone(row.phone || ""),
+      email: usableEmail(row.email || ""),
+      hotelId: row.hotel_id,
+      city: (row.city || "").trim(),
+      country: (row.country || "").trim(),
+      hotelName: (row.hotel_name || "").trim(),
+      people: row.contacts,
+    });
+  });
 }
 
 /** Complète la fiche avec une source déjà stockée. Ne remplace rien, n’invente rien. */

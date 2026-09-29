@@ -46,19 +46,21 @@ export function hotelDeskSuggested(kind: HotelDeskKind, channel: ReturnType<type
   return true;
 }
 
+function recipientEmails(values: string[]) {
+  return [...new Set(values.map((email) => email.trim().toLowerCase()).filter(Boolean))];
+}
+
+/** Réservations pour les demandes hôtel, concierge pour le concierge. Le reste de l’annuaire reste visible sur la fiche. */
 export function hotelDeskRecipients(contact: HotelContact, kind: HotelDeskKind) {
   const people = contact.people.filter((person) => person.email);
   const preferred =
     kind === "concierge"
       ? people.filter((person) => /concierge/i.test(person.type))
       : people.filter((person) => /reserv/i.test(person.type));
-  if (kind === "concierge" && preferred.length) {
-    return [...new Set(preferred.map((person) => person.email.trim().toLowerCase()).filter(Boolean))];
-  }
-  const pool = preferred.length ? preferred : people;
-  const emails = [...pool.map((person) => person.email)];
+  if (preferred.length) return recipientEmails(preferred.map((person) => person.email));
+  const emails = people.map((person) => person.email);
   if (contact.email) emails.unshift(contact.email);
-  return [...new Set(emails.map((email) => email.trim().toLowerCase()).filter(Boolean))];
+  return recipientEmails(emails);
 }
 
 export function containsCardNumber(text: string) {

@@ -21,7 +21,9 @@ export function HotelContactButton({ item }: { item: CrmBookingItem }) {
         }}
       >
         <Icon name="hotel" className="h-3.5 w-3.5" />
-        Voir l’hôtel
+        {contact.people.length
+          ? `Voir l’hôtel · ${contact.people.length} contact${contact.people.length > 1 ? "s" : ""}`
+          : "Voir l’hôtel"}
       </button>
       {open ? <HotelContactDialog item={item} onClose={() => setOpen(false)} /> : null}
     </>
