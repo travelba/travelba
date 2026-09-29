@@ -316,6 +316,7 @@ export function VisaJourney({
                         Pas maintenant
                       </button>
                       <BusyBar active={busy === country} label="Demande en cours…" tone="light" />
+                      {error ? <p className="mt-2 text-sm text-[#f3c7c7]">{error}</p> : null}
                     </div>
                   ) : (
                     <button
