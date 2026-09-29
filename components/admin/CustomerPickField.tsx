@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
+import { fieldControlClass } from "@/components/crm/fields";
 import { Icon } from "@/components/crm/icons";
 import {
   customerPickLabel,
@@ -14,12 +15,16 @@ export function CustomerPickField({
   selected,
   title = "Choisir un client",
   formatLabel = customerPickLabel,
+  onPick,
+  controlClass = fieldControlClass,
 }: {
   name: string;
   label: string;
   selected: PickableCustomer | null;
   title?: string;
   formatLabel?: (customer: PickableCustomer) => string;
+  onPick?: (customer: PickableCustomer) => void;
+  controlClass?: string;
 }) {
   const [value, setValue] = useState<PickableCustomer | null>(selected);
   const [open, setOpen] = useState(false);
@@ -52,13 +57,13 @@ export function CustomerPickField({
   }
 
   return (
-    <label className="flex flex-col gap-1 text-xs font-semibold text-muted sm:col-span-2">
+    <label className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
       {label}
       <input type="hidden" name={name} value={value?.id || ""} />
       <button
         type="button"
         onClick={() => void openPicker()}
-        className="flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-white px-3 py-2 text-left text-sm font-medium text-[var(--admin-navy)]"
+        className={`${controlClass} flex items-center justify-between gap-3 text-left text-sm font-semibold normal-case tracking-normal text-[var(--admin-navy)]`}
       >
         <span className="min-w-0 truncate">
           {value ? formatLabel(value) : "Choisir un client…"}
@@ -71,7 +76,10 @@ export function CustomerPickField({
         customers={customers}
         selectedId={value?.id || ""}
         title={loading ? `${title}…` : title}
-        onSelect={setValue}
+        onSelect={(customer) => {
+          setValue(customer);
+          onPick?.(customer);
+        }}
         onClose={() => setOpen(false)}
       />
     </label>

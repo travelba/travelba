@@ -18,7 +18,7 @@ import {
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { BusyBar } from "@/components/crm/BusyBar";
-import { formatMoney, jMinusLabel, todayIsoDate } from "@/lib/crm/money";
+import { formatDateFr, formatMoney, jMinusLabel, todayIsoDate } from "@/lib/crm/money";
 import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { bookingTotalFromItems } from "@/lib/crm/bookings";
@@ -28,6 +28,7 @@ import {
   canConfirmCarnetPublish,
   coverQuery,
   flightCardTitle,
+  nightsBetween,
   hotelDisplayName,
   keptHiddenFromClient,
   pendingPublishCards,
@@ -60,8 +61,24 @@ import { reusableDocumentsForTraveler, tripDocumentsForTraveler } from "@/lib/cr
 import { TripSharePanel } from "@/components/account/TripSharePanel";
 import type { ShareCompanion } from "@/lib/crm/trip-share";
 import { CustomerPickField } from "@/components/admin/CustomerPickField";
-import { customerBillingPickLabel, customerTravelerPickLabel } from "@/lib/crm/customer-search";
+import {
+  customerBillingPickLabel,
+  customerTravelerPickLabel,
+  type PickableCustomer,
+} from "@/lib/crm/customer-search";
 import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
+
+const coverField =
+  "w-full rounded-2xl border border-transparent bg-white px-4 py-3 text-sm text-[var(--admin-navy)] shadow-[0_1px_2px_rgba(11,25,44,0.04)] outline-none transition focus:border-[var(--admin-gold)] focus:shadow-[0_0_0_3px_rgba(197,168,128,0.22)]";
+
+function CoverMark({ children }: { children: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--admin-gold-dark)]">{children}</p>
+      <span className="h-px flex-1 bg-gradient-to-r from-[var(--admin-gold)]/45 to-transparent" />
+    </div>
+  );
+}
 
 export function BookingEditor({
   booking,
@@ -134,6 +151,21 @@ export function BookingEditor({
     setClientSettlesFromServer(serverSettles);
     setClientSettles(serverSettles);
   }
+  const stayStamp = `${booking.start_date}|${booking.end_date}|${booking.status}`;
+  const [stayFromServer, setStayFromServer] = useState(stayStamp);
+  const [startDraft, setStartDraft] = useState(booking.start_date || "");
+  const [endDraft, setEndDraft] = useState(booking.end_date || "");
+  const [statusDraft, setStatusDraft] = useState(booking.status);
+  if (stayStamp !== stayFromServer) {
+    setStayFromServer(stayStamp);
+    setStartDraft(booking.start_date || "");
+    setEndDraft(booking.end_date || "");
+    setStatusDraft(booking.status);
+  }
+  const nights = nightsBetween(startDraft || null, endDraft || null);
+  const datesInverted = Boolean(startDraft && endDraft && endDraft < startDraft);
+  const [clientPick, setClientPick] = useState<PickableCustomer | null>(customer);
+  const [payerPick, setPayerPick] = useState<PickableCustomer | null>(billingCustomer || customer);
   const account = customer;
   const holderProfile = {
     first_name: account?.first_name || holderName.first_name,
@@ -581,6 +613,258 @@ export function BookingEditor({
         </section>
       ) : null}
 
+      <form id="booking-meta" onSubmit={save} className="admin-af-card overflow-hidden rounded-[28px]">
+        <div className="relative bg-[var(--admin-navy)] px-5 py-6 text-white sm:px-7 sm:py-7">
+          <div className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-[var(--admin-gold)]/15" />
+          <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--admin-gold)]">Séjour</p>
+          <input
+            name="title"
+            required
+            value={titleDraft}
+            onChange={(event) => setTitleDraft(event.target.value)}
+            placeholder="Séjour à Avoriaz"
+            aria-label="Titre"
+            className="mt-2 w-full bg-transparent font-display text-3xl font-bold leading-tight text-white outline-none placeholder:text-white/35"
+          />
+          <p className="mt-1 text-xs text-white/55">Le client le voit en haut de son carnet.</p>
+          <PlaceField
+            name="destination"
+            defaultValue={booking.destination || ""}
+            placeholder="Ville ou station"
+            className="mt-5 w-full border-0 border-b border-white/25 bg-transparent px-0 py-2 text-lg text-white outline-none placeholder:text-white/40 focus:border-[var(--admin-gold)]"
+          />
+        </div>
+
+        <div className="space-y-7 bg-[var(--admin-sky)]/40 px-5 py-6 sm:px-7">
+          <section className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <CustomerPickField
+                name="customer_id"
+                label="Client"
+                selected={account}
+                title="Client du dossier"
+                formatLabel={customerTravelerPickLabel}
+                onPick={setClientPick}
+                controlClass={coverField}
+              />
+              <CustomerPickField
+                name="billing_customer_id"
+                selected={billingCustomer || account}
+                title="Qui paie"
+                label="Qui paie"
+                formatLabel={customerBillingPickLabel}
+                onPick={setPayerPick}
+                controlClass={coverField}
+              />
+            </div>
+            {clientPick && payerPick && clientPick.id === payerPick.id ? (
+              <p className="inline-flex rounded-full bg-[var(--admin-peach)] px-3 py-1 text-sm font-semibold text-[var(--admin-navy)]">
+                {clientPick.first_name} paie ce séjour
+              </p>
+            ) : null}
+          </section>
+
+          <section className="space-y-3">
+            <CoverMark>Dates</CoverMark>
+            <div className="rounded-3xl bg-white/80 p-4 shadow-[0_1px_2px_rgba(11,25,44,0.04)]">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                {nights ? (
+                  <p className="font-display text-sm font-semibold text-[var(--admin-navy)]">
+                    {formatDateFr(startDraft)} → {formatDateFr(endDraft)}
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted">Du départ au retour</p>
+                )}
+                {nights ? (
+                  <span className="rounded-full bg-[var(--admin-navy)] px-3 py-1 font-display text-sm font-bold text-[var(--admin-gold)]">
+                    {nights} nuit{nights > 1 ? "s" : ""}
+                  </span>
+                ) : null}
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+                  Départ
+                  <DateFrInput
+                    name="start_date"
+                    aria-label="Date de départ"
+                    value={startDraft}
+                    onChange={setStartDraft}
+                    className={`${coverField} bg-[var(--admin-sky)]`}
+                  />
+                </label>
+                <label className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+                  Retour
+                  <DateFrInput
+                    name="end_date"
+                    aria-label="Date de retour"
+                    value={endDraft}
+                    onChange={setEndDraft}
+                    className={`${coverField} bg-[var(--admin-sky)]`}
+                  />
+                </label>
+              </div>
+              {datesInverted ? (
+                <p className="mt-3 text-sm font-semibold text-[var(--admin-red)]">Le retour est avant le départ.</p>
+              ) : null}
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <CoverMark>Dossier</CoverMark>
+            <div className="flex flex-wrap gap-1.5 rounded-3xl bg-white/80 p-1.5" role="radiogroup" aria-label="Où en est le dossier">
+              {BOOKING_STATUSES.map((status) => {
+                const selected = statusDraft === status;
+                const confirmed = selected && status === "confirmed";
+                return (
+                  <label
+                    key={status}
+                    className={`cursor-pointer rounded-full px-3.5 py-2 text-sm font-semibold transition ${
+                      confirmed
+                        ? "bg-[var(--admin-navy)] text-[var(--admin-gold)] shadow-sm"
+                        : selected
+                          ? "bg-[var(--admin-navy)] text-white shadow-sm"
+                          : "text-[var(--admin-navy)]/75 hover:bg-white"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="status"
+                      value={status}
+                      checked={selected}
+                      onChange={() => setStatusDraft(status)}
+                      className="sr-only"
+                    />
+                    {BOOKING_STATUS_LABELS[status]}
+                  </label>
+                );
+              })}
+            </div>
+            {statusDraft === "confirmed" ? (
+              <p className="text-xs text-muted">Ce statut inscrit le montant dans les transactions du client.</p>
+            ) : null}
+            <label className="flex max-w-[11rem] flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+              Devise
+              <select
+                name="currency"
+                defaultValue={stayCurrency(booking.currency)}
+                aria-label="Devise du séjour"
+                className={coverField}
+              >
+                {STAY_CURRENCIES.map((code) => (
+                  <option key={code} value={code}>
+                    {code}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </section>
+
+          <section className="space-y-3">
+            <CoverMark>Règlement</CoverMark>
+            <input
+              type="checkbox"
+              name="client_settles_stay"
+              checked={clientSettles}
+              onChange={(event) => setClientSettles(event.target.checked)}
+              className="sr-only"
+              tabIndex={-1}
+              aria-hidden
+            />
+            <div className="grid gap-3 sm:grid-cols-2">
+              {(
+                [
+                  {
+                    settles: false,
+                    title: "L’agence encaisse",
+                    hint: "Le montant entre dans les transactions du client.",
+                  },
+                  {
+                    settles: true,
+                    title: "Le client règle l’hôtel",
+                    hint: "Sur sa carte. Le prix reste au carnet.",
+                  },
+                ] as const
+              ).map((choice) => {
+                const selected = clientSettles === choice.settles;
+                return (
+                  <button
+                    key={choice.title}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setClientSettles(choice.settles)}
+                    className={`rounded-3xl p-4 text-left transition ${
+                      selected
+                        ? "bg-white shadow-[0_8px_24px_-12px_rgba(11,25,44,0.35),inset_0_0_0_1.5px_var(--admin-gold)]"
+                        : "bg-white/45 shadow-[inset_0_0_0_1px_var(--border)]"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span
+                        className={`h-2 w-2 rounded-full ${selected ? "bg-[var(--admin-gold)]" : "bg-[var(--border)]"}`}
+                      />
+                      <span className="font-display text-base font-bold text-[var(--admin-navy)]">{choice.title}</span>
+                    </span>
+                    <span className="mt-2 block pl-4 text-xs leading-relaxed text-muted">{choice.hint}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {clientSettles ? (
+              <p className="text-sm text-muted">Ce montant ne va pas dans les transactions.</p>
+            ) : (
+              <label className="flex items-start gap-3 rounded-2xl bg-white/70 px-4 py-3 text-sm text-[var(--admin-navy)]">
+                <input
+                  key="stay-in"
+                  type="checkbox"
+                  name="include_in_ledger"
+                  defaultChecked={booking.include_in_ledger !== false}
+                  className="mt-1 size-4 accent-[var(--admin-navy)]"
+                />
+                <span>
+                  Compter dans les transactions
+                  <span className="mt-0.5 block text-xs font-normal text-muted">
+                    Décochez pour montrer le prix au carnet sans le compter.
+                    {items.some((item) => item.include_in_ledger)
+                      ? " Des cartes sont déjà comptées : laissez décoché pour ne pas compter deux fois."
+                      : ""}
+                  </span>
+                </span>
+              </label>
+            )}
+          </section>
+
+          <section className="space-y-3">
+            <CoverMark>Mots</CoverMark>
+            <label className="flex flex-col gap-2 rounded-3xl border border-[var(--border)] border-l-[3px] border-l-[var(--admin-gold)] bg-white p-4 text-sm font-semibold text-[var(--admin-navy)]">
+              Message pour le client
+              <textarea
+                name="notes_client"
+                defaultValue={booking.notes_client || ""}
+                rows={3}
+                placeholder="Conseils, horaires de rendez-vous…"
+                className={`${coverField} min-h-24 bg-[var(--admin-sky)] font-normal`}
+              />
+            </label>
+            <label className="flex flex-col gap-2 rounded-3xl bg-[var(--admin-peach)] p-5 text-sm font-semibold text-[var(--admin-navy)] shadow-[inset_0_0_0_1px_rgba(197,168,128,0.45)]">
+              <span className="flex flex-wrap items-baseline justify-between gap-2">
+                Notes pour l’agence
+                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold-dark)]">
+                  Le client ne voit pas ça
+                </span>
+              </span>
+              <textarea
+                name="notes_internal"
+                defaultValue={booking.notes_internal || ""}
+                rows={3}
+                placeholder="Mémo pour l’agence"
+                className={`${coverField} min-h-24 font-normal`}
+              />
+            </label>
+          </section>
+
+          <p className="text-xs text-muted">Enregistrer garde le dossier.</p>
+        </div>
+      </form>
       <BookingIngest
         role="admin"
         mode="append"
@@ -591,123 +875,6 @@ export function BookingEditor({
         aiConfigured={aiConfigured}
         preserveTitle={booking.title}
       />
-      <form id="booking-meta" onSubmit={save} className="admin-af-card grid gap-3 rounded-3xl p-5 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-          Titre du voyage
-          <input
-            name="title"
-            required
-            value={titleDraft}
-            onChange={(event) => setTitleDraft(event.target.value)}
-            className="rounded-xl border border-border px-3 py-2"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-          Destination
-          <PlaceField
-            name="destination"
-            defaultValue={booking.destination || ""}
-            className="rounded-xl border border-border px-3 py-2"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-          Départ
-          <DateFrInput name="start_date" aria-label="Date de départ" defaultValue={booking.start_date || ""} className="rounded-xl border border-border px-3 py-2" />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-          Retour
-          <DateFrInput name="end_date" aria-label="Date de retour" defaultValue={booking.end_date || ""} className="rounded-xl border border-border px-3 py-2" />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-          Devise du séjour
-          <select
-            name="currency"
-            defaultValue={stayCurrency(booking.currency)}
-            aria-label="Devise du séjour"
-            className="admin-tap rounded-xl border border-border bg-white px-3 py-2"
-          >
-            {STAY_CURRENCIES.map((code) => (
-              <option key={code} value={code}>
-                {code}
-              </option>
-            ))}
-          </select>
-          <span className="font-normal text-muted">
-            EUR, USD, CHF ou GBP. La monnaie imprimée sur un document ne remplace pas ce choix.
-          </span>
-        </label>
-        <label className="flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-2">
-          <input
-            type="checkbox"
-            name="client_settles_stay"
-            checked={clientSettles}
-            onChange={(event) => setClientSettles(event.target.checked)}
-            className="mt-1"
-          />
-          <span>
-            Le client règle ce séjour
-            <span className="mt-0.5 block text-xs font-normal text-muted">
-              L’hôtel est payé sur sa carte. Le montant reste au carnet et sort des transactions et de l’encours.
-            </span>
-          </span>
-        </label>
-        <label className="flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-2">
-          <input
-            key={clientSettles ? "stay-out" : "stay-in"}
-            type="checkbox"
-            name="include_in_ledger"
-            defaultChecked={!clientSettles && booking.include_in_ledger !== false}
-            disabled={clientSettles}
-            className="mt-1"
-          />
-          <span>
-            Inclure le montant du séjour dans les transactions
-            <span className="mt-0.5 block text-xs font-normal text-muted">
-              {clientSettles
-                ? "Le client règle ce séjour : ce montant ne va pas aux transactions."
-                : "Décochez pour afficher le prix au carnet sans impacter l’encours client."}
-              {!clientSettles && items.some((item) => item.include_in_ledger)
-                ? " Des cartes sont déjà comptabilisées : laissez décoché pour éviter un double compte."
-                : ""}
-            </span>
-          </span>
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-          Statut
-          <select name="status" defaultValue={booking.status} className="rounded-xl border border-border bg-white px-3 py-2">
-            {BOOKING_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {BOOKING_STATUS_LABELS[s]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <CustomerPickField
-          name="customer_id"
-          label="Client voyageur (titulaire)"
-          selected={account}
-          title="Client voyageur (titulaire)"
-          formatLabel={customerTravelerPickLabel}
-        />
-        <CustomerPickField
-          name="billing_customer_id"
-          selected={billingCustomer || account}
-          title="Facturé à (wallet / société)"
-          label="Facturé à (wallet / société)"
-          formatLabel={customerBillingPickLabel}
-        />
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted sm:col-span-2">
-          Notes visibles par le client
-          <textarea name="notes_client" defaultValue={booking.notes_client || ""} placeholder="Conseils, horaires de rendez-vous…" className="rounded-xl border border-border px-3 py-2" />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted sm:col-span-2">
-          Notes internes (agence)
-          <textarea name="notes_internal" defaultValue={booking.notes_internal || ""} placeholder="Jamais affichées au client" className="rounded-xl border border-border px-3 py-2" />
-        </label>
-        <p className="sm:col-span-2 text-xs text-muted">
-          Enregistrer ne publie pas. Le statut confirmé crée le débit au grand livre.
-        </p>
-      </form>
 
       <section className="admin-af-card space-y-4 rounded-3xl p-5">
         <div className="space-y-3">
