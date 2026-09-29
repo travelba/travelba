@@ -82,7 +82,8 @@ const PROMPT_FLIGHT = `Vol :
 - Plusieurs e-tickets passagers pour le MÊME vol (même n°, même jour) = UN item. Les noms vont dans travelers. Le nombre de billets est compté à la fusion (details.ticket_count). L’agent saisit un prix unitaire par billet.
 - confirmation_ref = PNR GDS 6 lettres. details.pnr = réf. compagnie. Jamais l’IATA 8 chiffres agence (20287864, 20255270, 96020293, 20289905).
 - details.airline = transporteur opérant. details.airline_iata = code IATA 2 lettres s’il est imprimé (AF, CM). Sinon null. supplier = émetteur du billet (Hahn Air ≠ Air Panama ; Copa opérant = Copa).
-- details.from / to = IATA. Souvent absent du PDF : Gelabert/Albrook=PAC, Isla Colón=BOC, Enrique Malek=DAV, Tocumen=PTY, Charles-de-Gaulle=CDG, Orly=ORY, Tel Aviv=TLV, Genève=GVA, Heathrow=LHR, Marseille Provence=MRS.
+- details.from / to = IATA. Souvent absent du PDF : Gelabert/Albrook=PAC, Isla Colón=BOC, Enrique Malek=DAV, Tocumen=PTY, Charles-de-Gaulle=CDG, Orly=ORY, Tel Aviv=TLV, Genève=GVA, Heathrow=LHR, Marseille Provence=MRS, John F. Kennedy=JFK, LaGuardia=LGA, Miami=MIA, Ménara=RAK.
+- details.baggage = franchise du segment, en français : nombre et désignation (« 1 bagage en soute 32 kg inclus · 2 bagages cabine 9 kg par personne »). Pas le code seul « 1PC » / « 0PC ». Lire POLITIQUE BAGAGE du couple d’aéroports (CDGJFK, pas le vol d’à côté). Le « OR » golf/ski/média n’est pas un bagage de plus. Montant payant seulement s’il est imprimé.
 - details.city_from / city_to = villes. « 03 August 09:45 » : année = ligne « Lundi 03 août 2026 ».
 - Terminal / siège seulement s’ils sont imprimés. « Heure limite d’enregistrement » n’est pas l’horaire du vol.
 - Carte fidélité : ne pas extraire.

@@ -14,6 +14,10 @@ const AIRPORTS: { re: RegExp; iata: string; city: string }[] = [
   { re: /TOCUMEN/i, iata: "PTY", city: "Panama" },
   { re: /CHARLES-DE-GAULLE|CHARLES DE GAULLE/i, iata: "CDG", city: "Paris" },
   { re: /\bORLY\b/i, iata: "ORY", city: "Paris" },
+  { re: /JOHN F\.? KENNEDY|KENNEDY INTL/i, iata: "JFK", city: "New York" },
+  { re: /LAGUARDIA/i, iata: "LGA", city: "New York" },
+  { re: /A[ÉE]ROPORT DE MIAMI|\bMIAMI INTL\b/i, iata: "MIA", city: "Miami" },
+  { re: /M[ÉE]NARA/i, iata: "RAK", city: "Marrakech" },
   { re: /TEL AVIV|BEN GOURION|BEN GURION/i, iata: "TLV", city: "Tel Aviv" },
   { re: /A[ÉE]ROPORT DE GEN[ÈE]VE|GEN[ÈE]VE GEN[ÈE]VE/i, iata: "GVA", city: "Genève" },
   { re: /HEATHROW/i, iata: "LHR", city: "Londres" },
@@ -212,6 +216,102 @@ export type ParsedAmadeusFlight = {
   seat: string | null;
 };
 
+function pieceCountPhrase(count: number) {
+  if (count <= 0) return "Aucun bagage en soute inclus";
+  if (count === 1) return "1 pièce en soute";
+  return `${count} pièces en soute`;
+}
+
+function eurLabel(raw: string) {
+  const value = Number(raw.replace(/\s/g, "").replace(/EUR/i, "").replace(",", "."));
+  if (!Number.isFinite(value)) return raw.trim();
+  if (Number.isInteger(value)) return `${value} €`;
+  return `${value.toFixed(2).replace(".", ",")} €`;
+}
+
+/** Poids de la pièce principale. Les lignes « OR » (golf, ski, média) ne remplacent pas la valise. */
+function pieceKilos(chunk: string) {
+  const checked = chunk.match(/CHECKED BAG\s+1PC OF\s+(\d+)\s*KG/i);
+  if (checked) return Number(checked[1]);
+  const head = chunk.split(/\bOR\b/i)[0] || "";
+  const upto = head.match(/UPTO\d+\s*LB\s+(\d+)\s*KG/i);
+  return upto ? Number(upto[1]) : null;
+}
+
+type BaggagePiece = { kg: number | null; free: boolean; amount: string | null };
+
+function formatBaggagePolicy(
+  pieces: BaggagePiece[],
+  cabin: { count: number; kg: number | null } | null
+) {
+  const parts: string[] = [];
+  const free = pieces.filter((piece) => piece.free);
+  const paid = pieces.filter((piece) => !piece.free);
+  if (free.length) {
+    const kg = free.every((piece) => piece.kg && piece.kg === free[0].kg) ? free[0].kg : null;
+    const noun = free.length > 1 ? "bagages en soute" : "bagage en soute";
+    parts.push(kg ? `${free.length} ${noun} ${kg} kg inclus` : `${free.length} ${noun} inclus`);
+  }
+  paid.forEach((piece, index) => {
+    const n = free.length + index + 1;
+    const rank = n === 1 ? "1er" : `${n}e`;
+    const weight = piece.kg ? `${piece.kg} kg ` : "";
+    const price = piece.amount ? eurLabel(piece.amount) : "";
+    parts.push(`${rank} en soute ${weight}${price}`.replace(/\s+/g, " ").trim());
+  });
+  if (cabin) {
+    const noun = cabin.count > 1 ? "bagages cabine" : "bagage cabine";
+    parts.push(cabin.kg ? `${cabin.count} ${noun} ${cabin.kg} kg` : `${cabin.count} ${noun}`);
+  }
+  if (!parts.length) return null;
+  return `${parts.join(" · ")} par personne`;
+}
+
+/** Franchise par segment (CDGJFK, LGAMIA…) lue dans POLITIQUE BAGAGE, pas le code « 2PC ». */
+export function amadeusBaggageByRoute(text: string) {
+  const flat = text.replace(/\s+/g, " ");
+  const out = new Map<string, string>();
+  const policyAt = flat.search(/POLITIQUE BAGAGE/i);
+  if (policyAt < 0) return out;
+  const cabinAt = flat.search(/Bagage cabine\s*:/i);
+  const legendAt = flat.search(/LB = Poids/i);
+  const checked = flat.slice(policyAt, cabinAt > policyAt ? cabinAt : policyAt + 4000);
+  const cabinText =
+    cabinAt >= 0 ? flat.slice(cabinAt, legendAt > cabinAt ? legendAt : cabinAt + 1200) : "";
+  const marks = [...checked.matchAll(/\b([A-Z]{6})\s+(?=CHECKED BAG|UPTO)/g)];
+  marks.forEach((mark, index) => {
+    const route = mark[1];
+    const from = (mark.index || 0) + mark[0].length;
+    const to = marks[index + 1]?.index ?? checked.length;
+    const block = checked.slice(from, to);
+    const pieces: BaggagePiece[] = [];
+    const re = /(1er|2e|2ème|2eme|3e|3ème)\s+enregistré\s+(Sans frais|\d+[.,]\d{2}\s*EUR)/gi;
+    let last = 0;
+    for (const found of block.matchAll(re)) {
+      const chunk = block.slice(last, found.index || 0);
+      const free = /sans frais/i.test(found[2]);
+      pieces.push({
+        kg: pieceKilos(chunk),
+        free,
+        amount: free ? null : found[2],
+      });
+      last = (found.index || 0) + found[0].length;
+    }
+    const cabin = cabinText.match(
+      new RegExp(
+        `${route}\\s*:\\s*MAX\\s+(\\d+)\\s*PC\\s+Sans frais\\s+CARRY(?:\\s+ON)?(?:\\s+(\\d+)\\s*KG)?`,
+        "i"
+      )
+    );
+    const phrase = formatBaggagePolicy(
+      pieces,
+      cabin ? { count: Number(cabin[1]), kg: cabin[2] ? Number(cabin[2]) : null } : null
+    );
+    if (phrase) out.set(route, phrase);
+  });
+  return out;
+}
+
 function parseAmadeusSegment(
   block: string,
   gds: string,
@@ -228,7 +328,7 @@ function parseAmadeusSegment(
     new RegExp(clock.source + "([\\s\\S]{0,160}?)Arriv[eé]e", "i")
   );
   const cabin = block.match(/([A-Za-z]+) \(([A-Z])\)\s*Classe/i);
-  const bags = block.match(/Bagages autoris[eé]s\s+(\d+PC)/i);
+  const bags = block.match(/Bagages autoris[eé]s\s+(\d+)\s*PC/i);
   const terminal = (dep?.[2] || "").match(/Terminal\s*:\s*([A-Z0-9]+)/i);
   const seat = block.match(/Si[eè]ge\s+(\d{1,2}[A-Z])\b/i);
   const depText = `${dep?.[1] || ""} ${dep?.[2] || ""}`;
@@ -250,7 +350,7 @@ function parseAmadeusSegment(
     start_at: parseFrEnDate(dep?.[1] || depText, year),
     end_at: parseFrEnDate(arr?.[1] || arrText, year),
     cabin: cabin ? `${cabin[1]} (${cabin[2]})` : null,
-    baggage: bags?.[1] || null,
+    baggage: bags ? pieceCountPhrase(Number(bags[1])) : null,
     terminal: terminal?.[1] || null,
     seat: seat?.[1] || null,
   };
@@ -273,6 +373,8 @@ export function parseAmadeusFlights(text: string): ParsedAmadeusFlight[] {
   if (!ops.length) return [];
   const companyAt = text.search(/R[eé]f[eé]rence du dossier compagnie/i);
   const yearHint = itineraryYear(text);
+  const policies = amadeusBaggageByRoute(text);
+  const onlyPolicy = policies.size === 1 ? [...policies.values()][0] : null;
   return ops.map((op, i) => {
     const from = Math.max(0, (op.index || 0) - 120);
     const next = ops[i + 1]?.index;
@@ -282,7 +384,7 @@ export function parseAmadeusFlights(text: string): ParsedAmadeusFlight[] {
         : companyAt > (op.index || 0)
           ? companyAt
           : (op.index || 0) + 900;
-    return parseAmadeusSegment(
+    const flight = parseAmadeusSegment(
       text.slice(from, to),
       gds[1].toUpperCase(),
       company?.[2]?.toUpperCase() || null,
@@ -290,6 +392,9 @@ export function parseAmadeusFlights(text: string): ParsedAmadeusFlight[] {
       yearHint,
       op
     );
+    const route = flight.from && flight.to ? `${flight.from}${flight.to}` : "";
+    flight.baggage = (route && policies.get(route)) || onlyPolicy || flight.baggage;
+    return flight;
   });
 }
 
@@ -1453,7 +1558,7 @@ export function structuredHintFromPdfText(text: string): string {
   for (const flight of flights) bits.push(`VOL ${JSON.stringify(flight)}`);
   if (flights.length) {
     bits.push(
-      "Plusieurs e-tickets du même vol (même n°, même jour) = UN item, details.ticket_count = nombre de billets. Prix unitaire saisi par l’agent. Aller-retour dans UN PDF = DEUX items. IATA 8 chiffres = code agence, pas un PNR. « Scan for check-in » n’est pas un hôtel. Ne pas extraire la carte fidélité."
+      "Plusieurs e-tickets du même vol (même n°, même jour) = UN item, details.ticket_count = nombre de billets. Prix unitaire saisi par l’agent. Aller-retour dans UN PDF = DEUX items. IATA 8 chiffres = code agence, pas un PNR. « Scan for check-in » n’est pas un hôtel. Ne pas extraire la carte fidélité. details.baggage = nombre et désignation du segment (pas « 2PC »)."
     );
   }
   const expedia = parseExpediaTaap(clean);
@@ -1672,6 +1777,10 @@ function overlayItem(target: ExtractItem, incoming: ExtractItem) {
     current.city_to = incoming.details.city_to;
   }
   if (incoming.details?.cabin && !current.cabin) current.cabin = incoming.details.cabin;
+  if (incoming.details?.baggage) {
+    const currentBag = typeof current.baggage === "string" ? current.baggage.trim() : "";
+    if (!currentBag || /^\d+\s*PC$/i.test(currentBag)) current.baggage = incoming.details.baggage;
+  }
   if (incoming.details?.terminal && !current.terminal) {
     current.terminal = incoming.details.terminal;
   }
