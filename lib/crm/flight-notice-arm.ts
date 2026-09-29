@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { flightNoticeDrafts, type FlightNoticeKind } from "./flight-watch";
-import { productionOnlySecret } from "./preview-secrets";
+import { flightNoticeDrafts, flightNoticeVariables, type FlightNoticeKind } from "./flight-watch";
+import { isVercelPreview, productionOnlySecret } from "./preview-secrets";
+import { sendContentTemplate } from "./whatsapp";
 
 const CONTENT_URL = "https://content.twilio.com/v1/Content";
 
@@ -14,7 +15,12 @@ const KIND_BY_ENV: Record<string, FlightNoticeKind> = {
   TWILIO_CONTENT_VOL_ARRIVEE: "arrivee",
 };
 
-type Extra = { notice_sids?: Partial<Record<FlightNoticeKind, string>> };
+const SAMPLE_PHONE = "0772158257";
+
+type Extra = {
+  notice_sids?: Partial<Record<FlightNoticeKind, string>>;
+  sample_sent?: Partial<Record<FlightNoticeKind, string>>;
+};
 
 function quiet(error: unknown) {
   const message = error instanceof Error ? error.message : "échec";
@@ -55,6 +61,8 @@ async function twilio(path: string, fetchImpl: typeof fetch, init?: RequestInit)
     message?: string;
     contents?: { sid?: string; friendly_name?: string }[];
     meta?: { next_page_url?: string | null };
+    whatsapp?: { status?: string };
+    status?: string;
   } | null;
   return { response, payload };
 }
@@ -143,4 +151,58 @@ export async function ensureFlightNoticeSids(
     }
   }
   return resolved;
+}
+
+function sampleVariables(kind: FlightNoticeKind) {
+  return flightNoticeVariables({
+    kind,
+    flight: "AF 1789",
+    route: "CDG → RAK",
+    when: kind === "horaire" ? "11h20" : kind === "retard" ? "14h40" : null,
+    place: kind === "arrivee" ? "à Marrakech" : null,
+    buttonSuffix: "c/23456789",
+  });
+}
+
+/**
+ * Envoie une fois chaque modèle approuvé sur le téléphone demandé.
+ * Tant que Meta n’a pas approuvé, rien ne part.
+ */
+export async function sendApprovedFlightSamples(
+  admin: SupabaseClient,
+  sids: Partial<Record<FlightNoticeKind, string>>,
+  fetchImpl: typeof fetch = fetch,
+  deliver: typeof sendContentTemplate = sendContentTemplate
+) {
+  if (isVercelPreview() || !twilioReady()) return;
+  const { data } = await admin.from("crm_integrations").select("id, extra").eq("provider", "aeroapi").maybeSingle();
+  const extra = ((data?.extra || {}) as Extra) || {};
+  const sent: Partial<Record<FlightNoticeKind, string>> = { ...(extra.sample_sent || {}) };
+  let changed = false;
+
+  for (const draft of flightNoticeDrafts()) {
+    const kind = KIND_BY_ENV[draft.env];
+    const sid = kind ? sids[kind] : undefined;
+    if (!kind || !sid || sent[kind]) continue;
+    const variables = sampleVariables(kind);
+    if (!variables) continue;
+    try {
+      const { response, payload } = await twilio(`${CONTENT_URL}/${sid}/ApprovalRequests`, fetchImpl);
+      if (!response.ok || (payload?.whatsapp?.status || payload?.status || "").toLowerCase() !== "approved") continue;
+      const result = await deliver({ phone: SAMPLE_PHONE, contentSid: sid, variables });
+      if (!result.ok) continue;
+      sent[kind] = new Date().toISOString();
+      changed = true;
+    } catch (error) {
+      quiet(error);
+    }
+  }
+
+  if (!changed) return;
+  const next = { ...(data?.extra || {}), sample_sent: sent };
+  if (data?.id) {
+    await admin.from("crm_integrations").update({ extra: next, updated_at: new Date().toISOString() }).eq("id", data.id);
+  } else {
+    await admin.from("crm_integrations").insert({ provider: "aeroapi", extra: next });
+  }
 }

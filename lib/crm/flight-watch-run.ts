@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createEntryLink, entryButtonSuffix, entryCodeFromLink } from "./entry-link";
 import { countryForIata } from "./airports";
 import { countryName } from "./countries";
-import { ensureFlightNoticeSids } from "./flight-notice-arm";
+import { ensureFlightNoticeSids, sendApprovedFlightSamples } from "./flight-notice-arm";
 import { aeroApiKey, fetchAeroFlights, flightNoticeSid } from "./flight-watch-api";
 import {
   applyAeroFlight,
@@ -170,6 +170,7 @@ export async function runFlightWatch(
     quiet(error);
     return {} as Partial<Record<FlightNoticeKind, string>>;
   });
+  await sendApprovedFlightSamples(admin, noticeSids, deps.fetchImpl).catch((error) => quiet(error));
 
   const from = new Date(now.getTime() - 18 * 60 * 60 * 1000).toISOString();
   const to = new Date(now.getTime() + 31 * 24 * 60 * 60 * 1000).toISOString();

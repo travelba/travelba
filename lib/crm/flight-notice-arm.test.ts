@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ensureFlightNoticeSids } from "./flight-notice-arm";
+import { ensureFlightNoticeSids, sendApprovedFlightSamples } from "./flight-notice-arm";
 import { flightNoticeDrafts } from "./flight-watch";
+import { whatsappAddress } from "./whatsapp";
 
 const KEYS = [
   "TWILIO_ACCOUNT_SID",
@@ -126,5 +127,81 @@ test("crée le modèle manquant et garde le budget à côté des SID", async () 
   assert.equal(extra.notice_sids.annule, undefined);
   assert.equal(extra.notice_sids.horaire, "HXvol_horaire");
   assert.equal(calls.some((call) => call.url.includes("ACtest") || (call.body || "").includes("token")), false);
+  restore();
+});
+
+test("le 07 72 15 82 57 est un mobile français", () => {
+  assert.equal(whatsappAddress("0772158257"), "whatsapp:+33772158257");
+});
+
+test("un modèle encore en attente n’est pas envoyé", async () => {
+  const restore = rememberEnv();
+  delete process.env.VERCEL_ENV;
+  process.env.TWILIO_ACCOUNT_SID = "ACtest";
+  process.env.TWILIO_AUTH_TOKEN = "token";
+  let sent = 0;
+  const fetchImpl: typeof fetch = async () =>
+    new Response(JSON.stringify({ whatsapp: { status: "pending" } }), { status: 200 });
+  const { client, writes } = admin({ notice_sids: { annule: "HXannule" }, day: "2026-09-29", calls: 1 });
+  await sendApprovedFlightSamples(client, { annule: "HXannule" }, fetchImpl, async () => {
+    sent += 1;
+    return { ok: true, sid: "SM" };
+  });
+  assert.equal(sent, 0);
+  assert.equal(writes.length, 0);
+  restore();
+});
+
+test("un modèle approuvé part une fois, avec l’exemple Marrakech, et n’est pas renvoyé", async () => {
+  const restore = rememberEnv();
+  delete process.env.VERCEL_ENV;
+  process.env.TWILIO_ACCOUNT_SID = "ACtest";
+  process.env.TWILIO_AUTH_TOKEN = "token";
+  const phones: string[] = [];
+  const variables: Record<string, string>[] = [];
+  let fetches = 0;
+  const fetchImpl: typeof fetch = async () => {
+    fetches += 1;
+    return new Response(JSON.stringify({ whatsapp: { status: "approved" } }), { status: 200 });
+  };
+  const deliver = async (input: { phone: string | null | undefined; variables: Record<string, string> | null }) => {
+    phones.push(input.phone || "");
+    if (input.variables) variables.push(input.variables);
+    return { ok: true as const, sid: "SM" };
+  };
+  const { client, writes } = admin({
+    day: "2026-09-29",
+    calls: 2,
+    notice_sids: { arrivee: "HXarrivee", retard: "HXretard" },
+  });
+  await sendApprovedFlightSamples(
+    client,
+    { arrivee: "HXarrivee", retard: "HXretard" },
+    fetchImpl,
+    deliver
+  );
+  assert.deepEqual(phones, ["0772158257", "0772158257"]);
+  assert.equal(variables.some((row) => row["1"] === "à Marrakech"), true);
+  assert.equal(variables.some((row) => row["3"] === "14h40"), true);
+  assert.equal(writes.length, 1);
+  const extra = writes[0]?.extra as {
+    day: string;
+    calls: number;
+    sample_sent: Record<string, string>;
+  };
+  assert.equal(extra.day, "2026-09-29");
+  assert.equal(extra.calls, 2);
+  assert.equal(typeof extra.sample_sent.arrivee, "string");
+  assert.equal(typeof extra.sample_sent.retard, "string");
+
+  const again = admin({ ...extra });
+  let second = 0;
+  await sendApprovedFlightSamples(again.client, { arrivee: "HXarrivee", retard: "HXretard" }, async () => {
+    second += 1;
+    return new Response("{}", { status: 200 });
+  }, async () => ({ ok: true, sid: "SM" }));
+  assert.equal(second, 0);
+  assert.equal(again.writes.length, 0);
+  assert.equal(fetches, 2);
   restore();
 });
