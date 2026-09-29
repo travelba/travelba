@@ -15,12 +15,14 @@ export function CustomerPickField({
   selected,
   title = "Choisir un client",
   formatLabel = customerPickLabel,
+  onPick,
 }: {
   name: string;
   label: string;
   selected: PickableCustomer | null;
   title?: string;
   formatLabel?: (customer: PickableCustomer) => string;
+  onPick?: (customer: PickableCustomer) => void;
 }) {
   const [value, setValue] = useState<PickableCustomer | null>(selected);
   const [open, setOpen] = useState(false);
@@ -72,7 +74,10 @@ export function CustomerPickField({
         customers={customers}
         selectedId={value?.id || ""}
         title={loading ? `${title}…` : title}
-        onSelect={setValue}
+        onSelect={(customer) => {
+          setValue(customer);
+          onPick?.(customer);
+        }}
         onClose={() => setOpen(false)}
       />
     </label>

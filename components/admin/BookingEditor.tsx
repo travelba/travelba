@@ -18,7 +18,7 @@ import {
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { BusyBar } from "@/components/crm/BusyBar";
-import { formatMoney, jMinusLabel, todayIsoDate } from "@/lib/crm/money";
+import { formatDateFr, formatMoney, jMinusLabel, todayIsoDate } from "@/lib/crm/money";
 import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { bookingTotalFromItems } from "@/lib/crm/bookings";
@@ -28,6 +28,7 @@ import {
   canConfirmCarnetPublish,
   coverQuery,
   flightCardTitle,
+  nightsBetween,
   hotelDisplayName,
   keptHiddenFromClient,
   pendingPublishCards,
@@ -60,7 +61,11 @@ import { reusableDocumentsForTraveler, tripDocumentsForTraveler } from "@/lib/cr
 import { TripSharePanel } from "@/components/account/TripSharePanel";
 import type { ShareCompanion } from "@/lib/crm/trip-share";
 import { CustomerPickField } from "@/components/admin/CustomerPickField";
-import { customerBillingPickLabel, customerTravelerPickLabel } from "@/lib/crm/customer-search";
+import {
+  customerBillingPickLabel,
+  customerTravelerPickLabel,
+  type PickableCustomer,
+} from "@/lib/crm/customer-search";
 import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
 
 export function BookingEditor({
@@ -134,6 +139,21 @@ export function BookingEditor({
     setClientSettlesFromServer(serverSettles);
     setClientSettles(serverSettles);
   }
+  const stayStamp = `${booking.start_date}|${booking.end_date}|${booking.status}`;
+  const [stayFromServer, setStayFromServer] = useState(stayStamp);
+  const [startDraft, setStartDraft] = useState(booking.start_date || "");
+  const [endDraft, setEndDraft] = useState(booking.end_date || "");
+  const [statusDraft, setStatusDraft] = useState(booking.status);
+  if (stayStamp !== stayFromServer) {
+    setStayFromServer(stayStamp);
+    setStartDraft(booking.start_date || "");
+    setEndDraft(booking.end_date || "");
+    setStatusDraft(booking.status);
+  }
+  const nights = nightsBetween(startDraft || null, endDraft || null);
+  const datesInverted = Boolean(startDraft && endDraft && endDraft < startDraft);
+  const [clientPick, setClientPick] = useState<PickableCustomer | null>(customer);
+  const [payerPick, setPayerPick] = useState<PickableCustomer | null>(billingCustomer || customer);
   const account = customer;
   const holderProfile = {
     first_name: account?.first_name || holderName.first_name,
@@ -581,36 +601,35 @@ export function BookingEditor({
         </section>
       ) : null}
 
-      <BookingIngest
-        role="admin"
-        mode="append"
-        householdHolder={account || holderName}
-        householdCompanions={companions}
-        ingestUrl="/api/admin/bookings/ingest"
-        saveUrl={`/api/admin/bookings/${booking.id}/from-ingest`}
-        aiConfigured={aiConfigured}
-        preserveTitle={booking.title}
-      />
-      <form id="booking-meta" onSubmit={save} className="admin-af-card space-y-6 rounded-3xl p-5 sm:p-6">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <CustomerPickField
-            name="customer_id"
-            label="Client"
-            selected={account}
-            title="Client du dossier"
-            formatLabel={customerTravelerPickLabel}
-          />
-          <CustomerPickField
-            name="billing_customer_id"
-            selected={billingCustomer || account}
-            title="Qui paie"
-            label="Qui paie"
-            formatLabel={customerBillingPickLabel}
-          />
-        </div>
+      <form id="booking-meta" onSubmit={save} className="admin-af-card space-y-8 rounded-3xl p-5 sm:p-6">
+        <section className="space-y-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">Client</p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <CustomerPickField
+              name="customer_id"
+              label="Client"
+              selected={account}
+              title="Client du dossier"
+              formatLabel={customerTravelerPickLabel}
+              onPick={setClientPick}
+            />
+            <CustomerPickField
+              name="billing_customer_id"
+              selected={billingCustomer || account}
+              title="Qui paie"
+              label="Qui paie"
+              formatLabel={customerBillingPickLabel}
+              onPick={setPayerPick}
+            />
+          </div>
+          {clientPick && payerPick && clientPick.id === payerPick.id ? (
+            <p className="text-sm text-[var(--admin-navy)]">{clientPick.first_name} paie ce séjour.</p>
+          ) : null}
+        </section>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="flex flex-col gap-1.5 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-2">
+        <section className="space-y-4">
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">Séjour</p>
+          <label className="flex flex-col gap-1.5 text-sm font-semibold text-[var(--admin-navy)]">
             Titre
             <input
               name="title"
@@ -618,11 +637,11 @@ export function BookingEditor({
               value={titleDraft}
               onChange={(event) => setTitleDraft(event.target.value)}
               placeholder="Séjour à Avoriaz"
-              className={fieldControlClass}
+              className={`${fieldControlClass} font-display text-xl font-bold`}
             />
             <span className="text-xs font-normal text-muted">Le client le voit en haut de son carnet.</span>
           </label>
-          <label className="flex flex-col gap-1.5 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-2">
+          <label className="flex flex-col gap-1.5 text-sm font-semibold text-[var(--admin-navy)]">
             Destination
             <PlaceField
               name="destination"
@@ -631,35 +650,70 @@ export function BookingEditor({
               className={fieldControlClass}
             />
           </label>
-          <label className="flex flex-col gap-1.5 text-sm font-semibold text-[var(--admin-navy)]">
-            Départ
-            <DateFrInput
-              name="start_date"
-              aria-label="Date de départ"
-              defaultValue={booking.start_date || ""}
-              className={fieldControlClass}
-            />
-          </label>
-          <label className="flex flex-col gap-1.5 text-sm font-semibold text-[var(--admin-navy)]">
-            Retour
-            <DateFrInput
-              name="end_date"
-              aria-label="Date de retour"
-              defaultValue={booking.end_date || ""}
-              className={fieldControlClass}
-            />
-          </label>
-          <label className="flex flex-col gap-1.5 text-sm font-semibold text-[var(--admin-navy)]">
-            Où en est le dossier
-            <select name="status" defaultValue={booking.status} className={fieldControlClass}>
-              {BOOKING_STATUSES.map((status) => (
-                <option key={status} value={status}>
-                  {BOOKING_STATUS_LABELS[status]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1.5 text-sm font-semibold text-[var(--admin-navy)]">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="flex flex-col gap-1.5 text-sm font-semibold text-[var(--admin-navy)]">
+              Départ
+              <DateFrInput
+                name="start_date"
+                aria-label="Date de départ"
+                value={startDraft}
+                onChange={setStartDraft}
+                className={fieldControlClass}
+              />
+            </label>
+            <label className="flex flex-col gap-1.5 text-sm font-semibold text-[var(--admin-navy)]">
+              Retour
+              <DateFrInput
+                name="end_date"
+                aria-label="Date de retour"
+                value={endDraft}
+                onChange={setEndDraft}
+                className={fieldControlClass}
+              />
+            </label>
+          </div>
+          {nights ? (
+            <p className="text-sm font-semibold text-[var(--admin-navy)]">
+              {formatDateFr(startDraft)} → {formatDateFr(endDraft)} · {nights} nuit{nights > 1 ? "s" : ""}
+            </p>
+          ) : null}
+          {datesInverted ? (
+            <p className="text-sm font-semibold text-[var(--admin-red)]">Le retour est avant le départ.</p>
+          ) : null}
+
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-[var(--admin-navy)]">Où en est le dossier</p>
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Où en est le dossier">
+              {BOOKING_STATUSES.map((status) => {
+                const selected = statusDraft === status;
+                return (
+                  <label
+                    key={status}
+                    className={`cursor-pointer rounded-full px-3 py-1.5 text-sm font-semibold ${
+                      selected
+                        ? "bg-[var(--admin-navy)] text-white"
+                        : "bg-white text-[var(--admin-navy)] ring-1 ring-[var(--border)]"
+                    } ${selected && status === "confirmed" ? "ring-2 ring-[var(--admin-gold)]" : ""}`}
+                  >
+                    <input
+                      type="radio"
+                      name="status"
+                      value={status}
+                      checked={selected}
+                      onChange={() => setStatusDraft(status)}
+                      className="sr-only"
+                    />
+                    {BOOKING_STATUS_LABELS[status]}
+                  </label>
+                );
+              })}
+            </div>
+            {statusDraft === "confirmed" ? (
+              <p className="text-xs text-muted">Ce statut inscrit le montant dans les transactions du client.</p>
+            ) : null}
+          </div>
+
+          <label className="flex max-w-xs flex-col gap-1.5 text-sm font-semibold text-[var(--admin-navy)]">
             Devise
             <select
               name="currency"
@@ -674,49 +728,77 @@ export function BookingEditor({
               ))}
             </select>
           </label>
-        </div>
+        </section>
 
-        <fieldset className="space-y-3 rounded-2xl bg-[var(--admin-peach)]/40 p-4">
-          <legend className="px-1 text-sm font-semibold text-[var(--admin-navy)]">Règlement</legend>
-          <label className="flex items-start gap-3 text-sm font-semibold text-[var(--admin-navy)]">
-            <input
-              type="checkbox"
-              name="client_settles_stay"
-              checked={clientSettles}
-              onChange={(event) => setClientSettles(event.target.checked)}
-              className="mt-1 size-4"
-            />
-            <span>
-              Le client paie l’hôtel lui-même
-              <span className="mt-0.5 block text-xs font-normal text-muted">
-                Le prix reste au carnet. Il n’entre pas dans ses transactions.
+        <section className="space-y-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">Règlement</p>
+          <input
+            type="checkbox"
+            name="client_settles_stay"
+            checked={clientSettles}
+            onChange={(event) => setClientSettles(event.target.checked)}
+            className="sr-only"
+            tabIndex={-1}
+            aria-hidden
+          />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              aria-pressed={!clientSettles}
+              onClick={() => setClientSettles(false)}
+              className={`rounded-2xl border p-4 text-left ${
+                clientSettles
+                  ? "border-[var(--border)] bg-[var(--background)]"
+                  : "border-[var(--admin-gold)] bg-white shadow-[0_0_0_1px_var(--admin-gold)]"
+              }`}
+            >
+              <span className="block font-display text-base font-bold text-[var(--admin-navy)]">L’agence encaisse</span>
+              <span className="mt-1 block text-xs font-normal text-muted">
+                Le montant entre dans les transactions du client.
               </span>
-            </span>
-          </label>
-          <label className="flex items-start gap-3 text-sm font-semibold text-[var(--admin-navy)]">
-            <input
-              key={clientSettles ? "stay-out" : "stay-in"}
-              type="checkbox"
-              name="include_in_ledger"
-              defaultChecked={!clientSettles && booking.include_in_ledger !== false}
-              disabled={clientSettles}
-              className="mt-1 size-4"
-            />
-            <span>
-              Compter ce séjour dans les transactions
-              <span className="mt-0.5 block text-xs font-normal text-muted">
-                {clientSettles
-                  ? "Le client paie lui-même : ce montant n’est pas compté."
-                  : "Décochez pour montrer le prix au carnet sans le compter."}
-                {!clientSettles && items.some((item) => item.include_in_ledger)
-                  ? " Des cartes sont déjà comptées : laissez décoché pour ne pas compter deux fois."
-                  : ""}
+            </button>
+            <button
+              type="button"
+              aria-pressed={clientSettles}
+              onClick={() => setClientSettles(true)}
+              className={`rounded-2xl border p-4 text-left ${
+                clientSettles
+                  ? "border-[var(--admin-gold)] bg-white shadow-[0_0_0_1px_var(--admin-gold)]"
+                  : "border-[var(--border)] bg-[var(--background)]"
+              }`}
+            >
+              <span className="block font-display text-base font-bold text-[var(--admin-navy)]">Le client règle l’hôtel</span>
+              <span className="mt-1 block text-xs font-normal text-muted">
+                Sur sa carte. Le prix reste au carnet.
               </span>
-            </span>
-          </label>
-        </fieldset>
+            </button>
+          </div>
+          {clientSettles ? (
+            <p className="text-sm text-muted">Ce montant ne va pas dans les transactions.</p>
+          ) : (
+            <label className="flex items-start gap-3 text-sm text-[var(--admin-navy)]">
+              <input
+                key="stay-in"
+                type="checkbox"
+                name="include_in_ledger"
+                defaultChecked={booking.include_in_ledger !== false}
+                className="mt-1 size-4"
+              />
+              <span>
+                Compter dans les transactions
+                <span className="mt-0.5 block text-xs font-normal text-muted">
+                  Décochez pour montrer le prix au carnet sans le compter.
+                  {items.some((item) => item.include_in_ledger)
+                    ? " Des cartes sont déjà comptées : laissez décoché pour ne pas compter deux fois."
+                    : ""}
+                </span>
+              </span>
+            </label>
+          )}
+        </section>
 
-        <div className="grid gap-4">
+        <section className="space-y-4">
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">Mots</p>
           <label className="flex flex-col gap-1.5 text-sm font-semibold text-[var(--admin-navy)]">
             Message pour le client
             <textarea
@@ -727,22 +809,35 @@ export function BookingEditor({
               className={`${fieldControlClass} min-h-24`}
             />
           </label>
-          <label className="flex flex-col gap-1.5 rounded-2xl bg-[var(--background)] p-4 text-sm font-semibold text-[var(--admin-navy)]">
-            Notes pour l’agence
+          <label className="flex flex-col gap-1.5 rounded-2xl bg-[var(--admin-peach)] p-4 text-sm font-semibold text-[var(--admin-navy)]">
+            <span className="flex flex-wrap items-baseline justify-between gap-2">
+              Notes pour l’agence
+              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold-dark)]">
+                Le client ne voit pas ça
+              </span>
+            </span>
             <textarea
               name="notes_internal"
               defaultValue={booking.notes_internal || ""}
               rows={3}
-              placeholder="Le client ne voit pas ces notes"
+              placeholder="Mémo pour l’agence"
               className={`${fieldControlClass} min-h-24`}
             />
           </label>
-        </div>
+        </section>
 
-        <p className="text-xs text-muted">
-          Enregistrer garde le dossier. Le statut « Confirmée » inscrit le montant dans les transactions du client.
-        </p>
+        <p className="text-xs text-muted">Enregistrer garde le dossier.</p>
       </form>
+      <BookingIngest
+        role="admin"
+        mode="append"
+        householdHolder={account || holderName}
+        householdCompanions={companions}
+        ingestUrl="/api/admin/bookings/ingest"
+        saveUrl={`/api/admin/bookings/${booking.id}/from-ingest`}
+        aiConfigured={aiConfigured}
+        preserveTitle={booking.title}
+      />
 
       <section className="admin-af-card space-y-4 rounded-3xl p-5">
         <div className="space-y-3">
