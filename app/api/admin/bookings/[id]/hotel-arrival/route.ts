@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { parseEurosToCents } from "@/lib/crm/hotel-arrival";
-import { revealStayCard } from "@/lib/crm/hotel-card-reveal";
+import { openAgencyCard } from "@/lib/crm/staff-card-open";
 import { advanceHotelItem } from "@/lib/crm/hotel-arrival-run";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmHotelArrival } from "@/lib/crm/types";
@@ -15,7 +15,7 @@ export async function POST(request: Request, ctx: Ctx) {
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
   const body = (await request.json().catch(() => null)) as
-    | { itemId?: string; action?: string; net?: string; code?: string }
+    | { itemId?: string; action?: string; net?: string; code?: string; source?: string; define?: boolean }
     | null;
   const itemId = (body?.itemId || "").trim();
   const action = body?.action;
@@ -53,16 +53,27 @@ export async function POST(request: Request, ctx: Ctx) {
   }
 
   if (action === "card") {
-    const revealed = await revealStayCard({
+    const opened = await openAgencyCard({
       admin,
-      rowId: row.id,
-      pliantCardId: row.pliant_card_id,
-      closed: Boolean(row.card_closed_at),
+      staffId: auth.staff.id,
+      staffName: auth.staff.full_name,
       code: typeof body?.code === "string" ? body.code : "",
-      audience: "staff",
+      bookingId: id,
+      itemId,
+      source: body?.source === "client" ? "client" : "pliant",
+      define: body?.define === true,
     });
-    if ("error" in revealed) return jsonError(revealed.error, revealed.status);
-    return NextResponse.json(revealed.secrets);
+    if ("error" in opened) return jsonError(opened.error, opened.status);
+    if (opened.file) {
+      return NextResponse.json({
+        mime: opened.file.mime,
+        name: opened.file.name,
+        image: opened.file.bytes,
+        viewer: opened.viewer,
+        viewedAt: opened.viewedAt,
+      });
+    }
+    return NextResponse.json({ ...opened.secrets, viewer: opened.viewer, viewedAt: opened.viewedAt });
   }
 
   return jsonError("Action inconnue", 400);

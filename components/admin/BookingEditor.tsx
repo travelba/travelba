@@ -11,6 +11,7 @@ import {
   type CrmBookingDocument,
   type CrmBookingItem,
   type CrmBookingTraveler,
+  type CardViewLine,
   type CrmHotelArrival,
   type CrmHotelRequest,
   type CrmCompanion,
@@ -99,6 +100,8 @@ export function BookingEditor({
   shareCompanions = [],
   arrivals = [],
   hotelRequests = [],
+  hasCardCode = false,
+  cardViews = [],
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -124,6 +127,8 @@ export function BookingEditor({
   shareCompanions?: ShareCompanion[];
   arrivals?: CrmHotelArrival[];
   hotelRequests?: CrmHotelRequest[];
+  hasCardCode?: boolean;
+  cardViews?: CardViewLine[];
 }) {
   const router = useRouter();
   const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
@@ -989,6 +994,8 @@ export function BookingEditor({
           const guest = principalGuest({ travelers, holder: holderProfile });
           return `${guest.firstName} ${guest.lastName}`.trim();
         })()}
+        hasCardCode={hasCardCode}
+        cardViews={cardViews}
       />
 
       <BookingItemsPanel
@@ -1003,6 +1010,8 @@ export function BookingEditor({
         identityDocs={identityDocs}
         holder={holderProfile}
         arrivals={arrivals}
+        hasCardCode={hasCardCode}
+        cardViews={cardViews}
         clientSettlesStay={clientSettles}
         onBindDraftSave={(save) => {
           saveOpenCard.current = save;

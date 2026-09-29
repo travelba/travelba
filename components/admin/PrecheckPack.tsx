@@ -1,32 +1,44 @@
 "use client";
 
+import { AgencyCardPeek } from "@/components/admin/AgencyCardPeek";
 import { maskedCardNumber } from "@/lib/crm/hotel-arrival";
 import type { PrecheckTraveler } from "@/lib/crm/hotel-precheck";
+import type { CardViewLine } from "@/lib/crm/types";
 
 export function PrecheckPack({
+  bookingId,
+  itemId,
   party,
   selectedIds,
   cardChoice,
   last4,
   clientFileName,
+  hasCardCode,
+  cardViews = [],
   disabled,
   generating,
   onToggle,
   onCardChoice,
   onGenerate,
   onClientFile,
+  onCodeReady,
 }: {
+  bookingId: string;
+  itemId: string;
   party: PrecheckTraveler[];
   selectedIds: string[];
   cardChoice: "pliant" | "client";
   last4: string | null;
   clientFileName: string | null;
+  hasCardCode: boolean;
+  cardViews?: CardViewLine[];
   disabled: boolean;
   generating: boolean;
   onToggle: (id: string) => void;
   onCardChoice: (choice: "pliant" | "client") => void;
   onGenerate: () => void;
   onClientFile: (file: File | null) => void;
+  onCodeReady?: () => void;
 }) {
   const chosen = new Set(selectedIds);
   return (
@@ -68,11 +80,11 @@ export function PrecheckPack({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#C5A880]">Carte</span>
         <label className="inline-flex items-center gap-1 font-semibold text-[#0B192C]">
-          <input type="radio" name="precheck-card" checked={cardChoice === "pliant"} disabled={disabled} onChange={() => onCardChoice("pliant")} />
+          <input type="radio" name={`precheck-card-${itemId}`} checked={cardChoice === "pliant"} disabled={disabled} onChange={() => onCardChoice("pliant")} />
           Pliant
         </label>
         <label className="inline-flex items-center gap-1 font-semibold text-[#0B192C]">
-          <input type="radio" name="precheck-card" checked={cardChoice === "client"} disabled={disabled} onChange={() => onCardChoice("client")} />
+          <input type="radio" name={`precheck-card-${itemId}`} checked={cardChoice === "client"} disabled={disabled} onChange={() => onCardChoice("client")} />
           Carte du client
         </label>
         {cardChoice === "pliant" ? (
@@ -107,9 +119,19 @@ export function PrecheckPack({
       </div>
       <p className="text-[#9e7e51]">
         {cardChoice === "pliant"
-          ? "La carte est créée ici et jointe au mail. Elle n'est pas enregistrée dans le dossier."
-          : "La photo part avec ce mail seulement. Elle n'est pas enregistrée."}
+          ? last4
+            ? "Enregistrée pour l'agence. Les chiffres s'ouvrent avec votre code."
+            : "La carte reste côté agence. Les chiffres s'ouvrent avec votre code."
+          : clientFileName
+            ? "Enregistrée pour l'agence. La photo s'ouvre avec votre code."
+            : "La photo reste côté agence. Elle s'ouvre avec votre code."}
       </p>
+      {cardChoice === "pliant" && last4 ? (
+        <AgencyCardPeek bookingId={bookingId} itemId={itemId} source="pliant" hasCode={hasCardCode} views={cardViews} onReady={onCodeReady} />
+      ) : null}
+      {cardChoice === "client" && clientFileName ? (
+        <AgencyCardPeek bookingId={bookingId} itemId={itemId} source="client" hasCode={hasCardCode} views={cardViews} onReady={onCodeReady} />
+      ) : null}
     </div>
   );
 }

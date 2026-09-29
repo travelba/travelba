@@ -2,7 +2,8 @@ import "server-only";
 
 import { Resend } from "resend";
 import { pliantCardNomination } from "./eta-il-fee";
-import { downloadCrmFile } from "./files";
+import { downloadCrmFile, removeCrmFiles, uploadCrmFile } from "./files";
+import { agencyCardObjectPath, agencyCardSiblingPaths, clientCardMime, isAgencyCardPath, isSafeCrmPath } from "./files-access";
 import { gmailConfigured, searchInbox } from "./gmail";
 import { attachLittleEmperorsCatalog } from "./hotel-catalog-load";
 import { hotelContact } from "./hotel-contact";
@@ -359,7 +360,7 @@ export async function sendHotelRequest(
     recipients: string[];
     cardChoice: "pliant" | "client" | null;
     identityDocumentIds?: string[];
-    clientCard?: { filename: string; content: Buffer } | null;
+    clientCard?: { filename: string; content: Buffer; mime?: string } | null;
   }
 ) {
   if (containsCardNumber(input.body) || containsCardNumber(input.subject)) {
@@ -384,9 +385,15 @@ export async function sendHotelRequest(
         content: checkinCardPdf({ holder: card.holder, pan: card.pan, expiry: card.expiry, cvc: card.cvc, lang }),
       });
     } else {
-      if (!input.clientCard?.content?.length) throw new Error("Déposez la carte du client.");
       note = cardSendNote("client", lang);
-      attachments.push(input.clientCard);
+      let attachment = input.clientCard?.content?.length ? input.clientCard : null;
+      if (attachment) {
+        await storeClientStayCard(admin, input.bookingId, item, attachment);
+      } else {
+        attachment = await readStoredClientCard(admin, input.bookingId, input.itemId);
+      }
+      if (!attachment?.content?.length) throw new Error("Déposez la carte du client.");
+      attachments.push({ filename: attachment.filename, content: attachment.content });
     }
   }
   const text = outboundHotelLetter(input.body, note);
@@ -448,6 +455,79 @@ async function deliverHotelMail(mail: {
     attachments: mail.attachments.map((file) => ({ filename: file.filename, content: file.content })),
   });
   if (error) throw new Error("L'envoi du mail a échoué.");
+}
+
+export async function saveUploadedClientCard(
+  admin: Admin,
+  bookingId: string,
+  itemId: string,
+  file: { filename: string; content: Buffer; mime?: string }
+) {
+  const item = await loadItem(admin, bookingId, itemId);
+  return storeClientStayCard(admin, bookingId, item, file);
+}
+
+export async function clearClientStayCard(admin: Admin, bookingId: string, itemId: string) {
+  const { data } = await admin
+    .from("crm_hotel_arrivals")
+    .select("id, client_card_path")
+    .eq("booking_id", bookingId)
+    .eq("booking_item_id", itemId)
+    .maybeSingle();
+  const row = data as { id: string; client_card_path: string | null } | null;
+  const path = row?.client_card_path || "";
+  if (path && isSafeCrmPath(path) && isAgencyCardPath(path)) await removeCrmFiles([path]);
+  if (row?.id) {
+    await admin.from("crm_hotel_arrivals").update({ client_card_path: null, client_card_name: null }).eq("id", row.id);
+  }
+}
+
+async function storeClientStayCard(
+  admin: Admin,
+  bookingId: string,
+  item: CrmBookingItem,
+  file: { filename: string; content: Buffer; mime?: string }
+) {
+  const mime = clientCardMime(file.filename, file.mime);
+  const path = agencyCardObjectPath(bookingId, item.id, mime);
+  if (!path) throw new Error("Déposez une photo ou un PDF de la carte.");
+  await uploadCrmFile(path, file.content, mime, { upsert: true });
+  await removeCrmFiles(agencyCardSiblingPaths(path));
+  const name = file.filename.replace(/\d{6,}/g, "").trim().slice(0, 80) || "carte-client";
+  const { data } = await admin
+    .from("crm_hotel_arrivals")
+    .select("id")
+    .eq("booking_id", bookingId)
+    .eq("booking_item_id", item.id)
+    .maybeSingle();
+  const arrival = data as { id: string } | null;
+  if (arrival?.id) {
+    await admin.from("crm_hotel_arrivals").update({ client_card_path: path, client_card_name: name }).eq("id", arrival.id);
+  } else {
+    await admin.from("crm_hotel_arrivals").insert({
+      booking_id: bookingId,
+      booking_item_id: item.id,
+      channel: hotelDeskChannel(item),
+      client_card_path: path,
+      client_card_name: name,
+    });
+  }
+  return { name };
+}
+
+async function readStoredClientCard(admin: Admin, bookingId: string, itemId: string) {
+  const { data } = await admin
+    .from("crm_hotel_arrivals")
+    .select("client_card_path, client_card_name")
+    .eq("booking_id", bookingId)
+    .eq("booking_item_id", itemId)
+    .maybeSingle();
+  const row = data as { client_card_path: string | null; client_card_name: string | null } | null;
+  const path = row?.client_card_path || "";
+  if (!path || !isSafeCrmPath(path) || !isAgencyCardPath(path)) return null;
+  const downloaded = await downloadCrmFile(path);
+  const filename = (row?.client_card_name || "carte-client").replace(/\d{6,}/g, "").trim().slice(0, 80) || "carte-client";
+  return { filename, content: Buffer.from(downloaded.bytes) };
 }
 
 export async function issueHotelCheckinCard(admin: Admin, bookingId: string, itemId: string) {

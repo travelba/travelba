@@ -3,7 +3,7 @@ import { jsonError, requireCustomer, requireStaff } from "@/lib/crm/auth";
 import { exampleSessionEnabled } from "@/lib/crm/example-session";
 import { readExampleFile } from "@/lib/crm/example-store";
 import { safeFileName, signedCrmUrl } from "@/lib/crm/files";
-import { customerPathScope, isSafeCrmPath } from "@/lib/crm/files-access";
+import { customerPathScope, isAgencyCardPath, isSafeCrmPath } from "@/lib/crm/files-access";
 import { rasterPdfPages } from "@/lib/crm/pdf-raster";
 import { isTripShareCode } from "@/lib/crm/trip-share";
 import { sharePathAllowed } from "@/lib/crm/trip-share-load";
@@ -69,6 +69,7 @@ export async function GET(request: Request) {
   const path = url.searchParams.get("path");
   if (!path) return jsonError("path requis");
   if (!isSafeCrmPath(path)) return jsonError("Chemin invalide", 400);
+  if (isAgencyCardPath(path)) return jsonError("Accès refusé", 403);
 
   if (path.startsWith("exemple/") && exampleSessionEnabled()) {
     const file = readExampleFile(path);

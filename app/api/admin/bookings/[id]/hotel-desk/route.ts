@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
-import { issueHotelCheckinCard, restoreHotelRequest, saveHotelRequest, sendHotelRequest, skipHotelRequest } from "@/lib/crm/hotel-desk-run";
+import { clearClientStayCard, issueHotelCheckinCard, restoreHotelRequest, saveHotelRequest, saveUploadedClientCard, sendHotelRequest, skipHotelRequest } from "@/lib/crm/hotel-desk-run";
 import { HOTEL_DESK_KINDS } from "@/lib/crm/types";
 import type { HotelDeskKind } from "@/lib/crm/types";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -64,15 +64,15 @@ async function readPayload(request: Request) {
   const type = request.headers.get("content-type") || "";
   if (!type.includes("multipart/form-data")) {
     const json = (await request.json().catch(() => null)) as Record<string, unknown> | null;
-    return { ...(json || {}), clientCard: null as { filename: string; content: Buffer } | null };
+    return { ...(json || {}), clientCard: null as { filename: string; content: Buffer; mime?: string } | null };
   }
   const form = await request.formData();
   const file = form.get("clientCard");
-  let clientCard: { filename: string; content: Buffer } | null = null;
+  let clientCard: { filename: string; content: Buffer; mime?: string } | null = null;
   if (file instanceof File && file.size > 0) {
     if (file.size > MAX_CARD) throw new Error("La carte dépasse 4 Mo. Déposez une photo plus légère.");
     if (!CARD_MIME.test(file.type)) throw new Error("Déposez une photo ou un PDF de la carte.");
-    clientCard = { filename: cardFileName(file.name), content: Buffer.from(await file.arrayBuffer()) };
+    clientCard = { filename: cardFileName(file.name), content: Buffer.from(await file.arrayBuffer()), mime: file.type };
   }
   return {
     action: String(form.get("action") || ""),
@@ -101,8 +101,22 @@ export async function POST(request: Request, ctx: Ctx) {
   const itemId = String(body?.itemId || "").trim();
   const kind = kindOf(body?.kind);
   const action = body?.action;
-  if (!itemId || !kind || !action) return jsonError("Action incomplète", 400);
+  if (!itemId || !action) return jsonError("Action incomplète", 400);
   const admin = createServiceClient();
+  if (action === "save-client-card") {
+    if (!body.clientCard?.content?.length) return jsonError("Déposez la carte du client.", 400);
+    try {
+      const saved = await saveUploadedClientCard(admin, id, itemId, body.clientCard);
+      return NextResponse.json({ ok: true, name: saved.name });
+    } catch (error) {
+      return jsonError(error instanceof Error ? error.message : "Action impossible", 400);
+    }
+  }
+  if (action === "clear-client-card") {
+    await clearClientStayCard(admin, id, itemId);
+    return NextResponse.json({ ok: true });
+  }
+  if (!kind) return jsonError("Action incomplète", 400);
   const rawChoice = body?.cardChoice;
   const cardChoice: "pliant" | "client" | null = rawChoice === "client" || rawChoice === "pliant" ? rawChoice : null;
   const identityDocumentIds = documentIds(body?.identityDocumentIds);

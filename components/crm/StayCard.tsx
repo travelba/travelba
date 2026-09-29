@@ -4,12 +4,46 @@ import { FormEvent, useState } from "react";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { cardLast4, groupedPan, maskedCardNumber, type StayCardFace } from "@/lib/crm/hotel-arrival";
 
-export function StayCard({ face, revealUrl }: { face: StayCardFace; revealUrl: string }) {
+function viewedWhen(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Europe/Paris",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+export function StayCard({
+  face,
+  revealUrl,
+  personal = false,
+  needsCode = false,
+  views = [],
+}: {
+  face: StayCardFace;
+  revealUrl: string;
+  personal?: boolean;
+  needsCode?: boolean;
+  views?: { name: string; at: string }[];
+}) {
   const [code, setCode] = useState("");
   const [tail, setTail] = useState(face.last4);
   const [revealed, setRevealed] = useState<{ pan: string; expiry: string; cvc: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [codeReady, setCodeReady] = useState(!needsCode);
+  const [syncedNeed, setSyncedNeed] = useState(needsCode);
+  const [extraViews, setExtraViews] = useState<{ name: string; at: string }[]>([]);
+  if (needsCode !== syncedNeed) {
+    setSyncedNeed(needsCode);
+    setCodeReady(!needsCode);
+  }
+  const lines = [...extraViews, ...views]
+    .filter((line, index, all) => all.findIndex((item) => item.at === line.at && item.name === line.name) === index)
+    .slice(0, 5);
 
   async function reveal(event: FormEvent) {
     event.preventDefault();
@@ -20,10 +54,15 @@ export function StayCard({ face, revealUrl }: { face: StayCardFace; revealUrl: s
       const res = await fetch(revealUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ itemId: face.itemId, action: "card", code }),
+        body: JSON.stringify({
+          itemId: face.itemId,
+          action: "card",
+          code,
+          ...(personal && !codeReady ? { define: true } : {}),
+        }),
       });
       const json = (await res.json().catch(() => null)) as
-        | { error?: string; pan?: string; expiry?: string; cvc?: string }
+        | { error?: string; pan?: string; expiry?: string; cvc?: string; viewer?: string; viewedAt?: string }
         | null;
       if (!res.ok || !json?.pan || !json.expiry || !json.cvc) {
         setError(json?.error || "La carte n’a pas pu être lue.");
@@ -33,6 +72,12 @@ export function StayCard({ face, revealUrl }: { face: StayCardFace; revealUrl: s
       if (last4.length === 4) setTail(last4);
       setRevealed({ pan: json.pan, expiry: json.expiry, cvc: json.cvc });
       setCode("");
+      if (personal) {
+        setCodeReady(true);
+        if (json.viewer && json.viewedAt) {
+          setExtraViews((current) => [{ name: json.viewer as string, at: json.viewedAt as string }, ...current]);
+        }
+      }
     } catch {
       setError("La carte n’a pas pu être lue.");
     } finally {
@@ -87,26 +132,39 @@ export function StayCard({ face, revealUrl }: { face: StayCardFace; revealUrl: s
       {face.closed || revealed ? null : (
         <form className="mt-3 space-y-2" onSubmit={reveal}>
           <label className="block text-sm text-[var(--admin-navy)]">
-            Code agence
+            {personal ? "Votre code" : "Code agence"}
             <input
               className="mt-1 w-full rounded-xl border border-[#e5e3dc] bg-white px-3 py-2.5 text-sm text-[var(--admin-navy)] outline-none focus:border-[#0B192C]"
               type="password"
-              name="agency-code"
+              name={personal ? "staff-card-code" : "agency-code"}
               autoComplete="off"
               value={code}
               onChange={(event) => setCode(event.target.value)}
             />
           </label>
-          <p className="text-xs text-[var(--admin-navy)]/70">Le début du numéro s’ouvre avec le code agence.</p>
+          <p className="text-xs text-[var(--admin-navy)]/70">
+            {personal
+              ? "Votre nom est noté. Les chiffres s’ouvrent avec votre code."
+              : "Le début du numéro s’ouvre avec le code agence."}
+          </p>
           <button
             type="submit"
             className="rounded-full bg-[#0B192C] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
             disabled={busy}
           >
-            Afficher le numéro
+            {personal && !codeReady ? "Enregistrer mon code et voir" : "Afficher le numéro"}
           </button>
         </form>
       )}
+      {personal && lines.length ? (
+        <ul className="mt-2 space-y-0.5 text-[11px] text-[var(--admin-navy)]/70">
+          {lines.map((line) => (
+            <li key={`${line.at}-${line.name}`}>
+              Vu par {line.name} · {viewedWhen(line.at)}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {revealed ? (
         <button
           type="button"

@@ -7,7 +7,7 @@ import { RecipientRoster } from "@/components/admin/RecipientRoster";
 import { hotelContact } from "@/lib/crm/hotel-contact";
 import { HOTEL_DESK_LABELS, containsCardNumber, deskRoster, deskStatusLabel, hotelsNeedingDesk, type DeskRosterPerson } from "@/lib/crm/hotel-desk";
 import { precheckParty } from "@/lib/crm/hotel-precheck";
-import { HOTEL_DESK_KINDS, type CrmBookingItem, type CrmBookingTraveler, type CrmHotelRequest, type CrmTravelDocument, type HotelDeskKind } from "@/lib/crm/types";
+import { HOTEL_DESK_KINDS, type CardViewLine, type CrmBookingItem, type CrmBookingTraveler, type CrmHotelRequest, type CrmTravelDocument, type HotelDeskKind } from "@/lib/crm/types";
 import { fieldControlClass } from "@/components/crm/fields";
 
 export function HotelDeskSummary({
@@ -35,6 +35,9 @@ export function HotelDesk({
   identityDocs = [],
   holder = null,
   cardLast4 = null,
+  clientCardName = null,
+  hasCardCode = false,
+  cardViews = [],
 }: {
   bookingId: string;
   item: CrmBookingItem;
@@ -44,6 +47,9 @@ export function HotelDesk({
   identityDocs?: CrmTravelDocument[];
   holder?: { first_name: string; last_name: string } | null;
   cardLast4?: string | null;
+  clientCardName?: string | null;
+  hasCardCode?: boolean;
+  cardViews?: CardViewLine[];
 }) {
   const rows = HOTEL_DESK_KINDS.map((kind) => requests.find((row) => row.booking_item_id === item.id && row.kind === kind)).filter(
     (row): row is CrmHotelRequest => Boolean(row)
@@ -83,6 +89,9 @@ export function HotelDesk({
           identityDocs={identityDocs}
           holder={holder}
           cardLast4={cardLast4}
+          clientCardName={clientCardName}
+          hasCardCode={hasCardCode}
+          cardViews={cardViews}
           onClose={() => setOpen(null)}
         />
       ) : null}
@@ -120,6 +129,9 @@ function HotelDeskEditor({
   identityDocs,
   holder,
   cardLast4,
+  clientCardName,
+  hasCardCode,
+  cardViews,
   onClose,
 }: {
   bookingId: string;
@@ -129,6 +141,9 @@ function HotelDeskEditor({
   identityDocs: CrmTravelDocument[];
   holder: { first_name: string; last_name: string } | null;
   cardLast4: string | null;
+  clientCardName: string | null;
+  hasCardCode: boolean;
+  cardViews: CardViewLine[];
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -144,12 +159,14 @@ function HotelDeskEditor({
   );
   const [last4, setLast4] = useState(cardLast4);
   const [clientFile, setClientFile] = useState<File | null>(null);
+  const [storedName, setStoredName] = useState(clientCardName);
+  const [codeReady, setCodeReady] = useState(hasCardCode);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   if (!row) return null;
 
   async function run(action: "save" | "send" | "skip", next = recipients, created?: DeskRosterPerson, pieces = pieceIds) {
-    if (action === "send" && row!.kind === "precheckin" && cardChoice === "client" && !clientFile) {
+    if (action === "send" && row!.kind === "precheckin" && cardChoice === "client" && !clientFile && !storedName) {
       setError("Déposez la carte du client.");
       return false;
     }
@@ -204,14 +221,45 @@ function HotelDeskEditor({
 
   async function pickClientCard(file: File | null) {
     if (!file) {
+      setBusy("card");
+      setError(null);
+      const cleared = await post(bookingId, row!, "clear-client-card", {
+        subject,
+        body,
+        recipients,
+        cardChoice: "client",
+        identityDocumentIds: pieceIds,
+      });
+      setBusy(null);
+      if (!cleared.ok) {
+        setError(cleared.error || "La carte n'a pas pu être retirée.");
+        return;
+      }
       setClientFile(null);
+      setStoredName(null);
       return;
     }
     try {
       const light = await lightCard(file);
-      setClientFile(light);
+      setBusy("card");
       setError(null);
+      const saved = await post(bookingId, row!, "save-client-card", {
+        subject,
+        body,
+        recipients,
+        cardChoice: "client",
+        identityDocumentIds: pieceIds,
+        clientCard: light,
+      });
+      setBusy(null);
+      if (!saved.ok) {
+        setError(saved.error || "La carte n'a pas pu être enregistrée.");
+        return;
+      }
+      setClientFile(light);
+      setStoredName(saved.name || light.name);
     } catch (err) {
+      setBusy(null);
       setError(err instanceof Error ? err.message : "Carte illisible.");
     }
   }
@@ -233,11 +281,15 @@ function HotelDeskEditor({
       <RecipientRoster people={roster} selected={recipients} disabled={Boolean(busy)} onChange={(next, created) => void changeRecipients(next, created)} />
       {row.kind === "precheckin" ? (
         <PrecheckPack
+          bookingId={bookingId}
+          itemId={item.id}
           party={party}
           selectedIds={pieceIds}
           cardChoice={cardChoice}
           last4={last4}
-          clientFileName={clientFile?.name || null}
+          clientFileName={storedName || clientFile?.name || null}
+          hasCardCode={codeReady}
+          cardViews={cardViews}
           disabled={Boolean(busy)}
           generating={busy === "card"}
           onToggle={(id) => {
@@ -251,6 +303,7 @@ function HotelDeskEditor({
           }}
           onGenerate={() => void generateCard()}
           onClientFile={(file) => void pickClientCard(file)}
+          onCodeReady={() => setCodeReady(true)}
         />
       ) : null}
       <label className="block text-xs font-semibold text-[var(--admin-navy)]">
@@ -355,7 +408,7 @@ async function post(
         headers: { "content-type": "application/json" },
         body: JSON.stringify(fields),
       });
-  const json = (await res.json().catch(() => null)) as { error?: string; last4?: string } | null;
-  if (!res.ok) return { ok: false, error: json?.error || "Action impossible", last4: "" };
-  return { ok: true, error: "", last4: json?.last4 || "" };
+  const json = (await res.json().catch(() => null)) as { error?: string; last4?: string; name?: string } | null;
+  if (!res.ok) return { ok: false, error: json?.error || "Action impossible", last4: "", name: "" };
+  return { ok: true, error: "", last4: json?.last4 || "", name: json?.name || "" };
 }

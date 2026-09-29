@@ -292,7 +292,14 @@ export type HotelArrivalStatus = (typeof HOTEL_ARRIVAL_STATUSES)[number];
 
 export type HotelArrivalChannel = "little_emperors" | "direct" | "expedia";
 
-/** Suivi d'arrivée. Aucun champ de carte bancaire : le PAN reste chez Pliant. */
+export type CardViewLine = {
+  itemId: string;
+  source: "pliant" | "client";
+  name: string;
+  at: string;
+};
+
+/** Suivi d'arrivée. Le PAN reste chez Pliant. La photo client est un chemin privé, pas un numéro. */
 export type CrmHotelArrival = {
   id: string;
   booking_id: string;
@@ -305,6 +312,9 @@ export type CrmHotelArrival = {
   pliant_card_id: string | null;
   /** Quatre derniers chiffres seulement. Jamais le PAN. */
   card_last4: string | null;
+  /** Chemin privé agency-cards/. Jamais une URL signée, jamais un PAN. */
+  client_card_path?: string | null;
+  client_card_name?: string | null;
   card_limit_cents: number | null;
   payment_url: string | null;
   requested_at: string | null;

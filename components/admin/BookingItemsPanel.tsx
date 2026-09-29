@@ -19,7 +19,7 @@ import { formatMoney } from "@/lib/crm/money";
 import { STAY_CURRENCIES } from "@/lib/crm/stay-currency";
 import { HotelContactButton } from "@/components/crm/HotelContact";
 import { HotelDesk } from "@/components/admin/HotelDesk";
-import type { CrmBookingTraveler, CrmHotelArrival, CrmHotelRequest, CrmTravelDocument } from "@/lib/crm/types";
+import type { CardViewLine, CrmBookingTraveler, CrmHotelArrival, CrmHotelRequest, CrmTravelDocument } from "@/lib/crm/types";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
 import { BusyBar } from "@/components/crm/BusyBar";
@@ -84,6 +84,8 @@ export function BookingItemsPanel({
   identityDocs = [],
   holder = null,
   arrivals = [],
+  hasCardCode = false,
+  cardViews = [],
 }: {
   bookingId: string;
   items: CrmBookingItem[];
@@ -93,6 +95,8 @@ export function BookingItemsPanel({
   identityDocs?: CrmTravelDocument[];
   holder?: { first_name: string; last_name: string } | null;
   arrivals?: CrmHotelArrival[];
+  hasCardCode?: boolean;
+  cardViews?: CardViewLine[];
   documents?: CrmBookingDocument[];
   household?: HouseholdMember[];
   currency?: string;
@@ -334,6 +338,9 @@ export function BookingItemsPanel({
                         identityDocs={identityDocs}
                         holder={holder}
                         cardLast4={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.card_last4 || null}
+                        clientCardName={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.client_card_name || null}
+                        hasCardCode={hasCardCode}
+                        cardViews={cardViews.filter((line) => line.itemId === item.id)}
                       />
                     ) : null}
                     <p className="text-xs text-muted">
