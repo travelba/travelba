@@ -83,7 +83,21 @@ test("un SID déjà stocké n’est pas recréé, le plafond d’appels reste", 
     envol: "HXv",
     arrivee: "HXi",
   };
-  const { client, writes } = admin({ day: "2026-09-29", calls: 4, notice_sids: kinds });
+  const notice_names = Object.fromEntries(
+    flightNoticeDrafts().map((draft) => {
+      const kind = {
+        TWILIO_CONTENT_VOL_HORAIRE: "horaire",
+        TWILIO_CONTENT_VOL_ANNULE: "annule",
+        TWILIO_CONTENT_VOL_ENREGISTREMENT: "enregistrement",
+        TWILIO_CONTENT_VOL_RETARD: "retard",
+        TWILIO_CONTENT_VOL_DEROUTE: "deroute",
+        TWILIO_CONTENT_VOL_ENVOL: "envol",
+        TWILIO_CONTENT_VOL_ARRIVEE: "arrivee",
+      }[draft.env];
+      return [kind, draft.friendlyName];
+    })
+  );
+  const { client, writes } = admin({ day: "2026-09-29", calls: 4, notice_sids: kinds, notice_names });
   const resolved = await ensureFlightNoticeSids(client, async () => {
     throw new Error("ne doit pas partir");
   });
@@ -117,15 +131,15 @@ test("crée le modèle manquant et garde le budget à côté des SID", async () 
   const { client, writes } = admin({ day: "2026-09-29", calls: 3 });
   const resolved = await ensureFlightNoticeSids(client, fetchImpl);
   assert.equal(resolved.annule, "HXenv");
-  assert.equal(resolved.horaire, "HXvol_horaire");
-  assert.equal(resolved.arrivee, "HXvol_arrivee");
+  assert.equal(resolved.horaire, "HXvol_horaire_concierge");
+  assert.equal(resolved.arrivee, "HXvol_arrivee_concierge");
   assert.equal(calls.filter((call) => call.method === "POST" && !call.url.includes("Approval")).length, 6);
   assert.equal(writes.length, 1);
   const extra = writes[0]?.extra as { day: string; calls: number; notice_sids: Record<string, string> };
   assert.equal(extra.day, "2026-09-29");
   assert.equal(extra.calls, 3);
   assert.equal(extra.notice_sids.annule, undefined);
-  assert.equal(extra.notice_sids.horaire, "HXvol_horaire");
+  assert.equal(extra.notice_sids.horaire, "HXvol_horaire_concierge");
   assert.equal(calls.some((call) => call.url.includes("ACtest") || (call.body || "").includes("token")), false);
   restore();
 });

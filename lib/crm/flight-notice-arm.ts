@@ -19,6 +19,7 @@ const SAMPLE_PHONE = "0772158257";
 
 type Extra = {
   notice_sids?: Partial<Record<FlightNoticeKind, string>>;
+  notice_names?: Partial<Record<FlightNoticeKind, string>>;
   sample_sent?: Partial<Record<FlightNoticeKind, string>>;
 };
 
@@ -122,12 +123,14 @@ export async function ensureFlightNoticeSids(
   const { data } = await admin.from("crm_integrations").select("id, extra").eq("provider", "aeroapi").maybeSingle();
   const extra = ((data?.extra || {}) as Extra) || {};
   const stored: Partial<Record<FlightNoticeKind, string>> = { ...(extra.notice_sids || {}) };
+  const names: Partial<Record<FlightNoticeKind, string>> = { ...(extra.notice_names || {}) };
+  const samples: Partial<Record<FlightNoticeKind, string>> = { ...(extra.sample_sent || {}) };
   let changed = false;
 
   for (const draft of missing) {
     const kind = KIND_BY_ENV[draft.env];
     if (!kind) continue;
-    if (stored[kind]) {
+    if (stored[kind] && names[kind] === draft.friendlyName) {
       resolved[kind] = stored[kind];
       continue;
     }
@@ -135,6 +138,8 @@ export async function ensureFlightNoticeSids(
       const sid = (await findExisting(draft.friendlyName, fetchImpl)) || (await createContent(draft.create, fetchImpl));
       await submitApproval(sid, draft.friendlyName, fetchImpl);
       stored[kind] = sid;
+      names[kind] = draft.friendlyName;
+      delete samples[kind];
       resolved[kind] = sid;
       changed = true;
     } catch (error) {
@@ -143,7 +148,7 @@ export async function ensureFlightNoticeSids(
   }
 
   if (changed) {
-    const next = { ...(data?.extra || {}), notice_sids: stored };
+    const next = { ...(data?.extra || {}), notice_sids: stored, notice_names: names, sample_sent: samples };
     if (data?.id) {
       await admin.from("crm_integrations").update({ extra: next, updated_at: new Date().toISOString() }).eq("id", data.id);
     } else {
