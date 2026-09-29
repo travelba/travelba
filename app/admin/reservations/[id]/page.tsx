@@ -26,11 +26,13 @@ import type {
   CrmBooking,
   CrmBookingDocument,
   CrmBookingItem,
+  CrmBookingPliantCard,
   CrmBookingTraveler,
   CrmCompanion,
   CrmCustomer,
   CrmHotelArrival,
   CrmHotelRequest,
+  CrmPliantTransaction,
   CrmTravelDocument,
 } from "@/lib/crm/types";
 
@@ -120,6 +122,29 @@ export default async function AdminBookingPage({ params }: Props) {
     hotelRequests = [];
   }
   const shareCompanions = companionsForShare(bookingTravelers, (companions || []) as CrmCompanion[]);
+  let pliantCard: Pick<CrmBookingPliantCard, "ceiling_cents" | "card_last4"> | null = null;
+  let pliantSpends: CrmPliantTransaction[] = [];
+  try {
+    const pliantAdmin = createServiceClient();
+    const [{ data: cardRow }, { data: spendRows }] = await Promise.all([
+      pliantAdmin
+        .from("crm_booking_pliant_cards")
+        .select("ceiling_cents, card_last4")
+        .eq("booking_id", id)
+        .maybeSingle(),
+      pliantAdmin
+        .from("crm_pliant_transactions")
+        .select("*")
+        .eq("booking_id", id)
+        .order("booked_at", { ascending: false, nullsFirst: false })
+        .limit(40),
+    ]);
+    pliantCard = (cardRow as Pick<CrmBookingPliantCard, "ceiling_cents" | "card_last4"> | null) || null;
+    pliantSpends = (spendRows || []) as CrmPliantTransaction[];
+  } catch {
+    pliantCard = null;
+    pliantSpends = [];
+  }
   let shareUrl: string | null = null;
   if (b.visible_to_client) {
     try {
@@ -199,6 +224,9 @@ export default async function AdminBookingPage({ params }: Props) {
           shareCompanions={shareCompanions}
           arrivals={arrivals}
           hotelRequests={hotelRequests}
+          pliantCeilingCents={pliantCard?.ceiling_cents ?? null}
+          pliantLast4={pliantCard?.card_last4 ?? null}
+          pliantSpends={pliantSpends}
         />
       </div>
     </div>

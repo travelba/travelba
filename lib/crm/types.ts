@@ -565,6 +565,36 @@ export type CrmCustomerLogin = {
   created_at: string;
 };
 
+/** Carte Pliant du dossier. Plafond en centimes. Jamais le PAN. */
+export type CrmBookingPliantCard = {
+  booking_id: string;
+  pliant_card_id: string;
+  ceiling_cents: number;
+  currency: string;
+  holder_first_name: string;
+  holder_last_name: string;
+  card_last4: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** Dépense Pliant. Le numéro de carte n’est pas stocké. */
+export type CrmPliantTransaction = {
+  id: string;
+  pliant_transaction_id: string;
+  pliant_card_id: string;
+  booking_id: string | null;
+  customer_id: string | null;
+  merchant: string;
+  type: string;
+  status: string;
+  amount_cents: number;
+  currency: string;
+  booked_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export function customerFullName(c: Pick<CrmCustomer, "first_name" | "last_name">) {
   return [c.first_name, c.last_name].filter(Boolean).join(" ").trim() || "Client";
 }
