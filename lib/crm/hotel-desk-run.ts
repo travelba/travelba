@@ -26,6 +26,8 @@ import {
   containsCardNumber,
   hotelDeskChannel,
   hotelDeskDraft,
+  mergeDeskContacts,
+  type DeskRosterPerson,
   HOTEL_DESK_FROM,
   hotelReplyForDesk,
   keepAgencyDraft,
@@ -301,6 +303,7 @@ export async function saveHotelRequest(
     body: string;
     recipients: string[];
     cardChoice: "pliant" | "client" | null;
+    contacts?: DeskRosterPerson[];
   }
 ) {
   if (containsCardNumber(input.body) || containsCardNumber(input.subject)) {
@@ -308,6 +311,14 @@ export async function saveHotelRequest(
   }
   const row = await loadRequest(admin, input.bookingId, input.itemId, input.kind);
   const recipients = cleanRecipients(input.recipients);
+  if (input.contacts?.length) {
+    const { data: item } = await admin.from("crm_booking_items").select("id, details").eq("id", input.itemId).maybeSingle();
+    if (item?.id) {
+      const details = { ...((item.details || {}) as Record<string, unknown>) };
+      details.hotel_contacts = mergeDeskContacts(details.hotel_contacts, input.contacts);
+      await admin.from("crm_booking_items").update({ details }).eq("id", item.id);
+    }
+  }
   const status = row.status === "waiting" || row.status === "due" ? "draft" : row.status;
   await admin
     .from("crm_hotel_requests")

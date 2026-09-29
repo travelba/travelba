@@ -26,6 +26,7 @@ export async function POST(request: Request, ctx: Ctx) {
         body?: string;
         recipients?: string[];
         cardChoice?: string;
+        contacts?: { email?: string; firstName?: string; lastName?: string; role?: string }[];
       }
     | null;
   const itemId = (body?.itemId || "").trim();
@@ -52,6 +53,16 @@ export async function POST(request: Request, ctx: Ctx) {
       body: body?.body || "",
       recipients: Array.isArray(body?.recipients) ? body.recipients : [],
       cardChoice,
+      contacts: Array.isArray(body?.contacts)
+        ? body.contacts
+            .filter((person) => person && typeof person.email === "string")
+            .map((person) => ({
+              email: person.email || "",
+              firstName: typeof person.firstName === "string" ? person.firstName : "",
+              lastName: typeof person.lastName === "string" ? person.lastName : "",
+              role: typeof person.role === "string" ? person.role : "",
+            }))
+        : [],
     };
     if (action === "save") {
       await saveHotelRequest(admin, letter);
