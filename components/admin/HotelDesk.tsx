@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { hotelContact, type HotelPersonContact } from "@/lib/crm/hotel-contact";
 import { HOTEL_DESK_LABELS, containsCardNumber, deskStatusLabel, hotelsNeedingDesk } from "@/lib/crm/hotel-desk";
-import { HOTEL_DESK_KINDS, type CrmHotelRequest, type HotelDeskKind } from "@/lib/crm/types";
+import { HOTEL_DESK_KINDS, type CrmBookingItem, type CrmHotelRequest, type HotelDeskKind } from "@/lib/crm/types";
 import { fieldControlClass } from "@/components/crm/fields";
 
 export function HotelDeskSummary({
@@ -24,18 +25,18 @@ export function HotelDeskSummary({
 
 export function HotelDesk({
   bookingId,
-  itemId,
+  item,
   requests,
   today,
   passportCount,
 }: {
   bookingId: string;
-  itemId: string;
+  item: CrmBookingItem;
   requests: CrmHotelRequest[];
   today: string;
   passportCount: number;
 }) {
-  const rows = HOTEL_DESK_KINDS.map((kind) => requests.find((row) => row.booking_item_id === itemId && row.kind === kind)).filter(
+  const rows = HOTEL_DESK_KINDS.map((kind) => requests.find((row) => row.booking_item_id === item.id && row.kind === kind)).filter(
     (row): row is CrmHotelRequest => Boolean(row)
   );
   const [open, setOpen] = useState<HotelDeskKind | null>(null);
@@ -67,6 +68,7 @@ export function HotelDesk({
         <HotelDeskEditor
           key={open}
           bookingId={bookingId}
+          item={item}
           row={rows.find((row) => row.kind === open) || null}
           passportCount={passportCount}
           onClose={() => setOpen(null)}
@@ -98,13 +100,20 @@ function RestoreButton({ bookingId, row }: { bookingId: string; row: CrmHotelReq
   );
 }
 
+function personLabel(person: HotelPersonContact) {
+  const name = [person.first_name, person.last_name].filter(Boolean).join(" ");
+  return [person.type, name].filter(Boolean).join(" · ");
+}
+
 function HotelDeskEditor({
   bookingId,
+  item,
   row,
   passportCount,
   onClose,
 }: {
   bookingId: string;
+  item: CrmBookingItem;
   row: CrmHotelRequest | null;
   passportCount: number;
   onClose: () => void;
@@ -112,28 +121,46 @@ function HotelDeskEditor({
   const router = useRouter();
   const [subject, setSubject] = useState(row?.subject || "");
   const [body, setBody] = useState(row?.body || "");
-  const [recipients, setRecipients] = useState((row?.recipients || []).join(", "));
+  const [recipients, setRecipients] = useState(row?.recipients || []);
+  const [extra, setExtra] = useState("");
   const [cardChoice, setCardChoice] = useState<"pliant" | "client">(row?.card_choice === "client" ? "client" : "pliant");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   if (!row) return null;
+  const known = new Map<string, string>();
+  for (const person of hotelContact(item).people) {
+    const email = person.email.trim().toLowerCase();
+    if (!email || known.has(email)) continue;
+    known.set(email, personLabel(person) || email);
+  }
+  const selected = new Set(recipients.map((email) => email.trim().toLowerCase()));
+  const missing = [...known.entries()].filter(([email]) => !selected.has(email));
 
-  async function run(action: "save" | "send" | "skip") {
+  async function run(action: "save" | "send" | "skip", next = recipients) {
     setBusy(action);
     setError(null);
     const result = await post(bookingId, row!, action, {
       subject,
       body,
-      recipients: recipients.split(/[,;\s]+/).map((value) => value.trim()).filter(Boolean),
+      recipients: next,
       cardChoice: row!.kind === "precheckin" ? cardChoice : null,
     });
     setBusy(null);
     if (!result.ok) {
       setError(result.error || "Action impossible");
-      return;
+      return false;
     }
-    onClose();
-    router.refresh();
+    if (action !== "save") {
+      onClose();
+      router.refresh();
+    }
+    return true;
+  }
+
+  async function changeRecipients(next: string[]) {
+    setRecipients(next);
+    const saved = await run("save", next);
+    if (saved) router.refresh();
   }
 
   const reply = row.reply_body && !containsCardNumber(row.reply_body) ? row.reply_body : "";
@@ -150,10 +177,65 @@ function HotelDeskEditor({
           )}
         </div>
       ) : null}
-      <label className="block text-xs font-semibold text-[var(--admin-navy)]">
-        Destinataires
-        <input className={`${fieldControlClass} mt-1`} value={recipients} onChange={(event) => setRecipients(event.target.value)} />
-      </label>
+      <div className="space-y-2">
+        <p className="text-xs font-semibold text-[var(--admin-navy)]">Destinataires</p>
+        <ul className="space-y-1">
+          {recipients.map((email) => (
+            <li key={email} className="flex items-center justify-between gap-3 rounded-2xl border border-[#e5e3dc] px-3 py-2">
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-[#0B192C]">{known.get(email.trim().toLowerCase()) || email}</span>
+                <span className="block truncate text-xs text-[#9e7e51]">{email}</span>
+              </span>
+              <button
+                type="button"
+                className="shrink-0 rounded-full border border-[#e5e3dc] px-3 py-1 text-xs font-semibold text-[#0B192C]"
+                disabled={Boolean(busy)}
+                onClick={() => void changeRecipients(recipients.filter((value) => value !== email))}
+              >
+                Retirer
+              </button>
+            </li>
+          ))}
+        </ul>
+        {missing.length ? (
+          <div className="flex flex-wrap gap-2">
+            {missing.map(([email, label]) => (
+              <button
+                key={email}
+                type="button"
+                className="rounded-full border border-[#C5A880] px-3 py-1 text-xs font-semibold text-[#0B192C]"
+                disabled={Boolean(busy)}
+                onClick={() => void changeRecipients([...recipients, email])}
+              >
+                Ajouter {label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="min-w-0 flex-1 text-xs font-semibold text-[var(--admin-navy)]">
+            Autre adresse
+            <input className={`${fieldControlClass} mt-1`} value={extra} onChange={(event) => setExtra(event.target.value)} />
+          </label>
+          <button
+            type="button"
+            className="rounded-full border border-[#e5e3dc] px-3 py-2 text-sm font-semibold text-[#0B192C]"
+            disabled={Boolean(busy)}
+            onClick={() => {
+              const email = extra.trim().toLowerCase();
+              if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                setError("Adresse incomplète");
+                return;
+              }
+              setExtra("");
+              setError(null);
+              void changeRecipients(recipients.includes(email) ? recipients : [...recipients, email]);
+            }}
+          >
+            Ajouter
+          </button>
+        </div>
+      </div>
       <label className="block text-xs font-semibold text-[var(--admin-navy)]">
         Objet
         <input className={`${fieldControlClass} mt-1`} value={subject} onChange={(event) => setSubject(event.target.value)} />
@@ -185,7 +267,16 @@ function HotelDeskEditor({
         <button type="button" className="admin-af-btn rounded-full px-3 py-2 text-sm" disabled={Boolean(busy)} onClick={() => void run("send")}>
           {busy === "send" ? "Envoi…" : "Envoyer"}
         </button>
-        <button type="button" className="rounded-full border border-[#e5e3dc] px-3 py-2 text-sm" disabled={Boolean(busy)} onClick={() => void run("save")}>
+        <button
+          type="button"
+          className="rounded-full border border-[#e5e3dc] px-3 py-2 text-sm"
+          disabled={Boolean(busy)}
+          onClick={() =>
+            void run("save").then((saved) => {
+              if (saved) router.refresh();
+            })
+          }
+        >
           {busy === "save" ? "…" : "Enregistrer"}
         </button>
         <button type="button" className="px-3 py-2 text-sm text-muted" disabled={Boolean(busy)} onClick={() => void run("skip")}>

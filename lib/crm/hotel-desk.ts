@@ -50,15 +50,9 @@ function recipientEmails(values: string[]) {
   return [...new Set(values.map((email) => email.trim().toLowerCase()).filter(Boolean))];
 }
 
-/** Réservations pour les demandes hôtel, concierge pour le concierge. Le reste de l’annuaire reste visible sur la fiche. */
-export function hotelDeskRecipients(contact: HotelContact, kind: HotelDeskKind) {
-  const people = contact.people.filter((person) => person.email);
-  const preferred =
-    kind === "concierge"
-      ? people.filter((person) => /concierge/i.test(person.type))
-      : people.filter((person) => /reserv/i.test(person.type));
-  if (preferred.length) return recipientEmails(preferred.map((person) => person.email));
-  const emails = people.map((person) => person.email);
+/** Tous les contacts de l’hôtel, directeurs et concierge compris. L’agence retire ou ajoute avant l’envoi. */
+export function hotelDeskRecipients(contact: HotelContact, _kind: HotelDeskKind) {
+  const emails = contact.people.map((person) => person.email);
   if (contact.email) emails.unshift(contact.email);
   return recipientEmails(emails);
 }
