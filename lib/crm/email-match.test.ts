@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { emptyBookingExtract, type BookingExtract } from "./ingest-types";
 import {
   cancellationApplyPlan,
+  clientCreateOffer,
   decideEmailIngestAction,
   destinationsOverlap,
   executeEmailIngestDecision,
@@ -10,6 +11,7 @@ import {
   lastNamesClose,
   mergeBookingSuggestions,
   referenceTokens,
+  resolveIngestClientEmail,
   suggestBookingByReference,
   suggestBookingByTripSignals,
   suggestCustomerFromExtract,
@@ -410,6 +412,157 @@ describe("mergeBookingSuggestions + decideEmailIngestAction", () => {
       lastName: "Bernard",
       email: "lea.bernard@example.com",
     });
+  });
+
+  it("aucun client → créer le client est proposé", () => {
+    const extract = extractWith({
+      customer_first_name: "Léa",
+      customer_last_name: "Bernard",
+      destination: "Lisbonne",
+    });
+    const offer = clientCreateOffer({
+      extract,
+      candidates: [],
+      selectedCustomerId: null,
+    });
+    assert.equal(offer.available, true);
+    if (offer.available) {
+      assert.equal(offer.firstName, "Léa");
+      assert.equal(offer.lastName, "Bernard");
+      assert.equal(offer.email, null);
+    }
+    const decision = decideEmailIngestAction({
+      extract,
+      suggestedCustomerId: null,
+      suggestedBookingId: null,
+      candidates: [],
+    });
+    assert.equal(decision.kind, "create_customer");
+  });
+
+  it("plusieurs clients possibles → pas de création silencieuse", () => {
+    const extract = extractWith({
+      customer_first_name: "Marie",
+      customer_last_name: "Dupont",
+      destination: "Rome",
+      start_date: "2026-06-01",
+      customer_email: "marie.dupont@example.com",
+    });
+    const candidates = [
+      {
+        customer_id: "c2",
+        booking_id: null,
+        label: "Marie Dupont",
+        reason: "Nom et prénom",
+        score: 80,
+      },
+      {
+        customer_id: "c3",
+        booking_id: null,
+        label: "Paul Dupont",
+        reason: "Nom de famille",
+        score: 60,
+      },
+    ];
+    const decision = decideEmailIngestAction({
+      extract,
+      suggestedCustomerId: null,
+      suggestedBookingId: null,
+      candidates,
+    });
+    assert.equal(decision.kind, "review");
+    const offer = clientCreateOffer({
+      extract,
+      candidates,
+      selectedCustomerId: null,
+    });
+    assert.deepEqual(offer, { available: false, reason: "ambiguous" });
+  });
+
+  it("un seul client faible → revue, sans bouton créer", () => {
+    const extract = extractWith({
+      customer_first_name: "Jean",
+      customer_last_name: "Martin",
+      destination: "Rome",
+    });
+    const candidates = [
+      {
+        customer_id: "c1",
+        booking_id: null,
+        label: "Jean Martin",
+        reason: "Nom de famille",
+        score: 60,
+      },
+    ];
+    assert.equal(
+      decideEmailIngestAction({
+        extract,
+        suggestedCustomerId: null,
+        suggestedBookingId: null,
+        candidates,
+      }).kind,
+      "review"
+    );
+    assert.deepEqual(
+      clientCreateOffer({ extract, candidates, selectedCustomerId: null }),
+      { available: false, reason: "matched" }
+    );
+  });
+
+  it("deux fiches au même nom → pas de création silencieuse", () => {
+    const twins = [
+      { id: "a", first_name: "Marie", last_name: "Dupont", company_name: null, email: "a@example.com" },
+      { id: "b", first_name: "Marie", last_name: "Dupont", company_name: null, email: "b@example.com" },
+    ];
+    const extract = extractWith({
+      customer_first_name: "Marie",
+      customer_last_name: "Dupont",
+      destination: "Rome",
+      start_date: "2026-06-01",
+    });
+    const suggestion = suggestCustomerFromExtract(twins, extract);
+    assert.equal(suggestion.autoCustomerId, null);
+    assert.equal(suggestion.candidates.filter((row) => !row.booking_id).length, 2);
+    assert.equal(
+      decideEmailIngestAction({
+        extract,
+        suggestedCustomerId: suggestion.autoCustomerId,
+        suggestedBookingId: null,
+        candidates: suggestion.candidates,
+      }).kind,
+      "review"
+    );
+    const offer = clientCreateOffer({
+      extract,
+      candidates: suggestion.candidates,
+      selectedCustomerId: suggestion.autoCustomerId,
+    });
+    assert.equal(offer.available, false);
+    if (!offer.available) assert.equal(offer.reason, "ambiguous");
+  });
+
+  it("aucun client dans le fichier → offre de création, e-mail seulement s’il est imprimé", () => {
+    const named = extractWith({
+      customer_first_name: "Noemie",
+      customer_last_name: "Bernard",
+      destination: "Lyon",
+      customer_email: "agence@travelba.fr",
+    });
+    const suggestion = suggestCustomerFromExtract([], named);
+    assert.equal(suggestion.autoCustomerId, null);
+    const offer = clientCreateOffer({
+      extract: named,
+      candidates: suggestion.candidates,
+      selectedCustomerId: null,
+    });
+    assert.equal(offer.available, true);
+    if (offer.available) assert.equal(offer.email, null);
+  });
+
+  it("e-mail saisi vide → pas d’adresse inventée", () => {
+    assert.equal(resolveIngestClientEmail(""), null);
+    assert.equal(resolveIngestClientEmail("  "), null);
+    assert.throws(() => resolveIngestClientEmail("contact@travelba.fr"));
   });
 
   it("ignore l’e-mail partagé de l’agence", () => {

@@ -9,7 +9,11 @@ import {
   parseExtractPayload,
   persistNewBookingFromExtract,
 } from "@/lib/crm/ingest-booking";
-import { loadEmailIngestFiles, rematchEmailIngestRow } from "@/lib/crm/email-ingest";
+import {
+  createUnmatchedIngestCustomer,
+  loadEmailIngestFiles,
+  rematchEmailIngestRow,
+} from "@/lib/crm/email-ingest";
 import type { CrmEmailIngest } from "@/lib/crm/types";
 
 export const runtime = "nodejs";
@@ -27,6 +31,7 @@ export async function POST(request: Request, ctx: Ctx) {
     customer_id?: string;
     booking_id?: string;
     title?: string;
+    email?: string;
     extract?: unknown;
     apply_stay_currency?: boolean;
   };
@@ -114,6 +119,59 @@ export async function POST(request: Request, ctx: Ctx) {
         .update({ status: "attached", created_booking_id: bookingId, ...extractPatch })
         .eq("id", id);
       return NextResponse.json({ ok: true, booking_id: bookingId });
+    }
+
+    if (action === "create_client") {
+      const customerId = await createUnmatchedIngestCustomer(
+        admin,
+        extract,
+        typeof body.email === "string" ? body.email : ""
+      );
+      await admin
+        .from("crm_email_ingest")
+        .update({ suggested_customer_id: customerId, ...extractPatch })
+        .eq("id", id);
+      try {
+        const booking = await persistNewBookingFromExtract({
+          customerId,
+          extract,
+          files,
+          staffUserId: auth.user.id,
+          referenceClient: auth.supabase,
+          status: "draft",
+          visibleToClient: false,
+        });
+        await admin
+          .from("crm_email_ingest")
+          .update({
+            status: "attached",
+            created_booking_id: booking.id,
+            suggested_customer_id: customerId,
+            ...extractPatch,
+          })
+          .eq("id", id);
+        return NextResponse.json({
+          ok: true,
+          customer_id: customerId,
+          booking_id: booking.id,
+        });
+      } catch (err) {
+        if (err instanceof BookingIssuesError) {
+          return NextResponse.json({
+            ok: true,
+            customer_id: customerId,
+            booking_id: null,
+            issues: err.issues,
+          });
+        }
+        const message = err instanceof Error ? err.message : "Dossier impossible";
+        return NextResponse.json({
+          ok: true,
+          customer_id: customerId,
+          booking_id: null,
+          error: message,
+        });
+      }
     }
 
     if (action === "new_booking") {

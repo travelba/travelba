@@ -28,6 +28,15 @@ import { emailCardTitle } from "@/lib/crm/ingest-title";
 import { formatDateFr, formatDateRangeShort, formatDateTimeFr, formatMoney } from "@/lib/crm/money";
 import { sanitizeEmailHtml } from "@/lib/crm/email-source";
 import { fieldControlClass } from "@/components/crm/fields";
+import {
+  AMBIGUOUS_CLIENT_COPY,
+  MATCHED_CLIENT_COPY,
+  NO_NAME_CLIENT_COPY,
+  clientCreateOffer,
+  missingEmailHint,
+  unmatchedClientLead,
+} from "@/lib/crm/email-match";
+import { emptyBookingExtract, type BookingExtract } from "@/lib/crm/ingest-types";
 
 type ExtractItem = {
   kind?: string;
@@ -108,6 +117,21 @@ function OriginalMail({ row }: { row: CrmEmailIngest }) {
   );
 }
 
+function bookingExtractOf(row: CrmEmailIngest): BookingExtract {
+  const stored =
+    row.extract && typeof row.extract === "object" && !Array.isArray(row.extract)
+      ? (row.extract as Partial<BookingExtract>)
+      : {};
+  return {
+    ...emptyBookingExtract(),
+    customer_first_name: stored.customer_first_name ?? null,
+    customer_last_name: stored.customer_last_name ?? null,
+    customer_email: stored.customer_email ?? null,
+    travelers: Array.isArray(stored.travelers) ? stored.travelers : [],
+    document_status: stored.document_status ?? "confirmed",
+  };
+}
+
 function itemLabel(kind: string | undefined) {
   return BOOKING_ITEM_LABELS[(kind || "fee") as BookingItemKind] || "Prestation";
 }
@@ -135,6 +159,7 @@ export function EmailIngestInbox({
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [drafts, setDrafts] = useState<Record<string, ExtractView>>({});
   const [currencyChosen, setCurrencyChosen] = useState<Record<string, boolean>>({});
+  const [addedEmails, setAddedEmails] = useState<Record<string, string>>({});
 
   const chosenCustomer = useCallback(
     (row: CrmEmailIngest) => chosen[row.id] ?? row.suggested_customer_id ?? "",
@@ -205,6 +230,7 @@ export function EmailIngestInbox({
       title?: string;
       extract?: ExtractView;
       apply_stay_currency?: boolean;
+      email?: string;
     },
     opts?: { refresh?: boolean }
   ) {
@@ -219,11 +245,24 @@ export function EmailIngestInbox({
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
         issues?: BookingIssue[];
+        customer_id?: string;
+        booking_id?: string | null;
       };
       if (!res.ok) {
         const detail = (data.issues || []).map((issue) => issue.message).filter(Boolean).join(" ");
         setError(detail || data.error || "Opération impossible");
         return;
+      }
+      if (data.customer_id) {
+        setChosen((prev) => ({ ...prev, [rowId]: data.customer_id as string }));
+      }
+      if (data.customer_id && !data.booking_id) {
+        const detail = (data.issues || []).map((issue) => issue.message).filter(Boolean).join(" ");
+        setError(
+          detail
+            ? `${detail} La fiche client est créée.`
+            : data.error || "La fiche client est créée. Le dossier reste à terminer."
+        );
       }
       if (opts?.refresh !== false) router.refresh();
     } catch {
@@ -274,6 +313,12 @@ export function EmailIngestInbox({
             destination: extract.destination,
             subject: row.subject,
           });
+        const createOffer = clientCreateOffer({
+          extract: bookingExtractOf(row),
+          candidates: row.candidates || [],
+          selectedCustomerId: customerId || null,
+        });
+        const emailValue = addedEmails[row.id] ?? (createOffer.available ? createOffer.email || "" : "");
 
         return (
           <article
@@ -549,6 +594,63 @@ export function EmailIngestInbox({
                     Rattacher au voyage
                   </button>
                 </div>
+              ) : null}
+
+              {!customerId && createOffer.available ? (
+                <div className="mt-3 rounded-xl border border-[#C5A880] bg-white p-3">
+                  <p className="text-sm font-semibold text-[#0B192C]">
+                    {unmatchedClientLead(createOffer.firstName, createOffer.lastName)}
+                  </p>
+                  <label className="mt-2 block text-xs font-semibold text-muted">
+                    E-mail
+                    <input
+                      type="email"
+                      value={emailValue}
+                      autoComplete="off"
+                      placeholder="Ajouter un e-mail"
+                      onChange={(event) =>
+                        setAddedEmails((prev) => ({ ...prev, [row.id]: event.target.value }))
+                      }
+                      className="admin-af-input mt-1 w-full text-sm"
+                    />
+                  </label>
+                  <p className="mt-2 text-xs text-muted">
+                    {createOffer.email
+                      ? "E-mail lu dans le message. Vous pouvez le corriger, ou le retirer."
+                      : missingEmailHint("message")}
+                  </p>
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    className="admin-af-btn admin-tap mt-3 inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm disabled:opacity-40"
+                    onClick={() =>
+                      act(row.id, {
+                        action: "create_client",
+                        email: emailValue,
+                        title: cardTitle.trim(),
+                        ...(drafts[row.id]
+                          ? {
+                              extract: drafts[row.id],
+                              apply_stay_currency: Boolean(currencyChosen[row.id]),
+                            }
+                          : {}),
+                      })
+                    }
+                  >
+                    <Icon name="add" className="h-4 w-4" />
+                    Créer le client et le dossier
+                  </button>
+                </div>
+              ) : null}
+
+              {!customerId && !createOffer.available ? (
+                <p className="mt-3 text-sm text-[#0B192C]">
+                  {createOffer.reason === "ambiguous"
+                    ? AMBIGUOUS_CLIENT_COPY
+                    : createOffer.reason === "matched"
+                      ? MATCHED_CLIENT_COPY
+                      : NO_NAME_CLIENT_COPY}
+                </p>
               ) : null}
 
               <div className="mt-3 flex flex-wrap gap-2">

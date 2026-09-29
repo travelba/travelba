@@ -26,6 +26,15 @@ import { stayTitleForExtract } from "@/lib/crm/ingest-title";
 import { formatMoney } from "@/lib/crm/money";
 import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
 import { customerFullName, type CrmCompanion, type CrmCustomer } from "@/lib/crm/types";
+import {
+  AMBIGUOUS_CLIENT_COPY,
+  MATCHED_CLIENT_COPY,
+  NO_NAME_CLIENT_COPY,
+  clientCreateOffer,
+  missingEmailHint,
+  suggestCustomerFromExtract,
+  unmatchedClientLead,
+} from "@/lib/crm/email-match";
 import { DateFrInput, Field, fieldControlClass } from "@/components/crm/fields";
 import { PlaceField } from "@/components/crm/PlaceField";
 import { IssuesList } from "@/components/crm/IssuesList";
@@ -243,6 +252,9 @@ export function BookingIngest({
   const [extract, setExtract] = useState<BookingExtract | null>(null);
   const [seenInDocuments, setSeenInDocuments] = useState<PersonName[]>([]);
   const [customerId, setCustomerId] = useState("");
+  const customerTouched = useRef(false);
+  const [clientEmailDraft, setClientEmailDraft] = useState<string | null>(null);
+  const [createdClientLabel, setCreatedClientLabel] = useState("");
   const selectedCustomer = customers.find((row) => row.id === customerId) || null;
   const holder = householdHolder || selectedCustomer;
   const companions = householdCompanions.length ? householdCompanions : fetchedCompanions;
@@ -267,6 +279,25 @@ export function BookingIngest({
       cancelled = true;
     };
   }, [customerId, mode]);
+
+  const customerSuggestion = useMemo(() => {
+    if (!extract || role !== "admin" || mode !== "create") return null;
+    return suggestCustomerFromExtract(customers, extract);
+  }, [extract, customers, role, mode]);
+
+  const createOffer = useMemo(() => {
+    if (!extract || !customerSuggestion) return null;
+    return clientCreateOffer({
+      extract,
+      candidates: customerSuggestion.candidates,
+      selectedCustomerId: customerId || null,
+    });
+  }, [extract, customerSuggestion, customerId]);
+
+  useEffect(() => {
+    if (customerTouched.current || customerId || !customerSuggestion?.autoCustomerId) return;
+    setCustomerId(customerSuggestion.autoCustomerId);
+  }, [customerSuggestion, customerId]);
 
   useEffect(() => {
     if (!holder) return;
@@ -473,15 +504,17 @@ export function BookingIngest({
     abortRef.current?.abort();
   }
 
-  async function save() {
+  async function save(customerOverride?: string) {
     if (!extract) return;
+    const chosenCustomerId = customerOverride ?? customerId;
     const blockers = collectExtractIssues(extract, {
-      customerId,
+      customerId: chosenCustomerId,
       requireCustomer: role === "admin" && mode === "create",
     });
     if (blockers.length) {
       setIssues(blockers);
       setError(null);
+      setBusy("idle");
       return;
     }
     setBusy("save");
@@ -499,7 +532,7 @@ export function BookingIngest({
           total_amount: bookingTotalFromItems(extract.items || []),
         })
       );
-      body.set("customer_id", customerId);
+      body.set("customer_id", chosenCustomerId);
       body.set("batch_id", batchId);
       body.set(
         "staged",
@@ -541,6 +574,44 @@ export function BookingIngest({
     }
   }
 
+  async function createClientAndSave() {
+    if (!extract || !createOffer?.available) return;
+    const typed = (clientEmailDraft ?? createOffer.email ?? "").trim();
+    setBusy("save");
+    setError(null);
+    setIssues([]);
+    try {
+      const res = await fetch("/api/admin/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          first_name: createOffer.firstName,
+          last_name: createOffer.lastName,
+          email: typed,
+          allow_missing_email: true,
+          invite: false,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        customer?: { id?: string };
+      };
+      if (!res.ok || !json.customer?.id) {
+        setError(json.error || "Création du client impossible");
+        setBusy("idle");
+        return;
+      }
+      const id = String(json.customer.id);
+      customerTouched.current = true;
+      setCreatedClientLabel(`${createOffer.firstName} ${createOffer.lastName}`);
+      setCustomerId(id);
+      await save(id);
+    } catch {
+      setError("Création du client impossible");
+      setBusy("idle");
+    }
+  }
+
   function patch<K extends keyof BookingExtract>(key: K, value: BookingExtract[K]) {
     if (key === "title") titleEdited.current = true;
     setIssues([]);
@@ -566,8 +637,11 @@ export function BookingIngest({
     return collectExtractIssues(extract, {
       customerId,
       requireCustomer: role === "admin" && mode === "create",
+    }).filter((issue) => {
+      if (issue.field === "customer_id" && createOffer?.available && !customerId) return false;
+      return true;
     });
-  }, [extract, customerId, role, mode]);
+  }, [extract, customerId, role, mode, createOffer]);
   const priceIssues = liveIssues.filter((issue) => issue.field.endsWith("document_amount"));
   const shownIssues = useMemo(() => {
     const merged = [...liveIssues];
@@ -812,21 +886,67 @@ export function BookingIngest({
           {role === "admin" && mode === "create" ? (
             <Field label="Client">
               <select
-                required
+                required={!createOffer?.available}
                 value={customerId}
                 onChange={(event) => {
+                  customerTouched.current = true;
                   setIssues([]);
                   setCustomerId(event.target.value);
                 }}
                 className={fieldControlClass}
               >
                 <option value="">Choisir…</option>
+                {customerId && !customers.some((row) => row.id === customerId) ? (
+                  <option value={customerId}>{createdClientLabel || "Client créé"}</option>
+                ) : null}
                 {customers.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {customerFullName(c)} — {c.email}
+                    {c.email.endsWith("@invalid.local")
+                      ? customerFullName(c)
+                      : `${customerFullName(c)} — ${c.email}`}
                   </option>
                 ))}
               </select>
+              {!customerId && createOffer?.available ? (
+                <div className="mt-3 rounded-xl border border-[#C5A880] bg-white p-3">
+                  <p className="text-sm font-semibold text-[#0B192C]">
+                    {unmatchedClientLead(createOffer.firstName, createOffer.lastName)}
+                  </p>
+                  <label className="mt-2 block text-xs font-semibold text-muted">
+                    E-mail
+                    <input
+                      type="email"
+                      value={clientEmailDraft ?? createOffer.email ?? ""}
+                      autoComplete="off"
+                      placeholder="Ajouter un e-mail"
+                      onChange={(event) => setClientEmailDraft(event.target.value)}
+                      className={`${fieldControlClass} mt-1`}
+                    />
+                  </label>
+                  <p className="mt-2 text-xs text-muted">
+                    {createOffer.email
+                      ? "E-mail lu dans le document. Vous pouvez le corriger, ou le retirer."
+                      : missingEmailHint("document")}
+                  </p>
+                  <button
+                    type="button"
+                    disabled={busy !== "idle"}
+                    onClick={() => void createClientAndSave()}
+                    className="admin-af-btn mt-3 rounded-full px-4 py-2 text-sm disabled:opacity-50"
+                  >
+                    Créer le client et le dossier
+                  </button>
+                </div>
+              ) : null}
+              {!customerId && createOffer && !createOffer.available ? (
+                <p className="mt-2 text-sm text-[#0B192C]">
+                  {createOffer.reason === "ambiguous"
+                    ? AMBIGUOUS_CLIENT_COPY
+                    : createOffer.reason === "matched"
+                      ? MATCHED_CLIENT_COPY
+                      : NO_NAME_CLIENT_COPY}
+                </p>
+              ) : null}
             </Field>
           ) : null}
           <div className="grid gap-3 sm:grid-cols-2">
@@ -1079,7 +1199,11 @@ export function BookingIngest({
 
           <button
             type="button"
-            disabled={busy !== "idle" || liveIssues.length > 0}
+            disabled={
+              busy !== "idle" ||
+              liveIssues.length > 0 ||
+              (role === "admin" && mode === "create" && !customerId)
+            }
             onClick={() => void save()}
             className="admin-af-btn rounded-full px-5 py-2.5 text-sm disabled:opacity-50"
           >
