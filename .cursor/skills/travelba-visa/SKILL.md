@@ -31,7 +31,7 @@ L’agence confirme avant l’envoi, depuis le header du dossier. Le paiement s�
 ## Parcours
 
 1. Lancer — préparation, le séjour s’ouvre sans les prix.
-2. Remplir le portail — GPT-6 Astra, uniquement `gpt-6-astra`, hôte officiel. Le navigateur est Chromium empaqueté (`@sparticuz/chromium`) sur Vercel, ou Chrome local. Pas de repli vers un autre modèle. Si le navigateur ne s’ouvre pas, le dire et le réparer. Ne pas laisser « Navigateur indisponible ».
+2. Remplir le portail — GPT-6 Astra, uniquement `gpt-6-astra`, hôte officiel. Le navigateur est Chromium empaqueté (`@sparticuz/chromium`) sur Vercel, ou Chrome local. Pas de repli vers un autre modèle. Si le navigateur ne s’ouvre pas, le dire et le réparer. Ne pas laisser « Navigateur indisponible ». Le code à 6 chiffres envoyé à `contact@travelba.fr` est lu dans la boîte Gmail déjà branchée et saisi. Pas de hold pour le demander à l’agent. Le chiffre n’est pas journalisé.
 3. Confirmer — l’agent, avant l’envoi.
 4. Paiement — s’arrête si Pliant n’est pas branché. Aucun débit avant un paiement enregistré.
 5. Pièce — le PDF va dans Pièces.

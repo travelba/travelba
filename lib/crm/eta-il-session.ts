@@ -6,6 +6,7 @@ import {
   type EtaIlPhase,
 } from "./eta-il-draft";
 import { eventForPortalAction, portalEvent, type PortalLogEvent } from "./eta-il-log";
+import { MAILBOX_CODE_ENTERED, MAILBOX_CODE_MISSING, MAILBOX_CODE_UNTYPED, mailboxCodeAsked } from "./mailbox-code";
 
 const SUBMIT = /submit|envoyer|envoi|\bpay\b|paiement|\bpayment\b|checkout|carte bancaire|card number|אשר|שלם/i;
 
@@ -24,6 +25,8 @@ export type PortalPage = {
   scroll(): Promise<void>;
   describe(): Promise<string>;
   capture?(): Promise<Uint8Array>;
+  /** Saisit le code à 6 chiffres, case par case quand l’écran le découpe. */
+  typeDigits?(code: string): Promise<void>;
 };
 
 export function portalUrlAllowed(url: string) {
@@ -133,6 +136,7 @@ const PORTAL_INSTRUCTIONS = [
   "Le pays de délivrance est une liste. Clique son libellé pour l’ouvrir, puis type le nom du pays (France) ou clique l’option exacte, par exemple FRA (France).",
   "Ne hold pas pour signaler une information déjà présente dans la demande.",
   "Si une image de caractères est jointe, lis ces caractères et saisis-les. Ne hold pas pour ça.",
+  "Si l’écran demande le code à 6 chiffres envoyé par courriel, ne hold pas : il est saisi depuis la boîte agence. Continue le formulaire.",
   "Si le captcha est une grille ou une case « je ne suis pas un robot », hold et dis-le dans le résumé.",
 ].join(" ");
 
@@ -299,6 +303,8 @@ export async function runEtaIlSession(opts: {
   pollMs?: number;
   onEvent?: (event: PortalLogEvent) => Promise<void> | void;
   onFrame?: (bytes: Uint8Array) => Promise<void> | void;
+  /** Lit le code à 6 chiffres dans la boîte agence. Null si le courriel n’est pas arrivé. */
+  readMailboxCode?: () => Promise<string | null>;
 }): Promise<{ phase: EtaIlPhase; summary: string | null; message: string | null; filled: boolean }> {
   const fetchImpl = opts.fetchImpl || fetch;
   const pollMs = opts.pollMs ?? 750;
@@ -310,6 +316,42 @@ export async function runEtaIlSession(opts: {
   let misses = 0;
   let previous: string | undefined;
   let input: unknown = buildEtaIlRequest(opts.draft).input;
+  let mailboxCode: string | null | undefined;
+  let mailboxTries = 0;
+
+  const notify = async (kind: PortalLogEvent["kind"], text: string) => {
+    if (!opts.onEvent) return;
+    try {
+      await opts.onEvent(portalEvent(kind, text));
+    } catch (err) {
+      console.error("[eta-il] journal", err instanceof Error ? err.message : "échec");
+    }
+  };
+
+  const enterMailboxCode = async (seen: string): Promise<"entered" | "missing" | "untyped" | "skip"> => {
+    if (!opts.readMailboxCode || mailboxTries >= 2 || !mailboxCodeAsked(seen)) return "skip";
+    mailboxTries += 1;
+    await notify("attente", "Lecture du code dans la boîte agence.");
+    if (mailboxCode === undefined) {
+      try {
+        mailboxCode = await opts.readMailboxCode();
+      } catch (err) {
+        console.error("[eta-il] boîte", err instanceof Error ? err.message : "échec");
+        mailboxCode = null;
+      }
+    }
+    if (!mailboxCode || !/^\d{6}$/.test(mailboxCode)) return "missing";
+    try {
+      if (opts.page.typeDigits) await opts.page.typeDigits(mailboxCode);
+      else await opts.page.type("Code to 6 digits", mailboxCode);
+    } catch (err) {
+      console.error("[eta-il] code", err instanceof Error ? err.message : "échec");
+      return "untyped";
+    }
+    await notify("champ", "Code de vérification saisi depuis la boîte agence.");
+    await publishFrame(opts.page, opts.onFrame);
+    return "entered";
+  };
 
   for (let turn = 0; turn < maxSteps; turn += 1) {
     const request = previous
@@ -344,6 +386,23 @@ export async function runEtaIlSession(opts: {
         parsed.step.action === "hold"
           ? redactPassportNumbers(parsed.step.summary, numbers)
           : "Formulaire rempli. Envoi et paiement en attente de confirmation.";
+      if (mailboxCodeAsked(summary)) {
+        const mailbox = await enterMailboxCode(summary);
+        if (mailbox === "entered") {
+          const seen = redactPassportNumbers(await opts.page.describe().catch(() => ""), numbers);
+          input = await continuationInput(opts.page, parsed.callId, `${MAILBOX_CODE_ENTERED} ${seen}`, 0);
+          continue;
+        }
+        if (mailbox === "missing" || mailbox === "untyped") {
+          await publishFrame(opts.page, opts.onFrame);
+          return {
+            phase: "bloqué",
+            summary,
+            message: mailbox === "untyped" ? MAILBOX_CODE_UNTYPED : MAILBOX_CODE_MISSING,
+            filled: false,
+          };
+        }
+      }
       const named =
         parsed.step.action !== "hold" ||
         summaryCoversApplicants(
@@ -378,20 +437,45 @@ export async function runEtaIlSession(opts: {
       misses = 0;
       await publishFrame(opts.page, opts.onFrame);
       note = redactPassportNumbers(await opts.page.describe(), numbers);
+      const mailbox = await enterMailboxCode(note);
+      if (mailbox === "entered") {
+        const seen = redactPassportNumbers(await opts.page.describe().catch(() => ""), numbers);
+        note = `${MAILBOX_CODE_ENTERED} ${seen}`;
+      } else if (mailbox === "missing" || mailbox === "untyped") {
+        return {
+          phase: "bloqué",
+          summary: null,
+          message: mailbox === "untyped" ? MAILBOX_CODE_UNTYPED : MAILBOX_CODE_MISSING,
+          filled: false,
+        };
+      }
     } catch (err) {
       misses += 1;
       await publishFrame(opts.page, opts.onFrame);
       const seen = redactPassportNumbers(await opts.page.describe().catch(() => ""), numbers);
-      if (misses >= 3) {
+      const mailbox = await enterMailboxCode(seen);
+      if (mailbox === "entered") {
+        misses = 0;
+        const after = redactPassportNumbers(await opts.page.describe().catch(() => ""), numbers);
+        note = `${MAILBOX_CODE_ENTERED} ${after}`;
+      } else if (mailbox === "missing" || mailbox === "untyped") {
+        return {
+          phase: "bloqué",
+          summary: null,
+          message: mailbox === "untyped" ? MAILBOX_CODE_UNTYPED : MAILBOX_CODE_MISSING,
+          filled: false,
+        };
+      } else if (misses >= 3) {
         return {
           phase: "bloqué",
           summary: null,
           message: blockedPortalMessage(seen),
           filled: false,
         };
+      } else {
+        const why = err instanceof Error && err.message === "immobile" ? "Le clic n’a pas changé la page." : "Contrôle introuvable.";
+        note = `${why} Choisis un libellé listé. Si une image de caractères est jointe, lis-la et saisis-la. ${seen}`;
       }
-      const why = err instanceof Error && err.message === "immobile" ? "Le clic n’a pas changé la page." : "Contrôle introuvable.";
-      note = `${why} Choisis un libellé listé. Si une image de caractères est jointe, lis-la et saisis-la. ${seen}`;
     }
     input = await continuationInput(opts.page, parsed.callId, note, misses);
   }
