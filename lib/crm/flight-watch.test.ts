@@ -134,7 +134,7 @@ test("l’enregistrement Air France s’ouvre 30 h avant, pas pour une compagnie
   assert.equal(flightWatchBadge(open, new Date("2026-10-01T06:00:00Z")), "Enregistrement ouvert");
 });
 
-test("le plafond du jour s’arrête à 400 appels et repart le lendemain", () => {
+test("le plafond du jour s’arrête à 200 appels et repart le lendemain", () => {
   const blocked = reserveAeroBudget({ day: "2026-09-29", calls: AEROAPI_DAILY_CALL_CAP }, NOW);
   assert.equal(blocked.ok, false);
   const next = reserveAeroBudget({ day: "2026-09-29", calls: AEROAPI_DAILY_CALL_CAP }, new Date("2026-09-29T22:30:00Z"));
