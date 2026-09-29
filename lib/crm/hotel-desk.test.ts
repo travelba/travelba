@@ -7,7 +7,9 @@ import {
   hotelReplyForDesk,
   deskNeedsAttention,
   hotelDeskDraft,
+  deskRoster,
   hotelDeskRecipients,
+  mergeDeskContacts,
   hotelDeskSuggested,
   hotelsNeedingDesk,
   keepAgencyDraft,
@@ -82,6 +84,32 @@ test("brouillon français : lien, full credit sans numéro, tous les contacts", 
     "concierge"
   );
   assert.deepEqual(people, ["reservations@bristol.test", "concierge@bristol.test"]);
+  const roster = deskRoster({
+    name: "Le Bristol",
+    address: "",
+    city: "",
+    country: "France",
+    phone: "",
+    email: "reservations@bristol.test",
+    website: "",
+    people: [
+      { type: "Concierge", first_name: "", last_name: "", email: "concierge@bristol.test", phone: "" },
+      { type: "Directrice", first_name: "Claire", last_name: "Martin", email: "claire@bristol.test", phone: "" },
+      { type: "Réservations", first_name: "C.", last_name: "Martin", email: "claire@bristol.test", phone: "" },
+    ],
+  });
+  assert.deepEqual(roster, [
+    { email: "reservations@bristol.test", firstName: "", lastName: "", role: "" },
+    { email: "concierge@bristol.test", firstName: "", lastName: "", role: "Concierge" },
+    { email: "claire@bristol.test", firstName: "Claire", lastName: "Martin", role: "Directrice" },
+  ]);
+  assert.equal(
+    mergeDeskContacts([{ email: "claire@bristol.test", type: "Directrice" }], [
+      { email: "claire@bristol.test", firstName: "Claire", lastName: "Martin", role: "Directrice" },
+      { email: "nouveau@bristol.test", firstName: "Paul", lastName: "Bernard", role: "Directeur" },
+    ]).length,
+    2
+  );
 });
 
 test("anglais hors de France, transfert repris sur les vols", () => {

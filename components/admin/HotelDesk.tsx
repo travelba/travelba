@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { hotelContact, type HotelPersonContact } from "@/lib/crm/hotel-contact";
-import { HOTEL_DESK_LABELS, containsCardNumber, deskStatusLabel, hotelsNeedingDesk } from "@/lib/crm/hotel-desk";
+import { RecipientRoster } from "@/components/admin/RecipientRoster";
+import { hotelContact } from "@/lib/crm/hotel-contact";
+import { HOTEL_DESK_LABELS, containsCardNumber, deskRoster, deskStatusLabel, hotelsNeedingDesk, type DeskRosterPerson } from "@/lib/crm/hotel-desk";
 import { HOTEL_DESK_KINDS, type CrmBookingItem, type CrmHotelRequest, type HotelDeskKind } from "@/lib/crm/types";
 import { fieldControlClass } from "@/components/crm/fields";
 
@@ -100,11 +101,6 @@ function RestoreButton({ bookingId, row }: { bookingId: string; row: CrmHotelReq
   );
 }
 
-function personLabel(person: HotelPersonContact) {
-  const name = [person.first_name, person.last_name].filter(Boolean).join(" ");
-  return [person.type, name].filter(Boolean).join(" · ");
-}
-
 function HotelDeskEditor({
   bookingId,
   item,
@@ -122,21 +118,13 @@ function HotelDeskEditor({
   const [subject, setSubject] = useState(row?.subject || "");
   const [body, setBody] = useState(row?.body || "");
   const [recipients, setRecipients] = useState(row?.recipients || []);
-  const [extra, setExtra] = useState("");
+  const [roster, setRoster] = useState<DeskRosterPerson[]>(() => deskRoster(hotelContact(item)));
   const [cardChoice, setCardChoice] = useState<"pliant" | "client">(row?.card_choice === "client" ? "client" : "pliant");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   if (!row) return null;
-  const known = new Map<string, string>();
-  for (const person of hotelContact(item).people) {
-    const email = person.email.trim().toLowerCase();
-    if (!email || known.has(email)) continue;
-    known.set(email, personLabel(person) || email);
-  }
-  const selected = new Set(recipients.map((email) => email.trim().toLowerCase()));
-  const missing = [...known.entries()].filter(([email]) => !selected.has(email));
 
-  async function run(action: "save" | "send" | "skip", next = recipients) {
+  async function run(action: "save" | "send" | "skip", next = recipients, created?: DeskRosterPerson) {
     setBusy(action);
     setError(null);
     const result = await post(bookingId, row!, action, {
@@ -144,6 +132,7 @@ function HotelDeskEditor({
       body,
       recipients: next,
       cardChoice: row!.kind === "precheckin" ? cardChoice : null,
+      contacts: created ? [created] : [],
     });
     setBusy(null);
     if (!result.ok) {
@@ -157,10 +146,12 @@ function HotelDeskEditor({
     return true;
   }
 
-  async function changeRecipients(next: string[]) {
+  async function changeRecipients(next: string[], created?: DeskRosterPerson) {
     setRecipients(next);
-    const saved = await run("save", next);
-    if (saved) router.refresh();
+    if (created) {
+      setRoster((current) => (current.some((person) => person.email === created.email) ? current : [...current, created]));
+    }
+    await run("save", next, created);
   }
 
   const reply = row.reply_body && !containsCardNumber(row.reply_body) ? row.reply_body : "";
@@ -177,65 +168,7 @@ function HotelDeskEditor({
           )}
         </div>
       ) : null}
-      <div className="space-y-2">
-        <p className="text-xs font-semibold text-[var(--admin-navy)]">Destinataires</p>
-        <ul className="space-y-1">
-          {recipients.map((email) => (
-            <li key={email} className="flex items-center justify-between gap-3 rounded-2xl border border-[#e5e3dc] px-3 py-2">
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold text-[#0B192C]">{known.get(email.trim().toLowerCase()) || email}</span>
-                <span className="block truncate text-xs text-[#9e7e51]">{email}</span>
-              </span>
-              <button
-                type="button"
-                className="shrink-0 rounded-full border border-[#e5e3dc] px-3 py-1 text-xs font-semibold text-[#0B192C]"
-                disabled={Boolean(busy)}
-                onClick={() => void changeRecipients(recipients.filter((value) => value !== email))}
-              >
-                Retirer
-              </button>
-            </li>
-          ))}
-        </ul>
-        {missing.length ? (
-          <div className="flex flex-wrap gap-2">
-            {missing.map(([email, label]) => (
-              <button
-                key={email}
-                type="button"
-                className="rounded-full border border-[#C5A880] px-3 py-1 text-xs font-semibold text-[#0B192C]"
-                disabled={Boolean(busy)}
-                onClick={() => void changeRecipients([...recipients, email])}
-              >
-                Ajouter {label}
-              </button>
-            ))}
-          </div>
-        ) : null}
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="min-w-0 flex-1 text-xs font-semibold text-[var(--admin-navy)]">
-            Autre adresse
-            <input className={`${fieldControlClass} mt-1`} value={extra} onChange={(event) => setExtra(event.target.value)} />
-          </label>
-          <button
-            type="button"
-            className="rounded-full border border-[#e5e3dc] px-3 py-2 text-sm font-semibold text-[#0B192C]"
-            disabled={Boolean(busy)}
-            onClick={() => {
-              const email = extra.trim().toLowerCase();
-              if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-                setError("Adresse incomplète");
-                return;
-              }
-              setExtra("");
-              setError(null);
-              void changeRecipients(recipients.includes(email) ? recipients : [...recipients, email]);
-            }}
-          >
-            Ajouter
-          </button>
-        </div>
-      </div>
+      <RecipientRoster people={roster} selected={recipients} disabled={Boolean(busy)} onChange={(next, created) => void changeRecipients(next, created)} />
       <label className="block text-xs font-semibold text-[var(--admin-navy)]">
         Objet
         <input className={`${fieldControlClass} mt-1`} value={subject} onChange={(event) => setSubject(event.target.value)} />
@@ -291,7 +224,7 @@ async function post(
   bookingId: string,
   row: CrmHotelRequest,
   action: string,
-  extra?: { subject: string; body: string; recipients: string[]; cardChoice: "pliant" | "client" | null }
+  extra?: { subject: string; body: string; recipients: string[]; cardChoice: "pliant" | "client" | null; contacts?: DeskRosterPerson[] }
 ) {
   const res = await fetch(`/api/admin/bookings/${bookingId}/hotel-desk`, {
     method: "POST",
@@ -304,6 +237,7 @@ async function post(
       body: extra?.body ?? row.body,
       recipients: extra?.recipients ?? row.recipients,
       cardChoice: extra?.cardChoice ?? row.card_choice,
+      contacts: extra?.contacts || [],
     }),
   });
   const json = (await res.json().catch(() => null)) as { error?: string } | null;

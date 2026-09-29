@@ -57,6 +57,63 @@ export function hotelDeskRecipients(contact: HotelContact, _kind: HotelDeskKind)
   return recipientEmails(emails);
 }
 
+export type DeskRosterPerson = {
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: string;
+};
+
+function rosterScore(person: DeskRosterPerson) {
+  return Number(Boolean(person.lastName)) + Number(Boolean(person.firstName)) + Number(Boolean(person.role));
+}
+
+/** Une carte par adresse : le nom, le prénom et le rôle les plus complets. */
+export function deskRoster(contact: HotelContact): DeskRosterPerson[] {
+  const byEmail = new Map<string, DeskRosterPerson>();
+  const people = [...contact.people];
+  if (contact.email && !people.some((person) => person.email.trim().toLowerCase() === contact.email.trim().toLowerCase())) {
+    people.unshift({ type: "", first_name: "", last_name: "", email: contact.email, phone: "" });
+  }
+  for (const person of people) {
+    const email = person.email.trim().toLowerCase();
+    if (!email) continue;
+    const next = {
+      email,
+      firstName: person.first_name.trim(),
+      lastName: person.last_name.trim(),
+      role: person.type.trim(),
+    };
+    const current = byEmail.get(email);
+    if (!current || rosterScore(next) > rosterScore(current)) byEmail.set(email, next);
+  }
+  return [...byEmail.values()];
+}
+
+/** Ajoute un contact saisi par l’agence sans retirer ceux déjà sur la fiche. */
+export function mergeDeskContacts(existing: unknown, incoming: DeskRosterPerson[]) {
+  const current = Array.isArray(existing) ? [...existing] : [];
+  const emails = new Set(
+    current
+      .filter((row) => row && typeof row === "object")
+      .map((row) => String((row as { email?: string }).email || "").trim().toLowerCase())
+      .filter(Boolean)
+  );
+  for (const person of incoming) {
+    const email = person.email.trim().toLowerCase();
+    if (!email || emails.has(email) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) continue;
+    emails.add(email);
+    current.push({
+      type: person.role.trim().slice(0, 80),
+      last_name: person.lastName.trim().slice(0, 80),
+      first_name: person.firstName.trim().slice(0, 80),
+      email,
+      phone: "",
+    });
+  }
+  return current;
+}
+
 export function containsCardNumber(text: string) {
   return /(?:\d[ -]?){13,19}/.test(text);
 }
