@@ -30,27 +30,18 @@ import {
   MAX_INGEST_BYTES,
   MAX_INGEST_FILES,
   detectCancellationDocument,
-  isCancellationExtract,
   parseExtractPayloadSafe,
   type BookingExtract,
   type IngestWarning,
 } from "@/lib/crm/ingest-types";
 import { uploadCrmFile, downloadCrmFile, safeFileName } from "@/lib/crm/files";
 import {
-  decideEmailIngestAction,
-  executeEmailIngestDecision,
   extractReferences,
   mergeBookingSuggestions,
   suggestBookingByReference,
   suggestBookingByTripSignals,
   suggestCustomerFromExtract,
-  usableCustomerEmail,
 } from "@/lib/crm/email-match";
-import {
-  applyCancellationToBooking,
-  applyExtractToBooking,
-  persistNewBookingFromExtract,
-} from "@/lib/crm/ingest-booking";
 import type {
   CrmBooking,
   CrmBookingItem,
@@ -338,101 +329,7 @@ async function computeSuggestions(admin: Admin, extract: BookingExtract) {
   };
 }
 
-async function createCustomerFromExtract(
-  admin: Admin,
-  input: { firstName: string; lastName: string; email: string | null }
-) {
-  const email =
-    usableCustomerEmail(input.email) || `ingest.${crypto.randomUUID()}@invalid.local`;
-  const { data, error } = await admin
-    .from("crm_customers")
-    .insert({
-      first_name: input.firstName.trim(),
-      last_name: input.lastName.trim(),
-      email,
-      language: "fr",
-    })
-    .select("id")
-    .single();
-  if (data?.id) return data.id as string;
-  if (error && usableCustomerEmail(input.email)) {
-    const { data: existing } = await admin
-      .from("crm_customers")
-      .select("id")
-      .eq("email", email)
-      .maybeSingle();
-    if (existing?.id) return existing.id as string;
-  }
-  throw new Error("Création du client impossible.");
-}
-
-async function autoApplyEmailIngest(
-  admin: Admin,
-  rowId: string,
-  extract: BookingExtract,
-  suggestions: {
-    suggested_customer_id: string | null;
-    suggested_booking_id: string | null;
-    candidates: EmailIngestCandidate[];
-  },
-  attachments: EmailIngestAttachment[]
-) {
-  const decision = decideEmailIngestAction({
-    extract,
-    suggestedCustomerId: suggestions.suggested_customer_id,
-    suggestedBookingId: suggestions.suggested_booking_id,
-    candidates: suggestions.candidates,
-  });
-  if (decision.kind === "review") return;
-
-  const files = await loadEmailIngestFiles({ attachments });
-  try {
-    const result = await executeEmailIngestDecision(decision, {
-      apply: (bookingId, customerId) =>
-        isCancellationExtract(extract)
-          ? applyCancellationToBooking({
-              bookingId,
-              customerId,
-              extract,
-              files,
-              visibleToClient: false,
-            })
-          : applyExtractToBooking({
-              bookingId,
-              customerId,
-              extract,
-              files,
-              visibleToClient: false,
-            }),
-      persist: (customerId) =>
-        persistNewBookingFromExtract({
-          customerId,
-          extract,
-          files,
-          status: "draft",
-          visibleToClient: false,
-        }),
-      createCustomer: (input) => createCustomerFromExtract(admin, input),
-    });
-    if (!result) return;
-    await admin
-      .from("crm_email_ingest")
-      .update({
-        status: "attached",
-        created_booking_id: result.bookingId,
-        suggested_customer_id: result.customerId,
-        suggested_booking_id: result.bookingId,
-        error: null,
-      })
-      .eq("id", rowId);
-  } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "Rattachement automatique impossible";
-    await admin.from("crm_email_ingest").update({ error: message }).eq("id", rowId);
-  }
-}
-
-/** Applique un extract déjà obtenu à une ligne : matching + rattachement auto. */
+/** Enregistre l’extract et les suggestions. La pièce reste en file : l’agence choisit le dossier. */
 export async function matchAndStoreExtract(
   admin: Admin,
   rowId: string,
@@ -454,11 +351,10 @@ export async function matchAndStoreExtract(
       error: null,
     })
     .eq("id", rowId);
-  await autoApplyEmailIngest(admin, rowId, extract, suggestions, attachments);
   return suggestions;
 }
 
-/** Relance matching + auto-rattachement sur un extract déjà stocké (sans re-télécharger Gmail). */
+/** Relance le matching sur un extract déjà stocké, sans poser la pièce (sans re-télécharger Gmail). */
 export async function rematchEmailIngestRow(row: CrmEmailIngest) {
   if (!row.extract) throw new Error("Extract introuvable");
   const extract = reopenFalseSupplierCancellation(
@@ -481,7 +377,21 @@ export async function rematchEmailIngestRow(row: CrmEmailIngest) {
   );
 }
 
-/** Rattrapage cron : lignes déjà parsées, pas encore rattachées. */
+/**
+ * Un mail remis en file peut garder un dossier témoin, le temps que le cron
+ * en production cesse de créer des dossiers tout seul. On lâche ce lien :
+ * la pièce n’a pas été posée.
+ */
+export async function releaseEmailIngestHolds() {
+  const admin = createServiceClient();
+  await admin
+    .from("crm_email_ingest")
+    .update({ created_booking_id: null })
+    .in("status", ["parsed", "matched"])
+    .not("created_booking_id", "is", null);
+}
+
+/** Rattrapage cron : recalcule les suggestions des lignes encore en file. */
 export async function rematchStoredEmailIngest(limit = 20) {
   const admin = createServiceClient();
   const { data } = await admin

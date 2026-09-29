@@ -2,17 +2,19 @@
 name: travelba-email-ingest
 description: >-
   Travelba Gmail labels (little-emperors, expedia-taap, billet-avion) → crm_email_ingest →
-  parse → auto match/apply, create, ou annulation. Use when touching Gmail
-  webhook, cron gmail-ingest / gmail-watch-renew, email-match, cancellation
-  mail, or a booking confirmation. Dropzone PDF/photos (relecture humaine) :
-  travelba-document-ingest. Identity / MRZ : travelba-identity.
+  parse → file d’attente. L’agence désigne le dossier : pas d’apply ni de
+  création automatique. Use when touching Gmail webhook, cron gmail-ingest /
+  gmail-watch-renew, email-match, cancellation mail, or a booking confirmation.
+  Dropzone PDF/photos (relecture humaine) : travelba-document-ingest.
+  Identity / MRZ : travelba-identity.
 ---
 
 # Travelba — e-mails fournisseur (Gmail)
 
 Push Gmail (labels **little-emperors**, **expedia-taap**, **billet-avion**) → ligne
-`crm_email_ingest` → parse extract → **auto** match / apply ou create.
-Pas d’attente d’un clic `/admin/emails` quand le hit est unique et fort.
+`crm_email_ingest` → parse extract → **file** `/admin/emails`.
+L’agence choisit le client et la réservation. Aucune pièce n’est posée, aucun
+dossier n’est créé, tant que ce choix n’est pas fait.
 
 L’IA **ne publie jamais** le carnet (`visible_to_client=false`).
 
@@ -21,8 +23,8 @@ L’IA **ne publie jamais** le carnet (`visible_to_client=false`).
 | | `travelba-document-ingest` | **`travelba-email-ingest`** |
 |--|---------------------------|----------------------------|
 | Entrée | Dropzone PDF/photos **admin** | Push Gmail **labels** → `crm_email_ingest` |
-| Suite | Relecture humaine, puis **Enregistrer** | Parse → **auto** match/apply ou create |
-| Persist | Clic agent | `applyExtractToBooking` / `persistNewBookingFromExtract` |
+| Suite | Relecture humaine, puis **Enregistrer** | Parse → file. **Rattacher** ou **Créer un dossier** |
+| Persist | Clic agent | Clic agent (`applyExtractToBooking` / `persistNewBookingFromExtract`) |
 
 Identité / MRZ : skill `travelba-identity`.
 
@@ -40,15 +42,15 @@ Gmail label (little-emperors | expedia-taap | billet-avion)
   → parse extract (pièces + corps ; mêmes parseurs / LLM que l’import)
   → suggestCustomerFromExtract
   → suggestBookingByReference ∪ suggestBookingByTripSignals
-  → hit unique fort → applyExtractToBooking
-       (si cancelled → applyCancellationToBooking, jamais persist)
-  → sinon client unique + trip utilisable → persistNewBookingFromExtract
-  → sinon créer crm_customers (prénom/nom) puis persist
-  → sinon status matched|parsed + candidats (revue humaine)
+  → status matched|parsed + candidats
+  → l’agence désigne le voyage (Rattacher) ou crée le dossier
 ```
 
-Après succès : `status=attached`, `created_booking_id` (enum existant, pas de
-nouvelle colonne). `matchAndStoreExtract` enchaîne matching **et** auto-apply.
+Le cron **ne** appelle pas `applyExtractToBooking`, `applyCancellationToBooking`
+ni `persistNewBookingFromExtract`. `matchAndStoreExtract` ne fait que stocker
+l’extract et les suggestions. Après le clic : `status=attached`,
+`created_booking_id`. Si ce dossier est supprimé, la ligne revient en file
+(`matched` ou `parsed`) — elle ne reste pas `attached` sans réservation.
 
 ## Billets d'avion
 
@@ -65,8 +67,9 @@ Le watch Pub/Sub se met à jour au cron `gmail-watch-renew`.
 
 ## Match voyage
 
-**Auto seulement si un seul hit fort.** Deux dossiers au même score → revue
-humaine (`matched`). Réfs fournisseur / dossier **en priorité**.
+Les suggestions préremplissent la file. **Aucun hit, même unique et fort, ne
+pose la pièce.** Deux dossiers au même score → les deux restent proposés.
+Réfs fournisseur / dossier **en priorité** pour la suggestion.
 
 | Priorité | Signal | Où |
 |----------|--------|----|
@@ -80,17 +83,15 @@ Document `identity` : **pas** d’auto.
 
 ## Pas de voyage
 
-1. Client unique → `persistNewBookingFromExtract`.
-2. Client absent, prénom **et** nom dans l’extract → fiche `crm_customers`
-   minimale **puis** le dossier.
-3. E-mail extract seulement s’il n’est **pas** une boîte agence
-   (`contact@travelba.fr`, `agence@`, `hello@`, `info@`, `CONTACT_FROM_EMAIL`).
-   Jamais l’expéditeur fournisseur comme e-mail client.
-4. `crm_customers.email` est `NOT NULL UNIQUE` : sans e-mail exploitable →
-   `ingest.{uuid}@invalid.local`.
-5. Candidat voyage faible (score ≥ 70) : ne pas créer un doublon → revue.
+La ligne reste `parsed` ou `matched`. L’agence crée le dossier depuis la file
+si elle le décide (`persistNewBookingFromExtract` au clic seulement).
 
-Réutiliser `applyExtractToBooking` / `persistNewBookingFromExtract`.
+Ne pas créer de fiche client depuis le cron. E-mail extract seulement s’il n’est
+**pas** une boîte agence (`contact@travelba.fr`, `agence@`, `hello@`, `info@`,
+`CONTACT_FROM_EMAIL`) — règle inchangée si un clic crée une fiche plus tard.
+Jamais l’expéditeur fournisseur comme e-mail client.
+
+Réutiliser `applyExtractToBooking` / `persistNewBookingFromExtract` **au clic**.
 Ne **pas** recopier l’upsert des cartes.
 
 ## Annulations
@@ -103,7 +104,7 @@ Signal extract : `document_status=cancelled` (LLM + parseur). Détecté aussi
 sur l’objet / le corps (« Cancellation confirmation », « has been cancelled »,
 « a été annulée ») — **pas** une politique « free cancellation ».
 
-Hit unique → `applyCancellationToBooking` :
+L’agence rattache l’annulation au dossier. Au clic, `applyCancellationToBooking` :
 - cartes matchées (`findMatchingItem`) : `visible_to_client=false`, hors ledger ;
 - plus aucune carte carnet, ou aucun item ciblé (annulation du séjour) →
   `crm_bookings.status=cancelled` (enum existant ; les items n’ont pas de statut) ;
@@ -112,7 +113,7 @@ Hit unique → `applyCancellationToBooking` :
 
 ## Relancer une ligne déjà parsée
 
-Sans re-télécharger Gmail (ne pas remettre `received`) :
+Sans re-télécharger Gmail (ne pas remettre `received`) et **sans poser la pièce** :
 
 - Cron : `rematchStoredEmailIngest` sur `parsed` / `matched` sans `created_booking_id`
 - Staff : `POST /api/admin/email-ingest/[id]` `{ "action": "rematch" }`
@@ -121,8 +122,8 @@ Sans re-télécharger Gmail (ne pas remettre `received`) :
 
 | Rôle | Path |
 |------|------|
-| Orchestration + auto-apply | `lib/crm/email-ingest.ts` |
-| Match + décision apply/create/review | `lib/crm/email-match.ts` |
+| Orchestration (parse, suggestions, pas d’apply) | `lib/crm/email-ingest.ts` |
+| Match + suggestions (la décision n’est pas exécutée) | `lib/crm/email-match.ts` |
 | Client Gmail (labels, history, watch) | `lib/crm/gmail.ts` |
 | Parse message / pièces | `lib/crm/gmail-parse.ts` |
 | Persist (`applyExtractToBooking` / `applyCancellationToBooking` / `persistNewBookingFromExtract`) | `lib/crm/ingest-booking.ts` |
@@ -139,10 +140,10 @@ npx tsx --test lib/crm/email-match.test.ts lib/crm/gmail-parse.test.ts
 npx tsc --noEmit
 ```
 
-Couvrir : réf. exacte, dates+dest+nom flou → unique, deux voyages égaux → pas
-d’auto, création (persist mocké), *Albilla* / *Albilila*, annulation + match →
-apply, annulation sans match → pas de create.
-Ne pas rejouer un vrai mail prod. Echo PII interdit dans PR / logs.
+Couvrir : réf. exacte, dates+dest+nom flou → suggestion unique, deux voyages
+égaux → pas d’auto, *Albilla* / *Albilila*, annulation sans création.
+`emailIngestRequiresManualAttach()` reste vrai. Ne pas rejouer un vrai mail
+prod. Echo PII interdit dans PR / logs.
 
 ## Hôtel Little Emperors
 
@@ -150,9 +151,10 @@ Ne pas rejouer un vrai mail prod. Echo PII interdit dans PR / logs.
 
 ## Interdits
 
-- Auto-apply si plusieurs dossiers au même score fort
+- Poser une pièce ou créer un dossier / un client depuis le cron ou le parse
 - Créer un dossier (ou un client) depuis un mail d’annulation
-- Publier le carnet / `visible_to_client=true`
+- Laisser un mail `attached` sans `created_booking_id` (il disparaît de la file)
+- Publier le carnet (`visible_to_client=true`)
 - Inventer horaires, inclus, nets, e-mail client agence
 - Réduire un bloc Benefits au seul petit-déjeuner
 - Traiter ce flux comme le dropzone (pas de « Enregistrer » obligatoire)

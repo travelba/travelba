@@ -17,6 +17,7 @@ import {
 } from "@/lib/crm/money";
 import { revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
 import { stripeConfigured, stripeWebhookConfigured } from "@/lib/crm/stripe";
+import { emailInboxPendingOr } from "@/lib/crm/email-match";
 import { buildLaunchItems } from "@/lib/crm/launch-status";
 import { stayHeadline } from "@/lib/crm/carnet";
 import { AdminLaunchStatus } from "@/components/admin/AdminLaunchStatus";
@@ -162,7 +163,7 @@ export default async function AdminHomePage() {
       admin
         .from("crm_email_ingest")
         .select("id", { count: "exact", head: true })
-        .in("status", ["parsed", "matched"]),
+        .or(emailInboxPendingOr()),
       admin.from("crm_le_bookings").select("id", { count: "exact", head: true }).eq("status", "unmatched"),
     ]);
     unmatched = revolut.count ?? 0;
