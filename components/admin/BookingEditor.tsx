@@ -29,7 +29,6 @@ import { BookingIngest } from "@/components/crm/BookingIngest";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
 import { HotelArrivalPanel } from "@/components/admin/HotelArrivalPanel";
-import { HotelDeskSummary } from "@/components/admin/HotelDesk";
 import { principalGuest } from "@/lib/crm/hotel-arrival";
 import { BookingExpensesPanel } from "@/components/admin/BookingExpensesPanel";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
@@ -766,7 +765,6 @@ export function BookingEditor({
         })()}
       />
 
-      <HotelDeskSummary requests={hotelRequests} today={todayIsoDate()} />
       <BookingItemsPanel
         bookingId={booking.id}
         items={items}

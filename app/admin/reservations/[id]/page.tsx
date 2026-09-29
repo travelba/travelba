@@ -7,13 +7,14 @@ import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { readEstaAnswers, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import { pliantConfigured } from "@/lib/crm/pliant";
-import { formatDateRangeShort } from "@/lib/crm/money";
+import { formatDateRangeShort, todayIsoDate } from "@/lib/crm/money";
 import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import { StayBillingChoice } from "@/components/crm/StayBillingChoice";
+import { HotelDeskSummary } from "@/components/admin/HotelDesk";
 import { ensureHotelArrivals } from "@/lib/crm/hotel-arrival-run";
 import { ensureHotelRequests } from "@/lib/crm/hotel-desk-run";
 import { principalGuest } from "@/lib/crm/hotel-arrival";
@@ -138,6 +139,7 @@ export default async function AdminBookingPage({ params }: Props) {
             {formatDateRangeShort(b.start_date, b.end_date)}
             {b.destination ? ` · ${b.destination}` : ""}
           </p>
+          <HotelDeskSummary requests={hotelRequests} today={todayIsoDate()} />
         </div>
         <DeleteBookingButton bookingId={b.id} label={`${b.reference} — ${b.title}`} />
       </div>
