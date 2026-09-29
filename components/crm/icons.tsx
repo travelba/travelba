@@ -52,6 +52,7 @@ import {
   UserPlus,
   Users,
   Wallet,
+  Wrench,
   X,
 } from "lucide-react";
 
@@ -107,6 +108,7 @@ const ICONS: Record<string, LucideIcon> = {
   close: X,
   expand_more: ChevronDown,
   mail: Mail,
+  build: Wrench,
   sun: Sun,
   cloud_sun: CloudSun,
   cloud: Cloud,
