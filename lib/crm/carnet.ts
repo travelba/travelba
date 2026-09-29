@@ -1,5 +1,11 @@
 import type { BookingStatus, CrmBooking, CrmBookingDocument, CrmBookingItem } from "@/lib/crm/types";
-import { BOOKING_ITEM_LABELS, BOOKING_STATUS_LABELS, isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
+import {
+  BOOKING_ITEM_LABELS,
+  BOOKING_STATUS_LABELS,
+  countsAsCarnetCard,
+  isLedgerExpenseKind,
+  visibleServiceCopy,
+} from "@/lib/crm/types";
 import { formatDateFr, formatMoney, todayIsoDate } from "@/lib/crm/money";
 import { itemTicketCount } from "./item-match";
 
@@ -355,6 +361,40 @@ export function keptHiddenFromClient(details: Record<string, unknown> | null | u
   return details?.client_hidden === true;
 }
 
+/** Cartes du séjour encore à montrer. Une dépense n’est pas une carte du carnet. */
+export function pendingPublishCards<
+  T extends { kind: string; visible_to_client?: boolean | null; details?: Record<string, unknown> | null },
+>(items: T[]) {
+  return items.filter(
+    (item) =>
+      item.visible_to_client === false &&
+      !keptHiddenFromClient(item.details) &&
+      countsAsCarnetCard(item.kind)
+  );
+}
+
+/**
+ * Confirmer la publication : au moins une carte, ou un document sur un séjour déjà ouvert.
+ * Un fichier seul ne publie pas un carnet encore masqué.
+ */
+export function canConfirmCarnetPublish(input: {
+  stayVisible: boolean;
+  revealCards: number;
+  revealDocs: number;
+}) {
+  if (input.revealCards > 0) return true;
+  return input.stayVisible && input.revealDocs > 0;
+}
+
+/** Ids passés visibles. Les dépenses restent au grand livre. */
+export function publishRevealIds(
+  rows: { id: string; kind: string; details?: Record<string, unknown> | null }[]
+) {
+  return rows
+    .filter((row) => !keptHiddenFromClient(row.details) && !isLedgerExpenseKind(row.kind))
+    .map((row) => row.id);
+}
+
 export function flightAirline(item: Pick<CrmBookingItem, "supplier" | "details">) {
   const named = detailStr(item as CrmBookingItem, "airline");
   return named || (item.supplier || "").trim();
@@ -436,6 +476,10 @@ export function nextTimelineFlight(items: CrmBookingItem[], today = todayIsoDate
 const ORIGIN_HUBS =
   /^(paris|cdg|ory|lbg|bva|france|ile-de-france|île-de-france)$/i;
 
+export function isOriginHub(value: string) {
+  return ORIGIN_HUBS.test(value.trim());
+}
+
 function coverTokens(value: string) {
   return value
     .split(/\s*(?:·|\||\/|→|->|—|–| - )\s*/)
@@ -462,6 +506,75 @@ export function tripPlaceLine(title: string | null | undefined, destination: str
   const place = (destination || "").trim();
   if (!name || !place || name.toLowerCase() === place.toLowerCase()) return null;
   return place;
+}
+
+function pushArrival(found: string[], value: string) {
+  const token = value.split(",")[0]?.trim() || "";
+  if (!token || ORIGIN_HUBS.test(token)) return;
+  const key = token
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  if (found.some((item) => item.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase() === key)) return;
+  found.push(token);
+}
+
+function detailPlace(details: Record<string, unknown> | null | undefined, key: string) {
+  const value = details?.[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function foldPlace(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/['’.]/g, " ")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Villes d’arrivée du séjour, hubs de départ exclus. Les hôtels priment sur les vols. */
+export function stayArrivalPlaces(
+  destination: string | null | undefined,
+  title: string | null | undefined,
+  items?: Array<{ kind?: string | null; details?: Record<string, unknown> | null }>
+) {
+  const hotels: string[] = [];
+  const arrivals: string[] = [];
+  for (const item of items || []) {
+    if (item.kind === "hotel") pushArrival(hotels, detailPlace(item.details, "city"));
+    if (item.kind === "flight" || item.kind === "rail") {
+      pushArrival(arrivals, detailPlace(item.details, "city_to") || detailPlace(item.details, "to"));
+    }
+  }
+  const found = hotels.length ? hotels : arrivals;
+  if (found.length) return found;
+  for (const token of [...coverTokens(destination || ""), ...coverTokens(title || "")]) {
+    pushArrival(found, token);
+  }
+  return found;
+}
+
+/**
+ * Deux hôtels : les deux villes dans le titre, si le nom saisi n’est qu’une de ces villes.
+ * Un nom choisi (« 40 ans ») reste tel quel.
+ */
+export function stayHeadline(
+  title: string | null | undefined,
+  destination: string | null | undefined,
+  places: string[] | null | undefined,
+  fallback = "Séjour"
+) {
+  const named = tripHeadline(title, destination, fallback);
+  const cities = (places || []).map((place) => place.trim()).filter(Boolean);
+  if (cities.length < 2) return named;
+  const namedKey = foldPlace(named);
+  const destinationKey = foldPlace(destination || "");
+  const cityKeys = new Set(cities.map(foldPlace));
+  if (!cityKeys.has(namedKey) && namedKey !== destinationKey) return named;
+  return cities.join(" · ");
 }
 
 /** Ville d’arrivée pour la photo : on ignore Paris / CDG / ORY s’il y a une autre ville. */

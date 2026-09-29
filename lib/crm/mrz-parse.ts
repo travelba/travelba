@@ -73,6 +73,10 @@ function toIdentity(result: ReturnType<typeof parse>): ExtractedIdentity {
     sex: mapSex(fields.sex),
     authority: null,
     personal_number: personal ? String(personal).replace(/</g, "").trim() || null : null,
+    address_line: null,
+    postal_code: null,
+    city: null,
+    country: null,
     format: result.format,
     valid: result.valid,
   };

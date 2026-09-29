@@ -47,6 +47,7 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
   const [error, setError] = useState<string | null>(null);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
   const [saving, setSaving] = useState(false);
+  const [clientSettles, setClientSettles] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -60,7 +61,9 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...body,
-          include_in_ledger: fd.get("include_in_ledger") === "on",
+          include_in_ledger: fd.get("client_settles_stay") === "on" ? false : fd.get("include_in_ledger") === "on",
+          agency_commission: fd.get("agency_commission") === "on",
+          client_settles_stay: fd.get("client_settles_stay") === "on",
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -106,11 +109,45 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
         Le montant du séjour sera la somme des prix vendus des cartes.
       </p>
       <label className="flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-3">
-        <input type="checkbox" name="include_in_ledger" defaultChecked className="mt-1" disabled={saving} />
+        <input
+          type="checkbox"
+          name="client_settles_stay"
+          checked={clientSettles}
+          onChange={(event) => setClientSettles(event.target.checked)}
+          className="mt-1"
+          disabled={saving}
+        />
+        <span>
+          Le client règle ce séjour
+          <span className="mt-0.5 block text-xs font-normal text-muted">
+            L’hôtel est payé sur sa carte. Le montant reste au carnet et sort des transactions et de l’encours.
+          </span>
+        </span>
+      </label>
+      <label className="flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-3">
+        <input
+          key={clientSettles ? "stay-out" : "stay-in"}
+          type="checkbox"
+          name="include_in_ledger"
+          defaultChecked={!clientSettles}
+          className="mt-1"
+          disabled={saving || clientSettles}
+        />
         <span>
           Inclure le montant du séjour dans les transactions
           <span className="mt-0.5 block text-xs font-normal text-muted">
-            Décochez pour un dossier au carnet sans écriture à l’encours.
+            {clientSettles
+              ? "Le client règle ce séjour : ce montant ne va pas aux transactions."
+              : "Décochez pour un dossier au carnet sans écriture à l’encours."}
+          </span>
+        </span>
+      </label>
+      <label className="flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-3">
+        <input type="checkbox" name="agency_commission" className="mt-1" disabled={saving} />
+        <span>
+          Appliquer la commission de 10 %
+          <span className="mt-0.5 block text-xs font-normal text-muted">
+            Ajoute 10 % du montant du séjour aux dépenses. Le virement reçu reste crédité en entier.
           </span>
         </span>
       </label>

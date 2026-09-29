@@ -125,7 +125,7 @@ export function filterCreditTransfers<T extends { direction: string; kind: strin
   return rows.filter(isCreditTransfer);
 }
 
-/** Libellé ledger pour le prélèvement 10 % sur les crédits Revolut. */
+/** Libellé ledger de la commission 10 % sur le montant du séjour. */
 export const AGENCY_FEE_LABEL = "Frais d’agence 10 %";
 
 export type CrmStaff = {
@@ -239,6 +239,10 @@ export type CrmBooking = {
   total_amount: number;
   /** Si false : montant du séjour affiché au carnet, pas au grand livre. */
   include_in_ledger: boolean;
+  /** Si true : 10 % du montant du séjour en dépense du dossier. */
+  agency_commission?: boolean;
+  /** Si true : le client règle le séjour sur sa carte. Le montant sort du grand livre. */
+  client_settles_stay?: boolean;
   cover_image_path: string | null;
   /** Mention affichée avec une couverture CC BY. */
   cover_credit: string | null;
@@ -538,6 +542,14 @@ export type CrmEmailIngest = {
   error: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type CrmCustomerLogin = {
+  id: string;
+  customer_id: string;
+  auth_user_id: string | null;
+  method: string;
+  created_at: string;
 };
 
 export function customerFullName(c: Pick<CrmCustomer, "first_name" | "last_name">) {

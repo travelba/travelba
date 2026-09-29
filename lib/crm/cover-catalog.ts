@@ -222,6 +222,8 @@ const CITIES: Array<[name: string, country: string, photo?: string]> = [
   ["marseille", "fr"],
   ["nice", "fr"],
   ["cannes", "fr"],
+  ["antibes", "fr", "photo-antibes-garoupe"],
+  ["cap d antibes", "fr", "photo-antibes-garoupe"],
   ["bordeaux", "fr"],
   ["strasbourg", "fr"],
   ["toulouse", "fr"],
@@ -317,6 +319,7 @@ const CITIES: Array<[name: string, country: string, photo?: string]> = [
   ["lisbonne", "pt", "photo-1585208798174-6cedd86e019a"],
   ["lisbon", "pt", "photo-1585208798174-6cedd86e019a"],
   ["porto", "pt"],
+  ["lamego", "pt", "photo-lamego-remedios"],
   ["faro", "pt"],
   ["algarve", "pt"],
   ["athenes", "gr"],
@@ -464,6 +467,7 @@ const CITIES: Array<[name: string, country: string, photo?: string]> = [
   ["san francisco", "us"],
   ["las vegas", "us"],
   ["miami", "us", "photo-1533106497176-45ae19e68ba2"],
+  ["miami beach", "us", "photo-1533106497176-45ae19e68ba2"],
   ["south beach", "us", "photo-1533106497176-45ae19e68ba2"],
   ["chicago", "us"],
   ["boston", "us"],
@@ -556,5 +560,18 @@ export function lookupCoverPhoto(key: string) {
   if (city) return countryPhoto.get(city.country) ?? null;
   const code = countryAlias.get(key);
   if (!code) return null;
+  return countryPhoto.get(code) ?? null;
+}
+
+/** Photo propre de la ville. Le repli pays n’est pas une photo de cette ville. */
+export function cityOwnCoverPhoto(key: string) {
+  return cities.get(key)?.photo ?? null;
+}
+
+export function countryCodeForPlace(key: string) {
+  return cities.get(key)?.country || countryAlias.get(key) || null;
+}
+
+export function countryCoverPhoto(code: string) {
   return countryPhoto.get(code) ?? null;
 }

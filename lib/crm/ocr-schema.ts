@@ -19,6 +19,10 @@ export const identityExtractSchema = z.object({
   sex: nullableString,
   authority: nullableString,
   personal_number: nullableString,
+  address_line: nullableString,
+  postal_code: nullableString,
+  city: nullableString,
+  country: nullableString,
   mrz_text: nullableString,
 });
 

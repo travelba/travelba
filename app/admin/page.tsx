@@ -18,10 +18,13 @@ import {
 import { revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
 import { stripeConfigured, stripeWebhookConfigured } from "@/lib/crm/stripe";
 import { buildLaunchItems } from "@/lib/crm/launch-status";
+import { stayHeadline } from "@/lib/crm/carnet";
 import { AdminLaunchStatus } from "@/components/admin/AdminLaunchStatus";
 import { VisaDesk } from "@/components/admin/VisaDesk";
 import { deskView, type DeskTask } from "@/lib/crm/visa-desk";
 import { BookingHero } from "@/components/crm/BookingHero";
+import { loadStayArrivalPlaces } from "@/lib/crm/carnet-query";
+import { reviewIdentityPieces } from "@/lib/crm/trip-documents";
 import {
   EmptyState,
   PageEyebrow,
@@ -67,7 +70,7 @@ export default async function AdminHomePage() {
       .not("expires_on", "is", null)
       .lte("expires_on", soon)
       .order("expires_on")
-      .limit(8),
+      .limit(40),
     supabase.from("crm_customers").select("id, first_name, last_name"),
     supabase.from("crm_bookings").select("id", { count: "exact", head: true }),
     supabase
@@ -195,6 +198,11 @@ export default async function AdminHomePage() {
       : null,
   ].filter((row): row is { label: string; href: string } => Boolean(row));
   const upcoming = (bookings || []) as CrmBooking[];
+  const places = await loadStayArrivalPlaces(
+    supabase,
+    upcoming.map((row) => row.id)
+  );
+  const expiringPieces = reviewIdentityPieces((docs || []) as CrmTravelDocument[]).slice(0, 8);
   const featured = upcoming[0];
   const rest = upcoming.slice(1);
   const kpis = [
@@ -324,7 +332,7 @@ export default async function AdminHomePage() {
             href={`/admin/reservations/${featured.id}`}
             className="admin-af-card relative block overflow-hidden rounded-2xl"
           >
-            <BookingHero booking={featured} priority>
+            <BookingHero booking={featured} places={places[featured.id]} priority>
               <div className="absolute inset-0 flex flex-col justify-between p-5 text-white">
                 <div className="flex items-start justify-between gap-3">
                   <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">
@@ -337,7 +345,7 @@ export default async function AdminHomePage() {
                 </div>
                 <div>
                   <h3 className="font-display text-2xl font-bold leading-tight">
-                    {featured.title}
+                    {stayHeadline(featured.title, featured.destination, places[featured.id])}
                   </h3>
                   <p className="mt-1 text-sm text-white/80">
                     {byId.get(featured.customer_id) || "Client"} ·{" "}
@@ -374,13 +382,15 @@ export default async function AdminHomePage() {
                   className="flex flex-col gap-2 px-5 py-3.5 transition hover:bg-[var(--admin-sky)]/40 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <BookingHero booking={b} plain className="h-14 w-24 shrink-0 rounded-xl" />
+                    <BookingHero booking={b} places={places[b.id]} plain className="h-14 w-24 shrink-0 rounded-xl" />
                     <div className="min-w-0">
                     <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9e7e51]">
                       {b.reference}
                       {jMinusLabel(b.start_date) ? ` · ${jMinusLabel(b.start_date)}` : ""}
                     </p>
-                    <p className="font-semibold text-[var(--admin-navy)]">{b.title}</p>
+                    <p className="font-semibold text-[var(--admin-navy)]">
+                      {stayHeadline(b.title, b.destination, places[b.id])}
+                    </p>
                     <p className="text-xs text-muted">
                       {byId.get(b.customer_id) || "Client"} · {formatDateFr(b.start_date)}
                     </p>
@@ -411,7 +421,7 @@ export default async function AdminHomePage() {
           </h2>
         </div>
         <ul className="divide-y divide-border text-sm">
-          {((docs || []) as CrmTravelDocument[]).map((d) => (
+          {expiringPieces.map((d) => (
             <li key={d.id} className="flex justify-between gap-3 px-5 py-3">
               <Link
                 href={d.booking_id ? `/admin/reservations/${d.booking_id}` : `/admin/clients/${d.customer_id}`}
@@ -424,7 +434,7 @@ export default async function AdminHomePage() {
               </span>
             </li>
           ))}
-          {!docs?.length ? (
+          {!expiringPieces.length ? (
             <li className="px-5 py-8 text-center text-muted">Aucun document bientôt expiré.</li>
           ) : null}
         </ul>

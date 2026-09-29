@@ -68,6 +68,13 @@ export async function executeEtaIlFill(opts: {
 
   const portal = opened.session;
   await log("ouvert", `Portail ouvert · ${safePortalLabel(portal.url())}`);
+  const demandes = opts.draft.applicants
+    .map((row) => `${row.firstName} ${row.lastName}`.trim())
+    .filter((name) => name.length > 0);
+  if (demandes.length) await log("attente", `Demandes ETA : ${demandes.join(", ")}.`);
+  if (opts.draft.guardian) {
+    await log("attente", "Mineur : le premier écran demande l’adulte qui dépose. Ce n’est pas une demande.");
+  }
   try {
     const session = await runEtaIlSession({
       apiKey: opts.apiKey,

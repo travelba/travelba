@@ -1,15 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  agencyCommissionAmount,
+  agencyCommissionExternalId,
   bookingDebitIntent,
   bookingExpenseDebitExternalId,
   bookingItemDebitExternalId,
   bookingItemDebitLabel,
   bookingMetaPatch,
   bookingTotalFromItems,
+  itemIncludedInLedger,
   itemSellingAmount,
   parseIncludeInLedger,
+  stayIncludedInLedger,
 } from "./bookings";
+import { ticketingFeeAmount } from "./ticketing-fee";
 
 test("debit insert only when confirmed with a positive amount", () => {
   assert.equal(
@@ -162,6 +167,104 @@ test("la devise du séjour reste EUR USD CHF ou GBP, même si le formulaire envo
   assert.equal(bookingMetaPatch({ currency: "£" }).currency, "GBP");
   assert.equal(bookingMetaPatch({ currency: "CHF" }).currency, "CHF");
   assert.equal(bookingMetaPatch({ currency: "JPY" }).currency, "EUR");
+});
+
+test("la commission est 10 % du séjour seulement quand le voyage l’active", () => {
+  assert.equal(agencyCommissionExternalId("b1"), "booking:b1:agency-commission");
+  assert.equal(
+    agencyCommissionAmount({ enabled: true, status: "confirmed", totalAmount: 1000 }),
+    100
+  );
+  assert.equal(
+    agencyCommissionAmount({ enabled: true, status: "travelling", totalAmount: 1700 }),
+    170
+  );
+  assert.equal(
+    agencyCommissionAmount({ enabled: true, status: "completed", totalAmount: 80.5 }),
+    8.05
+  );
+  assert.equal(
+    agencyCommissionAmount({ enabled: false, status: "confirmed", totalAmount: 1000 }),
+    0
+  );
+  assert.equal(
+    agencyCommissionAmount({ enabled: true, status: "draft", totalAmount: 1000 }),
+    0
+  );
+  assert.equal(
+    agencyCommissionAmount({ enabled: true, status: "quoted", totalAmount: 1000 }),
+    0
+  );
+  assert.equal(
+    agencyCommissionAmount({ enabled: true, status: "cancelled", totalAmount: 1000 }),
+    0
+  );
+  assert.equal(
+    agencyCommissionAmount({ enabled: true, status: "completed", totalAmount: 0 }),
+    0
+  );
+  assert.equal(bookingMetaPatch({ agency_commission: "on" }).agency_commission, true);
+  assert.equal(bookingMetaPatch({ agency_commission: false }).agency_commission, false);
+  assert.equal("agency_commission" in bookingMetaPatch({ title: "Ski" }), false);
+});
+
+test("quand le client règle le séjour, le montant et l’hôtel sortent du livre", () => {
+  assert.equal(bookingMetaPatch({ client_settles_stay: "on" }).client_settles_stay, true);
+  assert.equal(bookingMetaPatch({ client_settles_stay: false }).client_settles_stay, false);
+  assert.equal("client_settles_stay" in bookingMetaPatch({ title: "Ski" }), false);
+
+  assert.equal(
+    bookingDebitIntent({
+      status: "confirmed",
+      amount: 1700,
+      hasOpenDebit: true,
+      includeInLedger: stayIncludedInLedger({
+        include_in_ledger: true,
+        client_settles_stay: true,
+      }),
+    }),
+    "void"
+  );
+  assert.equal(
+    bookingDebitIntent({
+      status: "confirmed",
+      amount: 800,
+      hasOpenDebit: true,
+      includeInLedger: itemIncludedInLedger({ kind: "hotel", include_in_ledger: true }, true),
+    }),
+    "void"
+  );
+  assert.equal(
+    bookingDebitIntent({
+      status: "confirmed",
+      amount: 40,
+      hasOpenDebit: true,
+      includeInLedger: itemIncludedInLedger({ kind: "expense", include_in_ledger: false }, true),
+    }),
+    "update"
+  );
+  assert.equal(
+    bookingDebitIntent({
+      status: "confirmed",
+      amount: 150,
+      hasOpenDebit: false,
+      includeInLedger: itemIncludedInLedger({ kind: "chauffeur", include_in_ledger: true }, true),
+    }),
+    "insert"
+  );
+  assert.equal(
+    itemIncludedInLedger({ kind: "flight", include_in_ledger: true }, true),
+    false
+  );
+  assert.equal(
+    agencyCommissionAmount({ enabled: true, status: "confirmed", totalAmount: 1700 }),
+    170
+  );
+  assert.equal(ticketingFeeAmount({ hasFlight: true, travelerCount: 2 }), 50);
+  assert.equal(
+    stayIncludedInLedger({ include_in_ledger: true, client_settles_stay: false }),
+    true
+  );
 });
 
 test("stay total is always the sum of card selling prices", () => {

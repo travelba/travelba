@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import {
   BOOKING_ITEM_LABELS,
+  isExtraItemKind,
   isLedgerExpenseKind,
   visibleServiceCopy,
   type BookingItemKind,
@@ -75,6 +76,7 @@ export function BookingItemsPanel({
   documents = [],
   household = [],
   currency = "EUR",
+  clientSettlesStay = false,
   onBindDraftSave,
   hotelRequests = [],
   today = "",
@@ -88,6 +90,7 @@ export function BookingItemsPanel({
   documents?: CrmBookingDocument[];
   household?: HouseholdMember[];
   currency?: string;
+  clientSettlesStay?: boolean;
   onBindDraftSave?: (save: (() => Promise<boolean>) | null) => void;
 }) {
   const router = useRouter();
@@ -105,7 +108,9 @@ export function BookingItemsPanel({
 
   function startEdit(item: CrmBookingItem) {
     setEditingId(item.id);
-    setDraft(toDraft(item));
+    const next = toDraft(item);
+    if (clientSettlesStay && !isExtraItemKind(item.kind)) next.include_in_ledger = false;
+    setDraft(next);
     setError(null);
   }
 
@@ -159,7 +164,8 @@ export function BookingItemsPanel({
       start_at: draft.start_at || null,
       end_at: draft.end_at || null,
       amount: draft.amount,
-      include_in_ledger: Boolean(draft.include_in_ledger),
+      include_in_ledger:
+        clientSettlesStay && !isExtraItemKind(draft.kind) ? false : Boolean(draft.include_in_ledger),
       details: draft.details || {},
     };
     const res =
@@ -258,6 +264,7 @@ export function BookingItemsPanel({
                 <IngestItemCard
                   item={draft}
                   household={household}
+                  lockStayLedger={clientSettlesStay}
                   onChange={setDraft}
                   onRemove={() => setEditingId(null)}
                 />
@@ -304,7 +311,7 @@ export function BookingItemsPanel({
                           Brouillon
                         </span>
                       ) : null}
-                      {item.include_in_ledger ? (
+                      {item.include_in_ledger && !(clientSettlesStay && !isExtraItemKind(item.kind)) ? (
                         <span className="ml-2 rounded-full bg-[var(--admin-sky)] px-2 py-0.5 text-[10px] font-bold uppercase">
                           Transactions
                         </span>
@@ -396,6 +403,7 @@ export function BookingItemsPanel({
           <IngestItemCard
             item={draft}
             household={household}
+            lockStayLedger={clientSettlesStay}
             onChange={setDraft}
             onRemove={() => setEditingId(null)}
           />

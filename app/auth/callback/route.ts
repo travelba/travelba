@@ -3,6 +3,7 @@ import type { EmailOtpType } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { ensureCustomerForUser, ensureStaff } from "@/lib/crm/auth";
+import { loginMethodFromCallback, recordCustomerLogin } from "@/lib/crm/customer-login";
 import {
   PASSWORD_SETUP_COOKIE,
   SET_PASSWORD_PATH,
@@ -30,6 +31,7 @@ export async function GET(request: Request) {
   const tokenHash = url.searchParams.get("token_hash");
   const type = asOtpType(url.searchParams.get("type"));
   const next = url.searchParams.get("next") || "/mon-compte";
+  const exchanged = Boolean(code || tokenHash);
   const supabase = await createClient();
 
   if (code) {
@@ -51,6 +53,9 @@ export async function GET(request: Request) {
 
   await ensureCustomerForUser(user);
   const staff = await ensureStaff(user);
+  if (exchanged && !staff) {
+    await recordCustomerLogin(user.id, loginMethodFromCallback(type));
+  }
   const forcePassword = shouldForcePasswordSetup({
     flagged: mustSetPassword(user),
     type,

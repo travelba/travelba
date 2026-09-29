@@ -89,9 +89,20 @@ export async function getPortalAccess(customer: CrmCustomer): Promise<PortalAcce
     const admin = createServiceClient();
     const { data, error } = await admin.auth.admin.getUserById(customer.auth_user_id);
     if (error || !data.user) return { status: "none", lastSignInAt: null };
+    let lastSignInAt = data.user.last_sign_in_at ?? null;
+    const { data: latest, error: loginError } = await admin
+      .from("crm_customer_logins")
+      .select("created_at")
+      .eq("customer_id", customer.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!loginError && typeof latest?.created_at === "string") {
+      lastSignInAt = latest.created_at;
+    }
     return {
       status: mustSetPassword(data.user) ? "invited" : "ready",
-      lastSignInAt: data.user.last_sign_in_at ?? null,
+      lastSignInAt,
     };
   } catch {
     return { status: "none", lastSignInAt: null };

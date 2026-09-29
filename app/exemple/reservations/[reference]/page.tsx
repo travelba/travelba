@@ -2,16 +2,19 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { ClientTripBody } from "@/components/account/ClientTripBody";
+import { StayExpenses } from "@/components/account/StayExpenses";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { BookingStatusBadge } from "@/components/crm/ui";
 import { VisaSection } from "@/components/crm/VisaSection";
-import { carnetVisible, clientBookingStatusLabel, clientVisibleItems, HIDDEN_PRICE_LABEL, itemPriceLabel, tripHeadline, tripPlaceLine, whatsappModifyHref } from "@/lib/crm/carnet";
+import { carnetVisible, clientBookingStatusLabel, clientVisibleItems, itemPriceLabel, stayArrivalPlaces, stayHeadline, tripPlaceLine, whatsappModifyHref } from "@/lib/crm/carnet";
+import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
+import { isLedgerExpenseKind } from "@/lib/crm/types";
 import { findVisaExtra } from "@/lib/crm/extras";
 import { EXAMPLE_BASE, EXAMPLE_REFERENCE } from "@/lib/crm/example-session";
 import { readExample } from "@/lib/crm/example-store";
-import { formatDateFr, formatMoney, todayIsoDate } from "@/lib/crm/money";
+import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
 
 export const dynamic = "force-dynamic";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
@@ -39,10 +42,27 @@ export default async function ExampleReservationPage({ params }: Props) {
   const coverage = tripDocCoverage(party, session.documents);
   const missingPassports = coverage.total > 0 && coverage.ready < coverage.total;
   const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, b.reference, b.destination);
-  const headline = tripHeadline(b.title, b.destination);
+  const headline = stayHeadline(
+    b.title,
+    b.destination,
+    stayArrivalPlaces(b.destination, b.title, visibleItems)
+  );
   const placeLine = tripPlaceLine(b.title, b.destination);
   const missingCount = coverage.total - coverage.ready;
   const formalities = frenchPassportTrip(visibleItems, party.length);
+  const expenseLines = clientStayExpenseLines({
+    expenses: visibleItems
+      .filter((item) => isLedgerExpenseKind(item.kind))
+      .map((item) => ({
+        id: item.id,
+        title: item.title,
+        amount: item.amount == null ? null : Number(item.amount),
+      })),
+    agencyCommission: b.agency_commission === true,
+    stayTotal: Number(b.total_amount),
+    currency: b.currency,
+    pricesVisible: b.prices_visible !== false,
+  });
 
   return (
     <ClientTripBody
@@ -52,7 +72,7 @@ export default async function ExampleReservationPage({ params }: Props) {
             ← Mes réservations
           </Link>
 
-          <BookingHero booking={b} priority className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]">
+          <BookingHero booking={b} items={session.items} priority className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]">
             <div className="absolute inset-0 flex flex-col justify-between p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <BookingStatusBadge label={clientBookingStatusLabel(b.status)} />
@@ -159,7 +179,15 @@ export default async function ExampleReservationPage({ params }: Props) {
             Montant du séjour
           </p>
           <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
-            {b.prices_visible === false ? HIDDEN_PRICE_LABEL : formatMoney(Number(b.total_amount), b.currency)}
+            {clientStayPriceLabel({
+              stayTotal: Number(b.total_amount),
+              currency: b.currency,
+              pricesVisible: b.prices_visible !== false,
+              agencyCommission: b.agency_commission === true,
+              expenses: visibleItems
+                .filter((item) => isLedgerExpenseKind(item.kind))
+                .map((item) => ({ amount: item.amount })),
+            })}
           </p>
           {insurances.map((item) => (
             <p key={item.id} className="text-sm text-muted">
@@ -171,6 +199,7 @@ export default async function ExampleReservationPage({ params }: Props) {
           ))}
         </section>
       }
+      expenses={expenseLines.length ? <StayExpenses lines={expenseLines} /> : null}
       tail={
         <>
           <ReservationFiles

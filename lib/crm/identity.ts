@@ -32,9 +32,84 @@ export type ExtractedIdentity = {
   sex: "M" | "F" | "X" | null;
   authority: string | null;
   personal_number: string | null;
+  /** Domicile imprimé sur la pièce. Null si la pièce n’en a pas (passeport français). */
+  address_line: string | null;
+  postal_code: string | null;
+  city: string | null;
+  country: string | null;
   format: string | null;
   valid: boolean;
 };
+
+export type PrintedAddress = {
+  address_line: string | null;
+  postal_code: string | null;
+  city: string | null;
+  country: string | null;
+};
+
+function tidyAddressPart(value: string | null | undefined) {
+  const text = emptyToNull(value);
+  return text ? text.replace(/\s+/g, " ") : null;
+}
+
+/** Découpe une ligne « 12 rue de Rivoli 75001 Paris » quand le code postal est collé à la voie. */
+export function splitPrintedAddress(line: string | null | undefined): PrintedAddress | null {
+  const text = tidyAddressPart(line);
+  if (!text) return null;
+  const match = text.match(/^(.*?)[,\s]+(\d{5})\s+(.+)$/);
+  if (!match) return null;
+  const city = match[3].replace(/,?\s*(france|fr)\s*$/i, "").trim();
+  if (!match[1].trim() || !city) return null;
+  return {
+    address_line: match[1].trim(),
+    postal_code: match[2],
+    city,
+    country: "FR",
+  };
+}
+
+export function printedAddressFromParts(raw: {
+  address_line?: string | null;
+  postal_code?: string | null;
+  city?: string | null;
+  country?: string | null;
+}): PrintedAddress {
+  const country = emptyToNull(raw.country);
+  const postal = tidyAddressPart(raw.postal_code)?.replace(/\s/g, "") || null;
+  const city = tidyAddressPart(raw.city);
+  const line = tidyAddressPart(raw.address_line);
+  if (line && !postal) {
+    const split = splitPrintedAddress(line);
+    if (split) {
+      return { ...split, country: country || split.country };
+    }
+  }
+  return {
+    address_line: line,
+    postal_code: postal,
+    city,
+    country,
+  };
+}
+
+/** Ne remplit que les champs d’adresse encore vides. L’adresse de facturation n’est pas touchée. */
+export function holderAddressPatch(
+  current: {
+    address_line?: string | null;
+    postal_code?: string | null;
+    city?: string | null;
+    country?: string | null;
+  },
+  incoming: PrintedAddress
+) {
+  const patch: Record<string, string> = {};
+  if (!(current.address_line || "").trim() && incoming.address_line) patch.address_line = incoming.address_line;
+  if (!(current.postal_code || "").trim() && incoming.postal_code) patch.postal_code = incoming.postal_code;
+  if (!(current.city || "").trim() && incoming.city) patch.city = incoming.city;
+  if (!(current.country || "").trim() && incoming.country) patch.country = incoming.country;
+  return patch;
+}
 
 function foldNameToken(value: string) {
   return value

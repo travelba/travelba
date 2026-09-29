@@ -33,8 +33,13 @@ test("le séjour d’exemple n’a pas de prix hors extras, ni d’horaire", () 
   for (const kind of ["flight", "hotel", "transfer", "activity", "rail", "car", "cruise", "insurance"]) {
     assert.equal(kinds.has(kind as never), true, kind);
   }
+  const tip = session.items.find((item) => item.kind === "expense");
+  assert.equal(tip?.title, "Pourboire");
+  assert.equal(tip?.amount, 40);
+  assert.equal(session.booking.agency_commission, true);
   for (const item of session.items) {
     assert.equal(isExtraItemKind(item.kind), false);
+    if (item.kind === "expense") continue;
     assert.equal(item.amount, null);
     assert.equal(itemClock(item.start_at), "");
     assert.equal(itemClock(item.end_at), "");

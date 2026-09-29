@@ -1,6 +1,10 @@
 import type { ReactNode } from "react";
 import { coverQuery } from "@/lib/crm/carnet";
-import { bookingCoverUrl, placeCoverUrl, type CoverBooking } from "@/lib/crm/covers";
+import {
+  bookingCoverPlan,
+  type CoverBooking,
+  type CoverPlaceItem,
+} from "@/lib/crm/covers";
 import { CoverPhoto } from "@/components/crm/CoverPhoto";
 
 export function BookingHero({
@@ -11,6 +15,8 @@ export function BookingHero({
   className = "",
   frameClassName = "relative h-60 w-full sm:h-72",
   partage = null,
+  items,
+  places,
   children,
 }: {
   booking: CoverBooking;
@@ -22,10 +28,19 @@ export function BookingHero({
   frameClassName?: string;
   /** Lien public : la couverture importée passe par /api/files. */
   partage?: string | null;
+  /** Cartes du séjour : deux villes avec photo → diagonale, sinon photo du pays. */
+  items?: CoverPlaceItem[];
+  places?: string[];
   children?: ReactNode;
 }) {
-  const src = bookingCoverUrl(booking, width, partage ? { partage } : undefined);
-  const fallback = booking.cover_image_path ? placeCoverUrl(booking, width) : null;
+  const plan = bookingCoverPlan(booking, {
+    items,
+    places,
+    partage: partage || undefined,
+  });
+  const src = plan.mode === "none" ? null : plan.src;
+  const srcB = plan.mode === "split" ? plan.srcB : null;
+  const fallback = plan.mode === "single" ? plan.fallback : null;
   const place = coverQuery(booking.destination, booking.title);
   const label = place && place !== "voyage" ? place : booking.title || "Séjour";
   const showPlaceName = !src && !children;
@@ -39,7 +54,17 @@ export function BookingHero({
             src={src}
             fallbackSrc={fallback}
             alt={alt}
-            className="absolute inset-0 h-full w-full origin-center scale-110 object-cover object-center"
+            className={`absolute inset-0 h-full w-full origin-center scale-110 object-cover object-center ${
+              srcB ? "[clip-path:polygon(0_0,100%_0,0_100%)]" : ""
+            }`}
+            priority={priority}
+          />
+        ) : null}
+        {srcB ? (
+          <CoverPhoto
+            src={srcB}
+            alt=""
+            className="absolute inset-0 h-full w-full origin-center scale-110 object-cover object-center [clip-path:polygon(100%_0,100%_100%,0_100%)]"
             priority={priority}
           />
         ) : null}

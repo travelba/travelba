@@ -4,8 +4,8 @@ import { ensureCustomerForUser, getSessionUser } from "@/lib/crm/auth";
 import type { CrmBalance } from "@/lib/crm/types";
 import { encoursCaption, formatDateRangeShort, formatMoney, isUpcomingBooking, jMinusLabel } from "@/lib/crm/money";
 import { isCompanyMember } from "@/lib/crm/company-role";
-import { loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
-import { clientVisibleItems, nextTimelineFlight, tripHeadline, tripPlaceLine } from "@/lib/crm/carnet";
+import { loadStayArrivalPlaces, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
+import { clientVisibleItems, nextTimelineFlight, stayHeadline, tripPlaceLine } from "@/lib/crm/carnet";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { BoardingPass } from "@/components/account/BoardingPass";
 import { Icon } from "@/components/crm/icons";
@@ -32,6 +32,7 @@ export default async function AccountHomePage() {
       bookings.filter((b) => isUpcomingBooking(b.end_date) && b.status !== "cancelled"),
       "asc"
     )[0] || null;
+  const places = nextTrip ? await loadStayArrivalPlaces(supabase, [nextTrip.id]) : {};
 
   const balanceRows = ((balances || []) as CrmBalance[]).map((row) => ({
     currency: row.currency || "EUR",
@@ -42,7 +43,7 @@ export default async function AccountHomePage() {
   const firstName = greetingGivenName(customer.first_name) || customer.email.split("@")[0];
   const countdown = nextTrip ? jMinusLabel(nextTrip.start_date) : null;
   const tripName = nextTrip
-    ? tripHeadline(nextTrip.title, nextTrip.destination, "Prochain séjour")
+    ? stayHeadline(nextTrip.title, nextTrip.destination, places[nextTrip.id], "Prochain séjour")
     : "";
   const tripPlace = nextTrip ? tripPlaceLine(nextTrip.title, nextTrip.destination) : null;
   const tripHref = nextTrip ? `/mon-compte/reservations/${nextTrip.reference}` : "/mon-compte/reservations";
@@ -111,7 +112,7 @@ export default async function AccountHomePage() {
 
       {nextTrip ? (
         <article className="overflow-hidden rounded-2xl border border-[#e5e3dc] shadow-xl">
-          <BookingHero booking={nextTrip} priority frameClassName="relative h-[22rem] w-full">
+          <BookingHero booking={nextTrip} places={places[nextTrip.id]} priority frameClassName="relative h-[22rem] w-full">
             {countdown ? (
               <p className="absolute left-5 top-5 z-10 inline-flex w-fit items-center gap-1.5 rounded-full border border-[var(--admin-gold)]/30 bg-white/95 px-3 py-1 text-[12px] font-semibold text-[var(--admin-navy)] shadow-sm">
                 <Icon name="timer" className="h-[15px] w-[15px] text-[var(--admin-gold)]" />

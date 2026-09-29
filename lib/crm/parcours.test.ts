@@ -3,7 +3,8 @@ import test from "node:test";
 import { identityOverwriteWarning } from "./identity";
 import { loyaltyFromCustomer, normalizeLoyaltyMap, normalizeLoyaltyNumber } from "./loyalty";
 import { encoursCaption, formatEncours, formatMoney, jMinusLabel, postedLedgerTotals } from "./money";
-import { unsplashKeywordMatch, bookingCoverUrl } from "./covers";
+import { unsplashKeywordMatch, bookingCoverPlan, bookingCoverUrl } from "./covers";
+import { stayArrivalPlaces } from "./carnet";
 import { countriesWithPhoto, COUNTRY_CODES } from "./cover-catalog";
 import { vaultDocumentsForPerson } from "./trip-documents";
 import { filterCreditTransfers, isCreditTransfer, type CrmTravelDocument } from "./types";
@@ -129,7 +130,66 @@ test("cover catalogue matches the arrival place only", () => {
     unsplashKeywordMatch({ destination: "Miami", title: "Miami" }),
     unsplashKeywordMatch({ destination: "Panama City", title: "Panama" })
   );
+  assert.equal(
+    unsplashKeywordMatch({ destination: "Antibes", title: "Séjour" }),
+    "photo-antibes-garoupe"
+  );
+  assert.equal(
+    unsplashKeywordMatch({ destination: "Lamego · Portugal", title: "Lamego · Portugal" }),
+    "photo-lamego-remedios"
+  );
+  assert.notEqual(
+    unsplashKeywordMatch({ destination: "Lamego", title: "Séjour" }),
+    unsplashKeywordMatch({ destination: "Portugal", title: "Séjour" })
+  );
+  const lamegoStay = bookingCoverPlan(
+    {
+      destination: "Lamego · Portugal",
+      title: "Lamego · Portugal",
+      cover_image_path: null,
+    },
+    { items: [{ kind: "hotel", details: { city: "Lamego" } }] }
+  );
+  assert.equal(lamegoStay.mode, "single");
+  if (lamegoStay.mode === "single") assert.match(lamegoStay.src, /photo-lamego-remedios/);
+  assert.notEqual(
+    unsplashKeywordMatch({ destination: "Antibes", title: "Séjour" }),
+    unsplashKeywordMatch({ destination: "France", title: "Séjour" })
+  );
   assert.equal(unsplashKeywordMatch({ destination: "Xyzzy", title: "Inconnu" }), null);
+  const portugal = unsplashKeywordMatch({ destination: "Portugal", title: "Séjour" });
+  assert.ok(portugal);
+  assert.equal(
+    unsplashKeywordMatch({ destination: "Inconnue · Portugal", title: "Séjour" }),
+    portugal
+  );
+  assert.equal(
+    unsplashKeywordMatch({ destination: "Inconnue, Portugal", title: "Séjour" }),
+    portugal
+  );
+  assert.equal(
+    unsplashKeywordMatch({ destination: "Paris · Inconnue · Portugal", title: "Séjour" }),
+    portugal
+  );
+  const unknownHotel = bookingCoverPlan(
+    {
+      destination: "Inconnue · Portugal",
+      title: "Séjour",
+      cover_image_path: null,
+    },
+    { items: [{ kind: "hotel", details: { city: "Inconnue" } }] }
+  );
+  assert.equal(unknownHotel.mode, "single");
+  if (unknownHotel.mode === "single") assert.match(unknownHotel.src, /photo-1585208798174-6cedd86e019a/);
+  assert.equal(unsplashKeywordMatch({ destination: "Inconnue, Belgique", title: "Séjour" }), null);
+  assert.equal(
+    bookingCoverUrl({
+      destination: "Inconnue, Belgique",
+      title: "Séjour",
+      cover_image_path: null,
+    }),
+    null
+  );
   assert.equal(
     bookingCoverUrl({
       destination: "Xyzzy",
@@ -152,6 +212,48 @@ test("cover catalogue matches the arrival place only", () => {
   assert.match(uploaded, /v=2026-09-23/);
   assert.ok(COUNTRY_CODES.length >= 190);
   assert.ok(countriesWithPhoto() >= 30);
+});
+
+test("plusieurs villes d’un pays prennent la photo du pays, deux pays se coupent", () => {
+  const miami = unsplashKeywordMatch({ destination: "Miami Beach", title: "Miami Beach" });
+  assert.equal(miami, "photo-1533106497176-45ae19e68ba2");
+  const both = bookingCoverPlan({
+    destination: "Miami Beach",
+    title: "Miami Beach",
+    cover_image_path: null,
+  }, {
+    places: stayArrivalPlaces(null, null, [
+      { kind: "flight", details: { city_to: "New York", city_from: "Paris" } },
+      { kind: "hotel", details: { city: "New York" } },
+      { kind: "flight", details: { city_to: "Miami", city_from: "New York" } },
+      { kind: "hotel", details: { city: "Miami Beach" } },
+    ]),
+  });
+  assert.equal(both.mode, "split");
+  if (both.mode !== "split") return;
+  assert.match(both.src, /photo-1496442226666-8d4d0e62e6e9/);
+  assert.match(both.srcB, /photo-1533106497176-45ae19e68ba2/);
+
+  const morocco = bookingCoverPlan({
+    destination: "Marrakech · Essaouira",
+    title: "Séjour",
+    cover_image_path: null,
+  });
+  assert.equal(morocco.mode, "single");
+  if (morocco.mode !== "single") return;
+  assert.match(morocco.src, /photo-1489749798305-4fea3ae63d43/);
+
+  const split = bookingCoverPlan({
+    destination: "Marrakech",
+    title: "Voyage",
+    cover_image_path: null,
+  }, {
+    places: ["Marrakech", "New York"],
+  });
+  assert.equal(split.mode, "split");
+  if (split.mode !== "split") return;
+  assert.match(split.src, /photo-1489749798305-4fea3ae63d43/);
+  assert.match(split.srcB, /photo-1496442226666-8d4d0e62e6e9/);
 });
 
 test("vault documents for a person ignore trip clones", () => {

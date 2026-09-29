@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { DESK_COOKIE, deskBypass } from "@/lib/crm/admin-client-login";
 import { jsonError } from "@/lib/crm/auth";
+import { recordCustomerLogin } from "@/lib/crm/customer-login";
 import { PASSWORD_SETUP_COOKIE, withoutMustSetPassword } from "@/lib/crm/session";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -43,6 +44,8 @@ export async function POST() {
       return jsonError("Connexion impossible", 500);
     }
   }
+
+  await recordCustomerLogin(user.id, "password");
 
   const response = NextResponse.json({ ok: true });
   response.cookies.set(PASSWORD_SETUP_COOKIE, "", {

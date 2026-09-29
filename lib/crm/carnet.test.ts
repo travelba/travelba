@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { CrmBookingItem } from "./types";
 import {
+  canConfirmCarnetPublish,
   carnetVisible,
   coverQuery,
+  stayHeadline,
   tripHeadline,
   tripPlaceLine,
   clientBookingStatusLabel,
@@ -21,6 +23,8 @@ import {
   itemPriceLabel,
   nextFlightPass,
   nextTimelineFlight,
+  pendingPublishCards,
+  publishRevealIds,
   unlinkedDocuments,
   whatsappModifyHref,
 } from "./carnet";
@@ -237,6 +241,12 @@ describe("carnet", () => {
     assert.equal(tripPlaceLine("40 ans", "Marrakech"), "Marrakech");
     assert.equal(tripPlaceLine("Marrakech", "marrakech"), null);
     assert.equal(tripPlaceLine("", "Marrakech"), null);
+    assert.equal(
+      stayHeadline("Miami Beach", "Miami Beach", ["New York", "Miami Beach"]),
+      "New York · Miami Beach"
+    );
+    assert.equal(stayHeadline("40 ans", "Miami Beach", ["New York", "Miami Beach"]), "40 ans");
+    assert.equal(stayHeadline("Marrakech", "Marrakech", ["Marrakech"]), "Marrakech");
   });
 
   it("sert la photo catalogue du lieu, pas Unsplash", () => {
@@ -367,6 +377,43 @@ describe("carnet", () => {
     assert.equal(canPublishCarnet([{ kind: "chauffeur" }, { kind: "fee" }]), false);
     assert.equal(canPublishCarnet([{ kind: "expense" }]), false);
     assert.equal(canPublishCarnet([{ kind: "hotel" }, { kind: "expense" }]), true);
+  });
+
+  it("confirme une photo sur un séjour déjà ouvert, sans carte nouvelle", () => {
+    assert.equal(
+      canConfirmCarnetPublish({ stayVisible: true, revealCards: 0, revealDocs: 1 }),
+      true
+    );
+    assert.equal(
+      canConfirmCarnetPublish({ stayVisible: false, revealCards: 0, revealDocs: 1 }),
+      false
+    );
+    assert.equal(
+      canConfirmCarnetPublish({ stayVisible: false, revealCards: 1, revealDocs: 0 }),
+      true
+    );
+    const rows = [
+      item({ id: "hotel", kind: "hotel", visible_to_client: true }),
+      item({ id: "alcool", kind: "expense", visible_to_client: false, title: "Alcool" }),
+      item({
+        id: "masque",
+        kind: "flight",
+        visible_to_client: false,
+        details: { client_hidden: true },
+      }),
+    ];
+    assert.deepEqual(
+      pendingPublishCards(rows).map((row) => row.id),
+      []
+    );
+    assert.deepEqual(publishRevealIds(rows), ["hotel"]);
+    assert.deepEqual(
+      pendingPublishCards([
+        item({ id: "nuit", kind: "hotel", visible_to_client: false }),
+        item({ id: "frais", kind: "expense", visible_to_client: false }),
+      ]).map((row) => row.id),
+      ["nuit"]
+    );
   });
 
   it("garde le montant document hors du prix vendu et du total séjour", () => {

@@ -8,12 +8,13 @@ import { readExample } from "@/lib/crm/example-store";
 export const dynamic = "force-dynamic";
 import {
   formatDateRangeShort,
-  formatMoney,
   isUpcomingBooking,
   jMinusLabel,
   tripDurationDays,
 } from "@/lib/crm/money";
-import { clientBookingStatusLabel, HIDDEN_PRICE_LABEL } from "@/lib/crm/carnet";
+import { clientBookingStatusLabel, stayArrivalPlaces, stayHeadline } from "@/lib/crm/carnet";
+import { clientStayPriceLabel } from "@/lib/crm/ledger-display";
+import { isLedgerExpenseKind } from "@/lib/crm/types";
 
 export default async function ExampleReservationsPage({
   searchParams,
@@ -99,7 +100,7 @@ export default async function ExampleReservationsPage({
           return (
             <li key={b.id}>
               <article className="relative overflow-hidden rounded-xl border border-[#c5c6cd]/35 bg-white shadow-sm">
-                <BookingHero booking={b} width={800}>
+                <BookingHero booking={b} items={b.id === session.booking.id ? session.items : undefined} width={800}>
                   <div className="absolute left-3 right-3 top-3 flex items-center justify-between gap-2">
                     {countdown ? (
                       <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--admin-gold)]/30 bg-[#faf9f6]/95 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--admin-navy)] shadow-sm">
@@ -117,7 +118,13 @@ export default async function ExampleReservationsPage({
                       {nights ? ` (${nights} jour${nights > 1 ? "s" : ""})` : ""}
                     </p>
                     <h2 className="font-display text-2xl font-bold leading-tight">
-                      {b.title || b.destination || "Séjour"}
+                      {stayHeadline(
+                        b.title,
+                        b.destination,
+                        b.id === session.booking.id
+                          ? stayArrivalPlaces(b.destination, b.title, session.items)
+                          : undefined
+                      )}
                     </h2>
                   </div>
                 </BookingHero>
@@ -134,7 +141,15 @@ export default async function ExampleReservationsPage({
                         Montant
                       </span>
                       <span className="text-[16px] font-bold text-[var(--admin-navy)]">
-                        {b.prices_visible === false ? HIDDEN_PRICE_LABEL : formatMoney(Number(b.total_amount), b.currency)}
+                        {clientStayPriceLabel({
+                          stayTotal: Number(b.total_amount),
+                          currency: b.currency,
+                          pricesVisible: b.prices_visible !== false,
+                          agencyCommission: b.agency_commission === true,
+                          expenses: session.items
+                            .filter((item) => item.booking_id === b.id && isLedgerExpenseKind(item.kind))
+                            .map((item) => ({ amount: item.amount })),
+                        })}
                       </span>
                     </div>
                   </div>

@@ -13,7 +13,7 @@ test("encours shows the signed amount", () => {
   assert.equal(formatEncours(-2400), `Encours ${formatMoney(-2400)}`);
 });
 
-test("agency fee is 10 percent of gross credit", () => {
+test("la commission est 10 % du montant du séjour", () => {
   assert.equal(agencyFeeFromGross(1000), 100);
   assert.equal(netAfterAgencyFee(1000), 900);
   assert.equal(agencyFeeFromGross(1700), 170);

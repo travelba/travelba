@@ -9,6 +9,7 @@ const SECTIONS = [
   "passports",
   "share",
   "amount",
+  "expenses",
 ] as const;
 
 export function ClientTripBody({
@@ -20,6 +21,7 @@ export function ClientTripBody({
   passports,
   share,
   amount,
+  expenses,
   tail,
 }: {
   intro?: ReactNode;
@@ -30,6 +32,7 @@ export function ClientTripBody({
   passports?: ReactNode;
   share?: ReactNode;
   amount: ReactNode;
+  expenses?: ReactNode;
   tail?: ReactNode;
 }) {
   const slots: Record<(typeof SECTIONS)[number], ReactNode> = {
@@ -40,6 +43,7 @@ export function ClientTripBody({
     passports,
     share,
     amount,
+    expenses,
   };
   return (
     <div className="space-y-5">

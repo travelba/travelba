@@ -38,17 +38,37 @@ export function safePortalLabel(url: string) {
   }
 }
 
+function sameToken(left: string, right: string) {
+  const a = left.replace(/\s+/g, "").toLowerCase();
+  const b = right.replace(/\s+/g, "").toLowerCase();
+  return a.length > 2 && a === b;
+}
+
 /** Une ligne de journal. La valeur saisie n’est jamais recopiée : un champ de passeport y passerait. */
-export function eventForPortalAction(step: {
-  action: string;
-  url?: string;
-  target?: string;
-  text?: string;
-  summary?: string;
-}): { kind: PortalLogKind; text: string } | null {
+export function eventForPortalAction(
+  step: {
+    action: string;
+    url?: string;
+    target?: string;
+    text?: string;
+    summary?: string;
+  },
+  guardian?: { firstName: string; lastName: string; number: string } | null
+): { kind: PortalLogKind; text: string } | null {
   if (step.action === "open") return { kind: "page", text: safePortalLabel(step.url || "") };
   if (step.action === "click") return { kind: "page", text: clipPortalText(`Clic · ${step.target || "contrôle"}`) };
-  if (step.action === "type") return { kind: "champ", text: clipPortalText(`Champ « ${step.target || "champ"} »`) };
+  if (step.action === "type") {
+    const value = step.text || "";
+    const representative =
+      guardian &&
+      [guardian.firstName, guardian.lastName, guardian.number, `${guardian.firstName} ${guardian.lastName}`].some(
+        (part) => sameToken(part, value)
+      );
+    const label = representative
+      ? `Représentant, pas une demande · ${step.target || "champ"}`
+      : `Champ « ${step.target || "champ"} »`;
+    return { kind: "champ", text: clipPortalText(label) };
+  }
   if (step.action === "scroll") return { kind: "page", text: "Défilement" };
   if (step.action === "hold") {
     return { kind: "attente", text: clipPortalText(step.summary || "En attente de confirmation avant l’envoi.") };

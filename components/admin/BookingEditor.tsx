@@ -22,8 +22,18 @@ import { formatMoney, jMinusLabel, todayIsoDate } from "@/lib/crm/money";
 import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { bookingTotalFromItems } from "@/lib/crm/bookings";
+import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
 import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
-import { coverQuery, flightCardTitle, hotelDisplayName, keptHiddenFromClient } from "@/lib/crm/carnet";
+import {
+  canConfirmCarnetPublish,
+  coverQuery,
+  flightCardTitle,
+  hotelDisplayName,
+  keptHiddenFromClient,
+  pendingPublishCards,
+  stayArrivalPlaces,
+  stayHeadline,
+} from "@/lib/crm/carnet";
 import { unsplashKeywordMatch } from "@/lib/crm/covers";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { BookingHero } from "@/components/crm/BookingHero";
@@ -102,7 +112,6 @@ export function BookingEditor({
 }) {
   const router = useRouter();
   const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
-  const unpublishedItems = items.filter((item) => !item.visible_to_client);
   const needsReview = items.some((item) => item.details?.needs_review === true);
   const [busy, setBusy] = useState<"idle" | "save" | "publish" | "cover">("idle");
   const [titleDraft, setTitleDraft] = useState(booking.title);
@@ -118,6 +127,13 @@ export function BookingEditor({
   const [flash, setFlash] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<null | "publish" | "unpublish">(null);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
+  const serverSettles = booking.client_settles_stay === true;
+  const [clientSettlesFromServer, setClientSettlesFromServer] = useState(serverSettles);
+  const [clientSettles, setClientSettles] = useState(serverSettles);
+  if (serverSettles !== clientSettlesFromServer) {
+    setClientSettlesFromServer(serverSettles);
+    setClientSettles(serverSettles);
+  }
   const account = customer;
   const holderProfile = {
     first_name: account?.first_name || holderName.first_name,
@@ -141,11 +157,14 @@ export function BookingEditor({
     }
     const fd = new FormData(form);
     const title = titleDraft.trim();
-    const payload = {
+    const settles = fd.get("client_settles_stay") === "on";
+    const payload: Record<string, unknown> = {
       ...Object.fromEntries(fd.entries()),
       title,
-      include_in_ledger: fd.get("include_in_ledger") === "on",
+      client_settles_stay: settles,
     };
+    if (settles) delete payload.include_in_ledger;
+    else payload.include_in_ledger = fd.get("include_in_ledger") === "on";
     setBusy("save");
     setFlash(null);
     setIssues([]);
@@ -358,6 +377,7 @@ export function BookingEditor({
     router.refresh();
   }
 
+  const pendingCards = pendingPublishCards(items);
   const revealItems = items.filter(
     (item) =>
       !keptHiddenFromClient(item.details) &&
@@ -369,7 +389,13 @@ export function BookingEditor({
     if (booking.visible_to_client && doc.visible_to_client) return false;
     if (!doc.booking_item_id) return true;
     const linked = items.find((item) => item.id === doc.booking_item_id);
-    return !linked || !keptHiddenFromClient(linked.details);
+    if (!linked) return true;
+    return !keptHiddenFromClient(linked.details) && !isLedgerExpenseKind(linked.kind);
+  });
+  const publishReady = canConfirmCarnetPublish({
+    stayVisible: booking.visible_to_client,
+    revealCards: revealItems.length,
+    revealDocs: revealDocs.length,
   });
 
   function cardName(item: CrmBookingItem) {
@@ -380,7 +406,7 @@ export function BookingEditor({
 
   return (
     <div className="space-y-6">
-      <BookingHero booking={booking} priority className="rounded-3xl">
+      <BookingHero booking={booking} items={items} priority className="rounded-3xl">
         <div className="absolute right-3 top-3 z-10 flex flex-wrap justify-end gap-2">
           <button
             type="button"
@@ -419,7 +445,13 @@ export function BookingEditor({
             {booking.reference}
             {jMinusLabel(booking.start_date) ? ` · ${jMinusLabel(booking.start_date)}` : ""}
           </p>
-          <h1 className="break-words font-display text-2xl font-bold leading-tight">{titleDraft || booking.title}</h1>
+          <h1 className="break-words font-display text-2xl font-bold leading-tight">
+            {stayHeadline(
+              titleDraft || booking.title,
+              booking.destination,
+              stayArrivalPlaces(booking.destination, booking.title, items)
+            )}
+          </h1>
         </div>
       </BookingHero>
       <CoverPickDialog
@@ -443,10 +475,10 @@ export function BookingEditor({
           <p className="text-sm text-muted">
             Enregistrer ne publie pas. Publier montre au client les cartes qui ne sont pas masquées.
           </p>
-          {unpublishedItems.length > 0 && booking.visible_to_client ? (
+          {pendingCards.length > 0 && booking.visible_to_client ? (
             <p className="mt-2 rounded-2xl bg-[var(--admin-peach)] px-3 py-2 text-sm">
-              À vérifier — {unpublishedItems.length} nouvelle{unpublishedItems.length > 1 ? "s" : ""} carte
-              {unpublishedItems.length > 1 ? "s" : ""} non publiée{unpublishedItems.length > 1 ? "s" : ""}.
+              À vérifier — {pendingCards.length} nouvelle{pendingCards.length > 1 ? "s" : ""} carte
+              {pendingCards.length > 1 ? "s" : ""} non publiée{pendingCards.length > 1 ? "s" : ""}.
             </p>
           ) : null}
           {needsReview ? (
@@ -488,7 +520,7 @@ export function BookingEditor({
               Publier le carnet
             </button>
           )}
-          {booking.visible_to_client && unpublishedItems.some((item) => !keptHiddenFromClient(item.details)) ? (
+          {booking.visible_to_client && (revealItems.length > 0 || revealDocs.length > 0) ? (
             <button
               type="button"
               disabled={busy !== "idle"}
@@ -528,7 +560,7 @@ export function BookingEditor({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              disabled={busy !== "idle" || (confirm === "publish" && !revealItems.length)}
+              disabled={busy !== "idle" || (confirm === "publish" && !publishReady)}
               onClick={() => {
                 const next = confirm === "publish";
                 setConfirm(null);
@@ -607,15 +639,34 @@ export function BookingEditor({
         <label className="flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-2">
           <input
             type="checkbox"
+            name="client_settles_stay"
+            checked={clientSettles}
+            onChange={(event) => setClientSettles(event.target.checked)}
+            className="mt-1"
+          />
+          <span>
+            Le client règle ce séjour
+            <span className="mt-0.5 block text-xs font-normal text-muted">
+              L’hôtel est payé sur sa carte. Le montant reste au carnet et sort des transactions et de l’encours.
+            </span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-2">
+          <input
+            key={clientSettles ? "stay-out" : "stay-in"}
+            type="checkbox"
             name="include_in_ledger"
-            defaultChecked={booking.include_in_ledger !== false}
+            defaultChecked={!clientSettles && booking.include_in_ledger !== false}
+            disabled={clientSettles}
             className="mt-1"
           />
           <span>
             Inclure le montant du séjour dans les transactions
             <span className="mt-0.5 block text-xs font-normal text-muted">
-              Décochez pour afficher le prix au carnet sans impacter l’encours client.
-              {items.some((item) => item.include_in_ledger)
+              {clientSettles
+                ? "Le client règle ce séjour : ce montant ne va pas aux transactions."
+                : "Décochez pour afficher le prix au carnet sans impacter l’encours client."}
+              {!clientSettles && items.some((item) => item.include_in_ledger)
                 ? " Des cartes sont déjà comptabilisées : laissez décoché pour éviter un double compte."
                 : ""}
             </span>
@@ -748,10 +799,20 @@ export function BookingEditor({
           Montant du séjour
         </p>
         <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
-          {formatMoney(bookingTotalFromItems(items), stayCurrency(booking.currency))}
+          {formatMoney(
+            stayPriceWithExpenses({
+              stayTotal: bookingTotalFromItems(items),
+              agencyCommission: booking.agency_commission === true,
+              expenses: items.filter((item) => isLedgerExpenseKind(item.kind)),
+            }),
+            stayCurrency(booking.currency)
+          )}
         </p>
         <p className="text-sm text-muted">
-          Somme des prix vendus de chaque carte. Le frais de billeterie n’est pas inclus.
+          Prix des cartes, des frais d’agence et des dépenses. Le frais de billeterie n’est pas inclus.
+          {clientSettles
+            ? " Réglé sur la carte du client : ce montant ne va pas aux transactions ni à l’encours."
+            : ""}
         </p>
       </section>
 
@@ -774,6 +835,7 @@ export function BookingEditor({
         hotelRequests={hotelRequests}
         today={todayIsoDate()}
         passportCount={passportCount}
+        clientSettlesStay={clientSettles}
         onBindDraftSave={(save) => {
           saveOpenCard.current = save;
         }}
@@ -784,6 +846,8 @@ export function BookingEditor({
         items={items}
         status={booking.status}
         currency={booking.currency}
+        agencyCommission={booking.agency_commission === true}
+        stayTotal={bookingTotalFromItems(items)}
       />
 
       {account && bookingHasFlight(items) ? (
