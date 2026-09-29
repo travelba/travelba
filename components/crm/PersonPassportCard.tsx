@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown } from "lucide-react";
+import { ConfirmButton } from "@/components/crm/ConfirmButton";
 import {
   DOC_TYPE_LABELS,
   type CrmTravelDocument,
@@ -254,14 +255,12 @@ export function PersonPassportCard({
                     }
                   />
                 ) : null}
-                <button
-                  type="button"
+                <ConfirmButton
+                  onConfirm={() => remove(current.id)}
                   disabled={busy}
-                  onClick={() => void remove(current.id)}
                   className="text-xs font-semibold text-accent underline"
-                >
-                  Retirer
-                </button>
+                  label="Retirer"
+                />
               </>
             ) : null}
           </div>

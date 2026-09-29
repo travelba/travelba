@@ -11,6 +11,10 @@ export function NewCustomerForm() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const emailError =
+    error && /existe|e-?mail/i.test(error)
+      ? "Un client avec cet e-mail existe déjà."
+      : null;
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -56,8 +60,10 @@ export function NewCustomerForm() {
           autoComplete="off"
           disabled={saving}
           placeholder="client@exemple.fr"
-          className={fieldClass}
+          aria-invalid={emailError ? true : undefined}
+          className={`${fieldClass} ${emailError ? "border-accent" : ""}`}
         />
+        {emailError ? <span className="text-xs font-normal text-accent">{emailError}</span> : null}
       </label>
       <div className="sm:col-span-4">
         <BusyBar active={saving} label="Création…" />
@@ -69,7 +75,7 @@ export function NewCustomerForm() {
       >
         {saving ? "Création…" : "Créer"}
       </button>
-      {error ? <p className="text-sm text-accent sm:col-span-4">{error}</p> : null}
+      {error && !emailError ? <p className="text-sm text-accent sm:col-span-4">{error}</p> : null}
     </form>
   );
 }

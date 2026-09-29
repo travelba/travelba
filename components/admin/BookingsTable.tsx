@@ -54,6 +54,7 @@ export function BookingsTable({
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value)}
+          aria-label="Filtrer par statut"
           className="admin-af-input text-sm sm:w-56"
         >
           <option value="all">Tous les statuts</option>

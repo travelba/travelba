@@ -65,7 +65,7 @@ function LoginForm() {
     <form onSubmit={onSubmit} className="mt-6 space-y-4">
       <label className="block space-y-1.5 text-sm">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted">
-          Email agent
+          E-mail agent
         </span>
         <input
           type="email"

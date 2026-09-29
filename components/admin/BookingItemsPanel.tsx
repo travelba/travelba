@@ -21,6 +21,7 @@ import { HotelContactButton } from "@/components/crm/HotelContact";
 import { HotelDesk } from "@/components/admin/HotelDesk";
 import type { CardViewLine, CrmBookingTraveler, CrmHotelArrival, CrmHotelRequest, CrmTravelDocument } from "@/lib/crm/types";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
+import { ConfirmButton } from "@/components/crm/ConfirmButton";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
 import { BusyBar } from "@/components/crm/BusyBar";
 import type { CrmBookingDocument } from "@/lib/crm/types";
@@ -229,10 +230,17 @@ export function BookingItemsPanel({
 
   async function removeItem(id: string) {
     setBusy(true);
-    await fetch(`/api/admin/bookings/${bookingId}/items?itemId=${encodeURIComponent(id)}`, {
-      method: "DELETE",
-    });
+    setError(null);
+    const res = await fetch(
+      `/api/admin/bookings/${bookingId}/items?itemId=${encodeURIComponent(id)}`,
+      { method: "DELETE" }
+    );
     setBusy(false);
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      setError(json.error || "Suppression de la carte impossible.");
+      return;
+    }
     if (editingId === id) setEditingId(null);
     router.refresh();
   }
@@ -401,13 +409,13 @@ export function BookingItemsPanel({
                   >
                     {item.visible_to_client ? "Masquer" : "Afficher"}
                   </button>
-                  <button
-                    type="button"
+                  <ConfirmButton
+                    onConfirm={() => removeItem(item.id)}
                     className="admin-tap rounded-full px-3 text-xs font-semibold text-accent"
-                    onClick={() => void removeItem(item.id)}
-                  >
-                    Retirer
-                  </button>
+                    disabled={busy}
+                    label="Retirer"
+                    confirmLabel="Confirmer"
+                  />
                 </div>
               </div>
             )}

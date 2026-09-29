@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { ConfirmButton } from "@/components/crm/ConfirmButton";
 import { Field, MoneyInput, fieldControlClass } from "@/components/crm/fields";
 import { agencyFeeFromGross, formatMoney } from "@/lib/crm/money";
 import {
@@ -259,13 +260,11 @@ export function BookingExpensesPanel({
                   >
                     Modifier
                   </button>
-                  <button
-                    type="button"
+                  <ConfirmButton
+                    onConfirm={() => remove(item.id)}
                     className="text-xs font-semibold text-accent"
-                    onClick={() => void remove(item.id)}
-                  >
-                    Retirer
-                  </button>
+                    label="Retirer"
+                  />
                 </div>
               </li>
             )
