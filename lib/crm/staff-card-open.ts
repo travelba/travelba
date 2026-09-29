@@ -11,6 +11,9 @@ type Admin = { from: (table: string) => any };
 
 export type AgencyCardSource = "pliant" | "client";
 
+/** En pause : l'agence connectée ouvre la carte sans code. */
+const STAFF_CARD_CODE_REQUIRED = false;
+
 type OpenError = { error: string; status: number };
 
 function fail(error: string, status: number): OpenError {
@@ -92,13 +95,15 @@ export async function openAgencyCard(input: {
       file?: { mime: string; name: string; bytes: string };
     }
 > {
-  const code = input.code.trim();
-  try {
-    await ensureAgencyMasterCode(input.admin, input.staffId);
-  } catch {
-    return fail("Le code n’a pas pu être enregistré.", 500);
+  if (STAFF_CARD_CODE_REQUIRED) {
+    const code = input.code.trim();
+    try {
+      await ensureAgencyMasterCode(input.admin, input.staffId);
+    } catch {
+      return fail("Le code n’a pas pu être enregistré.", 500);
+    }
+    if (!staffCardCodeMatches(code, AGENCY_MASTER_CODE_HASH)) return fail("Code incorrect.", 403);
   }
-  if (!staffCardCodeMatches(code, AGENCY_MASTER_CODE_HASH)) return fail("Code incorrect.", 403);
 
   const { data } = await input.admin
     .from("crm_hotel_arrivals")
@@ -142,13 +147,15 @@ export async function openAgencyCard(input: {
   }
 
   const viewedAt = new Date().toISOString();
-  const { error: viewError } = await input.admin.from("crm_card_views").insert({
-    staff_id: input.staffId,
-    booking_id: input.bookingId,
-    booking_item_id: input.itemId,
-    source: input.source,
-  });
-  if (viewError) return fail("La consultation n’a pas pu être notée.", 500);
+  if (STAFF_CARD_CODE_REQUIRED) {
+    const { error: viewError } = await input.admin.from("crm_card_views").insert({
+      staff_id: input.staffId,
+      booking_id: input.bookingId,
+      booking_item_id: input.itemId,
+      source: input.source,
+    });
+    if (viewError) return fail("La consultation n’a pas pu être notée.", 500);
+  }
 
   return { viewer: input.staffName || "Agence", viewedAt, secrets, file };
 }

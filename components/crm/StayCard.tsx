@@ -4,18 +4,11 @@ import { FormEvent, useState } from "react";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { cardLast4, groupedPan, maskedCardNumber, type StayCardFace } from "@/lib/crm/hotel-arrival";
 
-function whoLooked(lines: { name: string }[]) {
-  const names = [...new Set(lines.map((line) => line.name).filter(Boolean))];
-  if (!names.length) return "";
-  const shown = names.slice(0, 3).join(", ");
-  return names.length > 3 ? `Vu par ${shown} +${names.length - 3}` : `Vu par ${shown}`;
-}
 
 export function StayCard({
   face,
   revealUrl,
   personal = false,
-  views = [],
 }: {
   face: StayCardFace;
   revealUrl: string;
@@ -28,10 +21,6 @@ export function StayCard({
   const [revealed, setRevealed] = useState<{ pan: string; expiry: string; cvc: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [extraViews, setExtraViews] = useState<{ name: string; at: string }[]>([]);
-  const lines = [...extraViews, ...views]
-    .filter((line, index, all) => all.findIndex((item) => item.at === line.at && item.name === line.name) === index)
-    .slice(0, 5);
 
   async function reveal(event: FormEvent) {
     event.preventDefault();
@@ -59,9 +48,6 @@ export function StayCard({
       if (last4.length === 4) setTail(last4);
       setRevealed({ pan: json.pan, expiry: json.expiry, cvc: json.cvc });
       setCode("");
-      if (personal && json.viewer && json.viewedAt) {
-        setExtraViews((current) => [{ name: json.viewer as string, at: json.viewedAt as string }, ...current]);
-      }
     } catch {
       setError("La carte n’a pas pu être lue.");
     } finally {
@@ -72,8 +58,6 @@ export function StayCard({
   const number = revealed ? groupedPan(revealed.pan) : maskedCardNumber(tail);
   const expiry = revealed?.expiry || "••/••";
   const cvc = revealed?.cvc || "•••";
-  const looked = whoLooked(lines);
-
   if (personal) {
     return (
       <div className="text-xs text-[var(--admin-navy)]">
@@ -85,25 +69,13 @@ export function StayCard({
             <button type="button" className="ml-2 font-sans text-[#9e7e51]" onClick={() => setRevealed(null)}>
               Masquer
             </button>
-            {looked ? <span className="ml-2 font-sans text-[10px] text-[#9e7e51]">{looked}</span> : null}
           </p>
         ) : (
           <form className="flex flex-wrap items-center gap-2" onSubmit={reveal}>
             <span className="text-[#9e7e51]">{maskedCardNumber(tail)}</span>
-            <input
-              className="w-24 border-b border-[#e5e3dc] bg-transparent px-0 py-0.5 outline-none focus:border-[#0B192C]"
-              type="password"
-              name="staff-card-code"
-              autoComplete="off"
-              aria-label="Code maître"
-              placeholder="Code"
-              value={code}
-              onChange={(event) => setCode(event.target.value)}
-            />
             <button type="submit" className="text-[#9e7e51] disabled:opacity-50" disabled={busy}>
               {busy ? "…" : "Voir"}
             </button>
-            {looked ? <span className="text-[10px] text-[#9e7e51]">{looked}</span> : null}
           </form>
         )}
         {error ? <p className="text-red-700">{error}</p> : null}

@@ -20,8 +20,7 @@ import { ensureHotelRequests } from "@/lib/crm/hotel-desk-run";
 import { principalGuest } from "@/lib/crm/hotel-arrival";
 import { attachLittleEmperorsCatalog } from "@/lib/crm/hotel-catalog-load";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
-import { isLedgerExpenseKind, visibleServiceCopy, type CardViewLine } from "@/lib/crm/types";
-import { loadCardViews, staffHasCardCode } from "@/lib/crm/staff-card-open";
+import { isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
 import type {
   CrmBillingCompany,
   CrmBooking,
@@ -39,7 +38,7 @@ type Props = { params: Promise<{ id: string }> };
 
 export default async function AdminBookingPage({ params }: Props) {
   const { id } = await params;
-  const { supabase, staff } = await requireStaffPage();
+  const { supabase } = await requireStaffPage();
   const { data: booking } = await supabase
     .from("crm_bookings")
     .select("*")
@@ -119,18 +118,6 @@ export default async function AdminBookingPage({ params }: Props) {
   } catch {
     arrivals = [];
     hotelRequests = [];
-  }
-  let hasCardCode = false;
-  let cardViews: CardViewLine[] = [];
-  try {
-    const cardAdmin = createServiceClient();
-    [hasCardCode, cardViews] = await Promise.all([
-      staffHasCardCode(cardAdmin, staff.id),
-      loadCardViews(cardAdmin, id),
-    ]);
-  } catch {
-    hasCardCode = false;
-    cardViews = [];
   }
   const shareCompanions = companionsForShare(bookingTravelers, (companions || []) as CrmCompanion[]);
   let shareUrl: string | null = null;
@@ -212,8 +199,6 @@ export default async function AdminBookingPage({ params }: Props) {
           shareCompanions={shareCompanions}
           arrivals={arrivals}
           hotelRequests={hotelRequests}
-          hasCardCode={hasCardCode}
-          cardViews={cardViews}
         />
       </div>
     </div>
