@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   cardSendNote,
   containsCardNumber,
+  HOTEL_DESK_FROM,
+  hotelReplyForDesk,
   deskNeedsAttention,
   hotelDeskDraft,
   hotelDeskRecipients,
@@ -179,6 +181,28 @@ test("échéance, relance et réponse", () => {
     }),
     false
   );
+});
+
+test("la réponse hôtel reste dans le dossier, sans numéro de carte", () => {
+  assert.equal(HOTEL_DESK_FROM, "contact@travelba.fr");
+  const kept = hotelReplyForDesk("Bonjour,\nLe lien de paiement est prêt.\nBien à vous");
+  assert.match(kept, /lien de paiement/);
+  const stripped = hotelReplyForDesk(
+    [
+      "Le lien :",
+      "https://pay.hotel.test/abc",
+      "Numéro de réservation : MH-240",
+      "Numéro : 4242 4242 4242 4242",
+      "Cryptogramme : 123",
+      "Merci.",
+    ].join("\n")
+  );
+  assert.match(stripped, /pay.hotel.test/);
+  assert.match(stripped, /MH-240/);
+  assert.match(stripped, /Merci/);
+  assert.equal(containsCardNumber(stripped), false);
+  assert.equal(stripped.includes("4242"), false);
+  assert.equal(stripped.toLowerCase().includes("cryptogramme"), false);
 });
 
 test("la carte n'entre dans le message qu'à l'envoi", () => {

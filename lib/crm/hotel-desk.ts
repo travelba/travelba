@@ -15,6 +15,9 @@ import {
 import type { CrmBookingItem, CrmHotelRequest, HotelDeskKind, HotelDeskStatus } from "./types";
 import { HOTEL_DESK_KINDS } from "./types";
 
+/** Expéditeur et adresse de réponse du bureau hôtel. */
+export const HOTEL_DESK_FROM = "contact@travelba.fr";
+
 export const HOTEL_DESK_LABELS: Record<HotelDeskKind, string> = {
   payment_link: "Lien de paiement",
   upgrade: "Upgrade et accueil",
@@ -59,6 +62,24 @@ export function hotelDeskRecipients(contact: HotelContact, kind: HotelDeskKind) 
 
 export function containsCardNumber(text: string) {
   return /(?:\d[ -]?){13,19}/.test(text);
+}
+
+function lineLooksLikeCard(line: string) {
+  if (containsCardNumber(line)) return true;
+  return /(?:cryptogramme|\bcvc\b|\bcvv\b|security code|num[eé]ro de carte|card number|expiration|expiry)/i.test(line) && /\d/.test(line);
+}
+
+/** Texte de réponse à montrer dans le dossier. Les lignes de carte sont retirées. */
+export function hotelReplyForDesk(text: string) {
+  const cleaned = text
+    .split(/\r?\n/)
+    .filter((line) => !lineLooksLikeCard(line))
+    .join("\n")
+    .replace(/(?:\d[ -]?){13,19}/g, "")
+    .trim()
+    .slice(0, 4000);
+  if (containsCardNumber(cleaned)) return "";
+  return cleaned;
 }
 
 function detail(item: CrmBookingItem, key: string) {

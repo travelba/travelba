@@ -357,6 +357,10 @@ export type CrmHotelRequest = {
   follow_up_count: number;
   last_follow_up_at: string | null;
   replied_at: string | null;
+  reply_from: string;
+  reply_subject: string;
+  reply_body: string;
+  reply_message_id: string | null;
   created_at: string;
   updated_at: string;
 };

@@ -25,6 +25,8 @@ import {
   containsCardNumber,
   hotelDeskChannel,
   hotelDeskDraft,
+  HOTEL_DESK_FROM,
+  hotelReplyForDesk,
   keepAgencyDraft,
   nextDeskMark,
   outboundHotelLetter,
@@ -141,7 +143,18 @@ export async function ensureHotelRequests(
     }
   }
   const { data: freshRows } = await admin.from("crm_hotel_requests").select("*").eq("booking_id", input.bookingId);
-  return (freshRows || []) as CrmHotelRequest[];
+  const rows = (freshRows || []) as CrmHotelRequest[];
+  const waitingReply = rows.filter((row) => (row.status === "sent" || row.status === "follow_up") && !row.reply_body);
+  if (waitingReply.length) {
+    try {
+      await attachHotelReplies(admin, waitingReply);
+    } catch {
+      return rows;
+    }
+    const { data: withReplies } = await admin.from("crm_hotel_requests").select("*").eq("booking_id", input.bookingId);
+    return (withReplies || rows) as CrmHotelRequest[];
+  }
+  return rows;
 }
 
 export async function refreshHotelDesk(admin: Admin, deps: { now?: Date; fetchImpl?: typeof fetch } = {}) {
@@ -218,9 +231,17 @@ async function attachHotelReplies(admin: Admin, rows: CrmHotelRequest[]) {
       })
     );
     if (!match) continue;
+    const replyBody = hotelReplyForDesk(match.body);
     await admin
       .from("crm_hotel_requests")
-      .update({ status: "replied", replied_at: new Date(match.receivedAtMs).toISOString() })
+      .update({
+        status: "replied",
+        replied_at: new Date(match.receivedAtMs).toISOString(),
+        reply_from: match.from.slice(0, 200),
+        reply_subject: match.subject.slice(0, 300),
+        reply_body: replyBody,
+        reply_message_id: match.id || null,
+      })
       .eq("id", row.id);
     replied += 1;
   }
@@ -228,7 +249,7 @@ async function attachHotelReplies(admin: Admin, rows: CrmHotelRequest[]) {
 }
 
 async function findHotelReplies(admin: Admin, emails: string[], sinceMs: number) {
-  const replies: { from: string; receivedAtMs: number }[] = [];
+  const replies: { id: string; from: string; subject: string; body: string; receivedAtMs: number }[] = [];
   const safe = emails.map((email) => emailAddress(email)).filter(Boolean);
   if (gmailConfigured() && safe.length) {
     const since = new Date(sinceMs);
@@ -238,7 +259,13 @@ async function findHotelReplies(admin: Admin, emails: string[], sinceMs: number)
       const messages = await searchInbox(query, 6);
       for (const message of messages) {
         const receivedAtMs = message.receivedAt ? Date.parse(message.receivedAt) : sinceMs;
-        replies.push({ from: message.fromEmail || message.from, receivedAtMs });
+        replies.push({
+          id: message.id,
+          from: message.fromEmail || message.from,
+          subject: message.subject || "",
+          body: message.text || "",
+          receivedAtMs,
+        });
       }
     } catch {
       replies.push(...[]);
@@ -246,13 +273,16 @@ async function findHotelReplies(admin: Admin, emails: string[], sinceMs: number)
   }
   const { data } = await admin
     .from("crm_email_ingest")
-    .select("from_email, received_at")
+    .select("id, from_email, subject, received_at")
     .gte("received_at", new Date(sinceMs).toISOString())
     .order("received_at", { ascending: false })
     .limit(40);
-  for (const row of (data || []) as { from_email?: string | null; received_at?: string | null }[]) {
+  for (const row of (data || []) as { id?: string; from_email?: string | null; subject?: string | null; received_at?: string | null }[]) {
     replies.push({
+      id: row.id || "",
       from: row.from_email || "",
+      subject: row.subject || "",
+      body: "",
       receivedAtMs: row.received_at ? Date.parse(row.received_at) : sinceMs,
     });
   }
@@ -378,14 +408,13 @@ async function deliverHotelMail(mail: {
 }) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) throw new Error("L'envoi n'est pas configuré.");
-  const from = process.env.HOTEL_ARRIVAL_FROM || process.env.CONTACT_FROM_EMAIL || siteConfig.contactEmail;
   const resend = new Resend(apiKey);
   const { error } = await resend.emails.send({
-    from: `${siteConfig.name} <${from}>`,
+    from: `${siteConfig.name} <${HOTEL_DESK_FROM}>`,
     to: mail.to,
     subject: mail.subject,
     text: mail.text,
-    replyTo: from,
+    replyTo: HOTEL_DESK_FROM,
     attachments: mail.attachments.map((file) => ({ filename: file.filename, content: file.content })),
   });
   if (error) throw new Error("L'envoi du mail a échoué.");
