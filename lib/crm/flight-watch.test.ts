@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  AEROAPI_DAILY_CALL_CAP,
   aeroFlightUrl,
   airportLocalIso,
   applyAeroFlight,
@@ -133,10 +134,10 @@ test("l’enregistrement Air France s’ouvre 30 h avant, pas pour une compagnie
   assert.equal(flightWatchBadge(open, new Date("2026-10-01T06:00:00Z")), "Enregistrement ouvert");
 });
 
-test("le plafond du jour s’arrête à 30 appels et repart le lendemain", () => {
-  const blocked = reserveAeroBudget({ day: "2026-09-29", calls: 30 }, NOW);
+test("le plafond du jour s’arrête à 400 appels et repart le lendemain", () => {
+  const blocked = reserveAeroBudget({ day: "2026-09-29", calls: AEROAPI_DAILY_CALL_CAP }, NOW);
   assert.equal(blocked.ok, false);
-  const next = reserveAeroBudget({ day: "2026-09-29", calls: 30 }, new Date("2026-09-29T22:30:00Z"));
+  const next = reserveAeroBudget({ day: "2026-09-29", calls: AEROAPI_DAILY_CALL_CAP }, new Date("2026-09-29T22:30:00Z"));
   assert.equal(next.ok, true);
   assert.equal(next.extra.day, "2026-09-30");
   assert.equal(next.extra.calls, 1);
