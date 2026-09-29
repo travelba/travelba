@@ -316,6 +316,51 @@ export type CrmHotelArrival = {
   updated_at: string;
 };
 
+export const HOTEL_DESK_KINDS = [
+  "payment_link",
+  "upgrade",
+  "precheckin",
+  "full_credit",
+  "transfer",
+  "concierge",
+] as const;
+
+export type HotelDeskKind = (typeof HOTEL_DESK_KINDS)[number];
+
+export const HOTEL_DESK_STATUSES = [
+  "waiting",
+  "due",
+  "draft",
+  "sent",
+  "follow_up",
+  "replied",
+  "skipped",
+] as const;
+
+export type HotelDeskStatus = (typeof HOTEL_DESK_STATUSES)[number];
+
+/** Courrier hôtel préparé pour l'agence. Aucun numéro de carte. */
+export type CrmHotelRequest = {
+  id: string;
+  booking_id: string;
+  booking_item_id: string;
+  kind: HotelDeskKind;
+  status: HotelDeskStatus;
+  recipients: string[];
+  subject: string;
+  body: string;
+  edited: boolean;
+  card_choice: "pliant" | "client" | null;
+  attach_passports: boolean;
+  due_on: string | null;
+  sent_at: string | null;
+  follow_up_count: number;
+  last_follow_up_at: string | null;
+  replied_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type CrmBookingTraveler = {
   id: string;
   booking_id: string;

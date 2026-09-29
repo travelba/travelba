@@ -30,7 +30,7 @@ export function HotelArrivalPanel({
     <section className="admin-af-card space-y-4 rounded-3xl p-5">
       <div>
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Avant l’arrivée</p>
-        <h2 className="text-lg font-semibold text-[var(--admin-navy)]">Hôtels</h2>
+        <h2 className="text-lg font-semibold text-[var(--admin-navy)]">Carte de séjour</h2>
       </div>
       <div className="space-y-4">
         {hotels.map((item) => (

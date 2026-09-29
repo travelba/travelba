@@ -12,6 +12,7 @@ import {
   type CrmBookingItem,
   type CrmBookingTraveler,
   type CrmHotelArrival,
+  type CrmHotelRequest,
   type CrmCompanion,
   type CrmCustomer,
   type CrmTravelDocument,
@@ -70,6 +71,8 @@ export function BookingEditor({
   shareUrl = null,
   shareCompanions = [],
   arrivals = [],
+  hotelRequests = [],
+  passportCount = 0,
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -94,6 +97,8 @@ export function BookingEditor({
   shareUrl?: string | null;
   shareCompanions?: ShareCompanion[];
   arrivals?: CrmHotelArrival[];
+  hotelRequests?: CrmHotelRequest[];
+  passportCount?: number;
 }) {
   const router = useRouter();
   const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
@@ -766,6 +771,9 @@ export function BookingEditor({
         documents={documents}
         household={householdMembers(account || holderName, companions)}
         currency={booking.currency}
+        hotelRequests={hotelRequests}
+        today={todayIsoDate()}
+        passportCount={passportCount}
         onBindDraftSave={(save) => {
           saveOpenCard.current = save;
         }}

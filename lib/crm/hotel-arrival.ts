@@ -161,10 +161,7 @@ const COUNTRY_ISO: Record<string, string> = {
 export type ArrivalPlan =
   | { action: "wait" }
   | { action: "task"; note: string; reason: string }
-  | { action: "send_link"; note: string | null }
-  | { action: "relance"; note: string | null }
   | { action: "pay" }
-  | { action: "send_vip"; limitCents: number; note: string | null }
   | { action: "close" };
 
 export type ArrivalTick = {
@@ -619,6 +616,12 @@ function gapNote(tick: ArrivalTick) {
   return parts.join(" ") || null;
 }
 
+/** Le cron ne contacte plus l’hôtel. L’agence reprend la main. */
+function pausedHotelMail(purpose: string, extra: string | null = null): ArrivalPlan {
+  const note = ["Le mail automatique vers l’hôtel est en pause.", purpose, extra].filter(Boolean).join(" ");
+  return { action: "task", note, reason: "manual" };
+}
+
 function holidaySet(tick: ArrivalTick) {
   return new Set(tick.holidays);
 }
@@ -638,10 +641,10 @@ export function planHotelArrival(tick: ArrivalTick): ArrivalPlan {
     return { action: "pay" };
   }
   if (tick.status === "blocked" && tick.blockedReason === "limit" && tick.cardId) {
-    return { action: "send_vip", limitCents: CHECKIN_CARD_CENTS, note: gapNote(tick) };
+    return pausedHotelMail("Transmettre le traitement VIP autrement.", gapNote(tick));
   }
   if (tick.status === "blocked") return { action: "wait" };
-  if (tick.status === "paid") return { action: "send_vip", limitCents: CHECKIN_CARD_CENTS, note: gapNote(tick) };
+  if (tick.status === "paid") return pausedHotelMail("Transmettre le traitement VIP autrement.", gapNote(tick));
   if (tick.paymentUrl && (tick.status === "link_requested" || tick.status === "link_received" || tick.status === "paying")) {
     return { action: "pay" };
   }
@@ -656,22 +659,22 @@ export function planHotelArrival(tick: ArrivalTick): ArrivalPlan {
     return { action: "task", note: "Aucun e-mail d'hôtel.", reason: "no_email" };
   }
   const note = gapNote(tick);
-  if (tick.channel === "expedia") return { action: "send_vip", limitCents: CHECKIN_CARD_CENTS, note };
-  return { action: "send_link", note };
+  if (tick.channel === "expedia") return pausedHotelMail("Transmettre le traitement VIP autrement.", note);
+  return pausedHotelMail("Demander le lien de paiement autrement.", note);
 }
 
 function relancePlan(tick: ArrivalTick, holidays: ReadonlySet<string>): ArrivalPlan {
   const note = gapNote(tick);
   if (tick.relanceCount <= 0) {
     if (tick.requestedAtMs != null && tick.nowMs >= tick.requestedAtMs + FOUR_HOURS_MS) {
-      return { action: "relance", note };
+      return pausedHotelMail("Relancer l’hôtel autrement.", note);
     }
     return { action: "wait" };
   }
   if (tick.relanceCount === 1) {
     const fromMs = tick.lastRelanceAtMs ?? tick.requestedAtMs ?? tick.nowMs;
     const from = parisIsoDate(new Date(fromMs));
-    if (tick.parisToday >= nextBusinessDay(from, holidays)) return { action: "relance", note };
+    if (tick.parisToday >= nextBusinessDay(from, holidays)) return pausedHotelMail("Relancer l’hôtel autrement.", note);
     return { action: "wait" };
   }
   return { action: "task", note: "L'hôtel n'a pas renvoyé de lien de paiement.", reason: "no_reply" };

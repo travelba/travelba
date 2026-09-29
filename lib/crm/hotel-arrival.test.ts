@@ -219,54 +219,63 @@ test("la page de paiement interactive revient à l'agent", () => {
   assert.equal(classifyPaymentPage({ ok: true, url: "https://pay.hotel.test/form", body: "<form>card</form>" }), "needs_agent");
 });
 
-test("échéancier : attente, envoi, Expedia sans lien, relances, paiement, clôture", () => {
+test("échéancier : attente, tâche agence, Expedia sans lien, relances, paiement, clôture", () => {
   assert.equal(planHotelArrival(tick({ parisToday: "2026-10-30" })).action, "wait");
   assert.equal(planHotelArrival(tick({ bookingStatus: "quoted" })).action, "wait");
   const expedia = planHotelArrival(tick({ channel: "expedia", amountCents: null }));
-  assert.equal(expedia.action, "send_vip");
-  if (expedia.action === "send_vip") assert.equal(expedia.limitCents, CHECKIN_CARD_CENTS);
+  assert.equal(expedia.action, "task");
+  if (expedia.action === "task") {
+    assert.equal(expedia.reason, "manual");
+    assert.match(expedia.note, /mail automatique/);
+    assert.match(expedia.note, /VIP/);
+  }
   const missingMail = planHotelArrival(tick({ emails: [] }));
   assert.deepEqual(missingMail, { action: "task", note: "Aucun e-mail d'hôtel.", reason: "no_email" });
   const partial = planHotelArrival(tick({ amountCents: null, passportCount: 0, travelerCount: 2 }));
-  assert.equal(partial.action, "send_link");
-  if (partial.action === "send_link") {
-    assert.match(partial.note || "", /Montant manquant/);
-    assert.match(partial.note || "", /Passeport manquant/);
+  assert.equal(partial.action, "task");
+  if (partial.action === "task") {
+    assert.equal(partial.reason, "manual");
+    assert.match(partial.note, /lien de paiement/);
+    assert.match(partial.note, /Montant manquant/);
+    assert.match(partial.note, /Passeport manquant/);
   }
   const requested = Date.parse("2026-11-02T08:00:00.000Z");
   assert.equal(
     planHotelArrival(tick({ status: "link_requested", requestedAtMs: requested, nowMs: requested + 60_000 })).action,
     "wait"
   );
-  assert.equal(
-    planHotelArrival(tick({ status: "link_requested", requestedAtMs: requested, nowMs: requested + 4 * 60 * 60 * 1000 }))
-      .action,
-    "relance"
+  const followUp = planHotelArrival(
+    tick({ status: "link_requested", requestedAtMs: requested, nowMs: requested + 4 * 60 * 60 * 1000 })
   );
-  assert.equal(
-    planHotelArrival(
-      tick({
-        status: "link_requested",
-        relanceCount: 1,
-        lastRelanceAtMs: Date.parse("2026-10-30T10:00:00.000Z"),
-        parisToday: "2026-11-02",
-      })
-    ).action,
-    "relance"
+  assert.equal(followUp.action, "task");
+  if (followUp.action === "task") assert.equal(followUp.reason, "manual");
+  const nextDay = planHotelArrival(
+    tick({
+      status: "link_requested",
+      relanceCount: 1,
+      lastRelanceAtMs: Date.parse("2026-10-30T10:00:00.000Z"),
+      parisToday: "2026-11-02",
+    })
   );
+  assert.equal(nextDay.action, "task");
+  if (nextDay.action === "task") assert.match(nextDay.note, /Relancer/);
   const silent = planHotelArrival(tick({ status: "link_requested", relanceCount: 2 }));
   assert.equal(silent.action, "task");
   if (silent.action === "task") assert.equal(silent.reason, "no_reply");
   assert.equal(planHotelArrival(tick({ status: "link_requested", paymentUrl: "https://pay.hotel.test/1" })).action, "pay");
   const afterPay = planHotelArrival(tick({ status: "paid" }));
-  assert.equal(afterPay.action, "send_vip");
-  if (afterPay.action === "send_vip") assert.equal(afterPay.limitCents, CHECKIN_CARD_CENTS);
+  assert.equal(afterPay.action, "task");
+  if (afterPay.action === "task") {
+    assert.equal(afterPay.reason, "manual");
+    assert.match(afterPay.note, /VIP/);
+  }
   assert.equal(
     planHotelArrival(tick({ status: "blocked", blockedReason: "payment", paymentUrl: "https://pay.hotel.test/1" })).action,
     "wait"
   );
   const resumed = planHotelArrival(tick({ status: "blocked", blockedReason: "no_email", emails: ["desk@hotel.test"] }));
-  assert.equal(resumed.action, "send_link");
+  assert.equal(resumed.action, "task");
+  if (resumed.action === "task") assert.equal(resumed.reason, "manual");
   assert.equal(
     planHotelArrival(tick({ status: "vip_sent", cardId: "card-1", parisToday: "2026-11-11", checkOut: "2026-11-08" }))
       .action,

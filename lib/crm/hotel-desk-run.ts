@@ -1,0 +1,488 @@
+import "server-only";
+
+import { Resend } from "resend";
+import { pliantCardNomination } from "./eta-il-fee";
+import { downloadCrmFile } from "./files";
+import { gmailConfigured, searchInbox } from "./gmail";
+import { hotelContact } from "./hotel-contact";
+import {
+  CHECKIN_CARD_CENTS,
+  CHECKIN_CARD_CURRENCY,
+  cardCloseDate,
+  cardLast4,
+  countryIso,
+  emailAddress,
+  holidayDatesFromNager,
+  hotelLanguage,
+  nagerHolidayUrl,
+  parisIsoDate,
+  principalGuest,
+} from "./hotel-arrival";
+import {
+  HOTEL_DESK_KINDS,
+  cardSendNote,
+  cleanRecipients,
+  containsCardNumber,
+  hotelDeskChannel,
+  hotelDeskDraft,
+  keepAgencyDraft,
+  nextDeskMark,
+  outboundHotelLetter,
+  replyMatchesHotel,
+} from "./hotel-desk";
+import { passportPreviewsForStay } from "./preview-files";
+import { issuePliantCard, pliantConfigured, readPliantCardSecrets } from "./pliant";
+import { siteConfig } from "../site";
+import type {
+  CrmBookingItem,
+  CrmBookingTraveler,
+  CrmHotelRequest,
+  CrmTravelDocument,
+  HotelDeskKind,
+} from "./types";
+
+type Admin = { from: (table: string) => any };
+
+const OPEN_BOOKING = ["confirmed", "travelling"];
+const LIVE = ["waiting", "due", "draft", "sent", "follow_up"];
+
+async function holidaysFor(country: string, checkIn: string, fetchImpl: typeof fetch, cache: Map<string, string[]>) {
+  const iso = countryIso(country);
+  if (!iso || !checkIn) return [];
+  const year = Number(checkIn.slice(0, 4));
+  const key = `${iso}:${year}`;
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const dates: string[] = [];
+  for (const current of [year - 1, year]) {
+    try {
+      const res = await fetchImpl(nagerHolidayUrl(current, iso), { signal: AbortSignal.timeout(4000) });
+      if (!res.ok) continue;
+      dates.push(...holidayDatesFromNager(await res.json()));
+    } catch {
+      continue;
+    }
+  }
+  cache.set(key, dates);
+  return dates;
+}
+
+export async function ensureHotelRequests(
+  admin: Admin,
+  input: {
+    bookingId: string;
+    reference: string;
+    currency: string;
+    guest: string;
+    items: CrmBookingItem[];
+    fetchImpl?: typeof fetch;
+  }
+) {
+  const hotels = input.items.filter((item) => item.kind === "hotel");
+  if (!hotels.length) return [] as CrmHotelRequest[];
+  const { data, error } = await admin.from("crm_hotel_requests").select("*").eq("booking_id", input.bookingId);
+  if (error) return [] as CrmHotelRequest[];
+  const existing = (data || []) as CrmHotelRequest[];
+  const byKey = new Map(existing.map((row) => [`${row.booking_item_id}:${row.kind}`, row]));
+  const fetchImpl = input.fetchImpl || fetch;
+  const cache = new Map<string, string[]>();
+  for (const item of hotels) {
+    const contact = hotelContact(item);
+    const checkIn = (item.start_at || "").slice(0, 10);
+    const holidays = await holidaysFor(contact.country, checkIn, fetchImpl, cache);
+    for (const kind of HOTEL_DESK_KINDS) {
+      const fresh = hotelDeskDraft({
+        kind,
+        item,
+        items: input.items,
+        reference: input.reference,
+        guest: input.guest,
+        currency: input.currency || "EUR",
+        holidays,
+      });
+      const current = byKey.get(`${item.id}:${kind}`);
+      if (!current) {
+        const { data: inserted } = await admin
+          .from("crm_hotel_requests")
+          .insert({
+            booking_id: input.bookingId,
+            booking_item_id: item.id,
+            kind,
+            status: fresh.status,
+            recipients: fresh.recipients,
+            subject: fresh.subject,
+            body: fresh.body,
+            due_on: fresh.dueOn,
+            card_choice: fresh.cardChoice,
+            attach_passports: fresh.attachPassports,
+          })
+          .select("*")
+          .maybeSingle();
+        if (inserted) byKey.set(`${item.id}:${kind}`, inserted as CrmHotelRequest);
+        continue;
+      }
+      const kept = keepAgencyDraft(current, fresh);
+      if (
+        kept.subject !== current.subject ||
+        kept.body !== current.body ||
+        kept.recipients.join(",") !== (current.recipients || []).join(",") ||
+        (current.due_on || null) !== fresh.dueOn
+      ) {
+        await admin
+          .from("crm_hotel_requests")
+          .update({
+            subject: kept.subject,
+            body: kept.body,
+            recipients: kept.recipients,
+            due_on: current.edited || current.status !== "waiting" ? current.due_on : fresh.dueOn,
+          })
+          .eq("id", current.id);
+      }
+    }
+  }
+  const { data: freshRows } = await admin.from("crm_hotel_requests").select("*").eq("booking_id", input.bookingId);
+  return (freshRows || []) as CrmHotelRequest[];
+}
+
+export async function refreshHotelDesk(admin: Admin, deps: { now?: Date; fetchImpl?: typeof fetch } = {}) {
+  const now = deps.now || new Date();
+  const parisToday = parisIsoDate(now);
+  const { data: bookings } = await admin
+    .from("crm_bookings")
+    .select("id, reference, currency, customer_id")
+    .in("status", OPEN_BOOKING);
+  const stays = (bookings || []) as { id: string; reference: string | null; currency: string | null; customer_id: string }[];
+  if (!stays.length) return { marked: 0, replied: 0 };
+  const ids = stays.map((row) => row.id);
+  const [{ data: items }, { data: travelers }] = await Promise.all([
+    admin.from("crm_booking_items").select("*").in("booking_id", ids).in("kind", ["hotel", "flight"]),
+    admin.from("crm_booking_travelers").select("*").in("booking_id", ids),
+  ]);
+  const itemRows = (items || []) as CrmBookingItem[];
+  const travelerRows = (travelers || []) as CrmBookingTraveler[];
+  let marked = 0;
+  for (const stay of stays) {
+    const stayItems = itemRows.filter((item) => item.booking_id === stay.id);
+    if (!stayItems.some((item) => item.kind === "hotel")) continue;
+    const guest = principalGuest({
+      travelers: travelerRows.filter((row) => row.booking_id === stay.id),
+    });
+    await ensureHotelRequests(admin, {
+      bookingId: stay.id,
+      reference: stay.reference || "",
+      currency: stay.currency || "EUR",
+      guest: `${guest.firstName} ${guest.lastName}`.trim(),
+      items: stayItems,
+      fetchImpl: deps.fetchImpl,
+    });
+  }
+  const { data: requests } = await admin.from("crm_hotel_requests").select("*").in("booking_id", ids).in("status", LIVE);
+  const rows = (requests || []) as CrmHotelRequest[];
+  const cache = new Map<string, string[]>();
+  const fetchImpl = deps.fetchImpl || fetch;
+  for (const row of rows) {
+    const item = itemRows.find((entry) => entry.id === row.booking_item_id);
+    const holidays = item
+      ? await holidaysFor(hotelContact(item).country, (item.start_at || "").slice(0, 10), fetchImpl, cache)
+      : [];
+    const next = nextDeskMark({
+      status: row.status,
+      dueOn: row.due_on,
+      parisToday,
+      sentAtMs: row.sent_at ? Date.parse(row.sent_at) : null,
+      followUpCount: row.follow_up_count || 0,
+      lastFollowUpAtMs: row.last_follow_up_at ? Date.parse(row.last_follow_up_at) : null,
+      nowMs: now.getTime(),
+      holidays,
+    });
+    if (!next || next === row.status) continue;
+    await admin.from("crm_hotel_requests").update({ status: next }).eq("id", row.id);
+    marked += 1;
+  }
+  const replied = await attachHotelReplies(admin, rows.filter((row) => row.status === "sent" || row.status === "follow_up").slice(0, 25));
+  return { marked, replied };
+}
+
+async function attachHotelReplies(admin: Admin, rows: CrmHotelRequest[]) {
+  let replied = 0;
+  for (const row of rows) {
+    if (!row.sent_at || !row.recipients.length) continue;
+    const sinceMs = Date.parse(row.sent_at);
+    const hits = await findHotelReplies(admin, row.recipients, sinceMs);
+    const match = hits.find((hit) =>
+      replyMatchesHotel({
+        from: hit.from,
+        receivedAtMs: hit.receivedAtMs,
+        sentAtMs: sinceMs,
+        hotelEmails: row.recipients,
+      })
+    );
+    if (!match) continue;
+    await admin
+      .from("crm_hotel_requests")
+      .update({ status: "replied", replied_at: new Date(match.receivedAtMs).toISOString() })
+      .eq("id", row.id);
+    replied += 1;
+  }
+  return replied;
+}
+
+async function findHotelReplies(admin: Admin, emails: string[], sinceMs: number) {
+  const replies: { from: string; receivedAtMs: number }[] = [];
+  const safe = emails.map((email) => emailAddress(email)).filter(Boolean);
+  if (gmailConfigured() && safe.length) {
+    const since = new Date(sinceMs);
+    const stamp = `${since.getUTCFullYear()}/${String(since.getUTCMonth() + 1).padStart(2, "0")}/${String(since.getUTCDate()).padStart(2, "0")}`;
+    const query = `after:${stamp} (${safe.map((email) => `from:${email}`).join(" OR ")})`;
+    try {
+      const messages = await searchInbox(query, 6);
+      for (const message of messages) {
+        const receivedAtMs = message.receivedAt ? Date.parse(message.receivedAt) : sinceMs;
+        replies.push({ from: message.fromEmail || message.from, receivedAtMs });
+      }
+    } catch {
+      replies.push(...[]);
+    }
+  }
+  const { data } = await admin
+    .from("crm_email_ingest")
+    .select("from_email, received_at")
+    .gte("received_at", new Date(sinceMs).toISOString())
+    .order("received_at", { ascending: false })
+    .limit(40);
+  for (const row of (data || []) as { from_email?: string | null; received_at?: string | null }[]) {
+    replies.push({
+      from: row.from_email || "",
+      receivedAtMs: row.received_at ? Date.parse(row.received_at) : sinceMs,
+    });
+  }
+  return replies;
+}
+
+export async function saveHotelRequest(
+  admin: Admin,
+  input: {
+    bookingId: string;
+    itemId: string;
+    kind: HotelDeskKind;
+    subject: string;
+    body: string;
+    recipients: string[];
+    cardChoice: "pliant" | "client" | null;
+  }
+) {
+  if (containsCardNumber(input.body) || containsCardNumber(input.subject)) {
+    throw new Error("Le brouillon ne peut pas contenir un numéro de carte.");
+  }
+  const row = await loadRequest(admin, input.bookingId, input.itemId, input.kind);
+  const recipients = cleanRecipients(input.recipients);
+  const status = row.status === "waiting" || row.status === "due" ? "draft" : row.status;
+  await admin
+    .from("crm_hotel_requests")
+    .update({
+      subject: input.subject.trim(),
+      body: input.body,
+      recipients,
+      card_choice: input.kind === "precheckin" ? input.cardChoice || "pliant" : null,
+      edited: true,
+      status,
+    })
+    .eq("id", row.id);
+}
+
+export async function skipHotelRequest(admin: Admin, bookingId: string, itemId: string, kind: HotelDeskKind) {
+  const row = await loadRequest(admin, bookingId, itemId, kind);
+  await admin.from("crm_hotel_requests").update({ status: "skipped" }).eq("id", row.id);
+}
+
+export async function restoreHotelRequest(admin: Admin, bookingId: string, itemId: string, kind: HotelDeskKind) {
+  const row = await loadRequest(admin, bookingId, itemId, kind);
+  const due = row.due_on && parisIsoDate(new Date()) >= row.due_on;
+  await admin.from("crm_hotel_requests").update({ status: due ? "due" : "waiting" }).eq("id", row.id);
+}
+
+export async function sendHotelRequest(
+  admin: Admin,
+  input: {
+    bookingId: string;
+    itemId: string;
+    kind: HotelDeskKind;
+    subject: string;
+    body: string;
+    recipients: string[];
+    cardChoice: "pliant" | "client" | null;
+  }
+) {
+  if (containsCardNumber(input.body) || containsCardNumber(input.subject)) {
+    throw new Error("Le brouillon ne peut pas contenir un numéro de carte.");
+  }
+  const recipients = cleanRecipients(input.recipients);
+  if (!recipients.length) throw new Error("Ajoutez au moins un e-mail d'hôtel.");
+  const row = await loadRequest(admin, input.bookingId, input.itemId, input.kind);
+  const item = await loadItem(admin, input.bookingId, input.itemId);
+  const lang = hotelLanguage(hotelContact(item).country);
+  let note = "";
+  if (input.kind === "precheckin") {
+    const choice = input.cardChoice || row.card_choice || "pliant";
+    if (choice === "pliant") {
+      const card = await pliantForSend(admin, input.bookingId, item);
+      note = cardSendNote("pliant", lang, card);
+    } else {
+      note = cardSendNote("client", lang, null);
+    }
+  }
+  const text = outboundHotelLetter(input.body, note);
+  const attachments = row.attach_passports || input.kind === "precheckin" ? await passportFiles(admin, input.bookingId) : [];
+  await deliverHotelMail({ to: recipients, subject: input.subject.trim(), text, attachments });
+  const now = new Date().toISOString();
+  const followUp = row.status === "follow_up";
+  await admin
+    .from("crm_hotel_requests")
+    .update({
+      subject: input.subject.trim(),
+      body: input.body,
+      recipients,
+      card_choice: input.kind === "precheckin" ? input.cardChoice || "pliant" : row.card_choice,
+      edited: true,
+      status: "sent",
+      sent_at: now,
+      follow_up_count: followUp ? (row.follow_up_count || 0) + 1 : row.follow_up_count || 0,
+      last_follow_up_at: followUp ? now : row.last_follow_up_at,
+    })
+    .eq("id", row.id);
+}
+
+async function loadRequest(admin: Admin, bookingId: string, itemId: string, kind: HotelDeskKind) {
+  const { data } = await admin
+    .from("crm_hotel_requests")
+    .select("*")
+    .eq("booking_id", bookingId)
+    .eq("booking_item_id", itemId)
+    .eq("kind", kind)
+    .maybeSingle();
+  if (!data) throw new Error("Étape introuvable.");
+  return data as CrmHotelRequest;
+}
+
+async function loadItem(admin: Admin, bookingId: string, itemId: string) {
+  const { data } = await admin.from("crm_booking_items").select("*").eq("booking_id", bookingId).eq("id", itemId).maybeSingle();
+  if (!data) throw new Error("Hôtel introuvable.");
+  return data as CrmBookingItem;
+}
+
+async function deliverHotelMail(mail: {
+  to: string[];
+  subject: string;
+  text: string;
+  attachments: { filename: string; content: Buffer }[];
+}) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) throw new Error("L'envoi n'est pas configuré.");
+  const from = process.env.HOTEL_ARRIVAL_FROM || process.env.CONTACT_FROM_EMAIL || siteConfig.contactEmail;
+  const resend = new Resend(apiKey);
+  const { error } = await resend.emails.send({
+    from: `${siteConfig.name} <${from}>`,
+    to: mail.to,
+    subject: mail.subject,
+    text: mail.text,
+    replyTo: from,
+    attachments: mail.attachments.map((file) => ({ filename: file.filename, content: file.content })),
+  });
+  if (error) throw new Error("L'envoi du mail a échoué.");
+}
+
+async function passportFiles(admin: Admin, bookingId: string) {
+  const { data: booking } = await admin.from("crm_bookings").select("customer_id, reference").eq("id", bookingId).maybeSingle();
+  const stay = booking as { customer_id?: string; reference?: string | null } | null;
+  if (!stay?.customer_id) return [];
+  const [{ data: travelers }, { data: documents }] = await Promise.all([
+    admin.from("crm_booking_travelers").select("*").eq("booking_id", bookingId),
+    admin.from("crm_travel_documents").select("*").eq("customer_id", stay.customer_id),
+  ]);
+  const files = passportPreviewsForStay(
+    (travelers || []) as CrmBookingTraveler[],
+    (documents || []) as CrmTravelDocument[],
+    null,
+    stay.reference
+  );
+  const attachments: { filename: string; content: Buffer }[] = [];
+  for (const file of files) {
+    try {
+      const downloaded = await downloadCrmFile(file.path);
+      attachments.push({ filename: (file.fileName || "passeport").slice(0, 80), content: Buffer.from(downloaded.bytes) });
+    } catch {
+      attachments.push(...[]);
+    }
+  }
+  return attachments;
+}
+
+async function pliantForSend(admin: Admin, bookingId: string, item: CrmBookingItem) {
+  const { data } = await admin
+    .from("crm_hotel_arrivals")
+    .select("id, pliant_card_id")
+    .eq("booking_id", bookingId)
+    .eq("booking_item_id", item.id)
+    .maybeSingle();
+  const arrival = data as { id: string; pliant_card_id: string | null } | null;
+  let cardId = arrival?.pliant_card_id || "";
+  if (!cardId) {
+    if (!pliantConfigured()) throw new Error("Pliant n'est pas branché. Choisissez la carte du client, ou émettez la carte de séjour.");
+    const { data: booking } = await admin.from("crm_bookings").select("customer_id").eq("id", bookingId).maybeSingle();
+    const customerId = (booking as { customer_id?: string } | null)?.customer_id || "";
+    const [{ data: travelers }, { data: customer }] = await Promise.all([
+      admin.from("crm_booking_travelers").select("*").eq("booking_id", bookingId),
+      customerId
+        ? admin.from("crm_customers").select("first_name, last_name").eq("id", customerId).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+    const guest = principalGuest({
+      travelers: (travelers || []) as CrmBookingTraveler[],
+      holder: customer as { first_name: string; last_name: string } | null,
+    });
+    const name = pliantCardNomination({ firstName: guest.firstName, lastName: guest.lastName });
+    const today = parisIsoDate(new Date());
+    const validTo = cardCloseDate((item.end_at || item.start_at || today).slice(0, 10));
+    const money = { value: CHECKIN_CARD_CENTS, currency: CHECKIN_CARD_CURRENCY };
+    const issued = await issuePliantCard(process.env.PLIANT_CARDHOLDER_ID || "", {
+      organizationId: process.env.PLIANT_ORGANIZATION_ID || "",
+      cardConfig: "PLIANT_VIRTUAL_TRAVEL",
+      label: name.label,
+      customFirstName: name.customFirstName,
+      customLastName: name.customLastName,
+      limit: money,
+      transactionLimit: money,
+      limitRenewFrequency: "TOTAL",
+      maxTransactionCount: 20,
+      validFrom: today,
+      validTo,
+      validTimezone: "Europe/Paris",
+    });
+    if (!issued.cardId) throw new Error("Pliant n'a pas créé la carte.");
+    cardId = issued.cardId;
+    if (arrival?.id) {
+      await admin.from("crm_hotel_arrivals").update({ pliant_card_id: cardId, card_limit_cents: CHECKIN_CARD_CENTS }).eq("id", arrival.id);
+    } else {
+      await admin.from("crm_hotel_arrivals").insert({
+        booking_id: bookingId,
+        booking_item_id: item.id,
+        channel: hotelDeskChannel(item),
+        pliant_card_id: cardId,
+        card_limit_cents: CHECKIN_CARD_CENTS,
+      });
+    }
+  }
+  const secrets = await readPliantCardSecrets(cardId);
+  const last4 = cardLast4(secrets.pan);
+  if (arrival?.id && last4.length === 4) {
+    await admin.from("crm_hotel_arrivals").update({ card_last4: last4, pliant_card_id: cardId }).eq("id", arrival.id);
+  }
+  const named = await stayHolder(admin, bookingId);
+  return { holder: named, pan: secrets.pan, expiry: secrets.expiry, cvc: secrets.cvc };
+}
+
+async function stayHolder(admin: Admin, bookingId: string) {
+  const { data: travelers } = await admin.from("crm_booking_travelers").select("*").eq("booking_id", bookingId);
+  const guest = principalGuest({ travelers: (travelers || []) as CrmBookingTraveler[] });
+  return `${guest.firstName} ${guest.lastName}`.trim();
+}

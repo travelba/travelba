@@ -1,39 +1,30 @@
 import "server-only";
 
-import { Resend } from "resend";
 import { pliantCardNomination } from "./eta-il-fee";
-import { downloadCrmFile } from "./files";
 import { gmailConfigured, searchInbox } from "./gmail";
 import { hotelContact, leHotelIdFromItem } from "./hotel-contact";
 import { hotelDisplayName } from "./carnet";
 import {
   CHECKIN_CARD_CENTS,
-  CHECKIN_CARD_CURRENCY,
   addIsoDays,
   cardCloseDate,
   countryIso,
   emailAddress,
-  formatArrivalAmount,
   holidayDatesFromNager,
   hotelChannel,
-  hotelLanguage,
   isoDate,
   leStayAmount,
-  linkRequestMail,
   nagerHolidayUrl,
   parisIsoDate,
   planHotelArrival,
   principalGuest,
   quotedAmount,
   replyPaymentUrl,
-  vipMail,
-  cardLast4,
   classifyPaymentPage,
   type ArrivalTick,
 } from "./hotel-arrival";
 import { passportPreviewsForStay } from "./preview-files";
-import { issuePliantCard, pliantConfigured, readPliantCardSecrets, setPliantCardLimit } from "./pliant";
-import { siteConfig } from "../site";
+import { issuePliantCard, pliantConfigured, setPliantCardLimit } from "./pliant";
 import type {
   CrmBookingItem,
   CrmBookingTraveler,
@@ -50,17 +41,9 @@ type Reply = { from: string; subject: string; body: string; receivedAtMs: number
 export type ArrivalDeps = {
   now?: Date;
   fetchImpl?: typeof fetch;
-  send?: (mail: {
-    to: string[];
-    subject: string;
-    text: string;
-    attachments?: { filename: string; content: Buffer }[];
-  }) => Promise<void>;
   issueCard?: (body: unknown) => Promise<{ cardId: string | null }>;
-  readSecrets?: (cardId: string) => Promise<{ pan: string; expiry: string; cvc: string }>;
   setLimit?: (cardId: string, limit: { value: number; currency: string }, count: number) => Promise<void>;
   findReplies?: (emails: string[], sinceMs: number) => Promise<Reply[]>;
-  download?: (path: string) => Promise<{ bytes: Uint8Array }>;
 };
 
 type BookingRow = {
@@ -137,27 +120,6 @@ function cardBody(input: {
       validTimezone: "Europe/Paris",
     },
   };
-}
-
-async function defaultSend(mail: {
-  to: string[];
-  subject: string;
-  text: string;
-  attachments?: { filename: string; content: Buffer }[];
-}) {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) throw new Error("RESEND_API_KEY manquant");
-  const from = process.env.HOTEL_ARRIVAL_FROM || siteConfig.contactEmail;
-  const resend = new Resend(apiKey);
-  const { error } = await resend.emails.send({
-    from: `${siteConfig.name} <${from}>`,
-    to: mail.to,
-    subject: mail.subject,
-    text: mail.text,
-    replyTo: from,
-    attachments: mail.attachments?.map((file) => ({ filename: file.filename, content: file.content })),
-  });
-  if (error) throw new Error("L'envoi du mail a échoué.");
 }
 
 async function defaultFindReplies(emails: string[], sinceMs: number): Promise<Reply[]> {
@@ -470,48 +432,6 @@ async function stepArrival(input: {
       await save(input.admin, row.id, row);
       break;
     }
-    if (plan.action === "send_link" || plan.action === "relance") {
-      const lang = hotelLanguage(contact.country);
-      const mail = linkRequestMail({
-        lang,
-        hotel: hotelDisplayName(input.item) || input.item.title,
-        reference: input.item.confirmation_ref || input.booking.reference || "",
-        checkIn,
-        checkOut,
-        amount: quoted.cents != null ? formatArrivalAmount(quoted.cents, currencyCode(quoted.currency)) : null,
-        relance: plan.action === "relance",
-      });
-      if (plan.action === "send_link") {
-        row = {
-          ...row,
-          status: "link_requested",
-          requested_at: input.now.toISOString(),
-          amount_cents: quoted.cents,
-          currency: currencyCode(quoted.currency),
-          blocked_reason: null,
-          task_open: Boolean(plan.note),
-          task_note: plan.note,
-        };
-      } else {
-        row = {
-          ...row,
-          relance_count: (row.relance_count || 0) + 1,
-          last_relance_at: input.now.toISOString(),
-          task_open: Boolean(plan.note),
-          task_note: plan.note,
-        };
-      }
-      await save(input.admin, row.id, row);
-      try {
-        await (input.deps.send || defaultSend)({ to: emails, subject: mail.subject, text: mail.text });
-      } catch (error) {
-        console.error("[hotel-arrival] mail", error instanceof Error ? error.message : "envoi");
-        row = { ...row, task_open: true, task_note: "L’envoi du mail a échoué." };
-        await save(input.admin, row.id, { task_open: true, task_note: row.task_note });
-        break;
-      }
-      continue;
-    }
     if (plan.action === "pay") {
       if (quoted.cents == null) {
         row = { ...row, status: "blocked", blocked_reason: "amount", task_open: true, task_note: "Montant manquant pour émettre la carte." };
@@ -554,22 +474,6 @@ async function stepArrival(input: {
       };
       await save(input.admin, row.id, row);
       break;
-    }
-    if (plan.action === "send_vip") {
-      const sent = await sendVip({
-        ...input,
-        row,
-        emails,
-        passports,
-        note: plan.note,
-        limitCents: plan.limitCents,
-        channel,
-        checkIn,
-        checkOut,
-        contactCountry: contact.country,
-      });
-      row = sent;
-      if (row.status !== "vip_sent") break;
     }
   }
   return steps;
@@ -614,6 +518,18 @@ async function classifyLink(url: string, fetchImpl: typeof fetch) {
   }
 }
 
+function guestName(
+  travelers: CrmBookingTraveler[],
+  holder: { first_name: string | null; last_name: string | null } | null
+) {
+  return principalGuest({
+    travelers,
+    holder: holder
+      ? { first_name: holder.first_name || "", last_name: holder.last_name || "" }
+      : null,
+  });
+}
+
 async function ensureCard(input: {
   admin: Admin;
   row: CrmHotelArrival;
@@ -651,142 +567,6 @@ async function ensureCard(input: {
     console.error("[hotel-arrival] pliant", error instanceof Error ? error.message : "carte");
     return { cardId: null, row: input.row, note: "Pliant n'a pas créé la carte." };
   }
-}
-
-function guestName(
-  travelers: CrmBookingTraveler[],
-  holder: { first_name: string | null; last_name: string | null } | null
-) {
-  return principalGuest({
-    travelers,
-    holder: holder
-      ? { first_name: holder.first_name || "", last_name: holder.last_name || "" }
-      : null,
-  });
-}
-
-async function sendVip(input: {
-  admin: Admin;
-  row: CrmHotelArrival;
-  item: CrmBookingItem;
-  booking: BookingRow;
-  travelers: CrmBookingTraveler[];
-  holder: { first_name: string | null; last_name: string | null } | null;
-  emails: string[];
-  passports: { path: string; fileName: string }[];
-  note: string | null;
-  limitCents: number;
-  channel: HotelArrivalChannel;
-  checkIn: string;
-  checkOut: string;
-  contactCountry: string;
-  parisToday: string;
-  now: Date;
-  deps: ArrivalDeps;
-}) {
-  const ready = await ensureCard({
-    ...input,
-    limitCents: input.limitCents,
-    currency: input.limitCents === CHECKIN_CARD_CENTS ? CHECKIN_CARD_CURRENCY : currencyCode(input.row.currency),
-  });
-  if (!ready.cardId) {
-    const row = { ...input.row, status: "blocked" as const, blocked_reason: "pliant", task_open: true, task_note: ready.note };
-    await save(input.admin, row.id, row);
-    return row;
-  }
-  let row = ready.row;
-  if ((row.card_limit_cents || 0) !== input.limitCents) {
-    try {
-      const setLimit = input.deps.setLimit || setPliantCardLimit;
-      await setLimit(ready.cardId, { value: input.limitCents, currency: CHECKIN_CARD_CURRENCY }, 20);
-      row = { ...row, card_limit_cents: input.limitCents, currency: CHECKIN_CARD_CURRENCY };
-    } catch (error) {
-      console.error("[hotel-arrival] plafond", error instanceof Error ? error.message : "plafond");
-      row = {
-        ...row,
-        status: "blocked",
-        blocked_reason: "limit",
-        task_open: true,
-        task_note: "Le plafond n'a pas été abaissé à 500 €.",
-      };
-      await save(input.admin, row.id, row);
-      return row;
-    }
-  }
-  await save(input.admin, row.id, {
-    pliant_card_id: row.pliant_card_id,
-    card_limit_cents: row.card_limit_cents,
-    currency: row.currency,
-    status: row.status === "pending" ? "paid" : row.status,
-  });
-  let secrets: { pan: string; expiry: string; cvc: string } | null = null;
-  try {
-    const read = input.deps.readSecrets || readPliantCardSecrets;
-    secrets = await read(ready.cardId);
-  } catch (error) {
-    console.error("[hotel-arrival] secrets", error instanceof Error ? error.message : "carte");
-  }
-  if (!secrets) {
-    row = { ...row, status: "paid", task_open: true, task_note: "La carte n'a pas pu être lue." };
-    await save(input.admin, row.id, { status: "paid", task_open: true, task_note: row.task_note });
-    return row;
-  }
-  const last4 = cardLast4(secrets.pan);
-  if (last4.length === 4) row = { ...row, card_last4: last4 };
-  const guest = guestName(input.travelers, input.holder);
-  const holder = `${guest.firstName} ${guest.lastName}`.trim();
-  const mail = vipMail({
-    lang: hotelLanguage(input.contactCountry),
-    hotel: hotelDisplayName(input.item) || input.item.title,
-    reference: input.item.confirmation_ref || input.booking.reference || "",
-    checkIn: input.checkIn,
-    checkOut: input.checkOut,
-    card: { holder, pan: secrets.pan, expiry: secrets.expiry, cvc: secrets.cvc },
-  });
-  const download = input.deps.download || downloadCrmFile;
-  const attachments: { filename: string; content: Buffer }[] = [];
-  for (const passport of input.passports) {
-    try {
-      const file = await download(passport.path);
-      attachments.push({
-        filename: (passport.fileName || "passeport").slice(0, 80),
-        content: Buffer.from(file.bytes),
-      });
-    } catch {
-      attachments.push(...[]);
-    }
-  }
-  try {
-    await (input.deps.send || defaultSend)({
-      to: input.emails,
-      subject: mail.subject,
-      text: mail.text,
-      attachments,
-    });
-  } catch (error) {
-    console.error("[hotel-arrival] vip", error instanceof Error ? error.message : "envoi");
-    row = { ...row, status: "paid", task_open: true, task_note: "L'envoi du mail VIP a échoué." };
-    await save(input.admin, row.id, {
-      status: "paid",
-      task_open: true,
-      task_note: row.task_note,
-      pliant_card_id: row.pliant_card_id,
-      card_limit_cents: row.card_limit_cents,
-      card_last4: row.card_last4,
-    });
-    return row;
-  }
-  row = {
-    ...row,
-    status: "vip_sent",
-    vip_sent_at: input.now.toISOString(),
-    blocked_reason: null,
-    task_open: Boolean(input.note),
-    task_note: input.note,
-    card_limit_cents: input.limitCents,
-  };
-  await save(input.admin, row.id, row);
-  return row;
 }
 
 export async function advanceHotelItem(admin: Admin, bookingId: string, itemId: string, deps: ArrivalDeps = {}) {
