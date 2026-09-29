@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
+import { fieldControlClass } from "@/components/crm/fields";
 import { Icon } from "@/components/crm/icons";
 import {
   customerPickLabel,
@@ -52,13 +53,13 @@ export function CustomerPickField({
   }
 
   return (
-    <label className="flex flex-col gap-1 text-xs font-semibold text-muted sm:col-span-2">
+    <label className="flex flex-col gap-1.5 text-sm font-semibold text-[var(--admin-navy)]">
       {label}
       <input type="hidden" name={name} value={value?.id || ""} />
       <button
         type="button"
         onClick={() => void openPicker()}
-        className="flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-white px-3 py-2 text-left text-sm font-medium text-[var(--admin-navy)]"
+        className={`${fieldControlClass} flex items-center justify-between gap-3 text-left font-medium`}
       >
         <span className="min-w-0 truncate">
           {value ? formatLabel(value) : "Choisir un client…"}

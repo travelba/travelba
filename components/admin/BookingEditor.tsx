@@ -591,121 +591,156 @@ export function BookingEditor({
         aiConfigured={aiConfigured}
         preserveTitle={booking.title}
       />
-      <form id="booking-meta" onSubmit={save} className="admin-af-card grid gap-3 rounded-3xl p-5 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-          Titre du voyage
-          <input
-            name="title"
-            required
-            value={titleDraft}
-            onChange={(event) => setTitleDraft(event.target.value)}
-            className="rounded-xl border border-border px-3 py-2"
+      <form id="booking-meta" onSubmit={save} className="admin-af-card space-y-6 rounded-3xl p-5 sm:p-6">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <CustomerPickField
+            name="customer_id"
+            label="Client"
+            selected={account}
+            title="Client du dossier"
+            formatLabel={customerTravelerPickLabel}
           />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-          Destination
-          <PlaceField
-            name="destination"
-            defaultValue={booking.destination || ""}
-            className="rounded-xl border border-border px-3 py-2"
+          <CustomerPickField
+            name="billing_customer_id"
+            selected={billingCustomer || account}
+            title="Qui paie"
+            label="Qui paie"
+            formatLabel={customerBillingPickLabel}
           />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-          Départ
-          <DateFrInput name="start_date" aria-label="Date de départ" defaultValue={booking.start_date || ""} className="rounded-xl border border-border px-3 py-2" />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-          Retour
-          <DateFrInput name="end_date" aria-label="Date de retour" defaultValue={booking.end_date || ""} className="rounded-xl border border-border px-3 py-2" />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-          Devise du séjour
-          <select
-            name="currency"
-            defaultValue={stayCurrency(booking.currency)}
-            aria-label="Devise du séjour"
-            className="admin-tap rounded-xl border border-border bg-white px-3 py-2"
-          >
-            {STAY_CURRENCIES.map((code) => (
-              <option key={code} value={code}>
-                {code}
-              </option>
-            ))}
-          </select>
-          <span className="font-normal text-muted">
-            EUR, USD, CHF ou GBP. La monnaie imprimée sur un document ne remplace pas ce choix.
-          </span>
-        </label>
-        <label className="flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-2">
-          <input
-            type="checkbox"
-            name="client_settles_stay"
-            checked={clientSettles}
-            onChange={(event) => setClientSettles(event.target.checked)}
-            className="mt-1"
-          />
-          <span>
-            Le client règle ce séjour
-            <span className="mt-0.5 block text-xs font-normal text-muted">
-              L’hôtel est payé sur sa carte. Le montant reste au carnet et sort des transactions et de l’encours.
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="flex flex-col gap-1.5 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-2">
+            Titre
+            <input
+              name="title"
+              required
+              value={titleDraft}
+              onChange={(event) => setTitleDraft(event.target.value)}
+              placeholder="Séjour à Avoriaz"
+              className={fieldControlClass}
+            />
+            <span className="text-xs font-normal text-muted">Le client le voit en haut de son carnet.</span>
+          </label>
+          <label className="flex flex-col gap-1.5 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-2">
+            Destination
+            <PlaceField
+              name="destination"
+              defaultValue={booking.destination || ""}
+              placeholder="Ville ou station"
+              className={fieldControlClass}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 text-sm font-semibold text-[var(--admin-navy)]">
+            Départ
+            <DateFrInput
+              name="start_date"
+              aria-label="Date de départ"
+              defaultValue={booking.start_date || ""}
+              className={fieldControlClass}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 text-sm font-semibold text-[var(--admin-navy)]">
+            Retour
+            <DateFrInput
+              name="end_date"
+              aria-label="Date de retour"
+              defaultValue={booking.end_date || ""}
+              className={fieldControlClass}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 text-sm font-semibold text-[var(--admin-navy)]">
+            Où en est le dossier
+            <select name="status" defaultValue={booking.status} className={fieldControlClass}>
+              {BOOKING_STATUSES.map((status) => (
+                <option key={status} value={status}>
+                  {BOOKING_STATUS_LABELS[status]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1.5 text-sm font-semibold text-[var(--admin-navy)]">
+            Devise
+            <select
+              name="currency"
+              defaultValue={stayCurrency(booking.currency)}
+              aria-label="Devise du séjour"
+              className={fieldControlClass}
+            >
+              {STAY_CURRENCIES.map((code) => (
+                <option key={code} value={code}>
+                  {code}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <fieldset className="space-y-3 rounded-2xl bg-[var(--admin-peach)]/40 p-4">
+          <legend className="px-1 text-sm font-semibold text-[var(--admin-navy)]">Règlement</legend>
+          <label className="flex items-start gap-3 text-sm font-semibold text-[var(--admin-navy)]">
+            <input
+              type="checkbox"
+              name="client_settles_stay"
+              checked={clientSettles}
+              onChange={(event) => setClientSettles(event.target.checked)}
+              className="mt-1 size-4"
+            />
+            <span>
+              Le client paie l’hôtel lui-même
+              <span className="mt-0.5 block text-xs font-normal text-muted">
+                Le prix reste au carnet. Il n’entre pas dans ses transactions.
+              </span>
             </span>
-          </span>
-        </label>
-        <label className="flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)] sm:col-span-2">
-          <input
-            key={clientSettles ? "stay-out" : "stay-in"}
-            type="checkbox"
-            name="include_in_ledger"
-            defaultChecked={!clientSettles && booking.include_in_ledger !== false}
-            disabled={clientSettles}
-            className="mt-1"
-          />
-          <span>
-            Inclure le montant du séjour dans les transactions
-            <span className="mt-0.5 block text-xs font-normal text-muted">
-              {clientSettles
-                ? "Le client règle ce séjour : ce montant ne va pas aux transactions."
-                : "Décochez pour afficher le prix au carnet sans impacter l’encours client."}
-              {!clientSettles && items.some((item) => item.include_in_ledger)
-                ? " Des cartes sont déjà comptabilisées : laissez décoché pour éviter un double compte."
-                : ""}
+          </label>
+          <label className="flex items-start gap-3 text-sm font-semibold text-[var(--admin-navy)]">
+            <input
+              key={clientSettles ? "stay-out" : "stay-in"}
+              type="checkbox"
+              name="include_in_ledger"
+              defaultChecked={!clientSettles && booking.include_in_ledger !== false}
+              disabled={clientSettles}
+              className="mt-1 size-4"
+            />
+            <span>
+              Compter ce séjour dans les transactions
+              <span className="mt-0.5 block text-xs font-normal text-muted">
+                {clientSettles
+                  ? "Le client paie lui-même : ce montant n’est pas compté."
+                  : "Décochez pour montrer le prix au carnet sans le compter."}
+                {!clientSettles && items.some((item) => item.include_in_ledger)
+                  ? " Des cartes sont déjà comptées : laissez décoché pour ne pas compter deux fois."
+                  : ""}
+              </span>
             </span>
-          </span>
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
-          Statut
-          <select name="status" defaultValue={booking.status} className="rounded-xl border border-border bg-white px-3 py-2">
-            {BOOKING_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {BOOKING_STATUS_LABELS[s]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <CustomerPickField
-          name="customer_id"
-          label="Client voyageur (titulaire)"
-          selected={account}
-          title="Client voyageur (titulaire)"
-          formatLabel={customerTravelerPickLabel}
-        />
-        <CustomerPickField
-          name="billing_customer_id"
-          selected={billingCustomer || account}
-          title="Facturé à (wallet / société)"
-          label="Facturé à (wallet / société)"
-          formatLabel={customerBillingPickLabel}
-        />
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted sm:col-span-2">
-          Notes visibles par le client
-          <textarea name="notes_client" defaultValue={booking.notes_client || ""} placeholder="Conseils, horaires de rendez-vous…" className="rounded-xl border border-border px-3 py-2" />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-semibold text-muted sm:col-span-2">
-          Notes internes (agence)
-          <textarea name="notes_internal" defaultValue={booking.notes_internal || ""} placeholder="Jamais affichées au client" className="rounded-xl border border-border px-3 py-2" />
-        </label>
-        <p className="sm:col-span-2 text-xs text-muted">
-          Enregistrer ne publie pas. Le statut confirmé crée le débit au grand livre.
+          </label>
+        </fieldset>
+
+        <div className="grid gap-4">
+          <label className="flex flex-col gap-1.5 text-sm font-semibold text-[var(--admin-navy)]">
+            Message pour le client
+            <textarea
+              name="notes_client"
+              defaultValue={booking.notes_client || ""}
+              rows={3}
+              placeholder="Conseils, horaires de rendez-vous…"
+              className={`${fieldControlClass} min-h-24`}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 rounded-2xl bg-[var(--background)] p-4 text-sm font-semibold text-[var(--admin-navy)]">
+            Notes pour l’agence
+            <textarea
+              name="notes_internal"
+              defaultValue={booking.notes_internal || ""}
+              rows={3}
+              placeholder="Le client ne voit pas ces notes"
+              className={`${fieldControlClass} min-h-24`}
+            />
+          </label>
+        </div>
+
+        <p className="text-xs text-muted">
+          Enregistrer garde le dossier. Le statut « Confirmée » inscrit le montant dans les transactions du client.
         </p>
       </form>
 
