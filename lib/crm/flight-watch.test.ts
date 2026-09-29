@@ -224,6 +224,16 @@ test("les variables WhatsApp refusent un lien dans le texte", () => {
     "TWILIO_CONTENT_VOL_ENVOL",
     "TWILIO_CONTENT_VOL_ARRIVEE",
   ].join(","));
+  const bodies = flightNoticeDrafts()
+    .map((draft) => {
+      const card = draft.create.types["twilio/call-to-action"] as { body?: string };
+      return card.body || "";
+    })
+    .join("\n");
+  assert.match(bodies, /Je transmets à l’agence/);
+  assert.match(bodies, /Votre séjour est dans votre espace/);
+  assert.equal(bodies.includes("Bon vol"), false);
+  assert.equal(bodies.includes("L'agence s'en occupe"), false);
   assert.deepEqual(
     flightNoticeVariables({
       kind: "arrivee",
