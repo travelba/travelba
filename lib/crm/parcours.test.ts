@@ -157,6 +157,41 @@ test("cover catalogue matches the arrival place only", () => {
     unsplashKeywordMatch({ destination: "France", title: "Séjour" })
   );
   assert.equal(unsplashKeywordMatch({ destination: "Xyzzy", title: "Inconnu" }), null);
+  const marrakechPhoto = unsplashKeywordMatch({ destination: "Marrakech", title: "Séjour" });
+  const moroccoPhoto = unsplashKeywordMatch({ destination: "Maroc", title: "Séjour" });
+  assert.equal(
+    unsplashKeywordMatch({ destination: "Aghouatim", title: "Aghouatim" }),
+    marrakechPhoto
+  );
+  assert.notEqual(
+    unsplashKeywordMatch({ destination: "Aghouatim", title: "Aghouatim" }),
+    moroccoPhoto
+  );
+  const ranch = bookingCoverPlan({
+    destination: "Aghouatim",
+    title: "The Ranch resort",
+    cover_image_path: null,
+  });
+  assert.equal(ranch.mode, "single");
+  if (ranch.mode === "single") assert.match(ranch.src, /photo-1677837488142-a85ffbffe408/);
+  const tahannaout = bookingCoverPlan(
+    { destination: "40 ans", title: "40 ans", cover_image_path: null },
+    { places: ["Tahannaout"] }
+  );
+  assert.equal(tahannaout.mode, "single");
+  if (tahannaout.mode === "single") assert.match(tahannaout.src, /photo-1677837488142-a85ffbffe408/);
+  const addressed = bookingCoverPlan(
+    { destination: "Séjour", title: "Séjour", cover_image_path: null },
+    { items: [{ kind: "hotel", details: { city: "Douar", address: "Route de Marrakech, Maroc" } }] }
+  );
+  assert.equal(addressed.mode, "single");
+  if (addressed.mode === "single") assert.match(addressed.src, /photo-1677837488142-a85ffbffe408/);
+  const countryOnly = bookingCoverPlan(
+    { destination: "Séjour", title: "Séjour", cover_image_path: null },
+    { items: [{ kind: "hotel", details: { city: "Douar", country: "Maroc" } }] }
+  );
+  assert.equal(countryOnly.mode, "single");
+  if (countryOnly.mode === "single") assert.match(countryOnly.src, /photo-1489749798305-4fea3ae63d43/);
   const portugal = unsplashKeywordMatch({ destination: "Portugal", title: "Séjour" });
   assert.ok(portugal);
   assert.equal(

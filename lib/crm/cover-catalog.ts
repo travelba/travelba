@@ -522,9 +522,26 @@ const CITIES: Array<[name: string, country: string, photo?: string]> = [
   ["montevideo", "uy"],
 ];
 
+/**
+ * Résidence ou hameau sans photo : la ville du catalogue la plus proche.
+ * Aghouatim et Tahannaout sont dans l’Al Haouz, pas une image au hasard.
+ */
+const NEARBY: Array<[name: string, city: string]> = [
+  ["aghouatim", "marrakech"],
+  ["tahannaout", "marrakech"],
+  ["tahanaout", "marrakech"],
+  ["al haouz", "marrakech"],
+  ["haouz", "marrakech"],
+  ["ourika", "marrakech"],
+  ["asni", "marrakech"],
+  ["tamesloht", "marrakech"],
+  ["agadir tassaout", "marrakech"],
+];
+
 const countryPhoto = new Map<string, string | null>();
 const countryAlias = new Map<string, string>();
 const cities = new Map<string, CityCover>();
+const nearbyCity = new Map<string, string>();
 
 for (const [code, photo, names] of COUNTRIES) {
   countryPhoto.set(code, photo);
@@ -533,6 +550,20 @@ for (const [code, photo, names] of COUNTRIES) {
 
 for (const [name, country, photo] of CITIES) {
   cities.set(name, { country, photo: photo ?? null });
+}
+
+for (const [name, city] of NEARBY) {
+  if (cities.has(city)) nearbyCity.set(name, city);
+}
+
+function photoForCityKey(key: string, seen = new Set<string>()): string | null {
+  if (seen.has(key)) return null;
+  seen.add(key);
+  const city = cities.get(key);
+  if (city?.photo) return city.photo;
+  if (city) return countryPhoto.get(city.country) ?? null;
+  const parent = nearbyCity.get(key);
+  return parent ? photoForCityKey(parent, seen) : null;
 }
 
 export const COUNTRY_CODES = [...countryPhoto.keys()];
@@ -553,14 +584,40 @@ export function catalogRetouchJobs() {
   return [...jobs.entries()].map(([id, label]) => ({ id, label }));
 }
 
-/** Ville d’abord, sinon le pays du lieu, sinon le pays nommé tel quel. */
+/** Ville d’abord, sinon la ville proche, sinon le pays du lieu, sinon le pays nommé tel quel. */
 export function lookupCoverPhoto(key: string) {
-  const city = cities.get(key);
-  if (city?.photo) return city.photo;
-  if (city) return countryPhoto.get(city.country) ?? null;
+  const fromCity = photoForCityKey(key);
+  if (fromCity) return fromCity;
   const code = countryAlias.get(key);
   if (!code) return null;
   return countryPhoto.get(code) ?? null;
+}
+
+export type CoverSearchHit = { key: string; photo: string; rank: number };
+
+let searchHits: CoverSearchHit[] | null = null;
+
+/** Lieux cités dans un libellé : ville photographiée, puis ville proche, puis pays. */
+export function coverSearchHits(): CoverSearchHit[] {
+  if (searchHits) return searchHits;
+  const rows: CoverSearchHit[] = [];
+  const push = (key: string, photo: string | null, rank: number) => {
+    if (photo) rows.push({ key, photo, rank });
+  };
+  for (const [key, city] of cities) {
+    push(key, city.photo ?? countryPhoto.get(city.country) ?? null, city.photo ? 3 : 2);
+  }
+  for (const [key, parent] of nearbyCity) {
+    const city = cities.get(parent);
+    if (!city) continue;
+    push(key, city.photo ?? countryPhoto.get(city.country) ?? null, city.photo ? 3 : 2);
+  }
+  for (const [key, code] of countryAlias) {
+    push(key, countryPhoto.get(code) ?? null, 1);
+  }
+  rows.sort((a, b) => b.key.length - a.key.length || b.rank - a.rank);
+  searchHits = rows;
+  return rows;
 }
 
 /** Photo propre de la ville. Le repli pays n’est pas une photo de cette ville. */
@@ -569,7 +626,11 @@ export function cityOwnCoverPhoto(key: string) {
 }
 
 export function countryCodeForPlace(key: string) {
-  return cities.get(key)?.country || countryAlias.get(key) || null;
+  const city = cities.get(key);
+  if (city) return city.country;
+  const parent = nearbyCity.get(key);
+  if (parent) return cities.get(parent)?.country || null;
+  return countryAlias.get(key) || null;
 }
 
 export function countryCoverPhoto(code: string) {
