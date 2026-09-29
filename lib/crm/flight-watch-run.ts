@@ -152,8 +152,19 @@ function groupDue(items: ItemRow[], now: Date) {
   });
 }
 
-export async function runFlightWatch(admin: Admin, deps: { now?: Date; fetchImpl?: typeof fetch } = {}) {
+const PACE_EVERY = 8;
+const PACE_MS = 6_000;
+
+function pause(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+export async function runFlightWatch(
+  admin: Admin,
+  deps: { now?: Date; fetchImpl?: typeof fetch; sleep?: (ms: number) => Promise<void> } = {}
+) {
   const now = deps.now || new Date();
+  const sleep = deps.sleep || pause;
   const aero = Boolean(aeroApiKey());
   const noticeSids = await ensureFlightNoticeSids(admin, deps.fetchImpl).catch((error) => {
     quiet(error);
@@ -204,6 +215,7 @@ export async function runFlightWatch(admin: Admin, deps: { now?: Date; fetchImpl
   const seen = new Set<string>();
 
   for (const [ident, group] of aero ? groupDue(active, now) : []) {
+    if (calls > 0 && calls % PACE_EVERY === 0) await sleep(PACE_MS);
     const budget = await takeBudget(admin, now);
     if (!budget.ok) {
       capped = true;

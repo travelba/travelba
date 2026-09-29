@@ -1,7 +1,7 @@
 import { airlineIataFromFlightNumber } from "./brand-marks";
 
-/** 0,005 $ par jeu de résultats (15 vols). 30 appels / jour ≈ 4,50 $ / mois. */
-export const AEROAPI_DAILY_CALL_CAP = 30;
+/** 0,005 $ par jeu de résultats. 400 appels couvrent une journée chargée, soit 2 $. */
+export const AEROAPI_DAILY_CALL_CAP = 400;
 export const AEROAPI_RESULT_USD = 0.005;
 const SHIFT_MS = 15 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;

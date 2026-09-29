@@ -4,6 +4,7 @@ import { runFlightWatch } from "@/lib/crm/flight-watch-run";
 import { createServiceClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
+export const maxDuration = 120;
 
 export async function GET(request: Request) {
   if (!cronAuthorized(request.headers.get("authorization"), cronSecret())) {
