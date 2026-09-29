@@ -21,6 +21,7 @@ async function markStep(db: SupabaseClient, bookingId: string, step: ClientVisaS
     .update({ step })
     .eq("booking_id", bookingId)
     .eq("country", "IL")
+    .not("accepted_at", "is", null)
     .in("step", from)
     .select("step");
   return Boolean(data?.length);
