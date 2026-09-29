@@ -1,7 +1,11 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useEffect, useState, type ReactNode } from "react";
 import { coverQuery } from "@/lib/crm/carnet";
 import {
   bookingCoverPlan,
+  catalogCoverUrl,
+  coverGeocodeQuery,
   type CoverBooking,
   type CoverPlaceItem,
 } from "@/lib/crm/covers";
@@ -38,7 +42,30 @@ export function BookingHero({
     places,
     partage: partage || undefined,
   });
-  const src = plan.mode === "none" ? null : plan.src;
+  const query = plan.mode === "none" ? coverGeocodeQuery(booking, { items, places }) : "";
+  const [matched, setMatched] = useState<{ query: string; src: string | null } | null>(null);
+
+  useEffect(() => {
+    if (query.length < 2) return;
+    const ctrl = new AbortController();
+    let cancelled = false;
+    fetch(`/api/covers/match?q=${encodeURIComponent(query)}`, { signal: ctrl.signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { photo?: unknown } | null) => {
+        if (cancelled) return;
+        const photo = typeof data?.photo === "string" ? data.photo : "";
+        setMatched({ query, src: photo ? catalogCoverUrl(photo) : null });
+      })
+      .catch(() => {
+        if (!cancelled) setMatched({ query, src: null });
+      });
+    return () => {
+      cancelled = true;
+      ctrl.abort();
+    };
+  }, [query]);
+
+  const src = plan.mode === "none" ? (matched?.query === query ? matched.src : null) : plan.src;
   const srcB = plan.mode === "split" ? plan.srcB : null;
   const fallback = plan.mode === "single" ? plan.fallback : null;
   const place = coverQuery(booking.destination, booking.title);

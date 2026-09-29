@@ -55,11 +55,13 @@ function labelCountryCodes(booking: Pick<CrmBooking, "destination" | "title">) {
   return named.length ? named : hubs;
 }
 
+export type CoverTextMatch = { photo: string; rank: number };
+
 /**
  * Photo d’un texte libre : ville du catalogue, sinon résidence proche
  * (Aghouatim → Marrakech), sinon le pays. Paris ne gagne que s’il est seul.
  */
-export function coverPhotoInText(text: string): string | null {
+export function coverMatchInText(text: string): CoverTextMatch | null {
   const folded = ` ${placeKey(text).replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim()} `;
   let best: { rank: number; len: number; photo: string } | null = null;
   let hub: { rank: number; len: number; photo: string } | null = null;
@@ -74,7 +76,12 @@ export function coverPhotoInText(text: string): string | null {
       if (better(hub)) hub = candidate;
     } else if (better(best)) best = candidate;
   }
-  return (best || hub)?.photo ?? null;
+  const chosen = best || hub;
+  return chosen ? { photo: chosen.photo, rank: chosen.rank } : null;
+}
+
+export function coverPhotoInText(text: string): string | null {
+  return coverMatchInText(text)?.photo ?? null;
 }
 
 export function unsplashKeywordMatch(booking: Pick<CrmBooking, "destination" | "title">) {
@@ -191,6 +198,27 @@ export function bookingCoverPlan(
   if (single) return { mode: "single", src: catalogUrl(single), fallback: null };
   const mentioned = coverPhotoInText(stayCoverText(booking, options?.items));
   return mentioned ? { mode: "single", src: catalogUrl(mentioned), fallback: null } : { mode: "none" };
+}
+
+/** Texte envoyé au géocodeur quand le catalogue n’a pas de photo. */
+export function coverGeocodeQuery(
+  booking: Pick<CrmBooking, "destination" | "title">,
+  options?: { items?: CoverPlaceItem[]; places?: string[] }
+) {
+  const bits: string[] = [];
+  if (options?.places?.length) bits.push(...options.places);
+  else if (booking.destination) bits.push(booking.destination);
+  for (const item of options?.items || []) {
+    bits.push(
+      detailText(item.details, "city"),
+      detailText(item.details, "city_to"),
+      detailText(item.details, "address"),
+      detailText(item.details, "country"),
+      detailText(item.details, "region")
+    );
+  }
+  if (!bits.some(Boolean) && booking.title) bits.push(booking.title);
+  return bits.filter(Boolean).join(" ").replace(/\s+/g, " ").trim().slice(0, 160);
 }
 
 export function placeCoverUrl(booking: Pick<CrmBooking, "destination" | "title">, _width = 960) {
