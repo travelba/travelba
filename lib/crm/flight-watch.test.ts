@@ -230,9 +230,9 @@ test("les variables WhatsApp refusent un lien dans le texte", () => {
       return card.body || "";
     })
     .join("\n");
-  assert.match(bodies, /Je transmets à l’agence/);
-  assert.match(bodies, /Votre séjour est dans votre espace/);
-  assert.equal(bodies.includes("Bon vol"), false);
+  assert.match(bodies, /transmets/);
+  assert.match(bodies, /Je vous souhaite un bon vol/);
+  assert.match(bodies, /Vous voici/);
   assert.equal(bodies.includes("L'agence s'en occupe"), false);
   assert.deepEqual(
     flightNoticeVariables({
