@@ -15,7 +15,6 @@ import { siteConfig } from "@/lib/site";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import { StayBillingChoice } from "@/components/crm/StayBillingChoice";
 import { HotelDeskSummary } from "@/components/admin/HotelDesk";
-import { ensureHotelArrivals } from "@/lib/crm/hotel-arrival-run";
 import { ensureHotelRequests } from "@/lib/crm/hotel-desk-run";
 import { principalGuest } from "@/lib/crm/hotel-arrival";
 import { passportPreviewsForStay } from "@/lib/crm/preview-files";
@@ -30,7 +29,6 @@ import type {
   CrmBookingTraveler,
   CrmCompanion,
   CrmCustomer,
-  CrmHotelArrival,
   CrmHotelRequest,
   CrmTravelDocument,
 } from "@/lib/crm/types";
@@ -94,7 +92,6 @@ export default async function AdminBookingPage({ params }: Props) {
   const bookingItems = await attachLittleEmperorsCatalog(
     await loadHotelContacts(id, (items || []) as CrmBookingItem[])
   );
-  let arrivals: CrmHotelArrival[] = [];
   let hotelRequests: CrmHotelRequest[] = [];
   const bookingTravelers = (travelers || []) as CrmBookingTraveler[];
   const guest = principalGuest({
@@ -103,12 +100,6 @@ export default async function AdminBookingPage({ params }: Props) {
   });
   try {
     const arrivalAdmin = createServiceClient();
-    await ensureHotelArrivals(arrivalAdmin, id, bookingItems);
-    const { data: arrivalRows, error: arrivalError } = await arrivalAdmin
-      .from("crm_hotel_arrivals")
-      .select("*")
-      .eq("booking_id", id);
-    if (!arrivalError) arrivals = (arrivalRows || []) as CrmHotelArrival[];
     hotelRequests = await ensureHotelRequests(arrivalAdmin, {
       bookingId: id,
       reference: b.reference,
@@ -117,7 +108,6 @@ export default async function AdminBookingPage({ params }: Props) {
       items: bookingItems,
     });
   } catch {
-    arrivals = [];
     hotelRequests = [];
   }
   const shareCompanions = companionsForShare(bookingTravelers, (companions || []) as CrmCompanion[]);
@@ -199,7 +189,6 @@ export default async function AdminBookingPage({ params }: Props) {
           pliantReady={pliantConfigured()}
           shareUrl={shareUrl}
           shareCompanions={shareCompanions}
-          arrivals={arrivals}
           hotelRequests={hotelRequests}
           passportCount={passportCount}
         />
