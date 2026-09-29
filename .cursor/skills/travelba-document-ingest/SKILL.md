@@ -69,7 +69,7 @@ Pièces iOS parfois absentes du VM : le dire, demander le trombone desktop, ou l
 | Famille | Indices | Sortie |
 |---------|---------|--------|
 | E-ticket Amadeus | « Reçu de Billet Electronique », PNR 6 car. | `parseAmadeusFlights` — **1 item / segment** |
-| Little Emperors booking | Reservation Details + Booking Reference | `parseLittleEmperorsHotel` — **1 hôtel**, `rooms[]` |
+| Little Emperors booking | Reservation Details + Booking Reference | `parseLittleEmperorsHotel` — **1 hôtel**, `rooms[]`, `included` = **tout** le bloc Benefits |
 | Little Emperors quote | IATA 96020293, « none are on hold » | `document_status=quote`, invisible |
 | Nantipa | NANTIPA + Reservation Number, dates `08/02/2026` | `parseNantipaConfirmation` — MM/JJ, date only |
 | The Leela / lettre EN | `14-SEP-26`, RESERVATION CONFIRMATION | `parseHotelConfirmationLetter` — date only, TENTATIVE → `needs_review` |

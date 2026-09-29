@@ -611,6 +611,42 @@ Early check-in cannot be guaranteed.
       0
     );
   });
+
+  it("lit un mail LE Benefits, y compris l’astérisque coupé et les puces *", () => {
+    const mail = parseLittleEmperorsIncluded(`
+LE Benefits
+- Priority upgrade at check-in*
+- Daily breakfast for two guests
+- $100 hotel credit per stay
+- Early check-In, subject to availability
+- Guaranteed 2pm Late check-out
+*subject to availability and black out dates (excluding speciality
+suites)
+Deposit
+No deposit required
+`);
+    assert.deepEqual(mail, [
+      "Surclassement prioritaire à l'enregistrement — sous réserve de disponibilité et hors dates d'exclusion (hors suites spéciales)",
+      "Petit-déjeuner quotidien pour deux personnes",
+      "Crédit hôtel de 100 $ par séjour",
+      "Enregistrement anticipé, sous réserve de disponibilité",
+      "Départ tardif garanti à 14h00",
+    ]);
+    const virtuoso = parseLittleEmperorsIncluded(`
+Virtuoso benefits:
+*   Priority upgrade at check-in*
+*   Daily breakfast for two guests
+*   $100 hotel credit per stay
+*   Early check in/late check out*
+*subject to availability and black out dates (excluding speciality suites)
+`);
+    assert.deepEqual(virtuoso, [
+      "Surclassement prioritaire à l'enregistrement",
+      "Petit-déjeuner quotidien pour deux personnes",
+      "Crédit hôtel de 100 $ par séjour",
+      "Enregistrement anticipé et départ tardif",
+    ]);
+  });
 });
 
 describe("parseNantipaConfirmation", () => {

@@ -74,7 +74,7 @@ IDs prod :
 - Recréer des clients / voyages fictifs en prod
 - Fermer les sessions staff existantes
 - Cache Components Next.js
-- Inventer des heures, petits-déjs, nets, conditions d’annulation
+- Inventer des heures, petits-déjs, nets, conditions d’annulation. Little Emperors : tout le bloc Benefits, pas seulement le petit-déjeuner
 - Echo PII client (passeport, email, téléphone) dans un PR / log
 
 ## Fichiers clés

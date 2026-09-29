@@ -469,9 +469,13 @@ function leMoney(symbol: string, amount: string) {
   return `${value} ${symbol}`;
 }
 
+function leBenefitBody(raw: string) {
+  return raw.replace(/^(?:[-•]|\*\s+)\s*/, "").replace(/\*+$/, "").replace(/\s+/g, " ").trim();
+}
+
 /** Libellé imprimé → français. Une phrase inconnue reste telle quelle. */
 export function frenchLeBenefitLine(raw: string): string {
-  const line = raw.replace(/^[-•]\s*/, "").replace(/\*+$/, "").replace(/\s+/g, " ").trim();
+  const line = leBenefitBody(raw);
   const night = line.match(LE_NIGHT_FREE);
   if (night) {
     const word = LE_NIGHT_ORDINAL[night[1].toLowerCase()];
@@ -514,7 +518,7 @@ function leFootnote(raw: string) {
 }
 
 function looksLikeLeBenefit(line: string) {
-  const flat = line.replace(/^[-•]\s*/, "").replace(/\*+$/, "").trim();
+  const flat = leBenefitBody(line);
   return (
     LE_NIGHT_FREE.test(flat) ||
     /^daily breakfast(?: for two guests)?$/i.test(flat) ||
@@ -530,6 +534,21 @@ function looksLikeLeBenefit(line: string) {
   );
 }
 
+function rememberLeBenefitLine(collected: string[], line: string) {
+  const prev = collected[collected.length - 1];
+  if (
+    prev &&
+    /^\*\s*subject to availability/i.test(prev) &&
+    !/\)$/.test(prev) &&
+    !/^[-•*]/.test(line) &&
+    line.length < 40
+  ) {
+    collected[collected.length - 1] = `${prev} ${line}`;
+    return;
+  }
+  collected.push(line);
+}
+
 /** Toutes les lignes du bloc Benefits, pas seulement le petit-déjeuner. */
 export function parseLittleEmperorsIncluded(text: string): string[] {
   const lines = leBenefitLines(text);
@@ -541,7 +560,7 @@ export function parseLittleEmperorsIncluded(text: string): string[] {
     for (let i = heading + 1; i < lines.length; i++) {
       if (/^iata\b/i.test(lines[i])) continue;
       if (isLeBenefitStop(lines[i])) break;
-      collected.push(lines[i]);
+      rememberLeBenefitLine(collected, lines[i]);
     }
   } else {
     for (const line of lines) {
@@ -552,7 +571,8 @@ export function parseLittleEmperorsIncluded(text: string): string[] {
   const starred: number[] = [];
   for (const raw of collected) {
     const flat = raw.replace(/\s+/g, " ").trim();
-    if (/^\*/.test(flat)) {
+    const bullet = /^(?:[-•]|\*\s+)/.test(flat);
+    if (/^\*/.test(flat) && !bullet) {
       const note = leFootnote(flat);
       for (const index of starred) out[index] = `${out[index]} — ${note}`;
       starred.length = 0;
@@ -579,7 +599,7 @@ export function parseLittleEmperorsIncluded(text: string): string[] {
     if (out.some((row) => row.localeCompare(textLine, "fr", { sensitivity: "accent" }) === 0)) {
       continue;
     }
-    const starredLine = /\*$/.test(flat.replace(/^[-•]\s*/, ""));
+    const starredLine = /\*$/.test(flat.replace(/^(?:[-•]|\*\s+)\s*/, ""));
     out.push(textLine);
     if (starredLine) starred.push(out.length - 1);
   }
