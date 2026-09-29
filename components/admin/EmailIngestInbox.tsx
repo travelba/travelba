@@ -237,7 +237,7 @@ export function EmailIngestInbox({
     return (
       <EmptyState
         title="Aucun e-mail à rattacher"
-        description="Les mails fournisseurs (little-emperors, expedia-taap…) analysés apparaîtront ici pour rattachement."
+        description="Les mails fournisseurs (Little Emperors, Expedia TAAP, billets d'avion) analysés apparaîtront ici pour rattachement."
       />
     );
   }
