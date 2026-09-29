@@ -17,6 +17,8 @@ import { documentsForItem, hotelDisplayName, itemPriceLabel } from "@/lib/crm/ca
 import { formatMoney } from "@/lib/crm/money";
 import { STAY_CURRENCIES } from "@/lib/crm/stay-currency";
 import { HotelContactButton } from "@/components/crm/HotelContact";
+import { HotelDesk } from "@/components/admin/HotelDesk";
+import type { CrmHotelRequest } from "@/lib/crm/types";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
 import { BusyBar } from "@/components/crm/BusyBar";
@@ -74,9 +76,15 @@ export function BookingItemsPanel({
   household = [],
   currency = "EUR",
   onBindDraftSave,
+  hotelRequests = [],
+  today = "",
+  passportCount = 0,
 }: {
   bookingId: string;
   items: CrmBookingItem[];
+  hotelRequests?: CrmHotelRequest[];
+  today?: string;
+  passportCount?: number;
   documents?: CrmBookingDocument[];
   household?: HouseholdMember[];
   currency?: string;
@@ -303,6 +311,15 @@ export function BookingItemsPanel({
                       ) : null}
                     </p>
                     {item.kind === "hotel" ? <HotelContactButton item={item} /> : null}
+                    {item.kind === "hotel" ? (
+                      <HotelDesk
+                        bookingId={bookingId}
+                        itemId={item.id}
+                        requests={hotelRequests}
+                        today={today}
+                        passportCount={passportCount}
+                      />
+                    ) : null}
                     <p className="text-xs text-muted">
                       {[itemWhen(item), itemDetailsLine(item), itemPriceLabel(item, currency)]
                         .filter(Boolean)

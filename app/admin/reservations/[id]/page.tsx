@@ -15,6 +15,9 @@ import { siteConfig } from "@/lib/site";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import { StayBillingChoice } from "@/components/crm/StayBillingChoice";
 import { ensureHotelArrivals } from "@/lib/crm/hotel-arrival-run";
+import { ensureHotelRequests } from "@/lib/crm/hotel-desk-run";
+import { principalGuest } from "@/lib/crm/hotel-arrival";
+import { passportPreviewsForStay } from "@/lib/crm/preview-files";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
 import { isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
 import type {
@@ -26,6 +29,7 @@ import type {
   CrmCompanion,
   CrmCustomer,
   CrmHotelArrival,
+  CrmHotelRequest,
   CrmTravelDocument,
 } from "@/lib/crm/types";
 
@@ -87,6 +91,12 @@ export default async function AdminBookingPage({ params }: Props) {
   const allIdentity = (identityDocs || []) as CrmTravelDocument[];
   const bookingItems = await loadHotelContacts(id, (items || []) as CrmBookingItem[]);
   let arrivals: CrmHotelArrival[] = [];
+  let hotelRequests: CrmHotelRequest[] = [];
+  const bookingTravelers = (travelers || []) as CrmBookingTraveler[];
+  const guest = principalGuest({
+    travelers: bookingTravelers,
+    holder: customer ? { first_name: customer.first_name || "", last_name: customer.last_name || "" } : null,
+  });
   try {
     const arrivalAdmin = createServiceClient();
     await ensureHotelArrivals(arrivalAdmin, id, bookingItems);
@@ -95,11 +105,19 @@ export default async function AdminBookingPage({ params }: Props) {
       .select("*")
       .eq("booking_id", id);
     if (!arrivalError) arrivals = (arrivalRows || []) as CrmHotelArrival[];
+    hotelRequests = await ensureHotelRequests(arrivalAdmin, {
+      bookingId: id,
+      reference: b.reference,
+      currency: b.currency,
+      guest: `${guest.firstName} ${guest.lastName}`.trim(),
+      items: bookingItems,
+    });
   } catch {
     arrivals = [];
+    hotelRequests = [];
   }
-  const bookingTravelers = (travelers || []) as CrmBookingTraveler[];
   const shareCompanions = companionsForShare(bookingTravelers, (companions || []) as CrmCompanion[]);
+  const passportCount = passportPreviewsForStay(bookingTravelers, allIdentity, customer, b.reference).length;
   let shareUrl: string | null = null;
   if (b.visible_to_client) {
     try {
@@ -177,6 +195,8 @@ export default async function AdminBookingPage({ params }: Props) {
           shareUrl={shareUrl}
           shareCompanions={shareCompanions}
           arrivals={arrivals}
+          hotelRequests={hotelRequests}
+          passportCount={passportCount}
         />
       </div>
     </div>
