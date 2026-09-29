@@ -241,6 +241,11 @@ describe("inferAirportIata", () => {
     assert.equal(inferAirportIata("AÉROPORT DE GENÈVE GENÈVE")?.iata, "GVA");
     assert.equal(inferAirportIata("HEATHROW LONDRES")?.iata, "LHR");
     assert.equal(inferAirportIata("MARSEILLE PROVENCE MARSEILLE")?.iata, "MRS");
+    assert.equal(inferAirportIata("27 October 15:00 LAGUARDIA NEW YORK Terminal : C")?.iata, "LGA");
+    assert.equal(inferAirportIata("LAGUARDIA NEW YORK")?.city, "New York");
+    assert.equal(inferAirportIata("AÉROPORT DE MIAMI MIAMI")?.iata, "MIA");
+    assert.equal(inferAirportIata("Miami Intl")?.city, "Miami");
+    assert.equal(inferAirportIata("JOHN F. KENNEDY NEW YORK")?.iata, "JFK");
   });
 });
 
