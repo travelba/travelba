@@ -417,6 +417,175 @@ export type ParsedHotel = {
   source_family?: string | null;
 };
 
+const LE_NIGHT_FREE =
+  /^(second|third|fourth|fifth|sixth|seventh|2nd|3rd|4th|5th|6th|7th)\s+night free$/i;
+
+const LE_NIGHT_ORDINAL: Record<string, string> = {
+  second: "Deuxième",
+  third: "Troisième",
+  fourth: "Quatrième",
+  fifth: "Cinquième",
+  sixth: "Sixième",
+  seventh: "Septième",
+  "2nd": "Deuxième",
+  "3rd": "Troisième",
+  "4th": "Quatrième",
+  "5th": "Cinquième",
+  "6th": "Sixième",
+  "7th": "Septième",
+};
+
+function leBenefitLines(text: string) {
+  return text
+    .split(/\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function isLeBenefitHeading(line: string) {
+  return /^(?:little emperors benefits|le benefits)$/i.test(line);
+}
+
+function isLeBenefitStop(line: string) {
+  return /^(?:payment details(?:\s+terms and conditions)?|payment|total(?: price)?|deposit(?: policy)?|cancellation(?: policy)?|terms(?: and conditions)?|reservation details|booking reference|address|check in|check out|booking name|adults)$/i.test(
+    line
+  );
+}
+
+function leClock(hourRaw: string, minutes: string | undefined, ampm: string | undefined) {
+  let hour = Number(hourRaw);
+  const min = minutes ? Number(minutes) : 0;
+  const mark = (ampm || "").toLowerCase();
+  if (mark === "pm" && hour < 12) hour += 12;
+  if (mark === "am" && hour === 12) hour = 0;
+  return `${hour}h${String(min).padStart(2, "0")}`;
+}
+
+function leMoney(symbol: string, amount: string) {
+  const value = amount.replace(".", ",");
+  if (symbol === "USD" || symbol === "$") return `${value} $`;
+  if (symbol === "GBP" || symbol === "£") return `${value} £`;
+  if (symbol === "EUR" || symbol === "€") return `${value} €`;
+  return `${value} ${symbol}`;
+}
+
+/** Libellé imprimé → français. Une phrase inconnue reste telle quelle. */
+export function frenchLeBenefitLine(raw: string): string {
+  const line = raw.replace(/^[-•]\s*/, "").replace(/\*+$/, "").replace(/\s+/g, " ").trim();
+  const night = line.match(LE_NIGHT_FREE);
+  if (night) {
+    const word = LE_NIGHT_ORDINAL[night[1].toLowerCase()];
+    return word ? `${word} nuit offerte` : line;
+  }
+  if (/^priority upgrade at check-?in$/i.test(line)) {
+    return "Surclassement prioritaire à l'enregistrement";
+  }
+  if (/^daily breakfast for two guests$/i.test(line)) {
+    return "Petit-déjeuner quotidien pour deux personnes";
+  }
+  if (/^daily breakfast$/i.test(line)) return "Petit-déjeuner quotidien";
+  if (/^complimentary breakfast$/i.test(line)) return "Petit-déjeuner offert";
+  if (/^early check-?in,? subject to availability$/i.test(line)) {
+    return "Enregistrement anticipé, sous réserve de disponibilité";
+  }
+  if (/^early check[-\s]?in\s*\/\s*late check[-\s]?out$/i.test(line)) {
+    return "Enregistrement anticipé et départ tardif";
+  }
+  if (/^daily \(for 2 people\) breakfast credit$/i.test(line)) {
+    return "Crédit petit-déjeuner quotidien pour 2 personnes";
+  }
+  if (/^hotel credit per stay$/i.test(line)) return "Crédit hôtel par séjour";
+  const late = line.match(/^guaranteed\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s+late check-?out$/i);
+  if (late) return `Départ tardif garanti à ${leClock(late[1], late[2], late[3])}`;
+  const credit =
+    line.match(/^([$£€])\s*(\d+(?:[.,]\d+)?)\s+hotel credit(?: per stay)?$/i) ||
+    line.match(/^(USD|GBP|EUR)\s+(\d+(?:[.,]\d+)?)\s+hotel credit(?: per stay)?$/i);
+  if (credit) return `Crédit hôtel de ${leMoney(credit[1], credit[2])} par séjour`;
+  if (/^petit[- ]d[eé]jeuner$/i.test(line)) return "Petit-déjeuner";
+  return line;
+}
+
+function leFootnote(raw: string) {
+  const line = raw.replace(/^\*\s*/, "").replace(/\s+/g, " ").trim();
+  if (/^subject to availability and black out dates \(excluding speciality suites\)$/i.test(line)) {
+    return "sous réserve de disponibilité et hors dates d'exclusion (hors suites spéciales)";
+  }
+  return line;
+}
+
+function looksLikeLeBenefit(line: string) {
+  const flat = line.replace(/^[-•]\s*/, "").replace(/\*+$/, "").trim();
+  return (
+    LE_NIGHT_FREE.test(flat) ||
+    /^daily breakfast(?: for two guests)?$/i.test(flat) ||
+    /^daily \(for 2 people\) breakfast credit$/i.test(flat) ||
+    /^complimentary breakfast$/i.test(flat) ||
+    /^priority upgrade at check-?in$/i.test(flat) ||
+    /^early check-?in,? subject to availability$/i.test(flat) ||
+    /^early check[-\s]?in\s*\/\s*late check[-\s]?out$/i.test(flat) ||
+    /^guaranteed\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s+late check-?out$/i.test(flat) ||
+    /^(?:[$£€]\s*)?(?:USD|GBP|EUR)?\s*\d+(?:[.,]\d+)?\s+hotel credit(?: per stay)?$/i.test(flat) ||
+    /^hotel credit per stay$/i.test(flat) ||
+    /^petit[- ]d[eé]jeuner$/i.test(flat)
+  );
+}
+
+/** Toutes les lignes du bloc Benefits, pas seulement le petit-déjeuner. */
+export function parseLittleEmperorsIncluded(text: string): string[] {
+  const lines = leBenefitLines(text);
+  const heading = lines.findIndex(isLeBenefitHeading);
+  const collected: string[] = [];
+  if (heading >= 0) {
+    const before = lines[heading - 1];
+    if (before && LE_NIGHT_FREE.test(before.replace(/\s+/g, " "))) collected.push(before);
+    for (let i = heading + 1; i < lines.length; i++) {
+      if (/^iata\b/i.test(lines[i])) continue;
+      if (isLeBenefitStop(lines[i])) break;
+      collected.push(lines[i]);
+    }
+  } else {
+    for (const line of lines) {
+      if (looksLikeLeBenefit(line)) collected.push(line);
+    }
+  }
+  const out: string[] = [];
+  const starred: number[] = [];
+  for (const raw of collected) {
+    const flat = raw.replace(/\s+/g, " ").trim();
+    if (/^\*/.test(flat)) {
+      const note = leFootnote(flat);
+      for (const index of starred) out[index] = `${out[index]} — ${note}`;
+      starred.length = 0;
+      continue;
+    }
+    const textLine = frenchLeBenefitLine(flat);
+    if (!textLine || isLeBenefitStop(textLine)) continue;
+    if (
+      /^petit-déjeuner$/i.test(textLine) &&
+      out.some((row) => row.toLocaleLowerCase("fr").startsWith("petit-déjeuner ") )
+    ) {
+      continue;
+    }
+    const shortBreakfast = out.findIndex(
+      (row) =>
+        /^petit-d[eé]jeuner$/i.test(row) &&
+        textLine.toLocaleLowerCase("fr").startsWith("petit-déjeuner") &&
+        textLine.length > row.length
+    );
+    if (shortBreakfast >= 0) {
+      out[shortBreakfast] = textLine;
+      continue;
+    }
+    if (out.some((row) => row.localeCompare(textLine, "fr", { sensitivity: "accent" }) === 0)) {
+      continue;
+    }
+    const starredLine = /\*$/.test(flat.replace(/^[-•]\s*/, ""));
+    out.push(textLine);
+    if (starredLine) starred.push(out.length - 1);
+  }
+  return out;
+}
+
 export function parseLittleEmperorsHotel(text: string): ParsedHotel | null {
   if (!/Reservation Details/i.test(text) || !/Booking Reference/i.test(text)) return null;
   const refs = text.match(/Booking Reference\s+([0-9]{5,}(?:\s*;\s*[0-9]{5,})*)/i);
@@ -430,10 +599,7 @@ export function parseLittleEmperorsHotel(text: string): ParsedHotel | null {
   const city = lines[lines.length - 1] || null;
   const hotel_name = lines.slice(0, -1).join(" ").replace(/\s+/g, " ").trim() || null;
   const address = text.match(/Address\s+([^\n]+(?:\n[^\n]+)?)/i);
-  const included: string[] = [];
-  if (/Daily breakfast/i.test(text) || /petit[- ]d[eé]j/i.test(text)) {
-    included.push("Petit-déjeuner");
-  }
+  const included = parseLittleEmperorsIncluded(text);
   const rooms: ParsedHotel["rooms"] = [];
   const roomBlocks = text.split(/Booking name/i);
   for (const block of roomBlocks.slice(0, -1)) {

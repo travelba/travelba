@@ -218,6 +218,11 @@ export function hotelPublicFields(payload: unknown): LeHotelPublic {
   };
 }
 
+export function benefitsFromLeRaw(raw: unknown): string[] {
+  if (!raw || typeof raw !== "object") return [];
+  return stringList((raw as { benefits?: unknown }).benefits);
+}
+
 export function parseLeBooking(payload: unknown): LeBooking | null {
   if (!payload || typeof payload !== "object") return null;
   const row = payload as Record<string, unknown>;

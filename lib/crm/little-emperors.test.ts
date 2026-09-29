@@ -191,6 +191,7 @@ describe("little emperors staging client", () => {
     const withSite = leBookingExtract({ ...cancelled, website: "https://www.maison-test.example/hotel" });
     assert.equal(withSite.items[0]?.details?.website, "https://www.maison-test.example/hotel");
     assert.equal(withSite.items[0]?.details?.le_hotel_id, cancelled.hotel_id);
+    assert.deepEqual(withSite.items[0]?.details?.included, ["Petit-déjeuner offert"]);
     assert.equal(withSite.items[0]?.details?.phone, undefined);
     assert.equal(withSite.items[0]?.details?.email, undefined);
     assert.equal(canRemoteCancel({ is_cancellable: false }), false);

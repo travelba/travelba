@@ -20,6 +20,7 @@ import {
   parseExpediaTaap,
   parseLittleEmperorsGuests,
   parseLittleEmperorsHotel,
+  parseLittleEmperorsIncluded,
   reopenFalseSupplierCancellation,
   parseMaevaStay,
   parseNantipaConfirmation,
@@ -485,7 +486,7 @@ describe("parseLittleEmperorsHotel", () => {
     const withGuests = parsedItemsFromText(LE_HOTEL);
     assert.equal(withGuests.travelers[0]?.first_name, "Guest");
     assert.equal(withGuests.travelers[0]?.last_name, "A");
-    assert.equal(parsed.included.includes("Petit-déjeuner"), true);
+    assert.equal(parsed.included.includes("Petit-déjeuner quotidien pour deux personnes"), true);
     assert.equal(JSON.stringify(parsed).includes("858"), false);
     assert.equal(parsed.phone, null);
     assert.equal(parsed.email, null);
@@ -511,6 +512,104 @@ Email: stay@maison-test.example
     assert.equal(item?.details?.email ?? null, null);
     assert.equal(item?.details?.website, "https://www.maison-test.example/hotel");
     assert.equal(item?.details?.source_family, "little_emperors");
+  });
+
+  it("reprend tout le bloc Little Emperors Benefits, pas seulement le petit-déjeuner", () => {
+    const text = `
+Example Hotel
+London
+Reservation Details
+Check in
+29 October 2026
+Check out
+03 November 2026
+Booking Reference
+10000001
+Address
+1 Test Street, London
+Classic Premier
+Adults
+2
+Booking name
+Guest Test
+Fourth Night Free
+Little Emperors Benefits
+Priority upgrade at check-in*
+Daily breakfast for two guests
+$100 hotel credit per stay
+Early check-In, subject to availability
+Guaranteed 2pm Late check-out
+*subject to availability and black out dates (excluding speciality suites)
+IATA 96020293
+Payment Details
+Total
+£2,325.00
+Cancellation policy
+Free cancellation before 23:59 on 28 October 2026
+`;
+    const included = parseLittleEmperorsIncluded(text);
+    assert.deepEqual(included, [
+      "Quatrième nuit offerte",
+      "Surclassement prioritaire à l'enregistrement — sous réserve de disponibilité et hors dates d'exclusion (hors suites spéciales)",
+      "Petit-déjeuner quotidien pour deux personnes",
+      "Crédit hôtel de 100 $ par séjour",
+      "Enregistrement anticipé, sous réserve de disponibilité",
+      "Départ tardif garanti à 14h00",
+    ]);
+    const parsed = parseLittleEmperorsHotel(text);
+    assert.deepEqual(parsed?.included, included);
+    assert.equal(JSON.stringify(parsed).includes("2325"), false);
+    assert.equal(included.some((row) => /annulation/i.test(row)), false);
+  });
+
+  it("lit les bénéfices LE même avec des tirets", () => {
+    const included = parseLittleEmperorsIncluded(`
+Reservation Details
+Booking Reference
+10000002
+LE Benefits
+- Priority upgrade at check-in
+- Daily breakfast for two guests
+- £50 hotel credit per stay
+Deposit
+No deposit required
+`);
+    assert.deepEqual(included, [
+      "Surclassement prioritaire à l'enregistrement",
+      "Petit-déjeuner quotidien pour deux personnes",
+      "Crédit hôtel de 50 £ par séjour",
+    ]);
+  });
+
+  it("continue le bloc après la ligne IATA et ignore une phrase qui n’est pas un bénéfice", () => {
+    const included = parseLittleEmperorsIncluded(`
+Reservation Details
+Booking Reference
+10000003
+Booking name
+Guest Test
+Best Available Rate
+Little Emperors Benefits
+Priority upgrade at check-in*
+Early check in/late check out*
+*subject to availability and black out dates (excluding speciality suites)
+IATA 96020293
+Daily (for 2 people) breakfast credit
+Hotel credit per stay
+Hotel credit per stay
+Payment Details Terms and Conditions
+Early check-in cannot be guaranteed.
+`);
+    assert.deepEqual(included, [
+      "Surclassement prioritaire à l'enregistrement — sous réserve de disponibilité et hors dates d'exclusion (hors suites spéciales)",
+      "Enregistrement anticipé et départ tardif — sous réserve de disponibilité et hors dates d'exclusion (hors suites spéciales)",
+      "Crédit petit-déjeuner quotidien pour 2 personnes",
+      "Crédit hôtel par séjour",
+    ]);
+    assert.equal(
+      parseLittleEmperorsIncluded("Early check-in cannot be guaranteed.\nTaxes included.").length,
+      0
+    );
   });
 });
 

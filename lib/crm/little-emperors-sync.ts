@@ -7,6 +7,7 @@ import {
   cancelLittleEmperorsBooking,
   canRemoteCancel,
   fetchLittleEmperorsHotel,
+  benefitsFromLeRaw,
   isLeCancelled,
   listLittleEmperorsBookings,
   LittleEmperorsError,
@@ -348,7 +349,7 @@ export async function attachLittleEmperorsBooking(opts: {
     guest_names: row.guest_names || [],
     cancellation_policies: row.cancellation_policies || [],
     room_types: row.room_types || [],
-    benefits: [],
+    benefits: benefitsFromLeRaw(row.raw),
   };
   if (!booking.hotel_name) {
     throw new LittleEmperorsError("Little Emperors n’a pas indiqué le nom de l’hôtel.", 422, "hotel_name");
@@ -426,7 +427,7 @@ export async function cancelLittleEmperorsFromCrm(id: string) {
     guest_names: row.guest_names || [],
     cancellation_policies: row.cancellation_policies || [],
     room_types: row.room_types || [],
-    benefits: [],
+    benefits: benefitsFromLeRaw(row.raw),
   };
   let lastError: string | null = null;
   if (row.crm_booking_id) {
