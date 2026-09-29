@@ -58,30 +58,6 @@ export function StayCard({
   const number = revealed ? groupedPan(revealed.pan) : maskedCardNumber(tail);
   const expiry = revealed?.expiry || "••/••";
   const cvc = revealed?.cvc || "•••";
-  if (personal) {
-    return (
-      <div className="text-xs text-[var(--admin-navy)]">
-        {face.closed ? (
-          <p className="text-[#9e7e51]">Clôturée · {maskedCardNumber(tail)}</p>
-        ) : revealed ? (
-          <p className="font-mono">
-            {groupedPan(revealed.pan)} · {revealed.expiry} · {revealed.cvc}
-            <button type="button" className="ml-2 font-sans text-[#9e7e51]" onClick={() => setRevealed(null)}>
-              Masquer
-            </button>
-          </p>
-        ) : (
-          <form className="flex flex-wrap items-center gap-2" onSubmit={reveal}>
-            <span className="text-[#9e7e51]">{maskedCardNumber(tail)}</span>
-            <button type="submit" className="text-[#9e7e51] disabled:opacity-50" disabled={busy}>
-              {busy ? "…" : "Voir"}
-            </button>
-          </form>
-        )}
-        {error ? <p className="text-red-700">{error}</p> : null}
-      </div>
-    );
-  }
 
   return (
     <div className="w-full max-w-[22rem]">
@@ -123,24 +99,30 @@ export function StayCard({
           </div>
         ) : null}
       </article>
-      {face.closed || revealed ? null : (
+      {face.closed ? null : revealed ? (
+        <button type="button" className="mt-2 text-xs text-[#9e7e51]" onClick={() => setRevealed(null)}>
+          Masquer
+        </button>
+      ) : personal ? (
+        <form className="mt-2" onSubmit={reveal}>
+          <button type="submit" className="text-xs text-[#9e7e51] disabled:opacity-50" disabled={busy}>
+            {busy ? "…" : "Voir"}
+          </button>
+        </form>
+      ) : (
         <form className="mt-3 space-y-2" onSubmit={reveal}>
           <label className="block text-sm text-[var(--admin-navy)]">
-            {personal ? "Code maître" : "Code agence"}
+            Code agence
             <input
               className="mt-1 w-full rounded-xl border border-[#e5e3dc] bg-white px-3 py-2.5 text-sm text-[var(--admin-navy)] outline-none focus:border-[#0B192C]"
               type="password"
-              name={personal ? "staff-card-code" : "agency-code"}
+              name="agency-code"
               autoComplete="off"
               value={code}
               onChange={(event) => setCode(event.target.value)}
             />
           </label>
-          <p className="text-xs text-[var(--admin-navy)]/70">
-            {personal
-              ? "Votre nom est noté. Les chiffres s’ouvrent avec le code maître."
-              : "Le début du numéro s’ouvre avec le code agence."}
-          </p>
+          <p className="text-xs text-[var(--admin-navy)]/70">Le début du numéro s’ouvre avec le code agence.</p>
           <button
             type="submit"
             className="rounded-full bg-[#0B192C] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
@@ -150,15 +132,6 @@ export function StayCard({
           </button>
         </form>
       )}
-      {revealed ? (
-        <button
-          type="button"
-          className="mt-3 text-sm font-semibold text-[var(--admin-navy)] underline"
-          onClick={() => setRevealed(null)}
-        >
-          Masquer
-        </button>
-      ) : null}
       {error ? <p className="mt-2 text-sm text-red-700">{error}</p> : null}
     </div>
   );

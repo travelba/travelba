@@ -1,7 +1,8 @@
 "use client";
 
 import { AgencyCardPeek } from "@/components/admin/AgencyCardPeek";
-import { maskedCardNumber } from "@/lib/crm/hotel-arrival";
+import { StayCard } from "@/components/crm/StayCard";
+import { stayCardFace } from "@/lib/crm/hotel-arrival";
 import type { PrecheckTraveler } from "@/lib/crm/hotel-precheck";
 import type { CardViewLine } from "@/lib/crm/types";
 
@@ -16,6 +17,8 @@ export function PrecheckPack({
   selectedIds,
   cardChoice,
   last4,
+  holder = "",
+  hotel = "",
   clientFileName,
   cardViews = [],
   disabled,
@@ -32,6 +35,8 @@ export function PrecheckPack({
   selectedIds: string[];
   cardChoice: "pliant" | "client";
   last4: string | null;
+  holder?: string;
+  hotel?: string;
   clientFileName: string | null;
   hasCardCode?: boolean;
   cardViews?: CardViewLine[];
@@ -96,9 +101,7 @@ export function PrecheckPack({
           Client
         </button>
         {cardChoice === "pliant" ? (
-          last4 ? (
-            <span className="text-[#9e7e51]">{maskedCardNumber(last4)}</span>
-          ) : (
+          last4 ? null : (
             <button type="button" className="text-[#9e7e51] underline disabled:opacity-50" disabled={disabled} onClick={onGenerate}>
               {generating ? "…" : "Générer"}
             </button>
@@ -126,16 +129,23 @@ export function PrecheckPack({
             ) : null}
           </>
         )}
-        {cardReady ? (
+        {cardReady && cardChoice === "client" ? (
           <AgencyCardPeek
             bookingId={bookingId}
             itemId={itemId}
-            source={cardChoice}
+            source="client"
             views={cardViews}
             onReady={onCodeReady}
           />
         ) : null}
       </div>
+      {cardChoice === "pliant" && last4 ? (
+        <StayCard
+          personal
+          revealUrl={`/api/admin/bookings/${bookingId}/hotel-arrival`}
+          face={stayCardFace({ itemId, hotel, holder, last4, closed: false })}
+        />
+      ) : null}
     </div>
   );
 }

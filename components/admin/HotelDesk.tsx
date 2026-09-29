@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { PrecheckPack } from "@/components/admin/PrecheckPack";
 import { RecipientRoster } from "@/components/admin/RecipientRoster";
+import { hotelDisplayName } from "@/lib/crm/carnet";
 import { hotelContact } from "@/lib/crm/hotel-contact";
 import { HOTEL_DESK_LABELS, containsCardNumber, deskRoster, deskStatusLabel, hotelsNeedingDesk, type DeskRosterPerson } from "@/lib/crm/hotel-desk";
 import { precheckParty } from "@/lib/crm/hotel-precheck";
@@ -287,6 +288,8 @@ function HotelDeskEditor({
           selectedIds={pieceIds}
           cardChoice={cardChoice}
           last4={last4}
+          holder={[holder?.first_name, holder?.last_name].filter(Boolean).join(" ")}
+          hotel={hotelDisplayName(item) || item.title}
           clientFileName={storedName || clientFile?.name || null}
           hasCardCode={codeReady}
           cardViews={cardViews}
