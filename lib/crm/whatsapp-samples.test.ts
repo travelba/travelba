@@ -33,11 +33,11 @@ function admin(extra: Record<string, unknown> | null) {
   return { client, writes };
 }
 
-test("le récapitulatif a une image d’hôtel et les vols, sans les textes en attente", () => {
+test("le récapitulatif contient chaque message, y compris ceux encore sans envoi", () => {
   const samples = catalogSamples();
   assert.ok(samples.some((sample) => sample.id === "piece-hotel" && sample.image?.endsWith("/whatsapp/hotel.jpg")));
   assert.ok(samples.some((sample) => sample.id === "vol-horaire"));
-  assert.equal(samples.some((sample) => sample.id === "rappel-modele"), false);
+  assert.ok(samples.some((sample) => sample.id === "rappel-modele"));
   assert.equal(sampleMediaUrl("/whatsapp/visa.jpg"), "https://travelba.fr/whatsapp/visa.jpg");
   assert.equal(sampleMediaUrl("https://exemple.fr/photo.jpg"), null);
 });
@@ -80,7 +80,10 @@ test("une fois les images en ligne, chaque exemplaire part une seule fois", asyn
   assert.equal(result.skipped, null);
   assert.equal(result.delivered, catalogSamples().length);
   assert.ok(phones.every((phone) => phone === "whatsapp:+33772158257"));
-  const again = admin({ done_at: "2026-09-30T00:00:00.000Z", sent: {} });
+  const again = admin({
+    done_at: "2026-09-30T00:00:00.000Z",
+    sent: Object.fromEntries(catalogSamples().map((sample) => [sample.id, "session"])),
+  });
   let calls = 0;
   const second = await sendCatalogSamples(
     again.client,
@@ -95,4 +98,31 @@ test("une fois les images en ligne, chaque exemplaire part une seule fois", asyn
   assert.equal(writes.length, catalogSamples().length);
   const last = writes.at(-1) as { done_at?: string };
   assert.equal(typeof last.done_at, "string");
+});
+
+test("si rien n’est arrivé sur le téléphone, le modèle approuvé part", async () => {
+  process.env.TWILIO_ACCOUNT_SID = "ACtest";
+  process.env.TWILIO_AUTH_TOKEN = "token";
+  process.env.TWILIO_WHATSAPP_FROM = "whatsapp:+33756841315";
+  process.env.TWILIO_CONTENT_CONNEXION = "HXconnexion";
+  delete process.env.VERCEL_ENV;
+  const { client } = admin({ hold: true, sent: { connexion: "hold" } });
+  let sessions = 0;
+  const templates: string[] = [];
+  const result = await sendCatalogSamples(
+    client,
+    async () => new Response(null, { status: 200, headers: { "content-type": "image/jpeg" } }),
+    async () => {
+      sessions += 1;
+      return { ok: true, sid: "SM1" };
+    },
+    async (input) => {
+      templates.push(input.contentSid);
+      return { ok: true, sid: "SM2" };
+    },
+    async () => ({ total: 40, delivered: 0, errors: ["63016"], statuses: { undelivered: 40 } })
+  );
+  assert.equal(sessions, 0);
+  assert.ok(templates.includes("HXconnexion"));
+  assert.ok((result.delivered ?? 0) >= 1);
 });
