@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { AccountChrome } from "@/components/account/AccountChrome";
 import { ExampleFetchBridge } from "@/components/account/ExampleFetchBridge";
+import { ExampleNotice } from "@/components/account/ExampleNotice";
 import { exampleSessionEnabled, EXAMPLE_BASE } from "@/lib/crm/example-session";
 import { readExample } from "@/lib/crm/example-store";
 import { siteConfig } from "@/lib/site";
@@ -25,9 +26,7 @@ export default function ExampleLayout({ children }: { children: React.ReactNode 
         basePath={EXAMPLE_BASE}
         preview
       >
-        <p className="mb-3 rounded-2xl border border-[var(--admin-gold)]/40 bg-[#f8f3eb] px-4 py-2.5 text-sm text-[var(--admin-navy)]">
-          Aperçu local. Les gestes restent dans cette session. Rien n’est écrit en base.
-        </p>
+        <ExampleNotice />
         {children}
       </AccountChrome>
     </ExampleFetchBridge>
