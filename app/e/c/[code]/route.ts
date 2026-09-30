@@ -1,4 +1,5 @@
 import { entryPreviewResponse, openEntry } from "@/lib/crm/entry-open";
+import { shouldOpenFromRequest } from "@/lib/crm/entry-link";
 import { siteConfig } from "@/lib/site";
 
 export const runtime = "nodejs";
@@ -13,10 +14,12 @@ function normalizeCode(code: string) {
   return code.trim().toUpperCase();
 }
 
-/** Aperçu pour tout le monde. Le script poste ; le robot ne l’exécute pas. */
-export async function GET(_request: Request, ctx: Ctx) {
+/** Aperçu pour le robot. Un appui humain entre dans l’espace. */
+export async function GET(request: Request, ctx: Ctx) {
   const { code } = await ctx.params;
-  return entryPreviewResponse(originOf(), normalizeCode(code));
+  const safe = normalizeCode(code);
+  if (shouldOpenFromRequest(request.url, request.headers)) return openEntry(originOf(), safe);
+  return entryPreviewResponse(originOf(), safe);
 }
 
 /** Vérifie le jeton, pose la session, ouvre la réservation. Jamais /connexion. */
