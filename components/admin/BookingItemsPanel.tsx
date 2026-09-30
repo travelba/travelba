@@ -131,6 +131,11 @@ function stepSubtitle(item: CrmBookingItem) {
   return parts.filter(Boolean).join(" · ");
 }
 
+const flatBtn =
+  "admin-tap inline-flex h-8 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-white px-3 text-xs font-semibold text-[var(--admin-navy)] disabled:opacity-40";
+const flatIconBtn =
+  "admin-tap inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-white text-sm font-bold text-[var(--admin-navy)]";
+
 function blockDragFromControl(event: PointerEvent<HTMLElement>) {
   const target = event.target;
   if (!(target instanceof Element)) return;
@@ -384,47 +389,24 @@ export function BookingItemsPanel({
         <BusyBar active={busy} label="Enregistrement…" />
       </div>
       {attachedEmails.map((mail) => (
-        <div key={mail.id} className="mt-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-[var(--border)] pb-2">
-          <p className="min-w-0 text-sm text-[var(--admin-navy)]">
-            <span className="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold-dark)]">
-              E-mail
-            </span>{" "}
+        <div key={mail.id} className="mt-3 flex items-center gap-3 border-b border-[var(--border)] py-2">
+          <p className="min-w-0 flex-1 truncate text-sm text-[var(--admin-navy)]">
+            <span className="text-muted">E-mail · </span>
             {attachedEmailLabel(mail)}
-            {mail.from_email ? <span className="text-muted"> · {mail.from_email}</span> : null}
             {mail.received_at ? <span className="text-muted"> · {formatDateTimeFr(mail.received_at)}</span> : null}
           </p>
           {confirmDetach === mail.id ? (
-            <div className="mt-2">
-              <p className="text-sm text-[var(--admin-navy)]">
-                Retirer cette réservation de ce dossier et la remettre dans les e-mails à rattacher ?
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={busy}
-                  className="admin-tap rounded-full bg-[var(--admin-navy)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
-                  onClick={() => void detachEmail(mail.id)}
-                >
-                  Remettre dans les e-mails
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  className="admin-tap rounded-full px-3 py-1.5 text-xs font-semibold text-muted"
-                  onClick={() => setConfirmDetach(null)}
-                >
-                  Annuler
-                </button>
-              </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button type="button" disabled={busy} className={flatBtn} onClick={() => void detachEmail(mail.id)}>
+                Confirmer
+              </button>
+              <button type="button" disabled={busy} className={flatBtn} onClick={() => setConfirmDetach(null)}>
+                Annuler
+              </button>
             </div>
           ) : (
-            <button
-              type="button"
-              disabled={busy}
-              className="admin-tap mt-2 text-xs font-semibold text-[var(--admin-navy)] underline disabled:opacity-40"
-              onClick={() => setConfirmDetach(mail.id)}
-            >
-              Remettre dans les e-mails
+            <button type="button" disabled={busy} className={flatBtn} onClick={() => setConfirmDetach(mail.id)}>
+              Remettre
             </button>
           )}
         </div>
@@ -434,7 +416,7 @@ export function BookingItemsPanel({
         axis="y"
         values={cardRows}
         onReorder={applyCardOrder}
-        className="mt-2 flex list-none flex-col gap-2 p-0 text-sm"
+        className="mt-1 flex list-none flex-col p-0 text-sm"
       >
         {cardRows.map((item, index) => {
           const locked = editingId === item.id || busy;
@@ -448,26 +430,32 @@ export function BookingItemsPanel({
           const priceDiffers =
             printed != null && (stepAmount == null || Math.abs(printed - stepAmount) > 0.009);
           const counted = item.include_in_ledger && !(clientSettlesStay && !isExtraItemKind(item.kind));
+          const quiet = [
+            subtitle,
+            docs.length ? `${docs.length} pièce${docs.length > 1 ? "s" : ""}` : "",
+            !item.visible_to_client ? "Pas encore montré" : "",
+            counted ? "Compté" : "",
+            priceDiffers && printed != null
+              ? `Prix du document : ${printedPrice(printed, typeof item.details?.document_currency === "string" ? item.details.document_currency : "")}`
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" · ");
           return (
           <Reorder.Item
             key={item.id}
             value={item}
             dragListener={!locked}
             onDragEnd={finishCardDrag}
-            whileDrag={{
-              scale: 1.02,
-              zIndex: 30,
-              boxShadow: "0 16px 40px rgba(11, 25, 44, 0.18)",
-            }}
+            whileDrag={{ zIndex: 30, background: "#ffffff" }}
             className={`relative ${locked ? "" : "cursor-grab active:cursor-grabbing"}`}
           >
             {showDay ? (
-              <div className="mb-2 flex items-center gap-3 px-1 pt-2">
-                <p className="font-label text-[11px] font-semibold text-[var(--admin-gold-dark)]">{stepDayLabel(dayKey)}</p>
-                <span className="h-px flex-1 bg-gradient-to-r from-[var(--admin-gold)]/45 to-transparent" />
-              </div>
+              <p className={`text-xs font-semibold text-[var(--admin-gold-dark)] ${index === 0 ? "pt-2" : "pt-4"}`}>
+                {stepDayLabel(dayKey)}
+              </p>
             ) : null}
-            <div onPointerDown={blockDragFromControl} className="rounded-xl border border-border bg-[var(--surface)] px-3 py-3">
+            <div onPointerDown={blockDragFromControl} className="border-b border-[var(--border)] py-2">
             {editingId === item.id ? (
               <div className="space-y-2">
                 <IngestItemCard
@@ -487,32 +475,30 @@ export function BookingItemsPanel({
                     type="button"
                     disabled={busy}
                     onClick={() => void saveDraft()}
-                    className="admin-af-btn rounded-full px-4 py-1.5 text-xs"
+                    className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm"
                   >
                     {busy ? "…" : "Enregistrer l’étape"}
                   </button>
-                  <button type="button" className="text-xs font-semibold" onClick={() => setEditingId(null)}>
+                  <button type="button" className={flatBtn} onClick={() => setEditingId(null)}>
                     Annuler
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="flex items-start gap-3">
-                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[var(--admin-sky)] text-[var(--admin-navy)]">
-                  <Icon name={kindIcon(item.kind)} className="h-5 w-5" />
-                </span>
+              <div className="flex items-center gap-3">
+                <Icon name={kindIcon(item.kind)} className="h-4 w-4 shrink-0 text-[var(--admin-navy)]" />
                 <div className="min-w-0 flex-1">
-                  <p className="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold-dark)]">
-                    {stepEyebrow(item)}
+                  <p className="truncate text-sm text-[var(--admin-navy)]">
+                    <span className="font-semibold">{stepTitle(item)}</span>
+                    <span className="text-muted"> · {stepEyebrow(item)}</span>
                   </p>
-                  <p className="font-display text-base font-semibold leading-snug text-[var(--admin-navy)]">{stepTitle(item)}</p>
-                  {subtitle ? <p className="truncate text-xs text-muted">{subtitle}</p> : null}
+                  {quiet ? <p className="truncate text-xs text-muted">{quiet}</p> : null}
                   {item.kind === "hotel" ? <HotelContactButton item={item} /> : null}
                   {item.kind === "hotel" && hotelRequests.some((row) => row.booking_item_id === item.id) ? (
-                    <div className="mt-2">
+                    <div className="mt-1">
                       <button
                         type="button"
-                        className="text-xs font-semibold text-[var(--admin-navy)]"
+                        className={flatBtn}
                         onClick={() => setDeskFor(deskFor === item.id ? null : item.id)}
                       >
                         {deskFor === item.id ? "Fermer l’hôtel" : "Écrire à l’hôtel"}
@@ -534,41 +520,17 @@ export function BookingItemsPanel({
                       ) : null}
                     </div>
                   ) : null}
-                  {priceDiffers && printed != null ? (
-                    <p className="mt-1 text-xs text-[var(--admin-gold-dark)]">
-                      Prix du document :{" "}
-                      {printedPrice(
-                        printed,
-                        typeof item.details?.document_currency === "string" ? item.details.document_currency : ""
-                      )}
-                    </p>
-                  ) : null}
-                  <ItemAttachments bookingId={bookingId} itemId={item.id} docs={docs} compact />
                 </div>
-                <div className="flex shrink-0 flex-col items-end gap-1.5">
-                  {price ? <p className="font-display text-sm font-bold text-[var(--admin-navy)]">{price}</p> : null}
-                  {!item.visible_to_client ? (
-                    <span className="rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">
-                      Pas encore montré
-                    </span>
-                  ) : null}
-                  {counted ? (
-                    <span className="rounded-full bg-[var(--admin-sky)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">
-                      Compté
-                    </span>
-                  ) : null}
-                  <div className="relative flex items-center gap-1 [&_button]:cursor-pointer">
-                  <button
-                    type="button"
-                    className="text-xs font-semibold text-[var(--admin-navy)]"
-                    onClick={() => startEdit(item)}
-                  >
+                <div className="flex shrink-0 items-center gap-2">
+                  {price ? <p className="text-sm font-semibold text-[var(--admin-navy)]">{price}</p> : null}
+                  <div className="relative flex items-center gap-2">
+                  <button type="button" className={flatBtn} onClick={() => startEdit(item)}>
                     Modifier
                   </button>
                   <button
                     type="button"
                     aria-label="Autres actions de l’étape"
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-[var(--admin-navy)]"
+                    className={flatIconBtn}
                     onClick={() => {
                       setMenuFor(menuFor === item.id ? null : item.id);
                       setConfirmRemove(null);
@@ -577,29 +539,21 @@ export function BookingItemsPanel({
                     …
                   </button>
                   {menuFor === item.id ? (
-                    <div className="absolute right-0 top-8 z-20 w-48 rounded-2xl border border-border bg-white p-2 shadow-lg">
+                    <div className="absolute right-0 top-9 z-20 flex w-44 flex-col gap-1 rounded-2xl border border-[var(--border)] bg-white p-2">
                       <button
                         type="button"
-                        className="block w-full rounded-xl px-3 py-2 text-left text-xs font-semibold"
+                        className={flatBtn}
                         disabled={busy}
                         onClick={() => void setCardVisible(item, !item.visible_to_client)}
                       >
-                        {item.visible_to_client ? "Cacher cette étape" : "Montrer cette étape"}
+                        {item.visible_to_client ? "Cacher" : "Montrer"}
                       </button>
                       {confirmRemove === item.id ? (
-                        <button
-                          type="button"
-                          className="mt-1 block w-full rounded-xl px-3 py-2 text-left text-xs font-semibold text-accent"
-                          onClick={() => void removeItem(item.id)}
-                        >
-                          Confirmer le retrait
+                        <button type="button" className={flatBtn} onClick={() => void removeItem(item.id)}>
+                          Confirmer
                         </button>
                       ) : (
-                        <button
-                          type="button"
-                          className="mt-1 block w-full rounded-xl px-3 py-2 text-left text-xs font-semibold text-accent"
-                          onClick={() => setConfirmRemove(item.id)}
-                        >
+                        <button type="button" className={flatBtn} onClick={() => setConfirmRemove(item.id)}>
                           Retirer
                         </button>
                       )}
@@ -627,7 +581,7 @@ export function BookingItemsPanel({
             type="button"
             disabled={busy}
             onClick={() => void saveDraft()}
-            className="admin-af-btn rounded-full px-4 py-2 text-sm"
+            className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm"
           >
             {busy ? "Enregistrement…" : "Ajouter au dossier"}
           </button>
@@ -675,20 +629,15 @@ function ItemAttachments({
     router.refresh();
   }
 
-  if (compact && !docs.length) return null;
+  if (compact) return null;
 
   return (
     <div className="mt-2 space-y-1">
-      {compact && docs.length ? (
-        <p className="text-xs text-muted">
-          {docs.length} pièce{docs.length > 1 ? "s" : ""}
-        </p>
-      ) : null}
       <div className="flex flex-wrap gap-3">
         {docs.map((doc) => (
           <FilePreviewTile
             key={doc.id}
-            onRemove={compact ? undefined : () => void removeDoc(doc.id)}
+            onRemove={() => void removeDoc(doc.id)}
             file={{
               id: doc.id,
               path: doc.storage_path,
@@ -700,15 +649,13 @@ function ItemAttachments({
           />
         ))}
       </div>
-      {compact ? null : (
       <form onSubmit={upload} className="flex flex-wrap items-center gap-2">
         <BusyBar active={busy} label="Envoi…" />
         <input name="file" type="file" required className="text-xs" />
-        <button type="submit" disabled={busy} className="text-xs font-semibold text-[var(--admin-navy)]">
+        <button type="submit" disabled={busy} className={flatBtn}>
           {busy ? "Envoi…" : "Joindre"}
         </button>
       </form>
-      )}
     </div>
   );
 }
