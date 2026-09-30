@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { AddressSuggest } from "@/components/crm/AddressSuggest";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { Icon } from "@/components/crm/icons";
 import { IssuesList } from "@/components/crm/IssuesList";
 import { issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
 import { HIDDEN_PRICE_LABEL, kindIcon } from "@/lib/crm/carnet";
+import { addressCity } from "@/lib/crm/address-suggest";
 import { extraAgencyStatus, serviceClock, storedTransferAddresses, type ServiceOffer } from "@/lib/crm/extras";
 import { formatMoney } from "@/lib/crm/money";
 import { BOOKING_ITEM_LABELS, type CrmBookingItem } from "@/lib/crm/types";
@@ -290,13 +292,7 @@ export function ServiceOfferCard({
             {clock ? ` · ${clock}` : ""}
           </p>
           <p className="break-words text-sm font-semibold leading-snug text-[var(--admin-navy)]">{offer.route}</p>
-          {offer.kind === "chauffeur" ? (
-            <div className="mt-2 grid gap-2">
-              <AddressLine label="Départ" value={depart} onChange={setDepart} readOnly={confirmed} />
-              <AddressLine label="Arrivée" value={arrive} onChange={setArrive} readOnly={confirmed} />
-              {offer.flightLine ? <p className="text-xs text-muted">{offer.flightLine}</p> : null}
-            </div>
-          ) : (
+          {offer.kind === "chauffeur" ? null : (
             <p className="truncate text-xs text-muted">{[detail, offer.flightLine].filter(Boolean).join(" · ")}</p>
           )}
           <p className="mt-1 flex items-center justify-between gap-2 sm:hidden">
@@ -309,6 +305,25 @@ export function ServiceOfferCard({
           {controls()}
         </div>
       </div>
+      {offer.kind === "chauffeur" ? (
+        <div className="grid gap-2 px-3.5 pb-3">
+          <AddressSuggest
+            label="Départ"
+            value={depart}
+            onChange={setDepart}
+            readOnly={confirmed}
+            near={addressCity(saved.depart) || addressCity(homeAddress)}
+          />
+          <AddressSuggest
+            label="Arrivée"
+            value={arrive}
+            onChange={setArrive}
+            readOnly={confirmed}
+            near={addressCity(saved.arrive) || addressCity(offer.airport)}
+          />
+          {offer.flightLine ? <p className="text-xs text-muted">{offer.flightLine}</p> : null}
+        </div>
+      ) : null}
       {busy ? (
         <div className="px-3.5 pb-3">
           <BusyBar
@@ -330,90 +345,5 @@ export function ServiceOfferCard({
         </div>
       ) : null}
     </article>
-  );
-}
-
-function AddressLine({
-  label,
-  value,
-  onChange,
-  readOnly,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  readOnly: boolean;
-}) {
-  const [hints, setHints] = useState<string[]>([]);
-  const field = useRef<HTMLTextAreaElement>(null);
-  const placeholder = label === "Arrivée" ? "Adresse d’arrivée" : "Adresse de départ";
-
-  useEffect(() => {
-    const node = field.current;
-    if (!node) return;
-    node.style.height = "auto";
-    node.style.height = `${node.scrollHeight}px`;
-  }, [value]);
-
-  async function search(query: string) {
-    onChange(query);
-    if (query.trim().length < 3) {
-      setHints([]);
-      return;
-    }
-    try {
-      const res = await fetch(
-        `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=5`
-      );
-      const json = (await res.json()) as { features?: { properties?: { label?: string } }[] };
-      setHints(
-        (json.features || [])
-          .map((feature) => feature.properties?.label || "")
-          .filter((hint, index, all) => Boolean(hint) && all.indexOf(hint) === index)
-      );
-    } catch {
-      setHints([]);
-    }
-  }
-
-  return (
-    <label className="block min-w-0">
-      <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9e7e51]">{label}</span>
-      {readOnly ? (
-        <p className="mt-1 break-words text-sm text-[var(--admin-navy)]">{value || "—"}</p>
-      ) : (
-        <div className="relative mt-1">
-          <textarea
-            ref={field}
-            rows={2}
-            value={value}
-            onChange={(event) => void search(event.target.value)}
-            aria-label={label}
-            placeholder={placeholder}
-            autoComplete="street-address"
-            className="w-full resize-none overflow-hidden rounded-xl border border-border bg-white px-3 py-2 text-sm leading-5 text-[var(--admin-navy)] outline-none focus:border-[var(--admin-navy)]"
-          />
-          {hints.length ? (
-            <ul className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-border bg-white py-1 shadow-lg">
-              {hints.map((hint) => (
-                <li key={hint}>
-                  <button
-                    type="button"
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-[var(--admin-sky)]"
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                      onChange(hint);
-                      setHints([]);
-                    }}
-                  >
-                    {hint}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
-      )}
-    </label>
   );
 }
