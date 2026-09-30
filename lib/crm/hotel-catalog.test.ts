@@ -64,6 +64,21 @@ describe("matchHotelDirectory", () => {
     assert.equal(hit?.hotel_id, 803);
   });
 
+  it("relie Four Seasons Hotel Milano au catalogue Four Seasons Hotel Milan", () => {
+    const milan: HotelDirectoryEntry[] = [
+      { hotel_id: 89, hotel_name: "Four Seasons Hotel Milan", city: "Milan", country: "Italy" },
+      { hotel_id: 90, hotel_name: "Four Seasons Hotel Firenze", city: "Florence", country: "Italy" },
+    ];
+    assert.equal(
+      matchHotelDirectory(hotel({ hotel_name: "Four Seasons Hotel Milano", city: "Milano" }), milan)?.hotel_id,
+      89
+    );
+    assert.equal(
+      matchHotelDirectory(hotel({ hotel_name: "Four Seasons Hotel Milano", city: "Milan" }), milan)?.hotel_id,
+      89
+    );
+  });
+
   it("laisse un hôtel absent du catalogue sans contact", () => {
     const hit = matchHotelDirectory(
       hotel({ hotel_name: "Résidence Pierre & Vacances Premium L'Amara", city: "Avoriaz" }),

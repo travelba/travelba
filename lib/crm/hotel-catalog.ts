@@ -63,13 +63,22 @@ function cityKey(city: string) {
   return CITY_ALIASES[folded] || folded;
 }
 
-function contentTokens(name: string, cities: string[]) {
+/** « Milano » et « Milan » sont la même ville, y compris dans le nom de l’hôtel. */
+function cityDropTokens(cities: string[]) {
+  const keys = new Set(cities.map((city) => cityKey(city)).filter(Boolean));
   const drop = new Set<string>();
-  for (const city of cities) {
-    for (const token of city.split(" ")) {
-      if (token) drop.add(token);
-    }
+  for (const key of keys) {
+    for (const token of key.split(" ")) if (token) drop.add(token);
   }
+  for (const [alias, target] of Object.entries(CITY_ALIASES)) {
+    if (!keys.has(target) && !keys.has(alias)) continue;
+    for (const token of `${alias} ${target}`.split(" ")) if (token) drop.add(token);
+  }
+  return drop;
+}
+
+function contentTokens(name: string, cities: string[]) {
+  const drop = cityDropTokens(cities);
   return foldHotelLabel(name)
     .split(" ")
     .filter((token) => token && !NAME_STOP.has(token) && !drop.has(token) && !/^\d+$/.test(token));
@@ -104,7 +113,7 @@ function directoryId(item: Pick<CrmBookingItem, "details">) {
 
 /**
  * Relie une carte hôtel à une seule fiche du catalogue.
- * Nom identique, ou mêmes mots une fois la ville retirée (Londres = London).
+ * Nom identique, ou mêmes mots une fois la ville retirée (Londres = London, Milano = Milan).
  * Deux hôtels possibles : on ne choisit pas.
  */
 export function matchHotelDirectory(item: CrmBookingItem, directory: HotelDirectoryEntry[]) {
