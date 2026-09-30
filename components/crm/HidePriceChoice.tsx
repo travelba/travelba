@@ -43,6 +43,9 @@ export function HidePriceChoice({
           Non, laisser le prix
         </label>
       </div>
+      <p className="text-xs text-muted">
+        Photo ou scan sans texte : le bas du document est tronqué.
+      </p>
     </fieldset>
   );
 }

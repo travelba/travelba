@@ -3,7 +3,7 @@ import "server-only";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { downloadCrmFile, safeFileName, uploadCrmFile } from "@/lib/crm/files";
 import { isPdfFile } from "@/lib/crm/ingest-types";
-import { PriceRedactError, redactPdfPrices } from "@/lib/crm/pdf-price-redact";
+import { redactPdfPrices, truncateImageBottom, truncatePdfBottom } from "@/lib/crm/pdf-price-redact";
 
 /** Copie sans montants. Null si le PDF n’imprime aucun prix. */
 export async function hiddenPricePath(opts: {
@@ -12,12 +12,20 @@ export async function hiddenPricePath(opts: {
   name: string;
   bookingId: string;
 }) {
-  if (!isPdfFile(opts.mime, opts.name)) throw new PriceRedactError();
-  const result = await redactPdfPrices(opts.bytes);
-  if (!result.ok) throw new PriceRedactError();
-  if (!result.changed) return null;
+  let bytes = opts.bytes;
+  let mime = "application/pdf";
+  if (!isPdfFile(opts.mime, opts.name)) {
+    const cut = await truncateImageBottom(opts.bytes);
+    bytes = cut.bytes;
+    mime = cut.mime;
+  } else {
+    const result = await redactPdfPrices(opts.bytes);
+    if (!result.ok) bytes = await truncatePdfBottom(opts.bytes);
+    else if (!result.changed) return null;
+    else bytes = result.bytes;
+  }
   const path = `bookings/${opts.bookingId}/prix-masque-${Date.now()}-${safeFileName(opts.name)}`;
-  await uploadCrmFile(path, Buffer.from(result.bytes), "application/pdf");
+  await uploadCrmFile(path, Buffer.from(bytes), mime);
   return path;
 }
 

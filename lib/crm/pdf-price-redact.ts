@@ -167,6 +167,60 @@ export type PriceRedactResult =
   | { ok: true; changed: boolean; bytes: Uint8Array }
   | { ok: false; reason: "no-text" };
 
+/** Part du bas retirée quand les montants ne peuvent pas être effacés (photo ou scan). */
+export const PRICE_TRUNCATE_RATIO = 0.3;
+
+/** Garde le haut de chaque page. Le bas, où se trouve souvent le total, est coupé. */
+export async function truncatePdfBottom(bytes: Uint8Array): Promise<Uint8Array> {
+  const src = await PDFDocument.load(bytes);
+  const out = await PDFDocument.create();
+  const pages = src.getPages();
+  if (!pages.length) throw new PriceRedactError();
+  for (const page of pages) {
+    const { width, height } = page.getSize();
+    const cut = height * PRICE_TRUNCATE_RATIO;
+    const keep = height - cut;
+    if (keep < 48) throw new PriceRedactError();
+    const embedded = await out.embedPage(page, {
+      left: 0,
+      bottom: cut,
+      right: width,
+      top: height,
+    });
+    const next = out.addPage([embedded.width, embedded.height]);
+    next.drawPage(embedded, {
+      x: 0,
+      y: 0,
+      width: embedded.width,
+      height: embedded.height,
+    });
+  }
+  return new Uint8Array(await out.save());
+}
+
+/** Coupe le bas d’une photo. Le fichier renvoyé est plus court. */
+export async function truncateImageBottom(
+  bytes: Uint8Array
+): Promise<{ bytes: Uint8Array; mime: string }> {
+  const sharp = (await import("sharp")).default;
+  const upright = await sharp(bytes).rotate().toBuffer();
+  const meta = await sharp(upright).metadata();
+  const width = meta.width || 0;
+  const height = meta.height || 0;
+  if (width < 2 || height < 8) throw new PriceRedactError();
+  const keep = Math.max(1, Math.round(height * (1 - PRICE_TRUNCATE_RATIO)));
+  const format = meta.format === "png" ? "png" : meta.format === "webp" ? "webp" : "jpeg";
+  const pipeline = sharp(upright).extract({ left: 0, top: 0, width, height: keep });
+  const encoded =
+    format === "png"
+      ? await pipeline.png().toBuffer()
+      : format === "webp"
+        ? await pipeline.webp().toBuffer()
+        : await pipeline.jpeg({ quality: 85 }).toBuffer();
+  const mime = format === "png" ? "image/png" : format === "webp" ? "image/webp" : "image/jpeg";
+  return { bytes: new Uint8Array(encoded), mime };
+}
+
 /** Couvre les montants imprimés. Un PDF sans calque texte ne peut pas être masqué. */
 export async function redactPdfPrices(bytes: Uint8Array): Promise<PriceRedactResult> {
   const pages = await readPdfGlyphs(bytes);

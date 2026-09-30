@@ -142,7 +142,7 @@ Réimport même clé = **remplace** la carte. Dans un même extract, 10 duplicat
 - Sous-fiche par `kind`. Bandeau devis. Bandeau **À vérifier** (`needs_review`) : on **enregistre**, on ne refuse pas tout le lot.
 - **Montant du séjour** = somme des prix vendus des cartes, affiché en lecture seule. `parseExtractPayload` ne copie pas le PDF dans `item.amount`.
 - **Prix document** : montant imprimé, devise du PDF, sur chaque carte. Hôtel, vol, transfert sans ce montant : l’enregistrement du dossier est refusé tant qu’il n’est pas saisi. On n’invente pas un prix absent. Formalité sans prix, passeport et pièce d’identité : pas d’exigence de prix document.
-- **Prix sur le PDF** : à chaque dépôt (nouveau dossier ou ajout sur un dossier), question obligatoire « Cacher le prix sur le PDF ? », sans défaut. Oui → copie client sans montants (`client_storage_path`), l’agence garde l’original. Photo ou PDF sans texte : le oui est refusé. Aucun montant imprimé : le oui est accepté.
+- **Prix sur le PDF** : à chaque dépôt (nouveau dossier ou ajout sur un dossier), question obligatoire « Cacher le prix sur le PDF ? », sans défaut. Oui → copie client sans montants (`client_storage_path`), l’agence garde l’original. Photo ou PDF sans texte : le bas (30 %) est tronqué. Aucun montant imprimé sur un PDF lisible : le oui est accepté, sans coupe.
 - Hôtel : `normalizeHotelExtractItem` force `title = hotel_name`.
 - Confirmation → dossier **confirmé** (inédit client) + `total_amount` + transactions. Devis → `quoted` sans débit.
 - Cartes manuelles OK. Drag `sort_order` après persist.

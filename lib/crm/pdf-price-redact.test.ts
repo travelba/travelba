@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import sharp from "sharp";
-import { PDFDocument, StandardFonts } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { renderPageAsImage } from "unpdf";
-import { documentPriceDecided, priceCoverSpans, readHidePricesChoice, readPdfGlyphs, redactPdfPrices } from "./pdf-price-redact";
+import {
+  documentPriceDecided,
+  PRICE_TRUNCATE_RATIO,
+  priceCoverSpans,
+  readHidePricesChoice,
+  readPdfGlyphs,
+  redactPdfPrices,
+  truncateImageBottom,
+  truncatePdfBottom,
+} from "./pdf-price-redact";
 import { openPdf } from "./pdf-raster";
 
 describe("priceCoverSpans", () => {
@@ -54,7 +63,7 @@ async function raster(bytes: Uint8Array) {
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
-  return { data, width: info.width, height: info.height, pageHeight: 841.89 };
+  return { data, width: info.width, height: info.height, pageHeight: info.height / 2 };
 }
 
 function meanLuminance(
@@ -128,5 +137,58 @@ describe("redactPdfPrices", () => {
     assert.deepEqual(scanned, { ok: false, reason: "no-text" });
     const glyphs = await readPdfGlyphs(new Uint8Array(await plain.save()));
     assert.ok(glyphs.flat().some((glyph) => glyph.str.includes("AB12CD")));
+  });
+});
+
+describe("truncateBottom", () => {
+  it("retire le bas d’un PDF sans couper le texte du haut", async () => {
+    const height = 400;
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([595.28, height]);
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    page.drawRectangle({
+      x: 0,
+      y: 0,
+      width: 595.28,
+      height: height * PRICE_TRUNCATE_RATIO,
+      color: rgb(0, 0, 0),
+    });
+    page.drawText("SEJOUR CONFIRMATION", { x: 72, y: 320, size: 18, font });
+    const bytes = new Uint8Array(await doc.save());
+    const cut = await truncatePdfBottom(bytes);
+    const opened = await PDFDocument.load(cut);
+    const kept = opened.getPages()[0].getSize().height;
+    assert.ok(Math.abs(kept - height * (1 - PRICE_TRUNCATE_RATIO)) < 1);
+
+    const image = await raster(cut);
+    const title = meanLuminance(image, { x: 72, y: 198, width: 220, height: 18 });
+    const bottom = meanLuminance(image, { x: 20, y: 4, width: 200, height: 12 });
+    assert.ok(title < 220, `titre illisible (${title})`);
+    assert.ok(bottom > 245, `le bas noir est encore là (${bottom})`);
+  });
+
+  it("retire le bas d’une photo", async () => {
+    const png = await sharp({
+      create: { width: 40, height: 100, channels: 3, background: { r: 255, g: 255, b: 255 } },
+    })
+      .composite([
+        {
+          input: await sharp({
+            create: { width: 40, height: 30, channels: 3, background: { r: 0, g: 0, b: 0 } },
+          })
+            .png()
+            .toBuffer(),
+          top: 70,
+          left: 0,
+        },
+      ])
+      .png()
+      .toBuffer();
+    const cut = await truncateImageBottom(new Uint8Array(png));
+    const meta = await sharp(cut.bytes).metadata();
+    assert.equal(meta.height, 70);
+    const { data, info } = await sharp(cut.bytes).raw().toBuffer({ resolveWithObject: true });
+    const bottom = data[(info.height - 1) * info.width * info.channels];
+    assert.ok(bottom > 250);
   });
 });
