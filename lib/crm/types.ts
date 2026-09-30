@@ -455,6 +455,9 @@ export type CrmPliantTransaction = {
   id: string;
   pliant_transaction_id: string;
   card_id: string | null;
+  pliant_card_id: string | null;
+  booking_id: string | null;
+  customer_id: string | null;
   status: string | null;
   type: string | null;
   merchant: string | null;
@@ -462,6 +465,8 @@ export type CrmPliantTransaction = {
   billing_currency: string | null;
   transaction_cents: number | null;
   transaction_currency: string | null;
+  amount_cents: number | null;
+  currency: string | null;
   booked_at: string | null;
   raw: Record<string, unknown>;
   created_at: string;

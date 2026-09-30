@@ -30,6 +30,9 @@ test("une transaction Pliant garde le commerçant, les centimes, et retire le nu
   assert.equal(mapped.billing_cents, 12500);
   assert.equal(mapped.billing_currency, "EUR");
   assert.equal(mapped.card_id, CARD);
+  assert.equal(mapped.pliant_card_id, CARD);
+  assert.equal(mapped.amount_cents, 12500);
+  assert.equal(mapped.currency, "EUR");
   assert.equal(mapped.booked_at, "2026-09-30T10:00:00.000Z");
   assert.equal(mapped.raw.pan, undefined);
   assert.equal((mapped.raw.merchantData as { pan?: string }).pan, undefined);

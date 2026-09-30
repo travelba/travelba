@@ -3,6 +3,7 @@ const SECRET_KEYS = new Set(["pan", "cvv", "cvc", "cardnumber", "pin"]);
 export type PliantTransactionRow = {
   pliant_transaction_id: string;
   card_id: string | null;
+  pliant_card_id: string | null;
   status: string | null;
   type: string | null;
   merchant: string | null;
@@ -10,6 +11,8 @@ export type PliantTransactionRow = {
   billing_currency: string | null;
   transaction_cents: number | null;
   transaction_currency: string | null;
+  amount_cents: number | null;
+  currency: string | null;
   booked_at: string | null;
   raw: Record<string, unknown>;
 };
@@ -83,9 +86,13 @@ export function mapPliantTransaction(payload: unknown): PliantTransactionRow | n
   if (!id) return null;
   const billing = money(row.billingAmount);
   const transaction = money(row.transactionAmount);
+  const cardId = text(row.cardId);
+  const cents = billing.cents ?? transaction.cents;
+  const currency = billing.currency || transaction.currency;
   return {
     pliant_transaction_id: id,
-    card_id: text(row.cardId),
+    card_id: cardId,
+    pliant_card_id: cardId,
     status: text(row.status),
     type: text(row.type),
     merchant: merchantName(row),
@@ -93,6 +100,8 @@ export function mapPliantTransaction(payload: unknown): PliantTransactionRow | n
     billing_currency: billing.currency,
     transaction_cents: transaction.cents,
     transaction_currency: transaction.currency,
+    amount_cents: cents,
+    currency,
     booked_at: text(row.confirmedAt) || text(row.authorizedAt) || text(row.createdAt),
     raw: scrubPliantPayload(row),
   };

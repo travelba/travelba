@@ -19,48 +19,59 @@ export default async function AdminPliantPage() {
         .order("booked_at", { ascending: false, nullsFirst: false })
         .limit(200);
       const rows = (data || []) as CrmPliantTransaction[];
-      const cardIds = [...new Set(rows.map((row) => row.card_id).filter((id): id is string => Boolean(id)))];
+      const cardIds = [
+        ...new Set(rows.map((row) => row.pliant_card_id || row.card_id).filter((id): id is string => Boolean(id))),
+      ];
       const stays: PliantStayRef[] = [];
-      if (cardIds.length) {
-        const { data: arrivals } = await admin
-          .from("crm_hotel_arrivals")
-          .select("pliant_card_id, card_last4, booking_id")
-          .in("pliant_card_id", cardIds);
-        const arrivalRows = (arrivals || []) as {
-          pliant_card_id: string | null;
-          card_last4: string | null;
-          booking_id: string;
-        }[];
-        const bookingIds = [...new Set(arrivalRows.map((row) => row.booking_id).filter(Boolean))];
-        const { data: bookings } = bookingIds.length
-          ? await admin.from("crm_bookings").select("id, reference").in("id", bookingIds)
-          : { data: [] as { id: string; reference: string | null }[] };
-        const references = new Map(
-          ((bookings || []) as { id: string; reference: string | null }[]).map((row) => [row.id, row.reference])
-        );
-        for (const arrival of arrivalRows) {
-          if (!arrival.pliant_card_id) continue;
-          stays.push({
-            cardId: arrival.pliant_card_id,
-            bookingId: arrival.booking_id,
-            reference: references.get(arrival.booking_id) || null,
-            last4: arrival.card_last4,
-          });
-        }
+      const arrivalRows = cardIds.length
+        ? (((
+            await admin
+              .from("crm_hotel_arrivals")
+              .select("pliant_card_id, card_last4, booking_id")
+              .in("pliant_card_id", cardIds)
+          ).data || []) as {
+            pliant_card_id: string | null;
+            card_last4: string | null;
+            booking_id: string;
+          }[])
+        : [];
+      const bookingIds = [
+        ...new Set(
+          [...arrivalRows.map((row) => row.booking_id), ...rows.map((row) => row.booking_id)].filter(
+            (id): id is string => Boolean(id)
+          )
+        ),
+      ];
+      const { data: bookings } = bookingIds.length
+        ? await admin.from("crm_bookings").select("id, reference").in("id", bookingIds)
+        : { data: [] as { id: string; reference: string | null }[] };
+      const references = new Map(
+        ((bookings || []) as { id: string; reference: string | null }[]).map((row) => [row.id, row.reference])
+      );
+      for (const arrival of arrivalRows) {
+        if (!arrival.pliant_card_id) continue;
+        stays.push({
+          cardId: arrival.pliant_card_id,
+          bookingId: arrival.booking_id,
+          reference: references.get(arrival.booking_id) || null,
+          last4: arrival.card_last4,
+        });
       }
       lines = rows.map((row) => {
-        const stay = pliantStayForCard(row.card_id, stays);
+        const cardId = row.pliant_card_id || row.card_id;
+        const stay = pliantStayForCard(cardId, stays);
+        const bookingId = stay?.bookingId || row.booking_id;
         return {
           id: row.id,
           merchant: row.merchant,
           status: row.status,
           type: row.type,
-          billingCents: row.billing_cents,
-          currency: row.billing_currency,
+          billingCents: row.billing_cents ?? row.amount_cents,
+          currency: row.billing_currency || row.currency,
           bookedAt: row.booked_at,
           last4: stay?.last4 || null,
-          reference: stay?.reference || null,
-          bookingId: stay?.bookingId || null,
+          reference: stay?.reference || (bookingId ? references.get(bookingId) || null : null),
+          bookingId,
         };
       });
     } catch {
