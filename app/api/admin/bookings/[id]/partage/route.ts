@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { tripHeadline } from "@/lib/crm/carnet";
+import { liveConciergeImage, whatsappTypeImageUrl } from "@/lib/crm/concierge-notices";
 import { planTripShareSend, sendTripShareWhatsapp, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -60,11 +61,13 @@ export async function POST(request: Request, ctx: Ctx) {
     return jsonError("Accompagnateur introuvable sur ce voyage", 404);
   }
 
+  const mediaUrl = await liveConciergeImage(whatsappTypeImageUrl("partage"));
   const result = await sendTripShareWhatsapp({
     phone: plan.phone,
     firstName: plan.firstName,
     title: tripHeadline(booking.title, booking.destination),
     url: tripShareUrl(siteConfig.url, code),
+    mediaUrl,
   });
   if (result.ok) return NextResponse.json({ ok: true });
   if (result.reason === "not_configured") {
