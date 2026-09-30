@@ -10,6 +10,7 @@ import {
   extraHeadsFromBooking,
   extraItemPayload,
   extraNoticeOk,
+  extraProposed,
   extraAgencyStatus,
   extraTitle,
   findCheckinExtra,
@@ -174,6 +175,14 @@ export async function createBookingExtra(
       {
         field: "items",
         message: "Chauffeur et VIP Airport se proposent uniquement s’il y a un vol sur le dossier.",
+      },
+    ]);
+  }
+  if (!extraProposed(opts.booking, opts.kind)) {
+    throw new BookingIssuesError("Service non proposé.", [
+      {
+        field: "items",
+        message: "L’agence n’a pas activé ce service sur le dossier.",
       },
     ]);
   }

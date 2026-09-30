@@ -17,7 +17,8 @@
  * CRM (espace client + admin) — Stitch Sovereign Horizon.
  * Scoped : n’altère pas le site public.
  */
-.admin-af {
+.admin-af,
+.admin-portal {
   --background: #faf9f6;
   --surface: #ffffff;
   --surface-2: #f3f1ea;
@@ -46,8 +47,11 @@
   --aura-success: #3d6b4f;
 
   color: var(--foreground);
-  background: var(--background);
   font-family: var(--font-plus-jakarta), var(--font-sans), system-ui, sans-serif;
+}
+
+.admin-af {
+  background: var(--background);
 }
 
 .admin-af .no-scrollbar::-webkit-scrollbar {

@@ -9,6 +9,7 @@ import {
   extraAmount,
   extraFlightAt,
   extraNoticeOk,
+  extraProposed,
   extraAgencyStatus,
   extraItemPayload,
   extraPlaceOf,
@@ -211,6 +212,14 @@ test("un refus masque ce service, pas les autres", () => {
     }),
     false
   );
+});
+
+test("chauffeur et VIP Airport ne sont pas proposés tant que l’agence ne les active pas", () => {
+  assert.equal(extraProposed({}, "chauffeur"), false);
+  assert.equal(extraProposed({}, "greeter"), false);
+  assert.equal(extraProposed({ offer_chauffeur: false, offer_greeter: true }, "chauffeur"), false);
+  assert.equal(extraProposed({ offer_chauffeur: true }, "chauffeur"), true);
+  assert.equal(extraProposed({ offer_greeter: true }, "greeter"), true);
 });
 
 test("chauffeur et greeter seulement s’il y a un vol", () => {

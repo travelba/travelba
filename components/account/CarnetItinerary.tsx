@@ -32,6 +32,7 @@ import {
   undatedTimeline,
 } from "@/lib/crm/carnet";
 import { itemTicketCount } from "@/lib/crm/item-match";
+import { flightCountsInStay } from "@/lib/crm/bookings";
 import { ServiceOfferCard } from "@/components/crm/ServiceOfferCard";
 import {
   bookingHasFlight,
@@ -41,6 +42,7 @@ import {
   extraFlightAt,
   extraHeadsFromBooking,
   extraNoticeOk,
+  extraProposed,
   findExtra,
   formatCustomerAddress,
   isServiceRefused,
@@ -77,6 +79,7 @@ function CardBody({
   day = null,
   partage = null,
   pricesVisible = true,
+  showPrice = true,
 }: {
   item: CrmBookingItem;
   currency: string;
@@ -86,8 +89,9 @@ function CardBody({
   day?: string | null;
   partage?: string | null;
   pricesVisible?: boolean;
+  showPrice?: boolean;
 }) {
-  const price = itemPriceLabel(item, currency, day, pricesVisible);
+  const price = showPrice ? itemPriceLabel(item, currency, day, pricesVisible) : null;
   const included = detailList(item, "included");
   const rooms = hotelRooms(item);
   const iata = flightIata(item);
@@ -302,6 +306,7 @@ export function CarnetItinerary({
           if (isServiceRefused(refusals, offer)) return false;
           const booked = findExtra(items, offer.kind, offer.leg, offer.place, offer.moment);
           if (booked) return true;
+          if (!extraProposed(booking, offer.kind)) return false;
           if (services.variant === "client" && !extraNoticeOk(extraFlightAt(items, offer.leg, booking.start_date || booking.end_date), now)) {
             return false;
           }
@@ -419,6 +424,7 @@ export function CarnetItinerary({
                     day={day}
                     partage={partage}
                     pricesVisible={pricesVisible}
+                    showPrice={flightCountsInStay(row.item, items)}
                   />
                 )
               ) : (
@@ -440,6 +446,7 @@ export function CarnetItinerary({
                 docs={docs}
                 calendarHref={itemHref(item.id)}
                 pricesVisible={pricesVisible}
+                showPrice={flightCountsInStay(item, items)}
                 partage={partage}
               />
             ))}

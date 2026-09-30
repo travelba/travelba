@@ -43,6 +43,7 @@ import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
 import { HotelArrivalPanel } from "@/components/admin/HotelArrivalPanel";
 import { principalGuest } from "@/lib/crm/hotel-arrival";
 import { BookingExpensesPanel } from "@/components/admin/BookingExpensesPanel";
+import { ServiceOfferToggles } from "@/components/admin/ServiceOfferToggles";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
@@ -1062,6 +1063,13 @@ export function BookingEditor({
           />
         </section>
       ) : null}
+
+      <ServiceOfferToggles
+        bookingId={booking.id}
+        chauffeur={booking.offer_chauffeur === true}
+        greeter={booking.offer_greeter === true}
+        hasFlight={bookingHasFlight(items)}
+      />
 
       {items.some((item) => !isLedgerExpenseKind(item.kind)) ? (
         <section className="admin-af-card space-y-3 rounded-3xl p-5">

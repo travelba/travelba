@@ -1453,7 +1453,7 @@ export function structuredHintFromPdfText(text: string): string {
   for (const flight of flights) bits.push(`VOL ${JSON.stringify(flight)}`);
   if (flights.length) {
     bits.push(
-      "Plusieurs e-tickets du même vol (même n°, même jour) = UN item, details.ticket_count = nombre de billets. Prix unitaire saisi par l’agent. Aller-retour dans UN PDF = DEUX items. IATA 8 chiffres = code agence, pas un PNR. « Scan for check-in » n’est pas un hôtel. Ne pas extraire la carte fidélité."
+      "Plusieurs e-tickets du même vol (même n°, même jour) = UN item, details.ticket_count = nombre de billets. Prix saisi par l’agent = aller-retour (aller simple : ce vol). Aller-retour dans UN PDF = DEUX items. IATA 8 chiffres = code agence, pas un PNR. « Scan for check-in » n’est pas un hôtel. Ne pas extraire la carte fidélité."
     );
   }
   const expedia = parseExpediaTaap(clean);

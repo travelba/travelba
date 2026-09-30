@@ -2,7 +2,7 @@
 
 import { AgencyCardPeek } from "@/components/admin/AgencyCardPeek";
 import { hotelDisplayName } from "@/lib/crm/carnet";
-import { shownStayProvision, stayCardFace } from "@/lib/crm/hotel-arrival";
+import { shownStayProvision, stayCardFace, tripStayCard } from "@/lib/crm/hotel-arrival";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import type { CardViewLine, CrmBookingItem, CrmHotelArrival } from "@/lib/crm/types";
 import { StayCard } from "@/components/crm/StayCard";
@@ -28,13 +28,28 @@ export function HotelArrivalPanel({
 }) {
   const hotels = items.filter((item) => item.kind === "hotel");
   if (!hotels.length) return null;
+  const stayCard = tripStayCard(
+    hotels.flatMap((item) => {
+      const arrival = arrivals.find((row) => row.booking_item_id === item.id);
+      if (!arrival?.pliant_card_id) return [];
+      return [
+        stayCardFace({
+          itemId: item.id,
+          hotel: hotelDisplayName(item) || item.title,
+          holder,
+          last4: arrival.card_last4,
+          closed: Boolean(arrival.card_closed_at) || arrival.status === "closed",
+        }),
+      ];
+    })
+  );
   return (
     <section className="admin-af-card overflow-hidden rounded-3xl">
       <div className="border-b border-[#e7e1d6] px-5 py-4">
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Avant l’arrivée</p>
         <h2 className="font-display text-xl font-extrabold tracking-tight text-[var(--admin-navy)]">Carte hôtel</h2>
         <p className="mt-1 max-w-md text-sm leading-relaxed text-[var(--admin-navy)]/70">
-          Une carte par hôtel, créée toute seule. Le plafond couvre le prix du séjour, plus 30 %.
+          Une seule carte pour le voyage, en fin de réservation. Chaque hôtel entre dans le plafond, plus 30 %.
         </p>
       </div>
       <div className="divide-y divide-[#e7e1d6]">
@@ -44,13 +59,21 @@ export function HotelArrivalPanel({
             bookingId={bookingId}
             item={item}
             arrival={arrivals.find((row) => row.booking_item_id === item.id) || null}
-            holder={holder}
             cardViews={cardViews.filter((line) => line.itemId === item.id)}
             bookingStatus={bookingStatus}
             currency={currency}
           />
         ))}
       </div>
+      {stayCard ? (
+        <div className="border-t border-[#e7e1d6] px-5 py-5">
+          <StayCard
+            face={stayCard}
+            revealUrl={`/api/admin/bookings/${bookingId}/hotel-arrival`}
+            views={cardViews.filter((line) => line.itemId === stayCard.itemId && line.source === "pliant")}
+          />
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -59,7 +82,6 @@ function HotelCard({
   bookingId,
   item,
   arrival,
-  holder,
   cardViews,
   bookingStatus,
   currency,
@@ -67,7 +89,6 @@ function HotelCard({
   bookingId: string;
   item: CrmBookingItem;
   arrival: CrmHotelArrival | null;
-  holder: string;
   cardViews: CardViewLine[];
   bookingStatus: string;
   currency: string | null;
@@ -80,9 +101,9 @@ function HotelCard({
     !issued && arrival?.task_note?.startsWith("Pliant") ? arrival.task_note : null;
   const stay = item.start_at && item.end_at ? `${formatDateFr(item.start_at)} — ${formatDateFr(item.end_at)}` : "";
 
-  let line = "Indiquez le prix sur la carte de cet hôtel. La carte se crée ensuite, avec 30 % de marge.";
+  let line = "Indiquez le prix sur la carte de cet hôtel. La carte du voyage se crée ensuite, avec 30 % de marge.";
   if (provision && closed) line = "Fermée après le séjour.";
-  else if (provision && issued) line = "Prête pour l’hôtel. Elle se ferme après le départ.";
+  else if (provision && issued) line = "Compté sur la carte du voyage. Elle se ferme après le dernier départ.";
   else if (provision && pliantNote) line = pliantNote;
   else if (provision && !ACTIVE.has(bookingStatus)) line = "Elle se crée à la confirmation du séjour.";
   else if (provision) line = "Elle se crée à l’ouverture de ce dossier.";
@@ -104,25 +125,12 @@ function HotelCard({
             <dd className="tabular-nums">{formatMoney(provision.marginCents / 100, provision.currency)}</dd>
           </div>
           <div className="mt-3 flex items-end justify-between gap-3 border-t border-[#e5dccb] pt-3">
-            <dt className="text-sm font-semibold text-[var(--admin-navy)]">Sur la carte</dt>
+            <dt className="text-sm font-semibold text-[var(--admin-navy)]">Part de cet hôtel</dt>
             <dd className="font-display text-2xl font-extrabold tabular-nums tracking-tight text-[var(--admin-navy)]">
               {formatMoney(provision.ceilingCents / 100, provision.currency)}
             </dd>
           </div>
         </dl>
-      ) : null}
-      {issued && arrival ? (
-        <StayCard
-          face={stayCardFace({
-            itemId: item.id,
-            hotel: name,
-            holder,
-            last4: arrival.card_last4,
-            closed,
-          })}
-          revealUrl={`/api/admin/bookings/${bookingId}/hotel-arrival`}
-          views={cardViews.filter((line) => line.source === "pliant")}
-        />
       ) : null}
       {arrival?.client_card_name ? (
         <div className="text-xs">

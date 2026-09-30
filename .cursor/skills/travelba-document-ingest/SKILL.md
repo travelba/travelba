@@ -86,7 +86,7 @@ IATA **8 chiffres** (20287864, 20255270, 96020293, 20289905) = code agence, **ja
 ## Vol
 
 - Aller + retour **imprimés** (même PDF) = **deux** cartes. Correspondance = deux. Pas de retour fantôme.
-- 10 e-tickets passagers du **même n° + jour** = **une** carte. Noms → `travelers`. `details.ticket_count` = nombre de billets. Prix vendu = **unitaire par billet**.
+- 10 e-tickets passagers du **même n° + jour** = **une** carte. Noms → `travelers`. `details.ticket_count` = nombre de billets. Prix vendu = **prix du billet pour l’aller-retour** (aller simple : le prix de ce vol).
 - `confirmation_ref` = PNR GDS. `details.pnr` = réf. compagnie (`AF/AB12CD`).
 - `details.airline` = **opérant**. `supplier` = émetteur (Hahn Air ≠ Air Panama).
 - `details.from` / `to` = IATA (souvent absent du PDF) ; `city_from` / `city_to` = villes.

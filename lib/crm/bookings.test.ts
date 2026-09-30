@@ -212,6 +212,9 @@ test("quand le client règle le séjour, le montant et l’hôtel sortent du liv
   assert.equal(bookingMetaPatch({ client_settles_stay: "on" }).client_settles_stay, true);
   assert.equal(bookingMetaPatch({ client_settles_stay: false }).client_settles_stay, false);
   assert.equal("client_settles_stay" in bookingMetaPatch({ title: "Ski" }), false);
+  assert.equal(bookingMetaPatch({ offer_chauffeur: true }).offer_chauffeur, true);
+  assert.equal(bookingMetaPatch({ offer_greeter: "off" }).offer_greeter, false);
+  assert.equal("offer_chauffeur" in bookingMetaPatch({ title: "Ski" }), false);
 
   assert.equal(
     bookingDebitIntent({
@@ -260,7 +263,7 @@ test("quand le client règle le séjour, le montant et l’hôtel sortent du liv
     agencyCommissionAmount({ enabled: true, status: "confirmed", totalAmount: 1700 }),
     170
   );
-  assert.equal(ticketingFeeAmount({ hasFlight: true, travelerCount: 2 }), 50);
+  assert.equal(ticketingFeeAmount({ hasFlight: true, travelerCount: 2 }), 25);
   assert.equal(
     stayIncludedInLedger({ include_in_ledger: true, client_settles_stay: false }),
     true
@@ -297,5 +300,29 @@ test("stay total is always the sum of card selling prices", () => {
       { kind: "checkin", amount: 20 },
     ]),
     800
+  );
+  assert.equal(
+    bookingTotalFromItems([
+      {
+        kind: "flight",
+        amount: 800,
+        start_at: "2026-08-01T08:00:00",
+        details: { from: "CDG", to: "RAK", ticket_count: 2 },
+      },
+      {
+        kind: "flight",
+        amount: 800,
+        start_at: "2026-08-08T18:00:00",
+        details: { from: "RAK", to: "CDG", ticket_count: 2 },
+      },
+    ]),
+    1600
+  );
+  assert.equal(
+    bookingTotalFromItems([
+      { kind: "flight", amount: 400, start_at: "2026-08-01", details: { from: "CDG", to: "JFK" } },
+      { kind: "flight", amount: 350, start_at: "2026-08-03", details: { from: "CDG", to: "LIS" } },
+    ]),
+    750
   );
 });

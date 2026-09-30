@@ -577,6 +577,15 @@ async function pliantForSend(admin: Admin, bookingId: string, item: CrmBookingIt
   const arrival = data as { id: string; pliant_card_id: string | null } | null;
   let cardId = arrival?.pliant_card_id || "";
   if (!cardId) {
+    const { data: siblings } = await admin
+      .from("crm_hotel_arrivals")
+      .select("pliant_card_id")
+      .eq("booking_id", bookingId);
+    cardId =
+      ((siblings || []) as { pliant_card_id?: string | null }[]).find((row) => row.pliant_card_id)?.pliant_card_id ||
+      "";
+  }
+  if (!cardId) {
     if (!pliantConfigured()) throw new Error("Pliant n'est pas branché. Choisissez la carte du client, ou ouvrez le dossier pour créer la carte hôtel.");
     const { data: booking } = await admin.from("crm_bookings").select("customer_id").eq("id", bookingId).maybeSingle();
     const customerId = (booking as { customer_id?: string } | null)?.customer_id || "";
@@ -621,6 +630,9 @@ async function pliantForSend(admin: Admin, bookingId: string, item: CrmBookingIt
         card_limit_cents: CHECKIN_CARD_CENTS,
       });
     }
+  }
+  if (cardId && arrival?.id && arrival.pliant_card_id !== cardId) {
+    await admin.from("crm_hotel_arrivals").update({ pliant_card_id: cardId }).eq("id", arrival.id);
   }
   const secrets = await readPliantCardSecrets(cardId);
   const last4 = cardLast4(secrets.pan);

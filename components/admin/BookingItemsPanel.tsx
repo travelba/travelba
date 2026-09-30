@@ -15,6 +15,7 @@ import type { BookingExtract } from "@/lib/crm/ingest-types";
 import { itemDetailsLine, itemWhen } from "@/lib/crm/booking-display";
 import { readDocumentAmount } from "@/lib/crm/booking-issues";
 import { documentsForItem, hotelDisplayName, itemPriceLabel } from "@/lib/crm/carnet";
+import { flightCountsInStay } from "@/lib/crm/bookings";
 import { attachedEmailLabel } from "@/lib/crm/email-detach";
 import { formatDateTimeFr, formatMoney } from "@/lib/crm/money";
 import { STAY_CURRENCIES } from "@/lib/crm/stay-currency";
@@ -455,7 +456,7 @@ export function BookingItemsPanel({
                     />
                   ) : null}
                   <p className="text-xs text-muted">
-                    {[itemWhen(item), itemDetailsLine(item), itemPriceLabel(item, currency)]
+                    {[itemWhen(item), itemDetailsLine(item), flightCountsInStay(item, items) ? itemPriceLabel(item, currency) : null]
                       .filter(Boolean)
                       .join(" · ")}
                   </p>

@@ -28,6 +28,7 @@ import {
   replyPaymentUrl,
   shownStayProvision,
   stayCardFace,
+  tripStayCard,
   stayProvision,
   stayRevealNeedsAgencyCode,
   vipMail,
@@ -384,6 +385,20 @@ test("carte visuelle : le début reste masqué, le code agence ne se devine pas 
     stayCardFace({ itemId: "item-1", hotel: "Le Bristol", holder: "Camille Martin", last4: "4242", closed: true }).last4,
     "4242"
   );
+  const trip = tripStayCard([
+    stayCardFace({ itemId: "h1", hotel: "Four Seasons", holder: "Arnaud", last4: "4242", closed: false }),
+    stayCardFace({ itemId: "h2", hotel: "Le Bristol", holder: "Arnaud", last4: "1111", closed: false }),
+  ]);
+  assert.equal(trip?.itemId, "h1");
+  assert.equal(trip?.hotel, "");
+  assert.equal(
+    tripStayCard([
+      stayCardFace({ itemId: "h1", hotel: "Four Seasons", holder: "Arnaud", last4: "4242", closed: true }),
+      stayCardFace({ itemId: "h2", hotel: "Four Seasons", holder: "Arnaud", last4: "4242", closed: false }),
+    ])?.itemId,
+    "h2"
+  );
+  assert.equal(tripStayCard([]) , null);
   assert.equal(stayRevealNeedsAgencyCode("client"), false);
   assert.equal(stayRevealNeedsAgencyCode("staff"), true);
   assert.equal(agencyCodeMatches("code-agence", "code-agence"), true);

@@ -538,6 +538,19 @@ export function stayCardFace(input: StayCardFace): StayCardFace {
   };
 }
 
+/** Une seule carte pour le voyage. Le nom d’hôtel reste s’il n’y en a qu’un. */
+export function tripStayCard(faces: StayCardFace[]): StayCardFace | null {
+  const usable = faces.filter((face) => face.itemId);
+  if (!usable.length) return null;
+  const open = usable.filter((face) => !face.closed);
+  const chosen = open[0] || usable[0];
+  const names = [...new Set(usable.map((face) => face.hotel.trim()).filter(Boolean))];
+  return stayCardFace({
+    ...chosen,
+    hotel: names.length === 1 ? names[0] : "",
+  });
+}
+
 export function cardSecretsFromPayload(json: unknown) {
   if (!json || typeof json !== "object") return null;
   const row = json as Record<string, unknown>;

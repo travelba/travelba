@@ -198,6 +198,14 @@ export function bookingHasFlight(
   return (items || []).some((item) => item.kind === "flight");
 }
 
+/** Chauffeur et VIP Airport : l’agence les active sur le dossier. Sinon, rien n’est proposé. */
+export function extraProposed(
+  booking: { offer_chauffeur?: boolean | null; offer_greeter?: boolean | null },
+  kind: ExtraKind
+) {
+  return kind === "chauffeur" ? booking.offer_chauffeur === true : booking.offer_greeter === true;
+}
+
 type ServiceFlightRow = {
   id?: string;
   kind?: string | null;

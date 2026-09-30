@@ -72,40 +72,42 @@ export function CustomerPickDialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-[var(--admin-navy)]/50 p-3 sm:items-center"
+      className="admin-portal fixed inset-0 z-50 flex items-end justify-center bg-[#0b192c]/55 p-3 sm:items-center"
       onClick={onClose}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"
+        className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-[#e8e4dc] bg-white text-[#1a1c1a] shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+        <div className="flex items-start justify-between gap-3 border-b border-[#e8e4dc] bg-[#faf9f6] px-5 py-4">
           <div>
-            <p id={titleId} className="font-display text-lg font-bold text-[var(--admin-navy)]">
+            <p id={titleId} className="font-display text-lg font-bold text-[#0b192c]">
               {title}
             </p>
-            <p className="text-sm text-muted">Tapez un nom, une société, un e-mail ou un téléphone.</p>
+            <p className="mt-0.5 text-sm text-[#44474c]">
+              Tapez un nom, une société, un e-mail ou un téléphone.
+            </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-1.5 text-muted hover:bg-[var(--admin-sky)]"
+            className="rounded-full p-1.5 text-[#0b192c] hover:bg-[#f3f1ea]"
             aria-label="Fermer"
           >
             <Icon name="close" className="h-5 w-5" />
           </button>
         </div>
-        <div className="px-5 pt-4">
+        <div className="border-b border-[#e8e4dc] bg-white px-5 py-4">
           <label className="sr-only" htmlFor={`${titleId}-q`}>
             Rechercher un client
           </label>
           <div className="relative">
             <Icon
               name="search"
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#44474c]"
             />
             <input
               id={`${titleId}-q`}
@@ -119,17 +121,18 @@ export function CustomerPickDialog({
                 }
               }}
               placeholder="Rechercher un client…"
-              className="admin-af-input w-full pl-10 text-sm"
+              className="admin-af-input w-full text-sm text-[#0b192c] placeholder:text-[#5c6370]"
+              style={{ paddingLeft: "2.75rem", backgroundColor: "#f3f1ea", color: "#0b192c" }}
               autoComplete="off"
               spellCheck={false}
             />
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-white px-2 py-2">
           {!customers.length ? (
-            <p className="px-3 py-8 text-center text-sm text-muted">Aucun client dans le CRM.</p>
+            <p className="px-3 py-8 text-center text-sm text-[#44474c]">Aucun client dans le CRM.</p>
           ) : !suggested.length && !rest.length ? (
-            <p className="px-3 py-8 text-center text-sm text-muted">Aucun client pour cette recherche.</p>
+            <p className="px-3 py-8 text-center text-sm text-[#44474c]">Aucun client pour cette recherche.</p>
           ) : (
             <>
               {suggested.length ? (
@@ -176,7 +179,7 @@ function Section({
   return (
     <div className="mb-2">
       {heading ? (
-        <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+        <p className="px-3 pb-1 pt-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">
           {heading}
         </p>
       ) : null}
@@ -201,26 +204,26 @@ function CustomerRow({
       <button
         type="button"
         onClick={() => onPick(customer)}
-        className={`flex w-full items-start gap-3 rounded-2xl px-3 py-2.5 text-left ${
-          selected ? "bg-[var(--admin-sky)]" : "hover:bg-[var(--admin-sky)]/60"
+        className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition ${
+          selected ? "bg-[#f3f1ea] ring-1 ring-[#c5a880]" : "hover:bg-[#f3f1ea]"
         }`}
       >
-        <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[11px] font-bold text-[#f8f6f0]">
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#0b192c] text-[12px] font-bold tracking-wide text-[#faf9f6]">
           {[customer.first_name?.[0], customer.last_name?.[0]].filter(Boolean).join("").toUpperCase() ||
             "?"}
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-2">
-            <span className="truncate text-sm font-semibold text-[var(--admin-navy)]">
+            <span className="truncate text-[15px] font-semibold leading-tight text-[#0b192c]">
               {customerPickLabel(customer)}
             </span>
             {proposed ? (
-              <span className="rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--admin-navy)]">
+              <span className="rounded-full bg-[#f5ece0] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#0b192c]">
                 Proposition
               </span>
             ) : null}
           </span>
-          <span className="block truncate text-xs text-muted">
+          <span className="mt-0.5 block truncate text-[13px] leading-snug text-[#44474c]">
             {[customer.email, customer.phone].filter(Boolean).join(" · ") || "—"}
           </span>
         </span>

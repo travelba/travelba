@@ -47,6 +47,8 @@ const BOOKING_META_KEYS = [
   "include_in_ledger",
   "agency_commission",
   "client_settles_stay",
+  "offer_chauffeur",
+  "offer_greeter",
 ] as const;
 
 /** Champs dossier envoyés par le formulaire admin. Dates vides = null, titre trimé. */
@@ -58,7 +60,7 @@ export function bookingMetaPatch(body: Record<string, unknown>) {
       patch[key] = parseIncludeInLedger(body[key], true);
       continue;
     }
-    if (key === "agency_commission" || key === "client_settles_stay") {
+    if (key === "agency_commission" || key === "client_settles_stay" || key === "offer_chauffeur" || key === "offer_greeter") {
       patch[key] = parseIncludeInLedger(body[key], false);
       continue;
     }
@@ -114,6 +116,65 @@ export function itemSellingAmount(item: {
   return Math.round(total * 100) / 100;
 }
 
+function flightAirport(
+  item: { details?: Record<string, unknown> | null },
+  key: "from" | "to"
+) {
+  const value = item.details?.[key];
+  return typeof value === "string" ? value.trim().toUpperCase() : "";
+}
+
+function flightsReturn(a: { details?: Record<string, unknown> | null }, b: { details?: Record<string, unknown> | null }) {
+  const aFrom = flightAirport(a, "from");
+  const aTo = flightAirport(a, "to");
+  const bFrom = flightAirport(b, "from");
+  const bTo = flightAirport(b, "to");
+  return Boolean(aFrom && aTo && aFrom === bTo && aTo === bFrom);
+}
+
+/**
+ * Vols dont le prix entre dans le séjour.
+ * Aller-retour : le prix saisi est celui du billet complet, compté une fois.
+ * Aller simple : le prix est celui de ce vol.
+ */
+export function flightsInStayTotal<T extends {
+  kind?: string | null;
+  amount?: number | null;
+  start_at?: string | null;
+  details?: Record<string, unknown> | null;
+}>(items: T[]): T[] {
+  const flights = items.filter((item) => item.kind === "flight");
+  const ordered = [...flights].sort((a, b) => String(a.start_at || "").localeCompare(String(b.start_at || "")));
+  const used = new Set<T>();
+  const counted: T[] = [];
+  for (const flight of ordered) {
+    if (used.has(flight)) continue;
+    const back = ordered.find((other) => other !== flight && !used.has(other) && flightsReturn(flight, other));
+    const unnamedPair = !back && ordered.length === 2 && !ordered.some((row) => flightAirport(row, "from") && flightAirport(row, "to"));
+    const pair = back || (unnamedPair ? ordered.find((other) => other !== flight) : null);
+    if (pair) {
+      used.add(flight);
+      used.add(pair);
+      const priced = [flight, pair].find((row) => itemSellingAmount(row) != null);
+      if (priced) counted.push(priced);
+      continue;
+    }
+    used.add(flight);
+    counted.push(flight);
+  }
+  return counted;
+}
+
+export function flightCountsInStay<T extends {
+  kind?: string | null;
+  amount?: number | null;
+  start_at?: string | null;
+  details?: Record<string, unknown> | null;
+}>(item: T, items: T[]) {
+  if (item.kind !== "flight") return true;
+  return flightsInStayTotal(items).includes(item);
+}
+
 /** Carte dont le prix compose le montant du séjour. Hors extras et dépenses libres. */
 export function isStayAmountKind(kind: string | null | undefined) {
   return !isExtraItemKind(kind) && !isLedgerExpenseKind(kind);
@@ -145,11 +206,18 @@ export function itemIncludedInLedger(
 
 /** Montant du séjour : toujours la somme des prix vendus. Transfert, greeter, enregistrement, visa, dépense libre et frais de billeterie restent hors total. */
 export function bookingTotalFromItems(
-  items: { kind?: string | null; amount?: number | null; details?: Record<string, unknown> | null }[]
+  items: {
+    kind?: string | null;
+    amount?: number | null;
+    start_at?: string | null;
+    details?: Record<string, unknown> | null;
+  }[]
 ): number {
   let sum = 0;
+  const fareFlights = new Set(flightsInStayTotal(items));
   for (const item of items) {
     if (!isStayAmountKind(item.kind)) continue;
+    if (item.kind === "flight" && !fareFlights.has(item)) continue;
     const n = itemSellingAmount(item);
     if (n == null) continue;
     sum += n;
@@ -160,7 +228,7 @@ export function bookingTotalFromItems(
 export async function syncBookingTotalFromItems(supabase: SupabaseClient, bookingId: string) {
   const { data: items } = await supabase
     .from("crm_booking_items")
-    .select("amount, kind, details")
+    .select("amount, kind, details, start_at")
     .eq("booking_id", bookingId);
   const total = bookingTotalFromItems(items || []);
   await supabase.from("crm_bookings").update({ total_amount: total }).eq("id", bookingId);
@@ -322,9 +390,8 @@ export async function syncBookingDebit(
 }
 
 export async function syncTicketingFee(supabase: SupabaseClient, booking: CrmBooking) {
-  const [{ data: items }, { data: travelers }, { data: existing }] = await Promise.all([
+  const [{ data: items }, { data: existing }] = await Promise.all([
     supabase.from("crm_booking_items").select("kind").eq("booking_id", booking.id),
-    supabase.from("crm_booking_travelers").select("id").eq("booking_id", booking.id),
     supabase
       .from("crm_transactions")
       .select("*")
@@ -334,9 +401,8 @@ export async function syncTicketingFee(supabase: SupabaseClient, booking: CrmBoo
   ]);
 
   const hasFlight = (items || []).some((row) => row.kind === "flight");
-  const travelerCount = (travelers || []).length;
-  const ticketCount = ticketingTicketCount({ hasFlight, travelerCount });
-  const amount = ticketingFeeAmount({ hasFlight, travelerCount });
+  const ticketCount = ticketingTicketCount({ hasFlight });
+  const amount = ticketingFeeAmount({ hasFlight });
   const shouldPost =
     (booking.status === "confirmed" ||
       booking.status === "travelling" ||

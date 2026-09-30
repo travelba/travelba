@@ -248,16 +248,16 @@ export function IngestItemCard({
             />
           </Field>
         ) : null}
-        <Field label={item.kind === "flight" ? "Prix unitaire par billet" : "Prix vendu"}>
+        <Field label={item.kind === "flight" ? "Prix du billet" : "Prix vendu"}>
           <MoneyInput
             value={item.amount}
             onChange={(amount) => onChange({ ...item, amount })}
-            aria-label={item.kind === "flight" ? "Prix unitaire par billet" : "Prix vendu"}
+            aria-label={item.kind === "flight" ? "Prix du billet" : "Prix vendu"}
           />
         </Field>
         {item.kind === "flight" ? (
           <p className="text-xs text-muted sm:col-span-2">
-            Le séjour compte prix × billets. Sur un aller-retour, saisissez le prix sur un seul vol.
+            Aller-retour : ce prix couvre les deux vols, une fois par passager. Aller simple : le prix de ce vol.
           </p>
         ) : null}
         <label className="flex items-start gap-2 text-sm text-[var(--admin-navy)] sm:col-span-2">

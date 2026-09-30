@@ -225,6 +225,7 @@ async function alignStayCard(input: {
   le: { cents: number; currency: string } | null;
   parisToday: string;
   deps: ArrivalDeps;
+  reuseCardId?: string | null;
 }) {
   const channel = channelOf(input.item);
   let row = input.row.channel === channel ? input.row : { ...input.row, channel };
@@ -254,6 +255,11 @@ async function alignStayCard(input: {
     return { ...row, ...basePatch };
   }
   if (!row.pliant_card_id) {
+    if (input.reuseCardId) {
+      const cleared = row.task_note?.startsWith("Pliant") ? { task_open: false, task_note: null } : {};
+      await save(input.admin, row.id, { ...basePatch, pliant_card_id: input.reuseCardId, ...cleared });
+      return { ...row, ...basePatch, pliant_card_id: input.reuseCardId, ...cleared };
+    }
     const ready = await ensureCard({
       admin: input.admin,
       row,
@@ -321,6 +327,10 @@ export async function syncStayCards(
     })
   );
   const parisToday = parisIsoDate(input.deps?.now || new Date());
+  const deps = input.deps || {};
+  let sharedCardId =
+    rows.find((row) => row.pliant_card_id && !row.card_closed_at && row.status !== "closed")?.pliant_card_id ||
+    null;
   for (const item of hotels) {
     const row = rows.find((entry) => entry.booking_item_id === item.id);
     if (!row) continue;
@@ -336,10 +346,42 @@ export async function syncStayCards(
       holder: input.holder,
       le,
       parisToday,
-      deps: input.deps || {},
+      deps,
+      reuseCardId: sharedCardId,
     });
+    const issued = rows[index];
+    if (issued.pliant_card_id && !issued.card_closed_at && issued.status !== "closed" && !sharedCardId) {
+      sharedCardId = issued.pliant_card_id;
+    }
   }
+  await raiseSharedStayLimit(rows, deps);
   return rows;
+}
+
+async function raiseSharedStayLimit(
+  rows: Pick<CrmHotelArrival, "pliant_card_id" | "card_closed_at" | "status" | "card_limit_cents" | "currency">[],
+  deps: ArrivalDeps
+) {
+  const open = rows.filter(
+    (row) => row.pliant_card_id && !row.card_closed_at && row.status !== "closed" && (row.card_limit_cents || 0) > 0
+  );
+  const ids = [...new Set(open.map((row) => row.pliant_card_id))];
+  if (ids.length !== 1) return;
+  const cardId = ids[0];
+  if (!cardId) return;
+  const onCard = open.filter((row) => row.pliant_card_id === cardId);
+  if (onCard.length < 2) return;
+  const currency = onCard[0].currency;
+  if (!currency || onCard.some((row) => row.currency !== currency)) return;
+  const sum = onCard.reduce((total, row) => total + (row.card_limit_cents || 0), 0);
+  if (sum <= 0) return;
+  try {
+    if (!pliantConfigured() && !deps.setLimit) return;
+    const setLimit = deps.setLimit || setPliantCardLimit;
+    await setLimit(cardId, { value: sum, currency }, 20);
+  } catch (error) {
+    console.error("[hotel-arrival] plafond", error instanceof Error ? error.message : "carte");
+  }
 }
 
 async function save(admin: Admin, id: string, patch: Record<string, unknown>) {
@@ -518,6 +560,14 @@ async function stepArrival(input: {
     netCents: input.arrival.net_cents,
     bookingCurrency: input.booking.currency,
   });
+  const { data: siblings } = await input.admin
+    .from("crm_hotel_arrivals")
+    .select("pliant_card_id, card_closed_at, status")
+    .eq("booking_id", input.booking.id);
+  const reuseCardId =
+    ((siblings || []) as Pick<CrmHotelArrival, "pliant_card_id" | "card_closed_at" | "status">[]).find(
+      (row) => row.pliant_card_id && !row.card_closed_at && row.status !== "closed"
+    )?.pliant_card_id || null;
   let row = await alignStayCard({
     admin: input.admin,
     row: input.arrival,
@@ -529,7 +579,16 @@ async function stepArrival(input: {
     le,
     parisToday: input.parisToday,
     deps: input.deps,
+    reuseCardId,
   });
+  const { data: limitRows } = await input.admin
+    .from("crm_hotel_arrivals")
+    .select("pliant_card_id, card_closed_at, status, card_limit_cents, currency")
+    .eq("booking_id", input.booking.id);
+  await raiseSharedStayLimit(
+    (limitRows || []) as Pick<CrmHotelArrival, "pliant_card_id" | "card_closed_at" | "status" | "card_limit_cents" | "currency">[],
+    input.deps
+  );
   if (!row.payment_url && row.requested_at && emails.length) {
     const since = Date.parse(row.requested_at);
     const find = input.deps.findReplies || defaultFindReplies;
