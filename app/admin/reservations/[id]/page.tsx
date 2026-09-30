@@ -38,11 +38,7 @@ type Props = { params: Promise<{ id: string }> };
 export default async function AdminBookingPage({ params }: Props) {
   const { id } = await params;
   const { supabase } = await requireStaffPage();
-  const { data: booking } = await supabase
-    .from("crm_bookings")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
+  const { data: booking } = await supabase.from("crm_bookings").select("*").eq("id", id).maybeSingle();
   if (!booking) notFound();
   const b = booking as CrmBooking;
   const relatedIds = Array.from(
@@ -137,6 +133,8 @@ export default async function AdminBookingPage({ params }: Props) {
     }
   }
 
+  const billingCompanyRows = (billingCompanies || []) as Pick<CrmBillingCompany, "id" | "company_name">[];
+
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#e5e3dc] bg-white px-4 py-3">
@@ -165,7 +163,7 @@ export default async function AdminBookingPage({ params }: Props) {
         <StayBillingChoice
           endpoint="admin"
           bookingId={b.id}
-          companies={(billingCompanies || []) as Pick<CrmBillingCompany, "id", "company_name">[]}
+          companies={billingCompanyRows}
           bookingCompanyId={b.billing_company_id || null}
           expenses={bookingItems
             .filter((item) => isLedgerExpenseKind(item.kind))
