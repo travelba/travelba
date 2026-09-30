@@ -1,5 +1,6 @@
 import "server-only";
 
+import { attachLittleEmperorsCatalog } from "@/lib/crm/hotel-catalog-load";
 import {
   applyStoredHotelSources,
   fillLeHotelDetails,
@@ -36,7 +37,7 @@ function groupContactRows(rows: HotelContactRow[]): StoredHotelSource[] {
   });
 }
 
-/** Site (et contacts typés) déjà liés au dossier, puis détail hôtel si l’identifiant est connu. */
+/** Contacts déjà liés au dossier, puis le catalogue (Milano = Milan) sur le carnet client comme à l’agence. */
 export async function loadHotelContacts(bookingId: string, items: CrmBookingItem[]) {
   if (!items.some((item) => item.kind === "hotel")) return items;
   let rows: StoredHotelSource[] = [];
@@ -91,5 +92,5 @@ export async function loadHotelContacts(bookingId: string, items: CrmBookingItem
   } catch {
     rows = [];
   }
-  return fillLeHotelDetails(applyStoredHotelSources(items, rows));
+  return attachLittleEmperorsCatalog(await fillLeHotelDetails(applyStoredHotelSources(items, rows)));
 }
