@@ -192,6 +192,15 @@ export function extraAgencyStatus(item: {
   return item.details?.agency_status === "confirmed" ? "confirmed" : "pending";
 }
 
+/** Transfert, VIP et enregistrement confirmés ne s’annulent plus. Avant confirmation, l’annulation reste ouverte. */
+export function serviceCancelLocked(
+  kind: ExtraKind | "visa" | "checkin",
+  item: { details?: Record<string, unknown> | null }
+) {
+  if (kind === "visa") return false;
+  return extraAgencyStatus(item) === "confirmed";
+}
+
 export function bookingHasFlight(
   items: { kind?: string | null }[] | null | undefined
 ) {
