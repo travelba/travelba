@@ -408,8 +408,9 @@ export async function syncBookingDebit(
 }
 
 export async function syncTicketingFee(supabase: SupabaseClient, booking: CrmBooking) {
-  const [{ data: items }, { data: existing }] = await Promise.all([
+  const [{ data: items }, { data: travelers }, { data: existing }] = await Promise.all([
     supabase.from("crm_booking_items").select("kind").eq("booking_id", booking.id),
+    supabase.from("crm_booking_travelers").select("id").eq("booking_id", booking.id),
     supabase
       .from("crm_transactions")
       .select("*")
@@ -419,8 +420,9 @@ export async function syncTicketingFee(supabase: SupabaseClient, booking: CrmBoo
   ]);
 
   const hasFlight = (items || []).some((row) => row.kind === "flight");
-  const ticketCount = ticketingTicketCount({ hasFlight });
-  const amount = ticketingFeeAmount({ hasFlight });
+  const travelerCount = (travelers || []).length;
+  const ticketCount = ticketingTicketCount({ hasFlight, travelerCount });
+  const amount = ticketingFeeAmount({ hasFlight, travelerCount });
   const shouldPost =
     (booking.status === "confirmed" ||
       booking.status === "travelling" ||

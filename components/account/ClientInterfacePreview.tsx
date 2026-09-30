@@ -30,7 +30,7 @@ import { findVisaExtra, type ServiceRefusal } from "@/lib/crm/extras";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
-import { collectableTicketingFee } from "@/lib/crm/ticketing-fee";
+import { collectableTicketingFee, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import type { ShareCompanion } from "@/lib/crm/trip-share";
@@ -202,9 +202,14 @@ function ClientScreen({
       amount: item.amount == null ? null : Number(item.amount),
       billing_company_id: item.billing_company_id || null,
     }));
+  const ticketCount = ticketingTicketCount({
+    hasFlight: allItems.some((item) => item.kind === "flight"),
+    travelerCount: travelers.length,
+  });
   const ticketingFee = collectableTicketingFee({
     status: booking.status,
-    hasFlight: allItems.some((item) => item.kind === "flight"),
+    hasFlight: ticketCount > 0,
+    travelerCount: travelers.length,
   });
   const pricesVisible = booking.prices_visible !== false;
   const expenseLines = clientStayExpenseLines({
@@ -214,6 +219,7 @@ function ClientScreen({
     currency: booking.currency,
     pricesVisible,
     ticketingFee,
+    ticketCount,
   });
   const passportRows = passportVaultRows(travelers, identityDocs, todayIsoDate(), {
     first_name: customer.first_name,

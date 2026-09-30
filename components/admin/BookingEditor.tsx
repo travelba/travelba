@@ -522,7 +522,11 @@ export function BookingEditor({
     stayTotal: bookingTotalFromItems(items),
     agencyCommission: booking.agency_commission === true,
     expenses: items.filter((item) => isLedgerExpenseKind(item.kind)),
-    ticketingFee: collectableTicketingFee({ status: booking.status, hasFlight }),
+    ticketingFee: collectableTicketingFee({
+      status: booking.status,
+      hasFlight,
+      travelerCount: travelers.length,
+    }),
   });
   const hasSteps = items.some((item) => !isLedgerExpenseKind(item.kind));
   const tabs = [
