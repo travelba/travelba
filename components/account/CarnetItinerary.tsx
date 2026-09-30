@@ -34,7 +34,7 @@ import {
 import { itemTicketCount } from "@/lib/crm/item-match";
 import { flightCountsInStay } from "@/lib/crm/bookings";
 import { ServiceOfferCard } from "@/components/crm/ServiceOfferCard";
-import type { PhoneCalendarLink, PhoneCalendarLinks } from "@/lib/crm/calendar-ics";
+import { itemCalendarHref, type PhoneCalendarLink, type PhoneCalendarLinks } from "@/lib/crm/calendar-ics";
 import { AddToPhoneCalendar } from "@/components/account/AddToPhoneCalendar";
 import {
   bookingHasFlight,
@@ -66,7 +66,6 @@ function AgendaLink({
   return (
     <AddToPhoneCalendar
       href={href}
-      webcalHref={phone?.webcal}
       googleHref={phone?.google}
       className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline"
     >
@@ -342,7 +341,7 @@ export function CarnetItinerary({
 
   function itemHref(id: string) {
     if (!calendarBase) return null;
-    return `${calendarBase}?item_id=${encodeURIComponent(id)}`;
+    return itemCalendarHref(calendarBase, id);
   }
 
   function offerCard(offer: ServiceOffer) {

@@ -5,9 +5,7 @@ import { tripHeadline } from "@/lib/crm/carnet";
 import { bookingCoverUrl } from "@/lib/crm/covers";
 import { formatDateFr } from "@/lib/crm/money";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
-import { headers } from "next/headers";
-import { originFromHeaders } from "@/lib/crm/calendar-ics";
-import { phoneCalendarMap } from "@/lib/crm/calendar-feed";
+import { googlePhoneMap } from "@/lib/crm/calendar-ics";
 import { loadPublishedTripShare } from "@/lib/crm/trip-share-load";
 import { siteConfig } from "@/lib/site";
 
@@ -48,6 +46,6 @@ export default async function PublicTripPage({ params }: Props) {
   const trip = await loadPublishedTripShare(code);
   if (!trip) notFound();
   const items = await loadHotelContacts(trip.booking.id, trip.items);
-  const phones = phoneCalendarMap(originFromHeaders(await headers()), trip.booking, items);
+  const phones = googlePhoneMap(trip.booking, items);
   return <PublicTripView booking={trip.booking} items={items} docs={trip.docs} partage={code} phones={phones} />;
 }

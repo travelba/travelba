@@ -4,12 +4,10 @@ import { AddToPhoneCalendar } from "@/components/account/AddToPhoneCalendar";
 export function BoardingPass({
   pass,
   calendarHref,
-  webcalHref = null,
   googleHref = null,
 }: {
   pass: FlightPass;
   calendarHref: string;
-  webcalHref?: string | null;
   googleHref?: string | null;
 }) {
   return (
@@ -41,7 +39,6 @@ export function BoardingPass({
       <div className="border-t border-dashed border-white/20 px-4 py-3">
         <AddToPhoneCalendar
           href={calendarHref}
-          webcalHref={webcalHref}
           googleHref={googleHref}
           className="inline-flex h-11 w-full items-center justify-center rounded-full bg-[#C5A880] px-4 text-sm font-semibold text-[#0B192C]"
         >
