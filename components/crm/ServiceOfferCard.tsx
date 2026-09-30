@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { Icon } from "@/components/crm/icons";
@@ -273,15 +273,15 @@ export function ServiceOfferCard({
     <article
       className={
         existing
-          ? "w-full min-w-0 overflow-hidden rounded-2xl border border-[#e5e3dc] bg-white"
-          : "w-full min-w-0 overflow-hidden rounded-2xl border border-dashed border-[var(--admin-gold)] bg-[#faf9f6]"
+          ? "w-full min-w-0 rounded-2xl border border-[#e5e3dc] bg-white"
+          : "w-full min-w-0 rounded-2xl border border-dashed border-[var(--admin-gold)] bg-[#faf9f6]"
       }
     >
-      <div className="flex min-w-0 items-start gap-3 overflow-hidden px-3.5 py-3">
+      <div className="flex min-w-0 items-start gap-3 px-3.5 py-3">
         <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--admin-peach)] text-[var(--admin-navy)]">
           <Icon name={kindIcon(offer.kind)} className="h-5 w-5" />
         </span>
-        <div className="min-w-0 flex-1 overflow-hidden">
+        <div className="min-w-0 flex-1">
           <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--admin-gold)]">
             {statusLabel}
           </p>
@@ -345,6 +345,15 @@ function AddressLine({
   readOnly: boolean;
 }) {
   const [hints, setHints] = useState<string[]>([]);
+  const field = useRef<HTMLTextAreaElement>(null);
+  const placeholder = label === "Arrivée" ? "Adresse d’arrivée" : "Adresse de départ";
+
+  useEffect(() => {
+    const node = field.current;
+    if (!node) return;
+    node.style.height = "auto";
+    node.style.height = `${node.scrollHeight}px`;
+  }, [value]);
 
   async function search(query: string) {
     onChange(query);
@@ -374,13 +383,15 @@ function AddressLine({
         <p className="mt-1 break-words text-sm text-[var(--admin-navy)]">{value || "—"}</p>
       ) : (
         <div className="relative mt-1">
-          <input
+          <textarea
+            ref={field}
+            rows={2}
             value={value}
             onChange={(event) => void search(event.target.value)}
             aria-label={label}
-            placeholder={`Adresse de ${label.toLowerCase()}`}
+            placeholder={placeholder}
             autoComplete="street-address"
-            className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-[var(--admin-navy)] outline-none focus:border-[var(--admin-navy)]"
+            className="w-full resize-none overflow-hidden rounded-xl border border-border bg-white px-3 py-2 text-sm leading-5 text-[var(--admin-navy)] outline-none focus:border-[var(--admin-navy)]"
           />
           {hints.length ? (
             <ul className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-border bg-white py-1 shadow-lg">
