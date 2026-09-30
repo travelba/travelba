@@ -65,6 +65,10 @@ test("WhatsApp reçoit le titre sans consommer le jeton", () => {
   assert.match(html, /name="ouvrir"/);
   assert.match(html, /value="1"/);
   assert.match(html, /<script>document\.forms\[0\]\.submit\(\)<\/script>/);
+  assert.match(html, /name="viewport" content="width=device-width, initial-scale=1"/);
+  assert.match(html, /<img src="https:\/\/travelba\.fr\/api\/covers\/sejour\/TB-2026-0004"/);
+  assert.match(html, /class="door photo"/);
+  assert.match(html, /<p class="lead">Réservation TB-2026-0004<\/p>/);
   assert.equal(html.includes("location.replace"), false);
   assert.equal(html.includes("http-equiv"), false);
   assert.equal(html.includes("/connexion"), false);
@@ -88,6 +92,10 @@ test("WhatsApp reçoit le titre sans consommer le jeton", () => {
   );
   assert.match(noCover, /Séjour à Avoriaz/);
   assert.equal(noCover.includes("og:image"), false);
+  assert.equal(noCover.includes("<img"), false);
+  assert.match(noCover, /class="door plain"/);
+  assert.match(bare, /class="door plain"/);
+  assert.match(bare, /Votre espace personnel vous attend/);
 });
 
 test("le chemin de retour reste interne", () => {
@@ -130,4 +138,6 @@ test("l’e-mail du lien est celui du titulaire, et l’entrée n’ouvre pas la
   const held = entryPreviewHtml("https://travelba.fr", "K7MQ2PX4", null, false);
   assert.equal(held.includes("<script"), false);
   assert.equal(held.includes("/connexion"), false);
+  assert.match(held, /Ouvrir mon espace/);
+  assert.match(held, /Demandez-en un nouveau à l'agence/);
 });
