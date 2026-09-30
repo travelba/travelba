@@ -31,8 +31,9 @@ export function AddressSuggest({
   useEffect(() => {
     const node = field.current;
     if (!node) return;
-    node.style.height = "auto";
-    node.style.height = `${node.scrollHeight}px`;
+    const border = node.offsetHeight - node.clientHeight;
+    node.style.height = "0px";
+    node.style.height = `${node.scrollHeight + border}px`;
   }, [value]);
 
   useEffect(() => {
@@ -122,7 +123,8 @@ export function AddressSuggest({
         <div ref={root} className="relative mt-1">
           <textarea
             ref={field}
-            rows={2}
+            rows={1}
+            cols={1}
             value={value}
             role="combobox"
             aria-autocomplete="list"
@@ -137,7 +139,7 @@ export function AddressSuggest({
             aria-label={label}
             placeholder={placeholder}
             autoComplete="off"
-            className="w-full resize-none overflow-hidden rounded-xl border border-border bg-white px-3 py-2 pr-9 text-sm leading-5 text-[var(--admin-navy)] outline-none focus:border-[var(--admin-navy)]"
+            className="box-border block w-full min-w-0 resize-none overflow-hidden whitespace-pre-wrap break-words rounded-xl border border-border bg-white px-3 py-2.5 pr-9 text-sm leading-5 text-[var(--admin-navy)] outline-none focus:border-[var(--admin-navy)]"
           />
           {value.trim() ? (
             <button
@@ -163,7 +165,7 @@ export function AddressSuggest({
                 <li key={hit.id} id={`${listId}-${index}`} role="option" aria-selected={index === active}>
                   <button
                     type="button"
-                    className={`flex w-full items-start gap-2.5 px-2.5 py-2 text-left ${
+                    className={`flex w-full min-w-0 items-center gap-2.5 px-2.5 py-2 text-left ${
                       index === active ? "bg-[#f3f6fa]" : "bg-white"
                     }`}
                     onMouseEnter={() => setActive(index)}
@@ -175,11 +177,9 @@ export function AddressSuggest({
                     <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#f6f1e8] text-[var(--admin-navy)]">
                       <Icon name="pin" className="h-4 w-4" />
                     </span>
-                    <span className="min-w-0">
-                      <span className="block text-sm font-semibold leading-snug text-[var(--admin-navy)]">
-                        {hit.title}
-                      </span>
-                      {hit.subtitle ? <span className="block text-xs leading-snug text-muted">{hit.subtitle}</span> : null}
+                    <span className="min-w-0 flex-1 break-words text-sm leading-snug text-[var(--admin-navy)]">
+                      <span className="font-semibold">{hit.title}</span>
+                      {hit.subtitle ? <span className="text-muted">, {hit.subtitle}</span> : null}
                     </span>
                   </button>
                 </li>
