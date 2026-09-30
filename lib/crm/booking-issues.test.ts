@@ -4,7 +4,6 @@ import {
   collectExtractIssues,
   collectManualCreateIssues,
   collectPublishIssues,
-  documentPriceIssues,
   issuesSummary,
 } from "./booking-issues";
 
@@ -28,7 +27,7 @@ test("extrait identité bloque, les passagers du PDF sont enregistrés même hor
   );
 });
 
-test("prix document exigé pour hôtel, vol et transfert", () => {
+test("prix document facultatif : hôtel, vol et transfert sans montant n’empêchent pas l’enregistrement", () => {
   const card = {
     title: "Nantipa",
     supplier: null,
@@ -37,38 +36,15 @@ test("prix document exigé pour hôtel, vol et transfert", () => {
     end_at: null,
     amount: 900,
   };
-  const missing = documentPriceIssues({
+  const missing = collectExtractIssues({
     items: [
       { ...card, kind: "hotel", details: {} },
       { ...card, kind: "flight", title: "Paris → Tel Aviv", details: { document_currency: "USD" } },
       { ...card, kind: "transfer", title: "Talixo", details: { document_amount: 0 } },
       { ...card, kind: "visa", title: "ETA", details: {} },
-      { ...card, kind: "activity", title: "Forfait", details: {} },
-      { ...card, kind: "car", title: "SIXT", details: {} },
     ],
   });
-  assert.equal(missing.length, 3);
-  assert.match(missing[0].message, /Hôtel « Nantipa »/);
-  assert.match(missing[1].message, /Vol « Paris → Tel Aviv »/);
-  assert.match(missing[2].message, /Transfert « Talixo »/);
-  assert.equal(missing.some((issue) => /visa|ETA|SIXT|Forfait/i.test(issue.message)), false);
-  assert.equal(
-    documentPriceIssues({
-      items: [
-        {
-          ...card,
-          kind: "hotel",
-          details: { document_amount: 858.8, document_currency: "USD" },
-        },
-      ],
-    }).length,
-    0
-  );
-  const identity = documentPriceIssues({
-    document_status: "identity",
-    items: [{ ...card, kind: "flight", title: "Passeport", details: {} }],
-  });
-  assert.equal(identity.length, 0);
+  assert.equal(missing.length, 0);
   const priced = collectExtractIssues({
     items: [
       {

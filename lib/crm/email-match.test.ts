@@ -495,7 +495,7 @@ describe("mergeBookingSuggestions + decideEmailIngestAction", () => {
     assert.equal(decision.kind, "review");
   });
 
-  it("hôtel ou vol sans prix document → review, même si le prix vendu est saisi", () => {
+  it("hôtel sans prix document se rattache quand même au voyage unique", () => {
     const base = {
       suggestedCustomerId: "c-alb",
       suggestedBookingId: "b-tlv",
@@ -528,7 +528,7 @@ describe("mergeBookingSuggestions + decideEmailIngestAction", () => {
         ],
       }),
     });
-    assert.equal(missing.kind, "review");
+    assert.deepEqual(missing, { kind: "apply", bookingId: "b-tlv", customerId: "c-alb" });
     const ready = decideEmailIngestAction({
       ...base,
       extract: extractWith({
