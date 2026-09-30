@@ -1,6 +1,6 @@
 import "server-only";
 import { pickListedId, pickTravelConfig, pliantRefusal } from "./eta-il-fee";
-import { pliantTransactionPage } from "./pliant-tx";
+import { annotatePliantPayload, pliantCardFace, pliantHolderId, pliantHolderName, pliantTransactionPage } from "./pliant-tx";
 
 const PROD = {
   api: "https://partner-api.getpliant.com/api",
@@ -190,14 +190,82 @@ export async function setPliantCardLimit(
 }
 
 const TX_PAGE = 100;
-const TX_PAGES = 20;
+const TX_PAGES = 40;
 
-/** Mouvements du compte, du plus récent au plus ancien. */
+/** Mouvements de chaque organisation active : commerçant, carte, porteur. */
 export async function fetchPliantTransactions() {
-  const organizationId = process.env.PLIANT_ORGANIZATION_ID || "";
-  if (!pliantConfigured() || !organizationId) throw new Error("Pliant n’est pas branché.");
+  if (!pliantConfigured()) throw new Error("Pliant n’est pas branché.");
+  const organizationIds = await pliantOrganizationIds();
+  if (!organizationIds.length) throw new Error("Pliant n’est pas branché.");
+  const seen = new Set<string>();
   const rows: unknown[] = [];
-  for (let page = 0; page < TX_PAGES; page += 1) {
+  for (const organizationId of organizationIds) {
+    const [transactions, cards, holders] = await Promise.all([
+      fetchOrganizationTransactions(organizationId),
+      fetchOrganizationDirectory(organizationId, "cards"),
+      fetchOrganizationDirectory(organizationId, "cardholders"),
+    ]);
+    const cardsById = new Map<string, unknown>();
+    for (const card of cards) {
+      const id = pliantCardFace(card).id;
+      if (id) cardsById.set(id, card);
+    }
+    const holdersById = new Map<string, unknown>();
+    for (const holder of holders) {
+      const id = pliantHolderId(holder);
+      if (id) holdersById.set(id, holder);
+    }
+    await hydrateMissingFaces(cardsById, holdersById, transactions);
+    for (const payload of transactions) {
+      if (!payload || typeof payload !== "object") continue;
+      const row = payload as Record<string, unknown>;
+      const id = typeof row.transactionId === "string" ? row.transactionId : typeof row.id === "string" ? row.id : "";
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      const cardId = typeof row.cardId === "string" ? row.cardId : "";
+      const holderId = typeof row.cardholderId === "string" ? row.cardholderId : "";
+      rows.push(annotatePliantPayload(payload, cardsById.get(cardId), holdersById.get(holderId)));
+    }
+  }
+  return rows;
+}
+
+async function pliantOrganizationIds() {
+  const configured = process.env.PLIANT_ORGANIZATION_ID || "";
+  try {
+    const listed = await pliantGet("/organizations?status=ACTIVE&limit=100");
+    const ids = organizationIds(listed);
+    return [...new Set([configured, ...ids].filter(Boolean))];
+  } catch (err) {
+    console.error("[pliant] organizations", err instanceof Error ? err.message : "échec");
+    return configured ? [configured] : [];
+  }
+}
+
+function organizationIds(payload: unknown) {
+  if (!payload || typeof payload !== "object" || !Array.isArray((payload as { data?: unknown }).data)) return [];
+  return (payload as { data: unknown[] }).data
+    .map((row) => (row && typeof row === "object" ? (row as Record<string, unknown>).organizationId : ""))
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+}
+
+async function fetchOrganizationTransactions(organizationId: string) {
+  try {
+    const detailed = await fetchPages((page) =>
+      pliantPost("/transactions/details", {
+        organizationIds: [organizationId],
+        pagination: {
+          page,
+          limit: TX_PAGE,
+          sortBy: { field: "createdAt", direction: "DESC" },
+        },
+      })
+    );
+    if (detailed.length) return detailed;
+  } catch (err) {
+    console.error("[pliant] details", err instanceof Error ? err.message : "échec");
+  }
+  return fetchPages((page) => {
     const query = new URLSearchParams({
       organizationId,
       limit: String(TX_PAGE),
@@ -205,8 +273,70 @@ export async function fetchPliantTransactions() {
       sortBy: "createdAt",
       sortDirection: "DESC",
     });
-    const payload = await pliantGet(`/transactions?${query.toString()}`);
-    const batch = pliantTransactionPage(payload, TX_PAGE);
+    return pliantGet(`/transactions?${query.toString()}`);
+  });
+}
+
+async function fetchOrganizationDirectory(organizationId: string, kind: "cards" | "cardholders") {
+  try {
+    return await fetchPages((page) =>
+      pliantGet(`/${kind}?organizationId=${encodeURIComponent(organizationId)}&limit=${TX_PAGE}&page=${page}`)
+    );
+  } catch (err) {
+    console.error(`[pliant] ${kind}`, err instanceof Error ? err.message : "échec");
+    return [];
+  }
+}
+
+async function hydrateMissingFaces(
+  cardsById: Map<string, unknown>,
+  holdersById: Map<string, unknown>,
+  transactions: unknown[]
+) {
+  const cardIds = new Set<string>();
+  const holderIds = new Set<string>();
+  for (const payload of transactions) {
+    if (!payload || typeof payload !== "object") continue;
+    const row = payload as Record<string, unknown>;
+    const cardId = typeof row.cardId === "string" ? row.cardId : "";
+    const holderId = typeof row.cardholderId === "string" ? row.cardholderId : "";
+    const face = pliantCardFace(cardsById.get(cardId));
+    if (cardId && !face.label && !face.last4) cardIds.add(cardId);
+    if (holderId && !pliantHolderName(holdersById.get(holderId))) holderIds.add(holderId);
+  }
+  await pool([...cardIds], 8, async (cardId) => {
+    try {
+      cardsById.set(cardId, unwrapRecord(await pliantGet(`/cards/${encodeURIComponent(cardId)}`)) || { cardId });
+    } catch (err) {
+      console.error("[pliant] card", err instanceof Error ? err.message : "échec");
+    }
+  });
+  await pool([...holderIds], 8, async (holderId) => {
+    try {
+      holdersById.set(holderId, unwrapRecord(await pliantGet(`/cardholders/${encodeURIComponent(holderId)}`)) || { cardholderId: holderId });
+    } catch (err) {
+      console.error("[pliant] cardholder", err instanceof Error ? err.message : "échec");
+    }
+  });
+}
+
+function unwrapRecord(payload: unknown) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
+  const data = (payload as { data?: unknown }).data;
+  if (data && typeof data === "object" && !Array.isArray(data)) return data;
+  return payload;
+}
+
+async function pool<T>(items: T[], size: number, run: (item: T) => Promise<void>) {
+  for (let index = 0; index < items.length; index += size) {
+    await Promise.all(items.slice(index, index + size).map(run));
+  }
+}
+
+async function fetchPages(load: (page: number) => Promise<unknown>) {
+  const rows: unknown[] = [];
+  for (let page = 0; page < TX_PAGES; page += 1) {
+    const batch = pliantTransactionPage(await load(page), TX_PAGE);
     rows.push(...batch.rows);
     if (batch.done) break;
   }
@@ -214,9 +344,23 @@ export async function fetchPliantTransactions() {
 }
 
 async function pliantGet(path: string) {
+  return pliantSend(path);
+}
+
+async function pliantPost(path: string, body: unknown) {
+  return pliantSend(path, body);
+}
+
+async function pliantSend(path: string, body?: unknown) {
   const token = await accessToken();
   const res = await fetch(`${endpoints().api}${path}`, {
-    headers: { authorization: `Bearer ${token}`, "Pliant-API-Version": "2.1.0" },
+    method: body === undefined ? "GET" : "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "Pliant-API-Version": "2.1.0",
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!res.ok) {
     console.error("[pliant] transactions", res.status);

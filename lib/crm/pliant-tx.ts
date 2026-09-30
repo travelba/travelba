@@ -11,6 +11,11 @@ export type PliantTransactionRow = {
   transaction_cents: number | null;
   transaction_currency: string | null;
   booked_at: string | null;
+  card_label: string | null;
+  card_last4: string | null;
+  holder_name: string | null;
+  category: string | null;
+  comment: string | null;
   raw: Record<string, unknown>;
 };
 
@@ -40,6 +45,22 @@ export const PLIANT_STATUS_LABELS: Record<string, string> = {
   BOOKED: "Comptabilisée",
 };
 
+export const PLIANT_CATEGORY_LABELS: Record<string, string> = {
+  ADVERTISING_AND_MARKETING: "Publicité",
+  COMPUTING_AND_SOFTWARE: "Logiciels",
+  EDUCATION_AND_TRAINING: "Formation",
+  ELECTRONICS_AND_IT_EQUIPMENT: "Équipement",
+  ENTERTAINMENT_AND_WELLNESS: "Loisirs",
+  FOOD_AND_DRINKS: "Restaurants",
+  GIFTS_AND_VOUCHERS: "Cadeaux",
+  MATERIALS_AND_PACKAGING: "Fournitures",
+  OFFICE_SUPPLIES_AND_EQUIPMENT: "Bureau",
+  SERVICES: "Services",
+  TRAVEL_AND_ACCOMMODATION: "Voyage et hébergement",
+  HEALTHCARE: "Santé",
+  OTHER: "Autre",
+};
+
 export function pliantTypeLabel(type: string | null) {
   if (!type) return "Mouvement";
   return PLIANT_TYPE_LABELS[type] || type;
@@ -48,6 +69,11 @@ export function pliantTypeLabel(type: string | null) {
 export function pliantStatusLabel(status: string | null) {
   if (!status) return "Inconnu";
   return PLIANT_STATUS_LABELS[status] || status;
+}
+
+export function pliantCategoryLabel(category: string | null) {
+  if (!category) return null;
+  return PLIANT_CATEGORY_LABELS[category] || category;
 }
 
 export function pliantStatusTone(status: string | null): "sky" | "green" | "amber" | "red" | "navy" | "gold" {
@@ -94,8 +120,50 @@ export function mapPliantTransaction(payload: unknown): PliantTransactionRow | n
     transaction_cents: transaction.cents,
     transaction_currency: transaction.currency,
     booked_at: text(row.confirmedAt) || text(row.authorizedAt) || text(row.createdAt),
+    card_label: clip(text(row.cardLabel), 80),
+    card_last4: fourDigits(row.cardLast4),
+    holder_name: clip(text(row.holderName), 120),
+    category: text(row.category),
+    comment: clip(text(row.comment), 200),
     raw: scrubPliantPayload(row),
   };
+}
+
+/** Ajoute le libellé de carte et le porteur, sans copier le numéro complet. */
+export function annotatePliantPayload(payload: unknown, card: unknown, holder: unknown) {
+  if (!payload || typeof payload !== "object") return payload;
+  const row = { ...(payload as Record<string, unknown>) };
+  const face = pliantCardFace(card);
+  if (face.label) row.cardLabel = face.label;
+  if (face.last4) row.cardLast4 = face.last4;
+  const holderName = pliantHolderName(holder);
+  if (holderName) row.holderName = holderName;
+  return row;
+}
+
+export function pliantCardFace(card: unknown) {
+  if (!card || typeof card !== "object") return { id: null as string | null, label: null as string | null, last4: null as string | null };
+  const row = card as Record<string, unknown>;
+  return {
+    id: text(row.cardId) || text(row.id),
+    label: clip(text(row.label) || text(row.purpose) || text(row.cardDesignLogoName), 80),
+    last4: fourDigits(row.refNum) || fourDigits(row.last4),
+  };
+}
+
+export function pliantHolderName(holder: unknown) {
+  if (!holder || typeof holder !== "object") return null;
+  const row = holder as Record<string, unknown>;
+  const first = text(row.firstName) || text(row.firstname);
+  const last = text(row.lastName) || text(row.lastname);
+  const joined = [first, last].filter(Boolean).join(" ");
+  return clip(joined || text(row.name), 120);
+}
+
+export function pliantHolderId(holder: unknown) {
+  if (!holder || typeof holder !== "object") return null;
+  const row = holder as Record<string, unknown>;
+  return text(row.cardholderId) || text(row.id);
 }
 
 export function scrubPliantPayload(value: unknown): Record<string, unknown> {
@@ -116,7 +184,17 @@ function merchantName(row: Record<string, unknown>) {
   const data = row.merchantData;
   if (data && typeof data === "object") {
     const merchant = data as Record<string, unknown>;
-    const name = text(merchant.name) || text(merchant.displayName) || text(merchant.cleanName);
+    const name = text(merchant.displayName) || text(merchant.name) || text(merchant.cleanName);
+    if (name) return name.slice(0, 200);
+  }
+  const raw = row.merchantRawData;
+  if (raw && typeof raw === "object") {
+    const merchant = raw as Record<string, unknown>;
+    const name =
+      text(merchant.descriptionConfirmation) ||
+      text(merchant.descriptionAuthorization) ||
+      text(merchant.merchantLegalName) ||
+      text(merchant.merchantNameOther);
     if (name) return name.slice(0, 200);
   }
   const legacy = text(row.merchantName);
@@ -134,6 +212,15 @@ function money(value: unknown) {
 
 function text(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function clip(value: string | null, max: number) {
+  return value ? value.slice(0, max) : null;
+}
+
+function fourDigits(value: unknown) {
+  const raw = text(value);
+  return raw && /^\d{4}$/.test(raw) ? raw : null;
 }
 
 function scrub(value: unknown): unknown {
