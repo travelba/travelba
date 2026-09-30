@@ -80,3 +80,5 @@ Admin `/admin/transactions` (et fiche client) : **uniquement les virements créd
 ## PCI / PII
 
 Logs : pas de body Stripe brut, pas d’IBAN complet. Last4 OK. Skill `travelba-go-live` pour les webhooks live.
+
+Carte hôtel : **Afficher le numéro** ouvre le widget Pliant (`openPliantCardWidget`). Le PAN et le CVC restent dans l’iframe. Ne pas les relire dans Travelba : le coffre `GET /card-details` est réservé aux partenaires certifiés PCI et renvoie 502 ici.

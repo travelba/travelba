@@ -50,13 +50,11 @@ export async function POST(request: Request, ctx: Ctx) {
   if (!row?.pliant_card_id) return jsonError("Carte introuvable", 404);
 
   const revealed = await revealStayCard({
-    admin,
-    rowId: row.id,
     pliantCardId: row.pliant_card_id,
     closed: Boolean(row.card_closed_at),
     code: typeof body?.code === "string" ? body.code : "",
     audience: "client",
   });
   if ("error" in revealed) return jsonError(revealed.error, revealed.status);
-  return NextResponse.json(revealed.secrets);
+  return NextResponse.json({ widgetUrl: revealed.widgetUrl, frameId: revealed.frameId });
 }

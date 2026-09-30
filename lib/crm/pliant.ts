@@ -1,6 +1,13 @@
 import "server-only";
 import { pickListedId, pickTravelConfig, pliantRefusal } from "./eta-il-fee";
 import { annotatePliantPayload, pliantCardFace, pliantHolderId, pliantHolderName, pliantTransactionPage } from "./pliant-tx";
+import {
+  parsePliantWidgetOtp,
+  pliantCardBlockMessage,
+  pliantWidgetFailure,
+  pliantWidgetParams,
+  pliantWidgetUrl,
+} from "./pliant-widget";
 
 const PROD = {
   api: "https://partner-api.getpliant.com/api",
@@ -145,6 +152,50 @@ export async function readPliantCardSecrets(cardId: string) {
   const secrets = cardSecretsFromPayload(json);
   if (!secrets) throw new Error("Pliant n’a pas renvoyé la carte.");
   return secrets;
+}
+
+function pciHost() {
+  return process.env.PLIANT_SANDBOX === "1" ? PCI.sandbox : PCI.prod;
+}
+
+/** Ouvre le widget Pliant. Le numéro reste dans l’iframe, jamais dans Travelba. */
+export async function openPliantCardWidget(cardId: string) {
+  const token = await accessToken();
+  const status = await pliantCardStatus(cardId, token);
+  const blocked = pliantCardBlockMessage(status);
+  if (blocked) throw new Error(blocked);
+  const traceId = crypto.randomUUID();
+  const host = pciHost();
+  const res = await fetch(`${host}/card-details/widget/${encodeURIComponent(cardId)}/otp`, {
+    headers: {
+      authorization: `Bearer ${token}`,
+      accept: "application/json",
+      "Pliant-API-Version": "2.1.0",
+      "Pliant-Trace-Id": traceId,
+    },
+  });
+  if (!res.ok) {
+    console.error("[pliant] widget", res.status);
+    throw new Error(pliantWidgetFailure(res.status));
+  }
+  const otp = parsePliantWidgetOtp(await res.text());
+  if (!otp) throw new Error("La carte n’a pas pu être lue.");
+  const frameId = traceId;
+  return { url: pliantWidgetUrl(host, traceId, pliantWidgetParams({ otp, cardId, frameId })), frameId };
+}
+
+async function pliantCardStatus(cardId: string, token: string) {
+  try {
+    const res = await fetch(`${endpoints().api}/cards/${encodeURIComponent(cardId)}`, {
+      headers: { authorization: `Bearer ${token}`, accept: "application/json", "Pliant-API-Version": "2.1.0" },
+    });
+    if (!res.ok) return "";
+    const json = (await res.json()) as { status?: unknown; data?: { status?: unknown } };
+    const status = json.status ?? json.data?.status;
+    return typeof status === "string" ? status : "";
+  } catch {
+    return "";
+  }
 }
 
 export async function raisePliantLimit(cardId: string, limit: { value: number; currency: "EUR" }, count: number) {

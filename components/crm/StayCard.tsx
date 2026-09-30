@@ -1,8 +1,9 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { BusyBar } from "@/components/crm/BusyBar";
-import { cardLast4, groupedPan, maskedCardNumber, type StayCardFace } from "@/lib/crm/hotel-arrival";
+import { maskedCardNumber, type StayCardFace } from "@/lib/crm/hotel-arrival";
+import { isPliantWidgetUrl } from "@/lib/crm/pliant-widget";
 
 
 export function StayCard({
@@ -17,10 +18,32 @@ export function StayCard({
   views?: { name: string; at: string }[];
 }) {
   const [code, setCode] = useState("");
-  const [tail, setTail] = useState(face.last4);
-  const [revealed, setRevealed] = useState<{ pan: string; expiry: string; cvc: string } | null>(null);
+  const [widget, setWidget] = useState<{ url: string; frameId: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!widget) return;
+    const open = widget;
+    function onMessage(event: MessageEvent) {
+      let origin = "";
+      try {
+        origin = new URL(open.url).origin;
+      } catch {
+        return;
+      }
+      if (event.origin !== origin) return;
+      const data = event.data as { eventType?: string; frameId?: string } | null;
+      if (!data || data.frameId !== open.frameId) return;
+      if (data.eventType === "CARD_DATA_LOADING_FAILED") {
+        setWidget(null);
+        setError("La carte n’a pas pu être lue.");
+      }
+      if (data.eventType === "CARD_DATA_CLEARED") setWidget(null);
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [widget]);
 
   async function reveal(event: FormEvent) {
     event.preventDefault();
@@ -38,15 +61,13 @@ export function StayCard({
         }),
       });
       const json = (await res.json().catch(() => null)) as
-        | { error?: string; pan?: string; expiry?: string; cvc?: string; viewer?: string; viewedAt?: string }
+        | { error?: string; widgetUrl?: string; frameId?: string }
         | null;
-      if (!res.ok || !json?.pan || !json.expiry || !json.cvc) {
+      if (!res.ok || !json?.widgetUrl || !json.frameId || !isPliantWidgetUrl(json.widgetUrl)) {
         setError(json?.error || "La carte n’a pas pu être lue.");
         return;
       }
-      const last4 = cardLast4(json.pan);
-      if (last4.length === 4) setTail(last4);
-      setRevealed({ pan: json.pan, expiry: json.expiry, cvc: json.cvc });
+      setWidget({ url: json.widgetUrl, frameId: json.frameId });
       setCode("");
     } catch {
       setError("La carte n’a pas pu être lue.");
@@ -55,9 +76,9 @@ export function StayCard({
     }
   }
 
-  const number = revealed ? groupedPan(revealed.pan) : maskedCardNumber(tail);
-  const expiry = revealed?.expiry || "••/••";
-  const cvc = revealed?.cvc || "•••";
+  const number = maskedCardNumber(face.last4);
+  const expiry = "••/••";
+  const cvc = "•••";
 
   return (
     <div className="w-full max-w-[22rem]">
@@ -99,8 +120,17 @@ export function StayCard({
           </div>
         ) : null}
       </article>
-      {face.closed ? null : revealed ? (
-        <button type="button" className="mt-2 text-xs text-[#9e7e51]" onClick={() => setRevealed(null)}>
+      {widget ? (
+        <iframe
+          className="mt-3 h-64 w-full rounded-2xl border border-[#e5e3dc] bg-white"
+          src={widget.url}
+          title="Numéro de la carte hôtel"
+          allow="clipboard-read; clipboard-write"
+          referrerPolicy="no-referrer"
+        />
+      ) : null}
+      {face.closed ? null : widget ? (
+        <button type="button" className="mt-2 text-xs text-[#9e7e51]" onClick={() => setWidget(null)}>
           Masquer
         </button>
       ) : personal ? (
@@ -122,7 +152,9 @@ export function StayCard({
               onChange={(event) => setCode(event.target.value)}
             />
           </label>
-          <p className="text-xs text-[var(--admin-navy)]/70">Le début du numéro s’ouvre avec le code agence.</p>
+          <p className="text-xs text-[var(--admin-navy)]/70">
+            Le numéro s’ouvre dans le cadre sécurisé, pendant 45 secondes.
+          </p>
           <button
             type="submit"
             className="rounded-full bg-[#0B192C] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"

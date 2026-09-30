@@ -91,7 +91,13 @@ export async function POST(request: Request, ctx: Ctx) {
         viewedAt: opened.viewedAt,
       });
     }
-    return NextResponse.json({ ...opened.secrets, viewer: opened.viewer, viewedAt: opened.viewedAt });
+    if (!opened.widget) return jsonError("La carte n’a pas pu être lue.", 502);
+    return NextResponse.json({
+      widgetUrl: opened.widget.url,
+      frameId: opened.widget.frameId,
+      viewer: opened.viewer,
+      viewedAt: opened.viewedAt,
+    });
   }
 
   return jsonError("Action inconnue", 400);
