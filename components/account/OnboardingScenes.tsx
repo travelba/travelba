@@ -32,26 +32,32 @@ export function OnboardingScene({ id, play }: { id: StepId; play: boolean }) {
 const PASSPORTS = [
   {
     photo: "/onboarding/camille.jpg",
-    given: "Camille",
-    birth: "15.06.1984",
+    given: "CAMILLE",
+    birth: "15 06 1984",
     sex: "F",
-    place: "Lyon",
+    height: "1,68 m",
+    eyes: "Marron",
+    place: "LYON",
+    home: "14 QUAI SAINT-VINCENT\n69001  LYON",
     number: "24XY18302",
-    issued: "02.06.2021",
-    expiry: "01.06.2031",
+    issued: "02 06 2021",
+    expiry: "01 06 2031",
     authority: "Préfecture du Rhône",
     mrz: "P<FRAMOREL<<CAMILLE<<<<<<<<<<<<<<<<<<<<<<<<<",
     mrz2: "24XY183021FRA8406158F3106017<<<<<<<<<<<<<<00",
   },
   {
     photo: "/onboarding/ines.jpg",
-    given: "Inès",
-    birth: "02.04.2012",
+    given: "INÈS",
+    birth: "02 04 2012",
     sex: "F",
-    place: "Lyon",
+    height: "1,64 m",
+    eyes: "Marron",
+    place: "LYON",
+    home: "14 QUAI SAINT-VINCENT\n69001  LYON",
     number: "18KL90441",
-    issued: "02.06.2026",
-    expiry: "01.06.2031",
+    issued: "02 06 2026",
+    expiry: "01 06 2031",
     authority: "Préfecture du Rhône",
     mrz: "P<FRAMOREL<<INES<<<<<<<<<<<<<<<<<<<<<<<<<<<<",
     mrz2: "18KL904416FRA1204023F3106017<<<<<<<<<<<<<<04",
@@ -62,113 +68,167 @@ function PassportScene({ reduce }: { reduce: boolean }) {
   return (
     <ul className="space-y-2">
       {PASSPORTS.map((person, index) => (
-        <motion.li
-          key={person.number}
-          className="overflow-hidden rounded-[10px] border border-[#d5c7b2] shadow-sm"
-          style={{
-            background:
-              "radial-gradient(circle at 12% 20%, rgba(0,35,149,0.06), transparent 42%), radial-gradient(circle at 88% 80%, rgba(237,41,57,0.05), transparent 40%), #f6f1e6",
-          }}
-          {...rise(reduce, 0.08 + index * 0.16)}
-        >
-          <div className="flex items-start gap-2 px-2.5 pb-1 pt-1.5">
-            <EuStars />
-            <div className="min-w-0 flex-1 leading-none">
-              <p className="text-[7px] font-bold tracking-[0.14em] text-[#1a3a6b]">UNION EUROPÉENNE</p>
-              <p className="text-[6px] tracking-[0.12em] text-[#1a3a6b]/70">EUROPEAN UNION</p>
-              <p className="mt-1 text-[7px] font-bold tracking-[0.06em] text-[#1c140c]">RÉPUBLIQUE FRANÇAISE</p>
-              <p className="text-[6px] tracking-[0.08em] text-[#1c140c]/55">FRENCH REPUBLIC</p>
-            </div>
-            <div className="text-right leading-none">
-              <p className="font-display text-[13px] font-bold tracking-[0.04em] text-[#7a1f2b]">PASSEPORT</p>
-              <p className="text-[6.5px] tracking-[0.16em] text-[#7a1f2b]/70">PASSPORT</p>
-            </div>
-          </div>
-          <div className="flex h-[3px]" aria-hidden>
-            <span className="flex-1 bg-[#002395]" />
-            <span className="flex-1 bg-white" />
-            <span className="flex-1 bg-[#ED2939]" />
-          </div>
-          <div className="flex gap-2 px-2.5 py-1.5">
-            <span className="relative h-[4.35rem] w-[3.3rem] shrink-0 overflow-hidden bg-[#ece7df] ring-1 ring-[#c9b89a]">
-              <img src={person.photo} alt="" className="h-full w-full object-cover object-[center_18%]" />
-              {index === 0 ? (
-                <motion.span
-                  aria-hidden
-                  className="absolute inset-x-0 h-px bg-[#002395]/80 shadow-[0_0_8px_1px_rgba(0,35,149,0.45)]"
-                  initial={reduce ? { top: "90%", opacity: 0 } : { top: "6%", opacity: 0.9 }}
-                  animate={{ top: "94%", opacity: 0 }}
-                  transition={reduce ? { duration: 0 } : { duration: 1.15, ease: [0.4, 0, 0.2, 1] }}
-                />
-              ) : null}
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="grid grid-cols-[auto_1fr] gap-x-3">
-                <PassportLine fr="Type" en="Type" value="P" />
-                <PassportLine fr="Code" en="Code" value="FRA" />
-              </div>
-              <PassportLine fr="Passeport n°" en="Passport no." value={person.number} />
-              <PassportLine fr="Nom" en="Surname" value="MOREL" />
-              <div className="grid grid-cols-2 gap-x-2">
-                <PassportLine fr="Prénoms" en="Given names" value={person.given} />
-                <PassportLine fr="Sexe" en="Sex" value={person.sex} />
-              </div>
-              <div className="grid grid-cols-2 gap-x-2">
-                <PassportLine fr="Naissance" en="Date of birth" value={person.birth} />
-                <PassportLine fr="Lieu" en="Place of birth" value={person.place} />
-              </div>
-              <PassportLine fr="Nationalité" en="Nationality" value="Française" />
-              <div className="grid grid-cols-2 gap-x-2">
-                <PassportLine fr="Délivrance" en="Date of issue" value={person.issued} />
-                <PassportLine fr="Expiration" en="Date of expiry" value={person.expiry} />
-              </div>
-              <PassportLine fr="Autorité" en="Authority" value={person.authority} />
-            </div>
-          </div>
-          <div className="border-t border-[#e4d5c0] bg-[#efe6d4] px-2 py-1 font-mono text-[6.5px] leading-[1.15] tracking-[0.01em] text-[#1a140f]">
-            <p className="overflow-hidden whitespace-nowrap">{person.mrz}</p>
-            <p className="overflow-hidden whitespace-nowrap">{person.mrz2}</p>
-          </div>
+        <motion.li key={person.number} {...rise(reduce, 0.08 + index * 0.16)}>
+          <FrenchPassport person={person} />
         </motion.li>
       ))}
     </ul>
   );
 }
 
-const EU_STARS = [
-  ["12.00", "4.80"],
-  ["15.60", "5.76"],
-  ["18.24", "8.40"],
-  ["19.20", "12.00"],
-  ["18.24", "15.60"],
-  ["15.60", "18.24"],
-  ["12.00", "19.20"],
-  ["8.40", "18.24"],
-  ["5.76", "15.60"],
-  ["4.80", "12.00"],
-  ["5.76", "8.40"],
-  ["8.40", "5.76"],
-] as const;
-
-function EuStars() {
+function FrenchPassport({ person }: { person: (typeof PASSPORTS)[number] }) {
   return (
-    <svg viewBox="0 0 24 24" className="mt-0.5 h-6 w-6 shrink-0" aria-hidden>
-      {EU_STARS.map(([cx, cy]) => (
-        <circle key={cx + cy} cx={cx} cy={cy} r="0.9" fill="#1a3a6b" />
+    <article
+      className="relative overflow-hidden rounded-[3px] shadow-[0_1px_3px_rgba(28,24,18,0.18)] ring-1 ring-[#d9c7aa]"
+      style={{ aspectRatio: "125 / 88", containerType: "inline-size" }}
+    >
+      <PassportPaper />
+      <div className="relative flex h-full flex-col">
+        <p
+          className="pt-[1.8%] text-center font-bold leading-none tracking-[0.06em] text-[#1a3f86]"
+          style={{ fontSize: "3.05cqi" }}
+        >
+          RÉPUBLIQUE FRANÇAISE
+        </p>
+        <div className="mt-[1.1%] flex items-start gap-[1.5%] px-[2.2%]">
+          <div className="w-[24%] shrink-0 leading-none">
+            <p className="font-bold tracking-[0.03em] text-[#1a4f9c]" style={{ fontSize: "2.7cqi" }}>
+              PASSEPORT
+            </p>
+            <p className="tracking-[0.14em] text-[#1a4f9c]" style={{ fontSize: "1.55cqi" }}>
+              PASSPORT
+            </p>
+          </div>
+          <div className="grid min-w-0 flex-1 grid-cols-[0.55fr_1.15fr_1fr] gap-x-[2%]">
+            <DocField label="Type / Type" value="P" />
+            <DocField label="Code du pays / Country code" value="FRA" />
+            <DocField label="Passeport n° / Passport no." value={person.number} />
+          </div>
+          <RfMark />
+        </div>
+        <div className="mt-[1%] flex min-h-0 flex-1 gap-[2%] px-[2.2%] pb-[0.4%]">
+          <img
+            src={person.photo}
+            alt=""
+            className="h-full w-[26%] shrink-0 bg-[#eceae6] object-cover object-[center_16%] ring-1 ring-black/15"
+          />
+          <div className="relative min-w-0 flex-1">
+            <img
+              src={person.photo}
+              alt=""
+              aria-hidden
+              className="pointer-events-none absolute right-[4%] top-[2%] h-[70%] w-[42%] object-cover object-[center_18%] opacity-30 mix-blend-multiply"
+              style={{
+                maskImage: "radial-gradient(ellipse at 50% 40%, #000 28%, transparent 68%)",
+                WebkitMaskImage: "radial-gradient(ellipse at 50% 40%, #000 28%, transparent 68%)",
+              }}
+            />
+            <div className="relative flex h-full flex-col justify-between">
+              <DocField label="Nom / Surname (1)" value="MOREL" />
+              <DocField label="Prénoms / Given names (2)" value={person.given} />
+              <div className="grid grid-cols-[1.25fr_0.42fr_0.72fr_1.2fr] gap-x-[1%]">
+                <DocField label="Nationalité / Nationality (3)" value="Française" />
+                <DocField label="Sexe / Sex (5)" value={person.sex} />
+                <DocField label="Taille / Height (12)" value={person.height} />
+                <DocField label="Couleur des yeux / Colour of eyes (13)" value={person.eyes} />
+              </div>
+              <div className="grid grid-cols-2 gap-x-[2%]">
+                <DocField label="Date de naissance / Date of birth (4)" value={person.birth} />
+                <DocField label="Lieu de naissance / Place of birth (6)" value={person.place} />
+              </div>
+              <div className="grid grid-cols-2 gap-x-[2%]">
+                <div className="flex flex-col justify-between">
+                  <DocField label="Date de délivrance / Date of issue (7)" value={person.issued} />
+                  <DocField label="Autorité / Authority (9)" value={person.authority} />
+                </div>
+                <DocField label="Domicile / Residence (11)" value={person.home} />
+              </div>
+              <DocField label="Date d'expiration / Date of expiry (8)" value={person.expiry} />
+            </div>
+          </div>
+        </div>
+        <div
+          className="px-[2%] pb-[1.5%] font-mono leading-none tracking-[-0.03em] text-[#16120e]"
+          style={{ fontSize: "2.85cqi" }}
+        >
+          <p className="overflow-hidden whitespace-nowrap">{person.mrz}</p>
+          <p className="mt-[0.5%] overflow-hidden whitespace-nowrap">{person.mrz2}</p>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function DocField({ label, value }: { label: string; value: string }) {
+  return (
+    <p className="min-w-0 leading-none">
+      <span className="block truncate text-[#5e584f]" style={{ fontSize: "1.22cqi" }}>
+        {label}
+      </span>
+      {value.split("\n").map((line) => (
+        <span
+          key={line}
+          className="block truncate font-semibold leading-[1.08] text-[#141414]"
+          style={{ fontSize: "2.05cqi" }}
+        >
+          {line.split("  ").map((part, index) => (
+            <span key={part} style={index ? { marginLeft: "0.45em" } : undefined}>
+              {part}
+            </span>
+          ))}
+        </span>
       ))}
+    </p>
+  );
+}
+
+function RfMark() {
+  return (
+    <svg viewBox="0 0 36 40" className="mt-[0.5%] shrink-0" style={{ width: "6.6cqi" }} aria-hidden>
+      <polygon
+        points="18,1.5 34,10.5 34,29.5 18,38.5 2,29.5 2,10.5"
+        fill="rgba(255,252,247,0.45)"
+        stroke="#3c4858"
+        strokeWidth="1.25"
+      />
+      <text
+        x="18"
+        y="24.5"
+        textAnchor="middle"
+        fontSize="11"
+        fontWeight="700"
+        fill="#2a3544"
+        fontFamily="ui-sans-serif, system-ui, sans-serif"
+      >
+        RF
+      </text>
     </svg>
   );
 }
 
-function PassportLine({ fr, en, value }: { fr: string; en: string; value: string }) {
+function PassportPaper() {
   return (
-    <p className="min-w-0 leading-none">
-      <span className="block truncate text-[6px] font-semibold uppercase tracking-[0.04em] text-[#8d7348]">
-        {fr}
-        <span className="font-normal normal-case tracking-normal text-[#b19774]"> / {en}</span>
-      </span>
-      <span className="block truncate text-[10px] font-semibold leading-tight text-[#1c140c]">{value}</span>
-    </p>
+    <div className="pointer-events-none absolute inset-0" aria-hidden>
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(ellipse at 16% 42%, rgba(86,146,186,0.22), transparent 48%), radial-gradient(ellipse at 78% 38%, rgba(214,146,154,0.18), transparent 44%), radial-gradient(ellipse at 48% 88%, rgba(196,176,130,0.12), transparent 42%), linear-gradient(180deg, #fbf7f0 0%, #f3eadc 100%)",
+        }}
+      />
+      <svg className="absolute inset-0 h-full w-full opacity-50" viewBox="0 0 125 88" preserveAspectRatio="none">
+        <path d="M0 8 Q 31 5 62 8 T 125 8" fill="none" stroke="#d5e2ee" strokeWidth="0.35" />
+        <path d="M0 16 Q 31 13 62 16 T 125 16" fill="none" stroke="#ead5cf" strokeWidth="0.35" />
+        <path d="M0 24 Q 31 21 62 24 T 125 24" fill="none" stroke="#d5e2ee" strokeWidth="0.35" />
+        <path d="M0 32 Q 31 29 62 32 T 125 32" fill="none" stroke="#ead5cf" strokeWidth="0.35" />
+        <path d="M0 40 Q 31 37 62 40 T 125 40" fill="none" stroke="#d5e2ee" strokeWidth="0.35" />
+        <path d="M0 48 Q 31 45 62 48 T 125 48" fill="none" stroke="#ead5cf" strokeWidth="0.35" />
+        <path d="M0 56 Q 31 53 62 56 T 125 56" fill="none" stroke="#d5e2ee" strokeWidth="0.35" />
+        <path d="M0 64 Q 31 61 62 64 T 125 64" fill="none" stroke="#ead5cf" strokeWidth="0.35" />
+        <path d="M0 72 Q 31 69 62 72 T 125 72" fill="none" stroke="#d5e2ee" strokeWidth="0.35" />
+        <path d="M0 80 Q 31 77 62 80 T 125 80" fill="none" stroke="#ead5cf" strokeWidth="0.35" />
+      </svg>
+    </div>
   );
 }
 
