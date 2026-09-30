@@ -208,6 +208,16 @@ export async function runFlightWatch(
     const booking = bookings.get(item.booking_id);
     return Boolean(booking && ACTIVE.has(booking.status));
   });
+  const agencyCheckin = new Set<string>();
+  if (bookingIds.length) {
+    const { data: checkins, error: checkinError } = await admin
+      .from("crm_booking_items")
+      .select("booking_id")
+      .in("booking_id", bookingIds)
+      .eq("kind", "checkin");
+    if (checkinError) quiet(checkinError);
+    else for (const row of (checkins || []) as { booking_id: string }[]) agencyCheckin.add(row.booking_id);
+  }
 
   let calls = 0;
   let updated = 0;
@@ -269,7 +279,7 @@ export async function runFlightWatch(
   }
 
   for (const item of active) {
-    if (!checkinAttemptDue(item, now)) continue;
+    if (!checkinAttemptDue(item, now, agencyCheckin.has(item.booking_id))) continue;
     const booking = bookings.get(item.booking_id);
     if (!booking) continue;
     const customer = customers.get(booking.customer_id);

@@ -242,7 +242,8 @@ export function checkinOpen(item: FlightCard, now: Date) {
   return opens.getTime() <= now.getTime();
 }
 
-export function checkinAttemptDue(item: FlightCard, now: Date) {
+export function checkinAttemptDue(item: FlightCard, now: Date, agencyCheckin = false) {
+  if (agencyCheckin) return false;
   if (!checkinOpen(item, now)) return false;
   const watch = readFlightWatch(item.details);
   if (watch.checkin_notified_at) return false;

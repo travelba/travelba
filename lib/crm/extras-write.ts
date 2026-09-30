@@ -11,8 +11,9 @@ import {
   extraItemPayload,
   extraNoticeOk,
   extraProposed,
-  extraAgencyStatus,
   extraTitle,
+  serviceCancelLocked,
+  extraPlaceOf,
   findCheckinExtra,
   findExtra,
   findVisaExtra,
@@ -158,6 +159,8 @@ export async function createBookingExtra(
     place?: ServicePlace | null;
     moment?: GreeterMoment | null;
     address?: string | null;
+    departAddress?: string | null;
+    arriveAddress?: string | null;
     enforceWindow?: boolean;
     now?: Date;
   }
@@ -190,6 +193,18 @@ export async function createBookingExtra(
   if (opts.kind === "chauffeur" && !place) {
     throw new BookingIssuesError("Service invalide.", [
       { field: "place", message: "Indiquez un transfert domicile ou hôtel." },
+    ]);
+  }
+  const departAddress = (opts.departAddress || "").trim();
+  const arriveAddress = (opts.arriveAddress || "").trim();
+  if (opts.kind === "chauffeur" && (departAddress || arriveAddress) && (!departAddress || !arriveAddress)) {
+    throw new BookingIssuesError("Adresse requise.", [
+      { field: "address", message: "Indiquez l’adresse de départ et l’adresse d’arrivée." },
+    ]);
+  }
+  if (opts.kind === "chauffeur" && !departAddress && !arriveAddress && !(opts.address || "").trim()) {
+    throw new BookingIssuesError("Adresse requise.", [
+      { field: "address", message: "Indiquez l’adresse de départ et l’adresse d’arrivée." },
     ]);
   }
   const moment = opts.kind === "greeter" ? opts.moment || "depart" : null;
@@ -255,6 +270,8 @@ export async function createBookingExtra(
     startAt,
     amount,
     address: opts.address,
+    departAddress,
+    arriveAddress,
     adults: heads.adults,
     children: heads.children,
     visibleToClient: opts.booking.visible_to_client,
@@ -451,10 +468,7 @@ export async function cancelBookingExtra(
       { field: "kind", message: "Ce service n’est pas validé." },
     ]);
   }
-  if (
-    (opts.kind === "chauffeur" || opts.kind === "greeter") &&
-    extraAgencyStatus(item) === "confirmed"
-  ) {
+  if (serviceCancelLocked(opts.kind, item)) {
     throw new BookingIssuesError("Service confirmé.", [
       { field: "kind", message: "Ce service est confirmé par l’agence et ne peut plus être annulé." },
     ]);
@@ -514,10 +528,102 @@ export async function confirmBookingExtra(
   return { confirmed: true as const };
 }
 
+/** Le client corrige le départ et l’arrivée tant que l’agence n’a pas confirmé. */
+export async function updateTransferAddresses(
+  supabase: SupabaseClient,
+  opts: {
+    booking: CrmBooking;
+    items: CrmBookingItem[];
+    leg: ExtraLeg | null;
+    place?: ServicePlace | null;
+    departAddress: string;
+    arriveAddress: string;
+  }
+) {
+  if (!opts.leg) {
+    throw new BookingIssuesError("Service invalide.", [
+      { field: "leg", message: "Indiquez un trajet (départ ou arrivée)." },
+    ]);
+  }
+  const place = opts.place || null;
+  const item = findExtra(opts.items, "chauffeur", opts.leg, place, null) as CrmBookingItem | null;
+  if (!item?.id) {
+    throw new BookingIssuesError("Service introuvable.", [
+      { field: "kind", message: "Ce transfert n’est pas validé." },
+    ]);
+  }
+  if (serviceCancelLocked("chauffeur", item)) {
+    throw new BookingIssuesError("Service confirmé.", [
+      { field: "kind", message: "Ce transfert est confirmé. L’adresse ne se modifie plus ici." },
+    ]);
+  }
+  const depart = opts.departAddress.trim();
+  const arrive = opts.arriveAddress.trim();
+  if (!depart || !arrive) {
+    throw new BookingIssuesError("Adresse requise.", [
+      { field: "address", message: "Indiquez l’adresse de départ et l’adresse d’arrivée." },
+    ]);
+  }
+  const dropAtHome = (extraPlaceOf(item) || place) === "home" && opts.leg === "arrival";
+  const details = {
+    ...(item.details || {}),
+    depart_address: depart,
+    arrive_address: arrive,
+    pickup: dropAtHome ? arrive : depart,
+  };
+  const { error } = await supabase
+    .from("crm_booking_items")
+    .update({ details })
+    .eq("id", item.id)
+    .eq("booking_id", opts.booking.id);
+  if (error) {
+    console.error("[crm] transfer address:", error.code ?? "?", error.message ?? "");
+    throw new BookingIssuesError("Adresse non enregistrée.", [
+      { field: "form", message: "L’adresse n’a pas pu être enregistrée. Réessayez." },
+    ]);
+  }
+  return { updated: true as const };
+}
+
+/** L’agence a déposé les cartes d’embarquement : l’enregistrement ne s’annule plus. */
+export async function confirmCheckinExtra(
+  supabase: SupabaseClient,
+  opts: {
+    booking: CrmBooking;
+    items: CrmBookingItem[];
+  }
+) {
+  const item = findCheckinExtra(opts.items) as CrmBookingItem | null;
+  if (!item?.id) {
+    throw new BookingIssuesError("Service introuvable.", [
+      { field: "kind", message: "L’enregistrement n’est pas validé." },
+    ]);
+  }
+  const details = { ...(item.details || {}), agency_status: "confirmed" };
+  const { error } = await supabase
+    .from("crm_booking_items")
+    .update({ details })
+    .eq("id", item.id)
+    .eq("booking_id", opts.booking.id);
+  if (error) {
+    console.error("[crm] confirm checkin:", error.code ?? "?", error.message ?? "");
+    throw new BookingIssuesError("Confirmation impossible.", [
+      { field: "form", message: "L’enregistrement n’a pas pu être confirmé. Réessayez." },
+    ]);
+  }
+  return { confirmed: true as const };
+}
+
 export function parseExtraRequest(body: Record<string, unknown> | null) {
   const kind = String(body?.kind || "");
-  if (kind === "visa") return { kind: "visa" as const, leg: null, place: null, moment: null, address: null };
-  if (kind === "checkin") return { kind: "checkin" as const, leg: null, place: null, moment: null, address: null };
+  const depart = String(body?.depart || "").trim() || null;
+  const arrive = String(body?.arrive || "").trim() || null;
+  if (kind === "visa") {
+    return { kind: "visa" as const, leg: null, place: null, moment: null, address: null, depart: null, arrive: null };
+  }
+  if (kind === "checkin") {
+    return { kind: "checkin" as const, leg: null, place: null, moment: null, address: null, depart: null, arrive: null };
+  }
   const leg = String(body?.leg || "");
   const placeRaw = String(body?.place || "");
   const place = isServicePlace(placeRaw) ? placeRaw : null;
@@ -536,5 +642,7 @@ export function parseExtraRequest(body: Record<string, unknown> | null) {
     place: kind === "chauffeur" ? place : null,
     moment: kind === "greeter" ? moment || "depart" : null,
     address: String(body?.address || "").trim() || null,
+    depart,
+    arrive,
   };
 }
