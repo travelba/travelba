@@ -15,12 +15,25 @@ import {
 import { itemTicketCount } from "@/lib/crm/item-match";
 import { hotelDisplayName, publishRevealIds } from "@/lib/crm/carnet";
 import {
-  ticketingFeeAmount,
+  commissionApplies,
+  lodgingFeeExternalId,
+  LODGING_FEE_LABEL,
+  resolvedFlatFeeAmount,
+  resolvedTicketingAmount,
+  resolvedTicketingCount,
   ticketingFeeExternalId,
   ticketingFeeLabel,
-  ticketingTicketCount,
+  TICKETING_FEE_LABEL,
+  TRANSFER_FEE_LABEL,
+  transferFeeExternalId,
+  TRANSFER_FEE_EUR,
+  LODGING_FEE_EUR,
 } from "@/lib/crm/ticketing-fee";
-import { coversStayRollup, isStayRollupDebit } from "@/lib/crm/ledger-display";
+import {
+  coversStayRollup,
+  isStayRollupDebit,
+  legacyTicketingDropsStay,
+} from "@/lib/crm/ledger-display";
 import { debitBillingCompanyId } from "@/lib/crm/billing-companies";
 import { emptyToNull } from "@/lib/crm/identity";
 import { stayCurrency } from "@/lib/crm/stay-currency";
@@ -47,6 +60,10 @@ const BOOKING_META_KEYS = [
   "include_in_ledger",
   "agency_commission",
   "client_settles_stay",
+  "fee_mode",
+  "ticketing_fee_qty",
+  "transfer_fee",
+  "lodging_fee",
 ] as const;
 
 /** Champs dossier envoyés par le formulaire admin. Dates vides = null, titre trimé. */
@@ -58,8 +75,17 @@ export function bookingMetaPatch(body: Record<string, unknown>) {
       patch[key] = parseIncludeInLedger(body[key], true);
       continue;
     }
-    if (key === "agency_commission" || key === "client_settles_stay") {
+    if (key === "agency_commission" || key === "client_settles_stay" || key === "transfer_fee" || key === "lodging_fee") {
       patch[key] = parseIncludeInLedger(body[key], false);
+      continue;
+    }
+    if (key === "fee_mode") {
+      if (body[key] === "percent" || body[key] === "carte") patch[key] = body[key];
+      continue;
+    }
+    if (key === "ticketing_fee_qty") {
+      const qty = Math.floor(Number(body[key]));
+      patch[key] = Number.isFinite(qty) && qty > 0 ? Math.min(qty, 99) : 0;
       continue;
     }
     if (key === "billing_company_id") {
@@ -136,9 +162,10 @@ export function stayIncludedInLedger(booking: {
  */
 export function itemIncludedInLedger(
   item: { kind?: string | null; include_in_ledger?: boolean | null },
-  clientSettlesStay: boolean
+  clientSettlesStay: boolean,
+  feeMode?: "percent" | "carte" | null
 ) {
-  if (isLedgerExpenseKind(item.kind)) return true;
+  if (isLedgerExpenseKind(item.kind)) return feeMode !== "percent";
   if (clientSettlesStay && isStayAmountKind(item.kind)) return false;
   return Boolean(item.include_in_ledger);
 }
@@ -321,87 +348,23 @@ export async function syncBookingDebit(
   }
 }
 
-export async function syncTicketingFee(supabase: SupabaseClient, booking: CrmBooking) {
-  const [{ data: items }, { data: travelers }, { data: existing }] = await Promise.all([
-    supabase.from("crm_booking_items").select("kind").eq("booking_id", booking.id),
-    supabase.from("crm_booking_travelers").select("id").eq("booking_id", booking.id),
-    supabase
-      .from("crm_transactions")
-      .select("*")
-      .eq("source", "manual")
-      .eq("external_id", ticketingFeeExternalId(booking.id))
-      .maybeSingle(),
-  ]);
-
-  const hasFlight = (items || []).some((row) => row.kind === "flight");
-  const travelerCount = (travelers || []).length;
-  const ticketCount = ticketingTicketCount({ hasFlight, travelerCount });
-  const amount = ticketingFeeAmount({ hasFlight, travelerCount });
-  const shouldPost =
-    (booking.status === "confirmed" ||
-      booking.status === "travelling" ||
-      booking.status === "completed") &&
-    amount > 0;
-  const label = ticketingFeeLabel(ticketCount);
-  const debit = existing as CrmTransaction | null;
-  const payerId = booking.billing_customer_id || booking.customer_id;
-  const companyId = debitBillingCompanyId(booking);
-
-  if (!shouldPost) {
-    if (debit && debit.status !== "void") {
-      await supabase.from("crm_transactions").update({ status: "void" }).eq("id", debit.id);
-    }
-    return;
-  }
-
-  if (!debit) {
-    await supabase.from("crm_transactions").insert({
-      customer_id: payerId,
-      booking_id: booking.id,
-      billing_company_id: companyId,
-      direction: "debit",
-      kind: "adjustment",
-      amount,
-      currency: booking.currency || "EUR",
-      label,
-      source: "manual",
-      external_id: ticketingFeeExternalId(booking.id),
-      status: "posted",
-    });
-    return;
-  }
-
-  await supabase
-    .from("crm_transactions")
-    .update({
-      customer_id: payerId,
-      billing_company_id: companyId,
-      amount,
-      currency: booking.currency || "EUR",
-      label,
-      status: "posted",
-    })
-    .eq("id", debit.id);
-}
-
-export async function syncAgencyCommission(supabase: SupabaseClient, booking: CrmBooking) {
-  const amount = agencyCommissionAmount({
-    enabled: booking.agency_commission === true,
-    status: booking.status,
-    totalAmount: Number(booking.total_amount || 0),
-  });
-  const externalId = agencyCommissionExternalId(booking.id);
-  const { data: existing } = await supabase
+async function upsertAdjustmentDebit(
+  supabase: SupabaseClient,
+  booking: CrmBooking,
+  input: { externalId: string; amount: number; label: string }
+) {
+  const { data: existing, error: readError } = await supabase
     .from("crm_transactions")
     .select("*")
     .eq("source", "manual")
-    .eq("external_id", externalId)
+    .eq("external_id", input.externalId)
     .maybeSingle();
+  if (readError) throw new Error(readError.message);
   const debit = existing as CrmTransaction | null;
   const payerId = booking.billing_customer_id || booking.customer_id;
   const companyId = debitBillingCompanyId(booking);
 
-  if (amount <= 0) {
+  if (input.amount <= 0) {
     if (debit && debit.status !== "void") {
       const { error } = await supabase.from("crm_transactions").update({ status: "void" }).eq("id", debit.id);
       if (error) throw new Error(error.message);
@@ -416,11 +379,11 @@ export async function syncAgencyCommission(supabase: SupabaseClient, booking: Cr
       billing_company_id: companyId,
       direction: "debit",
       kind: "adjustment",
-      amount,
+      amount: input.amount,
       currency: booking.currency || "EUR",
-      label: AGENCY_FEE_LABEL,
+      label: input.label,
       source: "manual",
-      external_id: externalId,
+      external_id: input.externalId,
       status: "posted",
     });
     if (error) throw new Error(error.message);
@@ -432,13 +395,82 @@ export async function syncAgencyCommission(supabase: SupabaseClient, booking: Cr
     .update({
       customer_id: payerId,
       billing_company_id: companyId,
-      amount,
+      amount: input.amount,
       currency: booking.currency || "EUR",
-      label: AGENCY_FEE_LABEL,
+      label: input.label,
       status: "posted",
     })
     .eq("id", debit.id);
   if (error) throw new Error(error.message);
+}
+
+export async function syncTicketingFee(supabase: SupabaseClient, booking: CrmBooking) {
+  const feeMode = booking.fee_mode ?? null;
+  let hasFlight = false;
+  let travelerCount = 0;
+  if (feeMode == null) {
+    const [{ data: items }, { data: travelers }] = await Promise.all([
+      supabase.from("crm_booking_items").select("kind").eq("booking_id", booking.id),
+      supabase.from("crm_booking_travelers").select("id").eq("booking_id", booking.id),
+    ]);
+    hasFlight = (items || []).some((row) => row.kind === "flight");
+    travelerCount = (travelers || []).length;
+  }
+  const schedule = {
+    feeMode,
+    qty: Number(booking.ticketing_fee_qty || 0),
+    hasFlight,
+    travelerCount,
+    status: booking.status,
+  };
+  const count = resolvedTicketingCount(schedule);
+  await upsertAdjustmentDebit(supabase, booking, {
+    externalId: ticketingFeeExternalId(booking.id),
+    amount: resolvedTicketingAmount(schedule),
+    label: count > 0 ? ticketingFeeLabel(count) : TICKETING_FEE_LABEL,
+  });
+}
+
+export async function syncTransferFee(supabase: SupabaseClient, booking: CrmBooking) {
+  await upsertAdjustmentDebit(supabase, booking, {
+    externalId: transferFeeExternalId(booking.id),
+    amount: resolvedFlatFeeAmount({
+      feeMode: booking.fee_mode ?? null,
+      enabled: booking.transfer_fee === true,
+      unit: TRANSFER_FEE_EUR,
+      status: booking.status,
+    }),
+    label: TRANSFER_FEE_LABEL,
+  });
+}
+
+export async function syncLodgingFee(supabase: SupabaseClient, booking: CrmBooking) {
+  await upsertAdjustmentDebit(supabase, booking, {
+    externalId: lodgingFeeExternalId(booking.id),
+    amount: resolvedFlatFeeAmount({
+      feeMode: booking.fee_mode ?? null,
+      enabled: booking.lodging_fee === true,
+      unit: LODGING_FEE_EUR,
+      status: booking.status,
+    }),
+    label: LODGING_FEE_LABEL,
+  });
+}
+
+export async function syncAgencyCommission(supabase: SupabaseClient, booking: CrmBooking) {
+  const amount = agencyCommissionAmount({
+    enabled: commissionApplies({
+      feeMode: booking.fee_mode ?? null,
+      agencyCommission: booking.agency_commission === true,
+    }),
+    status: booking.status,
+    totalAmount: Number(booking.total_amount || 0),
+  });
+  await upsertAdjustmentDebit(supabase, booking, {
+    externalId: agencyCommissionExternalId(booking.id),
+    amount,
+    label: AGENCY_FEE_LABEL,
+  });
 }
 
 export async function syncBookingItemDebits(supabase: SupabaseClient, booking: CrmBooking) {
@@ -477,7 +509,11 @@ export async function syncBookingItemDebits(supabase: SupabaseClient, booking: C
       status: booking.status,
       amount,
       hasOpenDebit: Boolean(debit),
-      includeInLedger: itemIncludedInLedger(item, booking.client_settles_stay === true),
+      includeInLedger: itemIncludedInLedger(
+        item,
+        booking.client_settles_stay === true,
+        booking.fee_mode ?? null
+      ),
     });
     const label = bookingItemDebitLabel(item, booking.reference);
     const companyId = debitBillingCompanyId(booking, item);
@@ -526,17 +562,23 @@ export async function syncBookingItemDebits(supabase: SupabaseClient, booking: C
   }
 }
 
-/** Le montant global du séjour quitte le livre dès qu’une carte ou un frais du dossier est posté. Une dépense libre ou la commission 10 % ne le retire pas. */
-export async function dropCoveredStayRollup(supabase: SupabaseClient, bookingId: string) {
+/** Le montant global du séjour quitte le livre dès qu’une carte du dossier est postée. Commission, dépenses libres et frais à la carte restent à côté. L’ancienne billeterie auto le retire encore. */
+export async function dropCoveredStayRollup(
+  supabase: SupabaseClient,
+  booking: { id: string; fee_mode?: "percent" | "carte" | null }
+) {
   const { data, error } = await supabase
     .from("crm_transactions")
     .select("id, direction, kind, external_id, status")
-    .eq("booking_id", bookingId)
+    .eq("booking_id", booking.id)
     .eq("direction", "debit")
     .eq("status", "posted");
   if (error) throw new Error(error.message);
   const rows = (data || []) as Pick<CrmTransaction, "id" | "direction" | "kind" | "external_id" | "status">[];
-  if (!rows.some((row) => coversStayRollup({ ...row, booking_id: bookingId }))) return;
+  const covered =
+    legacyTicketingDropsStay(booking.fee_mode, rows) ||
+    rows.some((row) => coversStayRollup({ ...row, booking_id: booking.id }));
+  if (!covered) return;
   const rollupIds = rows.filter((row) => isStayRollupDebit(row)).map((row) => row.id);
   if (!rollupIds.length) return;
   const { error: deleteError } = await supabase.from("crm_transactions").delete().in("id", rollupIds);
@@ -551,8 +593,10 @@ export async function syncBookingLedger(
   await syncBookingDebit(supabase, booking, previousStatus);
   await syncBookingItemDebits(supabase, booking);
   await syncTicketingFee(supabase, booking);
+  await syncTransferFee(supabase, booking);
+  await syncLodgingFee(supabase, booking);
   await syncAgencyCommission(supabase, booking);
-  await dropCoveredStayRollup(supabase, booking.id);
+  await dropCoveredStayRollup(supabase, booking);
 }
 
 export async function refreshBookingLedger(supabase: SupabaseClient, bookingId: string) {

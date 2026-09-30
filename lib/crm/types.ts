@@ -239,8 +239,16 @@ export type CrmBooking = {
   total_amount: number;
   /** Si false : montant du séjour affiché au carnet, pas au grand livre. */
   include_in_ledger: boolean;
-  /** Si true : 10 % du montant du séjour en dépense du dossier. */
+  /** Si true : 10 % du montant du séjour en dépense du dossier. Ignoré si fee_mode = carte. */
   agency_commission?: boolean;
+  /** null = ancien calcul. percent = 10 % seul. carte = frais cochés. */
+  fee_mode?: "percent" | "carte" | null;
+  /** Billets à 25 €, seulement si fee_mode = carte. */
+  ticketing_fee_qty?: number;
+  /** Forfait 15 €, seulement si fee_mode = carte. */
+  transfer_fee?: boolean;
+  /** Forfait 20 €, seulement si fee_mode = carte. */
+  lodging_fee?: boolean;
   /** Si true : le client règle le séjour sur sa carte. Le montant sort du grand livre. */
   client_settles_stay?: boolean;
   cover_image_path: string | null;

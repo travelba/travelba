@@ -3,6 +3,7 @@ import test from "node:test";
 import { HIDDEN_PRICE_LABEL } from "./carnet";
 import { agencyFeeFromGross, formatMoney } from "./money";
 import { AGENCY_FEE_LABEL } from "./types";
+import { LODGING_FEE_LABEL, TRANSFER_FEE_LABEL } from "./ticketing-fee";
 import {
   clientStayPriceLabel,
   stayPriceWithExpenses,
@@ -11,6 +12,7 @@ import {
   isAgencyCommissionDebit,
   isFreeExpenseDebit,
   isStayRollupDebit,
+  legacyTicketingDropsStay,
   ledgerMovementTitle,
   ledgerPlace,
   ledgerSubjectTitle,
@@ -87,6 +89,37 @@ test("une dépense libre reste à côté du montant du séjour", () => {
     visibleLedgerRows([stay, expense]).map((row) => row.id),
     ["stay", "extra"]
   );
+});
+
+test("billeterie, transfert et hébergement restent à côté du montant du séjour", () => {
+  const stay = {
+    id: "stay",
+    booking_id: "b1",
+    direction: "debit",
+    kind: "booking",
+    external_id: null,
+  };
+  const ticketing = {
+    id: "tickets",
+    booking_id: "b1",
+    direction: "debit",
+    kind: "adjustment",
+    external_id: "booking:b1:ticketing-fee",
+  };
+  const transfer = {
+    ...ticketing,
+    id: "transfer",
+    external_id: "booking:b1:transfer-fee",
+  };
+  assert.equal(coversStayRollup(ticketing), false);
+  assert.equal(coversStayRollup(transfer), false);
+  assert.deepEqual(
+    visibleLedgerRows([stay, ticketing, transfer]).map((row) => row.id),
+    ["stay", "tickets", "transfer"]
+  );
+  assert.equal(legacyTicketingDropsStay(null, [ticketing]), true);
+  assert.equal(legacyTicketingDropsStay("carte", [ticketing]), false);
+  assert.equal(legacyTicketingDropsStay("percent", [ticketing]), false);
 });
 
 test("la commission 10 % reste à côté du montant du séjour", () => {
@@ -259,5 +292,60 @@ test("la réservation client liste les frais d’agence puis les dépenses libre
       pricesVisible: true,
     }).length,
     0
+  );
+});
+
+test("le mode 10 % ignore les frais à la carte et les dépenses libres", () => {
+  assert.equal(
+    stayPriceWithExpenses({
+      stayTotal: 1000,
+      agencyCommission: false,
+      feeMode: "percent",
+      ticketingQty: 2,
+      transferFee: true,
+      lodgingFee: true,
+      expenses: [{ amount: 40 }],
+    }),
+    1100
+  );
+  assert.deepEqual(
+    clientStayExpenseLines({
+      expenses: [{ id: "e1", title: "Pourboire", amount: 40 }],
+      agencyCommission: false,
+      feeMode: "percent",
+      stayTotal: 1000,
+      currency: "EUR",
+      pricesVisible: true,
+    }).map((line) => line.title),
+    [AGENCY_FEE_LABEL]
+  );
+});
+
+test("le mode à la carte additionne les cases et laisse la commission de côté", () => {
+  assert.equal(
+    stayPriceWithExpenses({
+      stayTotal: 1000,
+      agencyCommission: true,
+      feeMode: "carte",
+      ticketingQty: 2,
+      transferFee: true,
+      lodgingFee: true,
+      expenses: [{ amount: 40 }],
+    }),
+    1000 + 50 + 15 + 20 + 40
+  );
+  assert.deepEqual(
+    clientStayExpenseLines({
+      expenses: [{ id: "e1", title: "Pourboire", amount: 40 }],
+      agencyCommission: true,
+      feeMode: "carte",
+      ticketingQty: 2,
+      transferFee: true,
+      lodgingFee: true,
+      stayTotal: 1000,
+      currency: "EUR",
+      pricesVisible: true,
+    }).map((line) => line.title),
+    ["Frais de billeterie (2 billets)", TRANSFER_FEE_LABEL, LODGING_FEE_LABEL, "Pourboire"]
   );
 });

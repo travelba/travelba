@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
 import { clientBookingStatusLabel, stayHeadline } from "@/lib/crm/carnet";
-import { clientStayPriceLabel } from "@/lib/crm/ledger-display";
+import { clientStayPriceLabel, stayFeeFields } from "@/lib/crm/ledger-display";
 import {
   formatDateRangeShort,
   isUpcomingBooking,
@@ -163,7 +163,7 @@ export default async function ReservationsPage({
                           stayTotal: Number(b.total_amount),
                           currency: b.currency,
                           pricesVisible: b.prices_visible !== false,
-                          agencyCommission: b.agency_commission === true,
+                          ...stayFeeFields(b),
                           expenses: expenseAmounts.get(b.id) || [],
                         })}
                       </span>
