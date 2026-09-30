@@ -36,7 +36,7 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 - Vol : ligne 1 `CDG → RAK` (`flightIata`), ligne 2 villes (`flightCities`).
 - Clic carte = détail + **Voir la confirmation** (PDF `source_document_id`) + **Ajouter à l’agenda** (.ics).
 - En-tête itinéraire : **Ajouter tout le séjour** (`GET /api/client/bookings/[reference]/calendrier`). Horaires seulement s’ils existent ; hôtel = journée entière.
-- Ordre : `sort_order` agent (drag / monter-descendre), défaut **chrono**. PATCH `{ order: [ids] }` sur `/api/admin/bookings/[id]/items`.
+- Ordre : `sort_order` agent (déplacer la carte, sans flèches), défaut **chrono**. PATCH `{ order: [ids] }` sur `/api/admin/bookings/[id]/items`.
 - Kinds : `flight` `hotel` `transfer` `activity` `rail` `car` `cruise` `insurance` `fee`. Train / voiture / bateau = cartes métier, pas un jour par escale bateau.
 - **Dépense libre** (`expense`) : hors timeline, hors calendrier, hors publication du carnet. Sur `/mon-compte/reservations/[reference]`, section **Dépenses** (libellé + montant), sous le montant du séjour. Elle vit aussi dans les transactions (skill `travelba-money`).
 

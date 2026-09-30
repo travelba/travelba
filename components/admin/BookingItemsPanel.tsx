@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, PointerEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
+import { Reorder } from "framer-motion";
 import {
   BOOKING_ITEM_LABELS,
   isExtraItemKind,
@@ -62,12 +62,10 @@ function printedPrice(amount: number, currency: string) {
   return currency ? `${amount.toLocaleString("fr-FR")} ${currency}` : amount.toLocaleString("fr-FR");
 }
 
-function moveItem<T>(list: T[], from: number, to: number) {
-  if (to < 0 || to >= list.length) return list;
-  const next = [...list];
-  const [row] = next.splice(from, 1);
-  next.splice(to, 0, row);
-  return next;
+function blockDragFromControl(event: PointerEvent<HTMLElement>) {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  if (target.closest("button, a, input, textarea, select, label")) event.stopPropagation();
 }
 
 export function BookingItemsPanel({
@@ -114,7 +112,9 @@ export function BookingItemsPanel({
   const [draft, setDraft] = useState<ItemDraft>(emptyDraft());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const dragFrom = useRef<number | null>(null);
+  const rowsRef = useRef(rows);
+  const cardRowsRef = useRef<CrmBookingItem[]>([]);
+  const orderDirty = useRef(false);
 
   function startEdit(item: CrmBookingItem) {
     setEditingId(item.id);
@@ -149,13 +149,30 @@ export function BookingItemsPanel({
 
   const cardRows = rows.filter((item) => !isLedgerExpenseKind(item.kind));
 
-  function reorder(from: number, to: number) {
-    if (from === to) return;
-    const nextCards = moveItem(cardRows, from, to);
-    if (nextCards === cardRows) return;
-    const expenses = rows.filter((item) => isLedgerExpenseKind(item.kind));
-    setRows([...nextCards, ...expenses]);
-    void persistOrder(nextCards);
+  useEffect(() => {
+    rowsRef.current = rows;
+    cardRowsRef.current = cardRows;
+  });
+
+  function applyCardOrder(nextCards: CrmBookingItem[]) {
+    if (
+      nextCards.length === cardRowsRef.current.length &&
+      nextCards.every((item, index) => item.id === cardRowsRef.current[index]?.id)
+    ) {
+      return;
+    }
+    const expenses = rowsRef.current.filter((item) => isLedgerExpenseKind(item.kind));
+    const next = [...nextCards, ...expenses];
+    rowsRef.current = next;
+    cardRowsRef.current = nextCards;
+    orderDirty.current = true;
+    setRows(next);
+  }
+
+  function finishCardDrag() {
+    if (!orderDirty.current) return;
+    orderDirty.current = false;
+    void persistOrder(cardRowsRef.current);
   }
 
   async function saveDraft() {
@@ -202,9 +219,11 @@ export function BookingItemsPanel({
   }
 
   const saveDraftRef = useRef(saveDraft);
-  saveDraftRef.current = saveDraft;
   const onBindRef = useRef(onBindDraftSave);
-  onBindRef.current = onBindDraftSave;
+  useEffect(() => {
+    saveDraftRef.current = saveDraft;
+    onBindRef.current = onBindDraftSave;
+  });
   useEffect(() => {
     onBindRef.current?.(() => saveDraftRef.current());
     return () => onBindRef.current?.(null);
@@ -250,25 +269,38 @@ export function BookingItemsPanel({
         </button>
       </div>
       <p className="mt-1 text-xs text-muted">
-        Glissez pour l’ordre du carnet. Par défaut : chronologique. Une carte hôtel revient chaque nuit
-        dans l’aperçu : retirer la carte retire toutes ces lignes. Une chambre en trop se retire dans la carte.
+        Déplacez une carte pour changer l’ordre du carnet. Par défaut : chronologique. Une carte hôtel
+        revient chaque nuit dans l’aperçu : retirer la carte retire toutes ces lignes. Une chambre en trop
+        se retire dans la carte.
       </p>
       <div className="mt-3">
         <BusyBar active={busy} label="Enregistrement…" />
       </div>
-      <ul className="mt-2 space-y-2 text-sm">
-        {cardRows.map((item, index) => (
-          <li
+      <Reorder.Group
+        axis="y"
+        values={cardRows}
+        onReorder={applyCardOrder}
+        className="mt-2 flex list-none flex-col gap-2 p-0 text-sm"
+      >
+        {cardRows.map((item) => {
+          const locked = editingId === item.id || busy;
+          return (
+          <Reorder.Item
             key={item.id}
-            className="rounded-xl border border-border px-3 py-2"
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={() => {
-              const from = dragFrom.current;
-              dragFrom.current = null;
-              if (from == null) return;
-              reorder(from, index);
+            value={item}
+            dragListener={!locked}
+            onDragEnd={finishCardDrag}
+            whileDrag={{
+              scale: 1.02,
+              zIndex: 30,
+              boxShadow: "0 16px 40px rgba(11, 25, 44, 0.18)",
+              borderColor: "#C5A880",
             }}
+            className={`relative rounded-xl border border-border bg-[var(--surface)] px-3 py-2 ${
+              locked ? "" : "cursor-grab active:cursor-grabbing"
+            }`}
           >
+            <div onPointerDown={blockDragFromControl}>
             {editingId === item.id ? (
               <div className="space-y-2">
                 <IngestItemCard
@@ -299,93 +331,61 @@ export function BookingItemsPanel({
               </div>
             ) : (
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="flex min-w-0 items-start gap-2">
-                  <span
-                    draggable
-                    onDragStart={(event) => {
-                      dragFrom.current = index;
-                      event.dataTransfer.effectAllowed = "move";
-                      event.dataTransfer.setData("text/plain", item.id);
-                    }}
-                    className="mt-0.5 cursor-grab touch-none text-muted"
-                    aria-label="Réordonner"
-                  >
-                    <GripVertical className="h-4 w-4" />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="font-medium">
-                      {visibleServiceCopy(BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind)} ·{" "}
-                      {item.kind === "hotel" ? hotelDisplayName(item) : visibleServiceCopy(item.title)}
-                      {!item.visible_to_client ? (
-                        <span className="ml-2 rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase">
-                          Brouillon
-                        </span>
-                      ) : null}
-                      {item.include_in_ledger && !(clientSettlesStay && !isExtraItemKind(item.kind)) ? (
-                        <span className="ml-2 rounded-full bg-[var(--admin-sky)] px-2 py-0.5 text-[10px] font-bold uppercase">
-                          Transactions
-                        </span>
-                      ) : null}
-                    </p>
-                    {item.kind === "hotel" ? <HotelContactButton item={item} /> : null}
-                    {item.kind === "hotel" ? (
-                      <HotelDesk
-                        bookingId={bookingId}
-                        item={item}
-                        requests={hotelRequests}
-                        today={today}
-                        travelers={travelers}
-                        identityDocs={identityDocs}
-                        holder={holder}
-                        cardLast4={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.card_last4 || null}
-                        clientCardName={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.client_card_name || null}
-                        hasCardCode={hasCardCode}
-                        cardViews={cardViews.filter((line) => line.itemId === item.id)}
-                      />
+                <div className="min-w-0">
+                  <p className="font-medium">
+                    {visibleServiceCopy(BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind)} ·{" "}
+                    {item.kind === "hotel" ? hotelDisplayName(item) : visibleServiceCopy(item.title)}
+                    {!item.visible_to_client ? (
+                      <span className="ml-2 rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase">
+                        Brouillon
+                      </span>
                     ) : null}
-                    <p className="text-xs text-muted">
-                      {[itemWhen(item), itemDetailsLine(item), itemPriceLabel(item, currency)]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
-                    {readDocumentAmount(item.details) != null ? (
-                      <p className="text-xs text-muted">
-                        Prix imprimé sur le document :{" "}
-                        {printedPrice(
-                          readDocumentAmount(item.details) as number,
-                          typeof item.details?.document_currency === "string"
-                            ? item.details.document_currency
-                            : ""
-                        )}
-                        . Corrigez-le dans la carte si la lecture a coupé le montant.
-                      </p>
+                    {item.include_in_ledger && !(clientSettlesStay && !isExtraItemKind(item.kind)) ? (
+                      <span className="ml-2 rounded-full bg-[var(--admin-sky)] px-2 py-0.5 text-[10px] font-bold uppercase">
+                        Transactions
+                      </span>
                     ) : null}
-                    <ItemAttachments
+                  </p>
+                  {item.kind === "hotel" ? <HotelContactButton item={item} /> : null}
+                  {item.kind === "hotel" ? (
+                    <HotelDesk
                       bookingId={bookingId}
-                      itemId={item.id}
-                      docs={documentsForItem(item, documents)}
+                      item={item}
+                      requests={hotelRequests}
+                      today={today}
+                      travelers={travelers}
+                      identityDocs={identityDocs}
+                      holder={holder}
+                      cardLast4={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.card_last4 || null}
+                      clientCardName={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.client_card_name || null}
+                      hasCardCode={hasCardCode}
+                      cardViews={cardViews.filter((line) => line.itemId === item.id)}
                     />
-                  </div>
+                  ) : null}
+                  <p className="text-xs text-muted">
+                    {[itemWhen(item), itemDetailsLine(item), itemPriceLabel(item, currency)]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                  {readDocumentAmount(item.details) != null ? (
+                    <p className="text-xs text-muted">
+                      Prix imprimé sur le document :{" "}
+                      {printedPrice(
+                        readDocumentAmount(item.details) as number,
+                        typeof item.details?.document_currency === "string"
+                          ? item.details.document_currency
+                          : ""
+                      )}
+                      . Corrigez-le dans la carte si la lecture a coupé le montant.
+                    </p>
+                  ) : null}
+                  <ItemAttachments
+                    bookingId={bookingId}
+                    itemId={item.id}
+                    docs={documentsForItem(item, documents)}
+                  />
                 </div>
-                <div className="flex flex-wrap items-center gap-1">
-                  <button
-                    type="button"
-                    aria-label="Monter"
-                    className="inline-flex h-11 w-11 items-center justify-center rounded-full text-muted disabled:opacity-30"
-                    disabled={index === 0 || busy}
-                    onClick={() => reorder(index, index - 1)}
-                  >
-                    <ChevronUp className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Descendre"
-                    className="inline-flex h-11 w-11 items-center justify-center rounded-full text-muted disabled:opacity-30"
-                    disabled={index === cardRows.length - 1 || busy}
-                    onClick={() => reorder(index, index + 1)}
-                  >
-                    <ChevronDown className="h-4 w-4" />
-                  </button>
+                <div className="flex flex-wrap items-center gap-1 [&_button]:cursor-pointer">
                   <button
                     type="button"
                     className="text-xs font-semibold text-[var(--admin-navy)]"
@@ -411,9 +411,11 @@ export function BookingItemsPanel({
                 </div>
               </div>
             )}
-          </li>
-        ))}
-      </ul>
+            </div>
+          </Reorder.Item>
+          );
+        })}
+      </Reorder.Group>
       {editingId === "new" ? (
         <div className="mt-3 space-y-2">
           <IngestItemCard
