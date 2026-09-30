@@ -96,8 +96,10 @@ export function stripeCreditKind(method: StripeStayMethod): "card_payment" | "tr
   return method === "card" || method === "apple_pay" ? "card_payment" : "transfer";
 }
 
-export function stripeCreditLabel(method: StayPayMethod, reference: string) {
-  return `Règlement ${reference} · ${STAY_PAY_LABELS[method]}`;
+export function stripeCreditLabel(method: StayPayMethod, reference: string, mention?: string) {
+  const note = (mention || "").trim();
+  const methodLabel = STAY_PAY_LABELS[method];
+  return note ? `Règlement ${reference} · ${note} · ${methodLabel}` : `Règlement ${reference} · ${methodLabel}`;
 }
 
 type IntentLike = {
@@ -128,7 +130,7 @@ export function stripeCreditFromIntent(intent: IntentLike) {
     kind: stripeCreditKind(method),
     amount: Math.round(amount) / 100,
     currency: (intent.currency || "eur").toUpperCase(),
-    label: stripeCreditLabel(method, metadata.reference || bookingId),
+    label: stripeCreditLabel(method, metadata.reference || bookingId, metadata.pay_mention),
     source: "stripe" as const,
     external_id: intent.id,
     status: "posted" as const,

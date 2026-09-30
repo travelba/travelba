@@ -30,27 +30,33 @@ type TransferView = {
   accountHolder: string;
   reference: string;
   currency: string;
+  partLabel?: string;
+};
+
+export type ClientPaySlip = {
+  slice: "stay" | "fees";
+  kind: PayerKind;
+  mention: string;
+  amountLabel: string | null;
+  payable: boolean;
+  hotelAside: boolean;
+  canPay: boolean;
+  methods: StayPayMethod[];
+  companyName: string | null;
 };
 
 export function StayPayment({
   bookingId,
   reference,
-  payerKind,
-  companyName,
-  canPay,
-  methods,
-  amountLabel,
+  slips,
   stripeKey,
 }: {
   bookingId: string;
   reference: string;
-  payerKind: PayerKind;
-  companyName: string | null;
-  canPay: boolean;
-  methods: StayPayMethod[];
-  amountLabel: string | null;
+  slips: ClientPaySlip[];
   stripeKey: string | null;
 }) {
+  const [openSlice, setOpenSlice] = useState<ClientPaySlip["slice"] | null>(null);
   const [method, setMethod] = useState<StayPayMethod | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,22 +64,21 @@ export function StayPayment({
   const [transfer, setTransfer] = useState<TransferView | null>(null);
   const [paid, setPaid] = useState(false);
 
-  const society = companyName?.trim() || "votre société";
-
-  async function choose(next: StayPayMethod) {
+  async function choose(slip: ClientPaySlip, next: StayPayMethod) {
+    setOpenSlice(slip.slice);
     setMethod(next);
     setError(null);
     setClientSecret(null);
     setTransfer(null);
     setPaid(false);
-    if (!canPay || !amountLabel) return;
+    if (!slip.canPay || !slip.payable || !slip.amountLabel) return;
     if (next !== "revolut" && !stripeKey) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/client/bookings/${bookingId}/pay`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ method: next }),
+        body: JSON.stringify({ method: next, slice: slip.slice }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -98,69 +103,86 @@ export function StayPayment({
   }
 
   return (
-    <section className="space-y-3 rounded-[1.35rem] border border-[#e5e3dc] bg-white p-4">
-      <div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">Règlement</p>
-        <h2 className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">
-          {payerKind === "company" ? `Ce voyage est réglé par ${society}.` : "Régler ce voyage"}
-        </h2>
-        {amountLabel ? <p className="mt-1 text-sm text-muted">{amountLabel}</p> : null}
-      </div>
+    <div className="space-y-3">
+      {slips.map((slip) => {
+        const company = slip.kind === "company";
+        const open = openSlice === slip.slice;
+        const society = slip.companyName?.trim() || "votre société";
+        return (
+          <section
+            key={slip.slice}
+            className={`space-y-3 rounded-[1.35rem] p-4 ${
+              company ? "border border-[var(--admin-gold)] bg-white" : "border border-[#e5e3dc] bg-[#f7f6f3]"
+            }`}
+          >
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">{slip.mention}</p>
+              {slip.amountLabel ? (
+                <p className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">{slip.amountLabel}</p>
+              ) : null}
+            </div>
 
-      {payerKind === "company" && !canPay ? (
-        <p className="text-sm text-muted">Le règlement se fait par {society}. Vous n’avez rien à payer ici.</p>
-      ) : null}
+            {slip.hotelAside ? (
+              <p className="text-sm text-muted">L’hôtel se règle de votre côté. Le prix reste au carnet.</p>
+            ) : null}
 
-      {canPay && !methods.length ? (
-        <p className="text-sm text-muted">Le prélèvement et le virement sont ouverts pour un séjour en euros.</p>
-      ) : null}
+            {company && !slip.canPay ? (
+              <p className="text-sm text-muted">Le règlement se fait par {society}.</p>
+            ) : null}
 
-      {canPay && methods.length ? (
-        <div className="grid gap-2" role="radiogroup" aria-label="Moyen de règlement">
-          {methods.map((item) => {
-            const selected = method === item;
-            return (
-              <button
-                key={item}
-                type="button"
-                aria-pressed={selected}
-                onClick={() => void choose(item)}
-                className={`rounded-2xl px-4 py-3 text-left ${
-                  selected
-                    ? "bg-[var(--admin-navy)] text-white"
-                    : "bg-[#f7f6f3] text-[var(--admin-navy)]"
-                }`}
-              >
-                <span className="text-sm font-semibold">{STAY_PAY_LABELS[item]}</span>
-                {item !== "revolut" && !stripeKey ? (
-                  <span className={`mt-0.5 block text-xs ${selected ? "text-white/75" : "text-muted"}`}>
-                    Ce moyen n’est pas encore ouvert.
-                  </span>
-                ) : !amountLabel ? (
-                  <span className={`mt-0.5 block text-xs ${selected ? "text-white/75" : "text-muted"}`}>
-                    Rien à régler pour l’instant.
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
+            {slip.canPay && slip.payable && !slip.methods.length ? (
+              <p className="text-sm text-muted">Le prélèvement et le virement sont ouverts pour un séjour en euros.</p>
+            ) : null}
 
-      <BusyBar active={busy} label="Préparation du règlement…" />
-      {paid ? <p className="text-sm text-[var(--admin-navy)]">Ce règlement est déjà enregistré.</p> : null}
-      {error ? <p className="text-sm text-accent">{error}</p> : null}
+            {slip.canPay && slip.payable && slip.methods.length ? (
+              <div className="grid gap-2" role="radiogroup" aria-label={slip.mention}>
+                {slip.methods.map((item) => {
+                  const selected = open && method === item;
+                  return (
+                    <button
+                      key={item}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => void choose(slip, item)}
+                      className={`rounded-2xl px-4 py-3 text-left ${
+                        selected
+                          ? "bg-[var(--admin-navy)] text-white"
+                          : company
+                            ? "bg-[#f7f6f3] text-[var(--admin-navy)]"
+                            : "bg-white text-[var(--admin-navy)]"
+                      }`}
+                    >
+                      <span className="text-sm font-semibold">{STAY_PAY_LABELS[item]}</span>
+                      {item !== "revolut" && !stripeKey ? (
+                        <span className={`mt-0.5 block text-xs ${selected ? "text-white/75" : "text-muted"}`}>
+                          Ce moyen n’est pas encore ouvert.
+                        </span>
+                      ) : !slip.amountLabel ? (
+                        <span className={`mt-0.5 block text-xs ${selected ? "text-white/75" : "text-muted"}`}>
+                          Rien à régler pour l’instant.
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
 
-      {transfer ? (
-        <WireInstructions
-          iban={transfer.iban}
-          bic={transfer.bic}
-          accountHolder={transfer.accountHolder}
-          reference={transfer.reference || reference}
-        />
-      ) : null}
+            {open ? <BusyBar active={busy} label="Préparation du règlement…" /> : null}
+            {open && paid ? <p className="text-sm text-[var(--admin-navy)]">Ce règlement est déjà enregistré.</p> : null}
+            {open && error ? <p className="text-sm text-accent">{error}</p> : null}
 
-      {clientSecret && stripeKey && method && method !== "revolut" ? (
+            {open && transfer ? (
+              <WireInstructions
+                iban={transfer.iban}
+                bic={transfer.bic}
+                accountHolder={transfer.accountHolder}
+                reference={transfer.reference || reference}
+                partLabel={transfer.partLabel || slip.mention}
+              />
+            ) : null}
+
+            {open && clientSecret && stripeKey && method && method !== "revolut" ? (
         <Elements
           stripe={stripeFor(stripeKey)}
           options={{
@@ -181,8 +203,11 @@ export function StayPayment({
             <CardPayForm reference={reference} sepa={method === "sepa_debit"} />
           )}
         </Elements>
-      ) : null}
-    </section>
+            ) : null}
+          </section>
+        );
+      })}
+    </div>
   );
 }
 

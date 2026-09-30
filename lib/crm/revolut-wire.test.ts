@@ -87,37 +87,43 @@ test("les coordonnées affichées demandent la référence du dossier", () => {
   assert.equal(html.includes("Stripe"), false);
 });
 
-test("le particulier voit le virement, le collaborateur société ne paie pas", () => {
+test("le client voit la mention, pas un choix de payeur", () => {
   const personal = renderToStaticMarkup(
     createElement(StayPayment, {
       bookingId: "b1",
       reference: "TB-2026-0004",
-      payerKind: "personal",
-      companyName: null,
-      canPay: true,
-      methods: ["card", "apple_pay", "sepa_debit", "revolut"],
-      amountLabel: "1 140,00 €",
       stripeKey: "pk_test_preview",
+      slips: [
+        {
+          slice: "stay",
+          kind: "personal",
+          mention: "Sans facture société",
+          amountLabel: "1 000,00 €",
+          payable: true,
+          hotelAside: false,
+          canPay: true,
+          methods: ["card", "apple_pay", "sepa_debit", "revolut"],
+          companyName: null,
+        },
+        {
+          slice: "fees",
+          kind: "company",
+          mention: "Facture Horizon SAS",
+          amountLabel: "140,00 €",
+          payable: true,
+          hotelAside: false,
+          canPay: false,
+          methods: ["sepa_debit", "revolut"],
+          companyName: "Horizon SAS",
+        },
+      ],
     })
   );
-  assert.match(personal, /Régler ce voyage/);
+  assert.match(personal, /Sans facture société/);
+  assert.match(personal, /Facture Horizon SAS/);
   assert.match(personal, /Virement/);
   assert.match(personal, /Apple Pay/);
-  assert.equal(personal.includes("pas encore ouvert"), false);
-
-  const member = renderToStaticMarkup(
-    createElement(StayPayment, {
-      bookingId: "b1",
-      reference: "TB-2026-0004",
-      payerKind: "company",
-      companyName: "Horizon SAS",
-      canPay: false,
-      methods: ["sepa_debit", "revolut"],
-      amountLabel: "1 140,00 €",
-      stripeKey: null,
-    })
-  );
-  assert.match(member, /réglé par Horizon SAS/);
-  assert.match(member, /Vous n’avez rien à payer ici/);
-  assert.equal(member.includes("Virement"), false);
+  assert.match(personal, /Le règlement se fait par Horizon SAS/);
+  assert.equal(personal.includes("Régler ce voyage"), false);
+  assert.equal(personal.includes("Particulier"), false);
 });

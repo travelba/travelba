@@ -5,11 +5,13 @@ export function WireInstructions({
   bic,
   accountHolder,
   reference,
+  partLabel,
 }: {
   iban: string;
   bic: string;
   accountHolder: string;
   reference: string;
+  partLabel?: string | null;
 }) {
   return (
     <dl className="space-y-2 rounded-2xl bg-[#f7f6f3] p-4 text-sm text-[var(--admin-navy)]">
@@ -34,6 +36,7 @@ export function WireInstructions({
         <dd className="mt-0.5 font-semibold">{reference}</dd>
       </div>
       <p className="text-xs text-muted">
+        {partLabel ? `Cette part : ${partLabel}. ` : ""}
         Indiquez cette référence sur l’ordre de virement. L’agence le rapproche dès réception sur son compte Revolut.
       </p>
     </dl>

@@ -53,8 +53,11 @@ Ajustements / remboursements : lignes manuelles admin `kind=adjustment|refund`.
 ## Stripe — règlement du séjour
 
 - Le dossier a `payer_kind` : `company` (société, défaut = première `crm_billing_companies`) ou `personal` (particulier). L’agence le choisit dans Règlement. Le client ne choisit pas la société.
-- Espace client, sous le montant : société → prélèvement SEPA et virement (le collaborateur `member` ne paie pas). Particulier → carte, Apple Pay, prélèvement SEPA, virement. Hors euros : carte et Apple Pay seulement.
-- `POST /api/client/bookings/[id]/pay` : carte, Apple Pay et prélèvement SEPA créent un PaymentIntent (moyens dynamiques, `excluded_payment_method_types`). Pas de `payment_method_types`. Pas de PAN / CVC. Apple Pay = portefeuille Stripe.
+- L’agence choisit sur le dossier. Le client ne choisit pas : mention **Facture {société}** ou **Sans facture société**.
+- `fees_follow_stay` (défaut true) : frais d’agence et dépenses suivent la facture du séjour. Sinon, une seconde carte, l’autre mention. L’hôtel réglé par le client n’est pas un encaissement.
+- Facture société : prélèvement SEPA et virement. Sans facture société : carte, Apple Pay, prélèvement SEPA, virement. Hors euros : carte et Apple Pay seulement. Le collaborateur `member` ne paie pas la facture société ; il peut régler la part sans facture.
+- Le grand livre reste un seul encours. Chaque règlement crédite le même wallet.
+- `POST /api/client/bookings/[id]/pay` reçoit `slice` `stay` ou `fees`. Le montant vient du serveur. Carte, Apple Pay et prélèvement SEPA créent un PaymentIntent (moyens dynamiques, `excluded_payment_method_types`). Pas de `payment_method_types`. Pas de PAN / CVC. Apple Pay = portefeuille Stripe. Le libellé du crédit porte la mention.
 - Virement = compte **Revolut Business** (IBAN SEPA du compte euros actif), pas Stripe `customer_balance`. La route ne crée pas de PaymentIntent. Elle renvoie IBAN, BIC, titulaire et la **référence du dossier** au client autorisé. Jamais d’IBAN dans les logs. Plusieurs IBAN euros distincts → le virement reste fermé.
 - Le crédit du virement passe par l’inbox Revolut (sync / rapprochement), pas par le webhook Stripe.
 - Webhook `payment_intent.succeeded` → crédit `source=stripe`, `external_id` = id du PaymentIntent, wallet = `billing_customer_id`. Un `pay_method=revolut` ne crédite pas.

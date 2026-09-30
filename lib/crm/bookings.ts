@@ -45,6 +45,7 @@ const BOOKING_META_KEYS = [
   "billing_customer_id",
   "billing_company_id",
   "payer_kind",
+  "fees_follow_stay",
   "include_in_ledger",
   "agency_commission",
   "client_settles_stay",
@@ -58,6 +59,10 @@ export function bookingMetaPatch(body: Record<string, unknown>) {
   for (const key of BOOKING_META_KEYS) {
     if (!(key in body)) continue;
     if (key === "include_in_ledger") {
+      patch[key] = parseIncludeInLedger(body[key], true);
+      continue;
+    }
+    if (key === "fees_follow_stay") {
       patch[key] = parseIncludeInLedger(body[key], true);
       continue;
     }
