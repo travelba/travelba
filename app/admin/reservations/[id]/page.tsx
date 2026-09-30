@@ -37,11 +37,7 @@ type Props = { params: Promise<{ id: string }> };
 export default async function AdminBookingPage({ params }: Props) {
   const { id } = await params;
   const { supabase } = await requireStaffPage();
-  const { data: booking } = await supabase
-    .from("crm_bookings")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
+  const { data: booking } = await supabase.from("crm_bookings").select("*").eq("id", id).maybeSingle();
   if (!booking) notFound();
   const b = booking as CrmBooking;
   const relatedIds = Array.from(

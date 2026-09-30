@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { siteConfig } from "@/lib/site";
+import { agencyCopyCc } from "@/lib/crm/outbound-mail";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 
 export const runtime = "nodejs";
@@ -59,6 +60,7 @@ export async function POST(request: Request) {
     const { error } = await resend.emails.send({
       from: `${siteConfig.name} <${from}>`,
       to: [to],
+      cc: agencyCopyCc(to),
       replyTo: email,
       subject: `Nouvelle demande — ${service} — ${name}`,
       html: `

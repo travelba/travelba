@@ -76,7 +76,7 @@ humaine (`matched`). Réfs fournisseur / dossier **en priorité**.
 Nom : égalité, distance d’édition ≤ 1, ou radical commun (`Albilla` / `Albilila`).
 Prénom aligné (`Simon` = `Simon, Iony`). Destination : ville / pays, casse,
 accents, inclusion (`Dan Tel Aviv Hotel` ⊃ `Tel Aviv`). `cancelled` exclus.
-Document `identity` : **pas** d’auto.
+Document `identity` : **pas** d’auto. Prix document manquant : ni revue forcée, ni blocage du rattachement. On n’invente pas le montant.
 
 ## Pas de voyage
 
@@ -147,6 +147,8 @@ Ne pas rejouer un vrai mail prod. Echo PII interdit dans PR / logs.
 ## Hôtel Little Emperors
 
 `included` = **toutes** les lignes imprimées sous « LE Benefits » ou « Little Emperors Benefits », en français. Pas seulement le petit-déjeuner. « Fourth Night Free » juste avant le bloc = nuit offerte. L’astérisque se rattache au bénéfice étoilé. Pas l’annulation, pas le dépôt. Même parseur que le PDF (`parseLittleEmperorsIncluded`).
+
+Contacts de l’hôtel : catalogue Little Emperors à l’affichage, pas l’adresse du mail ni le correspondant imprimé. Milano = Milan (`CITY_ALIASES`). Skill `travelba-carnet`.
 
 ## Interdits
 

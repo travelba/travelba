@@ -1,6 +1,7 @@
 import { agencyEmailHtml, escapeHtml } from "./email-html";
 import { clipPortalText, PORTAL_KIND_LABEL, type PortalLogKind } from "./eta-il-log";
 import { redactPassportNumbers } from "./eta-il-session";
+import { agencyCopyCc } from "./outbound-mail";
 import { productionOnlySecret } from "./preview-secrets";
 import { siteConfig } from "@/lib/site";
 
@@ -95,6 +96,7 @@ export async function deliverVisaDeskMail(
         const result = await resend.emails.send({
           from: input.from,
           to: [input.to],
+          cc: agencyCopyCc(input.to),
           subject: input.subject,
           html: input.html,
           text: input.text,

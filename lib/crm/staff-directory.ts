@@ -1,6 +1,7 @@
 import { Resend } from "resend";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { agencyCopyCc } from "@/lib/crm/outbound-mail";
 import { siteConfig } from "@/lib/site";
 import { agencyEmailHtml, escapeHtml } from "@/lib/crm/email-html";
 import { createEntryLink } from "@/lib/crm/entry-link";
@@ -70,6 +71,7 @@ async function sendColleagueEmail(email: string, fullName: string, link: string)
   const { error } = await resend.emails.send({
     from: `${siteConfig.name} <${from}>`,
     to: [email],
+    cc: agencyCopyCc(email),
     replyTo: siteConfig.contactEmail,
     subject: "Votre accès à l’espace agence",
     html: colleagueEmailHtml(fullName, link),
