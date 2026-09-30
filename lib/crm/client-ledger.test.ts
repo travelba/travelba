@@ -176,10 +176,9 @@ test("la société est absente du mouvement s’il n’y en a qu’une", () => {
   assert.equal(view.movements[0].companyLabel, null);
   const html = renderToStaticMarkup(createElement(ClientTransactionsPanel, { view }));
   assert.match(html, /Encours/);
-  assert.match(html, /Somme de ce que vous devez/);
-  assert.match(html, /Répartition/);
-  assert.match(html, /Société · Atelier/);
-  assert.match(html, /Particulier/);
+  assert.ok(html.includes(formatMoney(-40, "EUR")));
+  assert.equal(html.includes("Somme de ce que vous devez"), false);
+  assert.equal(html.includes("Répartition"), false);
   assert.equal(html.includes("Régler ce voyage"), false);
 });
 
@@ -287,7 +286,9 @@ test("le pourcentage réglé compte le séjour encore au livre", () => {
   const html = renderToStaticMarkup(createElement(ClientTransactionsPanel, { view }));
   assert.match(html, /41% réglé/);
   assert.equal(html.includes("100% réglé"), false);
-  assert.match(html, /Somme de ce que vous devez/);
+  assert.ok(html.includes(formatMoney(-20732.04, "EUR")));
+  assert.equal(html.includes("Somme de ce que vous devez"), false);
+  assert.equal(html.includes("Répartition"), false);
 });
 
 test("sans la carte en double, le séjour réapparaît et le pourcentage suit le solde", () => {
@@ -347,4 +348,8 @@ test("sans la carte en double, le séjour réapparaît et le pourcentage suit le
   const html = renderToStaticMarkup(createElement(ClientTransactionsPanel, { view }));
   assert.match(html, /42% réglé/);
   assert.equal(html.includes("100% réglé"), false);
+  assert.ok(html.includes(formatMoney(-20036.04, "EUR")));
+  assert.match(html, /Séjour/);
+  assert.match(html, /TB-2026-0038/);
+  assert.equal(html.includes("Répartition"), false);
 });

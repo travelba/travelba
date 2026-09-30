@@ -16,7 +16,7 @@ Vue `crm_customer_balances` = somme crédits `posted` − débits `posted` (par 
 
 - Positif = avoir / **crédit disponible**
 - Négatif = reste à payer
-- Le grand livre stocke le signe. Dans **Transactions**, l’encours affiché est la **somme due** (positive), puis la répartition **Société** / **Particulier**. Les deux parts additionnent cette somme. Un avoir reste un montant positif, sans répartition.
+- Le grand livre stocke le signe. Dans **Transactions**, la carte d’origine affiche ce signe (encours, barre, mouvements). Le « % réglé » compte tous les débits postés. Le règlement Société / Particulier se place sous la barre, sans remplacer la carte ni le solde signé.
 
 **Commission 10 %** (`AGENCY_FEE_RATE`, case `agency_commission` sur le voyage, défaut **false**) : si cochée, `syncAgencyCommission` poste un débit `kind=adjustment` `external_id=booking:{id}:agency-commission`, libellé « Frais d’agence 10 % », égal à 10 % du **montant du séjour** (somme des prix vendus). Elle s’ajoute aux dépenses : elle ne retire pas le montant global du séjour et n’entre pas dans le total stocké. Le prix affiché du séjour l’ajoute, avec les dépenses libres. Elle reste hors carnet. Postée seulement si le dossier est confirmé, en voyage ou terminé. Décocher ou annuler → `void` (ou suppression des débits à l’annulation). Le virement Revolut est crédité **en entier** — plus de débit `{revolut_id}:agency-fee` au rapprochement. Les lignes historiques restent. Le crédit disponible est l’avoir positif du grand livre.
 
