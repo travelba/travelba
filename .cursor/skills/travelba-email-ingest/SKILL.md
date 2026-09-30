@@ -61,6 +61,7 @@ L'historique Gmail ne voit pas les mails déjà labellisés. Le cron
 `gmail-ingest` appelle `backfillBilletAvionMessages` (curseur dans
 `crm_email_sync`, provider `gmail-billet-avion`). Ensuite le parse existant
 (e-ticket / Amadeus, corps + pièces) fait le match auto. Pas de parseur dédié.
+Mêmes règles de prix que le dropzone : « Distance de vol … km » et le CO2 ne sont pas un tarif. Le prix vendu n’est au grand livre du payeur que si la carte vol est incluse (`travelba-money`).
 Le watch Pub/Sub se met à jour au cron `gmail-watch-renew`.
 
 ## Match voyage
