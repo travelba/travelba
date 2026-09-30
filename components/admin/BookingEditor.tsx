@@ -69,6 +69,9 @@ import {
   type PickableCustomer,
 } from "@/lib/crm/customer-search";
 import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
+import { StayBillingChoice } from "@/components/crm/StayBillingChoice";
+import { billingCompanyTabLabel } from "@/lib/crm/billing-companies";
+import { defaultBillingCompany } from "@/lib/crm/payer";
 
 const coverField =
   "w-full rounded-2xl border border-transparent bg-white px-4 py-3 text-sm text-[var(--admin-navy)] shadow-[0_1px_2px_rgba(11,25,44,0.04)] outline-none transition focus:border-[var(--admin-gold)] focus:shadow-[0_0_0_3px_rgba(197,168,128,0.22)]";
@@ -104,6 +107,8 @@ export function BookingEditor({
   hasCardCode = false,
   cardViews = [],
   attachedEmails = [],
+  billingCompanies = [],
+  expenseBilling = [],
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -138,6 +143,8 @@ export function BookingEditor({
     received_at: string | null;
     extract?: unknown;
   }[];
+  billingCompanies?: { id: string; company_name: string | null; sort_order: number }[];
+  expenseBilling?: { id: string; title: string; billing_company_id: string | null }[];
 }) {
   const router = useRouter();
   const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
@@ -156,6 +163,29 @@ export function BookingEditor({
   const [flash, setFlash] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<null | "publish" | "unpublish">(null);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
+  const payerCompanies = [...billingCompanies].sort(
+    (a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id)
+  );
+  const defaultCompany = defaultBillingCompany(payerCompanies);
+  const serverPayer =
+    booking.payer_kind === "company" || booking.payer_kind === "personal"
+      ? booking.payer_kind
+      : defaultCompany
+        ? "company"
+        : "personal";
+  const payerStamp = `${serverPayer}|${booking.billing_company_id || ""}|${defaultCompany?.id || ""}`;
+  const [payerFromServer, setPayerFromServer] = useState(payerStamp);
+  const [payerKind, setPayerKind] = useState<"company" | "personal">(serverPayer);
+  const [payerCompanyId, setPayerCompanyId] = useState(
+    booking.payer_kind === "personal" ? "" : booking.billing_company_id || defaultCompany?.id || ""
+  );
+  if (payerStamp !== payerFromServer) {
+    setPayerFromServer(payerStamp);
+    setPayerKind(serverPayer);
+    setPayerCompanyId(
+      serverPayer === "personal" ? "" : booking.billing_company_id || defaultCompany?.id || ""
+    );
+  }
   const serverSettles = booking.client_settles_stay === true;
   const [clientSettlesFromServer, setClientSettlesFromServer] = useState(serverSettles);
   const [clientSettles, setClientSettles] = useState(serverSettles);
@@ -773,6 +803,105 @@ export function BookingEditor({
 
           <section className="space-y-3">
             <CoverMark>Règlement</CoverMark>
+            <input type="hidden" name="payer_kind" value={payerKind} />
+            <input
+              type="hidden"
+              name="billing_company_id"
+              value={payerKind === "company" ? payerCompanyId : ""}
+            />
+            <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Qui règle ce voyage">
+              {(
+                [
+                  {
+                    kind: "company" as const,
+                    title: "Société",
+                    hint: "Une société du compte règle ce voyage.",
+                  },
+                  {
+                    kind: "personal" as const,
+                    title: "Particulier",
+                    hint: "Le client règle depuis son espace : carte, Apple Pay, prélèvement SEPA, virement.",
+                  },
+                ]
+              ).map((choice) => {
+                const selected = payerKind === choice.kind;
+                const blocked = choice.kind === "company" && !payerCompanies.length;
+                return (
+                  <button
+                    key={choice.kind}
+                    type="button"
+                    aria-pressed={selected}
+                    disabled={blocked}
+                    onClick={() => {
+                      setPayerKind(choice.kind);
+                      if (choice.kind === "company") {
+                        setPayerCompanyId((current) => current || defaultCompany?.id || "");
+                      }
+                    }}
+                    className={`rounded-3xl p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                      selected
+                        ? "bg-white shadow-[0_8px_24px_-12px_rgba(11,25,44,0.35),inset_0_0_0_1.5px_var(--admin-gold)]"
+                        : "bg-white/45 shadow-[inset_0_0_0_1px_var(--border)]"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span
+                        className={`h-2 w-2 rounded-full ${selected ? "bg-[var(--admin-gold)]" : "bg-[var(--border)]"}`}
+                      />
+                      <span className="font-display text-base font-bold text-[var(--admin-navy)]">{choice.title}</span>
+                    </span>
+                    <span className="mt-2 block pl-4 text-xs leading-relaxed text-muted">{choice.hint}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {payerKind === "company" && !payerCompanies.length ? (
+              <p className="text-sm text-muted">
+                Ajoutez une société sur{" "}
+                <Link
+                  href={`/admin/clients/${billingCustomer?.id || booking.customer_id}`}
+                  className="font-semibold text-[var(--admin-navy)] underline"
+                >
+                  la fiche
+                </Link>{" "}
+                avant d’enregistrer ce règlement.
+              </p>
+            ) : null}
+            {payerKind === "company" && payerCompanies.length === 1 ? (
+              <p className="rounded-2xl bg-white/70 px-4 py-3 text-sm text-[var(--admin-navy)]">
+                Société : {billingCompanyTabLabel(payerCompanies[0].company_name, 0, 1)}
+              </p>
+            ) : null}
+            {payerKind === "company" && payerCompanies.length > 1 ? (
+              <label className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+                Société qui règle
+                <select
+                  value={payerCompanyId}
+                  onChange={(event) => setPayerCompanyId(event.target.value)}
+                  className={coverField}
+                  aria-label="Société qui règle le voyage"
+                >
+                  {payerCompanies.map((company, index) => (
+                    <option key={company.id} value={company.id}>
+                      {billingCompanyTabLabel(company.company_name, index, payerCompanies.length)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            {payerKind === "company" ? (
+              <p className="text-xs text-muted">Moyens ouverts au client : prélèvement SEPA, virement.</p>
+            ) : null}
+            {payerKind === "company" ? (
+              <StayBillingChoice
+                expensesOnly
+                endpoint="admin"
+                bookingId={booking.id}
+                companies={payerCompanies}
+                bookingCompanyId={payerCompanyId || null}
+                expenses={expenseBilling}
+              />
+            ) : null}
             <input
               type="checkbox"
               name="client_settles_stay"

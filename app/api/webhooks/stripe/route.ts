@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { getStripe } from "@/lib/crm/stripe";
+import { stripeCreditFromIntent } from "@/lib/crm/stripe-pay";
 
 export const runtime = "nodejs";
 
@@ -58,6 +59,24 @@ export async function POST(request: Request) {
       },
       { onConflict: "stripe_payment_method_id" }
     );
+  }
+
+  if (event.type === "payment_intent.succeeded") {
+    const intent = event.data.object as Stripe.PaymentIntent;
+    const credit = stripeCreditFromIntent({
+      id: intent.id,
+      status: intent.status,
+      amount: intent.amount,
+      currency: intent.currency,
+      metadata: intent.metadata,
+    });
+    if (credit) {
+      const { error } = await admin.from("crm_transactions").insert(credit);
+      if (error && !/duplicate|unique/i.test(String(error.message || ""))) {
+        console.error("[stripe] crédit", error.code || "insert");
+        return NextResponse.json({ error: "crédit" }, { status: 500 });
+      }
+    }
   }
 
   if (event.type === "payment_method.detached") {

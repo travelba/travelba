@@ -9,7 +9,6 @@ import { Field, MoneyInput } from "@/components/crm/fields";
 import { FilePreviewGrid } from "@/components/crm/FilePreview";
 import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
 import {
-  documentPriceIssues,
   itemRequiresDocumentPrice,
   readDocumentAmount,
   type BookingIssue,
@@ -253,7 +252,6 @@ export function EmailIngestInbox({
       {rows.map((row) => {
         const extract = viewOf(row);
         const items = Array.isArray(extract.items) ? extract.items : [];
-        const priceIssues = documentPriceIssues(extract);
         const customerId = chosenCustomer(row);
         const customerName = customerId
           ? customerLabelById.get(customerId) || "Client choisi"
@@ -403,8 +401,7 @@ export function EmailIngestInbox({
                         <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_7.5rem]">
                           <Field
                             label="Prix imprimé sur le document"
-                            error={amount == null ? "Indiquez le prix imprimé sur le document." : null}
-                            hint="Montant lu sur le PDF. Corrigez-le s’il a été coupé."
+                            hint="Facultatif. Montant lu sur le PDF, s’il est imprimé."
                           >
                             <MoneyInput
                               value={amount}
@@ -471,17 +468,6 @@ export function EmailIngestInbox({
                 {row.warnings.map((w) => w.message).join(" · ")}
               </p>
             ) : null}
-
-            {priceIssues.length ? (
-              <div
-                className="mt-2 rounded-2xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]"
-                role="alert"
-              >
-                <p className="font-semibold">
-                  Indiquez le prix du document sur chaque hôtel, vol et transfert avant d’enregistrer le dossier.
-                </p>
-              </div>
-            ) : null}
             </div>
             <OriginalMail row={row} />
             </div>
@@ -530,7 +516,7 @@ export function EmailIngestInbox({
                   </select>
                   <button
                     type="button"
-                    disabled={isBusy || !selectedBooking[row.id] || priceIssues.length > 0}
+                    disabled={isBusy || !selectedBooking[row.id]}
                     className="admin-af-btn-accent admin-tap rounded-lg px-3 py-2 text-sm disabled:opacity-50"
                     onClick={() =>
                       act(row.id, {
@@ -554,7 +540,7 @@ export function EmailIngestInbox({
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  disabled={isBusy || !customerId || priceIssues.length > 0}
+                  disabled={isBusy || !customerId}
                   className="admin-tap inline-flex items-center gap-1 rounded-lg border border-[var(--admin-navy)] px-3 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-40"
                   onClick={() =>
                     act(row.id, {

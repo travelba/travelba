@@ -2,8 +2,13 @@ import { siteConfig } from "../site";
 import {
   conciergeContentDrafts,
   conciergeContentVariables,
+  conciergeTemplateImage,
+  WHATSAPP_IMAGE_ALT,
+  whatsappTypeImageKind,
+  whatsappTypeImageUrl,
   type ConciergeTemplate,
 } from "./concierge-notices";
+import { flightNoticeDrafts, flightNoticeVariables, type FlightNoticeKind } from "./flight-watch";
 import { tripShareMessage } from "./trip-share";
 import {
   accessLinkReply,
@@ -38,12 +43,18 @@ const UNWIRED = new Set<ConciergeTemplate>([
   "chauffeur",
   "rappel",
   "connexion_carte",
+  "encours_photo",
+  "chauffeur_photo",
+  "rappel_photo",
+  "connexion_carte_photo",
 ]);
 
 export type WhatsappBubble = {
   body: string;
   button: string | null;
   photo: boolean;
+  image: string | null;
+  imageAlt: string | null;
   modelName: string | null;
 };
 
@@ -56,6 +67,8 @@ export type WhatsappCatalogMessage = {
   bubble: WhatsappBubble;
   /** Texte qui part si le modèle dédié n’est pas encore approuvé. */
   fallback: (WhatsappBubble & { label: string }) | null;
+  /** Texte encore plus ancien, gardé si la carte sans photo n’est pas approuvée. */
+  earlier: (WhatsappBubble & { label: string }) | null;
 };
 
 export type WhatsappCatalogGroup = {
@@ -97,15 +110,37 @@ function applyVars(body: string, variables: Record<string, string>) {
   return body.replace(/\{\{(\d+)\}\}/g, (_, key: string) => variables[key] ?? "");
 }
 
+function altFor(image: string | null) {
+  if (!image) return null;
+  const kind = whatsappTypeImageKind(image);
+  if (kind) return WHATSAPP_IMAGE_ALT[kind];
+  if (image.includes("/api/covers/sejour/")) return `Séjour à ${PLACE}`;
+  return null;
+}
+
+/** L’aperçu charge l’image du déploiement courant. Twilio, lui, reçoit l’URL absolue. */
+function displayImage(image: string | null) {
+  if (!image) return null;
+  const kind = whatsappTypeImageKind(image);
+  return kind ? `/whatsapp/${kind}.jpg` : image;
+}
+
 function bubbleFrom(template: ConciergeTemplate, variables: Record<string, string> | null): WhatsappBubble {
   const surface = draftSurface(template);
   const vars = variables || surface.sample;
   const body = applyVars(surface.body, vars);
   if (/\{\{\d+\}\}/.test(body)) throw new Error(`variable vide: ${template}`);
+  const image = surface.photo
+    ? Object.values(vars).find(
+        (value) => value.includes("/api/covers/sejour/") || value.includes("/whatsapp/")
+      ) || null
+    : null;
   return {
     body,
     button: surface.button,
-    photo: surface.photo,
+    photo: Boolean(image),
+    image: displayImage(image),
+    imageAlt: altFor(image),
     modelName: surface.modelName,
   };
 }
@@ -119,7 +154,7 @@ function wiredBubble(
     buttonSuffix: SUFFIX,
     place: PLACE,
     reference: REFERENCE,
-    mediaUrl: extra?.media === false ? null : COVER,
+    mediaUrl: extra?.media === false ? null : conciergeTemplateImage(template) || COVER,
     variable: extra?.variable,
   });
   if (!variables) throw new Error(`envoi impossible: ${template}`);
@@ -134,11 +169,25 @@ function message(input: {
   wired?: boolean;
   bubble: WhatsappBubble;
   fallback?: { template: ConciergeTemplate; variable?: string | null; label?: string } | null;
+  earlier?: { template: ConciergeTemplate; variable?: string | null; label?: string } | null;
 }): WhatsappCatalogMessage {
+  const withMedia = (template: ConciergeTemplate) => template.endsWith("_photo") || template === "sejour" || template === "sejour_sans_lieu";
   const fallback = input.fallback
     ? {
-        label: input.fallback.label || "Si le modèle dédié n’est pas encore approuvé",
-        ...wiredBubble(input.fallback.template, { variable: input.fallback.variable, media: false }),
+        label: input.fallback.label || "Si la photo n’est pas encore approuvée",
+        ...wiredBubble(input.fallback.template, {
+          variable: input.fallback.variable,
+          media: withMedia(input.fallback.template),
+        }),
+      }
+    : null;
+  const earlier = input.earlier
+    ? {
+        label: input.earlier.label || "Ancien texte, si la carte n’est pas encore approuvée",
+        ...wiredBubble(input.earlier.template, {
+          variable: input.earlier.variable,
+          media: withMedia(input.earlier.template),
+        }),
       }
     : null;
   return {
@@ -149,16 +198,24 @@ function message(input: {
     wired: input.wired !== false,
     bubble: input.bubble,
     fallback,
+    earlier,
   };
 }
 
-function session(id: string, title: string, when: string, body: string): WhatsappCatalogMessage {
+function session(id: string, title: string, when: string, body: string, image: string | null = null): WhatsappCatalogMessage {
   return message({
     id,
     title,
     when,
     kind: "session",
-    bubble: { body, button: null, photo: false, modelName: null },
+    bubble: {
+      body,
+      button: null,
+      photo: Boolean(image),
+      image: displayImage(image),
+      imageAlt: altFor(image),
+      modelName: null,
+    },
   });
 }
 
@@ -173,7 +230,7 @@ function sampleStay(reference: string, destination: string): ConciergeStay {
     totalAmount: 2400,
     currency: "EUR",
     notesClient: null,
-    cover: null,
+    cover: { kind: "catalog", photoId: "photo-1674043613875-eabfa5a45425" },
     items: [
       {
         kind: "flight",
@@ -234,7 +291,87 @@ function sampleDossier(stays: ConciergeStay[]): ConciergeDossier {
 function reply(title: string, when: string, question: string, dossier: ConciergeDossier) {
   const turn = planConciergeTurn(question, dossier);
   const body = turn.access ? accessLinkReply("fr", `${siteConfig.url}/e/${SUFFIX}`) : turn.text;
-  return session(`reponse-${title}`, title, when, body);
+  return session(`reponse-${title}`, title, when, body, turn.cover);
+}
+
+const FLIGHT_SAMPLES: {
+  kind: FlightNoticeKind;
+  title: string;
+  when: string;
+  clock?: string;
+}[] = [
+  {
+    kind: "horaire",
+    title: "Horaire modifié",
+    when: "L’heure déposée change. Ici, le vol part à 11h20.",
+    clock: "11h20",
+  },
+  {
+    kind: "retard",
+    title: "Retard",
+    when: "Le vol prend du retard. Ici, le départ passe à 14h40.",
+    clock: "14h40",
+  },
+  {
+    kind: "annule",
+    title: "Vol annulé",
+    when: "Le vol ne part pas. L’agence est prévenue.",
+  },
+  {
+    kind: "deroute",
+    title: "Vol dérouté",
+    when: "La destination du vol change. L’agence est prévenue.",
+  },
+  {
+    kind: "enregistrement",
+    title: "Enregistrement ouvert",
+    when: "L’enregistrement est ouvert.",
+  },
+  {
+    kind: "envol",
+    title: "Décollage",
+    when: "Le vol a décollé.",
+  },
+  {
+    kind: "arrivee",
+    title: "Arrivée",
+    when: "Le vol est arrivé. Ici, bienvenue à Marrakech.",
+  },
+];
+
+function flightMessages(): WhatsappCatalogMessage[] {
+  return FLIGHT_SAMPLES.map((sample) => {
+    const draft = flightNoticeDrafts().find((row) => row.env === `TWILIO_CONTENT_VOL_${sample.kind.toUpperCase()}`);
+    if (!draft) throw new Error(`modèle de vol absent: ${sample.kind}`);
+    const variables = flightNoticeVariables({
+      kind: sample.kind,
+      flight: "AF 1789",
+      route: "CDG → RAK",
+      when: sample.clock || null,
+      place: sample.kind === "arrivee" ? "à Marrakech" : null,
+      buttonSuffix: SUFFIX,
+    });
+    if (!variables) throw new Error(`exemple de vol impossible: ${sample.kind}`);
+    const block = draft.create.types["twilio/call-to-action"] as {
+      body?: string;
+      actions?: { title?: string }[];
+    };
+    const body = applyVars(block.body || "", variables);
+    if (/\{\{\d+\}\}/.test(body)) throw new Error(`variable vide: ${sample.kind}`);
+    return message({
+      id: `vol-${sample.kind}`,
+      title: sample.title,
+      when: sample.when,
+      bubble: {
+        body,
+        button: block.actions?.[0]?.title || null,
+        photo: false,
+        image: null,
+        imageAlt: null,
+        modelName: draft.friendlyName,
+      },
+    });
+  });
 }
 
 function catalogGroups(): WhatsappCatalogGroup[] {
@@ -259,6 +396,8 @@ function catalogGroups(): WhatsappCatalogGroup[] {
             body: connexionMessage(FIRST_NAME),
             button: CONNEXION_BUTTON_TITLE,
             photo: false,
+            image: null,
+            imageAlt: null,
             modelName: CONNEXION_TEMPLATE_NAME,
           },
         }),
@@ -291,30 +430,32 @@ function catalogGroups(): WhatsappCatalogGroup[] {
         message({
           id: "piece-hotel",
           title: "Confirmation d’hôtel",
-          when: "Une confirmation d’hôtel vient d’être ajoutée au séjour publié.",
-          bubble: wiredBubble("piece_hotel"),
-          fallback: { template: "piece", variable: "confirmation d'hôtel" },
+          when: "Une confirmation d’hôtel vient d’être ajoutée au séjour publié. L’image est celle de l’hôtel.",
+          bubble: wiredBubble("piece_hotel_photo"),
+          fallback: { template: "piece_hotel" },
+          earlier: { template: "piece", variable: "confirmation d'hôtel" },
         }),
         message({
           id: "piece-vol",
           title: "Billet",
-          when: "Un billet d’avion vient d’être ajouté.",
-          bubble: wiredBubble("piece_vol"),
-          fallback: { template: "piece", variable: "billet" },
+          when: "Un billet d’avion vient d’être ajouté. L’image est celle du billet.",
+          bubble: wiredBubble("piece_vol_photo"),
+          fallback: { template: "piece_vol" },
         }),
         message({
           id: "piece-transfert",
           title: "Transfert",
-          when: "Un transfert vient d’être ajouté.",
-          bubble: wiredBubble("piece_transfert"),
-          fallback: { template: "piece", variable: "transfert" },
+          when: "Un transfert vient d’être ajouté. L’image est celle du transfert.",
+          bubble: wiredBubble("piece_transfert_photo"),
+          fallback: { template: "piece_transfert" },
         }),
         message({
           id: "pieces-trio",
           title: "Billet, hôtel et transfert",
-          when: "Ces trois pièces arrivent dans la même heure.",
-          bubble: wiredBubble("pieces_regroupees"),
-          fallback: {
+          when: "Ces trois pièces arrivent dans la même heure. L’image reprend les pièces du séjour.",
+          bubble: wiredBubble("pieces_regroupees_photo"),
+          fallback: { template: "pieces_regroupees" },
+          earlier: {
             template: "pieces_composees",
             variable: "billet, la confirmation d'hôtel et le transfert",
           },
@@ -322,23 +463,33 @@ function catalogGroups(): WhatsappCatalogGroup[] {
         message({
           id: "piece-autre",
           title: "Autre pièce",
-          when: "Assurance, activité, train, voiture ou pièce sans type dédié.",
-          bubble: wiredBubble("document"),
-          fallback: { template: "piece", variable: "pièce" },
+          when: "Assurance, activité, train, voiture ou pièce sans type dédié. L’image est celle du document.",
+          bubble: wiredBubble("document_photo"),
+          fallback: { template: "document" },
+          earlier: {
+            template: "piece_photo",
+            variable: "pièce",
+            label: "Sans carte dédiée, avec la photo du lieu",
+          },
         }),
         message({
           id: "pieces-plusieurs",
           title: "Plusieurs pièces du même type",
-          when: "Par exemple deux billets déposés dans la même heure.",
-          bubble: wiredBubble("pieces", { variable: "billets" }),
+          when: "Par exemple deux billets déposés dans la même heure. L’image reprend les pièces du séjour.",
+          bubble: wiredBubble("pieces_photo", { variable: "billets" }),
+          fallback: { template: "pieces", variable: "billets" },
         }),
         message({
           id: "pieces-melange",
           title: "Pièces de types différents",
           when: "Par exemple une confirmation d’hôtel et un transfert, hors trio billet + hôtel + transfert.",
-          bubble: wiredBubble("pieces_composees", {
+          bubble: wiredBubble("pieces_composees_photo", {
             variable: "confirmation d'hôtel et le transfert",
           }),
+          fallback: {
+            template: "pieces_composees",
+            variable: "confirmation d'hôtel et le transfert",
+          },
         }),
       ],
     },
@@ -351,31 +502,41 @@ function catalogGroups(): WhatsappCatalogGroup[] {
           id: "passeport",
           title: "Un passeport manque",
           when: "Une fois pour le séjour, si un passeport n’est pas au coffre.",
-          bubble: wiredBubble("passeport_carte"),
-          fallback: { template: "passeport" },
+          bubble: wiredBubble("passeport_carte_photo"),
+          fallback: { template: "passeport_carte" },
+          earlier: { template: "passeport" },
         }),
         message({
           id: "passeports",
           title: "Plusieurs passeports manquent",
           when: "Une fois pour le séjour, si plusieurs passeports manquent.",
-          bubble: wiredBubble("passeports_carte"),
-          fallback: { template: "passeports" },
+          bubble: wiredBubble("passeports_carte_photo"),
+          fallback: { template: "passeports_carte" },
+          earlier: { template: "passeports" },
         }),
         message({
           id: "formalite-manquante",
           title: "Une formalité manque",
-          when: "Une fois par formalité, tant qu’elle n’est pas déposée. Ici, un visa.",
-          bubble: wiredBubble("formalite_manquante_carte", { variable: "visa" }),
-          fallback: { template: "formalite_manquante", variable: "visa" },
+          when: "Une fois par formalité, tant qu’elle n’est pas déposée. Ici, un visa. L’image est celle du visa.",
+          bubble: wiredBubble("formalite_manquante_carte_photo", { variable: "visa" }),
+          fallback: { template: "formalite_manquante_carte", variable: "visa" },
+          earlier: { template: "formalite_manquante", variable: "visa" },
         }),
         message({
           id: "formalite-prete",
           title: "La formalité est prête",
-          when: "La pièce est dans l’espace. Ici, un ESTA.",
-          bubble: wiredBubble("formalite_prete_carte", { variable: "ESTA" }),
-          fallback: { template: "formalite_prete", variable: "ESTA" },
+          when: "La pièce est dans l’espace. Ici, un ESTA. L’image est celle du visa.",
+          bubble: wiredBubble("formalite_prete_carte_photo", { variable: "ESTA" }),
+          fallback: { template: "formalite_prete_carte", variable: "ESTA" },
+          earlier: { template: "formalite_prete", variable: "ESTA" },
         }),
       ],
+    },
+    {
+      id: "vols",
+      title: "Vol en cours",
+      intro: "Ces messages partent quand le statut du vol change, si le séjour est publié et si le client a accepté WhatsApp. Ils n’ont pas d’image : le bouton ouvre le séjour. L’exemple est le vol AF 1789, CDG → RAK.",
+      messages: flightMessages(),
     },
     {
       id: "partage",
@@ -390,7 +551,8 @@ function catalogGroups(): WhatsappCatalogGroup[] {
             firstName: FIRST_NAME,
             title: PLACE,
             url: `${siteConfig.url}/v/23456789`,
-          })
+          }),
+          whatsappTypeImageUrl("partage")
         ),
       ],
     },
@@ -516,28 +678,32 @@ function catalogGroups(): WhatsappCatalogGroup[] {
           title: "Encours du séjour",
           when: "Non envoyé. L’encours part seulement si le client le demande dans la conversation.",
           wired: false,
-          bubble: wiredBubble("encours"),
+          bubble: wiredBubble("encours_photo"),
+          fallback: { template: "encours" },
         }),
         message({
           id: "chauffeur-modele",
           title: "Chauffeur du séjour",
           when: "Non envoyé. Le chauffeur est répondu dans la conversation, à la demande.",
           wired: false,
-          bubble: wiredBubble("chauffeur"),
+          bubble: wiredBubble("chauffeur_photo"),
+          fallback: { template: "chauffeur" },
         }),
         message({
           id: "rappel-modele",
           title: "Rappel de départ",
           when: "Non envoyé.",
           wired: false,
-          bubble: wiredBubble("rappel"),
+          bubble: wiredBubble("rappel_photo"),
+          fallback: { template: "rappel" },
         }),
         message({
           id: "connexion-sejour",
           title: "Connexion citant le séjour",
           when: "Non envoyé. La connexion utilise le texte « Votre espace personnel vous attend ».",
           wired: false,
-          bubble: wiredBubble("connexion_carte", { variable: FIRST_NAME }),
+          bubble: wiredBubble("connexion_carte_photo", { variable: FIRST_NAME }),
+          fallback: { template: "connexion_carte", variable: FIRST_NAME },
         }),
       ],
     },

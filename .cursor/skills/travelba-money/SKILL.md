@@ -50,14 +50,16 @@ PDF relevé = bouton **Demander un relevé** (`mailto:`), **pas** de génératio
 
 Ajustements / remboursements : lignes manuelles admin `kind=adjustment|refund`.
 
-## Stripe — références seulement
+## Stripe — règlement du séjour
 
-- SetupIntent (`/api/client/stripe/setup-intent`) + webhook `setup_intent.succeeded` → upsert `crm_payment_methods` (`stripe_payment_method_id`, brand, last4, exp).
-- `payment_method.detached` → delete la ligne.
-- **Interdit** : PAN, CVC, `card.number`, Checkout Session d’encaissement, PaymentIntent capture dans ce CRM.
-- UI client cartes **retirée** : `/mon-compte/profil/paiement` redirect facturation. Ne pas recréer un wallet carte sans décision.
+- Le dossier a `payer_kind` : `company` (société, défaut = première `crm_billing_companies`) ou `personal` (particulier). L’agence le choisit dans Règlement. Le client ne choisit pas la société.
+- Espace client, sous le montant : société → prélèvement SEPA et virement (le collaborateur `member` ne paie pas). Particulier → carte, Apple Pay, prélèvement SEPA, virement. Hors euros : carte et Apple Pay seulement.
+- `POST /api/client/bookings/[id]/pay` crée un PaymentIntent (moyens dynamiques, `excluded_payment_method_types`). Pas de `payment_method_types`. Pas de PAN / CVC. Apple Pay = portefeuille Stripe. Virement = `customer_balance` / `eu_bank_transfer`, IBAN affiché au client, jamais dans les logs.
+- Webhook `payment_intent.succeeded` → crédit `source=stripe`, `external_id` = id du PaymentIntent, wallet = `billing_customer_id`.
+- SetupIntent (`/api/client/stripe/setup-intent`) + `setup_intent.succeeded` → `crm_payment_methods`. `payment_method.detached` → delete.
+- Pas de page cartes : `/mon-compte/profil/paiement` reste la facturation.
 
-`getStripe()` absent → webhook 503, ne pas crasher le reste du CRM. UI cartes fermée : 503 live n’empêche ni carnet, ni ledger manuel, ni rapprochement Revolut.
+`getStripe()` absent → webhook 503. Le carnet, le grand livre et Revolut continuent. Le bouton de règlement indique que le moyen n’est pas ouvert.
 
 ## Revolut
 

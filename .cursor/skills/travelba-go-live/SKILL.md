@@ -51,7 +51,7 @@ Reprendre `.env.example`. Toutes **sauf** `NEXT_PUBLIC_*` sont server-only.
 | `CRON_SECRET` | aléatoire long ; Vercel Cron envoie `Authorization: Bearer …` |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_FROM` | compte WhatsApp déjà en Production |
 | `TWILIO_CONTENT_CONNEXION` | SID du modèle Utility `connexion_espace`. Hors git. Sans elle, l’invitation reste e-mail seul. `npx tsx scripts/arm-whatsapp-connexion.ts`, puis approbation Meta |
-| `TWILIO_CONTENT_SEJOUR` et la série Concierge | SIDs Utility séjour / pièces / passeport / formalité, plus les cartes `TWILIO_CONTENT_PIECE_HOTEL`, `PIECE_VOL`, `PIECE_TRANSFERT`, `PIECES_REGROUPEES`, `PASSEPORT_CARTE`, `PASSEPORTS_CARTE`, `FORMALITE_PRETE_CARTE`, `FORMALITE_MANQUANTE_CARTE`, `CONNEXION_CARTE`, `ENCOURS`, `CHAUFFEUR`, `RAPPEL_DEPART`, `DOCUMENT`. Hors git. Photo du séjour ou repli texte. `npx tsx scripts/arm-whatsapp-concierge.ts`, puis approbation Meta. Cron `GET /api/cron/concierge` toutes les 15 min |
+| `TWILIO_CONTENT_SEJOUR` et la série Concierge | SIDs Utility séjour / pièces / passeport / formalité, plus les cartes `TWILIO_CONTENT_PIECE_HOTEL`, `PIECE_VOL`, `PIECE_TRANSFERT`, `PIECES_REGROUPEES`, `PASSEPORT_CARTE`, `PASSEPORTS_CARTE`, `FORMALITE_PRETE_CARTE`, `FORMALITE_MANQUANTE_CARTE`, `CONNEXION_CARTE`, `ENCOURS`, `CHAUFFEUR`, `RAPPEL_DEPART`, `DOCUMENT`. Hors git. Photo du lieu pour le séjour publié, image du sujet pour les autres (`/whatsapp/billet.jpg`, visa, hôtel…). Les variables `*_PHOTO` (`TWILIO_CONTENT_PIECE_HOTEL_PHOTO`, et la même série pour vol, transfert, pièces, passeport, formalité, document) portent cette image. Sans elles, le texte déjà approuvé part. `npx tsx scripts/arm-whatsapp-concierge.ts`, puis approbation Meta. Cron `GET /api/cron/concierge` toutes les 15 min |
 
 Preview : `NEXT_PUBLIC_SITE_URL` d’une preview **ne doit pas** rester `https://travelba.fr` si on envoie des invitations depuis la preview (liens cassés). Les secrets de production sont **Production seulement** : `SUPABASE_SERVICE_ROLE_KEY`, Revolut (`REVOLUT_CLIENT_ID`, `REVOLUT_PRIVATE_KEY`, `REVOLUT_API_URL`, `REVOLUT_SANDBOX`, `REVOLUT_ISS`, `REVOLUT_WEBHOOK_SECRET`), Gmail (`GOOGLE_SA_JSON`, `GMAIL_PUSH_TOKEN`, `GMAIL_IMPERSONATE`, `GMAIL_PUBSUB_TOPIC`, `GMAIL_LABELS`), `RESEND_API_KEY`, `OPENAI_API_KEY`, `CRON_SECRET`. Le code les ignore si `VERCEL_ENV=preview` (`productionOnlySecret`). Resend reste coupé sur Preview.
 
@@ -82,11 +82,11 @@ OIDC Vercel : `aiGatewayConfigured()` peut être vrai sur Vercel sans `sk-`. L�
 
 ## Stripe
 
-- Mode **live**. Pas d’encaissement carte dans le CRM.
+- Mode **live**. L’encaissement d’un séjour passe par PaymentIntent sur la réservation client (carte, Apple Pay, prélèvement SEPA, virement). Pas de PAN.
 - Endpoint : `https://travelba.fr/api/webhooks/stripe`
-- Events : `setup_intent.succeeded`, `payment_method.detached`
-- UI client cartes **retirée** (`/paiement` → facturation). La table `crm_payment_methods` peut rester (SetupIntent) mais ne pas rerendre un formulaire carte sans décision produit.
-- Sans `sk_live` / `pk_live` / `whsec` en Production, le webhook répond **503** — attendu tant que l’UI cartes n’est pas réouverte. Ne pas inventer les clés. Le grand livre manuel fonctionne.
+- Events : `setup_intent.succeeded`, `payment_method.detached`, `payment_intent.succeeded`
+- Pas de page cartes (`/paiement` → facturation). Le règlement est sur la réservation.
+- Sans `sk_live` / `pk_live` / `whsec` en Production, le webhook répond **503** et le bouton de règlement dit que le moyen n’est pas ouvert. Ne pas inventer les clés. Le grand livre manuel fonctionne.
 - Ne jamais logger le PaymentMethod brut au-delà de `brand` / `last4` / exp.
 
 ## Revolut
