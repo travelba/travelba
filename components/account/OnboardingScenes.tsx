@@ -66,7 +66,7 @@ const PASSPORTS = [
 
 function PassportScene({ reduce }: { reduce: boolean }) {
   return (
-    <ul className="space-y-2">
+    <ul className="mx-auto w-[50%] space-y-1.5">
       {PASSPORTS.map((person, index) => (
         <motion.li key={person.number} {...rise(reduce, 0.08 + index * 0.16)}>
           <FrenchPassport person={person} />

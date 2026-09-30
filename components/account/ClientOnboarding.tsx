@@ -50,7 +50,7 @@ export function ClientOnboarding() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-[480px] flex-col px-4 py-4 sm:px-5">
+    <div className="mx-auto flex min-h-screen w-full max-w-[480px] flex-col px-4 py-6 sm:px-5">
       <header className="flex items-center justify-between gap-3">
         <BrandMark href={ONBOARDING_PATH} subtitle="Espace client" compact />
         <button
@@ -66,7 +66,7 @@ export function ClientOnboarding() {
 
       <motion.div
         key={`${current.id}-${play ? "play" : "still"}`}
-        className="mt-5 flex flex-1 flex-col"
+        className="mt-8 flex flex-1 flex-col"
         initial={play ? { opacity: 0, y: 12 } : false}
         animate={{ opacity: 1, y: 0 }}
         transition={play ? { duration: 0.45, ease } : { duration: 0 }}
@@ -84,12 +84,12 @@ export function ClientOnboarding() {
           animate={{ width: 48 }}
           transition={play ? { duration: 0.5, delay: 0.12, ease } : { duration: 0 }}
         />
-        <div className="mt-4">
+        <div className="mt-6">
           <OnboardingScene id={current.id} play={play} />
         </div>
       </motion.div>
 
-      <div className="sticky bottom-0 mt-4 space-y-3 bg-[#faf9f6]/95 pb-3 pt-2 backdrop-blur">
+      <div className="sticky bottom-0 mt-8 space-y-4 bg-[#faf9f6]/95 pb-4 pt-3 backdrop-blur">
         <div
           className="flex gap-1.5"
           role="progressbar"
