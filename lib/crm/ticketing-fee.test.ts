@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   TICKETING_FEE_EUR,
+  collectableTicketingFee,
   ticketingFeeAmount,
   ticketingFeeExternalId,
   ticketingTicketCount,
@@ -20,6 +21,12 @@ test("2 voyageurs + 2 segments → 25 € pour l’aller-retour, pas par billet"
 
 test("vol sans voyageur nommé → 25 €", () => {
   assert.equal(ticketingFeeAmount({ hasFlight: true, travelerCount: 0 }), 25);
+});
+
+test("le règlement reprend les 25 € seulement si le dossier est confirmé", () => {
+  assert.equal(collectableTicketingFee({ status: "confirmed", hasFlight: true }), 25);
+  assert.equal(collectableTicketingFee({ status: "quoted", hasFlight: true }), 0);
+  assert.equal(collectableTicketingFee({ status: "confirmed", hasFlight: false }), 0);
 });
 
 test("external_id stable par dossier", () => {

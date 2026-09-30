@@ -114,6 +114,8 @@ export function paymentSlips(input: {
   clientSettlesStay: boolean;
   pricesVisible: boolean;
   expenses: { amount: number | null }[];
+  /** Frais de billeterie déjà dus au grand livre. Même facture que les autres frais. */
+  ticketingFee?: number;
   stayKind: PayerKind;
   stayCompanyId: string | null;
   feesFollowStay: boolean;
@@ -131,6 +133,8 @@ export function paymentSlips(input: {
     if (!Number.isFinite(amount) || amount <= 0) continue;
     fees += amount;
   }
+  const ticketing = Number(input.ticketingFee);
+  if (Number.isFinite(ticketing) && ticketing > 0) fees += ticketing;
   fees = roundMoney(fees);
   if (fees <= 0) fees = 0;
 

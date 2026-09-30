@@ -54,7 +54,7 @@ Ajustements / remboursements : lignes manuelles admin `kind=adjustment|refund`.
 
 - Le dossier a `payer_kind` : `company` (société, défaut = première `crm_billing_companies`) ou `personal` (particulier). L’agence le choisit dans Règlement. Le client ne choisit pas la société.
 - L’agence choisit sur le dossier. Le client ne choisit pas : mention **Facture {société}** ou **Sans facture société**.
-- `fees_follow_stay` (défaut true) : frais d’agence et dépenses suivent la facture du séjour. Sinon, une seconde carte, l’autre mention. L’hôtel réglé par le client n’est pas un encaissement.
+- `fees_follow_stay` (défaut true) : frais d’agence, frais de billeterie (25 € dès qu’un vol est confirmé) et dépenses suivent la facture du séjour. Sinon, une seconde carte, l’autre mention. L’hôtel réglé par le client n’est pas un encaissement. Un séjour à 0 € avec seulement ces frais ouvre quand même le règlement.
 - Facture société : prélèvement SEPA et virement. Sans facture société : carte, Apple Pay, prélèvement SEPA, virement. Hors euros : carte et Apple Pay seulement. Le collaborateur `member` ne paie pas la facture société ; il peut régler la part sans facture.
 - Le grand livre reste un seul encours. Chaque règlement crédite le même wallet.
 - `POST /api/client/bookings/[id]/pay` reçoit `slice` `stay` ou `fees`. Le montant vient du serveur. Carte, Apple Pay et prélèvement SEPA créent un PaymentIntent (moyens dynamiques, `excluded_payment_method_types`). Pas de `payment_method_types`. Pas de PAN / CVC. Apple Pay = portefeuille Stripe. Le libellé du crédit porte la mention.

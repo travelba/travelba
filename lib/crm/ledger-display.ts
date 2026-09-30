@@ -1,5 +1,6 @@
 import { HIDDEN_PRICE_LABEL } from "@/lib/crm/carnet";
 import { agencyFeeFromGross, formatMoney } from "@/lib/crm/money";
+import { TICKETING_FEE_LABEL } from "@/lib/crm/ticketing-fee";
 import { AGENCY_FEE_LABEL, visibleServiceCopy } from "@/lib/crm/types";
 
 type LedgerKindRow = {
@@ -123,13 +124,14 @@ export function clientStayPriceLabel(input: {
   return formatMoney(stayPriceWithExpenses(input), input.currency);
 }
 
-/** Lignes lues sur la réservation client : frais d’agence, puis dépenses libres. */
+/** Lignes lues sur la réservation client : frais d’agence, billeterie, puis dépenses libres. */
 export function clientStayExpenseLines(input: {
   expenses: { id: string; title: string; amount: number | null }[];
   agencyCommission: boolean;
   stayTotal: number;
   currency: string;
   pricesVisible: boolean;
+  ticketingFee?: number;
 }): ClientExpenseLine[] {
   const lines: ClientExpenseLine[] = [];
   if (input.agencyCommission) {
@@ -137,6 +139,14 @@ export function clientStayExpenseLines(input: {
       id: "agency-commission",
       title: AGENCY_FEE_LABEL,
       amountLabel: expenseAmountLabel(agencyFeeFromGross(input.stayTotal), input.currency, input.pricesVisible),
+    });
+  }
+  const ticketing = Number(input.ticketingFee);
+  if (Number.isFinite(ticketing) && ticketing > 0) {
+    lines.push({
+      id: "ticketing-fee",
+      title: TICKETING_FEE_LABEL,
+      amountLabel: expenseAmountLabel(ticketing, input.currency, input.pricesVisible),
     });
   }
   for (const expense of input.expenses) {
