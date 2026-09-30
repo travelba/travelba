@@ -71,11 +71,11 @@ export function stayPayMethodOf(value: unknown): StayPayMethod | null {
   return (STAY_PAY_METHODS as readonly string[]).includes(value) ? (value as StayPayMethod) : null;
 }
 
-/** Société : prélèvement et virement, en euros. Particulier : carte, Apple Pay, et les deux si euros. */
+/** Société : prélèvement SEPA et virement, en euros. Particulier : carte, Apple Pay, virement. */
 export function stayPayMethods(payer: PayerKind, currency: string): StayPayMethod[] {
   const eur = currency.toUpperCase() === "EUR";
   if (payer === "company") return eur ? ["sepa_debit", "revolut"] : [];
-  return eur ? ["card", "apple_pay", "sepa_debit", "revolut"] : ["card", "apple_pay"];
+  return eur ? ["card", "apple_pay", "revolut"] : ["card", "apple_pay"];
 }
 
 type StripeStayMethod = Exclude<StayPayMethod, "revolut">;

@@ -142,7 +142,7 @@ export function StayPayment({
             ) : null}
 
             {part.canPay && part.payable && part.methods.length ? (
-              <div className="grid gap-2" role="radiogroup" aria-label={part.mention}>
+              <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={part.mention}>
                 {part.methods.map((item) => {
                   const selected = open && method === item;
                   return (
@@ -151,28 +151,20 @@ export function StayPayment({
                       type="button"
                       aria-pressed={selected}
                       onClick={() => void choose(part, item)}
-                      className={`rounded-2xl px-4 py-3 text-left ${
+                      className={`inline-flex h-8 items-center rounded-full px-3 text-[12px] font-semibold ${
                         selected
                           ? "bg-[var(--admin-navy)] text-white"
-                          : compact || company
-                            ? "bg-[#f7f6f3] text-[var(--admin-navy)]"
-                            : "bg-white text-[var(--admin-navy)]"
+                          : "border border-[var(--admin-gold)]/55 bg-[#f8f3eb] text-[var(--admin-navy)]"
                       }`}
                     >
-                      <span className="text-sm font-semibold">{STAY_PAY_LABELS[item]}</span>
-                      {item !== "revolut" && !stripeKey ? (
-                        <span className={`mt-0.5 block text-xs ${selected ? "text-white/75" : "text-muted"}`}>
-                          Ce moyen n’est pas encore ouvert.
-                        </span>
-                      ) : !part.amountLabel ? (
-                        <span className={`mt-0.5 block text-xs ${selected ? "text-white/75" : "text-muted"}`}>
-                          Rien à régler pour l’instant.
-                        </span>
-                      ) : null}
+                      {STAY_PAY_LABELS[item]}
                     </button>
                   );
                 })}
               </div>
+            ) : null}
+            {open && method && method !== "revolut" && !stripeKey ? (
+              <p className="text-xs text-muted">Ce moyen n’est pas encore ouvert.</p>
             ) : null}
 
             {open ? <BusyBar active={busy} label="Préparation du règlement…" /> : null}

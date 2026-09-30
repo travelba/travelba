@@ -98,7 +98,7 @@ test("le règlement de l’encours distingue société et particulier", () => {
           amountLabel: "1 000,00 €",
           payable: true,
           canPay: true,
-          methods: ["card", "apple_pay", "sepa_debit", "revolut"],
+          methods: ["card", "apple_pay", "revolut"],
           companyName: null,
         },
         {
@@ -117,6 +117,8 @@ test("le règlement de l’encours distingue société et particulier", () => {
   assert.match(personal, /Société · Horizon SAS/);
   assert.match(personal, /Virement/);
   assert.match(personal, /Apple Pay/);
+  assert.match(personal, /Carte bancaire/);
+  assert.equal(personal.includes("Prélèvement SEPA"), false);
   assert.match(personal, /Le règlement se fait par Horizon SAS/);
   assert.equal(personal.includes("Régler ce voyage"), false);
   assert.equal(personal.includes("/api/client/bookings/"), false);
