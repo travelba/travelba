@@ -24,7 +24,7 @@ export const loadPublishedTripShare = cache(async (code: string): Promise<Publis
   const { data } = await admin.from("crm_bookings").select("*").eq("share_code", code).maybeSingle();
   if (!data) return null;
   const booking = data as CrmBooking;
-  if (!booking.visible_to_client) return null;
+  if (!booking.visible_to_client || booking.archived_at) return null;
   const [{ data: itemRows }, { data: docRows }] = await Promise.all([
     admin.from("crm_booking_items").select("*").eq("booking_id", booking.id).order("sort_order"),
     admin
@@ -48,10 +48,10 @@ export const loadPublishedTripShare = cache(async (code: string): Promise<Publis
 export async function ensureTripShareCode(admin: SupabaseClient, bookingId: string) {
   const { data } = await admin
     .from("crm_bookings")
-    .select("share_code, visible_to_client")
+    .select("share_code, visible_to_client, archived_at")
     .eq("id", bookingId)
     .maybeSingle();
-  if (!data?.visible_to_client) return null;
+  if (!data?.visible_to_client || data.archived_at) return null;
   if (typeof data.share_code === "string" && isTripShareCode(data.share_code)) return data.share_code;
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -85,10 +85,10 @@ export async function sharePathAllowed(code: string, path: string) {
   }
   const { data } = await admin
     .from("crm_bookings")
-    .select("id, cover_image_path, visible_to_client, share_code")
+    .select("id, cover_image_path, visible_to_client, share_code, archived_at")
     .eq("share_code", code)
     .maybeSingle();
-  if (!data?.visible_to_client) return false;
+  if (!data?.visible_to_client || data.archived_at) return false;
   const booking = data as Pick<CrmBooking, "id" | "cover_image_path" | "visible_to_client">;
   const { data: docs } = await admin
     .from("crm_booking_documents")

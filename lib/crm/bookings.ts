@@ -632,6 +632,10 @@ export async function syncBookingLedger(
   booking: CrmBooking,
   previousStatus?: BookingStatus
 ) {
+  if (booking.archived_at) {
+    await clearBookingCharges(supabase, booking.id);
+    return;
+  }
   await syncBookingDebit(supabase, booking, previousStatus);
   await syncBookingItemDebits(supabase, booking);
   await syncTicketingFee(supabase, booking);

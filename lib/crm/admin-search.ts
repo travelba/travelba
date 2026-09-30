@@ -3,6 +3,7 @@ export type AdminSearchBooking = {
   reference: string;
   title: string;
   destination: string | null;
+  archived_at?: string | null;
 };
 
 export type AdminSearchCustomer = {

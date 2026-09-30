@@ -36,6 +36,7 @@ type BookingRow = {
   reference: string;
   visible_to_client: boolean;
   customer_id: string;
+  archived_at?: string | null;
 };
 
 type CustomerRow = {
@@ -190,7 +191,7 @@ export async function runFlightWatch(
   if (bookingIds.length) {
     const { data } = await admin
       .from("crm_bookings")
-      .select("id, status, reference, visible_to_client, customer_id")
+      .select("id, status, reference, visible_to_client, customer_id, archived_at")
       .in("id", bookingIds);
     for (const row of (data || []) as BookingRow[]) bookings.set(row.id, row);
   }
@@ -206,7 +207,7 @@ export async function runFlightWatch(
 
   const active = items.filter((item) => {
     const booking = bookings.get(item.booking_id);
-    return Boolean(booking && ACTIVE.has(booking.status));
+    return Boolean(booking && !booking.archived_at && ACTIVE.has(booking.status));
   });
   const agencyCheckin = new Set<string>();
   if (bookingIds.length) {

@@ -30,7 +30,7 @@ export default async function AdminSearchPage({
   const referenceQuery = /^tb-/i.test(query);
   const [references, confirmations, hotelTitles, hotelDetails, firstNames, lastNames] = await Promise.all([
     referenceQuery
-      ? supabase.from("crm_bookings").select("id, reference, title, destination").ilike("reference", needle).limit(8)
+      ? supabase.from("crm_bookings").select("id, reference, title, destination, archived_at").ilike("reference", needle).limit(8)
       : Promise.resolve({ data: [] as AdminSearchBooking[] }),
     supabase.from("crm_booking_items").select("booking_id").ilike("confirmation_ref", needle).limit(12),
     supabase.from("crm_booking_items").select("booking_id").eq("kind", "hotel").ilike("title", needle).limit(12),
@@ -55,7 +55,7 @@ export default async function AdminSearchPage({
   ].map((row) => row.booking_id);
   const uniqueIds = [...new Set(bookingIds)];
   const { data: linked } = uniqueIds.length
-    ? await supabase.from("crm_bookings").select("id, reference, title, destination").in("id", uniqueIds)
+    ? await supabase.from("crm_bookings").select("id, reference, title, destination, archived_at").in("id", uniqueIds)
     : { data: [] as AdminSearchBooking[] };
   const byId = new Map(((linked || []) as AdminSearchBooking[]).map((row) => [row.id, row]));
   const bookingsFor = (rows: { booking_id: string }[] | null) =>
@@ -91,6 +91,7 @@ export default async function AdminSearchPage({
                 <li key={booking.id}>
                   <Link href={`/admin/reservations/${booking.id}`} className="block px-5 py-3 font-semibold text-[var(--admin-navy)]">
                     {booking.reference} · {booking.title}
+                    {booking.archived_at ? " · Archivée" : ""}
                   </Link>
                 </li>
               ))}

@@ -448,4 +448,13 @@ describe("carnet", () => {
     assert.equal(cleaned.items[0].details?.document_amount, 858.8);
     assert.equal(cleaned.items[0].details?.document_currency, "EUR");
   });
+
+  it("cache un dossier archivé même s’il était publié", () => {
+    assert.equal(
+      carnetVisible({ visible_to_client: true, archived_at: "2026-09-30T12:00:00.000Z" }, [
+        item({ visible_to_client: true, title: "Hôtel" }),
+      ]),
+      false
+    );
+  });
 });

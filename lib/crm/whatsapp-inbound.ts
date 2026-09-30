@@ -397,7 +397,8 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
         .select(
           "id, reference, title, destination, start_date, end_date, currency, total_amount, notes_client, visible_to_client, prices_visible, cover_image_path"
         )
-        .eq("customer_id", customerId);
+        .eq("customer_id", customerId)
+        .is("archived_at", null);
       if (bookingError) throw bookingError;
       const ids = (bookings || []).map((booking) => booking.id);
       const [items, docs, visas, txs, balances, papers] = await Promise.all([
