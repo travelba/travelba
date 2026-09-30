@@ -67,7 +67,62 @@ export function ClientsTable({
         </p>
       </div>
       <div className="admin-af-card max-w-full overflow-hidden rounded-2xl">
-        <div className="overflow-x-auto">
+        <ul className="divide-y divide-border lg:hidden">
+          {filtered.map((c) => {
+            const rows = bal.get(c.id) || [];
+            const amount = rows[0];
+            const value = amount ? Number(amount.balance) : 0;
+            return (
+              <li key={c.id} className="space-y-2 px-4 py-4">
+                <Link href={`/admin/clients/${c.id}`} className="flex min-w-0 items-center gap-3">
+                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[11px] font-bold text-[#f8f6f0]">
+                    {initials(c)}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate font-semibold text-[var(--admin-navy)]">{customerFullName(c)}</span>
+                    {c.on_hold ? (
+                      <span className="mt-0.5 inline-flex rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">
+                        En veille
+                      </span>
+                    ) : null}
+                  </span>
+                </Link>
+                <p className="break-all text-sm text-muted">{c.email}</p>
+                <p className="text-sm text-muted">{c.phone ? formatPhoneDisplay(c.phone) : "—"}</p>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  {rows.length ? (
+                    <Link
+                      href={clientLedgerAdminHref(c.id)}
+                      className={`text-sm font-semibold underline-offset-2 hover:underline ${
+                        value < 0 ? "text-[var(--admin-red)]" : "text-[var(--admin-navy)]"
+                      }`}
+                    >
+                      {value > 0
+                        ? rows.map((b) => formatCreditDisponible(Number(b.balance), b.currency)).join(" · ")
+                        : rows.map((b) => formatMoney(Number(b.balance), b.currency)).join(" · ")}
+                    </Link>
+                  ) : (
+                    <span className="text-sm text-muted">—</span>
+                  )}
+                  <DeleteCustomerButton
+                    compact
+                    redirectTo={null}
+                    customerId={c.id}
+                    name={customerFullName(c)}
+                  />
+                </div>
+              </li>
+            );
+          })}
+          {!filtered.length ? (
+            <li className="px-4 py-8 text-center text-sm text-muted">
+              {customers.length === 0
+                ? "Aucun client. Créez une fiche titulaire puis invitez — pas de client fictif."
+                : "Aucun client trouvé."}
+            </li>
+          ) : null}
+        </ul>
+        <div className="hidden overflow-x-auto lg:block">
           <table className="min-w-full text-left text-sm">
             <thead className="bg-[var(--admin-sky)]/70 font-label text-[10px] font-bold uppercase tracking-[0.12em] text-muted">
               <tr>

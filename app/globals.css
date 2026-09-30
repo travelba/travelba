@@ -330,19 +330,10 @@ button:disabled,
     max-width: 100%;
   }
 
-  .admin-af > header nav {
-    width: 100%;
-    max-width: 100%;
-  }
-
   .admin-af .overflow-x-auto {
     max-width: 100%;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
-  }
-
-  .admin-af .overflow-x-auto > table {
-    min-width: 42rem;
   }
 
   .admin-af .admin-tap,

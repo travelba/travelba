@@ -627,7 +627,7 @@ export function BookingEditor({
             onChange={(event) => setTitleDraft(event.target.value)}
             placeholder="Séjour à Avoriaz"
             aria-label="Titre"
-            className="mt-2 w-full bg-transparent font-display text-3xl font-bold leading-tight text-white outline-none placeholder:text-white/35"
+            className="mt-2 w-full bg-transparent font-display text-2xl font-bold leading-tight text-white outline-none placeholder:text-white/35 sm:text-3xl"
           />
           <p className="mt-1 text-xs text-white/55">Le client le voit en haut de son carnet.</p>
           <PlaceField
