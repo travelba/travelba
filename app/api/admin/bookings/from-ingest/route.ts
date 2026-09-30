@@ -7,6 +7,7 @@ import {
   parseExtractPayload,
   persistNewBookingFromExtract,
 } from "@/lib/crm/ingest-booking";
+import { HIDE_PRICE_REQUIRED, readHidePricesChoice } from "@/lib/crm/pdf-price-redact";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -22,6 +23,10 @@ export async function POST(request: Request) {
     const files = collectIngestFiles(form);
     const staged = collectStagedFiles(form);
     const batchId = String(form.get("batch_id") || "");
+    const hidePrices = readHidePricesChoice(form.get("hide_prices"));
+    if ((files.length > 0 || staged.length > 0) && hidePrices === undefined) {
+      return jsonError(HIDE_PRICE_REQUIRED);
+    }
     const booking = await persistNewBookingFromExtract({
       customerId,
       extract,
@@ -32,6 +37,7 @@ export async function POST(request: Request) {
       batchId: batchId || undefined,
       status: "draft",
       visibleToClient: false,
+      hidePrices: hidePrices ?? false,
     });
     return NextResponse.json({ booking });
   } catch (err) {

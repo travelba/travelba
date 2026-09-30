@@ -21,6 +21,7 @@ import { HotelContactButton } from "@/components/crm/HotelContact";
 import { HotelDesk } from "@/components/admin/HotelDesk";
 import type { CardViewLine, CrmBookingTraveler, CrmHotelArrival, CrmHotelRequest, CrmTravelDocument } from "@/lib/crm/types";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
+import { HidePriceChoice } from "@/components/crm/HidePriceChoice";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
 import { BusyBar } from "@/components/crm/BusyBar";
 import type { CrmBookingDocument } from "@/lib/crm/types";
@@ -450,6 +451,7 @@ function ItemAttachments({
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -457,8 +459,14 @@ function ItemAttachments({
     const fd = new FormData(form);
     fd.set("booking_item_id", itemId);
     setBusy(true);
-    await fetch(`/api/admin/bookings/${bookingId}/documents`, { method: "POST", body: fd });
+    setError(null);
+    const res = await fetch(`/api/admin/bookings/${bookingId}/documents`, { method: "POST", body: fd });
+    const json = await res.json().catch(() => ({}));
     setBusy(false);
+    if (!res.ok) {
+      setError(typeof json.error === "string" ? json.error : "Envoi impossible");
+      return;
+    }
     form.reset();
     router.refresh();
   }
@@ -492,12 +500,16 @@ function ItemAttachments({
           />
         ))}
       </div>
-      <form onSubmit={upload} className="flex flex-wrap items-center gap-2">
-        <BusyBar active={busy} label="Envoi…" />
-        <input name="file" type="file" required className="text-xs" />
-        <button type="submit" disabled={busy} className="text-xs font-semibold text-[var(--admin-navy)]">
-          {busy ? "Envoi…" : "Joindre"}
-        </button>
+      <form onSubmit={upload} className="space-y-2">
+        <HidePriceChoice />
+        <div className="flex flex-wrap items-center gap-2">
+          <BusyBar active={busy} label="Envoi…" />
+          <input name="file" type="file" required className="text-xs" />
+          <button type="submit" disabled={busy} className="text-xs font-semibold text-[var(--admin-navy)]">
+            {busy ? "Envoi…" : "Joindre"}
+          </button>
+        </div>
+        {error ? <p className="text-xs text-accent">{error}</p> : null}
       </form>
     </div>
   );

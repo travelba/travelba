@@ -27,6 +27,7 @@ import { formatMoney } from "@/lib/crm/money";
 import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
 import { customerFullName, type CrmCompanion, type CrmCustomer } from "@/lib/crm/types";
 import { DateFrInput, Field, fieldControlClass } from "@/components/crm/fields";
+import { HidePriceChoice } from "@/components/crm/HidePriceChoice";
 import { PlaceField } from "@/components/crm/PlaceField";
 import { IssuesList } from "@/components/crm/IssuesList";
 import {
@@ -233,6 +234,7 @@ export function BookingIngest({
   const [batchId, setBatchId] = useState(() => newId());
   const [slots, setSlots] = useState<Slot[]>([]);
   const [busy, setBusy] = useState<"idle" | "upload" | "read" | "save">("idle");
+  const [hidePrices, setHidePrices] = useState<boolean | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number; current?: string } | null>(
     null
   );
@@ -484,6 +486,10 @@ export function BookingIngest({
       setError(null);
       return;
     }
+    if (slots.some((slot) => slot.file) && hidePrices == null) {
+      setError("Indiquez si le prix doit être caché sur le PDF.");
+      return;
+    }
     setBusy("save");
     setError(null);
     setIssues([]);
@@ -501,6 +507,7 @@ export function BookingIngest({
       );
       body.set("customer_id", customerId);
       body.set("batch_id", batchId);
+      if (hidePrices != null) body.set("hide_prices", hidePrices ? "1" : "0");
       body.set(
         "staged",
         JSON.stringify(
@@ -521,6 +528,7 @@ export function BookingIngest({
         throw new Error(json.error || "Enregistrement impossible");
       }
       setExtract(null);
+      setHidePrices(null);
       setSeenInDocuments([]);
       setWarnings([]);
       for (const slot of slots) {
@@ -1061,6 +1069,10 @@ export function BookingIngest({
             })}
           </div>
 
+          {slots.length ? (
+            <HidePriceChoice value={hidePrices} onChange={setHidePrices} />
+          ) : null}
+
           {priceIssues.length ? (
             <div
               className="rounded-2xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]"
@@ -1079,7 +1091,7 @@ export function BookingIngest({
 
           <button
             type="button"
-            disabled={busy !== "idle" || liveIssues.length > 0}
+            disabled={busy !== "idle" || liveIssues.length > 0 || (slots.length > 0 && hidePrices == null)}
             onClick={() => void save()}
             className="admin-af-btn rounded-full px-5 py-2.5 text-sm disabled:opacity-50"
           >

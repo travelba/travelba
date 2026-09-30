@@ -19,6 +19,8 @@ import {
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { HidePriceChoice } from "@/components/crm/HidePriceChoice";
+import { DocumentPriceChoices } from "@/components/admin/DocumentPriceChoices";
 import { formatDateFr, formatMoney, jMinusLabel, todayIsoDate } from "@/lib/crm/money";
 import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
@@ -145,6 +147,7 @@ export function BookingEditor({
   const arrival = coverQuery(booking.destination, booking.title);
   const coverPlace = arrival === "voyage" ? "" : arrival;
   const [flash, setFlash] = useState<string | null>(null);
+  const [docError, setDocError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<null | "publish" | "unpublish">(null);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
   const serverSettles = booking.client_settles_stay === true;
@@ -333,10 +336,16 @@ export function BookingEditor({
   async function addDoc(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
-    await fetch(`/api/admin/bookings/${booking.id}/documents`, {
+    setDocError(null);
+    const res = await fetch(`/api/admin/bookings/${booking.id}/documents`, {
       method: "POST",
       body: new FormData(form),
     });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setDocError(typeof json.error === "string" ? json.error : "Envoi impossible");
+      return;
+    }
     form.reset();
     router.refresh();
   }
@@ -1077,6 +1086,7 @@ export function BookingEditor({
         </section>
       ) : null}
 
+      <DocumentPriceChoices bookingId={booking.id} documents={documents} />
       <ReservationFiles
         variant="admin"
         showPassports={false}
@@ -1088,9 +1098,13 @@ export function BookingEditor({
         <p className="mt-1 text-sm text-muted">
           Billets, vouchers et devis. Visibles au client seulement après publication du carnet.
         </p>
-        <form onSubmit={addDoc} className="mt-3 flex flex-wrap gap-2">
-          <input name="file" type="file" required />
-          <button className="admin-af-btn rounded-full px-3 py-2 text-sm">Joindre</button>
+        <form onSubmit={addDoc} className="mt-3 space-y-3">
+          <HidePriceChoice />
+          <div className="flex flex-wrap gap-2">
+            <input name="file" type="file" required />
+            <button className="admin-af-btn rounded-full px-3 py-2 text-sm">Joindre</button>
+          </div>
+          {docError ? <p className="text-sm text-accent">{docError}</p> : null}
         </form>
       </section>
     </div>
