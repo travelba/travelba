@@ -2,6 +2,10 @@ import { siteConfig } from "../site";
 import {
   conciergeContentDrafts,
   conciergeContentVariables,
+  conciergeTemplateImage,
+  WHATSAPP_IMAGE_ALT,
+  whatsappTypeImageKind,
+  whatsappTypeImageUrl,
   type ConciergeTemplate,
 } from "./concierge-notices";
 import { tripShareMessage } from "./trip-share";
@@ -105,20 +109,37 @@ function applyVars(body: string, variables: Record<string, string>) {
   return body.replace(/\{\{(\d+)\}\}/g, (_, key: string) => variables[key] ?? "");
 }
 
+function altFor(image: string | null) {
+  if (!image) return null;
+  const kind = whatsappTypeImageKind(image);
+  if (kind) return WHATSAPP_IMAGE_ALT[kind];
+  if (image.includes("/api/covers/sejour/")) return `Séjour à ${PLACE}`;
+  return null;
+}
+
+/** L’aperçu charge l’image du déploiement courant. Twilio, lui, reçoit l’URL absolue. */
+function displayImage(image: string | null) {
+  if (!image) return null;
+  const kind = whatsappTypeImageKind(image);
+  return kind ? `/whatsapp/${kind}.jpg` : image;
+}
+
 function bubbleFrom(template: ConciergeTemplate, variables: Record<string, string> | null): WhatsappBubble {
   const surface = draftSurface(template);
   const vars = variables || surface.sample;
   const body = applyVars(surface.body, vars);
   if (/\{\{\d+\}\}/.test(body)) throw new Error(`variable vide: ${template}`);
   const image = surface.photo
-    ? Object.values(vars).find((value) => value.includes("/api/covers/sejour/")) || null
+    ? Object.values(vars).find(
+        (value) => value.includes("/api/covers/sejour/") || value.includes("/whatsapp/")
+      ) || null
     : null;
   return {
     body,
     button: surface.button,
     photo: Boolean(image),
-    image,
-    imageAlt: image ? `Séjour à ${PLACE}` : null,
+    image: displayImage(image),
+    imageAlt: altFor(image),
     modelName: surface.modelName,
   };
 }
@@ -132,7 +153,7 @@ function wiredBubble(
     buttonSuffix: SUFFIX,
     place: PLACE,
     reference: REFERENCE,
-    mediaUrl: extra?.media === false ? null : COVER,
+    mediaUrl: extra?.media === false ? null : conciergeTemplateImage(template) || COVER,
     variable: extra?.variable,
   });
   if (!variables) throw new Error(`envoi impossible: ${template}`);
@@ -190,8 +211,8 @@ function session(id: string, title: string, when: string, body: string, image: s
       body,
       button: null,
       photo: Boolean(image),
-      image,
-      imageAlt: image ? `Séjour à ${PLACE}` : null,
+      image: displayImage(image),
+      imageAlt: altFor(image),
       modelName: null,
     },
   });
@@ -444,7 +465,7 @@ function catalogGroups(): WhatsappCatalogGroup[] {
             title: PLACE,
             url: `${siteConfig.url}/v/23456789`,
           }),
-          COVER
+          whatsappTypeImageUrl("partage")
         ),
       ],
     },

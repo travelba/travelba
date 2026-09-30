@@ -348,6 +348,18 @@ test("sans horaire, sans prix publié et sans couverture, rien n’est inventé"
   assert.equal(withPhoto.cover, "https://travelba.fr/api/covers/sejour/PUB-1");
   assert.equal(withPhoto.text.includes("cover.webp"), false);
   assert.equal(withPhoto.text.includes("/api/covers/"), false);
+  const papers = buildConciergeDossier({
+    bookings: [{ ...published, cover_image_path: "bookings/stay-pub/cover.webp" }],
+    travelDocuments: [
+      { doc_type: "passport", first_name: "Simon", last_name: "Martin", expires_on: "2030-01-12" },
+    ],
+    visaRequests: [{ booking_id: "stay-pub", country: "US", status: "piece" }],
+  });
+  const passport = planConciergeTurn("Où est mon passeport ?", papers);
+  assert.equal(passport.cover, "https://travelba.fr/whatsapp/passeport.jpg");
+  const visa = planConciergeTurn("Où en est mon visa ?", papers);
+  assert.equal(visa.cover, "https://travelba.fr/whatsapp/visa.jpg");
+  assert.equal(visa.text.includes("/api/covers/"), false);
   const thin = planConciergeTurn("À quelle heure est le vol ?", covered);
   assert.equal(thin.cover, null);
 

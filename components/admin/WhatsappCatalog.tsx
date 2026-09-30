@@ -28,7 +28,7 @@ function Bubble({ bubble }: { bubble: WhatsappBubble }) {
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={bubble.image}
-              alt={bubble.imageAlt || "Photo du séjour"}
+              alt={bubble.imageAlt || "Illustration"}
               className="aspect-[16/10] w-full bg-[#16324f] object-cover"
               referrerPolicy="no-referrer"
               onError={(event) => {
@@ -89,11 +89,11 @@ export function WhatsappCatalog({ groups }: { groups: WhatsappCatalogGroup[] }) 
   return (
     <div className="mt-6">
       <p className="max-w-3xl text-sm leading-relaxed text-muted">
-        Chaque carte montre le message tel que le client le reçoit. La photo est celle du lieu
-        d’arrivée, quand le séjour en a une. Un modèle part si le téléphone est valide, si le client
-        a accepté WhatsApp, et si Meta a approuvé le texte. Sans le modèle illustré, le texte de
-        repli part. Une réponse part quand le client vient d’écrire. Les prénoms, heures et montants
-        des réponses sont un exemple fictif à Avoriaz.
+        Chaque carte montre le message tel que le client le reçoit. L’image suit le sujet : hôtel,
+        billet, transfert, passeport, visa. Seul le séjour publié montre la photo du lieu. Un modèle
+        part si le téléphone est valide, si le client a accepté WhatsApp, et si Meta a approuvé le
+        texte. Sans le modèle illustré, le texte de repli part. Une réponse part quand le client
+        vient d’écrire. Les prénoms, heures et montants des réponses sont un exemple fictif à Avoriaz.
       </p>
 
       <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

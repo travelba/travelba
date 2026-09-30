@@ -1,5 +1,5 @@
 import { randomInt } from "node:crypto";
-import { isStayCoverMedia } from "./concierge-notices";
+import { isWhatsappTypeMedia } from "./concierge-notices";
 import { whatsappAddress, type WhatsappSendResult } from "./whatsapp";
 import { sendWhatsappSession } from "./whatsapp-session";
 import { isSafeCrmPath } from "./files-access";
@@ -149,7 +149,7 @@ export async function sendTripShareWhatsapp(input: {
   if (body.includes("/mon-compte") || body.includes("/e/")) {
     return { ok: false, reason: "rejected" };
   }
-  const mediaUrl = input.mediaUrl && isStayCoverMedia(input.mediaUrl) ? input.mediaUrl : null;
+  const mediaUrl = input.mediaUrl && isWhatsappTypeMedia(input.mediaUrl) ? input.mediaUrl : null;
   const result = await sendWhatsappSession({ to, body, mediaUrl, fetchImpl: input.fetchImpl });
   if (result.ok) return { ok: true, sid: result.sid };
   if (result.detail === "not_configured") return { ok: false, reason: "not_configured" };

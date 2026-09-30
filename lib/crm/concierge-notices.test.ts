@@ -332,14 +332,20 @@ test("la photo du lieu est sur la carte, le texte reste le repli", () => {
     if (card) {
       assert.equal(card.media.length, 1);
       assert.match(card.media[0], /^\{\{\d+\}\}$/);
-      const sampleCover = Object.values(draft.create.variables).find((value) =>
-        String(value).includes("/api/covers/sejour/")
+      const sampleCover = Object.values(draft.create.variables).find(
+        (value) => String(value).includes("/api/covers/sejour/") || String(value).includes("/whatsapp/")
       );
-      assert.match(String(sampleCover), /\/api\/covers\/sejour\/TB-2026-0028$/);
+      if (draft.template === "sejour" || draft.template === "sejour_sans_lieu") {
+        assert.match(String(sampleCover), /\/api\/covers\/sejour\/TB-2026-0028$/);
+      } else {
+        assert.match(String(sampleCover), /\/whatsapp\/[a-z]+\.jpg$/);
+        assert.equal(String(sampleCover).includes("/api/covers/sejour/"), false);
+      }
       withPhoto += 1;
     } else {
       assert.ok(text);
       assert.equal(JSON.stringify(draft.create).includes("/api/covers/"), false);
+      assert.equal(JSON.stringify(draft.create).includes("/whatsapp/"), false);
       assert.match(body, /séjour/);
     }
   }
@@ -382,16 +388,27 @@ test("hôtel, vol, transfert et formalité nomment le séjour, sans photo", () =
   assert.equal(hotel?.["3"], undefined);
   assert.equal(JSON.stringify(hotel).includes("/api/covers/"), false);
   assert.equal(conciergePhotoTemplate("piece_hotel"), "piece_hotel_photo");
+  const hotelJpg = "https://travelba.fr/whatsapp/hotel.jpg";
   const hotelPhoto = conciergeContentVariables({
     template: "piece_hotel_photo",
     buttonSuffix: "c/K7MQ2PX4",
     place: "Avoriaz",
     reference,
-    mediaUrl: cover,
+    mediaUrl: hotelJpg,
   });
   assert.equal(hotelPhoto?.["1"], "Avoriaz, réservation TB-2026-0004,");
-  assert.equal(hotelPhoto?.["2"], cover);
+  assert.equal(hotelPhoto?.["2"], hotelJpg);
   assert.equal(hotelPhoto?.["3"], "c/K7MQ2PX4");
+  assert.equal(
+    conciergeContentVariables({
+      template: "piece_hotel_photo",
+      buttonSuffix: "c/K7MQ2PX4",
+      place: "Avoriaz",
+      reference,
+      mediaUrl: cover,
+    }),
+    null
+  );
   assert.equal(
     conciergeContentVariables({
       template: "piece_hotel_photo",

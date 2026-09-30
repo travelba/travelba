@@ -190,7 +190,7 @@ test("le message part du numéro Business, avec le lien /v/", async () => {
     assert.equal((params.get("Body") || "").includes("/mon-compte"), false);
 
     body = "";
-    const illustrated = await sendTripShareWhatsapp({
+    const stayPhoto = await sendTripShareWhatsapp({
       phone: "+33601020304",
       firstName: "Camille",
       title: "Marrakech",
@@ -201,8 +201,23 @@ test("le message part du numéro Business, avec le lien /v/", async () => {
         return new Response(JSON.stringify({ sid: "SMTEST2" }), { status: 200 });
       },
     });
+    assert.equal(stayPhoto.ok, true);
+    assert.equal(new URLSearchParams(body).get("MediaUrl"), null);
+
+    body = "";
+    const illustrated = await sendTripShareWhatsapp({
+      phone: "+33601020304",
+      firstName: "Camille",
+      title: "Marrakech",
+      url: "https://travelba.fr/v/ABCDEFGH",
+      mediaUrl: "https://travelba.fr/whatsapp/partage.jpg",
+      fetchImpl: async (_url, init) => {
+        body = String(init?.body || "");
+        return new Response(JSON.stringify({ sid: "SMTEST3" }), { status: 200 });
+      },
+    });
     assert.equal(illustrated.ok, true);
-    assert.equal(new URLSearchParams(body).get("MediaUrl"), "https://travelba.fr/api/covers/sejour/TB-2026-0004");
+    assert.equal(new URLSearchParams(body).get("MediaUrl"), "https://travelba.fr/whatsapp/partage.jpg");
     assert.equal((params.get("Body") || "").includes("+336"), false);
   } finally {
     if (previous.sid === undefined) delete process.env.TWILIO_ACCOUNT_SID;

@@ -26,7 +26,7 @@ import {
   type TravelDocType,
 } from "./types";
 import { clientVisaStepCopy, type ClientVisaStep } from "./visa-flow";
-import { stayCoverUrl } from "./concierge-notices";
+import { stayCoverUrl, whatsappTypeImageUrl, type WhatsappImageKind } from "./concierge-notices";
 import { CONCIERGE_SIGNATURE, withConciergeSignature } from "./whatsapp";
 
 export const UNKNOWN_NUMBER_REPLY = "L’espace s’ouvre sur invitation.";
@@ -134,7 +134,7 @@ export type ConciergeTurn = {
   handoff: HandoffKind | null;
   bookingId: string | null;
   text: string;
-  /** JPEG public du lieu, seulement quand la réponse parle de ce séjour. */
+  /** Image du sujet : billet, visa, hôtel… La couverture du lieu seulement pour le séjour lui-même. */
   cover: string | null;
   optOut: boolean;
   access: boolean;
@@ -781,9 +781,31 @@ export function panRefusedReply(lang: ReplyLang) {
   return sign(body);
 }
 
-function replyCover(stay: ConciergeStay | null, thin: boolean) {
-  if (thin || !stay?.cover) return null;
-  return stayCoverUrl(stay.reference, true);
+function typeImage(kind: WhatsappImageKind) {
+  return whatsappTypeImageUrl(kind);
+}
+
+function replyImage(message: string, topic: string, stay: ConciergeStay | null, thin: boolean) {
+  if (thin) return null;
+  const text = fold(message);
+  if (topic === "documents") return typeImage("passeport");
+  if (topic === "formality") return typeImage("visa");
+  if (topic === "chauffeur") return typeImage("chauffeur");
+  if (topic === "balance" || topic === "transactions" || topic === "price") return typeImage("encours");
+  if (topic === "included") return typeImage("hotel");
+  if (topic === "schedule") {
+    if (/hotel|chambre/.test(text)) return typeImage("hotel");
+    if (/transfert|navette/.test(text)) return typeImage("transfert");
+    return typeImage("billet");
+  }
+  if (topic === "stay") {
+    if (/hotel|chambre/.test(text)) return typeImage("hotel");
+    if (/\bvol\b|avion|billet|flight/.test(text)) return typeImage("billet");
+    if (/transfert/.test(text)) return typeImage("transfert");
+    if (stay?.cover) return stayCoverUrl(stay.reference, true);
+  }
+  if (topic === "hello" && stay?.cover) return stayCoverUrl(stay.reference, true);
+  return null;
 }
 
 export function planConciergeTurn(message: string, dossier: ConciergeDossier): ConciergeTurn {
@@ -850,6 +872,6 @@ export function planConciergeTurn(message: string, dossier: ConciergeDossier): C
     handoff: null,
     bookingId: stay?.id || null,
     text: sign(body),
-    cover: replyCover(stay, thin),
+    cover: replyImage(message, topic, stay, thin),
   };
 }

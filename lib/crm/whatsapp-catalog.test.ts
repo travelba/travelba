@@ -39,7 +39,13 @@ test("les textes qui partent reprennent les fonctions d’envoi", () => {
   const hotel = byId.get("piece-hotel");
   assert.match(hotel?.bubble.body || "", /confirmation d'hôtel pour le séjour à Avoriaz/);
   assert.equal(hotel?.bubble.photo, true);
-  assert.match(hotel?.bubble.image || "", /\/api\/covers\/sejour\/TB-2026-0028$/);
+  assert.match(hotel?.bubble.image || "", /\/whatsapp\/hotel\.jpg$/);
+  assert.equal(hotel?.bubble.imageAlt, "Hôtel");
+  assert.match(byId.get("piece-vol")?.bubble.image || "", /\/whatsapp\/billet\.jpg$/);
+  assert.match(byId.get("formalite-prete")?.bubble.image || "", /\/whatsapp\/visa\.jpg$/);
+  assert.match(byId.get("passeport")?.bubble.image || "", /\/whatsapp\/passeport\.jpg$/);
+  assert.equal((hotel?.bubble.image || "").includes("/api/covers/sejour/"), false);
+  assert.match(byId.get("sejour-photo")?.bubble.image || "", /\/api\/covers\/sejour\/TB-2026-0028$/);
   assert.match(hotel?.fallback?.body || "", /confirmation d'hôtel pour le séjour à Avoriaz/);
   assert.equal(hotel?.fallback?.photo, false);
   assert.match(hotel?.earlier?.body || "", /Votre confirmation d'hôtel, réservation TB-2026-0028/);

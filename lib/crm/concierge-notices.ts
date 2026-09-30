@@ -106,7 +106,91 @@ export function isStayCoverMedia(url: string) {
   }
 }
 
+export const WHATSAPP_IMAGE_KINDS = [
+  "hotel",
+  "billet",
+  "transfert",
+  "pieces",
+  "document",
+  "passeport",
+  "visa",
+  "encours",
+  "chauffeur",
+  "rappel",
+  "connexion",
+  "partage",
+] as const;
+
+export type WhatsappImageKind = (typeof WHATSAPP_IMAGE_KINDS)[number];
+
+const WHATSAPP_IMAGE_FILE = new RegExp(`^/whatsapp/(${WHATSAPP_IMAGE_KINDS.join("|")})\\.jpg$`);
+
+/** Illustration du sujet du message. Pas la couverture du séjour. */
+export function whatsappTypeImageUrl(kind: WhatsappImageKind) {
+  return `${siteConfig.url}/whatsapp/${kind}.jpg`;
+}
+
+export const WHATSAPP_IMAGE_ALT: Record<WhatsappImageKind, string> = {
+  hotel: "Hôtel",
+  billet: "Billet d’avion",
+  transfert: "Transfert",
+  pieces: "Pièces du voyage",
+  document: "Document",
+  passeport: "Passeport",
+  visa: "Visa",
+  encours: "Encours",
+  chauffeur: "Chauffeur",
+  rappel: "Départ",
+  connexion: "Accès à l’espace",
+  partage: "Partage du voyage",
+};
+
+export function whatsappTypeImageKind(url: string): WhatsappImageKind | null {
+  try {
+    const parsed = new URL(url);
+    const kind = parsed.pathname.match(WHATSAPP_IMAGE_FILE)?.[1];
+    return kind ? (kind as WhatsappImageKind) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** JPEG d’une typologie, hébergé sur travelba.fr. */
+export function isWhatsappTypeMedia(url: string) {
+  if (/og-concierge|supabase\.co|token=/i.test(url)) return false;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:") return false;
+    const host = parsed.hostname.replace(/^www\./, "");
+    if (host !== "travelba.fr") return false;
+    return WHATSAPP_IMAGE_FILE.test(parsed.pathname);
+  } catch {
+    return false;
+  }
+}
+
+export function isConciergeMedia(url: string) {
+  return isStayCoverMedia(url) || isWhatsappTypeMedia(url);
+}
+
 /** 404 ou logo : pas d’image. Le message part en texte, avec le bouton. */
+export async function liveConciergeImage(url: string | null, fetchImpl: typeof fetch = fetch) {
+  if (!url || !isConciergeMedia(url)) return null;
+  try {
+    const response = await fetchImpl(url, {
+      method: "GET",
+      redirect: "manual",
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!response.ok) return null;
+    const type = (response.headers.get("content-type") || "").toLowerCase();
+    if (!type.startsWith("image/")) return null;
+    return url;
+  } catch {
+    return null;
+  }
+}
+
 export async function liveStayCover(url: string | null, fetchImpl: typeof fetch = fetch) {
   if (!url || !isStayCoverMedia(url)) return null;
   try {
@@ -454,12 +538,13 @@ function stayButtonDraft(input: {
   };
 }
 
-/** Même texte, avec la photo du lieu : {{1}} séjour, {{2}} image, {{3}} suffixe. */
+/** Même texte, avec l’image du sujet : {{1}} séjour, {{2}} image, {{3}} suffixe. */
 function stayPhotoDraft(input: {
   template: ConciergeTemplate;
   friendlyName: string;
   body: string;
   button: string;
+  image: string;
 }) {
   return {
     template: input.template,
@@ -468,7 +553,7 @@ function stayPhotoDraft(input: {
     exemplar: true as const,
     create: contentDraft({
       friendlyName: input.friendlyName,
-      variables: { "1": SAMPLE_STAY, "2": SAMPLE_COVER, "3": SAMPLE_CODE },
+      variables: { "1": SAMPLE_STAY, "2": input.image, "3": SAMPLE_CODE },
       types: mediaTemplate(signed(input.body), input.button, "2", "3"),
     }),
   };
@@ -481,6 +566,7 @@ function stayCardPair(input: {
   photoName: string;
   body: string;
   button: string;
+  image: string;
 }) {
   return [
     stayButtonDraft({
@@ -494,6 +580,7 @@ function stayCardPair(input: {
       friendlyName: input.photoName,
       body: input.body,
       button: input.button,
+      image: input.image,
     }),
   ];
 }
@@ -567,7 +654,7 @@ export function conciergeContentDrafts() {
       friendlyName: "pieces_reservation_photo",
       create: contentDraft({
         friendlyName: "pieces_reservation_photo",
-        variables: { "1": "billets, réservation TB-2026-0028, séjour à Avoriaz,", "2": sampleImage, "3": code },
+        variables: { "1": "billets, réservation TB-2026-0028, séjour à Avoriaz,", "2": whatsappTypeImageUrl("pieces"), "3": code },
         types: mediaTemplate(
           `Vos {{1}} sont dans la réservation.${signature}`,
           "Ouvrir la réservation",
@@ -598,7 +685,7 @@ export function conciergeContentDrafts() {
         friendlyName: "piece_reservation_photo",
         variables: {
           "1": "confirmation d'hôtel, réservation TB-2026-0028, séjour à Avoriaz,",
-          "2": sampleImage,
+          "2": whatsappTypeImageUrl("document"),
           "3": code,
         },
         types: mediaTemplate(
@@ -631,7 +718,7 @@ export function conciergeContentDrafts() {
         friendlyName: "pieces_composees_photo",
         variables: {
           "1": "confirmation d'hôtel et le transfert, réservation TB-2026-0028, séjour à Avoriaz,",
-          "2": sampleImage,
+          "2": whatsappTypeImageUrl("pieces"),
           "3": code,
         },
         types: mediaTemplate(
@@ -701,6 +788,7 @@ export function conciergeContentDrafts() {
       photoName: "piece_hotel_photo",
       body: "Votre confirmation d'hôtel pour le séjour à {{1}} est dans votre espace.",
       button: "Voir l'hôtel",
+      image: whatsappTypeImageUrl("hotel"),
     }),
     ...stayCardPair({
       text: "piece_vol",
@@ -709,6 +797,7 @@ export function conciergeContentDrafts() {
       photoName: "piece_vol_photo",
       body: "Votre billet pour le séjour à {{1}} est dans votre espace.",
       button: "Voir le billet",
+      image: whatsappTypeImageUrl("billet"),
     }),
     ...stayCardPair({
       text: "piece_transfert",
@@ -717,6 +806,7 @@ export function conciergeContentDrafts() {
       photoName: "piece_transfert_photo",
       body: "Votre transfert pour le séjour à {{1}} est dans votre espace.",
       button: "Voir le transfert",
+      image: whatsappTypeImageUrl("transfert"),
     }),
     ...stayCardPair({
       text: "pieces_regroupees",
@@ -725,6 +815,7 @@ export function conciergeContentDrafts() {
       photoName: "pieces_regroupees_photo",
       body: "Vos billets, la confirmation d'hôtel et le transfert pour le séjour à {{1}} sont dans votre espace.",
       button: "Ouvrir la réservation",
+      image: whatsappTypeImageUrl("pieces"),
     }),
     ...stayCardPair({
       text: "passeport_carte",
@@ -733,6 +824,7 @@ export function conciergeContentDrafts() {
       photoName: "passeport_sejour_photo",
       body: "Avant le départ du séjour à {{1}} le passeport manque. Déposez-le dans vos pièces.",
       button: "Déposer le passeport",
+      image: whatsappTypeImageUrl("passeport"),
     }),
     ...stayCardPair({
       text: "passeports_carte",
@@ -741,6 +833,7 @@ export function conciergeContentDrafts() {
       photoName: "passeports_sejour_photo",
       body: "Avant le départ du séjour à {{1}} des passeports manquent. Déposez-les dans vos pièces.",
       button: "Déposer les passeports",
+      image: whatsappTypeImageUrl("passeport"),
     }),
     ...stayCardPair({
       text: "encours",
@@ -749,6 +842,7 @@ export function conciergeContentDrafts() {
       photoName: "encours_sejour_photo",
       body: "Votre encours pour le séjour à {{1}} est dans votre espace.",
       button: "Voir l'encours",
+      image: whatsappTypeImageUrl("encours"),
     }),
     ...stayCardPair({
       text: "chauffeur",
@@ -757,6 +851,7 @@ export function conciergeContentDrafts() {
       photoName: "chauffeur_sejour_photo",
       body: "Votre chauffeur pour le séjour à {{1}} est dans votre espace.",
       button: "Voir le chauffeur",
+      image: whatsappTypeImageUrl("chauffeur"),
     }),
     ...stayCardPair({
       text: "rappel",
@@ -765,6 +860,7 @@ export function conciergeContentDrafts() {
       photoName: "rappel_depart_photo",
       body: "Votre séjour à {{1}} approche. Tout est dans votre espace.",
       button: "Voir le séjour",
+      image: whatsappTypeImageUrl("rappel"),
     }),
     ...stayCardPair({
       text: "document",
@@ -773,6 +869,7 @@ export function conciergeContentDrafts() {
       photoName: "document_sejour_photo",
       body: "Une pièce pour le séjour à {{1}} est dans votre espace.",
       button: "Voir la pièce",
+      image: whatsappTypeImageUrl("document"),
     }),
     {
       template: "formalite_prete_carte" as const,
@@ -796,7 +893,7 @@ export function conciergeContentDrafts() {
       exemplar: true as const,
       create: contentDraft({
         friendlyName: "formalite_prete_photo",
-        variables: { "1": "ESTA", "2": SAMPLE_STAY, "3": sampleImage, "4": SAMPLE_CODE },
+        variables: { "1": "ESTA", "2": SAMPLE_STAY, "3": whatsappTypeImageUrl("visa"), "4": SAMPLE_CODE },
         types: mediaTemplate(
           signed("Votre {{1}} pour le séjour à {{2}} est dans vos pièces."),
           "Voir la formalité",
@@ -827,7 +924,7 @@ export function conciergeContentDrafts() {
       exemplar: true as const,
       create: contentDraft({
         friendlyName: "formalite_manquante_photo",
-        variables: { "1": "visa", "2": SAMPLE_STAY, "3": sampleImage, "4": SAMPLE_CODE },
+        variables: { "1": "visa", "2": SAMPLE_STAY, "3": whatsappTypeImageUrl("visa"), "4": SAMPLE_CODE },
         types: mediaTemplate(
           signed("Votre {{1}} pour le séjour à {{2}} manque avant le départ."),
           "Voir la formalité",
@@ -865,7 +962,7 @@ export function conciergeContentDrafts() {
       exemplar: true as const,
       create: contentDraft({
         friendlyName: "connexion_sejour_photo",
-        variables: { "1": "Voyageur", "2": SAMPLE_STAY, "3": sampleImage, "4": SAMPLE_CODE },
+        variables: { "1": "Voyageur", "2": SAMPLE_STAY, "3": whatsappTypeImageUrl("connexion"), "4": SAMPLE_CODE },
         types: mediaTemplate(
           signed(
             [
@@ -936,7 +1033,7 @@ export function conciergeContentVariables(input: {
     return { "1": pieceTemplateSlot(text, reference, place || null), "2": suffix };
   }
   if (PIECE_PHOTO.has(input.template)) {
-    if (!text || !REFERENCE.test(reference) || !isStayCoverMedia(media)) return null;
+    if (!text || !REFERENCE.test(reference) || !isWhatsappTypeMedia(media)) return null;
     return { "1": pieceTemplateSlot(text, reference, place || null), "2": media, "3": suffix };
   }
   if (STAY_CARDS.has(input.template)) {
@@ -944,7 +1041,7 @@ export function conciergeContentVariables(input: {
     return { "1": stayTemplateSlot(place, reference), "2": suffix };
   }
   if (STAY_PHOTO.has(input.template)) {
-    if (!place || !REFERENCE.test(reference) || HUB.test(place) || !isStayCoverMedia(media)) return null;
+    if (!place || !REFERENCE.test(reference) || HUB.test(place) || !isWhatsappTypeMedia(media)) return null;
     return { "1": stayTemplateSlot(place, reference), "2": media, "3": suffix };
   }
   if (input.template === "formalite_prete_carte" || input.template === "formalite_manquante_carte") {
@@ -955,7 +1052,7 @@ export function conciergeContentVariables(input: {
     input.template === "formalite_prete_carte_photo" ||
     input.template === "formalite_manquante_carte_photo"
   ) {
-    if (!text || !place || !REFERENCE.test(reference) || HUB.test(place) || !isStayCoverMedia(media)) return null;
+    if (!text || !place || !REFERENCE.test(reference) || HUB.test(place) || !isWhatsappTypeMedia(media)) return null;
     return { "1": text, "2": stayTemplateSlot(place, reference), "3": media, "4": suffix };
   }
   if (input.template === "connexion_carte") {
@@ -963,7 +1060,7 @@ export function conciergeContentVariables(input: {
     return { "1": text, "2": stayTemplateSlot(place, reference), "3": suffix };
   }
   if (input.template === "connexion_carte_photo") {
-    if (!text || !place || !REFERENCE.test(reference) || HUB.test(place) || !isStayCoverMedia(media)) return null;
+    if (!text || !place || !REFERENCE.test(reference) || HUB.test(place) || !isWhatsappTypeMedia(media)) return null;
     return { "1": text, "2": stayTemplateSlot(place, reference), "3": media, "4": suffix };
   }
   if (!text) return null;
@@ -985,7 +1082,7 @@ const STAY_PHOTO = new Set<ConciergeTemplate>([
   "document_photo",
 ]);
 
-/** Carte avec la photo du lieu. Vide si ce modèle n’a pas de version illustrée. */
+/** Carte illustrée du sujet. Vide si ce modèle n’a pas de version illustrée. */
 export function conciergePhotoTemplate(template: ConciergeTemplate): ConciergeTemplate | null {
   const photo: Partial<Record<ConciergeTemplate, ConciergeTemplate>> = {
     piece_hotel: "piece_hotel_photo",
@@ -1006,6 +1103,51 @@ export function conciergePhotoTemplate(template: ConciergeTemplate): ConciergeTe
     pieces_composees: "pieces_composees_photo",
   };
   return photo[template] || null;
+}
+
+const TEMPLATE_IMAGE: Partial<Record<ConciergeTemplate, WhatsappImageKind>> = {
+  piece_hotel: "hotel",
+  piece_hotel_photo: "hotel",
+  piece_vol: "billet",
+  piece_vol_photo: "billet",
+  piece_transfert: "transfert",
+  piece_transfert_photo: "transfert",
+  pieces_regroupees: "pieces",
+  pieces_regroupees_photo: "pieces",
+  pieces: "pieces",
+  pieces_photo: "pieces",
+  pieces_composees: "pieces",
+  pieces_composees_photo: "pieces",
+  piece: "document",
+  piece_photo: "document",
+  document: "document",
+  document_photo: "document",
+  passeport: "passeport",
+  passeport_carte: "passeport",
+  passeport_carte_photo: "passeport",
+  passeports: "passeport",
+  passeports_carte: "passeport",
+  passeports_carte_photo: "passeport",
+  formalite_prete: "visa",
+  formalite_prete_carte: "visa",
+  formalite_prete_carte_photo: "visa",
+  formalite_manquante: "visa",
+  formalite_manquante_carte: "visa",
+  formalite_manquante_carte_photo: "visa",
+  encours: "encours",
+  encours_photo: "encours",
+  chauffeur: "chauffeur",
+  chauffeur_photo: "chauffeur",
+  rappel: "rappel",
+  rappel_photo: "rappel",
+  connexion_carte: "connexion",
+  connexion_carte_photo: "connexion",
+};
+
+/** Image du sujet. Le séjour publié, lui, garde la couverture du lieu. */
+export function conciergeTemplateImage(template: ConciergeTemplate) {
+  const kind = TEMPLATE_IMAGE[template];
+  return kind ? whatsappTypeImageUrl(kind) : null;
 }
 
 const STAY_CARDS = new Set<ConciergeTemplate>([

@@ -3,7 +3,7 @@ import { toE164 } from "./phone";
 import { uploadCrmFile } from "./files";
 import { redactIngestText } from "./ingest-redact";
 import { formParams, verifyTwilioSignature } from "./twilio-signature";
-import { liveStayCover } from "./concierge-notices";
+import { liveConciergeImage } from "./concierge-notices";
 import { withConciergeSignature } from "./whatsapp";
 import {
   accessLinkReply,
@@ -311,7 +311,7 @@ export async function receiveWhatsappWebhook(input: {
 
   if (customer && bookingId) await input.store.tagMessage?.(inbound.id, bookingId);
 
-  if (mediaUrl) mediaUrl = await liveStayCover(mediaUrl, input.fetchImpl);
+  if (mediaUrl) mediaUrl = await liveConciergeImage(mediaUrl, input.fetchImpl);
   const sent = await input.send({ to, body: reply, mediaUrl });
   const outbound = await input.store.insertMessage({
     customer_id: customer?.id || null,

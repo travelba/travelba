@@ -13,11 +13,13 @@ import {
   conciergeContentSid,
   conciergeContentVariables,
   conciergePhotoTemplate,
+  conciergeTemplateImage,
   normalizePieceKind,
   PIECES_WINDOW_MS,
   planFormalityReady,
   planMissingPieceNotices,
   planPiecesNotices,
+  liveConciergeImage,
   liveStayCover,
   noticeCardTemplate,
   pieceCardTemplate,
@@ -196,16 +198,17 @@ async function deliverTemplate(admin: Admin, input: {
     await markResult(admin, input.row.id, { ok: false, reason: "rejected", detail: "lien absent" });
     return;
   }
-  const photoTemplate = input.mediaUrl ? conciergePhotoTemplate(input.card || input.template) : null;
+  const photoTemplate = conciergePhotoTemplate(input.card || input.template);
   const photoSid = photoTemplate ? conciergeContentSid(photoTemplate) : "";
+  const photoMedia = photoTemplate ? await liveConciergeImage(conciergeTemplateImage(photoTemplate)) : null;
   const photoVariables =
-    photoTemplate && photoSid
+    photoTemplate && photoSid && photoMedia
       ? conciergeContentVariables({
           template: photoTemplate,
           buttonSuffix: suffix,
           place: input.place,
           reference: input.reference,
-          mediaUrl: input.mediaUrl,
+          mediaUrl: photoMedia,
           variable: input.variable,
         })
       : null;
