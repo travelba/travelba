@@ -53,3 +53,4 @@ Produit FR pour agence de voyage : back-office `/admin` (clients, réservations,
 - Contacts d’hôtel = catalogue Little Emperors, **admin seulement** (Milano = Milan). Jamais sur l’interface client, l’aperçu client ni le lien public. Pas le correspondant du PDF — skill `travelba-carnet`
 - Ingest documents côté client
 - Committer des PDF d’entraînement ou de la PII (PAN, noms) — skill `travelba-document-ingest`
+- Redemander un jeton Pliant. Auth0 en donne une poignée par jour : un seul appel, gardé dans `crm_integrations` jusqu’à expiration, verrou `crm_claim_integration_refresh`. Preview ne présente pas les identifiants (`productionOnlySecret`). Pas de `client_credentials` hors `lib/crm/pliant.ts`. Skill `travelba-visa`

@@ -84,6 +84,7 @@ IDs prod :
 - Cache Components Next.js
 - Inventer des heures, petits-déjs, nets, conditions d’annulation. Little Emperors : tout le bloc Benefits, pas seulement le petit-déjeuner
 - Echo PII client (passeport, email, téléphone) dans un PR / log
+- Redemander un jeton Pliant à Auth0 (quota du jour). Un seul appel, réutilisé via `acquirePliantToken` / `crm_integrations`. Preview sans identifiants de production. Skill `travelba-visa`
 
 ## Fichiers clés
 
