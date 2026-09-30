@@ -7,6 +7,8 @@ import {
   entryButtonSuffix,
   entryLinkUrl,
   entryOpenRequested,
+  isPreviewBot,
+  shouldOpenFromGet,
   entryDestination,
   entryPreviewHtml,
   isLinkCrawler,
@@ -39,6 +41,58 @@ test("WhatsApp reçoit le titre sans consommer le jeton", () => {
   assert.equal(shouldServePreview("Mozilla/5.0", "?1", { mode: "navigate", dest: "document" }), true);
   assert.equal(entryOpenRequested("?ouvrir=1"), true);
   assert.equal(entryOpenRequested(""), false);
+  assert.equal(isPreviewBot("WhatsApp/2.23.20.72 A"), true);
+  assert.equal(isPreviewBot("Mozilla/5.0 (iPhone) Mobile WhatsApp/24.1"), false);
+  assert.equal(
+    shouldOpenFromGet({
+      search: "",
+      userAgent: "WhatsApp/2.23.20.72 A",
+      secFetchUser: "?1",
+      secFetchDest: "document",
+      purpose: null,
+    }),
+    false
+  );
+  assert.equal(
+    shouldOpenFromGet({
+      search: "?ouvrir=1",
+      userAgent: "WhatsApp/2.23.20.72 A",
+      secFetchUser: null,
+      secFetchDest: null,
+      purpose: null,
+    }),
+    false
+  );
+  assert.equal(
+    shouldOpenFromGet({
+      search: "",
+      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+      secFetchUser: "?1",
+      secFetchDest: "document",
+      purpose: null,
+    }),
+    true
+  );
+  assert.equal(
+    shouldOpenFromGet({
+      search: "?ouvrir=1",
+      userAgent: "Mozilla/5.0 (iPhone) Mobile",
+      secFetchUser: null,
+      secFetchDest: null,
+      purpose: null,
+    }),
+    true
+  );
+  assert.equal(
+    shouldOpenFromGet({
+      search: "",
+      userAgent: "Mozilla/5.0",
+      secFetchUser: "?1",
+      secFetchDest: "document",
+      purpose: "prefetch",
+    }),
+    false
+  );
   const stay = stayPreviewCopy({
     origin: "https://travelba.fr",
     reference: "TB-2026-0004",
@@ -64,13 +118,14 @@ test("WhatsApp reçoit le titre sans consommer le jeton", () => {
   assert.match(html, /method="post"/);
   assert.match(html, /name="ouvrir"/);
   assert.match(html, /value="1"/);
-  assert.match(html, /<script>document\.forms\[0\]\.submit\(\)<\/script>/);
+  assert.match(html, /<script>location\.replace\(location\.pathname\+"\?ouvrir=1"\)<\/script>/);
+  assert.equal(html.includes("forms[0].submit"), false);
   assert.match(html, /name="viewport" content="width=device-width, initial-scale=1"/);
   assert.match(html, /<img src="https:\/\/travelba\.fr\/api\/covers\/sejour\/TB-2026-0004"/);
   assert.match(html, /class="door photo"/);
   assert.match(html, /<p class="lead">Réservation TB-2026-0004<\/p>/);
-  assert.equal(html.includes("location.replace"), false);
   assert.equal(html.includes("http-equiv"), false);
+  assert.equal(/location\.replace\("https?:/.test(html), false);
   assert.equal(html.includes("/connexion"), false);
   assert.equal(html.includes("noindex"), false);
   assert.equal(html.includes("token"), false);
