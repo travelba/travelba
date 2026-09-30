@@ -10,6 +10,7 @@ import {
   persistNewBookingFromExtract,
 } from "@/lib/crm/ingest-booking";
 import { loadEmailIngestFiles, rematchEmailIngestRow } from "@/lib/crm/email-ingest";
+import { HIDE_PRICE_REQUIRED, readHidePricesChoice } from "@/lib/crm/pdf-price-redact";
 import type { CrmEmailIngest } from "@/lib/crm/types";
 
 export const runtime = "nodejs";
@@ -29,6 +30,7 @@ export async function POST(request: Request, ctx: Ctx) {
     title?: string;
     extract?: unknown;
     apply_stay_currency?: boolean;
+    hide_prices?: unknown;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -91,32 +93,36 @@ export async function POST(request: Request, ctx: Ctx) {
     const files = await loadEmailIngestFiles(row);
     const extractPatch = body.extract ? { extract } : {};
 
-    if (action === "attach_booking") {
-      const bookingId = String(body.booking_id || "");
-      if (!bookingId) return jsonError("Choisissez un voyage");
-      const { data: booking } = await admin
-        .from("crm_bookings")
-        .select("id, customer_id")
-        .eq("id", bookingId)
-        .maybeSingle();
-      if (!booking) return jsonError("Voyage introuvable", 404);
-      await applyExtractToBooking({
-        bookingId,
-        customerId: booking.customer_id,
-        extract,
-        files,
-        staffUserId: auth.user.id,
-        visibleToClient: false,
-        applyStayFields: body.apply_stay_currency === true,
-      });
-      await admin
-        .from("crm_email_ingest")
-        .update({ status: "attached", created_booking_id: bookingId, ...extractPatch })
-        .eq("id", id);
-      return NextResponse.json({ ok: true, booking_id: bookingId });
-    }
+    if (action === "attach_booking" || action === "new_booking") {
+      const hidePrices = readHidePricesChoice(body.hide_prices);
+      if (hidePrices === undefined) return jsonError(HIDE_PRICE_REQUIRED);
 
-    if (action === "new_booking") {
+      if (action === "attach_booking") {
+        const bookingId = String(body.booking_id || "");
+        if (!bookingId) return jsonError("Choisissez un voyage");
+        const { data: booking } = await admin
+          .from("crm_bookings")
+          .select("id, customer_id")
+          .eq("id", bookingId)
+          .maybeSingle();
+        if (!booking) return jsonError("Voyage introuvable", 404);
+        await applyExtractToBooking({
+          bookingId,
+          customerId: booking.customer_id,
+          extract,
+          files,
+          staffUserId: auth.user.id,
+          visibleToClient: false,
+          hidePrices,
+          applyStayFields: body.apply_stay_currency === true,
+        });
+        await admin
+          .from("crm_email_ingest")
+          .update({ status: "attached", created_booking_id: bookingId, ...extractPatch })
+          .eq("id", id);
+        return NextResponse.json({ ok: true, booking_id: bookingId });
+      }
+
       const customerId = String(body.customer_id || "");
       if (!customerId) return jsonError("Choisissez un client");
       const booking = await persistNewBookingFromExtract({
@@ -127,6 +133,7 @@ export async function POST(request: Request, ctx: Ctx) {
         referenceClient: auth.supabase,
         status: "draft",
         visibleToClient: false,
+        hidePrices,
       });
       await admin
         .from("crm_email_ingest")
