@@ -82,10 +82,10 @@ OIDC Vercel : `aiGatewayConfigured()` peut être vrai sur Vercel sans `sk-`. L�
 
 ## Stripe
 
-- Mode **live**. L’encaissement carte, Apple Pay et prélèvement SEPA passe par PaymentIntent sur la réservation client. Pas de PAN. Le virement est l’IBAN du compte Revolut Business, pas un virement Stripe.
+- Mode **live**. L’encaissement carte, Apple Pay et prélèvement SEPA passe par PaymentIntent dans **Transactions**, sur la part société ou particulier de l’encours. Pas de PAN. Le virement est l’IBAN du compte Revolut Business, pas un virement Stripe.
 - Endpoint : `https://travelba.fr/api/webhooks/stripe`
 - Events : `setup_intent.succeeded`, `payment_method.detached`, `payment_intent.succeeded`
-- Pas de page cartes (`/paiement` → facturation). Le règlement est sur la réservation.
+- Pas de page cartes (`/paiement` → facturation). Le règlement est dans Transactions, pas sur la réservation.
 - Sans `sk_live` / `pk_live` / `whsec` en Production, le webhook répond **503** et les boutons carte, Apple Pay et prélèvement disent que le moyen n’est pas ouvert. Le virement dépend de Revolut, pas de ces clés. Ne pas inventer les clés. Le grand livre manuel fonctionne.
 - Ne jamais logger le PaymentMethod brut au-delà de `brand` / `last4` / exp.
 

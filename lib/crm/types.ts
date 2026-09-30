@@ -227,7 +227,7 @@ export type CrmBooking = {
   customer_id: string;
   /** Wallet facturé (admin société ou titulaire). */
   billing_customer_id: string;
-  /** Société de facturation du séjour. N’entre pas dans l’encours. */
+  /** Société de facturation du séjour. Le solde reste unique ; elle sert à la répartition. */
   billing_company_id?: string | null;
   /** company = société du compte ; personal = particulier. */
   payer_kind?: "company" | "personal" | null;
@@ -431,8 +431,10 @@ export type CrmTransaction = {
   source: "manual" | "revolut" | "stripe" | "pliant";
   external_id: string | null;
   status: "pending" | "posted" | "void";
-  /** Société affichée sur la ligne. Ignorée par l’encours. */
+  /** Société de la ligne. Le solde reste unique ; elle range la part société. */
   billing_company_id?: string | null;
+  /** Société ou particulier, quand le règlement n’est pas lié à un seul dossier. */
+  payer_kind?: "company" | "personal" | null;
   created_at: string;
   updated_at: string;
 };

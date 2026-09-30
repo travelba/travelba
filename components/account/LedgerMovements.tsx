@@ -11,7 +11,7 @@ export function LedgerMovements({ rows }: { rows: LedgerMovementRow[] }) {
   const [openId, setOpenId] = useState<string | null>(null);
 
   return (
-    <ul className="space-y-2">
+    <ul className="m-0 list-none space-y-2 p-0 marker:content-none">
       {rows.map((row) => {
         const open = openId === row.id;
         return (

@@ -910,12 +910,12 @@ export function BookingEditor({
                   {
                     kind: "company" as const,
                     title: "Société",
-                    hint: "Une société du compte règle ce voyage.",
+                    hint: "Ce voyage entre dans la part société de l’encours.",
                   },
                   {
                     kind: "personal" as const,
                     title: "Particulier",
-                    hint: "Le client règle depuis son espace : carte, Apple Pay, prélèvement SEPA, virement.",
+                    hint: "Ce voyage entre dans la part particulier de l’encours.",
                   },
                 ]
               ).map((choice) => {
@@ -985,7 +985,7 @@ export function BookingEditor({
               </label>
             ) : null}
             {payerKind === "company" ? (
-              <p className="text-xs text-muted">Moyens ouverts au client : prélèvement SEPA, virement.</p>
+              <p className="text-xs text-muted">Le client règle cette part dans Transactions.</p>
             ) : null}
             <input
               type="hidden"
@@ -1424,7 +1424,6 @@ export function BookingEditor({
           pliantReady={pliantReady}
           shareUrl={shareUrl}
           shareCompanions={shareCompanions}
-          billingCompanies={billingCompanies}
         />
       ) : null}
     </div>

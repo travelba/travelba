@@ -155,11 +155,11 @@ function ManualNewBookingForm({
       <div className="grid gap-3 sm:col-span-3 sm:grid-cols-2" role="radiogroup" aria-label="Qui règle ce voyage">
         {(
           [
-            { kind: "company" as const, title: "Société", hint: "Une société du compte règle ce voyage." },
+            { kind: "company" as const, title: "Société", hint: "Ce voyage entre dans la part société de l’encours." },
             {
               kind: "personal" as const,
               title: "Particulier",
-              hint: "Le client règle depuis son espace : carte, Apple Pay, prélèvement SEPA, virement.",
+              hint: "Ce voyage entre dans la part particulier de l’encours.",
             },
           ]
         ).map((choice) => {

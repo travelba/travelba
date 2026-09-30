@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  anchorBillingCompanyId,
   assignPayer,
   collectableStayAmount,
   defaultPayer,
+  encoursPartLabel,
+  fitPayerOwed,
+  owedByPayer,
   payerBadge,
   paymentSlips,
   resolveFeesFollowStay,
@@ -218,6 +222,7 @@ test("un paiement abouti devient un crédit, un virement en attente non", () => 
   });
   assert.equal(card?.kind, "card_payment");
   assert.equal(card?.billing_company_id, null);
+  assert.equal(card?.payer_kind, "personal");
   assert.equal(
     stripeCreditFromIntent({
       id: "pi_3",
@@ -233,4 +238,52 @@ test("un paiement abouti devient un crédit, un virement en attente non", () => 
     }),
     null
   );
+});
+
+test("l’encours dû se répartit entre société et particulier", () => {
+  const payers = new Map<string, "company" | "personal" | null>([
+    ["b1", "company"],
+    ["b2", "personal"],
+  ]);
+  const split = owedByPayer(
+    [
+      { direction: "debit", amount: 1000, booking_id: "b1", status: "posted", currency: "EUR" },
+      { direction: "debit", amount: 400, booking_id: "b2", status: "posted", currency: "EUR" },
+      { direction: "credit", amount: 200, status: "posted", currency: "EUR" },
+    ],
+    payers,
+    "EUR"
+  );
+  const owed = fitPayerOwed(split.company, split.personal, 1200);
+  assert.equal(owed.total, 1200);
+  assert.equal(Math.round((owed.company + owed.personal) * 100) / 100, 1200);
+  assert.equal(owed.company > owed.personal, true);
+  assert.equal(encoursPartLabel("company", "Horizon"), "Société · Horizon");
+  assert.equal(encoursPartLabel("personal", "Horizon"), "Particulier");
+  assert.equal(
+    anchorBillingCompanyId([
+      { direction: "debit", amount: 80, billing_company_id: "a", status: "posted", currency: "EUR" },
+      { direction: "debit", amount: 20, billing_company_id: "b", status: "posted", currency: "EUR" },
+    ]),
+    "a"
+  );
+});
+
+test("un règlement d’encours sans dossier devient un crédit de la bonne part", () => {
+  const credit = stripeCreditFromIntent({
+    id: "pi_ledger",
+    status: "succeeded",
+    amount: 80000,
+    currency: "eur",
+    metadata: {
+      crm_customer_id: "c1",
+      payer_kind: "personal",
+      pay_method: "card",
+      pay_mention: "Particulier",
+    },
+  });
+  assert.equal(credit?.booking_id, null);
+  assert.equal(credit?.payer_kind, "personal");
+  assert.equal(credit?.kind, "card_payment");
+  assert.match(credit?.label || "", /Particulier/);
 });

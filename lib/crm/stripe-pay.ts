@@ -1,4 +1,4 @@
-import type { PayerKind } from "@/lib/crm/payer";
+import { payerKindOf, type PayerKind } from "@/lib/crm/payer";
 
 /** Moyens proposés dans l’espace client. Apple Pay passe par la carte Stripe. Le virement est Revolut. */
 export const STAY_PAY_METHODS = ["card", "apple_pay", "sepa_debit", "revolut"] as const;
@@ -115,22 +115,30 @@ export function stripeCreditFromIntent(intent: IntentLike) {
   if (intent.status !== "succeeded" || !intent.id) return null;
   const metadata = intent.metadata || {};
   const customerId = metadata.crm_customer_id || "";
-  const bookingId = metadata.crm_booking_id || "";
+  const bookingId = (metadata.crm_booking_id || "").trim();
   const method = stayPayMethodOf(metadata.pay_method);
   const amount = Number(intent.amount);
-  if (!customerId || !bookingId || !method || method === "revolut" || !Number.isFinite(amount) || amount <= 0) {
+  const companyId = (metadata.billing_company_id || "").trim();
+  const payer = payerKindOf(metadata.payer_kind) || (companyId ? "company" : bookingId ? "personal" : null);
+  if (!customerId || !payer || !method || method === "revolut" || !Number.isFinite(amount) || amount <= 0) {
     return null;
   }
-  const companyId = (metadata.billing_company_id || "").trim();
+  const mention = (metadata.pay_mention || "").trim();
+  const label = bookingId
+    ? stripeCreditLabel(method, metadata.reference || bookingId, mention)
+    : mention
+      ? `Règlement ${mention} · ${STAY_PAY_LABELS[method]}`
+      : `Règlement ${payer === "company" ? "société" : "particulier"} · ${STAY_PAY_LABELS[method]}`;
   return {
     customer_id: customerId,
-    booking_id: bookingId,
+    booking_id: bookingId || null,
     billing_company_id: companyId || null,
+    payer_kind: payer,
     direction: "credit" as const,
     kind: stripeCreditKind(method),
     amount: Math.round(amount) / 100,
     currency: (intent.currency || "eur").toUpperCase(),
-    label: stripeCreditLabel(method, metadata.reference || bookingId, metadata.pay_mention),
+    label,
     source: "stripe" as const,
     external_id: intent.id,
     status: "posted" as const,
