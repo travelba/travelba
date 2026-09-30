@@ -102,6 +102,7 @@ export function BookingEditor({
   hotelRequests = [],
   hasCardCode = false,
   cardViews = [],
+  attachedEmails = [],
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -129,6 +130,13 @@ export function BookingEditor({
   hotelRequests?: CrmHotelRequest[];
   hasCardCode?: boolean;
   cardViews?: CardViewLine[];
+  attachedEmails?: {
+    id: string;
+    subject: string | null;
+    from_email: string | null;
+    received_at: string | null;
+    extract?: unknown;
+  }[];
 }) {
   const router = useRouter();
   const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
@@ -1013,6 +1021,7 @@ export function BookingEditor({
         hasCardCode={hasCardCode}
         cardViews={cardViews}
         clientSettlesStay={clientSettles}
+        attachedEmails={attachedEmails}
         onBindDraftSave={(save) => {
           saveOpenCard.current = save;
         }}

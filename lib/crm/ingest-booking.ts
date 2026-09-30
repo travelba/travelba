@@ -33,6 +33,11 @@ import {
 } from "@/lib/crm/ingest-types";
 import { assertStaffIngestPath, ingestBatchPrefix } from "@/lib/crm/ingest-storage";
 import { sortItemsByOrder } from "@/lib/crm/carnet";
+import {
+  IMPORT_AGENCY_NOTE,
+  IMPORT_DOCUMENTS_NOTE,
+  IMPORT_QUOTE_NOTE,
+} from "@/lib/crm/email-detach";
 import { cancellationApplyPlan } from "@/lib/crm/email-match";
 import { findMatchingItem } from "@/lib/crm/item-match";
 import { inferAirlineIata } from "@/lib/crm/brand-marks";
@@ -281,7 +286,8 @@ async function upsertItemsAndTravelers(
   companions: CrmCompanion[],
   existingTravelers: { first_name: string | null; last_name: string | null }[],
   existingItems: CrmBookingItem[],
-  docs: UploadedDoc[]
+  docs: UploadedDoc[],
+  emailIngestId?: string
 ) {
   const remaining = [...existingItems];
   let sort = existingItems.reduce((max, row) => Math.max(max, row.sort_order || 0), -1) + 1;
@@ -360,12 +366,16 @@ async function upsertItemsAndTravelers(
             .eq("booking_id", bookingId);
         }
       } else {
+        const insertedDetails = emailIngestId
+          ? { ...details, email_ingest_id: emailIngestId }
+          : details;
         const { data: inserted, error } = await supabase
           .from("crm_booking_items")
           .insert({
             booking_id: bookingId,
             sort_order: sort++,
             ...payload,
+            details: insertedDetails,
           })
           .select("id")
           .single();
@@ -378,6 +388,7 @@ async function upsertItemsAndTravelers(
             created_at: "",
             updated_at: "",
             ...payload,
+            details: insertedDetails,
           } as CrmBookingItem);
           if (payload.source_document_id) {
             await supabase
@@ -444,6 +455,8 @@ export async function persistNewBookingFromExtract(opts: {
   visibleToClient: boolean;
   /** Client authentifié de l’agent : la RPC de référence tourne sous son rôle (crm_private). */
   referenceClient?: SupabaseClient;
+  /** Mail source : tamponné sur les cartes créées, pour pouvoir les remettre dans la file. */
+  emailIngestId?: string;
 }) {
   const admin = createServiceClient();
   const [{ data: customer }, { data: companions }] = await Promise.all([
@@ -489,10 +502,10 @@ export async function persistNewBookingFromExtract(opts: {
       notes_client: emptyToNull(extract.notes_client),
       notes_internal:
         extract.document_status === "quote"
-          ? "Devis importé — tarifs non bloqués, à confirmer."
+          ? IMPORT_QUOTE_NOTE
           : (opts.staged?.length || opts.files?.length)
-            ? "Dossier créé par lecture de documents."
-            : "Dossier créé par l’agence.",
+            ? IMPORT_DOCUMENTS_NOTE
+            : IMPORT_AGENCY_NOTE,
       visible_to_client: false,
     })
     .select("*")
@@ -518,7 +531,8 @@ export async function persistNewBookingFromExtract(opts: {
     (companions || []) as CrmCompanion[],
     [],
     [],
-    docs
+    docs,
+    opts.emailIngestId
   );
   await syncBookingTotalFromItems(admin, booking.id);
   const { data: withTotal } = await admin
@@ -542,6 +556,8 @@ export async function applyExtractToBooking(opts: {
   visibleToClient: boolean;
   /** Relecture du formulaire : titre et devise choisis, pas ceux du PDF. */
   applyStayFields?: boolean;
+  /** Mail source : tamponné sur les cartes créées, pour pouvoir les remettre dans la file. */
+  emailIngestId?: string;
 }) {
   const admin = createServiceClient();
   const { data: booking } = await admin
@@ -583,7 +599,8 @@ export async function applyExtractToBooking(opts: {
     (companions || []) as CrmCompanion[],
     (travelers || []) as { first_name: string | null; last_name: string | null }[],
     (items || []) as CrmBookingItem[],
-    docs
+    docs,
+    opts.emailIngestId
   );
   const patch: Record<string, unknown> = {};
   const chosenTitle = emptyToNull(opts.extract.title);
