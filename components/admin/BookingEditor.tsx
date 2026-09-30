@@ -910,17 +910,6 @@ export function BookingEditor({
           </section>
 
           <section className={`admin-af-card space-y-3 rounded-3xl p-5 ${tab === "client" ? "" : "hidden"}`}>
-            <CoverMark>Mots</CoverMark>
-            <label className="flex flex-col gap-2 rounded-3xl border border-[var(--border)] border-l-[3px] border-l-[var(--admin-gold)] bg-white p-4 text-sm font-semibold text-[var(--admin-navy)]">
-              Message pour le client
-              <textarea
-                name="notes_client"
-                defaultValue={booking.notes_client || ""}
-                rows={3}
-                placeholder="Conseils, horaires de rendez-vous…"
-                className={`${coverField} min-h-24 bg-[var(--admin-sky)] font-normal`}
-              />
-            </label>
             <label className="flex flex-col gap-2 rounded-3xl bg-[var(--admin-peach)] p-5 text-sm font-semibold text-[var(--admin-navy)] shadow-[inset_0_0_0_1px_rgba(197,168,128,0.45)]">
               <span className="flex flex-wrap items-baseline justify-between gap-2">
                 Notes pour l’agence
