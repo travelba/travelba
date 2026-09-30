@@ -28,6 +28,7 @@ import {
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
+import { EncoursPayment } from "@/components/account/EncoursPayment";
 import { googlePhoneMap } from "@/lib/crm/calendar-ics";
 import { ClientTripBody } from "@/components/account/ClientTripBody";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
@@ -46,6 +47,8 @@ import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { collectableTicketingFee, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
+import { loadClientLedger } from "@/lib/crm/client-ledger";
+import { stripePublishableKey } from "@/lib/crm/stripe";
 import { StayExpenses } from "@/components/account/StayExpenses";
 import { isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
 
@@ -57,6 +60,7 @@ export default async function ReservationDetailPage({ params }: Props) {
   if (!user) redirect("/connexion");
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");
+  const ledgerPromise = loadClientLedger(supabase, customer, "client");
 
   const { data: booking } = await supabase
     .from("crm_bookings")
@@ -177,6 +181,20 @@ export default async function ReservationDetailPage({ params }: Props) {
   });
 
   const identity = (identityDocs || []) as CrmTravelDocument[];
+  const ledger = await ledgerPromise;
+  const encoursPay =
+    ledger.member || ledger.owed.total <= 0 ? null : (
+      <section id="reglement" className="rounded-xl border border-[#e9e8e5]/60 bg-white p-4 shadow-sm">
+        <EncoursPayment
+          company={ledger.owed.company}
+          personal={ledger.owed.personal}
+          currency={ledger.currency}
+          soleCompanyName={ledger.soleCompanyName}
+          stripeKey={stripePublishableKey()}
+        />
+      </section>
+    );
+
   const passportRows = passportVaultRows(party, identity, todayIsoDate(), {
     first_name: customer.first_name,
     last_name: customer.last_name,
@@ -222,6 +240,7 @@ export default async function ReservationDetailPage({ params }: Props) {
               {b.notes_client}
             </p>
           ) : null}
+          {encoursPay}
         </>
       }
       itinerary={

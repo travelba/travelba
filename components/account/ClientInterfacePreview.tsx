@@ -4,6 +4,7 @@ import { useState, type MouseEvent } from "react";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { ClientPreviewScope } from "@/components/account/client-preview";
 import { ClientTransactionsPanel } from "@/components/account/ClientTransactionsPanel";
+import { EncoursPayment } from "@/components/account/EncoursPayment";
 import { ClientTripBody } from "@/components/account/ClientTripBody";
 import { StayExpenses } from "@/components/account/StayExpenses";
 import { TripSharePanel } from "@/components/account/TripSharePanel";
@@ -31,6 +32,7 @@ import { findVisaExtra, type ServiceRefusal } from "@/lib/crm/extras";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
+import { stripePublishableKey } from "@/lib/crm/stripe";
 import { collectableTicketingFee, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
@@ -292,6 +294,17 @@ function ClientScreen({
     last_name: customer.last_name,
     usage_name: customer.usage_name,
   });
+  const encoursPay =
+    ledger && !ledger.member && ledger.owed.total > 0 ? (
+      <EncoursPayment
+        compact={screen === "transactions"}
+        company={ledger.owed.company}
+        personal={ledger.owed.personal}
+        currency={ledger.currency}
+        soleCompanyName={ledger.soleCompanyName}
+        stripeKey={stripePublishableKey()}
+      />
+    ) : null;
   const title = screen === "transactions" ? "Transactions" : "Réservations";
   return (
     <ClientPreviewScope>
@@ -310,7 +323,7 @@ function ClientScreen({
           {screen === "transactions" ? (
             <div className="px-4 py-4">
               {ledger ? (
-                <ClientTransactionsPanel view={ledger} />
+                <ClientTransactionsPanel view={ledger} payments={encoursPay} />
               ) : (
                 <p className="text-sm text-muted">Le grand livre n’est pas lisible pour le moment.</p>
               )}
@@ -348,6 +361,7 @@ function ClientScreen({
                     {booking.notes_client}
                   </p>
                 ) : null}
+                {screen === "stay" ? encoursPay : null}
               </>
             }
             itinerary={
