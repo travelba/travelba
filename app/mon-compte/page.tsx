@@ -1,11 +1,14 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { ensureCustomerForUser, getSessionUser } from "@/lib/crm/auth";
+import { chosenCalendarHref, googleCalendarHref, originFromHeaders } from "@/lib/crm/calendar-ics";
+import { webcalFeedUrl } from "@/lib/crm/calendar-feed";
 import type { CrmBalance } from "@/lib/crm/types";
 import { encoursCaption, formatDateRangeShort, formatMoney, isUpcomingBooking, jMinusLabel } from "@/lib/crm/money";
 import { isCompanyMember } from "@/lib/crm/company-role";
 import { loadStayArrivalPlaces, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
-import { clientVisibleItems, nextTimelineFlight, stayHeadline, tripPlaceLine } from "@/lib/crm/carnet";
+import { clientVisibleItems, nextTimelineFlight, stayHeadline, tripPlaceLine, type FlightPass } from "@/lib/crm/carnet";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { BoardingPass } from "@/components/account/BoardingPass";
 import { Icon } from "@/components/crm/icons";
@@ -50,15 +53,36 @@ export default async function AccountHomePage() {
   const weather = nextTrip
     ? await destinationWeather(nextTrip.destination, nextTrip.title)
     : null;
-  let homeFlight = null;
+  let homeFlight: FlightPass | null = null;
+  let flightItem: CrmBookingItem | null = null;
   if (nextTrip) {
     const { data: tripItems } = await supabase
       .from("crm_booking_items")
       .select("*")
       .eq("booking_id", nextTrip.id)
       .order("sort_order");
-    homeFlight = nextTimelineFlight(clientVisibleItems((tripItems || []) as CrmBookingItem[]));
+    const rows = clientVisibleItems((tripItems || []) as CrmBookingItem[]);
+    homeFlight = nextTimelineFlight(rows);
+    flightItem = rows.find((row) => row.id === homeFlight?.itemId) || null;
   }
+  const headerList = await headers();
+  const phone =
+    homeFlight && flightItem && nextTrip
+      ? {
+          webcal: nextTrip.visible_to_client
+            ? webcalFeedUrl(originFromHeaders(headerList), nextTrip.reference, flightItem.id)
+            : null,
+          google: googleCalendarHref(flightItem, nextTrip),
+        }
+      : null;
+  const calendarHref =
+    homeFlight && nextTrip
+      ? chosenCalendarHref(
+          `/mon-compte/reservations/${nextTrip.reference}/agenda.ics?item_id=${encodeURIComponent(homeFlight.itemId)}`,
+          phone,
+          headerList.get("user-agent") || ""
+        )
+      : "";
 
   return (
     <div className="space-y-3">
@@ -156,7 +180,9 @@ export default async function AccountHomePage() {
       {homeFlight && nextTrip ? (
         <BoardingPass
           pass={homeFlight}
-          calendarHref={`/mon-compte/reservations/${nextTrip.reference}/agenda.ics?item_id=${encodeURIComponent(homeFlight.itemId)}`}
+          calendarHref={calendarHref}
+          webcalHref={phone?.webcal}
+          googleHref={phone?.google}
         />
       ) : null}
     </div>

@@ -1,6 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildBookingIcs, veventFromItem, veventFromStay } from "./calendar-ics";
+import {
+  buildBookingIcs,
+  calendarOpenTarget,
+  calendarResponsePlan,
+  chosenCalendarHref,
+  googleCalendarHref,
+  icsHttpHeaders,
+  isAppleMobileBrowser,
+  originFromHeaders,
+  veventFromItem,
+  veventFromStay,
+} from "./calendar-ics";
 import type { CrmBooking, CrmBookingItem } from "./types";
 
 function booking(partial: Partial<CrmBooking> = {}): CrmBooking {
@@ -100,4 +111,57 @@ test("séjour entier : dates dossier + événements", () => {
   });
   assert.match(ics, /BEGIN:VCALENDAR/);
   assert.equal((ics.match(/BEGIN:VEVENT/g) || []).length, 2);
+  assert.equal(ics.endsWith("\r\n"), true);
+  assert.match(ics, /X-WR-CALNAME:Marrakech/);
+});
+
+test("une carte : le calendrier porte le vol, pas seulement le séjour", () => {
+  const ics = buildBookingIcs({ booking: booking(), items: [item({})], itemId: "i1", subscription: true });
+  assert.match(ics, /X-WR-CALNAME:Vol CDG → RAK/);
+  assert.match(ics, /X-PUBLISHED-TTL:PT6H/);
+});
+
+test("iPhone ouvre webcal, Android Google Agenda, le bureau garde le fichier", () => {
+  const iphone = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15";
+  const android = "Mozilla/5.0 (Linux; Android 14; Pixel) AppleWebKit/537.36";
+  const mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15";
+  assert.equal(calendarOpenTarget({ ua: iphone, webcalHref: "webcal://travelba.fr/a.ics", googleHref: "https://calendar.google.com/x" }), "webcal://travelba.fr/a.ics");
+  assert.equal(calendarOpenTarget({ ua: android, webcalHref: "webcal://travelba.fr/a.ics", googleHref: "https://calendar.google.com/x" }), "https://calendar.google.com/x");
+  assert.equal(calendarOpenTarget({ ua: mac, webcalHref: "webcal://travelba.fr/a.ics", googleHref: "https://calendar.google.com/x" }), null);
+  assert.equal(isAppleMobileBrowser("iOS/18.0 dataaccessd/1.0 CFNetwork"), false);
+  assert.deepEqual(calendarResponsePlan({ ua: iphone, webcalHref: null }), { kind: "file", handoff: true });
+  assert.equal(chosenCalendarHref("/agenda.ics", { webcal: "webcal://travelba.fr/a.ics", google: null }, iphone), "webcal://travelba.fr/a.ics");
+  assert.equal(icsHttpHeaders("a.ics", { handoff: true })["Content-Disposition"], undefined);
+  assert.match(icsHttpHeaders("a.ics")["Content-Disposition"] || "", /inline/);
+});
+
+test("Google Agenda : heure de vol, journée d’hôtel", () => {
+  const flight = googleCalendarHref(item({}), booking());
+  assert.match(flight || "", /^https:\/\/calendar\.google\.com\/calendar\/render\?/);
+  assert.match(flight || "", /dates=20260812T094500%2F20260812T111000/);
+  const hotel = googleCalendarHref(
+    item({
+      id: "h1",
+      kind: "hotel",
+      title: "Santa Teresa",
+      start_at: "2026-08-12",
+      end_at: "2026-08-15",
+      details: { hotel_name: "Nantipa", city: "Santa Teresa" },
+    }),
+    booking()
+  );
+  assert.match(hotel || "", /dates=20260812%2F20260815/);
+});
+
+test("origine publique derrière le proxy", () => {
+  assert.equal(
+    originFromHeaders({
+      get(name: string) {
+        if (name === "x-forwarded-host") return "travelba.fr";
+        if (name === "x-forwarded-proto") return "https";
+        return null;
+      },
+    }),
+    "https://travelba.fr"
+  );
 });

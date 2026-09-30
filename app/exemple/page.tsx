@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { BookingHero } from "@/components/crm/BookingHero";
+import { chosenCalendarHref, googleCalendarHref } from "@/lib/crm/calendar-ics";
 import { Icon } from "@/components/crm/icons";
 import { BoardingPass } from "@/components/account/BoardingPass";
 import { clientVisibleItems, nextTimelineFlight, stayArrivalPlaces, stayHeadline, tripPlaceLine } from "@/lib/crm/carnet";
@@ -26,7 +28,15 @@ export default async function ExampleHomePage() {
   const tripPlace = tripPlaceLine(nextTrip.title, nextTrip.destination);
   const tripHref = `${EXAMPLE_BASE}/reservations/${nextTrip.reference}`;
   const weather = await destinationWeather(nextTrip.destination, nextTrip.title);
-  const homeFlight = nextTimelineFlight(clientVisibleItems(session.items));
+  const visibleItems = clientVisibleItems(session.items);
+  const homeFlight = nextTimelineFlight(visibleItems);
+  const flightItem = visibleItems.find((row) => row.id === homeFlight?.itemId) || null;
+  const headerList = await headers();
+  const googleHref = flightItem ? googleCalendarHref(flightItem, nextTrip) : null;
+  const httpsHref = homeFlight
+    ? `${EXAMPLE_BASE}/reservations/${nextTrip.reference}/agenda.ics?item_id=${encodeURIComponent(homeFlight.itemId)}`
+    : "";
+  const calendarHref = chosenCalendarHref(httpsHref, { webcal: null, google: googleHref }, headerList.get("user-agent") || "");
 
   return (
     <div className="space-y-3">
@@ -101,10 +111,7 @@ export default async function ExampleHomePage() {
       </article>
 
       {homeFlight ? (
-        <BoardingPass
-          pass={homeFlight}
-          calendarHref={`${EXAMPLE_BASE}/reservations/${nextTrip.reference}/agenda.ics?item_id=${encodeURIComponent(homeFlight.itemId)}`}
-        />
+        <BoardingPass pass={homeFlight} calendarHref={calendarHref} googleHref={googleHref} />
       ) : null}
     </div>
   );

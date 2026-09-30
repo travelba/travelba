@@ -1,11 +1,16 @@
 import type { FlightPass } from "@/lib/crm/carnet";
+import { AddToPhoneCalendar } from "@/components/account/AddToPhoneCalendar";
 
 export function BoardingPass({
   pass,
   calendarHref,
+  webcalHref = null,
+  googleHref = null,
 }: {
   pass: FlightPass;
   calendarHref: string;
+  webcalHref?: string | null;
+  googleHref?: string | null;
 }) {
   return (
     <section className="overflow-hidden rounded-2xl bg-[#0B192C] text-white shadow-[0_16px_36px_rgba(11,25,44,0.28)]">
@@ -34,12 +39,14 @@ export function BoardingPass({
         ) : null}
       </div>
       <div className="border-t border-dashed border-white/20 px-4 py-3">
-        <a
+        <AddToPhoneCalendar
           href={calendarHref}
+          webcalHref={webcalHref}
+          googleHref={googleHref}
           className="inline-flex h-11 w-full items-center justify-center rounded-full bg-[#C5A880] px-4 text-sm font-semibold text-[#0B192C]"
         >
           Ajouter au calendrier
-        </a>
+        </AddToPhoneCalendar>
       </div>
     </section>
   );

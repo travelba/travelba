@@ -27,7 +27,10 @@ import {
   tripPlaceLine,
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
+import { headers } from "next/headers";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
+import { originFromHeaders } from "@/lib/crm/calendar-ics";
+import { phoneCalendarMap } from "@/lib/crm/calendar-feed";
 import { ClientTripBody } from "@/components/account/ClientTripBody";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { siteConfig } from "@/lib/site";
@@ -237,6 +240,7 @@ export default async function ReservationDetailPage({ params }: Props) {
           docs={visibleDocs}
           pricesVisible={b.prices_visible !== false}
           calendarBase={`/mon-compte/reservations/${b.reference}/agenda.ics`}
+          phones={phoneCalendarMap(originFromHeaders(await headers()), b, visibleItems)}
           services={{
             variant: "client",
             travelers: party,
