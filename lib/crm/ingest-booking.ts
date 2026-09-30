@@ -4,8 +4,10 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
 import { nextBookingReference, syncBookingLedger, syncBookingTotalFromItems } from "@/lib/crm/bookings";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
+import { hiddenPricePath } from "@/lib/crm/document-price";
 import {
   copyCrmFile,
+  downloadCrmFile,
   listCrmFiles,
   removeCrmFiles,
   safeFileName,
@@ -203,6 +205,8 @@ async function insertBookingDoc(
     mime: string;
     storagePath: string;
     visibleToClient: boolean;
+    hidePrices: boolean | null;
+    clientStoragePath: string | null;
   }
 ): Promise<UploadedDoc> {
   const { data, error } = await supabase
@@ -214,6 +218,8 @@ async function insertBookingDoc(
       mime_type: opts.mime,
       storage_path: opts.storagePath,
       visible_to_client: opts.visibleToClient,
+      hide_prices: opts.hidePrices,
+      client_storage_path: opts.clientStoragePath,
     })
     .select("id, file_name")
     .single();
@@ -221,11 +227,23 @@ async function insertBookingDoc(
   return { id: data.id, file_name: data.file_name };
 }
 
+async function clientCopy(
+  bookingId: string,
+  name: string,
+  mime: string,
+  bytes: Uint8Array,
+  hidePrices: boolean | null
+) {
+  if (hidePrices !== true) return null;
+  return hiddenPricePath({ bytes, mime, name, bookingId });
+}
+
 async function attachBookingFiles(
   bookingId: string,
   staged: IngestStagedFile[],
   files: File[],
   visibleToClient: boolean,
+  hidePrices: boolean | null,
   supabase: SupabaseClient,
   staffUserId?: string
 ): Promise<UploadedDoc[]> {
@@ -234,6 +252,22 @@ async function attachBookingFiles(
     if (staffUserId) assertStaffIngestPath(file.path, staffUserId);
     const mime = file.type || guessIngestMime(file.name);
     const dest = `bookings/${bookingId}/${Date.now()}-${safeFileName(file.name)}`;
+    const bytes = hidePrices === true ? (await downloadCrmFile(file.path)).bytes : null;
+    if (bytes) {
+      const clientStoragePath = await clientCopy(bookingId, file.name, mime, bytes, hidePrices);
+      await uploadCrmFile(dest, Buffer.from(bytes), mime);
+      uploaded.push(
+        await insertBookingDoc(supabase, bookingId, {
+          name: file.name,
+          mime,
+          storagePath: dest,
+          visibleToClient,
+          hidePrices,
+          clientStoragePath,
+        })
+      );
+      continue;
+    }
     await copyCrmFile(file.path, dest);
     uploaded.push(
       await insertBookingDoc(supabase, bookingId, {
@@ -241,20 +275,25 @@ async function attachBookingFiles(
         mime,
         storagePath: dest,
         visibleToClient,
+        hidePrices,
+        clientStoragePath: null,
       })
     );
   }
   for (const file of files) {
-    const bytes = Buffer.from(await file.arrayBuffer());
+    const bytes = new Uint8Array(await file.arrayBuffer());
     const mime = file.type || guessIngestMime(file.name);
+    const clientStoragePath = await clientCopy(bookingId, file.name, mime, bytes, hidePrices);
     const path = `bookings/${bookingId}/${Date.now()}-${safeFileName(file.name)}`;
-    await uploadCrmFile(path, bytes, mime);
+    await uploadCrmFile(path, Buffer.from(bytes), mime);
     uploaded.push(
       await insertBookingDoc(supabase, bookingId, {
         name: file.name,
         mime,
         storagePath: path,
         visibleToClient,
+        hidePrices,
+        clientStoragePath,
       })
     );
   }
@@ -442,6 +481,8 @@ export async function persistNewBookingFromExtract(opts: {
   batchId?: string;
   status: BookingStatus;
   visibleToClient: boolean;
+  /** null : mail automatique, la question reste ouverte sur le dossier. */
+  hidePrices: boolean | null;
   /** Client authentifié de l’agent : la RPC de référence tourne sous son rôle (crm_private). */
   referenceClient?: SupabaseClient;
 }) {
@@ -504,6 +545,7 @@ export async function persistNewBookingFromExtract(opts: {
     opts.staged || [],
     opts.files || [],
     false,
+    opts.hidePrices,
     admin,
     opts.staffUserId
   );
@@ -540,6 +582,8 @@ export async function applyExtractToBooking(opts: {
   staffUserId?: string;
   batchId?: string;
   visibleToClient: boolean;
+  /** null : mail automatique, la question reste ouverte sur le dossier. */
+  hidePrices: boolean | null;
   /** Relecture du formulaire : titre et devise choisis, pas ceux du PDF. */
   applyStayFields?: boolean;
 }) {
@@ -569,6 +613,7 @@ export async function applyExtractToBooking(opts: {
     opts.staged || [],
     opts.files || [],
     false,
+    opts.hidePrices,
     admin,
     opts.staffUserId
   );
@@ -622,6 +667,8 @@ export async function applyCancellationToBooking(opts: {
   staffUserId?: string;
   batchId?: string;
   visibleToClient: boolean;
+  /** null : mail automatique, la question reste ouverte sur le dossier. */
+  hidePrices: boolean | null;
 }) {
   const admin = createServiceClient();
   const { data: booking } = await admin
@@ -641,6 +688,7 @@ export async function applyCancellationToBooking(opts: {
     opts.staged || [],
     opts.files || [],
     false,
+    opts.hidePrices,
     admin,
     opts.staffUserId
   );

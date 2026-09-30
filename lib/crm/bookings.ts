@@ -614,10 +614,13 @@ export async function setCarnetPublished(
   }
   const { data: docs, error: docsLookupError } = await supabase
     .from("crm_booking_documents")
-    .select("id, booking_item_id")
+    .select("id, booking_item_id, hide_prices")
     .eq("booking_id", bookingId);
   if (docsLookupError) throw new Error(docsLookupError.message);
-  const revealDocs = ((docs || []) as { id: string; booking_item_id?: string | null }[])
+  const revealDocs = (
+    (docs || []) as { id: string; booking_item_id?: string | null; hide_prices?: boolean | null }[]
+  )
+    .filter((doc) => doc.hide_prices !== null)
     .filter((doc) => !doc.booking_item_id || !hiddenIds.has(doc.booking_item_id))
     .map((doc) => doc.id);
   if (revealDocs.length) {

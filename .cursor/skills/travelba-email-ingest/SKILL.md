@@ -109,6 +109,7 @@ Hit unique → `applyCancellationToBooking` :
   `crm_bookings.status=cancelled` (enum existant ; les items n’ont pas de statut) ;
 - `syncBookingLedger` (un dossier `cancelled` purge les débits) ;
 - fichiers en `visible_to_client=false`. L’IA ne publie pas le carnet.
+- Rattachement humain (voyage ou nouveau dossier) : question obligatoire « Cacher le prix sur le PDF ? » avant d’enregistrer les pièces. Auto Gmail : `hide_prices` null, le PDF reste invisible tant que le dossier n’a pas répondu.
 
 ## Relancer une ligne déjà parsée
 

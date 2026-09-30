@@ -6,6 +6,7 @@ import { Icon } from "@/components/crm/icons";
 import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
 import { EmptyState } from "@/components/crm/ui";
 import { Field, MoneyInput } from "@/components/crm/fields";
+import { HidePriceChoice } from "@/components/crm/HidePriceChoice";
 import { FilePreviewGrid } from "@/components/crm/FilePreview";
 import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
 import {
@@ -127,6 +128,7 @@ export function EmailIngestInbox({
   }, [customers]);
 
   const [busy, setBusy] = useState<string | null>(null);
+  const [hidePrices, setHidePrices] = useState<Record<string, boolean | null>>({});
   const [error, setError] = useState<string | null>(null);
   const [chosen, setChosen] = useState<Record<string, string>>({});
   const [pickFor, setPickFor] = useState<string | null>(null);
@@ -196,6 +198,12 @@ export function EmailIngestInbox({
     writeDraft(row, { items: (viewOf(row).items || []).filter((_, i) => i !== index) });
   }
 
+  function hidePayload(rowId: string): { hide_prices: boolean } | Record<string, never> {
+    const value = hidePrices[rowId];
+    if (value == null) return {};
+    return { hide_prices: value };
+  }
+
   async function act(
     rowId: string,
     payload: {
@@ -205,6 +213,7 @@ export function EmailIngestInbox({
       title?: string;
       extract?: ExtractView;
       apply_stay_currency?: boolean;
+      hide_prices?: boolean;
     },
     opts?: { refresh?: boolean }
   ) {
@@ -487,7 +496,11 @@ export function EmailIngestInbox({
             </div>
 
             <div className="mt-3 rounded-xl border border-border bg-[var(--surface-2)]/60 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              <HidePriceChoice
+                value={hidePrices[row.id] ?? null}
+                onChange={(next) => setHidePrices((prev) => ({ ...prev, [row.id]: next }))}
+              />
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm">
                   <span className="text-muted">Client : </span>
                   <span className="font-semibold text-[var(--admin-navy)]">
@@ -530,7 +543,12 @@ export function EmailIngestInbox({
                   </select>
                   <button
                     type="button"
-                    disabled={isBusy || !selectedBooking[row.id] || priceIssues.length > 0}
+                    disabled={
+                      isBusy ||
+                      !selectedBooking[row.id] ||
+                      priceIssues.length > 0 ||
+                      hidePrices[row.id] == null
+                    }
                     className="admin-af-btn-accent admin-tap rounded-lg px-3 py-2 text-sm disabled:opacity-50"
                     onClick={() =>
                       act(row.id, {
@@ -543,6 +561,7 @@ export function EmailIngestInbox({
                               apply_stay_currency: Boolean(currencyChosen[row.id]),
                             }
                           : {}),
+                        ...hidePayload(row.id),
                       })
                     }
                   >
@@ -554,7 +573,7 @@ export function EmailIngestInbox({
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  disabled={isBusy || !customerId || priceIssues.length > 0}
+                  disabled={isBusy || !customerId || priceIssues.length > 0 || hidePrices[row.id] == null}
                   className="admin-tap inline-flex items-center gap-1 rounded-lg border border-[var(--admin-navy)] px-3 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-40"
                   onClick={() =>
                     act(row.id, {
@@ -567,6 +586,7 @@ export function EmailIngestInbox({
                             apply_stay_currency: Boolean(currencyChosen[row.id]),
                           }
                         : {}),
+                      ...hidePayload(row.id),
                     })
                   }
                 >

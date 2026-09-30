@@ -400,6 +400,10 @@ export type CrmBookingDocument = {
   file_name: string | null;
   mime_type: string | null;
   storage_path: string;
+  /** null : l’agence n’a pas encore dit si le prix du PDF est masqué. */
+  hide_prices?: boolean | null;
+  /** Copie sans montants, servie au client quand hide_prices est vrai. */
+  client_storage_path?: string | null;
   visible_to_client: boolean;
   created_at: string;
 };

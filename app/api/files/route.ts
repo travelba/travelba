@@ -3,6 +3,7 @@ import { jsonError, requireCustomer, requireStaff } from "@/lib/crm/auth";
 import { exampleSessionEnabled } from "@/lib/crm/example-session";
 import { readExampleFile } from "@/lib/crm/example-store";
 import { safeFileName, signedCrmUrl } from "@/lib/crm/files";
+import { viewerFilePath } from "@/lib/crm/document-price";
 import { customerPathScope, isAgencyCardPath, isSafeCrmPath } from "@/lib/crm/files-access";
 import { rasterPdfPages } from "@/lib/crm/pdf-raster";
 import { isTripShareCode } from "@/lib/crm/trip-share";
@@ -88,7 +89,7 @@ export async function GET(request: Request) {
 
   const partage = url.searchParams.get("partage");
   if (partage && isTripShareCode(partage) && (await sharePathAllowed(partage, path))) {
-    return sendCrmFile(path, url);
+    return sendCrmFile(await viewerFilePath(path), url);
   }
 
   const staff = await requireStaff();
@@ -124,5 +125,5 @@ export async function GET(request: Request) {
     if (!doc) return jsonError("Document non publié", 403);
   }
 
-  return sendCrmFile(path, url);
+  return sendCrmFile(await viewerFilePath(path), url);
 }

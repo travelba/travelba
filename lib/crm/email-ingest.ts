@@ -396,6 +396,7 @@ async function autoApplyEmailIngest(
               extract,
               files,
               visibleToClient: false,
+              hidePrices: null,
             })
           : applyExtractToBooking({
               bookingId,
@@ -403,6 +404,7 @@ async function autoApplyEmailIngest(
               extract,
               files,
               visibleToClient: false,
+              hidePrices: null,
             }),
       persist: (customerId) =>
         persistNewBookingFromExtract({
@@ -411,6 +413,7 @@ async function autoApplyEmailIngest(
           files,
           status: "draft",
           visibleToClient: false,
+          hidePrices: null,
         }),
       createCustomer: (input) => createCustomerFromExtract(admin, input),
     });

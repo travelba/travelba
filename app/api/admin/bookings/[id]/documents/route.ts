@@ -1,10 +1,43 @@
 import { NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
+import { publishRevealIds } from "@/lib/crm/carnet";
 import { queuePublishedPieces, safeConcierge } from "@/lib/crm/concierge-send";
 import { normalizePieceKind } from "@/lib/crm/concierge-notices";
+import { hiddenPricePath, hiddenPricePathFromStorage } from "@/lib/crm/document-price";
 import { removeCrmFiles, safeFileName, uploadCrmFile } from "@/lib/crm/files";
+import { HIDE_PRICE_REQUIRED, PriceRedactError, readHidePricesChoice } from "@/lib/crm/pdf-price-redact";
 
 type Ctx = { params: Promise<{ id: string }> };
+
+function redactError(err: unknown) {
+  if (err instanceof PriceRedactError) return jsonError(err.message, 400);
+  return null;
+}
+
+async function visibleOncePublished(
+  supabase: SupabaseClient,
+  bookingId: string,
+  itemId: string | null
+) {
+  const { data: booking } = await supabase
+    .from("crm_bookings")
+    .select("visible_to_client")
+    .eq("id", bookingId)
+    .maybeSingle();
+  if (!booking?.visible_to_client) return false;
+  if (!itemId) return true;
+  const { data: item } = await supabase
+    .from("crm_booking_items")
+    .select("id, kind, details")
+    .eq("id", itemId)
+    .eq("booking_id", bookingId)
+    .maybeSingle();
+  if (!item) return false;
+  return publishRevealIds([item as { id: string; kind: string; details?: Record<string, unknown> | null }]).includes(
+    item.id
+  );
+}
 
 export async function POST(request: Request, ctx: Ctx) {
   const auth = await requireStaff();
@@ -13,10 +46,9 @@ export async function POST(request: Request, ctx: Ctx) {
   const form = await request.formData();
   const file = form.get("file");
   if (!(file instanceof File)) return jsonError("Fichier requis");
+  const hidePrices = readHidePricesChoice(form.get("hide_prices"));
+  if (hidePrices === undefined) return jsonError(HIDE_PRICE_REQUIRED);
   const kind = String(form.get("kind") || "other");
-  const bytes = Buffer.from(await file.arrayBuffer());
-  const path = `bookings/${id}/${Date.now()}-${safeFileName(file.name)}`;
-  await uploadCrmFile(path, bytes, file.type || "application/octet-stream");
   const itemId = String(form.get("booking_item_id") || "").trim() || null;
   if (itemId) {
     const { data: item } = await auth.supabase
@@ -27,6 +59,20 @@ export async function POST(request: Request, ctx: Ctx) {
       .maybeSingle();
     if (!item) return jsonError("Carte introuvable");
   }
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const mime = file.type || "application/octet-stream";
+  let clientPath: string | null = null;
+  try {
+    if (hidePrices) {
+      clientPath = await hiddenPricePath({ bytes, mime, name: file.name, bookingId: id });
+    }
+  } catch (err) {
+    const refused = redactError(err);
+    if (refused) return refused;
+    throw err;
+  }
+  const path = `bookings/${id}/${Date.now()}-${safeFileName(file.name)}`;
+  await uploadCrmFile(path, Buffer.from(bytes), mime);
   const { data, error } = await auth.supabase
     .from("crm_booking_documents")
     .insert({
@@ -36,6 +82,8 @@ export async function POST(request: Request, ctx: Ctx) {
       file_name: file.name,
       mime_type: file.type,
       storage_path: path,
+      client_storage_path: clientPath,
+      hide_prices: hidePrices,
       visible_to_client: false,
     })
     .select("*")
@@ -51,6 +99,63 @@ export async function PATCH(request: Request, ctx: Ctx) {
   const body = await request.json().catch(() => null);
   const docId = String(body?.id || "");
   if (!docId) return jsonError("id requis");
+  if (body && Object.prototype.hasOwnProperty.call(body, "hide_prices")) {
+    const hidePrices = readHidePricesChoice(body.hide_prices);
+    if (hidePrices === undefined) return jsonError(HIDE_PRICE_REQUIRED);
+    const { data: current, error: readError } = await auth.supabase
+      .from("crm_booking_documents")
+      .select("id, storage_path, client_storage_path, file_name, mime_type, kind, booking_item_id")
+      .eq("id", docId)
+      .eq("booking_id", id)
+      .maybeSingle();
+    if (readError) return dbError(readError, 400);
+    if (!current?.storage_path) return jsonError("Pièce introuvable", 404);
+    let clientPath: string | null = null;
+    try {
+      if (hidePrices) {
+        clientPath = await hiddenPricePathFromStorage({
+          storagePath: current.storage_path,
+          mime: current.mime_type,
+          name: current.file_name || "document.pdf",
+          bookingId: id,
+        });
+      }
+    } catch (err) {
+      const refused = redactError(err);
+      if (refused) return refused;
+      throw err;
+    }
+    const visible = await visibleOncePublished(auth.supabase, id, current.booking_item_id || null);
+    const { data, error } = await auth.supabase
+      .from("crm_booking_documents")
+      .update({
+        hide_prices: hidePrices,
+        client_storage_path: clientPath,
+        visible_to_client: visible,
+      })
+      .eq("id", docId)
+      .eq("booking_id", id)
+      .select("*")
+      .single();
+    if (error) return dbError(error, 400);
+    if (current.client_storage_path && current.client_storage_path !== clientPath) {
+      await removeCrmFiles([current.client_storage_path]);
+    }
+    if (visible) {
+      let itemKind: string | null = null;
+      if (current.booking_item_id) {
+        const { data: item } = await auth.supabase
+          .from("crm_booking_items")
+          .select("kind")
+          .eq("id", current.booking_item_id)
+          .maybeSingle();
+        itemKind = (item?.kind as string | undefined) || null;
+      }
+      const kind = normalizePieceKind(itemKind) || normalizePieceKind(current.kind);
+      if (kind) await safeConcierge(() => queuePublishedPieces(id, [{ id: docId, kind }]));
+    }
+    return NextResponse.json({ document: data });
+  }
   const { data, error } = await auth.supabase
     .from("crm_booking_documents")
     .update({ visible_to_client: Boolean(body?.visible_to_client) })
@@ -91,7 +196,7 @@ export async function DELETE(request: Request, ctx: Ctx) {
   if (!docId) return jsonError("id requis");
   const { data: doc, error: readError } = await auth.supabase
     .from("crm_booking_documents")
-    .select("id, storage_path")
+    .select("id, storage_path, client_storage_path")
     .eq("id", docId)
     .eq("booking_id", id)
     .maybeSingle();
@@ -103,6 +208,6 @@ export async function DELETE(request: Request, ctx: Ctx) {
     .eq("id", docId)
     .eq("booking_id", id);
   if (error) return dbError(error, 400);
-  if (doc.storage_path) await removeCrmFiles([doc.storage_path]);
+  await removeCrmFiles([doc.storage_path, doc.client_storage_path].filter(Boolean));
   return NextResponse.json({ ok: true });
 }

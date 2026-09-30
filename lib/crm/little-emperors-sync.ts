@@ -159,6 +159,7 @@ async function reflectCancellation(admin: SupabaseClient, crmBookingId: string, 
     customerId: dossier.customer_id,
     extract,
     visibleToClient: false,
+    hidePrices: null,
   });
   return "cancelled";
 }
@@ -359,6 +360,7 @@ export async function attachLittleEmperorsBooking(opts: {
     extract: leBookingExtract(booking),
     status: "draft",
     visibleToClient: false,
+    hidePrices: null,
     referenceClient: opts.referenceClient,
   });
   await admin
