@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
-import { buildBookingIcs, icsFileName, icsHttpHeaders } from "@/lib/crm/calendar-ics";
+import { calendarHttpResponse } from "@/lib/crm/calendar-http";
 import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -25,16 +25,11 @@ export async function GET(request: Request, ctx: Ctx) {
     .eq("booking_id", b.id)
     .order("sort_order");
 
-  const ics = buildBookingIcs({
+  return calendarHttpResponse({
+    request,
     booking: b,
     items: (items || []) as CrmBookingItem[],
     itemId,
-  });
-  if (!ics.includes("BEGIN:VEVENT")) {
-    return jsonError("Aucune date à ajouter à l’agenda.", 400);
-  }
-  return new NextResponse(ics, {
-    status: 200,
-    headers: icsHttpHeaders(icsFileName(b, itemId)),
+    allowPhoneFeed: b.visible_to_client,
   });
 }

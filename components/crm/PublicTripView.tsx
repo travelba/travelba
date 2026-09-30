@@ -6,6 +6,7 @@ import { stayArrivalPlaces, stayHeadline, tripPlaceLine } from "@/lib/crm/carnet
 import { formatDateFr } from "@/lib/crm/money";
 import { attachmentPreviews } from "@/lib/crm/preview-files";
 import { siteConfig } from "@/lib/site";
+import type { PhoneCalendarLinks } from "@/lib/crm/calendar-ics";
 import type { CrmBooking, CrmBookingDocument, CrmBookingItem } from "@/lib/crm/types";
 
 /** Page du voyage : itinéraire et documents. Pas de compte, pas de facturation. */
@@ -15,12 +16,14 @@ export function PublicTripView({
   docs,
   partage = null,
   calendarBase,
+  phones = null,
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
   docs: CrmBookingDocument[];
   partage?: string | null;
   calendarBase?: string | null;
+  phones?: PhoneCalendarLinks | null;
 }) {
   const shown = items.map((item) => ({ ...item, amount: null }));
   const headline = stayHeadline(
@@ -77,6 +80,7 @@ export function PublicTripView({
           docs={docs}
           partage={partage}
           calendarBase={agenda}
+          phones={phones}
         />
       </div>
 

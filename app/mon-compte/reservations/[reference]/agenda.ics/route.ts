@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
-import { buildBookingIcs, icsFileName, icsHttpHeaders } from "@/lib/crm/calendar-ics";
+import { calendarHttpResponse } from "@/lib/crm/calendar-http";
 import { carnetVisible, clientVisibleItems } from "@/lib/crm/carnet";
 import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
 
@@ -39,11 +39,11 @@ export async function GET(request: Request, ctx: Ctx) {
     return new NextResponse("Introuvable", { status: 404 });
   }
 
-  const body = buildBookingIcs({ booking: b, items: visible, itemId });
-  if (!body.includes("BEGIN:VEVENT")) {
-    return new NextResponse("Aucune date à ajouter à l’agenda.", { status: 400 });
-  }
-  return new NextResponse(body, {
-    headers: icsHttpHeaders(icsFileName(b, itemId)),
+  return calendarHttpResponse({
+    request,
+    booking: b,
+    items: visible,
+    itemId,
+    allowPhoneFeed: true,
   });
 }

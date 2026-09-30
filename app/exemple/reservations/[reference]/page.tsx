@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
+import { googlePhoneMap } from "@/lib/crm/calendar-ics";
 import { ClientTripBody } from "@/components/account/ClientTripBody";
 import { StayExpenses } from "@/components/account/StayExpenses";
 import { BookingHero } from "@/components/crm/BookingHero";
@@ -104,6 +105,7 @@ export default async function ExampleReservationPage({ params }: Props) {
           docs={[]}
           pricesVisible={b.prices_visible !== false}
           calendarBase={`${EXAMPLE_BASE}/reservations/${b.reference}/agenda.ics`}
+          phones={googlePhoneMap(b, visibleItems)}
           services={{
             variant: "client",
             travelers: party,

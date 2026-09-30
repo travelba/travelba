@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { buildBookingIcs, icsFileName, icsHttpHeaders } from "@/lib/crm/calendar-ics";
+import { calendarHttpResponse } from "@/lib/crm/calendar-http";
 import { carnetVisible } from "@/lib/crm/carnet";
 import { EXAMPLE_REFERENCE, exampleSession, exampleSessionEnabled } from "@/lib/crm/example-session";
 
@@ -14,9 +14,11 @@ export async function GET(request: Request, ctx: Ctx) {
   if (!carnetVisible(session.booking, session.items)) {
     return new NextResponse("Introuvable", { status: 404 });
   }
-  const body = buildBookingIcs({ booking: session.booking, items: session.items, itemId });
-  if (!body.includes("BEGIN:VEVENT")) {
-    return new NextResponse("Aucune date à ajouter à l’agenda.", { status: 400 });
-  }
-  return new NextResponse(body, { headers: icsHttpHeaders(icsFileName(session.booking, itemId)) });
+  return calendarHttpResponse({
+    request,
+    booking: session.booking,
+    items: session.items,
+    itemId,
+    allowPhoneFeed: false,
+  });
 }

@@ -34,8 +34,9 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 - Jours **sans aucune** carte : **sautés** (pas de ligne vide entre deux villes).
 - Hôtel : **pas d’horloge**. `itemClock` ignore `T00:00:00` (timestamptz minuit ≠ 00h00 check-in). Carte compacte : **nom d’établissement** (`details.hotel_name` / `hotelDisplayName`) en titre, **ville** (`hotelCityLine`) en dessous. Jamais la ville à la place du nom.
 - Vol : ligne 1 `CDG → RAK` (`flightIata`), ligne 2 villes (`flightCities`).
-- Clic carte = détail + **Voir la confirmation** (PDF `source_document_id`) + **Ajouter à l’agenda** (.ics).
-- En-tête itinéraire : **Ajouter tout le séjour** (`GET /api/client/bookings/[reference]/calendrier`). Horaires seulement s’ils existent ; hôtel = journée entière.
+- Clic carte = détail + **Voir la confirmation** (PDF `source_document_id`) + **Ajouter à l’agenda**.
+- **Téléphone** : le bouton ouvre l’agenda du mobile. iPhone → lien `webcal:` (app Calendrier), pas la bannière Safari « Fiche d’agenda disponible ». Android → Google Agenda, événement prêt à enregistrer. Bureau → fichier .ics. Le flux `webcal` est signé (`/api/calendrier/…ics`) et ne sert qu’un séjour déjà publié.
+- En-tête itinéraire : **Ajouter tout le séjour** (`GET /api/client/bookings/[reference]/calendrier`, ou le même `webcal` sur téléphone). Horaires seulement s’ils existent ; hôtel = journée entière.
 - Ordre : `sort_order` agent (déplacer la carte, sans flèches), défaut **chrono**. PATCH `{ order: [ids] }` sur `/api/admin/bookings/[id]/items`.
 - Kinds : `flight` `hotel` `transfer` `activity` `rail` `car` `cruise` `insurance` `fee`. Train / voiture / bateau = cartes métier, pas un jour par escale bateau.
 - **Dépense libre** (`expense`) : hors timeline, hors calendrier, hors publication du carnet. Sur `/mon-compte/reservations/[reference]`, section **Dépenses** (libellé + montant), sous le montant du séjour. Elle vit aussi dans les transactions (skill `travelba-money`).

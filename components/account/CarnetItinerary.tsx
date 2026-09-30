@@ -34,6 +34,8 @@ import {
 import { itemTicketCount } from "@/lib/crm/item-match";
 import { flightCountsInStay } from "@/lib/crm/bookings";
 import { ServiceOfferCard } from "@/components/crm/ServiceOfferCard";
+import type { PhoneCalendarLink, PhoneCalendarLinks } from "@/lib/crm/calendar-ics";
+import { AddToPhoneCalendar } from "@/components/account/AddToPhoneCalendar";
 import {
   bookingHasFlight,
   composeItineraryDay,
@@ -54,19 +56,23 @@ import {
 
 function AgendaLink({
   href,
+  phone = null,
   children,
 }: {
   href: string;
+  phone?: PhoneCalendarLink | null;
   children: string;
 }) {
   return (
-    <a
+    <AddToPhoneCalendar
       href={href}
+      webcalHref={phone?.webcal}
+      googleHref={phone?.google}
       className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline"
     >
       <Icon name="event" className="h-4 w-4" />
       {children}
-    </a>
+    </AddToPhoneCalendar>
   );
 }
 
@@ -76,6 +82,7 @@ function CardBody({
   docs,
   compactHotel = false,
   calendarHref = null,
+  calendarPhone = null,
   day = null,
   partage = null,
   pricesVisible = true,
@@ -86,6 +93,7 @@ function CardBody({
   docs: CrmBookingDocument[];
   compactHotel?: boolean;
   calendarHref?: string | null;
+  calendarPhone?: PhoneCalendarLink | null;
   day?: string | null;
   partage?: string | null;
   pricesVisible?: boolean;
@@ -257,7 +265,11 @@ function CardBody({
               }}
             />
           ))}
-          {calendarHref ? <AgendaLink href={calendarHref}>Ajouter à l’agenda</AgendaLink> : null}
+          {calendarHref ? (
+            <AgendaLink href={calendarHref} phone={calendarPhone}>
+              Ajouter à l’agenda
+            </AgendaLink>
+          ) : null}
         </div>
       </div>
     </details>
@@ -275,6 +287,7 @@ export function CarnetItinerary({
   items,
   docs,
   calendarBase = null,
+  phones = null,
   services = null,
   refusals = [],
   partage = null,
@@ -284,6 +297,8 @@ export function CarnetItinerary({
   items: CrmBookingItem[];
   docs: CrmBookingDocument[];
   calendarBase?: string | null;
+  /** Liens qui ouvrent l’agenda du téléphone. Le href https reste le repli bureau. */
+  phones?: PhoneCalendarLinks | null;
   /** Lien public : les confirmations passent par /api/files, sans session. */
   partage?: string | null;
   /** Faux : chaque ligne qui aurait un montant affiche « Prix à la publication ». */
@@ -391,7 +406,9 @@ export function CarnetItinerary({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-display text-base font-bold text-[var(--admin-navy)]">Itinéraire</h2>
           {calendarBase ? (
-            <AgendaLink href={calendarBase}>Ajouter tout le séjour</AgendaLink>
+            <AgendaLink href={calendarBase} phone={phones?.stay}>
+              Ajouter tout le séjour
+            </AgendaLink>
           ) : null}
         </div>
         {bookedOffers.length ? (
@@ -412,6 +429,7 @@ export function CarnetItinerary({
                     docs={docs}
                     compactHotel={row.item.kind === "hotel"}
                     calendarHref={itemHref(row.item.id)}
+                    calendarPhone={phones?.items[row.item.id]}
                     day={day}
                     partage={partage}
                     pricesVisible={pricesVisible}
@@ -436,6 +454,7 @@ export function CarnetItinerary({
                 currency={booking.currency}
                 docs={docs}
                 calendarHref={itemHref(item.id)}
+                calendarPhone={phones?.items[item.id]}
                 pricesVisible={pricesVisible}
                 showPrice={flightCountsInStay(item, items)}
                 partage={partage}

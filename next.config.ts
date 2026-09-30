@@ -17,6 +17,14 @@ const nextConfig: NextConfig = {
   },
   serverExternalPackages: ["sharp", "unpdf", "@napi-rs/canvas", "pdfjs-dist", "puppeteer-core", "@sparticuz/chromium"],
   outputFileTracingIncludes: CHROMIUM_TRACE_INCLUDES,
+  async rewrites() {
+    return [
+      {
+        source: "/api/calendrier/:reference/:itemId/:sig.ics",
+        destination: "/api/calendrier/:reference/:itemId/:sig",
+      },
+    ];
+  },
   async redirects() {
     return [
       {
