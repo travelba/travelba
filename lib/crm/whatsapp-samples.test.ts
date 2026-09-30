@@ -105,6 +105,7 @@ test("si rien n’est arrivé sur le téléphone, le modèle approuvé part", as
   process.env.TWILIO_AUTH_TOKEN = "token";
   process.env.TWILIO_WHATSAPP_FROM = "whatsapp:+33756841315";
   process.env.TWILIO_CONTENT_CONNEXION = "HXconnexion";
+  process.env.TWILIO_CONTENT_PIECE_HOTEL = "HXhotel";
   delete process.env.VERCEL_ENV;
   const { client } = admin({ hold: true, sent: { connexion: "hold" } });
   let sessions = 0;
@@ -124,5 +125,6 @@ test("si rien n’est arrivé sur le téléphone, le modèle approuvé part", as
   );
   assert.equal(sessions, 0);
   assert.ok(templates.includes("HXconnexion"));
+  assert.ok(templates.includes("HXhotel"));
   assert.ok((result.delivered ?? 0) >= 1);
 });
