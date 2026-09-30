@@ -220,7 +220,10 @@ test("quand le client règle le séjour, le montant et l’hôtel sortent du liv
   assert.equal("payer_kind" in bookingMetaPatch({ payer_kind: "autre" }), false);
   assert.equal(bookingMetaPatch({ offer_chauffeur: true }).offer_chauffeur, true);
   assert.equal(bookingMetaPatch({ offer_greeter: "off" }).offer_greeter, false);
+  assert.equal(bookingMetaPatch({ offer_checkin: true }).offer_checkin, true);
+  assert.equal(bookingMetaPatch({ offer_checkin: "off" }).offer_checkin, false);
   assert.equal("offer_chauffeur" in bookingMetaPatch({ title: "Ski" }), false);
+  assert.equal("offer_checkin" in bookingMetaPatch({ title: "Ski" }), false);
 
   assert.equal(
     bookingDebitIntent({

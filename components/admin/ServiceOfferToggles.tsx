@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { Icon } from "@/components/crm/icons";
-import { CHAUFFEUR_EUR, GREETER_ADULT_EUR } from "@/lib/crm/extras";
+import { CHAUFFEUR_EUR, CHECKIN_EUR, GREETER_ADULT_EUR } from "@/lib/crm/extras";
 
-type OfferKey = "offer_chauffeur" | "offer_greeter";
+type OfferKey = "offer_chauffeur" | "offer_greeter" | "offer_checkin";
 
 const OFFERS: {
   key: OfferKey;
@@ -29,21 +29,34 @@ const OFFERS: {
     price: `${GREETER_ADULT_EUR} € par adulte`,
     icon: "verified_user",
   },
+  {
+    key: "offer_checkin",
+    title: "Enregistrement",
+    note: "L’agence enregistre les passagers.",
+    price: `${CHECKIN_EUR} € par passager`,
+    icon: "airplane_ticket",
+  },
 ];
 
 export function ServiceOfferToggles({
   bookingId,
   chauffeur,
   greeter,
+  checkin,
   hasFlight,
 }: {
   bookingId: string;
   chauffeur: boolean;
   greeter: boolean;
+  checkin: boolean;
   hasFlight: boolean;
 }) {
   const router = useRouter();
-  const [on, setOn] = useState({ offer_chauffeur: chauffeur, offer_greeter: greeter });
+  const [on, setOn] = useState({
+    offer_chauffeur: chauffeur,
+    offer_greeter: greeter,
+    offer_checkin: checkin,
+  });
   const [busy, setBusy] = useState<OfferKey | null>(null);
   const [error, setError] = useState<string | null>(null);
 

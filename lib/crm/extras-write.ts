@@ -10,6 +10,7 @@ import {
   extraHeadsFromBooking,
   extraItemPayload,
   extraNoticeOk,
+  checkinProposed,
   extraProposed,
   extraTitle,
   serviceCancelLocked,
@@ -50,6 +51,14 @@ async function createCheckinExtra(
   if (findCheckinExtra(opts.items)) {
     throw new BookingIssuesError("Service déjà demandé.", [
       { field: "kind", message: "L’enregistrement est déjà sur ce dossier." },
+    ]);
+  }
+  if (!checkinProposed(opts.booking)) {
+    throw new BookingIssuesError("Service non proposé.", [
+      {
+        field: "items",
+        message: "L’agence n’a pas activé l’enregistrement sur le dossier.",
+      },
     ]);
   }
   await assertNotRefused(supabase, opts.booking.id, "checkin", null, null);

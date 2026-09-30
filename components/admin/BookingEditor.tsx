@@ -7,6 +7,7 @@ import {
   BOOKING_STATUSES,
   BOOKING_STATUS_LABELS,
   isLedgerExpenseKind,
+  visibleServiceCopy,
   type CrmBooking,
   type CrmBookingDocument,
   type CrmBookingItem,
@@ -19,7 +20,7 @@ import {
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { BusyBar } from "@/components/crm/BusyBar";
-import { formatDateFr, formatMoney, jMinusLabel, todayIsoDate } from "@/lib/crm/money";
+import { formatDateFr, formatDateRangeShort, formatMoney, jMinusLabel, todayIsoDate } from "@/lib/crm/money";
 import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { bookingTotalFromItems } from "@/lib/crm/bookings";
@@ -45,7 +46,9 @@ import { principalGuest } from "@/lib/crm/hotel-arrival";
 import { BookingExpensesPanel } from "@/components/admin/BookingExpensesPanel";
 import { ServiceOfferToggles } from "@/components/admin/ServiceOfferToggles";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
-import { CarnetItinerary } from "@/components/account/CarnetItinerary";
+import { DeleteBookingButton } from "@/components/admin/DeleteBookingButton";
+import { LittleEmperorsCancel } from "@/components/admin/LittleEmperorsCancel";
+import { hotelsNeedingDesk } from "@/lib/crm/hotel-desk";
 import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
 import { PlaceField } from "@/components/crm/PlaceField";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
@@ -79,7 +82,7 @@ const coverField =
 function CoverMark({ children }: { children: string }) {
   return (
     <div className="flex items-center gap-3">
-      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--admin-gold-dark)]">{children}</p>
+      <p className="font-label text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--admin-gold-dark)]">{children}</p>
       <span className="h-px flex-1 bg-gradient-to-r from-[var(--admin-gold)]/45 to-transparent" />
     </div>
   );
@@ -108,6 +111,7 @@ export function BookingEditor({
   cardViews = [],
   attachedEmails = [],
   billingCompanies = [],
+  littleEmperors = null,
   expenseBilling = [],
 }: {
   booking: CrmBooking;
@@ -144,6 +148,14 @@ export function BookingEditor({
     extract?: unknown;
   }[];
   billingCompanies?: { id: string; company_name: string | null; sort_order: number }[];
+  littleEmperors?: {
+    id: string;
+    hotel_name: string | null;
+    is_cancellable: boolean | null;
+    cancellation_deadline: string | null;
+    cancellation_policies: string[] | null;
+    state: string | null;
+  } | null;
   expenseBilling?: { id: string; title: string; billing_company_id: string | null }[];
 }) {
   const router = useRouter();
@@ -157,6 +169,9 @@ export function BookingEditor({
     setTitleDraft(booking.title);
   }
   const [coverOpen, setCoverOpen] = useState(false);
+  const [tab, setTab] = useState<"voyage" | "client" | "argent" | "todo">("voyage");
+  const [more, setMore] = useState(false);
+  const [hotelCardOpen, setHotelCardOpen] = useState(false);
   const [coverNotice, setCoverNotice] = useState<string | null>(null);
   const arrival = coverQuery(booking.destination, booking.title);
   const coverPlace = arrival === "voyage" ? "" : arrival;
@@ -277,8 +292,10 @@ export function BookingEditor({
       setIssues([]);
       setFlash(
         cardOk
-          ? "Enregistré. Le carnet n’est pas publié pour autant."
-          : "Titre enregistré. La carte ouverte n’a pas été enregistrée."
+          ? booking.visible_to_client
+            ? "Enregistré."
+            : "Enregistré. Le client ne voit pas encore ce séjour."
+          : "Titre enregistré. L’étape ouverte n’a pas été enregistrée."
       );
       router.refresh();
     } catch {
@@ -312,7 +329,7 @@ export function BookingEditor({
       setFlash(null);
       return;
     }
-    setFlash(visible ? "Carnet publié." : "Carnet masqué.");
+    setFlash(visible ? "Le client voit ce séjour." : "Le client ne voit plus ce séjour.");
     router.refresh();
   }
 
@@ -479,6 +496,35 @@ export function BookingEditor({
     revealDocs: revealDocs.length,
   });
 
+  const updatesPending = revealItems.length > 0 || revealDocs.length > 0;
+  const showPrimaryPublish = !booking.visible_to_client || updatesPending;
+  const passportGap = travelers.filter(
+    (traveler) =>
+      tripDocumentsForTraveler(identityDocs, traveler).length === 0 &&
+      reusableDocumentsForTraveler(identityDocs, traveler, holderProfile).length === 0
+  );
+  const hotelDeskCount = hotelsNeedingDesk(hotelRequests, todayIsoDate());
+  const hasHotel = items.some((item) => item.kind === "hotel");
+  const hasFlight = bookingHasFlight(items);
+  const leOpen =
+    Boolean(littleEmperors) &&
+    !["cancelled", "canceled"].includes((littleEmperors?.state || "").toLowerCase());
+  const showTodo =
+    passportGap.length > 0 || hasHotel || hasFlight || (leOpen && Boolean(littleEmperors?.cancellation_deadline));
+  if (tab === "todo" && !showTodo) setTab("voyage");
+  const stayAmount = stayPriceWithExpenses({
+    stayTotal: bookingTotalFromItems(items),
+    agencyCommission: booking.agency_commission === true,
+    expenses: items.filter((item) => isLedgerExpenseKind(item.kind)),
+  });
+  const hasSteps = items.some((item) => !isLedgerExpenseKind(item.kind));
+  const tabs = [
+    ["voyage", "Le voyage"],
+    ...(showTodo ? [["todo", "À faire"] as const] : []),
+    ["argent", "L’argent"],
+    ["client", "Le client"],
+  ] as const;
+
   function cardName(item: CrmBookingItem) {
     if (item.kind === "hotel") return hotelDisplayName(item);
     if (item.kind === "flight" || item.kind === "rail") return flightCardTitle(item);
@@ -486,55 +532,187 @@ export function BookingEditor({
   }
 
   return (
-    <div className="space-y-6">
-      <BookingHero booking={booking} items={items} priority className="rounded-3xl">
-        <div className="absolute right-3 top-3 z-10 flex flex-wrap justify-end gap-2">
-          <button
-            type="button"
-            disabled={busy !== "idle"}
-            onClick={() => {
-              setCoverNotice(null);
-              setCoverOpen(true);
-            }}
-            className="admin-tap rounded-full bg-white/95 px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)] disabled:opacity-50"
-          >
-            {busy === "cover" ? "Photo…" : "Importer une photo"}
-          </button>
-          {booking.cover_image_path || unsplashKeywordMatch(booking) ? (
-            <button
-              type="button"
-              disabled={busy !== "idle"}
-              onClick={() => void regenerateCover()}
-              className="admin-tap rounded-full bg-white/95 px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)] disabled:opacity-50"
-            >
-              {busy === "cover" ? "Retouche…" : "Autre version"}
-            </button>
-          ) : null}
-          {booking.cover_image_path ? (
-            <button
-              type="button"
-              disabled={busy !== "idle"}
-              onClick={clearCover}
-              className="admin-tap rounded-full bg-[var(--admin-navy)]/80 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-            >
-              Photo du lieu
-            </button>
-          ) : null}
+    <div className="flex flex-col gap-6">
+      <header className="space-y-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 gap-4">
+            <BookingHero
+              booking={booking}
+              items={items}
+              priority
+              plain
+              className="h-16 w-[5.5rem] shrink-0 rounded-2xl ring-1 ring-[var(--admin-gold)]/70"
+              frameClassName="relative h-16 w-[5.5rem]"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold-dark)]">
+                {booking.reference}
+                {jMinusLabel(booking.start_date) ? ` · ${jMinusLabel(booking.start_date)}` : ""}
+              </p>
+              <input
+                name="title"
+                form="booking-meta"
+                value={titleDraft}
+                onChange={(event) => setTitleDraft(event.target.value)}
+                placeholder="Séjour à Avoriaz"
+                aria-label="Titre"
+                className="mt-1 w-full bg-transparent font-display text-2xl font-bold leading-tight text-[var(--admin-navy)] outline-none placeholder:text-[var(--admin-navy)]/30 sm:text-3xl"
+              />
+              <p className="mt-1 text-sm text-muted">
+                {[
+                  booking.destination,
+                  formatDateRangeShort(startDraft, endDraft),
+                  nights ? `${nights} nuit${nights > 1 ? "s" : ""}` : null,
+                  account ? [account.first_name, account.last_name].filter(Boolean).join(" ") : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                name="status"
+                form="booking-meta"
+                value={statusDraft}
+                aria-label="Où en est le dossier"
+                onChange={(event) => setStatusDraft(event.target.value as typeof statusDraft)}
+                className="font-label rounded-full bg-[var(--admin-navy)] px-3 py-2 text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--admin-gold)] outline-none"
+              >
+                {BOOKING_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {BOOKING_STATUS_LABELS[status]}
+                  </option>
+                ))}
+              </select>
+              <p className="font-display text-lg font-bold text-[var(--admin-navy)]">
+                {formatMoney(stayAmount, stayCurrency(booking.currency))}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="submit"
+                form="booking-meta"
+                disabled={busy !== "idle"}
+                className="admin-tap rounded-full border border-[var(--border)] bg-white px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
+              >
+                {busy === "save" ? "Enregistrement…" : "Enregistrer"}
+              </button>
+              <button
+                type="button"
+                disabled={busy !== "idle"}
+                onClick={() => setConfirm(showPrimaryPublish ? "publish" : "unpublish")}
+                className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm disabled:opacity-50"
+              >
+                {!booking.visible_to_client ? "Montrer au client" : updatesPending ? "Mettre à jour" : "Cacher au client"}
+              </button>
+              <button
+                type="button"
+                aria-expanded={more}
+                aria-label="Autres actions du dossier"
+                onClick={() => setMore((open) => !open)}
+                className="admin-tap inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--border)] bg-white text-sm font-bold text-[var(--admin-navy)]"
+              >
+                …
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="absolute bottom-4 left-5 right-5 text-white">
-          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">
-            {booking.reference}
-            {jMinusLabel(booking.start_date) ? ` · ${jMinusLabel(booking.start_date)}` : ""}
+        <div className="flex gap-6 border-b border-[var(--border)]" role="tablist" aria-label="Parties du dossier">
+          {tabs.map(([id, label]) => {
+            const selected = tab === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                onClick={() => setTab(id)}
+                className={`-mb-px border-b-2 pb-3 font-display text-sm font-semibold ${
+                  selected
+                    ? "border-[var(--admin-gold)] text-[var(--admin-navy)]"
+                    : "border-transparent text-muted hover:text-[var(--admin-navy)]"
+                }`}
+              >
+                {label}
+                {id === "todo" && passportGap.length + hotelDeskCount > 0 ? (
+                  <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--admin-gold)] px-1 text-[10px] font-bold text-[var(--admin-navy)]">
+                    {passportGap.length + hotelDeskCount}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+        <BusyBar active={busy !== "idle"} label={busy === "publish" ? "Envoi au client…" : "Enregistrement…"} />
+        {more ? (
+          <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl bg-[var(--admin-sky)] px-4 py-3">
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                className="text-sm font-semibold text-[var(--admin-navy)]"
+                disabled={busy !== "idle"}
+                onClick={() => {
+                  setCoverNotice(null);
+                  setCoverOpen(true);
+                }}
+              >
+                Importer une photo
+              </button>
+              {booking.cover_image_path || unsplashKeywordMatch(booking) ? (
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-[var(--admin-navy)]"
+                  disabled={busy !== "idle"}
+                  onClick={() => void regenerateCover()}
+                >
+                  Autre version
+                </button>
+              ) : null}
+              {booking.cover_image_path ? (
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-[var(--admin-navy)]"
+                  disabled={busy !== "idle"}
+                  onClick={clearCover}
+                >
+                  Photo du lieu
+                </button>
+              ) : null}
+              {booking.visible_to_client && updatesPending ? (
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-[var(--admin-navy)]"
+                  onClick={() => {
+                    setMore(false);
+                    setConfirm("unpublish");
+                  }}
+                >
+                  Cacher au client
+                </button>
+              ) : null}
+              {shareUrl ? (
+                <a href={shareUrl} target="_blank" rel="noreferrer" className="text-sm font-semibold text-[var(--admin-navy)] underline">
+                  Voir comme le client
+                </a>
+              ) : null}
+            </div>
+            <DeleteBookingButton bookingId={booking.id} label={`${booking.reference} — ${titleDraft || booking.title}`} compact />
+          </div>
+        ) : null}
+        {statusDraft === "confirmed" ? (
+          <p className="text-xs text-muted">Ce statut inscrit le montant dans le compte du client.</p>
+        ) : null}
+        {pendingCards.length > 0 && booking.visible_to_client ? (
+          <p className="rounded-2xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
+            {pendingCards.length} étape{pendingCards.length > 1 ? "s" : ""} pas encore montrée{pendingCards.length > 1 ? "s" : ""}.
           </p>
-          <h1 className="break-words font-display text-2xl font-bold leading-tight">
-            {stayHeadline(
-              titleDraft || booking.title,
-              booking.destination,
-              stayArrivalPlaces(booking.destination, booking.title, items)
-            )}
-          </h1>
-        </div>
-      </BookingHero>
+        ) : null}
+        {needsReview ? <p className="text-sm text-accent">Certaines étapes sont marquées lecture douteuse.</p> : null}
+        {flash ? <p className="text-sm text-[var(--admin-navy)]">{flash}</p> : null}
+        <IssuesList issues={issues} />
+      </header>
       <CoverPickDialog
         open={coverOpen}
         bookingId={booking.id}
@@ -547,78 +725,10 @@ export function BookingEditor({
         onRegenerate={() => void regenerateCover()}
       />
 
-      <section className="admin-af-card flex flex-col gap-3 rounded-3xl p-5 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0 flex-1 space-y-3">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">Carnet client</p>
-          <p className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">
-            {booking.visible_to_client ? "Visible dans l’espace" : "Masqué — invisible au client"}
-          </p>
-          <p className="text-sm text-muted">
-            Enregistrer ne publie pas. Publier montre au client les cartes qui ne sont pas masquées.
-          </p>
-          {pendingCards.length > 0 && booking.visible_to_client ? (
-            <p className="mt-2 rounded-2xl bg-[var(--admin-peach)] px-3 py-2 text-sm">
-              À vérifier — {pendingCards.length} nouvelle{pendingCards.length > 1 ? "s" : ""} carte
-              {pendingCards.length > 1 ? "s" : ""} non publiée{pendingCards.length > 1 ? "s" : ""}.
-            </p>
-          ) : null}
-          {needsReview ? (
-            <p className="mt-2 text-sm text-accent">Certaines cartes sont marquées lecture douteuse.</p>
-          ) : null}
-          {flash ? <p className="mt-2 text-sm text-[var(--admin-navy)]">{flash}</p> : null}
-          <IssuesList issues={issues} className="mt-2" />
-        </div>
-        <div className="min-w-0 space-y-2 sm:min-w-[12rem] sm:shrink-0">
-          <BusyBar
-            active={busy !== "idle"}
-            label={busy === "publish" ? "Publication…" : "Enregistrement…"}
-          />
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <button
-            type="submit"
-            form="booking-meta"
-            disabled={busy !== "idle"}
-            className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm disabled:opacity-50"
-          >
-            {busy === "save" ? "Enregistrement…" : "Enregistrer"}
-          </button>
-          {booking.visible_to_client ? (
-            <button
-              type="button"
-              disabled={busy !== "idle"}
-              onClick={() => setConfirm("unpublish")}
-              className="admin-tap rounded-full border border-border px-4 py-2 text-sm font-semibold disabled:opacity-50"
-            >
-              Retirer le carnet
-            </button>
-          ) : (
-            <button
-              type="button"
-              disabled={busy !== "idle"}
-              onClick={() => setConfirm("publish")}
-              className="admin-tap rounded-full border border-[var(--admin-gold)] bg-[#f8f4ed] px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
-            >
-              Publier le carnet
-            </button>
-          )}
-          {booking.visible_to_client && (revealItems.length > 0 || revealDocs.length > 0) ? (
-            <button
-              type="button"
-              disabled={busy !== "idle"}
-              onClick={() => setConfirm("publish")}
-              className="admin-tap rounded-full border border-[var(--admin-gold)] bg-[#f8f4ed] px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
-            >
-              Publier les mises à jour
-            </button>
-          ) : null}
-        </div>
-        </div>
-      </section>
-
       {confirm ? (
         <section className="admin-af-card space-y-3 rounded-3xl border border-[var(--admin-gold)]/50 p-5">
           <p className="font-display text-lg font-bold text-[var(--admin-navy)]">
-            {confirm === "publish" ? "Publier le carnet" : "Retirer le carnet"}
+            {confirm === "publish" ? "Montrer au client" : "Cacher au client"}
           </p>
           {confirm === "publish" ? (
             <>
@@ -631,7 +741,7 @@ export function BookingEditor({
                   <li key={doc.id}>{doc.file_name || "Document"}</li>
                 ))}
                 {!revealItems.length && !revealDocs.length ? (
-                  <li>Aucune carte à montrer. Retirez un masquage ou ajoutez une carte.</li>
+                  <li>Aucune étape à montrer. Retirez un masquage ou ajoutez une étape.</li>
                 ) : null}
               </ul>
             </>
@@ -649,7 +759,7 @@ export function BookingEditor({
               }}
               className="admin-af-btn rounded-full px-4 py-2 text-sm disabled:opacity-50"
             >
-              {confirm === "publish" ? "Confirmer la publication" : "Retirer de l’espace"}
+              {confirm === "publish" ? "Confirmer" : "Cacher"}
             </button>
             <button
               type="button"
@@ -662,30 +772,9 @@ export function BookingEditor({
         </section>
       ) : null}
 
-      <form id="booking-meta" onSubmit={save} className="admin-af-card overflow-hidden rounded-[28px]">
-        <div className="relative bg-[var(--admin-navy)] px-5 py-6 text-white sm:px-7 sm:py-7">
-          <div className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-[var(--admin-gold)]/15" />
-          <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--admin-gold)]">Séjour</p>
-          <input
-            name="title"
-            required
-            value={titleDraft}
-            onChange={(event) => setTitleDraft(event.target.value)}
-            placeholder="Séjour à Avoriaz"
-            aria-label="Titre"
-            className="mt-2 w-full bg-transparent font-display text-2xl font-bold leading-tight text-white outline-none placeholder:text-white/35 sm:text-3xl"
-          />
-          <p className="mt-1 text-xs text-white/55">Le client le voit en haut de son carnet.</p>
-          <PlaceField
-            name="destination"
-            defaultValue={booking.destination || ""}
-            placeholder="Ville ou station"
-            className="mt-5 w-full border-0 border-b border-white/25 bg-transparent px-0 py-2 text-lg text-white outline-none placeholder:text-white/40 focus:border-[var(--admin-gold)]"
-          />
-        </div>
-
-        <div className="space-y-7 bg-[var(--admin-sky)]/40 px-5 py-6 sm:px-7">
-          <section className="space-y-3">
+      <form id="booking-meta" onSubmit={save} className="contents">
+        <div className="contents">
+          <section className={`order-2 admin-af-card space-y-3 rounded-3xl p-5 ${tab === "client" ? "" : "hidden"}`}>
             <div className="grid gap-3 sm:grid-cols-2">
               <CustomerPickField
                 name="customer_id"
@@ -713,9 +802,18 @@ export function BookingEditor({
             ) : null}
           </section>
 
-          <section className="space-y-3">
-            <CoverMark>Dates</CoverMark>
-            <div className="rounded-3xl bg-white/80 p-4 shadow-[0_1px_2px_rgba(11,25,44,0.04)]">
+          <section className={`admin-af-card space-y-3 rounded-3xl p-5 ${hasSteps ? "order-3" : "order-2"} ${tab === "voyage" ? "" : "hidden"}`}>
+            <CoverMark>Lieu et dates</CoverMark>
+            <label className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+              Lieu
+              <PlaceField
+                name="destination"
+                defaultValue={booking.destination || ""}
+                placeholder="Ville ou station"
+                className={coverField}
+              />
+            </label>
+            <div className="rounded-3xl bg-[var(--admin-sky)] p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 {nights ? (
                   <p className="font-display text-sm font-semibold text-[var(--admin-navy)]">
@@ -758,39 +856,8 @@ export function BookingEditor({
             </div>
           </section>
 
-          <section className="space-y-3">
-            <CoverMark>Dossier</CoverMark>
-            <div className="flex flex-wrap gap-1.5 rounded-3xl bg-white/80 p-1.5" role="radiogroup" aria-label="Où en est le dossier">
-              {BOOKING_STATUSES.map((status) => {
-                const selected = statusDraft === status;
-                const confirmed = selected && status === "confirmed";
-                return (
-                  <label
-                    key={status}
-                    className={`cursor-pointer rounded-full px-3.5 py-2 text-sm font-semibold transition ${
-                      confirmed
-                        ? "bg-[var(--admin-navy)] text-[var(--admin-gold)] shadow-sm"
-                        : selected
-                          ? "bg-[var(--admin-navy)] text-white shadow-sm"
-                          : "text-[var(--admin-navy)]/75 hover:bg-white"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="status"
-                      value={status}
-                      checked={selected}
-                      onChange={() => setStatusDraft(status)}
-                      className="sr-only"
-                    />
-                    {BOOKING_STATUS_LABELS[status]}
-                  </label>
-                );
-              })}
-            </div>
-            {statusDraft === "confirmed" ? (
-              <p className="text-xs text-muted">Ce statut inscrit le montant dans les transactions du client.</p>
-            ) : null}
+          <section className={`order-2 admin-af-card space-y-3 rounded-3xl p-5 ${tab === "argent" ? "" : "hidden"}`}>
+            <CoverMark>Règlement</CoverMark>
             <label className="flex max-w-[11rem] flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
               Devise
               <select
@@ -806,10 +873,6 @@ export function BookingEditor({
                 ))}
               </select>
             </label>
-          </section>
-
-          <section className="space-y-3">
-            <CoverMark>Règlement</CoverMark>
             <input type="hidden" name="payer_kind" value={payerKind} />
             <input
               type="hidden"
@@ -972,12 +1035,12 @@ export function BookingEditor({
                   {
                     settles: false,
                     title: "L’agence encaisse",
-                    hint: "Le montant entre dans les transactions du client.",
+                    hint: "Le montant entre dans le compte du client.",
                   },
                   {
                     settles: true,
                     title: "Le client règle l’hôtel",
-                    hint: "Sur sa carte. Le prix reste au carnet.",
+                    hint: "Sur sa carte. Le prix reste visible.",
                   },
                 ] as const
               ).map((choice) => {
@@ -1017,11 +1080,11 @@ export function BookingEditor({
                   className="mt-1 size-4 accent-[var(--admin-navy)]"
                 />
                 <span>
-                  Compter dans les transactions
+                  Ajouter ce prix au compte du client
                   <span className="mt-0.5 block text-xs font-normal text-muted">
-                    Décochez pour montrer le prix au carnet sans le compter.
+                    Décochez pour montrer le prix sans le compter.
                     {items.some((item) => item.include_in_ledger)
-                      ? " Des cartes sont déjà comptées : laissez décoché pour ne pas compter deux fois."
+                      ? " Des étapes sont déjà comptées : laissez décoché pour ne pas compter deux fois."
                       : ""}
                   </span>
                 </span>
@@ -1029,18 +1092,7 @@ export function BookingEditor({
             )}
           </section>
 
-          <section className="space-y-3">
-            <CoverMark>Mots</CoverMark>
-            <label className="flex flex-col gap-2 rounded-3xl border border-[var(--border)] border-l-[3px] border-l-[var(--admin-gold)] bg-white p-4 text-sm font-semibold text-[var(--admin-navy)]">
-              Message pour le client
-              <textarea
-                name="notes_client"
-                defaultValue={booking.notes_client || ""}
-                rows={3}
-                placeholder="Conseils, horaires de rendez-vous…"
-                className={`${coverField} min-h-24 bg-[var(--admin-sky)] font-normal`}
-              />
-            </label>
+          <section className={`order-3 admin-af-card space-y-3 rounded-3xl p-5 ${tab === "client" ? "" : "hidden"}`}>
             <label className="flex flex-col gap-2 rounded-3xl bg-[var(--admin-peach)] p-5 text-sm font-semibold text-[var(--admin-navy)] shadow-[inset_0_0_0_1px_rgba(197,168,128,0.45)]">
               <span className="flex flex-wrap items-baseline justify-between gap-2">
                 Notes pour l’agence
@@ -1058,9 +1110,11 @@ export function BookingEditor({
             </label>
           </section>
 
-          <p className="text-xs text-muted">Enregistrer garde le dossier.</p>
         </div>
       </form>
+      {tab === "voyage" ? (
+        <>
+      <div className={hasSteps ? "order-4" : "order-1"}>
       <BookingIngest
         role="admin"
         mode="append"
@@ -1071,19 +1125,56 @@ export function BookingEditor({
         aiConfigured={aiConfigured}
         preserveTitle={booking.title}
       />
+      </div>
+      <form onSubmit={addDoc} className={`admin-af-card flex flex-wrap items-center gap-3 rounded-3xl p-5 ${hasSteps ? "order-5" : "order-3"}`}>
+        <p className="text-sm font-semibold text-[var(--admin-navy)]">Ou joindre une pièce sans la lire</p>
+        <input name="file" type="file" required className="text-sm" />
+        <button className="admin-af-btn rounded-full px-3 py-2 text-sm">Joindre</button>
+      </form>
+      <div className={hasSteps ? "order-1" : "order-5"}>
+      <BookingItemsPanel
+        bookingId={booking.id}
+        items={items}
+        documents={documents}
+        household={householdMembers(account || holderName, companions)}
+        currency={booking.currency}
+        hotelRequests={hotelRequests}
+        today={todayIsoDate()}
+        travelers={travelers}
+        identityDocs={identityDocs}
+        holder={holderProfile}
+        arrivals={arrivals}
+        hasCardCode={hasCardCode}
+        cardViews={cardViews}
+        clientSettlesStay={clientSettles}
+        attachedEmails={attachedEmails}
+        onBindDraftSave={(save) => {
+          saveOpenCard.current = save;
+        }}
+      />
+      </div>
+      <div className={hasSteps ? "order-2" : "order-4"}>
+      <ReservationFiles
+        variant="admin"
+        showPassports={false}
+        attachments={attachmentPreviews(documents, items, booking.reference)}
+        onRemoveAttachment={(file) => void removeDocument(file.id)}
+      />
+      </div>
+        </>
+      ) : null}
 
-      <section className="admin-af-card space-y-4 rounded-3xl p-5">
+      {tab === "client" ? (
+        <>
+      <section className="order-1 admin-af-card space-y-4 rounded-3xl p-5">
         <div className="space-y-3">
-          <h2 className="font-display text-lg font-bold">Voyageurs</h2>
+          <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Voyageurs</h2>
           <TripPassportGroup
             embedded
             rows={passportVaultRows(travelers, identityDocs, todayIsoDate(), holderProfile)}
             hrefFor={() => `/admin/clients/${booking.customer_id}`}
             passports={passportPreviewsForStay(travelers, identityDocs, holderName, booking.reference)}
           />
-          <p className="text-sm text-muted">
-            Le passeport déposé au coffre est repris pour chaque voyageur.
-          </p>
         </div>
         {!travelers.length ? (
           <button
@@ -1149,70 +1240,33 @@ export function BookingEditor({
       </section>
 
       {shareUrl ? (
+        <div className="order-4">
         <TripSharePanel
           bookingId={booking.id}
           shareUrl={shareUrl}
           companions={shareCompanions}
           sendUrl={`/api/admin/bookings/${booking.id}/partage`}
         />
+        </div>
+      ) : null}
+        </>
       ) : null}
 
-      <section className="admin-af-card space-y-2 rounded-3xl p-5">
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+      {tab === "argent" ? (
+        <>
+      <section className="order-1 admin-af-card space-y-2 rounded-3xl p-5">
+        <p className="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold-dark)]">
           Montant du séjour
         </p>
         <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
-          {formatMoney(
-            stayPriceWithExpenses({
-              stayTotal: bookingTotalFromItems(items),
-              agencyCommission: booking.agency_commission === true,
-              expenses: items.filter((item) => isLedgerExpenseKind(item.kind)),
-            }),
-            stayCurrency(booking.currency)
-          )}
+          {formatMoney(stayAmount, stayCurrency(booking.currency))}
         </p>
-        <p className="text-sm text-muted">
-          Prix des cartes, des frais d’agence et des dépenses. Le frais de billeterie n’est pas inclus.
-          {clientSettles
-            ? " Réglé sur la carte du client : ce montant ne va pas aux transactions ni à l’encours."
-            : ""}
-        </p>
+        {clientSettles ? (
+          <p className="text-sm text-muted">Réglé sur la carte du client : ce montant ne va pas au compte.</p>
+        ) : null}
       </section>
 
-      <HotelArrivalPanel
-        bookingId={booking.id}
-        items={items}
-        arrivals={arrivals}
-        holder={(() => {
-          const guest = principalGuest({ travelers, holder: holderProfile });
-          return `${guest.firstName} ${guest.lastName}`.trim();
-        })()}
-        cardViews={cardViews}
-        bookingStatus={booking.status}
-        currency={booking.currency}
-      />
-
-      <BookingItemsPanel
-        bookingId={booking.id}
-        items={items}
-        documents={documents}
-        household={householdMembers(account || holderName, companions)}
-        currency={booking.currency}
-        hotelRequests={hotelRequests}
-        today={todayIsoDate()}
-        travelers={travelers}
-        identityDocs={identityDocs}
-        holder={holderProfile}
-        arrivals={arrivals}
-        hasCardCode={hasCardCode}
-        cardViews={cardViews}
-        clientSettlesStay={clientSettles}
-        attachedEmails={attachedEmails}
-        onBindDraftSave={(save) => {
-          saveOpenCard.current = save;
-        }}
-      />
-
+      <div className="order-3">
       <BookingExpensesPanel
         bookingId={booking.id}
         items={items}
@@ -1221,80 +1275,112 @@ export function BookingEditor({
         agencyCommission={booking.agency_commission === true}
         stayTotal={bookingTotalFromItems(items)}
       />
+      </div>
+        </>
+      ) : null}
 
-      {account && bookingHasFlight(items) ? (
-        <section className="admin-af-card space-y-4 rounded-3xl p-5">
-          <VisaSection
-            variant="admin"
+      {tab === "todo" ? (
+        <div className="space-y-6">
+          {passportGap.length ? (
+            <section className="admin-af-card space-y-2 rounded-3xl p-5">
+              <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Passeports à joindre</h2>
+              <ul className="space-y-1 text-sm text-[var(--admin-navy)]">
+                {passportGap.map((traveler) => (
+                  <li key={traveler.id}>
+                    {traveler.first_name} {traveler.last_name}
+                  </li>
+                ))}
+              </ul>
+              <Link href={`/admin/clients/${booking.customer_id}`} className="inline-flex text-sm font-semibold underline">
+                Ouvrir la fiche client
+              </Link>
+            </section>
+          ) : null}
+          {hasFlight && account ? (
+            <section className="admin-af-card space-y-4 rounded-3xl p-5">
+              <VisaSection
+                variant="admin"
+                bookingId={booking.id}
+                reference={booking.reference}
+                trip={formalities}
+                requests={visaRequests}
+                travelers={travelers}
+                documents={identityDocs}
+                visaBooked={Boolean(findVisaExtra(items))}
+                pliantReady={pliantReady}
+              />
+              <ExtrasPanel
+                variant="admin"
+                booking={booking}
+                items={items}
+                travelers={travelers}
+                holder={account}
+                companions={companions}
+                formalities={formalities}
+                refusals={refusals}
+              />
+            </section>
+          ) : null}
+          {hotelDeskCount > 0 ? (
+            <section className="admin-af-card flex flex-wrap items-center justify-between gap-3 rounded-3xl p-5">
+              <p className="font-display text-lg font-bold text-[var(--admin-navy)]">
+                {hotelDeskCount} hôtel{hotelDeskCount > 1 ? "s" : ""} à écrire
+              </p>
+              <button type="button" className="admin-af-btn rounded-full px-4 py-2 text-sm" onClick={() => setTab("voyage")}>
+                Voir l’étape
+              </button>
+            </section>
+          ) : null}
+          {leOpen && littleEmperors?.cancellation_deadline ? (
+            <LittleEmperorsCancel
+              id={littleEmperors.id}
+              hotelName={littleEmperors.hotel_name}
+              isCancellable={littleEmperors.is_cancellable}
+              deadline={littleEmperors.cancellation_deadline}
+              policies={littleEmperors.cancellation_policies || []}
+              state={littleEmperors.state}
+            />
+          ) : null}
+          {hasHotel ? (
+            <section className="admin-af-card space-y-3 rounded-3xl p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Carte pour l’hôtel</h2>
+                  <p className="text-sm text-muted">Elle se prépare avec le séjour.</p>
+                </div>
+                <button
+                  type="button"
+                  className="rounded-full border border-border px-4 py-2 text-sm font-semibold"
+                  onClick={() => setHotelCardOpen((open) => !open)}
+                >
+                  {hotelCardOpen ? "Fermer" : "Voir"}
+                </button>
+              </div>
+              {hotelCardOpen ? (
+                <HotelArrivalPanel
+                  bookingId={booking.id}
+                  items={items}
+                  arrivals={arrivals}
+                  holder={(() => {
+                    const guest = principalGuest({ travelers, holder: holderProfile });
+                    return `${guest.firstName} ${guest.lastName}`.trim();
+                  })()}
+                  cardViews={cardViews}
+                  bookingStatus={booking.status}
+                  currency={booking.currency}
+                />
+              ) : null}
+            </section>
+          ) : null}
+          <ServiceOfferToggles
             bookingId={booking.id}
-            reference={booking.reference}
-            trip={formalities}
-            requests={visaRequests}
-            travelers={travelers}
-            documents={identityDocs}
-            visaBooked={Boolean(findVisaExtra(items))}
-            pliantReady={pliantReady}
+            chauffeur={booking.offer_chauffeur === true}
+            greeter={booking.offer_greeter === true}
+            checkin={booking.offer_checkin === true}
+            hasFlight={hasFlight}
           />
-          <ExtrasPanel
-            variant="admin"
-            booking={booking}
-            items={items}
-            travelers={travelers}
-            holder={account}
-            companions={companions}
-            formalities={formalities}
-            refusals={refusals}
-          />
-        </section>
+        </div>
       ) : null}
-
-      <ServiceOfferToggles
-        bookingId={booking.id}
-        chauffeur={booking.offer_chauffeur === true}
-        greeter={booking.offer_greeter === true}
-        hasFlight={bookingHasFlight(items)}
-      />
-
-      {items.some((item) => !isLedgerExpenseKind(item.kind)) ? (
-        <section className="admin-af-card space-y-3 rounded-3xl p-5">
-          <h2 className="font-display text-lg font-bold">Aperçu client</h2>
-          <p className="text-sm text-muted">Les mêmes cartes, dans l’ordre du carnet. Invisible tant que vous ne publiez pas.</p>
-          <CarnetItinerary
-            booking={booking}
-            items={items}
-            docs={documents}
-            calendarBase={`/api/admin/bookings/${booking.id}/calendrier`}
-            services={
-              account
-                ? {
-                    variant: "admin",
-                    travelers,
-                    holder: account,
-                    companions,
-                  }
-                : null
-            }
-            refusals={refusals}
-          />
-        </section>
-      ) : null}
-
-      <ReservationFiles
-        variant="admin"
-        showPassports={false}
-        attachments={attachmentPreviews(documents, items, booking.reference)}
-        onRemoveAttachment={(file) => void removeDocument(file.id)}
-      />
-      <section className="admin-af-card rounded-3xl p-5">
-        <h2 className="font-display text-lg font-bold">Joindre un justificatif</h2>
-        <p className="mt-1 text-sm text-muted">
-          Billets, vouchers et devis. Visibles au client seulement après publication du carnet.
-        </p>
-        <form onSubmit={addDoc} className="mt-3 flex flex-wrap gap-2">
-          <input name="file" type="file" required />
-          <button className="admin-af-btn rounded-full px-3 py-2 text-sm">Joindre</button>
-        </form>
-      </section>
     </div>
   );
 }

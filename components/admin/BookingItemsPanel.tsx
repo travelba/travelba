@@ -12,12 +12,20 @@ import {
   type CrmBookingItem,
 } from "@/lib/crm/types";
 import type { BookingExtract } from "@/lib/crm/ingest-types";
-import { itemDetailsLine, itemWhen } from "@/lib/crm/booking-display";
 import { readDocumentAmount } from "@/lib/crm/booking-issues";
-import { documentsForItem, hotelDisplayName, itemPriceLabel } from "@/lib/crm/carnet";
+import {
+  documentsForItem,
+  flightCardSubtitle,
+  flightCardTitle,
+  hotelDisplayName,
+  itemClock,
+  itemPriceLabel,
+  kindIcon,
+} from "@/lib/crm/carnet";
 import { flightCountsInStay } from "@/lib/crm/bookings";
 import { attachedEmailLabel } from "@/lib/crm/email-detach";
 import { formatDateTimeFr, formatMoney } from "@/lib/crm/money";
+import { Icon } from "@/components/crm/icons";
 import { STAY_CURRENCIES } from "@/lib/crm/stay-currency";
 import { HotelContactButton } from "@/components/crm/HotelContact";
 import { HotelDesk } from "@/components/admin/HotelDesk";
@@ -63,6 +71,70 @@ function printedPrice(amount: number, currency: string) {
   if ((STAY_CURRENCIES as readonly string[]).includes(code)) return formatMoney(amount, code);
   return currency ? `${amount.toLocaleString("fr-FR")} ${currency}` : amount.toLocaleString("fr-FR");
 }
+
+function detailText(item: CrmBookingItem, key: string) {
+  const value = item.details?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function stepDayKey(item: CrmBookingItem) {
+  const raw = (item.start_at || "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : "";
+}
+
+function stepDayLabel(key: string) {
+  if (!key) return "Sans date";
+  const date = new Date(`${key}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return "Sans date";
+  return date.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+}
+
+function stepTitle(item: CrmBookingItem) {
+  if (item.kind === "hotel") return hotelDisplayName(item);
+  if (item.kind === "flight" || item.kind === "rail") return flightCardTitle(item);
+  return visibleServiceCopy(item.title);
+}
+
+function stepEyebrow(item: CrmBookingItem) {
+  const kind = visibleServiceCopy(BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind);
+  const clock = itemClock(item.start_at);
+  const end = item.kind === "hotel" ? "" : itemClock(item.end_at);
+  const tickets = Number(item.details?.ticket_count);
+  const parts = [kind];
+  if (clock) parts.push(clock);
+  if (end) parts.push(`→ ${end}`);
+  if (item.kind === "flight" && Number.isFinite(tickets) && tickets > 1) {
+    parts.push(`${Math.round(tickets)} billets`);
+  }
+  return parts.join(" · ");
+}
+
+function stepSubtitle(item: CrmBookingItem) {
+  const parts: string[] = [];
+  if (item.kind === "flight" || item.kind === "rail") {
+    const number = detailText(item, "flight_number");
+    const cabin = detailText(item, "cabin");
+    const cities = flightCardSubtitle(item);
+    if (number) parts.push(number);
+    if (cabin) parts.push(cabin);
+    if (cities) parts.push(cities);
+  } else if (item.kind === "hotel") {
+    const room = detailText(item, "room");
+    const city = detailText(item, "city");
+    if (room) parts.push(room);
+    if (city) parts.push(city);
+  } else if (item.supplier) {
+    parts.push(item.supplier);
+  }
+  const ref = item.confirmation_ref || detailText(item, "pnr");
+  if (ref) parts.push(`Réf. ${ref}`);
+  return parts.filter(Boolean).join(" · ");
+}
+
+const flatBtn =
+  "admin-tap inline-flex h-8 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-white px-3 text-xs font-semibold text-[var(--admin-navy)] disabled:opacity-40";
+const flatIconBtn =
+  "admin-tap inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-white text-sm font-bold text-[var(--admin-navy)]";
 
 function blockDragFromControl(event: PointerEvent<HTMLElement>) {
   const target = event.target;
@@ -127,6 +199,9 @@ export function BookingItemsPanel({
   const orderDirty = useRef(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmDetach, setConfirmDetach] = useState<string | null>(null);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [deskFor, setDeskFor] = useState<string | null>(null);
 
   function startEdit(item: CrmBookingItem) {
     setEditingId(item.id);
@@ -304,66 +379,34 @@ export function BookingItemsPanel({
   return (
     <section className="admin-af-card rounded-3xl p-5">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="font-display text-lg font-bold">Cartes</h2>
-        <button
-          type="button"
-          className="text-xs font-semibold text-[var(--admin-navy)] underline"
-          onClick={startNew}
-        >
-          Ajouter une carte
+        <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Étapes du voyage</h2>
+        <button type="button" className="admin-af-btn rounded-full px-4 py-2 text-sm" onClick={startNew}>
+          Ajouter une étape
         </button>
       </div>
-      <p className="mt-1 text-xs text-muted">
-        Déplacez une carte pour changer l’ordre du carnet. Par défaut : chronologique. Une carte hôtel
-        revient chaque nuit dans l’aperçu : retirer la carte retire toutes ces lignes. Une chambre en trop
-        se retire dans la carte.
-      </p>
+      <p className="mt-1 text-xs text-muted">Glissez une étape pour changer l’ordre. Par défaut, l’ordre suit les dates.</p>
       <div className="mt-3">
         <BusyBar active={busy} label="Enregistrement…" />
       </div>
       {attachedEmails.map((mail) => (
-        <div
-          key={mail.id}
-          className="mt-3 rounded-2xl border border-[var(--admin-gold)] bg-[var(--surface-2)] px-3 py-3"
-        >
-          <p className="text-sm font-semibold text-[var(--admin-navy)]">{attachedEmailLabel(mail)}</p>
-          <p className="mt-1 text-xs text-muted">
-            Importé depuis un e-mail
-            {mail.from_email ? ` · ${mail.from_email}` : ""}
-            {mail.received_at ? ` · ${formatDateTimeFr(mail.received_at)}` : ""}
+        <div key={mail.id} className="mt-3 flex items-center gap-3 border-b border-[var(--border)] py-2">
+          <p className="min-w-0 flex-1 truncate text-sm text-[var(--admin-navy)]">
+            <span className="text-muted">E-mail · </span>
+            {attachedEmailLabel(mail)}
+            {mail.received_at ? <span className="text-muted"> · {formatDateTimeFr(mail.received_at)}</span> : null}
           </p>
           {confirmDetach === mail.id ? (
-            <div className="mt-2">
-              <p className="text-sm text-[var(--admin-navy)]">
-                Retirer cette réservation de ce dossier et la remettre dans les e-mails à rattacher ?
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={busy}
-                  className="admin-tap rounded-full bg-[var(--admin-navy)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
-                  onClick={() => void detachEmail(mail.id)}
-                >
-                  Remettre dans les e-mails
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  className="admin-tap rounded-full px-3 py-1.5 text-xs font-semibold text-muted"
-                  onClick={() => setConfirmDetach(null)}
-                >
-                  Annuler
-                </button>
-              </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button type="button" disabled={busy} className={flatBtn} onClick={() => void detachEmail(mail.id)}>
+                Confirmer
+              </button>
+              <button type="button" disabled={busy} className={flatBtn} onClick={() => setConfirmDetach(null)}>
+                Annuler
+              </button>
             </div>
           ) : (
-            <button
-              type="button"
-              disabled={busy}
-              className="admin-tap mt-2 text-xs font-semibold text-[var(--admin-navy)] underline disabled:opacity-40"
-              onClick={() => setConfirmDetach(mail.id)}
-            >
-              Remettre dans les e-mails
+            <button type="button" disabled={busy} className={flatBtn} onClick={() => setConfirmDetach(mail.id)}>
+              Remettre
             </button>
           )}
         </div>
@@ -373,27 +416,46 @@ export function BookingItemsPanel({
         axis="y"
         values={cardRows}
         onReorder={applyCardOrder}
-        className="mt-2 flex list-none flex-col gap-2 p-0 text-sm"
+        className="mt-1 flex list-none flex-col p-0 text-sm"
       >
-        {cardRows.map((item) => {
+        {cardRows.map((item, index) => {
           const locked = editingId === item.id || busy;
+          const dayKey = stepDayKey(item);
+          const showDay = index === 0 || dayKey !== stepDayKey(cardRows[index - 1]);
+          const docs = documentsForItem(item, documents);
+          const subtitle = stepSubtitle(item);
+          const price = flightCountsInStay(item, items) ? itemPriceLabel(item, currency) : null;
+          const printed = readDocumentAmount(item.details);
+          const stepAmount = item.amount == null ? null : Number(item.amount);
+          const priceDiffers =
+            printed != null && (stepAmount == null || Math.abs(printed - stepAmount) > 0.009);
+          const counted = item.include_in_ledger && !(clientSettlesStay && !isExtraItemKind(item.kind));
+          const quiet = [
+            subtitle,
+            docs.length ? `${docs.length} pièce${docs.length > 1 ? "s" : ""}` : "",
+            !item.visible_to_client ? "Pas encore montré" : "",
+            counted ? "Compté" : "",
+            priceDiffers && printed != null
+              ? `Prix du document : ${printedPrice(printed, typeof item.details?.document_currency === "string" ? item.details.document_currency : "")}`
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" · ");
           return (
           <Reorder.Item
             key={item.id}
             value={item}
             dragListener={!locked}
             onDragEnd={finishCardDrag}
-            whileDrag={{
-              scale: 1.02,
-              zIndex: 30,
-              boxShadow: "0 16px 40px rgba(11, 25, 44, 0.18)",
-              borderColor: "#C5A880",
-            }}
-            className={`relative rounded-xl border border-border bg-[var(--surface)] px-3 py-2 ${
-              locked ? "" : "cursor-grab active:cursor-grabbing"
-            }`}
+            whileDrag={{ zIndex: 30, background: "#ffffff" }}
+            className={`relative ${locked ? "" : "cursor-grab active:cursor-grabbing"}`}
           >
-            <div onPointerDown={blockDragFromControl}>
+            {showDay ? (
+              <p className={`text-xs font-semibold text-[var(--admin-gold-dark)] ${index === 0 ? "pt-2" : "pt-4"}`}>
+                {stepDayLabel(dayKey)}
+              </p>
+            ) : null}
+            <div onPointerDown={blockDragFromControl} className="border-b border-[var(--border)] py-2">
             {editingId === item.id ? (
               <div className="space-y-2">
                 <IngestItemCard
@@ -406,101 +468,98 @@ export function BookingItemsPanel({
                 <ItemAttachments
                   bookingId={bookingId}
                   itemId={item.id}
-                  docs={documentsForItem(item, documents)}
+                  docs={docs}
                 />
                 <div className="flex gap-2">
                   <button
                     type="button"
                     disabled={busy}
                     onClick={() => void saveDraft()}
-                    className="admin-af-btn rounded-full px-4 py-1.5 text-xs"
+                    className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm"
                   >
-                    {busy ? "…" : "Enregistrer la carte"}
+                    {busy ? "…" : "Enregistrer l’étape"}
                   </button>
-                  <button type="button" className="text-xs font-semibold" onClick={() => setEditingId(null)}>
+                  <button type="button" className={flatBtn} onClick={() => setEditingId(null)}>
                     Annuler
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <p className="font-medium">
-                    {visibleServiceCopy(BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind)} ·{" "}
-                    {item.kind === "hotel" ? hotelDisplayName(item) : visibleServiceCopy(item.title)}
-                    {!item.visible_to_client ? (
-                      <span className="ml-2 rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase">
-                        Brouillon
-                      </span>
-                    ) : null}
-                    {item.include_in_ledger && !(clientSettlesStay && !isExtraItemKind(item.kind)) ? (
-                      <span className="ml-2 rounded-full bg-[var(--admin-sky)] px-2 py-0.5 text-[10px] font-bold uppercase">
-                        Transactions
-                      </span>
-                    ) : null}
+              <div className="flex items-center gap-3">
+                <Icon name={kindIcon(item.kind)} className="h-4 w-4 shrink-0 text-[var(--admin-navy)]" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm text-[var(--admin-navy)]">
+                    <span className="font-semibold">{stepTitle(item)}</span>
+                    <span className="text-muted"> · {stepEyebrow(item)}</span>
                   </p>
+                  {quiet ? <p className="truncate text-xs text-muted">{quiet}</p> : null}
                   {item.kind === "hotel" ? <HotelContactButton item={item} /> : null}
-                  {item.kind === "hotel" ? (
-                    <HotelDesk
-                      bookingId={bookingId}
-                      item={item}
-                      requests={hotelRequests}
-                      today={today}
-                      travelers={travelers}
-                      identityDocs={identityDocs}
-                      holder={holder}
-                      cardLast4={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.card_last4 || null}
-                      clientCardName={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.client_card_name || null}
-                      hasCardCode={hasCardCode}
-                      cardViews={cardViews.filter((line) => line.itemId === item.id)}
-                    />
+                  {item.kind === "hotel" && hotelRequests.some((row) => row.booking_item_id === item.id) ? (
+                    <div className="mt-1">
+                      <button
+                        type="button"
+                        className={flatBtn}
+                        onClick={() => setDeskFor(deskFor === item.id ? null : item.id)}
+                      >
+                        {deskFor === item.id ? "Fermer l’hôtel" : "Écrire à l’hôtel"}
+                      </button>
+                      {deskFor === item.id ? (
+                        <HotelDesk
+                          bookingId={bookingId}
+                          item={item}
+                          requests={hotelRequests}
+                          today={today}
+                          travelers={travelers}
+                          identityDocs={identityDocs}
+                          holder={holder}
+                          cardLast4={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.card_last4 || null}
+                          clientCardName={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.client_card_name || null}
+                          hasCardCode={hasCardCode}
+                          cardViews={cardViews.filter((line) => line.itemId === item.id)}
+                        />
+                      ) : null}
+                    </div>
                   ) : null}
-                  <p className="text-xs text-muted">
-                    {[itemWhen(item), itemDetailsLine(item), flightCountsInStay(item, items) ? itemPriceLabel(item, currency) : null]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                  {readDocumentAmount(item.details) != null ? (
-                    <p className="text-xs text-muted">
-                      Prix imprimé sur le document :{" "}
-                      {printedPrice(
-                        readDocumentAmount(item.details) as number,
-                        typeof item.details?.document_currency === "string"
-                          ? item.details.document_currency
-                          : ""
-                      )}
-                      . Corrigez-le dans la carte si la lecture a coupé le montant.
-                    </p>
-                  ) : null}
-                  <ItemAttachments
-                    bookingId={bookingId}
-                    itemId={item.id}
-                    docs={documentsForItem(item, documents)}
-                  />
                 </div>
-                <div className="flex flex-wrap items-center gap-1 [&_button]:cursor-pointer">
-                  <button
-                    type="button"
-                    className="text-xs font-semibold text-[var(--admin-navy)]"
-                    onClick={() => startEdit(item)}
-                  >
+                <div className="flex shrink-0 items-center gap-2">
+                  {price ? <p className="text-sm font-semibold text-[var(--admin-navy)]">{price}</p> : null}
+                  <div className="relative flex items-center gap-2">
+                  <button type="button" className={flatBtn} onClick={() => startEdit(item)}>
                     Modifier
                   </button>
                   <button
                     type="button"
-                    className="text-xs font-semibold text-[var(--admin-navy)]"
-                    disabled={busy}
-                    onClick={() => void setCardVisible(item, !item.visible_to_client)}
+                    aria-label="Autres actions de l’étape"
+                    className={flatIconBtn}
+                    onClick={() => {
+                      setMenuFor(menuFor === item.id ? null : item.id);
+                      setConfirmRemove(null);
+                    }}
                   >
-                    {item.visible_to_client ? "Masquer" : "Afficher"}
+                    …
                   </button>
-                  <button
-                    type="button"
-                    className="admin-tap rounded-full px-3 text-xs font-semibold text-accent"
-                    onClick={() => void removeItem(item.id)}
-                  >
-                    Retirer
-                  </button>
+                  {menuFor === item.id ? (
+                    <div className="absolute right-0 top-9 z-20 flex w-44 flex-col gap-1 rounded-2xl border border-[var(--border)] bg-white p-2">
+                      <button
+                        type="button"
+                        className={flatBtn}
+                        disabled={busy}
+                        onClick={() => void setCardVisible(item, !item.visible_to_client)}
+                      >
+                        {item.visible_to_client ? "Cacher" : "Montrer"}
+                      </button>
+                      {confirmRemove === item.id ? (
+                        <button type="button" className={flatBtn} onClick={() => void removeItem(item.id)}>
+                          Confirmer
+                        </button>
+                      ) : (
+                        <button type="button" className={flatBtn} onClick={() => setConfirmRemove(item.id)}>
+                          Retirer
+                        </button>
+                      )}
+                    </div>
+                  ) : null}
+                  </div>
                 </div>
               </div>
             )}
@@ -522,14 +581,14 @@ export function BookingItemsPanel({
             type="button"
             disabled={busy}
             onClick={() => void saveDraft()}
-            className="admin-af-btn rounded-full px-4 py-2 text-sm"
+            className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm"
           >
             {busy ? "Enregistrement…" : "Ajouter au dossier"}
           </button>
         </div>
       ) : null}
       {error ? <p className="mt-2 text-sm text-accent">{error}</p> : null}
-      <p className="mt-2 text-xs text-muted">Retirer une carte conserve le PDF joint au dossier.</p>
+      <p className="mt-2 text-xs text-muted">Retirer une étape garde le fichier dans le dossier.</p>
     </section>
   );
 }
@@ -538,10 +597,12 @@ function ItemAttachments({
   bookingId,
   itemId,
   docs,
+  compact = false,
 }: {
   bookingId: string;
   itemId: string;
   docs: CrmBookingDocument[];
+  compact?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -568,9 +629,10 @@ function ItemAttachments({
     router.refresh();
   }
 
+  if (compact) return null;
+
   return (
     <div className="mt-2 space-y-1">
-      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted">Pièces jointes</p>
       <div className="flex flex-wrap gap-3">
         {docs.map((doc) => (
           <FilePreviewTile
@@ -590,7 +652,7 @@ function ItemAttachments({
       <form onSubmit={upload} className="flex flex-wrap items-center gap-2">
         <BusyBar active={busy} label="Envoi…" />
         <input name="file" type="file" required className="text-xs" />
-        <button type="submit" disabled={busy} className="text-xs font-semibold text-[var(--admin-navy)]">
+        <button type="submit" disabled={busy} className={flatBtn}>
           {busy ? "Envoi…" : "Joindre"}
         </button>
       </form>
