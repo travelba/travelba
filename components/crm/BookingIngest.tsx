@@ -628,11 +628,12 @@ export function BookingIngest({
           </span>
           <div className="min-w-0 flex-1">
             <p className="font-display text-base font-bold text-[var(--admin-navy)]">
-              {mode === "append" ? "Ajouter des documents au dossier" : "Créer le dossier depuis les documents"}
+              {mode === "append" ? "Déposez un billet ou une confirmation" : "Créer le dossier depuis les documents"}
             </p>
             <p className="mt-1 text-sm text-muted">
-              Billets, vouchers, devis, trains, voitures, bateaux (PDF ou photo). 30 fichiers, 25 Mo max.
-              Rien n’est publié tant que vous n’avez pas cliqué sur Publier.
+              {mode === "append"
+                ? "PDF ou photo. On relit avant d’enregistrer. Le client ne voit rien tant que le séjour n’est pas montré."
+                : "Billets, vouchers, devis, trains, voitures, bateaux (PDF ou photo). 30 fichiers, 25 Mo max."}
             </p>
             {!aiConfigured ? (
               <p className="mt-2 text-xs text-[var(--admin-navy)]">
@@ -770,7 +771,7 @@ export function BookingIngest({
             onClick={startManual}
             className="rounded-full border border-border px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
           >
-            Saisir les cartes à la main
+            Saisir à la main
           </button>
         </div>
       </div>
@@ -885,7 +886,7 @@ export function BookingIngest({
 
           <div className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="font-display font-bold text-[var(--admin-navy)]">Cartes du carnet</p>
+              <p className="font-display font-bold text-[var(--admin-navy)]">Étapes du voyage</p>
               <div className="flex flex-wrap items-center gap-2">
                 {sources.length > 1 ? (
                   <select

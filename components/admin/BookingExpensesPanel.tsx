@@ -186,11 +186,9 @@ export function BookingExpensesPanel({
         </button>
       </div>
       <p className="mt-1 text-xs text-muted">
-        Hors itinéraire. La dépense est débitée dans les transactions du client, dans le cadre de ce
-        voyage.
         {postsNow(status)
-          ? " Le dossier est confirmé : le débit part à l’enregistrement."
-          : " Le débit part à la confirmation du dossier."}
+          ? "Le dossier est confirmé : le débit part au compte du client à l’enregistrement."
+          : "Le débit part au compte du client à la confirmation du dossier."}
       </p>
       <label className="mt-3 flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)]">
         <input

@@ -1,25 +1,19 @@
 import { notFound } from "next/navigation";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { BookingEditor } from "@/components/admin/BookingEditor";
-import { DeleteBookingButton } from "@/components/admin/DeleteBookingButton";
-import { LittleEmperorsCancel } from "@/components/admin/LittleEmperorsCancel";
 import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { readEstaAnswers, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import { pliantConfigured } from "@/lib/crm/pliant";
-import { formatDateRangeShort, todayIsoDate } from "@/lib/crm/money";
 import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
-import { StayBillingChoice } from "@/components/crm/StayBillingChoice";
-import { HotelDeskSummary } from "@/components/admin/HotelDesk";
 import { syncStayCards } from "@/lib/crm/hotel-arrival-run";
 import { ensureHotelRequests } from "@/lib/crm/hotel-desk-run";
 import { principalGuest } from "@/lib/crm/hotel-arrival";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
-import { isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
 import type {
   CrmBillingCompany,
   CrmBooking,
@@ -135,45 +129,17 @@ export default async function AdminBookingPage({ params }: Props) {
 
   const billingCompanyRows = (billingCompanies || []) as Pick<CrmBillingCompany, "id" | "company_name">[];
 
+  const le = ((leRows || [])[0] || null) as {
+    id: string;
+    hotel_name: string | null;
+    is_cancellable: boolean | null;
+    cancellation_deadline: string | null;
+    cancellation_policies: string[] | null;
+    state: string | null;
+  } | null;
+
   return (
-    <div>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#e5e3dc] bg-white px-4 py-3">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">{b.reference}</p>
-          <p className="text-sm font-semibold text-[var(--admin-navy)]">
-            {formatDateRangeShort(b.start_date, b.end_date)}
-            {b.destination ? ` · ${b.destination}` : ""}
-          </p>
-          <HotelDeskSummary requests={hotelRequests} today={todayIsoDate()} />
-        </div>
-        <DeleteBookingButton bookingId={b.id} label={`${b.reference} — ${b.title}`} />
-      </div>
-      {(leRows || []).slice(0, 1).map((row) => (
-        <LittleEmperorsCancel
-          key={row.id}
-          id={row.id}
-          hotelName={row.hotel_name}
-          isCancellable={row.is_cancellable}
-          deadline={row.cancellation_deadline}
-          policies={row.cancellation_policies || []}
-          state={row.state}
-        />
-      ))}
-      <div className="mt-6 space-y-6">
-        <StayBillingChoice
-          endpoint="admin"
-          bookingId={b.id}
-          companies={billingCompanyRows}
-          bookingCompanyId={b.billing_company_id || null}
-          expenses={bookingItems
-            .filter((item) => isLedgerExpenseKind(item.kind))
-            .map((item) => ({
-              id: item.id,
-              title: visibleServiceCopy(item.title),
-              billing_company_id: item.billing_company_id || null,
-            }))}
-        />
-        <BookingEditor
+    <BookingEditor
           booking={b}
           items={bookingItems}
           travelers={bookingTravelers}
@@ -210,8 +176,8 @@ export default async function AdminBookingPage({ params }: Props) {
             received_at: string | null;
             extract?: unknown;
           }[]}
+          billingCompanies={billingCompanyRows}
+          littleEmperors={le}
         />
-      </div>
-    </div>
   );
 }
