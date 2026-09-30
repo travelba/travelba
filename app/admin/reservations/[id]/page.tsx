@@ -18,7 +18,6 @@ import { HotelDeskSummary } from "@/components/admin/HotelDesk";
 import { syncStayCards } from "@/lib/crm/hotel-arrival-run";
 import { ensureHotelRequests } from "@/lib/crm/hotel-desk-run";
 import { principalGuest } from "@/lib/crm/hotel-arrival";
-import { attachLittleEmperorsCatalog } from "@/lib/crm/hotel-catalog-load";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
 import { isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
 import type {
@@ -97,9 +96,7 @@ export default async function AdminBookingPage({ params }: Props) {
     .map(serviceRefusalFromRow)
     .filter((row): row is ServiceRefusal => Boolean(row));
   const allIdentity = (identityDocs || []) as CrmTravelDocument[];
-  const bookingItems = await attachLittleEmperorsCatalog(
-    await loadHotelContacts(id, (items || []) as CrmBookingItem[])
-  );
+  const bookingItems = await loadHotelContacts(id, (items || []) as CrmBookingItem[]);
   let arrivals: CrmHotelArrival[] = [];
   let hotelRequests: CrmHotelRequest[] = [];
   const bookingTravelers = (travelers || []) as CrmBookingTraveler[];
@@ -168,7 +165,7 @@ export default async function AdminBookingPage({ params }: Props) {
         <StayBillingChoice
           endpoint="admin"
           bookingId={b.id}
-          companies={(billingCompanies || []) as Pick<CrmBillingCompany, "id" | "company_name">[]}
+          companies={(billingCompanies || []) as Pick<CrmBillingCompany, "id", "company_name">[]}
           bookingCompanyId={b.billing_company_id || null}
           expenses={bookingItems
             .filter((item) => isLedgerExpenseKind(item.kind))
