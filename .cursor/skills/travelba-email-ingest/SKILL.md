@@ -76,7 +76,7 @@ humaine (`matched`). Réfs fournisseur / dossier **en priorité**.
 Nom : égalité, distance d’édition ≤ 1, ou radical commun (`Albilla` / `Albilila`).
 Prénom aligné (`Simon` = `Simon, Iony`). Destination : ville / pays, casse,
 accents, inclusion (`Dan Tel Aviv Hotel` ⊃ `Tel Aviv`). `cancelled` exclus.
-Document `identity` : **pas** d’auto.
+Document `identity` : **pas** d’auto. Prix document manquant : ni revue forcée, ni blocage du rattachement. On n’invente pas le montant.
 
 ## Pas de voyage
 
