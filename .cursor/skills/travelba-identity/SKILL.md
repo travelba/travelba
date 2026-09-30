@@ -51,6 +51,7 @@ UI : bloc pièce **replié** par défaut (passeport). Copy courte, pas « Upload
   - `admin` = admin société : wallet / grand livre (Revolut, crédit disponible)
   - `member` = collaborateur rattaché via `billing_parent_id` → ne voit **que** les débits de **ses** dossiers, pas les revenus société
 - Dossier : `crm_bookings.billing_customer_id` = qui paie (`syncBookingDebit` poste sur ce wallet). Défaut = `billing_parent_id` si member, sinon titulaire.
+- Fiche agence du payeur : les dossiers facturés sur ce compte sont listés avec le nom du voyageur (rapprochement). L’espace client du payeur ne montre pas le carnet du collaborateur.
 
 ## OCR
 

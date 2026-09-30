@@ -33,6 +33,7 @@ import { BookingHero } from "@/components/crm/BookingHero";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
 import { identityPreview } from "@/lib/crm/preview-files";
 import { clientLedgerAdminHref } from "@/lib/crm/client-ledger";
+import { ficheBookingTravelerLine, ficheTravelerCaption, mergeFicheBookings } from "@/lib/crm/fiche-bookings";
 import { formatDateFr, formatMoney, formatCreditDisponible } from "@/lib/crm/money";
 import { WhatsappThread } from "@/components/admin/WhatsappThread";
 
@@ -53,6 +54,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
     { data: companions },
     { data: documents },
     { data: bookings },
+    { data: billedBookings },
     { data: txs },
     { data: balances },
     { data: companyAdmins },
@@ -66,6 +68,11 @@ export default async function AdminClientDetailPage({ params }: Props) {
     supabase.from("crm_travel_companions").select("*").eq("customer_id", id),
     supabase.from("crm_travel_documents").select("*").eq("customer_id", id),
     supabase.from("crm_bookings").select("*").eq("customer_id", id).order("start_date", { ascending: false }),
+    supabase
+      .from("crm_bookings")
+      .select("*")
+      .eq("billing_customer_id", id)
+      .order("start_date", { ascending: false }),
     supabase
       .from("crm_transactions")
       .select("*")
@@ -114,7 +121,23 @@ export default async function AdminClientDetailPage({ params }: Props) {
       .limit(80),
   ]);
   const logins = loginError ? [] : ((loginRows || []) as CrmCustomerLogin[]);
-  const bookingRows = (bookings || []) as CrmBooking[];
+  const bookingRows = mergeFicheBookings(
+    (bookings || []) as CrmBooking[],
+    (billedBookings || []) as CrmBooking[]
+  );
+  const travelerIds = [
+    ...new Set(bookingRows.map((row) => row.customer_id).filter((customerId) => customerId !== id)),
+  ];
+  const travelerNames = new Map<string, string>();
+  if (travelerIds.length) {
+    const { data: travelers } = await supabase
+      .from("crm_customers")
+      .select("id, first_name, last_name")
+      .in("id", travelerIds);
+    for (const traveler of (travelers || []) as Pick<CrmCustomer, "id" | "first_name" | "last_name">[]) {
+      travelerNames.set(traveler.id, ficheTravelerCaption(traveler));
+    }
+  }
   const identityPieces = reviewIdentityPieces((documents || []) as CrmTravelDocument[]);
   const places = await loadStayArrivalPlaces(
     supabase,
@@ -255,27 +278,40 @@ export default async function AdminClientDetailPage({ params }: Props) {
             Nouveau dossier
           </Link>
         </div>
+        {bookingRows.some((row) => row.customer_id !== id) ? (
+          <p className="mt-1 text-xs text-muted">
+            Les séjours facturés sur ce compte figurent ici, avec le nom du voyageur.
+          </p>
+        ) : null}
         {bookingRows.length ? (
           <ul className="mt-2 divide-y divide-border text-sm">
-            {bookingRows.map((b) => (
-              <li key={b.id} className="flex min-w-0 flex-wrap items-center justify-between gap-3 py-2">
-                <Link
-                  href={`/admin/reservations/${b.id}`}
-                  className="flex min-w-0 items-center gap-3 text-[var(--admin-navy)] underline-offset-2 hover:underline"
-                >
-                  <BookingHero booking={b} places={places[b.id]} plain className="h-12 w-20 shrink-0 rounded-lg" />
-                  <span className="min-w-0 truncate">
-                    {b.reference} · {b.title} · {formatDateFr(b.start_date)}
-                  </span>
-                </Link>
-                <DeleteBookingButton
-                  compact
-                  redirectTo={null}
-                  bookingId={b.id}
-                  label={`${b.reference} — ${b.title}`}
-                />
-              </li>
-            ))}
+            {bookingRows.map((b) => {
+              const travelerLine = ficheBookingTravelerLine(b, id, travelerNames);
+              return (
+                <li key={b.id} className="flex min-w-0 flex-wrap items-center justify-between gap-3 py-2">
+                  <Link
+                    href={`/admin/reservations/${b.id}`}
+                    className="flex min-w-0 items-center gap-3 text-[var(--admin-navy)] underline-offset-2 hover:underline"
+                  >
+                    <BookingHero booking={b} places={places[b.id]} plain className="h-12 w-20 shrink-0 rounded-lg" />
+                    <span className="min-w-0">
+                      <span className="block truncate">
+                        {b.reference} · {b.title} · {formatDateFr(b.start_date)}
+                      </span>
+                      {travelerLine ? (
+                        <span className="block truncate text-xs text-muted">{travelerLine}</span>
+                      ) : null}
+                    </span>
+                  </Link>
+                  <DeleteBookingButton
+                    compact
+                    redirectTo={null}
+                    bookingId={b.id}
+                    label={`${b.reference} — ${b.title}`}
+                  />
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <p className="mt-2 text-sm text-muted">
