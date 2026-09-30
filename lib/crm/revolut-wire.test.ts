@@ -61,7 +61,7 @@ test("un IBAN sans schéma SEPA explicite reste utilisable s’il est seul", () 
 });
 
 test("le virement client n’ouvre plus de virement Stripe", () => {
-  const route = readFileSync(new URL("../../app/api/client/bookings/[id]/pay/route.ts", import.meta.url), "utf8");
+  const route = readFileSync(new URL("../../app/api/client/ledger/pay/route.ts", import.meta.url), "utf8");
   const pay = readFileSync(new URL("./stripe-pay.ts", import.meta.url), "utf8");
   assert.equal(route.includes("customer_balance"), false);
   assert.equal(route.includes("eu_bank_transfer"), false);
@@ -87,31 +87,25 @@ test("les coordonnées affichées demandent la référence du dossier", () => {
   assert.equal(html.includes("Stripe"), false);
 });
 
-test("le client voit la mention, pas un choix de payeur", () => {
+test("le règlement de l’encours distingue société et particulier", () => {
   const personal = renderToStaticMarkup(
     createElement(StayPayment, {
-      bookingId: "b1",
-      reference: "TB-2026-0004",
       stripeKey: "pk_test_preview",
-      slips: [
+      parts: [
         {
-          slice: "stay",
           kind: "personal",
-          mention: "Sans facture société",
+          mention: "Particulier",
           amountLabel: "1 000,00 €",
           payable: true,
-          hotelAside: false,
           canPay: true,
           methods: ["card", "apple_pay", "sepa_debit", "revolut"],
           companyName: null,
         },
         {
-          slice: "fees",
           kind: "company",
-          mention: "Facture Horizon SAS",
+          mention: "Société · Horizon SAS",
           amountLabel: "140,00 €",
           payable: true,
-          hotelAside: false,
           canPay: false,
           methods: ["sepa_debit", "revolut"],
           companyName: "Horizon SAS",
@@ -119,11 +113,11 @@ test("le client voit la mention, pas un choix de payeur", () => {
       ],
     })
   );
-  assert.match(personal, /Sans facture société/);
-  assert.match(personal, /Facture Horizon SAS/);
+  assert.match(personal, /Particulier/);
+  assert.match(personal, /Société · Horizon SAS/);
   assert.match(personal, /Virement/);
   assert.match(personal, /Apple Pay/);
   assert.match(personal, /Le règlement se fait par Horizon SAS/);
   assert.equal(personal.includes("Régler ce voyage"), false);
-  assert.equal(personal.includes("Particulier"), false);
+  assert.equal(personal.includes("/api/client/bookings/"), false);
 });

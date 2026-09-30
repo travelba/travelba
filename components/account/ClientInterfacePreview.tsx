@@ -5,7 +5,6 @@ import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { ClientPreviewScope } from "@/components/account/client-preview";
 import { ClientTripBody } from "@/components/account/ClientTripBody";
 import { StayExpenses } from "@/components/account/StayExpenses";
-import { StayPayment } from "@/components/account/StayPayment";
 import { TripSharePanel } from "@/components/account/TripSharePanel";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
@@ -28,10 +27,8 @@ import {
 } from "@/lib/crm/carnet";
 import { findVisaExtra, type ServiceRefusal } from "@/lib/crm/extras";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
-import { formatDateFr, formatMoney, todayIsoDate } from "@/lib/crm/money";
-import { paymentSlips, slipMention } from "@/lib/crm/payer";
+import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
-import { stayPayMethods } from "@/lib/crm/stripe-pay";
 import { collectableTicketingFee } from "@/lib/crm/ticketing-fee";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
@@ -78,7 +75,6 @@ export function ClientInterfacePreview({
   pliantReady,
   shareUrl,
   shareCompanions,
-  billingCompanies,
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -98,7 +94,6 @@ export function ClientInterfacePreview({
   pliantReady: boolean;
   shareUrl: string | null;
   shareCompanions: ShareCompanion[];
-  billingCompanies: { id: string; company_name: string | null; sort_order: number }[];
 }) {
   const published = booking.visible_to_client === true;
   const reveal = new Set(publishRevealIds(items));
@@ -146,7 +141,6 @@ export function ClientInterfacePreview({
           pliantReady={pliantReady}
           shareUrl={shareUrl}
           shareCompanions={shareCompanions}
-          billingCompanies={billingCompanies}
         />
       )}
     </section>
@@ -168,7 +162,6 @@ function ClientScreen({
   pliantReady,
   shareUrl,
   shareCompanions,
-  billingCompanies,
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -190,7 +183,6 @@ function ClientScreen({
   pliantReady: boolean;
   shareUrl: string | null;
   shareCompanions: ShareCompanion[];
-  billingCompanies: { id: string; company_name: string | null; sort_order: number }[];
 }) {
   const insurances = items.filter((item) => item.kind === "insurance");
   const coverage = tripDocCoverage(travelers, identityDocs);
@@ -200,9 +192,6 @@ function ClientScreen({
   const headline = stayHeadline(booking.title, booking.destination, stayArrivalPlaces(booking.destination, booking.title, items));
   const placeLine = tripPlaceLine(booking.title, booking.destination);
   const formalities = frenchPassportTrip(items, travelers.length);
-  const companies = [...billingCompanies].sort(
-    (a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id)
-  );
   const expenseChoices = allItems
     .filter((item) => isLedgerExpenseKind(item.kind))
     .map((item) => ({
@@ -229,8 +218,6 @@ function ClientScreen({
     last_name: customer.last_name,
     usage_name: customer.usage_name,
   });
-  const stripeKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim() || null;
-
   return (
     <ClientPreviewScope>
       <div
@@ -381,46 +368,6 @@ function ClientScreen({
             expenses={expenseLines.length ? <StayExpenses lines={expenseLines} /> : null}
             tail={
               <>
-                {booking.payer_kind === "company" || booking.payer_kind === "personal" ? (
-                  <StayPayment
-                    bookingId={booking.id}
-                    reference={booking.reference}
-                    stripeKey={stripeKey}
-                    slips={(() => {
-                      const stayCompany = companies.find((company) => company.id === booking.billing_company_id) || null;
-                      const otherCompany = companies[0] || null;
-                      return paymentSlips({
-                        stayTotal: Number(booking.total_amount),
-                        agencyCommission: booking.agency_commission === true,
-                        clientSettlesStay: booking.client_settles_stay === true,
-                        pricesVisible,
-                        expenses: expenseChoices,
-                        ticketingFee,
-                        stayKind: booking.payer_kind,
-                        stayCompanyId: booking.billing_company_id || null,
-                        feesFollowStay: booking.fees_follow_stay !== false,
-                        otherCompanyId: otherCompany?.id || null,
-                      }).map((slip) => {
-                        const company =
-                          slip.kind === "company"
-                            ? companies.find((row) => row.id === slip.companyId) || stayCompany || otherCompany
-                            : null;
-                        const member = customer.company_role === "member";
-                        return {
-                          slice: slip.slice,
-                          kind: slip.kind,
-                          mention: slipMention(slip.kind, company?.company_name),
-                          amountLabel: slip.amount == null ? null : formatMoney(slip.amount, booking.currency),
-                          payable: slip.payable,
-                          hotelAside: slip.hotelAside,
-                          canPay: !(slip.kind === "company" && member),
-                          methods: slip.payable ? stayPayMethods(slip.kind, booking.currency) : [],
-                          companyName: company?.company_name || null,
-                        };
-                      });
-                    })()}
-                  />
-                ) : null}
                 <ReservationFiles
                   showPassports={false}
                   attachments={attachmentPreviews(docs, items, booking.reference)}

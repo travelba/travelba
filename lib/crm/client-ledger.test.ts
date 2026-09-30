@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { ClientTransactionsPanel } from "../../components/account/ClientTransactionsPanel";
 import { shapeClientLedger } from "./client-ledger";
 import { formatMoney } from "./money";
 import type { CrmTransaction } from "./types";
@@ -167,7 +170,17 @@ test("la société est absente du mouvement s’il n’y en a qu’une", () => {
     ],
   });
   assert.equal(view.balanceValue, -40);
+  assert.equal(view.owed.total, 40);
+  assert.equal(view.owed.company, 40);
+  assert.equal(view.owed.personal, 0);
   assert.equal(view.movements[0].companyLabel, null);
+  const html = renderToStaticMarkup(createElement(ClientTransactionsPanel, { view }));
+  assert.match(html, /Encours/);
+  assert.match(html, /Somme de ce que vous devez/);
+  assert.match(html, /Répartition/);
+  assert.match(html, /Société · Atelier/);
+  assert.match(html, /Particulier/);
+  assert.equal(html.includes("Régler ce voyage"), false);
 });
 
 test("la société est précisée quand le compte en a plusieurs", () => {

@@ -16,7 +16,7 @@ Vue `crm_customer_balances` = somme crédits `posted` − débits `posted` (par 
 
 - Positif = avoir / **crédit disponible**
 - Négatif = reste à payer
-- Afficher le montant **avec le signe**, pas un libellé marketing « solde à régulariser » qui inverse
+- Le grand livre stocke le signe. Dans **Transactions**, l’encours affiché est la **somme due** (positive), puis la répartition **Société** / **Particulier**. Les deux parts additionnent cette somme. Un avoir reste un montant positif, sans répartition.
 
 **Commission 10 %** (`AGENCY_FEE_RATE`, case `agency_commission` sur le voyage, défaut **false**) : si cochée, `syncAgencyCommission` poste un débit `kind=adjustment` `external_id=booking:{id}:agency-commission`, libellé « Frais d’agence 10 % », égal à 10 % du **montant du séjour** (somme des prix vendus). Elle s’ajoute aux dépenses : elle ne retire pas le montant global du séjour et n’entre pas dans le total stocké. Le prix affiché du séjour l’ajoute, avec les dépenses libres. Elle reste hors carnet. Postée seulement si le dossier est confirmé, en voyage ou terminé. Décocher ou annuler → `void` (ou suppression des débits à l’annulation). Le virement Revolut est crédité **en entier** — plus de débit `{revolut_id}:agency-fee` au rapprochement. Les lignes historiques restent. Le crédit disponible est l’avoir positif du grand livre.
 
@@ -44,23 +44,23 @@ PDF relevé = bouton **Demander un relevé** (`mailto:`), **pas** de génératio
 - À l’import, `item.amount` reste null (le PDF va dans `document_amount`). Le montant du séjour reste 0 tant que l’agent n’a pas saisi le prix vendu de chaque carte. `sellingTotalFromExtract` = cette somme, jamais le total PDF.
 - Import `document_status=confirmed` : `bookingStatusFromExtract` → **confirmed** (même si `from-ingest` envoie `draft`) pour que le débit parte. Toujours `visible_to_client=false` jusqu’à Publier.
 - `customer_id` du débit = `booking.billing_customer_id` (payeur / wallet), pas forcément le voyageur
-- **Plusieurs sociétés** (`crm_billing_companies`) : attribution `billing_company_id` sur le séjour, la dépense et la ligne du livre. L’encours **ne se découpe pas** (la vue `crm_customer_balances` reste crédits − débits `posted`). Transactions : libellé société **seulement** si le compte en a au moins deux. Une seule société → pas de précision.
+- **Plusieurs sociétés** (`crm_billing_companies`) : attribution `billing_company_id` sur le séjour, la dépense et la ligne du livre. La vue `crm_customer_balances` reste un seul solde (crédits − débits `posted`). La répartition Société / Particulier est une lecture de ce solde, pas un second wallet. Transactions : libellé société **seulement** si le compte en a au moins deux. Une seule société → le nom suit « Société » dans la répartition.
 - `syncTicketingFee` : dès qu’il y a un vol, débit **25 € une fois** (`external_id=booking:{id}:ticketing-fee`), pas par billet ni par segment. Void si plus de vol ou dossier annulé.
 - **Commission 10 %** : case du dossier, pas du virement. Voir encours ci-dessus. Assiette = `total_amount`, hors frais de billeterie, extras et dépenses libres.
 
 Ajustements / remboursements : lignes manuelles admin `kind=adjustment|refund`.
 
-## Stripe — règlement du séjour
+## Stripe — règlement dans Transactions
 
-- Le dossier a `payer_kind` : `company` (société, défaut = première `crm_billing_companies`) ou `personal` (particulier). L’agence le choisit dans Règlement. Le client ne choisit pas la société.
-- L’agence choisit sur le dossier. Le client ne choisit pas : mention **Facture {société}** ou **Sans facture société**.
-- `fees_follow_stay` (défaut true) : frais d’agence, frais de billeterie (25 € dès qu’un vol est confirmé) et dépenses suivent la facture du séjour. Sinon, une seconde carte, l’autre mention. L’hôtel réglé par le client n’est pas un encaissement. Un séjour à 0 € avec seulement ces frais ouvre quand même le règlement.
-- Facture société : prélèvement SEPA et virement. Sans facture société : carte, Apple Pay, prélèvement SEPA, virement. Hors euros : carte et Apple Pay seulement. Le collaborateur `member` ne paie pas la facture société ; il peut régler la part sans facture.
-- Le grand livre reste un seul encours. Chaque règlement crédite le même wallet.
-- `POST /api/client/bookings/[id]/pay` reçoit `slice` `stay` ou `fees`. Le montant vient du serveur. Carte, Apple Pay et prélèvement SEPA créent un PaymentIntent (moyens dynamiques, `excluded_payment_method_types`). Pas de `payment_method_types`. Pas de PAN / CVC. Apple Pay = portefeuille Stripe. Le libellé du crédit porte la mention.
-- Virement = compte **Revolut Business** (IBAN SEPA du compte euros actif), pas Stripe `customer_balance`. La route ne crée pas de PaymentIntent. Elle renvoie IBAN, BIC, titulaire et la **référence du dossier** au client autorisé. Jamais d’IBAN dans les logs. Plusieurs IBAN euros distincts → le virement reste fermé.
+- Le paiement **n’est pas** sur la réservation. Il est dans l’onglet **Transactions** (`/mon-compte/transactions`), sous l’encours.
+- Le dossier a `payer_kind` : `company` (société, défaut = première `crm_billing_companies`) ou `personal` (particulier). L’agence le choisit dans Règlement pour ranger le débit. Le client ne choisit pas la société.
+- `fees_follow_stay` (défaut true) : frais d’agence, frais de billeterie (25 € dès qu’un vol est confirmé) et dépenses suivent la facture du séjour. L’hôtel réglé par le client n’est pas un encaissement.
+- Part société : prélèvement SEPA et virement, en euros. Part particulier : carte, Apple Pay, prélèvement SEPA, virement. Hors euros : carte et Apple Pay seulement. Le collaborateur `member` ne règle pas l’encours : il voit ses frais, le compte qui porte le wallet paie.
+- Le grand livre reste un seul encours. Chaque règlement crédite le même wallet. `payer_kind` sur la ligne de crédit range la part, sans créer un second solde.
+- `POST /api/client/ledger/pay` reçoit `payerKind` `company` ou `personal`. Le montant vient du serveur (la part due). `POST /api/client/bookings/[id]/pay` répond 410. Carte, Apple Pay et prélèvement SEPA créent un PaymentIntent (moyens dynamiques, `excluded_payment_method_types`). Pas de `payment_method_types`. Pas de PAN / CVC. Apple Pay = portefeuille Stripe. Le libellé du crédit porte la part.
+- Virement = compte **Revolut Business** (IBAN SEPA du compte euros actif), pas Stripe `customer_balance`. La route ne crée pas de PaymentIntent. Elle renvoie IBAN, BIC, titulaire et le **nom du client** comme référence. Jamais d’IBAN dans les logs. Plusieurs IBAN euros distincts → le virement reste fermé.
 - Le crédit du virement passe par l’inbox Revolut (sync / rapprochement), pas par le webhook Stripe.
-- Webhook `payment_intent.succeeded` → crédit `source=stripe`, `external_id` = id du PaymentIntent, wallet = `billing_customer_id`. Un `pay_method=revolut` ne crédite pas.
+- Webhook `payment_intent.succeeded` → crédit `source=stripe`, `external_id` = id du PaymentIntent, wallet = `crm_customer_id` des métadonnées. Un règlement d’encours n’a pas de dossier : `payer_kind` range la part. Un `pay_method=revolut` ne crédite pas.
 - SetupIntent (`/api/client/stripe/setup-intent`) + `setup_intent.succeeded` → `crm_payment_methods`. `payment_method.detached` → delete.
 - Pas de page cartes : `/mon-compte/profil/paiement` reste la facturation.
 
