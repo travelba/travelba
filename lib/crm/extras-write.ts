@@ -11,8 +11,8 @@ import {
   extraItemPayload,
   extraNoticeOk,
   extraProposed,
-  extraAgencyStatus,
   extraTitle,
+  serviceCancelLocked,
   findCheckinExtra,
   findExtra,
   findVisaExtra,
@@ -451,10 +451,7 @@ export async function cancelBookingExtra(
       { field: "kind", message: "Ce service n’est pas validé." },
     ]);
   }
-  if (
-    (opts.kind === "chauffeur" || opts.kind === "greeter") &&
-    extraAgencyStatus(item) === "confirmed"
-  ) {
+  if (serviceCancelLocked(opts.kind, item)) {
     throw new BookingIssuesError("Service confirmé.", [
       { field: "kind", message: "Ce service est confirmé par l’agence et ne peut plus être annulé." },
     ]);
@@ -509,6 +506,35 @@ export async function confirmBookingExtra(
     console.error("[crm] confirm extra:", error.code ?? "?", error.message ?? "");
     throw new BookingIssuesError("Confirmation impossible.", [
       { field: "form", message: "Le service n’a pas pu être confirmé. Réessayez." },
+    ]);
+  }
+  return { confirmed: true as const };
+}
+
+/** L’agence a déposé les cartes d’embarquement : l’enregistrement ne s’annule plus. */
+export async function confirmCheckinExtra(
+  supabase: SupabaseClient,
+  opts: {
+    booking: CrmBooking;
+    items: CrmBookingItem[];
+  }
+) {
+  const item = findCheckinExtra(opts.items) as CrmBookingItem | null;
+  if (!item?.id) {
+    throw new BookingIssuesError("Service introuvable.", [
+      { field: "kind", message: "L’enregistrement n’est pas validé." },
+    ]);
+  }
+  const details = { ...(item.details || {}), agency_status: "confirmed" };
+  const { error } = await supabase
+    .from("crm_booking_items")
+    .update({ details })
+    .eq("id", item.id)
+    .eq("booking_id", opts.booking.id);
+  if (error) {
+    console.error("[crm] confirm checkin:", error.code ?? "?", error.message ?? "");
+    throw new BookingIssuesError("Confirmation impossible.", [
+      { field: "form", message: "L’enregistrement n’a pas pu être confirmé. Réessayez." },
     ]);
   }
   return { confirmed: true as const };
