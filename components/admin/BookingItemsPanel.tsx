@@ -307,7 +307,7 @@ export function BookingItemsPanel({
   return (
     <section className="admin-af-card rounded-3xl p-5">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="font-display text-lg font-bold">Étapes du voyage</h2>
+        <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Étapes du voyage</h2>
         <button type="button" className="admin-af-btn rounded-full px-4 py-2 text-sm" onClick={startNew}>
           Ajouter une étape
         </button>
@@ -420,7 +420,7 @@ export function BookingItemsPanel({
             ) : (
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
-                  <p className="font-medium">
+                  <p className="font-display font-semibold text-[var(--admin-navy)]">
                     {visibleServiceCopy(BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind)} ·{" "}
                     {item.kind === "hotel" ? hotelDisplayName(item) : visibleServiceCopy(item.title)}
                     {!item.visible_to_client ? (
