@@ -229,6 +229,8 @@ export type CrmBooking = {
   billing_customer_id: string;
   /** Société de facturation du séjour. N’entre pas dans l’encours. */
   billing_company_id?: string | null;
+  /** company = société du compte ; personal = particulier. */
+  payer_kind?: "company" | "personal" | null;
   reference: string;
   title: string;
   destination: string | null;

@@ -15,6 +15,7 @@ export function StayBillingChoice({
   bookingCompanyId,
   expenses,
   endpoint,
+  expensesOnly = false,
 }: {
   bookingId: string;
   companies: CompanyOption[];
@@ -22,6 +23,8 @@ export function StayBillingChoice({
   expenses: ExpenseOption[];
   /** client : espace voyageur. admin : le dossier est enregistré avec le séjour. */
   endpoint: "client" | "admin";
+  /** L’agence choisit la société du séjour ailleurs. Ici, seulement les dépenses. */
+  expensesOnly?: boolean;
 }) {
   const router = useRouter();
   const [tripCompany, setTripCompany] = useState(bookingCompanyId || "");
@@ -33,6 +36,7 @@ export function StayBillingChoice({
   const [saved, setSaved] = useState(false);
 
   if (companies.length < 2) return null;
+  if (expensesOnly && !expenses.length) return null;
 
   async function save(body: Record<string, unknown>) {
     setBusy(true);
@@ -61,12 +65,16 @@ export function StayBillingChoice({
     <section className="space-y-3 rounded-2xl border border-[#e5e3dc] bg-white p-4">
       <div>
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Facturation</p>
-        <h2 className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">Société du séjour</h2>
+        <h2 className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">
+          {expensesOnly ? "Société d’une dépense" : "Société du séjour"}
+        </h2>
         <p className="mt-1 text-sm text-muted">
-          Avec l’agence, choisissez la société qui porte ce voyage ou une dépense. L’encours du compte
-          reste global.
+          {expensesOnly
+            ? "Une dépense peut être portée par une autre société du compte. Sinon, elle suit le voyage."
+            : "Avec l’agence, choisissez la société qui porte ce voyage ou une dépense. L’encours du compte reste global."}
         </p>
       </div>
+      {expensesOnly ? null : (
       <label className="flex flex-col gap-1 text-xs font-semibold text-muted">
         Ce voyage
         <select
@@ -87,6 +95,7 @@ export function StayBillingChoice({
           ))}
         </select>
       </label>
+      )}
       {expenses.length ? (
         <ul className="space-y-2">
           {expenses.map((expense) => (

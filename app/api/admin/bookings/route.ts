@@ -3,6 +3,7 @@ import { dbError, jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
 import { collectManualCreateIssues } from "@/lib/crm/booking-issues";
 import { nextBookingReference, parseIncludeInLedger, syncBookingLedger } from "@/lib/crm/bookings";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
+import { assignPayer, defaultPayer, type PayerCompany } from "@/lib/crm/payer";
 import type { CrmBooking, CrmCustomer } from "@/lib/crm/types";
 
 export async function GET() {
@@ -36,6 +37,18 @@ export async function POST(request: Request) {
   const billingCustomerId = body?.billing_customer_id
     ? String(body.billing_customer_id)
     : resolveBillingCustomerId(traveler as CrmCustomer);
+  const { data: companyRows, error: companyError } = await auth.supabase
+    .from("crm_billing_companies")
+    .select("id, sort_order")
+    .eq("customer_id", billingCustomerId)
+    .order("sort_order");
+  if (companyError) return dbError(companyError, 500);
+  const companies = (companyRows || []) as PayerCompany[];
+  const payer =
+    body?.payer_kind != null && body.payer_kind !== ""
+      ? assignPayer({ payerKind: body.payer_kind, companyId: body.billing_company_id, companies })
+      : defaultPayer(companies);
+  if ("error" in payer) return jsonError(payer.error);
   let reference: string;
   try {
     reference = await nextBookingReference(auth.supabase);
@@ -48,6 +61,8 @@ export async function POST(request: Request) {
     .insert({
       customer_id: customerId,
       billing_customer_id: billingCustomerId,
+      billing_company_id: payer.billing_company_id,
+      payer_kind: payer.payer_kind,
       reference,
       title,
       destination: body?.destination || null,

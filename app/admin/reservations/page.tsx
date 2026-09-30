@@ -8,12 +8,13 @@ import type { CrmBooking, CrmCustomer } from "@/lib/crm/types";
 
 export default async function AdminReservationsPage() {
   const { supabase } = await requireStaffPage();
-  const [{ data: bookings }, { data: customers }] = await Promise.all([
+  const [{ data: bookings }, { data: customers }, { data: companies }] = await Promise.all([
     supabase
       .from("crm_bookings")
       .select("*")
       .order("start_date", { ascending: false, nullsFirst: false }),
     supabase.from("crm_customers").select("*").order("last_name"),
+    supabase.from("crm_billing_companies").select("id, customer_id, company_name, sort_order").order("sort_order"),
   ]);
   const rows = (bookings || []) as CrmBooking[];
   const places = await loadStayArrivalPlaces(
@@ -31,6 +32,12 @@ export default async function AdminReservationsPage() {
       <div className="mt-6">
         <NewBookingForm
           customers={(customers || []) as CrmCustomer[]}
+          companies={(companies || []) as {
+            id: string;
+            customer_id: string;
+            company_name: string | null;
+            sort_order: number;
+          }[]}
           aiConfigured={aiGatewayConfigured()}
         />
       </div>
