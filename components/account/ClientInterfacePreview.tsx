@@ -1,8 +1,9 @@
 "use client";
 
-import type { MouseEvent } from "react";
+import { useState, type MouseEvent } from "react";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { ClientPreviewScope } from "@/components/account/client-preview";
+import { ClientTransactionsPanel } from "@/components/account/ClientTransactionsPanel";
 import { ClientTripBody } from "@/components/account/ClientTripBody";
 import { StayExpenses } from "@/components/account/StayExpenses";
 import { TripSharePanel } from "@/components/account/TripSharePanel";
@@ -46,15 +47,23 @@ import {
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import type { ClientVisaStep, EstaAnswers } from "@/lib/crm/visa-flow";
+import type { ClientLedgerView } from "@/lib/crm/client-ledger";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { siteConfig } from "@/lib/site";
 
 const CLIENT_TABS = [
-  { label: "Accueil", icon: "explore", active: false },
-  { label: "Réservations", icon: "luggage", active: true },
-  { label: "Transactions", icon: "receipt_long", active: false },
-  { label: "Mon compte", icon: "badge", active: false },
+  { id: "home", label: "Accueil", icon: "explore" },
+  { id: "stay", label: "Réservations", icon: "luggage" },
+  { id: "transactions", label: "Transactions", icon: "receipt_long" },
+  { id: "account", label: "Mon compte", icon: "badge" },
 ] as const;
+
+export type ClientPreviewScreen = "stay" | "transactions";
+
+function openableScreen(id: (typeof CLIENT_TABS)[number]["id"]): ClientPreviewScreen | null {
+  if (id === "stay" || id === "transactions") return id;
+  return null;
+}
 
 function keepInPreview(event: MouseEvent<HTMLElement>) {
   const node = event.target instanceof Element ? event.target.closest("a") : null;
@@ -76,6 +85,8 @@ export function ClientInterfacePreview({
   pliantReady,
   shareUrl,
   shareCompanions,
+  ledger = null,
+  initialScreen = "stay",
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -95,7 +106,11 @@ export function ClientInterfacePreview({
   pliantReady: boolean;
   shareUrl: string | null;
   shareCompanions: ShareCompanion[];
+  /** Même lecture que /mon-compte/transactions. */
+  ledger?: ClientLedgerView | null;
+  initialScreen?: ClientPreviewScreen;
 }) {
+  const [screen, setScreen] = useState<ClientPreviewScreen>(initialScreen);
   const items = withoutHotelRosterItems(sourceItems);
   const published = booking.visible_to_client === true;
   const reveal = new Set(publishRevealIds(items));
@@ -127,7 +142,7 @@ export function ClientInterfacePreview({
       </p>
       {!customer ? (
         <p className="text-sm text-muted">Associez un client pour voir son espace.</p>
-      ) : !hasCarnet ? null : (
+      ) : (
         <ClientScreen
           booking={screenBooking}
           items={shownItems}
@@ -143,9 +158,52 @@ export function ClientInterfacePreview({
           pliantReady={pliantReady}
           shareUrl={shareUrl}
           shareCompanions={shareCompanions}
+          screen={screen}
+          onScreen={setScreen}
+          ledger={ledger}
+          showStay={hasCarnet}
         />
       )}
     </section>
+  );
+}
+
+function ClientPreviewTabs({
+  screen,
+  onScreen,
+}: {
+  screen: ClientPreviewScreen;
+  onScreen: (screen: ClientPreviewScreen) => void;
+}) {
+  return (
+    <nav className="flex shrink-0 items-end justify-around border-b border-[#e5e3dc] px-1.5 py-2" aria-label="Navigation du client">
+      {CLIENT_TABS.map((tab) => {
+        const next = openableScreen(tab.id);
+        const active = next === screen;
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            aria-current={active ? "page" : undefined}
+            onClick={() => {
+              if (next) onScreen(next);
+            }}
+            className={`flex min-w-0 flex-1 flex-col items-center gap-1 px-1 py-1 text-[11px] leading-none ${
+              active ? "font-bold text-[var(--admin-navy)]" : "font-semibold text-[#1a2740]"
+            }`}
+          >
+            <span
+              className={`flex h-9 w-9 items-center justify-center rounded-2xl ${
+                active ? "bg-[var(--admin-navy)] text-[var(--admin-gold)]" : "bg-[rgba(11,25,44,0.08)] text-[var(--admin-navy)]"
+              }`}
+            >
+              <Icon name={tab.icon} className="h-[1.35rem] w-[1.35rem]" filled={active} />
+            </span>
+            {tab.label}
+          </button>
+        );
+      })}
+    </nav>
   );
 }
 
@@ -164,6 +222,10 @@ function ClientScreen({
   pliantReady,
   shareUrl,
   shareCompanions,
+  screen,
+  onScreen,
+  ledger,
+  showStay,
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -185,6 +247,10 @@ function ClientScreen({
   pliantReady: boolean;
   shareUrl: string | null;
   shareCompanions: ShareCompanion[];
+  screen: ClientPreviewScreen;
+  onScreen: (screen: ClientPreviewScreen) => void;
+  ledger: ClientLedgerView | null;
+  showStay: boolean;
 }) {
   const insurances = items.filter((item) => item.kind === "insurance");
   const coverage = tripDocCoverage(travelers, identityDocs);
@@ -226,19 +292,31 @@ function ClientScreen({
     last_name: customer.last_name,
     usage_name: customer.usage_name,
   });
+  const title = screen === "transactions" ? "Transactions" : "Réservations";
   return (
     <ClientPreviewScope>
       <div
-        className="account-app mx-auto w-full max-w-[480px] overflow-hidden rounded-[2rem] border border-[#e5e3dc] bg-[var(--background)]"
+        className="account-app mx-auto flex h-[clamp(22rem,calc(100svh-20rem),42rem)] w-full max-w-[480px] flex-col overflow-hidden rounded-[2rem] border border-[#e5e3dc] bg-[var(--background)]"
         onClickCapture={keepInPreview}
       >
-        <div className="flex h-14 items-center justify-between border-b border-[#e5e3dc] px-4">
-          <p className="font-display text-sm font-bold text-[var(--admin-navy)]">Réservations</p>
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-[#e5e3dc] px-4">
+          <p className="font-display text-sm font-bold text-[var(--admin-navy)]">{title}</p>
           <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[11px] font-bold text-white">
             {initials}
           </span>
         </div>
-        <div className="space-y-5 px-4 py-4">
+        <ClientPreviewTabs screen={screen} onScreen={onScreen} />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {screen === "transactions" ? (
+            <div className="px-4 py-4">
+              {ledger ? (
+                <ClientTransactionsPanel view={ledger} />
+              ) : (
+                <p className="text-sm text-muted">Le grand livre n’est pas lisible pour le moment.</p>
+              )}
+            </div>
+          ) : showStay ? (
+            <div className="space-y-5 px-4 py-4">
           <ClientTripBody
             intro={
               <>
@@ -393,26 +471,11 @@ function ClientScreen({
               </>
             }
           />
+            </div>
+          ) : (
+            <p className="px-4 py-4 text-sm text-muted">Ce séjour n’est pas affiché dans Réservations.</p>
+          )}
         </div>
-        <nav className="flex items-end justify-around border-t border-[#e5e3dc] px-1.5 py-2" aria-label="Navigation du client">
-          {CLIENT_TABS.map((tab) => (
-            <span
-              key={tab.label}
-              className={`flex min-w-[68px] flex-col items-center gap-1 px-1 py-1 text-[11px] leading-none ${
-                tab.active ? "font-bold text-[var(--admin-navy)]" : "font-semibold text-[#1a2740]"
-              }`}
-            >
-              <span
-                className={`flex h-9 w-9 items-center justify-center rounded-2xl ${
-                  tab.active ? "bg-[var(--admin-navy)] text-[var(--admin-gold)]" : "bg-[rgba(11,25,44,0.08)] text-[var(--admin-navy)]"
-                }`}
-              >
-                <Icon name={tab.icon} className="h-[1.35rem] w-[1.35rem]" filled={tab.active} />
-              </span>
-              {tab.label}
-            </span>
-          ))}
-        </nav>
       </div>
     </ClientPreviewScope>
   );

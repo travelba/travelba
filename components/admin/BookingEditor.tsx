@@ -48,6 +48,7 @@ import { BookingExpensesPanel } from "@/components/admin/BookingExpensesPanel";
 import { ServiceOfferToggles } from "@/components/admin/ServiceOfferToggles";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
 import { ClientInterfacePreview } from "@/components/account/ClientInterfacePreview";
+import type { ClientLedgerView } from "@/lib/crm/client-ledger";
 import {
   DeleteBookingButton,
   DuplicateBookingButton,
@@ -119,6 +120,7 @@ export function BookingEditor({
   billingCompanies = [],
   littleEmperors = null,
   expenseBilling = [],
+  ledger = null,
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -163,6 +165,7 @@ export function BookingEditor({
     state: string | null;
   } | null;
   expenseBilling?: { id: string; title: string; billing_company_id: string | null }[];
+  ledger?: ClientLedgerView | null;
 }) {
   const router = useRouter();
   const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
@@ -1428,6 +1431,7 @@ export function BookingEditor({
           pliantReady={pliantReady}
           shareUrl={shareUrl}
           shareCompanions={shareCompanions}
+          ledger={ledger}
         />
       ) : null}
     </div>
