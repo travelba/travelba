@@ -186,7 +186,23 @@ test("le message part du numéro Business, avec le lien /v/", async () => {
     assert.equal(params.get("From"), "whatsapp:+33756841315");
     assert.equal(params.get("To"), "whatsapp:+33601020304");
     assert.match(params.get("Body") || "", /https:\/\/travelba\.fr\/v\/ABCDEFGH/);
+    assert.equal(params.get("MediaUrl"), null);
     assert.equal((params.get("Body") || "").includes("/mon-compte"), false);
+
+    body = "";
+    const illustrated = await sendTripShareWhatsapp({
+      phone: "+33601020304",
+      firstName: "Camille",
+      title: "Marrakech",
+      url: "https://travelba.fr/v/ABCDEFGH",
+      mediaUrl: "https://travelba.fr/api/covers/sejour/TB-2026-0004",
+      fetchImpl: async (_url, init) => {
+        body = String(init?.body || "");
+        return new Response(JSON.stringify({ sid: "SMTEST2" }), { status: 200 });
+      },
+    });
+    assert.equal(illustrated.ok, true);
+    assert.equal(new URLSearchParams(body).get("MediaUrl"), "https://travelba.fr/api/covers/sejour/TB-2026-0004");
     assert.equal((params.get("Body") || "").includes("+336"), false);
   } finally {
     if (previous.sid === undefined) delete process.env.TWILIO_ACCOUNT_SID;

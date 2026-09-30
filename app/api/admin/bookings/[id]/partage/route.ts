@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { tripHeadline } from "@/lib/crm/carnet";
+import { liveStayCover, stayCoverUrl, stayHasPublishedCover } from "@/lib/crm/concierge-notices";
 import { planTripShareSend, sendTripShareWhatsapp, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -20,11 +21,14 @@ export async function POST(request: Request, ctx: Ctx) {
 
   const { data } = await auth.supabase
     .from("crm_bookings")
-    .select("id, title, destination, visible_to_client, customer_id")
+    .select("id, reference, title, destination, visible_to_client, customer_id, cover_image_path")
     .eq("id", id)
     .maybeSingle();
   const booking = data as
-    | Pick<CrmBooking, "id" | "title" | "destination" | "visible_to_client" | "customer_id">
+    | Pick<
+        CrmBooking,
+        "id" | "reference" | "title" | "destination" | "visible_to_client" | "customer_id" | "cover_image_path"
+      >
     | null;
   if (!booking?.visible_to_client) return jsonError("Ce voyage n’est pas publié", 404);
 
@@ -60,11 +64,15 @@ export async function POST(request: Request, ctx: Ctx) {
     return jsonError("Accompagnateur introuvable sur ce voyage", 404);
   }
 
+  const mediaUrl = await liveStayCover(
+    stayHasPublishedCover(booking) ? stayCoverUrl(booking.reference, true) : null
+  );
   const result = await sendTripShareWhatsapp({
     phone: plan.phone,
     firstName: plan.firstName,
     title: tripHeadline(booking.title, booking.destination),
     url: tripShareUrl(siteConfig.url, code),
+    mediaUrl,
   });
   if (result.ok) return NextResponse.json({ ok: true });
   if (result.reason === "not_configured") {

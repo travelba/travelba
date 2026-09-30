@@ -26,6 +26,7 @@ import {
   type TravelDocType,
 } from "./types";
 import { clientVisaStepCopy, type ClientVisaStep } from "./visa-flow";
+import { stayCoverUrl } from "./concierge-notices";
 import { CONCIERGE_SIGNATURE, withConciergeSignature } from "./whatsapp";
 
 export const UNKNOWN_NUMBER_REPLY = "L’espace s’ouvre sur invitation.";
@@ -133,8 +134,8 @@ export type ConciergeTurn = {
   handoff: HandoffKind | null;
   bookingId: string | null;
   text: string;
-  /** Toujours vide : la photo reste sur le message proactif du séjour. */
-  cover: null;
+  /** JPEG public du lieu, seulement quand la réponse parle de ce séjour. */
+  cover: string | null;
   optOut: boolean;
   access: boolean;
 };
@@ -780,9 +781,14 @@ export function panRefusedReply(lang: ReplyLang) {
   return sign(body);
 }
 
+function replyCover(stay: ConciergeStay | null, thin: boolean) {
+  if (thin || !stay?.cover) return null;
+  return stayCoverUrl(stay.reference, true);
+}
+
 export function planConciergeTurn(message: string, dossier: ConciergeDossier): ConciergeTurn {
   const lang = messageLanguage(message);
-  const empty = { cover: null as null, optOut: false, access: false };
+  const empty = { cover: null as string | null, optOut: false, access: false };
 
   if (isConciergeStop(message) && !classifyHandoff(message)) {
     return { ...empty, handoff: null, bookingId: null, text: sign(stopText(lang)), optOut: true };
@@ -844,5 +850,6 @@ export function planConciergeTurn(message: string, dossier: ConciergeDossier): C
     handoff: null,
     bookingId: stay?.id || null,
     text: sign(body),
+    cover: replyCover(stay, thin),
   };
 }
