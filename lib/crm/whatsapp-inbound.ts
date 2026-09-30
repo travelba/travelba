@@ -3,6 +3,7 @@ import { toE164 } from "./phone";
 import { uploadCrmFile } from "./files";
 import { redactIngestText } from "./ingest-redact";
 import { formParams, verifyTwilioSignature } from "./twilio-signature";
+import { liveConciergeImage } from "./concierge-notices";
 import { withConciergeSignature } from "./whatsapp";
 import {
   accessLinkReply,
@@ -259,6 +260,7 @@ export async function receiveWhatsappWebhook(input: {
   let bookingId: string | null = null;
   let handoff: HandoffKind | null = null;
   let reply = UNKNOWN_NUMBER_REPLY;
+  let mediaUrl: string | null = null;
   const lang = messageLanguage(clientText);
 
   if (!customer) {
@@ -283,6 +285,7 @@ export async function receiveWhatsappWebhook(input: {
       handoff = turn.handoff;
       const replyLang = messageLanguage(content || said);
       reply = turn.access ? accessLinkReply(replyLang, (await input.openAccess?.(customer)) || null) : turn.text;
+      if (!turn.access) mediaUrl = turn.cover;
       if (hadPiece && !turn.access) reply = prefixSigned(reply, pieceSavedLine(replyLang));
       if (stopping) {
         await input.store.optOut?.(customer.id);
@@ -302,12 +305,14 @@ export async function receiveWhatsappWebhook(input: {
           : "Je n’ai pas pu enregistrer cette pièce. Vous pouvez la renvoyer, ou j’en parle à l’agence."
       );
       handoff = null;
+      mediaUrl = null;
     }
   }
 
   if (customer && bookingId) await input.store.tagMessage?.(inbound.id, bookingId);
 
-  const sent = await input.send({ to, body: reply, mediaUrl: null });
+  if (mediaUrl) mediaUrl = await liveConciergeImage(mediaUrl, input.fetchImpl);
+  const sent = await input.send({ to, body: reply, mediaUrl });
   const outbound = await input.store.insertMessage({
     customer_id: customer?.id || null,
     booking_id: bookingId,

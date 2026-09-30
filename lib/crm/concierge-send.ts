@@ -12,11 +12,14 @@ import type { CrmBooking, CrmBookingItem, CrmBookingTraveler, CrmTravelDocument 
 import {
   conciergeContentSid,
   conciergeContentVariables,
+  conciergePhotoTemplate,
+  conciergeTemplateImage,
   normalizePieceKind,
   PIECES_WINDOW_MS,
   planFormalityReady,
   planMissingPieceNotices,
   planPiecesNotices,
+  liveConciergeImage,
   liveStayCover,
   noticeCardTemplate,
   pieceCardTemplate,
@@ -194,6 +197,37 @@ async function deliverTemplate(admin: Admin, input: {
   if (!suffix) {
     await markResult(admin, input.row.id, { ok: false, reason: "rejected", detail: "lien absent" });
     return;
+  }
+  const photoTemplate = conciergePhotoTemplate(input.card || input.template);
+  const photoSid = photoTemplate ? conciergeContentSid(photoTemplate) : "";
+  const photoMedia = photoTemplate ? await liveConciergeImage(conciergeTemplateImage(photoTemplate)) : null;
+  const photoVariables =
+    photoTemplate && photoSid && photoMedia
+      ? conciergeContentVariables({
+          template: photoTemplate,
+          buttonSuffix: suffix,
+          place: input.place,
+          reference: input.reference,
+          mediaUrl: photoMedia,
+          variable: input.variable,
+        })
+      : null;
+  if (photoTemplate && photoVariables && photoSid) {
+    if (input.body !== input.row.body) {
+      await admin.from("crm_whatsapp_messages").update({ body: input.body, template_key: photoTemplate }).eq("id", input.row.id);
+    }
+    const photoResult = await sendContentTemplate({
+      phone: input.customer.phone,
+      contentSid: photoSid,
+      variables: photoVariables,
+    });
+    if (photoResult.ok) {
+      await markResult(admin, input.row.id, photoResult, {
+        dedupeKey: input.sentDedupe,
+        templateKey: photoTemplate,
+      });
+      return;
+    }
   }
   const cardSid = input.card ? conciergeContentSid(input.card) : "";
   const cardVariables =

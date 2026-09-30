@@ -345,8 +345,23 @@ test("sans horaire, sans prix publié et sans couverture, rien n’est inventé"
     bookings: [{ ...published, cover_image_path: "bookings/stay-pub/cover.webp" }],
   });
   const withPhoto = planConciergeTurn("Parlez-moi de mon séjour", covered);
-  assert.equal(withPhoto.cover, null);
+  assert.equal(withPhoto.cover, "https://travelba.fr/api/covers/sejour/PUB-1");
   assert.equal(withPhoto.text.includes("cover.webp"), false);
+  assert.equal(withPhoto.text.includes("/api/covers/"), false);
+  const papers = buildConciergeDossier({
+    bookings: [{ ...published, cover_image_path: "bookings/stay-pub/cover.webp" }],
+    travelDocuments: [
+      { doc_type: "passport", first_name: "Simon", last_name: "Martin", expires_on: "2030-01-12" },
+    ],
+    visaRequests: [{ booking_id: "stay-pub", country: "US", status: "piece" }],
+  });
+  const passport = planConciergeTurn("Où est mon passeport ?", papers);
+  assert.equal(passport.cover, "https://travelba.fr/whatsapp/passeport.jpg");
+  const visa = planConciergeTurn("Où en est mon visa ?", papers);
+  assert.equal(visa.cover, "https://travelba.fr/whatsapp/visa.jpg");
+  assert.equal(visa.text.includes("/api/covers/"), false);
+  const thin = planConciergeTurn("À quelle heure est le vol ?", covered);
+  assert.equal(thin.cover, null);
 
   const formality = planConciergeTurn("Où en est mon ESTA ?", dossier);
   assert.match(formality.text, new RegExp(MISSING_FORMALITY.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
@@ -687,4 +702,41 @@ test("le lien d’accès est un magic link", async () => {
   assert.equal(otp, "magiclink");
   assert.match(link || "", /^https:\/\/travelba\.fr\/e\/c\/[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{8}$/);
   assert.equal((link || "").includes("password"), false);
+});
+
+test("une réponse sur le séjour joint la photo du lieu", async () => {
+  const writes: { table: string; row?: Record<string, unknown> }[] = [];
+  const sent: { body: string; mediaUrl?: string | null }[] = [];
+  const params = {
+    From: "whatsapp:+33601020304",
+    Body: "Parlez-moi de mon séjour",
+    MessageSid: "SMsejourphoto",
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(params),
+    params,
+    authToken: TOKEN,
+    store: storeFrom({
+      writes,
+      customers: [{ id: "cust-1", first_name: "Simon" }],
+      dossier: {
+        bookings: [{ ...published, cover_image_path: "bookings/stay-pub/cover.webp" }],
+      },
+    }),
+    fetchImpl: async (url) => {
+      assert.match(String(url), /\/api\/covers\/sejour\/PUB-1$/);
+      return new Response(new Uint8Array([1, 2, 3]), {
+        status: 200,
+        headers: { "content-type": "image/jpeg" },
+      });
+    },
+    send: async (message) => {
+      sent.push(message);
+      return { ok: true, sid: "SMsejourout" };
+    },
+  });
+  assert.equal(sent[0].mediaUrl, "https://travelba.fr/api/covers/sejour/PUB-1");
+  assert.equal(sent[0].body.includes("cover.webp"), false);
+  assert.equal(sent[0].body.includes("/api/covers/"), false);
 });

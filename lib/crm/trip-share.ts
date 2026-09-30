@@ -1,4 +1,5 @@
 import { randomInt } from "node:crypto";
+import { isWhatsappTypeMedia } from "./concierge-notices";
 import { whatsappAddress, type WhatsappSendResult } from "./whatsapp";
 import { sendWhatsappSession } from "./whatsapp-session";
 import { isSafeCrmPath } from "./files-access";
@@ -134,6 +135,7 @@ export async function sendTripShareWhatsapp(input: {
   firstName: string;
   title: string;
   url: string;
+  mediaUrl?: string | null;
   fetchImpl?: typeof fetch;
 }): Promise<WhatsappSendResult> {
   const to = whatsappAddress(input.phone);
@@ -147,7 +149,8 @@ export async function sendTripShareWhatsapp(input: {
   if (body.includes("/mon-compte") || body.includes("/e/")) {
     return { ok: false, reason: "rejected" };
   }
-  const result = await sendWhatsappSession({ to, body, fetchImpl: input.fetchImpl });
+  const mediaUrl = input.mediaUrl && isWhatsappTypeMedia(input.mediaUrl) ? input.mediaUrl : null;
+  const result = await sendWhatsappSession({ to, body, mediaUrl, fetchImpl: input.fetchImpl });
   if (result.ok) return { ok: true, sid: result.sid };
   if (result.detail === "not_configured") return { ok: false, reason: "not_configured" };
   return { ok: false, reason: "rejected", detail: result.detail };

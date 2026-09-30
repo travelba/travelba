@@ -5,6 +5,7 @@ import {
   conciergeContentSid,
   conciergeContentVariables,
   conciergeExemplars,
+  conciergePhotoTemplate,
   noticeCardTemplate,
   pieceCardTemplate,
   PIECES_PATH,
@@ -302,7 +303,7 @@ test("les modèles n’embarquent aucun SID", () => {
   }
 });
 
-test("seul le séjour publié porte la photo, les autres ont un bouton", () => {
+test("la photo du lieu est sur la carte, le texte reste le repli", () => {
   const exemplars = conciergeExemplars();
   assert.ok(exemplars.length >= 14);
   const names = new Set<string>();
@@ -328,23 +329,27 @@ test("seul le séjour publié porte la photo, les autres ont un bouton", () => {
     assert.match(body, /Le Concierge/);
     assert.equal(JSON.stringify(draft.create).includes("og-concierge"), false);
     assert.equal(JSON.stringify(draft.create).includes("tba-mark"), false);
-    if (draft.template === "sejour") {
-      assert.ok(card);
+    if (card) {
       assert.equal(card.media.length, 1);
       assert.match(card.media[0], /^\{\{\d+\}\}$/);
-      const sampleCover = Object.values(draft.create.variables).find((value) =>
-        String(value).includes("/api/covers/sejour/")
+      const sampleCover = Object.values(draft.create.variables).find(
+        (value) => String(value).includes("/api/covers/sejour/") || String(value).includes("/whatsapp/")
       );
-      assert.match(String(sampleCover), /\/api\/covers\/sejour\/TB-2026-0028$/);
+      if (draft.template === "sejour" || draft.template === "sejour_sans_lieu") {
+        assert.match(String(sampleCover), /\/api\/covers\/sejour\/TB-2026-0028$/);
+      } else {
+        assert.match(String(sampleCover), /\/whatsapp\/[a-z]+\.jpg$/);
+        assert.equal(String(sampleCover).includes("/api/covers/sejour/"), false);
+      }
       withPhoto += 1;
     } else {
-      assert.equal(card, undefined);
       assert.ok(text);
       assert.equal(JSON.stringify(draft.create).includes("/api/covers/"), false);
+      assert.equal(JSON.stringify(draft.create).includes("/whatsapp/"), false);
       assert.match(body, /séjour/);
     }
   }
-  assert.equal(withPhoto, 1);
+  assert.ok(withPhoto > 1);
   assert.equal(
     conciergeContentDrafts().some((draft) => JSON.stringify(draft.create).includes("og-concierge")),
     false
@@ -382,6 +387,38 @@ test("hôtel, vol, transfert et formalité nomment le séjour, sans photo", () =
   assert.equal(hotel?.["2"], "c/K7MQ2PX4");
   assert.equal(hotel?.["3"], undefined);
   assert.equal(JSON.stringify(hotel).includes("/api/covers/"), false);
+  assert.equal(conciergePhotoTemplate("piece_hotel"), "piece_hotel_photo");
+  const hotelJpg = "https://travelba.fr/whatsapp/hotel.jpg";
+  const hotelPhoto = conciergeContentVariables({
+    template: "piece_hotel_photo",
+    buttonSuffix: "c/K7MQ2PX4",
+    place: "Avoriaz",
+    reference,
+    mediaUrl: hotelJpg,
+  });
+  assert.equal(hotelPhoto?.["1"], "Avoriaz, réservation TB-2026-0004,");
+  assert.equal(hotelPhoto?.["2"], hotelJpg);
+  assert.equal(hotelPhoto?.["3"], "c/K7MQ2PX4");
+  assert.equal(
+    conciergeContentVariables({
+      template: "piece_hotel_photo",
+      buttonSuffix: "c/K7MQ2PX4",
+      place: "Avoriaz",
+      reference,
+      mediaUrl: cover,
+    }),
+    null
+  );
+  assert.equal(
+    conciergeContentVariables({
+      template: "piece_hotel_photo",
+      buttonSuffix: "c/K7MQ2PX4",
+      place: "Avoriaz",
+      reference,
+      mediaUrl: null,
+    }),
+    null
+  );
   const esta = conciergeContentVariables({
     template: "formalite_prete_carte",
     buttonSuffix: "c/K7MQ2PX4",

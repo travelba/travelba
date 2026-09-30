@@ -13,6 +13,7 @@ test("chaque modèle rédigé apparaît dans le récapitulatif", () => {
     for (const message of group.messages) {
       if (message.bubble.modelName) names.add(message.bubble.modelName);
       if (message.fallback?.modelName) names.add(message.fallback.modelName);
+      if (message.earlier?.modelName) names.add(message.earlier.modelName);
     }
   }
   for (const draft of conciergeContentDrafts()) {
@@ -37,7 +38,21 @@ test("les textes qui partent reprennent les fonctions d’envoi", () => {
 
   const hotel = byId.get("piece-hotel");
   assert.match(hotel?.bubble.body || "", /confirmation d'hôtel pour le séjour à Avoriaz/);
-  assert.match(hotel?.fallback?.body || "", /Votre confirmation d'hôtel, réservation TB-2026-0028/);
+  assert.equal(hotel?.bubble.photo, true);
+  assert.match(hotel?.bubble.image || "", /\/whatsapp\/hotel\.jpg$/);
+  assert.equal(hotel?.bubble.imageAlt, "Hôtel TBA");
+  assert.match(byId.get("piece-vol")?.bubble.image || "", /\/whatsapp\/billet\.jpg$/);
+  assert.match(byId.get("formalite-prete")?.bubble.image || "", /\/whatsapp\/visa\.jpg$/);
+  assert.match(byId.get("passeport")?.bubble.image || "", /\/whatsapp\/passeport\.jpg$/);
+  assert.equal((hotel?.bubble.image || "").includes("/api/covers/sejour/"), false);
+  assert.match(byId.get("sejour-photo")?.bubble.image || "", /\/api\/covers\/sejour\/TB-2026-0028$/);
+  assert.match(hotel?.fallback?.body || "", /confirmation d'hôtel pour le séjour à Avoriaz/);
+  assert.equal(hotel?.fallback?.photo, false);
+  assert.match(hotel?.earlier?.body || "", /Votre confirmation d'hôtel, réservation TB-2026-0028/);
+  const hello = byId.get("reponse-Bonjour");
+  assert.match(hello?.bubble.image || "", /\/api\/covers\/sejour\/TB-2026-0028$/);
+  assert.equal(byId.get("numero-inconnu")?.bubble.image, null);
+  assert.equal(byId.get("reponse-Fait absent du dossier")?.bubble.image, null);
 
   const share = byId.get("partage");
   assert.equal(

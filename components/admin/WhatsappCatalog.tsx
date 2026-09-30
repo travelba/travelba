@@ -23,20 +23,27 @@ function Bubble({ bubble }: { bubble: WhatsappBubble }) {
         TBA
       </span>
       <div className="min-w-0 flex-1">
-        {bubble.photo ? (
-          <div className="mb-1.5 flex h-16 items-end rounded-xl bg-[#16324f] px-3 py-2">
-            <span className="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
-              Photo du séjour
-            </span>
-          </div>
-        ) : null}
-        <div className="rounded-2xl rounded-bl-md bg-[#f4efe4] px-3.5 py-3 text-[14px] leading-relaxed text-[var(--admin-navy)] shadow-[0_8px_20px_rgba(0,0,0,0.12)]">
-          <p className="whitespace-pre-wrap">{bubble.body}</p>
-          {bubble.button ? (
-            <p className="mt-2.5 border-t border-[#0B192C]/10 pt-2 text-center text-sm font-semibold text-[#1d4e89]">
-              {bubble.button}
-            </p>
+        <div className="overflow-hidden rounded-2xl rounded-bl-md bg-[#f4efe4] text-[14px] leading-relaxed text-[var(--admin-navy)] shadow-[0_8px_20px_rgba(0,0,0,0.12)]">
+          {bubble.image ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={bubble.image}
+              alt={bubble.imageAlt || "Illustration"}
+              className="aspect-[16/10] w-full bg-[#16324f] object-cover"
+              referrerPolicy="no-referrer"
+              onError={(event) => {
+                event.currentTarget.style.display = "none";
+              }}
+            />
           ) : null}
+          <div className="px-3.5 py-3">
+            <p className="whitespace-pre-wrap">{bubble.body}</p>
+            {bubble.button ? (
+              <p className="mt-2.5 border-t border-[#0B192C]/10 pt-2 text-center text-sm font-semibold text-[#1d4e89]">
+                {bubble.button}
+              </p>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
@@ -65,7 +72,13 @@ export function WhatsappCatalog({ groups }: { groups: WhatsappCatalogGroup[] }) 
       ...group,
       messages: group.messages.filter((message) => {
         if (!needle) return true;
-        const blob = [message.title, message.when, message.bubble.body, message.fallback?.body || ""]
+        const blob = [
+          message.title,
+          message.when,
+          message.bubble.body,
+          message.fallback?.body || "",
+          message.earlier?.body || "",
+        ]
           .join("\n")
           .toLocaleLowerCase("fr");
         return blob.includes(needle);
@@ -76,10 +89,11 @@ export function WhatsappCatalog({ groups }: { groups: WhatsappCatalogGroup[] }) 
   return (
     <div className="mt-6">
       <p className="max-w-3xl text-sm leading-relaxed text-muted">
-        Chaque carte montre le texte tel que le client le reçoit. Un modèle part si le téléphone est
-        valide, si le client a accepté WhatsApp, et si Meta a approuvé le texte. Une réponse part
-        quand le client vient d’écrire. Les prénoms, heures et montants des réponses sont un exemple
-        fictif à Avoriaz.
+        Chaque carte montre le message tel que le client le reçoit. L’image suit le sujet : hôtel,
+        billet, transfert, passeport, visa. Seul le séjour publié montre la photo du lieu. Un modèle
+        part si le téléphone est valide, si le client a accepté WhatsApp, et si Meta a approuvé le
+        texte. Sans le modèle illustré, le texte de repli part. Une réponse part quand le client
+        vient d’écrire. Les prénoms, heures et montants des réponses sont un exemple fictif à Avoriaz.
       </p>
 
       <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -169,6 +183,17 @@ export function WhatsappCatalog({ groups }: { groups: WhatsappCatalogGroup[] }) 
                         <div className="mt-3 rounded-xl bg-[var(--admin-navy)] px-3 py-3">
                           <Bubble bubble={message.fallback} />
                         </div>
+                        {message.earlier ? (
+                          <div className="mt-4">
+                            <p className="text-xs leading-relaxed text-muted">
+                              {message.earlier.label}
+                              {message.earlier.modelName ? ` · ${message.earlier.modelName}` : ""}
+                            </p>
+                            <div className="mt-3 rounded-xl bg-[var(--admin-navy)] px-3 py-3">
+                              <Bubble bubble={message.earlier} />
+                            </div>
+                          </div>
+                        ) : null}
                       </details>
                     ) : null}
                   </article>
