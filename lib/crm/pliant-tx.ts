@@ -106,9 +106,12 @@ export function pliantStayForCard(cardId: string | null, stays: PliantStayRef[])
   return stays.find((row) => row.cardId === cardId) || null;
 }
 
-export function pliantSyncSummary(fetched: number) {
+export function pliantSyncSummary(fetched: number, autoMatched = 0) {
   const lus = fetched > 1 ? `${fetched} mouvements lus` : `${fetched} mouvement lu`;
-  return `Synchronisation terminée : ${lus}.`;
+  const base = `Synchronisation terminée : ${lus}.`;
+  if (!autoMatched) return base;
+  const rapproches = autoMatched > 1 ? `${autoMatched} dépenses rapprochées` : "1 dépense rapprochée";
+  return `${base} ${rapproches}.`;
 }
 
 export function mapPliantTransaction(payload: unknown): PliantTransactionRow | null {
