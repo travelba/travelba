@@ -1,5 +1,15 @@
 import "server-only";
+import { createServiceClient } from "@/lib/supabase/admin";
 import { pickListedId, pickTravelConfig, pliantRefusal } from "./eta-il-fee";
+import {
+  isPliantTokenFailure,
+  pliantDenialUntil,
+  pliantStoredDenial,
+  pliantTokenBackoffMs,
+  pliantTokenExtra,
+  pliantTokenFailureMessage,
+  pliantTokenStillValid,
+} from "./pliant-auth";
 import { annotatePliantPayload, pliantCardFace, pliantHolderId, pliantHolderName, pliantTransactionPage } from "./pliant-tx";
 
 const PROD = {
@@ -13,8 +23,13 @@ const SANDBOX = {
   audience: "api.staging.infinnitytest.com/api/integration",
 };
 
+const TOKEN_PROVIDER = "pliant";
+
 type Token = { accessToken: string; expiresAt: number };
+type IntegrationRow = { access_token: string | null; expires_at: string | null; extra: unknown };
 let cached: Token | null = null;
+let denied: { until: number; error: Error } | null = null;
+let pending: Promise<string> | null = null;
 
 export function pliantConfigured() {
   return Boolean(
@@ -30,7 +45,89 @@ function endpoints() {
 }
 
 async function accessToken() {
-  if (cached && cached.expiresAt > Date.now() + 60_000) return cached.accessToken;
+  const now = Date.now();
+  if (cached && pliantTokenStillValid(cached.expiresAt, now)) return cached.accessToken;
+  if (denied && denied.until > now) throw denied.error;
+  if (!pending) {
+    pending = resolveAccessToken().finally(() => {
+      pending = null;
+    });
+  }
+  return pending;
+}
+
+async function resolveAccessToken() {
+  const now = Date.now();
+  if (cached && pliantTokenStillValid(cached.expiresAt, now)) return cached.accessToken;
+  const stored = await readStoredToken();
+  if (stored?.access_token && stored.expires_at) {
+    const expiresAt = Date.parse(stored.expires_at);
+    if (pliantTokenStillValid(expiresAt, now)) {
+      cached = { accessToken: stored.access_token, expiresAt };
+      return stored.access_token;
+    }
+  }
+  const blocked = pliantStoredDenial(stored?.extra, now);
+  if (blocked) {
+    const error = new Error(blocked);
+    denied = { until: pliantDenialUntil(stored?.extra) || now + 60_000, error };
+    throw error;
+  }
+  return requestAccessToken(stored?.extra);
+}
+
+async function readStoredToken() {
+  try {
+    const admin = createServiceClient();
+    const { data } = await admin
+      .from("crm_integrations")
+      .select("access_token, expires_at, extra")
+      .eq("provider", TOKEN_PROVIDER)
+      .maybeSingle();
+    return (data as IntegrationRow | null) || null;
+  } catch (err) {
+    console.error("[pliant] jeton", err instanceof Error ? err.message : "lecture");
+    return null;
+  }
+}
+
+async function writeToken(extra: unknown, token: string, expiresAt: number) {
+  try {
+    const admin = createServiceClient();
+    const { error } = await admin.from("crm_integrations").upsert(
+      {
+        provider: TOKEN_PROVIDER,
+        access_token: token,
+        expires_at: new Date(expiresAt).toISOString(),
+        extra: pliantTokenExtra(extra, null),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "provider" }
+    );
+    if (error) console.error("[pliant] jeton", "enregistrement");
+  } catch (err) {
+    console.error("[pliant] jeton", err instanceof Error ? err.message : "enregistrement");
+  }
+}
+
+async function writeDenial(extra: unknown, until: number, message: string) {
+  try {
+    const admin = createServiceClient();
+    const { error } = await admin.from("crm_integrations").upsert(
+      {
+        provider: TOKEN_PROVIDER,
+        extra: pliantTokenExtra(extra, { until: new Date(until).toISOString(), message }),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "provider" }
+    );
+    if (error) console.error("[pliant] jeton", "blocage");
+  } catch (err) {
+    console.error("[pliant] jeton", err instanceof Error ? err.message : "blocage");
+  }
+}
+
+async function requestAccessToken(extra: unknown) {
   const clientId = process.env.PLIANT_CLIENT_ID || "";
   const clientSecret = process.env.PLIANT_CLIENT_SECRET || "";
   const { token, audience } = endpoints();
@@ -44,14 +141,31 @@ async function accessToken() {
       grant_type: "client_credentials",
     }),
   });
-  if (!res.ok) throw new Error("Pliant n’a pas délivré de jeton.");
+  if (!res.ok) {
+    const message = pliantTokenFailureMessage(res.status);
+    console.error("[pliant] jeton", res.status);
+    const backoff = pliantTokenBackoffMs(res.status, res.headers.get("retry-after"));
+    const error = new Error(message);
+    const until = Date.now() + (backoff || 15_000);
+    denied = { until, error };
+    if (backoff > 0) await writeDenial(extra, until, message);
+    throw error;
+  }
   const json = (await res.json()) as { access_token?: string; expires_in?: number };
-  if (!json.access_token) throw new Error("Pliant n’a pas délivré de jeton.");
-  cached = {
-    accessToken: json.access_token,
-    expiresAt: Date.now() + (json.expires_in || 3600) * 1000,
-  };
+  if (!json.access_token) {
+    const error = new Error(pliantTokenFailureMessage(0));
+    denied = { until: Date.now() + 15_000, error };
+    throw error;
+  }
+  const expiresAt = Date.now() + (json.expires_in || 3600) * 1000;
+  cached = { accessToken: json.access_token, expiresAt };
+  denied = null;
+  await writeToken(extra, json.access_token, expiresAt);
   return json.access_token;
+}
+
+function rethrowTokenFailure(err: unknown) {
+  if (err instanceof Error && isPliantTokenFailure(err.message)) throw err;
 }
 
 export async function issuePliantCard(cardholderId: string, body: unknown) {
@@ -238,6 +352,7 @@ async function pliantOrganizationIds() {
     return [...new Set([configured, ...ids].filter(Boolean))];
   } catch (err) {
     console.error("[pliant] organizations", err instanceof Error ? err.message : "échec");
+    rethrowTokenFailure(err);
     return configured ? [configured] : [];
   }
 }
@@ -264,6 +379,7 @@ async function fetchOrganizationTransactions(organizationId: string) {
     if (detailed.length) return detailed;
   } catch (err) {
     console.error("[pliant] details", err instanceof Error ? err.message : "échec");
+    rethrowTokenFailure(err);
   }
   return fetchPages((page) => {
     const query = new URLSearchParams({

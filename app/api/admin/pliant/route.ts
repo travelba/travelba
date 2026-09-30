@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { isPliantTokenFailure } from "@/lib/crm/pliant-auth";
 import { pliantConfigured } from "@/lib/crm/pliant";
 import { syncPliantAccount } from "@/lib/crm/pliant-sync";
 
@@ -18,7 +19,11 @@ export async function POST(request: Request) {
   } catch (err) {
     console.error("[pliant] sync", err instanceof Error ? err.message : "échec");
     const message = err instanceof Error ? err.message : "Synchronisation Pliant impossible. Réessayez.";
-    const known = message === "Pliant n’est pas branché." || message === "Pliant n’a pas renvoyé les transactions." || message === "Les transactions Pliant n’ont pas pu être enregistrées.";
+    const known =
+      isPliantTokenFailure(message) ||
+      message === "Pliant n’est pas branché." ||
+      message === "Pliant n’a pas renvoyé les transactions." ||
+      message === "Les transactions Pliant n’ont pas pu être enregistrées.";
     return jsonError(known ? message : "Synchronisation Pliant impossible. Réessayez.", 502);
   }
 }
