@@ -38,6 +38,7 @@ import {
 } from "./hotel-desk";
 import { checkinCardPdf, precheckParty, selectedPrecheckPieces } from "./hotel-precheck";
 import { issuePliantCard, pliantConfigured, readPliantCardSecrets } from "./pliant";
+import { agencyCopyCc } from "./outbound-mail";
 import { siteConfig } from "../site";
 import type {
   CrmBookingItem,
@@ -449,6 +450,7 @@ async function deliverHotelMail(mail: {
   const { error } = await resend.emails.send({
     from: `${siteConfig.name} <${HOTEL_DESK_FROM}>`,
     to: mail.to,
+    cc: agencyCopyCc(mail.to),
     subject: mail.subject,
     text: mail.text,
     replyTo: HOTEL_DESK_FROM,

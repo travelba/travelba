@@ -13,6 +13,7 @@ import {
 } from "@/lib/crm/whatsapp";
 import { createEntryLink } from "@/lib/crm/entry-link";
 import { greetingGivenName } from "@/lib/crm/identity";
+import { agencyCopyCc } from "@/lib/crm/outbound-mail";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 
 export type PortalAccess = {
@@ -72,6 +73,7 @@ async function sendInviteEmail(customer: CrmCustomer, link: string) {
   const { error } = await resend.emails.send({
     from: `${siteConfig.name} <${from}>`,
     to: [customer.email],
+    cc: agencyCopyCc(customer.email),
     replyTo: siteConfig.contactEmail,
     subject: "Votre espace voyageur est prêt",
     html: inviteEmailHtml(customer, link),
