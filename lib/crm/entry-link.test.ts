@@ -127,6 +127,26 @@ test("l’e-mail du lien est celui du titulaire, et l’entrée n’ouvre pas la
     }),
     "/connexion/mot-de-passe"
   );
+  assert.equal(
+    entryDestination({
+      nextPath: "/connexion/mot-de-passe",
+      otpType: "recovery",
+      staff: false,
+      mustSetPassword: false,
+      hasPassword: true,
+    }),
+    "/mon-compte"
+  );
+  assert.equal(
+    entryDestination({
+      nextPath: "/mon-compte/reservations/TB-2026-0034",
+      otpType: "magiclink",
+      staff: false,
+      mustSetPassword: false,
+      hasPassword: true,
+    }),
+    "/mon-compte/reservations/TB-2026-0034"
+  );
   const held = entryPreviewHtml("https://travelba.fr", "K7MQ2PX4", null, false);
   assert.equal(held.includes("<script"), false);
   assert.equal(held.includes("/connexion"), false);

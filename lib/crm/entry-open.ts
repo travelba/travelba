@@ -7,7 +7,12 @@ import { AUTH_COOKIE_OPTIONS } from "@/lib/supabase/cookie-options";
 import { publicSupabaseEnv } from "@/lib/supabase/env";
 import { ensureCustomerForUser, ensureStaff } from "@/lib/crm/auth";
 import { recordCustomerLogin } from "@/lib/crm/customer-login";
-import { PASSWORD_SETUP_COOKIE, mustSetPassword } from "@/lib/crm/session";
+import {
+  PASSWORD_SETUP_COOKIE,
+  hasChosenPassword,
+  mustSetPassword,
+  needsClientOnboarding,
+} from "@/lib/crm/session";
 import { stayHasPublishedCover, stayPlaceName } from "./concierge-notices";
 import {
   entryDestination,
@@ -78,14 +83,14 @@ export async function openEntry(origin: string, code: string) {
   if (!link?.token_hash) return entryPreviewResponse(origin, safe, false);
 
   const otpType = safeOtpType(link.otp_type);
+  const email = storedEntryEmail(link.email);
   const response = NextResponse.redirect(new URL("/mon-compte", origin));
-  let user = await verifyOn(response, link.token_hash, otpType);
-  if (!user) {
-    const email = storedEntryEmail(link.email);
-    const fresh = email ? await freshMagicHash(email) : null;
-    if (fresh) user = await verifyOn(response, fresh, "magiclink");
-  }
+  // Le jeton d’origine meurt sous 24 h. L’e-mail enregistré en fabrique un neuf.
+  let user = email ? await openWithFreshMagic(response, email) : null;
+  if (!user) user = await verifyOn(response, link.token_hash, otpType);
+  if (!user && email) user = await openWithFreshMagic(response, email);
   if (!user) return entryPreviewResponse(origin, safe, false);
+  if (!email && user.email) await rememberEntryEmail(safe, user.email);
 
   await ensureCustomerForUser(user);
   const staff = await ensureStaff(user);
@@ -95,6 +100,8 @@ export async function openEntry(origin: string, code: string) {
     otpType,
     staff: Boolean(staff),
     mustSetPassword: mustSetPassword(user),
+    hasPassword: hasChosenPassword(user),
+    needsOnboarding: needsClientOnboarding(user),
   });
   response.headers.set("Location", new URL(dest, origin).toString());
   if (dest === "/connexion/mot-de-passe") {
@@ -141,6 +148,24 @@ async function verifyOn(response: NextResponse, tokenHash: string, type: string)
   if (verified.error) return null;
   const { data } = await supabase.auth.getUser();
   return data.user;
+}
+
+async function openWithFreshMagic(response: NextResponse, email: string) {
+  const fresh = await freshMagicHash(email);
+  if (!fresh) return null;
+  return verifyOn(response, fresh, "magiclink");
+}
+
+/** Premier passage encore couvert par l’ancien jeton : on retient l’e-mail pour la suite. */
+async function rememberEntryEmail(code: string, email: string) {
+  const clean = storedEntryEmail(email);
+  if (!clean) return;
+  try {
+    const admin = createServiceClient();
+    await admin.from("crm_entry_links").update({ email: clean }).eq("code", code).is("email", null);
+  } catch {
+    console.error("[entry] e-mail du lien non enregistré");
+  }
 }
 
 async function freshMagicHash(email: string) {

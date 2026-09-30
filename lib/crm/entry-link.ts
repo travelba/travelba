@@ -1,6 +1,10 @@
 import { randomInt } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { SET_PASSWORD_PATH, shouldForcePasswordSetup } from "./session";
+import {
+  SET_PASSWORD_PATH,
+  pathAfterKnownPassword,
+  shouldForcePasswordSetup,
+} from "./session";
 
 const ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 
@@ -77,14 +81,27 @@ export function storedEntryEmail(value: string | null | undefined) {
   return email;
 }
 
-/** Après la session. Jamais /connexion : le lien court ouvre l’espace ou le mot de passe. */
+/**
+ * Après la session. Jamais /connexion.
+ * Le jeton Supabase ne dépasse pas 24 h : le code court, lui, reste.
+ * Mot de passe déjà choisi → l’espace (ou le séjour), pas une nouvelle définition.
+ */
 export function entryDestination(input: {
   nextPath: string | null | undefined;
   otpType: string | null | undefined;
   staff: boolean;
   mustSetPassword: boolean;
+  hasPassword?: boolean;
+  needsOnboarding?: boolean;
 }) {
   const next = safeNextPath(input.nextPath);
+  if (input.hasPassword) {
+    return pathAfterKnownPassword({
+      staff: input.staff,
+      needsOnboarding: input.needsOnboarding === true,
+      next,
+    });
+  }
   if (
     shouldForcePasswordSetup({
       flagged: input.mustSetPassword,

@@ -249,7 +249,7 @@ function catalogGroups(): WhatsappCatalogGroup[] {
     {
       id: "acces",
       title: "Accès à l’espace",
-      intro: "Le lien est le bouton. Il reste valable 24 heures et n’est pas écrit dans le texte.",
+      intro: "Le lien est le bouton. Le texte dit 24 heures ; le bouton reste valable et n’est pas écrit dans le texte.",
       messages: [
         message({
           id: "connexion",
