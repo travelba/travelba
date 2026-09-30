@@ -2,8 +2,8 @@
 name: travelba-carnet
 description: >-
   Travelba carnet (itinerary): save vs publish, hotel nights repeat, IATA +
-  city, drag order, selling price, skip empty days, no invented hours, client
-  ingest 404, copy l’agence. Use when editing bookings, timeline, ingest
+  city, drag order, selling price, skip empty days, no invented hours, hotel
+  catalog contacts (Milano = Milan), client ingest 404, copy l’agence. Use when editing bookings, timeline, ingest
   review, BookingEditor, CarnetItinerary, or visible_to_client.
 ---
 
@@ -60,6 +60,8 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 - Réimport **même réf.** (vol : réf. + n° + date) = **remplace** la carte, n’ajoute pas un doublon.
 - Illisible : on **enregistre** + bandeau **À vérifier** (`details.needs_review`), pas un refus global.
 - Check-in / horaires absents = **rien** (pas « 15:00 », pas « non indiqué »).
+- **Contacts d’hôtel** : le catalogue Little Emperors (`crm_hotel_contacts`), pas le correspondant imprimé sur la confirmation (e-mail agence, Little Emperors). `loadHotelContacts` les colle à l’affichage sur **chaque** carte reconnue — admin, carnet client, lien public. Liste sous le nom (rôle, nom, e-mail). Pas d’écriture dossier par dossier.
+- Rapprochement `matchHotelDirectory` : nom identique, ou mêmes mots une fois la ville retirée. Milano = Milan, Londres = London, Venise = Venice (`CITY_ALIASES` dans `lib/crm/hotel-catalog.ts`). Nouvelle graphie = une ligne d’alias + un test `hotel-catalog.test.ts`. Deux hôtels possibles : aucun. Hôtel absent du catalogue : pas de contact inventé.
 - Copy client : **l’agence**. Modifier un séjour : WhatsApp `Bonjour, je voudrais modifier {réf} — {destination}.` (`whatsappModifyHref`).
 - Conciergerie 24/7 WhatsApp — **pas** de cloche de notif fictive.
 
