@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { AgencyLogo } from "@/components/AgencyLogo";
@@ -41,6 +41,20 @@ export function AdminNav({
   const pathname = usePathname();
   const router = useRouter();
   const [query, setQuery] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [menuOpen]);
   const initials =
     staffName
       .split(" ")
@@ -66,7 +80,7 @@ export function AdminNav({
     router.push(q ? `/admin/recherche?q=${encodeURIComponent(q)}` : "/admin/recherche");
   }
 
-  function navLink(link: (typeof links)[number], variant: "dark" | "light") {
+  function navLink(link: (typeof links)[number], variant: "dark" | "light", onNavigate?: () => void) {
     const active = link.exact ? pathname === link.href : pathname.startsWith(link.href);
     const badge =
       link.href === "/admin/revolut" && unmatchedCount > 0
@@ -81,7 +95,10 @@ export function AdminNav({
       <Link
         key={`${variant}-${link.href}`}
         href={link.href}
+        onClick={onNavigate}
         className={`admin-tap flex shrink-0 items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-sm transition ${
+          onNavigate ? "w-full" : ""
+        } ${
           dark
             ? active
               ? "bg-white/10 font-semibold text-[var(--admin-gold)]"
@@ -106,13 +123,25 @@ export function AdminNav({
 
   return (
     <>
-      <header className="sticky top-0 z-50 w-full max-w-full overflow-hidden bg-[var(--admin-navy)] text-white lg:hidden">
-        <div className="flex items-center justify-between gap-3 px-4 py-3">
-          <Link href="/admin" className="flex min-w-0 items-center gap-2">
-            <AgencyLogo className="h-9 w-9" />
-            <span className="truncate font-display text-sm font-semibold">Espace agence</span>
-          </Link>
-          <div className="flex shrink-0 items-center gap-2">
+      <header className="sticky top-0 z-50 w-full max-w-full overflow-hidden bg-[var(--admin-navy)] pt-[env(safe-area-inset-top)] text-white lg:hidden">
+        <div className="flex items-center justify-between gap-2 px-3 py-3">
+          <div className="flex min-w-0 items-center gap-1">
+            <Link href="/admin" className="flex min-w-0 items-center gap-2">
+              <AgencyLogo className="h-9 w-9 shrink-0" />
+              <span className="truncate font-display text-sm font-semibold">Espace agence</span>
+            </Link>
+            <button
+              type="button"
+              className="admin-tap inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-white"
+              aria-expanded={menuOpen}
+              aria-controls="admin-mobile-menu"
+              aria-label={menuOpen ? "Fermer le menu" : "Ouvrir le menu"}
+              onClick={() => setMenuOpen((open) => !open)}
+            >
+              <Icon name={menuOpen ? "close" : "menu"} className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
             <Link
               href="/admin/reservations"
               className="admin-af-btn-accent admin-tap rounded-md px-3 py-2 text-xs"
@@ -124,9 +153,6 @@ export function AdminNav({
             </button>
           </div>
         </div>
-        <nav className="no-scrollbar flex w-full min-w-0 max-w-full gap-1 overflow-x-auto overscroll-x-contain px-3 pb-2">
-          {links.map((link) => navLink(link, "dark"))}
-        </nav>
         <form onSubmit={onSearch} className="relative px-3 pb-3">
           <Icon
             name="search"
@@ -142,6 +168,28 @@ export function AdminNav({
           />
         </form>
       </header>
+
+      {menuOpen ? (
+        <div
+          id="admin-mobile-menu"
+          className="fixed inset-0 z-[60] flex flex-col bg-[var(--admin-navy)] pt-[env(safe-area-inset-top)] text-white lg:hidden"
+        >
+          <div className="flex items-center justify-between gap-3 px-3 py-3">
+            <p className="font-display text-sm font-semibold">Menu</p>
+            <button
+              type="button"
+              className="admin-tap inline-flex h-11 w-11 items-center justify-center rounded-lg"
+              aria-label="Fermer le menu"
+              onClick={() => setMenuOpen(false)}
+            >
+              <Icon name="close" className="h-5 w-5" />
+            </button>
+          </div>
+          <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            {links.map((link) => navLink(link, "dark", () => setMenuOpen(false)))}
+          </nav>
+        </div>
+      ) : null}
 
       <aside className="z-50 hidden w-72 flex-col justify-between bg-[var(--admin-navy)] px-5 py-6 text-white lg:fixed lg:left-0 lg:top-0 lg:flex lg:h-full lg:shrink-0">
         <div className="flex flex-col gap-6">
@@ -225,7 +273,7 @@ export function AdminNav({
           </span>
         </div>
       </header>
-      <main className="min-w-0 max-w-full px-4 py-6 sm:px-6 sm:py-8 lg:pl-[calc(18rem+2rem)] lg:pr-8 lg:pt-8">
+      <main className="min-w-0 max-w-full px-4 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:pt-8 sm:pb-[max(2rem,env(safe-area-inset-bottom))] lg:pt-8 lg:pb-8 lg:pl-[calc(18rem+2rem)] lg:pr-8">
         {children}
       </main>
     </>

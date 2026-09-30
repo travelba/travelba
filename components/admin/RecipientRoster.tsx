@@ -20,23 +20,40 @@ function PersonRow({
   onToggle: () => void;
 }) {
   const who = [person.firstName, person.lastName].filter(Boolean).join(" ") || person.role || person.email;
-  return (
-    <li className={`${COLS} px-2 py-0.5 ${selected ? "" : "bg-[#f8f3eb]"}`}>
-      <span className="truncate text-xs font-semibold text-[#0B192C]" title={person.lastName}>{person.lastName || "—"}</span>
-      <span className="truncate text-xs text-[#0B192C]" title={person.firstName}>{person.firstName || "—"}</span>
-      <span className="truncate text-xs text-[#9e7e51]" title={person.role}>{person.role || "—"}</span>
-      <span className="truncate text-[11px] text-[#9e7e51]" title={person.email}>
-        {person.email}
-      </span>
+  function actionButton() {
+    return (
       <button
         type="button"
-        className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[#0B192C] disabled:opacity-50"
+        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[#0B192C] disabled:opacity-50 sm:h-6 sm:w-6"
         disabled={disabled}
         aria-label={selected ? `Retirer ${who}` : `Ajouter ${who}`}
         onClick={onToggle}
       >
         <Icon name={selected ? "close" : "add"} className="h-3.5 w-3.5" />
       </button>
+    );
+  }
+  return (
+    <li className={`px-2 py-2 sm:py-0.5 ${selected ? "" : "bg-[#f8f3eb]"}`}>
+      <div className="flex items-start justify-between gap-2 sm:hidden">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-[#0B192C]">
+            {[person.lastName, person.firstName].filter(Boolean).join(" ") || "—"}
+          </p>
+          <p className="text-xs text-[#9e7e51]">{person.role || "—"}</p>
+          <p className="break-all text-xs text-[#9e7e51]">{person.email}</p>
+        </div>
+        {actionButton()}
+      </div>
+      <div className={`${COLS} hidden sm:grid`}>
+        <span className="truncate text-xs font-semibold text-[#0B192C]" title={person.lastName}>{person.lastName || "—"}</span>
+        <span className="truncate text-xs text-[#0B192C]" title={person.firstName}>{person.firstName || "—"}</span>
+        <span className="truncate text-xs text-[#9e7e51]" title={person.role}>{person.role || "—"}</span>
+        <span className="truncate text-[11px] text-[#9e7e51]" title={person.email}>
+          {person.email}
+        </span>
+        {actionButton()}
+      </div>
     </li>
   );
 }
@@ -72,7 +89,7 @@ export function RecipientRoster({
 
   return (
     <div>
-      <div className={`${COLS} px-2 pb-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[#C5A880]`}>
+      <div className={`${COLS} hidden px-2 pb-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[#C5A880] sm:grid`}>
         <span>Nom</span>
         <span>Prénom</span>
         <span>Rôle</span>
@@ -123,12 +140,12 @@ export function RecipientRoster({
             onChange([...selected, address], person);
           }}
         >
-          <div className={COLS}>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,0.9fr)_minmax(0,1.2fr)_auto] sm:items-center sm:gap-x-2">
             <input className={inputClass} aria-label="Nom" placeholder="Nom" value={lastName} onChange={(event) => setLastName(event.target.value)} />
             <input className={inputClass} aria-label="Prénom" placeholder="Prénom" value={firstName} onChange={(event) => setFirstName(event.target.value)} />
             <input className={inputClass} aria-label="Rôle" placeholder="Rôle" value={role} onChange={(event) => setRole(event.target.value)} />
             <input className={inputClass} aria-label="E-mail" placeholder="E-mail" value={email} onChange={(event) => setEmail(event.target.value)} />
-            <button type="submit" className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#C5A880] text-[#0B192C] disabled:opacity-50" disabled={disabled} aria-label="Ajouter au courrier">
+            <button type="submit" className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-[#C5A880] text-[#0B192C] disabled:opacity-50 sm:h-6 sm:w-6" disabled={disabled} aria-label="Ajouter au courrier">
               <Icon name="person_add" className="h-3.5 w-3.5" />
             </button>
           </div>

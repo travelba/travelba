@@ -79,10 +79,10 @@ export function EtaIlMonitor({ bookingId }: { bookingId: string }) {
       {events.length ? (
         <ol className="max-h-64 space-y-2 overflow-y-auto pr-1">
           {events.map((event, index) => (
-            <li key={`${event.at}-${index}`} className="grid grid-cols-[4.4rem_4.4rem_1fr] gap-2 text-sm text-[var(--admin-navy)]">
+            <li key={`${event.at}-${index}`} className="flex flex-col gap-0.5 text-sm text-[var(--admin-navy)] sm:grid sm:grid-cols-[4.4rem_4.4rem_1fr] sm:gap-2">
               <time className="text-xs tabular-nums text-[#9e7e51]">{clock(event.at)}</time>
               <span className="text-xs font-semibold">{PORTAL_KIND_LABEL[event.kind as PortalLogKind] || event.kind}</span>
-              <span>{event.text}</span>
+              <span className="min-w-0 break-words">{event.text}</span>
             </li>
           ))}
           <li ref={end} />

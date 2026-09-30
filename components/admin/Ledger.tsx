@@ -183,7 +183,40 @@ export function Ledger({
       </div>
 
       <div className="admin-af-card overflow-hidden rounded-2xl">
-        <div className="overflow-x-auto">
+        <ul className="divide-y divide-border lg:hidden">
+          {filtered.map((t) => (
+            <li key={t.id} className="space-y-1 px-4 py-4 text-sm">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <Link
+                  href={clientLedgerAdminHref(t.customer_id)}
+                  className="min-w-0 font-medium text-[var(--admin-navy)] underline-offset-2 hover:underline"
+                  title="Transactions vues par ce client"
+                >
+                  {byId.get(t.customer_id) || "—"}
+                </Link>
+                <span className="font-semibold text-[var(--admin-navy)]">
+                  {formatMoney(Number(t.amount), t.currency)}
+                </span>
+              </div>
+              <p className="break-words font-medium text-[var(--admin-navy)]">{t.label}</p>
+              <p className="text-xs text-muted">
+                {formatDateFr(t.occurred_on)} · {TX_KIND_LABELS[t.kind]}
+                {companyLabelForTransaction(t, billingCompanies)
+                  ? ` · ${companyLabelForTransaction(t, billingCompanies)}`
+                  : ""}
+              </p>
+              <StatusChip tone={t.status === "posted" ? "gold" : t.status === "void" ? "red" : "amber"}>
+                {STATUS_LABELS[t.status]}
+              </StatusChip>
+            </li>
+          ))}
+          {!filtered.length ? (
+            <li className="px-4 py-8 text-center text-sm text-muted">
+              {ledgerEmptyMessage(transactions.length > 0)}
+            </li>
+          ) : null}
+        </ul>
+        <div className="hidden overflow-x-auto lg:block">
           <table className="min-w-full text-left text-sm">
             <thead className="bg-[var(--admin-sky)]/70 font-label text-[10px] font-bold uppercase tracking-[0.12em] text-muted">
               <tr>

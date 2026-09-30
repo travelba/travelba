@@ -371,7 +371,7 @@ export function BookingItemsPanel({
                   <button
                     type="button"
                     aria-label="Monter"
-                    className="rounded-full p-1 text-muted disabled:opacity-30"
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-full text-muted disabled:opacity-30"
                     disabled={index === 0 || busy}
                     onClick={() => reorder(index, index - 1)}
                   >
@@ -380,7 +380,7 @@ export function BookingItemsPanel({
                   <button
                     type="button"
                     aria-label="Descendre"
-                    className="rounded-full p-1 text-muted disabled:opacity-30"
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-full text-muted disabled:opacity-30"
                     disabled={index === cardRows.length - 1 || busy}
                     onClick={() => reorder(index, index + 1)}
                   >

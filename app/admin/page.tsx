@@ -422,10 +422,10 @@ export default async function AdminHomePage() {
         </div>
         <ul className="divide-y divide-border text-sm">
           {expiringPieces.map((d) => (
-            <li key={d.id} className="flex justify-between gap-3 px-5 py-3">
+            <li key={d.id} className="flex flex-col gap-1 px-5 py-3 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
               <Link
                 href={d.booking_id ? `/admin/reservations/${d.booking_id}` : `/admin/clients/${d.customer_id}`}
-                className="font-medium text-[var(--admin-navy)] hover:underline"
+                className="min-w-0 break-words font-medium text-[var(--admin-navy)] hover:underline"
               >
                 {d.doc_type} {d.number || ""} · {byId.get(d.customer_id) || d.customer_id}
               </Link>
