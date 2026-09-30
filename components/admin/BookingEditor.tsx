@@ -186,6 +186,13 @@ export function BookingEditor({
       serverPayer === "personal" ? "" : booking.billing_company_id || defaultCompany?.id || ""
     );
   }
+  const serverFeesFollow = booking.fees_follow_stay !== false;
+  const [feesFromServer, setFeesFromServer] = useState(serverFeesFollow);
+  const [feesFollowStay, setFeesFollowStay] = useState(serverFeesFollow);
+  if (serverFeesFollow !== feesFromServer) {
+    setFeesFromServer(serverFeesFollow);
+    setFeesFollowStay(serverFeesFollow);
+  }
   const serverSettles = booking.client_settles_stay === true;
   const [clientSettlesFromServer, setClientSettlesFromServer] = useState(serverSettles);
   const [clientSettles, setClientSettles] = useState(serverSettles);
@@ -892,6 +899,54 @@ export function BookingEditor({
             {payerKind === "company" ? (
               <p className="text-xs text-muted">Moyens ouverts au client : prélèvement SEPA, virement.</p>
             ) : null}
+            <input
+              type="hidden"
+              name="fees_follow_stay"
+              value={payerKind === "personal" && !payerCompanies.length ? "on" : feesFollowStay ? "on" : "off"}
+            />
+            <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Facture des frais et dépenses">
+              {(
+                [
+                  {
+                    follow: true,
+                    title: payerKind === "company" ? "Même facture" : "Sans facture société",
+                    hint:
+                      payerKind === "company"
+                        ? "Frais d’agence et dépenses suivent la facture du séjour."
+                        : "Frais d’agence et dépenses suivent le séjour.",
+                  },
+                  {
+                    follow: false,
+                    title: payerKind === "company" ? "Sans facture société" : "Facture société",
+                    hint:
+                      payerKind === "company"
+                        ? "Le client les règle à part, sans facture société."
+                        : `Ils sont portés par ${defaultCompany?.company_name?.trim() || "la société du compte"}.`,
+                  },
+                ] as const
+              ).map((choice) => {
+                const locked = !choice.follow && payerKind === "personal" && !payerCompanies.length;
+                const effectiveFollow = payerKind === "personal" && !payerCompanies.length ? true : feesFollowStay;
+                const selected = effectiveFollow === choice.follow;
+                return (
+                  <button
+                    key={choice.title}
+                    type="button"
+                    aria-pressed={selected}
+                    disabled={locked}
+                    onClick={() => setFeesFollowStay(choice.follow)}
+                    className={`rounded-3xl p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                      selected
+                        ? "bg-white shadow-[0_8px_24px_-12px_rgba(11,25,44,0.35),inset_0_0_0_1.5px_var(--admin-gold)]"
+                        : "bg-white/45 shadow-[inset_0_0_0_1px_var(--border)]"
+                    }`}
+                  >
+                    <span className="font-display text-base font-bold text-[var(--admin-navy)]">{choice.title}</span>
+                    <span className="mt-2 block text-xs leading-relaxed text-muted">{choice.hint}</span>
+                  </button>
+                );
+              })}
+            </div>
             {payerKind === "company" ? (
               <StayBillingChoice
                 expensesOnly

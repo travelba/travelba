@@ -231,6 +231,8 @@ export type CrmBooking = {
   billing_company_id?: string | null;
   /** company = société du compte ; personal = particulier. */
   payer_kind?: "company" | "personal" | null;
+  /** false : frais d’agence et dépenses portent l’autre mention que le séjour. */
+  fees_follow_stay?: boolean;
   reference: string;
   title: string;
   destination: string | null;

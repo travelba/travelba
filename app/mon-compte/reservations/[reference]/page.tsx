@@ -35,7 +35,7 @@ import { BookingHero } from "@/components/crm/BookingHero";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
 import { StayPayment } from "@/components/account/StayPayment";
-import { collectableStayAmount } from "@/lib/crm/payer";
+import { paymentSlips, slipMention } from "@/lib/crm/payer";
 import { stayPayMethods } from "@/lib/crm/stripe-pay";
 import { stripePublishableKey } from "@/lib/crm/stripe";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
@@ -330,23 +330,39 @@ export default async function ReservationDetailPage({ params }: Props) {
             <StayPayment
               bookingId={b.id}
               reference={b.reference}
-              payerKind={b.payer_kind}
-              companyName={
-                billingCompanies.find((company) => company.id === b.billing_company_id)?.company_name || null
-              }
-              canPay={!(b.payer_kind === "company" && customer.company_role === "member")}
-              methods={stayPayMethods(b.payer_kind, b.currency)}
-              amountLabel={(() => {
-                const due = collectableStayAmount({
+              stripeKey={stripePublishableKey()}
+              slips={(() => {
+                const stayCompany = billingCompanies.find((company) => company.id === b.billing_company_id) || null;
+                const otherCompany = billingCompanies[0] || null;
+                return paymentSlips({
                   stayTotal: Number(b.total_amount),
                   agencyCommission: b.agency_commission === true,
                   clientSettlesStay: b.client_settles_stay === true,
                   pricesVisible: b.prices_visible !== false,
                   expenses: expenseChoices,
+                  stayKind: b.payer_kind,
+                  stayCompanyId: b.billing_company_id || null,
+                  feesFollowStay: b.fees_follow_stay !== false,
+                  otherCompanyId: otherCompany?.id || null,
+                }).map((slip) => {
+                  const company =
+                    slip.kind === "company"
+                      ? billingCompanies.find((row) => row.id === slip.companyId) || stayCompany || otherCompany
+                      : null;
+                  const member = customer.company_role === "member";
+                  return {
+                    slice: slip.slice,
+                    kind: slip.kind,
+                    mention: slipMention(slip.kind, company?.company_name),
+                    amountLabel: slip.amount == null ? null : formatMoney(slip.amount, b.currency),
+                    payable: slip.payable,
+                    hotelAside: slip.hotelAside,
+                    canPay: !(slip.kind === "company" && member),
+                    methods: slip.payable ? stayPayMethods(slip.kind, b.currency) : [],
+                    companyName: company?.company_name || null,
+                  };
                 });
-                return due == null ? null : formatMoney(due, b.currency);
               })()}
-              stripeKey={stripePublishableKey()}
             />
           ) : null}
           <ReservationFiles

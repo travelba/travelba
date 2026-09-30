@@ -3,7 +3,7 @@ import { dbError, jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
 import { collectManualCreateIssues } from "@/lib/crm/booking-issues";
 import { nextBookingReference, parseIncludeInLedger, syncBookingLedger } from "@/lib/crm/bookings";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
-import { assignPayer, defaultPayer, type PayerCompany } from "@/lib/crm/payer";
+import { assignPayer, defaultPayer, resolveFeesFollowStay, type PayerCompany } from "@/lib/crm/payer";
 import type { CrmBooking, CrmCustomer } from "@/lib/crm/types";
 
 export async function GET() {
@@ -63,6 +63,11 @@ export async function POST(request: Request) {
       billing_customer_id: billingCustomerId,
       billing_company_id: payer.billing_company_id,
       payer_kind: payer.payer_kind,
+      fees_follow_stay: resolveFeesFollowStay({
+        stayKind: payer.payer_kind,
+        requested: parseIncludeInLedger(body?.fees_follow_stay, true),
+        companyCount: companies.length,
+      }),
       reference,
       title,
       destination: body?.destination || null,
