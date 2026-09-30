@@ -87,7 +87,7 @@ function commonPrefixLength(a: string, b: string) {
 
 /**
  * Nom de famille : égalité, distance d’édition ≤ 1, ou radical commun
- * (Albilila / Albilla). Plus strict que le rapprochement passeport (≤ 2).
+ * (Moreau / Moreaud). Plus strict que le rapprochement passeport (≤ 2).
  */
 export function lastNamesClose(a: string | null | undefined, b: string | null | undefined) {
   if (lastNamesMatch(a, b)) return true;

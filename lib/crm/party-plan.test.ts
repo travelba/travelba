@@ -145,27 +145,27 @@ test("le passeport du compagnon ne se coche pas sur le titulaire", () => {
 });
 
 test("le passeport du profil est coché quand le billet n’a qu’un des prénoms", () => {
-  const simon = traveler({
-    id: "simon",
-    first_name: "Simon",
-    last_name: "Albilia",
+  const hugo = traveler({
+    id: "hugo",
+    first_name: "Hugo",
+    last_name: "Moreau",
     is_account_holder: true,
   });
-  const profile = { first_name: "Simon, Iony", last_name: "Albilila" };
+  const profile = { first_name: "Hugo, Jules", last_name: "Moreaud" };
   const passport = doc({
-    id: "iony",
-    first_name: "Iony",
-    last_name: "Albilila",
+    id: "jules",
+    first_name: "Jules",
+    last_name: "Moreaud",
     expires_on: "2030-01-01",
   });
   const other = doc({
-    id: "lisa",
-    companion_id: "lisa",
-    first_name: "Lisa Sabine",
-    last_name: "Garnek",
-    storage_path: "vault/lisa",
+    id: "lea",
+    companion_id: "lea",
+    first_name: "Léa Sabine",
+    last_name: "Bernard",
+    storage_path: "vault/lea",
     number: "99ZZ",
   });
-  assert.equal(planPassportAttach(simon, [passport, other], "2026-12-23"), null);
-  assert.equal(planPassportAttach(simon, [passport, other], "2026-12-23", profile)?.id, "iony");
+  assert.equal(planPassportAttach(hugo, [passport, other], "2026-12-23"), null);
+  assert.equal(planPassportAttach(hugo, [passport, other], "2026-12-23", profile)?.id, "jules");
 });

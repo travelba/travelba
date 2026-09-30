@@ -76,6 +76,8 @@ IDs prod :
 - Cache Components Next.js
 - Inventer des heures, petits-déjs, nets, conditions d’annulation. Little Emperors : tout le bloc Benefits, pas seulement le petit-déjeuner
 - Echo PII client (passeport, email, téléphone) dans un PR / log
+- Injecter `SUPABASE_SERVICE_ROLE_KEY` dans un Cloud Agent Cursor
+- Fixtures tests avec de vrais noms clients
 
 ## Fichiers clés
 

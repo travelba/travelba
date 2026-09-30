@@ -11,7 +11,7 @@ Produit FR pour agence de voyage : back-office `/admin` (clients, réservations,
 
 - **Ship** : implémenter, tester, pas de long plan ni de docs non demandés.
 - **Langue UI / copy client** : français. Voix **l’agence**.
-- **Secrets** : `.env.local` / Vercel env — jamais commit.
+- **Secrets** : `.env.local` / Vercel env — jamais commit. Jamais `SUPABASE_SERVICE_ROLE_KEY` (ni anon prod) dans un Cloud Agent Cursor.
 - **Next.js 16** : lire `node_modules/next/dist/docs/` avant APIs nouvelles. Pas de Cache Components. Session = `proxy.ts`.
 - **Skills** : commencer par `.cursor/skills/travelba-voyage-crm/SKILL.md` puis **un** skill de la table ci-dessous. PDF / photos / dropzone → `travelba-document-ingest` **tout de suite**. Gmail labels / `crm_email_ingest` → `travelba-email-ingest`.
 - **Design** : Cursor Design Mode sur l’app qui tourne (fenêtre Agents, navigateur, `Cmd+Shift+D`). Le code est la source. Palette Sovereign Horizon : marine `#0B192C`, champagne `#C5A880`. Ne pas renvoyer modifier un écran sur Stitch. Pas Aura, pas la feuille Travelba CRM.
@@ -52,3 +52,4 @@ Produit FR pour agence de voyage : back-office `/admin` (clients, réservations,
 - Couverture = ville / station d’arrivée (Avoriaz, pas Paris / CDG) — skill `travelba-carnet`
 - Ingest documents côté client
 - Committer des PDF d’entraînement ou de la PII (PAN, noms) — skill `travelba-document-ingest`
+- Noms / e-mails / passeports de vrais clients dans les tests ou skills — fixtures fictives seulement

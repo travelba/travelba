@@ -185,8 +185,8 @@ function hotelItem(patch: {
 }
 
 describe("lastNamesClose / destinationsOverlap", () => {
-  it("rapproche Albilla et Albilila (une lettre)", () => {
-    assert.equal(lastNamesClose("Albilla", "Albilila"), true);
+  it("rapproche Moreau et Moreaud (une lettre)", () => {
+    assert.equal(lastNamesClose("Moreau", "Moreaud"), true);
     assert.equal(lastNamesClose("Martin", "Dupont"), false);
   });
 
@@ -201,27 +201,27 @@ describe("suggestCustomerFromExtract — nom approchant", () => {
   const household = [
     ...customers,
     {
-      id: "c-alb",
-      first_name: "Simon, Iony",
-      last_name: "Albilila",
+      id: "c-moreau",
+      first_name: "Hugo, Jules",
+      last_name: "Moreau",
       company_name: null,
-      email: "client.alb@example.com",
+      email: "client.moreau@example.com",
     },
   ];
 
-  it("rapproche Albilla / Albilila quand le prénom s’aligne", () => {
+  it("rapproche Moreau / Moreaud quand le prénom s’aligne", () => {
     const res = suggestCustomerFromExtract(
       household,
       extractWith({
-        customer_first_name: "Simon",
-        customer_last_name: "Albilla",
+        customer_first_name: "Hugo",
+        customer_last_name: "Moreaud",
         travelers: [
-          { first_name: "Simon", last_name: "Albilla" },
-          { first_name: "Lisa", last_name: "Garnek" },
+          { first_name: "Hugo", last_name: "Moreaud" },
+          { first_name: "Léa", last_name: "Bernard" },
         ],
       })
     );
-    assert.equal(res.autoCustomerId, "c-alb");
+    assert.equal(res.autoCustomerId, "c-moreau");
     assert.match(res.candidates[0].reason, /approchant|prénom/i);
   });
 });
@@ -229,16 +229,16 @@ describe("suggestCustomerFromExtract — nom approchant", () => {
 describe("suggestBookingByTripSignals", () => {
   const people = [
     {
-      id: "c-alb",
-      first_name: "Simon, Iony",
-      last_name: "Albilila",
+      id: "c-moreau",
+      first_name: "Hugo, Jules",
+      last_name: "Moreau",
       company_name: null,
-      email: "client.alb@example.com",
+      email: "client.moreau@example.com",
     },
   ];
   const telAviv = {
     id: "b-tlv",
-    customer_id: "c-alb",
+    customer_id: "c-moreau",
     reference: "TB-2026-0033",
     title: "Tel Aviv",
     destination: "Tel Aviv",
@@ -248,7 +248,7 @@ describe("suggestBookingByTripSignals", () => {
   };
   const avoriaz = {
     id: "b-avo",
-    customer_id: "c-alb",
+    customer_id: "c-moreau",
     reference: "TB-2026-0028",
     title: "Avoriaz",
     destination: "Avoriaz",
@@ -258,19 +258,19 @@ describe("suggestBookingByTripSignals", () => {
   };
 
   const telAvivExtract = extractWith({
-    customer_first_name: "Simon",
-    customer_last_name: "Albilla",
+    customer_first_name: "Hugo",
+    customer_last_name: "Moreaud",
     destination: "Tel Aviv",
     start_date: "2026-12-14",
     end_date: "2026-12-23",
     travelers: [
-      { first_name: "Simon", last_name: "Albilla" },
-      { first_name: "Lisa", last_name: "Garnek" },
+      { first_name: "Hugo", last_name: "Moreaud" },
+      { first_name: "Léa", last_name: "Bernard" },
     ],
     items: [
       hotelItem({
         title: "Dan Tel Aviv Hotel",
-        confirmation_ref: "38181SH005103",
+        confirmation_ref: "LE-TLV-TEST-001",
         start_at: "2026-12-14",
         end_at: "2026-12-23",
         city: "Tel Aviv",
@@ -325,11 +325,11 @@ describe("mergeBookingSuggestions + decideEmailIngestAction", () => {
   it("voyage unique fort → apply", () => {
     const decision = decideEmailIngestAction({
       extract: extractWith({ destination: "Tel Aviv", start_date: "2026-12-14" }),
-      suggestedCustomerId: "c-alb",
+      suggestedCustomerId: "c-moreau",
       suggestedBookingId: "b-tlv",
       candidates: [
         {
-          customer_id: "c-alb",
+          customer_id: "c-moreau",
           booking_id: "b-tlv",
           label: "TB-2026-0033 — Tel Aviv",
           reason: "Nom, destination et dates",
@@ -340,25 +340,25 @@ describe("mergeBookingSuggestions + decideEmailIngestAction", () => {
     assert.deepEqual(decision, {
       kind: "apply",
       bookingId: "b-tlv",
-      customerId: "c-alb",
+      customerId: "c-moreau",
     });
   });
 
   it("deux voyages forts égaux → review", () => {
     const decision = decideEmailIngestAction({
       extract: extractWith({ destination: "Tel Aviv" }),
-      suggestedCustomerId: "c-alb",
+      suggestedCustomerId: "c-moreau",
       suggestedBookingId: null,
       candidates: [
         {
-          customer_id: "c-alb",
+          customer_id: "c-moreau",
           booking_id: "b1",
           label: "A",
           reason: "Nom, destination et dates",
           score: 88,
         },
         {
-          customer_id: "c-alb",
+          customer_id: "c-moreau",
           booking_id: "b2",
           label: "B",
           reason: "Nom, destination et dates",
@@ -435,14 +435,14 @@ describe("mergeBookingSuggestions + decideEmailIngestAction", () => {
         document_status: "cancelled",
         destination: "Tel Aviv",
         start_date: "2026-12-14",
-        customer_first_name: "Simon",
-        customer_last_name: "Albilla",
+        customer_first_name: "Hugo",
+        customer_last_name: "Moreaud",
       }),
-      suggestedCustomerId: "c-alb",
+      suggestedCustomerId: "c-moreau",
       suggestedBookingId: "b-tlv",
       candidates: [
         {
-          customer_id: "c-alb",
+          customer_id: "c-moreau",
           booking_id: "b-tlv",
           label: "TB-2026-0033 — Tel Aviv",
           reason: "Nom, destination et dates",
@@ -453,7 +453,7 @@ describe("mergeBookingSuggestions + decideEmailIngestAction", () => {
     assert.deepEqual(decision, {
       kind: "apply",
       bookingId: "b-tlv",
-      customerId: "c-alb",
+      customerId: "c-moreau",
     });
   });
 
@@ -497,11 +497,11 @@ describe("mergeBookingSuggestions + decideEmailIngestAction", () => {
 
   it("hôtel ou vol sans prix document → review, même si le prix vendu est saisi", () => {
     const base = {
-      suggestedCustomerId: "c-alb",
+      suggestedCustomerId: "c-moreau",
       suggestedBookingId: "b-tlv",
       candidates: [
         {
-          customer_id: "c-alb",
+          customer_id: "c-moreau",
           booking_id: "b-tlv",
           label: "TB-2026-0033 — Tel Aviv",
           reason: "Nom, destination et dates",
@@ -558,7 +558,7 @@ describe("mergeBookingSuggestions + decideEmailIngestAction", () => {
         ],
       }),
     });
-    assert.deepEqual(ready, { kind: "apply", bookingId: "b-tlv", customerId: "c-alb" });
+    assert.deepEqual(ready, { kind: "apply", bookingId: "b-tlv", customerId: "c-moreau" });
   });
 });
 
@@ -566,7 +566,7 @@ describe("executeEmailIngestDecision", () => {
   it("applique un voyage existant", async () => {
     const calls: string[] = [];
     const result = await executeEmailIngestDecision(
-      { kind: "apply", bookingId: "b-tlv", customerId: "c-alb" },
+      { kind: "apply", bookingId: "b-tlv", customerId: "c-moreau" },
       {
         apply: async (bookingId, customerId) => {
           calls.push(`apply:${bookingId}:${customerId}`);
@@ -579,8 +579,8 @@ describe("executeEmailIngestDecision", () => {
         },
       }
     );
-    assert.deepEqual(result, { bookingId: "b-tlv", customerId: "c-alb" });
-    assert.deepEqual(calls, ["apply:b-tlv:c-alb"]);
+    assert.deepEqual(result, { bookingId: "b-tlv", customerId: "c-moreau" });
+    assert.deepEqual(calls, ["apply:b-tlv:c-moreau"]);
   });
 
   it("crée un dossier pour un client déjà connu", async () => {
@@ -652,7 +652,7 @@ describe("annulation extract", () => {
   it("détecte un mail d’annulation, pas une politique", () => {
     assert.equal(detectCancellationDocument("Booking cancelled for Dan Tel Aviv Hotel"), true);
     assert.equal(detectCancellationDocument("Your reservation has been cancelled."), true);
-    assert.equal(detectCancellationDocument("Annulation confirmée — réservation 38181"), true);
+    assert.equal(detectCancellationDocument("Annulation confirmée — réservation LE-TLV"), true);
     assert.equal(
       detectCancellationDocument("Free cancellation before 23:59 on 8 August 2026"),
       false
@@ -669,13 +669,13 @@ describe("annulation extract", () => {
     const hotelOnly = cancellationApplyPlan(
       extractWith({
         document_status: "cancelled",
-        items: [hotelItem({ confirmation_ref: "38181SH005103", title: "Dan Tel Aviv Hotel" })],
+        items: [hotelItem({ confirmation_ref: "LE-TLV-TEST-001", title: "Dan Tel Aviv Hotel" })],
       }),
       [
         {
           id: "i-hotel",
           kind: "hotel",
-          confirmation_ref: "38181SH005103",
+          confirmation_ref: "LE-TLV-TEST-001",
           title: "Dan Tel Aviv Hotel",
           start_at: "2026-12-14",
         },
@@ -687,11 +687,11 @@ describe("annulation extract", () => {
     const withFlights = cancellationApplyPlan(
       extractWith({
         document_status: "cancelled",
-        items: [hotelItem({ confirmation_ref: "38181SH005103", title: "Dan Tel Aviv Hotel" })],
+        items: [hotelItem({ confirmation_ref: "LE-TLV-TEST-001", title: "Dan Tel Aviv Hotel" })],
       }),
       [
-        { id: "i-hotel", kind: "hotel", confirmation_ref: "38181SH005103", title: "Dan Tel Aviv" },
-        { id: "i-fly", kind: "flight", confirmation_ref: "T8TNGL", title: "Paris → Tel Aviv" },
+        { id: "i-hotel", kind: "hotel", confirmation_ref: "LE-TLV-TEST-001", title: "Dan Tel Aviv" },
+        { id: "i-fly", kind: "flight", confirmation_ref: "FLT-TLV-001", title: "Paris → Tel Aviv" },
       ]
     );
     assert.deepEqual(withFlights.itemIds, ["i-hotel"]);

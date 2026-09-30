@@ -53,7 +53,21 @@ Reprendre `.env.example`. Toutes **sauf** `NEXT_PUBLIC_*` sont server-only.
 | `TWILIO_CONTENT_CONNEXION` | SID du modèle Utility `connexion_espace`. Hors git. Sans elle, l’invitation reste e-mail seul. `npx tsx scripts/arm-whatsapp-connexion.ts`, puis approbation Meta |
 | `TWILIO_CONTENT_SEJOUR` et la série Concierge | SIDs Utility séjour / pièces / passeport / formalité, plus les cartes `TWILIO_CONTENT_PIECE_HOTEL`, `PIECE_VOL`, `PIECE_TRANSFERT`, `PIECES_REGROUPEES`, `PASSEPORT_CARTE`, `PASSEPORTS_CARTE`, `FORMALITE_PRETE_CARTE`, `FORMALITE_MANQUANTE_CARTE`, `CONNEXION_CARTE`, `ENCOURS`, `CHAUFFEUR`, `RAPPEL_DEPART`, `DOCUMENT`. Hors git. Photo du séjour ou repli texte. `npx tsx scripts/arm-whatsapp-concierge.ts`, puis approbation Meta. Cron `GET /api/cron/concierge` toutes les 15 min |
 
-Preview : `NEXT_PUBLIC_SITE_URL` d’une preview **ne doit pas** rester `https://travelba.fr` si on envoie des invitations depuis la preview (liens cassés). Les secrets de production sont **Production seulement** : `SUPABASE_SERVICE_ROLE_KEY`, Revolut (`REVOLUT_CLIENT_ID`, `REVOLUT_PRIVATE_KEY`, `REVOLUT_API_URL`, `REVOLUT_SANDBOX`, `REVOLUT_ISS`, `REVOLUT_WEBHOOK_SECRET`), Gmail (`GOOGLE_SA_JSON`, `GMAIL_PUSH_TOKEN`, `GMAIL_IMPERSONATE`, `GMAIL_PUBSUB_TOPIC`, `GMAIL_LABELS`), `RESEND_API_KEY`, `OPENAI_API_KEY`, `CRON_SECRET`. Le code les ignore si `VERCEL_ENV=preview` (`productionOnlySecret`). Resend reste coupé sur Preview.
+Preview : `NEXT_PUBLIC_SITE_URL` d’une preview **ne doit pas** rester `https://travelba.fr` si on envoie des invitations depuis la preview (liens cassés). Les secrets de production sont **Production seulement** : `SUPABASE_SERVICE_ROLE_KEY`, Revolut (`REVOLUT_CLIENT_ID`, `REVOLUT_PRIVATE_KEY`, `REVOLUT_API_URL`, `REVOLUT_SANDBOX`, `REVOLUT_ISS`, `REVOLUT_WEBHOOK_SECRET`), Gmail (`GOOGLE_SA_JSON`, `GMAIL_PUSH_TOKEN`, `GMAIL_IMPERSONATE`, `GMAIL_PUBSUB_TOPIC`, `GMAIL_LABELS`), `RESEND_API_KEY`, `OPENAI_API_KEY`, `CRON_SECRET`. Le code les ignore si `VERCEL_ENV=preview` **ou** Cloud Agent Cursor (`productionOnlySecret` / `isCursorCloudAgent`). Resend reste coupé sur Preview.
+
+## Cloud Agents Cursor
+
+Ne **jamais** injecter dans l’environnement Cloud : `SUPABASE_SERVICE_ROLE_KEY`, anon prod, `STRIPE_SECRET_KEY` live, Revolut PEM, `GOOGLE_SA_JSON`, Resend, Twilio, `CRON_SECRET`. Un projet Supabase **jetable** suffit pour `npm run dev`. Restreindre l’egress et débrancher les MCP inutiles (Gmail, Qonto, Vercel write) sur ce repo.
+
+Si un agent a déjà eu la service role : **rotation** dashboard Supabase (nouvelle service role, révoquer l’ancienne), retirer l’injection Cloud, révoquer le token GitHub de session de la VM, et passer en revue les sessions Cursor / MCP (Gmail, Qonto, Vercel, Trello). Ne pas relancer d’agent « liste tous les clients ».
+
+## Rotation (quand un secret a fuité vers un agent / transcript)
+
+1. Supabase : régénérer service role (+ revue des clés anon si l’injection Cloud l’avait).
+2. GitHub : révoquer le token `ghs_` de la VM / sessions `gh`.
+3. Cursor : déconnecter les MCP non nécessaires ; rotation des OAuth liés.
+4. Vercel / Stripe / Revolut / Gmail / Twilio / Resend : seulement si le secret a été injecté ou collé (pas seulement nommé).
+5. Qonto / Trello : révoquer l’OAuth MCP si la session agent était large.
 
 OIDC Vercel : `aiGatewayConfigured()` peut être vrai sur Vercel sans `sk-`. L’ingest PDF exige quand même un `OPENAI_API_KEY` `sk-` (`openaiApiKey()`). Ne pas « migrer l’ingest sur le Gateway » tant que la clé OpenAI est là.
 

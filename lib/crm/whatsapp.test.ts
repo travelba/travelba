@@ -15,8 +15,8 @@ import {
 } from "./whatsapp";
 
 test("le message de connexion se présente et signe Le Concierge", () => {
-  const text = connexionMessage("Simon");
-  assert.match(text, /^Enchanté Simon,/);
+  const text = connexionMessage("Hugo");
+  assert.match(text, /^Enchanté Hugo,/);
   assert.match(text, /Je suis Le Concierge de chez TBA\./);
   assert.match(text, /Votre espace personnel vous attend\./);
   assert.match(text, /Ce lien vous y conduit, il reste valable 24 heures\./);
@@ -25,12 +25,12 @@ test("le message de connexion se présente et signe Le Concierge", () => {
 });
 
 test("le prénom d’accueil est le premier", () => {
-  assert.equal(greetingForWhatsapp("Simon, Iony"), "Simon");
+  assert.equal(greetingForWhatsapp("Hugo, Jules"), "Hugo");
   assert.equal(connexionMessage("").startsWith("Enchanté,"), true);
 });
 
 test("la signature n’est pas doublée", () => {
-  const once = withConciergeSignature("Bonjour Simon.");
+  const once = withConciergeSignature("Bonjour Hugo.");
   assert.equal(withConciergeSignature(once), once);
 });
 
@@ -53,16 +53,16 @@ test("l’invitation dit si WhatsApp est parti", () => {
 });
 
 test("le modèle reprend le texte du concierge et un bouton à domaine fixe", () => {
-  assert.equal(connexionTemplateBody().replace("{{1}}", "Simon"), connexionMessage("Simon"));
+  assert.equal(connexionTemplateBody().replace("{{1}}", "Hugo"), connexionMessage("Hugo"));
   const draft = connexionContentCreateBody();
   assert.equal(draft.language, "fr");
   assert.equal(draft.types["twilio/call-to-action"].actions[0].url, CONNEXION_BUTTON_URL);
   assert.equal(draft.types["twilio/call-to-action"].body.includes("http"), false);
-  assert.deepEqual(connexionContentVariables("Simon, Iony", "https://travelba.fr/e/c/K7MQ2PX4"), {
-    "1": "Simon",
+  assert.deepEqual(connexionContentVariables("Hugo, Jules", "https://travelba.fr/e/c/K7MQ2PX4"), {
+    "1": "Hugo",
     "2": "c/K7MQ2PX4",
   });
-  assert.equal(connexionContentVariables("Simon", "https://travelba.fr/auth/callback?token_hash=secret"), null);
+  assert.equal(connexionContentVariables("Hugo", "https://travelba.fr/auth/callback?token_hash=secret"), null);
 });
 
 describe("envoi Twilio", { concurrency: false }, () => {
@@ -99,7 +99,7 @@ describe("envoi Twilio", { concurrency: false }, () => {
       let called = false;
       const result = await sendConnexionWhatsapp({
         phone: "+33601020304",
-        firstName: "Simon",
+        firstName: "Hugo",
         link: "https://travelba.fr/auth/callback?token_hash=secret",
         fetchImpl: async () => {
           called = true;
@@ -125,7 +125,7 @@ describe("envoi Twilio", { concurrency: false }, () => {
       let raw = "";
       const result = await sendConnexionWhatsapp({
         phone: "+33601020304",
-        firstName: "Simon, Iony",
+        firstName: "Hugo, Jules",
         link: "https://www.travelba.fr/e/K7MQ2PX4",
         fetchImpl: async (_url, init) => {
           raw = String(init?.body ?? "");
@@ -139,7 +139,7 @@ describe("envoi Twilio", { concurrency: false }, () => {
       assert.equal(params.get("From"), "whatsapp:+33756841315");
       assert.equal(params.get("To"), "whatsapp:+33601020304");
       assert.deepEqual(JSON.parse(params.get("ContentVariables") || "{}"), {
-        "1": "Simon",
+        "1": "Hugo",
         "2": "c/K7MQ2PX4",
       });
       assert.equal(raw.includes("http"), false);
@@ -159,7 +159,7 @@ describe("envoi Twilio", { concurrency: false }, () => {
       let called = false;
       const result = await sendConnexionWhatsapp({
         phone: "+33601020304",
-        firstName: "Simon",
+        firstName: "Hugo",
         link: "https://travelba.fr/auth/callback?token_hash=secret",
         fetchImpl: async () => {
           called = true;
@@ -183,7 +183,7 @@ describe("envoi Twilio", { concurrency: false }, () => {
     try {
       const result = await sendConnexionWhatsapp({
         phone: "+33601020304",
-        firstName: "Simon",
+        firstName: "Hugo",
         link: "https://travelba.fr/e/K7MQ2PX4",
         fetchImpl: async () => {
           throw new Error("https://travelba.fr/e/K7MQ2PX4 down");

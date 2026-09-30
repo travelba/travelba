@@ -33,7 +33,7 @@ test("la liste la plus complète l’emporte si l’ordre est conservé", () => 
 });
 
 test("l’accueil ne garde que le premier prénom", () => {
-  assert.equal(greetingGivenName("Simon, Iony"), "Simon");
+  assert.equal(greetingGivenName("Hugo, Jules"), "Hugo");
   assert.equal(greetingGivenName("Jérémy Moïse"), "Jérémy");
   assert.equal(greetingGivenName("JEAN-PIERRE Marie"), "Jean-Pierre");
   assert.equal(greetingGivenName("  "), null);

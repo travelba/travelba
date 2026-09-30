@@ -24,6 +24,8 @@ Pas de script `test` npm : `node --test` (modules en imports relatifs, pas `@/` 
 
 Prod build local : `npm run start` (port 3000). Ne pas laisser un zombie `next-server` + un second start.
 
+Fixtures : prénoms / noms / passeports **fictifs** (Hugo Moreau, pas un client réel). `productionOnlySecret` doit rester vide en preview **et** Cloud Agent.
+
 ## Browser
 
 - **Deux contextes** : staff (`/admin/login`) et client (`/connexion`). Un staff déjà loggé sur `/connexion` est renvoyé vers `/admin` — utiliser une fenêtre privée pour le client.

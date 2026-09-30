@@ -60,7 +60,7 @@ Nouvelle page CRM : `loading.tsx` sibling. Nouvelle API : `runtime = "nodejs"` s
 
 ## Premier lancement local
 
-1. Copier `.env.example` → `.env.local`. Minimum : `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SITE_URL=http://localhost:3000`.
+1. Copier `.env.example` → `.env.local`. Minimum : `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SITE_URL=http://localhost:3000`. Sur un **Cloud Agent**, ne pas injecter la service role prod — projet jetable ou secrets absents (`productionOnlySecret` les ignore).
 2. Appliquer les migrations **sauf** le seed démo — skill `travelba-supabase`.
 3. Créer le bucket privé `crm-files`.
 4. Auth dashboard : skill `travelba-auth` / `travelba-go-live`.
