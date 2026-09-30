@@ -33,6 +33,7 @@ export async function PATCH(request: Request) {
       body.billing_companies
     );
     if ("error" in saved) return jsonError(saved.error);
+    return NextResponse.json({ customer: data, billing_companies: saved.companies });
   }
   return NextResponse.json({ customer: data });
 }

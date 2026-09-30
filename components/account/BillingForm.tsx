@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CrmBillingCompany, CrmCustomer } from "@/lib/crm/types";
 import { resolveCountryCode } from "@/lib/crm/countries";
@@ -21,6 +21,7 @@ export function BillingForm({
   companies?: CrmBillingCompany[];
 }) {
   const router = useRouter();
+  const savingLock = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -40,32 +41,40 @@ export function BillingForm({
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (savingLock.current) return;
     const normalized = normalizeIban(iban);
     const err = ibanError(normalized);
     if (err) {
       setError(err);
       return;
     }
+    savingLock.current = true;
     setSaving(true);
     setError(null);
     setSaved(false);
-    const res = await fetch("/api/client/profile", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        iban: normalized,
-        billing_companies: billingCompaniesPayload(companyDrafts, profileAddress),
-      }),
-    });
-    const json = await res.json();
-    if (!res.ok) {
+    try {
+      const res = await fetch("/api/client/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          iban: normalized,
+          billing_companies: billingCompaniesPayload(companyDrafts, profileAddress),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json.error || "Erreur");
+        return;
+      }
+      if (Array.isArray(json.billing_companies)) {
+        setCompanyDrafts(billingCompanyDrafts(json.billing_companies, customer, profileAddress));
+      }
+      setSaved(true);
+      router.refresh();
+    } finally {
+      savingLock.current = false;
       setSaving(false);
-      setError(json.error || "Erreur");
-      return;
     }
-    setSaving(false);
-    setSaved(true);
-    router.refresh();
   }
 
   if (!open) {

@@ -4,7 +4,9 @@ import test from "node:test";
 import {
   billingCompanyTabLabel,
   companyLabelForTransaction,
+  DUPLICATE_SIRET_ERROR,
   normalizeBillingCompanies,
+  planBillingCompanyWrites,
   postedCustomerBalance,
   primaryBillingMirror,
   transactionCompanyLabel,
@@ -105,4 +107,51 @@ test("une société vide n’est pas enregistrée et le miroir suit la première
   });
   assert.equal(billingCompanyTabLabel("", 1, 2), "Société 2");
   assert.equal(billingCompanyTabLabel("Bureau", 1, 2), "Bureau");
+});
+
+test("un second enregistrement sans id réutilise la société du même SIRET", () => {
+  const plan = planBillingCompanyWrites(
+    [{ id: "existant", siret: "73282932000074" }],
+    [{ id: null, siret: "73282932000074", company_name: "Atelier" }]
+  );
+  assert.equal(plan.writes[0]?.id, "existant");
+  assert.deepEqual(plan.releaseIds, []);
+});
+
+test("un SIRET déjà formaté en base est reconnu", () => {
+  const plan = planBillingCompanyWrites(
+    [{ id: "existant", siret: "732 829 320 00074" }],
+    [{ id: null, siret: "73282932000074", company_name: "Atelier" }]
+  );
+  assert.equal(plan.writes[0]?.id, "existant");
+});
+
+test("remplacer une société retire l’ancienne ligne", () => {
+  const plan = planBillingCompanyWrites(
+    [{ id: "ancienne", siret: "73282932000074" }],
+    [{ id: null, siret: "55210055400013", company_name: "Autre" }]
+  );
+  assert.equal(plan.writes[0]?.id, null);
+  assert.deepEqual(plan.releaseIds, ["ancienne"]);
+  assert.deepEqual(plan.clearSiretIds, []);
+});
+
+test("changer le SIRET vers celui d’une société retirée libère d’abord l’index", () => {
+  const plan = planBillingCompanyWrites(
+    [
+      { id: "a", siret: "73282932000074" },
+      { id: "b", siret: "55210055400013" },
+    ],
+    [{ id: "a", siret: "55210055400013", company_name: "Atelier" }]
+  );
+  assert.deepEqual(plan.releaseIds, ["b"]);
+  assert.deepEqual(plan.clearSiretIds, ["b"]);
+});
+
+test("deux fois le même SIRET dans le formulaire est refusé", () => {
+  const parsed = normalizeBillingCompanies([
+    { company_name: "Atelier", siret: "73282932000074" },
+    { company_name: "Copie", siret: "732 829 320 00074" },
+  ]);
+  assert.deepEqual(parsed, { error: DUPLICATE_SIRET_ERROR });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import type { CrmBillingCompany, CrmCompanion, CrmCustomer, CrmTravelDocument, CompanyRole } from "@/lib/crm/types";
@@ -97,6 +97,7 @@ export function CustomerEditor({
   );
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const savingLock = useRef(false);
   const [onHold, setOnHold] = useState(Boolean(customer.on_hold));
 
   const profileAddress = {
@@ -108,47 +109,56 @@ export function CustomerEditor({
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (savingLock.current) return;
     const normalizedIban = normalizeIban(iban);
     const err = ibanError(normalizedIban);
     if (err) {
       setSaveError(err);
       return;
     }
+    savingLock.current = true;
     setSaving(true);
     setSaveError(null);
-    const res = await fetch(`/api/admin/clients/${customer.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        first_name: firstName,
-        last_name: lastName,
-        usage_name: usageName,
-        email,
-        phone,
-        phone_secondary: phoneSecondary,
-        birth_date: birthDate,
-        sex,
-        nationality,
-        address_line: addressLine,
-        postal_code: postalCode,
-        city,
-        country,
-        loyalty,
-        flying_blue: loyalty.flying_blue,
-        iban: normalizedIban,
-        company_role: companyRole,
-        billing_parent_id: companyRole === "member" ? billingParentId || null : null,
-        on_hold: onHold,
-        billing_companies: billingCompaniesPayload(companyDrafts, profileAddress),
-      }),
-    });
-    const json = await res.json().catch(() => ({}));
-    setSaving(false);
-    if (!res.ok) {
-      setSaveError(json.error || "Enregistrement impossible");
-      return;
+    try {
+      const res = await fetch(`/api/admin/clients/${customer.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          first_name: firstName,
+          last_name: lastName,
+          usage_name: usageName,
+          email,
+          phone,
+          phone_secondary: phoneSecondary,
+          birth_date: birthDate,
+          sex,
+          nationality,
+          address_line: addressLine,
+          postal_code: postalCode,
+          city,
+          country,
+          loyalty,
+          flying_blue: loyalty.flying_blue,
+          iban: normalizedIban,
+          company_role: companyRole,
+          billing_parent_id: companyRole === "member" ? billingParentId || null : null,
+          on_hold: onHold,
+          billing_companies: billingCompaniesPayload(companyDrafts, profileAddress),
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSaveError(json.error || "Enregistrement impossible");
+        return;
+      }
+      if (Array.isArray(json.billing_companies)) {
+        setCompanyDrafts(billingCompanyDrafts(json.billing_companies, customer, profileAddress));
+      }
+      router.refresh();
+    } finally {
+      savingLock.current = false;
+      setSaving(false);
     }
-    router.refresh();
   }
 
   return (
