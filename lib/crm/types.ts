@@ -261,6 +261,10 @@ export type CrmBooking = {
   offer_greeter?: boolean;
   /** True : l’enregistrement est proposé dans cette réservation. Défaut : non. */
   offer_checkin?: boolean;
+  /** Suppression agence : le dossier est archivé. Null = actif. */
+  archived_at?: string | null;
+  /** Visibilité client mémorisée pour la réactivation. */
+  archived_was_visible?: boolean | null;
   created_at: string;
   updated_at: string;
 };

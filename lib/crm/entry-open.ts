@@ -32,10 +32,10 @@ async function stayBehindCode(origin: string, code: string): Promise<EntryPrevie
     if (!reference) return null;
     const { data: booking } = await admin
       .from("crm_bookings")
-      .select("reference, destination, title, cover_image_path, visible_to_client")
+      .select("reference, destination, title, cover_image_path, visible_to_client, archived_at")
       .eq("reference", reference)
       .maybeSingle();
-    if (!booking?.reference) return null;
+    if (!booking?.reference || booking.archived_at) return null;
     const place = stayPlaceName(booking.destination, booking.title);
     const hasCover =
       link?.show_cover === true && Boolean(booking.visible_to_client) && stayHasPublishedCover(booking);

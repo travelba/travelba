@@ -2,7 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { CustomerEditor } from "@/components/admin/CustomerEditor";
-import { DeleteBookingButton } from "@/components/admin/DeleteBookingButton";
+import {
+  DeleteBookingButton,
+  DuplicateBookingButton,
+  RestoreBookingButton,
+} from "@/components/admin/DeleteBookingButton";
 import { ClientRevolutSuggestions } from "@/components/admin/ClientRevolutSuggestions";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import { InviteCustomerPanel } from "@/components/admin/InviteCustomerPanel";
@@ -125,6 +129,8 @@ export default async function AdminClientDetailPage({ params }: Props) {
     (bookings || []) as CrmBooking[],
     (billedBookings || []) as CrmBooking[]
   );
+  const activeBookings = bookingRows.filter((row) => !row.archived_at);
+  const archivedBookings = bookingRows.filter((row) => row.archived_at);
   const travelerIds = [
     ...new Set(bookingRows.map((row) => row.customer_id).filter((customerId) => customerId !== id)),
   ];
@@ -175,7 +181,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
       <WhatsappThread
         messages={threadMessages}
         requests={whatsappRequests.error ? [] : whatsappRequests.data || []}
-        bookings={bookingRows.map((booking) => ({ id: booking.id, reference: booking.reference }))}
+        bookings={activeBookings.map((booking) => ({ id: booking.id, reference: booking.reference }))}
       />
       <div className="flex flex-wrap gap-3">
         {((balances || []) as CrmBalance[]).map((b) => {
@@ -198,7 +204,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         })}
         <div className="admin-af-card rounded-2xl px-4 py-3">
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Dossiers</p>
-          <p className="font-display text-xl font-bold text-[var(--admin-navy)]">{bookingRows.length}</p>
+          <p className="font-display text-xl font-bold text-[var(--admin-navy)]">{activeBookings.length}</p>
         </div>
         <div className="admin-af-card rounded-2xl px-4 py-3">
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Dernière connexion</p>
@@ -278,14 +284,14 @@ export default async function AdminClientDetailPage({ params }: Props) {
             Nouveau dossier
           </Link>
         </div>
-        {bookingRows.some((row) => row.customer_id !== id) ? (
+        {activeBookings.some((row) => row.customer_id !== id) ? (
           <p className="mt-1 text-xs text-muted">
             Les séjours facturés sur ce compte figurent ici, avec le nom du voyageur.
           </p>
         ) : null}
-        {bookingRows.length ? (
+        {activeBookings.length ? (
           <ul className="mt-2 divide-y divide-border text-sm">
-            {bookingRows.map((b) => {
+            {activeBookings.map((b) => {
               const travelerLine = ficheBookingTravelerLine(b, id, travelerNames);
               return (
                 <li key={b.id} className="flex min-w-0 flex-wrap items-center justify-between gap-3 py-2">
@@ -303,12 +309,15 @@ export default async function AdminClientDetailPage({ params }: Props) {
                       ) : null}
                     </span>
                   </Link>
-                  <DeleteBookingButton
-                    compact
-                    redirectTo={null}
-                    bookingId={b.id}
-                    label={`${b.reference} — ${b.title}`}
-                  />
+                  <div className="flex flex-col items-end gap-1">
+                    <DuplicateBookingButton compact bookingId={b.id} />
+                    <DeleteBookingButton
+                      compact
+                      redirectTo={null}
+                      bookingId={b.id}
+                      label={`${b.reference} — ${b.title}`}
+                    />
+                  </div>
                 </li>
               );
             })}
@@ -318,6 +327,24 @@ export default async function AdminClientDetailPage({ params }: Props) {
             Aucun dossier pour ce client. Importez ses confirmations depuis Réservations.
           </p>
         )}
+        {archivedBookings.length ? (
+          <div className="mt-4">
+            <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Archivées</h3>
+            <ul className="mt-2 divide-y divide-border text-sm">
+              {archivedBookings.map((b) => (
+                <li key={b.id} className="flex min-w-0 flex-wrap items-center justify-between gap-3 py-2">
+                  <Link
+                    href={`/admin/reservations/${b.id}`}
+                    className="min-w-0 text-[var(--admin-navy)] underline-offset-2 hover:underline"
+                  >
+                    {b.reference} · {b.title}
+                  </Link>
+                  <RestoreBookingButton compact bookingId={b.id} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </section>
       <section className="admin-af-card rounded-3xl p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
