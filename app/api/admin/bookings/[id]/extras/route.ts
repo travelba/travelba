@@ -5,6 +5,7 @@ import {
   cancelBookingExtra,
   clearServiceRefusal,
   confirmBookingExtra,
+  confirmCheckinExtra,
   createBookingExtra,
   parseExtraRequest,
 } from "@/lib/crm/extras-write";
@@ -45,8 +46,15 @@ export async function POST(request: Request, ctx: Ctx) {
       return NextResponse.json(cancelled);
     }
     if (body?.confirm === true) {
+      if (extra.kind === "checkin") {
+        const confirmed = await confirmCheckinExtra(auth.supabase, {
+          booking: booking as CrmBooking,
+          items: list,
+        });
+        return NextResponse.json(confirmed);
+      }
       if (extra.kind !== "chauffeur" && extra.kind !== "greeter") {
-        return jsonError("Seuls le chauffeur et VIP Airport se confirment.");
+        return jsonError("Seuls le chauffeur, VIP Airport et l’enregistrement se confirment.");
       }
       const confirmed = await confirmBookingExtra(auth.supabase, {
         booking: booking as CrmBooking,
