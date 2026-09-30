@@ -14,7 +14,56 @@ const PROVIDER = "whatsapp_samples";
 type Extra = {
   sent?: Record<string, string>;
   done_at?: string;
+  hold?: boolean;
+  receipt?: DeliveryReport;
 };
+
+export type DeliveryReport = {
+  total: number;
+  delivered: number;
+  errors: string[];
+  statuses: Record<string, number>;
+};
+
+const UNREACHABLE = new Set(["63003", "21211", "21614", "63024"]);
+
+const EMPTY_RECEIPT: DeliveryReport = { total: 0, delivered: 0, errors: [], statuses: {} };
+
+/** Statuts Twilio des derniers messages vers le téléphone, sans corps ni numéro. */
+export async function inspectSampleDelivery(to: string, fetchImpl: typeof fetch): Promise<DeliveryReport> {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
+  const token = process.env.TWILIO_AUTH_TOKEN?.trim();
+  if (!accountSid || !token) return EMPTY_RECEIPT;
+  try {
+    const url = new URL(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`);
+    url.searchParams.set("To", to);
+    url.searchParams.set("PageSize", "50");
+    const response = await fetchImpl(url, {
+      headers: { Authorization: `Basic ${Buffer.from(`${accountSid}:${token}`).toString("base64")}` },
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (!response.ok) return EMPTY_RECEIPT;
+    const payload = (await response.json()) as {
+      messages?: Array<{ status?: string; error_code?: number | null }>;
+    };
+    const statuses: Record<string, number> = {};
+    const errors = new Set<string>();
+    let delivered = 0;
+    for (const message of payload.messages || []) {
+      const status = message.status || "inconnu";
+      statuses[status] = (statuses[status] || 0) + 1;
+      if (status === "delivered" || status === "read") delivered += 1;
+      if (message.error_code) errors.add(String(message.error_code));
+    }
+    return { total: Object.values(statuses).reduce((sum, count) => sum + count, 0), delivered, errors: [...errors], statuses };
+  } catch {
+    return EMPTY_RECEIPT;
+  }
+}
+
+function sessionMissed(report: DeliveryReport) {
+  return report.total > 0 && report.delivered === 0;
+}
 
 export type CatalogSample = {
   id: string;
@@ -87,7 +136,8 @@ export async function sendCatalogSamples(
   admin: SupabaseClient,
   fetchImpl: typeof fetch = fetch,
   deliverSession: typeof sendWhatsappSession = sendWhatsappSession,
-  deliverTemplate: typeof sendContentTemplate = sendContentTemplate
+  deliverTemplate: typeof sendContentTemplate = sendContentTemplate,
+  inspect: (to: string) => Promise<DeliveryReport> = (to) => inspectSampleDelivery(to, fetchImpl)
 ) {
   if (isVercelPreview() || !whatsappSessionConfigured()) return { skipped: "not_configured" as const };
   const to = whatsappAddress(SAMPLE_PHONE);
@@ -96,23 +146,35 @@ export async function sendCatalogSamples(
   const { data } = await admin.from("crm_integrations").select("id, extra").eq("provider", PROVIDER).maybeSingle();
   const extra = ((data?.extra || {}) as Extra) || {};
   const samples = catalogSamples();
-  const sent: Record<string, string> = { ...(extra.sent || {}) };
+  const replay = Boolean(extra.hold);
+  const sent: Record<string, string> = replay ? {} : { ...(extra.sent || {}) };
   const pending = samples.some((sample) => !sent[sample.id] || sent[sample.id] === "attente");
   if (!pending) return { skipped: "done" as const };
-  const live = await imageLive(`${siteConfig.url}/whatsapp/hotel.jpg`, fetchImpl);
-  if (!live) return { skipped: "images_offline" as const };
-  let sessionOpen: boolean | null = null;
+  let receipt = extra.receipt || EMPTY_RECEIPT;
+  if (replay || sessionMissed(receipt)) receipt = await inspect(to);
+  let sessionOpen: boolean | null = sessionMissed(receipt) ? false : null;
   const mediaOk = new Map<string, boolean>();
 
   const save = async () => {
     const finished = samples.every((sample) => sent[sample.id] && sent[sample.id] !== "attente");
-    const next: Extra = { sent, ...(finished ? { done_at: new Date().toISOString() } : {}) };
+    const next: Extra = { sent, receipt, ...(finished ? { done_at: new Date().toISOString() } : {}) };
     await admin.from("crm_integrations").upsert(
       { provider: PROVIDER, extra: next, updated_at: new Date().toISOString() },
       { onConflict: "provider" }
     );
     return finished;
   };
+
+  if (sessionMissed(receipt) && receipt.errors.some((code) => UNREACHABLE.has(code))) {
+    for (const sample of samples) sent[sample.id] = "refuse";
+    await save();
+    return { skipped: null, delivered: 0, total: samples.length, done: true };
+  }
+
+  if (sessionOpen !== false) {
+    const live = await imageLive(`${siteConfig.url}/whatsapp/hotel.jpg`, fetchImpl);
+    if (!live) return { skipped: "images_offline" as const };
+  }
 
   for (const sample of samples) {
     if (sent[sample.id] && sent[sample.id] !== "attente") continue;
