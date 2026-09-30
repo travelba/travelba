@@ -44,6 +44,7 @@ const BOOKING_META_KEYS = [
   "customer_id",
   "billing_customer_id",
   "billing_company_id",
+  "payer_kind",
   "include_in_ledger",
   "agency_commission",
   "client_settles_stay",
@@ -66,6 +67,11 @@ export function bookingMetaPatch(body: Record<string, unknown>) {
     }
     if (key === "billing_company_id") {
       patch[key] = emptyToNull(body[key]);
+      continue;
+    }
+    if (key === "payer_kind") {
+      const kind = body[key];
+      if (kind === "company" || kind === "personal") patch[key] = kind;
       continue;
     }
     if (key === "title") {

@@ -15,7 +15,7 @@ import { findVisaExtra, serviceRefusalFromRow, type ServiceRefusal } from "@/lib
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import type { ClientVisaStep } from "@/lib/crm/visa-flow";
 import { pliantConfigured } from "@/lib/crm/pliant";
-import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
+import { formatDateFr, formatMoney, todayIsoDate } from "@/lib/crm/money";
 import { BookingStatusBadge } from "@/components/crm/ui";
 import {
   carnetVisible,
@@ -34,7 +34,10 @@ import { siteConfig } from "@/lib/site";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
-import { StayBillingChoice } from "@/components/crm/StayBillingChoice";
+import { StayPayment } from "@/components/account/StayPayment";
+import { collectableStayAmount } from "@/lib/crm/payer";
+import { stayPayMethods } from "@/lib/crm/stripe-pay";
+import { stripePublishableKey } from "@/lib/crm/stripe";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { TripSharePanel } from "@/components/account/TripSharePanel";
@@ -323,13 +326,29 @@ export default async function ReservationDetailPage({ params }: Props) {
       expenses={expenseLines.length ? <StayExpenses lines={expenseLines} /> : null}
       tail={
         <>
-          <StayBillingChoice
-            endpoint="client"
-            bookingId={b.id}
-            companies={billingCompanies}
-            bookingCompanyId={b.billing_company_id || null}
-            expenses={expenseChoices}
-          />
+          {b.payer_kind === "company" || b.payer_kind === "personal" ? (
+            <StayPayment
+              bookingId={b.id}
+              reference={b.reference}
+              payerKind={b.payer_kind}
+              companyName={
+                billingCompanies.find((company) => company.id === b.billing_company_id)?.company_name || null
+              }
+              canPay={!(b.payer_kind === "company" && customer.company_role === "member")}
+              methods={stayPayMethods(b.payer_kind, b.currency)}
+              amountLabel={(() => {
+                const due = collectableStayAmount({
+                  stayTotal: Number(b.total_amount),
+                  agencyCommission: b.agency_commission === true,
+                  clientSettlesStay: b.client_settles_stay === true,
+                  pricesVisible: b.prices_visible !== false,
+                  expenses: expenseChoices,
+                });
+                return due == null ? null : formatMoney(due, b.currency);
+              })()}
+              stripeKey={stripePublishableKey()}
+            />
+          ) : null}
           <ReservationFiles
             showPassports={false}
             attachments={attachmentPreviews(visibleDocs, visibleItems, b.reference)}

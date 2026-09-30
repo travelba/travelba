@@ -13,7 +13,7 @@ import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
-import { StayBillingChoice } from "@/components/crm/StayBillingChoice";
+import { payerBadge } from "@/lib/crm/payer";
 import { HotelDeskSummary } from "@/components/admin/HotelDesk";
 import { syncStayCards } from "@/lib/crm/hotel-arrival-run";
 import { ensureHotelRequests } from "@/lib/crm/hotel-desk-run";
@@ -21,7 +21,6 @@ import { principalGuest } from "@/lib/crm/hotel-arrival";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
 import { isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
 import type {
-  CrmBillingCompany,
   CrmBooking,
   CrmBookingDocument,
   CrmBookingItem,
@@ -133,8 +132,6 @@ export default async function AdminBookingPage({ params }: Props) {
     }
   }
 
-  const billingCompanyRows = (billingCompanies || []) as Pick<CrmBillingCompany, "id" | "company_name">[];
-
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#e5e3dc] bg-white px-4 py-3">
@@ -144,6 +141,17 @@ export default async function AdminBookingPage({ params }: Props) {
             {formatDateRangeShort(b.start_date, b.end_date)}
             {b.destination ? ` · ${b.destination}` : ""}
           </p>
+          {payerBadge(
+            b.payer_kind,
+            (billingCompanies || []).find((company) => company.id === b.billing_company_id)?.company_name
+          ) ? (
+            <p className="mt-1 text-xs font-semibold text-[var(--admin-gold-dark)]">
+              {payerBadge(
+                b.payer_kind,
+                (billingCompanies || []).find((company) => company.id === b.billing_company_id)?.company_name
+              )}
+            </p>
+          ) : null}
           <HotelDeskSummary requests={hotelRequests} today={todayIsoDate()} />
         </div>
         <DeleteBookingButton bookingId={b.id} label={`${b.reference} — ${b.title}`} />
@@ -160,19 +168,6 @@ export default async function AdminBookingPage({ params }: Props) {
         />
       ))}
       <div className="mt-6 space-y-6">
-        <StayBillingChoice
-          endpoint="admin"
-          bookingId={b.id}
-          companies={billingCompanyRows}
-          bookingCompanyId={b.billing_company_id || null}
-          expenses={bookingItems
-            .filter((item) => isLedgerExpenseKind(item.kind))
-            .map((item) => ({
-              id: item.id,
-              title: visibleServiceCopy(item.title),
-              billing_company_id: item.billing_company_id || null,
-            }))}
-        />
         <BookingEditor
           booking={b}
           items={bookingItems}
@@ -203,6 +198,18 @@ export default async function AdminBookingPage({ params }: Props) {
           shareCompanions={shareCompanions}
           arrivals={arrivals}
           hotelRequests={hotelRequests}
+          billingCompanies={(billingCompanies || []) as {
+            id: string;
+            company_name: string | null;
+            sort_order: number;
+          }[]}
+          expenseBilling={bookingItems
+            .filter((item) => isLedgerExpenseKind(item.kind))
+            .map((item) => ({
+              id: item.id,
+              title: visibleServiceCopy(item.title),
+              billing_company_id: item.billing_company_id || null,
+            }))}
           attachedEmails={(attachedMails || []) as {
             id: string;
             subject: string | null;

@@ -82,11 +82,11 @@ OIDC Vercel : `aiGatewayConfigured()` peut être vrai sur Vercel sans `sk-`. L�
 
 ## Stripe
 
-- Mode **live**. Pas d’encaissement carte dans le CRM.
+- Mode **live**. L’encaissement d’un séjour passe par PaymentIntent sur la réservation client (carte, Apple Pay, prélèvement SEPA, virement). Pas de PAN.
 - Endpoint : `https://travelba.fr/api/webhooks/stripe`
-- Events : `setup_intent.succeeded`, `payment_method.detached`
-- UI client cartes **retirée** (`/paiement` → facturation). La table `crm_payment_methods` peut rester (SetupIntent) mais ne pas rerendre un formulaire carte sans décision produit.
-- Sans `sk_live` / `pk_live` / `whsec` en Production, le webhook répond **503** — attendu tant que l’UI cartes n’est pas réouverte. Ne pas inventer les clés. Le grand livre manuel fonctionne.
+- Events : `setup_intent.succeeded`, `payment_method.detached`, `payment_intent.succeeded`
+- Pas de page cartes (`/paiement` → facturation). Le règlement est sur la réservation.
+- Sans `sk_live` / `pk_live` / `whsec` en Production, le webhook répond **503** et le bouton de règlement dit que le moyen n’est pas ouvert. Ne pas inventer les clés. Le grand livre manuel fonctionne.
 - Ne jamais logger le PaymentMethod brut au-delà de `brand` / `last4` / exp.
 
 ## Revolut
