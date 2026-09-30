@@ -7,7 +7,7 @@ import { pliantConfigured, readPliantCardSecrets } from "./pliant";
 type Admin = {
   from: (table: string) => {
     update: (row: { card_last4: string }) => {
-      eq: (column: string, value: string) => Promise<unknown>;
+      eq: (column: string, value: string) => PromiseLike<unknown>;
     };
   };
 };
