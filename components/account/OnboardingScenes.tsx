@@ -33,20 +33,28 @@ const PASSPORTS = [
   {
     photo: "/onboarding/camille.jpg",
     given: "Camille",
-    birth: "15.06.1984 · Lyon",
+    birth: "15.06.1984",
+    sex: "F",
+    place: "Lyon",
     number: "24XY18302",
+    issued: "02.06.2021",
     expiry: "01.06.2031",
-    mrz: "P<FRAMOREL<<CAMILLE<<<<<<<<<<<<<<<<<<<",
-    mrz2: "24XY183021FRA8406158F3106017<<<<<<<<<<<8",
+    authority: "Préfecture du Rhône",
+    mrz: "P<FRAMOREL<<CAMILLE<<<<<<<<<<<<<<<<<<<<<<<<<",
+    mrz2: "24XY183021FRA8406158F3106017<<<<<<<<<<<<<<00",
   },
   {
     photo: "/onboarding/ines.jpg",
     given: "Inès",
-    birth: "02.04.2012 · Lyon",
+    birth: "02.04.2012",
+    sex: "F",
+    place: "Lyon",
     number: "18KL90441",
+    issued: "02.06.2026",
     expiry: "01.06.2031",
-    mrz: "P<FRAMOREL<<INES<<<<<<<<<<<<<<<<<<<<<<",
-    mrz2: "18KL904416FRA1204024F3106017<<<<<<<<<<<6",
+    authority: "Préfecture du Rhône",
+    mrz: "P<FRAMOREL<<INES<<<<<<<<<<<<<<<<<<<<<<<<<<<<",
+    mrz2: "18KL904416FRA1204023F3106017<<<<<<<<<<<<<<04",
   },
 ] as const;
 
@@ -56,45 +64,70 @@ function PassportScene({ reduce }: { reduce: boolean }) {
       {PASSPORTS.map((person, index) => (
         <motion.li
           key={person.number}
-          className="overflow-hidden rounded-xl border border-[#d9cbb6] bg-[#f7f2e8] shadow-sm"
+          className="overflow-hidden rounded-[10px] border border-[#d5c7b2] shadow-sm"
+          style={{
+            background:
+              "radial-gradient(circle at 12% 20%, rgba(0,35,149,0.06), transparent 42%), radial-gradient(circle at 88% 80%, rgba(237,41,57,0.05), transparent 40%), #f6f1e6",
+          }}
           {...rise(reduce, 0.08 + index * 0.16)}
         >
-          <div className="flex items-center justify-between bg-[#7a1f2b] px-3 py-1 text-white">
-            <p className="text-[8px] font-bold tracking-[0.16em]">RÉPUBLIQUE FRANÇAISE</p>
-            <p className="text-[8px] font-bold tracking-[0.18em]">PASSEPORT</p>
+          <div className="flex items-start gap-2 px-2.5 pb-1 pt-1.5">
+            <EuStars />
+            <div className="min-w-0 flex-1 leading-none">
+              <p className="text-[7px] font-bold tracking-[0.14em] text-[#1a3a6b]">UNION EUROPÉENNE</p>
+              <p className="text-[6px] tracking-[0.12em] text-[#1a3a6b]/70">EUROPEAN UNION</p>
+              <p className="mt-1 text-[7px] font-bold tracking-[0.06em] text-[#1c140c]">RÉPUBLIQUE FRANÇAISE</p>
+              <p className="text-[6px] tracking-[0.08em] text-[#1c140c]/55">FRENCH REPUBLIC</p>
+            </div>
+            <div className="text-right leading-none">
+              <p className="font-display text-[13px] font-bold tracking-[0.04em] text-[#7a1f2b]">PASSEPORT</p>
+              <p className="text-[6.5px] tracking-[0.16em] text-[#7a1f2b]/70">PASSPORT</p>
+            </div>
           </div>
-          <div className="flex gap-2.5 px-2.5 py-2">
-            <span className="relative h-[4.7rem] w-[3.55rem] shrink-0 overflow-hidden bg-[#e7e2da] ring-1 ring-[#c4b49a]">
-              <img
-                src={person.photo}
-                alt=""
-                className="h-full w-full object-cover object-top"
-              />
+          <div className="flex h-[3px]" aria-hidden>
+            <span className="flex-1 bg-[#002395]" />
+            <span className="flex-1 bg-white" />
+            <span className="flex-1 bg-[#ED2939]" />
+          </div>
+          <div className="flex gap-2 px-2.5 py-1.5">
+            <span className="relative h-[4.35rem] w-[3.3rem] shrink-0 overflow-hidden bg-[#ece7df] ring-1 ring-[#c9b89a]">
+              <img src={person.photo} alt="" className="h-full w-full object-cover object-[center_18%]" />
               {index === 0 ? (
                 <motion.span
                   aria-hidden
-                  className="absolute inset-x-0 h-px bg-[var(--admin-gold)] shadow-[0_0_8px_1px_rgba(197,168,128,0.95)]"
-                  initial={reduce ? { top: "88%", opacity: 0 } : { top: "8%", opacity: 1 }}
-                  animate={{ top: "92%", opacity: 0 }}
+                  className="absolute inset-x-0 h-px bg-[#002395]/80 shadow-[0_0_8px_1px_rgba(0,35,149,0.45)]"
+                  initial={reduce ? { top: "90%", opacity: 0 } : { top: "6%", opacity: 0.9 }}
+                  animate={{ top: "94%", opacity: 0 }}
                   transition={reduce ? { duration: 0 } : { duration: 1.15, ease: [0.4, 0, 0.2, 1] }}
                 />
               ) : null}
             </span>
-            <div className="min-w-0 flex-1 text-[#2a2118]">
-              <div className="grid grid-cols-2 gap-x-2">
-                <PassportField label="Nom" value="MOREL" />
-                <PassportField label="Prénoms" value={person.given} />
-                <PassportField label="Nationalité" value="Française" />
-                <PassportField label="Sexe" value="F" />
-                <PassportField label="Naissance" value={person.birth} />
-                <PassportField label="N°" value={person.number} />
+            <div className="min-w-0 flex-1">
+              <div className="grid grid-cols-[auto_1fr] gap-x-3">
+                <PassportLine fr="Type" en="Type" value="P" />
+                <PassportLine fr="Code" en="Code" value="FRA" />
               </div>
-              <PassportField label="Expiration" value={person.expiry} />
+              <PassportLine fr="Passeport n°" en="Passport no." value={person.number} />
+              <PassportLine fr="Nom" en="Surname" value="MOREL" />
+              <div className="grid grid-cols-2 gap-x-2">
+                <PassportLine fr="Prénoms" en="Given names" value={person.given} />
+                <PassportLine fr="Sexe" en="Sex" value={person.sex} />
+              </div>
+              <div className="grid grid-cols-2 gap-x-2">
+                <PassportLine fr="Naissance" en="Date of birth" value={person.birth} />
+                <PassportLine fr="Lieu" en="Place of birth" value={person.place} />
+              </div>
+              <PassportLine fr="Nationalité" en="Nationality" value="Française" />
+              <div className="grid grid-cols-2 gap-x-2">
+                <PassportLine fr="Délivrance" en="Date of issue" value={person.issued} />
+                <PassportLine fr="Expiration" en="Date of expiry" value={person.expiry} />
+              </div>
+              <PassportLine fr="Autorité" en="Authority" value={person.authority} />
             </div>
           </div>
-          <div className="bg-[#efe4d2] px-2 py-1 font-mono text-[6.5px] leading-tight tracking-[0.04em] text-[#3d2c22]">
-            <p className="truncate">{person.mrz}</p>
-            <p className="truncate">{person.mrz2}</p>
+          <div className="border-t border-[#e4d5c0] bg-[#efe6d4] px-2 py-1 font-mono text-[6.5px] leading-[1.15] tracking-[0.01em] text-[#1a140f]">
+            <p className="overflow-hidden whitespace-nowrap">{person.mrz}</p>
+            <p className="overflow-hidden whitespace-nowrap">{person.mrz2}</p>
           </div>
         </motion.li>
       ))}
@@ -102,11 +135,39 @@ function PassportScene({ reduce }: { reduce: boolean }) {
   );
 }
 
-function PassportField({ label, value }: { label: string; value: string }) {
+const EU_STARS = [
+  ["12.00", "4.80"],
+  ["15.60", "5.76"],
+  ["18.24", "8.40"],
+  ["19.20", "12.00"],
+  ["18.24", "15.60"],
+  ["15.60", "18.24"],
+  ["12.00", "19.20"],
+  ["8.40", "18.24"],
+  ["5.76", "15.60"],
+  ["4.80", "12.00"],
+  ["5.76", "8.40"],
+  ["8.40", "5.76"],
+] as const;
+
+function EuStars() {
   return (
-    <p className="min-w-0">
-      <span className="block text-[7px] font-semibold uppercase tracking-[0.08em] text-[#8a7356]">{label}</span>
-      <span className="block truncate text-[11px] font-semibold leading-tight">{value}</span>
+    <svg viewBox="0 0 24 24" className="mt-0.5 h-6 w-6 shrink-0" aria-hidden>
+      {EU_STARS.map(([cx, cy]) => (
+        <circle key={cx + cy} cx={cx} cy={cy} r="0.9" fill="#1a3a6b" />
+      ))}
+    </svg>
+  );
+}
+
+function PassportLine({ fr, en, value }: { fr: string; en: string; value: string }) {
+  return (
+    <p className="min-w-0 leading-none">
+      <span className="block truncate text-[6px] font-semibold uppercase tracking-[0.04em] text-[#8d7348]">
+        {fr}
+        <span className="font-normal normal-case tracking-normal text-[#b19774]"> / {en}</span>
+      </span>
+      <span className="block truncate text-[10px] font-semibold leading-tight text-[#1c140c]">{value}</span>
     </p>
   );
 }
