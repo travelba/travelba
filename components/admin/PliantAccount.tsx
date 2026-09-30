@@ -7,6 +7,7 @@ import { BusyBar } from "@/components/crm/BusyBar";
 import { StatusChip } from "@/components/crm/ui";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import {
+  pliantCardDisplay,
   pliantCategoryLabel,
   pliantSignedCents,
   pliantStatusLabel,
@@ -34,9 +35,34 @@ export type PliantLine = {
   bookingId: string | null;
 };
 
-function cardCaption(row: PliantLine) {
-  const bits = [row.cardLabel, row.last4 ? `•••• ${row.last4}` : null, row.holderName].filter(Boolean);
-  return bits.join(" · ");
+function lineView(row: PliantLine) {
+  const signed = pliantSignedCents(row.type, row.billingCents);
+  return {
+    merchant: row.merchant || pliantTypeLabel(row.type),
+    amount: signed == null ? "—" : euros(signed, row.currency),
+    origin: originAmount(row),
+    card: pliantCardDisplay(row.cardLabel, row.last4),
+    category: pliantCategoryLabel(row.category),
+  };
+}
+
+function LineMeta({ row, view }: { row: PliantLine; view: ReturnType<typeof lineView> }) {
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-2">
+      <span className="text-xs text-muted">
+        {row.holderName ? `${row.holderName} · ` : ""}
+        {pliantTypeLabel(row.type)}
+        {view.category ? ` · ${view.category}` : ""}
+        {row.comment ? ` · ${row.comment}` : ""}
+      </span>
+      <StatusChip tone={pliantStatusTone(row.status)}>{pliantStatusLabel(row.status)}</StatusChip>
+      {row.reference && row.bookingId ? (
+        <Link href={`/admin/reservations/${row.bookingId}`} className="text-xs font-semibold text-[#9e7e51] underline">
+          {row.reference}
+        </Link>
+      ) : null}
+    </div>
+  );
 }
 
 function originAmount(row: PliantLine) {
@@ -92,53 +118,74 @@ export function PliantAccount({ configured, lines }: { configured: boolean; line
         <button type="button" onClick={() => void sync()} disabled={busy || !configured} className="admin-af-btn rounded-full px-4 py-2 text-sm">
           {busy ? "Synchronisation…" : "Synchroniser Pliant"}
         </button>
-        {configured ? <p className="text-sm text-muted">Commerçant, carte et porteur. Les vérifications à 0 € restent hors liste.</p> : null}
+        {configured ? <p className="text-sm text-muted">Chaque dépense indique le libellé de la carte et la carte.</p> : null}
       </div>
       {message ? <p className="text-sm text-muted">{message}</p> : null}
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      <ul className="admin-af-card divide-y divide-border rounded-3xl">
-        {lines.map((row) => {
-          const signed = pliantSignedCents(row.type, row.billingCents);
-          const amount = signed == null ? "—" : euros(signed, row.currency);
-          const origin = originAmount(row);
-          const card = cardCaption(row);
-          const category = pliantCategoryLabel(row.category);
-          return (
-            <li key={row.id} className="px-5 py-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <p className="font-medium">{row.merchant || pliantTypeLabel(row.type)}</p>
-                  <p className="text-xs text-muted">
-                    {formatDateFr(row.bookedAt)}
-                    {` · ${pliantTypeLabel(row.type)}`}
-                    {card ? ` · ${card}` : ""}
+      <div className="admin-af-card overflow-hidden rounded-3xl">
+        <ul className="divide-y divide-border md:hidden">
+          {lines.map((row) => {
+            const view = lineView(row);
+            return (
+              <li key={row.id} className="space-y-2 px-5 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="font-medium text-[var(--admin-navy)]">{view.merchant}</p>
+                  <p className="shrink-0 text-right font-medium tabular-nums text-[var(--admin-navy)]">
+                    {view.amount}
+                    {view.origin ? <span className="mt-0.5 block text-xs font-normal text-muted">{view.origin}</span> : null}
                   </p>
-                  {category || row.comment ? (
-                    <p className="text-xs text-muted">{[category, row.comment].filter(Boolean).join(" · ")}</p>
-                  ) : null}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <StatusChip tone={pliantStatusTone(row.status)}>{pliantStatusLabel(row.status)}</StatusChip>
-                    {row.reference && row.bookingId ? (
-                      <Link href={`/admin/reservations/${row.bookingId}`} className="text-xs font-semibold text-[#9e7e51] underline">
-                        {row.reference}
-                      </Link>
-                    ) : null}
-                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-medium tabular-nums">{amount}</p>
-                  {origin ? <p className="text-xs text-muted tabular-nums">{origin}</p> : null}
-                </div>
-              </div>
-            </li>
-          );
-        })}
+                <p className="text-xs text-muted">{formatDateFr(row.bookedAt)}</p>
+                <dl className="grid grid-cols-[5.5rem_1fr] gap-x-3 gap-y-1 text-sm">
+                  <dt className="text-muted">Libellé</dt>
+                  <dd className="font-semibold text-[var(--admin-navy)]">{view.card.label}</dd>
+                  <dt className="text-muted">Carte</dt>
+                  <dd className="font-semibold tabular-nums text-[var(--admin-navy)]">{view.card.number}</dd>
+                </dl>
+                <LineMeta row={row} view={view} />
+              </li>
+            );
+          })}
+        </ul>
+        <div className="hidden overflow-x-auto md:block">
+          <table className="min-w-full text-left text-sm">
+            <thead className="bg-[var(--admin-sky)]/70 font-label text-[10px] font-bold uppercase tracking-[0.12em] text-muted">
+              <tr>
+                <th className="px-5 py-3">Date</th>
+                <th className="px-5 py-3">Dépense</th>
+                <th className="px-5 py-3">Libellé</th>
+                <th className="px-5 py-3">Carte</th>
+                <th className="px-5 py-3 text-right">Montant</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {lines.map((row) => {
+                const view = lineView(row);
+                return (
+                  <tr key={row.id} className="align-top">
+                    <td className="px-5 py-3 text-muted">{formatDateFr(row.bookedAt)}</td>
+                    <td className="px-5 py-3">
+                      <p className="font-medium text-[var(--admin-navy)]">{view.merchant}</p>
+                      <LineMeta row={row} view={view} />
+                    </td>
+                    <td className="px-5 py-3 font-semibold text-[var(--admin-navy)]">{view.card.label}</td>
+                    <td className="px-5 py-3 font-semibold tabular-nums text-[var(--admin-navy)]">{view.card.number}</td>
+                    <td className="px-5 py-3 text-right font-medium tabular-nums text-[var(--admin-navy)]">
+                      {view.amount}
+                      {view.origin ? <span className="mt-0.5 block text-xs font-normal text-muted">{view.origin}</span> : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
         {!lines.length ? (
-          <li className="px-5 py-8 text-center text-sm text-muted">
+          <p className="px-5 py-8 text-center text-sm text-muted">
             {configured ? "Aucune transaction pour le moment." : "Pliant n’est pas branché."}
-          </li>
+          </p>
         ) : null}
-      </ul>
+      </div>
     </div>
   );
 }

@@ -76,6 +76,15 @@ export function pliantCategoryLabel(category: string | null) {
   return PLIANT_CATEGORY_LABELS[category] || category;
 }
 
+/** Libellé saisi sur la carte, et la carte elle-même (4 derniers chiffres). */
+export function pliantCardDisplay(label: string | null, last4: string | null) {
+  const name = label?.trim() || "";
+  return {
+    label: name || "Sans libellé",
+    number: last4 ? `•••• ${last4}` : "Carte inconnue",
+  };
+}
+
 export function pliantStatusTone(status: string | null): "sky" | "green" | "amber" | "red" | "navy" | "gold" {
   if (status === "DECLINED") return "red";
   if (status === "PENDING") return "amber";

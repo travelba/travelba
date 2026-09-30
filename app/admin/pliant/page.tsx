@@ -95,7 +95,7 @@ export default async function AdminPliantPage() {
   return (
     <div>
       <PageEyebrow>Espace agence</PageEyebrow>
-      <PageTitle title="Pliant" subtitle="Chaque dépense : commerçant, carte, porteur et montant." />
+      <PageTitle title="Pliant" subtitle="Chaque dépense avec le libellé de la carte et la carte utilisée." />
       <div className="mt-6">
         <PliantAccount configured={configured} lines={lines} />
       </div>
