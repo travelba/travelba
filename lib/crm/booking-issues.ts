@@ -1,11 +1,6 @@
 import type { ZodError } from "zod";
 import { parseMoney } from "./money";
-import {
-  BOOKING_ITEM_LABELS,
-  countsAsCarnetCard,
-  visibleServiceCopy,
-  type BookingItemKind,
-} from "./types";
+import { countsAsCarnetCard } from "./types";
 
 export type BookingIssue = { field: string; message: string };
 
@@ -86,7 +81,7 @@ export function collectManualCreateIssues(input: {
   return issues;
 }
 
-/** Hôtel, vol, transfert : le montant imprimé est exigé. Une formalité sans prix ne l’est pas. */
+/** Hôtel, vol, transfert : le champ prix document est proposé. Le montant reste facultatif. */
 export function itemRequiresDocumentPrice(kind: string | null | undefined) {
   return kind === "flight" || kind === "hotel" || kind === "transfer";
 }
@@ -100,39 +95,10 @@ export function readDocumentAmount(details: { document_amount?: unknown } | null
   return amount;
 }
 
-type ExtractPriceItem = {
-  title?: string | null;
-  kind?: string | null;
-  /** Prix vendu : ne remplace pas le prix document. */
-  amount?: number | null;
-  details?: { document_amount?: unknown; document_currency?: unknown } | null;
-};
-
-export function documentPriceIssues(extract: {
-  document_status?: string | null;
-  items?: ExtractPriceItem[];
-}): BookingIssue[] {
-  if (extract.document_status === "identity") return [];
-  const issues: BookingIssue[] = [];
-  (extract.items || []).forEach((item, index) => {
-    if (!itemRequiresDocumentPrice(item.kind)) return;
-    if (readDocumentAmount(item.details) != null) return;
-    const kindLabel =
-      BOOKING_ITEM_LABELS[(item.kind || "fee") as BookingItemKind] || "Carte";
-    const title = visibleServiceCopy(String(item.title || "").trim());
-    const who = title ? `${kindLabel} « ${title} »` : `${kindLabel} (carte ${index + 1})`;
-    issues.push({
-      field: `items.${index}.details.document_amount`,
-      message: `${who} : indiquez le prix du document.`,
-    });
-  });
-  return issues;
-}
-
 export function collectExtractIssues(
   extract: {
     document_status?: string | null;
-    items?: ExtractPriceItem[];
+    items?: Array<{ title?: string | null } & Record<string, unknown>>;
   },
   opts: { customerId?: string; requireCustomer?: boolean } = {}
 ): BookingIssue[] {
@@ -154,7 +120,6 @@ export function collectExtractIssues(
       });
     }
   });
-  issues.push(...documentPriceIssues(extract));
   return issues;
 }
 
