@@ -105,6 +105,26 @@ test("une même facture tient en une carte, une autre facture en deux", () => {
   assert.equal(slipMention("company", "Horizon SAS"), "Facture Horizon SAS");
 });
 
+test("les frais de billeterie s’encaissent même sans prix de séjour", () => {
+  const slips = paymentSlips({
+    stayTotal: 0,
+    agencyCommission: false,
+    clientSettlesStay: false,
+    pricesVisible: true,
+    expenses: [],
+    ticketingFee: 25,
+    stayKind: "personal",
+    stayCompanyId: null,
+    feesFollowStay: true,
+    otherCompanyId: null,
+  });
+  assert.equal(slips.length, 1);
+  assert.equal(slips[0]?.slice, "stay");
+  assert.equal(slips[0]?.kind, "personal");
+  assert.equal(slips[0]?.amount, 25);
+  assert.equal(slips[0]?.payable, true);
+});
+
 test("l’hôtel hors agence ne s’encaisse pas, les frais si", () => {
   const slips = paymentSlips({
     stayTotal: 1000,

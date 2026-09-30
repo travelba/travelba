@@ -10,6 +10,12 @@ export function ticketingFeeAmount(input: { hasFlight: boolean; travelerCount?: 
   return ticketingTicketCount(input) * TICKETING_FEE_EUR;
 }
 
+/** Même règle que le débit du grand livre : 25 € une fois, dossier confirmé avec un vol. */
+export function collectableTicketingFee(input: { status: string; hasFlight: boolean }) {
+  if (input.status !== "confirmed" && input.status !== "travelling" && input.status !== "completed") return 0;
+  return ticketingFeeAmount({ hasFlight: input.hasFlight });
+}
+
 export function ticketingFeeExternalId(bookingId: string) {
   return `booking:${bookingId}:ticketing-fee`;
 }

@@ -5,6 +5,7 @@ import { amountToCents, paymentSlips, slipMention, type PaySliceId } from "@/lib
 import { RevolutHttpError, loadAgencyEurWire } from "@/lib/crm/revolut";
 import { ensureStripeCustomer, getStripe, stripeConfigured } from "@/lib/crm/stripe";
 import { excludedStripeTypes, stayPayMethodOf, stayPayMethods } from "@/lib/crm/stripe-pay";
+import { collectableTicketingFee } from "@/lib/crm/ticketing-fee";
 import { createServiceClient } from "@/lib/supabase/admin";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -56,6 +57,10 @@ export async function POST(request: Request, ctx: Ctx) {
     clientSettlesStay: booking.client_settles_stay === true,
     pricesVisible: booking.prices_visible !== false,
     expenses,
+    ticketingFee: collectableTicketingFee({
+      status: booking.status,
+      hasFlight: ((items || []) as Pick<CrmBookingItem, "kind">[]).some((item) => item.kind === "flight"),
+    }),
     stayKind: booking.payer_kind,
     stayCompanyId: booking.billing_company_id || null,
     feesFollowStay: booking.fees_follow_stay !== false,

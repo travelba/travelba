@@ -47,6 +47,7 @@ import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
+import { collectableTicketingFee } from "@/lib/crm/ticketing-fee";
 import { StayExpenses } from "@/components/account/StayExpenses";
 import { isLedgerExpenseKind, visibleServiceCopy, type CrmBillingCompany } from "@/lib/crm/types";
 
@@ -168,12 +169,17 @@ export default async function ReservationDetailPage({ params }: Props) {
         billing_company_id: item.billing_company_id || null,
       }));
   }
+  const ticketingFee = collectableTicketingFee({
+    status: b.status,
+    hasFlight: ((items || []) as CrmBookingItem[]).some((item) => item.kind === "flight"),
+  });
   const expenseLines = clientStayExpenseLines({
     expenses: expenseChoices,
     agencyCommission: b.agency_commission === true,
     stayTotal: Number(b.total_amount),
     currency: b.currency,
     pricesVisible: b.prices_visible !== false,
+    ticketingFee,
   });
 
   const identity = (identityDocs || []) as CrmTravelDocument[];
@@ -340,6 +346,7 @@ export default async function ReservationDetailPage({ params }: Props) {
                   clientSettlesStay: b.client_settles_stay === true,
                   pricesVisible: b.prices_visible !== false,
                   expenses: expenseChoices,
+                  ticketingFee,
                   stayKind: b.payer_kind,
                   stayCompanyId: b.billing_company_id || null,
                   feesFollowStay: b.fees_follow_stay !== false,

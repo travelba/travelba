@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { HIDDEN_PRICE_LABEL } from "./carnet";
 import { agencyFeeFromGross, formatMoney } from "./money";
+import { TICKETING_FEE_LABEL } from "./ticketing-fee";
 import { AGENCY_FEE_LABEL } from "./types";
 import {
   clientStayPriceLabel,
@@ -260,4 +261,14 @@ test("la réservation client liste les frais d’agence puis les dépenses libre
     }).length,
     0
   );
+  const ticketing = clientStayExpenseLines({
+    expenses: [],
+    agencyCommission: false,
+    stayTotal: 0,
+    currency: "EUR",
+    pricesVisible: true,
+    ticketingFee: 25,
+  });
+  assert.equal(ticketing[0]?.title, TICKETING_FEE_LABEL);
+  assert.equal(ticketing[0]?.amountLabel, formatMoney(25, "EUR"));
 });
