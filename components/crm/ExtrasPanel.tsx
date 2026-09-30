@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { CLIENT_PREVIEW_NOTE, useClientPreview } from "@/components/account/client-preview";
 import { IssuesList } from "@/components/crm/IssuesList";
 import { issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
 import {
@@ -42,6 +43,7 @@ export function ExtrasPanel({
   refusals?: ServiceRefusal[];
 }) {
   const router = useRouter();
+  const preview = useClientPreview();
   const [busy, setBusy] = useState<string | null>(null);
   const [hidden, setHidden] = useState<string[]>([]);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
@@ -51,6 +53,10 @@ export function ExtrasPanel({
   const passengers = Math.max(1, travelers.length || formalities?.passengers || 1);
 
   async function request(kind: "checkin" | "visa") {
+    if (preview) {
+      setIssues([{ field: "preview", message: CLIENT_PREVIEW_NOTE }]);
+      return;
+    }
     setBusy(kind);
     setIssues([]);
     const url =
@@ -73,6 +79,10 @@ export function ExtrasPanel({
 
   async function refuse(kind: "checkin" | "visa") {
     if (isAdmin || busy) return;
+    if (preview) {
+      setIssues([{ field: "preview", message: CLIENT_PREVIEW_NOTE }]);
+      return;
+    }
     setHidden((current) => (current.includes(kind) ? current : [...current, kind]));
     setIssues([]);
     const res = await fetch(`/api/client/bookings/${booking.reference}/extras`, {
@@ -109,6 +119,10 @@ export function ExtrasPanel({
 
   async function cancel(kind: "checkin" | "visa", itemId: string) {
     if (busy) return;
+    if (preview) {
+      setIssues([{ field: "preview", message: CLIENT_PREVIEW_NOTE }]);
+      return;
+    }
     setBusy(`cancel:${itemId}`);
     setIssues([]);
     const res = isAdmin && kind !== "checkin"

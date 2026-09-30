@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { CLIENT_PREVIEW_NOTE, useClientPreview } from "@/components/account/client-preview";
 import { FileOpenLink } from "@/components/crm/FileOpen";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { FoldedRow } from "@/components/crm/FoldedRow";
@@ -29,6 +30,7 @@ export function TripVisaUploads({
   hideTitle?: boolean;
 }) {
   const router = useRouter();
+  const preview = useClientPreview();
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const endpoint =
@@ -40,6 +42,10 @@ export function TripVisaUploads({
     const tooLarge = files.find((file) => file.size > MAX_BYTES);
     if (tooLarge) {
       setErrors(["Fichier trop lourd (15 Mo maximum)."]);
+      return;
+    }
+    if (preview) {
+      setErrors([CLIENT_PREVIEW_NOTE]);
       return;
     }
     setBusy(true);

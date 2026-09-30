@@ -47,6 +47,7 @@ import { principalGuest } from "@/lib/crm/hotel-arrival";
 import { BookingExpensesPanel } from "@/components/admin/BookingExpensesPanel";
 import { ServiceOfferToggles } from "@/components/admin/ServiceOfferToggles";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
+import { ClientInterfacePreview } from "@/components/account/ClientInterfacePreview";
 import { DeleteBookingButton } from "@/components/admin/DeleteBookingButton";
 import { LittleEmperorsCancel } from "@/components/admin/LittleEmperorsCancel";
 import { hotelsNeedingDesk } from "@/lib/crm/hotel-desk";
@@ -170,7 +171,7 @@ export function BookingEditor({
     setTitleDraft(booking.title);
   }
   const [coverOpen, setCoverOpen] = useState(false);
-  const [tab, setTab] = useState<"voyage" | "client" | "argent" | "todo">("voyage");
+  const [tab, setTab] = useState<"voyage" | "client" | "argent" | "todo" | "interface">("voyage");
   const [more, setMore] = useState(false);
   const [hotelCardOpen, setHotelCardOpen] = useState(false);
   const [coverNotice, setCoverNotice] = useState<string | null>(null);
@@ -525,6 +526,7 @@ export function BookingEditor({
     ...(showTodo ? [["todo", "À faire"] as const] : []),
     ["argent", "L’argent"],
     ["client", "Le client"],
+    ["interface", "Interface client"],
   ] as const;
 
   function cardName(item: CrmBookingItem) {
@@ -621,7 +623,7 @@ export function BookingEditor({
             </div>
           </div>
         </div>
-        <div className="flex gap-6 border-b border-[var(--border)]" role="tablist" aria-label="Parties du dossier">
+        <div className="flex gap-6 overflow-x-auto border-b border-[var(--border)]" role="tablist" aria-label="Parties du dossier">
           {tabs.map(([id, label]) => {
             const selected = tab === id;
             return (
@@ -631,7 +633,7 @@ export function BookingEditor({
                 role="tab"
                 aria-selected={selected}
                 onClick={() => setTab(id)}
-                className={`-mb-px border-b-2 pb-3 font-display text-sm font-semibold ${
+                className={`-mb-px shrink-0 whitespace-nowrap border-b-2 pb-3 font-display text-sm font-semibold ${
                   selected
                     ? "border-[var(--admin-gold)] text-[var(--admin-navy)]"
                     : "border-transparent text-muted hover:text-[var(--admin-navy)]"
@@ -1385,6 +1387,24 @@ export function BookingEditor({
             hasFlight={hasFlight}
           />
         </div>
+      ) : null}
+
+      {tab === "interface" ? (
+        <ClientInterfacePreview
+          booking={booking}
+          items={items}
+          documents={documents}
+          travelers={travelers}
+          identityDocs={identityDocs}
+          companions={companions}
+          customer={customer}
+          visaRequests={visaRequests}
+          refusals={refusals}
+          pliantReady={pliantReady}
+          shareUrl={shareUrl}
+          shareCompanions={shareCompanions}
+          billingCompanies={billingCompanies}
+        />
       ) : null}
     </div>
   );

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { CLIENT_PREVIEW_NOTE, useClientPreview } from "@/components/account/client-preview";
 import { FileOpenLink } from "@/components/crm/FileOpen";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { ReceivedVisasFold } from "@/components/crm/TripVisaUploads";
@@ -141,6 +142,7 @@ export function VisaJourney({
   showReceived?: boolean;
 }) {
   const router = useRouter();
+  const preview = useClientPreview();
   const [answers, setAnswers] = useState<Record<string, EstaAnswers>>({});
   const [picked, setPicked] = useState<Record<string, string[]>>({});
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -189,6 +191,10 @@ export function VisaJourney({
     const ids = selection(country);
     if (!agencyLaunchReady(country, current)) return;
     if (travelers.length && ids.length < 1) return;
+    if (preview) {
+      setError(CLIENT_PREVIEW_NOTE);
+      return;
+    }
     setBusy(country);
     setError(null);
     const visaUrl =
