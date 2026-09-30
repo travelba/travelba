@@ -23,12 +23,10 @@ export type CatalogSample = {
   modelName: string | null;
 };
 
-/** Un exemplaire de chaque message qui part. Pas les textes encore sans envoi. */
+/** Un exemplaire de chaque message du récapitulatif, y compris ceux encore sans déclencheur. */
 export function catalogSamples(): CatalogSample[] {
   return whatsappCatalog()
-    .filter((group) => group.id !== "attente")
     .flatMap((group) => group.messages)
-    .filter((message) => message.wired)
     .map((message) => ({
       id: message.id,
       body: message.bubble.body,
@@ -97,12 +95,12 @@ export async function sendCatalogSamples(
 
   const { data } = await admin.from("crm_integrations").select("id, extra").eq("provider", PROVIDER).maybeSingle();
   const extra = ((data?.extra || {}) as Extra) || {};
-  if (extra.done_at) return { skipped: "done" as const };
-  const live = await imageLive(`${siteConfig.url}/whatsapp/hotel.jpg`, fetchImpl);
-  if (!live) return { skipped: "images_offline" as const };
-
   const samples = catalogSamples();
   const sent: Record<string, string> = { ...(extra.sent || {}) };
+  const pending = samples.some((sample) => !sent[sample.id] || sent[sample.id] === "attente");
+  if (!pending) return { skipped: "done" as const };
+  const live = await imageLive(`${siteConfig.url}/whatsapp/hotel.jpg`, fetchImpl);
+  if (!live) return { skipped: "images_offline" as const };
   let sessionOpen: boolean | null = null;
   const mediaOk = new Map<string, boolean>();
 
