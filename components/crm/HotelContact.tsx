@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { hotelContact } from "@/lib/crm/hotel-contact";
+import { hotelContact, withoutHotelRoster } from "@/lib/crm/hotel-contact";
 import type { CrmBookingItem } from "@/lib/crm/types";
 import { Icon } from "@/components/crm/icons";
 
@@ -11,9 +11,18 @@ function personLabel(person: { type: string; first_name: string; last_name: stri
   return [person.type, name].filter(Boolean).join(" · ");
 }
 
-export function HotelContactButton({ item }: { item: CrmBookingItem }) {
+export function HotelContactButton({
+  item,
+  roster = true,
+}: {
+  item: CrmBookingItem;
+  /** Faux sur l’interface client : pas de liste, pas de compteur, pas d’e-mail de contact. */
+  roster?: boolean;
+}) {
   const [open, setOpen] = useState(false);
-  const contact = hotelContact(item);
+  const sheet = roster ? item : withoutHotelRoster(item);
+  const contact = hotelContact(sheet);
+  const people = roster ? contact.people : [];
   return (
     <>
       <button
@@ -26,13 +35,13 @@ export function HotelContactButton({ item }: { item: CrmBookingItem }) {
         }}
       >
         <Icon name="hotel" className="h-3.5 w-3.5" />
-        {contact.people.length
-          ? `Voir l’hôtel · ${contact.people.length} contact${contact.people.length > 1 ? "s" : ""}`
+        {people.length
+          ? `Voir l’hôtel · ${people.length} contact${people.length > 1 ? "s" : ""}`
           : "Voir l’hôtel"}
       </button>
-      {contact.people.length ? (
+      {people.length ? (
         <ul className="mt-2 space-y-1">
-          {contact.people.map((person, index) => (
+          {people.map((person, index) => (
             <li key={`${person.type}-${person.email}-${index}`} className="text-xs leading-snug text-[#0B192C]">
               <span className="font-semibold">{personLabel(person) || "Contact"}</span>
               {person.email ? (
@@ -48,7 +57,7 @@ export function HotelContactButton({ item }: { item: CrmBookingItem }) {
           ))}
         </ul>
       ) : null}
-      {open ? <HotelContactDialog item={item} onClose={() => setOpen(false)} /> : null}
+      {open ? <HotelContactDialog item={sheet} roster={roster} onClose={() => setOpen(false)} /> : null}
     </>
   );
 }
@@ -64,15 +73,18 @@ function Row({ label, children }: { label: string; children: string }) {
 
 export function HotelContactDialog({
   item,
+  roster = true,
   onClose,
 }: {
   item: CrmBookingItem;
+  roster?: boolean;
   onClose: () => void;
 }) {
   const titleId = useId();
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
-  const contact = hotelContact(item);
+  const contact = hotelContact(roster ? item : withoutHotelRoster(item));
+  const people = roster ? contact.people : [];
   const hasDetails = Boolean(
     contact.address ||
       contact.city ||
@@ -80,7 +92,7 @@ export function HotelContactDialog({
       contact.phone ||
       contact.email ||
       contact.website ||
-      contact.people.length
+      people.length
   );
 
   useEffect(() => {
@@ -131,10 +143,10 @@ export function HotelContactDialog({
           {contact.city ? <Row label="Ville">{contact.city}</Row> : null}
           {contact.country ? <Row label="Pays">{contact.country}</Row> : null}
           {contact.address ? <Row label="Adresse">{contact.address}</Row> : null}
-          {contact.people.length ? (
+          {people.length ? (
             <div className="space-y-3">
               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#C5A880]">Contacts</p>
-              {contact.people.map((person, index) => (
+              {people.map((person, index) => (
                 <div
                   key={`${person.type}-${person.email}-${person.last_name}-${index}`}
                   className="space-y-1 rounded-2xl border border-[#e5e3dc] px-3 py-2"
@@ -162,7 +174,7 @@ export function HotelContactDialog({
               ))}
             </div>
           ) : null}
-          {contact.phone && !contact.people.some((person) => person.phone === contact.phone) ? (
+          {contact.phone && !people.some((person) => person.phone === contact.phone) ? (
             <div>
               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#C5A880]">Téléphone</p>
               <a href={`tel:${contact.phone.replace(/\s/g, "")}`} className="text-sm font-semibold text-[#0B192C]">
@@ -170,7 +182,7 @@ export function HotelContactDialog({
               </a>
             </div>
           ) : null}
-          {contact.email && !contact.people.some((person) => person.email === contact.email) ? (
+          {contact.email && !people.some((person) => person.email === contact.email) ? (
             <div>
               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#C5A880]">E-mail</p>
               <a href={`mailto:${contact.email}`} className="text-sm font-semibold text-[#0B192C]">

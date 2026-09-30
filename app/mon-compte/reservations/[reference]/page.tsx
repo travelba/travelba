@@ -36,6 +36,7 @@ import { BookingHero } from "@/components/crm/BookingHero";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
+import { withoutHotelRosterItems } from "@/lib/crm/hotel-contact";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { TripSharePanel } from "@/components/account/TripSharePanel";
 import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
@@ -91,7 +92,7 @@ export default async function ReservationDetailPage({ params }: Props) {
 
   const rawItems = clientVisibleItems((items || []) as CrmBookingItem[]);
   if (!carnetVisible(b, rawItems)) notFound();
-  const visibleItems = await loadHotelContacts(b.id, rawItems);
+  const visibleItems = withoutHotelRosterItems(await loadHotelContacts(b.id, rawItems));
 
   const insurances = visibleItems.filter((item) => item.kind === "insurance");
   const visibleDocs = (docs || []) as CrmBookingDocument[];
@@ -189,7 +190,7 @@ export default async function ReservationDetailPage({ params }: Props) {
 
           <BookingHero
             booking={b}
-            items={items || []}
+            items={withoutHotelRosterItems((items || []) as CrmBookingItem[])}
             priority
             className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]"
           >

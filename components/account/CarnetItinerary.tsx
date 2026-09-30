@@ -11,6 +11,7 @@ import { Icon } from "@/components/crm/icons";
 import { BrandMark } from "@/components/crm/BrandMark";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
 import { HotelContactButton } from "@/components/crm/HotelContact";
+import { withoutHotelRoster } from "@/lib/crm/hotel-contact";
 import { flightGate, flightTerminal, flightWatchBadge } from "@/lib/crm/flight-watch";
 import {
   documentsForItem,
@@ -274,7 +275,7 @@ function CardBody({
     </details>
     {item.kind === "hotel" ? (
       <div className="px-3.5 pb-3">
-        <HotelContactButton item={item} />
+        <HotelContactButton item={withoutHotelRoster(item)} roster={false} />
       </div>
     ) : null}
     </div>
