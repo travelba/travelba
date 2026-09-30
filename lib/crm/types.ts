@@ -255,6 +255,8 @@ export type CrmBooking = {
   offer_chauffeur?: boolean;
   /** True : le VIP Airport est proposé dans cette réservation. Défaut : non. */
   offer_greeter?: boolean;
+  /** True : l’enregistrement est proposé dans cette réservation. Défaut : non. */
+  offer_checkin?: boolean;
   created_at: string;
   updated_at: string;
 };

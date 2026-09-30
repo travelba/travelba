@@ -9,6 +9,7 @@ import {
   extraAmount,
   extraFlightAt,
   extraNoticeOk,
+  checkinProposed,
   extraProposed,
   extraAgencyStatus,
   extraItemPayload,
@@ -220,6 +221,9 @@ test("chauffeur et VIP Airport ne sont pas proposés tant que l’agence ne les 
   assert.equal(extraProposed({ offer_chauffeur: false, offer_greeter: true }, "chauffeur"), false);
   assert.equal(extraProposed({ offer_chauffeur: true }, "chauffeur"), true);
   assert.equal(extraProposed({ offer_greeter: true }, "greeter"), true);
+  assert.equal(checkinProposed({}), false);
+  assert.equal(checkinProposed({ offer_checkin: false }), false);
+  assert.equal(checkinProposed({ offer_checkin: true }), true);
 });
 
 test("chauffeur et greeter seulement s’il y a un vol", () => {

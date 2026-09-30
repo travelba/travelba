@@ -206,6 +206,11 @@ export function extraProposed(
   return kind === "chauffeur" ? booking.offer_chauffeur === true : booking.offer_greeter === true;
 }
 
+/** Enregistrement : proposé au client seulement si l’agence l’active. Défaut : non. */
+export function checkinProposed(booking: { offer_checkin?: boolean | null }) {
+  return booking.offer_checkin === true;
+}
+
 type ServiceFlightRow = {
   id?: string;
   kind?: string | null;

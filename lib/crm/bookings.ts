@@ -49,6 +49,7 @@ const BOOKING_META_KEYS = [
   "client_settles_stay",
   "offer_chauffeur",
   "offer_greeter",
+  "offer_checkin",
 ] as const;
 
 /** Champs dossier envoyés par le formulaire admin. Dates vides = null, titre trimé. */
@@ -60,7 +61,13 @@ export function bookingMetaPatch(body: Record<string, unknown>) {
       patch[key] = parseIncludeInLedger(body[key], true);
       continue;
     }
-    if (key === "agency_commission" || key === "client_settles_stay" || key === "offer_chauffeur" || key === "offer_greeter") {
+    if (
+      key === "agency_commission" ||
+      key === "client_settles_stay" ||
+      key === "offer_chauffeur" ||
+      key === "offer_greeter" ||
+      key === "offer_checkin"
+    ) {
       patch[key] = parseIncludeInLedger(body[key], false);
       continue;
     }

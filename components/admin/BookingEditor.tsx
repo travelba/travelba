@@ -1196,6 +1196,7 @@ export function BookingEditor({
             bookingId={booking.id}
             chauffeur={booking.offer_chauffeur === true}
             greeter={booking.offer_greeter === true}
+            checkin={booking.offer_checkin === true}
             hasFlight={hasFlight}
           />
         </div>

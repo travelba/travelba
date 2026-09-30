@@ -6,6 +6,7 @@ import { IssuesList } from "@/components/crm/IssuesList";
 import { issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
 import {
   bookingHasFlight,
+  checkinProposed,
   CHECKIN_EUR,
   checkinFeeAmount,
   findCheckinExtra,
@@ -202,7 +203,9 @@ export function ExtrasPanel({
     !checkin && (hidden.includes("checkin") || isServiceRefused(refusals, { kind: "checkin" }));
   const visaGone = !visa && (hidden.includes("visa") || isServiceRefused(refusals, { kind: "visa" }));
   const showVisa = !formalities?.needsFormality && Boolean(visa) && !visaGone;
-  if (checkinGone && !showVisa) return null;
+  const showCheckin =
+    !isAdmin && !checkinGone && (checkinProposed(booking) || Boolean(checkin));
+  if (!showCheckin && !showVisa) return null;
 
   return (
     <section className="space-y-3">
@@ -211,11 +214,10 @@ export function ExtrasPanel({
           Services de l’agence
         </p>
         <h2 className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">À la carte</h2>
-        <p className="mt-1 text-sm text-muted">Enregistrement, par passager.</p>
+        {showCheckin ? <p className="mt-1 text-sm text-muted">Enregistrement, par passager.</p> : null}
       </div>
-      {checkinGone
-        ? null
-        : serviceCard({
+      {showCheckin
+        ? serviceCard({
             kind: "checkin",
             title: "Enregistrement",
             icon: "airplane_ticket",
@@ -223,7 +225,8 @@ export function ExtrasPanel({
             amount: checkinFeeAmount(passengers),
             count: passengers,
             existing: checkin,
-          })}
+          })
+        : null}
       {showVisa
         ? serviceCard({
             kind: "visa",
