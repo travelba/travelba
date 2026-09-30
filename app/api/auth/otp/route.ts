@@ -108,8 +108,8 @@ export async function POST(request: Request) {
       subject: `Votre lien de connexion ${siteConfig.shortName}`,
       html: agencyEmailHtml({
         title: "Votre lien de connexion",
-        preheader: "Le lien expire sous 24 heures.",
-        bodyHtml: `<p style="margin:0;line-height:1.5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#0B192C">Cliquez sur le bouton pour ouvrir votre espace. Le lien expire sous 24&nbsp;heures.</p>`,
+        preheader: "Votre espace personnel vous attend.",
+        bodyHtml: `<p style="margin:0;line-height:1.5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#0B192C">Cliquez sur le bouton pour ouvrir votre espace. Ce lien reste valable.</p>`,
         ctaLabel: "Me connecter",
         ctaHref: link,
         footnote: "Si vous n’êtes pas à l’origine de cette demande, ignorez cet e-mail.",
