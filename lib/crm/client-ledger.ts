@@ -104,14 +104,14 @@ export function shapeClientLedger(input: {
     };
   });
 
-  const { debits: scopedDebits } = postedLedgerTotals(scoped);
+  // Le pourcentage suit le wallet (séjour compris), pas la liste qui masque le montant global.
+  const { debits, settledPct } = postedLedgerTotals(scoped);
   const balanceValue = member
-    ? -scopedDebits
+    ? -debits
     : input.walletBalance == null
       ? 0
       : input.walletBalance;
   const currency = member ? scoped[0]?.currency || input.currency || "EUR" : input.currency || "EUR";
-  const { debits, settledPct } = postedLedgerTotals(shown);
   const remaining = Math.max(0, -balanceValue);
   const payerByBooking = new Map(
     input.bookings.map((booking) => [booking.id, booking.payer_kind ?? null] as const)

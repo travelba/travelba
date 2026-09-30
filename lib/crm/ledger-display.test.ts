@@ -12,6 +12,7 @@ import {
   isAgencyCommissionDebit,
   isFreeExpenseDebit,
   isStayRollupDebit,
+  isTicketingFeeDebit,
   ledgerMovementTitle,
   ledgerPlace,
   ledgerSubjectTitle,
@@ -110,6 +111,29 @@ test("la commission 10 % reste à côté du montant du séjour", () => {
   assert.deepEqual(
     visibleLedgerRows([stay, commission]).map((row) => row.id),
     ["stay", "fee"]
+  );
+});
+
+test("le frais de billeterie reste à côté du montant du séjour", () => {
+  const stay = {
+    id: "stay",
+    booking_id: "b1",
+    direction: "debit",
+    kind: "booking",
+    external_id: null,
+  };
+  const fee = {
+    id: "tickets",
+    booking_id: "b1",
+    direction: "debit",
+    kind: "adjustment",
+    external_id: "booking:b1:ticketing-fee",
+  };
+  assert.equal(isTicketingFeeDebit(fee), true);
+  assert.equal(coversStayRollup(fee), false);
+  assert.deepEqual(
+    visibleLedgerRows([stay, fee]).map((row) => row.id),
+    ["stay", "tickets"]
   );
 });
 

@@ -28,12 +28,18 @@ export function isAgencyCommissionDebit(row: { external_id?: string | null }) {
   return (row.external_id || "").endsWith(":agency-commission");
 }
 
-/** Une carte ou un frais du dossier couvre le montant global. Une dépense libre, non. */
+/** Frais de billeterie : s’ajoute au séjour, il ne le remplace pas. */
+export function isTicketingFeeDebit(row: { external_id?: string | null }) {
+  return (row.external_id || "").endsWith(":ticketing-fee");
+}
+
+/** Une carte du dossier couvre le montant global. Dépense libre, commission et billeterie, non. */
 export function coversStayRollup(row: LedgerKindRow & { booking_id?: string | null }) {
   if (!row.booking_id || row.direction !== "debit") return false;
   if (isStayRollupDebit(row)) return false;
   if (isFreeExpenseDebit(row)) return false;
   if (isAgencyCommissionDebit(row)) return false;
+  if (isTicketingFeeDebit(row)) return false;
   return true;
 }
 
