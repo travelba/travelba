@@ -11,6 +11,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import { isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
+import { loadClientLedger, type ClientLedgerView } from "@/lib/crm/client-ledger";
 import { syncStayCards } from "@/lib/crm/hotel-arrival-run";
 import { ensureHotelRequests } from "@/lib/crm/hotel-desk-run";
 import { principalGuest } from "@/lib/crm/hotel-arrival";
@@ -127,6 +128,15 @@ export default async function AdminBookingPage({ params }: Props) {
     }
   }
 
+  let ledger: ClientLedgerView | null = null;
+  if (customer) {
+    try {
+      ledger = await loadClientLedger(supabase, customer, "client");
+    } catch {
+      ledger = null;
+    }
+  }
+
   const le = ((leRows || [])[0] || null) as {
     id: string;
     hotel_name: string | null;
@@ -187,6 +197,7 @@ export default async function AdminBookingPage({ params }: Props) {
             extract?: unknown;
           }[]}
           littleEmperors={le}
+          ledger={ledger}
         />
   );
 }
