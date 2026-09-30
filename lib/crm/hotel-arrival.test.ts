@@ -27,6 +27,7 @@ import {
   quotedAmount,
   replyPaymentUrl,
   stayCardFace,
+  stayRevealNeedsAgencyCode,
   vipMail,
   type ArrivalTick,
 } from "./hotel-arrival";
@@ -314,6 +315,8 @@ test("carte visuelle : le début reste masqué, le code agence ne se devine pas 
     stayCardFace({ itemId: "item-1", hotel: "Le Bristol", holder: "Camille Martin", last4: "4242", closed: true }).last4,
     "4242"
   );
+  assert.equal(stayRevealNeedsAgencyCode("client"), false);
+  assert.equal(stayRevealNeedsAgencyCode("staff"), true);
   assert.equal(agencyCodeMatches("code-agence", "code-agence"), true);
   assert.equal(agencyCodeMatches("code-agence", "autre-code"), false);
   assert.equal(agencyCodeMatches("", "code-agence"), false);

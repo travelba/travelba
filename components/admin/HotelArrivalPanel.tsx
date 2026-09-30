@@ -105,6 +105,11 @@ function HotelArrivalRow({
     if (json) router.refresh();
   }
 
+  async function generateCard() {
+    const json = await post("issue");
+    if (json) router.refresh();
+  }
+
   const name = hotelDisplayName(item) || item.title;
   return (
     <article className="rounded-2xl border border-[#e5e3dc] p-4">
@@ -147,6 +152,11 @@ function HotelArrivalRow({
         </div>
       ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
+        {arrival?.pliant_card_id ? null : (
+          <button type="button" className="admin-af-btn rounded-full px-3 py-2 text-sm" disabled={busy === "issue"} onClick={() => void generateCard()}>
+            {busy === "issue" ? "…" : "Générer la carte"}
+          </button>
+        )}
         {arrival && arrival.channel !== "expedia" && arrival.status !== "vip_sent" && arrival.status !== "closed" ? (
           <button type="button" className="admin-af-btn rounded-full px-3 py-2 text-sm" disabled={busy === "paid"} onClick={markPaid}>
             Le règlement est fait

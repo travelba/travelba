@@ -16,6 +16,7 @@ const LINKS = [
   { href: "/admin/little-emperors", label: "Little Emperors", icon: "hotel" },
   { href: "/admin/transactions", label: "Transactions", icon: "account_balance" },
   { href: "/admin/revolut", label: "Revolut", icon: "sync_alt" },
+  { href: "/admin/pliant", label: "Pliant", icon: "credit_card" },
   { href: "/admin/outils", label: "Outils", icon: "build" },
 ];
 
