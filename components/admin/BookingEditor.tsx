@@ -475,18 +475,20 @@ export function BookingEditor({
   const leOpen =
     Boolean(littleEmperors) &&
     !["cancelled", "canceled"].includes((littleEmperors?.state || "").toLowerCase());
-  const showTodo = passportGap.length > 0 || hasHotel || hasFlight || leOpen;
+  const showTodo =
+    passportGap.length > 0 || hasHotel || hasFlight || (leOpen && Boolean(littleEmperors?.cancellation_deadline));
   if (tab === "todo" && !showTodo) setTab("voyage");
   const stayAmount = stayPriceWithExpenses({
     stayTotal: bookingTotalFromItems(items),
     agencyCommission: booking.agency_commission === true,
     expenses: items.filter((item) => isLedgerExpenseKind(item.kind)),
   });
+  const hasSteps = items.some((item) => !isLedgerExpenseKind(item.kind));
   const tabs = [
     ["voyage", "Le voyage"],
-    ["client", "Le client"],
-    ["argent", "L’argent"],
     ...(showTodo ? [["todo", "À faire"] as const] : []),
+    ["argent", "L’argent"],
+    ["client", "Le client"],
   ] as const;
 
   function cardName(item: CrmBookingItem) {
@@ -496,7 +498,7 @@ export function BookingEditor({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <header className="space-y-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex min-w-0 gap-4">
@@ -738,7 +740,7 @@ export function BookingEditor({
 
       <form id="booking-meta" onSubmit={save} className="contents">
         <div className="contents">
-          <section className={`admin-af-card space-y-3 rounded-3xl p-5 ${tab === "client" ? "" : "hidden"}`}>
+          <section className={`order-2 admin-af-card space-y-3 rounded-3xl p-5 ${tab === "client" ? "" : "hidden"}`}>
             <div className="grid gap-3 sm:grid-cols-2">
               <CustomerPickField
                 name="customer_id"
@@ -766,7 +768,7 @@ export function BookingEditor({
             ) : null}
           </section>
 
-          <section className={`admin-af-card space-y-3 rounded-3xl p-5 ${tab === "voyage" ? "" : "hidden"}`}>
+          <section className={`admin-af-card space-y-3 rounded-3xl p-5 ${hasSteps ? "order-3" : "order-2"} ${tab === "voyage" ? "" : "hidden"}`}>
             <CoverMark>Lieu et dates</CoverMark>
             <label className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
               Lieu
@@ -820,7 +822,7 @@ export function BookingEditor({
             </div>
           </section>
 
-          <section className={`admin-af-card space-y-3 rounded-3xl p-5 ${tab === "argent" ? "" : "hidden"}`}>
+          <section className={`order-2 admin-af-card space-y-3 rounded-3xl p-5 ${tab === "argent" ? "" : "hidden"}`}>
             <CoverMark>Règlement</CoverMark>
             <label className="flex max-w-[11rem] flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
               Devise
@@ -909,7 +911,7 @@ export function BookingEditor({
             )}
           </section>
 
-          <section className={`admin-af-card space-y-3 rounded-3xl p-5 ${tab === "client" ? "" : "hidden"}`}>
+          <section className={`order-3 admin-af-card space-y-3 rounded-3xl p-5 ${tab === "client" ? "" : "hidden"}`}>
             <label className="flex flex-col gap-2 rounded-3xl bg-[var(--admin-peach)] p-5 text-sm font-semibold text-[var(--admin-navy)] shadow-[inset_0_0_0_1px_rgba(197,168,128,0.45)]">
               <span className="flex flex-wrap items-baseline justify-between gap-2">
                 Notes pour l’agence
@@ -931,6 +933,7 @@ export function BookingEditor({
       </form>
       {tab === "voyage" ? (
         <>
+      <div className={hasSteps ? "order-4" : "order-1"}>
       <BookingIngest
         role="admin"
         mode="append"
@@ -941,11 +944,13 @@ export function BookingEditor({
         aiConfigured={aiConfigured}
         preserveTitle={booking.title}
       />
-      <form onSubmit={addDoc} className="admin-af-card flex flex-wrap items-center gap-3 rounded-3xl p-5">
+      </div>
+      <form onSubmit={addDoc} className={`admin-af-card flex flex-wrap items-center gap-3 rounded-3xl p-5 ${hasSteps ? "order-5" : "order-3"}`}>
         <p className="text-sm font-semibold text-[var(--admin-navy)]">Ou joindre une pièce sans la lire</p>
         <input name="file" type="file" required className="text-sm" />
         <button className="admin-af-btn rounded-full px-3 py-2 text-sm">Joindre</button>
       </form>
+      <div className={hasSteps ? "order-1" : "order-5"}>
       <BookingItemsPanel
         bookingId={booking.id}
         items={items}
@@ -966,18 +971,21 @@ export function BookingEditor({
           saveOpenCard.current = save;
         }}
       />
+      </div>
+      <div className={hasSteps ? "order-2" : "order-4"}>
       <ReservationFiles
         variant="admin"
         showPassports={false}
         attachments={attachmentPreviews(documents, items, booking.reference)}
         onRemoveAttachment={(file) => void removeDocument(file.id)}
       />
+      </div>
         </>
       ) : null}
 
       {tab === "client" ? (
         <>
-      <section className="admin-af-card space-y-4 rounded-3xl p-5">
+      <section className="order-1 admin-af-card space-y-4 rounded-3xl p-5">
         <div className="space-y-3">
           <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Voyageurs</h2>
           <TripPassportGroup
@@ -1051,19 +1059,21 @@ export function BookingEditor({
       </section>
 
       {shareUrl ? (
+        <div className="order-4">
         <TripSharePanel
           bookingId={booking.id}
           shareUrl={shareUrl}
           companions={shareCompanions}
           sendUrl={`/api/admin/bookings/${booking.id}/partage`}
         />
+        </div>
       ) : null}
         </>
       ) : null}
 
       {tab === "argent" ? (
         <>
-      <section className="admin-af-card space-y-2 rounded-3xl p-5">
+      <section className="order-1 admin-af-card space-y-2 rounded-3xl p-5">
         <p className="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold-dark)]">
           Montant du séjour
         </p>
@@ -1075,6 +1085,7 @@ export function BookingEditor({
         ) : null}
       </section>
 
+      <div className="order-3">
       <BookingExpensesPanel
         bookingId={booking.id}
         items={items}
@@ -1083,6 +1094,8 @@ export function BookingEditor({
         agencyCommission={booking.agency_commission === true}
         stayTotal={bookingTotalFromItems(items)}
       />
+      </div>
+      <div className="order-4">
       <StayBillingChoice
         endpoint="admin"
         bookingId={booking.id}
@@ -1096,6 +1109,7 @@ export function BookingEditor({
             billing_company_id: item.billing_company_id || null,
           }))}
       />
+      </div>
         </>
       ) : null}
 
@@ -1116,6 +1130,31 @@ export function BookingEditor({
               </Link>
             </section>
           ) : null}
+          {hasFlight && account ? (
+            <section className="admin-af-card space-y-4 rounded-3xl p-5">
+              <VisaSection
+                variant="admin"
+                bookingId={booking.id}
+                reference={booking.reference}
+                trip={formalities}
+                requests={visaRequests}
+                travelers={travelers}
+                documents={identityDocs}
+                visaBooked={Boolean(findVisaExtra(items))}
+                pliantReady={pliantReady}
+              />
+              <ExtrasPanel
+                variant="admin"
+                booking={booking}
+                items={items}
+                travelers={travelers}
+                holder={account}
+                companions={companions}
+                formalities={formalities}
+                refusals={refusals}
+              />
+            </section>
+          ) : null}
           {hotelDeskCount > 0 ? (
             <section className="admin-af-card flex flex-wrap items-center justify-between gap-3 rounded-3xl p-5">
               <p className="font-display text-lg font-bold text-[var(--admin-navy)]">
@@ -1125,6 +1164,16 @@ export function BookingEditor({
                 Voir l’étape
               </button>
             </section>
+          ) : null}
+          {leOpen && littleEmperors?.cancellation_deadline ? (
+            <LittleEmperorsCancel
+              id={littleEmperors.id}
+              hotelName={littleEmperors.hotel_name}
+              isCancellable={littleEmperors.is_cancellable}
+              deadline={littleEmperors.cancellation_deadline}
+              policies={littleEmperors.cancellation_policies || []}
+              state={littleEmperors.state}
+            />
           ) : null}
           {hasHotel ? (
             <section className="admin-af-card space-y-3 rounded-3xl p-5">
@@ -1155,41 +1204,6 @@ export function BookingEditor({
                   currency={booking.currency}
                 />
               ) : null}
-            </section>
-          ) : null}
-          {leOpen && littleEmperors ? (
-            <LittleEmperorsCancel
-              id={littleEmperors.id}
-              hotelName={littleEmperors.hotel_name}
-              isCancellable={littleEmperors.is_cancellable}
-              deadline={littleEmperors.cancellation_deadline}
-              policies={littleEmperors.cancellation_policies || []}
-              state={littleEmperors.state}
-            />
-          ) : null}
-          {hasFlight && account ? (
-            <section className="admin-af-card space-y-4 rounded-3xl p-5">
-              <VisaSection
-                variant="admin"
-                bookingId={booking.id}
-                reference={booking.reference}
-                trip={formalities}
-                requests={visaRequests}
-                travelers={travelers}
-                documents={identityDocs}
-                visaBooked={Boolean(findVisaExtra(items))}
-                pliantReady={pliantReady}
-              />
-              <ExtrasPanel
-                variant="admin"
-                booking={booking}
-                items={items}
-                travelers={travelers}
-                holder={account}
-                companions={companions}
-                formalities={formalities}
-                refusals={refusals}
-              />
             </section>
           ) : null}
           <ServiceOfferToggles
