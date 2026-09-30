@@ -291,4 +291,15 @@ test("la réservation client liste les frais d’agence puis les dépenses libre
   });
   assert.equal(ticketing[0]?.title, TICKETING_FEE_LABEL);
   assert.equal(ticketing[0]?.amountLabel, formatMoney(25, "EUR"));
+  const four = clientStayExpenseLines({
+    expenses: [],
+    agencyCommission: false,
+    stayTotal: 0,
+    currency: "EUR",
+    pricesVisible: true,
+    ticketingFee: 100,
+    ticketCount: 4,
+  });
+  assert.equal(four[0]?.title, "Frais de billeterie (4 billets)");
+  assert.equal(four[0]?.amountLabel, formatMoney(100, "EUR"));
 });

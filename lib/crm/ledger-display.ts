@@ -1,6 +1,6 @@
 import { HIDDEN_PRICE_LABEL } from "@/lib/crm/carnet";
 import { agencyFeeFromGross, formatMoney } from "@/lib/crm/money";
-import { TICKETING_FEE_LABEL } from "@/lib/crm/ticketing-fee";
+import { ticketingFeeLabel } from "@/lib/crm/ticketing-fee";
 import { AGENCY_FEE_LABEL, visibleServiceCopy } from "@/lib/crm/types";
 
 type LedgerKindRow = {
@@ -136,6 +136,7 @@ export function clientStayExpenseLines(input: {
   currency: string;
   pricesVisible: boolean;
   ticketingFee?: number;
+  ticketCount?: number;
 }): ClientExpenseLine[] {
   const lines: ClientExpenseLine[] = [];
   if (input.agencyCommission) {
@@ -149,7 +150,7 @@ export function clientStayExpenseLines(input: {
   if (Number.isFinite(ticketing) && ticketing > 0) {
     lines.push({
       id: "ticketing-fee",
-      title: TICKETING_FEE_LABEL,
+      title: ticketingFeeLabel(input.ticketCount),
       amountLabel: expenseAmountLabel(ticketing, input.currency, input.pricesVisible),
     });
   }

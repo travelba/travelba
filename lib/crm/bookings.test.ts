@@ -272,7 +272,7 @@ test("quand le client règle le séjour, le montant et l’hôtel sortent du liv
     agencyCommissionAmount({ enabled: true, status: "confirmed", totalAmount: 1700 }),
     170
   );
-  assert.equal(ticketingFeeAmount({ hasFlight: true, travelerCount: 2 }), 25);
+  assert.equal(ticketingFeeAmount({ hasFlight: true, travelerCount: 4 }), 100);
   assert.equal(
     stayIncludedInLedger({ include_in_ledger: true, client_settles_stay: false }),
     true
