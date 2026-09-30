@@ -9,14 +9,14 @@ export function ServiceDesk({ lines }: { lines: ServiceDeskLine[] }) {
       <ul className="mt-2 divide-y divide-border text-sm">
         {lines.map((line) => (
           <li key={line.itemId} className="py-3">
-            <span className="min-w-0 break-words">
+            <p className="font-semibold text-[var(--admin-navy)]">
               {line.holderName} ·{" "}
-              <Link href={`/admin/reservations/${line.bookingId}`} className="font-semibold underline">
+              <Link href={`/admin/reservations/${line.bookingId}`} className="underline">
                 {line.reference}
               </Link>{" "}
               · {line.kindLabel}
-              {line.detail ? ` · ${line.detail}` : ""}
-            </span>
+            </p>
+            {line.detail ? <p className="mt-1 break-words text-muted">{line.detail}</p> : null}
           </li>
         ))}
       </ul>

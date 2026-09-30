@@ -7,7 +7,7 @@ import { Icon } from "@/components/crm/icons";
 import { IssuesList } from "@/components/crm/IssuesList";
 import { issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
 import { HIDDEN_PRICE_LABEL, kindIcon } from "@/lib/crm/carnet";
-import { extraAgencyStatus, serviceClock, type ServiceOffer } from "@/lib/crm/extras";
+import { extraAgencyStatus, serviceClock, storedTransferAddresses, type ServiceOffer } from "@/lib/crm/extras";
 import { formatMoney } from "@/lib/crm/money";
 import { BOOKING_ITEM_LABELS, type CrmBookingItem } from "@/lib/crm/types";
 
@@ -20,8 +20,7 @@ export function ServiceOfferCard({
   price,
   currency,
   locked,
-  addressLabel,
-  initialAddress,
+  homeAddress,
   detail,
   pricesVisible = true,
 }: {
@@ -33,24 +32,23 @@ export function ServiceOfferCard({
   price: number;
   currency: string;
   locked: boolean;
-  addressLabel?: string | null;
-  initialAddress?: string | null;
+  homeAddress?: string | null;
   detail?: string | null;
   pricesVisible?: boolean;
 }) {
   const router = useRouter();
-  const [address, setAddress] = useState(initialAddress || "");
-  const [busy, setBusy] = useState<"validate" | "cancel" | "confirm" | null>(null);
+  const saved =
+    offer.kind === "chauffeur" ? storedTransferAddresses(offer, homeAddress, existing?.details) : { depart: "", arrive: "" };
+  const [depart, setDepart] = useState(saved.depart);
+  const [arrive, setArrive] = useState(saved.arrive);
+  const [busy, setBusy] = useState<"validate" | "cancel" | "confirm" | "save" | null>(null);
   const [gone, setGone] = useState(false);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
   const isAdmin = variant === "admin";
   const clock = serviceClock(offer.whenIso);
   const kindLabel = BOOKING_ITEM_LABELS[offer.kind];
-  const pickup =
-    existing && offer.kind === "chauffeur" && existing.details?.pickup
-      ? String(existing.details.pickup)
-      : "";
   const confirmed = existing ? extraAgencyStatus(existing) === "confirmed" : false;
+  const addressesDirty = depart.trim() !== saved.depart || arrive.trim() !== saved.arrive;
   const statusLabel = !existing
     ? locked
       ? "Jusqu’à 48 h avant le vol"
@@ -60,9 +58,22 @@ export function ServiceOfferCard({
       : "En attente de confirmation";
   const priceLabel = pricesVisible ? formatMoney(price, currency) : HIDDEN_PRICE_LABEL;
 
+  function addressBody(addresses = false) {
+    return {
+      kind: offer.kind,
+      leg: offer.leg,
+      place: offer.place,
+      moment: offer.moment,
+      depart: offer.kind === "chauffeur" ? depart.trim() : null,
+      arrive: offer.kind === "chauffeur" ? arrive.trim() : null,
+      address: offer.kind === "chauffeur" ? depart.trim() : null,
+      addresses,
+    };
+  }
+
   async function request() {
-    if (offer.kind === "chauffeur" && !address.trim()) {
-      setIssues([{ field: "address", message: "Indiquez l’adresse." }]);
+    if (offer.kind === "chauffeur" && (!depart.trim() || !arrive.trim())) {
+      setIssues([{ field: "address", message: "Indiquez l’adresse de départ et l’adresse d’arrivée." }]);
       return;
     }
     setBusy("validate");
@@ -74,13 +85,7 @@ export function ServiceOfferCard({
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        kind: offer.kind,
-        leg: offer.leg,
-        place: offer.place,
-        moment: offer.moment,
-        address: offer.kind === "chauffeur" ? address : null,
-      }),
+      body: JSON.stringify(addressBody()),
     });
     const json = await res.json().catch(() => ({}));
     setBusy(null);
@@ -143,6 +148,31 @@ export function ServiceOfferCard({
     router.refresh();
   }
 
+  async function saveAddresses() {
+    if (!existing || busy || confirmed || offer.kind !== "chauffeur") return;
+    if (!depart.trim() || !arrive.trim()) {
+      setIssues([{ field: "address", message: "Indiquez l’adresse de départ et l’adresse d’arrivée." }]);
+      return;
+    }
+    setBusy("save");
+    setIssues([]);
+    const res = await fetch(
+      isAdmin ? `/api/admin/bookings/${bookingId}/extras` : `/api/client/bookings/${reference}/extras`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(addressBody(true)),
+      }
+    );
+    const json = await res.json().catch(() => ({}));
+    setBusy(null);
+    if (!res.ok) {
+      setIssues(issuesFromResponse(json));
+      return;
+    }
+    router.refresh();
+  }
+
   async function confirm() {
     if (!existing || !isAdmin || busy || confirmed) return;
     setBusy("confirm");
@@ -193,6 +223,16 @@ export function ServiceOfferCard({
       if (confirmed) return null;
       return (
         <span className="inline-flex items-center gap-2">
+          {offer.kind === "chauffeur" && addressesDirty ? (
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void saveAddresses()}
+              className="inline-flex h-5 items-center justify-center rounded-full bg-[var(--admin-navy)] px-2.5 text-[11px] font-semibold leading-none text-white disabled:opacity-50"
+            >
+              {busy === "save" ? "…" : "Enregistrer"}
+            </button>
+          ) : null}
           {isAdmin ? (
             <button
               type="button"
@@ -250,19 +290,15 @@ export function ServiceOfferCard({
             {clock ? ` · ${clock}` : ""}
           </p>
           <p className="break-words text-sm font-semibold leading-snug text-[var(--admin-navy)]">{offer.route}</p>
-          <p className="truncate text-xs text-muted">
-            {!existing && addressLabel ? (
-              <input
-                value={address}
-                onChange={(event) => setAddress(event.target.value)}
-                aria-label={addressLabel}
-                placeholder={addressLabel}
-                className="min-w-0 w-full truncate border-0 bg-transparent p-0 text-xs text-muted outline-none placeholder:text-muted"
-              />
-            ) : (
-              [pickup, detail, offer.flightLine].filter(Boolean).join(" · ")
-            )}
-          </p>
+          {offer.kind === "chauffeur" ? (
+            <div className="mt-2 grid gap-2">
+              <AddressLine label="Départ" value={depart} onChange={setDepart} readOnly={confirmed} />
+              <AddressLine label="Arrivée" value={arrive} onChange={setArrive} readOnly={confirmed} />
+              {offer.flightLine ? <p className="text-xs text-muted">{offer.flightLine}</p> : null}
+            </div>
+          ) : (
+            <p className="truncate text-xs text-muted">{[detail, offer.flightLine].filter(Boolean).join(" · ")}</p>
+          )}
           <p className="mt-1 flex items-center justify-between gap-2 sm:hidden">
             <span className="text-sm font-bold text-[var(--admin-navy)]">{priceLabel}</span>
             {controls()}
@@ -276,7 +312,15 @@ export function ServiceOfferCard({
       {busy ? (
         <div className="px-3.5 pb-3">
           <BusyBar
-            label={busy === "cancel" ? "Annulation…" : busy === "confirm" ? "Confirmation…" : "Validation…"}
+            label={
+              busy === "cancel"
+                ? "Annulation…"
+                : busy === "confirm"
+                  ? "Confirmation…"
+                  : busy === "save"
+                    ? "Enregistrement…"
+                    : "Validation…"
+            }
           />
         </div>
       ) : null}
@@ -286,5 +330,79 @@ export function ServiceOfferCard({
         </div>
       ) : null}
     </article>
+  );
+}
+
+function AddressLine({
+  label,
+  value,
+  onChange,
+  readOnly,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  readOnly: boolean;
+}) {
+  const [hints, setHints] = useState<string[]>([]);
+
+  async function search(query: string) {
+    onChange(query);
+    if (query.trim().length < 3) {
+      setHints([]);
+      return;
+    }
+    try {
+      const res = await fetch(
+        `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=5`
+      );
+      const json = (await res.json()) as { features?: { properties?: { label?: string } }[] };
+      setHints(
+        (json.features || [])
+          .map((feature) => feature.properties?.label || "")
+          .filter((hint, index, all) => Boolean(hint) && all.indexOf(hint) === index)
+      );
+    } catch {
+      setHints([]);
+    }
+  }
+
+  return (
+    <label className="block min-w-0">
+      <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9e7e51]">{label}</span>
+      {readOnly ? (
+        <p className="mt-1 break-words text-sm text-[var(--admin-navy)]">{value || "—"}</p>
+      ) : (
+        <div className="relative mt-1">
+          <input
+            value={value}
+            onChange={(event) => void search(event.target.value)}
+            aria-label={label}
+            placeholder={`Adresse de ${label.toLowerCase()}`}
+            autoComplete="street-address"
+            className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-[var(--admin-navy)] outline-none focus:border-[var(--admin-navy)]"
+          />
+          {hints.length ? (
+            <ul className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-border bg-white py-1 shadow-lg">
+              {hints.map((hint) => (
+                <li key={hint}>
+                  <button
+                    type="button"
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-[var(--admin-sky)]"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      onChange(hint);
+                      setHints([]);
+                    }}
+                  >
+                    {hint}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      )}
+    </label>
   );
 }

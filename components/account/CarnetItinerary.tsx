@@ -354,16 +354,7 @@ export function CarnetItinerary({
         currency={booking.currency}
         pricesVisible={pricesVisible}
         locked={services.variant === "client" && !extraNoticeOk(at, now)}
-        addressLabel={
-          offer.kind === "chauffeur"
-            ? offer.place === "hotel"
-              ? "Adresse de l’hôtel"
-              : offer.leg === "arrival"
-                ? "Adresse de dépôt"
-                : "Adresse de prise en charge"
-            : null
-        }
-        initialAddress={offer.place === "hotel" ? offer.address : homeAddress}
+        homeAddress={homeAddress}
         detail={detail}
       />
     );

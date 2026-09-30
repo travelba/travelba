@@ -8,6 +8,7 @@ import {
   createBookingExtra,
   declineBookingService,
   parseExtraRequest,
+  updateTransferAddresses,
 } from "@/lib/crm/extras-write";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmBooking, CrmBookingItem, CrmBookingTraveler, CrmCompanion, CrmCustomer } from "@/lib/crm/types";
@@ -47,6 +48,20 @@ export async function POST(request: Request, ctx: Ctx) {
       });
       return NextResponse.json(cancelled);
     }
+    if (body?.addresses === true) {
+      if (extra.kind !== "chauffeur") {
+        return jsonError("Seule l’adresse d’un transfert se modifie ainsi.");
+      }
+      const updated = await updateTransferAddresses(admin, {
+        booking: b,
+        items: list,
+        leg: extra.leg,
+        place: extra.place,
+        departAddress: extra.depart || "",
+        arriveAddress: extra.arrive || "",
+      });
+      return NextResponse.json(updated);
+    }
     if (body?.decline === true) {
       const declined = await declineBookingService(admin, {
         booking: b,
@@ -76,6 +91,8 @@ export async function POST(request: Request, ctx: Ctx) {
       place: extra.place,
       moment: extra.moment,
       address: extra.address,
+      departAddress: extra.depart,
+      arriveAddress: extra.arrive,
       enforceWindow: true,
     });
     return NextResponse.json(created);

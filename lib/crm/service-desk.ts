@@ -115,9 +115,21 @@ function lineDetail(item: ServiceDeskItem, siblings: ServiceDeskItem[], now: Dat
       (row.moment || null) === moment
   );
   if (item.kind === "chauffeur") {
-    const pickup = typeof item.details?.pickup === "string" ? item.details.pickup : offer?.address;
+    const text = (key: string) => {
+      const value = item.details?.[key];
+      return typeof value === "string" && value.trim() ? value.trim() : "";
+    };
+    const pickup = text("pickup") || offer?.address || "";
+    const dropAtHome = place === "home" && leg === "arrival";
+    const depart = text("depart_address") || (dropAtHome ? offer?.airport || "" : pickup);
+    const arrive = text("arrive_address") || (dropAtHome ? pickup : offer?.airport || "");
     return {
-      detail: joinDetail([offer?.route || item.title, pickup, offer?.flightLine]),
+      detail: joinDetail([
+        offer?.route || item.title,
+        depart ? `Départ ${depart}` : null,
+        arrive ? `Arrivée ${arrive}` : null,
+        offer?.flightLine,
+      ]),
       later: false,
       sortAt: item.start_at || offer?.whenIso || "",
     };

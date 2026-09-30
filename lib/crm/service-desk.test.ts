@@ -79,7 +79,8 @@ test("la file reprend transfert, VIP et enregistrement encore ouverts", () => {
   assert.equal(lines[0].holderName, "Ada Martin");
   assert.equal(lines[0].reference, "TB-1");
   assert.match(lines[0].detail, /Domicile → ORY/);
-  assert.match(lines[0].detail, /12 rue de Rivoli, Paris/);
+  assert.match(lines[0].detail, /Départ 12 rue de Rivoli, Paris/);
+  assert.match(lines[0].detail, /Arrivée ORY · Paris/);
   assert.match(lines[0].detail, /Vol TO 3458/);
   assert.match(lines[1].detail, /ORY · Paris/);
   assert.match(lines[1].detail, /départ/);
