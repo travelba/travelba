@@ -120,7 +120,7 @@ test("si rien n’est arrivé sur le téléphone, le modèle approuvé part", as
       templates.push(input.contentSid);
       return { ok: true, sid: "SM2" };
     },
-    async () => ({ total: 40, delivered: 0, errors: ["63016"], statuses: { undelivered: 40 } })
+    async () => ({ total: 50, delivered: 5, errors: ["63016"], statuses: { read: 5, undelivered: 45 } })
   );
   assert.equal(sessions, 0);
   assert.ok(templates.includes("HXconnexion"));
