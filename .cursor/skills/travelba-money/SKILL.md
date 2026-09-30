@@ -16,7 +16,7 @@ Vue `crm_customer_balances` = somme crédits `posted` − débits `posted` (par 
 
 - Positif = avoir / **crédit disponible**
 - Négatif = reste à payer
-- Le grand livre stocke le signe. Dans **Transactions**, l’encours affiché est la **somme due** (positive), puis la répartition **Société** / **Particulier**. Les deux parts additionnent cette somme. Un avoir reste un montant positif, sans répartition.
+- Le grand livre stocke le signe. Dans **Transactions**, la carte d’origine affiche ce signe (encours, barre, mouvements). Le « % réglé » compte tous les débits postés. Le règlement Société / Particulier se place sous la barre, sans remplacer la carte ni le solde signé.
 
 **Commission 10 %** (`AGENCY_FEE_RATE`, case `agency_commission` sur le voyage, défaut **false**) : si cochée, `syncAgencyCommission` poste un débit `kind=adjustment` `external_id=booking:{id}:agency-commission`, libellé « Frais d’agence 10 % », égal à 10 % du **montant du séjour** (somme des prix vendus). Elle s’ajoute aux dépenses : elle ne retire pas le montant global du séjour et n’entre pas dans le total stocké. Le prix affiché du séjour l’ajoute, avec les dépenses libres. Elle reste hors carnet. Postée seulement si le dossier est confirmé, en voyage ou terminé. Décocher ou annuler → `void` (ou suppression des débits à l’annulation). Le virement Revolut est crédité **en entier** — plus de débit `{revolut_id}:agency-fee` au rapprochement. Les lignes historiques restent. Le crédit disponible est l’avoir positif du grand livre.
 
@@ -30,7 +30,7 @@ PDF relevé = bouton **Demander un relevé** (`mailto:`), **pas** de génératio
 
 `syncBookingDebit` (`lib/crm/bookings.ts`) :
 
-- Le grand livre client liste les **dépenses** (carte, frais de billeterie, chauffeur), pas la ligne « Réservation … ». Sous chaque dépense liée à un dossier : « Dans le cadre de {titre} ». Le montant global du séjour (`external_id` null) est retiré dès qu’une dépense du même dossier est postée (`dropCoveredStayRollup`).
+- Le grand livre client liste les **dépenses** (carte, frais de billeterie, chauffeur), pas la ligne « Réservation … ». Sous chaque dépense liée à un dossier : « Dans le cadre de {titre} ». Le montant global du séjour (`external_id` null) est retiré dès qu’une **carte** du même dossier est postée (`dropCoveredStayRollup`). Le frais de billeterie, la commission 10 % et la dépense libre ne le retirent pas. Le « % réglé » compte **tous** les débits postés du wallet, y compris un séjour encore au livre : la liste peut masquer ce séjour, la barre non.
 - Crée / met à jour un débit `kind=booking` si statut `confirmed` \| `travelling` \| `completed`, `total_amount > 0` **et** `include_in_ledger` (défaut **true**), seulement tant qu’aucune dépense du dossier n’est au livre
 - `cancelled` → supprime les **débits** `booking_id` (plus au grand livre). Les crédits et les virements Revolut restent rapprochés.
 - `total_amount <= 0` **ou** `include_in_ledger=false` alors qu’un débit ouvert existe → `void` ce débit seulement
@@ -45,7 +45,7 @@ PDF relevé = bouton **Demander un relevé** (`mailto:`), **pas** de génératio
 - Import `document_status=confirmed` : `bookingStatusFromExtract` → **confirmed** (même si `from-ingest` envoie `draft`) pour que le débit parte. Toujours `visible_to_client=false` jusqu’à Publier.
 - `customer_id` du débit = `booking.billing_customer_id` (payeur / wallet), pas forcément le voyageur
 - **Plusieurs sociétés** (`crm_billing_companies`) : attribution `billing_company_id` sur le séjour, la dépense et la ligne du livre. La vue `crm_customer_balances` reste un seul solde (crédits − débits `posted`). La répartition Société / Particulier est une lecture de ce solde, pas un second wallet. Transactions : libellé société **seulement** si le compte en a au moins deux. Une seule société → le nom suit « Société » dans la répartition.
-- `syncTicketingFee` : **25 € par passager** du dossier (`crm_booking_travelers`), dès qu’il y a un vol. Paris, 4 billets = 100 €. Plusieurs segments du même voyageur ne multiplient pas. Sans voyageur nommé : 25 €. Débit `external_id=booking:{id}:ticketing-fee`, libellé « Frais de billeterie (4 billets) ». Void si plus de vol ou dossier annulé.
+- `syncTicketingFee` : **25 € par passager** du dossier (`crm_booking_travelers`), dès qu’il y a un vol. Paris, 4 billets = 100 €. Plusieurs segments du même voyageur ne multiplient pas. Sans voyageur nommé : 25 €. Débit `external_id=booking:{id}:ticketing-fee`, libellé « Frais de billeterie (4 billets) ». Il s’ajoute au séjour, il ne le remplace pas. Void si plus de vol ou dossier annulé.
 - **Commission 10 %** : case du dossier, pas du virement. Voir encours ci-dessus. Assiette = `total_amount`, hors frais de billeterie, extras et dépenses libres.
 
 Ajustements / remboursements : lignes manuelles admin `kind=adjustment|refund`.

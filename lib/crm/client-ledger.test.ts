@@ -176,10 +176,9 @@ test("la société est absente du mouvement s’il n’y en a qu’une", () => {
   assert.equal(view.movements[0].companyLabel, null);
   const html = renderToStaticMarkup(createElement(ClientTransactionsPanel, { view }));
   assert.match(html, /Encours/);
-  assert.match(html, /Somme de ce que vous devez/);
-  assert.match(html, /Répartition/);
-  assert.match(html, /Société · Atelier/);
-  assert.match(html, /Particulier/);
+  assert.ok(html.includes(formatMoney(-40, "EUR")));
+  assert.equal(html.includes("Somme de ce que vous devez"), false);
+  assert.equal(html.includes("Répartition"), false);
   assert.equal(html.includes("Régler ce voyage"), false);
 });
 
@@ -217,4 +216,140 @@ test("la société est précisée quand le compte en a plusieurs", () => {
   assert.equal(view.balanceValue, 35);
   assert.equal(view.movements[0].companyLabel, null);
   assert.equal(view.movements[1].companyLabel, "Bureau");
+});
+
+test("le pourcentage réglé compte le séjour encore au livre", () => {
+  const view = shapeClientLedger({
+    companyRole: null,
+    travelerBookingIds: ["b1"],
+    walletBalance: -20732.04,
+    currency: "EUR",
+    audience: "staff",
+    bookings: [{ ...booking, reference: "TB-2026-0038" }],
+    rows: [
+      tx({ id: "c1", direction: "credit", kind: "transfer", amount: 4230.25, label: "Virement" }),
+      tx({ id: "c2", direction: "credit", kind: "transfer", amount: 10000, label: "Virement" }),
+      tx({
+        id: "stay",
+        direction: "debit",
+        kind: "booking",
+        amount: 33737.29,
+        booking_id: "b1",
+        label: "Réservation",
+      }),
+      tx({
+        id: "hotel-fee",
+        direction: "debit",
+        kind: "booking",
+        amount: 20,
+        booking_id: "b1",
+        external_id: "booking:b1:expense:h",
+        label: "Dépense hôtel",
+      }),
+      tx({
+        id: "air-fee",
+        direction: "debit",
+        kind: "booking",
+        amount: 459,
+        booking_id: "b1",
+        external_id: "booking:b1:expense:a",
+        label: "Dépense billeterie",
+      }),
+      tx({
+        id: "tickets",
+        direction: "debit",
+        kind: "adjustment",
+        amount: 50,
+        booking_id: "b1",
+        external_id: "booking:b1:ticketing-fee",
+        label: "Frais de billeterie (2 billets)",
+      }),
+      tx({
+        id: "flight",
+        direction: "debit",
+        kind: "booking",
+        amount: 696,
+        booking_id: "b1",
+        external_id: "booking:b1:item:f",
+        label: "Vol",
+      }),
+    ],
+  });
+
+  assert.equal(
+    view.movements.some((row) => row.id === "stay"),
+    false
+  );
+  assert.equal(view.remaining, 20732.04);
+  assert.equal(view.remainingPct, 59);
+  assert.equal(view.owed.total, 20732.04);
+  const html = renderToStaticMarkup(createElement(ClientTransactionsPanel, { view }));
+  assert.match(html, /41% réglé/);
+  assert.equal(html.includes("100% réglé"), false);
+  assert.ok(html.includes(formatMoney(-20732.04, "EUR")));
+  assert.equal(html.includes("Somme de ce que vous devez"), false);
+  assert.equal(html.includes("Répartition"), false);
+});
+
+test("sans la carte en double, le séjour réapparaît et le pourcentage suit le solde", () => {
+  const view = shapeClientLedger({
+    companyRole: null,
+    travelerBookingIds: ["b1"],
+    walletBalance: -20036.04,
+    currency: "EUR",
+    audience: "client",
+    bookings: [{ ...booking, reference: "TB-2026-0038", visible_to_client: true }],
+    rows: [
+      tx({ id: "c1", direction: "credit", kind: "transfer", amount: 4230.25, label: "Virement" }),
+      tx({ id: "c2", direction: "credit", kind: "transfer", amount: 10000, label: "Virement" }),
+      tx({
+        id: "stay",
+        direction: "debit",
+        kind: "booking",
+        amount: 33737.29,
+        booking_id: "b1",
+        label: "Réservation TB-2026-0038",
+      }),
+      tx({
+        id: "hotel-fee",
+        direction: "debit",
+        kind: "booking",
+        amount: 20,
+        booking_id: "b1",
+        external_id: "booking:b1:expense:h",
+        label: "Dépense hôtel",
+      }),
+      tx({
+        id: "air-fee",
+        direction: "debit",
+        kind: "booking",
+        amount: 459,
+        booking_id: "b1",
+        external_id: "booking:b1:expense:a",
+        label: "Dépense billeterie",
+      }),
+      tx({
+        id: "tickets",
+        direction: "debit",
+        kind: "adjustment",
+        amount: 50,
+        booking_id: "b1",
+        external_id: "booking:b1:ticketing-fee",
+        label: "Frais de billeterie (2 billets)",
+      }),
+    ],
+  });
+
+  assert.equal(view.movements.some((row) => row.id === "stay"), true);
+  assert.equal(view.movements.find((row) => row.id === "stay")?.title, "Séjour");
+  assert.equal(view.remaining, 20036.04);
+  assert.equal(view.remainingPct, 58);
+  assert.equal(view.owed.total, 20036.04);
+  const html = renderToStaticMarkup(createElement(ClientTransactionsPanel, { view }));
+  assert.match(html, /42% réglé/);
+  assert.equal(html.includes("100% réglé"), false);
+  assert.ok(html.includes(formatMoney(-20036.04, "EUR")));
+  assert.match(html, /Séjour/);
+  assert.match(html, /TB-2026-0038/);
+  assert.equal(html.includes("Répartition"), false);
 });

@@ -43,8 +43,14 @@ export function LedgerMovements({ rows }: { rows: LedgerMovementRow[] }) {
                     {row.title}
                   </span>
                   <span className="mt-0.5 block text-[13px] leading-snug text-muted">
-                    {row.whenWhere || row.occurredLabel}
+                    {row.occurredLabel}
                   </span>
+                  {row.whenWhere ? (
+                    <span className="mt-0.5 block text-[13px] leading-snug text-muted">{row.whenWhere}</span>
+                  ) : null}
+                  {row.reference && !row.title.includes(row.reference) ? (
+                    <span className="mt-0.5 block text-[13px] leading-snug text-muted">{row.reference}</span>
+                  ) : null}
                   {row.companyLabel ? (
                     <span className="mt-0.5 block text-[13px] leading-snug text-[var(--admin-navy)]">
                       Facturé à {row.companyLabel}
