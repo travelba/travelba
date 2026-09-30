@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   annotatePliantPayload,
   mapPliantTransaction,
+  pliantCardDisplay,
   pliantSignedCents,
   pliantStayForCard,
   pliantSyncSummary,
@@ -65,6 +66,9 @@ test("le détail Pliant nomme le commerçant, la carte et le porteur", () => {
   assert.equal(mapped.raw.pan, undefined);
   assert.equal(mapped.card_last4, "0641");
   assert.equal(mapPliantTransaction({ transactionId: "tx-3", cardLast4: "12345" })?.card_last4, null);
+  assert.deepEqual(pliantCardDisplay("Slimane", "0641"), { label: "Slimane", number: "•••• 0641" });
+  assert.deepEqual(pliantCardDisplay(null, "5701"), { label: "Sans libellé", number: "•••• 5701" });
+  assert.deepEqual(pliantCardDisplay("AMADEUS", null), { label: "AMADEUS", number: "Carte inconnue" });
 });
 
 test("le séjour se retrouve par la carte, pas par un autre dossier", () => {
