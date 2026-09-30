@@ -1,0 +1,98 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { catalogSamples, sampleMediaUrl, sendCatalogSamples } from "./whatsapp-samples";
+
+function admin(extra: Record<string, unknown> | null) {
+  const writes: unknown[] = [];
+  const client = {
+    from() {
+      return {
+        select() {
+          return {
+            eq() {
+              return { maybeSingle: async () => ({ data: extra ? { id: "row", extra } : null }) };
+            },
+          };
+        },
+        update(patch: { extra: unknown }) {
+          writes.push(patch.extra);
+          return { eq: async () => ({ error: null }) };
+        },
+        upsert(patch: { extra: unknown }) {
+          writes.push(patch.extra);
+          return Promise.resolve({ error: null });
+        },
+        insert: async (patch: { extra: unknown }) => {
+          writes.push(patch.extra);
+          return { error: null };
+        },
+      };
+    },
+  } as unknown as SupabaseClient;
+  return { client, writes };
+}
+
+test("le récapitulatif a une image d’hôtel et les vols, sans les textes en attente", () => {
+  const samples = catalogSamples();
+  assert.ok(samples.some((sample) => sample.id === "piece-hotel" && sample.image?.endsWith("/whatsapp/hotel.jpg")));
+  assert.ok(samples.some((sample) => sample.id === "vol-horaire"));
+  assert.equal(samples.some((sample) => sample.id === "rappel-modele"), false);
+  assert.equal(sampleMediaUrl("/whatsapp/visa.jpg"), "https://travelba.fr/whatsapp/visa.jpg");
+  assert.equal(sampleMediaUrl("https://exemple.fr/photo.jpg"), null);
+});
+
+test("sans image en ligne, aucun message ne part", async () => {
+  process.env.TWILIO_ACCOUNT_SID = "ACtest";
+  process.env.TWILIO_AUTH_TOKEN = "token";
+  process.env.TWILIO_WHATSAPP_FROM = "whatsapp:+33756841315";
+  delete process.env.VERCEL_ENV;
+  const { client, writes } = admin(null);
+  let calls = 0;
+  const result = await sendCatalogSamples(
+    client,
+    async () => new Response(null, { status: 404 }),
+    async () => {
+      calls += 1;
+      return { ok: true, sid: "SM1" };
+    }
+  );
+  assert.equal(result.skipped, "images_offline");
+  assert.equal(calls, 0);
+  assert.equal(writes.length, 0);
+});
+
+test("une fois les images en ligne, chaque exemplaire part une seule fois", async () => {
+  process.env.TWILIO_ACCOUNT_SID = "ACtest";
+  process.env.TWILIO_AUTH_TOKEN = "token";
+  process.env.TWILIO_WHATSAPP_FROM = "whatsapp:+33756841315";
+  delete process.env.VERCEL_ENV;
+  const phones: string[] = [];
+  const { client, writes } = admin(null);
+  const result = await sendCatalogSamples(
+    client,
+    async () => new Response(null, { status: 200, headers: { "content-type": "image/jpeg" } }),
+    async (input) => {
+      phones.push(input.to);
+      return { ok: true, sid: "SM1" };
+    }
+  );
+  assert.equal(result.skipped, null);
+  assert.equal(result.delivered, catalogSamples().length);
+  assert.ok(phones.every((phone) => phone === "whatsapp:+33772158257"));
+  const again = admin({ done_at: "2026-09-30T00:00:00.000Z", sent: {} });
+  let calls = 0;
+  const second = await sendCatalogSamples(
+    again.client,
+    async () => {
+      calls += 1;
+      return new Response(null, { status: 200, headers: { "content-type": "image/jpeg" } });
+    },
+    async () => ({ ok: true, sid: "SM2" })
+  );
+  assert.equal(second.skipped, "done");
+  assert.equal(calls, 0);
+  assert.equal(writes.length, catalogSamples().length);
+  const last = writes.at(-1) as { done_at?: string };
+  assert.equal(typeof last.done_at, "string");
+});
