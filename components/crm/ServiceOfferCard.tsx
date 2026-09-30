@@ -7,6 +7,7 @@ import { BusyBar } from "@/components/crm/BusyBar";
 import { Icon } from "@/components/crm/icons";
 import { IssuesList } from "@/components/crm/IssuesList";
 import { issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
+import { CLIENT_PREVIEW_NOTE, useClientPreview } from "@/components/account/client-preview";
 import { HIDDEN_PRICE_LABEL, kindIcon } from "@/lib/crm/carnet";
 import { addressCity } from "@/lib/crm/address-suggest";
 import { extraAgencyStatus, serviceClock, storedTransferAddresses, type ServiceOffer } from "@/lib/crm/extras";
@@ -39,6 +40,7 @@ export function ServiceOfferCard({
   pricesVisible?: boolean;
 }) {
   const router = useRouter();
+  const preview = useClientPreview();
   const saved =
     offer.kind === "chauffeur" ? storedTransferAddresses(offer, homeAddress, existing?.details) : { depart: "", arrive: "" };
   const [depart, setDepart] = useState(saved.depart);
@@ -78,6 +80,10 @@ export function ServiceOfferCard({
       setIssues([{ field: "address", message: "Indiquez l’adresse de départ et l’adresse d’arrivée." }]);
       return;
     }
+    if (preview) {
+      setIssues([{ field: "preview", message: CLIENT_PREVIEW_NOTE }]);
+      return;
+    }
     setBusy("validate");
     setIssues([]);
     const url =
@@ -100,6 +106,10 @@ export function ServiceOfferCard({
 
   async function cancel() {
     if (!existing || busy || confirmed) return;
+    if (preview) {
+      setIssues([{ field: "preview", message: CLIENT_PREVIEW_NOTE }]);
+      return;
+    }
     setBusy("cancel");
     setIssues([]);
     const res = await fetch(
@@ -127,6 +137,10 @@ export function ServiceOfferCard({
 
   async function refuse() {
     if (busy || existing || isAdmin) return;
+    if (preview) {
+      setIssues([{ field: "preview", message: CLIENT_PREVIEW_NOTE }]);
+      return;
+    }
     setGone(true);
     setIssues([]);
     const url = `/api/client/bookings/${reference}/extras`;
@@ -154,6 +168,10 @@ export function ServiceOfferCard({
     if (!existing || busy || confirmed || offer.kind !== "chauffeur") return;
     if (!depart.trim() || !arrive.trim()) {
       setIssues([{ field: "address", message: "Indiquez l’adresse de départ et l’adresse d’arrivée." }]);
+      return;
+    }
+    if (preview) {
+      setIssues([{ field: "preview", message: CLIENT_PREVIEW_NOTE }]);
       return;
     }
     setBusy("save");

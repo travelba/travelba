@@ -9,6 +9,7 @@ import {
   useElements,
   useStripe,
 } from "@stripe/react-stripe-js";
+import { CLIENT_PREVIEW_NOTE, useClientPreview } from "@/components/account/client-preview";
 import { WireInstructions } from "@/components/account/WireInstructions";
 import { BusyBar } from "@/components/crm/BusyBar";
 import type { PayerKind } from "@/lib/crm/payer";
@@ -63,6 +64,7 @@ export function StayPayment({
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [transfer, setTransfer] = useState<TransferView | null>(null);
   const [paid, setPaid] = useState(false);
+  const preview = useClientPreview();
 
   async function choose(slip: ClientPaySlip, next: StayPayMethod) {
     setOpenSlice(slip.slice);
@@ -72,6 +74,10 @@ export function StayPayment({
     setTransfer(null);
     setPaid(false);
     if (!slip.canPay || !slip.payable || !slip.amountLabel) return;
+    if (preview) {
+      setError(CLIENT_PREVIEW_NOTE);
+      return;
+    }
     if (next !== "revolut" && !stripeKey) return;
     setBusy(true);
     try {
