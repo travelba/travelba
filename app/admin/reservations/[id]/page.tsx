@@ -15,7 +15,7 @@ import { siteConfig } from "@/lib/site";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import { StayBillingChoice } from "@/components/crm/StayBillingChoice";
 import { HotelDeskSummary } from "@/components/admin/HotelDesk";
-import { ensureHotelArrivals } from "@/lib/crm/hotel-arrival-run";
+import { syncStayCards } from "@/lib/crm/hotel-arrival-run";
 import { ensureHotelRequests } from "@/lib/crm/hotel-desk-run";
 import { principalGuest } from "@/lib/crm/hotel-arrival";
 import { attachLittleEmperorsCatalog } from "@/lib/crm/hotel-catalog-load";
@@ -102,12 +102,14 @@ export default async function AdminBookingPage({ params }: Props) {
   });
   try {
     const arrivalAdmin = createServiceClient();
-    await ensureHotelArrivals(arrivalAdmin, id, bookingItems);
-    const { data: arrivalRows, error: arrivalError } = await arrivalAdmin
-      .from("crm_hotel_arrivals")
-      .select("*")
-      .eq("booking_id", id);
-    if (!arrivalError) arrivals = (arrivalRows || []) as CrmHotelArrival[];
+    arrivals = await syncStayCards(arrivalAdmin, {
+      bookingId: id,
+      bookingStatus: b.status,
+      currency: b.currency,
+      items: bookingItems,
+      travelers: bookingTravelers,
+      holder: customer ? { first_name: customer.first_name, last_name: customer.last_name } : null,
+    });
     hotelRequests = await ensureHotelRequests(arrivalAdmin, {
       bookingId: id,
       reference: b.reference,

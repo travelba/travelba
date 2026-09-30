@@ -26,7 +26,9 @@ import {
   planHotelArrival,
   quotedAmount,
   replyPaymentUrl,
+  shownStayProvision,
   stayCardFace,
+  stayProvision,
   vipMail,
   type ArrivalTick,
 } from "./hotel-arrival";
@@ -123,6 +125,73 @@ test("canal, montant Little Emperors, net direct, 500 € Expedia", () => {
     CHECKIN_CARD_CENTS
   );
   assert.equal(formatArrivalAmount(240000, "EUR"), "2400,00 EUR");
+});
+
+test("le plafond carte est le prix de l'hôtel plus 30 %", () => {
+  const direct = stayProvision({
+    channel: "direct",
+    itemCents: 100000,
+    documentCents: 120000,
+    documentCurrency: "EUR",
+    leCents: null,
+    leCurrency: null,
+    netCents: 80000,
+    savedBaseCents: null,
+    bookingCurrency: "EUR",
+  });
+  assert.deepEqual(direct, { baseCents: 120000, marginCents: 36000, ceilingCents: 156000, currency: "EUR" });
+  const odd = stayProvision({
+    channel: "direct",
+    itemCents: 1,
+    documentCents: null,
+    documentCurrency: null,
+    leCents: null,
+    leCurrency: null,
+    netCents: null,
+    savedBaseCents: null,
+    bookingCurrency: "EUR",
+  });
+  assert.equal(odd?.ceilingCents, 2);
+  const emperors = stayProvision({
+    channel: "little_emperors",
+    itemCents: 100,
+    documentCents: 100,
+    documentCurrency: "EUR",
+    leCents: 240000,
+    leCurrency: "EUR",
+    netCents: null,
+    savedBaseCents: null,
+    bookingCurrency: "EUR",
+  });
+  assert.equal(emperors?.baseCents, 240000);
+  assert.equal(emperors?.ceilingCents, 312000);
+  assert.equal(
+    stayProvision({
+      channel: "expedia",
+      itemCents: null,
+      documentCents: null,
+      documentCurrency: null,
+      leCents: null,
+      leCurrency: null,
+      netCents: null,
+      savedBaseCents: null,
+      bookingCurrency: "EUR",
+    }),
+    null
+  );
+  const shown = shownStayProvision(
+    { amount: 800, supplier: "The Ranch", details: { document_amount: 1000, document_currency: "EUR" } },
+    { channel: "direct", amount_cents: null, net_cents: null, currency: "EUR" },
+    "EUR"
+  );
+  assert.equal(shown?.baseCents, 100000);
+  assert.equal(shown?.ceilingCents, 130000);
+  const fromLe = shownStayProvision(
+    { amount: null, supplier: "Leela", details: {} },
+    { channel: "little_emperors", amount_cents: 240000, net_cents: null, currency: "EUR" },
+    "EUR"
+  );
+  assert.equal(fromLe?.ceilingCents, 312000);
 });
 
 test("le suivi n'a pas de champ carte, le secret se lit au moment de l'envoi", () => {

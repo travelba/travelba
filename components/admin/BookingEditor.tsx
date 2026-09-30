@@ -994,8 +994,9 @@ export function BookingEditor({
           const guest = principalGuest({ travelers, holder: holderProfile });
           return `${guest.firstName} ${guest.lastName}`.trim();
         })()}
-        hasCardCode={hasCardCode}
         cardViews={cardViews}
+        bookingStatus={booking.status}
+        currency={booking.currency}
       />
 
       <BookingItemsPanel
