@@ -40,7 +40,7 @@ test("les textes qui partent reprennent les fonctions d’envoi", () => {
   assert.match(hotel?.bubble.body || "", /confirmation d'hôtel pour le séjour à Avoriaz/);
   assert.equal(hotel?.bubble.photo, true);
   assert.match(hotel?.bubble.image || "", /\/whatsapp\/hotel\.jpg$/);
-  assert.equal(hotel?.bubble.imageAlt, "Hôtel");
+  assert.equal(hotel?.bubble.imageAlt, "Hôtel TBA");
   assert.match(byId.get("piece-vol")?.bubble.image || "", /\/whatsapp\/billet\.jpg$/);
   assert.match(byId.get("formalite-prete")?.bubble.image || "", /\/whatsapp\/visa\.jpg$/);
   assert.match(byId.get("passeport")?.bubble.image || "", /\/whatsapp\/passeport\.jpg$/);

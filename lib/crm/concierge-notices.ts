@@ -131,18 +131,18 @@ export function whatsappTypeImageUrl(kind: WhatsappImageKind) {
 }
 
 export const WHATSAPP_IMAGE_ALT: Record<WhatsappImageKind, string> = {
-  hotel: "Hôtel",
-  billet: "Billet d’avion",
-  transfert: "Transfert",
-  pieces: "Pièces du voyage",
-  document: "Document",
-  passeport: "Passeport",
-  visa: "Visa",
-  encours: "Encours",
-  chauffeur: "Chauffeur",
-  rappel: "Départ",
-  connexion: "Accès à l’espace",
-  partage: "Partage du voyage",
+  hotel: "Hôtel TBA",
+  billet: "TBA Airlines",
+  transfert: "TBA Transfer",
+  pieces: "Pièces TBA",
+  document: "Document TBA",
+  passeport: "Passeport TBA",
+  visa: "TBA Visa",
+  encours: "Compte TBA",
+  chauffeur: "TBA Chauffeur",
+  rappel: "Départ TBA",
+  connexion: "Espace TBA",
+  partage: "TBA Airlines",
 };
 
 export function whatsappTypeImageKind(url: string): WhatsappImageKind | null {
