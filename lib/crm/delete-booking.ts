@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/admin";
 import { clearBookingCharges } from "@/lib/crm/bookings";
+import { emailIngestStatusAfterUnlink } from "@/lib/crm/email-match";
 import { listCrmFiles, removeCrmFiles } from "@/lib/crm/files";
 import { exclusiveStoragePaths, isUuid } from "@/lib/crm/ids";
 
@@ -48,6 +49,23 @@ export async function deleteBookingById(bookingId: string) {
     await clearBookingCharges(admin, bookingId);
   } catch (err) {
     throw new BookingDeleteError(err instanceof Error ? err.message : "Écritures non retirées");
+  }
+
+  const { data: linkedEmails } = await admin
+    .from("crm_email_ingest")
+    .select("id, suggested_customer_id")
+    .eq("status", "attached")
+    .eq("created_booking_id", bookingId);
+  for (const row of linkedEmails || []) {
+    const { error: reopenError } = await admin
+      .from("crm_email_ingest")
+      .update({
+        status: emailIngestStatusAfterUnlink(row.suggested_customer_id),
+        created_booking_id: null,
+        suggested_booking_id: null,
+      })
+      .eq("id", row.id);
+    if (reopenError) throw new BookingDeleteError(reopenError.message);
   }
 
   const { error: delError } = await admin.from("crm_bookings").delete().eq("id", bookingId);

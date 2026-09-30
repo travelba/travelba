@@ -5,6 +5,7 @@ import {
   catchUpGmailHistory,
   emailParsingReady,
   processReceivedEmailIngest,
+  releaseEmailIngestHolds,
   rematchStoredEmailIngest,
 } from "@/lib/crm/email-ingest";
 import { gmailConfigured } from "@/lib/crm/gmail";
@@ -49,6 +50,14 @@ export async function GET(request: Request) {
       );
     }
     const result = await processReceivedEmailIngest(10);
+    try {
+      await releaseEmailIngestHolds();
+    } catch (err) {
+      console.error(
+        "[cron/gmail-ingest] holds",
+        err instanceof Error ? err.message : err
+      );
+    }
     let rematch = { scanned: 0, rematched: 0, failed: 0 };
     try {
       rematch = await rematchStoredEmailIngest(20);

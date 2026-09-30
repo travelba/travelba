@@ -523,8 +523,26 @@ export type EmailIngestSuggestionInput = {
 };
 
 /**
- * Décide du geste automatique : rattacher, créer, ou laisser en relecture.
- * Ambiguïté (plusieurs voyages au même score fort) → review.
+ * Les pièces d’un mail fournisseur restent dans la boîte tant que l’agence
+ * n’a pas désigné le dossier. Le cron propose un client, il ne pose rien.
+ */
+export function emailIngestRequiresManualAttach() {
+  return true;
+}
+
+/** File `/admin/emails` : en attente, ou marqué rattaché alors que le dossier n’existe plus. */
+export function emailInboxPendingOr() {
+  return "status.in.(parsed,matched),and(status.eq.attached,created_booking_id.is.null)";
+}
+
+/** Après suppression du dossier lié : la pièce revient dans la file. */
+export function emailIngestStatusAfterUnlink(suggestedCustomerId: string | null) {
+  return suggestedCustomerId ? "matched" : "parsed";
+}
+
+/**
+ * Décide du geste qui serait automatique. L’ingest ne l’exécute plus :
+ * l’agence désigne le dossier. Ambiguïté → review.
  */
 export type CancellationApplyPlan = {
   cancelBooking: boolean;

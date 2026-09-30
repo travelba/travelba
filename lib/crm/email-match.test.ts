@@ -5,6 +5,9 @@ import {
   cancellationApplyPlan,
   decideEmailIngestAction,
   destinationsOverlap,
+  emailInboxPendingOr,
+  emailIngestRequiresManualAttach,
+  emailIngestStatusAfterUnlink,
   executeEmailIngestDecision,
   extractReferences,
   lastNamesClose,
@@ -295,6 +298,19 @@ describe("suggestBookingByTripSignals", () => {
     assert.equal(res.autoBookingId, null);
     assert.equal(res.candidates.length, 2);
     assert.equal(res.candidates[0].score, res.candidates[1].score);
+  });
+});
+
+describe("rattachement manuel", () => {
+  it("ne pose jamais la pièce tout seul", () => {
+    assert.equal(emailIngestRequiresManualAttach(), true);
+    assert.match(emailInboxPendingOr(), /parsed/);
+    assert.match(emailInboxPendingOr(), /created_booking_id.is.null/);
+  });
+
+  it("ramène le mail en file si le dossier disparaît", () => {
+    assert.equal(emailIngestStatusAfterUnlink("c1"), "matched");
+    assert.equal(emailIngestStatusAfterUnlink(null), "parsed");
   });
 });
 
