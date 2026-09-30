@@ -82,11 +82,11 @@ OIDC Vercel : `aiGatewayConfigured()` peut être vrai sur Vercel sans `sk-`. L�
 
 ## Stripe
 
-- Mode **live**. L’encaissement d’un séjour passe par PaymentIntent sur la réservation client (carte, Apple Pay, prélèvement SEPA, virement). Pas de PAN.
+- Mode **live**. L’encaissement carte, Apple Pay et prélèvement SEPA passe par PaymentIntent sur la réservation client. Pas de PAN. Le virement est l’IBAN du compte Revolut Business, pas un virement Stripe.
 - Endpoint : `https://travelba.fr/api/webhooks/stripe`
 - Events : `setup_intent.succeeded`, `payment_method.detached`, `payment_intent.succeeded`
 - Pas de page cartes (`/paiement` → facturation). Le règlement est sur la réservation.
-- Sans `sk_live` / `pk_live` / `whsec` en Production, le webhook répond **503** et le bouton de règlement dit que le moyen n’est pas ouvert. Ne pas inventer les clés. Le grand livre manuel fonctionne.
+- Sans `sk_live` / `pk_live` / `whsec` en Production, le webhook répond **503** et les boutons carte, Apple Pay et prélèvement disent que le moyen n’est pas ouvert. Le virement dépend de Revolut, pas de ces clés. Ne pas inventer les clés. Le grand livre manuel fonctionne.
 - Ne jamais logger le PaymentMethod brut au-delà de `brand` / `last4` / exp.
 
 ## Revolut
@@ -95,6 +95,7 @@ OIDC Vercel : `aiGatewayConfigured()` peut être vrai sur Vercel sans `sk-`. L�
 - Relier l’app via `/admin/revolut` (OAuth, tokens dans `crm_integrations`, service_role only).
 - Cron Vercel : `vercel.json` → `GET /api/cron/revolut-sync` toutes les 15 min. Header `Authorization: Bearer $CRON_SECRET`.
 - Inbox `crm_revolut_transactions` status `unmatched` → auto-crédit si match unique certain (`revolut-match`) ; sinon l’agent rapproche ou ignore (inbox + fiche client).
+- L’espace client affiche l’IBAN SEPA du compte euros actif (`GET /api/1.0/accounts` puis bank-details). Le client indique la référence du dossier. Ne pas journaliser l’IBAN.
 - Webhook `/api/webhooks/revolut` si l’app Revolut le pointe ; le cron reste la source de rattrapage.
 
 ## Fichiers / OpenAI

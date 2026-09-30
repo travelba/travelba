@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { assignPayer, collectableStayAmount, defaultPayer, payerBadge } from "./payer";
-import { bankTransferInstructions, excludedStripeTypes, stayPayMethods, stripeCreditFromIntent } from "./stripe-pay";
+import { excludedStripeTypes, stayPayMethods, stripeCreditFromIntent } from "./stripe-pay";
 
 const companies = [
   { id: "b", sort_order: 2, company_name: "Beta" },
@@ -69,14 +69,9 @@ test("le montant à régler laisse le séjour hors agence et garde la commission
 });
 
 test("les moyens suivent le payeur et la devise", () => {
-  assert.deepEqual(stayPayMethods("company", "EUR"), ["sepa_debit", "customer_balance"]);
+  assert.deepEqual(stayPayMethods("company", "EUR"), ["sepa_debit", "revolut"]);
   assert.deepEqual(stayPayMethods("company", "USD"), []);
-  assert.deepEqual(stayPayMethods("personal", "EUR"), [
-    "card",
-    "apple_pay",
-    "sepa_debit",
-    "customer_balance",
-  ]);
+  assert.deepEqual(stayPayMethods("personal", "EUR"), ["card", "apple_pay", "sepa_debit", "revolut"]);
   assert.deepEqual(stayPayMethods("personal", "CHF"), ["card", "apple_pay"]);
   assert.equal(excludedStripeTypes("sepa_debit").includes("sepa_debit"), false);
   assert.equal(excludedStripeTypes("sepa_debit").includes("card"), true);
@@ -119,24 +114,19 @@ test("un paiement abouti devient un crédit, un virement en attente non", () => 
   });
   assert.equal(card?.kind, "card_payment");
   assert.equal(card?.billing_company_id, null);
-});
-
-test("les coordonnées de virement sortent de l’action Stripe", () => {
-  assert.equal(bankTransferInstructions({ status: "requires_action" }), null);
-  const view = bankTransferInstructions({
-    status: "requires_action",
-    next_action: {
-      display_bank_transfer_instructions: {
-        reference: "RF-1",
-        amount_remaining: 2500,
-        currency: "eur",
-        financial_addresses: [
-          { type: "iban", iban: { iban: "FR7630006000011234567890189", bic: "AGRIFRPP", account_holder_name: "Travelba" } },
-        ],
+  assert.equal(
+    stripeCreditFromIntent({
+      id: "pi_3",
+      status: "succeeded",
+      amount: 2500,
+      currency: "eur",
+      metadata: {
+        crm_customer_id: "c1",
+        crm_booking_id: "b1",
+        pay_method: "revolut",
+        reference: "TB-1",
       },
-    },
-  });
-  assert.equal(view?.reference, "RF-1");
-  assert.equal(view?.bic, "AGRIFRPP");
-  assert.equal(view?.pending, true);
+    }),
+    null
+  );
 });

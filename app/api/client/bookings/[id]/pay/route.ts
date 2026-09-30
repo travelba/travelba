@@ -2,13 +2,9 @@ import { NextResponse } from "next/server";
 import { dbError, jsonError, requireCustomer } from "@/lib/crm/auth";
 import { isLedgerExpenseKind, type CrmBooking, type CrmBookingItem } from "@/lib/crm/types";
 import { amountToCents, collectableStayAmount } from "@/lib/crm/payer";
+import { RevolutHttpError, loadAgencyEurWire } from "@/lib/crm/revolut";
 import { ensureStripeCustomer, getStripe, stripeConfigured } from "@/lib/crm/stripe";
-import {
-  bankTransferInstructions,
-  excludedStripeTypes,
-  stayPayMethodOf,
-  stayPayMethods,
-} from "@/lib/crm/stripe-pay";
+import { excludedStripeTypes, stayPayMethodOf, stayPayMethods } from "@/lib/crm/stripe-pay";
 import { createServiceClient } from "@/lib/supabase/admin";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -16,7 +12,6 @@ type Ctx = { params: Promise<{ id: string }> };
 export async function POST(request: Request, ctx: Ctx) {
   const auth = await requireCustomer();
   if (auth instanceof NextResponse) return auth;
-  if (!stripeConfigured()) return jsonError("Stripe n’est pas configuré", 503);
 
   const { id } = await ctx.params;
   const body = await request.json().catch(() => null);
@@ -62,6 +57,28 @@ export async function POST(request: Request, ctx: Ctx) {
   const cents = amountToCents(amount);
   if (cents < 50) return jsonError("Le montant est trop faible pour un règlement en ligne.");
 
+  if (method === "revolut") {
+    try {
+      const wire = await loadAgencyEurWire();
+      if (!wire) return jsonError("Le virement n’est pas encore ouvert.", 503);
+      return NextResponse.json({
+        transfer: {
+          iban: wire.iban,
+          bic: wire.bic,
+          accountHolder: wire.accountHolder,
+          reference: booking.reference,
+          currency: booking.currency.toUpperCase(),
+        },
+      });
+    } catch (err) {
+      const code = err instanceof RevolutHttpError ? String(err.status) : "auth";
+      console.error("[revolut-wire]", code);
+      return jsonError("Le virement n’est pas encore ouvert.", 503);
+    }
+  }
+
+  if (!stripeConfigured()) return jsonError("Stripe n’est pas configuré", 503);
+
   const stripe = getStripe()!;
   const admin = createServiceClient();
   let stripeCustomerId: string;
@@ -72,7 +89,7 @@ export async function POST(request: Request, ctx: Ctx) {
   }
 
   try {
-    let intent = await stripe.paymentIntents.create(
+    const intent = await stripe.paymentIntents.create(
       {
         amount: cents,
         currency: booking.currency.toLowerCase(),
@@ -87,37 +104,12 @@ export async function POST(request: Request, ctx: Ctx) {
           pay_method: method,
           reference: booking.reference,
         },
-        ...(method === "customer_balance"
-          ? {
-              payment_method_options: {
-                customer_balance: {
-                  funding_type: "bank_transfer",
-                  bank_transfer: {
-                    type: "eu_bank_transfer",
-                    eu_bank_transfer: { country: "FR" },
-                  },
-                },
-              },
-            }
-          : {}),
       },
       { idempotencyKey: `stay-${booking.id}-${method}-${cents}` }
     );
 
-    if (method === "customer_balance" && intent.status === "requires_payment_method") {
-      intent = await stripe.paymentIntents.confirm(intent.id, {
-        payment_method_data: { type: "customer_balance" },
-      });
-    }
-
     if (intent.status === "succeeded") {
       return NextResponse.json({ alreadyPaid: true });
-    }
-
-    if (method === "customer_balance") {
-      const transfer = bankTransferInstructions(intent);
-      if (!transfer) return jsonError("Le virement n’est pas disponible pour ce séjour.", 502);
-      return NextResponse.json({ transfer });
     }
 
     if (!intent.client_secret) return jsonError("Le règlement n’a pas pu démarrer.", 502);

@@ -9,6 +9,7 @@ import {
   useElements,
   useStripe,
 } from "@stripe/react-stripe-js";
+import { WireInstructions } from "@/components/account/WireInstructions";
 import { BusyBar } from "@/components/crm/BusyBar";
 import type { PayerKind } from "@/lib/crm/payer";
 import { STAY_PAY_LABELS, type StayPayMethod } from "@/lib/crm/stripe-pay";
@@ -65,7 +66,8 @@ export function StayPayment({
     setClientSecret(null);
     setTransfer(null);
     setPaid(false);
-    if (!canPay || !stripeKey || !amountLabel) return;
+    if (!canPay || !amountLabel) return;
+    if (next !== "revolut" && !stripeKey) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/client/bookings/${bookingId}/pay`, {
@@ -130,7 +132,7 @@ export function StayPayment({
                 }`}
               >
                 <span className="text-sm font-semibold">{STAY_PAY_LABELS[item]}</span>
-                {!stripeKey ? (
+                {item !== "revolut" && !stripeKey ? (
                   <span className={`mt-0.5 block text-xs ${selected ? "text-white/75" : "text-muted"}`}>
                     Ce moyen n’est pas encore ouvert.
                   </span>
@@ -150,32 +152,15 @@ export function StayPayment({
       {error ? <p className="text-sm text-accent">{error}</p> : null}
 
       {transfer ? (
-        <dl className="space-y-2 rounded-2xl bg-[#f7f6f3] p-4 text-sm text-[var(--admin-navy)]">
-          <div>
-            <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">IBAN</dt>
-            <dd className="mt-0.5 font-semibold tracking-wide">{transfer.iban}</dd>
-          </div>
-          {transfer.bic ? (
-            <div>
-              <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">BIC</dt>
-              <dd className="mt-0.5 font-semibold">{transfer.bic}</dd>
-            </div>
-          ) : null}
-          {transfer.accountHolder ? (
-            <div>
-              <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">Titulaire</dt>
-              <dd className="mt-0.5">{transfer.accountHolder}</dd>
-            </div>
-          ) : null}
-          <div>
-            <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">Référence à indiquer</dt>
-            <dd className="mt-0.5 font-semibold">{transfer.reference || reference}</dd>
-          </div>
-          <p className="text-xs text-muted">Le virement est rapproché dès que Stripe le reçoit.</p>
-        </dl>
+        <WireInstructions
+          iban={transfer.iban}
+          bic={transfer.bic}
+          accountHolder={transfer.accountHolder}
+          reference={transfer.reference || reference}
+        />
       ) : null}
 
-      {clientSecret && stripeKey && method && method !== "customer_balance" ? (
+      {clientSecret && stripeKey && method && method !== "revolut" ? (
         <Elements
           stripe={stripeFor(stripeKey)}
           options={{
