@@ -9,6 +9,7 @@ import {
   parseExtractPayload,
   persistNewBookingFromExtract,
 } from "@/lib/crm/ingest-booking";
+import { detachAttachedEmail } from "@/lib/crm/email-detach-run";
 import { loadEmailIngestFiles, rematchEmailIngestRow } from "@/lib/crm/email-ingest";
 import type { CrmEmailIngest } from "@/lib/crm/types";
 
@@ -53,6 +54,11 @@ export async function POST(request: Request, ctx: Ctx) {
         .update({ status: "refused" })
         .eq("id", id);
       return NextResponse.json({ ok: true, status: "refused" });
+    }
+
+    if (action === "detach") {
+      const result = await detachAttachedEmail(row);
+      return NextResponse.json({ ok: true, ...result });
     }
 
     if (action === "rematch") {
@@ -108,6 +114,7 @@ export async function POST(request: Request, ctx: Ctx) {
         staffUserId: auth.user.id,
         visibleToClient: false,
         applyStayFields: body.apply_stay_currency === true,
+        emailIngestId: id,
       });
       await admin
         .from("crm_email_ingest")
@@ -127,6 +134,7 @@ export async function POST(request: Request, ctx: Ctx) {
         referenceClient: auth.supabase,
         status: "draft",
         visibleToClient: false,
+        emailIngestId: id,
       });
       await admin
         .from("crm_email_ingest")

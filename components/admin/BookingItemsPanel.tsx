@@ -15,7 +15,8 @@ import type { BookingExtract } from "@/lib/crm/ingest-types";
 import { itemDetailsLine, itemWhen } from "@/lib/crm/booking-display";
 import { readDocumentAmount } from "@/lib/crm/booking-issues";
 import { documentsForItem, hotelDisplayName, itemPriceLabel } from "@/lib/crm/carnet";
-import { formatMoney } from "@/lib/crm/money";
+import { attachedEmailLabel } from "@/lib/crm/email-detach";
+import { formatDateTimeFr, formatMoney } from "@/lib/crm/money";
 import { STAY_CURRENCIES } from "@/lib/crm/stay-currency";
 import { HotelContactButton } from "@/components/crm/HotelContact";
 import { HotelDesk } from "@/components/admin/HotelDesk";
@@ -86,6 +87,7 @@ export function BookingItemsPanel({
   arrivals = [],
   hasCardCode = false,
   cardViews = [],
+  attachedEmails = [],
 }: {
   bookingId: string;
   items: CrmBookingItem[];
@@ -97,6 +99,13 @@ export function BookingItemsPanel({
   arrivals?: CrmHotelArrival[];
   hasCardCode?: boolean;
   cardViews?: CardViewLine[];
+  attachedEmails?: {
+    id: string;
+    subject: string | null;
+    from_email: string | null;
+    received_at: string | null;
+    extract?: unknown;
+  }[];
   documents?: CrmBookingDocument[];
   household?: HouseholdMember[];
   currency?: string;
@@ -114,6 +123,8 @@ export function BookingItemsPanel({
   const [draft, setDraft] = useState<ItemDraft>(emptyDraft());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [confirmDetach, setConfirmDetach] = useState<string | null>(null);
   const dragFrom = useRef<number | null>(null);
 
   function startEdit(item: CrmBookingItem) {
@@ -227,6 +238,39 @@ export function BookingItemsPanel({
     router.refresh();
   }
 
+  async function detachEmail(emailId: string) {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    const res = await fetch(`/api/admin/email-ingest/${emailId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "detach" }),
+    });
+    const json = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      kept?: string[];
+      deleted_booking?: boolean;
+    };
+    setBusy(false);
+    setConfirmDetach(null);
+    if (!res.ok) {
+      setError(json.error || "Remise impossible");
+      return;
+    }
+    if (json.deleted_booking) {
+      router.push("/admin/emails");
+      return;
+    }
+    const kept = (json.kept || []).filter(Boolean);
+    setNotice(
+      kept.length
+        ? `Mail remis dans les e-mails. Une carte déjà présente a été laissée : ${kept.join(", ")}.`
+        : "Mail remis dans les e-mails à rattacher."
+    );
+    router.refresh();
+  }
+
   async function removeItem(id: string) {
     setBusy(true);
     await fetch(`/api/admin/bookings/${bookingId}/items?itemId=${encodeURIComponent(id)}`, {
@@ -256,6 +300,54 @@ export function BookingItemsPanel({
       <div className="mt-3">
         <BusyBar active={busy} label="Enregistrement…" />
       </div>
+      {attachedEmails.map((mail) => (
+        <div
+          key={mail.id}
+          className="mt-3 rounded-2xl border border-[var(--admin-gold)] bg-[var(--surface-2)] px-3 py-3"
+        >
+          <p className="text-sm font-semibold text-[var(--admin-navy)]">{attachedEmailLabel(mail)}</p>
+          <p className="mt-1 text-xs text-muted">
+            Importé depuis un e-mail
+            {mail.from_email ? ` · ${mail.from_email}` : ""}
+            {mail.received_at ? ` · ${formatDateTimeFr(mail.received_at)}` : ""}
+          </p>
+          {confirmDetach === mail.id ? (
+            <div className="mt-2">
+              <p className="text-sm text-[var(--admin-navy)]">
+                Retirer cette réservation de ce dossier et la remettre dans les e-mails à rattacher ?
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={busy}
+                  className="admin-tap rounded-full bg-[var(--admin-navy)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+                  onClick={() => void detachEmail(mail.id)}
+                >
+                  Remettre dans les e-mails
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  className="admin-tap rounded-full px-3 py-1.5 text-xs font-semibold text-muted"
+                  onClick={() => setConfirmDetach(null)}
+                >
+                  Annuler
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={busy}
+              className="admin-tap mt-2 text-xs font-semibold text-[var(--admin-navy)] underline disabled:opacity-40"
+              onClick={() => setConfirmDetach(mail.id)}
+            >
+              Remettre dans les e-mails
+            </button>
+          )}
+        </div>
+      ))}
+      {notice ? <p className="mt-2 text-sm text-[var(--admin-navy)]">{notice}</p> : null}
       <ul className="mt-2 space-y-2 text-sm">
         {cardRows.map((item, index) => (
           <li

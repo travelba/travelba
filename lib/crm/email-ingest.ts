@@ -403,6 +403,7 @@ async function autoApplyEmailIngest(
               extract,
               files,
               visibleToClient: false,
+              emailIngestId: rowId,
             }),
       persist: (customerId) =>
         persistNewBookingFromExtract({
@@ -411,6 +412,7 @@ async function autoApplyEmailIngest(
           files,
           status: "draft",
           visibleToClient: false,
+          emailIngestId: rowId,
         }),
       createCustomer: (input) => createCustomerFromExtract(admin, input),
     });

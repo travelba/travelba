@@ -60,6 +60,7 @@ export default async function AdminBookingPage({ params }: Props) {
     { data: visaRows },
     { data: leRows },
     { data: billingCompanies },
+    { data: attachedMails },
   ] = await Promise.all([
     supabase.from("crm_booking_items").select("*").eq("booking_id", id).order("sort_order"),
     supabase.from("crm_booking_travelers").select("*").eq("booking_id", id),
@@ -81,6 +82,12 @@ export default async function AdminBookingPage({ params }: Props) {
       .select("id, company_name, sort_order, customer_id")
       .eq("customer_id", b.billing_customer_id || b.customer_id)
       .order("sort_order"),
+    supabase
+      .from("crm_email_ingest")
+      .select("id, subject, from_email, received_at, extract")
+      .eq("status", "attached")
+      .eq("created_booking_id", id)
+      .order("received_at", { ascending: false, nullsFirst: false }),
   ]);
   const party = (relatedCustomers || []) as CrmCustomer[];
   const customer = party.find((row) => row.id === b.customer_id) || null;
@@ -201,6 +208,13 @@ export default async function AdminBookingPage({ params }: Props) {
           shareCompanions={shareCompanions}
           arrivals={arrivals}
           hotelRequests={hotelRequests}
+          attachedEmails={(attachedMails || []) as {
+            id: string;
+            subject: string | null;
+            from_email: string | null;
+            received_at: string | null;
+            extract?: unknown;
+          }[]}
         />
       </div>
     </div>
