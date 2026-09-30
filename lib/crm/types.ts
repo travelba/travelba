@@ -451,6 +451,23 @@ export type CrmPaymentMethod = {
   created_at: string;
 };
 
+export type CrmPliantTransaction = {
+  id: string;
+  pliant_transaction_id: string;
+  card_id: string | null;
+  status: string | null;
+  type: string | null;
+  merchant: string | null;
+  billing_cents: number | null;
+  billing_currency: string | null;
+  transaction_cents: number | null;
+  transaction_currency: string | null;
+  booked_at: string | null;
+  raw: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
 export type CrmRevolutTransaction = {
   id: string;
   revolut_transaction_id: string;

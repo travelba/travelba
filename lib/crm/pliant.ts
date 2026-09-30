@@ -1,5 +1,6 @@
 import "server-only";
 import { pickListedId, pickTravelConfig, pliantRefusal } from "./eta-il-fee";
+import { pliantTransactionPage } from "./pliant-tx";
 
 const PROD = {
   api: "https://partner-api.getpliant.com/api",
@@ -186,4 +187,40 @@ export async function setPliantCardLimit(
     }),
   });
   if (!res.ok) throw new Error("Pliant n’a pas modifié le plafond.");
+}
+
+const TX_PAGE = 100;
+const TX_PAGES = 20;
+
+/** Mouvements du compte, du plus récent au plus ancien. */
+export async function fetchPliantTransactions() {
+  const organizationId = process.env.PLIANT_ORGANIZATION_ID || "";
+  if (!pliantConfigured() || !organizationId) throw new Error("Pliant n’est pas branché.");
+  const rows: unknown[] = [];
+  for (let page = 0; page < TX_PAGES; page += 1) {
+    const query = new URLSearchParams({
+      organizationId,
+      limit: String(TX_PAGE),
+      page: String(page),
+      sortBy: "createdAt",
+      sortDirection: "DESC",
+    });
+    const payload = await pliantGet(`/transactions?${query.toString()}`);
+    const batch = pliantTransactionPage(payload, TX_PAGE);
+    rows.push(...batch.rows);
+    if (batch.done) break;
+  }
+  return rows;
+}
+
+async function pliantGet(path: string) {
+  const token = await accessToken();
+  const res = await fetch(`${endpoints().api}${path}`, {
+    headers: { authorization: `Bearer ${token}`, "Pliant-API-Version": "2.1.0" },
+  });
+  if (!res.ok) {
+    console.error("[pliant] transactions", res.status);
+    throw new Error("Pliant n’a pas renvoyé les transactions.");
+  }
+  return (await res.json()) as unknown;
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { parseEurosToCents } from "@/lib/crm/hotel-arrival";
+import { issueHotelCheckinCard } from "@/lib/crm/hotel-desk-run";
 import { openAgencyCard } from "@/lib/crm/staff-card-open";
 import { advanceHotelItem } from "@/lib/crm/hotel-arrival-run";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -29,6 +30,23 @@ export async function POST(request: Request, ctx: Ctx) {
     .eq("booking_item_id", itemId)
     .maybeSingle();
   const row = data as CrmHotelArrival | null;
+
+  if (action === "issue") {
+    const { data: item } = await admin
+      .from("crm_booking_items")
+      .select("id, kind")
+      .eq("booking_id", id)
+      .eq("id", itemId)
+      .maybeSingle();
+    if (!item || item.kind !== "hotel") return jsonError("Hôtel introuvable.", 404);
+    try {
+      const card = await issueHotelCheckinCard(admin, id, itemId);
+      return NextResponse.json({ ok: true, last4: card.last4 });
+    } catch (error) {
+      return jsonError(error instanceof Error ? error.message : "La carte n’a pas pu être créée.", 400);
+    }
+  }
+
   if (!row) return jsonError("Suivi introuvable", 404);
 
   if (action === "net") {
