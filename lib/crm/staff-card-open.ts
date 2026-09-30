@@ -11,8 +11,7 @@ type Admin = { from: (table: string) => any };
 
 export type AgencyCardSource = "pliant" | "client";
 
-/** En pause : l'agence connectée ouvre la carte sans code. */
-const STAFF_CARD_CODE_REQUIRED = false;
+const STAFF_CARD_CODE_REQUIRED = true;
 
 type OpenError = { error: string; status: number };
 
