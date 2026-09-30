@@ -62,7 +62,9 @@ export async function inspectSampleDelivery(to: string, fetchImpl: typeof fetch)
 }
 
 function sessionMissed(report: DeliveryReport) {
-  return report.total > 0 && report.delivered === 0;
+  if (report.errors.includes("63016") || report.errors.includes("470")) return true;
+  const failed = (report.statuses.undelivered || 0) + (report.statuses.failed || 0);
+  return failed > 0 && report.delivered === 0;
 }
 
 export type CatalogSample = {
