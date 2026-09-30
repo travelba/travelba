@@ -83,6 +83,10 @@ test("le séjour se retrouve par la carte, pas par un autre dossier", () => {
   assert.equal(mapPliantTransaction({ type: "PURCHASE" }), null);
   assert.equal(scrubPliantPayload({ cvc: "999", merchant: "Cafe" }).cvc, undefined);
   assert.equal(pliantSyncSummary(3), "Synchronisation terminée : 3 mouvements lus.");
+  assert.equal(
+    pliantSyncSummary(3, 2),
+    "Synchronisation terminée : 3 mouvements lus. 2 dépenses rapprochées."
+  );
   assert.equal(pliantTransactionPage({ data: [{ id: "a" }], hasNextPage: false }).done, true);
   assert.equal(pliantTransactionPage({ data: new Array(100).fill({ id: "a" }) }).done, false);
   assert.equal(pliantTransactionPage({ data: [{ id: "a" }] }).done, true);

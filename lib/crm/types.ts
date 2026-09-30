@@ -414,7 +414,7 @@ export type CrmTransaction = {
   currency: string;
   occurred_on: string;
   label: string;
-  source: "manual" | "revolut" | "stripe";
+  source: "manual" | "revolut" | "stripe" | "pliant";
   external_id: string | null;
   status: "pending" | "posted" | "void";
   /** Société affichée sur la ligne. Ignorée par l’encours. */
@@ -468,6 +468,9 @@ export type CrmPliantTransaction = {
   holder_name: string | null;
   category: string | null;
   comment: string | null;
+  match_status: "unmatched" | "matched" | "ignored";
+  matched_customer_id: string | null;
+  matched_transaction_id: string | null;
   raw: Record<string, unknown>;
   created_at: string;
   updated_at: string;
