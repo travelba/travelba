@@ -1,41 +1,36 @@
-import { CLIENT_PROFILE_NAV } from "./profile-nav";
-
-export const PROFILE_ONBOARDING_HINTS: Record<
-  (typeof CLIENT_PROFILE_NAV)[number]["label"],
-  string
-> = {
-  Vous: "Votre identité et votre téléphone.",
-  Pièces: "Passeports et documents de voyage.",
-  Voyageurs: "Les personnes qui partent avec vous.",
-  Facturation: "La société, lorsqu’elle règle le séjour.",
-};
-
 export const CLIENT_ONBOARDING_STEPS = [
+  {
+    id: "passeport",
+    kicker: "Pièces",
+    title: "Votre passeport, au coffre",
+    body: "Une photo ou un PDF. L’agence lit le document et le range. Plusieurs passeports peuvent tenir sur le même fichier.",
+  },
   {
     id: "carnet",
     kicker: "Réservations",
-    title: "Le carnet publié",
-    body: "L’agence publie votre séjour lorsqu’il est prêt. Vous le retrouvez dans Réservations : le fil des jours, les vols, les hôtels. Tant que le dossier n’est pas publié, il reste à l’agence.",
+    title: "L’itinéraire du séjour",
+    body: "Quand l’agence publie le voyage, le fil des jours s’ouvre : vols, hôtels, le détail de chaque étape.",
   },
   {
-    id: "transactions",
+    id: "services",
+    kicker: "Sur le séjour",
+    title: "Chauffeur et VIP Airport",
+    body: "Depuis l’itinéraire, lorsqu’un vol est prévu : un transfert, ou un accueil VIP Airport — sortie, enregistrement, sûreté, porte ou salon.",
+  },
+  {
+    id: "depenses",
     kicker: "Transactions",
-    title: "Ce qui est comptabilisé",
-    body: "Transactions n’affiche que les écritures déjà passées au grand livre. L’encours suit ces montants. Une opération qui n’est pas encore comptabilisée n’apparaît pas.",
+    title: "Vos dépenses à l’agence",
+    body: "Le grand livre ne montre que ce qui est déjà comptabilisé. L’encours suit ces écritures.",
   },
   {
-    id: "profil",
-    kicker: "Mon compte",
-    title: "Votre fiche",
-    body: "Mon compte réunit quatre onglets.",
+    id: "formalites",
+    kicker: "Formalités",
+    title: "ESTA, ETA, ETA-IL",
+    body: "États-Unis, Royaume-Uni, Israël. L’agence s’en charge : vous suivez la demande sur le séjour.",
   },
 ] as const;
 
 export function onboardingCopyBlob() {
-  const hints = CLIENT_PROFILE_NAV.map(
-    (section) => `${section.label} ${PROFILE_ONBOARDING_HINTS[section.label]}`
-  );
-  return [...CLIENT_ONBOARDING_STEPS.map((step) => `${step.title} ${step.body}`), ...hints].join(
-    "\n"
-  );
+  return CLIENT_ONBOARDING_STEPS.map((step) => `${step.kicker} ${step.title} ${step.body}`).join("\n");
 }
