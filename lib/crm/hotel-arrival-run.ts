@@ -243,7 +243,7 @@ async function alignStayCard(input: {
     currency: provision.currency,
     card_limit_cents: provision.ceilingCents,
   };
-  const open = ACTIVE.has(input.bookingStatus) && row.status !== "closed" && !row.card_closed_at;
+  const open = ACTIVE.has(input.bookingStatus);
   const aligned =
     row.amount_cents === provision.baseCents &&
     row.card_limit_cents === provision.ceilingCents &&
