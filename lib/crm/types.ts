@@ -463,6 +463,11 @@ export type CrmPliantTransaction = {
   transaction_cents: number | null;
   transaction_currency: string | null;
   booked_at: string | null;
+  card_label: string | null;
+  card_last4: string | null;
+  holder_name: string | null;
+  category: string | null;
+  comment: string | null;
   raw: Record<string, unknown>;
   created_at: string;
   updated_at: string;

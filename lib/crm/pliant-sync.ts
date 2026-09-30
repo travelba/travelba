@@ -8,16 +8,17 @@ export async function syncPliantAccount() {
   if (!pliantConfigured()) throw new Error("Pliant n’est pas branché.");
   const fetched = await fetchPliantTransactions();
   const admin = createServiceClient();
-  let stored = 0;
-  for (const payload of fetched) {
+  const updatedAt = new Date().toISOString();
+  const rows = fetched.flatMap((payload) => {
     const row = mapPliantTransaction(payload);
-    if (!row) continue;
-    const { error } = await admin.from("crm_pliant_transactions").upsert(
-      { ...row, updated_at: new Date().toISOString() },
-      { onConflict: "pliant_transaction_id" }
-    );
+    return row ? [{ ...row, updated_at: updatedAt }] : [];
+  });
+  const chunk = 100;
+  for (let index = 0; index < rows.length; index += chunk) {
+    const { error } = await admin.from("crm_pliant_transactions").upsert(rows.slice(index, index + chunk), {
+      onConflict: "pliant_transaction_id",
+    });
     if (error) throw new Error("Les transactions Pliant n’ont pas pu être enregistrées.");
-    stored += 1;
   }
-  return { fetched: fetched.length, stored };
+  return { fetched: fetched.length, stored: rows.length };
 }

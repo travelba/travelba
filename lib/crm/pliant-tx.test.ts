@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  annotatePliantPayload,
   mapPliantTransaction,
   pliantSignedCents,
   pliantStayForCard,
@@ -35,6 +36,35 @@ test("une transaction Pliant garde le commerçant, les centimes, et retire le nu
   assert.equal((mapped.raw.merchantData as { pan?: string }).pan, undefined);
   assert.equal(pliantSignedCents(mapped.type, mapped.billing_cents), -12500);
   assert.equal(pliantSignedCents("REFUND", 12500), 12500);
+});
+
+test("le détail Pliant nomme le commerçant, la carte et le porteur", () => {
+  const annotated = annotatePliantPayload(
+    {
+      transactionId: "tx-2",
+      cardId: CARD,
+      type: "PURCHASE",
+      status: "DECLINED",
+      category: "TRAVEL_AND_ACCOMMODATION",
+      comment: "Hôtel",
+      merchantRawData: { descriptionAuthorization: "MAEVA VACANSOL", pan: "4111111111111111" },
+      billingAmount: { value: -562600, currency: "EUR" },
+      transactionAmount: { value: -864450, currency: "USD" },
+    },
+    { cardId: CARD, label: "Slimane", refNum: "0641", pan: "4111111111114242" },
+    { firstName: "Benjamin", lastName: "Boukris" }
+  );
+  const mapped = mapPliantTransaction(annotated);
+  assert.ok(mapped);
+  assert.equal(mapped.merchant, "MAEVA VACANSOL");
+  assert.equal(mapped.card_label, "Slimane");
+  assert.equal(mapped.card_last4, "0641");
+  assert.equal(mapped.holder_name, "Benjamin Boukris");
+  assert.equal(mapped.category, "TRAVEL_AND_ACCOMMODATION");
+  assert.equal(mapped.comment, "Hôtel");
+  assert.equal(mapped.raw.pan, undefined);
+  assert.equal(mapped.card_last4, "0641");
+  assert.equal(mapPliantTransaction({ transactionId: "tx-3", cardLast4: "12345" })?.card_last4, null);
 });
 
 test("le séjour se retrouve par la carte, pas par un autre dossier", () => {

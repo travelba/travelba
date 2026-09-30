@@ -7,6 +7,7 @@ import { BusyBar } from "@/components/crm/BusyBar";
 import { StatusChip } from "@/components/crm/ui";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import {
+  pliantCategoryLabel,
   pliantSignedCents,
   pliantStatusLabel,
   pliantStatusTone,
@@ -21,11 +22,30 @@ export type PliantLine = {
   type: string | null;
   billingCents: number | null;
   currency: string | null;
+  transactionCents: number | null;
+  transactionCurrency: string | null;
   bookedAt: string | null;
+  cardLabel: string | null;
   last4: string | null;
+  holderName: string | null;
+  category: string | null;
+  comment: string | null;
   reference: string | null;
   bookingId: string | null;
 };
+
+function cardCaption(row: PliantLine) {
+  const bits = [row.cardLabel, row.last4 ? `•••• ${row.last4}` : null, row.holderName].filter(Boolean);
+  return bits.join(" · ");
+}
+
+function originAmount(row: PliantLine) {
+  if (row.transactionCents == null || !row.transactionCurrency) return null;
+  if (row.transactionCurrency.toUpperCase() === (row.currency || "EUR").toUpperCase()) return null;
+  const signed = pliantSignedCents(row.type, row.transactionCents);
+  if (signed == null || signed === 0) return null;
+  return euros(signed, row.transactionCurrency);
+}
 
 function euros(cents: number, currency: string | null) {
   try {
@@ -72,7 +92,7 @@ export function PliantAccount({ configured, lines }: { configured: boolean; line
         <button type="button" onClick={() => void sync()} disabled={busy || !configured} className="admin-af-btn rounded-full px-4 py-2 text-sm">
           {busy ? "Synchronisation…" : "Synchroniser Pliant"}
         </button>
-        {configured ? <p className="text-sm text-muted">Tous les mouvements du compte.</p> : null}
+        {configured ? <p className="text-sm text-muted">Commerçant, carte et porteur. Les vérifications à 0 € restent hors liste.</p> : null}
       </div>
       {message ? <p className="text-sm text-muted">{message}</p> : null}
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
@@ -80,18 +100,22 @@ export function PliantAccount({ configured, lines }: { configured: boolean; line
         {lines.map((row) => {
           const signed = pliantSignedCents(row.type, row.billingCents);
           const amount = signed == null ? "—" : euros(signed, row.currency);
+          const origin = originAmount(row);
+          const card = cardCaption(row);
+          const category = pliantCategoryLabel(row.category);
           return (
             <li key={row.id} className="px-5 py-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="space-y-1">
-                  <p className="font-medium">
-                    {row.merchant || pliantTypeLabel(row.type)} · {amount}
-                  </p>
+                  <p className="font-medium">{row.merchant || pliantTypeLabel(row.type)}</p>
                   <p className="text-xs text-muted">
                     {formatDateFr(row.bookedAt)}
-                    {row.merchant ? ` · ${pliantTypeLabel(row.type)}` : ""}
-                    {row.last4 ? ` · •••• ${row.last4}` : ""}
+                    {` · ${pliantTypeLabel(row.type)}`}
+                    {card ? ` · ${card}` : ""}
                   </p>
+                  {category || row.comment ? (
+                    <p className="text-xs text-muted">{[category, row.comment].filter(Boolean).join(" · ")}</p>
+                  ) : null}
                   <div className="flex flex-wrap items-center gap-2">
                     <StatusChip tone={pliantStatusTone(row.status)}>{pliantStatusLabel(row.status)}</StatusChip>
                     {row.reference && row.bookingId ? (
@@ -100,6 +124,10 @@ export function PliantAccount({ configured, lines }: { configured: boolean; line
                       </Link>
                     ) : null}
                   </div>
+                </div>
+                <div className="text-right">
+                  <p className="font-medium tabular-nums">{amount}</p>
+                  {origin ? <p className="text-xs text-muted tabular-nums">{origin}</p> : null}
                 </div>
               </div>
             </li>

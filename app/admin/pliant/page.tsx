@@ -13,24 +13,42 @@ export default async function AdminPliantPage() {
   if (configured) {
     try {
       const admin = createServiceClient();
-      const { data } = await admin
-        .from("crm_pliant_transactions")
-        .select("*")
-        .order("booked_at", { ascending: false, nullsFirst: false })
-        .limit(200);
-      const rows = (data || []) as CrmPliantTransaction[];
+      const rows: CrmPliantTransaction[] = [];
+      for (let from = 0; from < 4000; from += 1000) {
+        const { data, error } = await admin
+          .from("crm_pliant_transactions")
+          .select(
+            "id, card_id, status, type, merchant, billing_cents, billing_currency, transaction_cents, transaction_currency, booked_at, card_label, card_last4, holder_name, category, comment"
+          )
+          .or("type.is.null,type.neq.STATUS_INQUIRY")
+          .order("booked_at", { ascending: false, nullsFirst: false })
+          .range(from, from + 999);
+        if (error) throw error;
+        const batch = (data || []) as CrmPliantTransaction[];
+        rows.push(...batch);
+        if (batch.length < 1000) break;
+      }
       const cardIds = [...new Set(rows.map((row) => row.card_id).filter((id): id is string => Boolean(id)))];
       const stays: PliantStayRef[] = [];
-      if (cardIds.length) {
+      const arrivalRows: {
+        pliant_card_id: string | null;
+        card_last4: string | null;
+        booking_id: string;
+      }[] = [];
+      for (let index = 0; index < cardIds.length; index += 100) {
         const { data: arrivals } = await admin
           .from("crm_hotel_arrivals")
           .select("pliant_card_id, card_last4, booking_id")
-          .in("pliant_card_id", cardIds);
-        const arrivalRows = (arrivals || []) as {
-          pliant_card_id: string | null;
-          card_last4: string | null;
-          booking_id: string;
-        }[];
+          .in("pliant_card_id", cardIds.slice(index, index + 100));
+        arrivalRows.push(
+          ...((arrivals || []) as {
+            pliant_card_id: string | null;
+            card_last4: string | null;
+            booking_id: string;
+          }[])
+        );
+      }
+      if (arrivalRows.length) {
         const bookingIds = [...new Set(arrivalRows.map((row) => row.booking_id).filter(Boolean))];
         const { data: bookings } = bookingIds.length
           ? await admin.from("crm_bookings").select("id, reference").in("id", bookingIds)
@@ -57,8 +75,14 @@ export default async function AdminPliantPage() {
           type: row.type,
           billingCents: row.billing_cents,
           currency: row.billing_currency,
+          transactionCents: row.transaction_cents,
+          transactionCurrency: row.transaction_currency,
           bookedAt: row.booked_at,
-          last4: stay?.last4 || null,
+          cardLabel: row.card_label,
+          last4: row.card_last4 || stay?.last4 || null,
+          holderName: row.holder_name,
+          category: row.category,
+          comment: row.comment,
           reference: stay?.reference || null,
           bookingId: stay?.bookingId || null,
         };
@@ -71,7 +95,7 @@ export default async function AdminPliantPage() {
   return (
     <div>
       <PageEyebrow>Espace agence</PageEyebrow>
-      <PageTitle title="Pliant" subtitle="Transactions du compte : commerçant, montant et séjour quand la carte est la nôtre." />
+      <PageTitle title="Pliant" subtitle="Chaque dépense : commerçant, carte, porteur et montant." />
       <div className="mt-6">
         <PliantAccount configured={configured} lines={lines} />
       </div>
