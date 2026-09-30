@@ -12,6 +12,7 @@ import {
   linkRequestMail,
   nextBusinessDay,
   parisIsoDate,
+  paymentUrlFromText,
 } from "./hotel-arrival";
 import type { CrmBookingItem, CrmHotelRequest, HotelDeskKind, HotelDeskStatus } from "./types";
 import { HOTEL_DESK_KINDS } from "./types";
@@ -123,9 +124,27 @@ function lineLooksLikeCard(line: string) {
   return /(?:cryptogramme|\bcvc\b|\bcvv\b|security code|num[eé]ro de carte|card number|expiration|expiry)/i.test(line) && /\d/.test(line);
 }
 
+const QUOTE_CUT =
+  /^(?:>+\s*)?(?:on\s+.+wrote:|le\s+.+a\s+[eé]crit\s*:|-{2,}\s*original message\s*-{2,}|-{2,}\s*message d['’]origine\s*-{2,})\s*$/i;
+
+/** Retire la citation du courrier d’origine. Le texte de l’hôtel reste. */
+export function withoutQuotedOriginal(text: string) {
+  const lines = text.split(/\r?\n/);
+  const kept: string[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] || "";
+    const next = lines[index + 1] || "";
+    if (QUOTE_CUT.test(line.trim())) break;
+    if (/^_{8,}$/.test(line.trim()) && /^(from|de)\s*:/i.test(next.trim())) break;
+    if (/^>+\s?/.test(line)) continue;
+    kept.push(line);
+  }
+  return kept.join("\n");
+}
+
 /** Texte de réponse à montrer dans le dossier. Les lignes de carte sont retirées. */
 export function hotelReplyForDesk(text: string) {
-  const cleaned = text
+  const cleaned = withoutQuotedOriginal(text)
     .split(/\r?\n/)
     .filter((line) => !lineLooksLikeCard(line))
     .join("\n")
@@ -134,6 +153,109 @@ export function hotelReplyForDesk(text: string) {
     .slice(0, 4000);
   if (containsCardNumber(cleaned)) return "";
   return cleaned;
+}
+
+/** Lien de paiement ou d’autorisation présent dans la réponse. Pas le site de l’hôtel. */
+export function hotelReplyLink(text: string) {
+  const url = paymentUrlFromText(text);
+  if (!url || !/pay|payment|checkout|invoice|secure|adyen|stripe|worldpay|pci|reglement|paiement|authoriz/i.test(url)) {
+    return null;
+  }
+  return url;
+}
+
+const SUBJECT_PREFIX = /^(?:(?:re|fw|fwd|tr)\s*:\s*)+/i;
+const RELANCE_PREFIX = /^(?:relance|follow-up)\s*[—–-]\s*/i;
+
+/** Objet sans Re:, Fwd:, Relance ni Follow-up. Les tirets d’origine restent pour Gmail. */
+export function hotelMailSubjectCore(subject: string) {
+  let value = subject.replace(/\s+/g, " ").trim();
+  let previous = "";
+  while (value && value !== previous) {
+    previous = value;
+    value = value.replace(SUBJECT_PREFIX, "").replace(RELANCE_PREFIX, "").trim();
+  }
+  return value;
+}
+
+/** Objet comparable : casse et tirets longs alignés. */
+export function hotelMailSubjectKey(subject: string) {
+  return hotelMailSubjectCore(subject)
+    .toLocaleLowerCase("fr")
+    .replace(/[—–]/g, "-")
+    .replace(/\s+-\s+/g, " - ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isAgencyMailbox(from: string) {
+  const email = emailAddress(from);
+  if (!email || !email.includes("@")) return true;
+  if (email === HOTEL_DESK_FROM) return true;
+  const domain = email.split("@")[1] || "";
+  return domain === "travelba.fr" || domain.endsWith(".travelba.fr");
+}
+
+/** Début de la fenêtre Gmail. Une relance écrase sent_at : on repart de la création. */
+export function replyWindowStartMs(input: { sentAtMs: number; createdAtMs: number | null; followUpCount: number }) {
+  if (input.followUpCount > 0 && input.createdAtMs != null && Number.isFinite(input.createdAtMs)) {
+    return Math.min(input.createdAtMs, input.sentAtMs);
+  }
+  return input.sentAtMs;
+}
+
+export function replyMatchesRequest(input: {
+  from: string;
+  subject: string;
+  receivedAtMs: number;
+  sentAtMs: number;
+  createdAtMs?: number | null;
+  followUpCount?: number;
+  requestSubject: string;
+}) {
+  const since = replyWindowStartMs({
+    sentAtMs: input.sentAtMs,
+    createdAtMs: input.createdAtMs ?? null,
+    followUpCount: input.followUpCount || 0,
+  });
+  if (!(input.receivedAtMs >= since)) return false;
+  if (isAgencyMailbox(input.from)) return false;
+  const incoming = hotelMailSubjectKey(input.subject);
+  const expected = hotelMailSubjectKey(input.requestSubject);
+  if (!incoming || !expected) return false;
+  return incoming === expected;
+}
+
+/** Clause Gmail. `after:` est exclusif : la veille, le filtre d’heure se fait ensuite. */
+export function gmailAfterDate(sinceMs: number) {
+  const day = new Date(sinceMs);
+  if (!Number.isFinite(day.getTime())) return "";
+  day.setUTCDate(day.getUTCDate() - 1);
+  const month = String(day.getUTCMonth() + 1).padStart(2, "0");
+  const date = String(day.getUTCDate()).padStart(2, "0");
+  return `${day.getUTCFullYear()}/${month}/${date}`;
+}
+
+export function gmailSubjectClause(subject: string) {
+  const core = hotelMailSubjectCore(subject).replace(/"/g, " ").replace(/\s+/g, " ").trim();
+  if (core.length < 4) return "";
+  return `subject:"${core.slice(0, 180)}"`;
+}
+
+export function hotelReplySearchQueries(input: { subject: string; emails: string[]; after: string }) {
+  if (!input.after) return [];
+  const queries: string[] = [];
+  const clause = gmailSubjectClause(input.subject);
+  if (clause) queries.push(`after:${input.after} ${clause}`);
+  const safe = [
+    ...new Set(
+      input.emails
+        .map((email) => emailAddress(email))
+        .filter((email) => /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(email))
+    ),
+  ];
+  if (safe.length) queries.push(`after:${input.after} (${safe.map((email) => `from:${email}`).join(" OR ")})`);
+  return queries;
 }
 
 function detail(item: CrmBookingItem, key: string) {

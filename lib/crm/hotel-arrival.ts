@@ -573,7 +573,7 @@ export function emailAddress(value: string) {
 
 const SKIP_URL =
   /little-?emperors|expedia|travelba|facebook\.com|instagram\.com|mailto:|unsubscribe|\.(png|jpe?g|gif|webp|svg|css|js)(\?|$)/i;
-const PAY_URL = /pay|payment|checkout|invoice|secure|adyen|stripe|worldpay|pci|reglement|paiement/i;
+const PAY_URL = /pay|payment|checkout|invoice|secure|adyen|stripe|worldpay|pci|reglement|paiement|authoriz/i;
 
 export function paymentUrlFromText(text: string) {
   const found = text.match(/https:\/\/[^\s<>"')\]]+/gi) || [];

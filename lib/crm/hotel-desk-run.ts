@@ -13,7 +13,6 @@ import {
   cardCloseDate,
   cardLast4,
   countryIso,
-  emailAddress,
   holidayDatesFromNager,
   hotelLanguage,
   nagerHolidayUrl,
@@ -31,10 +30,13 @@ import {
   type DeskRosterPerson,
   HOTEL_DESK_FROM,
   hotelReplyForDesk,
+  hotelReplySearchQueries,
+  gmailAfterDate,
   keepAgencyDraft,
   nextDeskMark,
   outboundHotelLetter,
-  replyMatchesHotel,
+  replyMatchesRequest,
+  replyWindowStartMs,
 } from "./hotel-desk";
 import { checkinCardPdf, precheckParty, selectedPrecheckPieces } from "./hotel-precheck";
 import { issuePliantCard, pliantConfigured, readPliantCardSecrets } from "./pliant";
@@ -225,19 +227,36 @@ export async function refreshHotelDesk(admin: Admin, deps: { now?: Date; fetchIm
 async function attachHotelReplies(admin: Admin, rows: CrmHotelRequest[]) {
   let replied = 0;
   for (const row of rows) {
-    if (!row.sent_at || !row.recipients.length) continue;
-    const sinceMs = Date.parse(row.sent_at);
-    const hits = await findHotelReplies(admin, row.recipients, sinceMs);
-    const match = hits.find((hit) =>
-      replyMatchesHotel({
-        from: hit.from,
-        receivedAtMs: hit.receivedAtMs,
-        sentAtMs: sinceMs,
-        hotelEmails: row.recipients,
-      })
-    );
+    if (!row.sent_at || !row.subject.trim()) continue;
+    const sentAtMs = Date.parse(row.sent_at);
+    if (!Number.isFinite(sentAtMs)) continue;
+    const createdAtMs = row.created_at ? Date.parse(row.created_at) : null;
+    const sinceMs = replyWindowStartMs({
+      sentAtMs,
+      createdAtMs: createdAtMs != null && Number.isFinite(createdAtMs) ? createdAtMs : null,
+      followUpCount: row.follow_up_count || 0,
+    });
+    const hits = await findHotelReplies(admin, {
+      emails: row.recipients,
+      sinceMs,
+      subject: row.subject,
+    });
+    const match = hits
+      .filter((hit) =>
+        replyMatchesRequest({
+          from: hit.from,
+          subject: hit.subject,
+          receivedAtMs: hit.receivedAtMs,
+          sentAtMs,
+          createdAtMs,
+          followUpCount: row.follow_up_count || 0,
+          requestSubject: row.subject,
+        })
+      )
+      .sort((a, b) => a.receivedAtMs - b.receivedAtMs)[0];
     if (!match) continue;
     const replyBody = hotelReplyForDesk(match.body);
+    if (!replyBody) continue;
     await admin
       .from("crm_hotel_requests")
       .update({
@@ -254,42 +273,61 @@ async function attachHotelReplies(admin: Admin, rows: CrmHotelRequest[]) {
   return replied;
 }
 
-async function findHotelReplies(admin: Admin, emails: string[], sinceMs: number) {
-  const replies: { id: string; from: string; subject: string; body: string; receivedAtMs: number }[] = [];
-  const safe = emails.map((email) => emailAddress(email)).filter(Boolean);
-  if (gmailConfigured() && safe.length) {
-    const since = new Date(sinceMs);
-    const stamp = `${since.getUTCFullYear()}/${String(since.getUTCMonth() + 1).padStart(2, "0")}/${String(since.getUTCDate()).padStart(2, "0")}`;
-    const query = `after:${stamp} (${safe.map((email) => `from:${email}`).join(" OR ")})`;
-    try {
-      const messages = await searchInbox(query, 6);
-      for (const message of messages) {
-        const receivedAtMs = message.receivedAt ? Date.parse(message.receivedAt) : sinceMs;
-        replies.push({
-          id: message.id,
-          from: message.fromEmail || message.from,
-          subject: message.subject || "",
-          body: message.text || "",
-          receivedAtMs,
-        });
+type HotelReplyHit = { id: string; from: string; subject: string; body: string; receivedAtMs: number };
+
+async function findHotelReplies(
+  admin: Admin,
+  input: { emails: string[]; sinceMs: number; subject: string }
+) {
+  const replies: HotelReplyHit[] = [];
+  const seen = new Set<string>();
+  const push = (hit: HotelReplyHit) => {
+    const key = hit.id || `${hit.from}|${hit.subject}|${hit.receivedAtMs}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    replies.push(hit);
+  };
+  const after = gmailAfterDate(input.sinceMs);
+  if (gmailConfigured() && after) {
+    for (const query of hotelReplySearchQueries({ subject: input.subject, emails: input.emails, after })) {
+      try {
+        const messages = await searchInbox(query, 10);
+        for (const message of messages) {
+          const receivedAtMs = message.receivedAt ? Date.parse(message.receivedAt) : input.sinceMs;
+          push({
+            id: message.id,
+            from: message.fromEmail || message.from,
+            subject: message.subject || "",
+            body: message.text || "",
+            receivedAtMs: Number.isFinite(receivedAtMs) ? receivedAtMs : input.sinceMs,
+          });
+        }
+      } catch {
+        continue;
       }
-    } catch {
-      replies.push(...[]);
     }
   }
   const { data } = await admin
     .from("crm_email_ingest")
-    .select("id, from_email, subject, received_at")
-    .gte("received_at", new Date(sinceMs).toISOString())
+    .select("id, from_email, subject, received_at, body_text")
+    .gte("received_at", new Date(input.sinceMs).toISOString())
     .order("received_at", { ascending: false })
     .limit(40);
-  for (const row of (data || []) as { id?: string; from_email?: string | null; subject?: string | null; received_at?: string | null }[]) {
-    replies.push({
+  for (const row of (data || []) as {
+    id?: string;
+    from_email?: string | null;
+    subject?: string | null;
+    received_at?: string | null;
+    body_text?: string | null;
+  }[]) {
+    const body = row.body_text || "";
+    if (!body.trim()) continue;
+    push({
       id: row.id || "",
       from: row.from_email || "",
       subject: row.subject || "",
-      body: "",
-      receivedAtMs: row.received_at ? Date.parse(row.received_at) : sinceMs,
+      body,
+      receivedAtMs: row.received_at ? Date.parse(row.received_at) : input.sinceMs,
     });
   }
   return replies;
