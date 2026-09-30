@@ -72,6 +72,8 @@ export type CatalogSample = {
   body: string;
   image: string | null;
   modelName: string | null;
+  fallbackName: string | null;
+  earlierName: string | null;
 };
 
 /** Un exemplaire de chaque message du récapitulatif, y compris ceux encore sans déclencheur. */
@@ -83,6 +85,8 @@ export function catalogSamples(): CatalogSample[] {
       body: message.bubble.body,
       image: message.bubble.image,
       modelName: message.bubble.modelName,
+      fallbackName: message.fallback?.modelName ?? null,
+      earlierName: message.earlier?.modelName ?? null,
     }));
 }
 
@@ -117,6 +121,14 @@ function draftVariables(modelName: string | null) {
   if (!flight) return null;
   const sid = (process.env[flight.env] || "").trim();
   return { sid, variables: flight.create.variables };
+}
+
+function approvedDraft(sample: CatalogSample) {
+  for (const name of [sample.modelName, sample.fallbackName, sample.earlierName]) {
+    const draft = draftVariables(name);
+    if (draft?.sid && draft.variables) return draft;
+  }
+  return null;
 }
 
 async function imageLive(url: string, fetchImpl: typeof fetch) {
@@ -203,7 +215,7 @@ export async function sendCatalogSamples(
       }
     }
 
-    const draft = draftVariables(sample.modelName);
+    const draft = approvedDraft(sample);
     if (draft?.sid && draft.variables) {
       const template = await deliverTemplate({
         phone: SAMPLE_PHONE,
@@ -211,8 +223,10 @@ export async function sendCatalogSamples(
         variables: draft.variables,
         fetchImpl,
       });
-      sent[sample.id] = template.ok ? "modele" : "refuse";
+      const limited = /rate|63018|limit/i.test(template.ok ? "" : template.detail || "");
+      sent[sample.id] = template.ok ? "modele" : limited ? "attente" : "refuse";
       await save();
+      if (!template.ok && limited) await new Promise((resolve) => setTimeout(resolve, 2_000));
       continue;
     }
     sent[sample.id] = sessionOpen === false ? "attente" : "refuse";
