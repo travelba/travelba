@@ -12,12 +12,20 @@ import {
   type CrmBookingItem,
 } from "@/lib/crm/types";
 import type { BookingExtract } from "@/lib/crm/ingest-types";
-import { itemDetailsLine, itemWhen } from "@/lib/crm/booking-display";
 import { readDocumentAmount } from "@/lib/crm/booking-issues";
-import { documentsForItem, hotelDisplayName, itemPriceLabel } from "@/lib/crm/carnet";
+import {
+  documentsForItem,
+  flightCardSubtitle,
+  flightCardTitle,
+  hotelDisplayName,
+  itemClock,
+  itemPriceLabel,
+  kindIcon,
+} from "@/lib/crm/carnet";
 import { flightCountsInStay } from "@/lib/crm/bookings";
 import { attachedEmailLabel } from "@/lib/crm/email-detach";
 import { formatDateTimeFr, formatMoney } from "@/lib/crm/money";
+import { Icon } from "@/components/crm/icons";
 import { STAY_CURRENCIES } from "@/lib/crm/stay-currency";
 import { HotelContactButton } from "@/components/crm/HotelContact";
 import { HotelDesk } from "@/components/admin/HotelDesk";
@@ -62,6 +70,65 @@ function printedPrice(amount: number, currency: string) {
   const code = currency.trim().toUpperCase();
   if ((STAY_CURRENCIES as readonly string[]).includes(code)) return formatMoney(amount, code);
   return currency ? `${amount.toLocaleString("fr-FR")} ${currency}` : amount.toLocaleString("fr-FR");
+}
+
+function detailText(item: CrmBookingItem, key: string) {
+  const value = item.details?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function stepDayKey(item: CrmBookingItem) {
+  const raw = (item.start_at || "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : "";
+}
+
+function stepDayLabel(key: string) {
+  if (!key) return "Sans date";
+  const date = new Date(`${key}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return "Sans date";
+  return date.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+}
+
+function stepTitle(item: CrmBookingItem) {
+  if (item.kind === "hotel") return hotelDisplayName(item);
+  if (item.kind === "flight" || item.kind === "rail") return flightCardTitle(item);
+  return visibleServiceCopy(item.title);
+}
+
+function stepEyebrow(item: CrmBookingItem) {
+  const kind = visibleServiceCopy(BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind);
+  const clock = itemClock(item.start_at);
+  const end = item.kind === "hotel" ? "" : itemClock(item.end_at);
+  const tickets = Number(item.details?.ticket_count);
+  const parts = [kind];
+  if (clock) parts.push(clock);
+  if (end) parts.push(`→ ${end}`);
+  if (item.kind === "flight" && Number.isFinite(tickets) && tickets > 1) {
+    parts.push(`${Math.round(tickets)} billets`);
+  }
+  return parts.join(" · ");
+}
+
+function stepSubtitle(item: CrmBookingItem) {
+  const parts: string[] = [];
+  if (item.kind === "flight" || item.kind === "rail") {
+    const number = detailText(item, "flight_number");
+    const cabin = detailText(item, "cabin");
+    const cities = flightCardSubtitle(item);
+    if (number) parts.push(number);
+    if (cabin) parts.push(cabin);
+    if (cities) parts.push(cities);
+  } else if (item.kind === "hotel") {
+    const room = detailText(item, "room");
+    const city = detailText(item, "city");
+    if (room) parts.push(room);
+    if (city) parts.push(city);
+  } else if (item.supplier) {
+    parts.push(item.supplier);
+  }
+  const ref = item.confirmation_ref || detailText(item, "pnr");
+  if (ref) parts.push(`Réf. ${ref}`);
+  return parts.filter(Boolean).join(" · ");
 }
 
 function blockDragFromControl(event: PointerEvent<HTMLElement>) {
@@ -317,15 +384,14 @@ export function BookingItemsPanel({
         <BusyBar active={busy} label="Enregistrement…" />
       </div>
       {attachedEmails.map((mail) => (
-        <div
-          key={mail.id}
-          className="mt-3 rounded-2xl border border-[var(--admin-gold)] bg-[var(--surface-2)] px-3 py-3"
-        >
-          <p className="text-sm font-semibold text-[var(--admin-navy)]">{attachedEmailLabel(mail)}</p>
-          <p className="mt-1 text-xs text-muted">
-            Importé depuis un e-mail
-            {mail.from_email ? ` · ${mail.from_email}` : ""}
-            {mail.received_at ? ` · ${formatDateTimeFr(mail.received_at)}` : ""}
+        <div key={mail.id} className="mt-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-[var(--border)] pb-2">
+          <p className="min-w-0 text-sm text-[var(--admin-navy)]">
+            <span className="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold-dark)]">
+              E-mail
+            </span>{" "}
+            {attachedEmailLabel(mail)}
+            {mail.from_email ? <span className="text-muted"> · {mail.from_email}</span> : null}
+            {mail.received_at ? <span className="text-muted"> · {formatDateTimeFr(mail.received_at)}</span> : null}
           </p>
           {confirmDetach === mail.id ? (
             <div className="mt-2">
@@ -370,8 +436,18 @@ export function BookingItemsPanel({
         onReorder={applyCardOrder}
         className="mt-2 flex list-none flex-col gap-2 p-0 text-sm"
       >
-        {cardRows.map((item) => {
+        {cardRows.map((item, index) => {
           const locked = editingId === item.id || busy;
+          const dayKey = stepDayKey(item);
+          const showDay = index === 0 || dayKey !== stepDayKey(cardRows[index - 1]);
+          const docs = documentsForItem(item, documents);
+          const subtitle = stepSubtitle(item);
+          const price = flightCountsInStay(item, items) ? itemPriceLabel(item, currency) : null;
+          const printed = readDocumentAmount(item.details);
+          const stepAmount = item.amount == null ? null : Number(item.amount);
+          const priceDiffers =
+            printed != null && (stepAmount == null || Math.abs(printed - stepAmount) > 0.009);
+          const counted = item.include_in_ledger && !(clientSettlesStay && !isExtraItemKind(item.kind));
           return (
           <Reorder.Item
             key={item.id}
@@ -382,13 +458,16 @@ export function BookingItemsPanel({
               scale: 1.02,
               zIndex: 30,
               boxShadow: "0 16px 40px rgba(11, 25, 44, 0.18)",
-              borderColor: "#C5A880",
             }}
-            className={`relative rounded-xl border border-border bg-[var(--surface)] px-3 py-2 ${
-              locked ? "" : "cursor-grab active:cursor-grabbing"
-            }`}
+            className={`relative ${locked ? "" : "cursor-grab active:cursor-grabbing"}`}
           >
-            <div onPointerDown={blockDragFromControl}>
+            {showDay ? (
+              <div className="mb-2 flex items-center gap-3 px-1 pt-2">
+                <p className="font-label text-[11px] font-semibold text-[var(--admin-gold-dark)]">{stepDayLabel(dayKey)}</p>
+                <span className="h-px flex-1 bg-gradient-to-r from-[var(--admin-gold)]/45 to-transparent" />
+              </div>
+            ) : null}
+            <div onPointerDown={blockDragFromControl} className="rounded-xl border border-border bg-[var(--surface)] px-3 py-3">
             {editingId === item.id ? (
               <div className="space-y-2">
                 <IngestItemCard
@@ -401,7 +480,7 @@ export function BookingItemsPanel({
                 <ItemAttachments
                   bookingId={bookingId}
                   itemId={item.id}
-                  docs={documentsForItem(item, documents)}
+                  docs={docs}
                 />
                 <div className="flex gap-2">
                   <button
@@ -418,22 +497,16 @@ export function BookingItemsPanel({
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <p className="font-display font-semibold text-[var(--admin-navy)]">
-                    {visibleServiceCopy(BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind)} ·{" "}
-                    {item.kind === "hotel" ? hotelDisplayName(item) : visibleServiceCopy(item.title)}
-                    {!item.visible_to_client ? (
-                      <span className="ml-2 rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase">
-                        Pas encore montré
-                      </span>
-                    ) : null}
-                    {item.include_in_ledger && !(clientSettlesStay && !isExtraItemKind(item.kind)) ? (
-                      <span className="ml-2 rounded-full bg-[var(--admin-sky)] px-2 py-0.5 text-[10px] font-bold uppercase">
-                        Compté
-                      </span>
-                    ) : null}
+              <div className="flex items-start gap-3">
+                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[var(--admin-sky)] text-[var(--admin-navy)]">
+                  <Icon name={kindIcon(item.kind)} className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold-dark)]">
+                    {stepEyebrow(item)}
                   </p>
+                  <p className="font-display text-base font-semibold leading-snug text-[var(--admin-navy)]">{stepTitle(item)}</p>
+                  {subtitle ? <p className="truncate text-xs text-muted">{subtitle}</p> : null}
                   {item.kind === "hotel" ? <HotelContactButton item={item} /> : null}
                   {item.kind === "hotel" && hotelRequests.some((row) => row.booking_item_id === item.id) ? (
                     <div className="mt-2">
@@ -461,30 +534,30 @@ export function BookingItemsPanel({
                       ) : null}
                     </div>
                   ) : null}
-                  <p className="text-xs text-muted">
-                    {[itemWhen(item), itemDetailsLine(item), flightCountsInStay(item, items) ? itemPriceLabel(item, currency) : null]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                  {readDocumentAmount(item.details) != null ? (
-                    <p className="text-xs text-muted">
-                      Prix imprimé sur le document :{" "}
+                  {priceDiffers && printed != null ? (
+                    <p className="mt-1 text-xs text-[var(--admin-gold-dark)]">
+                      Prix du document :{" "}
                       {printedPrice(
-                        readDocumentAmount(item.details) as number,
-                        typeof item.details?.document_currency === "string"
-                          ? item.details.document_currency
-                          : ""
+                        printed,
+                        typeof item.details?.document_currency === "string" ? item.details.document_currency : ""
                       )}
-                      . Corrigez-le dans la carte si la lecture a coupé le montant.
                     </p>
                   ) : null}
-                  <ItemAttachments
-                    bookingId={bookingId}
-                    itemId={item.id}
-                    docs={documentsForItem(item, documents)}
-                  />
+                  <ItemAttachments bookingId={bookingId} itemId={item.id} docs={docs} compact />
                 </div>
-                <div className="relative flex flex-wrap items-center gap-2 [&_button]:cursor-pointer">
+                <div className="flex shrink-0 flex-col items-end gap-1.5">
+                  {price ? <p className="font-display text-sm font-bold text-[var(--admin-navy)]">{price}</p> : null}
+                  {!item.visible_to_client ? (
+                    <span className="rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">
+                      Pas encore montré
+                    </span>
+                  ) : null}
+                  {counted ? (
+                    <span className="rounded-full bg-[var(--admin-sky)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">
+                      Compté
+                    </span>
+                  ) : null}
+                  <div className="relative flex items-center gap-1 [&_button]:cursor-pointer">
                   <button
                     type="button"
                     className="text-xs font-semibold text-[var(--admin-navy)]"
@@ -532,6 +605,7 @@ export function BookingItemsPanel({
                       )}
                     </div>
                   ) : null}
+                  </div>
                 </div>
               </div>
             )}
@@ -569,10 +643,12 @@ function ItemAttachments({
   bookingId,
   itemId,
   docs,
+  compact = false,
 }: {
   bookingId: string;
   itemId: string;
   docs: CrmBookingDocument[];
+  compact?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -599,14 +675,20 @@ function ItemAttachments({
     router.refresh();
   }
 
+  if (compact && !docs.length) return null;
+
   return (
     <div className="mt-2 space-y-1">
-      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted">Pièces jointes</p>
+      {compact && docs.length ? (
+        <p className="text-xs text-muted">
+          {docs.length} pièce{docs.length > 1 ? "s" : ""}
+        </p>
+      ) : null}
       <div className="flex flex-wrap gap-3">
         {docs.map((doc) => (
           <FilePreviewTile
             key={doc.id}
-            onRemove={() => void removeDoc(doc.id)}
+            onRemove={compact ? undefined : () => void removeDoc(doc.id)}
             file={{
               id: doc.id,
               path: doc.storage_path,
@@ -618,6 +700,7 @@ function ItemAttachments({
           />
         ))}
       </div>
+      {compact ? null : (
       <form onSubmit={upload} className="flex flex-wrap items-center gap-2">
         <BusyBar active={busy} label="Envoi…" />
         <input name="file" type="file" required className="text-xs" />
@@ -625,6 +708,7 @@ function ItemAttachments({
           {busy ? "Envoi…" : "Joindre"}
         </button>
       </form>
+      )}
     </div>
   );
 }
