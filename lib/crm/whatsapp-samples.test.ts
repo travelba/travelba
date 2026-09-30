@@ -99,3 +99,30 @@ test("une fois les images en ligne, chaque exemplaire part une seule fois", asyn
   const last = writes.at(-1) as { done_at?: string };
   assert.equal(typeof last.done_at, "string");
 });
+
+test("si rien n’est arrivé sur le téléphone, le modèle approuvé part", async () => {
+  process.env.TWILIO_ACCOUNT_SID = "ACtest";
+  process.env.TWILIO_AUTH_TOKEN = "token";
+  process.env.TWILIO_WHATSAPP_FROM = "whatsapp:+33756841315";
+  process.env.TWILIO_CONTENT_CONNEXION = "HXconnexion";
+  delete process.env.VERCEL_ENV;
+  const { client } = admin({ hold: true, sent: { connexion: "hold" } });
+  let sessions = 0;
+  const templates: string[] = [];
+  const result = await sendCatalogSamples(
+    client,
+    async () => new Response(null, { status: 200, headers: { "content-type": "image/jpeg" } }),
+    async () => {
+      sessions += 1;
+      return { ok: true, sid: "SM1" };
+    },
+    async (input) => {
+      templates.push(input.contentSid);
+      return { ok: true, sid: "SM2" };
+    },
+    async () => ({ total: 40, delivered: 0, errors: ["63016"], statuses: { undelivered: 40 } })
+  );
+  assert.equal(sessions, 0);
+  assert.ok(templates.includes("HXconnexion"));
+  assert.ok((result.delivered ?? 0) >= 1);
+});
