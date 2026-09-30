@@ -4,7 +4,12 @@ import {
   cardSendNote,
   containsCardNumber,
   HOTEL_DESK_FROM,
+  gmailAfterDate,
+  gmailSubjectClause,
+  hotelMailSubjectKey,
   hotelReplyForDesk,
+  hotelReplyLink,
+  hotelReplySearchQueries,
   deskNeedsAttention,
   hotelDeskDraft,
   deskRoster,
@@ -16,8 +21,10 @@ import {
   nextDeskMark,
   outboundHotelLetter,
   replyMatchesHotel,
+  replyMatchesRequest,
   transferCues,
 } from "./hotel-desk";
+import { paymentUrlFromText } from "./hotel-arrival";
 import type { CrmBookingItem } from "./types";
 
 function hotel(patch: Partial<CrmBookingItem> = {}): CrmBookingItem {
@@ -233,6 +240,133 @@ test("la réponse hôtel reste dans le dossier, sans numéro de carte", () => {
   assert.equal(containsCardNumber(stripped), false);
   assert.equal(stripped.includes("4242"), false);
   assert.equal(stripped.toLowerCase().includes("cryptogramme"), false);
+});
+
+test("une autre boîte de l'hôtel répond au bon courrier", () => {
+  const sent = Date.parse("2026-09-30T16:00:00Z");
+  const subject = "Payment link — Le Bristol — HB-9";
+  assert.equal(
+    replyMatchesRequest({
+      from: "Front desk <desk@bristol.test>",
+      subject: "Re: Payment link — Le Bristol — HB-9",
+      receivedAtMs: sent + 60_000,
+      sentAtMs: sent,
+      requestSubject: subject,
+    }),
+    true
+  );
+  assert.equal(
+    replyMatchesRequest({
+      from: "desk@bristol.test",
+      subject: "Re: Follow-up — Payment link — Le Bristol — HB-9",
+      receivedAtMs: sent + 60_000,
+      sentAtMs: sent,
+      requestSubject: "Follow-up — Payment link — Le Bristol — HB-9",
+    }),
+    true
+  );
+  assert.equal(hotelMailSubjectKey("Re: Fwd: Relance — Lien de paiement — Le Bristol — HB-9"), "lien de paiement - le bristol - hb-9");
+  assert.equal(
+    replyMatchesRequest({
+      from: "desk@bristol.test",
+      subject: "Re: Payment link - Le Bristol - HB-9",
+      receivedAtMs: sent + 60_000,
+      sentAtMs: sent,
+      requestSubject: subject,
+    }),
+    true
+  );
+  assert.equal(
+    replyMatchesRequest({
+      from: "desk@bristol.test",
+      subject: "Re: VIP welcome — Le Bristol — HB-9",
+      receivedAtMs: sent + 60_000,
+      sentAtMs: sent,
+      requestSubject: subject,
+    }),
+    false
+  );
+  assert.equal(
+    replyMatchesRequest({
+      from: "Travel Business Agency <contact@travelba.fr>",
+      subject: "Re: Payment link — Le Bristol — HB-9",
+      receivedAtMs: sent + 60_000,
+      sentAtMs: sent,
+      requestSubject: subject,
+    }),
+    false
+  );
+  assert.equal(
+    replyMatchesRequest({
+      from: "agent@travelba.fr",
+      subject,
+      receivedAtMs: sent + 60_000,
+      sentAtMs: sent,
+      requestSubject: subject,
+    }),
+    false
+  );
+  const created = sent - 5 * 60 * 60 * 1000;
+  const relance = sent + 5 * 60 * 60 * 1000;
+  assert.equal(
+    replyMatchesRequest({
+      from: "desk@bristol.test",
+      subject,
+      receivedAtMs: sent + 60_000,
+      sentAtMs: relance,
+      createdAtMs: created,
+      followUpCount: 1,
+      requestSubject: subject,
+    }),
+    true
+  );
+  assert.equal(
+    replyMatchesRequest({
+      from: "desk@bristol.test",
+      subject,
+      receivedAtMs: sent - 60_000,
+      sentAtMs: sent,
+      requestSubject: subject,
+    }),
+    false
+  );
+});
+
+test("la réponse garde le lien d'autorisation et retire la citation", () => {
+  const body = [
+    "Dear team,",
+    "",
+    "The link is ready:",
+    "https://www.hotel.test",
+    "https://secure.hotel.test/authorizations/stay-1",
+    "",
+    "On Tue, 30 Sep 2026, Travel Business Agency <contact@travelba.fr> wrote:",
+    "> Could you please send us the payment link",
+    "> Numéro : 4242 4242 4242 4242",
+  ].join("\n");
+  const kept = hotelReplyForDesk(body);
+  assert.match(kept, /authorizations\/stay-1/);
+  assert.match(kept, /www\.hotel\.test/);
+  assert.equal(kept.includes("payment link"), false);
+  assert.equal(kept.includes("4242"), false);
+  assert.equal(hotelReplyLink(kept), "https://secure.hotel.test/authorizations/stay-1");
+  assert.equal(paymentUrlFromText("https://www.hotel.test\nhttps://secure.hotel.test/authorizations/stay-1"), "https://secure.hotel.test/authorizations/stay-1");
+  assert.equal(hotelReplyLink("See https://www.hotel.test"), null);
+  const french = hotelReplyForDesk(
+    ["Le lien est prêt.", "Le mar. 30 sept. 2026, l'hôtel a écrit :", "> Merci de renvoyer le courrier."].join("\n")
+  );
+  assert.match(french, /lien est prêt/);
+  assert.equal(french.includes("renvoyer"), false);
+  assert.equal(gmailAfterDate(Date.parse("2026-09-30T16:00:00Z")), "2026/09/29");
+  assert.equal(gmailSubjectClause("Follow-up — Payment link — Le Bristol — HB-9"), 'subject:"Payment link — Le Bristol — HB-9"');
+  const queries = hotelReplySearchQueries({
+    subject: "Payment link — Le Bristol — HB-9",
+    emails: ["Reservations <reservations@bristol.test>", "not an email"],
+    after: "2026/09/29",
+  });
+  assert.match(queries[0] || "", /subject:"Payment link — Le Bristol — HB-9"/);
+  assert.match(queries[1] || "", /from:reservations@bristol\.test/);
+  assert.equal((queries[1] || "").includes("not"), false);
 });
 
 test("la carte n'entre pas dans le brouillon", () => {

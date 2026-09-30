@@ -6,7 +6,7 @@ import { PrecheckPack } from "@/components/admin/PrecheckPack";
 import { RecipientRoster } from "@/components/admin/RecipientRoster";
 import { hotelDisplayName } from "@/lib/crm/carnet";
 import { hotelContact } from "@/lib/crm/hotel-contact";
-import { HOTEL_DESK_LABELS, containsCardNumber, deskRoster, deskStatusLabel, hotelsNeedingDesk, type DeskRosterPerson } from "@/lib/crm/hotel-desk";
+import { HOTEL_DESK_LABELS, containsCardNumber, deskRoster, deskStatusLabel, hotelReplyLink, hotelsNeedingDesk, type DeskRosterPerson } from "@/lib/crm/hotel-desk";
 import { precheckParty } from "@/lib/crm/hotel-precheck";
 import { HOTEL_DESK_KINDS, type CardViewLine, type CrmBookingItem, type CrmBookingTraveler, type CrmHotelRequest, type CrmTravelDocument, type HotelDeskKind } from "@/lib/crm/types";
 import { fieldControlClass } from "@/components/crm/fields";
@@ -266,12 +266,18 @@ function HotelDeskEditor({
   }
 
   const reply = row.reply_body && !containsCardNumber(row.reply_body) ? row.reply_body : "";
+  const link = reply ? hotelReplyLink(reply) : null;
   return (
     <div className="space-y-2 rounded-2xl border border-[#e5e3dc] bg-white p-3">
       {row.status === "replied" || reply ? (
         <div className="rounded-xl bg-[#f8f3eb] p-3 text-sm text-[var(--admin-navy)]">
           <p className="text-xs font-semibold">Réponse de l'hôtel</p>
           {row.reply_from ? <p className="text-xs text-muted">{row.reply_from}</p> : null}
+          {link ? (
+            <a href={link} target="_blank" rel="noreferrer" className="mt-2 block break-all font-semibold text-[#9e7e51] underline">
+              {link}
+            </a>
+          ) : null}
           {reply ? (
             <p className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap">{reply}</p>
           ) : (
