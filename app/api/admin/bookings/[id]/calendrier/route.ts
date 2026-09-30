@@ -30,6 +30,5 @@ export async function GET(request: Request, ctx: Ctx) {
     booking: b,
     items: (items || []) as CrmBookingItem[],
     itemId,
-    allowPhoneFeed: b.visible_to_client,
   });
 }

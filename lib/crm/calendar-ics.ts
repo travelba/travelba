@@ -1,7 +1,6 @@
 import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
 import { BOOKING_ITEM_LABELS, isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
 import { itemClock, flightIata, flightCities, hotelDisplayName } from "@/lib/crm/carnet";
-import { siteConfig } from "@/lib/site";
 
 function icsEscape(value: string) {
   return value
@@ -120,8 +119,6 @@ export function buildBookingIcs(opts: {
   booking: CrmBooking;
   items: CrmBookingItem[];
   itemId?: string | null;
-  /** Abonnement téléphone : le calendrier se rafraîchit si l’horaire change. */
-  subscription?: boolean;
 }) {
   const events: string[] = [];
   const named = opts.itemId ? opts.items.find((row) => row.id === opts.itemId) : null;
@@ -136,18 +133,16 @@ export function buildBookingIcs(opts: {
       if (event) events.push(event);
     }
   }
-  const name = icsEscape(named ? itemSummary(named) : opts.booking.title || opts.booking.reference);
-  const lines = [
+  // Pas de nom de calendrier ni de TTL : ce fichier ajoute des événements, il n’ouvre pas un flux.
+  return [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
     "PRODID:-//Travelba//Carnet//FR",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
-    `X-WR-CALNAME:${name}`,
-  ];
-  if (opts.subscription) lines.push("X-PUBLISHED-TTL:PT6H");
-  lines.push(...events, "END:VCALENDAR");
-  return `${lines.join("\r\n")}\r\n`;
+    ...events,
+    "END:VCALENDAR",
+  ].join("\r\n") + "\r\n";
 }
 
 export function icsFileName(booking: CrmBooking, itemId?: string | null) {
@@ -167,10 +162,7 @@ export function icsHttpHeaders(fileName: string, opts?: { handoff?: boolean }) {
   return headers;
 }
 
-/** Clé du flux « tout le séjour », distincte d’un id de carte. */
-export const CALENDAR_STAY_KEY = "sejour";
-
-export type PhoneCalendarLink = { webcal: string | null; google: string | null };
+export type PhoneCalendarLink = { google: string | null };
 
 export type PhoneCalendarLinks = {
   stay: PhoneCalendarLink;
@@ -181,21 +173,16 @@ export function isAndroidUa(ua: string) {
   return /Android/i.test(ua);
 }
 
-/** Safari sur iPhone ou iPad. Pas l’agent qui relit un abonnement : sinon la redirection boucle. */
+/** Safari sur iPhone ou iPad. */
 export function isAppleMobileBrowser(ua: string) {
-  if (/CalendarAgent|dataaccessd|CFNetwork/i.test(ua)) return false;
   return /iPhone|iPad|iPod/i.test(ua);
 }
 
+/** Android : Google Agenda crée l’événement. iPhone garde le fichier .ics (un événement, pas un flux). */
 export function calendarOpenTarget(opts: {
   ua: string;
-  webcalHref?: string | null;
   googleHref?: string | null;
-  /** iPadOS qui se présente comme un Mac, mais avec un écran tactile. */
-  appleTouch?: boolean;
 }) {
-  const apple = Boolean(opts.appleTouch) || isAppleMobileBrowser(opts.ua);
-  if (apple && opts.webcalHref) return opts.webcalHref;
   if (isAndroidUa(opts.ua) && opts.googleHref) return opts.googleHref;
   return null;
 }
@@ -205,18 +192,11 @@ export function chosenCalendarHref(
   phone: PhoneCalendarLink | null | undefined,
   ua: string
 ) {
-  return (
-    calendarOpenTarget({
-      ua,
-      webcalHref: phone?.webcal,
-      googleHref: phone?.google,
-    }) || httpsHref
-  );
+  return calendarOpenTarget({ ua, googleHref: phone?.google }) || httpsHref;
 }
 
 export function calendarResponsePlan(opts: {
   ua: string;
-  webcalHref?: string | null;
   googleHref?: string | null;
 }): { kind: "redirect"; url: string } | { kind: "file"; handoff: boolean } {
   const url = calendarOpenTarget(opts);
@@ -224,13 +204,25 @@ export function calendarResponsePlan(opts: {
   return { kind: "file", handoff: isAppleMobileBrowser(opts.ua) };
 }
 
-export function originFromHeaders(h: { get(name: string): string | null }) {
-  const host = h.get("x-forwarded-host")?.split(",")[0]?.trim() || h.get("host")?.trim() || "";
-  if (!host) return siteConfig.url;
-  const proto =
-    h.get("x-forwarded-proto")?.split(",")[0]?.trim() ||
-    (host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "https");
-  return `${proto}://${host}`;
+/** Lien d’une carte : l’URL se termine par .ics, sans query, pour que le téléphone l’ouvre comme un événement. */
+export function itemCalendarHref(calendarBase: string, itemId: string) {
+  const id = encodeURIComponent(itemId);
+  if (calendarBase.endsWith(".ics")) return `${calendarBase.slice(0, -4)}/${id}.ics`;
+  return `${calendarBase}?item_id=${id}`;
+}
+
+/** Segment `…/agenda/{id}.ics` → id de la carte. */
+export function calendarItemIdFromSegment(segment: string) {
+  let value = segment;
+  try {
+    value = decodeURIComponent(segment);
+  } catch {
+    return null;
+  }
+  if (!value.toLowerCase().endsWith(".ics")) return null;
+  const id = value.slice(0, -4);
+  if (!id || id.includes("/") || id.includes("\\")) return null;
+  return id;
 }
 
 function plusHours(stamp: string, hours: number) {
@@ -282,8 +274,8 @@ export function googlePhoneMap(booking: CrmBooking, items: CrmBookingItem[]): Ph
   for (const item of items) {
     const google = googleCalendarHref(item, booking);
     if (!google) continue;
-    mapped[item.id] = { webcal: null, google };
+    mapped[item.id] = { google };
   }
-  return { stay: { webcal: null, google: null }, items: mapped };
+  return { stay: { google: null }, items: mapped };
 }
 

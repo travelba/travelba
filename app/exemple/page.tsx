@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import { BookingHero } from "@/components/crm/BookingHero";
-import { chosenCalendarHref, googleCalendarHref } from "@/lib/crm/calendar-ics";
+import { chosenCalendarHref, googleCalendarHref, itemCalendarHref } from "@/lib/crm/calendar-ics";
 import { Icon } from "@/components/crm/icons";
 import { BoardingPass } from "@/components/account/BoardingPass";
 import { clientVisibleItems, nextTimelineFlight, stayArrivalPlaces, stayHeadline, tripPlaceLine } from "@/lib/crm/carnet";
@@ -34,9 +34,9 @@ export default async function ExampleHomePage() {
   const headerList = await headers();
   const googleHref = flightItem ? googleCalendarHref(flightItem, nextTrip) : null;
   const httpsHref = homeFlight
-    ? `${EXAMPLE_BASE}/reservations/${nextTrip.reference}/agenda.ics?item_id=${encodeURIComponent(homeFlight.itemId)}`
+    ? itemCalendarHref(`${EXAMPLE_BASE}/reservations/${nextTrip.reference}/agenda.ics`, homeFlight.itemId)
     : "";
-  const calendarHref = chosenCalendarHref(httpsHref, { webcal: null, google: googleHref }, headerList.get("user-agent") || "");
+  const calendarHref = chosenCalendarHref(httpsHref, { google: googleHref }, headerList.get("user-agent") || "");
 
   return (
     <div className="space-y-3">
