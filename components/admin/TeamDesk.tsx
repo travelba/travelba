@@ -162,7 +162,18 @@ export function TeamDesk({
             toujours un administrateur.
           </p>
         </div>
-        <div className="overflow-x-auto">
+        <ul className="lg:hidden">
+          {colleagues.map((member) => (
+            <ColleagueRow
+              key={`card-${member.id}-${member.role}`}
+              layout="card"
+              member={member}
+              current={member.id === currentId}
+              adminCount={adminCount}
+            />
+          ))}
+        </ul>
+        <div className="hidden overflow-x-auto lg:block">
           <table className="min-w-full text-left text-sm">
             <thead className="bg-[var(--admin-sky)]/70 font-label text-[10px] font-bold uppercase tracking-[0.12em] text-muted">
               <tr>
@@ -178,6 +189,7 @@ export function TeamDesk({
               {colleagues.map((member) => (
                 <ColleagueRow
                   key={`${member.id}-${member.role}`}
+                  layout="row"
                   member={member}
                   current={member.id === currentId}
                   adminCount={adminCount}
@@ -192,10 +204,12 @@ export function TeamDesk({
 }
 
 function ColleagueRow({
+  layout,
   member,
   current,
   adminCount,
 }: {
+  layout: "card" | "row";
   member: Colleague;
   current: boolean;
   adminCount: number;
@@ -258,86 +272,106 @@ function ColleagueRow({
     }
   }
 
-  return (
-    <tr className="border-t border-[var(--border)] align-top">
-      <td className="px-5 py-4">
-        <p className="font-semibold text-[var(--admin-navy)]">{member.fullName}</p>
-        <p className="mt-1 text-xs text-muted">
-          {staffRoleLabel(member.role)}
-          {current ? " · Vous" : ""}
-        </p>
-      </td>
-      <td className="px-5 py-4 text-muted">{member.email || "Adresse indisponible"}</td>
-      <td className="px-5 py-4">
-        <div className="flex flex-col items-start gap-2">
-          <label className="sr-only" htmlFor={`role-${member.id}`}>
-            Rôle de {member.fullName}
-          </label>
-          <select
-            id={`role-${member.id}`}
-            value={role}
-            disabled={busy}
-            onChange={(event) => {
-              setRole(event.target.value as StaffRole);
-              setError(null);
-            }}
-            className="admin-af-input text-sm"
-            title={lastAdmin ? "L’agence garde au moins un administrateur." : undefined}
-          >
-            <option value="agent" disabled={lastAdmin}>
-              Agent
-            </option>
-            <option value="admin">Administrateur</option>
-          </select>
-          {action ? (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void saveRole()}
-              className="rounded-full bg-[var(--admin-navy)] px-3 py-1.5 text-xs font-semibold text-[var(--admin-gold)] disabled:opacity-60"
-            >
-              {busy && !confirming ? "Enregistrement…" : action}
-            </button>
-          ) : null}
-          <BusyBar active={busy && !confirming} label="Enregistrement…" />
-        </div>
-      </td>
-      <td className="px-5 py-4 text-right">
-        <BusyBar active={busy && confirming} label="Retrait…" />
-        {canRemove ? (
-          <div className="mt-2 flex flex-col items-end gap-1">
-            <div className="flex items-center justify-end gap-2">
-              {confirming ? (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setConfirming(false)}
-                  className="text-xs font-semibold text-muted"
-                >
-                  Annuler
-                </button>
-              ) : null}
+  const roleId = `role-${layout}-${member.id}`;
+  const identity = (
+    <>
+      <p className="font-semibold text-[var(--admin-navy)]">{member.fullName}</p>
+      <p className="mt-1 text-xs text-muted">
+        {staffRoleLabel(member.role)}
+        {current ? " · Vous" : ""}
+      </p>
+    </>
+  );
+  const roleControl = (
+    <div className="flex flex-col items-start gap-2">
+      <label className="sr-only" htmlFor={roleId}>
+        Rôle de {member.fullName}
+      </label>
+      <select
+        id={roleId}
+        value={role}
+        disabled={busy}
+        onChange={(event) => {
+          setRole(event.target.value as StaffRole);
+          setError(null);
+        }}
+        className="admin-af-input w-full text-sm lg:w-auto"
+        title={lastAdmin ? "L’agence garde au moins un administrateur." : undefined}
+      >
+        <option value="agent" disabled={lastAdmin}>
+          Agent
+        </option>
+        <option value="admin">Administrateur</option>
+      </select>
+      {action ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void saveRole()}
+          className="rounded-full bg-[var(--admin-navy)] px-3 py-1.5 text-xs font-semibold text-[var(--admin-gold)] disabled:opacity-60"
+        >
+          {busy && !confirming ? "Enregistrement…" : action}
+        </button>
+      ) : null}
+      <BusyBar active={busy && !confirming} label="Enregistrement…" />
+    </div>
+  );
+  const removal = (
+    <>
+      <BusyBar active={busy && confirming} label="Retrait…" />
+      {canRemove ? (
+        <div className={`mt-2 flex flex-col gap-1 ${layout === "card" ? "items-start" : "items-end"}`}>
+          <div className={`flex items-center gap-2 ${layout === "card" ? "justify-start" : "justify-end"}`}>
+            {confirming ? (
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => void remove()}
-                className="text-xs font-semibold text-[var(--admin-red)]"
-                aria-label={`Retirer ${member.fullName}`}
+                onClick={() => setConfirming(false)}
+                className="text-xs font-semibold text-muted"
               >
-                {busy ? "Retrait…" : confirming ? "Confirmer" : "Retirer"}
+                Annuler
               </button>
-            </div>
-            {confirming && !busy ? (
-              <p className="max-w-[16rem] text-right text-[11px] text-muted">
-                Retirer {member.fullName} coupe l’accès à l’espace agence. Les dossiers restent.
-              </p>
             ) : null}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void remove()}
+              className="text-xs font-semibold text-[var(--admin-red)]"
+              aria-label={`Retirer ${member.fullName}`}
+            >
+              {busy ? "Retrait…" : confirming ? "Confirmer" : "Retirer"}
+            </button>
           </div>
-        ) : (
-          <p className="text-xs text-muted">{member.role === "admin" ? "Non retiré" : "Votre accès"}</p>
-        )}
-        {error ? <p className="mt-2 text-xs text-[var(--admin-red)]">{error}</p> : null}
-      </td>
+          {confirming && !busy ? (
+            <p className={`text-[11px] text-muted ${layout === "card" ? "" : "max-w-[16rem] text-right"}`}>
+              Retirer {member.fullName} coupe l’accès à l’espace agence. Les dossiers restent.
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <p className="text-xs text-muted">{member.role === "admin" ? "Non retiré" : "Votre accès"}</p>
+      )}
+      {error ? <p className="mt-2 text-xs text-[var(--admin-red)]">{error}</p> : null}
+    </>
+  );
+
+  if (layout === "card") {
+    return (
+      <li className="space-y-3 border-t border-[var(--border)] px-5 py-4 text-sm">
+        <div>{identity}</div>
+        <p className="break-all text-muted">{member.email || "Adresse indisponible"}</p>
+        {roleControl}
+        {removal}
+      </li>
+    );
+  }
+
+  return (
+    <tr className="border-t border-[var(--border)] align-top">
+      <td className="px-5 py-4">{identity}</td>
+      <td className="px-5 py-4 text-muted">{member.email || "Adresse indisponible"}</td>
+      <td className="px-5 py-4">{roleControl}</td>
+      <td className="px-5 py-4 text-right">{removal}</td>
     </tr>
   );
 }

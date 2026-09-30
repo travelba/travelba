@@ -212,7 +212,7 @@ export function RevolutInbox({
                   </div>
                 </div>
                 {r.status === "unmatched" ? (
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
                     <div className="w-full">
                       <BusyBar active={rowBusy === r.id} label="Rapprochement…" />
                     </div>
@@ -223,7 +223,7 @@ export function RevolutInbox({
                       aria-haspopup="dialog"
                       aria-expanded={pickerRow === r.id}
                       aria-label="Choisir le client à rapprocher"
-                      className="inline-flex min-w-[12rem] max-w-xs items-center justify-between gap-2 rounded-xl border border-border bg-white px-3 py-2 text-left text-sm text-[var(--admin-navy)]"
+                      className="inline-flex w-full items-center justify-between gap-2 rounded-xl border border-border bg-white px-3 py-2 text-left text-sm text-[var(--admin-navy)] sm:min-w-[12rem] sm:max-w-xs sm:w-auto"
                     >
                       <span className="min-w-0 truncate">
                         {chosen ? customerPickLabel(chosen) : "Choisir un client…"}
