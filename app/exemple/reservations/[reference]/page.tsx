@@ -9,7 +9,7 @@ import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { BookingStatusBadge } from "@/components/crm/ui";
 import { VisaSection } from "@/components/crm/VisaSection";
 import { carnetVisible, clientBookingStatusLabel, clientVisibleItems, itemPriceLabel, stayArrivalPlaces, stayHeadline, tripPlaceLine, whatsappModifyHref } from "@/lib/crm/carnet";
-import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
+import { clientStayExpenseLines, clientStayPriceLabel, stayFeeFields } from "@/lib/crm/ledger-display";
 import { isLedgerExpenseKind } from "@/lib/crm/types";
 import { findVisaExtra } from "@/lib/crm/extras";
 import { EXAMPLE_BASE, EXAMPLE_REFERENCE } from "@/lib/crm/example-session";
@@ -58,7 +58,7 @@ export default async function ExampleReservationPage({ params }: Props) {
         title: item.title,
         amount: item.amount == null ? null : Number(item.amount),
       })),
-    agencyCommission: b.agency_commission === true,
+    ...stayFeeFields(b),
     stayTotal: Number(b.total_amount),
     currency: b.currency,
     pricesVisible: b.prices_visible !== false,
@@ -183,7 +183,7 @@ export default async function ExampleReservationPage({ params }: Props) {
               stayTotal: Number(b.total_amount),
               currency: b.currency,
               pricesVisible: b.prices_visible !== false,
-              agencyCommission: b.agency_commission === true,
+              ...stayFeeFields(b),
               expenses: visibleItems
                 .filter((item) => isLedgerExpenseKind(item.kind))
                 .map((item) => ({ amount: item.amount })),

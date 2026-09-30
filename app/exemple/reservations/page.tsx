@@ -13,7 +13,7 @@ import {
   tripDurationDays,
 } from "@/lib/crm/money";
 import { clientBookingStatusLabel, stayArrivalPlaces, stayHeadline } from "@/lib/crm/carnet";
-import { clientStayPriceLabel } from "@/lib/crm/ledger-display";
+import { clientStayPriceLabel, stayFeeFields } from "@/lib/crm/ledger-display";
 import { isLedgerExpenseKind } from "@/lib/crm/types";
 
 export default async function ExampleReservationsPage({
@@ -145,7 +145,7 @@ export default async function ExampleReservationsPage({
                           stayTotal: Number(b.total_amount),
                           currency: b.currency,
                           pricesVisible: b.prices_visible !== false,
-                          agencyCommission: b.agency_commission === true,
+                          ...stayFeeFields(b),
                           expenses: session.items
                             .filter((item) => item.booking_id === b.id && isLedgerExpenseKind(item.kind))
                             .map((item) => ({ amount: item.amount })),

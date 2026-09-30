@@ -206,6 +206,25 @@ test("la commission est 10 % du séjour seulement quand le voyage l’active", (
   assert.equal(bookingMetaPatch({ agency_commission: "on" }).agency_commission, true);
   assert.equal(bookingMetaPatch({ agency_commission: false }).agency_commission, false);
   assert.equal("agency_commission" in bookingMetaPatch({ title: "Ski" }), false);
+  assert.equal(bookingMetaPatch({ fee_mode: "carte" }).fee_mode, "carte");
+  assert.equal(bookingMetaPatch({ fee_mode: "percent" }).fee_mode, "percent");
+  assert.equal("fee_mode" in bookingMetaPatch({ fee_mode: "autre" }), false);
+  assert.equal(bookingMetaPatch({ ticketing_fee_qty: 3.8 }).ticketing_fee_qty, 3);
+  assert.equal(bookingMetaPatch({ ticketing_fee_qty: -2 }).ticketing_fee_qty, 0);
+  assert.equal(bookingMetaPatch({ transfer_fee: "on" }).transfer_fee, true);
+  assert.equal(bookingMetaPatch({ lodging_fee: false }).lodging_fee, false);
+  assert.equal(
+    itemIncludedInLedger({ kind: "expense", include_in_ledger: true }, false, "percent"),
+    false
+  );
+  assert.equal(
+    itemIncludedInLedger({ kind: "expense", include_in_ledger: false }, false, "carte"),
+    true
+  );
+  assert.equal(
+    itemIncludedInLedger({ kind: "expense", include_in_ledger: false }, false, null),
+    true
+  );
 });
 
 test("quand le client règle le séjour, le montant et l’hôtel sortent du livre", () => {

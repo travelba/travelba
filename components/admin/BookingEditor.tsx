@@ -23,7 +23,7 @@ import { formatDateFr, formatMoney, jMinusLabel, todayIsoDate } from "@/lib/crm/
 import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { bookingTotalFromItems } from "@/lib/crm/bookings";
-import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
+import { stayFeeFields, stayPriceWithExpenses } from "@/lib/crm/ledger-display";
 import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
 import {
   canConfirmCarnetPublish,
@@ -972,14 +972,18 @@ export function BookingEditor({
           {formatMoney(
             stayPriceWithExpenses({
               stayTotal: bookingTotalFromItems(items),
-              agencyCommission: booking.agency_commission === true,
+              ...stayFeeFields(booking),
               expenses: items.filter((item) => isLedgerExpenseKind(item.kind)),
             }),
             stayCurrency(booking.currency)
           )}
         </p>
         <p className="text-sm text-muted">
-          Prix des cartes, des frais d’agence et des dépenses. Le frais de billeterie n’est pas inclus.
+          {booking.fee_mode === "carte"
+            ? "Prix des cartes et des frais cochés."
+            : booking.fee_mode === "percent" || booking.agency_commission
+              ? "Prix des cartes et des frais d’agence."
+              : "Prix des cartes et des dépenses. Le frais de billeterie automatique n’est pas dans ce montant."}
           {clientSettles
             ? " Réglé sur la carte du client : ce montant ne va pas aux transactions ni à l’encours."
             : ""}
@@ -1024,7 +1028,13 @@ export function BookingEditor({
         status={booking.status}
         currency={booking.currency}
         agencyCommission={booking.agency_commission === true}
+        feeMode={booking.fee_mode ?? null}
+        ticketingFeeQty={Number(booking.ticketing_fee_qty || 0)}
+        transferFee={booking.transfer_fee === true}
+        lodgingFee={booking.lodging_fee === true}
         stayTotal={bookingTotalFromItems(items)}
+        travelerCount={travelers.length}
+        hasFlight={items.some((item) => item.kind === "flight")}
       />
 
       {account && bookingHasFlight(items) ? (

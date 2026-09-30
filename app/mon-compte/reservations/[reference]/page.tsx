@@ -44,7 +44,7 @@ import { ReceivedVisasFold } from "@/components/crm/TripVisaUploads";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
-import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
+import { clientStayExpenseLines, clientStayPriceLabel, stayFeeFields } from "@/lib/crm/ledger-display";
 import { StayExpenses } from "@/components/account/StayExpenses";
 import { isLedgerExpenseKind, visibleServiceCopy, type CrmBillingCompany, type CrmHotelArrival } from "@/lib/crm/types";
 import { principalGuest, stayCardFace, type StayCardFace } from "@/lib/crm/hotel-arrival";
@@ -170,7 +170,7 @@ export default async function ReservationDetailPage({ params }: Props) {
   }
   const expenseLines = clientStayExpenseLines({
     expenses: expenseChoices,
-    agencyCommission: b.agency_commission === true,
+    ...stayFeeFields(b),
     stayTotal: Number(b.total_amount),
     currency: b.currency,
     pricesVisible: b.prices_visible !== false,
@@ -341,7 +341,7 @@ export default async function ReservationDetailPage({ params }: Props) {
               stayTotal: Number(b.total_amount),
               currency: b.currency,
               pricesVisible: b.prices_visible !== false,
-              agencyCommission: b.agency_commission === true,
+              ...stayFeeFields(b),
               expenses: expenseChoices,
             })}
           </p>

@@ -1,5 +1,15 @@
 import { HIDDEN_PRICE_LABEL } from "@/lib/crm/carnet";
 import { agencyFeeFromGross, formatMoney } from "@/lib/crm/money";
+import {
+  commissionApplies,
+  LODGING_FEE_EUR,
+  LODGING_FEE_LABEL,
+  TICKETING_FEE_EUR,
+  TRANSFER_FEE_EUR,
+  TRANSFER_FEE_LABEL,
+  ticketingFeeLabel,
+  type FeeMode,
+} from "@/lib/crm/ticketing-fee";
 import { AGENCY_FEE_LABEL, visibleServiceCopy } from "@/lib/crm/types";
 
 type LedgerKindRow = {
@@ -27,12 +37,41 @@ export function isAgencyCommissionDebit(row: { external_id?: string | null }) {
   return (row.external_id || "").endsWith(":agency-commission");
 }
 
-/** Une carte ou un frais du dossier couvre le montant global. Une dépense libre, non. */
+export function isTicketingFeeDebit(row: { external_id?: string | null }) {
+  return (row.external_id || "").endsWith(":ticketing-fee");
+}
+
+export function isTransferFeeDebit(row: { external_id?: string | null }) {
+  return (row.external_id || "").endsWith(":transfer-fee");
+}
+
+export function isLodgingFeeDebit(row: { external_id?: string | null }) {
+  return (row.external_id || "").endsWith(":lodging-fee");
+}
+
+/** Frais ajoutés au séjour : ils ne remplacent pas le montant global. */
+export function isAdditiveServiceFeeDebit(row: { external_id?: string | null }) {
+  return isTicketingFeeDebit(row) || isTransferFeeDebit(row) || isLodgingFeeDebit(row);
+}
+
+/**
+ * Ancien calcul (fee_mode null) : la billeterie auto retire encore le montant global.
+ * Les modes percent et carte l’ajoutent, comme la commission.
+ */
+export function legacyTicketingDropsStay(
+  feeMode: FeeMode | undefined,
+  rows: { external_id?: string | null }[]
+) {
+  return (feeMode ?? null) === null && rows.some((row) => isTicketingFeeDebit(row));
+}
+
+/** Une carte du dossier couvre le montant global. Commission, dépense libre et frais de service, non. */
 export function coversStayRollup(row: LedgerKindRow & { booking_id?: string | null }) {
   if (!row.booking_id || row.direction !== "debit") return false;
   if (isStayRollupDebit(row)) return false;
   if (isFreeExpenseDebit(row)) return false;
   if (isAgencyCommissionDebit(row)) return false;
+  if (isAdditiveServiceFeeDebit(row)) return false;
   return true;
 }
 
@@ -93,62 +132,122 @@ export type ClientExpenseLine = {
 };
 
 /**
- * Prix lu sur la réservation : cartes + frais d’agence + dépenses libres.
- * L’assiette stockée (`total_amount`) reste la somme des cartes.
+ * Prix lu sur la réservation. L’assiette stockée (`total_amount`) reste la somme des cartes.
+ * null : commission si cochée + dépenses libres. percent : 10 % seul. carte : frais cochés + dépenses libres.
  */
-export function stayPriceWithExpenses(input: {
+type StayFeeInput = {
   stayTotal: number;
   agencyCommission: boolean;
-  expenses: { amount: number | null }[];
-}) {
+  expenses: { id?: string; title?: string; amount: number | null }[];
+  feeMode?: FeeMode;
+  ticketingQty?: number;
+  transferFee?: boolean;
+  lodgingFee?: boolean;
+};
+
+function positiveAmount(amount: number | null | undefined) {
+  const n = Number(amount);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return n;
+}
+
+export function stayPriceWithExpenses(input: StayFeeInput) {
   const stay = Number(input.stayTotal);
-  let sum = Number.isFinite(stay) ? stay : 0;
-  if (input.agencyCommission) sum += agencyFeeFromGross(sum);
-  for (const expense of input.expenses) {
-    const amount = Number(expense.amount);
-    if (!Number.isFinite(amount) || amount <= 0) continue;
-    sum += amount;
+  const base = Number.isFinite(stay) ? stay : 0;
+  const mode = input.feeMode ?? null;
+  let sum = base;
+  if (commissionApplies(input)) sum += agencyFeeFromGross(base);
+  if (mode !== "percent") {
+    for (const expense of input.expenses) sum += positiveAmount(expense.amount);
+  }
+  if (mode === "carte") {
+    const qty = Math.floor(Number(input.ticketingQty));
+    if (Number.isFinite(qty) && qty > 0) sum += qty * TICKETING_FEE_EUR;
+    if (input.transferFee) sum += TRANSFER_FEE_EUR;
+    if (input.lodgingFee) sum += LODGING_FEE_EUR;
   }
   return Math.round(sum * 100) / 100;
 }
 
-export function clientStayPriceLabel(input: {
-  stayTotal: number;
-  currency: string;
-  pricesVisible: boolean;
-  agencyCommission: boolean;
-  expenses: { amount: number | null }[];
-}) {
+export function clientStayPriceLabel(
+  input: StayFeeInput & {
+    currency: string;
+    pricesVisible: boolean;
+  }
+) {
   if (!input.pricesVisible) return HIDDEN_PRICE_LABEL;
   return formatMoney(stayPriceWithExpenses(input), input.currency);
 }
 
-/** Lignes lues sur la réservation client : frais d’agence, puis dépenses libres. */
-export function clientStayExpenseLines(input: {
-  expenses: { id: string; title: string; amount: number | null }[];
-  agencyCommission: boolean;
-  stayTotal: number;
-  currency: string;
-  pricesVisible: boolean;
-}): ClientExpenseLine[] {
+/** Lignes lues sur la réservation client : frais actifs, puis dépenses libres hors mode 10 %. */
+export function clientStayExpenseLines(
+  input: StayFeeInput & {
+    expenses: { id: string; title: string; amount: number | null }[];
+    currency: string;
+    pricesVisible: boolean;
+  }
+): ClientExpenseLine[] {
   const lines: ClientExpenseLine[] = [];
-  if (input.agencyCommission) {
+  const mode = input.feeMode ?? null;
+  if (commissionApplies(input)) {
     lines.push({
       id: "agency-commission",
       title: AGENCY_FEE_LABEL,
       amountLabel: expenseAmountLabel(agencyFeeFromGross(input.stayTotal), input.currency, input.pricesVisible),
     });
   }
-  for (const expense of input.expenses) {
-    const title = visibleServiceCopy((expense.title || "").trim());
-    if (!title) continue;
-    lines.push({
-      id: expense.id,
-      title,
-      amountLabel: expenseAmountLabel(expense.amount, input.currency, input.pricesVisible),
-    });
+  if (mode === "carte") {
+    const qty = Math.floor(Number(input.ticketingQty));
+    if (Number.isFinite(qty) && qty > 0) {
+      lines.push({
+        id: "ticketing-fee",
+        title: ticketingFeeLabel(qty),
+        amountLabel: expenseAmountLabel(qty * TICKETING_FEE_EUR, input.currency, input.pricesVisible),
+      });
+    }
+    if (input.transferFee) {
+      lines.push({
+        id: "transfer-fee",
+        title: TRANSFER_FEE_LABEL,
+        amountLabel: expenseAmountLabel(TRANSFER_FEE_EUR, input.currency, input.pricesVisible),
+      });
+    }
+    if (input.lodgingFee) {
+      lines.push({
+        id: "lodging-fee",
+        title: LODGING_FEE_LABEL,
+        amountLabel: expenseAmountLabel(LODGING_FEE_EUR, input.currency, input.pricesVisible),
+      });
+    }
+  }
+  if (mode !== "percent") {
+    for (const expense of input.expenses) {
+      const title = visibleServiceCopy((expense.title || "").trim());
+      if (!title) continue;
+      lines.push({
+        id: expense.id,
+        title,
+        amountLabel: expenseAmountLabel(expense.amount, input.currency, input.pricesVisible),
+      });
+    }
   }
   return lines;
+}
+
+export function stayFeeFields(booking: {
+  fee_mode?: FeeMode | null;
+  agency_commission?: boolean | null;
+  ticketing_fee_qty?: number | null;
+  transfer_fee?: boolean | null;
+  lodging_fee?: boolean | null;
+}) {
+  return {
+    feeMode: booking.fee_mode ?? null,
+    agencyCommission: booking.agency_commission === true,
+    ticketingQty: Number(booking.ticketing_fee_qty || 0),
+    transferFee: booking.transfer_fee === true,
+    lodgingFee: booking.lodging_fee === true,
+  };
 }
 
 function expenseAmountLabel(amount: number | null, currency: string, pricesVisible: boolean) {
