@@ -97,6 +97,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
   if ("billing_companies" in body) {
     const saved = await saveCustomerBillingCompanies(auth.supabase, id, body.billing_companies);
     if ("error" in saved) return jsonError(saved.error);
+    return NextResponse.json({ customer: data, billing_companies: saved.companies });
   }
   return NextResponse.json({ customer: data });
 }

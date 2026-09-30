@@ -1,7 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizeSiret, normalizeVat, siretError } from "./billing";
 import { resolveCountryCode } from "./countries";
+import { dbErrorMessage, type DbErrorLike } from "./db-error";
 import { emptyToNull } from "./identity";
+
+export const DUPLICATE_SIRET_ERROR = "Ce SIRET est déjà indiqué sur une autre société.";
 
 export type BillingCompanyRow = {
   id: string;
@@ -166,7 +169,7 @@ export function normalizeBillingCompanies(raw: unknown):
     const siretErr = siretError(siret);
     if (siretErr) return { error: siretErr };
     if (siret) {
-      if (sirets.has(siret)) return { error: "Ce SIRET est déjà indiqué sur une autre société." };
+      if (sirets.has(siret)) return { error: DUPLICATE_SIRET_ERROR };
       sirets.add(siret);
     }
     const email = emptyToNull(body.billing_email);
@@ -186,6 +189,52 @@ export function normalizeBillingCompanies(raw: unknown):
     companies.push({ ...row, sort_order: companies.length });
   }
   return { companies };
+}
+
+/**
+ * Le formulaire renvoie souvent une société sans id après le premier enregistrement.
+ * On réutilise alors la ligne qui a déjà ce SIRET, au lieu d’en insérer une deuxième.
+ */
+export function planBillingCompanyWrites<T extends { id: string | null; siret: string | null }>(
+  existing: { id: string; siret: string | null }[],
+  companies: T[]
+): { writes: (T & { id: string | null })[]; releaseIds: string[]; clearSiretIds: string[] } {
+  const existingIds = new Set(existing.map((row) => row.id));
+  const claimed = new Set<string>();
+  const writes = companies.map((company) => {
+    let id: string | null = null;
+    if (company.id && existingIds.has(company.id) && !claimed.has(company.id)) {
+      id = company.id;
+    } else if (company.siret) {
+      const match = existing.find(
+        (row) => !claimed.has(row.id) && normalizeSiret(row.siret) === company.siret
+      );
+      if (match) id = match.id;
+    }
+    if (id) claimed.add(id);
+    return { ...company, id };
+  });
+  const wantedBy = new Map<string, string | null>();
+  for (const write of writes) {
+    if (write.siret) wantedBy.set(write.siret, write.id);
+  }
+  const clearSiretIds = existing
+    .filter((row) => {
+      const siret = normalizeSiret(row.siret);
+      if (!siret || !wantedBy.has(siret)) return false;
+      return wantedBy.get(siret) !== row.id;
+    })
+    .map((row) => row.id);
+  const releaseIds = existing.map((row) => row.id).filter((id) => !claimed.has(id));
+  return { writes, releaseIds, clearSiretIds };
+}
+
+function billingWriteError(error: DbErrorLike) {
+  console.error("[crm] billing company:", error?.code ?? "?");
+  if (error?.code === "23505" || (error?.message || "").includes("crm_billing_companies_siret_uidx")) {
+    return { error: DUPLICATE_SIRET_ERROR };
+  }
+  return { error: dbErrorMessage(error, "Enregistrement de la société impossible.") };
 }
 
 /** La première société reste sur la fiche, pour la recherche et le rapprochement. */
@@ -223,13 +272,24 @@ export async function saveCustomerBillingCompanies(
   if ("error" in normalized) return normalized;
   const { data: existing, error: readError } = await supabase
     .from("crm_billing_companies")
-    .select("id")
+    .select("id, siret")
     .eq("customer_id", customerId);
-  if (readError) return { error: readError.message };
-  const known = new Set(((existing || []) as { id: string }[]).map((row) => row.id));
-  const kept = new Set<string>();
+  if (readError) return billingWriteError(readError);
+  const plan = planBillingCompanyWrites(
+    (existing || []) as { id: string; siret: string | null }[],
+    normalized.companies
+  );
 
-  for (const company of normalized.companies) {
+  if (plan.clearSiretIds.length) {
+    const { error } = await supabase
+      .from("crm_billing_companies")
+      .update({ siret: null })
+      .eq("customer_id", customerId)
+      .in("id", plan.clearSiretIds);
+    if (error) return billingWriteError(error);
+  }
+
+  for (const company of plan.writes) {
     const fields = {
       company_name: company.company_name,
       siret: company.siret,
@@ -241,41 +301,42 @@ export async function saveCustomerBillingCompanies(
       billing_country: company.billing_country,
       sort_order: company.sort_order,
     };
-    if (company.id && known.has(company.id)) {
+    if (company.id) {
       const { error } = await supabase
         .from("crm_billing_companies")
         .update(fields)
         .eq("id", company.id)
         .eq("customer_id", customerId);
-      if (error) return { error: error.message };
-      kept.add(company.id);
+      if (error) return billingWriteError(error);
       continue;
     }
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from("crm_billing_companies")
-      .insert({ customer_id: customerId, ...fields })
-      .select("id")
-      .single();
-    if (error) return { error: error.message };
-    if (data?.id) kept.add(data.id as string);
+      .insert({ customer_id: customerId, ...fields });
+    if (error) return billingWriteError(error);
   }
 
-  const removed = [...known].filter((id) => !kept.has(id));
-  if (removed.length) {
+  if (plan.releaseIds.length) {
     const { error } = await supabase
       .from("crm_billing_companies")
       .delete()
       .eq("customer_id", customerId)
-      .in("id", removed);
-    if (error) return { error: error.message };
+      .in("id", plan.releaseIds);
+    if (error) return billingWriteError(error);
   }
 
   const { error: mirrorError } = await supabase
     .from("crm_customers")
     .update(primaryBillingMirror(normalized.companies))
     .eq("id", customerId);
-  if (mirrorError) return { error: mirrorError.message };
-  return { ok: true as const };
+  if (mirrorError) return billingWriteError(mirrorError);
+  const { data: saved, error: savedError } = await supabase
+    .from("crm_billing_companies")
+    .select("*")
+    .eq("customer_id", customerId)
+    .order("sort_order");
+  if (savedError) return billingWriteError(savedError);
+  return { ok: true as const, companies: (saved || []) as BillingCompanyRow[] };
 }
 
 /** Rattache un séjour ou une dépense à une société du compte facturé. */
