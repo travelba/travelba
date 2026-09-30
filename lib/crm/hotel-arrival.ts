@@ -523,6 +523,11 @@ export type StayCardFace = {
   closed: boolean;
 };
 
+/** Le client ouvre sa carte depuis son séjour. L’agence garde le code. */
+export function stayRevealNeedsAgencyCode(audience: "staff" | "client") {
+  return audience === "staff";
+}
+
 export function stayCardFace(input: StayCardFace): StayCardFace {
   return {
     itemId: input.itemId,

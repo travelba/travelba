@@ -1,5 +1,6 @@
 "use client";
 
+import { AgencyCardPeek } from "@/components/admin/AgencyCardPeek";
 import { hotelDisplayName } from "@/lib/crm/carnet";
 import { shownStayProvision, stayCardFace } from "@/lib/crm/hotel-arrival";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
@@ -120,9 +121,13 @@ function HotelCard({
             closed,
           })}
           revealUrl={`/api/admin/bookings/${bookingId}/hotel-arrival`}
-          personal
           views={cardViews.filter((line) => line.source === "pliant")}
         />
+      ) : null}
+      {arrival?.client_card_name ? (
+        <div className="text-xs">
+          <AgencyCardPeek bookingId={bookingId} itemId={item.id} source="client" views={cardViews} />
+        </div>
       ) : null}
       <p className="text-sm leading-relaxed text-[var(--admin-navy)]/70">{line}</p>
     </article>

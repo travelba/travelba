@@ -251,7 +251,7 @@ export default async function ReservationDetailPage({ params }: Props) {
           {stayCards.length ? (
             <div className="space-y-5">
               {stayCards.map((face) => (
-                <StayCard key={face.itemId} face={face} revealUrl={`/api/client/bookings/${b.id}/hotel-card`} />
+                <StayCard key={face.itemId} personal face={face} revealUrl={`/api/client/bookings/${b.id}/hotel-card`} />
               ))}
             </div>
           ) : null}

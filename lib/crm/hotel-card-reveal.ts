@@ -1,10 +1,16 @@
 import "server-only";
 
 import { agencyCodeMatches, configuredAgencyCode } from "./agency-card-code";
-import { cardLast4 } from "./hotel-arrival";
+import { cardLast4, stayRevealNeedsAgencyCode } from "./hotel-arrival";
 import { pliantConfigured, readPliantCardSecrets } from "./pliant";
 
-type Admin = { from: (table: string) => any };
+type Admin = {
+  from: (table: string) => {
+    update: (row: { card_last4: string }) => {
+      eq: (column: string, value: string) => PromiseLike<unknown>;
+    };
+  };
+};
 
 type RevealedCard = { pan: string; expiry: string; cvc: string };
 
@@ -18,9 +24,11 @@ export async function revealStayCard(input: {
 }): Promise<{ error: string; status: number } | { secrets: RevealedCard }> {
   if (input.closed) return { error: "Cette carte est clôturée.", status: 400 as const };
   if (!input.pliantCardId) return { error: "Aucune carte émise.", status: 400 as const };
-  const expected = configuredAgencyCode();
-  if (!expected || !agencyCodeMatches(input.code, expected)) {
-    return { error: "Code agence incorrect.", status: 403 as const };
+  if (stayRevealNeedsAgencyCode(input.audience)) {
+    const expected = configuredAgencyCode();
+    if (!expected || !agencyCodeMatches(input.code, expected)) {
+      return { error: "Code agence incorrect.", status: 403 as const };
+    }
   }
   if (!pliantConfigured()) {
     return {
