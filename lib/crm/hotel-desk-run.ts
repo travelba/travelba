@@ -577,7 +577,7 @@ async function pliantForSend(admin: Admin, bookingId: string, item: CrmBookingIt
   const arrival = data as { id: string; pliant_card_id: string | null } | null;
   let cardId = arrival?.pliant_card_id || "";
   if (!cardId) {
-    if (!pliantConfigured()) throw new Error("Pliant n'est pas branché. Choisissez la carte du client, ou émettez la carte de séjour.");
+    if (!pliantConfigured()) throw new Error("Pliant n'est pas branché. Choisissez la carte du client, ou ouvrez le dossier pour créer la carte hôtel.");
     const { data: booking } = await admin.from("crm_bookings").select("customer_id").eq("id", bookingId).maybeSingle();
     const customerId = (booking as { customer_id?: string } | null)?.customer_id || "";
     const [{ data: travelers }, { data: customer }] = await Promise.all([

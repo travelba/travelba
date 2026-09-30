@@ -16,12 +16,16 @@ import {
   leStayAmount,
   nagerHolidayUrl,
   parisIsoDate,
+  documentMoney,
+  majorToCents,
   planHotelArrival,
   principalGuest,
   quotedAmount,
   replyPaymentUrl,
+  stayProvision,
   classifyPaymentPage,
   type ArrivalTick,
+  type StayProvision,
 } from "./hotel-arrival";
 import { passportPreviewsForStay } from "./preview-files";
 import { issuePliantCard, pliantConfigured, setPliantCardLimit } from "./pliant";
@@ -187,6 +191,155 @@ export async function ensureHotelArrivals(admin: Admin, bookingId: string, items
       channel: channelOf(item),
     }));
   if (rows.length) await admin.from("crm_hotel_arrivals").insert(rows);
+}
+
+function stayProvisionFor(
+  item: CrmBookingItem,
+  row: Pick<CrmHotelArrival, "channel" | "net_cents">,
+  bookingCurrency: string | null,
+  le: { cents: number; currency: string } | null
+): StayProvision | null {
+  const document = documentMoney(item.details);
+  return stayProvision({
+    channel: row.channel,
+    itemCents: majorToCents(item.amount),
+    documentCents: document.cents,
+    documentCurrency: document.currency,
+    leCents: le?.cents ?? null,
+    leCurrency: le?.currency ?? null,
+    netCents: row.net_cents,
+    savedBaseCents: null,
+    bookingCurrency,
+  });
+}
+
+/** Émet ou aligne la carte Pliant sur le prix de l'hôtel, plus 30 %. */
+async function alignStayCard(input: {
+  admin: Admin;
+  row: CrmHotelArrival;
+  item: CrmBookingItem;
+  bookingStatus: string;
+  bookingCurrency: string | null;
+  travelers: CrmBookingTraveler[];
+  holder: { first_name: string | null; last_name: string | null } | null;
+  le: { cents: number; currency: string } | null;
+  parisToday: string;
+  deps: ArrivalDeps;
+}) {
+  const channel = channelOf(input.item);
+  let row = input.row.channel === channel ? input.row : { ...input.row, channel };
+  if (row.status === "closed" || row.card_closed_at) {
+    if (row.channel !== input.row.channel) await save(input.admin, row.id, { channel });
+    return row;
+  }
+  const provision = stayProvisionFor(input.item, row, input.bookingCurrency, input.le);
+  if (!provision) {
+    if (row.channel !== input.row.channel) await save(input.admin, row.id, { channel });
+    return row;
+  }
+  const basePatch = {
+    channel,
+    amount_cents: provision.baseCents,
+    currency: provision.currency,
+    card_limit_cents: provision.ceilingCents,
+  };
+  const open = ACTIVE.has(input.bookingStatus);
+  const aligned =
+    row.amount_cents === provision.baseCents &&
+    row.card_limit_cents === provision.ceilingCents &&
+    row.currency === provision.currency &&
+    row.channel === channel;
+  if (!open) {
+    if (!aligned) await save(input.admin, row.id, basePatch);
+    return { ...row, ...basePatch };
+  }
+  if (!row.pliant_card_id) {
+    const ready = await ensureCard({
+      admin: input.admin,
+      row,
+      travelers: input.travelers,
+      holder: input.holder,
+      limitCents: provision.ceilingCents,
+      currency: provision.currency,
+      parisToday: input.parisToday,
+      checkOut: isoDate(input.item.end_at) || isoDate(input.item.start_at),
+      deps: input.deps,
+    });
+    if (!ready.cardId) {
+      const note = ready.note || "Pliant n'a pas créé la carte.";
+      await save(input.admin, row.id, { ...basePatch, task_open: true, task_note: note });
+      return { ...row, ...basePatch, pliant_card_id: null, task_open: true, task_note: note };
+    }
+    const cleared = row.task_note?.startsWith("Pliant") ? { task_open: false, task_note: null } : {};
+    await save(input.admin, row.id, { ...basePatch, pliant_card_id: ready.cardId, ...cleared });
+    return { ...ready.row, ...basePatch, pliant_card_id: ready.cardId, ...cleared };
+  }
+  if (aligned && !row.task_note?.startsWith("Pliant")) return row;
+  if (row.card_limit_cents !== provision.ceilingCents) {
+    try {
+      if (!pliantConfigured() && !input.deps.setLimit) throw new Error("Pliant n'est pas branché.");
+      const setLimit = input.deps.setLimit || setPliantCardLimit;
+      await setLimit(row.pliant_card_id, { value: provision.ceilingCents, currency: provision.currency }, 20);
+    } catch (error) {
+      const note = error instanceof Error && error.message.startsWith("Pliant") ? error.message : "Pliant n'a pas modifié le plafond.";
+      await save(input.admin, row.id, { ...basePatch, task_open: true, task_note: note });
+      return { ...row, ...basePatch, task_open: true, task_note: note };
+    }
+  }
+  const cleared = row.task_note?.startsWith("Pliant") ? { task_open: false, task_note: null } : {};
+  await save(input.admin, row.id, { ...basePatch, ...cleared });
+  return { ...row, ...basePatch, ...cleared };
+}
+
+export async function syncStayCards(
+  admin: Admin,
+  input: {
+    bookingId: string;
+    bookingStatus: string;
+    currency: string | null;
+    items: CrmBookingItem[];
+    travelers: CrmBookingTraveler[];
+    holder: { first_name: string | null; last_name: string | null } | null;
+    deps?: ArrivalDeps;
+  }
+) {
+  await ensureHotelArrivals(admin, input.bookingId, input.items);
+  const { data } = await admin.from("crm_hotel_arrivals").select("*").eq("booking_id", input.bookingId);
+  const rows = (data || []) as CrmHotelArrival[];
+  const hotels = input.items.filter((item) => item.kind === "hotel");
+  if (!hotels.length) return rows;
+  const { data: leData } = await admin
+    .from("crm_le_bookings")
+    .select("hotel_name, check_in, total_cost, currency")
+    .eq("crm_booking_id", input.bookingId);
+  const leRows = ((leData || []) as { hotel_name?: string | null; check_in?: string | null; total_cost?: string | null; currency?: string | null }[]).map(
+    (row) => ({
+      checkIn: row.check_in || null,
+      hotelName: row.hotel_name || null,
+      total: row.total_cost || null,
+      currency: row.currency || null,
+    })
+  );
+  const parisToday = parisIsoDate(input.deps?.now || new Date());
+  for (const item of hotels) {
+    const row = rows.find((entry) => entry.booking_item_id === item.id);
+    if (!row) continue;
+    const le = leStayAmount({ checkIn: isoDate(item.start_at), hotelName: hotelDisplayName(item) }, leRows);
+    const index = rows.findIndex((entry) => entry.id === row.id);
+    rows[index] = await alignStayCard({
+      admin,
+      row,
+      item,
+      bookingStatus: input.bookingStatus,
+      bookingCurrency: input.currency,
+      travelers: input.travelers,
+      holder: input.holder,
+      le,
+      parisToday,
+      deps: input.deps || {},
+    });
+  }
+  return rows;
 }
 
 async function save(admin: Admin, id: string, patch: Record<string, unknown>) {
@@ -365,11 +518,18 @@ async function stepArrival(input: {
     netCents: input.arrival.net_cents,
     bookingCurrency: input.booking.currency,
   });
-  let row = input.arrival;
-  if (row.channel !== channel) {
-    row = { ...row, channel };
-    await save(input.admin, row.id, { channel });
-  }
+  let row = await alignStayCard({
+    admin: input.admin,
+    row: input.arrival,
+    item: input.item,
+    bookingStatus: input.booking.status,
+    bookingCurrency: input.booking.currency,
+    travelers: input.travelers,
+    holder: input.holder,
+    le,
+    parisToday: input.parisToday,
+    deps: input.deps,
+  });
   if (!row.payment_url && row.requested_at && emails.length) {
     const since = Date.parse(row.requested_at);
     const find = input.deps.findReplies || defaultFindReplies;
@@ -433,7 +593,9 @@ async function stepArrival(input: {
       break;
     }
     if (plan.action === "pay") {
-      if (quoted.cents == null) {
+      const provision = stayProvisionFor(input.item, row, input.booking.currency, le);
+      const limitCents = provision?.ceilingCents ?? quoted.cents;
+      if (limitCents == null) {
         row = { ...row, status: "blocked", blocked_reason: "amount", task_open: true, task_note: "Montant manquant pour émettre la carte." };
         await save(input.admin, row.id, row);
         break;
@@ -443,8 +605,8 @@ async function stepArrival(input: {
         row,
         travelers: input.travelers,
         holder: input.holder,
-        limitCents: quoted.cents,
-        currency: currencyCode(quoted.currency),
+        limitCents,
+        currency: provision?.currency || currencyCode(quoted.currency),
         parisToday: input.parisToday,
         checkOut,
         deps: input.deps,
@@ -454,8 +616,14 @@ async function stepArrival(input: {
         await save(input.admin, row.id, row);
         break;
       }
-      row = { ...ready.row, status: "paying" };
-      await save(input.admin, row.id, { pliant_card_id: row.pliant_card_id, card_limit_cents: row.card_limit_cents, amount_cents: quoted.cents, currency: currencyCode(quoted.currency), status: "paying" });
+      row = { ...ready.row, status: "paying", card_limit_cents: limitCents, amount_cents: provision?.baseCents ?? quoted.cents };
+      await save(input.admin, row.id, {
+        pliant_card_id: row.pliant_card_id,
+        card_limit_cents: limitCents,
+        amount_cents: provision?.baseCents ?? quoted.cents,
+        currency: provision?.currency || currencyCode(quoted.currency),
+        status: "paying",
+      });
       const outcome = await classifyLink(row.payment_url || "", input.fetchImpl);
       if (outcome === "paid") {
         row = { ...row, status: "paid", paid_at: input.now.toISOString(), blocked_reason: null };

@@ -1,18 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { hotelDisplayName } from "@/lib/crm/carnet";
-import {
-  ARRIVAL_CHANNEL_LABELS,
-  ARRIVAL_STATUS_LABELS,
-  formatArrivalAmount,
-  stayCardFace,
-} from "@/lib/crm/hotel-arrival";
-import type { CardViewLine, CrmBookingItem, CrmHotelArrival } from "@/lib/crm/types";
-import { fieldControlClass } from "@/components/crm/fields";
-import { StayCard } from "@/components/crm/StayCard";
 import { AgencyCardPeek } from "@/components/admin/AgencyCardPeek";
+import { hotelDisplayName } from "@/lib/crm/carnet";
+import { shownStayProvision, stayCardFace } from "@/lib/crm/hotel-arrival";
+import { formatDateFr, formatMoney } from "@/lib/crm/money";
+import type { CardViewLine, CrmBookingItem, CrmHotelArrival } from "@/lib/crm/types";
+import { StayCard } from "@/components/crm/StayCard";
+
+const ACTIVE = new Set(["confirmed", "travelling"]);
 
 export function HotelArrivalPanel({
   bookingId,
@@ -20,31 +15,39 @@ export function HotelArrivalPanel({
   arrivals,
   holder = "",
   cardViews = [],
+  bookingStatus = "",
+  currency = "EUR",
 }: {
   bookingId: string;
   items: CrmBookingItem[];
   arrivals: CrmHotelArrival[];
   holder?: string;
-  hasCardCode?: boolean;
   cardViews?: CardViewLine[];
+  bookingStatus?: string;
+  currency?: string | null;
 }) {
   const hotels = items.filter((item) => item.kind === "hotel");
   if (!hotels.length) return null;
   return (
-    <section className="admin-af-card space-y-4 rounded-3xl p-5">
-      <div>
+    <section className="admin-af-card overflow-hidden rounded-3xl">
+      <div className="border-b border-[#e7e1d6] px-5 py-4">
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Avant l’arrivée</p>
-        <h2 className="text-lg font-semibold text-[var(--admin-navy)]">Carte de séjour</h2>
+        <h2 className="font-display text-xl font-extrabold tracking-tight text-[var(--admin-navy)]">Carte hôtel</h2>
+        <p className="mt-1 max-w-md text-sm leading-relaxed text-[var(--admin-navy)]/70">
+          Une carte par hôtel, créée toute seule. Le plafond couvre le prix du séjour, plus 30 %.
+        </p>
       </div>
-      <div className="space-y-4">
+      <div className="divide-y divide-[#e7e1d6]">
         {hotels.map((item) => (
-          <HotelArrivalRow
+          <HotelCard
             key={item.id}
             bookingId={bookingId}
             item={item}
             arrival={arrivals.find((row) => row.booking_item_id === item.id) || null}
             holder={holder}
             cardViews={cardViews.filter((line) => line.itemId === item.id)}
+            bookingStatus={bookingStatus}
+            currency={currency}
           />
         ))}
       </div>
@@ -52,144 +55,81 @@ export function HotelArrivalPanel({
   );
 }
 
-function HotelArrivalRow({
+function HotelCard({
   bookingId,
   item,
   arrival,
   holder,
   cardViews,
+  bookingStatus,
+  currency,
 }: {
   bookingId: string;
   item: CrmBookingItem;
   arrival: CrmHotelArrival | null;
   holder: string;
   cardViews: CardViewLine[];
+  bookingStatus: string;
+  currency: string | null;
 }) {
-  const router = useRouter();
-  const [net, setNet] = useState(arrival?.net_cents != null ? (arrival.net_cents / 100).toFixed(2) : "");
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function post(action: string, extra?: { net?: string }) {
-    setBusy(action);
-    setError(null);
-    try {
-      const res = await fetch(`/api/admin/bookings/${bookingId}/hotel-arrival`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ itemId: item.id, action, ...extra }),
-      });
-      const json = (await res.json().catch(() => null)) as { error?: string; pan?: string; expiry?: string; cvc?: string } | null;
-      if (!res.ok) {
-        setError(json?.error || "Action impossible");
-        return null;
-      }
-      return json;
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function saveNet() {
-    const json = await post("net", { net });
-    if (json) router.refresh();
-  }
-
-  async function markPaid() {
-    const json = await post("paid");
-    if (json) router.refresh();
-  }
-
-  async function clearTask() {
-    const json = await post("task_done");
-    if (json) router.refresh();
-  }
-
-  async function generateCard() {
-    const json = await post("issue");
-    if (json) router.refresh();
-  }
-
   const name = hotelDisplayName(item) || item.title;
+  const provision = shownStayProvision(item, arrival, currency);
+  const closed = Boolean(arrival?.card_closed_at) || arrival?.status === "closed";
+  const issued = Boolean(arrival?.pliant_card_id);
+  const pliantNote =
+    !issued && arrival?.task_note?.startsWith("Pliant") ? arrival.task_note : null;
+  const stay = item.start_at && item.end_at ? `${formatDateFr(item.start_at)} — ${formatDateFr(item.end_at)}` : "";
+
+  let line = "Indiquez le prix sur la carte de cet hôtel. La carte se crée ensuite, avec 30 % de marge.";
+  if (provision && closed) line = "Fermée après le séjour.";
+  else if (provision && issued) line = "Prête pour l’hôtel. Elle se ferme après le départ.";
+  else if (provision && pliantNote) line = pliantNote;
+  else if (provision && !ACTIVE.has(bookingStatus)) line = "Elle se crée à la confirmation du séjour.";
+  else if (provision) line = "Elle se crée à l’ouverture de ce dossier.";
+
   return (
-    <article className="rounded-2xl border border-[#e5e3dc] p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <p className="font-semibold text-[var(--admin-navy)]">{name}</p>
-          <p className="text-sm text-[var(--admin-navy)]/70">
-            {arrival ? ARRIVAL_CHANNEL_LABELS[arrival.channel] : "Hôtel"}
-            {arrival ? ` · ${ARRIVAL_STATUS_LABELS[arrival.status]}` : ""}
-          </p>
-        </div>
-        {arrival?.amount_cents != null ? (
-          <p className="text-sm font-semibold text-[var(--admin-navy)]">
-            {formatArrivalAmount(arrival.amount_cents, arrival.currency)}
-          </p>
-        ) : null}
+    <article className="space-y-4 px-5 py-5">
+      <div>
+        <p className="font-display text-lg font-extrabold tracking-tight text-[var(--admin-navy)]">{name}</p>
+        {stay ? <p className="text-sm text-[var(--admin-navy)]/60">{stay}</p> : null}
       </div>
-      {arrival?.task_open && arrival.task_note ? (
-        <p className="mt-3 text-sm text-[var(--admin-navy)]">{arrival.task_note}</p>
+      {provision ? (
+        <dl className="rounded-2xl bg-[#f6f1e8] px-4 py-3">
+          <div className="flex items-baseline justify-between gap-3 text-sm text-[var(--admin-navy)]">
+            <dt>Séjour</dt>
+            <dd className="font-semibold tabular-nums">{formatMoney(provision.baseCents / 100, provision.currency)}</dd>
+          </div>
+          <div className="mt-1 flex items-baseline justify-between gap-3 text-sm text-[var(--admin-navy)]/70">
+            <dt>Marge 30 %</dt>
+            <dd className="tabular-nums">{formatMoney(provision.marginCents / 100, provision.currency)}</dd>
+          </div>
+          <div className="mt-3 flex items-end justify-between gap-3 border-t border-[#e5dccb] pt-3">
+            <dt className="text-sm font-semibold text-[var(--admin-navy)]">Sur la carte</dt>
+            <dd className="font-display text-2xl font-extrabold tabular-nums tracking-tight text-[var(--admin-navy)]">
+              {formatMoney(provision.ceilingCents / 100, provision.currency)}
+            </dd>
+          </div>
+        </dl>
       ) : null}
-      {arrival?.payment_url ? (
-        <a className="mt-3 inline-block text-sm underline" href={arrival.payment_url} target="_blank" rel="noreferrer">
-          Ouvrir le lien de paiement
-        </a>
-      ) : null}
-      {arrival?.channel === "direct" ? (
-        <div className="mt-3 flex flex-wrap items-end gap-2">
-          <label className="text-sm text-[var(--admin-navy)]">
-            Net hôtel
-            <input
-              className={`${fieldControlClass} mt-1`}
-              inputMode="decimal"
-              value={net}
-              onChange={(event) => setNet(event.target.value)}
-            />
-          </label>
-          <button type="button" className="admin-af-btn rounded-full px-3 py-2 text-sm" disabled={busy === "net"} onClick={saveNet}>
-            Enregistrer le net
-          </button>
-        </div>
-      ) : null}
-      <div className="mt-3 flex flex-wrap gap-2">
-        {arrival?.pliant_card_id ? null : (
-          <button type="button" className="admin-af-btn rounded-full px-3 py-2 text-sm" disabled={busy === "issue"} onClick={() => void generateCard()}>
-            {busy === "issue" ? "…" : "Générer la carte"}
-          </button>
-        )}
-        {arrival && arrival.channel !== "expedia" && arrival.status !== "vip_sent" && arrival.status !== "closed" ? (
-          <button type="button" className="admin-af-btn rounded-full px-3 py-2 text-sm" disabled={busy === "paid"} onClick={markPaid}>
-            Le règlement est fait
-          </button>
-        ) : null}
-        {arrival?.task_open ? (
-          <button type="button" className="admin-af-btn rounded-full px-3 py-2 text-sm" disabled={busy === "task_done"} onClick={clearTask}>
-            Tâche traitée
-          </button>
-        ) : null}
-      </div>
-      {arrival?.pliant_card_id ? (
-        <div className="mt-2">
-          <StayCard
-            face={stayCardFace({
-              itemId: item.id,
-              hotel: name,
-              holder,
-              last4: arrival.card_last4,
-              closed: Boolean(arrival.card_closed_at),
-            })}
-            revealUrl={`/api/admin/bookings/${bookingId}/hotel-arrival`}
-            personal
-            views={cardViews.filter((line) => line.source === "pliant")}
-          />
-        </div>
+      {issued && arrival ? (
+        <StayCard
+          face={stayCardFace({
+            itemId: item.id,
+            hotel: name,
+            holder,
+            last4: arrival.card_last4,
+            closed,
+          })}
+          revealUrl={`/api/admin/bookings/${bookingId}/hotel-arrival`}
+          views={cardViews.filter((line) => line.source === "pliant")}
+        />
       ) : null}
       {arrival?.client_card_name ? (
-        <div className="mt-1 text-xs">
+        <div className="text-xs">
           <AgencyCardPeek bookingId={bookingId} itemId={item.id} source="client" views={cardViews} />
         </div>
       ) : null}
-      {error ? <p className="mt-2 text-sm text-red-700">{error}</p> : null}
+      <p className="text-sm leading-relaxed text-[var(--admin-navy)]/70">{line}</p>
     </article>
   );
 }

@@ -364,6 +364,136 @@ export function quotedAmount(input: {
   return { cents: input.netCents, currency: input.bookingCurrency || "EUR" };
 }
 
+/** Marge au-dessus du prix connu de l'hôtel. Le plafond carte n'invente pas ce prix. */
+export const STAY_MARGIN = 1.3;
+
+export type StayProvision = {
+  baseCents: number;
+  marginCents: number;
+  ceilingCents: number;
+  currency: string;
+};
+
+export function majorToCents(amount: number | null | undefined) {
+  return parseMoneyToCents(amount);
+}
+
+export function provisionCeilingCents(baseCents: number) {
+  if (!(baseCents > 0) || !Number.isFinite(baseCents)) return null;
+  return Math.ceil((baseCents * 13) / 10);
+}
+
+function moneyCurrency(value: string | null | undefined, fallback = "EUR") {
+  const code = (value || "").trim().toUpperCase();
+  if (/^[A-Z]{3}$/.test(code)) return code;
+  const safe = (fallback || "").trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(safe) ? safe : "EUR";
+}
+
+export function documentMoney(details: Record<string, unknown> | null | undefined) {
+  const raw = details?.document_amount;
+  const cents =
+    typeof raw === "number" || typeof raw === "string" ? parseMoneyToCents(raw) : null;
+  const currencyRaw = details?.document_currency;
+  const currency = typeof currencyRaw === "string" ? moneyCurrency(currencyRaw, "") : "";
+  return { cents, currency: currency || null };
+}
+
+export function itemStayChannel(item: {
+  supplier?: string | null;
+  details?: Record<string, unknown> | null;
+}): HotelArrivalChannel {
+  const details = item.details || {};
+  const family = typeof details.source_family === "string" ? details.source_family : "";
+  let leHotelId: number | null = null;
+  for (const key of ["le_hotel_id", "little_emperors_hotel_id", "hotel_id"]) {
+    const value = details[key];
+    if (typeof value === "number" && Number.isInteger(value) && value > 0) leHotelId = value;
+    else if (typeof value === "string" && /^\d+$/.test(value)) leHotelId = Number(value);
+    if (leHotelId) break;
+  }
+  return hotelChannel({ sourceFamily: family, supplier: item.supplier, leHotelId });
+}
+
+/** Prix connu, dans cet ordre : Little Emperors, montant du document, prix de la carte, net déjà saisi. */
+export function stayProvision(input: {
+  channel: HotelArrivalChannel;
+  itemCents: number | null;
+  documentCents: number | null;
+  documentCurrency: string | null;
+  leCents: number | null;
+  leCurrency: string | null;
+  netCents: number | null;
+  savedBaseCents: number | null;
+  bookingCurrency: string | null;
+}): StayProvision | null {
+  const bookingCurrency = moneyCurrency(input.bookingCurrency);
+  let base: { cents: number; currency: string } | null = null;
+  if (input.channel === "little_emperors" && input.leCents != null && input.leCents > 0) {
+    base = { cents: input.leCents, currency: moneyCurrency(input.leCurrency, bookingCurrency) };
+  }
+  if (!base && input.documentCents != null && input.documentCents > 0) {
+    base = { cents: input.documentCents, currency: moneyCurrency(input.documentCurrency, bookingCurrency) };
+  }
+  if (!base && input.itemCents != null && input.itemCents > 0) {
+    base = { cents: input.itemCents, currency: bookingCurrency };
+  }
+  if (!base && input.netCents != null && input.netCents > 0) {
+    base = { cents: input.netCents, currency: bookingCurrency };
+  }
+  if (!base && input.savedBaseCents != null && input.savedBaseCents > 0) {
+    base = { cents: input.savedBaseCents, currency: bookingCurrency };
+  }
+  if (!base) return null;
+  const ceilingCents = provisionCeilingCents(base.cents);
+  if (ceilingCents == null) return null;
+  return {
+    baseCents: base.cents,
+    marginCents: ceilingCents - base.cents,
+    ceilingCents,
+    currency: base.currency,
+  };
+}
+
+export function shownStayProvision(
+  item: { amount: number | null; supplier?: string | null; details?: Record<string, unknown> | null },
+  arrival: {
+    channel?: HotelArrivalChannel;
+    amount_cents: number | null;
+    net_cents: number | null;
+    currency?: string | null;
+  } | null,
+  bookingCurrency: string | null
+) {
+  const channel = arrival?.channel || itemStayChannel(item);
+  const document = documentMoney(item.details);
+  const fromItem = stayProvision({
+    channel,
+    itemCents: majorToCents(item.amount),
+    documentCents: document.cents,
+    documentCurrency: document.currency,
+    leCents: null,
+    leCurrency: null,
+    netCents: arrival?.net_cents ?? null,
+    savedBaseCents: null,
+    bookingCurrency,
+  });
+  if (channel === "little_emperors" && arrival?.amount_cents != null && arrival.amount_cents > 0) {
+    return stayProvision({
+      channel,
+      itemCents: null,
+      documentCents: null,
+      documentCurrency: null,
+      leCents: arrival.amount_cents,
+      leCurrency: arrival.currency || bookingCurrency,
+      netCents: null,
+      savedBaseCents: null,
+      bookingCurrency,
+    });
+  }
+  return fromItem;
+}
+
 const SECRET_KEY = /pan|cvc|cvv|cryptogramme|card_number/i;
 
 export function arrivalRowHasNoCardSecrets(row: Record<string, unknown>) {
