@@ -289,7 +289,8 @@ async function computeSuggestions(admin: Admin, extract: BookingExtract) {
   const { data: bookings } = await admin
     .from("crm_bookings")
     .select("id, customer_id, reference, title, destination, start_date, end_date, status")
-    .neq("status", "cancelled");
+    .neq("status", "cancelled")
+    .is("archived_at", null);
   const bookingList = (bookings || []) as (Pick<
     CrmBooking,
     "id" | "reference" | "title" | "destination" | "start_date" | "end_date" | "status"

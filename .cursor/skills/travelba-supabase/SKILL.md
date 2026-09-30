@@ -35,6 +35,7 @@ Avant d’écrire du SQL : lister les tables (`crm_*`), lire la **dernière** mi
 | `20260925120000_billing_companies.sql` | `crm_billing_companies` + `billing_company_id` (attribution, encours inchangé) |
 | `20260928140000_booking_agency_commission.sql` | `crm_bookings.agency_commission` (10 % du séjour, opt-in) |
 | `20260930220000_booking_payer_kind.sql` | `crm_bookings.payer_kind` company \| personal |
+| `20260930235000_transaction_payer_kind.sql` | `crm_transactions.payer_kind` — part du règlement, solde inchangé |
 | `20260930233000_booking_fees_follow_stay.sql` | `fees_follow_stay` : frais sur la même facture, ou l’autre mention |
 | `20260928150000_booking_reference_service_role.sql` | `crm_next_booking_reference` security definer (cron Gmail / service_role) |
 

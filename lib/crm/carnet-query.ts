@@ -7,6 +7,7 @@ export async function loadVisibleCarnets(supabase: SupabaseClient, customerId: s
     .from("crm_bookings")
     .select("*")
     .eq("customer_id", customerId)
+    .is("archived_at", null)
     .order("start_date", { ascending: false, nullsFirst: false });
   const all = (data || []) as CrmBooking[];
   if (!all.length) return [] as CrmBooking[];

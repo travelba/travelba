@@ -119,7 +119,8 @@ async function loadMatchContext(admin: SupabaseClient) {
     admin
       .from("crm_bookings")
       .select("id, reference, title, destination, customer_id, status, start_date, end_date")
-      .neq("status", "cancelled"),
+      .neq("status", "cancelled")
+      .is("archived_at", null),
     admin.from("crm_booking_items").select("booking_id, confirmation_ref"),
     admin.from("crm_customers").select("id, first_name, last_name, usage_name, company_name, email"),
   ]);
@@ -142,10 +143,10 @@ async function loadMatchContext(admin: SupabaseClient) {
 async function reflectCancellation(admin: SupabaseClient, crmBookingId: string, booking: LeBooking) {
   const { data: dossier } = await admin
     .from("crm_bookings")
-    .select("id, customer_id, status")
+    .select("id, customer_id, status, archived_at")
     .eq("id", crmBookingId)
     .maybeSingle();
-  if (!dossier || dossier.status === "cancelled") return "already";
+  if (!dossier || dossier.status === "cancelled" || dossier.archived_at) return "already";
   const { data: items } = await admin.from("crm_booking_items").select("*").eq("booking_id", crmBookingId);
   const cards = (items || []) as CrmBookingItem[];
   const extract = leBookingExtract({ ...booking, state: "cancelled" });

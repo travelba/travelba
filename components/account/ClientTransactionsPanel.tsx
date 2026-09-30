@@ -1,17 +1,21 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { LedgerMovements } from "@/components/account/LedgerMovements";
 import { EmptyState } from "@/components/crm/ui";
 import { Icon } from "@/components/crm/icons";
 import type { ClientLedgerView } from "@/lib/crm/client-ledger";
 import { formatMoney } from "@/lib/crm/money";
+import { encoursPartLabel } from "@/lib/crm/payer";
 import { siteConfig } from "@/lib/site";
 
 export function ClientTransactionsPanel({
   view,
   billingHref = null,
+  payments = null,
 }: {
   view: ClientLedgerView;
   billingHref?: string | null;
+  payments?: { company?: ReactNode; personal?: ReactNode } | null;
 }) {
   const { member, currency, remaining, remainingPct, debits, creditCount, movements } = view;
 
@@ -49,9 +53,43 @@ export function ClientTransactionsPanel({
                 Encours
               </p>
               <p className="font-display text-[1.75rem] font-bold tracking-tight text-[var(--admin-navy)]">
-                {formatMoney(view.balanceValue, currency)}
+                {formatMoney(view.owed.total > 0 ? view.owed.total : view.balanceValue, currency)}
+              </p>
+              <p className="mt-1 text-xs text-muted">
+                {view.owed.total > 0
+                  ? "Somme de ce que vous devez"
+                  : view.balanceValue > 0
+                    ? "Avoir"
+                    : "Compte à jour"}
               </p>
             </div>
+            {view.owed.total > 0 ? (
+              <div className="mt-4 space-y-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#9c7c4e]">Répartition</p>
+                <div className="space-y-2">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-sm font-semibold text-[var(--admin-navy)]">
+                      {encoursPartLabel("company", view.soleCompanyName)}
+                    </span>
+                    <span className="font-display text-lg font-bold text-[var(--admin-navy)]">
+                      {formatMoney(view.owed.company, currency)}
+                    </span>
+                  </div>
+                  {payments?.company}
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-sm font-semibold text-[var(--admin-navy)]">
+                      {encoursPartLabel("personal", null)}
+                    </span>
+                    <span className="font-display text-lg font-bold text-[var(--admin-navy)]">
+                      {formatMoney(view.owed.personal, currency)}
+                    </span>
+                  </div>
+                  {payments?.personal}
+                </div>
+              </div>
+            ) : null}
             {remainingPct != null ? (
               <div className="mt-3">
                 <div className="h-2.5 overflow-hidden rounded-full bg-[#e9e8e5]">

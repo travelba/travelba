@@ -15,6 +15,7 @@ import {
   postedLedgerTotals,
 } from "@/lib/crm/money";
 import { transactionCompanyLabel } from "@/lib/crm/billing-companies";
+import { fitPayerOwed, owedByPayer } from "@/lib/crm/payer";
 import {
   TX_KIND_LABELS,
   type CompanyRole,
@@ -34,6 +35,7 @@ export type ClientLedgerBooking = {
   start_date: string | null;
   end_date: string | null;
   visible_to_client: boolean;
+  payer_kind?: "company" | "personal" | null;
 };
 
 export type ClientLedgerView = {
@@ -44,6 +46,9 @@ export type ClientLedgerView = {
   remaining: number;
   remainingPct: number | null;
   creditCount: number;
+  /** Somme due, puis part société et part particulier. */
+  owed: { total: number; company: number; personal: number };
+  soleCompanyName: string | null;
   movements: LedgerMovementRow[];
 };
 
@@ -108,6 +113,15 @@ export function shapeClientLedger(input: {
   const currency = member ? scoped[0]?.currency || input.currency || "EUR" : input.currency || "EUR";
   const { debits, settledPct } = postedLedgerTotals(shown);
   const remaining = Math.max(0, -balanceValue);
+  const payerByBooking = new Map(
+    input.bookings.map((booking) => [booking.id, booking.payer_kind ?? null] as const)
+  );
+  const split = owedByPayer(scoped, payerByBooking, currency);
+  const owed = fitPayerOwed(split.company, split.personal, remaining);
+  const soleCompanyName =
+    (input.billingCompanyCount || 0) === 1
+      ? [...(input.companyNames?.values() || [])][0] || null
+      : null;
 
   return {
     member,
@@ -117,6 +131,8 @@ export function shapeClientLedger(input: {
     remaining,
     remainingPct: settledPct == null ? null : Math.max(0, 100 - settledPct),
     creditCount: shown.filter((row) => row.direction === "credit").length,
+    owed,
+    soleCompanyName,
     movements,
   };
 }
@@ -194,12 +210,12 @@ export async function loadClientLedger(
     .order("sort_order");
   const billingCompanies = (companyRows || []) as Pick<CrmBillingCompany, "id" | "company_name">[];
   const companyNames = new Map(billingCompanies.map((company) => [company.id, company.company_name]));
-  const contextIds = [...new Set(shown.map((row) => row.booking_id).filter(Boolean))] as string[];
+  const contextIds = [...new Set(rows.map((row) => row.booking_id).filter(Boolean))] as string[];
   let bookings: ClientLedgerBooking[] = [];
   if (contextIds.length) {
     const { data: linked } = await supabase
       .from("crm_bookings")
-      .select("id, title, destination, reference, start_date, end_date, visible_to_client")
+      .select("id, title, destination, reference, start_date, end_date, visible_to_client, payer_kind")
       .in("id", contextIds);
     bookings = (linked || []) as ClientLedgerBooking[];
   }

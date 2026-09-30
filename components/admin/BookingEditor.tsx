@@ -48,7 +48,11 @@ import { BookingExpensesPanel } from "@/components/admin/BookingExpensesPanel";
 import { ServiceOfferToggles } from "@/components/admin/ServiceOfferToggles";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
 import { ClientInterfacePreview } from "@/components/account/ClientInterfacePreview";
-import { DeleteBookingButton } from "@/components/admin/DeleteBookingButton";
+import {
+  DeleteBookingButton,
+  DuplicateBookingButton,
+  RestoreBookingButton,
+} from "@/components/admin/DeleteBookingButton";
 import { LittleEmperorsCancel } from "@/components/admin/LittleEmperorsCancel";
 import { hotelsNeedingDesk } from "@/lib/crm/hotel-desk";
 import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
@@ -603,14 +607,19 @@ export function BookingEditor({
               >
                 {busy === "save" ? "Enregistrement…" : "Enregistrer"}
               </button>
-              <button
-                type="button"
-                disabled={busy !== "idle"}
-                onClick={() => setConfirm(showPrimaryPublish ? "publish" : "unpublish")}
-                className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm disabled:opacity-50"
-              >
-                {!booking.visible_to_client ? "Montrer au client" : updatesPending ? "Mettre à jour" : "Cacher au client"}
-              </button>
+              {booking.archived_at ? (
+                <RestoreBookingButton bookingId={booking.id} />
+              ) : (
+                <button
+                  type="button"
+                  disabled={busy !== "idle"}
+                  onClick={() => setConfirm(showPrimaryPublish ? "publish" : "unpublish")}
+                  className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm disabled:opacity-50"
+                >
+                  {!booking.visible_to_client ? "Montrer au client" : updatesPending ? "Mettre à jour" : "Cacher au client"}
+                </button>
+              )}
+              <DuplicateBookingButton bookingId={booking.id} />
               <button
                 type="button"
                 aria-expanded={more}
@@ -702,10 +711,22 @@ export function BookingEditor({
                 </a>
               ) : null}
             </div>
-            <DeleteBookingButton bookingId={booking.id} label={`${booking.reference} — ${titleDraft || booking.title}`} compact />
+            {booking.archived_at ? null : (
+              <DeleteBookingButton
+                bookingId={booking.id}
+                label={`${booking.reference} — ${titleDraft || booking.title}`}
+                compact
+                redirectTo={null}
+              />
+            )}
           </div>
         ) : null}
-        {statusDraft === "confirmed" ? (
+        {booking.archived_at ? (
+          <p className="rounded-2xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
+            Dossier archivé. Le client ne le voit plus. Réactivez-le pour le remettre dans la liste et au grand livre.
+          </p>
+        ) : null}
+        {statusDraft === "confirmed" && !booking.archived_at ? (
           <p className="text-xs text-muted">Ce statut inscrit le montant dans le compte du client.</p>
         ) : null}
         {pendingCards.length > 0 && booking.visible_to_client ? (
@@ -889,12 +910,12 @@ export function BookingEditor({
                   {
                     kind: "company" as const,
                     title: "Société",
-                    hint: "Une société du compte règle ce voyage.",
+                    hint: "Ce voyage entre dans la part société de l’encours.",
                   },
                   {
                     kind: "personal" as const,
                     title: "Particulier",
-                    hint: "Le client règle depuis son espace : carte, Apple Pay, prélèvement SEPA, virement.",
+                    hint: "Ce voyage entre dans la part particulier de l’encours.",
                   },
                 ]
               ).map((choice) => {
@@ -964,7 +985,7 @@ export function BookingEditor({
               </label>
             ) : null}
             {payerKind === "company" ? (
-              <p className="text-xs text-muted">Moyens ouverts au client : prélèvement SEPA, virement.</p>
+              <p className="text-xs text-muted">Le client règle cette part dans Transactions.</p>
             ) : null}
             <input
               type="hidden"
@@ -1403,7 +1424,6 @@ export function BookingEditor({
           pliantReady={pliantReady}
           shareUrl={shareUrl}
           shareCompanions={shareCompanions}
-          billingCompanies={billingCompanies}
         />
       ) : null}
     </div>

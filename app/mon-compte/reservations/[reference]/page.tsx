@@ -15,7 +15,7 @@ import { findVisaExtra, serviceRefusalFromRow, type ServiceRefusal } from "@/lib
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import type { ClientVisaStep } from "@/lib/crm/visa-flow";
 import { pliantConfigured } from "@/lib/crm/pliant";
-import { formatDateFr, formatMoney, todayIsoDate } from "@/lib/crm/money";
+import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
 import { BookingStatusBadge } from "@/components/crm/ui";
 import {
   carnetVisible,
@@ -27,20 +27,14 @@ import {
   tripPlaceLine,
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
-import { headers } from "next/headers";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
-import { originFromHeaders } from "@/lib/crm/calendar-ics";
-import { phoneCalendarMap } from "@/lib/crm/calendar-feed";
+import { googlePhoneMap } from "@/lib/crm/calendar-ics";
 import { ClientTripBody } from "@/components/account/ClientTripBody";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { siteConfig } from "@/lib/site";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
-import { StayPayment } from "@/components/account/StayPayment";
-import { paymentSlips, slipMention } from "@/lib/crm/payer";
-import { stayPayMethods } from "@/lib/crm/stripe-pay";
-import { stripePublishableKey } from "@/lib/crm/stripe";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
 import { withoutHotelRosterItems } from "@/lib/crm/hotel-contact";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -53,7 +47,7 @@ import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { collectableTicketingFee } from "@/lib/crm/ticketing-fee";
 import { StayExpenses } from "@/components/account/StayExpenses";
-import { isLedgerExpenseKind, visibleServiceCopy, type CrmBillingCompany } from "@/lib/crm/types";
+import { isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
 
 type Props = { params: Promise<{ reference: string }> };
 
@@ -72,6 +66,7 @@ export default async function ReservationDetailPage({ params }: Props) {
     .maybeSingle();
   if (!booking) notFound();
   const b = booking as CrmBooking;
+  if (b.archived_at) notFound();
 
   const [{ data: items }, { data: travelers }, { data: docs }, { data: identityDocs }, { data: companions }, { data: declined }, { data: visaRows }] =
     await Promise.all([
@@ -126,26 +121,16 @@ export default async function ReservationDetailPage({ params }: Props) {
   const placeLine = tripPlaceLine(b.title, b.destination);
   const missingCount = coverage.total - coverage.ready;
   const formalities = frenchPassportTrip(visibleItems, party.length);
-  let billingCompanies: Pick<CrmBillingCompany, "id" | "company_name">[] = [];
   let expenseChoices: { id: string; title: string; amount: number | null; billing_company_id: string | null }[] =
     [];
   try {
     const admin = createServiceClient();
-    const payerId = b.billing_customer_id || customer.id;
-    const [{ data: companyRows }, { data: expenseRows }] = await Promise.all([
-      admin
-        .from("crm_billing_companies")
-        .select("id, company_name, sort_order")
-        .eq("customer_id", payerId)
-        .order("sort_order"),
-      admin
-        .from("crm_booking_items")
-        .select("id, title, kind, amount, billing_company_id, sort_order")
-        .eq("booking_id", b.id)
-        .eq("kind", "expense")
-        .order("sort_order"),
-    ]);
-    billingCompanies = (companyRows || []) as Pick<CrmBillingCompany, "id" | "company_name">[];
+    const { data: expenseRows } = await admin
+      .from("crm_booking_items")
+      .select("id, title, kind, amount, billing_company_id, sort_order")
+      .eq("booking_id", b.id)
+      .eq("kind", "expense")
+      .order("sort_order");
     expenseChoices = (
       (expenseRows || []) as {
         id: string;
@@ -163,7 +148,6 @@ export default async function ReservationDetailPage({ params }: Props) {
         billing_company_id: item.billing_company_id || null,
       }));
   } catch {
-    billingCompanies = [];
     expenseChoices = visibleItems
       .filter((item) => isLedgerExpenseKind(item.kind))
       .map((item) => ({
@@ -241,7 +225,7 @@ export default async function ReservationDetailPage({ params }: Props) {
           docs={visibleDocs}
           pricesVisible={b.prices_visible !== false}
           calendarBase={`/mon-compte/reservations/${b.reference}/agenda.ics`}
-          phones={phoneCalendarMap(originFromHeaders(await headers()), b, visibleItems)}
+          phones={googlePhoneMap(b, visibleItems)}
           services={{
             variant: "client",
             travelers: party,
@@ -338,46 +322,6 @@ export default async function ReservationDetailPage({ params }: Props) {
       expenses={expenseLines.length ? <StayExpenses lines={expenseLines} /> : null}
       tail={
         <>
-          {b.payer_kind === "company" || b.payer_kind === "personal" ? (
-            <StayPayment
-              bookingId={b.id}
-              reference={b.reference}
-              stripeKey={stripePublishableKey()}
-              slips={(() => {
-                const stayCompany = billingCompanies.find((company) => company.id === b.billing_company_id) || null;
-                const otherCompany = billingCompanies[0] || null;
-                return paymentSlips({
-                  stayTotal: Number(b.total_amount),
-                  agencyCommission: b.agency_commission === true,
-                  clientSettlesStay: b.client_settles_stay === true,
-                  pricesVisible: b.prices_visible !== false,
-                  expenses: expenseChoices,
-                  ticketingFee,
-                  stayKind: b.payer_kind,
-                  stayCompanyId: b.billing_company_id || null,
-                  feesFollowStay: b.fees_follow_stay !== false,
-                  otherCompanyId: otherCompany?.id || null,
-                }).map((slip) => {
-                  const company =
-                    slip.kind === "company"
-                      ? billingCompanies.find((row) => row.id === slip.companyId) || stayCompany || otherCompany
-                      : null;
-                  const member = customer.company_role === "member";
-                  return {
-                    slice: slip.slice,
-                    kind: slip.kind,
-                    mention: slipMention(slip.kind, company?.company_name),
-                    amountLabel: slip.amount == null ? null : formatMoney(slip.amount, b.currency),
-                    payable: slip.payable,
-                    hotelAside: slip.hotelAside,
-                    canPay: !(slip.kind === "company" && member),
-                    methods: slip.payable ? stayPayMethods(slip.kind, b.currency) : [],
-                    companyName: company?.company_name || null,
-                  };
-                });
-              })()}
-            />
-          ) : null}
           <ReservationFiles
             showPassports={false}
             attachments={attachmentPreviews(visibleDocs, visibleItems, b.reference)}

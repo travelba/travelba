@@ -44,6 +44,5 @@ export async function GET(request: Request, ctx: Ctx) {
     booking: b,
     items: visible,
     itemId,
-    allowPhoneFeed: true,
   });
 }

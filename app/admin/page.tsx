@@ -65,6 +65,7 @@ export default async function AdminHomePage() {
       .select("*")
       .gte("start_date", today)
       .neq("status", "cancelled")
+      .is("archived_at", null)
       .order("start_date")
       .limit(10),
     supabase
@@ -75,11 +76,12 @@ export default async function AdminHomePage() {
       .order("expires_on")
       .limit(40),
     supabase.from("crm_customers").select("id, first_name, last_name"),
-    supabase.from("crm_bookings").select("id", { count: "exact", head: true }),
+    supabase.from("crm_bookings").select("id", { count: "exact", head: true }).is("archived_at", null),
     supabase
       .from("crm_bookings")
       .select("id", { count: "exact", head: true })
-      .eq("visible_to_client", true),
+      .eq("visible_to_client", true)
+      .is("archived_at", null),
     supabase.from("crm_customers").select("id", { count: "exact", head: true }),
     supabase
       .from("crm_customers")
@@ -92,7 +94,8 @@ export default async function AdminHomePage() {
       .select("id", { count: "exact", head: true })
       .gte("start_date", today)
       .lte("start_date", isoDateInDays(7))
-      .neq("status", "cancelled"),
+      .neq("status", "cancelled")
+      .is("archived_at", null),
     supabase
       .from("crm_travel_documents")
       .select("id", { count: "exact", head: true })
@@ -102,7 +105,8 @@ export default async function AdminHomePage() {
       .from("crm_bookings")
       .select("id", { count: "exact", head: true })
       .eq("start_date", isoDateInDays(1))
-      .neq("status", "cancelled"),
+      .neq("status", "cancelled")
+      .is("archived_at", null),
     revolutConnected(),
   ]);
   const byId = new Map(
@@ -165,7 +169,8 @@ export default async function AdminHomePage() {
           .from("crm_bookings")
           .select("id, reference, status, customer_id")
           .in("id", serviceBookingIds)
-          .neq("status", "cancelled"),
+          .neq("status", "cancelled")
+          .is("archived_at", null),
         supabase
           .from("crm_booking_items")
           .select("id, booking_id, kind, title, start_at, end_at, details")

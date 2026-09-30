@@ -314,9 +314,10 @@ export function flightCardSubtitle(item: CrmBookingItem) {
 }
 
 export function carnetVisible(
-  booking: Pick<CrmBooking, "visible_to_client">,
+  booking: Pick<CrmBooking, "visible_to_client"> & { archived_at?: string | null },
   items: CrmBookingItem[]
 ) {
+  if (booking.archived_at) return false;
   if (!booking.visible_to_client) return false;
   return items.some(
     (item) =>

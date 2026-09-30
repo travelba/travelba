@@ -19,6 +19,5 @@ export async function GET(request: Request, ctx: Ctx) {
     booking: session.booking,
     items: session.items,
     itemId,
-    allowPhoneFeed: false,
   });
 }

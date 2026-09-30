@@ -34,30 +34,27 @@ type TransferView = {
   partLabel?: string;
 };
 
-export type ClientPaySlip = {
-  slice: "stay" | "fees";
+export type ClientPayPart = {
   kind: PayerKind;
   mention: string;
   amountLabel: string | null;
   payable: boolean;
-  hotelAside: boolean;
   canPay: boolean;
   methods: StayPayMethod[];
   companyName: string | null;
 };
 
 export function StayPayment({
-  bookingId,
-  reference,
-  slips,
+  parts,
   stripeKey,
+  compact = false,
 }: {
-  bookingId: string;
-  reference: string;
-  slips: ClientPaySlip[];
+  parts: ClientPayPart[];
   stripeKey: string | null;
+  /** Les montants sont déjà dans l’encours. Ici, seulement le règlement. */
+  compact?: boolean;
 }) {
-  const [openSlice, setOpenSlice] = useState<ClientPaySlip["slice"] | null>(null);
+  const [openKind, setOpenKind] = useState<PayerKind | null>(null);
   const [method, setMethod] = useState<StayPayMethod | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,14 +63,14 @@ export function StayPayment({
   const [paid, setPaid] = useState(false);
   const preview = useClientPreview();
 
-  async function choose(slip: ClientPaySlip, next: StayPayMethod) {
-    setOpenSlice(slip.slice);
+  async function choose(part: ClientPayPart, next: StayPayMethod) {
+    setOpenKind(part.kind);
     setMethod(next);
     setError(null);
     setClientSecret(null);
     setTransfer(null);
     setPaid(false);
-    if (!slip.canPay || !slip.payable || !slip.amountLabel) return;
+    if (!part.canPay || !part.payable || !part.amountLabel) return;
     if (preview) {
       setError(CLIENT_PREVIEW_NOTE);
       return;
@@ -81,10 +78,10 @@ export function StayPayment({
     if (next !== "revolut" && !stripeKey) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/client/bookings/${bookingId}/pay`, {
+      const res = await fetch("/api/client/ledger/pay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ method: next, slice: slip.slice }),
+        body: JSON.stringify({ method: next, payerKind: part.kind }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -110,50 +107,54 @@ export function StayPayment({
 
   return (
     <div className="space-y-3">
-      {slips.map((slip) => {
-        const company = slip.kind === "company";
-        const open = openSlice === slip.slice;
-        const society = slip.companyName?.trim() || "votre société";
+      {parts.map((part) => {
+        const company = part.kind === "company";
+        const open = openKind === part.kind;
+        const society = part.companyName?.trim() || "votre société";
         return (
           <section
-            key={slip.slice}
-            className={`space-y-3 rounded-[1.35rem] p-4 ${
-              company ? "border border-[var(--admin-gold)] bg-white" : "border border-[#e5e3dc] bg-[#f7f6f3]"
-            }`}
+            key={part.kind}
+            className={
+              compact
+                ? "space-y-3"
+                : `space-y-3 rounded-[1.35rem] p-4 ${
+                    company ? "border border-[var(--admin-gold)] bg-white" : "border border-[#e5e3dc] bg-[#f7f6f3]"
+                  }`
+            }
           >
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">{slip.mention}</p>
-              {slip.amountLabel ? (
-                <p className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">{slip.amountLabel}</p>
-              ) : null}
-            </div>
+            {compact ? null : (
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+                  {part.mention}
+                </p>
+                {part.amountLabel ? (
+                  <p className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">{part.amountLabel}</p>
+                ) : null}
+              </div>
+            )}
 
-            {slip.hotelAside ? (
-              <p className="text-sm text-muted">L’hôtel se règle de votre côté. Le prix reste au carnet.</p>
-            ) : null}
-
-            {company && !slip.canPay ? (
+            {company && part.payable && !part.canPay ? (
               <p className="text-sm text-muted">Le règlement se fait par {society}.</p>
             ) : null}
 
-            {slip.canPay && slip.payable && !slip.methods.length ? (
-              <p className="text-sm text-muted">Le prélèvement et le virement sont ouverts pour un séjour en euros.</p>
+            {part.canPay && part.payable && !part.methods.length ? (
+              <p className="text-sm text-muted">Le prélèvement et le virement sont ouverts en euros.</p>
             ) : null}
 
-            {slip.canPay && slip.payable && slip.methods.length ? (
-              <div className="grid gap-2" role="radiogroup" aria-label={slip.mention}>
-                {slip.methods.map((item) => {
+            {part.canPay && part.payable && part.methods.length ? (
+              <div className="grid gap-2" role="radiogroup" aria-label={part.mention}>
+                {part.methods.map((item) => {
                   const selected = open && method === item;
                   return (
                     <button
                       key={item}
                       type="button"
                       aria-pressed={selected}
-                      onClick={() => void choose(slip, item)}
+                      onClick={() => void choose(part, item)}
                       className={`rounded-2xl px-4 py-3 text-left ${
                         selected
                           ? "bg-[var(--admin-navy)] text-white"
-                          : company
+                          : compact || company
                             ? "bg-[#f7f6f3] text-[var(--admin-navy)]"
                             : "bg-white text-[var(--admin-navy)]"
                       }`}
@@ -163,7 +164,7 @@ export function StayPayment({
                         <span className={`mt-0.5 block text-xs ${selected ? "text-white/75" : "text-muted"}`}>
                           Ce moyen n’est pas encore ouvert.
                         </span>
-                      ) : !slip.amountLabel ? (
+                      ) : !part.amountLabel ? (
                         <span className={`mt-0.5 block text-xs ${selected ? "text-white/75" : "text-muted"}`}>
                           Rien à régler pour l’instant.
                         </span>
@@ -183,32 +184,28 @@ export function StayPayment({
                 iban={transfer.iban}
                 bic={transfer.bic}
                 accountHolder={transfer.accountHolder}
-                reference={transfer.reference || reference}
-                partLabel={transfer.partLabel || slip.mention}
+                reference={transfer.reference}
+                partLabel={transfer.partLabel || part.mention}
               />
             ) : null}
 
             {open && clientSecret && stripeKey && method && method !== "revolut" ? (
-        <Elements
-          stripe={stripeFor(stripeKey)}
-          options={{
-            clientSecret,
-            appearance: {
-              variables: {
-                colorPrimary: "#0B192C",
-                colorBackground: "#ffffff",
-                borderRadius: "16px",
-                fontFamily: "Inter, sans-serif",
-              },
-            },
-          }}
-        >
-          {method === "apple_pay" ? (
-            <ApplePayForm reference={reference} />
-          ) : (
-            <CardPayForm reference={reference} sepa={method === "sepa_debit"} />
-          )}
-        </Elements>
+              <Elements
+                stripe={stripeFor(stripeKey)}
+                options={{
+                  clientSecret,
+                  appearance: {
+                    variables: {
+                      colorPrimary: "#0B192C",
+                      colorBackground: "#ffffff",
+                      borderRadius: "16px",
+                      fontFamily: "Inter, sans-serif",
+                    },
+                  },
+                }}
+              >
+                {method === "apple_pay" ? <ApplePayForm /> : <CardPayForm sepa={method === "sepa_debit"} />}
+              </Elements>
             ) : null}
           </section>
         );
@@ -217,11 +214,11 @@ export function StayPayment({
   );
 }
 
-function paymentReturnUrl(reference: string) {
-  return `${window.location.origin}/mon-compte/reservations/${encodeURIComponent(reference)}`;
+function paymentReturnUrl() {
+  return `${window.location.origin}/mon-compte/transactions`;
 }
 
-function CardPayForm({ reference, sepa }: { reference: string; sepa: boolean }) {
+function CardPayForm({ sepa }: { sepa: boolean }) {
   const stripe = useStripe();
   const elements = useElements();
   const [busy, setBusy] = useState(false);
@@ -240,7 +237,7 @@ function CardPayForm({ reference, sepa }: { reference: string; sepa: boolean }) 
     }
     const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
       elements,
-      confirmParams: { return_url: paymentReturnUrl(reference) },
+      confirmParams: { return_url: paymentReturnUrl() },
       redirect: "if_required",
     });
     setBusy(false);
@@ -278,7 +275,7 @@ function CardPayForm({ reference, sepa }: { reference: string; sepa: boolean }) 
   );
 }
 
-function ApplePayForm({ reference }: { reference: string }) {
+function ApplePayForm() {
   const stripe = useStripe();
   const elements = useElements();
   const [ready, setReady] = useState<boolean | null>(null);
@@ -300,7 +297,7 @@ function ApplePayForm({ reference }: { reference: string }) {
           }
           const { error: confirmError } = await stripe.confirmPayment({
             elements,
-            confirmParams: { return_url: paymentReturnUrl(reference) },
+            confirmParams: { return_url: paymentReturnUrl() },
             redirect: "if_required",
           });
           if (confirmError) {
@@ -309,9 +306,7 @@ function ApplePayForm({ reference }: { reference: string }) {
           }
         }}
       />
-      {ready === false ? (
-        <p className="text-sm text-muted">Apple Pay s’ouvre sur iPhone, iPad ou Safari.</p>
-      ) : null}
+      {ready === false ? <p className="text-sm text-muted">Apple Pay s’ouvre sur iPhone, iPad ou Safari.</p> : null}
       {error ? <p className="text-sm text-accent">{error}</p> : null}
     </div>
   );

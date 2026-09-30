@@ -10,7 +10,7 @@ import {
 import { parseBillingCompanyId } from "@/lib/crm/billing-companies";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { assignPayer, resolveFeesFollowStay, type PayerCompany } from "@/lib/crm/payer";
-import { BookingDeleteError, deleteBookingById } from "@/lib/crm/delete-booking";
+import { BookingActionError, archiveBookingById } from "@/lib/crm/archive-booking";
 import { normalizePieceKind } from "@/lib/crm/concierge-notices";
 import {
   notifyStayPublished,
@@ -169,6 +169,9 @@ export async function PATCH(request: Request, ctx: Ctx) {
   }
 
   if ("visible_to_client" in body) {
+    if (prev.archived_at && body.visible_to_client) {
+      return jsonError("Réactivez le dossier avant de le montrer au client.");
+    }
     try {
       if (body.visible_to_client) {
         const { data: publishItems } = await auth.supabase
@@ -215,11 +218,11 @@ export async function DELETE(_req: Request, ctx: Ctx) {
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
   try {
-    const result = await deleteBookingById(id);
+    const result = await archiveBookingById(id);
     return NextResponse.json(result);
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Suppression impossible";
-    const status = err instanceof BookingDeleteError ? err.status : 400;
+    const message = err instanceof Error ? err.message : "Archivage impossible";
+    const status = err instanceof BookingActionError ? err.status : 400;
     return jsonError(message, status);
   }
 }

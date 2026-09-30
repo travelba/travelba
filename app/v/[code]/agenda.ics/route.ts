@@ -16,6 +16,5 @@ export async function GET(request: Request, ctx: Ctx) {
     booking: trip.booking,
     items: trip.items,
     itemId,
-    allowPhoneFeed: true,
   });
 }

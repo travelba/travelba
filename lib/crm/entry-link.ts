@@ -59,8 +59,9 @@ export type PreviewNavigation = {
 };
 
 /**
- * Le GET sert toujours l’aperçu. Le script de la page poste ensuite.
- * On ne redirige plus au GET : le robot suivrait et consommerait le jeton.
+ * L’adresse du bouton reste l’aperçu. Un 307 ici, WhatsApp le suit
+ * et ne garde que le domaine. L’ouverture est `?ouvrir=1`, posé par
+ * le script : le robot ne l’exécute pas.
  */
 export function shouldServePreview(
   _userAgent: string | null,
@@ -101,6 +102,48 @@ export function entryDestination(input: {
 
 export function entryOpenRequested(search: string) {
   return new URLSearchParams(search).get("ouvrir") === "1";
+}
+
+/** Le robot d’aperçu. Pas le navigateur intégré, dont l’agent contient « WhatsApp » plus loin. */
+export function isPreviewBot(userAgent: string | null) {
+  const ua = (userAgent || "").trim();
+  if (!ua) return false;
+  if (/^WhatsApp\//i.test(ua)) return true;
+  return /facebookexternalhit|facebot|meta-externalagent|twitterbot|linkedinbot|slackbot|telegrambot|discordbot|embedly|skypeuripreview|applebot|iframely|pinterest|redditbot|vkshare/i.test(
+    ua
+  );
+}
+
+function isPrefetch(purpose: string | null) {
+  return /prefetch/i.test(purpose || "");
+}
+
+/**
+ * Ouvre au GET seulement pour un appui humain.
+ * L’adresse nue reste l’aperçu : WhatsApp suit un 307 et perd la carte.
+ * `?ouvrir=1` vient du script. Le robot ne l’exécute pas.
+ */
+export function shouldOpenFromGet(input: {
+  search: string;
+  userAgent: string | null;
+  secFetchUser: string | null;
+  secFetchDest: string | null;
+  purpose: string | null;
+}) {
+  if (isPrefetch(input.purpose)) return false;
+  if (isPreviewBot(input.userAgent)) return false;
+  if (entryOpenRequested(input.search)) return true;
+  return input.secFetchUser === "?1" && (input.secFetchDest || "document") === "document";
+}
+
+export function shouldOpenFromRequest(url: string, headers: Headers) {
+  return shouldOpenFromGet({
+    search: new URL(url).search,
+    userAgent: headers.get("user-agent"),
+    secFetchUser: headers.get("sec-fetch-user"),
+    secFetchDest: headers.get("sec-fetch-dest"),
+    purpose: headers.get("sec-purpose") || headers.get("purpose"),
+  });
 }
 
 export function safeOtpType(value: string | null | undefined) {
@@ -174,24 +217,37 @@ export function entryPreviewHtml(
 ) {
   const base = origin.replace(/\/$/, "");
   const page = entryLinkUrl(base, code);
-  const title = escapeHtml((stay?.title || ENTRY_PREVIEW_TITLE).trim());
-  const description = escapeHtml((stay?.description || ENTRY_PREVIEW_DESCRIPTION).trim());
+  const rawTitle = (stay?.title || ENTRY_PREVIEW_TITLE).trim();
+  const rawDescription = (stay?.description || ENTRY_PREVIEW_DESCRIPTION).trim();
+  const title = escapeHtml(rawTitle);
+  const description = escapeHtml(rawDescription);
+  const lead = escapeHtml(rawDescription.replace(/\s·\sTravel Business Agency$/, ""));
   const image = previewImage(stay?.image);
+  const imageUrl = image ? escapeHtml(image) : "";
   const imageTags = image
-    ? `<meta property="og:image" content="${escapeHtml(image)}">
-<meta property="og:image:secure_url" content="${escapeHtml(image)}">
+    ? `<meta property="og:image" content="${imageUrl}">
+<meta property="og:image:secure_url" content="${imageUrl}">
 <meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="${title}">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image" content="${escapeHtml(image)}">`
+<meta name="twitter:image" content="${imageUrl}">`
     : `<meta name="twitter:card" content="summary">`;
-  const icon = `${base}/favicon.ico`;
+  const icon = escapeHtml(`${base}/favicon.ico`);
+  const action = escapeHtml(page);
+  const hero = image
+    ? `<div class="hero"><img src="${imageUrl}" alt="" onerror="this.closest('main').className='door plain';this.parentElement.remove()"></div>`
+    : "";
+  const note = enter
+    ? ""
+    : `<p class="note">Ce lien ne s'ouvre plus. Demandez-en un nouveau à l'agence.</p>`;
   return `<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0B192C">
 <title>${title}</title>
 <meta name="description" content="${description}">
 <meta property="og:locale" content="fr_FR">
@@ -199,20 +255,111 @@ export function entryPreviewHtml(
 <meta property="og:site_name" content="Travel Business Agency">
 <meta property="og:title" content="${title}">
 <meta property="og:description" content="${description}">
-<meta property="og:url" content="${page}">
+<meta property="og:url" content="${action}">
 ${imageTags}
 <meta name="twitter:title" content="${title}">
 <meta name="twitter:description" content="${description}">
 <link rel="icon" href="${icon}" type="image/x-icon" sizes="any">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background: #0B192C;
+    color: #F3EDE2;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  .door {
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+  .hero {
+    position: relative;
+    height: 52vh;
+    height: 52dvh;
+    min-height: 240px;
+    overflow: hidden;
+    background: #12263c;
+  }
+  .hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .hero::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 58%;
+    background: linear-gradient(to bottom, rgba(11,25,44,0), #0B192C 78%);
+  }
+  .sheet {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    width: min(100%, 480px);
+    margin: -92px auto 0;
+    padding: 0 22px calc(28px + env(safe-area-inset-bottom));
+    position: relative;
+  }
+  .door.plain .sheet {
+    justify-content: center;
+    margin-top: 0;
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding-bottom: calc(18vh + env(safe-area-inset-bottom));
+  }
+  .mark {
+    margin: 0 0 14px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #C5A880;
+  }
+  h1 {
+    margin: 0;
+    max-width: 16ch;
+    font-family: Georgia, "Iowan Old Style", Palatino, serif;
+    font-size: 34px;
+    font-weight: 500;
+    line-height: 1.12;
+  }
+  .lead { margin: 12px 0 0; font-size: 16px; line-height: 1.45; color: #E4D5BE; }
+  form { margin: 28px 0 0; }
+  button {
+    width: 100%;
+    min-height: 54px;
+    border: 0;
+    border-radius: 999px;
+    background: #C5A880;
+    color: #0B192C;
+    font: 600 16px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    cursor: pointer;
+  }
+  .note {
+    max-width: 32ch;
+    margin: 14px auto 0;
+    text-align: center;
+    font-size: 13px;
+    line-height: 1.4;
+    color: rgba(243, 237, 226, 0.72);
+  }
+</style>
 </head>
-<body style="margin:0;background:#0B192C;color:#F3EDE2;font-family:Georgia,serif">
-<p style="margin:0;padding:48px;font-size:28px">${title}</p>
-<p style="margin:0;padding:0 48px 48px;font-size:18px">${description}</p>
-<form method="post" action="${page}">
+<body>
+<main class="door ${image ? "photo" : "plain"}">
+${hero}
+<div class="sheet">
+<p class="mark">Travel Business Agency</p>
+<h1>${title}</h1>
+<p class="lead">${lead}</p>
+<form method="post" action="${action}">
 <input type="hidden" name="ouvrir" value="1">
-<button type="submit" style="background:#C5A880;color:#0B192C;border:0;padding:14px 22px;font:inherit;cursor:pointer">Ouvrir mon espace</button>
+<button type="submit">Ouvrir mon espace</button>
 </form>
-${enter ? `<script>document.forms[0].submit()</script>` : ""}
+${note}
+</div>
+</main>
+${enter ? `<script>location.replace(location.pathname+"?ouvrir=1")</script>` : ""}
 </body>
 </html>`;
 }

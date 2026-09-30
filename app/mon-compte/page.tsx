@@ -2,8 +2,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { ensureCustomerForUser, getSessionUser } from "@/lib/crm/auth";
-import { chosenCalendarHref, googleCalendarHref, originFromHeaders } from "@/lib/crm/calendar-ics";
-import { webcalFeedUrl } from "@/lib/crm/calendar-feed";
+import { chosenCalendarHref, googleCalendarHref, itemCalendarHref } from "@/lib/crm/calendar-ics";
 import type { CrmBalance } from "@/lib/crm/types";
 import { encoursCaption, formatDateRangeShort, formatMoney, isUpcomingBooking, jMinusLabel } from "@/lib/crm/money";
 import { isCompanyMember } from "@/lib/crm/company-role";
@@ -67,18 +66,11 @@ export default async function AccountHomePage() {
   }
   const headerList = await headers();
   const phone =
-    homeFlight && flightItem && nextTrip
-      ? {
-          webcal: nextTrip.visible_to_client
-            ? webcalFeedUrl(originFromHeaders(headerList), nextTrip.reference, flightItem.id)
-            : null,
-          google: googleCalendarHref(flightItem, nextTrip),
-        }
-      : null;
+    flightItem && nextTrip ? { google: googleCalendarHref(flightItem, nextTrip) } : null;
   const calendarHref =
     homeFlight && nextTrip
       ? chosenCalendarHref(
-          `/mon-compte/reservations/${nextTrip.reference}/agenda.ics?item_id=${encodeURIComponent(homeFlight.itemId)}`,
+          itemCalendarHref(`/mon-compte/reservations/${nextTrip.reference}/agenda.ics`, homeFlight.itemId),
           phone,
           headerList.get("user-agent") || ""
         )
@@ -181,7 +173,6 @@ export default async function AccountHomePage() {
         <BoardingPass
           pass={homeFlight}
           calendarHref={calendarHref}
-          webcalHref={phone?.webcal}
           googleHref={phone?.google}
         />
       ) : null}

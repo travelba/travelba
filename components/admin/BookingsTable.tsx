@@ -14,7 +14,11 @@ import { BookingHero } from "@/components/crm/BookingHero";
 import { StatusChip, bookingStatusTone } from "@/components/crm/ui";
 import { bookingsListEmptyMessage } from "@/lib/crm/launch-status";
 import { stayHeadline } from "@/lib/crm/carnet";
-import { DeleteBookingButton } from "@/components/admin/DeleteBookingButton";
+import {
+  DeleteBookingButton,
+  DuplicateBookingButton,
+  RestoreBookingButton,
+} from "@/components/admin/DeleteBookingButton";
 
 export function BookingsTable({
   bookings,
@@ -37,11 +41,29 @@ export function BookingsTable({
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return bookings.filter((b) => {
-      if (status !== "all" && b.status !== status) return false;
+      const archived = Boolean(b.archived_at);
+      if (status === "archived") {
+        if (!archived) return false;
+      } else if (archived) {
+        return false;
+      } else if (status !== "all" && b.status !== status) {
+        return false;
+      }
       if (!needle) return true;
       const hay = `${b.reference} ${b.title} ${b.destination || ""} ${byId.get(b.customer_id) || ""}`.toLowerCase();
       return hay.includes(needle);
     });
+  }, [bookings, byId, q, status]);
+
+  const hiddenArchiveHits = useMemo(() => {
+    if (status === "archived") return 0;
+    const needle = q.trim().toLowerCase();
+    if (!needle) return 0;
+    return bookings.filter((b) => {
+      if (!b.archived_at) return false;
+      const hay = `${b.reference} ${b.title} ${b.destination || ""} ${byId.get(b.customer_id) || ""}`.toLowerCase();
+      return hay.includes(needle);
+    }).length;
   }, [bookings, byId, q, status]);
 
   return (
@@ -59,6 +81,7 @@ export function BookingsTable({
           className="admin-af-input text-sm sm:w-56"
         >
           <option value="all">Tous les statuts</option>
+          <option value="archived">Archivées</option>
           {(Object.keys(BOOKING_STATUS_LABELS) as BookingStatus[]).map((s) => (
             <option key={s} value={s}>
               {BOOKING_STATUS_LABELS[s]}
@@ -91,7 +114,11 @@ export function BookingsTable({
                 </div>
               </div>
               <div className="flex min-w-0 flex-wrap items-center gap-3">
-                {!b.visible_to_client ? (
+                {b.archived_at ? (
+                  <span className="rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">
+                    Archivée
+                  </span>
+                ) : !b.visible_to_client ? (
                   <span className="rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">
                     Brouillon
                   </span>
@@ -106,17 +133,31 @@ export function BookingsTable({
                 </span>
               </div>
             </Link>
-            <DeleteBookingButton
-              compact
-              redirectTo={null}
-              bookingId={b.id}
-              label={`${b.reference} — ${b.title}`}
-            />
+            <div className="flex flex-col items-end gap-1">
+              <DuplicateBookingButton compact bookingId={b.id} />
+              {b.archived_at ? (
+                <RestoreBookingButton compact bookingId={b.id} />
+              ) : (
+                <DeleteBookingButton
+                  compact
+                  redirectTo={null}
+                  bookingId={b.id}
+                  label={`${b.reference} — ${b.title}`}
+                />
+              )}
+            </div>
           </li>
         ))}
         {!filtered.length ? (
           <li className="px-5 py-8 text-center text-sm text-muted">
-            {bookingsListEmptyMessage(bookings.length > 0)}
+            {status === "archived" ? "Aucun dossier archivé." : bookingsListEmptyMessage(bookings.length > 0)}
+          </li>
+        ) : null}
+        {hiddenArchiveHits > 0 ? (
+          <li className="px-5 py-3 text-center text-xs text-muted">
+            {hiddenArchiveHits > 1
+              ? `${hiddenArchiveHits} dossiers archivés correspondent. Choisissez Archivées pour les réactiver.`
+              : "Un dossier archivé correspond. Choisissez Archivées pour le réactiver."}
           </li>
         ) : null}
       </ul>
