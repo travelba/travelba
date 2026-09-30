@@ -5,6 +5,7 @@ import {
   senderFromRevolutPayload,
   shouldIngestRevolutForRapprochement,
 } from "@/lib/crm/revolut-inbox";
+import { pickEurSepaWire, type AgencyWire } from "@/lib/crm/revolut-wire";
 
 const PROVIDER = "revolut";
 
@@ -269,6 +270,87 @@ export async function upsertRevolutInbox(txs: RevolutTx[]) {
     }
   }
   return inserted;
+}
+
+export class RevolutHttpError extends Error {
+  status: number;
+  constructor(status: number) {
+    super("Revolut");
+    this.status = status;
+  }
+}
+
+async function revolutGet(path: string): Promise<unknown> {
+  const token = await getRevolutAccessToken();
+  const res = await fetch(`${apiBase()}${path}`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+  });
+  if (!res.ok) {
+    await res.arrayBuffer().catch(() => undefined);
+    throw new RevolutHttpError(res.status);
+  }
+  return res.json();
+}
+
+const ACCOUNT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function fetchRevolutAccounts() {
+  const data = await revolutGet("/api/1.0/accounts");
+  if (!Array.isArray(data)) return [];
+  return data.flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const rec = row as Record<string, unknown>;
+    if (typeof rec.id !== "string" || !ACCOUNT_ID.test(rec.id)) return [];
+    return [
+      {
+        id: rec.id,
+        name: typeof rec.name === "string" ? rec.name : undefined,
+        currency: typeof rec.currency === "string" ? rec.currency : undefined,
+        state: typeof rec.state === "string" ? rec.state : undefined,
+      },
+    ];
+  });
+}
+
+export async function fetchRevolutAccountBankDetails(accountId: string) {
+  if (!ACCOUNT_ID.test(accountId)) throw new RevolutHttpError(400);
+  const data = await revolutGet(`/api/1.0/accounts/${accountId}/bank-details`);
+  const list = Array.isArray(data) ? data : data && typeof data === "object" ? [data] : [];
+  return list.flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const rec = row as Record<string, unknown>;
+    const schemes = Array.isArray(rec.schemes)
+      ? rec.schemes.filter((scheme): scheme is string => typeof scheme === "string")
+      : [];
+    return [
+      {
+        iban: typeof rec.iban === "string" ? rec.iban : undefined,
+        bic: typeof rec.bic === "string" ? rec.bic : undefined,
+        beneficiary: typeof rec.beneficiary === "string" ? rec.beneficiary : undefined,
+        schemes,
+      },
+    ];
+  });
+}
+
+const WIRE_TTL_MS = 10 * 60 * 1000;
+let wireCache: { at: number; wire: AgencyWire } | null = null;
+
+/** IBAN SEPA du compte euros. Mis en cache un court moment. Jamais journalisé. */
+export async function loadAgencyEurWire() {
+  if (wireCache && Date.now() - wireCache.at < WIRE_TTL_MS) return wireCache.wire;
+  const accounts = await fetchRevolutAccounts();
+  const eur = accounts.filter(
+    (account) => (account.state || "active") === "active" && (account.currency || "").toUpperCase() === "EUR"
+  );
+  const details = [];
+  for (const account of eur) {
+    details.push({ accountId: account.id, rows: await fetchRevolutAccountBankDetails(account.id) });
+  }
+  const wire = pickEurSepaWire(accounts, details);
+  if (!wire) return null;
+  wireCache = { at: Date.now(), wire };
+  return wire;
 }
 
 export function verifyRevolutWebhook(rawBody: string, timestamp: string, signatureHeader: string) {

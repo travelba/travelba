@@ -9,6 +9,7 @@ import {
 } from "@/lib/crm/bookings";
 import { parseBillingCompanyId } from "@/lib/crm/billing-companies";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
+import { assignPayer, resolveFeesFollowStay, type PayerCompany } from "@/lib/crm/payer";
 import { BookingDeleteError, deleteBookingById } from "@/lib/crm/delete-booking";
 import { normalizePieceKind } from "@/lib/crm/concierge-notices";
 import {
@@ -63,7 +64,49 @@ export async function PATCH(request: Request, ctx: Ctx) {
     }
   }
 
-  if ("billing_company_id" in patch && patch.billing_company_id) {
+  if ("payer_kind" in body) {
+    if (!("payer_kind" in patch)) {
+      return jsonError("Indiquez si le voyage est réglé par une société ou un particulier.");
+    }
+    const payerId = String(patch.billing_customer_id || prev.billing_customer_id || prev.customer_id);
+    const { data: companyRows, error: companyError } = await auth.supabase
+      .from("crm_billing_companies")
+      .select("id, sort_order")
+      .eq("customer_id", payerId)
+      .order("sort_order");
+    if (companyError) return dbError(companyError, 500);
+    const assigned = assignPayer({
+      payerKind: patch.payer_kind,
+      companyId: body.billing_company_id,
+      companies: (companyRows || []) as PayerCompany[],
+    });
+    if ("error" in assigned) return jsonError(assigned.error);
+    patch.payer_kind = assigned.payer_kind;
+    patch.billing_company_id = assigned.billing_company_id;
+  }
+
+  if ("fees_follow_stay" in body || patch.payer_kind === "personal") {
+    const kind =
+      patch.payer_kind === "company" || patch.payer_kind === "personal"
+        ? patch.payer_kind
+        : prev.payer_kind === "company" || prev.payer_kind === "personal"
+          ? prev.payer_kind
+          : null;
+    const requested = "fees_follow_stay" in patch ? patch.fees_follow_stay === true : prev.fees_follow_stay !== false;
+    let companyCount = kind === "company" ? 1 : 0;
+    if (kind === "personal") {
+      const payerId = String(patch.billing_customer_id || prev.billing_customer_id || prev.customer_id);
+      const { count, error: countError } = await auth.supabase
+        .from("crm_billing_companies")
+        .select("id", { count: "exact", head: true })
+        .eq("customer_id", payerId);
+      if (countError) return dbError(countError, 500);
+      companyCount = count || 0;
+    }
+    patch.fees_follow_stay = resolveFeesFollowStay({ stayKind: kind, requested, companyCount });
+  }
+
+  if ("billing_company_id" in patch && patch.billing_company_id && !("payer_kind" in body)) {
     const parsed = parseBillingCompanyId(patch.billing_company_id);
     if ("error" in parsed) return jsonError(parsed.error);
     const payerId = String(patch.billing_customer_id || prev.billing_customer_id || prev.customer_id);
@@ -87,6 +130,13 @@ export async function PATCH(request: Request, ctx: Ctx) {
       .single();
     if (error) return dbError(error, 400);
     booking = data as CrmBooking;
+    if (patch.payer_kind === "personal") {
+      await auth.supabase
+        .from("crm_booking_items")
+        .update({ billing_company_id: null })
+        .eq("booking_id", id)
+        .not("billing_company_id", "is", null);
+    }
   }
   let revealedPieces: { id: string; kind: string | null }[] = [];
   if ("visible_to_client" in body && body.visible_to_client && prev.visible_to_client) {

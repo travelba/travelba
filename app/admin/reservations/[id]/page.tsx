@@ -10,12 +10,12 @@ import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
+import { isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
 import { syncStayCards } from "@/lib/crm/hotel-arrival-run";
 import { ensureHotelRequests } from "@/lib/crm/hotel-desk-run";
 import { principalGuest } from "@/lib/crm/hotel-arrival";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
 import type {
-  CrmBillingCompany,
   CrmBooking,
   CrmBookingDocument,
   CrmBookingItem,
@@ -127,8 +127,6 @@ export default async function AdminBookingPage({ params }: Props) {
     }
   }
 
-  const billingCompanyRows = (billingCompanies || []) as Pick<CrmBillingCompany, "id" | "company_name">[];
-
   const le = ((leRows || [])[0] || null) as {
     id: string;
     hotel_name: string | null;
@@ -169,6 +167,18 @@ export default async function AdminBookingPage({ params }: Props) {
           shareCompanions={shareCompanions}
           arrivals={arrivals}
           hotelRequests={hotelRequests}
+          billingCompanies={(billingCompanies || []) as {
+            id: string;
+            company_name: string | null;
+            sort_order: number;
+          }[]}
+          expenseBilling={bookingItems
+            .filter((item) => isLedgerExpenseKind(item.kind))
+            .map((item) => ({
+              id: item.id,
+              title: visibleServiceCopy(item.title),
+              billing_company_id: item.billing_company_id || null,
+            }))}
           attachedEmails={(attachedMails || []) as {
             id: string;
             subject: string | null;
@@ -176,7 +186,6 @@ export default async function AdminBookingPage({ params }: Props) {
             received_at: string | null;
             extract?: unknown;
           }[]}
-          billingCompanies={billingCompanyRows}
           littleEmperors={le}
         />
   );

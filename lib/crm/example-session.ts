@@ -104,6 +104,8 @@ function booking(): CrmBooking {
     agency_commission: true,
     visible_to_client: true,
     prices_visible: false,
+    offer_chauffeur: true,
+    offer_greeter: true,
     created_at: STAMP,
     updated_at: STAMP,
   };

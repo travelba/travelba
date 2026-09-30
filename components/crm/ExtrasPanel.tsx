@@ -9,6 +9,7 @@ import {
   checkinProposed,
   CHECKIN_EUR,
   checkinFeeAmount,
+  extraAgencyStatus,
   findCheckinExtra,
   findVisaExtra,
   isServiceRefused,
@@ -88,15 +89,33 @@ export function ExtrasPanel({
     router.refresh();
   }
 
+  async function confirmCheckin(itemId: string) {
+    if (!isAdmin || busy) return;
+    setBusy(`confirm:${itemId}`);
+    setIssues([]);
+    const res = await fetch(`/api/admin/bookings/${booking.id}/extras`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm: true, kind: "checkin" }),
+    });
+    const json = await res.json().catch(() => ({}));
+    setBusy(null);
+    if (!res.ok) {
+      setIssues(issuesFromResponse(json));
+      return;
+    }
+    router.refresh();
+  }
+
   async function cancel(kind: "checkin" | "visa", itemId: string) {
     if (busy) return;
     setBusy(`cancel:${itemId}`);
     setIssues([]);
-    const res = isAdmin
+    const res = isAdmin && kind !== "checkin"
       ? await fetch(`/api/admin/bookings/${booking.id}/items?itemId=${encodeURIComponent(itemId)}`, {
           method: "DELETE",
         })
-      : await fetch(`/api/client/bookings/${booking.reference}/extras`, {
+      : await fetch(isAdmin ? `/api/admin/bookings/${booking.id}/extras` : `/api/client/bookings/${booking.reference}/extras`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ cancel: true, kind }),
@@ -119,10 +138,13 @@ export function ExtrasPanel({
     count: number;
     existing: CrmBookingItem | null;
   }) {
-    const status = input.existing ? "Validé" : "Non validé";
+    const confirmed = input.existing ? extraAgencyStatus(input.existing) === "confirmed" : false;
+    const status = !input.existing ? "Non validé" : confirmed ? "Confirmé" : "Validé";
     const priceLabel = pricesVisible ? formatMoney(input.amount, booking.currency) : HIDDEN_PRICE_LABEL;
     const subtitle = `${status} · ${input.note} · ${input.count} passager${input.count > 1 ? "s" : ""}`;
-    const pending = busy === input.kind || (input.existing && busy === `cancel:${input.existing.id}`);
+    const pending =
+      busy === input.kind ||
+      (input.existing && (busy === `cancel:${input.existing.id}` || busy === `confirm:${input.existing.id}`));
     const refuseButton =
       !input.existing && !isAdmin ? (
         <button
@@ -134,14 +156,28 @@ export function ExtrasPanel({
         </button>
       ) : null;
     const validate = input.existing ? (
-      <button
-        type="button"
-        className="inline-flex h-5 items-center justify-center rounded-full bg-[var(--admin-navy)] px-2.5 text-[11px] font-semibold leading-none text-white disabled:opacity-50"
-        disabled={busy !== null}
-        onClick={() => void cancel(input.kind, input.existing!.id)}
-      >
-        {busy === `cancel:${input.existing.id}` ? "…" : "Annuler"}
-      </button>
+      confirmed ? null : (
+        <span className="inline-flex items-center gap-2">
+          {isAdmin && input.kind === "checkin" ? (
+            <button
+              type="button"
+              className="inline-flex h-5 items-center justify-center rounded-full bg-[var(--admin-navy)] px-2.5 text-[11px] font-semibold leading-none text-white disabled:opacity-50"
+              disabled={busy !== null}
+              onClick={() => void confirmCheckin(input.existing!.id)}
+            >
+              {busy === `confirm:${input.existing.id}` ? "…" : "Cartes déposées"}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="inline-flex h-5 items-center justify-center rounded-full bg-[var(--admin-navy)] px-2.5 text-[11px] font-semibold leading-none text-white disabled:opacity-50"
+            disabled={busy !== null}
+            onClick={() => void cancel(input.kind, input.existing!.id)}
+          >
+            {busy === `cancel:${input.existing.id}` ? "…" : "Annuler"}
+          </button>
+        </span>
+      )
     ) : (
       <button
         type="button"
@@ -190,7 +226,15 @@ export function ExtrasPanel({
         </div>
         {pending ? (
           <div className="px-3.5 pb-3">
-            <BusyBar label={busy?.startsWith("cancel") ? "Annulation…" : "Validation…"} />
+            <BusyBar
+              label={
+                busy?.startsWith("cancel")
+                  ? "Annulation…"
+                  : busy?.startsWith("confirm")
+                    ? "Confirmation…"
+                    : "Validation…"
+              }
+            />
           </div>
         ) : null}
       </article>

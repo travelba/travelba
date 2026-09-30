@@ -18,6 +18,9 @@ export async function POST(request: Request, ctx: Ctx) {
       place: typeof body?.place === "string" ? body.place : null,
       moment: typeof body?.moment === "string" ? body.moment : null,
       address: typeof body?.address === "string" ? body.address : null,
+      depart: typeof body?.depart === "string" ? body.depart : null,
+      arrive: typeof body?.arrive === "string" ? body.arrive : null,
+      addresses: body?.addresses === true,
       decline: body?.decline === true,
       cancel: body?.cancel === true,
     });

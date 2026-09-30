@@ -20,6 +20,7 @@ import { stripeConfigured, stripeWebhookConfigured } from "@/lib/crm/stripe";
 import { buildLaunchItems } from "@/lib/crm/launch-status";
 import { stayHeadline } from "@/lib/crm/carnet";
 import { AdminLaunchStatus } from "@/components/admin/AdminLaunchStatus";
+import { ServiceDesk } from "@/components/admin/ServiceDesk";
 import { VisaDesk } from "@/components/admin/VisaDesk";
 import { deskView, type DeskTask } from "@/lib/crm/visa-desk";
 import { BookingHero } from "@/components/crm/BookingHero";
@@ -35,6 +36,7 @@ import {
 } from "@/components/crm/ui";
 import { staffRoleLabel } from "@/lib/crm/staff-team";
 import { morningBriefLine } from "@/lib/crm/morning-brief";
+import { serviceDeskLines, type ServiceDeskItem } from "@/lib/crm/service-desk";
 import { createServiceClient } from "@/lib/supabase/admin";
 
 export default async function AdminHomePage() {
@@ -148,6 +150,37 @@ export default async function AdminHomePage() {
     })),
     today
   );
+  const { data: serviceRows } = await supabase
+    .from("crm_booking_items")
+    .select("id, booking_id, kind, title, start_at, end_at, details")
+    .in("kind", ["chauffeur", "greeter", "checkin"]);
+  const serviceItems = (serviceRows || []) as ServiceDeskItem[];
+  const serviceBookingIds = [...new Set(serviceItems.map((row) => row.booking_id))];
+  const [{ data: serviceBookings }, { data: serviceFlights }] = serviceBookingIds.length
+    ? await Promise.all([
+        supabase
+          .from("crm_bookings")
+          .select("id, reference, status, customer_id")
+          .in("id", serviceBookingIds)
+          .neq("status", "cancelled"),
+        supabase
+          .from("crm_booking_items")
+          .select("id, booking_id, kind, title, start_at, end_at, details")
+          .in("booking_id", serviceBookingIds)
+          .eq("kind", "flight"),
+      ])
+    : [{ data: [] }, { data: [] }];
+  const services = serviceDeskLines({
+    now: new Date(),
+    names: Object.fromEntries(byId),
+    bookings: (serviceBookings || []) as {
+      id: string;
+      reference: string;
+      status: string;
+      customer_id: string;
+    }[],
+    items: [...serviceItems, ...((serviceFlights || []) as ServiceDeskItem[])],
+  });
   let unmatched = 0;
   let emailPending = 0;
   let lePending = 0;
@@ -189,6 +222,12 @@ export default async function AdminHomePage() {
       : null,
     desk.open.length
       ? { label: `${desk.open.length} formalité${desk.open.length > 1 ? "s" : ""}`, href: "#formalites" }
+      : null,
+    services.length
+      ? {
+          label: `${services.length} service${services.length > 1 ? "s" : ""} à confirmer`,
+          href: "#services",
+        }
       : null,
     (expiringCount ?? 0) > 0
       ? {
@@ -284,6 +323,8 @@ export default async function AdminHomePage() {
       <div id="formalites">
         <VisaDesk open={desk.open} grey={desk.grey} />
       </div>
+
+      <ServiceDesk lines={services} />
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {kpis.map((kpi) => (

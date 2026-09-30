@@ -2,13 +2,17 @@ import { NextResponse } from "next/server";
 import { jsonError, jsonIssues, requireCustomer } from "@/lib/crm/auth";
 import { BookingIssuesError } from "@/lib/crm/booking-issues";
 import { carnetVisible } from "@/lib/crm/carnet";
+import { findExtra } from "@/lib/crm/extras";
 import {
   cancelBookingExtra,
   clearServiceRefusal,
   createBookingExtra,
   declineBookingService,
   parseExtraRequest,
+  updateTransferAddresses,
 } from "@/lib/crm/extras-write";
+import { personLabel } from "@/lib/crm/household";
+import { notifyServiceRequest } from "@/lib/crm/service-request-mail";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmBooking, CrmBookingItem, CrmBookingTraveler, CrmCompanion, CrmCustomer } from "@/lib/crm/types";
 
@@ -47,6 +51,40 @@ export async function POST(request: Request, ctx: Ctx) {
       });
       return NextResponse.json(cancelled);
     }
+    if (body?.addresses === true) {
+      if (extra.kind !== "chauffeur") {
+        return jsonError("Seule l’adresse d’un transfert se modifie ainsi.");
+      }
+      const current = findExtra(list, "chauffeur", extra.leg, extra.place, null) as CrmBookingItem | null;
+      const previousDepart = String(current?.details?.depart_address || "").trim();
+      const previousArrive = String(current?.details?.arrive_address || "").trim();
+      const updated = await updateTransferAddresses(admin, {
+        booking: b,
+        items: list,
+        leg: extra.leg,
+        place: extra.place,
+        departAddress: extra.depart || "",
+        arriveAddress: extra.arrive || "",
+      });
+      const depart = (extra.depart || "").trim();
+      const arrive = (extra.arrive || "").trim();
+      if (current && (depart !== previousDepart || arrive !== previousArrive)) {
+        await notifyServiceRequest({
+          reference: b.reference,
+          bookingId: b.id,
+          holderName: personLabel(auth.customer.first_name, auth.customer.last_name) || "Client",
+          currency: b.currency,
+          amount: Number(current.amount) || 0,
+          reason: "addresses",
+          item: {
+            ...current,
+            details: { ...(current.details || {}), depart_address: depart, arrive_address: arrive },
+          },
+          items: list,
+        });
+      }
+      return NextResponse.json(updated);
+    }
     if (body?.decline === true) {
       const declined = await declineBookingService(admin, {
         booking: b,
@@ -76,8 +114,22 @@ export async function POST(request: Request, ctx: Ctx) {
       place: extra.place,
       moment: extra.moment,
       address: extra.address,
+      departAddress: extra.depart,
+      arriveAddress: extra.arrive,
       enforceWindow: true,
     });
+    if (extra.kind === "chauffeur" || extra.kind === "greeter" || extra.kind === "checkin") {
+      await notifyServiceRequest({
+        reference: b.reference,
+        bookingId: b.id,
+        holderName: personLabel(auth.customer.first_name, auth.customer.last_name) || "Client",
+        currency: b.currency,
+        amount: created.amount,
+        reason: "validated",
+        item: created.item,
+        items: list,
+      });
+    }
     return NextResponse.json(created);
   } catch (err) {
     if (err instanceof BookingIssuesError) return jsonIssues(err.issues);

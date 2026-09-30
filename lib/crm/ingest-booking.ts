@@ -4,6 +4,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
 import { nextBookingReference, syncBookingLedger, syncBookingTotalFromItems } from "@/lib/crm/bookings";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
+import { defaultPayer } from "@/lib/crm/payer";
 import {
   copyCrmFile,
   listCrmFiles,
@@ -482,6 +483,13 @@ export async function persistNewBookingFromExtract(opts: {
   });
   if (persistIssues.length) throw new BookingIssuesError(issuesSummary(persistIssues), persistIssues);
   const reference = await nextBookingReference(opts.referenceClient ?? admin);
+  const walletId = resolveBillingCustomerId(customer as CrmCustomer);
+  const { data: companyRows } = await admin
+    .from("crm_billing_companies")
+    .select("id, sort_order")
+    .eq("customer_id", walletId)
+    .order("sort_order");
+  const payer = defaultPayer((companyRows || []) as { id: string; sort_order: number }[]);
   const extract = opts.extract;
   const title = dossierTitle(extract);
   const totalAmount = sellingTotalFromExtract(extract);
@@ -490,7 +498,9 @@ export async function persistNewBookingFromExtract(opts: {
     .from("crm_bookings")
     .insert({
       customer_id: opts.customerId,
-      billing_customer_id: resolveBillingCustomerId(customer as CrmCustomer),
+      billing_customer_id: walletId,
+      billing_company_id: payer.billing_company_id,
+      payer_kind: payer.payer_kind,
       reference,
       title,
       destination: emptyToNull(extract.destination),

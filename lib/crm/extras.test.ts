@@ -13,6 +13,8 @@ import {
   extraProposed,
   extraAgencyStatus,
   extraItemPayload,
+  storedTransferAddresses,
+  transferAddressDefaults,
   extraPlaceOf,
   extraTitle,
   findExtra,
@@ -224,6 +226,44 @@ test("chauffeur et VIP Airport ne sont pas proposés tant que l’agence ne les 
   assert.equal(checkinProposed({}), false);
   assert.equal(checkinProposed({ offer_checkin: false }), false);
   assert.equal(checkinProposed({ offer_checkin: true }), true);
+});
+
+test("le client part du domicile ou y revient, et peut remplacer les deux adresses", () => {
+  const home = transferAddressDefaults(
+    { place: "home", leg: "departure", airport: "CDG · Paris", address: null },
+    "1 place de l'Exemple, 69002 Lyon"
+  );
+  assert.deepEqual(home, { depart: "1 place de l'Exemple, 69002 Lyon", arrive: "CDG · Paris" });
+  const back = transferAddressDefaults(
+    { place: "home", leg: "arrival", airport: "CDG · Paris", address: null },
+    "1 place de l'Exemple, 69002 Lyon"
+  );
+  assert.deepEqual(back, { depart: "CDG · Paris", arrive: "1 place de l'Exemple, 69002 Lyon" });
+  const hotel = transferAddressDefaults(
+    { place: "hotel", leg: "arrival", airport: "JFK · New York", address: "Maison Horizon, New York" },
+    "1 place de l'Exemple"
+  );
+  assert.equal(hotel.depart, "Maison Horizon, New York");
+  assert.equal(hotel.arrive, "JFK · New York");
+  const saved = storedTransferAddresses(
+    { place: "home", leg: "departure", airport: "CDG · Paris", address: null },
+    "1 place de l'Exemple",
+    { depart_address: "8 rue du Départ", arrive_address: "Terminal 2E" }
+  );
+  assert.deepEqual(saved, { depart: "8 rue du Départ", arrive: "Terminal 2E" });
+  const payload = extraItemPayload({
+    kind: "chauffeur",
+    leg: "departure",
+    place: "home",
+    startAt: null,
+    amount: 150,
+    departAddress: "8 rue du Départ",
+    arriveAddress: "Terminal 2E",
+    visibleToClient: true,
+  });
+  assert.equal(payload.details.pickup, "8 rue du Départ");
+  assert.equal(payload.details.depart_address, "8 rue du Départ");
+  assert.equal(payload.details.arrive_address, "Terminal 2E");
 });
 
 test("chauffeur et greeter seulement s’il y a un vol", () => {

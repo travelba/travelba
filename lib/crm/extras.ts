@@ -192,6 +192,56 @@ export function extraAgencyStatus(item: {
   return item.details?.agency_status === "confirmed" ? "confirmed" : "pending";
 }
 
+/** Transfert, VIP et enregistrement confirmés ne s’annulent plus. Avant confirmation, l’annulation reste ouverte. */
+export function serviceCancelLocked(
+  kind: ExtraKind | "visa" | "checkin",
+  item: { details?: Record<string, unknown> | null }
+) {
+  if (kind === "visa") return false;
+  return extraAgencyStatus(item) === "confirmed";
+}
+
+/** Domicile ou hôtel → aéroport : la rue est le départ. Aéroport → domicile : la rue est l’arrivée. */
+export function transferAddressDefaults(
+  offer: {
+    place: ServicePlace | null;
+    leg: ExtraLeg;
+    airport?: string | null;
+    address?: string | null;
+  },
+  homeAddress?: string | null
+) {
+  const airport = (offer.airport || "").trim();
+  const street = ((offer.place === "hotel" ? offer.address : homeAddress) || "").trim();
+  if (offer.place === "home" && offer.leg === "arrival") return { depart: airport, arrive: street };
+  return { depart: street, arrive: airport };
+}
+
+function detailAddress(details: Record<string, unknown> | null | undefined, key: string) {
+  const value = details?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+/** Adresses affichées : celles enregistrées, sinon le domicile, l’hôtel ou l’aéroport du vol. */
+export function storedTransferAddresses(
+  offer: {
+    place: ServicePlace | null;
+    leg: ExtraLeg;
+    airport?: string | null;
+    address?: string | null;
+  },
+  homeAddress: string | null | undefined,
+  details?: Record<string, unknown> | null
+) {
+  const defaults = transferAddressDefaults(offer, homeAddress);
+  const pickup = detailAddress(details, "pickup");
+  const dropAtHome = offer.place === "home" && offer.leg === "arrival";
+  return {
+    depart: detailAddress(details, "depart_address") || (dropAtHome ? defaults.depart : pickup || defaults.depart),
+    arrive: detailAddress(details, "arrive_address") || (dropAtHome ? pickup || defaults.arrive : defaults.arrive),
+  };
+}
+
 export function bookingHasFlight(
   items: { kind?: string | null }[] | null | undefined
 ) {
@@ -654,12 +704,19 @@ export function extraItemPayload(input: {
   startAt: string | null;
   amount: number;
   address?: string | null;
+  departAddress?: string | null;
+  arriveAddress?: string | null;
   adults?: number;
   children?: number;
   visibleToClient: boolean;
   agencyStatus?: ExtraAgencyStatus;
 }) {
   const place = input.kind === "chauffeur" ? input.place || null : null;
+  const depart = (input.departAddress || "").trim();
+  const arrive = (input.arriveAddress || "").trim();
+  const legacy = (input.address || "").trim();
+  const dropAtHome = place === "home" && input.leg === "arrival";
+  const pickup = dropAtHome ? arrive || legacy : depart || legacy;
   return {
     kind: input.kind,
     title: extraTitle(input.kind, input.leg),
@@ -673,7 +730,9 @@ export function extraItemPayload(input: {
       service_leg: input.leg,
       place,
       moment: input.kind === "greeter" ? input.moment || "depart" : null,
-      pickup: input.kind === "chauffeur" ? input.address || null : null,
+      pickup: input.kind === "chauffeur" ? pickup || null : null,
+      depart_address: input.kind === "chauffeur" ? depart || null : null,
+      arrive_address: input.kind === "chauffeur" ? arrive || null : null,
       adults: input.kind === "greeter" ? input.adults ?? 1 : null,
       children: input.kind === "greeter" ? input.children ?? 0 : null,
       extra: true,

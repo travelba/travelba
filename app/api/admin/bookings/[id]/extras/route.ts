@@ -5,8 +5,10 @@ import {
   cancelBookingExtra,
   clearServiceRefusal,
   confirmBookingExtra,
+  confirmCheckinExtra,
   createBookingExtra,
   parseExtraRequest,
+  updateTransferAddresses,
 } from "@/lib/crm/extras-write";
 import type { CrmBooking, CrmBookingItem, CrmBookingTraveler, CrmCompanion, CrmCustomer } from "@/lib/crm/types";
 
@@ -44,9 +46,30 @@ export async function POST(request: Request, ctx: Ctx) {
       });
       return NextResponse.json(cancelled);
     }
+    if (body?.addresses === true) {
+      if (extra.kind !== "chauffeur") {
+        return jsonError("Seule l’adresse d’un transfert se modifie ainsi.");
+      }
+      const updated = await updateTransferAddresses(auth.supabase, {
+        booking: booking as CrmBooking,
+        items: list,
+        leg: extra.leg,
+        place: extra.place,
+        departAddress: extra.depart || "",
+        arriveAddress: extra.arrive || "",
+      });
+      return NextResponse.json(updated);
+    }
     if (body?.confirm === true) {
+      if (extra.kind === "checkin") {
+        const confirmed = await confirmCheckinExtra(auth.supabase, {
+          booking: booking as CrmBooking,
+          items: list,
+        });
+        return NextResponse.json(confirmed);
+      }
       if (extra.kind !== "chauffeur" && extra.kind !== "greeter") {
-        return jsonError("Seuls le chauffeur et VIP Airport se confirment.");
+        return jsonError("Seuls le chauffeur, VIP Airport et l’enregistrement se confirment.");
       }
       const confirmed = await confirmBookingExtra(auth.supabase, {
         booking: booking as CrmBooking,
@@ -73,6 +96,8 @@ export async function POST(request: Request, ctx: Ctx) {
       place: extra.place,
       moment: extra.moment,
       address: extra.address,
+      departAddress: extra.depart,
+      arriveAddress: extra.arrive,
       enforceWindow: false,
     });
     return NextResponse.json(created);

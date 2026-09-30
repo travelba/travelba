@@ -3,6 +3,9 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CrmCustomer } from "@/lib/crm/types";
+import { resolveBillingCustomerId } from "@/lib/crm/company-role";
+import { billingCompanyTabLabel } from "@/lib/crm/billing-companies";
+import { defaultBillingCompany } from "@/lib/crm/payer";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { fieldControlClass, DateFrInput } from "@/components/crm/fields";
 import { PlaceField } from "@/components/crm/PlaceField";
@@ -12,9 +15,11 @@ import { issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues"
 
 export function NewBookingForm({
   customers,
+  companies = [],
   aiConfigured,
 }: {
   customers: CrmCustomer[];
+  companies?: { id: string; customer_id: string; company_name: string | null; sort_order: number }[];
   aiConfigured: boolean;
 }) {
   const [manual, setManual] = useState(false);
@@ -37,17 +42,34 @@ export function NewBookingForm({
       >
         {manual ? "Masquer la saisie manuelle" : "Saisie manuelle (sans document)"}
       </button>
-      {manual ? <ManualNewBookingForm customers={customers} /> : null}
+      {manual ? <ManualNewBookingForm customers={customers} companies={companies} /> : null}
     </div>
   );
 }
 
-function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
+function ManualNewBookingForm({
+  customers,
+  companies,
+}: {
+  customers: CrmCustomer[];
+  companies: { id: string; customer_id: string; company_name: string | null; sort_order: number }[];
+}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
   const [saving, setSaving] = useState(false);
   const [clientSettles, setClientSettles] = useState(false);
+  const [customerId, setCustomerId] = useState("");
+  const [payerKind, setPayerKind] = useState<"company" | "personal">("personal");
+  const [companyId, setCompanyId] = useState("");
+  const walletId = (() => {
+    const customer = customers.find((row) => row.id === customerId);
+    return customer ? resolveBillingCustomerId(customer) : "";
+  })();
+  const walletCompanies = companies
+    .filter((company) => company.customer_id === walletId)
+    .sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id));
+  const defaultCompany = defaultBillingCompany(walletCompanies);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -64,6 +86,8 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
           include_in_ledger: fd.get("client_settles_stay") === "on" ? false : fd.get("include_in_ledger") === "on",
           agency_commission: fd.get("agency_commission") === "on",
           client_settles_stay: fd.get("client_settles_stay") === "on",
+          payer_kind: payerKind,
+          billing_company_id: payerKind === "company" ? companyId || defaultCompany?.id || null : null,
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -86,7 +110,30 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
     <form onSubmit={onSubmit} className="admin-af-card grid gap-3 rounded-2xl p-5 sm:grid-cols-3">
       <label className={`${labelClass} sm:col-span-3`}>
         Client
-        <select name="customer_id" required disabled={saving} className={`${fieldControlClass} bg-white`}>
+        <select
+          name="customer_id"
+          required
+          disabled={saving}
+          value={customerId}
+          onChange={(event) => {
+            const nextId = event.target.value;
+            setCustomerId(nextId);
+            const customer = customers.find((row) => row.id === nextId);
+            const wallet = customer ? resolveBillingCustomerId(customer) : "";
+            const list = companies
+              .filter((company) => company.customer_id === wallet)
+              .sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id));
+            const first = defaultBillingCompany(list);
+            if (first) {
+              setPayerKind("company");
+              setCompanyId(first.id);
+            } else {
+              setPayerKind("personal");
+              setCompanyId("");
+            }
+          }}
+          className={`${fieldControlClass} bg-white`}
+        >
           <option value="">Choisir un client…</option>
           {customers.map((c) => (
             <option key={c.id} value={c.id}>
@@ -105,6 +152,62 @@ function ManualNewBookingForm({ customers }: { customers: CrmCustomer[] }) {
         Destination
         <PlaceField name="destination" disabled={saving} className={fieldControlClass} />
       </label>
+      <div className="grid gap-3 sm:col-span-3 sm:grid-cols-2" role="radiogroup" aria-label="Qui règle ce voyage">
+        {(
+          [
+            { kind: "company" as const, title: "Société", hint: "Une société du compte règle ce voyage." },
+            {
+              kind: "personal" as const,
+              title: "Particulier",
+              hint: "Le client règle depuis son espace : carte, Apple Pay, prélèvement SEPA, virement.",
+            },
+          ]
+        ).map((choice) => {
+          const selected = payerKind === choice.kind;
+          const blocked = choice.kind === "company" && !walletCompanies.length;
+          return (
+            <button
+              key={choice.kind}
+              type="button"
+              aria-pressed={selected}
+              disabled={saving || blocked || !customerId}
+              onClick={() => {
+                setPayerKind(choice.kind);
+                if (choice.kind === "company") setCompanyId((current) => current || defaultCompany?.id || "");
+              }}
+              className={`rounded-2xl border p-3 text-left ${
+                selected ? "border-[var(--admin-gold)] bg-white" : "border-[#e5e3dc] bg-white/70"
+              }`}
+            >
+              <span className="font-display text-sm font-bold text-[var(--admin-navy)]">{choice.title}</span>
+              <span className="mt-1 block text-xs text-muted">{choice.hint}</span>
+            </button>
+          );
+        })}
+      </div>
+      {payerKind === "company" && walletCompanies.length > 1 ? (
+        <label className={`${labelClass} sm:col-span-3`}>
+          Société qui règle
+          <select
+            value={companyId}
+            disabled={saving}
+            onChange={(event) => setCompanyId(event.target.value)}
+            className={`${fieldControlClass} bg-white`}
+            aria-label="Société qui règle le voyage"
+          >
+            {walletCompanies.map((company, index) => (
+              <option key={company.id} value={company.id}>
+                {billingCompanyTabLabel(company.company_name, index, walletCompanies.length)}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+      {payerKind === "company" && walletCompanies.length === 1 ? (
+        <p className="text-sm text-[var(--admin-navy)] sm:col-span-3">
+          Société : {billingCompanyTabLabel(walletCompanies[0].company_name, 0, 1)}
+        </p>
+      ) : null}
       <p className="text-xs text-muted sm:col-span-3">
         Le montant du séjour sera la somme des prix vendus des cartes.
       </p>

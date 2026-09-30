@@ -271,6 +271,9 @@ type OrderBody = {
   place?: string | null;
   moment?: string | null;
   address?: string | null;
+  depart?: string | null;
+  arrive?: string | null;
+  addresses?: boolean;
   decline?: boolean;
   cancel?: boolean;
 };
@@ -306,11 +309,36 @@ export function orderExampleExtra(body: OrderBody) {
     return { cancelled: true as const };
   }
 
+  const depart = String(body.depart || "").trim();
+  const arrive = String(body.arrive || "").trim();
+
+  if (body.addresses) {
+    if (kind !== "chauffeur" || !leg || !place) {
+      throw new ExampleStop("Seule l’adresse d’un transfert se modifie ainsi.", "kind");
+    }
+    const item = findOrdered(state.items, kind, leg, place, moment);
+    if (!item) throw new ExampleStop("Ce transfert n’est pas validé.", "kind");
+    if (extraAgencyStatus(item) === "confirmed") {
+      throw new ExampleStop("Ce transfert est confirmé. L’adresse ne se modifie plus ici.", "kind");
+    }
+    if (!depart || !arrive) {
+      throw new ExampleStop("Indiquez l’adresse de départ et l’adresse d’arrivée.", "address");
+    }
+    item.details = {
+      ...(item.details || {}),
+      depart_address: depart,
+      arrive_address: arrive,
+      pickup: place === "home" && leg === "arrival" ? arrive : depart,
+    };
+    publish(state);
+    return { updated: true as const };
+  }
+
   if (kind === "chauffeur" || kind === "greeter") {
     if (!leg) throw new ExampleStop("Indiquez un trajet (départ ou arrivée).", "leg");
     if (kind === "chauffeur" && !place) throw new ExampleStop("Indiquez un transfert domicile ou hôtel.", "place");
-    if (kind === "chauffeur" && !String(body.address || "").trim()) {
-      throw new ExampleStop("Indiquez l’adresse.", "address");
+    if (kind === "chauffeur" && !((depart && arrive) || String(body.address || "").trim())) {
+      throw new ExampleStop("Indiquez l’adresse de départ et l’adresse d’arrivée.", "address");
     }
     const offer = itineraryOffers(state.items).find(
       (row) =>
@@ -345,6 +373,8 @@ export function orderExampleExtra(body: OrderBody) {
       startAt: offer.whenIso || flightAt,
       amount,
       address: body.address,
+      departAddress: depart || null,
+      arriveAddress: arrive || null,
       adults: heads.adults,
       children: heads.children,
       visibleToClient: true,
