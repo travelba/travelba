@@ -10,6 +10,7 @@ import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { BookingStatusBadge } from "@/components/crm/ui";
 import { VisaSection } from "@/components/crm/VisaSection";
 import { carnetVisible, clientBookingStatusLabel, clientVisibleItems, itemPriceLabel, stayArrivalPlaces, stayHeadline, tripPlaceLine, whatsappModifyHref } from "@/lib/crm/carnet";
+import { withoutHotelRosterItems } from "@/lib/crm/hotel-contact";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { isLedgerExpenseKind } from "@/lib/crm/types";
 import { findVisaExtra } from "@/lib/crm/extras";
@@ -35,7 +36,7 @@ export default async function ExampleReservationPage({ params }: Props) {
   if (reference !== EXAMPLE_REFERENCE) notFound();
   const session = readExample();
   const b = session.booking;
-  const visibleItems = clientVisibleItems(session.items);
+  const visibleItems = withoutHotelRosterItems(clientVisibleItems(session.items));
   if (!carnetVisible(b, visibleItems)) notFound();
 
   const insurances = visibleItems.filter((item) => item.kind === "insurance");
@@ -73,7 +74,7 @@ export default async function ExampleReservationPage({ params }: Props) {
             ← Mes réservations
           </Link>
 
-          <BookingHero booking={b} items={session.items} priority className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]">
+          <BookingHero booking={b} items={withoutHotelRosterItems(session.items)} priority className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]">
             <div className="absolute inset-0 flex flex-col justify-between p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <BookingStatusBadge label={clientBookingStatusLabel(b.status)} />

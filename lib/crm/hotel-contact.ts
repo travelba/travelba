@@ -224,6 +224,51 @@ export function peopleFromDetails(details: Record<string, unknown> | null | unde
   return dedupePeople(people);
 }
 
+function nestedRecord(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function scrubRosterFields(record: Record<string, unknown>, people: HotelPersonContact[]) {
+  const emails = new Set(people.map((person) => person.email.toLowerCase()).filter(Boolean));
+  const phones = new Set(
+    people
+      .map((person) => usablePhone(person.phone).replace(/\D/g, ""))
+      .filter((digits) => digits.length >= 8)
+  );
+  for (const key of EMAIL_KEYS) {
+    const value = record[key];
+    if (typeof value === "string" && emails.has(value.trim().toLowerCase())) delete record[key];
+  }
+  for (const key of PHONE_KEYS) {
+    const value = record[key];
+    if (typeof value !== "string") continue;
+    const digits = usablePhone(value).replace(/\D/g, "");
+    if (digits && phones.has(digits)) delete record[key];
+  }
+}
+
+/** Carnet client, aperçu et lien public : pas de roster (rôle, nom, e-mail, téléphone). */
+export function withoutHotelRoster<T extends { kind?: string | null; details?: Record<string, unknown> | null }>(item: T): T {
+  if (item.kind !== "hotel" || !item.details) return item;
+  const details = { ...item.details };
+  const nested = nestedRecord(details.hotel);
+  const people = [...peopleFromDetails(details), ...peopleFromDetails(nested)];
+  delete details.hotel_contacts;
+  scrubRosterFields(details, people);
+  if (nested) {
+    const hotel = { ...nested };
+    delete hotel.hotel_contacts;
+    scrubRosterFields(hotel, people);
+    details.hotel = hotel;
+  }
+  return { ...item, details };
+}
+
+export function withoutHotelRosterItems<T extends { kind?: string | null; details?: Record<string, unknown> | null }>(items: T[]) {
+  return items.map((item) => withoutHotelRoster(item));
+}
+
 /** Coordonnées déjà sur la fiche. Un champ vide reste vide. */
 export function hotelContact(item: CrmBookingItem): HotelContact {
   const people = peopleFromDetails(item.details);

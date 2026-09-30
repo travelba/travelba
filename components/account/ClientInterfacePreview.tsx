@@ -15,6 +15,7 @@ import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
 import { ReceivedVisasFold } from "@/components/crm/TripVisaUploads";
 import { BookingStatusBadge } from "@/components/crm/ui";
 import { VisaSection } from "@/components/crm/VisaSection";
+import { withoutHotelRosterItems } from "@/lib/crm/hotel-contact";
 import {
   carnetVisible,
   clientBookingStatusLabel,
@@ -67,7 +68,7 @@ function keepInPreview(event: MouseEvent<HTMLElement>) {
 
 export function ClientInterfacePreview({
   booking,
-  items,
+  items: sourceItems,
   documents,
   travelers,
   identityDocs,
@@ -100,6 +101,7 @@ export function ClientInterfacePreview({
   shareCompanions: ShareCompanion[];
   billingCompanies: { id: string; company_name: string | null; sort_order: number }[];
 }) {
+  const items = withoutHotelRosterItems(sourceItems);
   const published = booking.visible_to_client === true;
   const reveal = new Set(publishRevealIds(items));
   const liveItems = clientVisibleItems(items);

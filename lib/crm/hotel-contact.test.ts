@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { HotelContactButton } from "../../components/crm/HotelContact";
 import type { CrmBookingItem } from "./types";
 import {
   applyStoredHotelSources,
@@ -12,6 +15,7 @@ import {
   hotelCatalogFromLePayload,
   hotelContact,
   rowsFromHotelCatalog,
+  withoutHotelRoster,
 } from "./hotel-contact";
 
 function hotel(details: Record<string, unknown>, supplier: string | null = null): CrmBookingItem {
@@ -311,6 +315,72 @@ describe("catalogue Little Emperors — contacts typés", () => {
     assert.equal(contact.country, "Egypt");
     assert.ok(contact.people.some((row) => row.last_name === "Ezz El Din" && row.first_name === "Omar"));
     assert.equal(contact.people.length, catalog.contacts.length);
+  });
+});
+
+describe("withoutHotelRoster", () => {
+  it("retire la liste et les e-mails qui n’existent que dans le catalogue", () => {
+    const source = hotel({
+      hotel_name: "Four Seasons Hotel Milano",
+      city: "Milan",
+      address: "Via Gesù 6/8",
+      website: "https://www.fourseasons.com/milan/",
+      email: "vanessa.green@fourseasons.com",
+      phone: "+39 02 77088",
+      hotel_contacts: [
+        { type: "Concierge", first_name: "", last_name: "", email: "frontofhouse.milano@fourseasons.com", phone: "" },
+        { type: "Four Seasons", first_name: "Vanessa", last_name: "Green", email: "vanessa.green@fourseasons.com", phone: "+39 02 111" },
+        { type: "Reservations", first_name: "", last_name: "", email: "res.milano@fourseasons.com", phone: "" },
+      ],
+      hotel: {
+        email: "res.milano@fourseasons.com",
+        hotel_contacts: [{ type: "Hotel contact", first_name: "Bjorn", last_name: "Labee", email: "bjorn.labee@fourseasons.com", phone: "" }],
+      },
+    });
+    const hidden = withoutHotelRoster(source);
+    const contact = hotelContact(hidden);
+    assert.equal(contact.people.length, 0);
+    assert.equal(contact.email, "");
+    assert.equal(contact.name, "Four Seasons Hotel Milano");
+    assert.equal(contact.city, "Milan");
+    assert.equal(contact.address, "Via Gesù 6/8");
+    assert.equal(contact.website, "https://www.fourseasons.com/milan/");
+    assert.equal(contact.phone, "+39 02 77088");
+    assert.equal(hidden.details?.hotel_contacts, undefined);
+    assert.equal((hidden.details?.hotel as { email?: string }).email, undefined);
+    assert.equal(JSON.stringify(hidden).includes("vanessa.green"), false);
+    assert.equal(JSON.stringify(hidden).includes("bjorn.labee"), false);
+    assert.equal(JSON.stringify(source).includes("vanessa.green@fourseasons.com"), true);
+  });
+
+  it("n’imprime aucun contact sur la carte client", () => {
+    const item = hotel({
+      hotel_name: "Four Seasons Hotel Milano",
+      city: "Milan",
+      address: "Via Gesù 6/8",
+      email: "vanessa.green@fourseasons.com",
+      hotel_contacts: [
+        { type: "Concierge", first_name: "", last_name: "", email: "frontofhouse.milano@fourseasons.com", phone: "" },
+        { type: "Four Seasons", first_name: "Vanessa", last_name: "Green", email: "vanessa.green@fourseasons.com", phone: "" },
+        { type: "Reservations", first_name: "", last_name: "", email: "res.milano@fourseasons.com", phone: "" },
+      ],
+    });
+    const html = renderToStaticMarkup(createElement(HotelContactButton, { item, roster: false }));
+    assert.match(html, /Voir l’hôtel/);
+    assert.equal(html.includes("contact"), false);
+    assert.equal(html.includes("vanessa.green"), false);
+    assert.equal(html.includes("frontofhouse"), false);
+    assert.equal(html.includes("res.milano"), false);
+    assert.equal(html.includes("Concierge"), false);
+    const agency = renderToStaticMarkup(createElement(HotelContactButton, { item }));
+    assert.match(agency, /Voir l’hôtel · 3 contacts/);
+    assert.match(agency, /vanessa\.green@fourseasons\.com/);
+  });
+
+  it("laisse un vol tel quel", () => {
+    const flight = hotel({ hotel_contacts: [{ type: "Concierge", email: "desk@hotel.test" }] });
+    flight.kind = "flight";
+    assert.equal(withoutHotelRoster(flight), flight);
   });
 });
 

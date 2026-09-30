@@ -50,6 +50,6 @@ Produit FR pour agence de voyage : back-office `/admin` (clients, réservations,
 - `npm run seed:demo` en production — ne pas vider `crm_staff`
 - Inventer horaires / inclus / nets PDF. Little Emperors : tout le bloc Benefits, pas seulement le petit-déjeuner
 - Couverture = ville / station d’arrivée (Avoriaz, pas Paris / CDG) — skill `travelba-carnet`
-- Contacts d’hôtel = catalogue Little Emperors sur chaque carte reconnue (Milano = Milan), pas le correspondant du PDF — skill `travelba-carnet`
+- Contacts d’hôtel = catalogue Little Emperors, **admin seulement** (Milano = Milan). Jamais sur l’interface client, l’aperçu client ni le lien public. Pas le correspondant du PDF — skill `travelba-carnet`
 - Ingest documents côté client
 - Committer des PDF d’entraînement ou de la PII (PAN, noms) — skill `travelba-document-ingest`

@@ -37,7 +37,7 @@ function groupContactRows(rows: HotelContactRow[]): StoredHotelSource[] {
   });
 }
 
-/** Contacts déjà liés au dossier, puis le catalogue (Milano = Milan) sur le carnet client comme à l’agence. */
+/** Catalogue (Milano = Milan) pour la fiche. L’admin affiche le roster ; l’interface client passe par withoutHotelRoster. */
 export async function loadHotelContacts(bookingId: string, items: CrmBookingItem[]) {
   if (!items.some((item) => item.kind === "hotel")) return items;
   let rows: StoredHotelSource[] = [];
