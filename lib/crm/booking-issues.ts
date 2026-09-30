@@ -86,6 +86,14 @@ export function itemRequiresDocumentPrice(kind: string | null | undefined) {
   return kind === "flight" || kind === "hotel" || kind === "transfer";
 }
 
+/** Le prix imprimé est facultatif : un montant absent ne bloque ni le rattachement ni l’enregistrement. */
+export function documentPriceIssues(_extract: {
+  document_status?: string | null;
+  items?: unknown;
+}): BookingIssue[] {
+  return [];
+}
+
 /** Montant positif lu ou saisi. 0 et l’absence restent vides — on n’invente pas un prix. */
 export function readDocumentAmount(details: { document_amount?: unknown } | null | undefined) {
   const raw = details?.document_amount;
