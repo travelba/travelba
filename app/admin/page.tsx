@@ -25,6 +25,7 @@ import { VisaDesk } from "@/components/admin/VisaDesk";
 import { deskView, type DeskTask } from "@/lib/crm/visa-desk";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { loadStayArrivalPlaces } from "@/lib/crm/carnet-query";
+import { loadDisplayedStayAmounts } from "@/lib/crm/displayed-stay";
 import { reviewIdentityPieces } from "@/lib/crm/trip-documents";
 import {
   EmptyState,
@@ -124,8 +125,10 @@ export default async function AdminHomePage() {
     (sum, row) => sum + Math.max(0, -Number(row.balance) || 0),
     0
   );
-  const pipelineVolume = ((bookings || []) as CrmBooking[]).reduce(
-    (sum, row) => sum + (Number(row.total_amount) || 0),
+  const upcomingBookings = (bookings || []) as CrmBooking[];
+  const displayedStayAmounts = await loadDisplayedStayAmounts(supabase, upcomingBookings);
+  const pipelineVolume = upcomingBookings.reduce(
+    (sum, row) => sum + (displayedStayAmounts.get(row.id) ?? (Number(row.total_amount) || 0)),
     0
   );
   const staffFirst = (staff.full_name || "l’agence").split(" ")[0];
@@ -236,7 +239,7 @@ export default async function AdminHomePage() {
         }
       : null,
   ].filter((row): row is { label: string; href: string } => Boolean(row));
-  const upcoming = (bookings || []) as CrmBooking[];
+  const upcoming = upcomingBookings;
   const places = await loadStayArrivalPlaces(
     supabase,
     upcoming.map((row) => row.id)
@@ -393,7 +396,7 @@ export default async function AdminHomePage() {
                     {formatDateFr(featured.start_date)}
                   </p>
                   <p className="mt-2 text-sm font-semibold text-[var(--admin-gold)]">
-                    {formatMoney(Number(featured.total_amount), featured.currency)}
+                    {formatMoney(displayedStayAmounts.get(featured.id) ?? Number(featured.total_amount), featured.currency)}
                   </p>
                 </div>
               </div>
@@ -442,7 +445,7 @@ export default async function AdminHomePage() {
                       {BOOKING_STATUS_LABELS[b.status]}
                     </StatusChip>
                     <span className="text-sm font-semibold">
-                      {formatMoney(Number(b.total_amount), b.currency)}
+                      {formatMoney(displayedStayAmounts.get(b.id) ?? Number(b.total_amount), b.currency)}
                     </span>
                   </div>
                 </Link>

@@ -25,6 +25,7 @@ import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { bookingTotalFromItems } from "@/lib/crm/bookings";
 import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
+import { collectableTicketingFee } from "@/lib/crm/ticketing-fee";
 import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
 import {
   canConfirmCarnetPublish,
@@ -516,6 +517,7 @@ export function BookingEditor({
     stayTotal: bookingTotalFromItems(items),
     agencyCommission: booking.agency_commission === true,
     expenses: items.filter((item) => isLedgerExpenseKind(item.kind)),
+    ticketingFee: collectableTicketingFee({ status: booking.status, hasFlight }),
   });
   const hasSteps = items.some((item) => !isLedgerExpenseKind(item.kind));
   const tabs = [
@@ -1261,8 +1263,11 @@ export function BookingEditor({
         <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
           {formatMoney(stayAmount, stayCurrency(booking.currency))}
         </p>
+        <p className="text-sm text-muted">
+          Prix des cartes, des frais d’agence, des frais de billeterie et des dépenses.
+        </p>
         {clientSettles ? (
-          <p className="text-sm text-muted">Réglé sur la carte du client : ce montant ne va pas au compte.</p>
+          <p className="text-sm text-muted">Les cartes se règlent hors agence. Les frais et les dépenses restent au grand livre.</p>
         ) : null}
       </section>
 

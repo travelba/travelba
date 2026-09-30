@@ -94,13 +94,14 @@ export type ClientExpenseLine = {
 };
 
 /**
- * Prix lu sur la réservation : cartes + frais d’agence + dépenses libres.
+ * Prix lu sur la réservation : cartes + frais d’agence + billeterie + dépenses libres.
  * L’assiette stockée (`total_amount`) reste la somme des cartes.
  */
 export function stayPriceWithExpenses(input: {
   stayTotal: number;
   agencyCommission: boolean;
   expenses: { amount: number | null }[];
+  ticketingFee?: number;
 }) {
   const stay = Number(input.stayTotal);
   let sum = Number.isFinite(stay) ? stay : 0;
@@ -110,6 +111,8 @@ export function stayPriceWithExpenses(input: {
     if (!Number.isFinite(amount) || amount <= 0) continue;
     sum += amount;
   }
+  const ticketing = Number(input.ticketingFee);
+  if (Number.isFinite(ticketing) && ticketing > 0) sum += ticketing;
   return Math.round(sum * 100) / 100;
 }
 
@@ -119,6 +122,7 @@ export function clientStayPriceLabel(input: {
   pricesVisible: boolean;
   agencyCommission: boolean;
   expenses: { amount: number | null }[];
+  ticketingFee?: number;
 }) {
   if (!input.pricesVisible) return HIDDEN_PRICE_LABEL;
   return formatMoney(stayPriceWithExpenses(input), input.currency);
