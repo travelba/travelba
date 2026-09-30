@@ -203,6 +203,26 @@ test("le prix du séjour ajoute les frais d’agence et les dépenses libres", (
     40
   );
   assert.equal(
+    stayPriceWithExpenses({
+      stayTotal: 0,
+      agencyCommission: false,
+      expenses: [],
+      ticketingFee: 25,
+    }),
+    25
+  );
+  assert.equal(
+    clientStayPriceLabel({
+      stayTotal: 0,
+      currency: "EUR",
+      pricesVisible: true,
+      agencyCommission: false,
+      expenses: [],
+      ticketingFee: 25,
+    }),
+    formatMoney(25, "EUR")
+  );
+  assert.equal(
     clientStayPriceLabel({
       stayTotal: 1000,
       currency: "EUR",

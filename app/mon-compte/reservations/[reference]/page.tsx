@@ -316,6 +316,7 @@ export default async function ReservationDetailPage({ params }: Props) {
               pricesVisible: b.prices_visible !== false,
               agencyCommission: b.agency_commission === true,
               expenses: expenseChoices,
+              ticketingFee,
             })}
           </p>
           {insurances.map((item) => {

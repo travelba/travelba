@@ -20,10 +20,12 @@ export function BookingsTable({
   bookings,
   customers,
   places = {},
+  displayAmounts = {},
 }: {
   bookings: CrmBooking[];
   customers: CrmCustomer[];
   places?: Record<string, string[]>;
+  displayAmounts?: Record<string, number>;
 }) {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<string>("all");
@@ -100,7 +102,7 @@ export function BookingsTable({
                   {BOOKING_STATUS_LABELS[b.status]}
                 </StatusChip>
                 <span className="text-sm font-semibold">
-                  {formatMoney(Number(b.total_amount), b.currency)}
+                  {formatMoney(displayAmounts[b.id] ?? Number(b.total_amount), b.currency)}
                 </span>
               </div>
             </Link>

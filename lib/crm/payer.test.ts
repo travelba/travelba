@@ -9,6 +9,7 @@ import {
   resolveFeesFollowStay,
   slipMention,
 } from "./payer";
+import { stayPriceWithExpenses } from "./ledger-display";
 import { excludedStripeTypes, stayPayMethods, stripeCreditFromIntent } from "./stripe-pay";
 
 const companies = [
@@ -123,6 +124,15 @@ test("les frais de billeterie s’encaissent même sans prix de séjour", () => 
   assert.equal(slips[0]?.kind, "personal");
   assert.equal(slips[0]?.amount, 25);
   assert.equal(slips[0]?.payable, true);
+  assert.equal(
+    slips[0]?.amount,
+    stayPriceWithExpenses({
+      stayTotal: 0,
+      agencyCommission: false,
+      expenses: [],
+      ticketingFee: 25,
+    })
+  );
 });
 
 test("l’hôtel hors agence ne s’encaisse pas, les frais si", () => {
