@@ -148,6 +148,8 @@ Ne pas rejouer un vrai mail prod. Echo PII interdit dans PR / logs.
 
 `included` = **toutes** les lignes imprimées sous « LE Benefits » ou « Little Emperors Benefits », en français. Pas seulement le petit-déjeuner. « Fourth Night Free » juste avant le bloc = nuit offerte. L’astérisque se rattache au bénéfice étoilé. Pas l’annulation, pas le dépôt. Même parseur que le PDF (`parseLittleEmperorsIncluded`).
 
+Contacts de l’hôtel : catalogue Little Emperors à l’affichage, pas l’adresse du mail ni le correspondant imprimé. Milano = Milan (`CITY_ALIASES`). Skill `travelba-carnet`.
+
 ## Interdits
 
 - Auto-apply si plusieurs dossiers au même score fort
