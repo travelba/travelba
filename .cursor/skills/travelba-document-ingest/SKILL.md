@@ -23,7 +23,7 @@ Gmail labels → `crm_email_ingest` → **auto** match/apply : skill `travelba-e
 ## Contrat (non négociable)
 
 1. **Ne jamais inventer.** Absent = `null`. Pas de 15:00 / 12:00, pas de petit-déj, pas de franchise.
-2. **Prix extraits** : montant PDF/photo → `details.document_amount` (un par fichier). `item.amount` reste **null** tant que l’agent ne saisit pas le prix vendu de la carte. `total_amount` = **somme de ces prix vendus** (vol = unitaire × billets), jamais la somme des PDF. Enregistrer une confirmation écrit ce total **et** le débit ledger (`syncBookingLedger`). Pas une ligne « NET » fournisseur seule. Un total `5,920.33` (virgule = milliers) vaut 5920.33, pas 920.33. `£` = GBP.
+2. **Prix extraits** : montant PDF/photo → `details.document_amount` (un par fichier). `item.amount` reste **null** tant que l’agent ne saisit pas le prix vendu de la carte. `total_amount` = **somme de ces prix vendus** (vol = unitaire × billets), jamais la somme des PDF. Enregistrer une confirmation écrit ce total **et** le débit ledger (`syncBookingLedger`). Pas une ligne « NET » fournisseur seule. Un total `5,920.33` (virgule = milliers) vaut 5920.33, pas 920.33. `£` = GBP. « Distance de vol … km », les kg de CO2, et un reçu qui n’imprime que le mode de paiement : `document_amount` null. Le prix vendu n’est au grand livre du payeur que si la carte est cochée — skill `travelba-money`.
 3. **Pas de PAN / CVC / fidélité / paiement.** `redactIngestText` avant le modèle.
 4. **Un séjour par dépôt.** Fichiers hétérogènes : le plus complet + `notes_client`.
 5. **Relecture humaine** puis Enregistrer (`visible_to_client=false`).
@@ -93,6 +93,7 @@ IATA **8 chiffres** (20287864, 20255270, 96020293, 20289905) = code agence, **ja
 - Horaires ISO locaux. « 03 August 09:45 » + année de « Lundi 03 août 2026 ».
 - Terminal / siège si imprimés. « Heure limite d’enregistrement » ≠ horaire du vol.
 - « Scan for check-in » ≠ hôtel. Carte fidélité : masquer, ne pas extraire.
+- « Distance de vol 2 126,00 km », les kg de CO2, et « Mode de paiement » sans montant ne sont pas un tarif. `document_amount` null. Le prix vendu (unitaire × billets) n’entre au grand livre que si la carte vol est cochée — skill `travelba-money`.
 - Email agence ≠ `customer_email`.
 
 Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Colón `BOC`, Enrique Malek `DAV`, Tocumen `PTY`, Charles-de-Gaulle `CDG`, Orly `ORY`, Tel Aviv `TLV`, Genève `GVA`, Heathrow `LHR`, Marseille Provence `MRS`. **Nouveau nom d’aéroport sans IATA → une entrée + un test**, pas un guess LLM.

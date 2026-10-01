@@ -87,7 +87,8 @@ const PROMPT_FLIGHT = `Vol :
 - Terminal / siège seulement s’ils sont imprimés. « Heure limite d’enregistrement » n’est pas l’horaire du vol.
 - Carte fidélité : ne pas extraire.
 - « Scan for check-in. Not to be used as boarding pass » n’est PAS un hôtel.
-- Vol de nuit : start_at = décollage ; noter J+1 dans details.notes si l’arrivée est le lendemain.`;
+- Vol de nuit : start_at = décollage ; noter J+1 dans details.notes si l’arrivée est le lendemain.
+- « Distance de vol … km » et les kg de CO2 ne sont pas un prix. document_amount null si le tarif du billet n’est pas imprimé.`;
 
 const PROMPT_HOTEL = `Hôtel :
 - UN item même s’il y a deux chambres / deux réf. : details.rooms = [{room, guests, confirmation_ref}, …]. Une ligne par chambre distincte, sans répéter le même libellé.

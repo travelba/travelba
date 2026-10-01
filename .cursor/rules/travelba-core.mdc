@@ -48,7 +48,7 @@ Produit FR pour agence de voyage : back-office `/admin` (clients, réservations,
 - Créditer un client Revolut en cas d’ambiguïté (plusieurs clients possibles) — auto seulement si match unique certain
 - Stocker un PAN / CVC — références Stripe uniquement
 - `npm run seed:demo` en production — ne pas vider `crm_staff`
-- Inventer horaires / inclus / nets PDF. Little Emperors : tout le bloc Benefits, pas seulement le petit-déjeuner
+- Inventer horaires / inclus / nets PDF. Little Emperors : tout le bloc Benefits, pas seulement le petit-déjeuner. Distance de vol en km et kg de CO2 hors prix — skills `travelba-document-ingest` et `travelba-money`
 - Couverture = ville / station d’arrivée (Avoriaz, pas Paris / CDG) — skill `travelba-carnet`
 - Contacts d’hôtel = catalogue Little Emperors, **admin seulement** (Milano = Milan). Jamais sur l’interface client, l’aperçu client ni le lien public. Pas le correspondant du PDF — skill `travelba-carnet`
 - Ingest documents côté client

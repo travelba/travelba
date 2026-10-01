@@ -74,7 +74,8 @@ IDs prod :
 - Recréer des clients / voyages fictifs en prod
 - Fermer les sessions staff existantes
 - Cache Components Next.js
-- Inventer des heures, petits-déjs, nets, conditions d’annulation. Little Emperors : tout le bloc Benefits, pas seulement le petit-déjeuner
+- Inventer des heures, petits-déjs, nets, conditions d’annulation. Little Emperors : tout le bloc Benefits, pas seulement le petit-déjeuner. Distance de vol en km et kg de CO2 hors prix de billet
+- Laisser un vol hors livre : s’il n’est pas coché « Inclure dans les transactions » et qu’une autre carte du séjour l’est déjà, son prix disparaît des transactions du payeur
 - Echo PII client (passeport, email, téléphone) dans un PR / log
 
 ## Fichiers clés
