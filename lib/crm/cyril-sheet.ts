@@ -53,9 +53,16 @@ let cachedToken: { token: string; exp: number; subject: string } | null = null;
 
 function googleStatus(body: string) {
   try {
-    const parsed = JSON.parse(body) as { error?: string | { status?: string } };
-    if (typeof parsed.error === "string") return parsed.error.slice(0, 80);
-    return (parsed.error?.status || "").slice(0, 80);
+    const parsed = JSON.parse(body) as {
+      error?: string | { status?: string; message?: string };
+      error_description?: string;
+    };
+    if (typeof parsed.error === "string") {
+      return `${parsed.error} ${parsed.error_description || ""}`.trim().slice(0, 220);
+    }
+    const status = parsed.error?.status || "";
+    const message = parsed.error?.message || "";
+    return `${status} ${message}`.trim().slice(0, 220);
   } catch {
     return "";
   }
