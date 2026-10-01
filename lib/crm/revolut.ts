@@ -336,7 +336,7 @@ export async function fetchRevolutAccountBankDetails(accountId: string) {
 const WIRE_TTL_MS = 10 * 60 * 1000;
 let wireCache: { at: number; wire: AgencyWire } | null = null;
 
-/** IBAN SEPA du compte euros. Mis en cache un court moment. Jamais journalisé. */
+/** IBAN SEPA du compte euros Main. Mis en cache un court moment. Jamais journalisé. */
 export async function loadAgencyEurWire() {
   if (wireCache && Date.now() - wireCache.at < WIRE_TTL_MS) return wireCache.wire;
   const accounts = await fetchRevolutAccounts();
