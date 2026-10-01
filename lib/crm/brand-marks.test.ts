@@ -12,6 +12,7 @@ test("IATA depuis le n° de vol ou le nom", () => {
   assert.equal(inferAirlineIata({ airline: "Copa Airlines", flight_number: "CM 123" }), "CM");
   assert.equal(inferAirlineIata({ airline: "Air France" }), "AF");
   assert.equal(inferAirlineIata({ airline: "Royal Air Maroc" }), "AT");
+  assert.equal(inferAirlineIata({ airline: "TUI fly" }), "TB");
   assert.equal(inferAirlineIata({ airline_iata: "7P" }), "7P");
 });
 
