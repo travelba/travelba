@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { BrandMark } from "@/components/crm/BrandMark";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { Field, PhoneField, fieldControlClass } from "@/components/crm/fields";
@@ -97,6 +97,34 @@ function FlightGroup({
   );
 }
 
+function FrozenFlight({ flight, onEdit }: { flight: CyrilFlight; onEdit: () => void }) {
+  return (
+    <section className="space-y-3">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--admin-gold)]">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--admin-gold)]" />
+            Aller retenu
+          </p>
+          <h2 className="mt-1 font-display text-lg font-semibold text-[var(--admin-navy)]">
+            {CYRIL_OUTBOUND_LABEL}
+          </h2>
+        </div>
+        <button
+          type="button"
+          onClick={onEdit}
+          className="shrink-0 text-sm font-semibold text-[var(--admin-navy)] underline decoration-[var(--admin-gold)] underline-offset-4"
+        >
+          Modifier
+        </button>
+      </div>
+      <div className="pointer-events-none">
+        <FlightChoice flight={flight} selected onSelect={() => undefined} />
+      </div>
+    </section>
+  );
+}
+
 export function CyrilFlightForm() {
   const [lastName, setLastName] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -104,10 +132,46 @@ export function CyrilFlightForm() {
   const [companion, setCompanion] = useState("");
   const [outboundId, setOutboundId] = useState("");
   const [returnId, setReturnId] = useState("");
+  const [step, setStep] = useState<"outbound" | "return">("outbound");
   const [honeypot, setHoneypot] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const errorRef = useRef<HTMLParagraphElement>(null);
+
+  const outbound = cyrilFlights("outbound").find((flight) => flight.id === outboundId) || null;
+
+  function scrollTop() {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function showError(message: string) {
+    setError(message);
+    queueMicrotask(() => {
+      errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }
+
+  function chooseOutbound(id: string) {
+    if (!lastName.trim() || !firstName.trim()) {
+      showError("Indiquez votre nom et votre prénom.");
+      return;
+    }
+    if (!phone) {
+      showError("Indiquez un numéro de téléphone valide.");
+      return;
+    }
+    setError(null);
+    setOutboundId(id);
+    setStep("return");
+    scrollTop();
+  }
+
+  function backToOutbound() {
+    setError(null);
+    setStep("outbound");
+    scrollTop();
+  }
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -180,42 +244,67 @@ export function CyrilFlightForm() {
         </p>
       </div>
 
-      <section className="space-y-3">
-        <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--admin-gold)]">
-          <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--admin-gold)]" />
-          Vous
-        </p>
-        <Field label="Nom">
-          <input
-            required
-            autoComplete="family-name"
-            value={lastName}
-            onChange={(event) => setLastName(event.target.value)}
-            className={fieldControlClass}
+      {step === "outbound" ? (
+        <>
+          <section className="space-y-3">
+            <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--admin-gold)]">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--admin-gold)]" />
+              Vous
+            </p>
+            <Field label="Nom">
+              <input
+                required
+                autoComplete="family-name"
+                value={lastName}
+                onChange={(event) => setLastName(event.target.value)}
+                className={fieldControlClass}
+              />
+            </Field>
+            <Field label="Prénom">
+              <input
+                required
+                autoComplete="given-name"
+                value={firstName}
+                onChange={(event) => setFirstName(event.target.value)}
+                className={fieldControlClass}
+              />
+            </Field>
+            <PhoneField name="phone" value={phone} onChange={setPhone} required />
+            <Field label="Accompagnateur" hint="Prénom et nom, s’il voyage avec vous. Facultatif.">
+              <input
+                autoComplete="off"
+                value={companion}
+                onChange={(event) => setCompanion(event.target.value)}
+                className={fieldControlClass}
+              />
+            </Field>
+          </section>
+          {error ? (
+            <p ref={errorRef} className="text-sm font-medium text-[var(--admin-red)]">
+              {error}
+            </p>
+          ) : null}
+          <FlightGroup
+            leg="outbound"
+            label={CYRIL_OUTBOUND_LABEL}
+            value={outboundId}
+            onChange={chooseOutbound}
           />
-        </Field>
-        <Field label="Prénom">
-          <input
-            required
-            autoComplete="given-name"
-            value={firstName}
-            onChange={(event) => setFirstName(event.target.value)}
-            className={fieldControlClass}
+        </>
+      ) : outbound ? (
+        <>
+          <FrozenFlight flight={outbound} onEdit={backToOutbound} />
+          <FlightGroup
+            leg="return"
+            label={CYRIL_RETURN_LABEL}
+            value={returnId}
+            onChange={(id) => {
+              setError(null);
+              setReturnId(id);
+            }}
           />
-        </Field>
-        <PhoneField name="phone" value={phone} onChange={setPhone} required />
-        <Field label="Accompagnateur" hint="Prénom et nom, s’il voyage avec vous. Facultatif.">
-          <input
-            autoComplete="off"
-            value={companion}
-            onChange={(event) => setCompanion(event.target.value)}
-            className={fieldControlClass}
-          />
-        </Field>
-      </section>
-
-      <FlightGroup leg="outbound" label={CYRIL_OUTBOUND_LABEL} value={outboundId} onChange={setOutboundId} />
-      <FlightGroup leg="return" label={CYRIL_RETURN_LABEL} value={returnId} onChange={setReturnId} />
+        </>
+      ) : null}
 
       <div className="absolute -left-[9999px] h-0 overflow-hidden" aria-hidden="true">
         <label>
@@ -230,15 +319,23 @@ export function CyrilFlightForm() {
         </label>
       </div>
 
-      {error ? <p className="text-sm font-medium text-[var(--admin-red)]">{error}</p> : null}
-      {pending ? <BusyBar label="Envoi" /> : null}
-      <button
-        type="submit"
-        disabled={pending}
-        className="admin-af-btn w-full rounded-full px-5 py-2.5 text-sm disabled:opacity-60"
-      >
-        Envoyer
-      </button>
+      {step === "return" && error ? (
+        <p ref={errorRef} className="text-sm font-medium text-[var(--admin-red)]">
+          {error}
+        </p>
+      ) : null}
+      {step === "return" ? (
+        <>
+          {pending ? <BusyBar label="Envoi" /> : null}
+          <button
+            type="submit"
+            disabled={pending || !returnId}
+            className="admin-af-btn w-full rounded-full px-5 py-2.5 text-sm disabled:opacity-60"
+          >
+            Envoyer
+          </button>
+        </>
+      ) : null}
     </form>
   );
 }
