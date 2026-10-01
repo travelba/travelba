@@ -58,6 +58,12 @@ const FRIDAY: Omit<CyrilFlight, "dayLabel">[] = [
 ];
 
 const SUNDAY: Omit<CyrilFlight, "dayLabel">[] = [
+  { id: "to-3125", leg: "return", airline: "Transavia", iata: "TO", number: "TO 3125", airport: "Orly", depart: "05:30", arrive: "10:45" },
+  { id: "tb-7521", leg: "return", airline: "TUI fly", iata: "TB", number: "TB 7521", airport: "Orly", depart: "05:45", arrive: "11:15" },
+  { id: "af-1777", leg: "return", airline: "Air France", iata: "AF", number: "AF 1777", airport: "Roissy-CDG", depart: "05:50", arrive: "11:15" },
+  { id: "u2-6005", leg: "return", airline: "easyJet", iata: "U2", number: "U2 6005", airport: "Roissy-CDG", depart: "06:00", arrive: "11:25" },
+  { id: "at-642", leg: "return", airline: "Royal Air Maroc", iata: "AT", number: "AT 642", airport: "Orly", depart: "08:15", arrive: "13:15" },
+  { id: "to-3013", leg: "return", airline: "Transavia", iata: "TO", number: "TO 3013", airport: "Orly", depart: "09:50", arrive: "15:05" },
   { id: "to-3015", leg: "return", airline: "Transavia", iata: "TO", number: "TO 3015", airport: "Orly", depart: "11:40", arrive: "16:55" },
   { id: "to-3019", leg: "return", airline: "Transavia", iata: "TO", number: "TO 3019", airport: "Orly", depart: "14:45", arrive: "20:00" },
   { id: "af-1077", leg: "return", airline: "Air France", iata: "AF", number: "AF 1077", airport: "Roissy-CDG", depart: "15:00", arrive: "20:20" },
