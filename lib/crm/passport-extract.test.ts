@@ -10,6 +10,7 @@ import {
   mergePassportSets,
   spouseFamilyNames,
   uniquePassports,
+  cleanPersonalNumber,
   distinctPassportPeople,
   listedIdentities,
   identitiesFromUnknown,
@@ -308,6 +309,37 @@ test("uniquePassports drops a duplicate number", () => {
   const unique = uniquePassports([first!, copy!]);
   assert.equal(unique.length, 1);
   assert.equal(unique[0].first_name, "Jean Pierre");
+});
+
+test("Israeli personal number keeps the printed hyphens", () => {
+  assert.equal(cleanPersonalNumber("3<5207718<6"), "3-5207718-6");
+  assert.equal(cleanPersonalNumber("3 5207718 6"), "3-5207718-6");
+  assert.equal(cleanPersonalNumber("AB<<<12"), "AB12");
+});
+
+test("distinctPassportPeople keeps both nationalities of one person", () => {
+  const israeli = identityFromVision({
+    number: "51720094",
+    last_name: "Delacour",
+    first_name: "Helie Gaspar Augustin",
+    birth_date: "2008-05-22",
+    issuing_country: "IL",
+    nationality: "IL",
+  });
+  const french = identityFromVision({
+    number: "24KD71836",
+    last_name: "Delacour",
+    first_name: "Hélie Gaspar Augustin",
+    birth_date: "2008-05-22",
+    issuing_country: "FR",
+    nationality: "FR",
+  });
+  const people = distinctPassportPeople([israeli!, french!]);
+  assert.equal(people.length, 2);
+  assert.deepEqual(
+    people.map((identity) => identity.issuing_country).sort(),
+    ["FR", "IL"]
+  );
 });
 
 test("distinctPassportPeople keeps siblings with sequential numbers", () => {

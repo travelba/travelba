@@ -124,7 +124,24 @@ function titleCaseNamePart(token: string) {
     .replace(/(^|[\s'-])(\p{L})/gu, (chunk) => chunk.toUpperCase());
 }
 
-/** Prénoms du passeport : tous les mots, dans l’ordre imprimé. */
+function isHebrewToken(token: string) {
+  return /[\u0590-\u05FF]/.test(token);
+}
+
+/** Chevrons de la MRZ lus comme une suite de la même lettre (Csss, Ggggg). */
+function isFillerToken(token: string) {
+  const letters = token.replace(/[^\p{L}]/gu, "");
+  if (letters.length < 3) return false;
+  const counts = new Map<string, number>();
+  for (const char of letters.toUpperCase()) counts.set(char, (counts.get(char) || 0) + 1);
+  const sorted = [...counts.values()].sort((a, b) => b - a);
+  const max = sorted[0] || 0;
+  if (letters.length >= 4 && max / letters.length >= 0.6) return true;
+  if (letters.length >= 3 && max / letters.length >= 0.8) return true;
+  return letters.length >= 10 && (max + (sorted[1] || 0)) / letters.length >= 0.75;
+}
+
+/** Prénoms du passeport : tous les mots latins, dans l’ordre imprimé. L’hébreu ne réordonne pas la fiche. */
 export function givenNameTokens(value: string | null | undefined): string[] {
   if (value == null) return [];
   return String(value)
@@ -132,7 +149,8 @@ export function givenNameTokens(value: string | null | undefined): string[] {
     .replace(/[,;|]+/g, " ")
     .split(/\s+/)
     .map((token) => token.trim())
-    .filter(Boolean)
+    .filter((token) => token && !isHebrewToken(token) && !isFillerToken(token))
+    .filter((token) => token.replace(/[^\p{L}]/gu, "").length >= 2)
     .map(titleCaseNamePart);
 }
 
@@ -163,9 +181,87 @@ function isOrderedSubsequence(needles: string[], haystack: string[]) {
   return i === needles.length;
 }
 
+function nameEditDistance(a: string, b: string) {
+  const left = foldNameToken(a);
+  const right = foldNameToken(b);
+  if (left === right) return 0;
+  if (Math.abs(left.length - right.length) > 2) return 9;
+  const prev = new Array<number>(right.length + 1);
+  const curr = new Array<number>(right.length + 1);
+  for (let j = 0; j <= right.length; j++) prev[j] = j;
+  for (let i = 1; i <= left.length; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= right.length; j++) {
+      const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+    }
+    for (let j = 0; j <= right.length; j++) prev[j] = curr[j];
+  }
+  return prev[right.length];
+}
+
+function tokenNear(a: string, b: string) {
+  return nameEditDistance(a, b) <= 1;
+}
+
+/** Accent de la ligne visuelle, posé sur la graphie MRZ quand l’OCR a coupé la fin. */
+function withTokenAccents(mrzToken: string, visionToken: string) {
+  const mrzChars = [...mrzToken];
+  const visionChars = [...visionToken];
+  const mrzFold = [...foldNameToken(mrzToken)];
+  const visionFold = [...foldNameToken(visionToken)];
+  const out: string[] = [];
+  let visionIndex = 0;
+  for (let index = 0; index < mrzChars.length; index += 1) {
+    if (visionIndex < visionChars.length && visionFold[visionIndex] === mrzFold[index]) {
+      out.push(visionChars[visionIndex]);
+      visionIndex += 1;
+    } else {
+      out.push(mrzChars[index]);
+    }
+  }
+  return out.join("");
+}
+
+/** Accent ou graphie imprimée, sans allonger un jeton MRZ par un reflet. */
+function printedToken(mrzToken: string, visionToken: string) {
+  if (foldNameToken(mrzToken) === foldNameToken(visionToken)) return visionToken;
+  const mrzFold = foldNameToken(mrzToken);
+  const visionFold = foldNameToken(visionToken);
+  if (
+    visionFold.length >= 3 &&
+    mrzFold.startsWith(visionFold) &&
+    mrzFold.length - visionFold.length <= 2
+  ) {
+    return withTokenAccents(mrzToken, visionToken);
+  }
+  if (tokenNear(mrzToken, visionToken) && visionToken.length <= mrzToken.length) return visionToken;
+  return mrzToken;
+}
+
+function sameNameMultiset(left: string[], right: string[]) {
+  if (left.length !== right.length) return false;
+  const bag = right.map((token) => foldNameToken(token));
+  for (const token of left) {
+    const fold = foldNameToken(token);
+    const index = bag.indexOf(fold);
+    if (index < 0) return false;
+    bag.splice(index, 1);
+  }
+  return true;
+}
+
+function withPrintedAccents(base: string[], printed: string[]) {
+  return base.map((token) => {
+    const exact = printed.find((item) => foldNameToken(item) === foldNameToken(token));
+    return exact || token;
+  });
+}
+
 /**
- * Garde tous les prénoms, dans l’ordre du document.
- * La MRZ tronque souvent : on prend la liste la plus complète si l’ordre est conservé.
+ * Garde tous les prénoms, dans l’ordre latin du document (MRZ, gauche à droite).
+ * La MRZ tronque souvent : on prend la liste la plus complète si l’ordre est le même.
+ * On ne retourne jamais la ligne pour imiter l’hébreu. Les accents viennent de la ligne imprimée.
  */
 export function completeGivenNames(
   mrzName: string | null | undefined,
@@ -177,12 +273,34 @@ export function completeGivenNames(
   if (!mrz.length) return vision.join(" ");
   if (!vision.length) return mrz.join(" ");
   if (tokensEqual(mrz, vision)) return vision.join(" ");
-  if (isOrderedPrefix(mrz, vision) || isOrderedSubsequence(mrz, vision)) return vision.join(" ");
-  if (isOrderedPrefix(vision, mrz) || isOrderedSubsequence(vision, mrz)) return mrz.join(" ");
-  if (foldNameToken(mrz[0]) === foldNameToken(vision[0])) {
-    return (vision.length >= mrz.length ? vision : mrz).join(" ");
+  if (
+    tokenNear(mrz[0], vision[0]) &&
+    (isOrderedPrefix(mrz, vision) || isOrderedSubsequence(mrz, vision))
+  ) {
+    return vision.join(" ");
   }
-  return (vision.length > mrz.length ? vision : mrz).join(" ");
+  if (isOrderedPrefix(vision, mrz) || isOrderedSubsequence(vision, mrz)) {
+    return withPrintedAccents(mrz, vision).join(" ");
+  }
+  if (mrz.length === vision.length && mrz.every((token, index) => tokenNear(token, vision[index]))) {
+    return mrz.map((token, index) => printedToken(token, vision[index])).join(" ");
+  }
+  if (sameNameMultiset(mrz, vision)) return withPrintedAccents(mrz, vision).join(" ");
+  if (tokenNear(mrz[0], vision[0])) {
+    return mrz.map((token, index) => (vision[index] ? printedToken(token, vision[index]) : token)).join(" ");
+  }
+  return mrz
+    .map((token) => {
+      const hit = vision.find((item) => {
+        const tokenFold = foldNameToken(token);
+        const itemFold = foldNameToken(item);
+        if (itemFold === tokenFold) return true;
+        if (tokenFold.startsWith(itemFold) && tokenFold.length - itemFold.length <= 2) return true;
+        return item.length === token.length && tokenNear(item, token);
+      });
+      return hit ? printedToken(token, hit) : token;
+    })
+    .join(" ");
 }
 
 export function humanizeMrzName(value: string) {
