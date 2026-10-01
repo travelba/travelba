@@ -525,6 +525,14 @@ export const EMAIL_INGEST_STATUSES = [
   "error",
 ] as const;
 
+/** File /admin/emails : tout ce qui n’a pas encore été traité par l’agence. */
+export const EMAIL_INBOX_QUEUE_STATUSES = [
+  "received",
+  "parsed",
+  "matched",
+  "error",
+] as const;
+
 export type EmailIngestStatus = (typeof EMAIL_INGEST_STATUSES)[number];
 
 /** Une proposition de rattachement (client ou voyage) pour un e-mail ingéré. */

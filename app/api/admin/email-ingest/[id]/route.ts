@@ -3,8 +3,9 @@ import { jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
 import { BookingIssuesError } from "@/lib/crm/booking-issues";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { applyEditedExtractTitle } from "@/lib/crm/ingest-title";
-import { parseExtractPayloadSafe } from "@/lib/crm/ingest-types";
+import { isCancellationExtract, parseExtractPayloadSafe } from "@/lib/crm/ingest-types";
 import {
+  applyCancellationToBooking,
   applyExtractToBooking,
   parseExtractPayload,
   persistNewBookingFromExtract,
@@ -115,16 +116,27 @@ export async function POST(request: Request, ctx: Ctx) {
         .eq("id", bookingId)
         .maybeSingle();
       if (!booking) return jsonError("Voyage introuvable", 404);
-      await applyExtractToBooking({
-        bookingId,
-        customerId: booking.customer_id,
-        extract,
-        files,
-        staffUserId: auth.user.id,
-        visibleToClient: false,
-        applyStayFields: body.apply_stay_currency === true,
-        emailIngestId: id,
-      });
+      if (isCancellationExtract(extract)) {
+        await applyCancellationToBooking({
+          bookingId,
+          customerId: booking.customer_id,
+          extract,
+          files,
+          staffUserId: auth.user.id,
+          visibleToClient: false,
+        });
+      } else {
+        await applyExtractToBooking({
+          bookingId,
+          customerId: booking.customer_id,
+          extract,
+          files,
+          staffUserId: auth.user.id,
+          visibleToClient: false,
+          applyStayFields: body.apply_stay_currency === true,
+          emailIngestId: id,
+        });
+      }
       await admin
         .from("crm_email_ingest")
         .update({ status: "attached", created_booking_id: bookingId, ...extractPatch })
@@ -133,6 +145,9 @@ export async function POST(request: Request, ctx: Ctx) {
     }
 
     if (action === "new_booking") {
+      if (isCancellationExtract(extract)) {
+        return jsonError("Une annulation ne crée pas de dossier. Rattachez-la au voyage existant.");
+      }
       const customerId = String(body.customer_id || "");
       if (!customerId) return jsonError("Choisissez un client");
       const booking = await persistNewBookingFromExtract({
