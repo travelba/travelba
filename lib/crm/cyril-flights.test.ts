@@ -8,13 +8,19 @@ import {
   cyrilFlightClock,
 } from "./cyril-flights";
 
-test("huit vols aller et huit vols retour", () => {
-  assert.equal(CYRIL_OUTBOUND.length, 8);
+test("vols aller jeudi et vendredi, huit retours", () => {
+  const thursday = CYRIL_OUTBOUND.filter((flight) => flight.dayLabel.startsWith("Jeudi"));
+  const friday = CYRIL_OUTBOUND.filter((flight) => flight.dayLabel.startsWith("Vendredi"));
+  assert.equal(thursday.length, 8);
+  assert.equal(friday.length, 16);
   assert.equal(CYRIL_RETURN.length, 8);
   const ids = [...CYRIL_OUTBOUND, ...CYRIL_RETURN].map((flight) => flight.id);
-  assert.equal(new Set(ids).size, 16);
+  assert.equal(new Set(ids).size, ids.length);
   assert.equal(CYRIL_OUTBOUND.find((flight) => flight.id === "fr-3844")?.airport, "Beauvais");
-  assert.equal(CYRIL_OUTBOUND.find((flight) => flight.id === "at-749")?.airline, "Royal Air Maroc");
+  assert.equal(CYRIL_OUTBOUND.find((flight) => flight.id === "ven-fr-64")?.airport, "Beauvais");
+  assert.equal(CYRIL_OUTBOUND.find((flight) => flight.id === "ven-fr-64")?.depart, "10:55");
+  assert.equal(CYRIL_OUTBOUND.find((flight) => flight.id === "ven-at-643")?.number, "AT 643");
+  assert.equal(CYRIL_OUTBOUND.find((flight) => flight.id === "ven-af-1776")?.depart, "20:55");
   assert.equal(cyrilFlightClock("10:40"), "10h40");
   assert.equal(CYRIL_RETURN[0]?.number, "TO 3015");
   assert.equal(CYRIL_RETURN.at(-1)?.number, "AF 1877");
@@ -43,8 +49,22 @@ test("ligne du classeur", () => {
   assert.equal(built.row[4], "Paul Martin");
   assert.equal(built.row[5], "Cachère");
   assert.equal(built.row[6], "Végétarien");
-  assert.deepEqual(built.row.slice(7, 12), ["Transavia", "TO 3016", "Orly", "10h40", "12h05"]);
-  assert.deepEqual(built.row.slice(12), ["Air France", "AF 1877", "Roissy-CDG", "17h55", "23h20"]);
+  assert.deepEqual(built.row.slice(7, 13), [
+    "Jeudi 8 octobre 2026",
+    "Transavia",
+    "TO 3016",
+    "Orly",
+    "10h40",
+    "12h05",
+  ]);
+  assert.deepEqual(built.row.slice(13), [
+    "Dimanche 11 octobre 2026",
+    "Air France",
+    "AF 1877",
+    "Roissy-CDG",
+    "17h55",
+    "23h20",
+  ]);
 });
 
 test("refus si vol ou téléphone hors liste", () => {
