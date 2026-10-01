@@ -8,7 +8,9 @@ import { hotelDisplayName } from "@/lib/crm/carnet";
 import { HOTEL_DESK_LABELS, deskStatusLabel, hotelsNeedingDesk, type HotelMailPiece } from "@/lib/crm/hotel-desk";
 import { precheckParty } from "@/lib/crm/hotel-precheck";
 import { HOTEL_DESK_KINDS, type CardViewLine, type CrmBookingItem, type CrmBookingTraveler, type CrmHotelMessage, type CrmHotelRequest, type CrmTravelDocument, type HotelDeskKind } from "@/lib/crm/types";
-import { fieldControlClass } from "@/components/crm/fields";
+
+const letterFieldClass =
+  "w-full rounded-xl border border-[#d9d1c3] bg-[#faf9f6] px-3 py-2.5 text-sm text-[#0B192C] outline-none transition placeholder:text-[#3d4654] focus:border-[#0B192C] focus:bg-white";
 
 export function HotelDeskSummary({
   requests,
@@ -65,7 +67,7 @@ export function HotelDesk({
   return (
     <div className="mt-3 space-y-3">
       <HotelThread bookingId={bookingId} item={item} requests={requests} messages={messages} attached={attached} />
-      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Courriers préparés</p>
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#6f552c]">Courriers préparés</p>
       <div className="flex flex-wrap gap-2">
         {active.map((row) => {
           const label = deskStatusLabel(row, today);
@@ -74,13 +76,13 @@ export function HotelDesk({
             <button
               key={row.kind}
               type="button"
-              className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                attention ? "border-[#C5A880] bg-[#C5A880]/15 text-[var(--admin-navy)]" : "border-[#e5e3dc] text-[var(--admin-navy)]"
+              className={`rounded-full border bg-white px-3 py-1.5 text-xs font-semibold text-[#0B192C] ${
+                attention ? "border-[#C5A880]" : "border-[#d9d1c3]"
               }`}
               onClick={() => setOpen(open === row.kind ? null : row.kind)}
             >
               {HOTEL_DESK_LABELS[row.kind]}
-              {label ? <span className="ml-1 font-normal text-[#9e7e51]">{label}</span> : null}
+              {label ? <span className="ml-1 font-medium text-[#6f552c]">{label}</span> : null}
             </button>
           );
         })}
@@ -261,7 +263,7 @@ function HotelDeskEditor({
   }
 
   return (
-    <div className="space-y-2 rounded-2xl border border-[#e5e3dc] bg-white p-3">
+    <div className="space-y-2 rounded-2xl border border-[#e5e0d4] bg-white p-3 text-[#0B192C]">
       {row.kind === "precheckin" ? (
         <PrecheckPack
           bookingId={bookingId}
@@ -291,22 +293,22 @@ function HotelDeskEditor({
           onCodeReady={() => setCodeReady(true)}
         />
       ) : null}
-      <label className="block text-xs font-semibold text-[var(--admin-navy)]">
+      <label className="block text-xs font-semibold text-[#0B192C]">
         Objet
-        <input className={`${fieldControlClass} mt-1`} value={subject} onChange={(event) => setSubject(event.target.value)} />
+        <input className={`${letterFieldClass} mt-1`} value={subject} onChange={(event) => setSubject(event.target.value)} />
       </label>
-      <label className="block text-xs font-semibold text-[var(--admin-navy)]">
+      <label className="block text-xs font-semibold text-[#0B192C]">
         Message
-        <textarea className={`${fieldControlClass} mt-1 min-h-40`} value={body} onChange={(event) => setBody(event.target.value)} />
+        <textarea className={`${letterFieldClass} mt-1 min-h-40`} value={body} onChange={(event) => setBody(event.target.value)} />
       </label>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       <div className="flex flex-wrap gap-2">
-        <button type="button" className="admin-af-btn rounded-full px-3 py-2 text-sm" disabled={Boolean(busy)} onClick={() => void run("send")}>
+        <button type="button" className="admin-af-btn rounded-full bg-[#0B192C] px-3 py-2 text-sm text-[#faf9f6]" disabled={Boolean(busy)} onClick={() => void run("send")}>
           {busy === "send" ? "Envoi…" : "Envoyer"}
         </button>
         <button
           type="button"
-          className="rounded-full border border-[#e5e3dc] px-3 py-2 text-sm"
+          className="rounded-full border border-[#d9d1c3] bg-white px-3 py-2 text-sm font-semibold text-[#0B192C]"
           disabled={Boolean(busy)}
           onClick={() =>
             void run("save").then((saved) => {
@@ -316,7 +318,7 @@ function HotelDeskEditor({
         >
           {busy === "save" ? "…" : "Enregistrer"}
         </button>
-        <button type="button" className="px-3 py-2 text-sm text-muted" disabled={Boolean(busy)} onClick={() => void run("skip")}>
+        <button type="button" className="px-3 py-2 text-sm font-medium text-[#3d4654]" disabled={Boolean(busy)} onClick={() => void run("skip")}>
           Pas pour ce séjour
         </button>
       </div>
