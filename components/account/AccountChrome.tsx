@@ -47,7 +47,7 @@ export function AccountChrome({
     "Espace client";
   const phoneWall = needsPhone && !pathname.startsWith(`${basePath}/profil`);
 
-  if (pathname === ONBOARDING_PATH) {
+  if (pathname === ONBOARDING_PATH || pathname === `${basePath}/bienvenue`) {
     return <div className="account-app admin-af min-h-screen">{children}</div>;
   }
 
