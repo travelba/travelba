@@ -82,6 +82,17 @@ async function accessToken() {
   return cachedToken.token;
 }
 
+function sheetColumn(count: number) {
+  let n = count;
+  let letters = "";
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    letters = String.fromCharCode(65 + rem) + letters;
+    n = Math.floor((n - 1) / 26);
+  }
+  return letters;
+}
+
 function valuesUrl(id: string, range: string, suffix = "") {
   return `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(range)}${suffix}`;
 }
@@ -90,7 +101,8 @@ let headersReady = false;
 
 async function ensureHeaders(token: string, id: string) {
   if (headersReady) return;
-  const range = `'${TAB}'!A1:O1`;
+  const end = sheetColumn(CYRIL_SHEET_HEADERS.length);
+  const range = `'${TAB}'!A1:${end}1`;
   const read = await fetch(valuesUrl(id, range), {
     headers: { authorization: `Bearer ${token}` },
   });
@@ -117,7 +129,11 @@ export async function appendCyrilRow(row: string[]) {
   const token = await accessToken();
   await ensureHeaders(token, id);
   const res = await fetch(
-    valuesUrl(id, `'${TAB}'!A:O`, ":append?valueInputOption=RAW&insertDataOption=INSERT_ROWS"),
+    valuesUrl(
+      id,
+      `'${TAB}'!A:${sheetColumn(CYRIL_SHEET_HEADERS.length)}`,
+      ":append?valueInputOption=RAW&insertDataOption=INSERT_ROWS"
+    ),
     {
       method: "POST",
       headers: {
