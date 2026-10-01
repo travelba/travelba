@@ -42,9 +42,9 @@ export const CYRIL_RETURN: CyrilFlight[] = [
 ];
 
 export const CYRIL_DIETS = [
-  { id: "tout", label: "De tout" },
-  { id: "cachere", label: "Cachère" },
-  { id: "vegetarien", label: "Végétarien" },
+  { id: "tout", label: "De tout", image: "/anniversaire/regime-tout.jpg" },
+  { id: "cachere", label: "Cachère", image: "/anniversaire/regime-cachere.jpg" },
+  { id: "vegetarien", label: "Végétarien", image: "/anniversaire/regime-vegetarien.jpg" },
 ] as const;
 
 export type CyrilDiet = (typeof CYRIL_DIETS)[number]["id"];

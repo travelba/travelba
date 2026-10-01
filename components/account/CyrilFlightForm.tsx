@@ -38,13 +38,42 @@ function DietPicker({
               role="radio"
               aria-checked={selected}
               onClick={() => onChange(diet.id)}
-              className={`rounded-2xl border bg-white px-2 py-3 text-center text-sm font-semibold text-[var(--admin-navy)] transition ${
+              className={`overflow-hidden rounded-2xl border bg-white text-center transition ${
                 selected
                   ? "border-[var(--admin-gold)] ring-2 ring-[var(--admin-gold)]"
                   : "border-[#e5e3dc] hover:border-[var(--admin-navy)]/30"
               }`}
             >
-              {diet.label}
+              <span className="relative block bg-[#faf9f6]">
+                <img
+                  src={diet.image}
+                  alt=""
+                  className="aspect-square w-full object-contain"
+                />
+                <span
+                  className={`absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full border ${
+                    selected
+                      ? "border-[var(--admin-navy)] bg-[var(--admin-navy)] text-white"
+                      : "border-[#cfcabd] bg-white"
+                  }`}
+                  aria-hidden="true"
+                >
+                  {selected ? (
+                    <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none">
+                      <path
+                        d="M3.5 8.2 6.4 11l6.1-6.2"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  ) : null}
+                </span>
+              </span>
+              <span className="block px-1 py-2 text-[13px] font-semibold leading-tight text-[var(--admin-navy)]">
+                {diet.label}
+              </span>
             </button>
           );
         })}
