@@ -155,9 +155,11 @@ export function buildCyrilSheetRow(
   const companion = cleanText(guest.companion || "", 120);
   const diet = cyrilDietLabel(guest.diet);
   if (!diet) return { ok: false, error: "Indiquez ce que vous mangez." };
-  const companionDiet = companion ? cyrilDietLabel(guest.companionDiet) : "";
-  if (companion && !companionDiet) {
-    return { ok: false, error: "Indiquez ce que mange l’accompagnateur." };
+  let companionDiet = "";
+  if (companion) {
+    const label = cyrilDietLabel(guest.companionDiet);
+    if (!label) return { ok: false, error: "Indiquez ce que mange l’accompagnateur." };
+    companionDiet = label;
   }
   const row = [
     sentAtLabel(sentAt),
@@ -166,7 +168,7 @@ export function buildCyrilSheetRow(
     phone,
     companion,
     diet,
-    companion ? companionDiet : "",
+    companionDiet,
     ...flightCells(outbound),
     ...flightCells(inbound),
   ];
