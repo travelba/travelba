@@ -33,6 +33,7 @@ import {
   hotelReplySearchQueries,
   gmailAfterDate,
   keepAgencyDraft,
+  knownHotelRecipients,
   nextDeskMark,
   outboundHotelLetter,
   replyMatchesRequest,
@@ -45,6 +46,7 @@ import { siteConfig } from "../site";
 import type {
   CrmBookingItem,
   CrmBookingTraveler,
+  CrmHotelMessage,
   CrmHotelRequest,
   CrmTravelDocument,
   HotelDeskKind,
@@ -155,7 +157,7 @@ export async function ensureHotelRequests(
   const waitingReply = rows.filter((row) => (row.status === "sent" || row.status === "follow_up") && !row.reply_body);
   if (waitingReply.length) {
     try {
-      await attachHotelReplies(admin, waitingReply);
+      await attachHotelReplies(admin, waitingReply, "crm_hotel_requests");
     } catch {
       return rows;
     }
@@ -220,21 +222,65 @@ export async function refreshHotelDesk(admin: Admin, deps: { now?: Date; fetchIm
     await admin.from("crm_hotel_requests").update({ status: next }).eq("id", row.id);
     marked += 1;
   }
-  const replied = await attachHotelReplies(admin, rows.filter((row) => row.status === "sent" || row.status === "follow_up").slice(0, 25));
+  const replyRows = rows.filter((row) => row.status === "sent" || row.status === "follow_up").slice(0, 25);
+  const { data: taken } = await admin
+    .from("crm_hotel_requests")
+    .select("reply_message_id")
+    .in("booking_id", ids)
+    .not("reply_message_id", "is", null);
+  const claimed = new Set(
+    ((taken || []) as { reply_message_id?: string | null }[]).map((row) => row.reply_message_id || "").filter(Boolean)
+  );
+  const replied = await attachHotelReplies(admin, replyRows, "crm_hotel_requests", claimed);
+  try {
+    const { data: pending } = await admin
+      .from("crm_hotel_messages")
+      .select("*")
+      .in("booking_id", ids)
+      .not("sent_at", "is", null)
+      .eq("reply_body", "")
+      .limit(25);
+    if (pending?.length) await attachHotelReplies(admin, pending as CrmHotelMessage[], "crm_hotel_messages", claimed);
+  } catch {
+    return { marked, replied };
+  }
   return { marked, replied };
 }
 
-async function attachHotelReplies(admin: Admin, rows: CrmHotelRequest[]) {
+type HotelReplyRow = {
+  id: string;
+  subject: string;
+  sent_at: string | null;
+  created_at: string;
+  recipients: string[];
+  reply_body: string;
+  follow_up_count?: number;
+};
+
+function replyClaim(hit: HotelReplyHit) {
+  return hit.id || `${hit.from}|${hit.subject}|${hit.receivedAtMs}`;
+}
+
+async function attachHotelReplies(
+  admin: Admin,
+  rows: HotelReplyRow[],
+  table: "crm_hotel_requests" | "crm_hotel_messages",
+  claimed: Set<string> = new Set()
+) {
   let replied = 0;
-  for (const row of rows) {
-    if (!row.sent_at || !row.subject.trim()) continue;
-    const sentAtMs = Date.parse(row.sent_at);
+  const waiting = rows
+    .filter((row) => row.sent_at && row.subject.trim() && !row.reply_body.trim())
+    .sort((a, b) => (a.sent_at || "").localeCompare(b.sent_at || ""));
+  for (const row of waiting) {
+    const sentAt = row.sent_at || "";
+    const sentAtMs = Date.parse(sentAt);
     if (!Number.isFinite(sentAtMs)) continue;
     const createdAtMs = row.created_at ? Date.parse(row.created_at) : null;
+    const followUpCount = row.follow_up_count || 0;
     const sinceMs = replyWindowStartMs({
       sentAtMs,
       createdAtMs: createdAtMs != null && Number.isFinite(createdAtMs) ? createdAtMs : null,
-      followUpCount: row.follow_up_count || 0,
+      followUpCount,
     });
     const hits = await findHotelReplies(admin, {
       emails: row.recipients,
@@ -242,35 +288,60 @@ async function attachHotelReplies(admin: Admin, rows: CrmHotelRequest[]) {
       subject: row.subject,
     });
     const match = hits
-      .filter((hit) =>
-        replyMatchesRequest({
+      .filter((hit) => {
+        if (claimed.has(replyClaim(hit))) return false;
+        return replyMatchesRequest({
           from: hit.from,
           subject: hit.subject,
           receivedAtMs: hit.receivedAtMs,
           sentAtMs,
           createdAtMs,
-          followUpCount: row.follow_up_count || 0,
+          followUpCount,
           requestSubject: row.subject,
-        })
-      )
+        });
+      })
       .sort((a, b) => a.receivedAtMs - b.receivedAtMs)[0];
     if (!match) continue;
     const replyBody = hotelReplyForDesk(match.body);
     if (!replyBody) continue;
+    claimed.add(replyClaim(match));
+    const patch = {
+      replied_at: new Date(match.receivedAtMs).toISOString(),
+      reply_from: match.from.slice(0, 200),
+      reply_subject: match.subject.slice(0, 300),
+      reply_body: replyBody,
+      reply_message_id: match.id || null,
+    };
     await admin
-      .from("crm_hotel_requests")
-      .update({
-        status: "replied",
-        replied_at: new Date(match.receivedAtMs).toISOString(),
-        reply_from: match.from.slice(0, 200),
-        reply_subject: match.subject.slice(0, 300),
-        reply_body: replyBody,
-        reply_message_id: match.id || null,
-      })
+      .from(table)
+      .update(table === "crm_hotel_requests" ? { status: "replied", ...patch } : patch)
       .eq("id", row.id);
     replied += 1;
   }
   return replied;
+}
+
+/** Réponses aux messages libres, sans reprendre une réponse déjà posée sur un courrier. */
+export async function syncHotelMessages(admin: Admin, bookingId: string) {
+  const [{ data, error }, { data: letters }] = await Promise.all([
+    admin.from("crm_hotel_messages").select("*").eq("booking_id", bookingId),
+    admin.from("crm_hotel_requests").select("reply_message_id").eq("booking_id", bookingId),
+  ]);
+  if (error) return [] as CrmHotelMessage[];
+  const rows = (data || []) as CrmHotelMessage[];
+  const claimed = new Set(
+    ((letters || []) as { reply_message_id?: string | null }[])
+      .map((row) => row.reply_message_id || "")
+      .filter(Boolean)
+  );
+  if (!rows.some((row) => row.sent_at && !row.reply_body.trim())) return rows;
+  try {
+    await attachHotelReplies(admin, rows, "crm_hotel_messages", claimed);
+  } catch {
+    return rows;
+  }
+  const { data: fresh } = await admin.from("crm_hotel_messages").select("*").eq("booking_id", bookingId);
+  return (fresh || rows) as CrmHotelMessage[];
 }
 
 type HotelReplyHit = { id: string; from: string; subject: string; body: string; receivedAtMs: number };
@@ -406,7 +477,7 @@ export async function sendHotelRequest(
     throw new Error("Le brouillon ne peut pas contenir un numéro de carte.");
   }
   const recipients = cleanRecipients(input.recipients);
-  if (!recipients.length) throw new Error("Ajoutez au moins un e-mail d'hôtel.");
+  if (!recipients.length) throw new Error("Cet hôtel n'a pas d'adresse connue.");
   const row = await loadRequest(admin, input.bookingId, input.itemId, input.kind);
   const item = await loadItem(admin, input.bookingId, input.itemId);
   const lang = hotelLanguage(hotelContact(item).country);
@@ -456,6 +527,36 @@ export async function sendHotelRequest(
       last_follow_up_at: followUp ? now : row.last_follow_up_at,
     })
     .eq("id", row.id);
+}
+
+export async function sendHotelMessage(
+  admin: Admin,
+  input: { bookingId: string; itemId: string; subject: string; body: string }
+) {
+  const subject = input.subject.trim().slice(0, 300);
+  const text = input.body.trim().slice(0, 8000);
+  if (!subject || !text) throw new Error("Écrivez l'objet et le message.");
+  if (containsCardNumber(subject) || containsCardNumber(text)) {
+    throw new Error("Le message ne peut pas contenir un numéro de carte.");
+  }
+  const item = await loadItem(admin, input.bookingId, input.itemId);
+  const { data: letters } = await admin
+    .from("crm_hotel_requests")
+    .select("booking_item_id, recipients")
+    .eq("booking_id", input.bookingId)
+    .eq("booking_item_id", input.itemId);
+  const recipients = knownHotelRecipients(item, (letters || []) as Pick<CrmHotelRequest, "booking_item_id" | "recipients">[]);
+  if (!recipients.length) throw new Error("Cet hôtel n'a pas d'adresse connue.");
+  await deliverHotelMail({ to: recipients, subject, text, attachments: [] });
+  const { error } = await admin.from("crm_hotel_messages").insert({
+    booking_id: input.bookingId,
+    booking_item_id: item.id,
+    subject,
+    body: text,
+    recipients,
+    sent_at: new Date().toISOString(),
+  });
+  if (error) throw new Error("Le message est parti, mais le fil ne l'a pas enregistré.");
 }
 
 async function loadRequest(admin: Admin, bookingId: string, itemId: string, kind: HotelDeskKind) {

@@ -13,7 +13,7 @@ import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import { isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
 import { loadClientLedger, type ClientLedgerView } from "@/lib/crm/client-ledger";
 import { syncStayCards } from "@/lib/crm/hotel-arrival-run";
-import { ensureHotelRequests } from "@/lib/crm/hotel-desk-run";
+import { ensureHotelRequests, syncHotelMessages } from "@/lib/crm/hotel-desk-run";
 import { principalGuest } from "@/lib/crm/hotel-arrival";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
 import type {
@@ -24,6 +24,7 @@ import type {
   CrmCompanion,
   CrmCustomer,
   CrmHotelArrival,
+  CrmHotelMessage,
   CrmHotelRequest,
   CrmTravelDocument,
 } from "@/lib/crm/types";
@@ -74,7 +75,7 @@ export default async function AdminBookingPage({ params }: Props) {
       .order("sort_order"),
     supabase
       .from("crm_email_ingest")
-      .select("id, subject, from_email, received_at, extract, warnings")
+      .select("id, subject, from_email, received_at, body_text, extract, warnings")
       .eq("status", "attached")
       .eq("created_booking_id", id)
       .order("received_at", { ascending: false, nullsFirst: false }),
@@ -90,6 +91,7 @@ export default async function AdminBookingPage({ params }: Props) {
   const bookingItems = await loadHotelContacts(id, (items || []) as CrmBookingItem[]);
   let arrivals: CrmHotelArrival[] = [];
   let hotelRequests: CrmHotelRequest[] = [];
+  let hotelMessages: CrmHotelMessage[] = [];
   const bookingTravelers = (travelers || []) as CrmBookingTraveler[];
   const guest = principalGuest({
     travelers: bookingTravelers,
@@ -112,6 +114,7 @@ export default async function AdminBookingPage({ params }: Props) {
       guest: `${guest.firstName} ${guest.lastName}`.trim(),
       items: bookingItems,
     });
+    hotelMessages = await syncHotelMessages(arrivalAdmin, id);
   } catch {
     arrivals = [];
     hotelRequests = [];
@@ -177,6 +180,7 @@ export default async function AdminBookingPage({ params }: Props) {
           shareCompanions={shareCompanions}
           arrivals={arrivals}
           hotelRequests={hotelRequests}
+          hotelMessages={hotelMessages}
           billingCompanies={(billingCompanies || []) as {
             id: string;
             company_name: string | null;
@@ -194,6 +198,7 @@ export default async function AdminBookingPage({ params }: Props) {
             subject: string | null;
             from_email: string | null;
             received_at: string | null;
+            body_text?: string | null;
             extract?: unknown;
             warnings?: { file?: string | null; message?: string | null }[] | null;
           }[]}

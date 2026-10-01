@@ -396,6 +396,24 @@ export type CrmHotelRequest = {
   updated_at: string;
 };
 
+/** Message libre à l'hôtel. Le fil de la fiche le montre avec les courriers. Aucun numéro de carte. */
+export type CrmHotelMessage = {
+  id: string;
+  booking_id: string;
+  booking_item_id: string;
+  subject: string;
+  body: string;
+  recipients: string[];
+  sent_at: string | null;
+  reply_from: string;
+  reply_subject: string;
+  reply_body: string;
+  reply_message_id: string | null;
+  replied_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type CrmBookingTraveler = {
   id: string;
   booking_id: string;

@@ -2,27 +2,40 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { HotelThread } from "@/components/admin/HotelThread";
 import { PrecheckPack } from "@/components/admin/PrecheckPack";
-import { RecipientRoster } from "@/components/admin/RecipientRoster";
 import { hotelDisplayName } from "@/lib/crm/carnet";
-import { hotelContact } from "@/lib/crm/hotel-contact";
-import { HOTEL_DESK_LABELS, containsCardNumber, deskRoster, deskStatusLabel, hotelReplyLink, hotelsNeedingDesk, type DeskRosterPerson } from "@/lib/crm/hotel-desk";
+import { hotelStayChecklist, hotelTripChecklist, type HotelMailPiece } from "@/lib/crm/hotel-desk";
 import { precheckParty } from "@/lib/crm/hotel-precheck";
-import { HOTEL_DESK_KINDS, type CardViewLine, type CrmBookingItem, type CrmBookingTraveler, type CrmHotelRequest, type CrmTravelDocument, type HotelDeskKind } from "@/lib/crm/types";
-import { fieldControlClass } from "@/components/crm/fields";
+import { HOTEL_DESK_KINDS, type CardViewLine, type CrmBookingItem, type CrmBookingTraveler, type CrmHotelMessage, type CrmHotelRequest, type CrmTravelDocument, type HotelDeskKind } from "@/lib/crm/types";
+
+const letterFieldClass =
+  "w-full rounded-xl border border-[#d9d1c3] bg-[#faf9f6] px-3 py-2.5 text-sm text-[#0B192C] outline-none transition placeholder:text-[#3d4654] focus:border-[#0B192C] focus:bg-white";
 
 export function HotelDeskSummary({
   requests,
-  today,
 }: {
   requests: CrmHotelRequest[];
   today: string;
 }) {
-  const hotels = hotelsNeedingDesk(requests, today);
-  if (!hotels) return null;
+  const trip = hotelTripChecklist(requests);
+  if (!trip.openCount) return null;
   return (
-    <p className="text-sm font-semibold text-[var(--admin-navy)]">
-      {hotels} hôtel{hotels > 1 ? "s" : ""} à traiter
+    <p className="text-sm font-semibold text-[#0B192C]">
+      {trip.openCount > 1 ? `${trip.openCount} courriers hôtel` : "Courrier hôtel"}
+    </p>
+  );
+}
+
+export function HotelChecklistGlance({ itemId, requests }: { itemId: string; requests: CrmHotelRequest[] }) {
+  const stay = hotelStayChecklist(itemId, requests);
+  if (!stay.summary) return null;
+  return (
+    <p className={`mt-1 text-xs font-medium ${stay.complete ? "text-[#3d4654]" : "text-[#0B192C]"}`}>
+      {stay.complete ? null : (
+        <span className="mr-1.5 inline-block h-1.5 w-1.5 translate-y-[-1px] rounded-full bg-[#C5A880]" aria-hidden />
+      )}
+      {stay.summary}
     </p>
   );
 }
@@ -31,7 +44,6 @@ export function HotelDesk({
   bookingId,
   item,
   requests,
-  today,
   travelers = [],
   identityDocs = [],
   holder = null,
@@ -39,6 +51,8 @@ export function HotelDesk({
   clientCardName = null,
   hasCardCode = false,
   cardViews = [],
+  messages = [],
+  attached = [],
 }: {
   bookingId: string;
   item: CrmBookingItem;
@@ -51,35 +65,77 @@ export function HotelDesk({
   clientCardName?: string | null;
   hasCardCode?: boolean;
   cardViews?: CardViewLine[];
+  messages?: CrmHotelMessage[];
+  attached?: HotelMailPiece[];
 }) {
   const rows = HOTEL_DESK_KINDS.map((kind) => requests.find((row) => row.booking_item_id === item.id && row.kind === kind)).filter(
     (row): row is CrmHotelRequest => Boolean(row)
   );
+  const router = useRouter();
   const [open, setOpen] = useState<HotelDeskKind | null>(null);
+  const [marking, setMarking] = useState<string | null>(null);
   if (!rows.length) return null;
-  const active = rows.filter((row) => row.status !== "skipped");
-  const skipped = rows.filter((row) => row.status === "skipped");
+  const stay = hotelStayChecklist(item.id, rows);
+
+  async function mark(row: CrmHotelRequest, action: "skip" | "restore") {
+    setMarking(row.kind);
+    const result = await post(bookingId, row, action);
+    setMarking(null);
+    if (!result.ok) return;
+    if (open === row.kind) setOpen(null);
+    router.refresh();
+  }
+
   return (
-    <div className="mt-3 space-y-2">
-      <div className="flex flex-wrap gap-2">
-        {active.map((row) => {
-          const label = deskStatusLabel(row, today);
-          const attention = label === "À faire" || label === "À relancer" || label.includes("à faire");
-          return (
-            <button
-              key={row.kind}
-              type="button"
-              className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                attention ? "border-[#C5A880] bg-[#C5A880]/15 text-[var(--admin-navy)]" : "border-[#e5e3dc] text-[var(--admin-navy)]"
-              }`}
-              onClick={() => setOpen(open === row.kind ? null : row.kind)}
-            >
-              {HOTEL_DESK_LABELS[row.kind]}
-              {label ? <span className="ml-1 font-normal text-[#9e7e51]">{label}</span> : null}
-            </button>
-          );
-        })}
-      </div>
+    <div className="mt-3 space-y-3">
+      <section className="overflow-hidden rounded-2xl border border-[#e5e0d4] bg-[#faf9f6]" aria-label={`Courriers pour ${hotelDisplayName(item) || item.title}`}>
+        <p className="border-b border-[#e5e0d4] px-3 py-2 text-xs font-medium text-[#0B192C]">{stay.summary}</p>
+        <ul>
+          {stay.lines.map((line) => {
+            const row = rows.find((itemRow) => itemRow.kind === line.kind);
+            if (!row) return null;
+            const selected = open === line.kind;
+            return (
+              <li key={line.kind} className="flex items-center border-t border-[#e5e0d4] first:border-t-0">
+                <button
+                  type="button"
+                  className={`flex min-w-0 flex-1 items-center gap-2 px-3 py-2.5 text-left ${selected ? "bg-white" : ""}`}
+                  onClick={() => setOpen(selected ? null : line.kind)}
+                >
+                  <span
+                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${line.mark === "open" ? "bg-[#C5A880]" : "bg-[#0B192C]/20"}`}
+                    aria-hidden
+                  />
+                  <span className="truncate text-sm font-semibold text-[#0B192C]">{line.title}</span>
+                  <span className={`ml-auto shrink-0 text-xs font-medium ${line.mark === "unneeded" ? "text-[#3d4654]" : "text-[#0B192C]"}`}>
+                    {line.caption}
+                  </span>
+                </button>
+                {line.mark === "open" ? (
+                  <button
+                    type="button"
+                    className="shrink-0 px-3 py-2.5 text-xs font-semibold text-[#0B192C]"
+                    disabled={marking === line.kind}
+                    onClick={() => void mark(row, "skip")}
+                  >
+                    Pas besoin
+                  </button>
+                ) : null}
+                {line.mark === "unneeded" ? (
+                  <button
+                    type="button"
+                    className="shrink-0 px-3 py-2.5 text-xs font-semibold text-[#0B192C]"
+                    disabled={marking === line.kind}
+                    onClick={() => void mark(row, "restore")}
+                  >
+                    Remettre
+                  </button>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      </section>
       {open ? (
         <HotelDeskEditor
           key={open}
@@ -96,29 +152,8 @@ export function HotelDesk({
           onClose={() => setOpen(null)}
         />
       ) : null}
-      {skipped.length ? (
-        <p className="text-xs text-muted">
-          {skipped.map((row) => (
-            <RestoreButton key={row.kind} bookingId={bookingId} row={row} />
-          ))}
-        </p>
-      ) : null}
+      <HotelThread bookingId={bookingId} item={item} requests={requests} messages={messages} attached={attached} />
     </div>
-  );
-}
-
-function RestoreButton({ bookingId, row }: { bookingId: string; row: CrmHotelRequest }) {
-  const router = useRouter();
-  return (
-    <button
-      type="button"
-      className="mr-3 underline"
-      onClick={() => {
-        void post(bookingId, row, "restore").then(() => router.refresh());
-      }}
-    >
-      Remettre {HOTEL_DESK_LABELS[row.kind]}
-    </button>
   );
 }
 
@@ -152,8 +187,7 @@ function HotelDeskEditor({
   const availableIds = party.flatMap((traveler) => traveler.pieces.map((piece) => piece.id));
   const [subject, setSubject] = useState(row?.subject || "");
   const [body, setBody] = useState(row?.body || "");
-  const [recipients, setRecipients] = useState(row?.recipients || []);
-  const [roster, setRoster] = useState<DeskRosterPerson[]>(() => deskRoster(hotelContact(item)));
+  const recipients = row?.recipients || [];
   const [cardChoice, setCardChoice] = useState<"pliant" | "client">(row?.card_choice === "client" ? "client" : "pliant");
   const [pieceIds, setPieceIds] = useState<string[]>(() =>
     row?.identity_picked ? (row.identity_document_ids || []).filter((id) => availableIds.includes(id)) : availableIds
@@ -166,7 +200,7 @@ function HotelDeskEditor({
   const [error, setError] = useState<string | null>(null);
   if (!row) return null;
 
-  async function run(action: "save" | "send" | "skip", next = recipients, created?: DeskRosterPerson, pieces = pieceIds) {
+  async function run(action: "save" | "send" | "skip", next = recipients, pieces = pieceIds) {
     if (action === "send" && row!.kind === "precheckin" && cardChoice === "client" && !clientFile && !storedName) {
       setError("Déposez la carte du client.");
       return false;
@@ -178,7 +212,6 @@ function HotelDeskEditor({
       body,
       recipients: next,
       cardChoice: row!.kind === "precheckin" ? cardChoice : null,
-      contacts: created ? [created] : [],
       identityDocumentIds: row!.kind === "precheckin" ? pieces : undefined,
       clientCard: action === "send" && row!.kind === "precheckin" && cardChoice === "client" ? clientFile : null,
     });
@@ -192,14 +225,6 @@ function HotelDeskEditor({
       router.refresh();
     }
     return true;
-  }
-
-  async function changeRecipients(next: string[], created?: DeskRosterPerson) {
-    setRecipients(next);
-    if (created) {
-      setRoster((current) => (current.some((person) => person.email === created.email) ? current : [...current, created]));
-    }
-    await run("save", next, created);
   }
 
   async function generateCard() {
@@ -265,27 +290,8 @@ function HotelDeskEditor({
     }
   }
 
-  const reply = row.reply_body && !containsCardNumber(row.reply_body) ? row.reply_body : "";
-  const link = reply ? hotelReplyLink(reply) : null;
   return (
-    <div className="space-y-2 rounded-2xl border border-[#e5e3dc] bg-white p-3">
-      {row.status === "replied" || reply ? (
-        <div className="rounded-xl bg-[#f8f3eb] p-3 text-sm text-[var(--admin-navy)]">
-          <p className="text-xs font-semibold">Réponse de l'hôtel</p>
-          {row.reply_from ? <p className="text-xs text-muted">{row.reply_from}</p> : null}
-          {link ? (
-            <a href={link} target="_blank" rel="noreferrer" className="mt-2 block break-all font-semibold text-[#9e7e51] underline">
-              {link}
-            </a>
-          ) : null}
-          {reply ? (
-            <p className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap">{reply}</p>
-          ) : (
-            <p className="mt-2 text-muted">L'hôtel a répondu.</p>
-          )}
-        </div>
-      ) : null}
-      <RecipientRoster people={roster} selected={recipients} disabled={Boolean(busy)} onChange={(next, created) => void changeRecipients(next, created)} />
+    <div className="space-y-2 rounded-2xl border border-[#e5e0d4] bg-white p-3 text-[#0B192C]">
       {row.kind === "precheckin" ? (
         <PrecheckPack
           bookingId={bookingId}
@@ -304,7 +310,7 @@ function HotelDeskEditor({
           onToggle={(id) => {
             const next = pieceIds.includes(id) ? pieceIds.filter((value) => value !== id) : [...pieceIds, id];
             setPieceIds(next);
-            void run("save", recipients, undefined, next);
+            void run("save", recipients, next);
           }}
           onCardChoice={(choice) => {
             setCardChoice(choice);
@@ -315,22 +321,22 @@ function HotelDeskEditor({
           onCodeReady={() => setCodeReady(true)}
         />
       ) : null}
-      <label className="block text-xs font-semibold text-[var(--admin-navy)]">
+      <label className="block text-xs font-semibold text-[#0B192C]">
         Objet
-        <input className={`${fieldControlClass} mt-1`} value={subject} onChange={(event) => setSubject(event.target.value)} />
+        <input className={`${letterFieldClass} mt-1`} value={subject} onChange={(event) => setSubject(event.target.value)} />
       </label>
-      <label className="block text-xs font-semibold text-[var(--admin-navy)]">
+      <label className="block text-xs font-semibold text-[#0B192C]">
         Message
-        <textarea className={`${fieldControlClass} mt-1 min-h-40`} value={body} onChange={(event) => setBody(event.target.value)} />
+        <textarea className={`${letterFieldClass} mt-1 min-h-40`} value={body} onChange={(event) => setBody(event.target.value)} />
       </label>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       <div className="flex flex-wrap gap-2">
-        <button type="button" className="admin-af-btn rounded-full px-3 py-2 text-sm" disabled={Boolean(busy)} onClick={() => void run("send")}>
+        <button type="button" className="admin-af-btn rounded-full bg-[#0B192C] px-3 py-2 text-sm text-[#faf9f6]" disabled={Boolean(busy)} onClick={() => void run("send")}>
           {busy === "send" ? "Envoi…" : "Envoyer"}
         </button>
         <button
           type="button"
-          className="rounded-full border border-[#e5e3dc] px-3 py-2 text-sm"
+          className="rounded-full border border-[#d9d1c3] bg-white px-3 py-2 text-sm font-semibold text-[#0B192C]"
           disabled={Boolean(busy)}
           onClick={() =>
             void run("save").then((saved) => {
@@ -340,8 +346,8 @@ function HotelDeskEditor({
         >
           {busy === "save" ? "…" : "Enregistrer"}
         </button>
-        <button type="button" className="px-3 py-2 text-sm text-muted" disabled={Boolean(busy)} onClick={() => void run("skip")}>
-          Pas pour ce séjour
+        <button type="button" className="px-3 py-2 text-sm font-medium text-[#3d4654]" disabled={Boolean(busy)} onClick={() => void run("skip")}>
+          Pas besoin
         </button>
       </div>
     </div>
@@ -378,7 +384,6 @@ async function post(
     body: string;
     recipients: string[];
     cardChoice: "pliant" | "client" | null;
-    contacts?: DeskRosterPerson[];
     identityDocumentIds?: string[];
     clientCard?: File | null;
   }
@@ -391,7 +396,6 @@ async function post(
     body: extra?.body ?? row.body,
     recipients: extra?.recipients ?? row.recipients,
     cardChoice: extra?.cardChoice ?? row.card_choice,
-    contacts: extra?.contacts || [],
     identityDocumentIds: extra?.identityDocumentIds,
   };
   const res = extra?.clientCard
@@ -406,7 +410,6 @@ async function post(
           form.set("body", fields.body);
           form.set("recipients", JSON.stringify(fields.recipients));
           form.set("cardChoice", fields.cardChoice || "");
-          form.set("contacts", JSON.stringify(fields.contacts));
           form.set("identityDocumentIds", JSON.stringify(fields.identityDocumentIds || []));
           form.set("clientCard", extra.clientCard as File);
           return form;

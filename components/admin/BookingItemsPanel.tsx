@@ -28,9 +28,9 @@ import { formatMoney } from "@/lib/crm/money";
 import { shortStayDay, shortStayRange } from "@/lib/crm/staff-stay";
 import { Icon } from "@/components/crm/icons";
 import { STAY_CURRENCIES } from "@/lib/crm/stay-currency";
-import { HotelDesk } from "@/components/admin/HotelDesk";
+import { HotelChecklistGlance, HotelDesk } from "@/components/admin/HotelDesk";
 import { ProposedDuplicates } from "@/components/admin/ProposedDuplicates";
-import type { CardViewLine, CrmBookingTraveler, CrmHotelArrival, CrmHotelRequest, CrmTravelDocument } from "@/lib/crm/types";
+import type { CardViewLine, CrmBookingTraveler, CrmHotelArrival, CrmHotelMessage, CrmHotelRequest, CrmTravelDocument } from "@/lib/crm/types";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
 import { BusyBar } from "@/components/crm/BusyBar";
@@ -139,6 +139,7 @@ export function BookingItemsPanel({
   hasCardCode = false,
   cardViews = [],
   attachedEmails = [],
+  hotelMessages = [],
   stayVisible = false,
 }: {
   bookingId: string;
@@ -157,9 +158,11 @@ export function BookingItemsPanel({
     subject: string | null;
     from_email: string | null;
     received_at: string | null;
+    body_text?: string | null;
     extract?: unknown;
     warnings?: { file?: string | null; message?: string | null }[] | null;
   }[];
+  hotelMessages?: CrmHotelMessage[];
   documents?: CrmBookingDocument[];
   household?: HouseholdMember[];
   currency?: string;
@@ -449,6 +452,7 @@ export function BookingItemsPanel({
                   ) : null}
                   {item.kind === "hotel" && hotelRequests.some((row) => row.booking_item_id === item.id) ? (
                     <div className="mt-1">
+                      {deskFor === item.id ? null : <HotelChecklistGlance itemId={item.id} requests={hotelRequests} />}
                       <button
                         type="button"
                         className={flatBtn}
@@ -469,6 +473,8 @@ export function BookingItemsPanel({
                           clientCardName={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.client_card_name || null}
                           hasCardCode={hasCardCode}
                           cardViews={cardViews.filter((line) => line.itemId === item.id)}
+                          messages={hotelMessages}
+                          attached={attachedEmails}
                         />
                       ) : null}
                     </div>
