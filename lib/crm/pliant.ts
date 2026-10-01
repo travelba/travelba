@@ -1,5 +1,16 @@
 import "server-only";
+import { createServiceClient } from "@/lib/supabase/admin";
+import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 import { pickListedId, pickTravelConfig, pliantRefusal } from "./eta-il-fee";
+import {
+  acquirePliantToken,
+  emptyPliantTokenMemory,
+  isPliantTokenFailure,
+  PLIANT_TOKEN_MISSING,
+  pliantTokenExtra,
+  pliantTokenStillValid,
+  type PliantTokenStore,
+} from "./pliant-auth";
 import { annotatePliantPayload, pliantCardFace, pliantHolderId, pliantHolderName, pliantTransactionPage } from "./pliant-tx";
 
 const PROD = {
@@ -13,16 +24,26 @@ const SANDBOX = {
   audience: "api.staging.infinnitytest.com/api/integration",
 };
 
-type Token = { accessToken: string; expiresAt: number };
-let cached: Token | null = null;
+const TOKEN_PROVIDER = "pliant";
+
+const memory = emptyPliantTokenMemory();
+let pending: Promise<string> | null = null;
 
 export function pliantConfigured() {
   return Boolean(
-    process.env.PLIANT_CLIENT_ID &&
-      process.env.PLIANT_CLIENT_SECRET &&
+    pliantClientId() &&
+      pliantClientSecret() &&
       process.env.PLIANT_ORGANIZATION_ID &&
       process.env.PLIANT_CARDHOLDER_ID
   );
+}
+
+function pliantClientId() {
+  return productionOnlySecret(process.env.PLIANT_CLIENT_ID);
+}
+
+function pliantClientSecret() {
+  return productionOnlySecret(process.env.PLIANT_CLIENT_SECRET);
 }
 
 function endpoints() {
@@ -30,9 +51,96 @@ function endpoints() {
 }
 
 async function accessToken() {
-  if (cached && cached.expiresAt > Date.now() + 60_000) return cached.accessToken;
-  const clientId = process.env.PLIANT_CLIENT_ID || "";
-  const clientSecret = process.env.PLIANT_CLIENT_SECRET || "";
+  const now = Date.now();
+  if (memory.token && pliantTokenStillValid(memory.token.expiresAt, now)) return memory.token.accessToken;
+  if (memory.deniedMessage && memory.deniedUntil > now) throw new Error(memory.deniedMessage);
+  if (!pending) {
+    pending = acquirePliantToken({ memory, store: integrationStore(), request: requestPliantToken }).finally(() => {
+      pending = null;
+    });
+  }
+  return pending;
+}
+
+function integrationStore(): PliantTokenStore {
+  return {
+    read: readStoredToken,
+    claim: claimTokenRefresh,
+    save: writeToken,
+    deny: writeDenial,
+    release: releaseTokenRefresh,
+  };
+}
+
+async function readStoredToken() {
+  const admin = createServiceClient();
+  const { data, error } = await admin
+    .from("crm_integrations")
+    .select("access_token, expires_at, extra")
+    .eq("provider", TOKEN_PROVIDER)
+    .maybeSingle();
+  if (error) throw new Error(PLIANT_TOKEN_MISSING);
+  const row = data as { access_token: string | null; expires_at: string | null; extra: unknown } | null;
+  if (!row) return null;
+  const expiresAt = row.expires_at ? Date.parse(row.expires_at) : null;
+  return { accessToken: row.access_token, expiresAt: Number.isFinite(expiresAt) ? expiresAt : null, extra: row.extra };
+}
+
+async function claimTokenRefresh(untilIso: string) {
+  const admin = createServiceClient();
+  const { data, error } = await admin.rpc("crm_claim_integration_refresh", {
+    p_provider: TOKEN_PROVIDER,
+    p_until: untilIso,
+  });
+  if (error) throw new Error(PLIANT_TOKEN_MISSING);
+  return data === true;
+}
+
+async function writeToken(token: string, expiresAt: number, extra: unknown) {
+  const admin = createServiceClient();
+  const { error } = await admin.from("crm_integrations").upsert(
+    {
+      provider: TOKEN_PROVIDER,
+      access_token: token,
+      expires_at: new Date(expiresAt).toISOString(),
+      extra: pliantTokenExtra(extra, null),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "provider" }
+  );
+  if (error) console.error("[pliant] jeton", "enregistrement");
+}
+
+async function writeDenial(untilIso: string, message: string, extra: unknown) {
+  const admin = createServiceClient();
+  const { error } = await admin.from("crm_integrations").upsert(
+    {
+      provider: TOKEN_PROVIDER,
+      extra: pliantTokenExtra(extra, { until: untilIso, message }),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "provider" }
+  );
+  if (error) console.error("[pliant] jeton", "blocage");
+}
+
+async function releaseTokenRefresh(extra: unknown) {
+  const admin = createServiceClient();
+  const { error } = await admin.from("crm_integrations").upsert(
+    {
+      provider: TOKEN_PROVIDER,
+      extra: pliantTokenExtra(extra, null),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "provider" }
+  );
+  if (error) console.error("[pliant] jeton", "verrou");
+}
+
+async function requestPliantToken() {
+  const clientId = pliantClientId();
+  const clientSecret = pliantClientSecret();
+  if (!clientId || !clientSecret) return { ok: false as const, status: 401, retryAfter: null };
   const { token, audience } = endpoints();
   const res = await fetch(token, {
     method: "POST",
@@ -44,14 +152,17 @@ async function accessToken() {
       grant_type: "client_credentials",
     }),
   });
-  if (!res.ok) throw new Error("Pliant n’a pas délivré de jeton.");
+  if (!res.ok) {
+    console.error("[pliant] jeton", res.status);
+    return { ok: false as const, status: res.status, retryAfter: res.headers.get("retry-after") };
+  }
   const json = (await res.json()) as { access_token?: string; expires_in?: number };
-  if (!json.access_token) throw new Error("Pliant n’a pas délivré de jeton.");
-  cached = {
-    accessToken: json.access_token,
-    expiresAt: Date.now() + (json.expires_in || 3600) * 1000,
-  };
-  return json.access_token;
+  if (!json.access_token) return { ok: false as const, status: 502, retryAfter: null };
+  return { ok: true as const, accessToken: json.access_token, expiresInSec: json.expires_in || 3600 };
+}
+
+function rethrowTokenFailure(err: unknown) {
+  if (err instanceof Error && isPliantTokenFailure(err.message)) throw err;
 }
 
 export async function issuePliantCard(cardholderId: string, body: unknown) {
@@ -238,6 +349,7 @@ async function pliantOrganizationIds() {
     return [...new Set([configured, ...ids].filter(Boolean))];
   } catch (err) {
     console.error("[pliant] organizations", err instanceof Error ? err.message : "échec");
+    rethrowTokenFailure(err);
     return configured ? [configured] : [];
   }
 }
@@ -264,6 +376,7 @@ async function fetchOrganizationTransactions(organizationId: string) {
     if (detailed.length) return detailed;
   } catch (err) {
     console.error("[pliant] details", err instanceof Error ? err.message : "échec");
+    rethrowTokenFailure(err);
   }
   return fetchPages((page) => {
     const query = new URLSearchParams({
