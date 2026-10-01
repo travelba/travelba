@@ -17,6 +17,7 @@ const AIRLINE_NAMES: { re: RegExp; iata: string }[] = [
   { re: /\bTRANSAVIA\b/i, iata: "TO" },
   { re: /\bEASYJET\b/i, iata: "U2" },
   { re: /\bRYANAIR\b/i, iata: "FR" },
+  { re: /\bTUI\b/i, iata: "TB" },
   { re: /\bROYAL AIR MAROC\b/i, iata: "AT" },
   { re: /\bVUELING\b/i, iata: "VY" },
   { re: /\bEMIRATES\b/i, iata: "EK" },

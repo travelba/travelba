@@ -14,12 +14,14 @@ export type CyrilFlight = {
   /** Heure locale HH:MM, relevé agence, sans nouvelle vérification. */
   depart: string;
   arrive: string;
+  dayLabel: string;
 };
 
-export const CYRIL_OUTBOUND_LABEL = "Jeudi 8 octobre 2026";
+export const CYRIL_THURSDAY_LABEL = "Jeudi 8 octobre 2026";
+export const CYRIL_FRIDAY_LABEL = "Vendredi 9 octobre 2026";
 export const CYRIL_RETURN_LABEL = "Dimanche 11 octobre 2026";
 
-export const CYRIL_OUTBOUND: CyrilFlight[] = [
+const THURSDAY: Omit<CyrilFlight, "dayLabel">[] = [
   { id: "to-3016", leg: "outbound", airline: "Transavia", iata: "TO", number: "TO 3016", airport: "Orly", depart: "10:40", arrive: "12:05" },
   { id: "fr-3844", leg: "outbound", airline: "Ryanair", iata: "FR", number: "FR 3844", airport: "Beauvais", depart: "10:55", arrive: "12:15" },
   { id: "af-1076", leg: "outbound", airline: "Air France", iata: "AF", number: "AF 1076", airport: "Roissy-CDG", depart: "12:30", arrive: "13:55" },
@@ -30,7 +32,27 @@ export const CYRIL_OUTBOUND: CyrilFlight[] = [
   { id: "to-3124", leg: "outbound", airline: "Transavia", iata: "TO", number: "TO 3124", airport: "Orly", depart: "18:45", arrive: "20:10" },
 ];
 
-export const CYRIL_RETURN: CyrilFlight[] = [
+/** Vendredi 9 octobre 2026, directs Paris → Marrakech, mêmes horaires affichés que le jeudi. */
+const FRIDAY: Omit<CyrilFlight, "dayLabel">[] = [
+  { id: "ven-u2-4663", leg: "outbound", airline: "easyJet", iata: "U2", number: "U2 4663", airport: "Roissy-CDG", depart: "06:00", arrive: "07:25" },
+  { id: "ven-to-3010", leg: "outbound", airline: "Transavia", iata: "TO", number: "TO 3010", airport: "Orly", depart: "06:15", arrive: "07:40" },
+  { id: "ven-vy-8633", leg: "outbound", airline: "Vueling", iata: "VY", number: "VY 8633", airport: "Orly", depart: "06:50", arrive: "08:10" },
+  { id: "ven-af-1276", leg: "outbound", airline: "Air France", iata: "AF", number: "AF 1276", airport: "Roissy-CDG", depart: "07:15", arrive: "08:40" },
+  { id: "ven-at-641", leg: "outbound", airline: "Royal Air Maroc", iata: "AT", number: "AT 641", airport: "Orly", depart: "07:30", arrive: "08:45" },
+  { id: "ven-to-3012", leg: "outbound", airline: "Transavia", iata: "TO", number: "TO 3012", airport: "Orly", depart: "08:25", arrive: "09:50" },
+  { id: "ven-fr-64", leg: "outbound", airline: "Ryanair", iata: "FR", number: "FR 64", airport: "Beauvais", depart: "10:55", arrive: "12:15" },
+  { id: "ven-tb-7522", leg: "outbound", airline: "TUI fly", iata: "TB", number: "TB 7522", airport: "Orly", depart: "11:35", arrive: "13:15" },
+  { id: "ven-af-1076", leg: "outbound", airline: "Air France", iata: "AF", number: "AF 1076", airport: "Roissy-CDG", depart: "12:30", arrive: "13:55" },
+  { id: "ven-at-749", leg: "outbound", airline: "Royal Air Maroc", iata: "AT", number: "AT 749", airport: "Orly", depart: "13:00", arrive: "14:15" },
+  { id: "ven-at-643", leg: "outbound", airline: "Royal Air Maroc", iata: "AT", number: "AT 643", airport: "Orly", depart: "13:40", arrive: "14:55" },
+  { id: "ven-to-3018", leg: "outbound", airline: "Transavia", iata: "TO", number: "TO 3018", airport: "Orly", depart: "15:25", arrive: "16:50" },
+  { id: "ven-af-1876", leg: "outbound", airline: "Air France", iata: "AF", number: "AF 1876", airport: "Roissy-CDG", depart: "15:30", arrive: "16:50" },
+  { id: "ven-u2-4665", leg: "outbound", airline: "easyJet", iata: "U2", number: "U2 4665", airport: "Roissy-CDG", depart: "15:50", arrive: "17:20" },
+  { id: "ven-to-3124", leg: "outbound", airline: "Transavia", iata: "TO", number: "TO 3124", airport: "Orly", depart: "19:05", arrive: "20:30" },
+  { id: "ven-af-1776", leg: "outbound", airline: "Air France", iata: "AF", number: "AF 1776", airport: "Roissy-CDG", depart: "20:55", arrive: "22:15" },
+];
+
+const SUNDAY: Omit<CyrilFlight, "dayLabel">[] = [
   { id: "to-3015", leg: "return", airline: "Transavia", iata: "TO", number: "TO 3015", airport: "Orly", depart: "11:40", arrive: "16:55" },
   { id: "to-3019", leg: "return", airline: "Transavia", iata: "TO", number: "TO 3019", airport: "Orly", depart: "14:45", arrive: "20:00" },
   { id: "af-1077", leg: "return", airline: "Air France", iata: "AF", number: "AF 1077", airport: "Roissy-CDG", depart: "15:00", arrive: "20:20" },
@@ -40,6 +62,17 @@ export const CYRIL_RETURN: CyrilFlight[] = [
   { id: "u2-4666", leg: "return", airline: "easyJet", iata: "U2", number: "U2 4666", airport: "Roissy-CDG", depart: "17:35", arrive: "22:55" },
   { id: "af-1877", leg: "return", airline: "Air France", iata: "AF", number: "AF 1877", airport: "Roissy-CDG", depart: "17:55", arrive: "23:20" },
 ];
+
+function withDay(dayLabel: string, flights: Omit<CyrilFlight, "dayLabel">[]): CyrilFlight[] {
+  return flights.map((flight) => ({ ...flight, dayLabel }));
+}
+
+export const CYRIL_OUTBOUND: CyrilFlight[] = [
+  ...withDay(CYRIL_THURSDAY_LABEL, THURSDAY),
+  ...withDay(CYRIL_FRIDAY_LABEL, FRIDAY),
+];
+
+export const CYRIL_RETURN: CyrilFlight[] = withDay(CYRIL_RETURN_LABEL, SUNDAY);
 
 export const CYRIL_DIETS = [
   { id: "tout", label: "De tout", image: "/anniversaire/regime-tout.jpg" },
@@ -61,11 +94,13 @@ export const CYRIL_SHEET_HEADERS = [
   "Accompagnateur",
   "Régime",
   "Régime accompagnateur",
+  "Aller — jour",
   "Aller — compagnie",
   "Aller — vol",
   "Aller — aéroport",
   "Aller — départ",
   "Aller — arrivée",
+  "Retour — jour",
   "Retour — compagnie",
   "Retour — vol",
   "Retour — aéroport",
@@ -86,6 +121,20 @@ export type CyrilGuest = {
 
 export function cyrilFlights(leg: CyrilLeg) {
   return leg === "outbound" ? CYRIL_OUTBOUND : CYRIL_RETURN;
+}
+
+export function cyrilFlightGroups(leg: CyrilLeg) {
+  const flights = cyrilFlights(leg);
+  const groups: { label: string; flights: CyrilFlight[] }[] = [];
+  for (const flight of flights) {
+    const last = groups.at(-1);
+    if (!last || last.label !== flight.dayLabel) {
+      groups.push({ label: flight.dayLabel, flights: [flight] });
+    } else {
+      last.flights.push(flight);
+    }
+  }
+  return groups;
 }
 
 export function cyrilFlightTitle(leg: CyrilLeg) {
@@ -127,6 +176,7 @@ function sentAtLabel(sentAt: Date) {
 
 function flightCells(flight: CyrilFlight) {
   return [
+    flight.dayLabel,
     flight.airline,
     flight.number,
     flight.airport,
