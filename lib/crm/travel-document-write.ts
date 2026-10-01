@@ -76,6 +76,7 @@ async function retirePreviousSameType(
     bookingId: string | null;
     travelerId: string | null;
     docType: TravelDocType;
+    issuingCountry?: string | null;
     keepId: string;
   }
 ) {
@@ -92,6 +93,12 @@ async function retirePreviousSameType(
     query = input.companionId
       ? query.eq("companion_id", input.companionId)
       : query.is("companion_id", null);
+  }
+  if (
+    (input.docType === "passport" || input.docType === "id_card") &&
+    input.issuingCountry
+  ) {
+    query = query.eq("issuing_country", input.issuingCountry);
   }
   const { error } = await query;
   if (error) throw new Error(error.message);
@@ -147,6 +154,7 @@ export async function insertTravelDocument(
       bookingId,
       travelerId,
       docType,
+      issuingCountry: resolveNationality(input.issuingCountry),
       keepId: data.id,
     });
   }

@@ -1,6 +1,7 @@
 import { parse } from "mrz";
 import { resolveNationality } from "./countries";
 import { humanizeMrzName, normalizeGivenNames, type ExtractedIdentity } from "./identity";
+import { cleanPersonalNumber } from "./passport-extract";
 import type { TravelDocType } from "./types";
 
 function fit(line: string, length: number) {
@@ -62,7 +63,7 @@ function toIdentity(result: ReturnType<typeof parse>): ExtractedIdentity {
     doc_type: mapDocType(result.format, fields.documentCode || null),
     number: result.documentNumber || fields.documentNumber || null,
     issuing_country: resolveNationality(fields.issuingState || null),
-    issued_on: mrzDateToIso(fields.issueDate, "expiry"),
+    issued_on: result.format === "TD3" ? null : mrzDateToIso(fields.issueDate, "expiry"),
     expires_on: mrzDateToIso(fields.expirationDate, "expiry"),
     first_name: fields.firstName ? normalizeGivenNames(fields.firstName) : null,
     last_name: fields.lastName ? humanizeMrzName(fields.lastName) : null,
@@ -72,7 +73,7 @@ function toIdentity(result: ReturnType<typeof parse>): ExtractedIdentity {
     nationality: resolveNationality(fields.nationality, fields.issuingState),
     sex: mapSex(fields.sex),
     authority: null,
-    personal_number: personal ? String(personal).replace(/</g, "").trim() || null : null,
+    personal_number: cleanPersonalNumber(personal),
     address_line: null,
     postal_code: null,
     city: null,
@@ -174,6 +175,19 @@ export function parseMrzFromOcrAll(text: string): ExtractedIdentity[] {
     if (identity) found.push(identity);
   }
   return keepBest(found);
+}
+
+export function identityFromMrzLines(lines: string[]): ExtractedIdentity | null {
+  const width = lines.length >= 3 ? 30 : 44;
+  const fitted = lines.map((line) => fit(line.toUpperCase().replace(/[^A-Z0-9<]/g, ""), width));
+  if (fitted.length < 2 || fitted.some((line) => line.replace(/</g, "").length < 8)) return null;
+  try {
+    const result = parse(fitted, { autocorrect: true });
+    if (!result.valid) return null;
+    return toIdentity(result);
+  } catch {
+    return null;
+  }
 }
 
 export function parseMrzFromOcr(text: string): ExtractedIdentity | null {

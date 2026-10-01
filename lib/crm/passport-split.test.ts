@@ -7,6 +7,13 @@ import {
   multiPassportCrops,
 } from "./passport-split";
 
+test("an open booklet portrait is the bottom identity page only", () => {
+  const crops = multiPassportCrops(1622, 2269);
+  assert.equal(crops.length, 1);
+  assert.ok(crops[0].top >= 2269 * 0.4);
+  assert.equal(crops[0].left, 0);
+});
+
 test("a landscape A4 scan of two open passports is two-up", () => {
   // 3150×2174 ≈ deux livrets côte à côte, pas assez large pour l’ancien seuil 1.7
   assert.equal(isTwoUpLandscape(3150, 2174), true);

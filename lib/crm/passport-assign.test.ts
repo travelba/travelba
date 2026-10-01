@@ -18,6 +18,36 @@ function person(
   };
 }
 
+test("two nationalities of one person stay on the same card", () => {
+  const booklets = [
+    person("Orene Wilhem Benjamin", "Deddouch", {
+      number: "43450083",
+      birth_date: "2007-08-17",
+      issuing_country: "IL",
+      nationality: "IL",
+    }),
+    person("Orène Wilhem Benjamin", "Deddouch", {
+      number: "25HA65836",
+      birth_date: "2007-08-17",
+      issuing_country: "FR",
+      nationality: "FR",
+    }),
+  ];
+  const onHolder = assignPassportsToParty(booklets, { first_name: "", last_name: "" }, [], { kind: "holder" });
+  assert.equal(onHolder.length, 2);
+  assert.deepEqual(
+    onHolder.map((row) => row.target.kind),
+    ["holder", "holder"]
+  );
+  const created = assignPassportsToParty(booklets, { first_name: "", last_name: "" }, [], null);
+  assert.equal(created.length, 2);
+  assert.equal(created[0].target.kind, "create");
+  assert.equal(created[1].target.kind, "create");
+  if (created[0].target.kind === "create" && created[1].target.kind === "create") {
+    assert.equal(created[0].target.personKey, created[1].target.personKey);
+  }
+});
+
 test("two unknown passports both become companions", () => {
   const assignments = assignPassportsToParty(
     [person("Jean", "Dupont"), person("Marie", "Martin")],

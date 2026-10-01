@@ -26,10 +26,12 @@ description: >-
 
 ## Passeport / pièces
 
-- **Un passeport par personne** (titulaire ou compagnon), pas un passeport « du dossier » générique. Un PDF / une photo avec **plusieurs passeports** (couple, deux livrets ouverts sur une page paysage ~A4) → extraire **chaque** personne (découpe gauche/droite + bas). Le titulaire ne reçoit une pièce **que si le nom correspond** ; **chaque autre personne devient un accompagnateur**.
-- Scan : photo JPEG/PNG/HEIC **ou PDF** → `/api/admin/travel-documents/scan` ou `/api/client/documents/scan`. MRZ Tesseract + `mrz`. PDF : texte MRZ si calque, sinon raster 1–2 pages via **unpdf/pdfjs** (jamais `pdfjs-dist` 5.7). `getDocumentProxy` clone les octets (sinon DataCloneError au 2ᵉ passage). **Pas** le dropzone résa.
-- PDF passeport souvent sans calque : rasteriser ou photo de la bande MRZ. L’upload **accepte** le PDF.
-- **Prénoms** : tous ceux imprimés (ligne Prénoms / Given names), **dans l’ordre du document** — jamais seulement le premier. Fusion MRZ + zone visuelle : on garde la liste la plus complète si l’ordre est conservé (`normalizeGivenNames` / `completeGivenNames`). La MRZ tronque souvent.
+- **Un livret = une personne**, pas un passeport « du dossier ». Photo d’un livret ouvert : seule la **page du bas** (identité) est lue. Le haut est une couverture ou la page « réservée aux autorités » — pas une seconde personne, et ça n’écrase rien. Deux livrets côte à côte sur une page paysage → une personne par moitié. Le titulaire ne reçoit une pièce **que si le nom correspond** ; **chaque autre personne devient un accompagnateur**.
+- **Même personne, deux nationalités** : nom + date de naissance. On garde les deux passeports (israélien et français), on ne crée pas un second accompagnateur, et un nouveau passeport ne remplace au coffre **que** le même pays émetteur.
+- Scan : photo JPEG/PNG/HEIC **ou PDF** → `/api/admin/travel-documents/scan` ou `/api/client/documents/scan`. MRZ Tesseract + `mrz`, orientations 0/90/180/270, on garde celle dont les chiffres de contrôle sont valides. PDF sans calque : JPEG embarqué (`pdfimages`) ou raster **unpdf/pdfjs** (jamais `pdfjs-dist` 5.7). `getDocumentProxy` clone les octets. **Pas** le dropzone résa. Un reflet ne bat pas une MRZ valide.
+- **Israël** : type PP, ISR, dates JJ/MM/AAAA, sexe à côté de נ (F) ou ז (M). « Israeli » → `IL` (jamais l’adjectif, jamais ISR sur la fiche). Le n° d’identité (`3-4130259-4`) est le `personal_number` ; les `<` de la MRZ sont les tirets.
+- **France** : type P, FRA, dates JJ MM AAAA. « Française » → `FR`. Prénoms séparés par des virgules, accents gardés. L’autorité peut tenir sur deux lignes. Le domicile remplit l’adresse perso encore vide ; le lieu de naissance n’est pas l’adresse. Taille et couleur des yeux ne sont pas des champs.
+- **Prénoms** : tous, le premier d’abord, dans l’ordre de la ligne latine « Prénoms » / « Given name » et de la MRZ (gauche à droite) — `Lyelle Jeanne Arlette`, pas l’inverse. L’hébreu se lit de droite à gauche ; la fiche est en français, donc on stocke les noms dans l’ordre français et on ne retourne jamais la ligne latine. Si l’OCR rend le bloc hébreu dans l’ordre visuel gauche-droite, cette chaîne n’est pas l’ordre des prénoms, et on ne retourne pas les noms latins pour imiter l’hébreu. `last_name` est le nom de famille. La MRZ tronque souvent : on complète si l’ordre est le même (`completeGivenNames`), accents de la ligne imprimée (`Orène, Wilhem, Benjamin`).
 - **Nom d'épouse** : la MRZ n'a que le nom de naissance (`last_name`). Le nom d'usage / « épouse » / « ép. » / « née » va dans `usage_name` (`spouseFamilyNames`). Ne pas le perdre au merge. Null si la pièce n'en a pas.
 - **Nationalité** : toujours un code ISO 2 (`FR`) sur la fiche Identité (`CountrySelect`). Vision/MRZ peuvent renvoyer « Française », FRA ou seulement le pays d’émission — `resolveNationality` (+ fallback `issuing_country`). Ne jamais stocker l’adjectif. Toute erreur de nationalité se corrige dans `lib/crm/countries.ts` + un test.
 - Ne **pas** logger numéro / MRZ.
@@ -55,7 +57,7 @@ UI : bloc pièce **replié** par défaut (passeport). Copy courte, pas « Upload
 
 ## OCR
 
-`lib/crm/ocr-document.ts`, `lib/crm/mrz-parse.ts`. Toute erreur MRZ réelle se corrige **là** + un test `lib/crm/passport-extract.test.ts` / `identity.test.ts` / `document-identity.test.ts`. Ne pas envoyer le scan passeport dans le prompt carnet `gpt-4o`. Les prénoms extraits = **tous**, dans l’ordre imprimé.
+`lib/crm/ocr-document.ts`, `lib/crm/mrz-parse.ts`, `lib/crm/passport-scan.ts`. Toute erreur MRZ réelle se corrige **là** + un test `lib/crm/passport-extract.test.ts` / `identity.test.ts` / `passport-mrz.test.ts`. Ne pas envoyer le scan passeport dans le prompt carnet `gpt-4o`. Les prénoms extraits = **tous**, ordre latin, jamais l’ordre hébreu.
 
 ## Admin fiche
 
