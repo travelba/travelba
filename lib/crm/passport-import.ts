@@ -64,32 +64,42 @@ export async function persistImportedPassports(
 
   const documents: CrmTravelDocument[] = [];
   let createdCompanions = 0;
+  const createdCompanionIds = new Map<string, string>();
 
   for (const assignment of assignments) {
     let companionId = companionIdOf(assignment.target);
     if (assignment.target.kind === "create") {
-      const first = (assignment.identity.first_name || "").trim();
-      const last = (assignment.identity.last_name || "").trim();
-      if (!first || !last) continue;
-      const inserted = await supabase
-        .from("crm_travel_companions")
-        .insert({
-          customer_id: opts.customerId,
-          first_name: first,
-          last_name: last,
-          usage_name: emptyToNull(assignment.identity.usage_name),
-          birth_date: assignment.identity.birth_date,
-          sex: assignment.identity.sex,
-          nationality: resolveNationality(
-            assignment.identity.nationality,
-            assignment.identity.issuing_country
-          ),
-        })
-        .select("id")
-        .single();
-      if (inserted.error) throw new Error(inserted.error.message);
-      companionId = inserted.data.id;
-      createdCompanions += 1;
+      const key = assignment.target.personKey || "";
+      const already = key ? createdCompanionIds.get(key) : undefined;
+      if (already) {
+        companionId = already;
+      } else {
+        const first = (assignment.identity.first_name || "").trim();
+        const last = (assignment.identity.last_name || "").trim();
+        if (!first || !last) continue;
+        const inserted = await supabase
+          .from("crm_travel_companions")
+          .insert({
+            customer_id: opts.customerId,
+            first_name: first,
+            last_name: last,
+            usage_name: emptyToNull(assignment.identity.usage_name),
+            birth_date: assignment.identity.birth_date,
+            sex: assignment.identity.sex,
+            nationality: resolveNationality(
+              assignment.identity.nationality,
+              assignment.identity.issuing_country
+            ),
+          })
+          .select("id")
+          .single();
+        if (inserted.error) throw new Error(inserted.error.message);
+        const createdId = inserted.data.id;
+        if (!createdId) throw new Error("companion insert returned no id");
+        companionId = createdId;
+        createdCompanions += 1;
+        if (key) createdCompanionIds.set(key, createdId);
+      }
     }
 
     const document = await insertTravelDocument(supabase, {

@@ -39,17 +39,24 @@ export function isoDate(value: string | null | undefined) {
   const text = emptyToNull(value);
   if (!text) return null;
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
-  const fr = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+  const fr = text.match(/^(\d{1,2})[./\-\s]+(\d{1,2})[./\-\s]+(\d{4})$/);
   if (!fr) return null;
+  const day = Number(fr[1]);
+  const month = Number(fr[2]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
   return `${fr[3]}-${fr[2].padStart(2, "0")}-${fr[1].padStart(2, "0")}`;
 }
 
 export function mapSex(value: string | null | undefined): ExtractedIdentity["sex"] {
   if (!value) return null;
-  const v = value.trim().toLowerCase();
-  if (v === "m" || v === "male" || v === "homme" || v === "h") return "M";
-  if (v === "f" || v === "female" || v === "femme") return "F";
-  if (v === "x" || v === "autre" || v === "other") return "X";
+  const token = value.trim().toLowerCase().split(/[\s/]+/).find(Boolean) || "";
+  if (token === "m" || token === "male" || token === "homme" || token === "h" || token === "ז" || token === "זכר") {
+    return "M";
+  }
+  if (token === "f" || token === "female" || token === "femme" || token === "נ" || token === "נקבה") {
+    return "F";
+  }
+  if (token === "x" || token === "autre" || token === "other") return "X";
   return null;
 }
 
@@ -74,11 +81,14 @@ export function mapDocType(value: string | null | undefined): TravelDocType {
 }
 
 export function cleanPersonalNumber(value: string | null | undefined) {
-  const text = emptyToNull(value)
-    ?.replace(/</g, "")
-    .replace(/\s+/g, "")
-    .trim();
-  return text || null;
+  const text = emptyToNull(value);
+  if (!text) return null;
+  const spaced = text.replace(/</g, " ").replace(/\s+/g, " ").trim();
+  if (!spaced) return null;
+  // Passeport israélien : les « < » de la MRZ sont les tirets du n° d’identité (3-5207718-6).
+  if (/^\d(?: \d+)+$/.test(spaced)) return spaced.replace(/ /g, "-");
+  const stripped = spaced.replace(/ /g, "");
+  return stripped || null;
 }
 
 function tidyName(value: string | null | undefined) {
@@ -110,6 +120,7 @@ export function spouseFamilyNames(input: {
   birthName?: string | null;
   printedName?: string | null;
   usageName?: string | null;
+  givenNames?: string | null;
 }): { last_name: string | null; usage_name: string | null } {
   const fromBirth = parseSpouseLine(input.birthName);
   const fromPrinted = parseSpouseLine(input.printedName);
@@ -118,7 +129,11 @@ export function spouseFamilyNames(input: {
   const explicitUsage = fromUsage?.usage || fromPrinted?.usage || fromBirth?.usage || tidyName(input.usageName);
   const printedPlain = fromPrinted ? null : tidyName(input.printedName);
   let usage = explicitUsage;
-  if (!usage && printedPlain && birth && !lastNamesMatch(printedPlain, birth)) usage = printedPlain;
+  const givenFold = new Set(nameTokens(input.givenNames));
+  const printedIsGiven = printedPlain ? givenFold.has(foldName(printedPlain)) : false;
+  if (!usage && printedPlain && birth && !printedIsGiven && !lastNamesMatch(printedPlain, birth)) {
+    usage = printedPlain;
+  }
   const last = birth || printedPlain || tidyName(input.printedName);
   if (usage && last && lastNamesMatch(usage, last)) usage = null;
   return { last_name: last, usage_name: usage };
@@ -261,7 +276,23 @@ function identityQuality(identity: ExtractedIdentity) {
   );
 }
 
+function differentPassportBooklets(a: ExtractedIdentity, b: ExtractedIdentity) {
+  if (a.doc_type !== "passport" || b.doc_type !== "passport") return false;
+  const left = passportNumberKey(a.number);
+  const right = passportNumberKey(b.number);
+  if (!left || !right || left === right) return false;
+  return !numbersLookLikeSameDocument(a.number, b.number);
+}
+
+/** Même personne (nom + date de naissance), même si les livrets diffèrent. */
+export function samePassportPerson(a: ExtractedIdentity, b: ExtractedIdentity) {
+  if (!namesReferToSamePerson(a, b)) return false;
+  if (a.birth_date && b.birth_date && a.birth_date !== b.birth_date) return false;
+  return true;
+}
+
 function identitiesAreSamePerson(a: ExtractedIdentity, b: ExtractedIdentity) {
+  if (differentPassportBooklets(a, b)) return false;
   if (passportsReferToSame(a, b)) return true;
   if (namesReferToSamePerson(a, b)) return true;
   if (!numbersLookLikeSameDocument(a.number, b.number)) return false;
@@ -350,6 +381,7 @@ export function mergePassportIdentities(
     birthName: mrz.last_name,
     printedName: vision.last_name,
     usageName: vision.usage_name,
+    givenNames: completeGivenNames(mrz.first_name, vision.first_name),
   });
   return {
     ...merged,
