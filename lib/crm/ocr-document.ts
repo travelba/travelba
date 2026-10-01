@@ -14,6 +14,7 @@ import { aiGatewayConfigured, isAllowedIngestType, isPdfFile, openaiApiKey } fro
 import { identitiesExtractSchema } from "./ocr-schema";
 import { trySharp } from "./sharp";
 import { inspectPdf, type RasterPage } from "./pdf-raster";
+import { scanPassportBytes } from "./passport-scan";
 import { multiPassportCrops, type CropRect } from "./passport-split";
 
 const MAX_BYTES = 12 * 1024 * 1024;
@@ -27,11 +28,15 @@ Plusieurs images peuvent être le même scan découpé (gauche / droite / bas) :
 
 Extrais TOUS les champs visibles. Ne jamais inventer : mettre null si absent ou illisible.
 Dates en YYYY-MM-DD.
-Nationalité : code ISO 2 lettres UNIQUEMENT (FR, MA, US, GB). Jamais l’adjectif (Française, Marocaine) ni le nom du pays.
+Nationalité : code ISO 2 lettres UNIQUEMENT (FR, IL, MA, US, GB). « Israeli » et ISR deviennent IL, « Française » et FRA deviennent FR. Jamais l’adjectif.
 Pays émetteur : même règle ISO 2.
-sex : M, F ou X.
+sex : M, F ou X. Sur un passeport israélien, נ = F et ז = M.
 doc_type : passport | id_card | visa | insurance | other.
-first_name : TOUS les prénoms imprimés (ligne « Prénoms » / Given names), dans l’ordre du document, séparés par un espace. Ne jamais n’en garder qu’un. Ne pas réordonner. Conserver les traits d’union (Jean-Pierre).
+first_name : TOUS les prénoms, dans l’ordre de la ligne latine « Prénoms » / « Given name » et de la MRZ (gauche à droite). Lyelle Jeanne Arlette, jamais l’ordre inverse. Ne pas prendre l’ordre visuel du bloc hébreu (droite à gauche). Ne pas retourner les prénoms latins. Accents gardés (Orène).
+Livret ouvert en portrait : seule la page du bas est une personne. Le haut (armoiries, « page réservée aux autorités ») n’en est pas une.
+Page tournée : lire après rotation. Un chiffre de reflet ne remplace pas une MRZ dont les contrôles sont valides.
+Deux livrets de pays différents pour la même personne = deux pièces, pas une seconde personne.
+Taille et couleur des yeux ne sont pas des champs. Le domicile imprimé n’est pas le lieu de naissance. Le n° personnel israélien garde ses tirets.
 last_name : nom de naissance (ligne « Nom » / Surname). Pas le nom d’usage.
 usage_name : nom d’épouse ou nom d’usage, s’il est imprimé (ligne « Nom d’usage », « épouse », « ép. », « née »). Null s’il n’y en a pas. Ne jamais l’inventer, ne pas le mettre dans last_name ni dans les prénoms.
 place_of_birth : lieu de naissance (ville / pays), tel qu’imprimé.
@@ -281,6 +286,19 @@ export async function scanTravelDocument(file: File): Promise<{
   const isPdf = isPdfFile(file.type, file.name);
   let pdfMrz: ExtractedIdentity[] = [];
   let pages: RasterPage[];
+
+  try {
+    const local = await scanPassportBytes(bytes, file.type, file.name);
+    if (local.length && local.every((identity) => identity.valid && fieldScore(identity) >= 4)) {
+      const incomplete = local.some((identity) => !identity.place_of_birth || !identity.authority);
+      return scanResult(
+        local,
+        incomplete ? "Lecture partielle : vérifiez chaque passeport avant d’enregistrer." : null
+      );
+    }
+  } catch (err) {
+    console.error("[ocr-document] mrz-local", err instanceof Error ? err.name : "error");
+  }
 
   try {
     if (isPdf) {

@@ -49,12 +49,18 @@ export function bottomIdentityRects(width: number, height: number): CropRect[] {
   ];
 }
 
+/** Page d’identité d’un livret ouvert : le bas. Le haut est une couverture. */
+export function openBookletIdentityRect(width: number, height: number): CropRect {
+  const top = Math.round(height * 0.46);
+  return { left: 0, top, width, height: Math.max(0, height - top) };
+}
+
 export function multiPassportCrops(width: number, height: number): CropRect[] {
   if (isTwoUpLandscape(width, height)) {
     return [...halfRects(width, height, "x"), ...bottomIdentityRects(width, height)];
   }
   if (isTwoUpPortrait(width, height)) {
-    return halfRects(width, height, "y");
+    return [openBookletIdentityRect(width, height)];
   }
   return [];
 }
