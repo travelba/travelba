@@ -51,7 +51,7 @@ import {
   RestoreBookingButton,
 } from "@/components/admin/DeleteBookingButton";
 import { LittleEmperorsCancel } from "@/components/admin/LittleEmperorsCancel";
-import { hotelsNeedingDesk } from "@/lib/crm/hotel-desk";
+import { hotelTripChecklist } from "@/lib/crm/hotel-desk";
 import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
 import { PlaceField } from "@/components/crm/PlaceField";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
@@ -512,7 +512,7 @@ export function BookingEditor({
       tripDocumentsForTraveler(identityDocs, traveler).length === 0 &&
       reusableDocumentsForTraveler(identityDocs, traveler, holderProfile).length === 0
   );
-  const hotelDeskCount = hotelsNeedingDesk(hotelRequests, todayIsoDate());
+  const hotelLetters = hotelTripChecklist(hotelRequests);
   const hasHotel = items.some((item) => item.kind === "hotel");
   const hasFlight = bookingHasFlight(items);
   const leOpen =
@@ -527,7 +527,7 @@ export function BookingEditor({
   const blockers = staffBlockingChips({
     travelers,
     missingPassportIds: passportGap.map((traveler) => traveler.id),
-    hotelUnwritten: hotelDeskCount > 0,
+    hotelLettersOpen: hotelLetters.openCount,
     amountHidden: !booking.archived_at && (!booking.visible_to_client || booking.prices_visible === false),
   });
   const travelerLabel = travelers.length
@@ -1424,12 +1424,24 @@ export function BookingEditor({
               />
             </section>
           ) : null}
-          {hotelDeskCount > 0 ? (
-            <section className="admin-af-card flex flex-wrap items-center justify-between gap-3 rounded-3xl p-5">
-              <p className="font-display text-lg font-bold text-[var(--admin-navy)]">
-                {hotelDeskCount} hôtel{hotelDeskCount > 1 ? "s" : ""} à écrire
-              </p>
-              <button type="button" className="admin-af-btn rounded-full px-4 py-2 text-sm" onClick={() => setTab("voyage")}>
+          {hotelLetters.openStays.length ? (
+            <section className="admin-af-card space-y-3 rounded-3xl bg-[#faf9f6] p-5">
+              <h2 className="font-display text-lg font-bold text-[#0B192C]">Courriers hôtel</h2>
+              <ul className="space-y-2">
+                {hotelLetters.openStays.map((stay) => {
+                  const hotel = items.find((item) => item.id === stay.itemId);
+                  return (
+                    <li key={stay.itemId} className="flex items-start gap-2 text-sm text-[#0B192C]">
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#C5A880]" aria-hidden />
+                      <span>
+                        <span className="font-semibold">{hotel ? hotelDisplayName(hotel) : "Hôtel"}</span>
+                        <span className="text-[#3d4654]"> — {stay.summary}</span>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <button type="button" className="admin-af-btn rounded-full bg-[#0B192C] px-4 py-2 text-sm text-[#faf9f6]" onClick={() => setTab("voyage")}>
                 Voir l’étape
               </button>
             </section>

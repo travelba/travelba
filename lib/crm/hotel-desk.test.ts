@@ -19,9 +19,13 @@ import {
   mergeDeskContacts,
   hotelDeskSuggested,
   hotelMailPieceMatches,
+  hotelLetterCaption,
+  hotelStayChecklist,
   hotelStayContext,
   hotelThread,
+  hotelTripChecklist,
   hotelsNeedingDesk,
+  deskStatusLabel,
   keepAgencyDraft,
   knownHotelRecipients,
   nextDeskMark,
@@ -224,6 +228,45 @@ test("échéance, relance et réponse", () => {
     }),
     false
   );
+});
+
+test("chaque courrier est envoyé, pas besoin, ou encore ouvert", () => {
+  const row = (kind: CrmHotelRequest["kind"], status: CrmHotelRequest["status"], item = "h1") => ({
+    booking_item_id: item,
+    kind,
+    status,
+  });
+  const stay = hotelStayChecklist("h1", [
+    row("payment_link", "waiting"),
+    row("upgrade", "sent"),
+    row("precheckin", "skipped"),
+    row("full_credit", "draft"),
+    row("transfer", "replied"),
+    row("concierge", "follow_up"),
+  ]);
+  assert.equal(stay.complete, false);
+  assert.deepEqual(stay.openTitles, ["Lien de paiement", "Full credit"]);
+  assert.equal(stay.summary, "Il reste Lien de paiement et Full credit");
+  assert.equal(stay.lines.find((line) => line.kind === "precheckin")?.caption, "Pas besoin");
+  assert.equal(stay.lines.find((line) => line.kind === "concierge")?.caption, "Envoyé · à relancer");
+  assert.equal(stay.lines.find((line) => line.kind === "transfer")?.mark, "sent");
+  assert.equal(hotelLetterCaption("waiting"), "À faire");
+  assert.equal(deskStatusLabel({ status: "skipped" }), "Pas besoin");
+  const done = hotelStayChecklist("h1", [row("payment_link", "sent"), row("upgrade", "skipped")]);
+  assert.equal(done.complete, true);
+  assert.equal(done.summary, "Courriers réglés");
+  const relance = hotelStayChecklist("h1", [row("payment_link", "follow_up")]);
+  assert.equal(relance.complete, true);
+  assert.match(relance.summary, /relancer/);
+  const trip = hotelTripChecklist([
+    row("payment_link", "waiting", "h1"),
+    row("upgrade", "sent", "h1"),
+    row("payment_link", "sent", "h2"),
+    row("upgrade", "skipped", "h2"),
+  ]);
+  assert.equal(trip.openCount, 1);
+  assert.deepEqual(trip.openStays.map((item) => item.itemId), ["h1"]);
+  assert.equal(trip.stays.find((item) => item.itemId === "h2")?.complete, true);
 });
 
 test("la réponse hôtel reste dans le dossier, sans numéro de carte", () => {

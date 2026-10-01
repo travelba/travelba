@@ -33,7 +33,7 @@ export type StaffBlocker = { id: string; label: string };
 export function staffBlockingChips(input: {
   travelers: { id: string; first_name?: string | null; last_name?: string | null }[];
   missingPassportIds: string[];
-  hotelUnwritten: boolean;
+  hotelLettersOpen: number;
   amountHidden: boolean;
 }): StaffBlocker[] {
   const missing = new Set(input.missingPassportIds);
@@ -43,7 +43,12 @@ export function staffBlockingChips(input: {
     const name = (traveler.first_name || traveler.last_name || "voyageur").trim();
     chips.push({ id: `passport-${traveler.id}`, label: `Passeport ${name}` });
   }
-  if (input.hotelUnwritten) chips.push({ id: "hotel", label: "Hôtel non écrit" });
+  if (input.hotelLettersOpen > 0) {
+    chips.push({
+      id: "hotel",
+      label: input.hotelLettersOpen > 1 ? `${input.hotelLettersOpen} courriers hôtel` : "Courrier hôtel",
+    });
+  }
   if (input.amountHidden) chips.push({ id: "amount", label: "Montant non montré" });
   return chips;
 }

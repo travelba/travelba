@@ -573,18 +573,89 @@ export function deskNeedsAttention(row: Pick<CrmHotelRequest, "status" | "due_on
   return false;
 }
 
+/** Envoyé, explicitement inutile, ou encore ouvert. Rien d'autre. */
+export type HotelLetterMark = "open" | "sent" | "unneeded";
+
+export function hotelLetterMark(status: HotelDeskStatus): HotelLetterMark {
+  if (status === "skipped") return "unneeded";
+  if (status === "sent" || status === "follow_up" || status === "replied") return "sent";
+  return "open";
+}
+
+export function hotelLetterCaption(status: HotelDeskStatus) {
+  if (status === "skipped") return "Pas besoin";
+  if (status === "replied") return "Répondu";
+  if (status === "follow_up") return "Envoyé · à relancer";
+  if (status === "sent") return "Envoyé";
+  return "À faire";
+}
+
+export type HotelChecklistLine = {
+  kind: HotelDeskKind;
+  title: string;
+  mark: HotelLetterMark;
+  caption: string;
+};
+
+function frenchJoin(labels: string[]) {
+  if (labels.length <= 1) return labels[0] || "";
+  if (labels.length === 2) return `${labels[0]} et ${labels[1]}`;
+  return `${labels.slice(0, -1).join(", ")} et ${labels[labels.length - 1]}`;
+}
+
+/** Les courriers attendus d'un hôtel, dans l'ordre du bureau. */
+export function hotelStayChecklist(
+  itemId: string,
+  requests: Pick<CrmHotelRequest, "booking_item_id" | "kind" | "status">[]
+) {
+  const mine = requests.filter((row) => row.booking_item_id === itemId);
+  const lines: HotelChecklistLine[] = HOTEL_DESK_KINDS.flatMap((kind) => {
+    const row = mine.find((item) => item.kind === kind);
+    if (!row) return [];
+    return [
+      {
+        kind,
+        title: HOTEL_DESK_LABELS[kind],
+        mark: hotelLetterMark(row.status),
+        caption: hotelLetterCaption(row.status),
+      },
+    ];
+  });
+  const openTitles = lines.filter((line) => line.mark === "open").map((line) => line.title);
+  const relanceTitles = lines.filter((line) => line.caption.includes("relancer")).map((line) => line.title);
+  const summary = !lines.length
+    ? ""
+    : openTitles.length
+      ? `Il reste ${frenchJoin(openTitles)}`
+      : relanceTitles.length
+        ? `À relancer : ${frenchJoin(relanceTitles)}`
+        : "Courriers réglés";
+  return {
+    lines,
+    openTitles,
+    relanceTitles,
+    complete: lines.length > 0 && openTitles.length === 0,
+    summary,
+  };
+}
+
+/** Ce qui reste ouvert sur le séjour, hôtel par hôtel. */
+export function hotelTripChecklist(requests: Pick<CrmHotelRequest, "booking_item_id" | "kind" | "status">[]) {
+  const ids = [...new Set(requests.map((row) => row.booking_item_id))];
+  const stays = ids
+    .map((itemId) => ({ itemId, ...hotelStayChecklist(itemId, requests) }))
+    .filter((stay) => stay.lines.length > 0);
+  const openStays = stays.filter((stay) => !stay.complete);
+  const openCount = openStays.reduce((count, stay) => count + stay.openTitles.length, 0);
+  return { stays, openStays, openCount };
+}
+
 export function hotelsNeedingDesk(rows: Pick<CrmHotelRequest, "booking_item_id" | "status" | "due_on">[], parisToday: string) {
   return new Set(rows.filter((row) => deskNeedsAttention(row, parisToday)).map((row) => row.booking_item_id)).size;
 }
 
-export function deskStatusLabel(row: Pick<CrmHotelRequest, "status" | "due_on">, parisToday: string) {
-  if (row.status === "skipped") return "Ignoré";
-  if (row.status === "replied") return "Répondu";
-  if (row.status === "sent") return "Envoyé";
-  if (row.status === "follow_up") return "À relancer";
-  if (row.status === "draft") return deskNeedsAttention(row, parisToday) ? "Brouillon · à faire" : "Brouillon";
-  if (row.status === "due" || deskNeedsAttention(row, parisToday)) return "À faire";
-  return "";
+export function deskStatusLabel(row: Pick<CrmHotelRequest, "status">, _parisToday?: string) {
+  return hotelLetterCaption(row.status);
 }
 
 export function nextDeskMark(input: {

@@ -28,7 +28,7 @@ import { formatMoney } from "@/lib/crm/money";
 import { shortStayDay, shortStayRange } from "@/lib/crm/staff-stay";
 import { Icon } from "@/components/crm/icons";
 import { STAY_CURRENCIES } from "@/lib/crm/stay-currency";
-import { HotelDesk } from "@/components/admin/HotelDesk";
+import { HotelChecklistGlance, HotelDesk } from "@/components/admin/HotelDesk";
 import { ProposedDuplicates } from "@/components/admin/ProposedDuplicates";
 import type { CardViewLine, CrmBookingTraveler, CrmHotelArrival, CrmHotelMessage, CrmHotelRequest, CrmTravelDocument } from "@/lib/crm/types";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
@@ -452,6 +452,7 @@ export function BookingItemsPanel({
                   ) : null}
                   {item.kind === "hotel" && hotelRequests.some((row) => row.booking_item_id === item.id) ? (
                     <div className="mt-1">
+                      {deskFor === item.id ? null : <HotelChecklistGlance itemId={item.id} requests={hotelRequests} />}
                       <button
                         type="button"
                         className={flatBtn}

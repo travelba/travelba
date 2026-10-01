@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { HotelThread } from "@/components/admin/HotelThread";
 import { PrecheckPack } from "@/components/admin/PrecheckPack";
 import { hotelDisplayName } from "@/lib/crm/carnet";
-import { HOTEL_DESK_LABELS, deskStatusLabel, hotelsNeedingDesk, type HotelMailPiece } from "@/lib/crm/hotel-desk";
+import { hotelStayChecklist, hotelTripChecklist, type HotelMailPiece } from "@/lib/crm/hotel-desk";
 import { precheckParty } from "@/lib/crm/hotel-precheck";
 import { HOTEL_DESK_KINDS, type CardViewLine, type CrmBookingItem, type CrmBookingTraveler, type CrmHotelMessage, type CrmHotelRequest, type CrmTravelDocument, type HotelDeskKind } from "@/lib/crm/types";
 
@@ -14,16 +14,28 @@ const letterFieldClass =
 
 export function HotelDeskSummary({
   requests,
-  today,
 }: {
   requests: CrmHotelRequest[];
   today: string;
 }) {
-  const hotels = hotelsNeedingDesk(requests, today);
-  if (!hotels) return null;
+  const trip = hotelTripChecklist(requests);
+  if (!trip.openCount) return null;
   return (
-    <p className="text-sm font-semibold text-[var(--admin-navy)]">
-      {hotels} hôtel{hotels > 1 ? "s" : ""} à traiter
+    <p className="text-sm font-semibold text-[#0B192C]">
+      {trip.openCount > 1 ? `${trip.openCount} courriers hôtel` : "Courrier hôtel"}
+    </p>
+  );
+}
+
+export function HotelChecklistGlance({ itemId, requests }: { itemId: string; requests: CrmHotelRequest[] }) {
+  const stay = hotelStayChecklist(itemId, requests);
+  if (!stay.summary) return null;
+  return (
+    <p className={`mt-1 text-xs font-medium ${stay.complete ? "text-[#3d4654]" : "text-[#0B192C]"}`}>
+      {stay.complete ? null : (
+        <span className="mr-1.5 inline-block h-1.5 w-1.5 translate-y-[-1px] rounded-full bg-[#C5A880]" aria-hidden />
+      )}
+      {stay.summary}
     </p>
   );
 }
@@ -32,7 +44,6 @@ export function HotelDesk({
   bookingId,
   item,
   requests,
-  today,
   travelers = [],
   identityDocs = [],
   holder = null,
@@ -60,33 +71,71 @@ export function HotelDesk({
   const rows = HOTEL_DESK_KINDS.map((kind) => requests.find((row) => row.booking_item_id === item.id && row.kind === kind)).filter(
     (row): row is CrmHotelRequest => Boolean(row)
   );
+  const router = useRouter();
   const [open, setOpen] = useState<HotelDeskKind | null>(null);
+  const [marking, setMarking] = useState<string | null>(null);
   if (!rows.length) return null;
-  const active = rows.filter((row) => row.status !== "skipped");
-  const skipped = rows.filter((row) => row.status === "skipped");
+  const stay = hotelStayChecklist(item.id, rows);
+
+  async function mark(row: CrmHotelRequest, action: "skip" | "restore") {
+    setMarking(row.kind);
+    const result = await post(bookingId, row, action);
+    setMarking(null);
+    if (!result.ok) return;
+    if (open === row.kind) setOpen(null);
+    router.refresh();
+  }
+
   return (
     <div className="mt-3 space-y-3">
-      <HotelThread bookingId={bookingId} item={item} requests={requests} messages={messages} attached={attached} />
-      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#6f552c]">Courriers préparés</p>
-      <div className="flex flex-wrap gap-2">
-        {active.map((row) => {
-          const label = deskStatusLabel(row, today);
-          const attention = label === "À faire" || label === "À relancer" || label.includes("à faire");
-          return (
-            <button
-              key={row.kind}
-              type="button"
-              className={`rounded-full border bg-white px-3 py-1.5 text-xs font-semibold text-[#0B192C] ${
-                attention ? "border-[#C5A880]" : "border-[#d9d1c3]"
-              }`}
-              onClick={() => setOpen(open === row.kind ? null : row.kind)}
-            >
-              {HOTEL_DESK_LABELS[row.kind]}
-              {label ? <span className="ml-1 font-medium text-[#6f552c]">{label}</span> : null}
-            </button>
-          );
-        })}
-      </div>
+      <section className="overflow-hidden rounded-2xl border border-[#e5e0d4] bg-[#faf9f6]" aria-label={`Courriers pour ${hotelDisplayName(item) || item.title}`}>
+        <p className="border-b border-[#e5e0d4] px-3 py-2 text-xs font-medium text-[#0B192C]">{stay.summary}</p>
+        <ul>
+          {stay.lines.map((line) => {
+            const row = rows.find((itemRow) => itemRow.kind === line.kind);
+            if (!row) return null;
+            const selected = open === line.kind;
+            return (
+              <li key={line.kind} className="flex items-center border-t border-[#e5e0d4] first:border-t-0">
+                <button
+                  type="button"
+                  className={`flex min-w-0 flex-1 items-center gap-2 px-3 py-2.5 text-left ${selected ? "bg-white" : ""}`}
+                  onClick={() => setOpen(selected ? null : line.kind)}
+                >
+                  <span
+                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${line.mark === "open" ? "bg-[#C5A880]" : "bg-[#0B192C]/20"}`}
+                    aria-hidden
+                  />
+                  <span className="truncate text-sm font-semibold text-[#0B192C]">{line.title}</span>
+                  <span className={`ml-auto shrink-0 text-xs font-medium ${line.mark === "unneeded" ? "text-[#3d4654]" : "text-[#0B192C]"}`}>
+                    {line.caption}
+                  </span>
+                </button>
+                {line.mark === "open" ? (
+                  <button
+                    type="button"
+                    className="shrink-0 px-3 py-2.5 text-xs font-semibold text-[#0B192C]"
+                    disabled={marking === line.kind}
+                    onClick={() => void mark(row, "skip")}
+                  >
+                    Pas besoin
+                  </button>
+                ) : null}
+                {line.mark === "unneeded" ? (
+                  <button
+                    type="button"
+                    className="shrink-0 px-3 py-2.5 text-xs font-semibold text-[#0B192C]"
+                    disabled={marking === line.kind}
+                    onClick={() => void mark(row, "restore")}
+                  >
+                    Remettre
+                  </button>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      </section>
       {open ? (
         <HotelDeskEditor
           key={open}
@@ -103,29 +152,8 @@ export function HotelDesk({
           onClose={() => setOpen(null)}
         />
       ) : null}
-      {skipped.length ? (
-        <p className="text-xs text-muted">
-          {skipped.map((row) => (
-            <RestoreButton key={row.kind} bookingId={bookingId} row={row} />
-          ))}
-        </p>
-      ) : null}
+      <HotelThread bookingId={bookingId} item={item} requests={requests} messages={messages} attached={attached} />
     </div>
-  );
-}
-
-function RestoreButton({ bookingId, row }: { bookingId: string; row: CrmHotelRequest }) {
-  const router = useRouter();
-  return (
-    <button
-      type="button"
-      className="mr-3 underline"
-      onClick={() => {
-        void post(bookingId, row, "restore").then(() => router.refresh());
-      }}
-    >
-      Remettre {HOTEL_DESK_LABELS[row.kind]}
-    </button>
   );
 }
 
@@ -319,7 +347,7 @@ function HotelDeskEditor({
           {busy === "save" ? "…" : "Enregistrer"}
         </button>
         <button type="button" className="px-3 py-2 text-sm font-medium text-[#3d4654]" disabled={Boolean(busy)} onClick={() => void run("skip")}>
-          Pas pour ce séjour
+          Pas besoin
         </button>
       </div>
     </div>

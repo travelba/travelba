@@ -20,19 +20,19 @@ test("l’état visible est préparation, montré ou archivé", () => {
   );
 });
 
-test("les manques comptent passeport, hôtel non écrit et montant caché", () => {
+test("les manques comptent passeport, courriers hôtel et montant caché", () => {
   const chips = staffBlockingChips({
     travelers: [
       { id: "a", first_name: "Judith", last_name: "Charbit" },
       { id: "b", first_name: "Arnaud", last_name: "Vinci" },
     ],
     missingPassportIds: ["a"],
-    hotelUnwritten: true,
+    hotelLettersOpen: 2,
     amountHidden: true,
   });
   assert.deepEqual(
     chips.map((chip) => chip.label),
-    ["Passeport Judith", "Hôtel non écrit", "Montant non montré"]
+    ["Passeport Judith", "2 courriers hôtel", "Montant non montré"]
   );
 });
 
