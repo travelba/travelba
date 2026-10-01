@@ -97,18 +97,26 @@ function FlightGroup({
   );
 }
 
-function FrozenFlight({ flight, onEdit }: { flight: CyrilFlight; onEdit: () => void }) {
+function FrozenFlight({
+  flight,
+  eyebrow,
+  label,
+  onEdit,
+}: {
+  flight: CyrilFlight;
+  eyebrow: string;
+  label: string;
+  onEdit: () => void;
+}) {
   return (
     <section className="space-y-3">
       <div className="flex items-end justify-between gap-3">
         <div>
           <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--admin-gold)]">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--admin-gold)]" />
-            Aller retenu
+            {eyebrow}
           </p>
-          <h2 className="mt-1 font-display text-lg font-semibold text-[var(--admin-navy)]">
-            {CYRIL_OUTBOUND_LABEL}
-          </h2>
+          <h2 className="mt-1 font-display text-lg font-semibold text-[var(--admin-navy)]">{label}</h2>
         </div>
         <button
           type="button"
@@ -132,7 +140,7 @@ export function CyrilFlightForm() {
   const [companion, setCompanion] = useState("");
   const [outboundId, setOutboundId] = useState("");
   const [returnId, setReturnId] = useState("");
-  const [step, setStep] = useState<"outbound" | "return">("outbound");
+  const [step, setStep] = useState<"outbound" | "return" | "confirm">("outbound");
   const [honeypot, setHoneypot] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -140,6 +148,7 @@ export function CyrilFlightForm() {
   const errorRef = useRef<HTMLParagraphElement>(null);
 
   const outbound = cyrilFlights("outbound").find((flight) => flight.id === outboundId) || null;
+  const inbound = cyrilFlights("return").find((flight) => flight.id === returnId) || null;
 
   function scrollTop() {
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -167,9 +176,22 @@ export function CyrilFlightForm() {
     scrollTop();
   }
 
+  function chooseReturn(id: string) {
+    setError(null);
+    setReturnId(id);
+    setStep("confirm");
+    scrollTop();
+  }
+
   function backToOutbound() {
     setError(null);
     setStep("outbound");
+    scrollTop();
+  }
+
+  function backToReturn() {
+    setError(null);
+    setStep("return");
     scrollTop();
   }
 
@@ -291,19 +313,33 @@ export function CyrilFlightForm() {
             onChange={chooseOutbound}
           />
         </>
-      ) : outbound ? (
-        <>
-          <FrozenFlight flight={outbound} onEdit={backToOutbound} />
-          <FlightGroup
-            leg="return"
-            label={CYRIL_RETURN_LABEL}
-            value={returnId}
-            onChange={(id) => {
-              setError(null);
-              setReturnId(id);
-            }}
-          />
-        </>
+      ) : null}
+
+      {step !== "outbound" && outbound ? (
+        <FrozenFlight
+          flight={outbound}
+          eyebrow="Aller retenu"
+          label={CYRIL_OUTBOUND_LABEL}
+          onEdit={backToOutbound}
+        />
+      ) : null}
+
+      {step === "return" ? (
+        <FlightGroup
+          leg="return"
+          label={CYRIL_RETURN_LABEL}
+          value={returnId}
+          onChange={chooseReturn}
+        />
+      ) : null}
+
+      {step === "confirm" && inbound ? (
+        <FrozenFlight
+          flight={inbound}
+          eyebrow="Retour retenu"
+          label={CYRIL_RETURN_LABEL}
+          onEdit={backToReturn}
+        />
       ) : null}
 
       <div className="absolute -left-[9999px] h-0 overflow-hidden" aria-hidden="true">
@@ -319,12 +355,12 @@ export function CyrilFlightForm() {
         </label>
       </div>
 
-      {step === "return" && error ? (
+      {step === "confirm" && error ? (
         <p ref={errorRef} className="text-sm font-medium text-[var(--admin-red)]">
           {error}
         </p>
       ) : null}
-      {step === "return" ? (
+      {step === "confirm" ? (
         <>
           {pending ? <BusyBar label="Envoi" /> : null}
           <button
