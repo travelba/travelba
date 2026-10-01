@@ -261,6 +261,11 @@ export function checkinProposed(booking: { offer_checkin?: boolean | null }) {
   return booking.offer_checkin === true;
 }
 
+/** Visa : proposé au client seulement si l’agence l’active. Défaut : non. */
+export function visaProposed(booking: { offer_visa?: boolean | null } | null | undefined) {
+  return booking?.offer_visa === true;
+}
+
 type ServiceFlightRow = {
   id?: string;
   kind?: string | null;

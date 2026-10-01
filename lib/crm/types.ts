@@ -261,6 +261,8 @@ export type CrmBooking = {
   offer_greeter?: boolean;
   /** True : l’enregistrement est proposé dans cette réservation. Défaut : non. */
   offer_checkin?: boolean;
+  /** True : le visa est proposé dans cette réservation. Défaut : non. */
+  offer_visa?: boolean;
   /** Suppression agence : le dossier est archivé. Null = actif. */
   archived_at?: string | null;
   /** Visibilité client mémorisée pour la réactivation. */

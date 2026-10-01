@@ -1,6 +1,7 @@
 import { after, NextResponse } from "next/server";
 import { jsonError, requireCustomer } from "@/lib/crm/auth";
 import { carnetVisible } from "@/lib/crm/carnet";
+import { visaProposed } from "@/lib/crm/extras";
 import { continueEtaIlRequest } from "@/lib/crm/eta-il-continue";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { openAcceptedVisa } from "@/lib/crm/visa-accept";
@@ -8,6 +9,7 @@ import {
   acceptVisaDecision,
   astraFillsCountry,
   confirmAllowed,
+  journeyStarted,
   mergeEstaAnswers,
   readEstaAnswers,
   visibilityOnRequest,
@@ -74,6 +76,9 @@ export async function POST(request: Request, ctx: Ctx) {
     answers?: unknown;
     accepted_at?: string | null;
   } | null;
+  if (!visaProposed(b) && !journeyStarted(current)) {
+    return jsonError("L’agence n’a pas activé le visa sur le dossier.");
+  }
   const party = (travelers || []) as CrmBookingTraveler[];
   const partyIds = party.map((row) => row.id);
   const picked = idList(body.travelerIds);

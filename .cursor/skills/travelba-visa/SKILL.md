@@ -14,7 +14,9 @@ Israël, États-Unis, Royaume-Uni. Passeport français. Les autres pays restent 
 
 L’itinéraire est juste sous la photo du séjour. Le bandeau « pièce manquante » et la note client restent une ligne au-dessus de l’itinéraire.
 
-La section **Visa** est en bas, avec les passeports. Le même bloc est sur le séjour client et sur le dossier agence. Un refus ne cache pas la section.
+La section **Visa** est en bas, avec les passeports. Le même bloc est sur le séjour client et sur le dossier agence, une fois la demande lancée. Un refus ne cache pas la section.
+
+Sur la fiche agence, la demande est une ligne **Visa** dans **Services proposés**, interrupteur éteint par défaut. Le client ne voit la carte (« L’agence s’en charge ») que si l’agence l’active. Une demande déjà acceptée reste visible. Pas d’autre entrée pour proposer le visa.
 
 Deux gestes, pour Israël, les États-Unis et le Royaume-Uni, même règle client et agence :
 
@@ -49,6 +51,8 @@ Auth0 (`infinnityprodinternal`) n’accorde qu’une poignée de jetons par jour
 ## Interdits
 
 - Remettre le visa au-dessus de l’itinéraire.
+- Proposer la formalité au client sans activer Visa dans Services proposés.
+- Une seconde entrée visa à côté de cette ligne.
 - Appeler Auth0 ou `oauth/token` Pliant en dehors de `requestPliantToken`.
 - Retirer Enregistrement ou Obtention du visa de À la carte.
 - Un second bouton « Faire la demande » à côté du lien officiel.

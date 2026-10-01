@@ -47,6 +47,7 @@ test("dupliquer ouvre un brouillon avec une nouvelle référence", () => {
       total_amount: 2400,
       notes_internal: "Suite",
       offer_chauffeur: true,
+      offer_visa: true,
       prices_visible: true,
     },
     "TB-1100"
@@ -60,6 +61,7 @@ test("dupliquer ouvre un brouillon avec une nouvelle référence", () => {
   assert.equal(copy.billing_customer_id, "payeur");
   assert.equal(copy.title, "Avoriaz");
   assert.equal(copy.offer_chauffeur, true);
+  assert.equal(copy.offer_visa, true);
   assert.match(String(copy.notes_internal), /Copie de TB-1042/);
   assert.match(String(copy.notes_internal), /Suite/);
 });

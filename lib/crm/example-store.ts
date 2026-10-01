@@ -14,6 +14,7 @@ import {
   findExtra,
   findVisaExtra,
   isExtraKind,
+  visaProposed,
   isExtraLeg,
   isGreeterMoment,
   isServicePlace,
@@ -240,6 +241,9 @@ export function launchExampleVisa(
   const state = box();
   const existing = state.visaRequests.find((row) => row.country === country);
   if (existing?.accepted_at) return existing;
+  if (!visaProposed(state.booking)) {
+    throw new ExampleStop("L’agence n’a pas activé le visa sur le dossier.");
+  }
   if (!options?.confirm) throw new ExampleStop("Confirmez la demande avant de lancer le parcours.");
   const block = confirmAllowed({
     already: [],

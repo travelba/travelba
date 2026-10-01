@@ -11,6 +11,7 @@ import {
   extraNoticeOk,
   checkinProposed,
   extraProposed,
+  visaProposed,
   extraAgencyStatus,
   extraItemPayload,
   storedTransferAddresses,
@@ -226,6 +227,9 @@ test("chauffeur et VIP Airport ne sont pas proposés tant que l’agence ne les 
   assert.equal(checkinProposed({}), false);
   assert.equal(checkinProposed({ offer_checkin: false }), false);
   assert.equal(checkinProposed({ offer_checkin: true }), true);
+  assert.equal(visaProposed({}), false);
+  assert.equal(visaProposed({ offer_visa: false }), false);
+  assert.equal(visaProposed({ offer_visa: true }), true);
 });
 
 test("le client part du domicile ou y revient, et peut remplacer les deux adresses", () => {

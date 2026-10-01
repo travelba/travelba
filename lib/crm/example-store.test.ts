@@ -19,8 +19,18 @@ const ESTA = {
   priorRefusal: "Non",
 };
 
+test("le visa d’exemple ne part pas tant que l’agence ne l’active pas", () => {
+  resetExampleState();
+  assert.throws(() => launchExampleVisa("IL", null, { confirm: true }), (err: unknown) => {
+    assert.ok(err instanceof ExampleStop);
+    assert.match(err.message, /activé le visa/);
+    return true;
+  });
+});
+
 test("le visa s’arrête au paiement, seulement après un fichier de passeport", () => {
   resetExampleState();
+  readExample().booking.offer_visa = true;
   assert.throws(() => launchExampleVisa("US", ESTA, { confirm: true }), (err: unknown) => {
     assert.ok(err instanceof ExampleStop);
     assert.match(err.message, /passeport français manquant/);

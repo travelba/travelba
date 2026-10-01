@@ -30,6 +30,7 @@ export type DuplicateSource = {
   offer_chauffeur?: boolean | null;
   offer_greeter?: boolean | null;
   offer_checkin?: boolean | null;
+  offer_visa?: boolean | null;
 };
 
 export function isBookingArchived(booking: { archived_at?: string | null } | null | undefined) {
@@ -85,6 +86,7 @@ export function duplicateBookingInsert(source: DuplicateSource, reference: strin
     offer_chauffeur: Boolean(source.offer_chauffeur),
     offer_greeter: Boolean(source.offer_greeter),
     offer_checkin: Boolean(source.offer_checkin),
+    offer_visa: Boolean(source.offer_visa),
     visible_to_client: false,
     archived_at: null,
     archived_was_visible: null,

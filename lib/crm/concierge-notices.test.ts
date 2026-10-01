@@ -279,7 +279,20 @@ test("la formalité terminée nomme la pièce, sans pourcentage", () => {
     missingPassports: 1,
     formalities: [{ name: "ETA-IL", filed: false }],
     alreadySent: { passport: false, formalityNames: [] },
+    visaOffered: true,
   });
+  const quiet = planMissingPieceNotices({
+    published: true,
+    reference,
+    bookingId: "booking",
+    startDate: "2026-10-02",
+    today: "2026-09-25",
+    missingPassports: 1,
+    formalities: [{ name: "ETA-IL", filed: false }],
+    alreadySent: { passport: false, formalityNames: [] },
+  });
+  assert.equal(quiet.length, 1);
+  assert.equal(quiet.some((row) => row.template === "formalite_manquante"), false);
   assert.equal(missing.length, 2);
   assert.equal(missing[0].path, PIECES_PATH);
   assert.match(missing[0].body, /Déposez-le dans vos pièces/);

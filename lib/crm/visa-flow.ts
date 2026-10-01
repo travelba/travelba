@@ -1,4 +1,4 @@
-import { VISA_EUR } from "./extras";
+import { VISA_EUR, visaProposed } from "./extras";
 import { VISA_OFFICIAL, type VisaCorridor } from "./visa-fees";
 
 export const CLIENT_VISA_STEPS = ["preparation", "remplissage", "validation", "paiement", "piece"] as const;
@@ -182,6 +182,15 @@ export function agencyLaunchReady(country: VisaCorridor, answers: Partial<EstaAn
   if (country === "IL") return true;
   if (country === "GB") return Boolean(answers?.priorRefusal?.trim());
   return estaReady(answers);
+}
+
+/** La carte n’est proposée que si l’agence active Visa. Une demande déjà acceptée reste visible. */
+export function visaRequestShown(
+  booking: { offer_visa?: boolean | null } | null | undefined,
+  requests: { accepted_at?: string | null; accepted?: boolean | null }[] | null | undefined
+) {
+  if (visaProposed(booking)) return true;
+  return (requests || []).some((row) => journeyStarted(row));
 }
 
 /** Un palier seul (45 % ou autre) n’ouvre pas le parcours. Il faut une validation explicite. */

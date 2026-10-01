@@ -128,6 +128,7 @@ export function VisaJourney({
   documents,
   pliantReady = false,
   showReceived = true,
+  proposed = false,
 }: {
   variant?: "admin" | "client";
   bookingId: string;
@@ -140,6 +141,8 @@ export function VisaJourney({
   pliantReady?: boolean;
   /** Faux : le séjour client place les visas reçus dans le bloc suivant. */
   showReceived?: boolean;
+  /** Vrai : l’agence propose la formalité. Sinon seule une demande déjà acceptée reste. */
+  proposed?: boolean;
 }) {
   const router = useRouter();
   const preview = useClientPreview();
@@ -223,6 +226,8 @@ export function VisaJourney({
         const country = entry.iso as VisaCorridor;
         const request = requests.find((row) => row.country === country);
         const started = journeyStarted(request);
+        const offerCard = variant !== "admin" && proposed && !started;
+        if (!started && !offerCard) return null;
         const step = (
           started && !canReturnToOffer(request)
             ? request?.step || (request?.status === "piece" ? "piece" : "preparation")
@@ -351,7 +356,8 @@ export function VisaJourney({
         );
       })}
 
-      {others.map((entry) => (
+      {(variant === "admin" || proposed) &&
+        others.map((entry) => (
         <div key={entry.iso} className="rounded-[1.35rem] bg-white px-4 py-4 text-sm text-[var(--admin-navy)]">
           <p>
             <span className="font-semibold">{entry.name}</span>
@@ -387,7 +393,10 @@ export function VisaJourney({
         </p>
       ))}
 
-      {!trip.needsFormality && !trip.unknownIatas.length && !trip.unknownCountries.length ? (
+      {(variant === "admin" || proposed) &&
+      !trip.needsFormality &&
+      !trip.unknownIatas.length &&
+      !trip.unknownCountries.length ? (
         <p className="rounded-[1.35rem] bg-white px-4 py-4 text-sm text-[var(--admin-navy)]">
           Aucune formalité identifiée pour un passeport français sur ces vols.
         </p>

@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { Icon } from "@/components/crm/icons";
-import { CHAUFFEUR_EUR, CHECKIN_EUR, GREETER_ADULT_EUR } from "@/lib/crm/extras";
+import { CHAUFFEUR_EUR, CHECKIN_EUR, GREETER_ADULT_EUR, VISA_EUR } from "@/lib/crm/extras";
 
-type OfferKey = "offer_chauffeur" | "offer_greeter" | "offer_checkin";
+type OfferKey = "offer_chauffeur" | "offer_greeter" | "offer_checkin" | "offer_visa";
 
 const OFFERS: {
   key: OfferKey;
@@ -36,6 +36,13 @@ const OFFERS: {
     price: `${CHECKIN_EUR} € par passager`,
     icon: "airplane_ticket",
   },
+  {
+    key: "offer_visa",
+    title: "Visa",
+    note: "L’agence dépose la formalité.",
+    price: `${VISA_EUR} € par passager`,
+    icon: "badge",
+  },
 ];
 
 export function ServiceOfferToggles({
@@ -43,12 +50,14 @@ export function ServiceOfferToggles({
   chauffeur,
   greeter,
   checkin,
+  visa,
   hasFlight,
 }: {
   bookingId: string;
   chauffeur: boolean;
   greeter: boolean;
   checkin: boolean;
+  visa: boolean;
   hasFlight: boolean;
 }) {
   const router = useRouter();
@@ -56,6 +65,7 @@ export function ServiceOfferToggles({
     offer_chauffeur: chauffeur,
     offer_greeter: greeter,
     offer_checkin: checkin,
+    offer_visa: visa,
   });
   const [busy, setBusy] = useState<OfferKey | null>(null);
   const [error, setError] = useState<string | null>(null);
