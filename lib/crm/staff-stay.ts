@@ -1,5 +1,5 @@
 import { countsAsCarnetCard, type BookingStatus } from "@/lib/crm/types";
-import { cityLabel, cityPlaceKey } from "@/lib/crm/city-names";
+import { CITY_ALIASES, cityLabel, cityPlaceKey, foldCityName } from "@/lib/crm/city-names";
 import {
   flightCities,
   flightIata,
@@ -182,30 +182,89 @@ export type StaySegment = {
   when: string;
 };
 
-/** Une ligne par étape : hôtel jusqu’à sa fin, vol le jour du trajet. */
-export function staySegmentsFromSteps(items: Step[]): StaySegment[] {
-  return carnetSteps(items).map((item, index) => {
-    const id = item.id || `step-${index}`;
-    if (item.kind === "flight" || item.kind === "rail") {
-      const route =
-        flightCities(item as never) || flightIata(item as never) || (item.title || "").trim() || "Trajet";
-      return { id, place: route, when: shortStayDay(item.start_at) };
-    }
-    if (item.kind === "hotel") {
-      const name = hotelDisplayName(item as never);
-      const end = isoDay(item.end_at);
-      return {
-        id,
-        place: name,
-        when: end ? `jusqu’au ${shortStayDay(end)}` : shortStayDay(item.start_at),
-      };
-    }
+const STAY_NAME_NOISE = new Set(["hotel", "hotels"]);
+
+/** « Four Seasons Hotel Milano » et « Four Seasons Hotel Milan » désignent le même établissement. */
+function stayNameKey(value: string) {
+  return foldCityName(value)
+    .split(" ")
+    .map((token) => CITY_ALIASES[token] || token)
+    .filter((token) => token && !STAY_NAME_NOISE.has(token))
+    .join(" ");
+}
+
+function hotelLineKey(item: Step) {
+  const name = stayNameKey(hotelDisplayName(item as never));
+  if (!name) return "";
+  const city = cityPlaceKey(detail(item, "city"));
+  return `stay|${name}|${city}|${isoDay(item.start_at)}|${isoDay(item.end_at)}`;
+}
+
+function routeEnds(item: Step) {
+  let from = cityPlaceKey(detail(item, "city_from") || detail(item, "from"));
+  let to = cityPlaceKey(detail(item, "city_to") || detail(item, "to"));
+  if (from && to) return { from, to };
+  const shown = flightCities(item as never) || flightIata(item as never) || (item.title || "").trim();
+  const parts = shown.split("→").map((part) => cityPlaceKey(part));
+  if (parts.length >= 2) {
+    from = from || parts[0] || "";
+    to = to || parts[parts.length - 1] || "";
+  }
+  return { from, to };
+}
+
+/** Même sens, même jour. Paris → Milan n’est pas Milan → Paris. Milano = Milan, Roma = Rome. */
+function routeLineKey(item: Step) {
+  const { from, to } = routeEnds(item);
+  if (!from || !to) return "";
+  return `route|${item.kind}|${from}|${to}|${isoDay(item.start_at)}`;
+}
+
+function segmentLineKey(item: Step) {
+  if (item.kind === "hotel") return hotelLineKey(item);
+  if (item.kind === "flight" || item.kind === "rail") return routeLineKey(item);
+  return "";
+}
+
+function segmentLine(item: Step, index: number): StaySegment {
+  const id = item.id || `step-${index}`;
+  if (item.kind === "flight" || item.kind === "rail") {
+    const route =
+      flightCities(item as never) || flightIata(item as never) || (item.title || "").trim() || "Trajet";
+    return { id, place: route, when: shortStayDay(item.start_at) };
+  }
+  if (item.kind === "hotel") {
+    const name = hotelDisplayName(item as never);
+    const end = isoDay(item.end_at);
     return {
       id,
-      place: (item.title || "").trim() || "Étape",
-      when: shortStayRange(item.start_at, item.end_at),
+      place: name,
+      when: end ? `jusqu’au ${shortStayDay(end)}` : shortStayDay(item.start_at),
     };
-  });
+  }
+  return {
+    id,
+    place: (item.title || "").trim() || "Étape",
+    when: shortStayRange(item.start_at, item.end_at),
+  };
+}
+
+/**
+ * Une ligne par séjour et par trajet.
+ * Le même hôtel aux mêmes dates, ou le même trajet le même jour, n’apparaît qu’une fois.
+ */
+export function staySegmentsFromSteps(items: Step[]): StaySegment[] {
+  const seen = new Set<string>();
+  const lines: StaySegment[] = [];
+  for (const [index, item] of carnetSteps(items).entries()) {
+    const key = segmentLineKey(item);
+    if (key) {
+      if (seen.has(key)) continue;
+      seen.add(key);
+    }
+    lines.push(segmentLine(item, index));
+  }
+  return lines;
 }
 
 export function staySpanFromSteps(items: Step[]) {
