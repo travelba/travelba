@@ -37,6 +37,7 @@ Même langage sur **toutes** les réservations, pas un dossier d’exemple.
 - Cartes datées. Vol : villes en titre, code aéroport dessous, n° de vol, classe, horaire et référence dans le détail. Étape pas encore montrée : surbrillance, pas une bannière qui ne fait que compter.
 - Pas de roster hôtel (rôle, nom, e-mail) sur la carte. Un libellé court (le nom de l’hôtel) suffit.
 - Argent : un bloc (qui paie, montant, grand livre). Les mails ne sont pas des lignes d’étape.
+- Doublons proposés : repliés sur toutes les fiches. Fermé, le bandeau dit qu’il y en a et combien. Ouvert, les cartes grisées et **Écarter**. Le fichier reste dans le dossier.
 
 ## Copy
 
