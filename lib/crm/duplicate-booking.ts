@@ -4,10 +4,13 @@ import { BookingActionError } from "@/lib/crm/archive-booking";
 import {
   duplicateBookingInsert,
   duplicateCoverPath,
+  duplicateDeclinedServiceRow,
   duplicateDocumentRow,
+  duplicateHotelLetterRow,
   duplicateItemRow,
   duplicateStoragePath,
   duplicateTravelerRow,
+  duplicateVisaRequestRow,
 } from "@/lib/crm/booking-lifecycle";
 import { nextBookingReference, refreshBookingLedger } from "@/lib/crm/bookings";
 import { deleteBookingById } from "@/lib/crm/delete-booking";
@@ -85,6 +88,43 @@ async function copyChildren(
   );
   if (travelerRows.length) {
     const { error } = await admin.from("crm_booking_travelers").insert(travelerRows);
+    if (error) throw new Error(error.message);
+  }
+
+  const [{ data: visas, error: visaError }, { data: declined, error: declinedError }, { data: letters, error: letterError }] =
+    await Promise.all([
+      admin.from("crm_visa_requests").select("*").eq("booking_id", sourceId),
+      admin.from("crm_declined_services").select("*").eq("booking_id", sourceId),
+      admin.from("crm_hotel_requests").select("*").eq("booking_id", sourceId),
+    ]);
+  if (visaError) throw new Error(visaError.message);
+  if (declinedError) throw new Error(declinedError.message);
+  if (letterError) throw new Error(letterError.message);
+
+  const visaRows = ((visas || []) as Record<string, unknown>[]).map((row) => duplicateVisaRequestRow(row, copyId));
+  if (visaRows.length) {
+    const { error } = await admin.from("crm_visa_requests").insert(visaRows);
+    if (error) throw new Error(error.message);
+  }
+
+  const declinedRows = ((declined || []) as Record<string, unknown>[]).map((row) =>
+    duplicateDeclinedServiceRow(row, copyId)
+  );
+  if (declinedRows.length) {
+    const { error } = await admin.from("crm_declined_services").insert(declinedRows);
+    if (error) throw new Error(error.message);
+  }
+
+  const letterRows = ((letters || []) as Record<string, unknown>[])
+    .map((row) => {
+      const previous = typeof row.booking_item_id === "string" ? row.booking_item_id : "";
+      const itemId = previous ? itemIdMap.get(previous) : "";
+      if (!itemId) return null;
+      return duplicateHotelLetterRow(row, copyId, itemId);
+    })
+    .filter((row): row is NonNullable<typeof row> => Boolean(row));
+  if (letterRows.length) {
+    const { error } = await admin.from("crm_hotel_requests").insert(letterRows);
     if (error) throw new Error(error.message);
   }
 }

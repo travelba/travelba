@@ -177,8 +177,9 @@ function CardBody({
         {item.kind === "flight" || item.kind === "rail" ? (
           <>
             {airline ? <p>{airline}</p> : null}
-            {iata ? <p>{iata}</p> : null}
+            {detailStr(item, "flight_number") ? <p>{detailStr(item, "flight_number")}</p> : null}
             {cities ? <p>{cities}</p> : null}
+            {iata ? <p>{iata}</p> : null}
             {cabin ? <p>Classe {cabin}</p> : null}
             {baggage ? <p>Bagages {baggage}</p> : null}
             {seat ? <p>Siège {seat}</p> : null}

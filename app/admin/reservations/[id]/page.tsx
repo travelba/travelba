@@ -74,7 +74,7 @@ export default async function AdminBookingPage({ params }: Props) {
       .order("sort_order"),
     supabase
       .from("crm_email_ingest")
-      .select("id, subject, from_email, received_at, extract")
+      .select("id, subject, from_email, received_at, extract, warnings")
       .eq("status", "attached")
       .eq("created_booking_id", id)
       .order("received_at", { ascending: false, nullsFirst: false }),
@@ -195,6 +195,7 @@ export default async function AdminBookingPage({ params }: Props) {
             from_email: string | null;
             received_at: string | null;
             extract?: unknown;
+            warnings?: { file?: string | null; message?: string | null }[] | null;
           }[]}
           littleEmperors={le}
           ledger={ledger}

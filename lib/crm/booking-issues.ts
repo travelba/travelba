@@ -138,7 +138,7 @@ export function collectPublishIssues(items: { kind: string }[]): BookingIssue[] 
   return [
     {
       field: "items",
-      message: "Ajoutez au moins une carte (vol, hôtel, transfert…) avant de publier le carnet.",
+      message: "Ajoutez au moins une carte (vol, hôtel, transfert…) avant de montrer le carnet.",
     },
   ];
 }

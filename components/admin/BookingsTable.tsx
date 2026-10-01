@@ -19,6 +19,7 @@ import {
   DuplicateBookingButton,
   RestoreBookingButton,
 } from "@/components/admin/DeleteBookingButton";
+import { staffStayLabel } from "@/lib/crm/staff-stay";
 
 export function BookingsTable({
   bookings,
@@ -114,17 +115,9 @@ export function BookingsTable({
                 </div>
               </div>
               <div className="flex min-w-0 flex-wrap items-center gap-3">
-                {b.archived_at ? (
-                  <span className="rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">
-                    Archivée
-                  </span>
-                ) : !b.visible_to_client ? (
-                  <span className="rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">
-                    Brouillon
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-bold uppercase text-muted">Publié</span>
-                )}
+                <span className="rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">
+                  {staffStayLabel(b)}
+                </span>
                 <StatusChip tone={bookingStatusTone(b.status)}>
                   {BOOKING_STATUS_LABELS[b.status]}
                 </StatusChip>

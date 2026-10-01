@@ -1,9 +1,9 @@
 ---
 name: travelba-carnet
 description: >-
-  Travelba carnet (itinerary): save vs publish, hotel nights repeat, IATA +
-  city, drag order, selling price, skip empty days, no invented hours, hotel
-  catalog contacts (Milano = Milan), client ingest 404, copy l’agence. Use when editing bookings, timeline, ingest
+  Travelba carnet (itinerary): save vs show to client, hotel nights repeat, cities
+  then airport code, drag order, selling price, skip empty days, no invented hours, hotel
+  catalog off the booking file (Milano = Milan), client ingest 404, copy l’agence. Use when editing bookings, timeline, ingest
   review, BookingEditor, CarnetItinerary, or visible_to_client.
 ---
 
@@ -15,12 +15,14 @@ Code : `lib/crm/carnet.ts`, `lib/crm/bookings.ts`, `components/admin/BookingEdit
 `components/admin/BookingItemsPanel.tsx`, `components/crm/IngestItemCard.tsx`,
 `components/account/CarnetItinerary.tsx`.
 
-## Enregistrer ≠ Publier
+## Enregistrer ≠ Montrer au client
+
+Un seul état que l’agence peut croire : **En préparation** (`visible_to_client=false`), **Montré au client**, ou **Archivée**. « Brouillon » n’est pas le nom de « pas encore visible » quand le statut est déjà Confirmée. Le bouton dit **Montrer au client** ou **Mettre à jour**, pas Publier. Archiver dit **Archiver** (la route archive déjà).
 
 | Geste | Effet |
 |-------|--------|
-| **Enregistrer** | brouillon, `visible_to_client=false` sur le séjour |
-| **Publier** | le client voit ; items + PDFs du dossier passent visibles |
+| **Enregistrer** | sauve le dossier ; ne le montre pas et ne débite pas un séjour encore caché |
+| **Montrer au client** | le client voit ; items + PDFs du dossier passent visibles. Un confirmé entre au grand livre. Un devis montré ne débite pas |
 
 Un seul interrupteur séjour (plus de case fichier séparée). Guard serveur `canPublishCarnet` : au moins **une** carte `kind !== "fee"`.
 
@@ -28,12 +30,20 @@ Quotes (`status=quoted`, devis Little Emperors) : dans le dossier, **invisibles*
 
 Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le détail.
 
+## Fiche agence
+
+- En-tête et **Lieu et dates en haut** : villes et dates **de toutes les étapes** (`staffStayFacts`). Pas un seul lieu ni un seul départ/retour recopié depuis `crm_bookings`. Ne pas réécrire ces colonnes pour les faire coller.
+- Une étape déjà confirmée mais pas encore montrée est **en surbrillance** sur la carte. Pas une bannière qui ne fait que compter.
+- Onglet **À faire** toujours visible (chauffeur, VIP Airport, enregistrement), avec le nombre de blocages.
+- **Dupliquer** copie cartes, pièces, voyageurs, couverture, **visas, refus et courriers hôtel** (courrier recopié en brouillon, pour ne pas renvoyer). Pas les mails bruts comme étapes.
+- Note client : champ `notes_client`, à côté de `notes_internal`.
+
 ## Timeline
 
 - Grouper par jour (`groupByDay`). **Hôtel et location** répétés chaque jour de stay (`stayNightDates` : start inclus, fin **exclue**). Vol = jour de départ.
 - Jours **sans aucune** carte : **sautés** (pas de ligne vide entre deux villes).
 - Hôtel : **pas d’horloge**. `itemClock` ignore `T00:00:00` (timestamptz minuit ≠ 00h00 check-in). Carte compacte : **nom d’établissement** (`details.hotel_name` / `hotelDisplayName`) en titre, **ville** (`hotelCityLine`) en dessous. Jamais la ville à la place du nom.
-- Vol : ligne 1 `CDG → RAK` (`flightIata`), ligne 2 villes (`flightCities`).
+- Vol : titre = **villes** (`Rome → Paris`, `flightCities`), dessous le **code** (`FCO → CDG`, `flightIata`). N° de vol, classe, horaire et référence restent dans le détail. Même règle sur le carnet client et la fiche agence.
 - Clic carte = détail + **Voir la confirmation** (PDF `source_document_id`) + **Ajouter à l’agenda**.
 - **Téléphone** : le bouton crée un événement, pas un abonnement. iPhone → fichier `.ics` d’un seul vol (l’app Calendrier propose de l’ajouter). Android → Google Agenda, événement prêt à enregistrer. Bureau → le même fichier. Pas de lien `webcal`.
 - En-tête itinéraire : **Ajouter tout le séjour** (`GET /api/client/bookings/[reference]/calendrier`). Horaires seulement s’ils existent ; hôtel = journée entière. Sur téléphone, ce sont des événements ajoutés, pas un flux.
@@ -45,11 +55,11 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 
 - Prix vendu (`item.amount`) : **uniquement le premier jour** de l’événement (check-in hôtel, départ vol, prise en charge location). Les nuits / jours suivants gardent la carte, sans recompter le montant.
 - **Vols** : plusieurs e-tickets du même segment = **une** carte, `details.ticket_count`. `item.amount` = **prix du billet pour l’aller-retour** (× passagers). Affichage `2 × 800 €`. Aller simple : ce prix est celui du seul vol. Ne pas additionner l’aller et le retour.
-- Carte vol compacte : **IATA** (`CDG → RAK`) en titre, villes en dessous. Prix **sous** la route en mobile (pas à droite : ça déborde).
+- Carte vol compacte : **villes** en titre, code aéroport en dessous. Prix **sous** la route en mobile (pas à droite : ça déborde).
 - **Montant du séjour affiché** = somme des prix vendus des cartes, plus les frais d’agence et les dépenses libres. `booking.total_amount` reste la somme des cartes (skill `travelba-money`).
 - `item.amount` extrait = **null** (jamais le net fournisseur sur la carte client).
 - Montant PDF → `details.document_amount` (relecture agent). `sanitizeExtractedPrices` **préremplit** `total_amount` = somme **un montant par fichier**. Un extract à 0 ne masque pas cette somme.
-- **Enregistrer** un extract `document_status=confirmed` : écrit `booking.total_amount` et passe le dossier en **confirmé** (toujours `visible_to_client=false` jusqu’à Publier) → `syncBookingLedger` poste le débit + frais billeterie.
+- **Enregistrer** un extract `document_status=confirmed` : écrit `booking.total_amount` et passe le dossier en **confirmé**, toujours `visible_to_client=false`. Le débit part seulement au geste **Montrer au client**. Un devis montré ne débite pas.
 - Devis (`quote`) : montant proposé, statut `quoted`, **pas** de débit.
 - Inclus (`details.included`) **seulement si la phrase est écrite**. Pas de petit-déj inventé. Sinon pas de bloc Inclus. Little Emperors : **toutes** les lignes du bloc « Little Emperors Benefits » / « LE Benefits » (surclassement, petit-déjeuner, crédit, early check-in, late check-out, nuit offerte), en français — pas seulement le petit-déjeuner. Skill `travelba-document-ingest`.
 - N’extraire **pas** annulation / barème / conditions : le PDF suffit.
@@ -61,7 +71,7 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 - Réimport **même réf.** (vol : réf. + n° + date) = **remplace** la carte, n’ajoute pas un doublon.
 - Illisible : on **enregistre** + bandeau **À vérifier** (`details.needs_review`), pas un refus global.
 - Check-in / horaires absents = **rien** (pas « 15:00 », pas « non indiqué »).
-- **Contacts d’hôtel** : le catalogue Little Emperors (`crm_hotel_contacts`), pas le correspondant imprimé sur la confirmation (e-mail agence, Little Emperors). `loadHotelContacts` les colle sur **chaque** carte reconnue **dans l’admin seulement** (liste rôle · nom · e-mail, « Écrire à l’hôtel »). **Interface client** (`/mon-compte`, aperçu Interface client, lien public `/v/`, exemple) : aucun roster. `withoutHotelRoster` retire `hotel_contacts` et les e-mails ou téléphones qui n’existent que dans cette liste, avant le rendu. Milano = Milan. Pas d’écriture dossier par dossier.
+- **Contacts d’hôtel** : le catalogue Little Emperors (`crm_hotel_contacts`) peut exister ailleurs. **Sur la fiche réservation**, pas de liste rôle · nom · e-mail. Le nom de l’hôtel suffit. **Interface client** (`/mon-compte`, aperçu Interface client, lien public `/v/`, exemple) : aucun roster. `withoutHotelRoster` retire `hotel_contacts` et les e-mails ou téléphones qui n’existent que dans cette liste, avant le rendu. Milano = Milan. Pas d’écriture dossier par dossier.
 - Rapprochement `matchHotelDirectory` : nom identique, ou mêmes mots une fois la ville retirée. Milano = Milan, Londres = London, Venise = Venice (`CITY_ALIASES` dans `lib/crm/hotel-catalog.ts`). Nouvelle graphie = une ligne d’alias + un test `hotel-catalog.test.ts`. Deux hôtels possibles : aucun. Hôtel absent du catalogue : pas de contact inventé.
 - Copy client : **l’agence**. Modifier un séjour : WhatsApp `Bonjour, je voudrais modifier {réf} — {destination}.` (`whatsappModifyHref`).
 - Conciergerie 24/7 WhatsApp — **pas** de cloche de notif fictive.

@@ -31,7 +31,7 @@ export default async function AdminReservationsPage() {
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
         title="Réservations"
-        subtitle="Importer les PDF, Enregistrer le brouillon, puis Publier — Enregistrer ne rend pas le carnet visible."
+        subtitle="Enregistrez le dossier, puis montrez-le au client. Enregistrer ne le rend pas visible."
       />
       <div className="mt-6">
         <NewBookingForm
