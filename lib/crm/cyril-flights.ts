@@ -166,7 +166,7 @@ export function buildCyrilSheetRow(
     phone,
     companion,
     diet,
-    companion ? companionDiet : "",
+    companionDiet || "",
     ...flightCells(outbound),
     ...flightCells(inbound),
   ];
