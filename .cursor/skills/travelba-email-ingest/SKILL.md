@@ -2,7 +2,7 @@
 name: travelba-email-ingest
 description: >-
   Travelba Gmail labels (little-emperors, expedia-taap, billet-avion) → crm_email_ingest →
-  parse → auto match/apply, create, ou annulation. Use when touching Gmail
+  parse → auto match/apply (hors billets : rattachement manuel), create, ou annulation. Use when touching Gmail
   webhook, cron gmail-ingest / gmail-watch-renew, email-match, cancellation
   mail, or a booking confirmation. Dropzone PDF/photos (relecture humaine) :
   travelba-document-ingest. Identity / MRZ : travelba-identity.
@@ -11,8 +11,10 @@ description: >-
 # Travelba — e-mails fournisseur (Gmail)
 
 Push Gmail (labels **little-emperors**, **expedia-taap**, **billet-avion**) → ligne
-`crm_email_ingest` → parse extract → **auto** match / apply ou create.
-Pas d’attente d’un clic `/admin/emails` quand le hit est unique et fort.
+`crm_email_ingest` → parse extract → **auto** match / apply ou create,
+sauf **billet-avion** : file `/admin/emails`, rattachement manuel.
+Pas d’attente d’un clic `/admin/emails` quand le hit est unique et fort
+(Little Emperors, Expedia TAAP).
 
 L’IA **ne publie jamais** le carnet (`visible_to_client=false`).
 
@@ -40,7 +42,8 @@ Gmail label (little-emperors | expedia-taap | billet-avion)
   → parse extract (pièces + corps ; mêmes parseurs / LLM que l’import)
   → suggestCustomerFromExtract
   → suggestBookingByReference ∪ suggestBookingByTripSignals
-  → hit unique fort → applyExtractToBooking
+  → label billet-avion → stop (parsed|matched, rattachement manuel)
+  → sinon hit unique fort → applyExtractToBooking
        (si cancelled → applyCancellationToBooking, jamais persist)
   → sinon client unique + trip utilisable → persistNewBookingFromExtract
   → sinon créer crm_customers (prénom/nom) puis persist
@@ -60,8 +63,12 @@ même si l'env prod ne liste que Little Emperors et Expedia TAAP.
 L'historique Gmail ne voit pas les mails déjà labellisés. Le cron
 `gmail-ingest` appelle `backfillBilletAvionMessages` (curseur dans
 `crm_email_sync`, provider `gmail-billet-avion`). Ensuite le parse existant
-(e-ticket / Amadeus, corps + pièces) fait le match auto. Pas de parseur dédié.
+(e-ticket / Amadeus, corps + pièces). Pas de parseur dédié.
 Le watch Pub/Sub se met à jour au cron `gmail-watch-renew`.
+
+**Pas d'auto-rattachement** pour ce label (`emailIngestAttachesAutomatically`).
+Le mail reste `parsed` / `matched` dans `/admin/emails`. L'agence rattache
+chaque billet au voyage à la main. Little Emperors et Expedia TAAP restent en auto.
 
 ## Match voyage
 
@@ -152,6 +159,7 @@ Contacts de l’hôtel : catalogue Little Emperors à l’affichage, pas l’adr
 
 ## Interdits
 
+- Auto-apply d’un label **billet-avion** (rattachement manuel)
 - Auto-apply si plusieurs dossiers au même score fort
 - Créer un dossier (ou un client) depuis un mail d’annulation
 - Publier le carnet / `visible_to_client=true`

@@ -9,6 +9,7 @@ import {
   collectHistoryMessageIds,
   decodeGmailPushBody,
   extractEmailAddress,
+  emailIngestAttachesAutomatically,
   gmailLabelMatchKey,
   headerValue,
   htmlToText,
@@ -241,6 +242,14 @@ describe("labels Gmail billet-avion", () => {
       "expedia-taap",
       BILLET_AVION_LABEL,
     ]);
+  });
+
+  it("laisse les billets en rattachement manuel", () => {
+    assert.equal(emailIngestAttachesAutomatically("billet-avion"), false);
+    assert.equal(emailIngestAttachesAutomatically("Billet avion"), false);
+    assert.equal(emailIngestAttachesAutomatically("little-emperors"), true);
+    assert.equal(emailIngestAttachesAutomatically("expedia-taap"), true);
+    assert.equal(emailIngestAttachesAutomatically(null), true);
   });
 
   it("rapproche Billet avion de label:billet-avion", () => {
