@@ -25,7 +25,7 @@ import { ServiceDesk } from "@/components/admin/ServiceDesk";
 import { VisaDesk } from "@/components/admin/VisaDesk";
 import { deskView, type DeskTask } from "@/lib/crm/visa-desk";
 import { BookingHero } from "@/components/crm/BookingHero";
-import { loadStayArrivalPlaces } from "@/lib/crm/carnet-query";
+import { loadStayMaps } from "@/lib/crm/carnet-query";
 import { loadDisplayedStayAmounts } from "@/lib/crm/displayed-stay";
 import { reviewIdentityPieces } from "@/lib/crm/trip-documents";
 import {
@@ -246,7 +246,7 @@ export default async function AdminHomePage() {
       : null,
   ].filter((row): row is { label: string; href: string } => Boolean(row));
   const upcoming = upcomingBookings;
-  const places = await loadStayArrivalPlaces(
+  const places = await loadStayMaps(
     supabase,
     upcoming.map((row) => row.id)
   );
@@ -382,7 +382,7 @@ export default async function AdminHomePage() {
             href={`/admin/reservations/${featured.id}`}
             className="admin-af-card relative block overflow-hidden rounded-2xl"
           >
-            <BookingHero booking={featured} places={places[featured.id]} priority>
+            <BookingHero booking={featured} places={places.arrival[featured.id]} priority>
               <div className="absolute inset-0 flex flex-col justify-between p-5 text-white">
                 <div className="flex items-start justify-between gap-3">
                   <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">
@@ -395,7 +395,7 @@ export default async function AdminHomePage() {
                 </div>
                 <div>
                   <h3 className="font-display text-2xl font-bold leading-tight">
-                    {stayHeadline(featured.title, featured.destination, places[featured.id])}
+                    {stayHeadline(featured.title, featured.destination, places.route[featured.id])}
                   </h3>
                   <p className="mt-1 text-sm text-white/80">
                     {byId.get(featured.customer_id) || "Client"} ·{" "}
@@ -432,14 +432,14 @@ export default async function AdminHomePage() {
                   className="flex flex-col gap-2 px-5 py-3.5 transition hover:bg-[var(--admin-sky)]/40 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <BookingHero booking={b} places={places[b.id]} plain className="h-14 w-24 shrink-0 rounded-xl" />
+                    <BookingHero booking={b} places={places.arrival[b.id]} plain className="h-14 w-24 shrink-0 rounded-xl" />
                     <div className="min-w-0">
                     <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9e7e51]">
                       {b.reference}
                       {jMinusLabel(b.start_date) ? ` · ${jMinusLabel(b.start_date)}` : ""}
                     </p>
                     <p className="font-semibold text-[var(--admin-navy)]">
-                      {stayHeadline(b.title, b.destination, places[b.id])}
+                      {stayHeadline(b.title, b.destination, places.route[b.id])}
                     </p>
                     <p className="text-xs text-muted">
                       {byId.get(b.customer_id) || "Client"} · {formatDateFr(b.start_date)}

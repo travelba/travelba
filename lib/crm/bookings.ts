@@ -14,6 +14,7 @@ import {
 } from "@/lib/crm/types";
 import { itemTicketCount } from "@/lib/crm/item-match";
 import { hotelDisplayName, publishRevealIds } from "@/lib/crm/carnet";
+import { stayTitleFromItems } from "@/lib/crm/staff-stay";
 import {
   ticketingFeeAmount,
   ticketingFeeExternalId,
@@ -655,8 +656,34 @@ export async function syncBookingLedger(
   await dropCoveredStayRollup(supabase, booking.id);
 }
 
+/** Le titre suit les villes des étapes, sauf un nom choisi (« 40 ans »). */
+export async function syncBookingTitleFromSteps(supabase: SupabaseClient, bookingId: string) {
+  const { data: booking } = await supabase
+    .from("crm_bookings")
+    .select("title, destination")
+    .eq("id", bookingId)
+    .maybeSingle();
+  if (!booking) return "";
+  const { data: items } = await supabase
+    .from("crm_booking_items")
+    .select("id, kind, title, start_at, end_at, sort_order, details")
+    .eq("booking_id", bookingId);
+  const next = stayTitleFromItems(
+    booking.title,
+    booking.destination,
+    items || [],
+    ""
+  ).trim();
+  const current = (booking.title || "").trim();
+  if (!next || next === current) return current;
+  const { error } = await supabase.from("crm_bookings").update({ title: next }).eq("id", bookingId);
+  if (error) return current;
+  return next;
+}
+
 export async function refreshBookingLedger(supabase: SupabaseClient, bookingId: string) {
   await syncBookingTotalFromItems(supabase, bookingId);
+  await syncBookingTitleFromSteps(supabase, bookingId);
   const { data } = await supabase.from("crm_bookings").select("*").eq("id", bookingId).maybeSingle();
   if (!data) return;
   await syncBookingLedger(supabase, data as CrmBooking);

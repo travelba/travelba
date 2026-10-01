@@ -1,4 +1,5 @@
-import { sortItemsByOrder } from "./carnet";
+import { sortItemsByOrder, stayHeadline } from "./carnet";
+import { stayCitiesFromSteps } from "./staff-stay";
 import { isEmailBodyFile } from "./ingest-title";
 import type { IngestFamily } from "./ingest-parse";
 import { tagSourceFileName } from "./ingest-parse";
@@ -189,7 +190,10 @@ export function mergeFileExtracts(results: FileExtractResult[]): {
     travelers: dedupeTravelers(travelers),
   };
 
-  const cities = uniqueCities(merged);
+  const route = stayCitiesFromSteps(merged.items);
+  if (route.length >= 2) merged.title = stayHeadline(merged.title, merged.destination, route);
+  else if (!merged.title && route.length === 1) merged.title = route[0];
+  const cities = route.length ? route : uniqueCities(merged);
   if (!merged.title && cities.length) merged.title = cities.join(" · ");
   if (!merged.destination && cities.length) merged.destination = cities.join(" · ");
   merged.start_date = pickDate(

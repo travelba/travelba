@@ -31,7 +31,8 @@ import {
 } from "@/lib/crm/types";
 import { documentExpiryStatus } from "@/lib/crm/identity";
 import { reviewIdentityPieces } from "@/lib/crm/trip-documents";
-import { loadStayArrivalPlaces } from "@/lib/crm/carnet-query";
+import { stayHeadline } from "@/lib/crm/carnet";
+import { loadStayMaps } from "@/lib/crm/carnet-query";
 import { StatusChip } from "@/components/crm/ui";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
@@ -145,7 +146,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
     }
   }
   const identityPieces = reviewIdentityPieces((documents || []) as CrmTravelDocument[]);
-  const places = await loadStayArrivalPlaces(
+  const places = await loadStayMaps(
     supabase,
     bookingRows.map((row) => row.id)
   );
@@ -299,10 +300,10 @@ export default async function AdminClientDetailPage({ params }: Props) {
                     href={`/admin/reservations/${b.id}`}
                     className="flex min-w-0 items-center gap-3 text-[var(--admin-navy)] underline-offset-2 hover:underline"
                   >
-                    <BookingHero booking={b} places={places[b.id]} plain className="h-12 w-20 shrink-0 rounded-lg" />
+                    <BookingHero booking={b} places={places.arrival[b.id]} plain className="h-12 w-20 shrink-0 rounded-lg" />
                     <span className="min-w-0">
                       <span className="block truncate">
-                        {b.reference} · {b.title} · {formatDateFr(b.start_date)}
+                        {b.reference} · {stayHeadline(b.title, b.destination, places.route[b.id])} · {formatDateFr(b.start_date)}
                       </span>
                       {travelerLine ? (
                         <span className="block truncate text-xs text-muted">{travelerLine}</span>
@@ -337,7 +338,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
                     href={`/admin/reservations/${b.id}`}
                     className="min-w-0 text-[var(--admin-navy)] underline-offset-2 hover:underline"
                   >
-                    {b.reference} · {b.title}
+                    {b.reference} · {stayHeadline(b.title, b.destination, places.route[b.id])}
                   </Link>
                   <RestoreBookingButton compact bookingId={b.id} />
                 </li>

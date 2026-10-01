@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { PublicTripView } from "@/components/crm/PublicTripView";
-import { tripHeadline } from "@/lib/crm/carnet";
+import { clientVisibleItems } from "@/lib/crm/carnet";
+import { stayTitleFromItems } from "@/lib/crm/staff-stay";
 import { bookingCoverUrl } from "@/lib/crm/covers";
 import { formatDateFr } from "@/lib/crm/money";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
@@ -25,7 +26,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const trip = await loadPublishedTripShare(code);
   const hidden = { index: false, follow: false };
   if (!trip) return { title: "Voyage", robots: hidden };
-  const title = tripHeadline(trip.booking.title, trip.booking.destination);
+  const title = stayTitleFromItems(
+    trip.booking.title,
+    trip.booking.destination,
+    clientVisibleItems(trip.items)
+  );
   const description = tripDescription(trip.booking.start_date, trip.booking.end_date);
   const cover = bookingCoverUrl(trip.booking, 1200, { partage: code, items: trip.items });
   return {

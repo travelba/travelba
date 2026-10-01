@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { requireStaffPage } from "@/lib/crm/auth";
+import { syncBookingTitleFromSteps } from "@/lib/crm/bookings";
 import { BookingEditor } from "@/components/admin/BookingEditor";
 import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
@@ -37,6 +38,8 @@ export default async function AdminBookingPage({ params }: Props) {
   const { data: booking } = await supabase.from("crm_bookings").select("*").eq("id", id).maybeSingle();
   if (!booking) notFound();
   const b = booking as CrmBooking;
+  const syncedTitle = await syncBookingTitleFromSteps(supabase, id);
+  if (syncedTitle) b.title = syncedTitle;
   const relatedIds = Array.from(
     new Set([b.customer_id, b.billing_customer_id].filter((value): value is string => Boolean(value)))
   );

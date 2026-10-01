@@ -21,7 +21,7 @@ Ne pas ré-ouvrir le QCM produit : les règles sont déjà ancrées dans les ski
 
 Un seul état honnête : **En préparation**, **Montré au client**, ou **Archivée**. Le statut métier (Confirmée, Devis…) ne remplace pas cet état. Le bouton archive dit **Archiver**, jamais Supprimer.
 
-L’en-tête et le bloc Lieu et dates sont en haut et suivent **toutes** les étapes (plusieurs villes, plusieurs dates). On n’affiche pas un seul lieu ni un seul aller-retour figé du dossier, et on ne réécrit pas ces champs en base pour les aligner.
+L’en-tête (le titre compris) et le bloc Lieu et dates sont en haut et suivent **toutes** les étapes (plusieurs villes, plusieurs dates, sans répéter la même ville). On n’affiche pas un seul lieu ni un seul aller-retour figé du dossier, et on ne réécrit pas la destination ni les dates en base pour les aligner.
 
 Carte vol : **villes en titre** (`Rome → Paris`), code aéroport en dessous (`FCO → CDG`). Une étape non montrée est en surbrillance, pas un compteur. Pas de liste nom + e-mail des contacts hôtel sur la fiche. Un mail remplit une carte puis vit avec les pièces : pas d’étape e-mail ; les doublons proposés sont repliés (le nombre reste visible) puis s’écartent. L’onglet À faire reste visible. Dupliquer copie visas, refus et courriers. Montrer un séjour confirmé inscrit le grand livre ; un devis montré ne débite pas. Détail : skills carnet, e-mail, UI, argent.
 

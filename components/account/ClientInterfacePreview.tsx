@@ -23,11 +23,10 @@ import {
   clientVisibleItems,
   itemPriceLabel,
   publishRevealIds,
-  stayArrivalPlaces,
-  stayHeadline,
   tripPlaceLine,
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
+import { stayTitleFromItems } from "@/lib/crm/staff-stay";
 import { findVisaExtra, type ServiceRefusal } from "@/lib/crm/extras";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
@@ -259,8 +258,8 @@ function ClientScreen({
   const missingPassports = coverage.total > 0 && coverage.ready < coverage.total;
   const missingCount = coverage.total - coverage.ready;
   const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, booking.reference, booking.destination);
-  const headline = stayHeadline(booking.title, booking.destination, stayArrivalPlaces(booking.destination, booking.title, items));
-  const placeLine = tripPlaceLine(booking.title, booking.destination);
+  const headline = stayTitleFromItems(booking.title, booking.destination, items);
+  const placeLine = tripPlaceLine(headline, booking.destination);
   const formalities = frenchPassportTrip(items, travelers.length);
   const expenseChoices = allItems
     .filter((item) => isLedgerExpenseKind(item.kind))

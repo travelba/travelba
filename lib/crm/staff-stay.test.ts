@@ -5,6 +5,7 @@ import {
   staffLedgerCaption,
   staffStayFacts,
   staffStayLabel,
+  stayTitleFromItems,
 } from "./staff-stay";
 
 test("l’état visible est préparation, montré ou archivé", () => {
@@ -96,4 +97,51 @@ test("lieu et dates suivent toutes les étapes, pas un seul champ figé", () => 
   assert.match(facts.segments[2]?.when || "", /13/);
   assert.equal(facts.segments[3]?.place, "Rome → Paris");
   assert.equal(facts.nights, 9);
+});
+
+test("le titre suit chaque ville ajoutée, sans répéter Milan ni Rome", () => {
+  const items = [
+    {
+      id: "vol-aller",
+      kind: "flight",
+      start_at: "2026-12-04T15:55:00",
+      details: { city_from: "Paris", city_to: "Milan", from: "CDG", to: "MXP" },
+    },
+    {
+      id: "fs",
+      kind: "hotel",
+      start_at: "2026-12-04",
+      end_at: "2026-12-08",
+      details: { city: "Milano", hotel_name: "Four Seasons Hotel Milano" },
+    },
+    {
+      id: "train",
+      kind: "rail",
+      start_at: "2026-12-08T17:35:00",
+      details: { city_from: "Milano", city_to: "Roma" },
+    },
+    {
+      id: "casa",
+      kind: "hotel",
+      start_at: "2026-12-08",
+      end_at: "2026-12-13",
+      details: { city: "Rome", hotel_name: "Casa Monti" },
+    },
+    {
+      id: "vol-retour",
+      kind: "flight",
+      start_at: "2026-12-13T16:00:00",
+      details: { city_from: "Rome", city_to: "Paris" },
+    },
+  ];
+  assert.equal(stayTitleFromItems("Paris · Milan", "Paris · Milan", items), "Paris · Milan · Rome");
+  assert.equal(stayTitleFromItems("40 ans", "Paris · Milan", items), "40 ans");
+  const facts = staffStayFacts({
+    destination: "Paris · Milan",
+    startDate: "2026-12-04",
+    endDate: "2026-12-08",
+    items,
+  });
+  assert.deepEqual(facts.cities, ["Paris", "Milan", "Rome"]);
+  assert.equal(facts.placeLine, "Paris · Milan · Rome");
 });

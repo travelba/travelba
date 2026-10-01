@@ -22,11 +22,10 @@ import {
   clientBookingStatusLabel,
   clientVisibleItems,
   itemPriceLabel,
-  stayArrivalPlaces,
-  stayHeadline,
   tripPlaceLine,
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
+import { stayTitleFromItems } from "@/lib/crm/staff-stay";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { EncoursPayment } from "@/components/account/EncoursPayment";
 import { googlePhoneMap } from "@/lib/crm/calendar-ics";
@@ -117,12 +116,8 @@ export default async function ReservationDetailPage({ params }: Props) {
   } catch {
     shareUrl = null;
   }
-  const headline = stayHeadline(
-    b.title,
-    b.destination,
-    stayArrivalPlaces(b.destination, b.title, visibleItems)
-  );
-  const placeLine = tripPlaceLine(b.title, b.destination);
+  const headline = stayTitleFromItems(b.title, b.destination, visibleItems);
+  const placeLine = tripPlaceLine(headline, b.destination);
   const missingCount = coverage.total - coverage.ready;
   const formalities = frenchPassportTrip(visibleItems, party.length);
   let expenseChoices: { id: string; title: string; amount: number | null; billing_company_id: string | null }[] =

@@ -13,7 +13,7 @@ import {
 } from "@/lib/crm/money";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { BookingStatusBadge, EmptyState } from "@/components/crm/ui";
-import { loadStayArrivalPlaces, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
+import { loadStayMaps, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { Icon } from "@/components/crm/icons";
 
@@ -38,9 +38,10 @@ export default async function ReservationsPage({
   } catch {
     displayedAmounts = new Map();
   }
-  const places = await loadStayArrivalPlaces(
+  const places = await loadStayMaps(
     supabase,
-    all.map((row) => row.id)
+    all.map((row) => row.id),
+    { visibleOnly: true }
   );
   const upcoming = sortBookingsByStart(all.filter((b) => isClientUpcomingStay(b)), "asc");
   const past = sortBookingsByStart(all.filter((b) => isClientPastStay(b)), "desc");
@@ -116,7 +117,7 @@ export default async function ReservationsPage({
           return (
             <li key={b.id}>
               <article className="relative overflow-hidden rounded-xl border border-[#c5c6cd]/35 bg-white shadow-sm">
-                <BookingHero booking={b} places={places[b.id]} width={800}>
+                <BookingHero booking={b} places={places.arrival[b.id]} width={800}>
                   <div className="absolute left-3 right-3 top-3 flex items-center justify-between gap-2">
                     {countdown ? (
                       <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--admin-gold)]/30 bg-[#faf9f6]/95 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--admin-navy)] shadow-sm">
@@ -134,7 +135,7 @@ export default async function ReservationsPage({
                       {nights ? ` (${nights} jour${nights > 1 ? "s" : ""})` : ""}
                     </p>
                     <h2 className="font-display text-2xl font-bold leading-tight">
-                      {stayHeadline(b.title, b.destination, places[b.id])}
+                      {stayHeadline(b.title, b.destination, places.route[b.id])}
                     </h2>
                   </div>
                 </BookingHero>

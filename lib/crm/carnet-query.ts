@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
 import { carnetVisible, stayArrivalPlaces } from "@/lib/crm/carnet";
+import { stayCitiesFromSteps } from "@/lib/crm/staff-stay";
 
 export async function loadVisibleCarnets(supabase: SupabaseClient, customerId: string) {
   const { data } = await supabase
@@ -27,31 +28,52 @@ export async function loadVisibleCarnets(supabase: SupabaseClient, customerId: s
   return all.filter((booking) => carnetVisible(booking, byBooking.get(booking.id) || []));
 }
 
-/** Villes d’arrivée par dossier, pour la couverture (pays / diagonale). */
-export async function loadStayArrivalPlaces(supabase: SupabaseClient, bookingIds: string[]) {
+type StayStep = {
+  booking_id: string;
+  kind?: string | null;
+  title?: string | null;
+  details?: Record<string, unknown> | null;
+  sort_order?: number | null;
+  start_at?: string | null;
+  end_at?: string | null;
+  visible_to_client?: boolean | null;
+};
+
+/** Villes d’arrivée (couverture) et villes du titre, lues sur les étapes. */
+export async function loadStayMaps(
+  supabase: SupabaseClient,
+  bookingIds: string[],
+  opts?: { visibleOnly?: boolean }
+) {
   const ids = [...new Set(bookingIds.filter(Boolean))];
-  const places: Record<string, string[]> = {};
-  if (!ids.length) return places;
+  const arrival: Record<string, string[]> = {};
+  const route: Record<string, string[]> = {};
+  if (!ids.length) return { arrival, route };
   const { data } = await supabase
     .from("crm_booking_items")
-    .select("booking_id, kind, details, sort_order")
+    .select("booking_id, kind, title, details, sort_order, start_at, end_at, visible_to_client")
     .in("booking_id", ids)
     .order("sort_order");
-  const grouped = new Map<string, { kind?: string | null; details?: Record<string, unknown> | null }[]>();
-  for (const row of (data || []) as {
-    booking_id: string;
-    kind?: string | null;
-    details?: Record<string, unknown> | null;
-  }[]) {
+  const grouped = new Map<string, StayStep[]>();
+  for (const row of (data || []) as StayStep[]) {
     const list = grouped.get(row.booking_id) || [];
-    list.push({ kind: row.kind, details: row.details });
+    list.push(row);
     grouped.set(row.booking_id, list);
   }
   for (const id of ids) {
-    const arrival = stayArrivalPlaces(null, null, grouped.get(id) || []);
-    if (arrival.length) places[id] = arrival;
+    const items = grouped.get(id) || [];
+    const places = stayArrivalPlaces(null, null, items);
+    if (places.length) arrival[id] = places;
+    const titled = opts?.visibleOnly ? items.filter((item) => item.visible_to_client !== false) : items;
+    const cities = stayCitiesFromSteps(titled);
+    if (cities.length) route[id] = cities;
   }
-  return places;
+  return { arrival, route };
+}
+
+/** Villes d’arrivée par dossier, pour la couverture (pays / diagonale). */
+export async function loadStayArrivalPlaces(supabase: SupabaseClient, bookingIds: string[]) {
+  return (await loadStayMaps(supabase, bookingIds)).arrival;
 }
 
 export function sortBookingsByStart<T extends { start_date: string | null }>(
