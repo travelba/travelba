@@ -29,6 +29,7 @@ import { shortStayDay, shortStayRange } from "@/lib/crm/staff-stay";
 import { Icon } from "@/components/crm/icons";
 import { STAY_CURRENCIES } from "@/lib/crm/stay-currency";
 import { HotelDesk } from "@/components/admin/HotelDesk";
+import { ProposedDuplicates } from "@/components/admin/ProposedDuplicates";
 import type { CardViewLine, CrmBookingTraveler, CrmHotelArrival, CrmHotelRequest, CrmTravelDocument } from "@/lib/crm/types";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
@@ -520,18 +521,11 @@ export function BookingItemsPanel({
           );
         })}
       </Reorder.Group>
-      {groupAttachedEmails(attachedEmails).duplicates.map((mail) => (
-        <div key={mail.id} className="mt-2 flex items-center gap-3 rounded-2xl bg-[#f4f3f0] px-3 py-3 text-muted">
-          <Icon name="mail" className="h-4 w-4 shrink-0" />
-          <p className="min-w-0 flex-1 text-sm">
-            <span className="block text-xs font-semibold uppercase tracking-wide">Doublon</span>
-            <span className="block truncate">{mail.label}</span>
-          </p>
-          <button type="button" disabled={busy} className={flatBtn} onClick={() => void dismissEmail(mail.id)}>
-            Écarter
-          </button>
-        </div>
-      ))}
+      <ProposedDuplicates
+        duplicates={groupAttachedEmails(attachedEmails).duplicates}
+        busy={busy}
+        onDismiss={(id) => void dismissEmail(id)}
+      />
       {editingId === "new" ? (
         <div className="mt-3 space-y-2">
           <IngestItemCard
