@@ -14,7 +14,7 @@ export function ClientTransactionsPanel({
 }: {
   view: ClientLedgerView;
   billingHref?: string | null;
-  payments?: { company?: ReactNode; personal?: ReactNode } | null;
+  payments?: ReactNode | null;
 }) {
   const { member, currency, remaining, remainingPct, debits, creditCount, movements } = view;
 
@@ -68,12 +68,7 @@ export function ClientTransactionsPanel({
                 </p>
               </div>
             ) : null}
-            {payments?.company || payments?.personal ? (
-              <div className="mt-3 space-y-3">
-                {payments.company}
-                {payments.personal}
-              </div>
-            ) : null}
+            {payments ? <div className="mt-3">{payments}</div> : null}
             {billingHref ? (
               <Link
                 href={billingHref}
