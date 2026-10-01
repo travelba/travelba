@@ -22,6 +22,10 @@ function sheetId() {
   return productionOnlySecret(process.env.CYRIL_SHEET_ID);
 }
 
+function writerSubject() {
+  return productionOnlySecret(process.env.GMAIL_IMPERSONATE);
+}
+
 function loadServiceAccount(): ServiceAccount {
   const raw = productionOnlySecret(process.env.GOOGLE_SA_JSON);
   if (!raw || !sheetId()) {
@@ -45,22 +49,34 @@ function loadServiceAccount(): ServiceAccount {
   return { client_email: clientEmail, private_key: privateKey };
 }
 
-let cachedToken: { token: string; exp: number } | null = null;
+let cachedToken: { token: string; exp: number; subject: string } | null = null;
 
-async function accessToken() {
+function googleStatus(body: string) {
+  try {
+    const parsed = JSON.parse(body) as { error?: string | { status?: string } };
+    if (typeof parsed.error === "string") return parsed.error.slice(0, 80);
+    return (parsed.error?.status || "").slice(0, 80);
+  } catch {
+    return "";
+  }
+}
+
+async function requestToken(subject: string) {
   const now = Math.floor(Date.now() / 1000);
-  if (cachedToken && cachedToken.exp - 60 > now) return cachedToken.token;
+  if (cachedToken && cachedToken.subject === subject && cachedToken.exp - 60 > now) {
+    return cachedToken.token;
+  }
   const sa = loadServiceAccount();
   const header = Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT" })).toString("base64url");
-  const claim = Buffer.from(
-    JSON.stringify({
-      iss: sa.client_email,
-      scope: SHEETS_SCOPE,
-      aud: TOKEN_URL,
-      iat: now,
-      exp: now + 3600,
-    })
-  ).toString("base64url");
+  const payload: Record<string, string | number> = {
+    iss: sa.client_email,
+    scope: SHEETS_SCOPE,
+    aud: TOKEN_URL,
+    iat: now,
+    exp: now + 3600,
+  };
+  if (subject) payload.sub = subject;
+  const claim = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const data = `${header}.${claim}`;
   const signer = createSign("RSA-SHA256");
   signer.update(data);
@@ -74,12 +90,27 @@ async function accessToken() {
     }),
   });
   if (!res.ok) {
-    throw new CyrilSheetError("Auth classeur", "upstream");
+    const detail = await res.text().catch(() => "");
+    console.error("[anniversaire-cyril] auth", res.status, googleStatus(detail), sa.client_email);
+    return null;
   }
   const json = (await res.json()) as { access_token?: string; expires_in?: number };
-  if (!json.access_token) throw new CyrilSheetError("Auth classeur", "upstream");
-  cachedToken = { token: json.access_token, exp: now + (json.expires_in || 3600) };
+  if (!json.access_token) return null;
+  cachedToken = { token: json.access_token, exp: now + (json.expires_in || 3600), subject };
   return cachedToken.token;
+}
+
+async function tokensToTry() {
+  const tokens: string[] = [];
+  const subject = writerSubject();
+  if (subject) {
+    const impersonated = await requestToken(subject);
+    if (impersonated) tokens.push(impersonated);
+  }
+  const own = await requestToken("");
+  if (own && !tokens.includes(own)) tokens.push(own);
+  if (!tokens.length) throw new CyrilSheetError("Auth classeur", "upstream");
+  return tokens;
 }
 
 function sheetColumn(count: number) {
@@ -106,7 +137,11 @@ async function ensureHeaders(token: string, id: string) {
   const read = await fetch(valuesUrl(id, range), {
     headers: { authorization: `Bearer ${token}` },
   });
-  if (!read.ok) throw new CyrilSheetError("Lecture classeur", "upstream");
+  if (!read.ok) {
+    const detail = await read.text().catch(() => "");
+    console.error("[anniversaire-cyril] lecture", read.status, googleStatus(detail));
+    throw new CyrilSheetError("Lecture classeur", "upstream");
+  }
   const json = (await read.json()) as { values?: string[][] };
   const first = json.values?.[0]?.[0];
   if (!first) {
@@ -123,10 +158,7 @@ async function ensureHeaders(token: string, id: string) {
   headersReady = true;
 }
 
-export async function appendCyrilRow(row: string[]) {
-  const id = sheetId();
-  if (!id) throw new CyrilSheetError("Classeur non configuré", "unconfigured");
-  const token = await accessToken();
+async function appendWithToken(token: string, id: string, row: string[]) {
   await ensureHeaders(token, id);
   const res = await fetch(
     valuesUrl(
@@ -143,5 +175,27 @@ export async function appendCyrilRow(row: string[]) {
       body: JSON.stringify({ values: [row] }),
     }
   );
-  if (!res.ok) throw new CyrilSheetError("Ajout classeur", "upstream");
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    console.error("[anniversaire-cyril] ajout", res.status, googleStatus(detail));
+    throw new CyrilSheetError("Ajout classeur", "upstream");
+  }
+}
+
+export async function appendCyrilRow(row: string[]) {
+  const id = sheetId();
+  if (!id) throw new CyrilSheetError("Classeur non configuré", "unconfigured");
+  const tokens = await tokensToTry();
+  let last: CyrilSheetError | null = null;
+  for (const token of tokens) {
+    try {
+      await appendWithToken(token, id, row);
+      return;
+    } catch (error) {
+      if (!(error instanceof CyrilSheetError) || error.code !== "upstream") throw error;
+      headersReady = false;
+      last = error;
+    }
+  }
+  throw last || new CyrilSheetError("Ajout classeur", "upstream");
 }
