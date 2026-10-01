@@ -52,10 +52,10 @@ Ajustements / remboursements : lignes manuelles admin `kind=adjustment|refund`.
 
 ## Stripe — règlement dans Transactions
 
-- Le règlement est dans **Transactions** (`/mon-compte/transactions`), sous l’encours, libellé **Régler**. Le même bloc est en haut de la réservation. Carte, Apple Pay, prélèvement SEPA, virement.
+- Le règlement est dans **Transactions** (`/mon-compte/transactions`), sous l’encours, libellé **Régler**. Le même bloc est en haut de la réservation. Société : prélèvement SEPA et virement. Particulier : carte, Apple Pay et virement.
 - Le dossier a `payer_kind` : `company` (société, défaut = première `crm_billing_companies`) ou `personal` (particulier). L’agence le choisit dans Règlement pour ranger le débit. Le client ne choisit pas la société.
 - `fees_follow_stay` (défaut true) : frais d’agence, frais de billeterie (25 € par passager dès qu’un vol est confirmé) et dépenses suivent la facture du séjour. L’hôtel réglé par le client n’est pas un encaissement.
-- Part société : prélèvement SEPA et virement, en euros. Part particulier : carte, Apple Pay, prélèvement SEPA, virement. Hors euros : carte et Apple Pay seulement. Le collaborateur `member` ne règle pas l’encours : il voit ses frais, le compte qui porte le wallet paie.
+- Part société : prélèvement SEPA et virement, en euros. Part particulier : carte, Apple Pay et virement, sans prélèvement. Hors euros : carte et Apple Pay seulement. Le collaborateur `member` ne règle pas l’encours : il voit ses frais, le compte qui porte le wallet paie. Les moyens tiennent sur une ligne de pastilles ; le formulaire s’ouvre seulement pour le moyen choisi.
 - Le grand livre reste un seul encours. Chaque règlement crédite le même wallet. `payer_kind` sur la ligne de crédit range la part, sans créer un second solde.
 - `POST /api/client/ledger/pay` reçoit `payerKind` `company` ou `personal`. Le montant vient du serveur (la part due). `POST /api/client/bookings/[id]/pay` répond 410. Carte, Apple Pay et prélèvement SEPA créent un PaymentIntent (moyens dynamiques, `excluded_payment_method_types`). Pas de `payment_method_types`. Pas de PAN / CVC. Apple Pay = portefeuille Stripe. Le libellé du crédit porte la part.
 - Virement = compte **Revolut Business** (IBAN SEPA du compte euros actif), pas Stripe `customer_balance`. La route ne crée pas de PaymentIntent. Elle renvoie IBAN, BIC, titulaire et le **nom du client** comme référence. Jamais d’IBAN dans les logs. Plusieurs IBAN euros distincts → le virement reste fermé.

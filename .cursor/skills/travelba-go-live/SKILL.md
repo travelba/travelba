@@ -82,7 +82,7 @@ OIDC Vercel : `aiGatewayConfigured()` peut être vrai sur Vercel sans `sk-`. L�
 
 ## Stripe
 
-- Mode **live**. L’encaissement carte, Apple Pay et prélèvement SEPA passe par PaymentIntent dans **Transactions**, sur la part société ou particulier de l’encours. Pas de PAN. Le virement est l’IBAN du compte Revolut Business, pas un virement Stripe.
+- Mode **live**. Carte et Apple Pay (particulier) et prélèvement SEPA (société) passent par PaymentIntent dans **Transactions**. Pas de PAN. Le virement, ouvert pour les deux parts en euros, est l’IBAN du compte Revolut Business, pas un virement Stripe.
 - Endpoint : `https://travelba.fr/api/webhooks/stripe`
 - Events : `setup_intent.succeeded`, `payment_method.detached`, `payment_intent.succeeded`
 - Pas de page cartes (`/paiement` → facturation). Le règlement est dans Transactions, pas sur la réservation.
