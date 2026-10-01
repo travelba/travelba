@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
-import { clearClientStayCard, issueHotelCheckinCard, restoreHotelRequest, saveHotelRequest, saveUploadedClientCard, sendHotelRequest, skipHotelRequest } from "@/lib/crm/hotel-desk-run";
+import { clearClientStayCard, issueHotelCheckinCard, restoreHotelRequest, saveHotelRequest, saveUploadedClientCard, sendHotelMessage, sendHotelRequest, skipHotelRequest } from "@/lib/crm/hotel-desk-run";
 import { HOTEL_DESK_KINDS } from "@/lib/crm/types";
 import type { HotelDeskKind } from "@/lib/crm/types";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -103,6 +103,19 @@ export async function POST(request: Request, ctx: Ctx) {
   const action = body?.action;
   if (!itemId || !action) return jsonError("Action incomplète", 400);
   const admin = createServiceClient();
+  if (action === "send-message") {
+    try {
+      await sendHotelMessage(admin, {
+        bookingId: id,
+        itemId,
+        subject: typeof body?.subject === "string" ? body.subject : "",
+        body: typeof body?.body === "string" ? body.body : "",
+      });
+      return NextResponse.json({ ok: true });
+    } catch (error) {
+      return jsonError(error instanceof Error ? error.message : "Action impossible", 400);
+    }
+  }
   if (action === "save-client-card") {
     if (!body.clientCard?.content?.length) return jsonError("Déposez la carte du client.", 400);
     try {

@@ -35,6 +35,7 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 - En-tête et **Lieu et dates en haut** : villes et dates **de toutes les étapes** (`staffStayFacts`). Pas un seul lieu ni un seul départ/retour recopié depuis `crm_bookings`. Ne pas réécrire ces colonnes pour les faire coller.
 - Une étape déjà confirmée mais pas encore montrée est **en surbrillance** sur la carte. Pas une bannière qui ne fait que compter.
 - Onglet **À faire** toujours visible (chauffeur, VIP Airport, enregistrement), avec le nombre de blocages.
+- **Écrire à l’hôtel** : sur chaque étape hôtel, le fil du séjour (courriers envoyés, réponses, mails déjà dans les pièces). L’envoi reprend le bureau hôtel (`deliverHotelMail`). Le nom de l’hôtel suffit : pas de liste de contacts. L’adresse connue part en coulisse. Le mail ne devient pas une étape.
 - **Dupliquer** copie cartes, pièces, voyageurs, couverture, **visas, refus et courriers hôtel** (courrier recopié en brouillon, pour ne pas renvoyer). Pas les mails bruts comme étapes.
 - Note client : champ `notes_client`, à côté de `notes_internal`.
 

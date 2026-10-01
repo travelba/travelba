@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
 import {
   cardSendNote,
@@ -16,8 +18,12 @@ import {
   hotelDeskRecipients,
   mergeDeskContacts,
   hotelDeskSuggested,
+  hotelMailPieceMatches,
+  hotelStayContext,
+  hotelThread,
   hotelsNeedingDesk,
   keepAgencyDraft,
+  knownHotelRecipients,
   nextDeskMark,
   outboundHotelLetter,
   replyMatchesHotel,
@@ -25,7 +31,7 @@ import {
   transferCues,
 } from "./hotel-desk";
 import { paymentUrlFromText } from "./hotel-arrival";
-import type { CrmBookingItem } from "./types";
+import type { CrmBookingItem, CrmHotelMessage, CrmHotelRequest } from "./types";
 
 function hotel(patch: Partial<CrmBookingItem> = {}): CrmBookingItem {
   return {
@@ -378,4 +384,146 @@ test("la carte n'entre pas dans le brouillon", () => {
   assert.match(note, /jointe/);
   assert.match(cardSendNote("client", "fr"), /jointe/);
   assert.equal(note.includes("4242"), false);
+});
+
+function letter(patch: Partial<CrmHotelRequest> = {}): CrmHotelRequest {
+  return {
+    id: "req-1",
+    booking_id: "b1",
+    booking_item_id: "item-hotel",
+    kind: "payment_link",
+    status: "sent",
+    recipients: ["reservations@bristol.test"],
+    subject: "Lien de paiement — Le Bristol — HB-9",
+    body: "Pourriez-vous envoyer le lien de paiement ?",
+    edited: true,
+    card_choice: null,
+    attach_passports: false,
+    due_on: null,
+    sent_at: "2026-09-28T08:00:00.000Z",
+    follow_up_count: 0,
+    last_follow_up_at: null,
+    replied_at: "2026-09-28T14:00:00.000Z",
+    reply_from: "Front desk <desk@bristol.test>",
+    reply_subject: "Re: Lien de paiement — Le Bristol — HB-9",
+    reply_body: "Le lien est prêt.\nhttps://secure.hotel.test/authorizations/stay-1",
+    reply_message_id: "gmail-1",
+    created_at: "2026-09-28T07:00:00.000Z",
+    updated_at: "2026-09-28T14:00:00.000Z",
+    ...patch,
+  };
+}
+
+function note(patch: Partial<CrmHotelMessage> = {}): CrmHotelMessage {
+  return {
+    id: "msg-1",
+    booking_id: "b1",
+    booking_item_id: "item-hotel",
+    subject: "Le Bristol — HB-9 — 4 novembre 2026",
+    body: "La chambre avec vue est-elle possible ?",
+    recipients: ["reservations@bristol.test"],
+    sent_at: "2026-09-29T09:00:00.000Z",
+    reply_from: "",
+    reply_subject: "",
+    reply_body: "",
+    reply_message_id: null,
+    replied_at: null,
+    created_at: "2026-09-29T09:00:00.000Z",
+    updated_at: "2026-09-29T09:00:00.000Z",
+    ...patch,
+  };
+}
+
+test("le fil montre le séjour, les envois et les réponses, sans liste de contacts", () => {
+  const stay = hotelStayContext(hotel());
+  assert.match(stay.hotel, /Bristol/);
+  assert.match(stay.subtitle, /novembre/);
+  assert.match(stay.subtitle, /HB-9/);
+  assert.match(stay.subject, /Bristol/);
+  assert.equal(stay.subject.includes("@"), false);
+  const turns = hotelThread({
+    item: hotel(),
+    requests: [
+      letter(),
+      letter({ id: "draft", status: "draft", sent_at: null, reply_body: "", replied_at: null, reply_message_id: null }),
+    ],
+    messages: [note()],
+    attached: [
+      {
+        id: "gmail-1",
+        subject: "Re: Lien de paiement — Le Bristol — HB-9",
+        from_email: "desk@bristol.test",
+        received_at: "2026-09-28T14:00:00.000Z",
+        body_text: "Le lien est prêt.",
+        extract: { items: [{ kind: "hotel", title: "Le Bristol", confirmation_ref: "HB-9" }] },
+      },
+      {
+        id: "confirm-1",
+        subject: "Confirmation Le Bristol",
+        from_email: "stay@little.test",
+        received_at: "2026-09-01T10:00:00.000Z",
+        body_text: "Votre séjour est confirmé.",
+        extract: { items: [{ kind: "hotel", details: { hotel_name: "Le Bristol" }, confirmation_ref: "HB-9" }] },
+      },
+      {
+        id: "ticket-1",
+        subject: "Billet Camille",
+        from_email: "tickets@airline.test",
+        received_at: "2026-09-02T10:00:00.000Z",
+        body_text: "E-ticket",
+        extract: { items: [{ kind: "flight", title: "CDG → FCO" }] },
+      },
+    ],
+  });
+  assert.deepEqual(
+    turns.map((turn) => turn.label),
+    ["Confirmation", "Lien de paiement", "Réponse", "Message"]
+  );
+  assert.equal(turns[0]?.speaker, "Le Bristol");
+  assert.equal(turns[1]?.speaker, "L'agence");
+  assert.equal(turns[2]?.speaker, "Le Bristol");
+  assert.match(turns[2]?.body || "", /authorizations/);
+  assert.equal(turns[2]?.link, "https://secure.hotel.test/authorizations/stay-1");
+  assert.equal(turns.some((turn) => turn.id === "mail:gmail-1"), false);
+  assert.equal(turns.some((turn) => turn.id === "mail:ticket-1"), false);
+  assert.equal(JSON.stringify(turns).includes("@"), false);
+  assert.equal(JSON.stringify(turns).includes("desk@"), false);
+  assert.deepEqual(knownHotelRecipients(hotel(), [letter()]), ["reservations@bristol.test"]);
+});
+
+test("une confirmation Milano rejoint l'hôtel Milan, un mail écarté non", () => {
+  const item = hotel({
+    confirmation_ref: "",
+    details: { hotel_name: "Hotel Milano", city: "Milan", country: "Italy" },
+  });
+  const mail = {
+    id: "milano",
+    subject: "Booking",
+    from_email: "stay@little.test",
+    extract: { items: [{ kind: "hotel", title: "Milano", details: { hotel_name: "Milano" } }] },
+  };
+  assert.equal(hotelMailPieceMatches(item, mail), true);
+  assert.equal(hotelMailPieceMatches(item, { ...mail, from_email: "contact@travelba.fr" }), false);
+  assert.equal(
+    hotelMailPieceMatches(item, { ...mail, warnings: [{ file: "staff", message: "écarté" }] }),
+    false
+  );
+  assert.equal(hotelMailPieceMatches(hotel(), { id: "other", extract: { items: [{ kind: "hotel", title: "Aman Tokyo" }] } }), false);
+});
+
+test("écrire à l'hôtel n'ajoute pas d'étape et n'affiche pas le roster", () => {
+  const root = join(process.cwd(), "lib/crm/hotel-desk-run.ts");
+  const src = readFileSync(root, "utf8");
+  const start = src.indexOf("export async function sendHotelMessage");
+  const end = src.indexOf("async function loadRequest");
+  const fn = src.slice(start, end);
+  assert.match(fn, /deliverHotelMail/);
+  assert.match(fn, /crm_hotel_messages/);
+  assert.doesNotMatch(fn, /crm_booking_items/);
+  const desk = readFileSync(join(process.cwd(), "components/admin/HotelDesk.tsx"), "utf8");
+  assert.match(desk, /HotelThread/);
+  assert.doesNotMatch(desk, /RecipientRoster/);
+  const thread = readFileSync(join(process.cwd(), "components/admin/HotelThread.tsx"), "utf8");
+  assert.match(thread, /Avec l’hôtel/);
+  assert.doesNotMatch(thread, /RecipientRoster/);
 });

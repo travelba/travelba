@@ -14,6 +14,7 @@ import {
   type CrmBookingTraveler,
   type CardViewLine,
   type CrmHotelArrival,
+  type CrmHotelMessage,
   type CrmHotelRequest,
   type CrmCompanion,
   type CrmCustomer,
@@ -114,6 +115,7 @@ export function BookingEditor({
   hasCardCode = false,
   cardViews = [],
   attachedEmails = [],
+  hotelMessages = [],
   billingCompanies = [],
   littleEmperors = null,
   expenseBilling = [],
@@ -150,9 +152,11 @@ export function BookingEditor({
     subject: string | null;
     from_email: string | null;
     received_at: string | null;
+    body_text?: string | null;
     extract?: unknown;
     warnings?: { file?: string | null; message?: string | null }[] | null;
   }[];
+  hotelMessages?: CrmHotelMessage[];
   billingCompanies?: { id: string; company_name: string | null; sort_order: number }[];
   littleEmperors?: {
     id: string;
@@ -1216,6 +1220,7 @@ export function BookingEditor({
         clientSettlesStay={clientSettles}
         stayVisible={booking.visible_to_client}
         attachedEmails={attachedEmails}
+        hotelMessages={hotelMessages}
         onBindDraftSave={(save) => {
           saveOpenCard.current = save;
         }}

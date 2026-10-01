@@ -1,4 +1,4 @@
-import { hotelDisplayName, itemClock, nightsBetween } from "./carnet";
+import { hotelCityLine, hotelDisplayName, itemClock, nightsBetween } from "./carnet";
 import { hotelContact, leHotelIdFromItem, type HotelContact } from "./hotel-contact";
 import {
   businessDaysBefore,
@@ -14,7 +14,7 @@ import {
   parisIsoDate,
   paymentUrlFromText,
 } from "./hotel-arrival";
-import type { CrmBookingItem, CrmHotelRequest, HotelDeskKind, HotelDeskStatus } from "./types";
+import type { CrmBookingItem, CrmHotelMessage, CrmHotelRequest, HotelDeskKind, HotelDeskStatus } from "./types";
 import { HOTEL_DESK_KINDS } from "./types";
 
 /** Expéditeur et adresse de réponse du bureau hôtel. */
@@ -646,6 +646,233 @@ export function outboundHotelLetter(body: string, note: string) {
 
 export function cleanRecipients(values: string[]) {
   return [...new Set(values.map((value) => emailAddress(value)).filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)))];
+}
+
+/** Adresses déjà connues pour cet hôtel. Jamais une liste à montrer sur la fiche. */
+export function knownHotelRecipients(
+  item: CrmBookingItem,
+  requests: Pick<CrmHotelRequest, "booking_item_id" | "recipients">[]
+) {
+  const listed = cleanRecipients(
+    requests.filter((row) => row.booking_item_id === item.id).flatMap((row) => row.recipients || [])
+  );
+  if (listed.length) return listed;
+  return hotelDeskRecipients(hotelContact(item), "concierge");
+}
+
+/** Hôtel, ville, dates et confirmation : le contexte du message. */
+export function hotelStayContext(item: CrmBookingItem) {
+  const hotel = hotelDisplayName(item) || "Hôtel";
+  const city = hotelCityLine(item);
+  const checkIn = isoDate(item.start_at);
+  const checkOut = isoDate(item.end_at);
+  const stay =
+    checkIn && checkOut && checkOut !== checkIn
+      ? `${formatStayDate(checkIn, "fr")} – ${formatStayDate(checkOut, "fr")}`
+      : checkIn
+        ? formatStayDate(checkIn, "fr")
+        : "";
+  const ref = (item.confirmation_ref || "").trim();
+  return {
+    hotel,
+    subtitle: [city, stay, ref ? `confirmation ${ref}` : ""].filter(Boolean).join(" · "),
+    subject: [hotel, ref || "", stay].filter(Boolean).join(" — "),
+  };
+}
+
+export type HotelThreadTurn = {
+  id: string;
+  at: string;
+  direction: "out" | "in";
+  speaker: string;
+  label: string;
+  subject: string;
+  body: string;
+  link: string | null;
+};
+
+export type HotelMailPiece = {
+  id: string;
+  subject?: string | null;
+  from_email?: string | null;
+  received_at?: string | null;
+  body_text?: string | null;
+  extract?: unknown;
+  warnings?: { file?: string | null; message?: string | null }[] | null;
+};
+
+type PieceHotel = {
+  kind?: string;
+  title?: string | null;
+  confirmation_ref?: string | null;
+  details?: { hotel_name?: string | null } | null;
+};
+
+function foldHotel(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/milano/g, "milan")
+    .replace(/\bhotel\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function hotelNamesMatch(left: string, right: string) {
+  if (!left || !right) return false;
+  if (left === right) return true;
+  const [short, long] = left.length <= right.length ? [left, right] : [right, left];
+  return short.length >= 8 && long.includes(short);
+}
+
+function pieceHotels(mail: HotelMailPiece): PieceHotel[] {
+  const extract =
+    mail.extract && typeof mail.extract === "object" ? (mail.extract as { items?: PieceHotel[] }) : null;
+  return (extract?.items || []).filter((item) => item?.kind === "hotel");
+}
+
+function pieceDismissed(mail: HotelMailPiece) {
+  return (mail.warnings || []).some((warning) => warning?.file === "staff" && warning?.message === "écarté");
+}
+
+/** Un mail déjà dans les pièces de cet hôtel. Un billet d'avion n'entre pas dans le fil. */
+export function hotelMailPieceMatches(item: CrmBookingItem, mail: HotelMailPiece) {
+  if (!mail.id || pieceDismissed(mail) || isAgencyMailbox(mail.from_email || "")) return false;
+  const hotels = pieceHotels(mail);
+  if (!hotels.length) return false;
+  const name = foldHotel(hotelDisplayName(item));
+  const ref = foldHotel(item.confirmation_ref || "");
+  return hotels.some((hotel) => {
+    const pieceRef = foldHotel(hotel.confirmation_ref || "");
+    if (ref && pieceRef && ref === pieceRef) return true;
+    return hotelNamesMatch(name, foldHotel(hotel.details?.hotel_name || hotel.title || ""));
+  });
+}
+
+function replyText(body: string) {
+  const cleaned = hotelReplyForDesk(body);
+  return cleaned || "L'hôtel a répondu.";
+}
+
+function sameExchange(
+  mail: HotelMailPiece,
+  replies: { reply_message_id: string | null; reply_subject: string; reply_body: string }[]
+) {
+  const body = hotelReplyForDesk(mail.body_text || "");
+  const key = hotelMailSubjectKey(mail.subject || "");
+  return replies.some((reply) => {
+    if (reply.reply_message_id && reply.reply_message_id === mail.id) return true;
+    if (!reply.reply_body.trim()) return false;
+    if (key && hotelMailSubjectKey(reply.reply_subject) === key) return true;
+    return Boolean(body) && hotelReplyForDesk(reply.reply_body) === body;
+  });
+}
+
+function turnAt(value: string | null) {
+  if (!value) return "";
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : "";
+}
+
+/**
+ * Fil d'un hôtel : courriers partis, réponses, messages libres, confirmations déjà dans les pièces.
+ * L'interlocuteur affiché est l'agence ou le nom de l'hôtel.
+ */
+export function hotelThread(input: {
+  item: CrmBookingItem;
+  requests: CrmHotelRequest[];
+  messages: CrmHotelMessage[];
+  attached: HotelMailPiece[];
+}): HotelThreadTurn[] {
+  const context = hotelStayContext(input.item);
+  const turns: HotelThreadTurn[] = [];
+  const replies: { reply_message_id: string | null; reply_subject: string; reply_body: string }[] = [];
+  const letters = input.requests.filter((row) => row.booking_item_id === input.item.id);
+  const notes = input.messages.filter((row) => row.booking_item_id === input.item.id);
+
+  for (const row of letters) {
+    if (row.sent_at) {
+      const label =
+        row.follow_up_count > 0 ? `Relance · ${HOTEL_DESK_LABELS[row.kind]}` : HOTEL_DESK_LABELS[row.kind];
+      turns.push({
+        id: `out:${row.id}`,
+        at: turnAt(row.sent_at),
+        direction: "out",
+        speaker: "L'agence",
+        label,
+        subject: row.subject,
+        body: row.body.trim(),
+        link: null,
+      });
+    }
+    if (row.reply_body.trim() || row.replied_at) {
+      const body = replyText(row.reply_body);
+      replies.push(row);
+      turns.push({
+        id: `in:${row.id}`,
+        at: turnAt(row.replied_at || row.sent_at),
+        direction: "in",
+        speaker: context.hotel,
+        label: "Réponse",
+        subject: row.reply_subject,
+        body,
+        link: hotelReplyLink(body),
+      });
+    }
+  }
+
+  for (const row of notes) {
+    if (row.sent_at) {
+      turns.push({
+        id: `out:${row.id}`,
+        at: turnAt(row.sent_at),
+        direction: "out",
+        speaker: "L'agence",
+        label: "Message",
+        subject: row.subject,
+        body: row.body.trim(),
+        link: null,
+      });
+    }
+    if (row.reply_body.trim() || row.replied_at) {
+      const body = replyText(row.reply_body);
+      replies.push(row);
+      turns.push({
+        id: `in:${row.id}`,
+        at: turnAt(row.replied_at || row.sent_at),
+        direction: "in",
+        speaker: context.hotel,
+        label: "Réponse",
+        subject: row.reply_subject,
+        body,
+        link: hotelReplyLink(body),
+      });
+    }
+  }
+
+  for (const mail of input.attached) {
+    if (!hotelMailPieceMatches(input.item, mail) || sameExchange(mail, replies)) continue;
+    const body = hotelReplyForDesk(mail.body_text || "") || "Ce mail est déjà dans les pièces du dossier.";
+    turns.push({
+      id: `mail:${mail.id}`,
+      at: turnAt(mail.received_at || null),
+      direction: "in",
+      speaker: context.hotel,
+      label: "Confirmation",
+      subject: (mail.subject || "").trim(),
+      body,
+      link: hotelReplyLink(body),
+    });
+  }
+
+  return turns.sort((a, b) => {
+    const time = a.at.localeCompare(b.at);
+    if (time) return time;
+    if (a.direction !== b.direction) return a.direction === "out" ? -1 : 1;
+    return a.id.localeCompare(b.id);
+  });
 }
 
 export { HOTEL_DESK_KINDS };
