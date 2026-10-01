@@ -96,7 +96,7 @@ OIDC Vercel : `aiGatewayConfigured()` peut être vrai sur Vercel sans `sk-`. L�
 - Cron Vercel : `vercel.json` → `GET /api/cron/revolut-sync` toutes les 15 min. Header `Authorization: Bearer $CRON_SECRET`.
 - Pliant : `GET /api/cron/pliant-sync` toutes les 15 min ne redemande pas de jeton. Auth0 est limité à une poignée par jour. Le jeton vit dans `crm_integrations` (provider `pliant`) et le verrou `crm_claim_integration_refresh`. Skill `travelba-visa`.
 - Inbox `crm_revolut_transactions` status `unmatched` → auto-crédit si match unique certain (`revolut-match`) ; sinon l’agent rapproche ou ignore (inbox + fiche client).
-- L’espace client affiche l’IBAN SEPA du compte euros actif (`GET /api/1.0/accounts` puis bank-details). Le client indique la référence du dossier. Ne pas journaliser l’IBAN.
+- L’espace client affiche l’IBAN SEPA du compte euros actif nommé Main (`GET /api/1.0/accounts` puis bank-details). Une poche n’est pas proposée. Le client indique son nom en référence. Ne pas journaliser l’IBAN.
 - Webhook `/api/webhooks/revolut` si l’app Revolut le pointe ; le cron reste la source de rattrapage.
 
 ## Fichiers / OpenAI

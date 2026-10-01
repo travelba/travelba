@@ -35,6 +35,46 @@ test("le virement retient l’IBAN SEPA français du compte euros", () => {
   assert.equal(groupIban(FR), "FR76 3000 6000 0112 3456 7890 189");
 });
 
+test("le compte Main l’emporte sur une poche euros", () => {
+  const pocket = "FR7611111111111111111111111";
+  const wire = pickEurSepaWire(
+    [
+      { id: "pocket", currency: "EUR", state: "active", name: "MYKONOS BB" },
+      { id: "main", currency: "EUR", state: "active", name: "Main" },
+      { id: "spare", currency: "EUR", state: "active", name: "" },
+    ],
+    [
+      { accountId: "pocket", rows: [{ iban: pocket, bic: "REVOFRP2", schemes: ["sepa", "swift"] }] },
+      {
+        accountId: "main",
+        rows: [
+          { iban: ` ${FR.toLowerCase()} `, bic: "revofrp2", beneficiary: "Travel Business Agency", schemes: ["sepa", "swift"] },
+          { iban: FR, bic: "REVOFRP2", beneficiary: "Travel Business Agency", schemes: ["sepa", "swift"] },
+        ],
+      },
+      { accountId: "spare", rows: [{ iban: "FR7622222222222222222222222", schemes: ["sepa"] }] },
+    ]
+  );
+  assert.equal(wire?.iban, FR);
+  assert.equal(wire?.accountHolder, "Travel Business Agency");
+});
+
+test("deux comptes Main distincts ne donnent aucune coordonnée", () => {
+  assert.equal(
+    pickEurSepaWire(
+      [
+        { id: "a", currency: "EUR", state: "active", name: "Main" },
+        { id: "b", currency: "EUR", state: "active", name: " main " },
+      ],
+      [
+        { accountId: "a", rows: [{ iban: FR, schemes: ["sepa"] }] },
+        { accountId: "b", rows: [{ iban: "FR7611111111111111111111111", schemes: ["sepa"] }] },
+      ]
+    ),
+    null
+  );
+});
+
 test("deux IBAN euros distincts ne donnent aucune coordonnée", () => {
   assert.equal(
     pickEurSepaWire(
@@ -77,12 +117,15 @@ test("les coordonnées affichées demandent la référence du dossier", () => {
       bic: "REVOFRP2",
       accountHolder: "Travel Business Agency",
       reference: "TB-2026-0004",
+      amountLabel: "140,00 €",
     })
   );
   assert.match(html, /FR76 3000 6000 0112 3456 7890 189/);
   assert.match(html, /REVOFRP2/);
   assert.match(html, /Travel Business Agency/);
   assert.match(html, /TB-2026-0004/);
+  assert.match(html, /140,00 €/);
+  assert.match(html, /Montant à virer/);
   assert.match(html, /compte Revolut/);
   assert.equal(html.includes("Stripe"), false);
 });

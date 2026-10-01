@@ -177,6 +177,7 @@ export function StayPayment({
                 bic={transfer.bic}
                 accountHolder={transfer.accountHolder}
                 reference={transfer.reference}
+                amountLabel={part.amountLabel}
                 partLabel={transfer.partLabel || part.mention}
               />
             ) : null}

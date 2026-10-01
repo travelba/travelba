@@ -5,16 +5,24 @@ export function WireInstructions({
   bic,
   accountHolder,
   reference,
+  amountLabel,
   partLabel,
 }: {
   iban: string;
   bic: string;
   accountHolder: string;
   reference: string;
+  amountLabel?: string | null;
   partLabel?: string | null;
 }) {
   return (
     <dl className="space-y-2 rounded-2xl bg-[#f7f6f3] p-4 text-sm text-[var(--admin-navy)]">
+      {amountLabel ? (
+        <div>
+          <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">Montant à virer</dt>
+          <dd className="mt-0.5 font-display text-lg font-bold">{amountLabel}</dd>
+        </div>
+      ) : null}
       <div>
         <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">IBAN</dt>
         <dd className="mt-0.5 font-semibold tracking-wide">{groupIban(iban)}</dd>
