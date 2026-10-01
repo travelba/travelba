@@ -21,7 +21,11 @@ test("vols aller jeudi et vendredi, huit retours", () => {
     friday.filter((flight) => flight.depart < "12:00" && flight.airport !== "Beauvais").map((flight) => flight.number),
     ["U2 4663", "TO 3010", "VY 8633", "AF 1276", "AT 641", "TO 3012", "TB 7522"]
   );
-  assert.equal(CYRIL_RETURN.length, 8);
+  assert.equal(CYRIL_RETURN.length, 14);
+  assert.deepEqual(
+    CYRIL_RETURN.filter((flight) => flight.depart < "12:00" && flight.airport !== "Beauvais").map((flight) => flight.number),
+    ["TO 3125", "TB 7521", "AF 1777", "U2 6005", "AT 642", "TO 3013", "TO 3015"]
+  );
   const ids = [...CYRIL_OUTBOUND, ...CYRIL_RETURN].map((flight) => flight.id);
   assert.equal(new Set(ids).size, ids.length);
   assert.equal(CYRIL_OUTBOUND.find((flight) => flight.id === "fr-3844")?.airport, "Beauvais");
@@ -30,7 +34,8 @@ test("vols aller jeudi et vendredi, huit retours", () => {
   assert.equal(CYRIL_OUTBOUND.find((flight) => flight.id === "ven-at-643")?.number, "AT 643");
   assert.equal(CYRIL_OUTBOUND.find((flight) => flight.id === "ven-af-1776")?.depart, "20:55");
   assert.equal(cyrilFlightClock("10:40"), "10h40");
-  assert.equal(CYRIL_RETURN[0]?.number, "TO 3015");
+  assert.equal(CYRIL_RETURN[0]?.number, "TO 3125");
+  assert.equal(CYRIL_RETURN.find((flight) => flight.id === "to-3015")?.depart, "11:40");
   assert.equal(CYRIL_RETURN.at(-1)?.number, "AF 1877");
 });
 
