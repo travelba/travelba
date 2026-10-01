@@ -4,7 +4,7 @@ import { GmailDiagnostic } from "@/components/admin/GmailDiagnostic";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { backfillEmailBodies } from "@/lib/crm/email-ingest";
 import { sanitizeEmailHtml } from "@/lib/crm/email-source";
-import type { CrmCustomer, CrmEmailIngest } from "@/lib/crm/types";
+import { EMAIL_INBOX_QUEUE_STATUSES, type CrmEmailIngest } from "@/lib/crm/types";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
 
 export default async function AdminEmailsPage() {
@@ -13,7 +13,7 @@ export default async function AdminEmailsPage() {
     supabase
       .from("crm_email_ingest")
       .select("*")
-      .in("status", ["parsed", "matched"])
+      .in("status", [...EMAIL_INBOX_QUEUE_STATUSES])
       .order("received_at", { ascending: false, nullsFirst: false }),
     supabase
       .from("crm_customers")
@@ -31,7 +31,7 @@ export default async function AdminEmailsPage() {
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
         title="E-mails à rattacher"
-        subtitle="Mails fournisseurs analysés automatiquement — rattachez chaque réservation à un client ou à un voyage. Le carnet reste invisible tant qu’il n’est pas publié."
+        subtitle="Mails fournisseurs lus sur la boîte agence. Rien n’est rattaché seul : choisissez le client ou le voyage. Le carnet reste invisible tant qu’il n’est pas publié."
       />
       <div className="mt-6">
         <GmailDiagnostic />

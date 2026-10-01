@@ -236,7 +236,7 @@ export function EmailIngestInbox({
     return (
       <EmptyState
         title="Aucun e-mail à rattacher"
-        description="Les mails fournisseurs (Little Emperors, Expedia TAAP, billets d'avion) analysés apparaîtront ici pour rattachement."
+        description="Les mails fournisseurs (Little Emperors, Expedia TAAP, billets d’avion) restent ici tant que l’agence ne les a pas rattachés ou refusés."
       />
     );
   }
@@ -291,12 +291,25 @@ export function EmailIngestInbox({
                       Client proposé
                     </span>
                   ) : null}
+                  {row.status === "received" ? (
+                    <span className="rounded-full bg-[var(--admin-navy)]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--admin-navy)]">
+                      Analyse en cours
+                    </span>
+                  ) : null}
+                  {row.status === "error" ? (
+                    <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-accent">
+                      Erreur
+                    </span>
+                  ) : null}
                   {extract.document_status === "quote" ? (
                     <span className="rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--admin-navy)]">
                       Devis
                     </span>
                   ) : null}
                 </div>
+                {row.error ? (
+                  <p className="mt-2 text-sm text-accent">{row.error}</p>
+                ) : null}
                 <label className="mt-2 block text-xs font-semibold text-muted">
                   Titre du dossier
                   <input

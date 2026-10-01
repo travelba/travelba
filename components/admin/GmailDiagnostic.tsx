@@ -112,9 +112,11 @@ export function GmailDiagnostic() {
               : "Suivi pas encore initialisé — lancez le cron gmail-watch-renew"}
           </Line>
           <li className="pt-1 text-xs text-muted">
-            En attente : {state.counts.received ?? 0} · à rattacher :{" "}
-            {(state.counts.parsed ?? 0) + (state.counts.matched ?? 0)} · erreurs :{" "}
-            {state.counts.error ?? 0}
+            Dans la file : {(state.counts.received ?? 0) +
+              (state.counts.parsed ?? 0) +
+              (state.counts.matched ?? 0) +
+              (state.counts.error ?? 0)}{" "}
+            · erreurs : {state.counts.error ?? 0} · déjà rattachés : {state.counts.attached ?? 0}
           </li>
         </ul>
       ) : (

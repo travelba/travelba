@@ -3,6 +3,7 @@ import { requireStaffPage } from "@/lib/crm/auth";
 import {
   BOOKING_STATUS_LABELS,
   customerFullName,
+  EMAIL_INBOX_QUEUE_STATUSES,
   type CrmBalance,
   type CrmBooking,
   type CrmCustomer,
@@ -203,7 +204,7 @@ export default async function AdminHomePage() {
       admin
         .from("crm_email_ingest")
         .select("id", { count: "exact", head: true })
-        .in("status", ["parsed", "matched"]),
+        .in("status", [...EMAIL_INBOX_QUEUE_STATUSES]),
       admin.from("crm_le_bookings").select("id", { count: "exact", head: true }).eq("status", "unmatched"),
     ]);
     unmatched = revolut.count ?? 0;

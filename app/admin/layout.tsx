@@ -2,6 +2,7 @@ import { siteConfig } from "@/lib/site";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { getSessionUser, getStaffForUser } from "@/lib/crm/auth";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { EMAIL_INBOX_QUEUE_STATUSES } from "@/lib/crm/types";
 
 export const metadata = {
   title: `Admin — ${siteConfig.shortName}`,
@@ -32,7 +33,7 @@ export default async function AdminLayout({
         admin
           .from("crm_email_ingest")
           .select("id", { count: "exact", head: true })
-          .in("status", ["parsed", "matched"]),
+          .in("status", [...EMAIL_INBOX_QUEUE_STATUSES]),
       ]);
       unmatched = revolut.count ?? 0;
       emailPending = emails.count ?? 0;
