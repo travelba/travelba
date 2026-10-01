@@ -11,8 +11,16 @@ import {
 test("vols aller jeudi et vendredi, huit retours", () => {
   const thursday = CYRIL_OUTBOUND.filter((flight) => flight.dayLabel.startsWith("Jeudi"));
   const friday = CYRIL_OUTBOUND.filter((flight) => flight.dayLabel.startsWith("Vendredi"));
-  assert.equal(thursday.length, 8);
+  assert.equal(thursday.length, 13);
   assert.equal(friday.length, 16);
+  assert.deepEqual(
+    thursday.filter((flight) => flight.depart < "12:00" && flight.airport !== "Beauvais").map((flight) => flight.number),
+    ["U2 4663", "TO 3012", "AF 1276", "AT 641", "TO 3014", "TO 3016"]
+  );
+  assert.deepEqual(
+    friday.filter((flight) => flight.depart < "12:00" && flight.airport !== "Beauvais").map((flight) => flight.number),
+    ["U2 4663", "TO 3010", "VY 8633", "AF 1276", "AT 641", "TO 3012", "TB 7522"]
+  );
   assert.equal(CYRIL_RETURN.length, 8);
   const ids = [...CYRIL_OUTBOUND, ...CYRIL_RETURN].map((flight) => flight.id);
   assert.equal(new Set(ids).size, ids.length);
