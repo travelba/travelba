@@ -6,10 +6,9 @@ import { BusyBar } from "@/components/crm/BusyBar";
 import { Field, PhoneField, fieldControlClass } from "@/components/crm/fields";
 import {
   CYRIL_DIETS,
-  CYRIL_OUTBOUND_LABEL,
-  CYRIL_RETURN_LABEL,
   cyrilAirportLabel,
   cyrilFlightClock,
+  cyrilFlightGroups,
   cyrilFlightTitle,
   cyrilFlights,
   type CyrilFlight,
@@ -130,16 +129,15 @@ function FlightChoice({
 
 function FlightGroup({
   leg,
-  label,
   value,
   onChange,
 }: {
   leg: CyrilLeg;
-  label: string;
   value: string;
   onChange: (id: string) => void;
 }) {
   const title = leg === "outbound" ? "Aller" : "Retour";
+  const groups = cyrilFlightGroups(leg);
   return (
     <section className="space-y-3">
       <div>
@@ -147,17 +145,21 @@ function FlightGroup({
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--admin-gold)]" />
           {title}
         </p>
-        <h2 className="mt-1 font-display text-lg font-semibold text-[var(--admin-navy)]">{label}</h2>
-        <p className="text-sm text-muted">{cyrilFlightTitle(leg)}</p>
+        <p className="mt-1 text-sm text-muted">{cyrilFlightTitle(leg)}</p>
       </div>
-      <div role="radiogroup" aria-label={`Vol ${title.toLowerCase()}`} className="space-y-2">
-        {cyrilFlights(leg).map((flight) => (
-          <FlightChoice
-            key={flight.id}
-            flight={flight}
-            selected={value === flight.id}
-            onSelect={onChange}
-          />
+      <div role="radiogroup" aria-label={`Vol ${title.toLowerCase()}`} className="space-y-5">
+        {groups.map((group) => (
+          <div key={group.label} className="space-y-2">
+            <h2 className="font-display text-lg font-semibold text-[var(--admin-navy)]">{group.label}</h2>
+            {group.flights.map((flight) => (
+              <FlightChoice
+                key={flight.id}
+                flight={flight}
+                selected={value === flight.id}
+                onSelect={onChange}
+              />
+            ))}
+          </div>
         ))}
       </div>
     </section>
@@ -167,12 +169,10 @@ function FlightGroup({
 function FrozenFlight({
   flight,
   eyebrow,
-  label,
   onEdit,
 }: {
   flight: CyrilFlight;
   eyebrow: string;
-  label: string;
   onEdit: () => void;
 }) {
   return (
@@ -183,7 +183,7 @@ function FrozenFlight({
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--admin-gold)]" />
             {eyebrow}
           </p>
-          <h2 className="mt-1 font-display text-lg font-semibold text-[var(--admin-navy)]">{label}</h2>
+          <h2 className="mt-1 font-display text-lg font-semibold text-[var(--admin-navy)]">{flight.dayLabel}</h2>
         </div>
         <button
           type="button"
@@ -340,8 +340,8 @@ export function CyrilFlightForm() {
           Anniversaire de Cyril
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-muted">
-          Marrakech, du 8 au 11 octobre 2026. Indiquez qui voyage et les vols pris, pour organiser
-          le transfert.
+          Marrakech. Aller le jeudi 8 ou le vendredi 9 octobre, retour le dimanche 11. Indiquez qui
+          voyage et les vols pris, pour organiser le transfert.
         </p>
       </div>
 
@@ -403,40 +403,20 @@ export function CyrilFlightForm() {
               {error}
             </p>
           ) : null}
-          <FlightGroup
-            leg="outbound"
-            label={CYRIL_OUTBOUND_LABEL}
-            value={outboundId}
-            onChange={chooseOutbound}
-          />
+          <FlightGroup leg="outbound" value={outboundId} onChange={chooseOutbound} />
         </>
       ) : null}
 
       {step !== "outbound" && outbound ? (
-        <FrozenFlight
-          flight={outbound}
-          eyebrow="Aller retenu"
-          label={CYRIL_OUTBOUND_LABEL}
-          onEdit={backToOutbound}
-        />
+        <FrozenFlight flight={outbound} eyebrow="Aller retenu" onEdit={backToOutbound} />
       ) : null}
 
       {step === "return" ? (
-        <FlightGroup
-          leg="return"
-          label={CYRIL_RETURN_LABEL}
-          value={returnId}
-          onChange={chooseReturn}
-        />
+        <FlightGroup leg="return" value={returnId} onChange={chooseReturn} />
       ) : null}
 
       {step === "confirm" && inbound ? (
-        <FrozenFlight
-          flight={inbound}
-          eyebrow="Retour retenu"
-          label={CYRIL_RETURN_LABEL}
-          onEdit={backToReturn}
-        />
+        <FrozenFlight flight={inbound} eyebrow="Retour retenu" onEdit={backToReturn} />
       ) : null}
 
       <div className="absolute -left-[9999px] h-0 overflow-hidden" aria-hidden="true">
