@@ -17,6 +17,7 @@ import {
   hasEstaAnswers,
   headerVisaLabel,
   journeyStarted,
+  visaRequestShown,
   launchWouldRewind,
   mergeEstaAnswers,
   nextPayAttempt,
@@ -159,6 +160,10 @@ test("pas de parcours sans validation, même à 45 %", () => {
     assert.notEqual(started.step, "piece");
   }
   assert.equal(journeyStarted({ step: "remplissage", accepted_at: "2026-09-25T09:00:00.000Z" }), true);
+  assert.equal(visaRequestShown({}, []), false);
+  assert.equal(visaRequestShown({ offer_visa: false }, [{ accepted_at: null }]), false);
+  assert.equal(visaRequestShown({ offer_visa: true }, []), true);
+  assert.equal(visaRequestShown({}, [{ accepted_at: "2026-10-01T09:00:00.000Z" }]), true);
 });
 
 test("le prix n’apparaît que dans la confirmation", () => {

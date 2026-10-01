@@ -26,6 +26,7 @@ export function VisaSection({
   visaBooked,
   pliantReady = false,
   showReceived = true,
+  proposed = false,
 }: {
   variant: "admin" | "client";
   bookingId: string;
@@ -38,6 +39,8 @@ export function VisaSection({
   /** Vrai seulement si les clés Pliant sont présentes. Sinon le paiement reste un geste explicite. */
   pliantReady?: boolean;
   showReceived?: boolean;
+  /** Vrai : l’agence a activé Visa dans Services proposés. */
+  proposed?: boolean;
 }) {
   if (!trip.hasFlight) return null;
   return (
@@ -77,6 +80,7 @@ export function VisaSection({
         visaBooked={visaBooked}
         pliantReady={pliantReady}
         showReceived={showReceived}
+        proposed={proposed}
       />
     </div>
   );

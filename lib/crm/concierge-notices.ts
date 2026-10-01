@@ -414,6 +414,8 @@ export function planMissingPieceNotices(input: {
   missingPassports: number;
   formalities: { name: string | null; filed: boolean }[];
   alreadySent: { passport: boolean; formalityNames: string[] };
+  /** Faux : le visa n’est pas proposé, aucun rappel de formalité. */
+  visaOffered?: boolean;
 }): MissingPiecePlan[] {
   if (!input.published) return [];
   if (!input.startDate || input.startDate < input.today) return [];
@@ -435,18 +437,20 @@ export function planMissingPieceNotices(input: {
     });
   }
   const sent = new Set(input.alreadySent.formalityNames);
-  for (const formality of input.formalities) {
-    if (formality.filed) continue;
-    const name = safeFormalityName(formality.name);
-    if (!name || sent.has(name)) continue;
-    plans.push({
-      template: "formalite_manquante",
-      variable: name,
-      path: reservation,
-      dedupe: `formalite-manquante:${input.bookingId}:${name}`,
-      body: withConciergeSignature(`Votre ${name} manque avant le départ.`),
-    });
-    sent.add(name);
+  if (input.visaOffered) {
+    for (const formality of input.formalities) {
+      if (formality.filed) continue;
+      const name = safeFormalityName(formality.name);
+      if (!name || sent.has(name)) continue;
+      plans.push({
+        template: "formalite_manquante",
+        variable: name,
+        path: reservation,
+        dedupe: `formalite-manquante:${input.bookingId}:${name}`,
+        body: withConciergeSignature(`Votre ${name} manque avant le départ.`),
+      });
+      sent.add(name);
+    }
   }
   return plans;
 }

@@ -1501,6 +1501,7 @@ export function BookingEditor({
             chauffeur={booking.offer_chauffeur === true}
             greeter={booking.offer_greeter === true}
             checkin={booking.offer_checkin === true}
+            visa={booking.offer_visa === true}
             hasFlight={hasFlight}
           />
         </div>

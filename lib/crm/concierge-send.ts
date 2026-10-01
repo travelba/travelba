@@ -458,6 +458,7 @@ async function missingPlans(admin: Admin, booking: CrmBooking, now: Date) {
       name: entry.formality,
       filed: filedRequests.has(entry.iso) || filedDocs.has(entry.iso),
     })),
+    visaOffered: booking.offer_visa === true,
     alreadySent: {
       passport: sentKeys.has(`passeport:${booking.id}`),
       formalityNames,

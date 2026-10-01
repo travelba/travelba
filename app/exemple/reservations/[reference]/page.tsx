@@ -14,7 +14,7 @@ import { stayTitleFromItems } from "@/lib/crm/staff-stay";
 import { withoutHotelRosterItems } from "@/lib/crm/hotel-contact";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { isLedgerExpenseKind } from "@/lib/crm/types";
-import { findVisaExtra } from "@/lib/crm/extras";
+import { findVisaExtra, visaProposed } from "@/lib/crm/extras";
 import { EXAMPLE_BASE, EXAMPLE_REFERENCE } from "@/lib/crm/example-session";
 import { readExample } from "@/lib/crm/example-store";
 import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
@@ -29,6 +29,7 @@ import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
+import { visaRequestShown } from "@/lib/crm/visa-flow";
 
 type Props = { params: Promise<{ reference: string }> };
 
@@ -128,18 +129,21 @@ export default async function ExampleReservationPage({ params }: Props) {
         />
       }
       visaRequest={
-        <VisaSection
-          variant="client"
-          bookingId={b.id}
-          reference={b.reference}
-          trip={formalities}
-          requests={session.visaRequests}
-          travelers={party}
-          documents={session.documents}
-          visaBooked={Boolean(findVisaExtra(visibleItems))}
-          pliantReady={false}
-          showReceived={false}
-        />
+        visaRequestShown(b, session.visaRequests) ? (
+          <VisaSection
+            variant="client"
+            bookingId={b.id}
+            reference={b.reference}
+            trip={formalities}
+            requests={session.visaRequests}
+            travelers={party}
+            documents={session.documents}
+            visaBooked={Boolean(findVisaExtra(visibleItems))}
+            pliantReady={false}
+            showReceived={false}
+            proposed={visaProposed(b)}
+          />
+        ) : null
       }
       receivedVisas={
         <ReceivedVisasFold

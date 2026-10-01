@@ -27,7 +27,7 @@ import {
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
 import { stayTitleFromItems } from "@/lib/crm/staff-stay";
-import { findVisaExtra, type ServiceRefusal } from "@/lib/crm/extras";
+import { findVisaExtra, visaProposed, type ServiceRefusal } from "@/lib/crm/extras";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
@@ -47,7 +47,7 @@ import {
   type CrmCustomer,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
-import type { ClientVisaStep, EstaAnswers } from "@/lib/crm/visa-flow";
+import { visaRequestShown, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import type { ClientLedgerView } from "@/lib/crm/client-ledger";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { siteConfig } from "@/lib/site";
@@ -394,18 +394,21 @@ function ClientScreen({
               />
             }
             visaRequest={
-              <VisaSection
-                variant="client"
-                bookingId={booking.id}
-                reference={booking.reference}
-                trip={formalities}
-                requests={visaRequests}
-                travelers={travelers}
-                documents={identityDocs}
-                visaBooked={Boolean(findVisaExtra(items))}
-                pliantReady={pliantReady}
-                showReceived={false}
-              />
+              visaRequestShown(booking, visaRequests) ? (
+                <VisaSection
+                  variant="client"
+                  bookingId={booking.id}
+                  reference={booking.reference}
+                  trip={formalities}
+                  requests={visaRequests}
+                  travelers={travelers}
+                  documents={identityDocs}
+                  visaBooked={Boolean(findVisaExtra(items))}
+                  pliantReady={pliantReady}
+                  showReceived={false}
+                  proposed={visaProposed(booking)}
+                />
+              ) : null
             }
             receivedVisas={
               <ReceivedVisasFold
