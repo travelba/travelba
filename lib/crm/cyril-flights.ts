@@ -22,6 +22,11 @@ export const CYRIL_FRIDAY_LABEL = "Vendredi 9 octobre 2026";
 export const CYRIL_RETURN_LABEL = "Dimanche 11 octobre 2026";
 
 const THURSDAY: Omit<CyrilFlight, "dayLabel">[] = [
+  { id: "u2-4663", leg: "outbound", airline: "easyJet", iata: "U2", number: "U2 4663", airport: "Roissy-CDG", depart: "06:10", arrive: "07:35" },
+  { id: "to-3012", leg: "outbound", airline: "Transavia", iata: "TO", number: "TO 3012", airport: "Orly", depart: "07:00", arrive: "08:25" },
+  { id: "af-1276", leg: "outbound", airline: "Air France", iata: "AF", number: "AF 1276", airport: "Roissy-CDG", depart: "07:15", arrive: "08:40" },
+  { id: "at-641", leg: "outbound", airline: "Royal Air Maroc", iata: "AT", number: "AT 641", airport: "Orly", depart: "07:30", arrive: "08:45" },
+  { id: "to-3014", leg: "outbound", airline: "Transavia", iata: "TO", number: "TO 3014", airport: "Orly", depart: "08:30", arrive: "09:55" },
   { id: "to-3016", leg: "outbound", airline: "Transavia", iata: "TO", number: "TO 3016", airport: "Orly", depart: "10:40", arrive: "12:05" },
   { id: "fr-3844", leg: "outbound", airline: "Ryanair", iata: "FR", number: "FR 3844", airport: "Beauvais", depart: "10:55", arrive: "12:15" },
   { id: "af-1076", leg: "outbound", airline: "Air France", iata: "AF", number: "AF 1076", airport: "Roissy-CDG", depart: "12:30", arrive: "13:55" },
