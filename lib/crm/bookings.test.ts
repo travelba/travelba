@@ -16,6 +16,63 @@ import {
 } from "./bookings";
 import { ticketingFeeAmount } from "./ticketing-fee";
 
+test("un confirmé caché ne débite pas, un devis montré non plus", () => {
+  assert.equal(
+    bookingDebitIntent({
+      status: "confirmed",
+      amount: 1200,
+      hasOpenDebit: false,
+      visibleToClient: false,
+    }),
+    "noop"
+  );
+  assert.equal(
+    bookingDebitIntent({
+      status: "confirmed",
+      amount: 1200,
+      hasOpenDebit: true,
+      visibleToClient: false,
+    }),
+    "void"
+  );
+  assert.equal(
+    bookingDebitIntent({
+      status: "quoted",
+      amount: 1200,
+      hasOpenDebit: false,
+      visibleToClient: true,
+    }),
+    "noop"
+  );
+  assert.equal(
+    bookingDebitIntent({
+      status: "quoted",
+      amount: 1200,
+      hasOpenDebit: true,
+      visibleToClient: true,
+    }),
+    "void"
+  );
+  assert.equal(
+    bookingDebitIntent({
+      status: "confirmed",
+      amount: 1200,
+      hasOpenDebit: false,
+      visibleToClient: true,
+    }),
+    "insert"
+  );
+  assert.equal(
+    agencyCommissionAmount({
+      enabled: true,
+      status: "confirmed",
+      totalAmount: 1000,
+      visibleToClient: false,
+    }),
+    0
+  );
+});
+
 test("debit insert only when confirmed with a positive amount", () => {
   assert.equal(
     bookingDebitIntent({ status: "confirmed", amount: 1200, hasOpenDebit: false }),

@@ -9,6 +9,7 @@ import {
   parseExtractPayload,
   persistNewBookingFromExtract,
 } from "@/lib/crm/ingest-booking";
+import { dismissEmailWarnings } from "@/lib/crm/email-duplicates";
 import { detachAttachedEmail } from "@/lib/crm/email-detach-run";
 import { loadEmailIngestFiles, rematchEmailIngestRow } from "@/lib/crm/email-ingest";
 import type { CrmEmailIngest } from "@/lib/crm/types";
@@ -54,6 +55,14 @@ export async function POST(request: Request, ctx: Ctx) {
         .update({ status: "refused" })
         .eq("id", id);
       return NextResponse.json({ ok: true, status: "refused" });
+    }
+
+    if (action === "dismiss") {
+      await admin
+        .from("crm_email_ingest")
+        .update({ warnings: dismissEmailWarnings(row.warnings) })
+        .eq("id", id);
+      return NextResponse.json({ ok: true });
     }
 
     if (action === "detach") {

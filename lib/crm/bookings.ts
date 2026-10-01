@@ -109,14 +109,18 @@ export function bookingDebitIntent(input: {
   amount: number;
   hasOpenDebit: boolean;
   includeInLedger?: boolean;
+  /** Absent = déjà montré. false = le séjour reste caché, aucun débit. */
+  visibleToClient?: boolean | null;
 }): "insert" | "update" | "void" | "clear" | "noop" {
   if (input.status === "cancelled") return "clear";
   if (input.includeInLedger === false) return input.hasOpenDebit ? "void" : "noop";
+  const shown = input.visibleToClient !== false;
   const shouldDebit =
-    input.status === "confirmed" ||
-    input.status === "travelling" ||
-    input.status === "completed";
-  if (!shouldDebit) return "noop";
+    shown &&
+    (input.status === "confirmed" ||
+      input.status === "travelling" ||
+      input.status === "completed");
+  if (!shouldDebit) return input.hasOpenDebit ? "void" : "noop";
   if (!input.hasOpenDebit) return input.amount > 0 ? "insert" : "noop";
   if (input.amount <= 0) return "void";
   return "update";
@@ -270,9 +274,11 @@ export function agencyCommissionAmount(input: {
   enabled: boolean;
   status: BookingStatus;
   totalAmount: number;
+  visibleToClient?: boolean | null;
 }) {
   const active =
     input.enabled &&
+    input.visibleToClient !== false &&
     (input.status === "confirmed" ||
       input.status === "travelling" ||
       input.status === "completed");
@@ -341,6 +347,7 @@ export async function syncBookingDebit(
     amount,
     hasOpenDebit: Boolean(debit),
     includeInLedger: stayIncludedInLedger(booking),
+    visibleToClient: booking.visible_to_client,
   });
   const label = `Réservation ${booking.reference} — ${booking.title}`;
 
@@ -424,6 +431,7 @@ export async function syncTicketingFee(supabase: SupabaseClient, booking: CrmBoo
   const ticketCount = ticketingTicketCount({ hasFlight, travelerCount });
   const amount = ticketingFeeAmount({ hasFlight, travelerCount });
   const shouldPost =
+    booking.visible_to_client === true &&
     (booking.status === "confirmed" ||
       booking.status === "travelling" ||
       booking.status === "completed") &&
@@ -475,6 +483,7 @@ export async function syncAgencyCommission(supabase: SupabaseClient, booking: Cr
     enabled: booking.agency_commission === true,
     status: booking.status,
     totalAmount: Number(booking.total_amount || 0),
+    visibleToClient: booking.visible_to_client,
   });
   const externalId = agencyCommissionExternalId(booking.id);
   const { data: existing } = await supabase
@@ -564,6 +573,7 @@ export async function syncBookingItemDebits(supabase: SupabaseClient, booking: C
       amount,
       hasOpenDebit: Boolean(debit),
       includeInLedger: itemIncludedInLedger(item, booking.client_settles_stay === true),
+      visibleToClient: booking.visible_to_client,
     });
     const label = bookingItemDebitLabel(item, booking.reference);
     const companyId = debitBillingCompanyId(booking, item);
@@ -673,7 +683,7 @@ export async function setCarnetPublished(
     if (itemsLookupError) throw new Error(itemsLookupError.message);
     if (!canPublishCarnet(items || [])) {
       throw new Error(
-        "Ajoutez au moins une carte (vol, hôtel, transfert…) avant de publier le carnet."
+        "Ajoutez au moins une carte (vol, hôtel, transfert…) avant de montrer le carnet."
       );
     }
   }

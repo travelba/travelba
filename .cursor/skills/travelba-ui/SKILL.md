@@ -27,6 +27,17 @@ Espace client : colonne ~480px (`AccountChrome`). Admin : sidebar `AdminNav`.
 - Couvertures : `components/crm/BookingHero.tsx` + `CoverPhoto.tsx` = `<img>` natif (`referrerPolicy=no-referrer`). Pas de `next/image` sur Unsplash. Repli : photo du lieu, puis fond marine.
 - Fichiers : `src="/api/files?path=..."` uniquement. Jamais coller une signed URL Supabase dans le DOM (expire + fuite).
 
+## Fiche réservation (admin)
+
+Même langage sur **toutes** les réservations, pas un dossier d’exemple.
+
+- État : pastille **En préparation**, **Montré au client** ou **Archivée**. Bouton principal **Montrer au client** ou **Mettre à jour**. **Archiver**, pas Supprimer.
+- En-tête : retour Réservations, titre, référence, dates et villes lues sur les étapes, voyageurs, statut. Chips de ce qui manque (passeport, hôtel non écrit, montant non montré). Onglets sur une ligne ; À faire reste, avec le compte.
+- Lieu et dates **en haut** : une ligne par étape (ville ou hôtel, sa date). Pas un seul champ Lieu + un seul départ/retour quand des étapes existent. Ne pas réécrire `destination` / dates du dossier pour coller à l’affichage.
+- Cartes datées. Vol : villes en titre, code aéroport dessous, n° de vol, classe, horaire et référence dans le détail. Étape pas encore montrée : surbrillance, pas une bannière qui ne fait que compter.
+- Pas de roster hôtel (rôle, nom, e-mail) sur la carte. Un libellé court (le nom de l’hôtel) suffit.
+- Argent : un bloc (qui paie, montant, grand livre). Les mails ne sont pas des lignes d’étape.
+
 ## Copy
 
 - Français uniquement dans `/admin` et `/mon-compte`.

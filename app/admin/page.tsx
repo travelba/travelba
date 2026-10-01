@@ -410,7 +410,7 @@ export default async function AdminHomePage() {
         ) : (
           <EmptyState
             title="Aucune réservation à venir"
-            description="Importez les PDF d’un vrai dossier, Enregistrer, puis Publier. Le carnet n’apparaît côté client qu’après Publier."
+            description="Importez les PDF d’un vrai dossier, Enregistrer, puis Montrer au client. Le carnet n’apparaît côté client qu’après ce geste."
             action={
               <Link
                 href="/admin/reservations"

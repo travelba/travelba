@@ -30,7 +30,7 @@ Prod build local : `npm run start` (port 3000). Ne pas laisser un zombie `next-s
 - Ne **pas** publier un vrai séjour client pour tester. Créer un dossier **brouillon** sur un client test, ou rester en preview admin.
 - Après test : supprimer le dossier test (pas le client prod).
 - Mur téléphone : sans `phone`, Accueil/Résas bloqués ; **Vous** reste accessible.
-- Carnet : hôtel **nom puis ville**, répété les nuits, pas d’heure 00h00, IATA puis ville, jours vides sautés, brouillon invisible en client. **Pas de contacts d’hôtel** (rôle, nom, e-mail) sur `/mon-compte`, l’aperçu Interface client ni `/v/`. L’admin les garde.
+- Carnet : hôtel **nom puis ville**, répété les nuits, pas d’heure 00h00, **villes puis code aéroport**, jours vides sautés. Pastille **En préparation** / **Montré au client** / **Archivée** (pas « Brouillon » pour dire invisible). **Pas de contacts d’hôtel** (rôle, nom, e-mail) sur la fiche admin, `/mon-compte`, l’aperçu Interface client ni `/v/`.
 - Import : `npx tsx --test lib/crm/ingest-parse.test.ts` après tout nouveau type de PDF (skill `travelba-document-ingest`). Ne pas publier un vrai séjour pour tester l’extract.
 - Inviter : copier le lien ; ne pas spam un vrai client.
 - Revolut : popup recherche, **crédits reçus seulement**. Toujours l’**expéditeur**, pas seulement la désignation. Ne pas matcher un virement réel sur un faux client.

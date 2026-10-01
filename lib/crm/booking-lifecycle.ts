@@ -154,6 +154,59 @@ export function duplicateStoragePath(bookingId: string, fileName: string, index:
   return `bookings/${bookingId}/${safeIndex}-${safeFileName(fileName || "document")}`;
 }
 
+export function duplicateVisaRequestRow(row: Record<string, unknown>, bookingId: string) {
+  return {
+    booking_id: bookingId,
+    country: row.country,
+    status: row.status || "en_cours",
+    step: row.step || "preparation",
+    answers: row.answers && typeof row.answers === "object" ? row.answers : {},
+    accepted_at: row.accepted_at ?? null,
+    traveler_ids: Array.isArray(row.traveler_ids) ? row.traveler_ids : [],
+    pay_attempts: 0,
+    pliant_transaction_id: null,
+    paid_cents: null,
+  };
+}
+
+export function duplicateDeclinedServiceRow(row: Record<string, unknown>, bookingId: string) {
+  return {
+    booking_id: bookingId,
+    kind: row.kind,
+    service_leg: row.service_leg || "",
+    place: row.place || "",
+    moment: row.moment || "",
+  };
+}
+
+/** Le texte du courrier est repris. Le statut repart en brouillon pour ne pas renvoyer le mail. */
+export function duplicateHotelLetterRow(row: Record<string, unknown>, bookingId: string, itemId: string) {
+  const choice = row.card_choice === "pliant" || row.card_choice === "client" ? row.card_choice : null;
+  return {
+    booking_id: bookingId,
+    booking_item_id: itemId,
+    kind: row.kind,
+    status: "draft",
+    recipients: Array.isArray(row.recipients) ? row.recipients : [],
+    subject: row.subject || "",
+    body: row.body || "",
+    edited: Boolean(row.edited),
+    card_choice: choice,
+    attach_passports: Boolean(row.attach_passports),
+    identity_document_ids: Array.isArray(row.identity_document_ids) ? row.identity_document_ids : [],
+    identity_picked: Boolean(row.identity_picked),
+    due_on: null,
+    sent_at: null,
+    follow_up_count: 0,
+    last_follow_up_at: null,
+    replied_at: null,
+    reply_from: "",
+    reply_subject: "",
+    reply_body: "",
+    reply_message_id: null,
+  };
+}
+
 export function duplicateCoverPath(bookingId: string, sourcePath: string) {
   const ext = sourcePath.split(".").pop()?.toLowerCase() || "";
   const safeExt = /^[a-z0-9]{2,5}$/.test(ext) ? ext : "webp";

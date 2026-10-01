@@ -32,7 +32,7 @@ export function DeleteBookingButton({
     const json = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
-      setError(json.error || "Suppression impossible");
+      setError(json.error || "Archivage impossible");
       return;
     }
     if (redirectTo) router.push(redirectTo);
@@ -62,7 +62,7 @@ export function DeleteBookingButton({
               : "rounded-full px-4 py-2 text-sm font-semibold text-[var(--admin-red)] ring-1 ring-[var(--admin-red)]/30"
           }
         >
-          {busy ? "Archivage…" : confirming ? "Confirmer" : "Supprimer"}
+          {busy ? "Archivage…" : confirming ? "Confirmer l’archivage" : "Archiver"}
         </button>
       </div>
       {busy ? <BusyBar label="Archivage…" /> : null}

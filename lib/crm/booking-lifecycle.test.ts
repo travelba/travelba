@@ -7,9 +7,12 @@ import {
   archiveBookingPatch,
   duplicateBookingInsert,
   duplicateCoverPath,
+  duplicateDeclinedServiceRow,
   duplicateDocumentRow,
+  duplicateHotelLetterRow,
   duplicateItemRow,
   duplicateStoragePath,
+  duplicateVisaRequestRow,
   isBookingArchived,
   restoreBookingPatch,
 } from "./booking-lifecycle";
@@ -93,8 +96,35 @@ test("la copie d’une carte garde le contenu et pointe le nouveau document", ()
   assert.equal(duplicateCoverPath("new-booking", "bookings/old/cover.webp"), "bookings/new-booking/cover.webp");
 });
 
-test("supprimer depuis l’agence archive le dossier", () => {
+test("dupliquer reprend visa, refus et courrier, pas un paiement", () => {
+  const visa = duplicateVisaRequestRow(
+    { country: "US", status: "en_cours", step: "remplissage", answers: { ok: true }, pliant_transaction_id: "card" },
+    "copy"
+  );
+  assert.equal(visa.booking_id, "copy");
+  assert.equal(visa.country, "US");
+  assert.equal(visa.pliant_transaction_id, null);
+  const refusal = duplicateDeclinedServiceRow(
+    { kind: "chauffeur", service_leg: "arrival", place: "hotel", moment: "" },
+    "copy"
+  );
+  assert.equal(refusal.kind, "chauffeur");
+  assert.equal(refusal.place, "hotel");
+  const letter = duplicateHotelLetterRow(
+    { kind: "precheckin", subject: "Arrivée", body: "Bonjour", status: "sent", recipients: ["hotel@example.com"] },
+    "copy",
+    "item-2"
+  );
+  assert.equal(letter.booking_item_id, "item-2");
+  assert.equal(letter.status, "draft");
+  assert.equal(letter.subject, "Arrivée");
+});
+
+test("supprimer depuis l’agence archive le dossier et le bouton dit Archiver", () => {
   const src = readFileSync(join(root, "app/api/admin/bookings/[id]/route.ts"), "utf8");
   assert.match(src, /archiveBookingById/);
   assert.doesNotMatch(src, /deleteBookingById/);
+  const button = readFileSync(join(root, "components/admin/DeleteBookingButton.tsx"), "utf8");
+  assert.match(button, /Archiver/);
+  assert.doesNotMatch(button, />Supprimer</);
 });

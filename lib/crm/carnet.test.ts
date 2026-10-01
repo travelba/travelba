@@ -286,8 +286,8 @@ describe("carnet", () => {
     });
     assert.equal(flightIata(flight), "CDG → RAK");
     assert.equal(flightCities(flight), "Paris → Marrakech");
-    assert.equal(flightCardTitle(flight), "CDG → RAK");
-    assert.equal(flightCardSubtitle(flight), "Paris → Marrakech");
+    assert.equal(flightCardTitle(flight), "Paris → Marrakech");
+    assert.equal(flightCardSubtitle(flight), "CDG → RAK");
   });
 
   it("remplace le montant par la phrase unique quand les prix sont masqués", () => {

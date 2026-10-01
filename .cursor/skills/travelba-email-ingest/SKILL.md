@@ -16,6 +16,8 @@ Pas d’attente d’un clic `/admin/emails` quand le hit est unique et fort.
 
 L’IA **ne publie jamais** le carnet (`visible_to_client=false`).
 
+Un mail **remplit** une carte vol ou hôtel, puis vit avec les **pièces**. Il n’est jamais une étape glissable du voyage (ni l’original, ni le `Fw:`). Les doublons évidents (même passager + date de billet, même confirmation d’hôtel, Milano = Milan) se regroupent : la copie est grisée avec **Écarter**. Écarter marque la ligne, ne la supprime pas, et ne retire pas la carte. Ne pas lancer soi-même un nettoyage des lignes prod.
+
 ## Ce n’est pas le dropzone
 
 | | `travelba-document-ingest` | **`travelba-email-ingest`** |

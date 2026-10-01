@@ -4,11 +4,10 @@ import { FormEvent, PointerEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Reorder } from "framer-motion";
 import {
-  BOOKING_ITEM_LABELS,
+  countsAsCarnetCard,
   isExtraItemKind,
   isLedgerExpenseKind,
   visibleServiceCopy,
-  type BookingItemKind,
   type CrmBookingItem,
 } from "@/lib/crm/types";
 import type { BookingExtract } from "@/lib/crm/ingest-types";
@@ -20,14 +19,15 @@ import {
   hotelDisplayName,
   itemClock,
   itemPriceLabel,
+  keptHiddenFromClient,
   kindIcon,
 } from "@/lib/crm/carnet";
 import { flightCountsInStay } from "@/lib/crm/bookings";
-import { attachedEmailLabel } from "@/lib/crm/email-detach";
-import { formatDateTimeFr, formatMoney } from "@/lib/crm/money";
+import { groupAttachedEmails } from "@/lib/crm/email-duplicates";
+import { formatMoney } from "@/lib/crm/money";
+import { shortStayDay, shortStayRange } from "@/lib/crm/staff-stay";
 import { Icon } from "@/components/crm/icons";
 import { STAY_CURRENCIES } from "@/lib/crm/stay-currency";
-import { HotelContactButton } from "@/components/crm/HotelContact";
 import { HotelDesk } from "@/components/admin/HotelDesk";
 import type { CardViewLine, CrmBookingTraveler, CrmHotelArrival, CrmHotelRequest, CrmTravelDocument } from "@/lib/crm/types";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
@@ -77,36 +77,10 @@ function detailText(item: CrmBookingItem, key: string) {
   return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
-function stepDayKey(item: CrmBookingItem) {
-  const raw = (item.start_at || "").slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : "";
-}
-
-function stepDayLabel(key: string) {
-  if (!key) return "Sans date";
-  const date = new Date(`${key}T12:00:00`);
-  if (Number.isNaN(date.getTime())) return "Sans date";
-  return date.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
-}
-
 function stepTitle(item: CrmBookingItem) {
   if (item.kind === "hotel") return hotelDisplayName(item);
   if (item.kind === "flight" || item.kind === "rail") return flightCardTitle(item);
   return visibleServiceCopy(item.title);
-}
-
-function stepEyebrow(item: CrmBookingItem) {
-  const kind = visibleServiceCopy(BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind);
-  const clock = itemClock(item.start_at);
-  const end = item.kind === "hotel" ? "" : itemClock(item.end_at);
-  const tickets = Number(item.details?.ticket_count);
-  const parts = [kind];
-  if (clock) parts.push(clock);
-  if (end) parts.push(`→ ${end}`);
-  if (item.kind === "flight" && Number.isFinite(tickets) && tickets > 1) {
-    parts.push(`${Math.round(tickets)} billets`);
-  }
-  return parts.join(" · ");
 }
 
 function stepSubtitle(item: CrmBookingItem) {
@@ -114,10 +88,15 @@ function stepSubtitle(item: CrmBookingItem) {
   if (item.kind === "flight" || item.kind === "rail") {
     const number = detailText(item, "flight_number");
     const cabin = detailText(item, "cabin");
-    const cities = flightCardSubtitle(item);
+    const clock = itemClock(item.start_at);
+    const end = itemClock(item.end_at);
+    const tickets = Number(item.details?.ticket_count);
     if (number) parts.push(number);
     if (cabin) parts.push(cabin);
-    if (cities) parts.push(cities);
+    if (clock) parts.push(end ? `${clock} → ${end}` : clock);
+    if (item.kind === "flight" && Number.isFinite(tickets) && tickets > 1) {
+      parts.push(`${Math.round(tickets)} billets`);
+    }
   } else if (item.kind === "hotel") {
     const room = detailText(item, "room");
     const city = detailText(item, "city");
@@ -159,9 +138,11 @@ export function BookingItemsPanel({
   hasCardCode = false,
   cardViews = [],
   attachedEmails = [],
+  stayVisible = false,
 }: {
   bookingId: string;
   items: CrmBookingItem[];
+  stayVisible?: boolean;
   hotelRequests?: CrmHotelRequest[];
   today?: string;
   travelers?: CrmBookingTraveler[];
@@ -176,6 +157,7 @@ export function BookingItemsPanel({
     from_email: string | null;
     received_at: string | null;
     extract?: unknown;
+    warnings?: { file?: string | null; message?: string | null }[] | null;
   }[];
   documents?: CrmBookingDocument[];
   household?: HouseholdMember[];
@@ -198,7 +180,6 @@ export function BookingItemsPanel({
   const cardRowsRef = useRef<CrmBookingItem[]>([]);
   const orderDirty = useRef(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [confirmDetach, setConfirmDetach] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [deskFor, setDeskFor] = useState<string | null>(null);
@@ -333,36 +314,22 @@ export function BookingItemsPanel({
     router.refresh();
   }
 
-  async function detachEmail(emailId: string) {
+  async function dismissEmail(emailId: string) {
     setBusy(true);
     setError(null);
     setNotice(null);
     const res = await fetch(`/api/admin/email-ingest/${emailId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "detach" }),
+      body: JSON.stringify({ action: "dismiss" }),
     });
-    const json = (await res.json().catch(() => ({}))) as {
-      error?: string;
-      kept?: string[];
-      deleted_booking?: boolean;
-    };
+    const json = (await res.json().catch(() => ({}))) as { error?: string };
     setBusy(false);
-    setConfirmDetach(null);
     if (!res.ok) {
-      setError(json.error || "Remise impossible");
+      setError(json.error || "Impossible d’écarter ce doublon");
       return;
     }
-    if (json.deleted_booking) {
-      router.push("/admin/emails");
-      return;
-    }
-    const kept = (json.kept || []).filter(Boolean);
-    setNotice(
-      kept.length
-        ? `Mail remis dans les e-mails. Une carte déjà présente a été laissée : ${kept.join(", ")}.`
-        : "Mail remis dans les e-mails à rattacher."
-    );
+    setNotice("Doublon écarté. Le mail reste en archive, la carte du voyage aussi.");
     router.refresh();
   }
 
@@ -388,29 +355,6 @@ export function BookingItemsPanel({
       <div className="mt-3">
         <BusyBar active={busy} label="Enregistrement…" />
       </div>
-      {attachedEmails.map((mail) => (
-        <div key={mail.id} className="mt-3 flex items-center gap-3 border-b border-[var(--border)] py-2">
-          <p className="min-w-0 flex-1 truncate text-sm text-[var(--admin-navy)]">
-            <span className="text-muted">E-mail · </span>
-            {attachedEmailLabel(mail)}
-            {mail.received_at ? <span className="text-muted"> · {formatDateTimeFr(mail.received_at)}</span> : null}
-          </p>
-          {confirmDetach === mail.id ? (
-            <div className="flex shrink-0 items-center gap-2">
-              <button type="button" disabled={busy} className={flatBtn} onClick={() => void detachEmail(mail.id)}>
-                Confirmer
-              </button>
-              <button type="button" disabled={busy} className={flatBtn} onClick={() => setConfirmDetach(null)}>
-                Annuler
-              </button>
-            </div>
-          ) : (
-            <button type="button" disabled={busy} className={flatBtn} onClick={() => setConfirmDetach(mail.id)}>
-              Remettre
-            </button>
-          )}
-        </div>
-      ))}
       {notice ? <p className="mt-2 text-sm text-[var(--admin-navy)]">{notice}</p> : null}
       <Reorder.Group
         axis="y"
@@ -418,12 +362,18 @@ export function BookingItemsPanel({
         onReorder={applyCardOrder}
         className="mt-1 flex list-none flex-col p-0 text-sm"
       >
-        {cardRows.map((item, index) => {
+        {cardRows.map((item) => {
           const locked = editingId === item.id || busy;
-          const dayKey = stepDayKey(item);
-          const showDay = index === 0 || dayKey !== stepDayKey(cardRows[index - 1]);
           const docs = documentsForItem(item, documents);
           const subtitle = stepSubtitle(item);
+          const airport = item.kind === "flight" || item.kind === "rail" ? flightCardSubtitle(item) : "";
+          const when =
+            item.kind === "hotel" ? shortStayRange(item.start_at, item.end_at) : shortStayDay(item.start_at);
+          const unshown =
+            stayVisible &&
+            !item.visible_to_client &&
+            !keptHiddenFromClient(item.details) &&
+            countsAsCarnetCard(item.kind);
           const price = flightCountsInStay(item, items) ? itemPriceLabel(item, currency) : null;
           const printed = readDocumentAmount(item.details);
           const stepAmount = item.amount == null ? null : Number(item.amount);
@@ -433,7 +383,6 @@ export function BookingItemsPanel({
           const quiet = [
             subtitle,
             docs.length ? `${docs.length} pièce${docs.length > 1 ? "s" : ""}` : "",
-            !item.visible_to_client ? "Pas encore montré" : "",
             counted ? "Compté" : "",
             priceDiffers && printed != null
               ? `Prix du document : ${printedPrice(printed, typeof item.details?.document_currency === "string" ? item.details.document_currency : "")}`
@@ -448,14 +397,16 @@ export function BookingItemsPanel({
             dragListener={!locked}
             onDragEnd={finishCardDrag}
             whileDrag={{ zIndex: 30, background: "#ffffff" }}
-            className={`relative ${locked ? "" : "cursor-grab active:cursor-grabbing"}`}
+            className={`relative mt-2 ${locked ? "" : "cursor-grab active:cursor-grabbing"}`}
           >
-            {showDay ? (
-              <p className={`text-xs font-semibold text-[var(--admin-gold-dark)] ${index === 0 ? "pt-2" : "pt-4"}`}>
-                {stepDayLabel(dayKey)}
-              </p>
-            ) : null}
-            <div onPointerDown={blockDragFromControl} className="border-b border-[var(--border)] py-2">
+            <div
+              onPointerDown={blockDragFromControl}
+              className={`rounded-2xl border px-3 py-3 ${
+                unshown
+                  ? "border-[var(--admin-gold)] bg-[var(--admin-peach)]"
+                  : "border-[var(--border)] bg-white"
+              }`}
+            >
             {editingId === item.id ? (
               <div className="space-y-2">
                 <IngestItemCard
@@ -485,15 +436,16 @@ export function BookingItemsPanel({
                 </div>
               </div>
             ) : (
-              <div className="flex items-center gap-3">
-                <Icon name={kindIcon(item.kind)} className="h-4 w-4 shrink-0 text-[var(--admin-navy)]" />
+              <div className="flex items-start gap-3">
+                <p className="w-16 shrink-0 pt-0.5 text-xs font-semibold text-muted">{when || "Sans date"}</p>
+                <Icon name={kindIcon(item.kind)} className="mt-0.5 h-4 w-4 shrink-0 text-[var(--admin-navy)]" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm text-[var(--admin-navy)]">
-                    <span className="font-semibold">{stepTitle(item)}</span>
-                    <span className="text-muted"> · {stepEyebrow(item)}</span>
-                  </p>
+                  <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">{stepTitle(item)}</p>
+                  {airport ? <p className="truncate text-xs text-muted">{airport}</p> : null}
                   {quiet ? <p className="truncate text-xs text-muted">{quiet}</p> : null}
-                  {item.kind === "hotel" ? <HotelContactButton item={item} /> : null}
+                  {unshown ? (
+                    <p className="text-xs font-semibold text-[var(--admin-gold-dark)]">Pas encore montré au client</p>
+                  ) : null}
                   {item.kind === "hotel" && hotelRequests.some((row) => row.booking_item_id === item.id) ? (
                     <div className="mt-1">
                       <button
@@ -568,6 +520,18 @@ export function BookingItemsPanel({
           );
         })}
       </Reorder.Group>
+      {groupAttachedEmails(attachedEmails).duplicates.map((mail) => (
+        <div key={mail.id} className="mt-2 flex items-center gap-3 rounded-2xl bg-[#f4f3f0] px-3 py-3 text-muted">
+          <Icon name="mail" className="h-4 w-4 shrink-0" />
+          <p className="min-w-0 flex-1 text-sm">
+            <span className="block text-xs font-semibold uppercase tracking-wide">Doublon</span>
+            <span className="block truncate">{mail.label}</span>
+          </p>
+          <button type="button" disabled={busy} className={flatBtn} onClick={() => void dismissEmail(mail.id)}>
+            Écarter
+          </button>
+        </div>
+      ))}
       {editingId === "new" ? (
         <div className="mt-3 space-y-2">
           <IngestItemCard

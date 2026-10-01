@@ -6,9 +6,9 @@ import { EXAMPLE_BASE } from "@/lib/crm/example-session";
 import { readExample } from "@/lib/crm/example-store";
 
 export const dynamic = "force-dynamic";
+import { isClientPastStay, isClientUpcomingStay } from "@/lib/crm/client-stays";
 import {
   formatDateRangeShort,
-  isUpcomingBooking,
   jMinusLabel,
   tripDurationDays,
 } from "@/lib/crm/money";
@@ -24,10 +24,8 @@ export default async function ExampleReservationsPage({
   const { tab } = await searchParams;
   const session = readExample();
   const all = session.bookings;
-  const upcoming = all.filter((b) => isUpcomingBooking(b.end_date) && b.status !== "cancelled");
-  const past = all.filter(
-    (b) => !isUpcomingBooking(b.end_date) || b.status === "completed" || b.status === "cancelled"
-  );
+  const upcoming = all.filter((b) => isClientUpcomingStay(b));
+  const past = all.filter((b) => isClientPastStay(b));
   const showPast = tab === "passes";
   const list = showPast ? past : upcoming;
 

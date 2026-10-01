@@ -301,15 +301,15 @@ export function flightRoute(item: CrmBookingItem) {
   return flightIata(item) || flightCities(item);
 }
 
-/** Titre compact : IATA, sinon villes — évite « Paris → Marrakech » en double. */
+/** Titre de carte : les villes. Le code aéroport va en dessous. */
 export function flightCardTitle(item: CrmBookingItem) {
-  return flightIata(item) || flightCities(item) || item.title;
+  return flightCities(item) || flightIata(item) || item.title;
 }
 
 export function flightCardSubtitle(item: CrmBookingItem) {
   const iata = flightIata(item);
   const cities = flightCities(item);
-  if (iata && cities) return cities;
+  if (cities && iata) return iata;
   return "";
 }
 

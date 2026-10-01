@@ -5,9 +5,9 @@ import { ensureCustomerForUser } from "@/lib/crm/auth";
 import { clientBookingStatusLabel, stayHeadline } from "@/lib/crm/carnet";
 import { clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { loadDisplayedStayAmounts } from "@/lib/crm/displayed-stay";
+import { isClientPastStay, isClientUpcomingStay } from "@/lib/crm/client-stays";
 import {
   formatDateRangeShort,
-  isUpcomingBooking,
   jMinusLabel,
   tripDurationDays,
 } from "@/lib/crm/money";
@@ -42,19 +42,8 @@ export default async function ReservationsPage({
     supabase,
     all.map((row) => row.id)
   );
-  const upcoming = sortBookingsByStart(
-    all.filter((b) => isUpcomingBooking(b.end_date) && b.status !== "cancelled"),
-    "asc"
-  );
-  const past = sortBookingsByStart(
-    all.filter(
-      (b) =>
-        !isUpcomingBooking(b.end_date) ||
-        b.status === "completed" ||
-        b.status === "cancelled"
-    ),
-    "desc"
-  );
+  const upcoming = sortBookingsByStart(all.filter((b) => isClientUpcomingStay(b)), "asc");
+  const past = sortBookingsByStart(all.filter((b) => isClientPastStay(b)), "desc");
   const showPast = tab === "passes";
   const list = showPast ? past : upcoming;
 

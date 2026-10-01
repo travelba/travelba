@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { ensureCustomerForUser, getSessionUser } from "@/lib/crm/auth";
 import { chosenCalendarHref, googleCalendarHref, itemCalendarHref } from "@/lib/crm/calendar-ics";
 import type { CrmBalance } from "@/lib/crm/types";
-import { encoursCaption, formatDateRangeShort, formatMoney, isUpcomingBooking, jMinusLabel } from "@/lib/crm/money";
+import { isClientUpcomingStay } from "@/lib/crm/client-stays";
+import { encoursCaption, formatDateRangeShort, formatMoney, jMinusLabel } from "@/lib/crm/money";
 import { isCompanyMember } from "@/lib/crm/company-role";
 import { loadStayArrivalPlaces, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
 import { clientVisibleItems, nextTimelineFlight, stayHeadline, tripPlaceLine, type FlightPass } from "@/lib/crm/carnet";
@@ -31,7 +32,7 @@ export default async function AccountHomePage() {
 
   const nextTrip =
     sortBookingsByStart(
-      bookings.filter((b) => isUpcomingBooking(b.end_date) && b.status !== "cancelled"),
+      bookings.filter((b) => isClientUpcomingStay(b)),
       "asc"
     )[0] || null;
   const places = nextTrip ? await loadStayArrivalPlaces(supabase, [nextTrip.id]) : {};
