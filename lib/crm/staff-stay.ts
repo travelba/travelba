@@ -1,5 +1,12 @@
 import { countsAsCarnetCard, type BookingStatus } from "@/lib/crm/types";
-import { flightCities, flightIata, hotelDisplayName, nightsBetween } from "@/lib/crm/carnet";
+import { cityLabel, cityPlaceKey } from "@/lib/crm/city-names";
+import {
+  flightCities,
+  flightIata,
+  hotelDisplayName,
+  nightsBetween,
+  stayHeadline,
+} from "@/lib/crm/carnet";
 import { formatDateRangeShort } from "@/lib/crm/money";
 
 export type StaffStayVisibility = "preparing" | "shown" | "archived";
@@ -114,22 +121,11 @@ export function shortStayRange(start: string | null | undefined, end: string | n
   return shortStayDay(from || to);
 }
 
-function foldPlace(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
-    .toLowerCase()
-    .replace(/['’.]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function pushPlace(found: string[], value: string) {
-  const token = value.split(",")[0]?.trim() || "";
-  if (!token) return;
-  const key = foldPlace(token);
-  if (!key || found.some((item) => foldPlace(item) === key)) return;
-  found.push(token);
+  const label = cityLabel(value);
+  const key = cityPlaceKey(label);
+  if (!key || found.some((item) => cityPlaceKey(item) === key)) return;
+  found.push(label);
 }
 
 /** Jour calendaire, puis l’heure. Un hôtel sans horaire passe après le vol du même jour. */
@@ -151,6 +147,19 @@ function carnetSteps(items: Step[]) {
       if (byDate) return byDate;
       return (a.sort_order || 0) - (b.sort_order || 0);
     });
+}
+
+/**
+ * Titre lu sur les étapes. Un nom choisi (« 40 ans ») reste.
+ * Une liste de villes s’allonge quand une étape en ajoute une.
+ */
+export function stayTitleFromItems(
+  title: string | null | undefined,
+  destination: string | null | undefined,
+  items: Step[],
+  fallback = "Séjour"
+) {
+  return stayHeadline(title, destination, stayCitiesFromSteps(items), fallback);
 }
 
 /** Villes dans l’ordre des étapes, Paris compris quand le vol en part. */

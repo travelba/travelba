@@ -8,7 +8,8 @@ import { isClientUpcomingStay } from "@/lib/crm/client-stays";
 import { encoursCaption, formatDateRangeShort, formatMoney, jMinusLabel } from "@/lib/crm/money";
 import { isCompanyMember } from "@/lib/crm/company-role";
 import { loadStayArrivalPlaces, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
-import { clientVisibleItems, nextTimelineFlight, stayHeadline, tripPlaceLine, type FlightPass } from "@/lib/crm/carnet";
+import { clientVisibleItems, nextTimelineFlight, tripPlaceLine, type FlightPass } from "@/lib/crm/carnet";
+import { stayTitleFromItems } from "@/lib/crm/staff-stay";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { BoardingPass } from "@/components/account/BoardingPass";
 import { Icon } from "@/components/crm/icons";
@@ -45,16 +46,14 @@ export default async function AccountHomePage() {
   const owing = shownBalances.filter((row) => row.value < 0);
   const firstName = greetingGivenName(customer.first_name) || customer.email.split("@")[0];
   const countdown = nextTrip ? jMinusLabel(nextTrip.start_date) : null;
-  const tripName = nextTrip
-    ? stayHeadline(nextTrip.title, nextTrip.destination, places[nextTrip.id], "Prochain séjour")
-    : "";
-  const tripPlace = nextTrip ? tripPlaceLine(nextTrip.title, nextTrip.destination) : null;
   const tripHref = nextTrip ? `/mon-compte/reservations/${nextTrip.reference}` : "/mon-compte/reservations";
   const weather = nextTrip
     ? await destinationWeather(nextTrip.destination, nextTrip.title)
     : null;
   let homeFlight: FlightPass | null = null;
   let flightItem: CrmBookingItem | null = null;
+  let tripName = "";
+  let tripPlace: string | null = null;
   if (nextTrip) {
     const { data: tripItems } = await supabase
       .from("crm_booking_items")
@@ -62,6 +61,8 @@ export default async function AccountHomePage() {
       .eq("booking_id", nextTrip.id)
       .order("sort_order");
     const rows = clientVisibleItems((tripItems || []) as CrmBookingItem[]);
+    tripName = stayTitleFromItems(nextTrip.title, nextTrip.destination, rows, "Prochain séjour");
+    tripPlace = tripPlaceLine(tripName, nextTrip.destination);
     homeFlight = nextTimelineFlight(rows);
     flightItem = rows.find((row) => row.id === homeFlight?.itemId) || null;
   }

@@ -1,4 +1,5 @@
 import { hotelCityLine, hotelDisplayName } from "./carnet";
+import { CITY_ALIASES } from "./city-names";
 import type { CrmBookingItem } from "./types";
 
 const NAME_STOP = new Set([
@@ -18,27 +19,6 @@ const NAME_STOP = new Set([
   "an",
   "of",
 ]);
-
-/** Villes écrites en français sur une confirmation, ramenées au libellé du catalogue. */
-const CITY_ALIASES: Record<string, string> = {
-  londres: "london",
-  geneve: "geneva",
-  venise: "venice",
-  venezia: "venice",
-  roma: "rome",
-  milano: "milan",
-  firenze: "florence",
-  munchen: "munich",
-  muenchen: "munich",
-  wien: "vienna",
-  bruxelles: "brussels",
-  lisboa: "lisbon",
-  lisbonne: "lisbon",
-  praha: "prague",
-  moscou: "moscow",
-  pekin: "beijing",
-  nyc: "new york",
-};
 
 export type HotelDirectoryEntry = {
   hotel_id: number;

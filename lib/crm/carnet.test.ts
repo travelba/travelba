@@ -247,6 +247,17 @@ describe("carnet", () => {
     );
     assert.equal(stayHeadline("40 ans", "Miami Beach", ["New York", "Miami Beach"]), "40 ans");
     assert.equal(stayHeadline("Marrakech", "Marrakech", ["Marrakech"]), "Marrakech");
+    assert.equal(
+      stayHeadline("Paris · Milan", "Paris · Milan", ["Paris", "Milan", "Rome"]),
+      "Paris · Milan · Rome"
+    );
+    assert.equal(
+      stayHeadline("Paris · Milano", "Paris · Milan", ["Paris", "Milan", "Rome"]),
+      "Paris · Milan · Rome"
+    );
+    assert.equal(stayHeadline("40 ans", "Paris · Milan", ["Paris", "Milan", "Rome"]), "40 ans");
+    assert.equal(tripPlaceLine("Paris · Milan · Rome", "Paris · Milan"), null);
+    assert.equal(tripPlaceLine("40 ans", "Marrakech"), "Marrakech");
   });
 
   it("sert la photo catalogue du lieu, pas Unsplash", () => {

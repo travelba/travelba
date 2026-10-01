@@ -7,6 +7,7 @@ import {
   visibleServiceCopy,
 } from "@/lib/crm/types";
 import { formatDateFr, formatMoney, todayIsoDate } from "@/lib/crm/money";
+import { cityLabel, cityPlaceKey } from "./city-names";
 import { itemTicketCount } from "./item-match";
 
 export function detailStr(item: CrmBookingItem, key: string) {
@@ -501,23 +502,30 @@ export function tripHeadline(
   return (title || "").trim() || (destination || "").trim() || fallback;
 }
 
-/** Lieu sous le titre, omis s’il répète le nom du séjour. */
+function titleCityParts(value: string) {
+  return value
+    .split(/\s*(?:·|\||\/|→|->|—|–| - )\s*/)
+    .map((part) => part.split(",")[0]?.trim() || "")
+    .filter(Boolean);
+}
+
+/** Lieu sous le titre, omis s’il répète le nom du séjour ou s’il n’en est qu’une partie. */
 export function tripPlaceLine(title: string | null | undefined, destination: string | null | undefined) {
   const name = (title || "").trim();
   const place = (destination || "").trim();
-  if (!name || !place || name.toLowerCase() === place.toLowerCase()) return null;
+  if (!name || !place || foldPlace(name) === foldPlace(place)) return null;
+  const named = new Set(titleCityParts(name).map((part) => cityPlaceKey(part)).filter(Boolean));
+  const parts = titleCityParts(place);
+  if (parts.length && parts.every((part) => named.has(cityPlaceKey(part)))) return null;
   return place;
 }
 
 function pushArrival(found: string[], value: string) {
-  const token = value.split(",")[0]?.trim() || "";
-  if (!token || ORIGIN_HUBS.test(token)) return;
-  const key = token
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
-    .toLowerCase();
-  if (found.some((item) => item.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase() === key)) return;
-  found.push(token);
+  const label = cityLabel(value);
+  const key = cityPlaceKey(label);
+  if (!label || !key || ORIGIN_HUBS.test(label)) return;
+  if (found.some((item) => cityPlaceKey(item) === key)) return;
+  found.push(label);
 }
 
 function detailPlace(details: Record<string, unknown> | null | undefined, key: string) {
@@ -558,9 +566,17 @@ export function stayArrivalPlaces(
   return found;
 }
 
+function titleTracksCities(named: string, cities: string[]) {
+  const keys = new Set(cities.map((city) => cityPlaceKey(city)).filter(Boolean));
+  if (!keys.size) return false;
+  const parts = titleCityParts(named);
+  if (!parts.length) return false;
+  return parts.every((part) => keys.has(cityPlaceKey(part)));
+}
+
 /**
- * Deux hôtels : les deux villes dans le titre, si le nom saisi n’est qu’une de ces villes.
- * Un nom choisi (« 40 ans ») reste tel quel.
+ * Le titre suit toutes les villes du voyage, dans l’ordre.
+ * Un nom choisi (« 40 ans ») reste. Une liste de villes (Paris · Milan) s’allonge.
  */
 export function stayHeadline(
   title: string | null | undefined,
@@ -568,14 +584,18 @@ export function stayHeadline(
   places: string[] | null | undefined,
   fallback = "Séjour"
 ) {
-  const named = tripHeadline(title, destination, fallback);
   const cities = (places || []).map((place) => place.trim()).filter(Boolean);
-  if (cities.length < 2) return named;
-  const namedKey = foldPlace(named);
-  const destinationKey = foldPlace(destination || "");
-  const cityKeys = new Set(cities.map(foldPlace));
-  if (!cityKeys.has(namedKey) && namedKey !== destinationKey) return named;
-  return cities.join(" · ");
+  const stored = (title || "").trim();
+  const dest = (destination || "").trim();
+  const named = stored || dest;
+  if (!named && cities.length) return cities.join(" · ");
+  if (
+    cities.length >= 2 &&
+    (titleTracksCities(named, cities) || (dest && foldPlace(named) === foldPlace(dest)))
+  ) {
+    return cities.join(" · ");
+  }
+  return named || fallback;
 }
 
 /** Ville d’arrivée pour la photo : on ignore Paris / CDG / ORY s’il y a une autre ville. */

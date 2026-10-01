@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
-import { tripHeadline } from "@/lib/crm/carnet";
+import { clientVisibleItems } from "@/lib/crm/carnet";
+import { stayTitleFromItems } from "@/lib/crm/staff-stay";
 import { liveConciergeImage, whatsappTypeImageUrl } from "@/lib/crm/concierge-notices";
 import { planTripShareSend, sendTripShareWhatsapp, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
@@ -61,11 +62,19 @@ export async function POST(request: Request, ctx: Ctx) {
     return jsonError("Accompagnateur introuvable sur ce voyage", 404);
   }
 
+  const { data: itemRows } = await auth.supabase
+    .from("crm_booking_items")
+    .select("kind, title, start_at, end_at, sort_order, details, visible_to_client")
+    .eq("booking_id", booking.id);
   const mediaUrl = await liveConciergeImage(whatsappTypeImageUrl("partage"));
   const result = await sendTripShareWhatsapp({
     phone: plan.phone,
     firstName: plan.firstName,
-    title: tripHeadline(booking.title, booking.destination),
+    title: stayTitleFromItems(
+      booking.title,
+      booking.destination,
+      clientVisibleItems(itemRows || [])
+    ),
     url: tripShareUrl(siteConfig.url, code),
     mediaUrl,
   });

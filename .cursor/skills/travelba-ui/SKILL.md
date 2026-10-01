@@ -32,7 +32,7 @@ Espace client : colonne ~480px (`AccountChrome`). Admin : sidebar `AdminNav`.
 Même langage sur **toutes** les réservations, pas un dossier d’exemple.
 
 - État : pastille **En préparation**, **Montré au client** ou **Archivée**. Bouton principal **Montrer au client** ou **Mettre à jour**. **Archiver**, pas Supprimer.
-- En-tête : retour Réservations, titre, référence, dates et villes lues sur les étapes, voyageurs, statut. Chips de ce qui manque (passeport, courriers hôtel encore ouverts, montant non montré). Onglets sur une ligne ; À faire reste, avec le compte.
+- En-tête : retour Réservations, titre (toutes les villes du voyage, sans répéter la même), référence, dates et villes lues sur les étapes, voyageurs, statut. Un nom choisi (« 40 ans ») reste. Chips de ce qui manque (passeport, courriers hôtel encore ouverts, montant non montré). Onglets sur une ligne ; À faire reste, avec le compte.
 - Lieu et dates **en haut** : une ligne par étape (ville ou hôtel, sa date). Pas un seul champ Lieu + un seul départ/retour quand des étapes existent. Ne pas réécrire `destination` / dates du dossier pour coller à l’affichage.
 - Cartes datées. Vol : villes en titre, code aéroport dessous, n° de vol, classe, horaire et référence dans le détail. Étape pas encore montrée : surbrillance, pas une bannière qui ne fait que compter.
 - Pas de roster hôtel (rôle, nom, e-mail) sur la carte. Un libellé court (le nom de l’hôtel) suffit.

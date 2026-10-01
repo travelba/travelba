@@ -21,7 +21,8 @@ import {
   uniquePeople,
 } from "@/lib/crm/document-passengers";
 import type { PersonName } from "@/lib/crm/person-match";
-import { sortItemsByOrder } from "@/lib/crm/carnet";
+import { sortItemsByOrder, stayHeadline } from "@/lib/crm/carnet";
+import { stayCitiesFromSteps } from "@/lib/crm/staff-stay";
 import { stayTitleForExtract } from "@/lib/crm/ingest-title";
 import { formatMoney } from "@/lib/crm/money";
 import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
@@ -442,11 +443,14 @@ export function BookingIngest({
             };
             const merged = retryNames ? mergeRetryExtract(prev, incoming, retryNames) : incoming;
             const chosenTitle = titleEdited.current ? prev?.title || "" : preserveTitle || prev?.title;
+            const kept = titleEdited.current
+              ? prev?.title || ""
+              : stayTitleForExtract({ chosen: chosenTitle, incoming: merged.title });
             return {
               ...merged,
               title: titleEdited.current
-                ? prev?.title || ""
-                : stayTitleForExtract({ chosen: chosenTitle, incoming: merged.title }),
+                ? kept
+                : stayHeadline(kept, merged.destination, stayCitiesFromSteps(merged.items)),
               currency: prev?.currency ? stayCurrency(prev.currency) : stayCurrency(merged.currency),
             };
           });

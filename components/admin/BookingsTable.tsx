@@ -25,11 +25,13 @@ export function BookingsTable({
   bookings,
   customers,
   places = {},
+  routes = {},
   displayAmounts = {},
 }: {
   bookings: CrmBooking[];
   customers: CrmCustomer[];
   places?: Record<string, string[]>;
+  routes?: Record<string, string[]>;
   displayAmounts?: Record<string, number>;
 }) {
   const [q, setQ] = useState("");
@@ -106,7 +108,7 @@ export function BookingsTable({
               />
                 <div className="min-w-0">
                   <p className="break-words font-semibold text-[var(--admin-navy)]">
-                    {b.reference} · {stayHeadline(b.title, b.destination, places[b.id])}
+                    {b.reference} · {stayHeadline(b.title, b.destination, routes[b.id] || places[b.id])}
                   </p>
                   <p className="text-xs text-muted">
                     {byId.get(b.customer_id) || "Client"} · {formatDateFr(b.start_date)} →{" "}

@@ -12,7 +12,8 @@ import {
   jMinusLabel,
   tripDurationDays,
 } from "@/lib/crm/money";
-import { clientBookingStatusLabel, stayArrivalPlaces, stayHeadline } from "@/lib/crm/carnet";
+import { clientBookingStatusLabel, clientVisibleItems } from "@/lib/crm/carnet";
+import { stayTitleFromItems } from "@/lib/crm/staff-stay";
 import { clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { isLedgerExpenseKind } from "@/lib/crm/types";
 
@@ -116,13 +117,9 @@ export default async function ExampleReservationsPage({
                       {nights ? ` (${nights} jour${nights > 1 ? "s" : ""})` : ""}
                     </p>
                     <h2 className="font-display text-2xl font-bold leading-tight">
-                      {stayHeadline(
-                        b.title,
-                        b.destination,
-                        b.id === session.booking.id
-                          ? stayArrivalPlaces(b.destination, b.title, session.items)
-                          : undefined
-                      )}
+                      {b.id === session.booking.id
+                        ? stayTitleFromItems(b.title, b.destination, clientVisibleItems(session.items))
+                        : stayTitleFromItems(b.title, b.destination, [])}
                     </h2>
                   </div>
                 </BookingHero>

@@ -34,6 +34,7 @@ import {
   flightCardTitle,
   hotelDisplayName,
   keptHiddenFromClient,
+  stayHeadline,
 } from "@/lib/crm/carnet";
 import { unsplashKeywordMatch } from "@/lib/crm/covers";
 import { BookingIngest } from "@/components/crm/BookingIngest";
@@ -64,7 +65,13 @@ import { collectPublishIssues, issuesFromResponse, type BookingIssue } from "@/l
 import { householdMembers } from "@/lib/crm/household";
 import { bookingHasFlight, findVisaExtra, type ServiceRefusal } from "@/lib/crm/extras";
 import { groupAttachedEmails } from "@/lib/crm/email-duplicates";
-import { staffBlockingChips, staffLedgerCaption, staffStayFacts, staffStayLabel } from "@/lib/crm/staff-stay";
+import {
+  staffBlockingChips,
+  staffLedgerCaption,
+  staffStayFacts,
+  staffStayLabel,
+  stayCitiesFromSteps,
+} from "@/lib/crm/staff-stay";
 import { type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import type { FrenchPassportTrip } from "@/lib/crm/visa-trip";
 import { reusableDocumentsForTraveler, tripDocumentsForTraveler } from "@/lib/crm/trip-documents";
@@ -179,6 +186,8 @@ export function BookingEditor({
     setTitleFromServer(booking.title);
     setTitleDraft(booking.title);
   }
+  const routeTitle = stayHeadline(booking.title, booking.destination, stayCitiesFromSteps(items));
+  const titleShown = titleDraft === titleFromServer ? routeTitle : titleDraft;
   const [coverOpen, setCoverOpen] = useState(false);
   const [tab, setTab] = useState<"voyage" | "client" | "argent" | "todo" | "interface">("voyage");
   const [more, setMore] = useState(false);
@@ -262,7 +271,7 @@ export function BookingEditor({
       return;
     }
     const fd = new FormData(form);
-    const title = titleDraft.trim();
+    const title = titleShown.trim();
     const settles = fd.get("client_settles_stay") === "on";
     const payload: Record<string, unknown> = {
       ...Object.fromEntries(fd.entries()),
@@ -581,7 +590,7 @@ export function BookingEditor({
             <input
               name="title"
               form="booking-meta"
-              value={titleDraft}
+              value={titleShown}
               onChange={(event) => setTitleDraft(event.target.value)}
               placeholder="Séjour à Avoriaz"
               aria-label="Titre"
@@ -746,7 +755,7 @@ export function BookingEditor({
             {booking.archived_at ? null : (
               <DeleteBookingButton
                 bookingId={booking.id}
-                label={`${booking.reference} — ${titleDraft || booking.title}`}
+                label={`${booking.reference} — ${titleShown || booking.title}`}
                 compact
                 redirectTo={null}
               />

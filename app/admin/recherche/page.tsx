@@ -2,6 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { rankAdminSearch, type AdminSearchBooking, type AdminSearchCustomer } from "@/lib/crm/admin-search";
+import { stayHeadline } from "@/lib/crm/carnet";
+import { loadStayMaps } from "@/lib/crm/carnet-query";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { customerFullName } from "@/lib/crm/types";
 
@@ -77,6 +79,10 @@ export default async function AdminSearchPage({
     customers: [...customers.values()],
   });
   if (hit.href) redirect(hit.href);
+  const routes = await loadStayMaps(
+    supabase,
+    hit.bookings.map((booking) => booking.id)
+  );
 
   return (
     <div>
@@ -90,7 +96,7 @@ export default async function AdminSearchPage({
               {hit.bookings.map((booking) => (
                 <li key={booking.id}>
                   <Link href={`/admin/reservations/${booking.id}`} className="block px-5 py-3 font-semibold text-[var(--admin-navy)]">
-                    {booking.reference} · {booking.title}
+                    {booking.reference} · {stayHeadline(booking.title, booking.destination, routes.route[booking.id])}
                     {booking.archived_at ? " · Archivée" : ""}
                   </Link>
                 </li>

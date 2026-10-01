@@ -2,7 +2,12 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
-import { nextBookingReference, syncBookingLedger, syncBookingTotalFromItems } from "@/lib/crm/bookings";
+import {
+  nextBookingReference,
+  syncBookingLedger,
+  syncBookingTitleFromSteps,
+  syncBookingTotalFromItems,
+} from "@/lib/crm/bookings";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { defaultPayer } from "@/lib/crm/payer";
 import {
@@ -544,6 +549,7 @@ export async function persistNewBookingFromExtract(opts: {
     docs,
     opts.emailIngestId
   );
+  await syncBookingTitleFromSteps(admin, booking.id);
   await syncBookingTotalFromItems(admin, booking.id);
   const { data: withTotal } = await admin
     .from("crm_bookings")
@@ -628,6 +634,7 @@ export async function applyExtractToBooking(opts: {
   if (Object.keys(patch).length) {
     await admin.from("crm_bookings").update(patch).eq("id", opts.bookingId);
   }
+  await syncBookingTitleFromSteps(admin, opts.bookingId);
   await syncBookingTotalFromItems(admin, opts.bookingId);
   const { data: refreshed } = await admin
     .from("crm_bookings")

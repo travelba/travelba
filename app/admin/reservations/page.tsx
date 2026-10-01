@@ -2,7 +2,7 @@ import { NewBookingForm } from "@/components/admin/NewBookingForm";
 import { BookingsTable } from "@/components/admin/BookingsTable";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireStaffPage } from "@/lib/crm/auth";
-import { loadStayArrivalPlaces } from "@/lib/crm/carnet-query";
+import { loadStayMaps } from "@/lib/crm/carnet-query";
 import { loadDisplayedStayAmounts } from "@/lib/crm/displayed-stay";
 import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 import type { CrmBooking, CrmCustomer } from "@/lib/crm/types";
@@ -18,8 +18,8 @@ export default async function AdminReservationsPage() {
     supabase.from("crm_billing_companies").select("id, customer_id, company_name, sort_order").order("sort_order"),
   ]);
   const rows = (bookings || []) as CrmBooking[];
-  const [places, displayed] = await Promise.all([
-    loadStayArrivalPlaces(
+  const [maps, displayed] = await Promise.all([
+    loadStayMaps(
       supabase,
       rows.map((row) => row.id)
     ),
@@ -48,7 +48,8 @@ export default async function AdminReservationsPage() {
       <BookingsTable
         bookings={rows}
         customers={(customers || []) as CrmCustomer[]}
-        places={places}
+        places={maps.arrival}
+        routes={maps.route}
         displayAmounts={Object.fromEntries(displayed)}
       />
     </div>
