@@ -25,6 +25,8 @@ export async function POST(request: Request) {
     firstName: text(body.firstName),
     phone: text(body.phone),
     companion: text(body.companion),
+    diet: text(body.diet),
+    companionDiet: text(body.companionDiet),
     outboundId: text(body.outboundId),
     returnId: text(body.returnId),
   };

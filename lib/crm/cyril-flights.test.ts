@@ -27,6 +27,8 @@ test("ligne du classeur", () => {
       firstName: "Léa",
       phone: "+33612345678",
       companion: "Paul Martin",
+      diet: "cachere",
+      companionDiet: "vegetarien",
       outboundId: "to-3016",
       returnId: "af-1877",
     },
@@ -39,8 +41,10 @@ test("ligne du classeur", () => {
   assert.equal(built.row[2], "Léa");
   assert.equal(built.row[3], "+33612345678");
   assert.equal(built.row[4], "Paul Martin");
-  assert.deepEqual(built.row.slice(5, 10), ["Transavia", "TO 3016", "Orly", "10h40", "12h05"]);
-  assert.deepEqual(built.row.slice(10), ["Air France", "AF 1877", "Roissy-CDG", "17h55", "23h20"]);
+  assert.equal(built.row[5], "Cachère");
+  assert.equal(built.row[6], "Végétarien");
+  assert.deepEqual(built.row.slice(7, 12), ["Transavia", "TO 3016", "Orly", "10h40", "12h05"]);
+  assert.deepEqual(built.row.slice(12), ["Air France", "AF 1877", "Roissy-CDG", "17h55", "23h20"]);
 });
 
 test("refus si vol ou téléphone hors liste", () => {
@@ -61,4 +65,15 @@ test("refus si vol ou téléphone hors liste", () => {
   });
   assert.equal(phone.ok, false);
   if (!phone.ok) assert.match(phone.error, /téléphone/);
+  const diet = buildCyrilSheetRow({
+    lastName: "Martin",
+    firstName: "Léa",
+    phone: "+33612345678",
+    companion: "Paul Martin",
+    diet: "tout",
+    outboundId: "to-3016",
+    returnId: "to-3015",
+  });
+  assert.equal(diet.ok, false);
+  if (!diet.ok) assert.match(diet.error, /accompagnateur/);
 });

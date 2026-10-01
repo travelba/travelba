@@ -41,12 +41,26 @@ export const CYRIL_RETURN: CyrilFlight[] = [
   { id: "af-1877", leg: "return", airline: "Air France", iata: "AF", number: "AF 1877", airport: "Roissy-CDG", depart: "17:55", arrive: "23:20" },
 ];
 
+export const CYRIL_DIETS = [
+  { id: "tout", label: "De tout" },
+  { id: "cachere", label: "Cachère" },
+  { id: "vegetarien", label: "Végétarien" },
+] as const;
+
+export type CyrilDiet = (typeof CYRIL_DIETS)[number]["id"];
+
+export function cyrilDietLabel(value: string | null | undefined) {
+  return CYRIL_DIETS.find((diet) => diet.id === value)?.label || null;
+}
+
 export const CYRIL_SHEET_HEADERS = [
   "Envoyé le",
   "Nom",
   "Prénom",
   "Téléphone",
   "Accompagnateur",
+  "Régime",
+  "Régime accompagnateur",
   "Aller — compagnie",
   "Aller — vol",
   "Aller — aéroport",
@@ -64,6 +78,8 @@ export type CyrilGuest = {
   firstName: string;
   phone: string;
   companion?: string;
+  diet?: string;
+  companionDiet?: string;
   outboundId: string;
   returnId: string;
 };
@@ -137,12 +153,20 @@ export function buildCyrilSheetRow(
   const inbound = CYRIL_RETURN.find((flight) => flight.id === guest.returnId);
   if (!inbound) return { ok: false, error: "Choisissez le vol retour." };
   const companion = cleanText(guest.companion || "", 120);
+  const diet = cyrilDietLabel(guest.diet);
+  if (!diet) return { ok: false, error: "Indiquez ce que vous mangez." };
+  const companionDiet = companion ? cyrilDietLabel(guest.companionDiet) : "";
+  if (companion && !companionDiet) {
+    return { ok: false, error: "Indiquez ce que mange l’accompagnateur." };
+  }
   const row = [
     sentAtLabel(sentAt),
     lastName,
     firstName,
     phone,
     companion,
+    diet,
+    companion ? companionDiet : "",
     ...flightCells(outbound),
     ...flightCells(inbound),
   ];

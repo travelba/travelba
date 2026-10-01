@@ -5,6 +5,7 @@ import { BrandMark } from "@/components/crm/BrandMark";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { Field, PhoneField, fieldControlClass } from "@/components/crm/fields";
 import {
+  CYRIL_DIETS,
   CYRIL_OUTBOUND_LABEL,
   CYRIL_RETURN_LABEL,
   cyrilAirportLabel,
@@ -14,6 +15,43 @@ import {
   type CyrilFlight,
   type CyrilLeg,
 } from "@/lib/crm/cyril-flights";
+
+function DietPicker({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium text-[var(--admin-navy)]">{label}</p>
+      <div role="radiogroup" aria-label={label} className="grid grid-cols-3 gap-2">
+        {CYRIL_DIETS.map((diet) => {
+          const selected = value === diet.id;
+          return (
+            <button
+              key={diet.id}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              onClick={() => onChange(diet.id)}
+              className={`rounded-2xl border bg-white px-2 py-3 text-center text-sm font-semibold text-[var(--admin-navy)] transition ${
+                selected
+                  ? "border-[var(--admin-gold)] ring-2 ring-[var(--admin-gold)]"
+                  : "border-[#e5e3dc] hover:border-[var(--admin-navy)]/30"
+              }`}
+            >
+              {diet.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function FlightChoice({
   flight,
@@ -138,6 +176,8 @@ export function CyrilFlightForm() {
   const [firstName, setFirstName] = useState("");
   const [phone, setPhone] = useState("");
   const [companion, setCompanion] = useState("");
+  const [diet, setDiet] = useState("");
+  const [companionDiet, setCompanionDiet] = useState("");
   const [outboundId, setOutboundId] = useState("");
   const [returnId, setReturnId] = useState("");
   const [step, setStep] = useState<"outbound" | "return" | "confirm">("outbound");
@@ -168,6 +208,14 @@ export function CyrilFlightForm() {
     }
     if (!phone) {
       showError("Indiquez un numéro de téléphone valide.");
+      return;
+    }
+    if (!diet) {
+      showError("Indiquez ce que vous mangez.");
+      return;
+    }
+    if (companion.trim() && !companionDiet) {
+      showError("Indiquez ce que mange l’accompagnateur.");
       return;
     }
     setError(null);
@@ -217,6 +265,8 @@ export function CyrilFlightForm() {
           firstName,
           phone,
           companion,
+          diet,
+          companionDiet,
           outboundId,
           returnId,
           tb_hp: honeypot,
@@ -300,6 +350,24 @@ export function CyrilFlightForm() {
                 className={fieldControlClass}
               />
             </Field>
+            <DietPicker
+              label="Vous mangez"
+              value={diet}
+              onChange={(id) => {
+                setError(null);
+                setDiet(id);
+              }}
+            />
+            {companion.trim() ? (
+              <DietPicker
+                label="L’accompagnateur mange"
+                value={companionDiet}
+                onChange={(id) => {
+                  setError(null);
+                  setCompanionDiet(id);
+                }}
+              />
+            ) : null}
           </section>
           {error ? (
             <p ref={errorRef} className="text-sm font-medium text-[var(--admin-red)]">
