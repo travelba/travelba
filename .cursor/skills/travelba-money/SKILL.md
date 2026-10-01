@@ -52,7 +52,7 @@ Ajustements / remboursements : lignes manuelles admin `kind=adjustment|refund`.
 
 ## Stripe — règlement dans Transactions
 
-- Le règlement est dans **Transactions** (`/mon-compte/transactions`), sous l’encours, libellé **Régler**. Le même bloc est en haut de la réservation. Carte, Apple Pay, prélèvement SEPA, virement.
+- Le règlement est dans **Transactions** (`/mon-compte/transactions`), sous l’encours, libellé **Régler**. Le même bloc est en haut de la réservation. Société : prélèvement SEPA et virement. Particulier : carte, Apple Pay et virement.
 - Le dossier a `payer_kind` : `company` (société, défaut = première `crm_billing_companies`) ou `personal` (particulier). L’agence le choisit dans Règlement pour ranger le débit. Le client ne choisit pas la société.
 - `fees_follow_stay` (défaut true) : frais d’agence, frais de billeterie (25 € par passager dès qu’un vol est confirmé) et dépenses suivent la facture du séjour. L’hôtel réglé par le client n’est pas un encaissement.
 - Part société : prélèvement SEPA et virement, en euros. Part particulier : carte, Apple Pay et virement, sans prélèvement. Hors euros : carte et Apple Pay seulement. Le collaborateur `member` ne règle pas l’encours : il voit ses frais, le compte qui porte le wallet paie. Les moyens tiennent sur une ligne de pastilles ; le formulaire s’ouvre seulement pour le moyen choisi.
