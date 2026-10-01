@@ -1,25 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CLIENT_ONBOARDING_STEPS, PROFILE_ONBOARDING_HINTS, onboardingCopyBlob } from "./onboarding";
-import { CLIENT_PROFILE_NAV } from "./profile-nav";
+import { CLIENT_ONBOARDING_STEPS, onboardingCopyBlob } from "./onboarding";
 
-test("la bienvenue décrit le carnet publié, le livre comptabilisé et les quatre onglets", () => {
+test("la bienvenue présente passeport, itinéraire, services, dépenses et formalités", () => {
   assert.deepEqual(
     CLIENT_ONBOARDING_STEPS.map((step) => step.id),
-    ["carnet", "transactions", "profil"]
+    ["passeport", "carnet", "services", "depenses", "formalites"]
   );
-  assert.deepEqual(
-    CLIENT_PROFILE_NAV.map((section) => section.label),
-    ["Vous", "Pièces", "Voyageurs", "Facturation"]
-  );
-  for (const section of CLIENT_PROFILE_NAV) {
-    assert.ok(PROFILE_ONBOARDING_HINTS[section.label]);
+  const blob = onboardingCopyBlob().toLowerCase();
+  for (const word of ["passeport", "itinéraire", "chauffeur", "vip airport", "esta", "eta", "eta-il"]) {
+    assert.equal(blob.includes(word), true, word);
   }
+  assert.equal(
+    CLIENT_ONBOARDING_STEPS.find((step) => step.id === "formalites")?.title,
+    "ESTA, ETA, ETA-IL"
+  );
 });
 
-test("la bienvenue ne promet ni brouillon ni carte", () => {
+test("la bienvenue ne promet ni brouillon, ni carte, ni montant", () => {
   const blob = onboardingCopyBlob().toLowerCase();
   assert.equal(blob.includes("brouillon"), false);
   assert.equal(blob.includes("carte"), false);
   assert.equal(blob.includes("draft"), false);
+  assert.equal(blob.includes("montant"), false);
 });
