@@ -4,6 +4,22 @@ import { saveCustomerBillingCompanies } from "@/lib/crm/billing-companies";
 import { isCompanyMember } from "@/lib/crm/company-role";
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
 
+export async function GET() {
+  const auth = await requireCustomer();
+  if (auth instanceof NextResponse) return auth;
+  const { data: companies } = await auth.supabase
+    .from("crm_billing_companies")
+    .select("*")
+    .eq("customer_id", auth.customer.id)
+    .order("sort_order");
+  const { stripe_customer_id: _stripe, ...customer } = auth.customer;
+  return NextResponse.json({
+    customer,
+    billing_companies: companies || [],
+    member: isCompanyMember(auth.customer),
+  });
+}
+
 export async function PATCH(request: Request) {
   const auth = await requireCustomer();
   if (auth instanceof NextResponse) return auth;

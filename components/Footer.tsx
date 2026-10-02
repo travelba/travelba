@@ -153,6 +153,12 @@ export function Footer() {
             >
               {t("legalLink")}
             </Link>
+            <Link
+              href="/confidentialite"
+              className="transition-colors hover:text-foreground"
+            >
+              {t("privacyLink")}
+            </Link>
             <span className="hidden sm:inline">·</span>
             <p>{t("madeWith")}</p>
           </div>

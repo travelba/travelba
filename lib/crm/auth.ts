@@ -1,15 +1,27 @@
 import { cache } from "react";
+import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { createBearerClient } from "@/lib/supabase/bearer";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmCustomer, CrmStaff } from "@/lib/crm/types";
 import { STAFF_COPY } from "@/lib/crm/staff-team";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
 import { issuesSummary, type BookingIssue } from "@/lib/crm/booking-issues";
+import { bearerAccessToken } from "@/lib/crm/mobile-auth";
 
 /** Mémo request-scoped (pas Cache Components) : layout + requireStaffPage partagent getUser. */
 export const getSessionUser = cache(async () => {
+  const headerStore = await headers();
+  const token = bearerAccessToken(headerStore.get("authorization"));
+  if (token) {
+    const supabase = createBearerClient(token);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser(token);
+    return { supabase, user };
+  }
   const supabase = await createClient();
   const {
     data: { user },
