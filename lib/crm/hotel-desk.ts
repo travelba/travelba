@@ -14,7 +14,7 @@ import {
   parisIsoDate,
   paymentUrlFromText,
 } from "./hotel-arrival";
-import type { CrmBookingItem, CrmHotelMessage, CrmHotelRequest, HotelDeskKind, HotelDeskStatus } from "./types";
+import type { CrmBookingItem, CrmHotelMessage, CrmHotelRequest, CrmHotelThreadMessage, HotelDeskKind, HotelDeskStatus } from "./types";
 import { HOTEL_DESK_KINDS } from "./types";
 
 /** Expéditeur et adresse de réponse du bureau hôtel. */
@@ -164,10 +164,10 @@ export function hotelReplyLink(text: string) {
   return url;
 }
 
-const SUBJECT_PREFIX = /^(?:(?:re|fw|fwd|tr)\s*:\s*)+/i;
+const SUBJECT_PREFIX = /^(?:(?:re|fw|fwd|tr|aw|wg|antw|r)\s*:\s*)+/i;
 const RELANCE_PREFIX = /^(?:relance|follow-up)\s*[—–-]\s*/i;
 
-/** Objet sans Re:, Fwd:, Relance ni Follow-up. Les tirets d’origine restent pour Gmail. */
+/** Objet sans Re:, R:, AW:, Relance ni Follow-up. Les tirets d’origine restent pour Gmail. */
 export function hotelMailSubjectCore(subject: string) {
   let value = subject.replace(/\s+/g, " ").trim();
   let previous = "";
@@ -236,6 +236,102 @@ export function gmailAfterDate(sinceMs: number) {
   return `${day.getUTCFullYear()}/${month}/${date}`;
 }
 
+const FOLLOW_STATUS = new Set(["sent", "follow_up", "replied"]);
+
+/** Titres à suivre. Un brouillon, un courrier à faire ou « Pas besoin » ne lance pas de recherche. */
+export function subjectsToFollow(row: {
+  status: string;
+  sent_at: string | null;
+  subject: string;
+  sent_subjects?: string[] | null;
+}) {
+  if (!row.sent_at || !FOLLOW_STATUS.has(row.status)) return [];
+  const listed = (row.sent_subjects || []).map((subject) => subject.trim()).filter(Boolean);
+  const subjects = listed.length ? listed : [row.subject.trim()].filter(Boolean);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const subject of subjects) {
+    const key = hotelMailSubjectKey(subject);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(subject);
+  }
+  return out;
+}
+
+/** Ajoute un titre parti seulement si son cœur est nouveau. */
+export function appendSentSubject(existing: string[] | null | undefined, subject: string) {
+  const next = (existing || []).map((value) => value.trim()).filter(Boolean);
+  const key = hotelMailSubjectKey(subject);
+  if (!key || next.some((value) => hotelMailSubjectKey(value) === key)) return next;
+  return [...next, subject.trim()];
+}
+
+/** Une vraie réponse d'hôtel fait passer le courrier à Répondu. Une absence ne le fait pas. */
+export function nextLetterStatus(status: HotelDeskStatus, hasRealReply: boolean): HotelDeskStatus {
+  if (!hasRealReply) return status;
+  if (status === "sent" || status === "follow_up") return "replied";
+  return status;
+}
+
+/** Absence, bounce ou en-tête Auto-Submitted. Pas une réponse de l'hôtel. */
+export function isAutomaticHotelMail(from: string, body: string, autoSubmitted = false) {
+  if (autoSubmitted) return true;
+  const local = emailAddress(from).split("@")[0] || "";
+  if (/^(mailer-daemon|postmaster|mail-daemon)$/i.test(local)) return true;
+  const head = body.slice(0, 600);
+  return /out of (the )?office|absence du bureau|r[eé]ponse automatique|automatic reply|je suis absent|i am (currently )?out of the office|message d'absence|undeliverable|delivery status notification|mail delivery failed/i.test(
+    head
+  );
+}
+
+export type HotelMailClass = {
+  keep: boolean;
+  subjectKey: string;
+  direction: "out" | "in";
+  countsAsReply: boolean;
+  body: string;
+  link: string | null;
+  notice: "send" | "reply" | "auto";
+};
+
+/** Garde un message seulement si son titre est exactement celui d'un envoi CRM. */
+export function classifyHotelMail(input: {
+  from: string;
+  subject: string;
+  body: string;
+  keys: string[];
+  autoSubmitted?: boolean;
+}): HotelMailClass {
+  const subjectKey = hotelMailSubjectKey(input.subject);
+  const expected = new Set(input.keys.map((key) => hotelMailSubjectKey(key)).filter(Boolean));
+  const empty = {
+    keep: false,
+    subjectKey,
+    direction: "in" as const,
+    countsAsReply: false,
+    body: "",
+    link: null,
+    notice: "reply" as const,
+  };
+  if (!subjectKey || !expected.has(subjectKey)) return empty;
+  const agency = isAgencyMailbox(input.from);
+  const automatic = !agency && isAutomaticHotelMail(input.from, input.body, Boolean(input.autoSubmitted));
+  const direction = agency ? "out" : "in";
+  const cleaned = hotelReplyForDesk(input.body);
+  const body = cleaned || (direction === "in" ? "L'hôtel a répondu." : "");
+  if (!body) return empty;
+  return {
+    keep: true,
+    subjectKey,
+    direction,
+    countsAsReply: direction === "in" && !automatic,
+    body,
+    link: direction === "in" ? hotelReplyLink(cleaned || input.body) : null,
+    notice: agency ? "send" : automatic ? "auto" : "reply",
+  };
+}
+
 export function gmailSubjectClause(subject: string) {
   const core = hotelMailSubjectCore(subject).replace(/"/g, " ").replace(/\s+/g, " ").trim();
   if (core.length < 4) return "";
@@ -256,6 +352,14 @@ export function hotelReplySearchQueries(input: { subject: string; emails: string
   ];
   if (safe.length) queries.push(`after:${input.after} (${safe.map((email) => `from:${email}`).join(" OR ")})`);
   return queries;
+}
+
+/** Recherche Gmail du titre parti. Le filtre exact se fait ensuite. */
+export function hotelThreadSearchQuery(subject: string, after: string) {
+  if (!after) return "";
+  const clause = gmailSubjectClause(subject);
+  if (!clause) return "";
+  return `after:${after} ${clause}`;
 }
 
 function detail(item: CrmBookingItem, key: string) {
@@ -847,6 +951,61 @@ function turnAt(value: string | null) {
   return Number.isFinite(ms) ? new Date(ms).toISOString() : "";
 }
 
+type DraftTurn = HotelThreadTurn & {
+  subjectKey: string;
+  source: "crm" | "gmail" | "letter" | "note";
+};
+
+const FOLD_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function bodyPrefix(body: string) {
+  return body.replace(/\s+/g, " ").trim().slice(0, 80).toLocaleLowerCase("fr");
+}
+
+/** La copie Gmail d'un envoi CRM remplace le tour local. */
+function foldGmailCopies(turns: DraftTurn[]) {
+  const gmailOut = turns.filter((turn) => turn.source === "gmail" && turn.direction === "out");
+  const used = new Set<string>();
+  const hidden = new Set<string>();
+  for (const turn of turns) {
+    if (turn.direction !== "out" || turn.source === "gmail") continue;
+    const at = Date.parse(turn.at);
+    const prefix = bodyPrefix(turn.body);
+    let best: DraftTurn | null = null;
+    let bestGap = Number.POSITIVE_INFINITY;
+    for (const copy of gmailOut) {
+      if (used.has(copy.id) || copy.subjectKey !== turn.subjectKey) continue;
+      const gap = Math.abs(Date.parse(copy.at) - at);
+      const sameBody = prefix.length >= 20 && bodyPrefix(copy.body) === prefix;
+      if (!sameBody && !(Number.isFinite(at) && gap <= FOLD_WINDOW_MS)) continue;
+      if (gap < bestGap) {
+        best = copy;
+        bestGap = Number.isFinite(gap) ? gap : 0;
+      }
+    }
+    if (!best) continue;
+    used.add(best.id);
+    hidden.add(turn.id);
+  }
+  return turns.filter((turn) => !hidden.has(turn.id));
+}
+
+function subjectKeysOf(row: { subject: string; sent_subjects?: string[] | null }) {
+  const listed = (row.sent_subjects || []).map((subject) => hotelMailSubjectKey(subject)).filter(Boolean);
+  if (listed.length) return new Set(listed);
+  const current = hotelMailSubjectKey(row.subject);
+  return new Set(current ? [current] : []);
+}
+
+function sortTurns(turns: HotelThreadTurn[]) {
+  return turns.sort((a, b) => {
+    const time = a.at.localeCompare(b.at);
+    if (time) return time;
+    if (a.direction !== b.direction) return a.direction === "out" ? -1 : 1;
+    return a.id.localeCompare(b.id);
+  });
+}
+
 /**
  * Fil d'un hôtel : courriers partis, réponses, messages libres, confirmations déjà dans les pièces.
  * L'interlocuteur affiché est l'agence ou le nom de l'hôtel.
@@ -856,18 +1015,32 @@ export function hotelThread(input: {
   requests: CrmHotelRequest[];
   messages: CrmHotelMessage[];
   attached: HotelMailPiece[];
+  thread?: CrmHotelThreadMessage[];
 }): HotelThreadTurn[] {
   const context = hotelStayContext(input.item);
-  const turns: HotelThreadTurn[] = [];
+  const drafts: DraftTurn[] = [];
   const replies: { reply_message_id: string | null; reply_subject: string; reply_body: string }[] = [];
   const letters = input.requests.filter((row) => row.booking_item_id === input.item.id);
   const notes = input.messages.filter((row) => row.booking_item_id === input.item.id);
+  const thread = (input.thread || []).filter((row) => row.booking_item_id === input.item.id);
+  const threadKeys = new Set(thread.map((row) => row.subject_key));
+  const crmOutRequests = new Set(
+    thread.filter((row) => row.source === "crm" && row.direction === "out" && row.request_id).map((row) => row.request_id)
+  );
+  const crmOutMessages = new Set(
+    thread.filter((row) => row.source === "crm" && row.direction === "out" && row.message_id).map((row) => row.message_id)
+  );
+
+  function covered(row: { subject: string; sent_subjects?: string[] | null }) {
+    for (const key of subjectKeysOf(row)) if (threadKeys.has(key)) return true;
+    return false;
+  }
 
   for (const row of letters) {
-    if (row.sent_at) {
+    if (row.sent_at && !crmOutRequests.has(row.id)) {
       const label =
         row.follow_up_count > 0 ? `Relance · ${HOTEL_DESK_LABELS[row.kind]}` : HOTEL_DESK_LABELS[row.kind];
-      turns.push({
+      drafts.push({
         id: `out:${row.id}`,
         at: turnAt(row.sent_at),
         direction: "out",
@@ -876,12 +1049,14 @@ export function hotelThread(input: {
         subject: row.subject,
         body: row.body.trim(),
         link: null,
+        subjectKey: hotelMailSubjectKey(row.subject),
+        source: "letter",
       });
     }
-    if (row.reply_body.trim() || row.replied_at) {
+    if ((row.reply_body.trim() || row.replied_at) && !covered(row)) {
       const body = replyText(row.reply_body);
       replies.push(row);
-      turns.push({
+      drafts.push({
         id: `in:${row.id}`,
         at: turnAt(row.replied_at || row.sent_at),
         direction: "in",
@@ -890,13 +1065,15 @@ export function hotelThread(input: {
         subject: row.reply_subject,
         body,
         link: hotelReplyLink(body),
+        subjectKey: hotelMailSubjectKey(row.reply_subject || row.subject),
+        source: "letter",
       });
     }
   }
 
   for (const row of notes) {
-    if (row.sent_at) {
-      turns.push({
+    if (row.sent_at && !crmOutMessages.has(row.id)) {
+      drafts.push({
         id: `out:${row.id}`,
         at: turnAt(row.sent_at),
         direction: "out",
@@ -905,12 +1082,14 @@ export function hotelThread(input: {
         subject: row.subject,
         body: row.body.trim(),
         link: null,
+        subjectKey: hotelMailSubjectKey(row.subject),
+        source: "note",
       });
     }
-    if (row.reply_body.trim() || row.replied_at) {
+    if ((row.reply_body.trim() || row.replied_at) && !covered(row)) {
       const body = replyText(row.reply_body);
       replies.push(row);
-      turns.push({
+      drafts.push({
         id: `in:${row.id}`,
         at: turnAt(row.replied_at || row.sent_at),
         direction: "in",
@@ -919,14 +1098,56 @@ export function hotelThread(input: {
         subject: row.reply_subject,
         body,
         link: hotelReplyLink(body),
+        subjectKey: hotelMailSubjectKey(row.reply_subject || row.subject),
+        source: "note",
       });
     }
   }
 
+  const letterById = new Map(letters.map((row) => [row.id, row]));
+  for (const row of thread) {
+    const letter = row.request_id ? letterById.get(row.request_id) : undefined;
+    const outs = thread
+      .filter((turn) => turn.direction === "out" && turn.request_id && turn.request_id === row.request_id)
+      .sort((a, b) => a.received_at.localeCompare(b.received_at));
+    const letterLabel = letter ? HOTEL_DESK_LABELS[letter.kind] : "Message";
+    const firstAt = Date.parse(outs[0]?.received_at || row.received_at);
+    const laterSend = row.direction === "out" && Date.parse(row.received_at) - firstAt > 4 * 60 * 60 * 1000;
+    const label =
+      row.direction === "in"
+        ? row.counts_as_reply
+          ? "Réponse"
+          : "Absence"
+        : letter && laterSend
+          ? `Relance · ${letterLabel}`
+          : letterLabel;
+    if (row.direction === "in") {
+      replies.push({
+        reply_message_id: row.gmail_message_id,
+        reply_subject: row.subject,
+        reply_body: row.body,
+      });
+    }
+    drafts.push({
+      id: `thread:${row.id}`,
+      at: turnAt(row.received_at),
+      direction: row.direction,
+      speaker: row.direction === "out" ? "L'agence" : context.hotel,
+      label,
+      subject: row.subject,
+      body: row.body.trim() || (row.direction === "in" ? "L'hôtel a répondu." : ""),
+      link: row.link,
+      subjectKey: row.subject_key,
+      source: row.source,
+    });
+  }
+
+  const folded = foldGmailCopies(drafts).map(({ subjectKey: _subjectKey, source: _source, ...turn }) => turn);
+
   for (const mail of input.attached) {
     if (!hotelMailPieceMatches(input.item, mail) || sameExchange(mail, replies)) continue;
     const body = hotelReplyForDesk(mail.body_text || "") || "Ce mail est déjà dans les pièces du dossier.";
-    turns.push({
+    folded.push({
       id: `mail:${mail.id}`,
       at: turnAt(mail.received_at || null),
       direction: "in",
@@ -938,12 +1159,7 @@ export function hotelThread(input: {
     });
   }
 
-  return turns.sort((a, b) => {
-    const time = a.at.localeCompare(b.at);
-    if (time) return time;
-    if (a.direction !== b.direction) return a.direction === "out" ? -1 : 1;
-    return a.id.localeCompare(b.id);
-  });
+  return sortTurns(folded);
 }
 
 export { HOTEL_DESK_KINDS };

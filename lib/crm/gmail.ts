@@ -246,6 +246,13 @@ export async function getMessage(id: string): Promise<ParsedGmailMessage> {
   return parseGmailMessage(await res.json());
 }
 
+/** Tous les messages d'un fil Gmail, pas seulement le premier résultat de recherche. */
+export async function getThread(threadId: string): Promise<ParsedGmailMessage[]> {
+  const res = await gmailApi(`/threads/${encodeURIComponent(threadId)}?format=full`);
+  const json = (await res.json()) as { messages?: Parameters<typeof parseGmailMessage>[0][] };
+  return (json.messages || []).map((message) => parseGmailMessage(message));
+}
+
 export async function getAttachmentBytes(
   messageId: string,
   attachmentId: string

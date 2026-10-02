@@ -10,7 +10,7 @@ import {
   type HotelMailPiece,
 } from "@/lib/crm/hotel-desk";
 import { formatDateTimeFr } from "@/lib/crm/money";
-import type { CrmBookingItem, CrmHotelMessage, CrmHotelRequest } from "@/lib/crm/types";
+import type { CrmBookingItem, CrmHotelMessage, CrmHotelRequest, CrmHotelThreadMessage } from "@/lib/crm/types";
 
 const threadFieldClass =
   "w-full rounded-xl border border-[#d9d1c3] bg-white px-3 py-2.5 text-sm text-[#0B192C] outline-none transition placeholder:text-[#3d4654] focus:border-[#0B192C]";
@@ -20,12 +20,14 @@ export function HotelThread({
   item,
   requests,
   messages,
+  thread = [],
   attached,
 }: {
   bookingId: string;
   item: CrmBookingItem;
   requests: CrmHotelRequest[];
   messages: CrmHotelMessage[];
+  thread?: CrmHotelThreadMessage[];
   attached: HotelMailPiece[];
 }) {
   const router = useRouter();
@@ -42,7 +44,7 @@ export function HotelThread({
     setSyncedMessages(messages);
     setSent([]);
   }
-  const turns = hotelThread({ item, requests, messages: [...messages, ...sent], attached });
+  const turns = hotelThread({ item, requests, messages: [...messages, ...sent], attached, thread });
 
   useEffect(() => {
     const node = logRef.current;
