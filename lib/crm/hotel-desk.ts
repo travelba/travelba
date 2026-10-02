@@ -919,11 +919,9 @@ export function hotelMailPieceMatches(item: CrmBookingItem, mail: HotelMailPiece
   if (!hotels.length) return false;
   const name = foldHotel(hotelDisplayName(item));
   const ref = foldHotel(item.confirmation_ref || "");
-  return hotels.some((hotel) => {
-    const pieceRef = foldHotel(hotel.confirmation_ref || "");
-    if (ref && pieceRef && ref === pieceRef) return true;
-    return hotelNamesMatch(name, foldHotel(hotel.details?.hotel_name || hotel.title || ""));
-  });
+  const pieceRefs = hotels.map((hotel) => foldHotel(hotel.confirmation_ref || "")).filter(Boolean);
+  if (ref && pieceRefs.length) return pieceRefs.includes(ref);
+  return hotels.some((hotel) => hotelNamesMatch(name, foldHotel(hotel.details?.hotel_name || hotel.title || "")));
 }
 
 function replyText(body: string) {
