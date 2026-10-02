@@ -56,7 +56,12 @@ export default async function proxy(request: NextRequest) {
   }
 
   // Aperçu local : aucune session, aucune écriture. Fermé en production.
-  if (path === "/exemple" || path.startsWith("/exemple/")) {
+  if (
+    path === "/exemple" ||
+    path.startsWith("/exemple/") ||
+    path === "/apercu" ||
+    path.startsWith("/apercu/")
+  ) {
     if (process.env.VERCEL_ENV === "production") {
       const url = request.nextUrl.clone();
       url.pathname = "/connexion";
