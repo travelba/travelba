@@ -17,6 +17,7 @@ export function AgencyCardPeek({
   views: CardViewLine[];
   onReady?: () => void;
 }) {
+  const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [secrets, setSecrets] = useState<{ pan: string; expiry: string; cvc: string } | null>(null);
@@ -31,7 +32,7 @@ export function AgencyCardPeek({
       const res = await fetch(`/api/admin/bookings/${bookingId}/hotel-arrival`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ itemId, action: "card", source }),
+        body: JSON.stringify({ itemId, action: "card", source, code }),
       });
       const json = (await res.json().catch(() => null)) as {
         error?: string;
@@ -51,9 +52,11 @@ export function AgencyCardPeek({
       if (json.pan && json.expiry && json.cvc) {
         setSecrets({ pan: json.pan, expiry: json.expiry, cvc: json.cvc });
         setImage(null);
+        setCode("");
       } else if (json.image && json.mime) {
         setImage({ mime: json.mime, name: json.name || "carte-client", image: json.image });
         setSecrets(null);
+        setCode("");
       } else {
         setError(json.error || "La carte n’a pas pu être lue.");
         return;
@@ -91,7 +94,16 @@ export function AgencyCardPeek({
         </span>
       ) : null}
       {secrets || image ? null : (
-        <form className="inline-flex items-center" onSubmit={open}>
+        <form className="inline-flex items-center gap-2" onSubmit={open}>
+          <input
+            className="w-24 rounded-lg border border-[#e5e3dc] bg-white px-2 py-1 text-xs text-[#0B192C] outline-none focus:border-[#0B192C]"
+            type="password"
+            name="agency-code"
+            autoComplete="off"
+            aria-label="Code agence"
+            value={code}
+            onChange={(event) => setCode(event.target.value)}
+          />
           <button type="submit" className="text-[#9e7e51] disabled:opacity-50" disabled={busy}>
             {busy ? "…" : "Voir"}
           </button>
