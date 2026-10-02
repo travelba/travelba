@@ -4,7 +4,7 @@ import { Resend } from "resend";
 import { pliantCardNomination } from "./eta-il-fee";
 import { downloadCrmFile, removeCrmFiles, uploadCrmFile } from "./files";
 import { agencyCardObjectPath, agencyCardSiblingPaths, clientCardMime, isAgencyCardPath, isSafeCrmPath } from "./files-access";
-import { gmailConfigured, searchInbox } from "./gmail";
+import { getThread, gmailConfigured, searchInbox } from "./gmail";
 import { attachLittleEmperorsCatalog } from "./hotel-catalog-load";
 import { hotelContact } from "./hotel-contact";
 import {
@@ -29,15 +29,18 @@ import {
   mergeDeskContacts,
   type DeskRosterPerson,
   HOTEL_DESK_FROM,
-  hotelReplyForDesk,
-  hotelReplySearchQueries,
+  appendSentSubject,
+  classifyHotelMail,
   gmailAfterDate,
+  hotelMailSubjectKey,
+  hotelThreadSearchQuery,
   keepAgencyDraft,
   knownHotelRecipients,
   nextDeskMark,
+  nextLetterStatus,
   outboundHotelLetter,
-  replyMatchesRequest,
   replyWindowStartMs,
+  subjectsToFollow,
 } from "./hotel-desk";
 import { checkinCardPdf, precheckParty, selectedPrecheckPieces } from "./hotel-precheck";
 import { issuePliantCard, pliantConfigured, readPliantCardSecrets } from "./pliant";
@@ -48,6 +51,7 @@ import type {
   CrmBookingTraveler,
   CrmHotelMessage,
   CrmHotelRequest,
+  CrmHotelThreadMessage,
   CrmTravelDocument,
   HotelDeskKind,
 } from "./types";
@@ -153,18 +157,7 @@ export async function ensureHotelRequests(
     }
   }
   const { data: freshRows } = await admin.from("crm_hotel_requests").select("*").eq("booking_id", input.bookingId);
-  const rows = (freshRows || []) as CrmHotelRequest[];
-  const waitingReply = rows.filter((row) => (row.status === "sent" || row.status === "follow_up") && !row.reply_body);
-  if (waitingReply.length) {
-    try {
-      await attachHotelReplies(admin, waitingReply, "crm_hotel_requests");
-    } catch {
-      return rows;
-    }
-    const { data: withReplies } = await admin.from("crm_hotel_requests").select("*").eq("booking_id", input.bookingId);
-    return (withReplies || rows) as CrmHotelRequest[];
-  }
-  return rows;
+  return (freshRows || []) as CrmHotelRequest[];
 }
 
 export async function refreshHotelDesk(admin: Admin, deps: { now?: Date; fetchImpl?: typeof fetch } = {}) {
@@ -222,186 +215,302 @@ export async function refreshHotelDesk(admin: Admin, deps: { now?: Date; fetchIm
     await admin.from("crm_hotel_requests").update({ status: next }).eq("id", row.id);
     marked += 1;
   }
-  const replyRows = rows.filter((row) => row.status === "sent" || row.status === "follow_up").slice(0, 25);
-  const { data: taken } = await admin
-    .from("crm_hotel_requests")
-    .select("reply_message_id")
-    .in("booking_id", ids)
-    .not("reply_message_id", "is", null);
-  const claimed = new Set(
-    ((taken || []) as { reply_message_id?: string | null }[]).map((row) => row.reply_message_id || "").filter(Boolean)
-  );
-  const replied = await attachHotelReplies(admin, replyRows, "crm_hotel_requests", claimed);
-  try {
-    const { data: pending } = await admin
-      .from("crm_hotel_messages")
-      .select("*")
-      .in("booking_id", ids)
-      .not("sent_at", "is", null)
-      .eq("reply_body", "")
-      .limit(25);
-    if (pending?.length) await attachHotelReplies(admin, pending as CrmHotelMessage[], "crm_hotel_messages", claimed);
-  } catch {
-    return { marked, replied };
-  }
+  const replied = await syncOpenHotelThreads(admin, ids);
   return { marked, replied };
 }
 
-type HotelReplyRow = {
-  id: string;
-  subject: string;
-  sent_at: string | null;
-  created_at: string;
-  recipients: string[];
-  reply_body: string;
-  follow_up_count?: number;
-};
-
-function replyClaim(hit: HotelReplyHit) {
-  return hit.id || `${hit.from}|${hit.subject}|${hit.receivedAtMs}`;
+/** Messages libres déjà enregistrés. Le fil Gmail est relu par syncHotelDeskThreads. */
+export async function syncHotelMessages(admin: Admin, bookingId: string) {
+  const { data, error } = await admin.from("crm_hotel_messages").select("*").eq("booking_id", bookingId);
+  if (error) return [] as CrmHotelMessage[];
+  return (data || []) as CrmHotelMessage[];
 }
 
-async function attachHotelReplies(
-  admin: Admin,
-  rows: HotelReplyRow[],
-  table: "crm_hotel_requests" | "crm_hotel_messages",
-  claimed: Set<string> = new Set()
-) {
+type ThreadAnchor = {
+  table: "crm_hotel_requests" | "crm_hotel_messages";
+  id: string;
+  bookingItemId: string;
+  subject: string;
+  sinceMs: number;
+  requestId: string | null;
+  messageId: string | null;
+};
+
+type GmailHit = {
+  id: string;
+  threadId: string;
+  from: string;
+  subject: string;
+  body: string;
+  receivedAt: string | null;
+  autoSubmitted: boolean;
+};
+
+/** Relit les titres partis des dossiers ouverts. Les plus anciens d'abord, par paquets. */
+export async function syncOpenHotelThreads(admin: Admin, bookingIds: string[], limit = 30) {
+  if (!bookingIds.length) return 0;
+  const { data } = await admin
+    .from("crm_hotel_requests")
+    .select("booking_id")
+    .in("booking_id", bookingIds)
+    .in("status", ["sent", "follow_up", "replied"])
+    .order("thread_synced_at", { ascending: true, nullsFirst: true })
+    .limit(limit);
+  const ids = [...new Set(((data || []) as { booking_id: string }[]).map((row) => row.booking_id))];
   let replied = 0;
-  const waiting = rows
-    .filter((row) => row.sent_at && row.subject.trim() && !row.reply_body.trim())
-    .sort((a, b) => (a.sent_at || "").localeCompare(b.sent_at || ""));
-  for (const row of waiting) {
-    const sentAt = row.sent_at || "";
-    const sentAtMs = Date.parse(sentAt);
-    if (!Number.isFinite(sentAtMs)) continue;
-    const createdAtMs = row.created_at ? Date.parse(row.created_at) : null;
-    const followUpCount = row.follow_up_count || 0;
-    const sinceMs = replyWindowStartMs({
-      sentAtMs,
-      createdAtMs: createdAtMs != null && Number.isFinite(createdAtMs) ? createdAtMs : null,
-      followUpCount,
+  for (const bookingId of ids) replied += await syncHotelDeskThreads(admin, bookingId);
+  return replied;
+}
+
+/** Tous les messages Gmail qui ont le titre d'un envoi de ce dossier. */
+export async function syncHotelDeskThreads(admin: Admin, bookingId: string) {
+  try {
+    const [{ data: requests }, { data: messages }, { data: stored }] = await Promise.all([
+      admin.from("crm_hotel_requests").select("*").eq("booking_id", bookingId),
+      admin.from("crm_hotel_messages").select("*").eq("booking_id", bookingId),
+      admin.from("crm_hotel_thread_messages").select("*").eq("booking_id", bookingId),
+    ]);
+    const letters = (requests || []) as CrmHotelRequest[];
+    const notes = (messages || []) as CrmHotelMessage[];
+    const existing = (stored || []) as CrmHotelThreadMessage[];
+    const anchors = threadAnchors(letters, notes);
+    for (const anchor of anchors) {
+      const knownThreads = existing
+        .filter((row) => row.booking_item_id === anchor.bookingItemId && row.subject_key === anchor.subjectKey && row.gmail_thread_id)
+        .map((row) => row.gmail_thread_id || "");
+      const found = await collectThreadHits(anchor, knownThreads);
+      if (found.hits.length) await storeThreadHits(admin, bookingId, anchor, found.hits);
+      if (!found.searchFailed) {
+        const stamped = new Date().toISOString();
+        for (const stamp of anchor.stamps) {
+          await admin.from(stamp.table).update({ thread_synced_at: stamped }).eq("id", stamp.id);
+        }
+      }
+    }
+    return await mirrorThreadReplies(admin, bookingId, letters, notes);
+  } catch {
+    return 0;
+  }
+}
+
+function threadAnchors(letters: CrmHotelRequest[], notes: CrmHotelMessage[]) {
+  const jobs = new Map<
+    string,
+    ThreadAnchor & { subjectKey: string; stamps: { table: ThreadAnchor["table"]; id: string }[] }
+  >();
+  const add = (anchor: ThreadAnchor) => {
+    const subjectKey = hotelMailSubjectKey(anchor.subject);
+    if (!subjectKey) return;
+    const mapKey = `${anchor.bookingItemId}:${subjectKey}`;
+    const stamp = { table: anchor.table, id: anchor.id };
+    const current = jobs.get(mapKey);
+    if (!current) {
+      jobs.set(mapKey, { ...anchor, subjectKey, stamps: [stamp] });
+      return;
+    }
+    current.stamps.push(stamp);
+    if (anchor.sinceMs < current.sinceMs) current.sinceMs = anchor.sinceMs;
+    if (anchor.requestId) {
+      current.requestId = anchor.requestId;
+      current.table = "crm_hotel_requests";
+      current.id = anchor.id;
+    } else if (!current.messageId && anchor.messageId) {
+      current.messageId = anchor.messageId;
+    }
+  };
+  for (const row of letters) {
+    const sinceMs = anchorSince(row);
+    for (const subject of subjectsToFollow(row)) {
+      add({
+        table: "crm_hotel_requests",
+        id: row.id,
+        bookingItemId: row.booking_item_id,
+        subject,
+        sinceMs,
+        requestId: row.id,
+        messageId: null,
+      });
+    }
+  }
+  for (const row of notes) {
+    const sinceMs = anchorSince({ ...row, follow_up_count: 0 });
+    for (const subject of subjectsToFollow({ ...row, status: row.sent_at ? "sent" : "draft" })) {
+      add({
+        table: "crm_hotel_messages",
+        id: row.id,
+        bookingItemId: row.booking_item_id,
+        subject,
+        sinceMs,
+        requestId: null,
+        messageId: row.id,
+      });
+    }
+  }
+  return [...jobs.values()];
+}
+
+function anchorSince(row: { sent_at: string | null; created_at: string; follow_up_count?: number }) {
+  const sentAtMs = row.sent_at ? Date.parse(row.sent_at) : Date.now();
+  const createdAtMs = Date.parse(row.created_at);
+  return replyWindowStartMs({
+    sentAtMs: Number.isFinite(sentAtMs) ? sentAtMs : Date.now(),
+    createdAtMs: Number.isFinite(createdAtMs) ? createdAtMs : null,
+    followUpCount: row.follow_up_count || 0,
+  });
+}
+
+async function collectThreadHits(anchor: ThreadAnchor & { subjectKey: string }, knownThreads: string[]) {
+  if (!gmailConfigured()) return { hits: [] as GmailHit[], searchFailed: false };
+  const after = gmailAfterDate(anchor.sinceMs);
+  const query = hotelThreadSearchQuery(anchor.subject, after);
+  const hits: GmailHit[] = [];
+  const seen = new Set<string>();
+  const push = (message: GmailHit) => {
+    if (!message.id || seen.has(message.id)) return;
+    seen.add(message.id);
+    hits.push(message);
+  };
+  const threadIds = new Set(knownThreads.filter(Boolean));
+  let searchFailed = false;
+  try {
+    if (query) {
+      for (const message of await searchInbox(query, 20)) {
+        push(toGmailHit(message));
+        if (message.threadId) threadIds.add(message.threadId);
+      }
+    }
+  } catch {
+    searchFailed = true;
+  }
+  for (const threadId of [...threadIds].slice(0, 5)) {
+    try {
+      for (const message of await getThread(threadId)) push(toGmailHit(message));
+    } catch {
+      continue;
+    }
+  }
+  return { hits, searchFailed };
+}
+
+function toGmailHit(message: {
+  id: string;
+  threadId: string;
+  from: string;
+  fromEmail: string;
+  subject: string;
+  text: string;
+  receivedAt: string | null;
+  autoSubmitted: boolean;
+}): GmailHit {
+  return {
+    id: message.id,
+    threadId: message.threadId,
+    from: message.fromEmail || message.from,
+    subject: message.subject || "",
+    body: message.text || "",
+    receivedAt: message.receivedAt,
+    autoSubmitted: message.autoSubmitted,
+  };
+}
+
+async function storeThreadHits(
+  admin: Admin,
+  bookingId: string,
+  anchor: ThreadAnchor & { subjectKey: string },
+  hits: GmailHit[]
+) {
+  const rows = hits.flatMap((hit) => {
+    const classified = classifyHotelMail({
+      from: hit.from,
+      subject: hit.subject,
+      body: hit.body,
+      keys: [anchor.subject],
+      autoSubmitted: hit.autoSubmitted,
     });
-    const hits = await findHotelReplies(admin, {
-      emails: row.recipients,
-      sinceMs,
-      subject: row.subject,
-    });
-    const match = hits
-      .filter((hit) => {
-        if (claimed.has(replyClaim(hit))) return false;
-        return replyMatchesRequest({
-          from: hit.from,
-          subject: hit.subject,
-          receivedAtMs: hit.receivedAtMs,
-          sentAtMs,
-          createdAtMs,
-          followUpCount,
-          requestSubject: row.subject,
-        });
-      })
-      .sort((a, b) => a.receivedAtMs - b.receivedAtMs)[0];
-    if (!match) continue;
-    const replyBody = hotelReplyForDesk(match.body);
-    if (!replyBody) continue;
-    claimed.add(replyClaim(match));
-    const patch = {
-      replied_at: new Date(match.receivedAtMs).toISOString(),
-      reply_from: match.from.slice(0, 200),
-      reply_subject: match.subject.slice(0, 300),
-      reply_body: replyBody,
-      reply_message_id: match.id || null,
-    };
+    if (!classified.keep || !hit.id) return [];
+    const receivedAt = hit.receivedAt && Number.isFinite(Date.parse(hit.receivedAt)) ? hit.receivedAt : new Date().toISOString();
+    return [
+      {
+        booking_id: bookingId,
+        booking_item_id: anchor.bookingItemId,
+        gmail_message_id: hit.id,
+        gmail_thread_id: hit.threadId || null,
+        subject_key: classified.subjectKey,
+        direction: classified.direction,
+        from_email: hit.from.slice(0, 200),
+        subject: hit.subject.slice(0, 300),
+        body: classified.body,
+        link: classified.link,
+        received_at: receivedAt,
+        counts_as_reply: classified.countsAsReply,
+        source: "gmail",
+        request_id: anchor.requestId,
+        message_id: anchor.requestId ? null : anchor.messageId,
+      },
+    ];
+  });
+  if (!rows.length) return;
+  const ids = rows.map((row) => row.gmail_message_id);
+  const { data } = await admin.from("crm_hotel_thread_messages").select("gmail_message_id, booking_id, booking_item_id").in("gmail_message_id", ids);
+  const taken = new Set(
+    ((data || []) as { gmail_message_id: string; booking_id: string; booking_item_id: string }[])
+      .filter((row) => row.booking_id !== bookingId || row.booking_item_id !== anchor.bookingItemId)
+      .map((row) => row.gmail_message_id)
+  );
+  const owned = rows.filter((row) => !taken.has(row.gmail_message_id));
+  if (!owned.length) return;
+  await admin.from("crm_hotel_thread_messages").upsert(owned, { onConflict: "gmail_message_id" });
+}
+
+async function mirrorThreadReplies(admin: Admin, bookingId: string, letters: CrmHotelRequest[], notes: CrmHotelMessage[]) {
+  const { data } = await admin.from("crm_hotel_thread_messages").select("*").eq("booking_id", bookingId);
+  const turns = (data || []) as CrmHotelThreadMessage[];
+  let replied = 0;
+  for (const row of letters) {
+    const keys = new Set(subjectsToFollow(row).map((subject) => hotelMailSubjectKey(subject)));
+    const matches = turns
+      .filter((turn) => turn.booking_item_id === row.booking_item_id && keys.has(turn.subject_key) && turn.counts_as_reply)
+      .sort((a, b) => a.received_at.localeCompare(b.received_at));
+    if (!matches.length) continue;
+    const latest = matches[matches.length - 1];
+    const status = nextLetterStatus(row.status, true);
+    if (status === "replied" && row.status !== "replied") replied += 1;
     await admin
-      .from(table)
-      .update(table === "crm_hotel_requests" ? { status: "replied", ...patch } : patch)
+      .from("crm_hotel_requests")
+      .update({
+        status,
+        replied_at: latest.received_at,
+        reply_from: latest.from_email.slice(0, 200),
+        reply_subject: latest.subject.slice(0, 300),
+        reply_body: latest.body,
+        reply_message_id: latest.gmail_message_id,
+      })
       .eq("id", row.id);
-    replied += 1;
+  }
+  for (const row of notes) {
+    const keys = new Set(subjectsToFollow({ ...row, status: row.sent_at ? "sent" : "draft" }).map((subject) => hotelMailSubjectKey(subject)));
+    const matches = turns
+      .filter((turn) => turn.booking_item_id === row.booking_item_id && keys.has(turn.subject_key) && turn.counts_as_reply)
+      .sort((a, b) => a.received_at.localeCompare(b.received_at));
+    const latest = matches[matches.length - 1];
+    if (!latest) continue;
+    await admin
+      .from("crm_hotel_messages")
+      .update({
+        replied_at: latest.received_at,
+        reply_from: latest.from_email.slice(0, 200),
+        reply_subject: latest.subject.slice(0, 300),
+        reply_body: latest.body,
+        reply_message_id: latest.gmail_message_id,
+      })
+      .eq("id", row.id);
   }
   return replied;
 }
 
-/** Réponses aux messages libres, sans reprendre une réponse déjà posée sur un courrier. */
-export async function syncHotelMessages(admin: Admin, bookingId: string) {
-  const [{ data, error }, { data: letters }] = await Promise.all([
-    admin.from("crm_hotel_messages").select("*").eq("booking_id", bookingId),
-    admin.from("crm_hotel_requests").select("reply_message_id").eq("booking_id", bookingId),
-  ]);
-  if (error) return [] as CrmHotelMessage[];
-  const rows = (data || []) as CrmHotelMessage[];
-  const claimed = new Set(
-    ((letters || []) as { reply_message_id?: string | null }[])
-      .map((row) => row.reply_message_id || "")
-      .filter(Boolean)
-  );
-  if (!rows.some((row) => row.sent_at && !row.reply_body.trim())) return rows;
-  try {
-    await attachHotelReplies(admin, rows, "crm_hotel_messages", claimed);
-  } catch {
-    return rows;
-  }
-  const { data: fresh } = await admin.from("crm_hotel_messages").select("*").eq("booking_id", bookingId);
-  return (fresh || rows) as CrmHotelMessage[];
-}
-
-type HotelReplyHit = { id: string; from: string; subject: string; body: string; receivedAtMs: number };
-
-async function findHotelReplies(
-  admin: Admin,
-  input: { emails: string[]; sinceMs: number; subject: string }
-) {
-  const replies: HotelReplyHit[] = [];
-  const seen = new Set<string>();
-  const push = (hit: HotelReplyHit) => {
-    const key = hit.id || `${hit.from}|${hit.subject}|${hit.receivedAtMs}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    replies.push(hit);
-  };
-  const after = gmailAfterDate(input.sinceMs);
-  if (gmailConfigured() && after) {
-    for (const query of hotelReplySearchQueries({ subject: input.subject, emails: input.emails, after })) {
-      try {
-        const messages = await searchInbox(query, 10);
-        for (const message of messages) {
-          const receivedAtMs = message.receivedAt ? Date.parse(message.receivedAt) : input.sinceMs;
-          push({
-            id: message.id,
-            from: message.fromEmail || message.from,
-            subject: message.subject || "",
-            body: message.text || "",
-            receivedAtMs: Number.isFinite(receivedAtMs) ? receivedAtMs : input.sinceMs,
-          });
-        }
-      } catch {
-        continue;
-      }
-    }
-  }
-  const { data } = await admin
-    .from("crm_email_ingest")
-    .select("id, from_email, subject, received_at, body_text")
-    .gte("received_at", new Date(input.sinceMs).toISOString())
-    .order("received_at", { ascending: false })
-    .limit(40);
-  for (const row of (data || []) as {
-    id?: string;
-    from_email?: string | null;
-    subject?: string | null;
-    received_at?: string | null;
-    body_text?: string | null;
-  }[]) {
-    const body = row.body_text || "";
-    if (!body.trim()) continue;
-    push({
-      id: row.id || "",
-      from: row.from_email || "",
-      subject: row.subject || "",
-      body,
-      receivedAtMs: row.received_at ? Date.parse(row.received_at) : input.sinceMs,
-    });
-  }
-  return replies;
+export async function loadHotelThread(admin: Admin, bookingId: string) {
+  const { data } = await admin.from("crm_hotel_thread_messages").select("*").eq("booking_id", bookingId).order("received_at", { ascending: true });
+  return (data || []) as CrmHotelThreadMessage[];
 }
 
 export async function saveHotelRequest(
@@ -510,12 +619,14 @@ export async function sendHotelRequest(
   await deliverHotelMail({ to: recipients, subject: input.subject.trim(), text, attachments });
   const now = new Date().toISOString();
   const followUp = row.status === "follow_up";
+  const subject = input.subject.trim();
   await admin
     .from("crm_hotel_requests")
     .update({
-      subject: input.subject.trim(),
+      subject,
       body: input.body,
       recipients,
+      sent_subjects: appendSentSubject(row.sent_subjects, subject),
       card_choice: input.kind === "precheckin" ? input.cardChoice || "pliant" : row.card_choice,
       ...(input.kind === "precheckin" && input.identityDocumentIds
         ? { identity_document_ids: input.identityDocumentIds, identity_picked: true, attach_passports: input.identityDocumentIds.length > 0 }
@@ -527,6 +638,15 @@ export async function sendHotelRequest(
       last_follow_up_at: followUp ? now : row.last_follow_up_at,
     })
     .eq("id", row.id);
+  await recordCrmTurn(admin, {
+    bookingId: input.bookingId,
+    itemId: input.itemId,
+    scope: "request",
+    ownerId: row.id,
+    subject,
+    body: text,
+    sentAt: now,
+  });
 }
 
 export async function sendHotelMessage(
@@ -548,15 +668,30 @@ export async function sendHotelMessage(
   const recipients = knownHotelRecipients(item, (letters || []) as Pick<CrmHotelRequest, "booking_item_id" | "recipients">[]);
   if (!recipients.length) throw new Error("Cet hôtel n'a pas d'adresse connue.");
   await deliverHotelMail({ to: recipients, subject, text, attachments: [] });
-  const { error } = await admin.from("crm_hotel_messages").insert({
-    booking_id: input.bookingId,
-    booking_item_id: item.id,
+  const sentAt = new Date().toISOString();
+  const { data, error } = await admin
+    .from("crm_hotel_messages")
+    .insert({
+      booking_id: input.bookingId,
+      booking_item_id: item.id,
+      subject,
+      body: text,
+      recipients,
+      sent_subjects: appendSentSubject([], subject),
+      sent_at: sentAt,
+    })
+    .select("id")
+    .maybeSingle();
+  if (error || !data?.id) throw new Error("Le message est parti, mais le fil ne l'a pas enregistré.");
+  await recordCrmTurn(admin, {
+    bookingId: input.bookingId,
+    itemId: item.id,
+    scope: "message",
+    ownerId: data.id,
     subject,
     body: text,
-    recipients,
-    sent_at: new Date().toISOString(),
+    sentAt,
   });
-  if (error) throw new Error("Le message est parti, mais le fil ne l'a pas enregistré.");
 }
 
 async function loadRequest(admin: Admin, bookingId: string, itemId: string, kind: HotelDeskKind) {
@@ -575,6 +710,46 @@ async function loadItem(admin: Admin, bookingId: string, itemId: string) {
   const { data } = await admin.from("crm_booking_items").select("*").eq("booking_id", bookingId).eq("id", itemId).maybeSingle();
   if (!data) throw new Error("Hôtel introuvable.");
   return data as CrmBookingItem;
+}
+
+function crmTurnId(scope: "request" | "message", id: string, sentAt: string) {
+  return `crm:${scope}:${id}:${sentAt}`;
+}
+
+async function recordCrmTurn(
+  admin: Admin,
+  input: {
+    bookingId: string;
+    itemId: string;
+    scope: "request" | "message";
+    ownerId: string;
+    subject: string;
+    body: string;
+    sentAt: string;
+  }
+) {
+  const subjectKey = hotelMailSubjectKey(input.subject);
+  if (!subjectKey) return;
+  await admin.from("crm_hotel_thread_messages").upsert(
+    {
+      booking_id: input.bookingId,
+      booking_item_id: input.itemId,
+      gmail_message_id: crmTurnId(input.scope, input.ownerId, input.sentAt),
+      gmail_thread_id: null,
+      subject_key: subjectKey,
+      direction: "out",
+      from_email: HOTEL_DESK_FROM,
+      subject: input.subject.slice(0, 300),
+      body: input.body.trim().slice(0, 4000),
+      link: null,
+      received_at: input.sentAt,
+      counts_as_reply: false,
+      source: "crm",
+      request_id: input.scope === "request" ? input.ownerId : null,
+      message_id: input.scope === "message" ? input.ownerId : null,
+    },
+    { onConflict: "gmail_message_id" }
+  );
 }
 
 async function deliverHotelMail(mail: {

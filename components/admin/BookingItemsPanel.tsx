@@ -30,7 +30,7 @@ import { Icon } from "@/components/crm/icons";
 import { STAY_CURRENCIES } from "@/lib/crm/stay-currency";
 import { HotelChecklistGlance, HotelDesk } from "@/components/admin/HotelDesk";
 import { ProposedDuplicates } from "@/components/admin/ProposedDuplicates";
-import type { CardViewLine, CrmBookingTraveler, CrmHotelArrival, CrmHotelMessage, CrmHotelRequest, CrmTravelDocument } from "@/lib/crm/types";
+import type { CardViewLine, CrmBookingTraveler, CrmHotelArrival, CrmHotelMessage, CrmHotelRequest, CrmHotelThreadMessage, CrmTravelDocument } from "@/lib/crm/types";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
 import { BusyBar } from "@/components/crm/BusyBar";
@@ -140,6 +140,7 @@ export function BookingItemsPanel({
   cardViews = [],
   attachedEmails = [],
   hotelMessages = [],
+  hotelThreadMessages = [],
   stayVisible = false,
 }: {
   bookingId: string;
@@ -163,6 +164,7 @@ export function BookingItemsPanel({
     warnings?: { file?: string | null; message?: string | null }[] | null;
   }[];
   hotelMessages?: CrmHotelMessage[];
+  hotelThreadMessages?: CrmHotelThreadMessage[];
   documents?: CrmBookingDocument[];
   household?: HouseholdMember[];
   currency?: string;
@@ -474,6 +476,7 @@ export function BookingItemsPanel({
                           hasCardCode={hasCardCode}
                           cardViews={cardViews.filter((line) => line.itemId === item.id)}
                           messages={hotelMessages}
+                          thread={hotelThreadMessages}
                           attached={attachedEmails}
                         />
                       ) : null}
