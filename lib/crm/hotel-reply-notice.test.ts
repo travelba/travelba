@@ -8,6 +8,7 @@ import {
   visibleReplyNotices,
   type HotelReplyNoticeRow,
 } from "./hotel-reply-notice";
+import { replyMoment } from "./hotel-reply-when";
 
 const bookingId = "395e74b3-0625-4174-a848-6596cae041db";
 const itemId = "581854df-d308-4cab-8eed-9568269a360b";
@@ -79,6 +80,14 @@ test("quatre notifications visibles, les suivantes attendent", () => {
   const queue = ["a", "b", "c", "d", "e"];
   assert.deepEqual(visibleReplyNotices(queue), ["a", "b", "c", "d"]);
   assert.deepEqual(visibleReplyNotices(queue.slice(1)), ["b", "c", "d", "e"]);
+});
+
+test("le moment de la réponse reste court", () => {
+  const now = Date.parse("2026-10-02T10:04:00.000Z");
+  assert.equal(replyMoment("2026-10-02T10:03:30.000Z", now), "À l’instant");
+  assert.equal(replyMoment("2026-10-02T10:00:00.000Z", now), "Il y a 4 min");
+  assert.equal(replyMoment("2026-10-02T08:04:00.000Z", now), "Il y a 2 h");
+  assert.equal(replyMoment("pas une date", now), "");
 });
 
 test("la synchro légère attend deux minutes", () => {
