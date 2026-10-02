@@ -128,11 +128,18 @@ function pushPlace(found: string[], value: string) {
   found.push(label);
 }
 
+/** Heure réelle. Minuit stocké (T00:00) n’est pas un horaire. */
+function stepClock(value: string | null | undefined) {
+  if (!value || value.length <= 10) return "";
+  const match = value.match(/T(\d{2}):(\d{2})/);
+  if (!match || (match[1] === "00" && match[2] === "00")) return "";
+  return `${match[1]}:${match[2]}`;
+}
+
 /** Jour calendaire, puis l’heure. Un hôtel sans horaire passe après le vol du même jour. */
 function stepSortKey(item: Step) {
   const day = isoDay(item.start_at) || "9999-99-99";
-  const raw = item.start_at || "";
-  const clock = raw.includes("T") ? raw.slice(11, 16) : "";
+  const clock = stepClock(item.start_at);
   if (clock) return `${day}T${clock}`;
   const late = item.kind === "flight" || item.kind === "rail" ? "00:00" : "23:59";
   return `${day}T${late}`;
@@ -226,15 +233,25 @@ function segmentLineKey(item: Step) {
   return "";
 }
 
+/** Milano → Milan dans un nom d’hôtel, sans toucher au reste du libellé. */
+function frenchStayName(value: string) {
+  return value.replace(/[A-Za-zÀ-ÿ]+/g, (token) => cityLabel(token) || token);
+}
+
+function routeLabel(item: Step) {
+  const from = cityLabel(detail(item, "city_from") || detail(item, "from"));
+  const to = cityLabel(detail(item, "city_to") || detail(item, "to"));
+  if (from && to) return `${from} → ${to}`;
+  return flightCities(item as never) || flightIata(item as never) || (item.title || "").trim() || "Trajet";
+}
+
 function segmentLine(item: Step, index: number): StaySegment {
   const id = item.id || `step-${index}`;
   if (item.kind === "flight" || item.kind === "rail") {
-    const route =
-      flightCities(item as never) || flightIata(item as never) || (item.title || "").trim() || "Trajet";
-    return { id, place: route, when: shortStayDay(item.start_at) };
+    return { id, place: routeLabel(item), when: shortStayDay(item.start_at) };
   }
   if (item.kind === "hotel") {
-    const name = hotelDisplayName(item as never);
+    const name = frenchStayName(hotelDisplayName(item as never));
     const end = isoDay(item.end_at);
     return {
       id,
