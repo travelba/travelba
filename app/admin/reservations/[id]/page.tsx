@@ -14,7 +14,7 @@ import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import { isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
 import { loadClientLedger, type ClientLedgerView } from "@/lib/crm/client-ledger";
 import { syncStayCards } from "@/lib/crm/hotel-arrival-run";
-import { ensureHotelRequests, syncHotelMessages } from "@/lib/crm/hotel-desk-run";
+import { ensureHotelRequests, loadHotelThread, syncHotelDeskThreads, syncHotelMessages } from "@/lib/crm/hotel-desk-run";
 import { principalGuest } from "@/lib/crm/hotel-arrival";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
 import type {
@@ -27,13 +27,20 @@ import type {
   CrmHotelArrival,
   CrmHotelMessage,
   CrmHotelRequest,
+  CrmHotelThreadMessage,
   CrmTravelDocument,
 } from "@/lib/crm/types";
 
-type Props = { params: Promise<{ id: string }> };
+type Props = {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ hotel?: string | string[] }>;
+};
 
-export default async function AdminBookingPage({ params }: Props) {
+export default async function AdminBookingPage({ params, searchParams }: Props) {
   const { id } = await params;
+  const hotelQuery = (await searchParams).hotel;
+  const hotel = Array.isArray(hotelQuery) ? hotelQuery[0] : hotelQuery;
+  const openHotelItemId = hotel && /^[0-9a-f-]{36}$/i.test(hotel) ? hotel : null;
   const { supabase } = await requireStaffPage();
   const { data: booking } = await supabase.from("crm_bookings").select("*").eq("id", id).maybeSingle();
   if (!booking) notFound();
@@ -95,6 +102,7 @@ export default async function AdminBookingPage({ params }: Props) {
   let arrivals: CrmHotelArrival[] = [];
   let hotelRequests: CrmHotelRequest[] = [];
   let hotelMessages: CrmHotelMessage[] = [];
+  let hotelThreadMessages: CrmHotelThreadMessage[] = [];
   const bookingTravelers = (travelers || []) as CrmBookingTraveler[];
   const guest = principalGuest({
     travelers: bookingTravelers,
@@ -118,6 +126,19 @@ export default async function AdminBookingPage({ params }: Props) {
       items: bookingItems,
     });
     hotelMessages = await syncHotelMessages(arrivalAdmin, id);
+    try {
+      await syncHotelDeskThreads(arrivalAdmin, id);
+      const [{ data: freshRequests }, { data: freshMessages }, thread] = await Promise.all([
+        arrivalAdmin.from("crm_hotel_requests").select("*").eq("booking_id", id),
+        arrivalAdmin.from("crm_hotel_messages").select("*").eq("booking_id", id),
+        loadHotelThread(arrivalAdmin, id),
+      ]);
+      if (freshRequests) hotelRequests = freshRequests as CrmHotelRequest[];
+      if (freshMessages) hotelMessages = freshMessages as CrmHotelMessage[];
+      hotelThreadMessages = thread;
+    } catch {
+      hotelThreadMessages = [];
+    }
   } catch {
     arrivals = [];
     hotelRequests = [];
@@ -184,6 +205,8 @@ export default async function AdminBookingPage({ params }: Props) {
           arrivals={arrivals}
           hotelRequests={hotelRequests}
           hotelMessages={hotelMessages}
+          hotelThreadMessages={hotelThreadMessages}
+          openHotelItemId={openHotelItemId}
           billingCompanies={(billingCompanies || []) as {
             id: string;
             company_name: string | null;

@@ -10,7 +10,7 @@ import {
   type HotelMailPiece,
 } from "@/lib/crm/hotel-desk";
 import { formatDateTimeFr } from "@/lib/crm/money";
-import type { CrmBookingItem, CrmHotelMessage, CrmHotelRequest } from "@/lib/crm/types";
+import type { CrmBookingItem, CrmHotelMessage, CrmHotelRequest, CrmHotelThreadMessage } from "@/lib/crm/types";
 
 const threadFieldClass =
   "w-full rounded-xl border border-[#d9d1c3] bg-white px-3 py-2.5 text-sm text-[#0B192C] outline-none transition placeholder:text-[#3d4654] focus:border-[#0B192C]";
@@ -20,16 +20,21 @@ export function HotelThread({
   item,
   requests,
   messages,
+  thread = [],
   attached,
+  focusReply = false,
 }: {
   bookingId: string;
   item: CrmBookingItem;
   requests: CrmHotelRequest[];
   messages: CrmHotelMessage[];
+  thread?: CrmHotelThreadMessage[];
   attached: HotelMailPiece[];
+  focusReply?: boolean;
 }) {
   const router = useRouter();
   const logRef = useRef<HTMLOListElement>(null);
+  const messageRef = useRef<HTMLTextAreaElement>(null);
   const context = hotelStayContext(item);
   const canWrite = knownHotelRecipients(item, requests).length > 0;
   const [subject, setSubject] = useState(context.subject);
@@ -42,12 +47,17 @@ export function HotelThread({
     setSyncedMessages(messages);
     setSent([]);
   }
-  const turns = hotelThread({ item, requests, messages: [...messages, ...sent], attached });
+  const turns = hotelThread({ item, requests, messages: [...messages, ...sent], attached, thread });
 
   useEffect(() => {
     const node = logRef.current;
     if (node) node.scrollTop = node.scrollHeight;
   }, [turns.length]);
+
+  useEffect(() => {
+    if (!focusReply) return;
+    messageRef.current?.focus();
+  }, [focusReply]);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -154,6 +164,7 @@ export function HotelThread({
           <label className="block text-xs font-semibold text-[#0B192C]">
             Message
             <textarea
+              ref={messageRef}
               className={`${threadFieldClass} mt-1 min-h-28`}
               value={body}
               onChange={(event) => setBody(event.target.value)}

@@ -48,6 +48,8 @@ export type ParsedGmailMessage = {
   text: string;
   html: string;
   attachments: GmailAttachmentRef[];
+  /** En-tête Auto-Submitted présent et différent de « no ». */
+  autoSubmitted: boolean;
 };
 
 export function decodeBase64Url(data: string | null | undefined): string {
@@ -175,7 +177,13 @@ export function parseGmailMessage(raw: RawGmailMessage): ParsedGmailMessage {
     text: collectBodyText(payload),
     html: collectBodyHtml(payload),
     attachments: collectAttachments(payload),
+    autoSubmitted: autoSubmittedHeader(payload?.headers),
   };
+}
+
+function autoSubmittedHeader(headers: GmailHeader[] | undefined) {
+  const value = headerValue(headers, "Auto-Submitted").toLowerCase();
+  return Boolean(value) && value !== "no";
 }
 
 /** Types d'historique à synchroniser : arrivée ET application de label. */

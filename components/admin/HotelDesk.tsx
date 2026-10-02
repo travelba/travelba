@@ -7,7 +7,7 @@ import { PrecheckPack } from "@/components/admin/PrecheckPack";
 import { hotelDisplayName } from "@/lib/crm/carnet";
 import { hotelStayChecklist, hotelTripChecklist, type HotelMailPiece } from "@/lib/crm/hotel-desk";
 import { precheckParty } from "@/lib/crm/hotel-precheck";
-import { HOTEL_DESK_KINDS, type CardViewLine, type CrmBookingItem, type CrmBookingTraveler, type CrmHotelMessage, type CrmHotelRequest, type CrmTravelDocument, type HotelDeskKind } from "@/lib/crm/types";
+import { HOTEL_DESK_KINDS, type CardViewLine, type CrmBookingItem, type CrmBookingTraveler, type CrmHotelMessage, type CrmHotelRequest, type CrmHotelThreadMessage, type CrmTravelDocument, type HotelDeskKind } from "@/lib/crm/types";
 
 const letterFieldClass =
   "w-full rounded-xl border border-[#d9d1c3] bg-[#faf9f6] px-3 py-2.5 text-sm text-[#0B192C] outline-none transition placeholder:text-[#3d4654] focus:border-[#0B192C] focus:bg-white";
@@ -52,7 +52,9 @@ export function HotelDesk({
   hasCardCode = false,
   cardViews = [],
   messages = [],
+  thread = [],
   attached = [],
+  focusReply = false,
 }: {
   bookingId: string;
   item: CrmBookingItem;
@@ -66,7 +68,9 @@ export function HotelDesk({
   hasCardCode?: boolean;
   cardViews?: CardViewLine[];
   messages?: CrmHotelMessage[];
+  thread?: CrmHotelThreadMessage[];
   attached?: HotelMailPiece[];
+  focusReply?: boolean;
 }) {
   const rows = HOTEL_DESK_KINDS.map((kind) => requests.find((row) => row.booking_item_id === item.id && row.kind === kind)).filter(
     (row): row is CrmHotelRequest => Boolean(row)
@@ -87,7 +91,7 @@ export function HotelDesk({
   }
 
   return (
-    <div className="mt-3 space-y-3">
+    <div id={`hotel-desk-${item.id}`} className="mt-3 scroll-mt-24 space-y-3">
       <section className="overflow-hidden rounded-2xl border border-[#e5e0d4] bg-[#faf9f6]" aria-label={`Courriers pour ${hotelDisplayName(item) || item.title}`}>
         <p className="border-b border-[#e5e0d4] px-3 py-2 text-xs font-medium text-[#0B192C]">{stay.summary}</p>
         <ul>
@@ -152,7 +156,15 @@ export function HotelDesk({
           onClose={() => setOpen(null)}
         />
       ) : null}
-      <HotelThread bookingId={bookingId} item={item} requests={requests} messages={messages} attached={attached} />
+      <HotelThread
+        bookingId={bookingId}
+        item={item}
+        requests={requests}
+        messages={messages}
+        thread={thread}
+        attached={attached}
+        focusReply={focusReply}
+      />
     </div>
   );
 }
