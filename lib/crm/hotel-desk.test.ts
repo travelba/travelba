@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 import test from "node:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import {
   cardSendNote,
   containsCardNumber,
@@ -28,6 +31,8 @@ import {
   deskStatusLabel,
   keepAgencyDraft,
   knownHotelRecipients,
+  hotelSendDefaults,
+  hotelSendPeople,
   nextDeskMark,
   nextLetterStatus,
   outboundHotelLetter,
@@ -539,6 +544,32 @@ test("le fil montre le séjour, les envois et les réponses, sans liste de conta
   assert.deepEqual(knownHotelRecipients(hotel(), [letter()]), ["reservations@bristol.test"]);
 });
 
+test("l'envoi coche les adresses prévues et montre les autres contacts", () => {
+  const item = hotel({
+    details: {
+      hotel_name: "Le Bristol",
+      country: "France",
+      email: "reservations@bristol.test",
+      hotel_contacts: [
+        { type: "Concierge", first_name: "", last_name: "", email: "concierge@bristol.test" },
+        { type: "Directrice", first_name: "Claire", last_name: "Martin", email: "claire@bristol.test" },
+      ],
+    },
+  });
+  const requests = [{ booking_item_id: item.id, recipients: ["Reservations@bristol.test"] }];
+  const people = hotelSendPeople(item, requests, [
+    { booking_item_id: item.id, recipients: ["nouveau@bristol.test"] },
+    { booking_item_id: "autre-sejour", recipients: ["ailleurs@hotel.test"] },
+  ]);
+  assert.deepEqual(
+    people.map((person) => person.email),
+    ["reservations@bristol.test", "concierge@bristol.test", "claire@bristol.test", "nouveau@bristol.test"]
+  );
+  assert.equal(people.find((person) => person.email === "claire@bristol.test")?.role, "Directrice");
+  assert.deepEqual(hotelSendDefaults(item, requests), ["reservations@bristol.test"]);
+  assert.deepEqual(hotelSendDefaults(hotel(), []), ["reservations@bristol.test"]);
+});
+
 test("une confirmation Milano rejoint l'hôtel Milan, un mail écarté non", () => {
   const item = hotel({
     confirmation_ref: "",
@@ -559,7 +590,7 @@ test("une confirmation Milano rejoint l'hôtel Milan, un mail écarté non", () 
   assert.equal(hotelMailPieceMatches(hotel(), { id: "other", extract: { items: [{ kind: "hotel", title: "Aman Tokyo" }] } }), false);
 });
 
-test("écrire à l'hôtel n'ajoute pas d'étape et n'affiche pas le roster", () => {
+test("écrire à l'hôtel n'ajoute pas d'étape et coche les destinataires à l'envoi", () => {
   const root = join(process.cwd(), "lib/crm/hotel-desk-run.ts");
   const src = readFileSync(root, "utf8");
   const start = src.indexOf("export async function sendHotelMessage");
@@ -567,13 +598,18 @@ test("écrire à l'hôtel n'ajoute pas d'étape et n'affiche pas le roster", () 
   const fn = src.slice(start, end);
   assert.match(fn, /deliverHotelMail/);
   assert.match(fn, /crm_hotel_messages/);
+  assert.match(fn, /input\.recipients/);
   assert.doesNotMatch(fn, /crm_booking_items/);
   const desk = readFileSync(join(process.cwd(), "components/admin/HotelDesk.tsx"), "utf8");
-  assert.match(desk, /HotelThread/);
+  assert.match(desk, /HotelMailTo/);
   assert.doesNotMatch(desk, /RecipientRoster/);
   const thread = readFileSync(join(process.cwd(), "components/admin/HotelThread.tsx"), "utf8");
   assert.match(thread, /Avec l’hôtel/);
+  assert.match(thread, /HotelMailTo/);
+  assert.match(thread, /recipients: selected/);
   assert.doesNotMatch(thread, /RecipientRoster/);
+  const carnet = readFileSync(join(process.cwd(), "components/account/CarnetItinerary.tsx"), "utf8");
+  assert.doesNotMatch(carnet, /HotelMailTo/);
 });
 
 test("le titre parti ignore Re, R, AW et la relance", () => {
@@ -751,4 +787,56 @@ test("le fil garde chaque réponse et replie la copie Gmail de l'envoi", () => {
   assert.equal(turns.filter((turn) => turn.direction === "out" && turn.subject.includes("Lien")).length, 1);
   assert.equal(turns.some((turn) => turn.body === "ancienne réponse"), false);
   assert.equal(turns[3]?.link, "https://secure.hotel.test/authorizations/stay-1");
+});
+
+test("le fil hôtel coche le destinataire prévu et laisse décocher les autres", async () => {
+  const nodeRequire = createRequire(import.meta.url);
+  const Module = nodeRequire("module") as { _load: (...args: unknown[]) => unknown };
+  const load = Module._load;
+  Module._load = function (request: unknown, parent: unknown, isMain: unknown) {
+    if (request === "next/navigation") return { useRouter: () => ({ refresh() {} }) };
+    return load.call(this, request, parent, isMain);
+  };
+  try {
+    const { HotelThread } = await import("../../components/admin/HotelThread");
+    const item = hotel({
+      details: {
+        hotel_name: "Le Bristol",
+        country: "France",
+        email: "reservations@bristol.test",
+        hotel_contacts: [
+          { type: "Concierge", first_name: "", last_name: "", email: "concierge@bristol.test" },
+          { type: "Directrice", first_name: "Claire", last_name: "Martin", email: "claire@bristol.test" },
+        ],
+      },
+    });
+    const html = renderToStaticMarkup(
+      createElement(HotelThread, {
+        bookingId: "b1",
+        item,
+        requests: [
+          {
+            ...letter(),
+            recipients: ["reservations@bristol.test"],
+            sent_at: null,
+            reply_body: "",
+            replied_at: null,
+          },
+        ],
+        messages: [],
+        attached: [],
+      })
+    );
+    assert.match(html, /Destinataires/);
+    assert.match(html, /Directrice · Claire Martin · claire@bristol\.test/);
+    assert.match(html, /Concierge · concierge@bristol\.test/);
+    assert.match(html, /reservations@bristol\.test/);
+    assert.match(html, /Le message part seulement vers les adresses cochées/);
+    const boxes = html.match(/<input[^>]*type="checkbox"[^>]*>/g) || [];
+    assert.equal(boxes.length, 3);
+    assert.equal(boxes.filter((box) => box.includes("checked")).length, 1);
+    assert.doesNotMatch(html, /RecipientRoster/);
+  } finally {
+    Module._load = load;
+  }
 });
