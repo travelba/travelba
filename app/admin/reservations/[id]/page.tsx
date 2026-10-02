@@ -31,10 +31,16 @@ import type {
   CrmTravelDocument,
 } from "@/lib/crm/types";
 
-type Props = { params: Promise<{ id: string }> };
+type Props = {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ hotel?: string | string[] }>;
+};
 
-export default async function AdminBookingPage({ params }: Props) {
+export default async function AdminBookingPage({ params, searchParams }: Props) {
   const { id } = await params;
+  const hotelQuery = (await searchParams).hotel;
+  const hotel = Array.isArray(hotelQuery) ? hotelQuery[0] : hotelQuery;
+  const openHotelItemId = hotel && /^[0-9a-f-]{36}$/i.test(hotel) ? hotel : null;
   const { supabase } = await requireStaffPage();
   const { data: booking } = await supabase.from("crm_bookings").select("*").eq("id", id).maybeSingle();
   if (!booking) notFound();
@@ -200,6 +206,7 @@ export default async function AdminBookingPage({ params }: Props) {
           hotelRequests={hotelRequests}
           hotelMessages={hotelMessages}
           hotelThreadMessages={hotelThreadMessages}
+          openHotelItemId={openHotelItemId}
           billingCompanies={(billingCompanies || []) as {
             id: string;
             company_name: string | null;

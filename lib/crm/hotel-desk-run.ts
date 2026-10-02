@@ -42,6 +42,7 @@ import {
   replyWindowStartMs,
   subjectsToFollow,
 } from "./hotel-desk";
+import { shouldSyncHotelReplies } from "./hotel-reply-notice";
 import { checkinCardPdf, precheckParty, selectedPrecheckPieces } from "./hotel-precheck";
 import { issuePliantCard, pliantConfigured, readPliantCardSecrets } from "./pliant";
 import { agencyCopyCc } from "./outbound-mail";
@@ -245,6 +246,35 @@ type GmailHit = {
   receivedAt: string | null;
   autoSubmitted: boolean;
 };
+
+const HOTEL_REPLY_SYNC_PROVIDER = "gmail-hotel-replies";
+
+/**
+ * Une synchro Gmail légère des dossiers confirmés ou en voyage,
+ * au plus une fois toutes les deux minutes, quel que soit le nombre d’onglets.
+ */
+export async function syncRecentHotelReplies(admin: Admin, nowMs = Date.now()) {
+  const { data } = await admin
+    .from("crm_email_sync")
+    .select("updated_at")
+    .eq("provider", HOTEL_REPLY_SYNC_PROVIDER)
+    .maybeSingle();
+  const stamp = (data as { updated_at?: string } | null)?.updated_at;
+  const lastSyncMs = stamp ? Date.parse(stamp) : null;
+  if (!shouldSyncHotelReplies(lastSyncMs, nowMs)) return false;
+  const { error } = await admin.from("crm_email_sync").upsert(
+    { provider: HOTEL_REPLY_SYNC_PROVIDER },
+    { onConflict: "provider" }
+  );
+  if (error) return false;
+  const { data: bookings } = await admin
+    .from("crm_bookings")
+    .select("id")
+    .in("status", ["confirmed", "travelling"]);
+  const ids = ((bookings || []) as { id: string }[]).map((row) => row.id);
+  await syncOpenHotelThreads(admin, ids, 12);
+  return true;
+}
 
 /** Relit les titres partis des dossiers ouverts. Les plus anciens d'abord, par paquets. */
 export async function syncOpenHotelThreads(admin: Admin, bookingIds: string[], limit = 30) {

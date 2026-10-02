@@ -125,6 +125,7 @@ export function BookingEditor({
   attachedEmails = [],
   hotelMessages = [],
   hotelThreadMessages = [],
+  openHotelItemId = null,
   billingCompanies = [],
   littleEmperors = null,
   expenseBilling = [],
@@ -167,6 +168,7 @@ export function BookingEditor({
   }[];
   hotelMessages?: CrmHotelMessage[];
   hotelThreadMessages?: CrmHotelThreadMessage[];
+  openHotelItemId?: string | null;
   billingCompanies?: { id: string; company_name: string | null; sort_order: number }[];
   littleEmperors?: {
     id: string;
@@ -1234,6 +1236,7 @@ export function BookingEditor({
         attachedEmails={attachedEmails}
         hotelMessages={hotelMessages}
         hotelThreadMessages={hotelThreadMessages}
+        openHotelItemId={openHotelItemId}
         onBindDraftSave={(save) => {
           saveOpenCard.current = save;
         }}
