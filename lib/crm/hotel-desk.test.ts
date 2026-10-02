@@ -559,6 +559,34 @@ test("une confirmation Milano rejoint l'hôtel Milan, un mail écarté non", () 
   assert.equal(hotelMailPieceMatches(hotel(), { id: "other", extract: { items: [{ kind: "hotel", title: "Aman Tokyo" }] } }), false);
 });
 
+test("deux chambres du même hôtel ne prennent que leur confirmation", () => {
+  const room = hotel({
+    confirmation_ref: "64570SH046734",
+    details: { hotel_name: "Four Seasons Hotel Milano", city: "Milan" },
+  });
+  const otherRoom = {
+    id: "other-room",
+    subject: "Booking confirmation for Four Seasons Hotel Milan",
+    from_email: "myler.reservations@littleemperors.com",
+    extract: {
+      items: [{ kind: "hotel", confirmation_ref: "64570SH046735", details: { hotel_name: "Four Seasons Hotel Milan" } }],
+    },
+  };
+  const bothRooms = {
+    id: "both",
+    subject: "LE Booking Confirmation",
+    from_email: "myler.reservations@littleemperors.com",
+    extract: {
+      items: [
+        { kind: "hotel", confirmation_ref: "64570SH046734", details: { hotel_name: "Four Seasons Hotel Milano" } },
+        { kind: "hotel", confirmation_ref: "64570SH046735", details: { hotel_name: "Four Seasons Hotel Milano" } },
+      ],
+    },
+  };
+  assert.equal(hotelMailPieceMatches(room, otherRoom), false);
+  assert.equal(hotelMailPieceMatches(room, bothRooms), true);
+});
+
 test("écrire à l'hôtel n'ajoute pas d'étape et n'affiche pas le roster", () => {
   const root = join(process.cwd(), "lib/crm/hotel-desk-run.ts");
   const src = readFileSync(root, "utf8");
