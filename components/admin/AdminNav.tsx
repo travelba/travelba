@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { AgencyLogo } from "@/components/AgencyLogo";
+import { HotelReplyToasts } from "@/components/admin/HotelReplyToasts";
 import { Icon } from "@/components/crm/icons";
 import { siteConfig } from "@/lib/site";
 
@@ -277,6 +278,7 @@ export function AdminNav({
       <main className="min-w-0 max-w-full px-4 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:pt-8 sm:pb-[max(2rem,env(safe-area-inset-bottom))] lg:pt-8 lg:pb-8 lg:pl-[calc(18rem+2rem)] lg:pr-8">
         {children}
       </main>
+      <HotelReplyToasts />
     </>
   );
 }

@@ -22,6 +22,7 @@ export function HotelThread({
   messages,
   thread = [],
   attached,
+  focusReply = false,
 }: {
   bookingId: string;
   item: CrmBookingItem;
@@ -29,9 +30,11 @@ export function HotelThread({
   messages: CrmHotelMessage[];
   thread?: CrmHotelThreadMessage[];
   attached: HotelMailPiece[];
+  focusReply?: boolean;
 }) {
   const router = useRouter();
   const logRef = useRef<HTMLOListElement>(null);
+  const messageRef = useRef<HTMLTextAreaElement>(null);
   const context = hotelStayContext(item);
   const canWrite = knownHotelRecipients(item, requests).length > 0;
   const [subject, setSubject] = useState(context.subject);
@@ -50,6 +53,11 @@ export function HotelThread({
     const node = logRef.current;
     if (node) node.scrollTop = node.scrollHeight;
   }, [turns.length]);
+
+  useEffect(() => {
+    if (!focusReply) return;
+    messageRef.current?.focus();
+  }, [focusReply]);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -156,6 +164,7 @@ export function HotelThread({
           <label className="block text-xs font-semibold text-[#0B192C]">
             Message
             <textarea
+              ref={messageRef}
               className={`${threadFieldClass} mt-1 min-h-28`}
               value={body}
               onChange={(event) => setBody(event.target.value)}

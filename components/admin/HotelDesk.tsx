@@ -54,6 +54,7 @@ export function HotelDesk({
   messages = [],
   thread = [],
   attached = [],
+  focusReply = false,
 }: {
   bookingId: string;
   item: CrmBookingItem;
@@ -69,6 +70,7 @@ export function HotelDesk({
   messages?: CrmHotelMessage[];
   thread?: CrmHotelThreadMessage[];
   attached?: HotelMailPiece[];
+  focusReply?: boolean;
 }) {
   const rows = HOTEL_DESK_KINDS.map((kind) => requests.find((row) => row.booking_item_id === item.id && row.kind === kind)).filter(
     (row): row is CrmHotelRequest => Boolean(row)
@@ -89,7 +91,7 @@ export function HotelDesk({
   }
 
   return (
-    <div className="mt-3 space-y-3">
+    <div id={`hotel-desk-${item.id}`} className="mt-3 scroll-mt-24 space-y-3">
       <section className="overflow-hidden rounded-2xl border border-[#e5e0d4] bg-[#faf9f6]" aria-label={`Courriers pour ${hotelDisplayName(item) || item.title}`}>
         <p className="border-b border-[#e5e0d4] px-3 py-2 text-xs font-medium text-[#0B192C]">{stay.summary}</p>
         <ul>
@@ -154,7 +156,15 @@ export function HotelDesk({
           onClose={() => setOpen(null)}
         />
       ) : null}
-      <HotelThread bookingId={bookingId} item={item} requests={requests} messages={messages} thread={thread} attached={attached} />
+      <HotelThread
+        bookingId={bookingId}
+        item={item}
+        requests={requests}
+        messages={messages}
+        thread={thread}
+        attached={attached}
+        focusReply={focusReply}
+      />
     </div>
   );
 }

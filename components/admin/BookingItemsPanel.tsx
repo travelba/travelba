@@ -142,6 +142,7 @@ export function BookingItemsPanel({
   hotelMessages = [],
   hotelThreadMessages = [],
   stayVisible = false,
+  openHotelItemId = null,
 }: {
   bookingId: string;
   items: CrmBookingItem[];
@@ -165,6 +166,7 @@ export function BookingItemsPanel({
   }[];
   hotelMessages?: CrmHotelMessage[];
   hotelThreadMessages?: CrmHotelThreadMessage[];
+  openHotelItemId?: string | null;
   documents?: CrmBookingDocument[];
   household?: HouseholdMember[];
   currency?: string;
@@ -189,6 +191,20 @@ export function BookingItemsPanel({
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [deskFor, setDeskFor] = useState<string | null>(null);
+  const openedHotel = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!openHotelItemId || openedHotel.current === openHotelItemId) return;
+    const item = rows.find((row) => row.id === openHotelItemId && row.kind === "hotel");
+    if (!item || !hotelRequests.some((row) => row.booking_item_id === item.id)) return;
+    openedHotel.current = openHotelItemId;
+    setDeskFor(item.id);
+  }, [openHotelItemId, rows, hotelRequests]);
+
+  useEffect(() => {
+    if (!openHotelItemId || deskFor !== openHotelItemId) return;
+    document.getElementById(`hotel-desk-${openHotelItemId}`)?.scrollIntoView({ block: "center" });
+  }, [deskFor, openHotelItemId]);
 
   function startEdit(item: CrmBookingItem) {
     setEditingId(item.id);
@@ -478,6 +494,7 @@ export function BookingItemsPanel({
                           messages={hotelMessages}
                           thread={hotelThreadMessages}
                           attached={attachedEmails}
+                          focusReply={openHotelItemId === item.id}
                         />
                       ) : null}
                     </div>
