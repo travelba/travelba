@@ -29,13 +29,18 @@ import {
   keepAgencyDraft,
   knownHotelRecipients,
   nextDeskMark,
+  nextLetterStatus,
   outboundHotelLetter,
   replyMatchesHotel,
   replyMatchesRequest,
+  subjectsToFollow,
+  appendSentSubject,
+  classifyHotelMail,
+  isAutomaticHotelMail,
   transferCues,
 } from "./hotel-desk";
 import { paymentUrlFromText } from "./hotel-arrival";
-import type { CrmBookingItem, CrmHotelMessage, CrmHotelRequest } from "./types";
+import type { CrmBookingItem, CrmHotelMessage, CrmHotelRequest, CrmHotelThreadMessage } from "./types";
 
 function hotel(patch: Partial<CrmBookingItem> = {}): CrmBookingItem {
   return {
@@ -569,4 +574,181 @@ test("écrire à l'hôtel n'ajoute pas d'étape et n'affiche pas le roster", () 
   const thread = readFileSync(join(process.cwd(), "components/admin/HotelThread.tsx"), "utf8");
   assert.match(thread, /Avec l’hôtel/);
   assert.doesNotMatch(thread, /RecipientRoster/);
+});
+
+test("le titre parti ignore Re, R, AW et la relance", () => {
+  assert.equal(hotelMailSubjectKey("R: Payment link — Casa Monti — 36441"), "payment link - casa monti - 36441");
+  assert.equal(hotelMailSubjectKey("AW: Payment link — Casa Monti — 36441"), "payment link - casa monti - 36441");
+  assert.equal(hotelMailSubjectKey("Re: Follow-up — Payment link - Casa Monti - 36441"), "payment link - casa monti - 36441");
+  assert.equal(
+    appendSentSubject(["Payment link — Casa Monti — 36441"], "Follow-up — Payment link — Casa Monti — 36441").length,
+    1
+  );
+  assert.equal(appendSentSubject(["Payment link — Casa Monti — 36441"], "VIP welcome — Casa Monti — 36441").length, 2);
+});
+
+test("seul un courrier envoyé lance la recherche", () => {
+  const sent = letter();
+  assert.deepEqual(subjectsToFollow(sent), ["Lien de paiement — Le Bristol — HB-9"]);
+  assert.deepEqual(subjectsToFollow({ ...sent, sent_subjects: ["Payment link — Le Bristol — HB-9"] }), [
+    "Payment link — Le Bristol — HB-9",
+  ]);
+  assert.deepEqual(subjectsToFollow({ ...sent, status: "waiting", sent_at: null }), []);
+  assert.deepEqual(subjectsToFollow({ ...sent, status: "skipped" }), []);
+  assert.deepEqual(subjectsToFollow({ ...sent, status: "draft" }), []);
+});
+
+test("une réponse d'une autre adresse reste, un objet voisin non", () => {
+  const keys = ["Payment link — Le Bristol — HB-9"];
+  const reply = classifyHotelMail({
+    from: "Danilo <ciao@hotel.test>",
+    subject: "Re: Payment link — Le Bristol — HB-9",
+    body: "The link is ready:\nhttps://secure.hotel.test/authorizations/stay-1\nNuméro : 4242 4242 4242 4242",
+    keys,
+  });
+  assert.equal(reply.keep, true);
+  assert.equal(reply.countsAsReply, true);
+  assert.equal(reply.direction, "in");
+  assert.equal(reply.link, "https://secure.hotel.test/authorizations/stay-1");
+  assert.equal(reply.body.includes("4242"), false);
+  assert.equal(
+    classifyHotelMail({
+      from: "desk@hotel.test",
+      subject: "VIP welcome — Le Bristol — HB-9",
+      body: "Welcome",
+      keys,
+    }).keep,
+    false
+  );
+  const copy = classifyHotelMail({
+    from: "Travel Business Agency <contact@travelba.fr>",
+    subject: "Payment link — Le Bristol — HB-9",
+    body: "Could you please send us the payment link",
+    keys,
+  });
+  assert.equal(copy.direction, "out");
+  assert.equal(copy.countsAsReply, false);
+});
+
+test("une absence ou un bounce ne passe pas le courrier à Répondu", () => {
+  const keys = ["Payment link — Le Bristol — HB-9"];
+  const away = classifyHotelMail({
+    from: "desk@hotel.test",
+    subject: "Re: Payment link — Le Bristol — HB-9",
+    body: "I am out of the office until Monday.",
+    keys,
+  });
+  assert.equal(away.keep, true);
+  assert.equal(away.countsAsReply, false);
+  assert.equal(away.notice, "auto");
+  const bounce = classifyHotelMail({
+    from: "Mailer-Daemon <mailer-daemon@googlemail.com>",
+    subject: "Re: Payment link — Le Bristol — HB-9",
+    body: "Delivery status notification. The message was not delivered.",
+    keys,
+  });
+  assert.equal(bounce.countsAsReply, false);
+  assert.equal(isAutomaticHotelMail("postmaster@hotel.test", "hello"), true);
+  assert.equal(nextLetterStatus("sent", false), "sent");
+  assert.equal(nextLetterStatus("follow_up", true), "replied");
+  assert.equal(nextLetterStatus("skipped", true), "skipped");
+  assert.equal(nextLetterStatus("sent", away.countsAsReply), "sent");
+});
+
+function threadMessage(patch: Partial<CrmHotelThreadMessage> = {}): CrmHotelThreadMessage {
+  return {
+    id: "thread-1",
+    booking_id: "b1",
+    booking_item_id: "item-hotel",
+    gmail_message_id: "gmail-1",
+    gmail_thread_id: "thread",
+    subject_key: "lien de paiement - le bristol - hb-9",
+    direction: "in",
+    from_email: "desk@bristol.test",
+    subject: "Re: Lien de paiement — Le Bristol — HB-9",
+    body: "Le lien est prêt.",
+    link: "https://secure.hotel.test/authorizations/stay-1",
+    received_at: "2026-09-28T14:00:00.000Z",
+    counts_as_reply: true,
+    source: "gmail",
+    request_id: "req-1",
+    message_id: null,
+    ...patch,
+  };
+}
+
+test("le fil garde chaque réponse et replie la copie Gmail de l'envoi", () => {
+  const sentBody = "Pourriez-vous envoyer le lien de paiement ?";
+  const turns = hotelThread({
+    item: hotel(),
+    requests: [
+      letter({ reply_body: "ancienne réponse", reply_subject: "Re: Lien de paiement — Le Bristol — HB-9" }),
+      letter({
+        id: "req-2",
+        kind: "upgrade",
+        subject: "VIP welcome — Le Bristol — HB-9",
+        sent_at: "2026-09-28T09:00:00.000Z",
+        reply_body: "",
+        reply_subject: "",
+        replied_at: null,
+        reply_message_id: null,
+      }),
+    ],
+    messages: [],
+    attached: [],
+    thread: [
+      threadMessage({
+        id: "crm-out",
+        gmail_message_id: "crm:request:req-1:2026-09-28T08:00:00.000Z",
+        direction: "out",
+        from_email: "contact@travelba.fr",
+        subject: "Lien de paiement — Le Bristol — HB-9",
+        body: sentBody,
+        link: null,
+        received_at: "2026-09-28T08:00:00.000Z",
+        counts_as_reply: false,
+        source: "crm",
+      }),
+      threadMessage({
+        id: "gmail-out",
+        gmail_message_id: "gmail-out",
+        direction: "out",
+        from_email: "contact@travelba.fr",
+        subject: "Lien de paiement — Le Bristol — HB-9",
+        body: sentBody,
+        link: null,
+        received_at: "2026-09-28T08:01:00.000Z",
+        counts_as_reply: false,
+        source: "gmail",
+      }),
+      threadMessage({ id: "reply-1", received_at: "2026-09-28T14:00:00.000Z", body: "Premier retour." }),
+      threadMessage({
+        id: "reply-2",
+        gmail_message_id: "gmail-2",
+        received_at: "2026-09-28T16:00:00.000Z",
+        body: "Deuxième retour.\nhttps://secure.hotel.test/authorizations/stay-1",
+        link: "https://secure.hotel.test/authorizations/stay-1",
+      }),
+      threadMessage({
+        id: "other",
+        gmail_message_id: "gmail-3",
+        subject_key: "vip welcome - le bristol - hb-9",
+        subject: "VIP welcome — Le Bristol — HB-9",
+        direction: "out",
+        source: "gmail",
+        counts_as_reply: false,
+        body: "Welcome.",
+        link: null,
+        received_at: "2026-09-28T09:00:00.000Z",
+        request_id: "req-2",
+      }),
+    ],
+  });
+  assert.deepEqual(
+    turns.map((turn) => turn.label),
+    ["Lien de paiement", "Upgrade et accueil", "Réponse", "Réponse"]
+  );
+  assert.equal(turns.filter((turn) => turn.direction === "out" && turn.subject.includes("Lien")).length, 1);
+  assert.equal(turns.some((turn) => turn.body === "ancienne réponse"), false);
+  assert.equal(turns[3]?.link, "https://secure.hotel.test/authorizations/stay-1");
 });

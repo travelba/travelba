@@ -30,7 +30,7 @@ import { Icon } from "@/components/crm/icons";
 import { STAY_CURRENCIES } from "@/lib/crm/stay-currency";
 import { HotelChecklistGlance, HotelDesk } from "@/components/admin/HotelDesk";
 import { ProposedDuplicates } from "@/components/admin/ProposedDuplicates";
-import type { CardViewLine, CrmBookingTraveler, CrmHotelArrival, CrmHotelMessage, CrmHotelRequest, CrmTravelDocument } from "@/lib/crm/types";
+import type { CardViewLine, CrmBookingTraveler, CrmHotelArrival, CrmHotelMessage, CrmHotelRequest, CrmHotelThreadMessage, CrmTravelDocument } from "@/lib/crm/types";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
 import { BusyBar } from "@/components/crm/BusyBar";
@@ -140,7 +140,9 @@ export function BookingItemsPanel({
   cardViews = [],
   attachedEmails = [],
   hotelMessages = [],
+  hotelThreadMessages = [],
   stayVisible = false,
+  openHotelItemId = null,
 }: {
   bookingId: string;
   items: CrmBookingItem[];
@@ -163,6 +165,8 @@ export function BookingItemsPanel({
     warnings?: { file?: string | null; message?: string | null }[] | null;
   }[];
   hotelMessages?: CrmHotelMessage[];
+  hotelThreadMessages?: CrmHotelThreadMessage[];
+  openHotelItemId?: string | null;
   documents?: CrmBookingDocument[];
   household?: HouseholdMember[];
   currency?: string;
@@ -187,6 +191,20 @@ export function BookingItemsPanel({
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [deskFor, setDeskFor] = useState<string | null>(null);
+  const openedHotel = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!openHotelItemId || openedHotel.current === openHotelItemId) return;
+    const item = rows.find((row) => row.id === openHotelItemId && row.kind === "hotel");
+    if (!item || !hotelRequests.some((row) => row.booking_item_id === item.id)) return;
+    openedHotel.current = openHotelItemId;
+    setDeskFor(item.id);
+  }, [openHotelItemId, rows, hotelRequests]);
+
+  useEffect(() => {
+    if (!openHotelItemId || deskFor !== openHotelItemId) return;
+    document.getElementById(`hotel-desk-${openHotelItemId}`)?.scrollIntoView({ block: "center" });
+  }, [deskFor, openHotelItemId]);
 
   function startEdit(item: CrmBookingItem) {
     setEditingId(item.id);
@@ -474,7 +492,9 @@ export function BookingItemsPanel({
                           hasCardCode={hasCardCode}
                           cardViews={cardViews.filter((line) => line.itemId === item.id)}
                           messages={hotelMessages}
+                          thread={hotelThreadMessages}
                           attached={attachedEmails}
+                          focusReply={openHotelItemId === item.id}
                         />
                       ) : null}
                     </div>

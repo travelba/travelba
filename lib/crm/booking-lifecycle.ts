@@ -206,6 +206,7 @@ export function duplicateHotelLetterRow(row: Record<string, unknown>, bookingId:
     reply_subject: "",
     reply_body: "",
     reply_message_id: null,
+    sent_subjects: [],
   };
 }
 

@@ -394,6 +394,9 @@ export type CrmHotelRequest = {
   reply_subject: string;
   reply_body: string;
   reply_message_id: string | null;
+  /** Titres réellement partis. La recherche suit cette liste. */
+  sent_subjects?: string[];
+  thread_synced_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -412,8 +415,30 @@ export type CrmHotelMessage = {
   reply_body: string;
   reply_message_id: string | null;
   replied_at: string | null;
+  sent_subjects?: string[];
+  thread_synced_at?: string | null;
   created_at: string;
   updated_at: string;
+};
+
+/** Un tour du fil hôtel. Le texte est déjà nettoyé, sans numéro de carte. */
+export type CrmHotelThreadMessage = {
+  id: string;
+  booking_id: string;
+  booking_item_id: string;
+  gmail_message_id: string;
+  gmail_thread_id: string | null;
+  subject_key: string;
+  direction: "out" | "in";
+  from_email: string;
+  subject: string;
+  body: string;
+  link: string | null;
+  received_at: string;
+  counts_as_reply: boolean;
+  source: "crm" | "gmail";
+  request_id: string | null;
+  message_id: string | null;
 };
 
 export type CrmBookingTraveler = {
