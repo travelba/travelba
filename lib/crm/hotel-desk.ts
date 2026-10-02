@@ -823,7 +823,7 @@ export function cleanRecipients(values: string[]) {
   return [...new Set(values.map((value) => emailAddress(value)).filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)))];
 }
 
-/** Adresses déjà connues pour cet hôtel. Jamais une liste à montrer sur la fiche. */
+/** Adresses qui partiraient sans choix. La fiche n’en fait pas une liste : seul le formulaire d’envoi les montre. */
 export function knownHotelRecipients(
   item: CrmBookingItem,
   requests: Pick<CrmHotelRequest, "booking_item_id" | "recipients">[]
@@ -833,6 +833,36 @@ export function knownHotelRecipients(
   );
   if (listed.length) return listed;
   return hotelDeskRecipients(hotelContact(item), "concierge");
+}
+
+/** Contacts proposés à l’envoi : le bureau, plus toute adresse déjà utilisée pour ce séjour. */
+export function hotelSendPeople(
+  item: CrmBookingItem,
+  requests: Pick<CrmHotelRequest, "booking_item_id" | "recipients">[],
+  messages: Pick<CrmHotelMessage, "booking_item_id" | "recipients">[] = []
+) {
+  const byEmail = new Map<string, DeskRosterPerson>();
+  for (const person of deskRoster(hotelContact(item))) byEmail.set(person.email, person);
+  const extras = cleanRecipients([
+    ...requests.filter((row) => row.booking_item_id === item.id).flatMap((row) => row.recipients || []),
+    ...messages.filter((row) => row.booking_item_id === item.id).flatMap((row) => row.recipients || []),
+  ]);
+  for (const email of extras) {
+    if (!byEmail.has(email)) byEmail.set(email, { email, firstName: "", lastName: "", role: "" });
+  }
+  return [...byEmail.values()];
+}
+
+/** Cases cochées au départ : les adresses qui partiraient aujourd’hui. Les autres contacts restent visibles. */
+export function hotelSendDefaults(
+  item: CrmBookingItem,
+  requests: Pick<CrmHotelRequest, "booking_item_id" | "recipients">[],
+  messages: Pick<CrmHotelMessage, "booking_item_id" | "recipients">[] = []
+) {
+  const people = hotelSendPeople(item, requests, messages);
+  const known = new Set(knownHotelRecipients(item, requests));
+  const checked = people.filter((person) => known.has(person.email)).map((person) => person.email);
+  return checked.length ? checked : people.map((person) => person.email);
 }
 
 /** Hôtel, ville, dates et confirmation : le contexte du message. */
