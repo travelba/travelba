@@ -10,5 +10,8 @@ test("la comparaison ne dépend pas de la longueur et ne lève pas", () => {
   assert.equal(secretEquals("", "x"), false);
   assert.equal(secretEquals("a".repeat(2000), "a".repeat(2000)), true);
   assert.equal(secretEquals("a".repeat(2000), "a".repeat(2001)), false);
+  // Deux secrets longs de même longueur ne sont pas « égaux » : la chaîne entière compte.
+  assert.equal(secretEquals("a".repeat(600), "b".repeat(600)), false);
+  assert.equal(secretEquals("a".repeat(599) + "b", "a".repeat(600)), false);
   assert.equal(secretEquals(undefined as unknown as string, "x"), false);
 });
