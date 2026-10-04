@@ -24,3 +24,6 @@ comment on column public.crm_entry_links.used_at is
 
 comment on column public.crm_entry_links.revoked_at is
   'Posé par l’agence pour couper un lien avant son expiration.';
+
+-- Journal des lectures de carte : écrit par le service role à chaque lecture (B-05).
+grant all on public.crm_card_views to service_role;
