@@ -4,11 +4,15 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DOC_TYPE_LABELS, type CrmCompanion, type CrmTravelDocument, type TravelDocType } from "@/lib/crm/types";
 import { countryName } from "@/lib/crm/countries";
-import { nationalityFromIdentity } from "@/lib/crm/document-identity";
-import { documentExpiryStatus, documentExpiryWarning, identityOverwriteWarning } from "@/lib/crm/identity";
+import {
+  documentHolderName,
+  documentNameNotice,
+  nationalityFromIdentity,
+  preselectDocumentTarget,
+} from "@/lib/crm/document-identity";
+import { documentExpiryStatus, documentExpiryWarning } from "@/lib/crm/identity";
 import { formatDateFr } from "@/lib/crm/money";
 import { appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-extract";
-import { documentHolderName } from "@/lib/crm/document-identity";
 import { isVaultDocument } from "@/lib/crm/trip-documents";
 import { StatusChip } from "@/components/crm/ui";
 import {
@@ -53,14 +57,23 @@ export function DocumentsManager({
   const [sex, setSex] = useState("");
   const [applyIdentity, setApplyIdentity] = useState(true);
   const [scan, setScan] = useState<ScanResult | null>(null);
-  const [nameWarn, setNameWarn] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const target = companionId ? companions.find((c) => c.id === companionId) || null : holder;
+  // Comparé au titulaire (ou au compagnon choisi), jamais à l’état local vide du formulaire.
+  const nameWarn = documentNameNotice(scan?.identity, target, {
+    applyIdentity,
+    isHolder: !companionId,
+  });
 
   function applyScan(result: ScanResult) {
     setScan(result);
     setOtherDoc(false);
     const id = result.identity;
     if (!id) return;
+    // Le passeport d’un proche va sur sa fiche ; un inconnu reste au coffre sans renommer le titulaire.
+    const preselect = preselectDocumentTarget(id, holder, companions);
+    setCompanionId(preselect.companionId);
+    setApplyIdentity(preselect.applyIdentity);
     setDocType(id.doc_type);
     if (id.number) setNumber(id.number);
     if (id.issuing_country) setIssuingCountry(id.issuing_country);
@@ -69,11 +82,6 @@ export function DocumentsManager({
     if (id.place_of_birth) setPlaceOfBirth(id.place_of_birth);
     if (id.authority) setAuthority(id.authority);
     if (id.personal_number) setPersonalNumber(id.personal_number);
-    if (id.first_name || id.last_name) {
-      setNameWarn(
-        identityOverwriteWarning({ first_name: firstName, last_name: lastName }, id)
-      );
-    }
     if (id.first_name) setFirstName(id.first_name);
     if (id.last_name) setLastName(id.last_name);
     setUsageName(id.usage_name || "");
