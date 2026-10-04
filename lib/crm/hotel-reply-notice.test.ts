@@ -61,8 +61,8 @@ test("sans curseur valide, aucune réponse ancienne n’est rejouée", () => {
 });
 
 test("l’extrait garde la première ligne, sans e-mail ni numéro de carte", () => {
-  assert.equal(replyExcerpt("ciao@casamontiroma.com\nLe lien est prêt."), "Le lien est prêt.");
-  assert.equal(replyExcerpt("Le lien est prêt. Écrire à ciao@casamontiroma.com"), "Le lien est prêt. Écrire à");
+  assert.equal(replyExcerpt("ciao@example.com\nLe lien est prêt."), "Le lien est prêt.");
+  assert.equal(replyExcerpt("Le lien est prêt. Écrire à ciao@example.com"), "Le lien est prêt. Écrire à");
   const card = replyExcerpt("Le règlement est ouvert.\n4111 1111 1111 1111");
   assert.equal(card.includes("4111"), false);
   assert.equal(card, "Le règlement est ouvert.");
