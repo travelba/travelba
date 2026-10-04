@@ -13,6 +13,21 @@ function knownKind(value: unknown) {
 
 type Ctx = { params: Promise<{ id: string }> };
 
+/** La carte est enregistrée ; une écriture du grand livre refusée remonte au lieu de passer en silence. */
+async function ledgerAfterItemWrite(supabase: SupabaseClient, bookingId: string) {
+  try {
+    await refreshBookingLedger(supabase, bookingId);
+    return null;
+  } catch (err) {
+    return jsonError(
+      `Carte enregistrée, mais le grand livre n’a pas pu être mis à jour : ${
+        err instanceof Error ? err.message : "écriture refusée"
+      }`,
+      500
+    );
+  }
+}
+
 async function billingCompanyPatch(supabase: SupabaseClient, bookingId: string, value: unknown) {
   if (value === undefined) return {};
   const parsed = parseBillingCompanyId(value);
@@ -84,7 +99,8 @@ export async function POST(request: Request, ctx: Ctx) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
-  await refreshBookingLedger(auth.supabase, id);
+  const ledgerError = await ledgerAfterItemWrite(auth.supabase, id);
+  if (ledgerError) return ledgerError;
   return NextResponse.json({ item: data });
 }
 
@@ -162,7 +178,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
-  await refreshBookingLedger(auth.supabase, bookingId);
+  const ledgerError = await ledgerAfterItemWrite(auth.supabase, bookingId);
+  if (ledgerError) return ledgerError;
   return NextResponse.json({ item: data });
 }
 
@@ -178,6 +195,7 @@ export async function DELETE(request: Request, ctx: Ctx) {
     .eq("id", itemId)
     .eq("booking_id", bookingId);
   if (error) return dbError(error, 400);
-  await refreshBookingLedger(auth.supabase, bookingId);
+  const ledgerError = await ledgerAfterItemWrite(auth.supabase, bookingId);
+  if (ledgerError) return ledgerError;
   return NextResponse.json({ ok: true });
 }
