@@ -92,7 +92,7 @@ export default async function ExampleReservationPage({ params }: Props) {
       intro={
         <>
           <Link href={`${EXAMPLE_BASE}/reservations`} className="inline-flex text-sm font-semibold text-[var(--aura-blue)]">
-            ← Mes réservations
+            ← Réservations
           </Link>
 
           <BookingHero booking={b} items={withoutHotelRosterItems(session.items)} priority className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]">

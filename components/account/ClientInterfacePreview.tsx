@@ -333,7 +333,7 @@ function ClientScreen({
           <ClientTripBody
             intro={
               <>
-                <p className="text-sm font-semibold text-[var(--aura-blue)]">← Mes réservations</p>
+                <p className="text-sm font-semibold text-[var(--aura-blue)]">← Réservations</p>
                 <BookingHero
                   booking={booking}
                   items={allItems}
