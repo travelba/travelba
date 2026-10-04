@@ -11,7 +11,7 @@ import {
   sendConnexionWhatsapp,
   type WhatsappSendResult,
 } from "@/lib/crm/whatsapp";
-import { createEntryLink } from "@/lib/crm/entry-link";
+import { createEntryLink, setEntryLinkChannel } from "@/lib/crm/entry-link";
 import { greetingGivenName } from "@/lib/crm/identity";
 import { tokenMailCc } from "@/lib/crm/outbound-mail";
 import { sendAgencyAccessNotice } from "@/lib/crm/access-notice";
@@ -173,6 +173,7 @@ export async function inviteCustomer(
     otpType: linkType,
     nextPath: SET_PASSWORD_PATH,
     email,
+    channel: "email",
   });
   let whatsapp: WhatsappSendResult = { ok: false, reason: "rejected" };
   try {
@@ -186,6 +187,8 @@ export async function inviteCustomer(
       firstName: linked.first_name,
       link,
     });
+    // Parti par WhatsApp : l’ouverture du lien vaudra opt-in (le client a bien reçu le message).
+    if (whatsapp.ok) await setEntryLinkChannel(admin, link, "whatsapp");
     if (!whatsapp.ok && whatsapp.reason === "not_configured") {
       console.info("[invite] TWILIO_CONTENT_CONNEXION absente — WhatsApp non envoyé");
     }

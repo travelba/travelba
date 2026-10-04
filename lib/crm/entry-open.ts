@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { EmailOtpType } from "@supabase/supabase-js";
+import type { EmailOtpType, SupabaseClient, User } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -9,10 +9,10 @@ import { ensureCustomerForUser, ensureStaff } from "@/lib/crm/auth";
 import { recordCustomerLogin } from "@/lib/crm/customer-login";
 import { PASSWORD_SETUP_COOKIE, mustSetPassword } from "@/lib/crm/session";
 import { stayHasPublishedCover, stayPlaceName } from "./concierge-notices";
-import { ensureTripShareCode } from "./trip-share-code";
 import {
   entryDestination,
   entryLinkExpiresAt,
+  entryOptInFromLink,
   entryPreviewHtml,
   entryReopenDecision,
   isEntryCode,
@@ -24,29 +24,43 @@ import {
   type EntryPreview,
 } from "./entry-link";
 
+type LinkRow = {
+  token_hash: string | null;
+  otp_type: string | null;
+  next_path: string | null;
+  email: string | null;
+  show_cover?: boolean | null;
+  created_at?: string | null;
+  expires_at?: string | null;
+  used_at?: string | null;
+  revoked_at?: string | null;
+  open_count?: number | null;
+  channel?: string | null;
+};
+
+/**
+ * Carte d’aperçu. Un GET anonyme ne crée rien : la couverture se sert par le code du lien
+ * lui-même (`?e=CODE`), jamais par le code de partage /v/. Un lien mort n’a pas de photo.
+ */
 async function stayBehindCode(origin: string, code: string): Promise<EntryPreview | null> {
   try {
     const admin = createServiceClient();
-    const { data: link } = await admin
-      .from("crm_entry_links")
-      .select("next_path, show_cover")
-      .eq("code", code)
-      .maybeSingle();
+    const { data } = await admin.from("crm_entry_links").select("*").eq("code", code).maybeSingle();
+    const link = data as LinkRow | null;
     const reference = referenceFromNextPath(link?.next_path);
-    if (!reference) return null;
+    if (!link || !reference) return null;
     const { data: booking } = await admin
       .from("crm_bookings")
-      .select("id, reference, destination, title, cover_image_path, visible_to_client, archived_at, share_code")
+      .select("reference, destination, title, cover_image_path, visible_to_client, archived_at")
       .eq("reference", reference)
       .maybeSingle();
     if (!booking?.reference || booking.archived_at) return null;
+    const now = new Date();
+    const alive = !link.revoked_at && now.getTime() <= entryLinkExpiresAt(link).getTime();
     const place = stayPlaceName(booking.destination, booking.title);
     const hasCover =
-      link?.show_cover === true && Boolean(booking.visible_to_client) && stayHasPublishedCover(booking);
-    const shareCode = hasCover
-      ? (booking.share_code as string | null) || (await ensureTripShareCode(admin, booking.id))
-      : null;
-    return stayPreviewCopy({ origin, reference: booking.reference, place, hasCover, shareCode });
+      alive && link.show_cover === true && Boolean(booking.visible_to_client) && stayHasPublishedCover(booking);
+    return stayPreviewCopy({ origin, reference: booking.reference, place, hasCover, entryCode: code });
   } catch {
     return null;
   }
@@ -63,21 +77,10 @@ export async function entryPreviewResponse(origin: string, code: string, enter =
   });
 }
 
-type LinkRow = {
-  token_hash: string | null;
-  otp_type: string | null;
-  next_path: string | null;
-  email: string | null;
-  created_at?: string | null;
-  expires_at?: string | null;
-  used_at?: string | null;
-  revoked_at?: string | null;
-};
-
 /**
  * Le GET nu ne vient pas ici. Un appui ou le POST vérifie le jeton, pose la session, ouvre next.
- * Un lien révoqué ou expiré n’ouvre rien. Un jeton consommé n’est régénéré que si le lien
- * n’a jamais servi, ou a servi il y a moins de 15 min (aperçu puis navigateur).
+ * Une session déjà ouverte passe sans consommer le jeton. Un lien révoqué, expiré ou ouvert
+ * cinq fois n’ouvre rien. Dans son délai, un jeton consommé (aperçu, scanner d’e-mail) est régénéré.
  */
 export async function openEntry(origin: string, code: string) {
   const safe = isEntryCode(code) ? code : "";
@@ -90,36 +93,40 @@ export async function openEntry(origin: string, code: string) {
 
   const now = new Date();
   const expiresAt = entryLinkExpiresAt(link);
-  const gate = entryReopenDecision({
+  const response = NextResponse.redirect(new URL("/mon-compte", origin));
+  const supabase = await cookieClient(response);
+  const existing = await currentUser(supabase);
+  const base = {
     now,
     expiresAt,
-    usedAt: link.used_at,
     revokedAt: link.revoked_at,
-    tokenValid: true,
-  });
+    openCount: link.open_count ?? 0,
+    hasSession: Boolean(existing),
+  };
+  const gate = entryReopenDecision({ ...base, tokenValid: true });
   if (gate === "refuse") return entryPreviewResponse(origin, safe, false);
 
   const otpType = safeOtpType(link.otp_type);
-  const response = NextResponse.redirect(new URL("/mon-compte", origin));
-  let user = await verifyOn(response, link.token_hash, otpType);
+  let user: User | null = gate === "session" ? existing : null;
   if (!user) {
-    const decision = entryReopenDecision({
-      now,
-      expiresAt,
-      usedAt: link.used_at,
-      revokedAt: link.revoked_at,
-      tokenValid: false,
-    });
-    const email = decision === "regenerate" ? storedEntryEmail(link.email) : null;
-    const fresh = email ? await freshMagicHash(email) : null;
-    if (fresh) user = await verifyOn(response, fresh, "magiclink");
+    user = await verifyOn(supabase, link.token_hash, otpType);
+    if (!user && entryReopenDecision({ ...base, tokenValid: false }) === "regenerate") {
+      const email = storedEntryEmail(link.email);
+      const fresh = email ? await freshMagicHash(email) : null;
+      if (fresh) user = await verifyOn(supabase, fresh, "magiclink");
+    }
+    if (!user) return entryPreviewResponse(origin, safe, false);
+    await markEntryOpened(safe, link, now);
   }
-  if (!user) return entryPreviewResponse(origin, safe, false);
 
-  if (!link.used_at) await markEntryUsed(safe, now);
   await ensureCustomerForUser(user);
   const staff = await ensureStaff(user);
-  if (!staff) await recordCustomerLogin(user.id, "entry");
+  if (gate !== "session") {
+    if (!staff) await recordCustomerLogin(user.id, "entry");
+    if (entryOptInFromLink({ channel: link.channel, staff: Boolean(staff) })) {
+      await stampWhatsappOptIn(user.id, now);
+    }
+  }
   const dest = entryDestination({
     nextPath: link.next_path,
     otpType,
@@ -148,10 +155,11 @@ export async function openEntry(origin: string, code: string) {
   return response;
 }
 
-async function verifyOn(response: NextResponse, tokenHash: string, type: string) {
+/** Client Supabase sur les cookies de la requête ; les cookies posés partent avec la réponse. */
+async function cookieClient(response: NextResponse) {
   const cookieStore = await cookies();
   const { url, anonKey } = publicSupabaseEnv();
-  const supabase = createServerClient(url, anonKey, {
+  return createServerClient(url, anonKey, {
     cookieOptions: AUTH_COOKIE_OPTIONS,
     cookies: {
       getAll() {
@@ -164,6 +172,20 @@ async function verifyOn(response: NextResponse, tokenHash: string, type: string)
       },
     },
   });
+}
+
+/** Session déjà ouverte sur ce navigateur, ou null. */
+async function currentUser(supabase: SupabaseClient) {
+  try {
+    const { data, error } = await supabase.auth.getUser();
+    if (error) return null;
+    return data.user ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function verifyOn(supabase: SupabaseClient, tokenHash: string, type: string) {
   const verified = await supabase.auth.verifyOtp({
     token_hash: tokenHash,
     type: safeOtpType(type) as EmailOtpType,
@@ -173,20 +195,34 @@ async function verifyOn(response: NextResponse, tokenHash: string, type: string)
   return data.user;
 }
 
-/** Première ouverture. Sans la migration, la colonne manque : on continue. */
-async function markEntryUsed(code: string, now: Date) {
+/** Une ouverture de plus, et la première date. Sans la migration, les colonnes manquent : on continue. */
+async function markEntryOpened(code: string, link: LinkRow, now: Date) {
   try {
     const admin = createServiceClient();
     const { error } = await admin
       .from("crm_entry_links")
-      .update({ used_at: now.toISOString() })
-      .eq("code", code)
-      .is("used_at", null);
-    if (error && !isMissingColumnError(error, "used_at")) {
-      console.error("[entry] used_at non posé");
+      .update({ used_at: link.used_at || now.toISOString(), open_count: (link.open_count ?? 0) + 1 })
+      .eq("code", code);
+    if (error && !isMissingColumnError(error, "used_at") && !isMissingColumnError(error, "open_count")) {
+      console.error("[entry] ouverture non comptée");
     }
   } catch {
-    console.error("[entry] used_at non posé");
+    console.error("[entry] ouverture non comptée");
+  }
+}
+
+/** Le client a reçu et ouvert un message WhatsApp : consentement posé s’il manquait. */
+async function stampWhatsappOptIn(userId: string, now: Date) {
+  try {
+    const admin = createServiceClient();
+    const { error } = await admin
+      .from("crm_customers")
+      .update({ whatsapp_opt_in_at: now.toISOString() })
+      .eq("auth_user_id", userId)
+      .is("whatsapp_opt_in_at", null);
+    if (error) console.error("[entry] opt-in WhatsApp non posé");
+  } catch {
+    console.error("[entry] opt-in WhatsApp non posé");
   }
 }
 

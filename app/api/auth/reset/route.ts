@@ -80,6 +80,7 @@ async function handle(request: Request, email: string) {
       otpType: "recovery",
       nextPath: SET_PASSWORD_PATH,
       email,
+      channel: "email",
     });
 
     if (!apiKey) {

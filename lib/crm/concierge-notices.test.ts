@@ -31,9 +31,14 @@ test("un séjour non publié ne part pas", () => {
     hasCover: true,
   });
   assert.equal(plan, null);
-  assert.equal(stayCoverUrl(reference, true, "ABCDEFGH")?.includes("token"), false);
+  assert.equal(stayCoverUrl(reference, true, { shareCode: "ABCDEFGH" })?.includes("token"), false);
   assert.equal(stayCoverUrl(reference, true), null);
-  assert.equal(stayCoverUrl(reference, true, "pas-un-code"), null);
+  assert.equal(stayCoverUrl(reference, true, { shareCode: "pas-un-code" }), null);
+  assert.equal(stayCoverUrl(reference, true, { entryCode: "pas-un-code" }), null);
+  assert.equal(
+    stayCoverUrl(reference, true, { entryCode: "K7MQ2PX4", shareCode: "ABCDEFGH" }),
+    `https://travelba.fr/api/covers/sejour/${reference}?e=K7MQ2PX4`
+  );
   assert.equal(
     planPiecesNotices({
       published: false,
@@ -134,28 +139,38 @@ test("sans ville d’arrivée, aucun message séjour", () => {
   );
 });
 
-test("la couverture publiée est une URL HTTPS avec le code de partage, pas une signed URL", () => {
-  const withoutCode = planStayNotice({
+test("la couverture publiée est une URL HTTPS portée par le code du lien, pas une signed URL", () => {
+  // Au moment du plan, le lien du message n’existe pas encore : la photo est résolue à l’envoi.
+  const planned = planStayNotice({
     published: true,
     reference,
     destination: "Paris · Marrakech",
     title: "Week-end",
     hasCover: true,
   });
-  assert.ok(withoutCode);
-  assert.equal(withoutCode.mediaUrl, null);
-  assert.equal(withoutCode.template, "sejour_texte");
+  assert.ok(planned);
+  assert.equal(planned.mediaUrl, null);
+  assert.equal(planned.template, "sejour");
+  const shared = planStayNotice({
+    published: true,
+    reference,
+    destination: "Paris · Marrakech",
+    title: "Week-end",
+    hasCover: true,
+    coverAccess: { shareCode: "ABCDEFGH" },
+  });
+  assert.equal(shared?.mediaUrl, `https://travelba.fr/api/covers/sejour/${reference}?partage=ABCDEFGH`);
   const plan = planStayNotice({
     published: true,
     reference,
     destination: "Paris · Marrakech",
     title: "Week-end",
     hasCover: true,
-    shareCode: "ABCDEFGH",
+    coverAccess: { entryCode: "K7MQ2PX4" },
   });
   assert.ok(plan);
   assert.equal(plan.place, "Marrakech");
-  assert.equal(plan.mediaUrl, `https://travelba.fr/api/covers/sejour/${reference}?partage=ABCDEFGH`);
+  assert.equal(plan.mediaUrl, `https://travelba.fr/api/covers/sejour/${reference}?e=K7MQ2PX4`);
   assert.match(plan.mediaUrl, /^https:\/\//);
   assert.equal(/token=|supabase\.co/i.test(plan.mediaUrl), false);
   assert.equal(plan.template, "sejour");

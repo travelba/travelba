@@ -87,6 +87,7 @@ async function handle(request: Request, email: string, channel: "whatsapp" | "em
       otpType: "magiclink",
       nextPath: "/mon-compte",
       email,
+      channel,
     });
 
     if (channel === "whatsapp") {

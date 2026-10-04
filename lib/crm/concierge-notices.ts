@@ -1,4 +1,5 @@
 import { isTripShareCode } from "./trip-share";
+import { isEntryCode } from "./entry-link";
 import { coverQuery } from "./carnet";
 import { unsplashKeywordMatch } from "./covers";
 import { siteConfig } from "../site";
@@ -89,14 +90,20 @@ export function stayHasPublishedCover(booking: {
   );
 }
 
+/** Preuve d’accès à la couverture : le code du lien court du message, ou le code /v/ (médias Twilio seulement). */
+export type StayCoverAccess = { entryCode?: string | null; shareCode?: string | null };
+
 /**
  * JPEG public, sans jeton Supabase. Twilio le récupère en HTTPS.
- * L’adresse porte le code de partage du dossier : sans code, pas de photo (texte seul).
+ * L’adresse porte une preuve d’accès : sans elle, pas de photo (texte seul).
  */
-export function stayCoverUrl(reference: string, hasCover: boolean, shareCode?: string | null) {
+export function stayCoverUrl(reference: string, hasCover: boolean, access?: StayCoverAccess | null) {
   if (!hasCover || !REFERENCE.test(reference)) return null;
-  if (!isTripShareCode(shareCode)) return null;
-  return `${siteConfig.url}/api/covers/sejour/${reference}?partage=${shareCode}`;
+  const base = `${siteConfig.url}/api/covers/sejour/${reference}`;
+  const entry = access?.entryCode || "";
+  if (entry && isEntryCode(entry)) return `${base}?e=${entry}`;
+  if (isTripShareCode(access?.shareCode)) return `${base}?partage=${access?.shareCode}`;
+  return null;
 }
 
 /** Photo du séjour : JPEG public du lieu d’arrivée. Jamais le monogramme, jamais une signed URL. */
@@ -236,20 +243,20 @@ export function planStayNotice(input: {
   destination: string | null;
   title: string | null;
   hasCover: boolean;
-  /** Code /v/CODE du dossier : la photo ne part qu’avec lui. */
-  shareCode?: string | null;
+  /** Preuve d’accès à la couverture. Absente au moment du plan : la photo est résolue à l’envoi. */
+  coverAccess?: StayCoverAccess | null;
 }): StayPlan | null {
   if (!input.published) return null;
   const path = reservationPath(input.reference);
   if (!path) return null;
   const place = stayPlaceName(input.destination, input.title);
   if (!place) return null;
-  const mediaUrl = stayCoverUrl(input.reference, input.hasCover, input.shareCode);
+  const mediaUrl = stayCoverUrl(input.reference, input.hasCover, input.coverAccess);
   return {
     body: withConciergeSignature(stayNoticeLine(place, input.reference)),
     place,
     mediaUrl,
-    template: mediaUrl ? "sejour" : "sejour_texte",
+    template: input.hasCover ? "sejour" : "sejour_texte",
     path,
   };
 }
