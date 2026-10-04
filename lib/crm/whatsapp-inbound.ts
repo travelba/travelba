@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { toE164 } from "./phone";
 import { uploadCrmFile } from "./files";
 import { redactIngestText } from "./ingest-redact";
+import { luhnValid } from "./pan";
 import { formParams, verifyTwilioSignature } from "./twilio-signature";
 import { liveConciergeImage } from "./concierge-notices";
 import { withConciergeSignature } from "./whatsapp";
@@ -79,29 +80,13 @@ const PIECE_TYPES = new Set([
 
 const PIECE_MARK = "Pièce reçue sur WhatsApp.";
 
-function luhnOk(digits: string) {
-  let sum = 0;
-  let alt = false;
-  for (let i = digits.length - 1; i >= 0; i -= 1) {
-    let n = digits.charCodeAt(i) - 48;
-    if (n < 0 || n > 9) return false;
-    if (alt) {
-      n *= 2;
-      if (n > 9) n -= 9;
-    }
-    sum += n;
-    alt = !alt;
-  }
-  return digits.length >= 13 && digits.length <= 19 && sum % 10 === 0;
-}
-
 /** Vrai si le fichier contient un PAN. Ne journalise pas les chiffres. */
 export function bytesContainPan(bytes: Uint8Array) {
   const text = Buffer.from(bytes).toString("latin1");
   const matches = text.match(/\d(?:[ \t.-]?\d){12,18}/g) || [];
   return matches.some((raw) => {
     const digits = raw.replace(/\D/g, "");
-    if (!luhnOk(digits)) return false;
+    if (!luhnValid(digits)) return false;
     const groups = raw.split(/[ \t.-]+/).filter(Boolean);
     if (groups.length === 1) return true;
     return groups.every((group) => group.length >= 3 && group.length <= 6);

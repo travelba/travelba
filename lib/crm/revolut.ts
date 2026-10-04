@@ -8,6 +8,7 @@ import {
 import { pickEurSepaWire, type AgencyWire } from "@/lib/crm/revolut-wire";
 
 const PROVIDER = "revolut";
+const REVOLUT_TIMEOUT_MS = 15_000;
 
 function apiBase() {
   if (process.env.REVOLUT_SANDBOX === "1") {
@@ -99,6 +100,7 @@ async function refreshAccessToken(refreshToken: string) {
   });
   const res = await fetch(`${apiBase()}/api/1.0/auth/token`, {
     method: "POST",
+    signal: AbortSignal.timeout(REVOLUT_TIMEOUT_MS),
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
@@ -128,6 +130,7 @@ export async function exchangeRevolutAuthCode(code: string) {
   });
   const res = await fetch(`${apiBase()}/api/1.0/auth/token`, {
     method: "POST",
+    signal: AbortSignal.timeout(REVOLUT_TIMEOUT_MS),
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
@@ -190,6 +193,7 @@ export async function fetchRevolutTransactions(fromIso: string) {
     if (to) url.searchParams.set("to", to);
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(REVOLUT_TIMEOUT_MS),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
@@ -284,6 +288,7 @@ async function revolutGet(path: string): Promise<unknown> {
   const token = await getRevolutAccessToken();
   const res = await fetch(`${apiBase()}${path}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+    signal: AbortSignal.timeout(REVOLUT_TIMEOUT_MS),
   });
   if (!res.ok) {
     await res.arrayBuffer().catch(() => undefined);

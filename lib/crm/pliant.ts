@@ -47,6 +47,8 @@ function pliantClientSecret() {
   return productionOnlySecret(process.env.PLIANT_CLIENT_SECRET);
 }
 
+const PLIANT_TIMEOUT_MS = 20_000;
+
 function endpoints() {
   return process.env.PLIANT_SANDBOX === "1" ? SANDBOX : PROD;
 }
@@ -145,6 +147,7 @@ async function requestPliantToken() {
   const { token, audience } = endpoints();
   const res = await fetch(token, {
     method: "POST",
+    signal: AbortSignal.timeout(PLIANT_TIMEOUT_MS),
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       client_id: clientId,
@@ -179,6 +182,7 @@ export async function issuePliantCard(cardholderId: string, body: unknown) {
   const token = await accessToken();
   const res = await fetch(`${endpoints().api}/cards/${resolved.cardholderId}`, {
     method: "POST",
+    signal: AbortSignal.timeout(PLIANT_TIMEOUT_MS),
     headers: {
       authorization: `Bearer ${token}`,
       "content-type": "application/json",
@@ -227,6 +231,7 @@ async function pliantJson(path: string): Promise<{ data?: unknown; cardConfigs?:
     const token = await accessToken();
     const res = await fetch(`${endpoints().api}${path}`, {
       headers: { authorization: `Bearer ${token}`, "Pliant-API-Version": "2.1.0" },
+      signal: AbortSignal.timeout(PLIANT_TIMEOUT_MS),
     });
     if (!res.ok) return null;
     return (await res.json()) as { data?: unknown; cardConfigs?: unknown };
@@ -245,6 +250,7 @@ export async function readPliantCardSecrets(cardId: string) {
   const token = await accessToken();
   const host = process.env.PLIANT_SANDBOX === "1" ? PCI.sandbox : PCI.prod;
   const res = await fetch(`${host}/card-details/${encodeURIComponent(cardId)}`, {
+    signal: AbortSignal.timeout(PLIANT_TIMEOUT_MS),
     headers: {
       authorization: `Bearer ${token}`,
       accept: "application/json",
@@ -265,6 +271,7 @@ export async function pliantPciWidget(cardId: string, frameId: string) {
   const token = await accessToken();
   const host = process.env.PLIANT_SANDBOX === "1" ? PCI.sandbox : PCI.prod;
   const res = await fetch(`${host}/card-details/widget/${encodeURIComponent(cardId)}/otp`, {
+    signal: AbortSignal.timeout(PLIANT_TIMEOUT_MS),
     headers: {
       authorization: `Bearer ${token}`,
       accept: "application/json",
@@ -288,6 +295,7 @@ export async function raisePliantLimit(cardId: string, limit: { value: number; c
   const token = await accessToken();
   const res = await fetch(`${endpoints().api}/cards/${cardId}`, {
     method: "PATCH",
+    signal: AbortSignal.timeout(PLIANT_TIMEOUT_MS),
     headers: {
       authorization: `Bearer ${token}`,
       "content-type": "application/json",
@@ -311,6 +319,7 @@ export async function setPliantCardLimit(
   const token = await accessToken();
   const res = await fetch(`${endpoints().api}/cards/${cardId}`, {
     method: "PATCH",
+    signal: AbortSignal.timeout(PLIANT_TIMEOUT_MS),
     headers: {
       authorization: `Bearer ${token}`,
       "content-type": "application/json",
@@ -494,6 +503,7 @@ async function pliantSend(path: string, body?: unknown) {
   const token = await accessToken();
   const res = await fetch(`${endpoints().api}${path}`, {
     method: body === undefined ? "GET" : "POST",
+    signal: AbortSignal.timeout(PLIANT_TIMEOUT_MS),
     headers: {
       authorization: `Bearer ${token}`,
       "Pliant-API-Version": "2.1.0",
