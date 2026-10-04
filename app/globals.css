@@ -368,8 +368,11 @@ button:disabled,
   }
 }
 
-/* Repère clavier unique sur tout le site : champagne, hors du contour de l’élément. */
-:focus-visible {
-  outline: 2px solid var(--admin-gold, #C5A880);
-  outline-offset: 2px;
+/* Repère clavier unique sur tout le site : champagne, hors du contour. Liens, boutons et
+   éléments focalisables seulement : les champs gardent leur bordure / halo de focus. */
+@layer base {
+  :where(a, button, [role="button"], summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--admin-gold, #C5A880);
+    outline-offset: 2px;
+  }
 }
