@@ -1048,7 +1048,7 @@ export function BookingIngest({
                       linked ? "bg-[var(--admin-sky)]" : "bg-[var(--admin-peach)]"
                     }`}
                   >
-                    {traveler.is_account_holder ? "Titulaire" : linked ? "Foyer" : unknown ? "Document" : "Placeholder"}
+                    {traveler.is_account_holder ? "Titulaire" : linked ? "Foyer" : unknown ? "Document" : "À rattacher"}
                   </span>
                   <select
                     className={`${fieldControlClass} max-w-[14rem]`}

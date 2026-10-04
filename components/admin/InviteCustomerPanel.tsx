@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { PortalAccess } from "@/lib/crm/invite";
 import { formatCustomerLoginAt } from "@/lib/crm/customer-login";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { adminAction } from "@/lib/crm/admin-action";
 
 const STATUS_COPY: Record<PortalAccess["status"], { label: string; hint: string }> = {
   none: {
@@ -17,7 +18,7 @@ const STATUS_COPY: Record<PortalAccess["status"], { label: string; hint: string 
   },
   ready: {
     label: "Espace actif",
-    hint: "Le mot de passe a été défini. Le client peut se connecter.",
+    hint: "Le mot de passe a été défini. Un lien d’accès l’ouvre sans le changer.",
   },
 };
 
@@ -36,8 +37,25 @@ export function InviteCustomerPanel({
   const [link, setLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [sendingAccess, setSendingAccess] = useState(false);
 
   const copy = STATUS_COPY[status];
+
+  /** Espace actif : lien magique par WhatsApp, sans reposer le mot de passe (A-52, A-53). */
+  async function sendAccessLink() {
+    if (sendingAccess) return;
+    setSendingAccess(true);
+    setError(null);
+    setInfo(null);
+    const result = await adminAction(`/api/admin/clients/${customerId}/acces`, { method: "POST" });
+    setSendingAccess(false);
+    if (!result.ok) {
+      setError(result.error || "Lien non envoyé.");
+      return;
+    }
+    setInfo("Lien d’accès envoyé par WhatsApp. Le mot de passe du client ne change pas.");
+    router.refresh();
+  }
 
   async function sendInvite() {
     setLoading(true);
@@ -98,29 +116,48 @@ export function InviteCustomerPanel({
           </p>
         ) : null}
       </div>
-      <BusyBar active={loading} label="Envoi…" />
-      <div className="flex shrink-0 flex-wrap gap-2">
-        {link ? (
+      <BusyBar active={loading || sendingAccess} label="Envoi…" />
+      <div className="flex shrink-0 flex-col items-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
+          {link ? (
+            <button
+              type="button"
+              onClick={() => void copyLink()}
+              className="rounded-full border border-border px-4 py-2.5 text-sm font-semibold"
+            >
+              {copied ? "Lien copié" : "Copier le lien"}
+            </button>
+          ) : null}
+          {status === "ready" ? (
+            <button
+              type="button"
+              onClick={() => void sendAccessLink()}
+              disabled={loading || sendingAccess}
+              className="admin-af-btn admin-tap shrink-0 rounded-full px-4 py-2.5 text-sm disabled:opacity-60"
+            >
+              {sendingAccess ? "Envoi…" : "Envoyer un lien d’accès"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={sendInvite}
+              disabled={loading || sendingAccess}
+              className="admin-af-btn admin-tap shrink-0 rounded-full px-4 py-2.5 text-sm disabled:opacity-60"
+            >
+              {loading ? "Envoi…" : status === "none" ? "Envoyer l’invitation" : "Renvoyer l’invitation"}
+            </button>
+          )}
+        </div>
+        {status === "ready" ? (
           <button
             type="button"
-            onClick={() => void copyLink()}
-            className="rounded-full border border-border px-4 py-2.5 text-sm font-semibold"
+            onClick={sendInvite}
+            disabled={loading || sendingAccess}
+            className="text-xs font-semibold text-muted underline-offset-2 hover:underline disabled:opacity-60"
           >
-            {copied ? "Lien copié" : "Copier le lien"}
+            Mot de passe perdu ? Renvoyer l’invitation
           </button>
         ) : null}
-        <button
-          type="button"
-          onClick={sendInvite}
-          disabled={loading}
-          className="admin-af-btn shrink-0 rounded-full px-4 py-2.5 text-sm disabled:opacity-60"
-        >
-          {loading
-            ? "Envoi…"
-            : status === "none"
-              ? "Envoyer l’invitation"
-              : "Renvoyer l’invitation"}
-        </button>
       </div>
     </section>
   );

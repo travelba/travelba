@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cronAuthorized, cronSecret } from "@/lib/crm/cron-auth";
 import {
   backfillBilletAvionMessages,
+  backfillQueuedEmailBodies,
   catchUpGmailHistory,
   emailParsingReady,
   processReceivedEmailIngest,
@@ -58,7 +59,17 @@ export async function GET(request: Request) {
         err instanceof Error ? err.message : err
       );
     }
-    return NextResponse.json({ captured, backfill, ...result, rematch });
+    // Corps des mails de la file encore vides : relus ici, plus sur le GET de /admin/emails (A-26).
+    let bodies = { scanned: 0, filled: 0 };
+    try {
+      bodies = await backfillQueuedEmailBodies(20);
+    } catch (err) {
+      console.error(
+        "[cron/gmail-ingest] bodies",
+        err instanceof Error ? err.message : err
+      );
+    }
+    return NextResponse.json({ captured, backfill, ...result, rematch, bodies });
   } catch (err) {
     console.error("[cron/gmail-ingest]", err instanceof Error ? err.message : err);
     return NextResponse.json({ error: "Ingestion e-mail échouée" }, { status: 502 });

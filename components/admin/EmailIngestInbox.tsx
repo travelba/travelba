@@ -1,7 +1,10 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
+import { adminAction } from "@/lib/crm/admin-action";
 import { Icon } from "@/components/crm/icons";
 import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
 import { EmptyState } from "@/components/crm/ui";
@@ -126,10 +129,13 @@ export function EmailIngestInbox({
   }, [customers]);
 
   const [busy, setBusy] = useState<string | null>(null);
+  // L’autosave du titre a son propre état : il ne verrouille plus Rattacher / Créer (A-55).
+  const [savingTitle, setSavingTitle] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [chosen, setChosen] = useState<Record<string, string>>({});
   const [pickFor, setPickFor] = useState<string | null>(null);
   const [bookings, setBookings] = useState<Record<string, BookingOption[]>>({});
+  const [loadingRows, setLoadingRows] = useState<Record<string, boolean>>({});
   const [selectedBooking, setSelectedBooking] = useState<Record<string, string>>({});
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [drafts, setDrafts] = useState<Record<string, ExtractView>>({});
@@ -143,6 +149,7 @@ export function EmailIngestInbox({
   const loadBookings = useCallback(
     async (rowId: string, customerId: string, preselect?: string | null) => {
       if (!customerId) return;
+      setLoadingRows((prev) => ({ ...prev, [rowId]: true }));
       try {
         const res = await fetch(
           `/api/admin/email-ingest/bookings?customer_id=${encodeURIComponent(customerId)}`
@@ -159,10 +166,64 @@ export function EmailIngestInbox({
         }));
       } catch {
         setBookings((prev) => ({ ...prev, [rowId]: [] }));
+      } finally {
+        setLoadingRows((prev) => ({ ...prev, [rowId]: false }));
       }
     },
     []
   );
+
+  // Client déjà proposé : les voyages se chargent tout de suite, sans attendre un clic (A-55).
+  const preloaded = useRef(new Set<string>());
+  useEffect(() => {
+    for (const row of rows) {
+      if (!row.suggested_customer_id || preloaded.current.has(row.id)) continue;
+      preloaded.current.add(row.id);
+      void loadBookings(row.id, row.suggested_customer_id, row.suggested_booking_id);
+    }
+  }, [rows, loadBookings]);
+
+  async function saveTitle(rowId: string, title: string) {
+    setSavingTitle(rowId);
+    const result = await adminAction(`/api/admin/email-ingest/${rowId}`, {
+      method: "POST",
+      body: { action: "save_title", title },
+    });
+    setSavingTitle(null);
+    if (!result.ok) setError(result.error || "Titre non enregistré.");
+  }
+
+  /** Reproposer : relance client / voyage sur l’extract stocké, sans rattacher. */
+  async function rematch(rowId: string) {
+    setBusy(rowId);
+    setError(null);
+    const result = await adminAction(`/api/admin/email-ingest/${rowId}`, { method: "POST", body: { action: "rematch" } });
+    setBusy(null);
+    if (!result.ok) {
+      setError(result.error || "Nouvelle proposition impossible.");
+      return;
+    }
+    setChosen((prev) => {
+      const next = { ...prev };
+      delete next[rowId];
+      return next;
+    });
+    setBookings((prev) => {
+      const next = { ...prev };
+      delete next[rowId];
+      return next;
+    });
+    preloaded.current.delete(rowId);
+    router.refresh();
+  }
+
+  /** Retirer du dossier : détache le mail du voyage créé ou rattaché ; renvoie l’erreur au bouton. */
+  async function detach(rowId: string) {
+    const result = await adminAction(`/api/admin/email-ingest/${rowId}`, { method: "POST", body: { action: "detach" } });
+    if (!result.ok) return result.error || "Retrait impossible.";
+    router.refresh();
+    return undefined;
+  }
 
   function viewOf(row: CrmEmailIngest): ExtractView {
     return drafts[row.id] || ((row.extract || {}) as ExtractView);
@@ -264,6 +325,7 @@ export function EmailIngestInbox({
           ),
         ];
         const options = bookings[row.id];
+        const loadingBookings = Boolean(loadingRows[row.id]);
         const isBusy = busy === row.id;
         const cardTitle =
           titles[row.id] ??
@@ -320,11 +382,16 @@ export function EmailIngestInbox({
                     onBlur={(event) => {
                       const next = event.target.value.trim();
                       if (!next || next === (extract.title || "").trim()) return;
-                      void act(row.id, { action: "save_title", title: next }, { refresh: false });
+                      void saveTitle(row.id, next);
                     }}
                     className={`${fieldControlClass} admin-tap mt-1`}
                     aria-label="Titre du dossier"
                   />
+                  {savingTitle === row.id ? (
+                    <span className="mt-1 block text-[11px] font-medium text-muted" aria-live="polite">
+                      Titre enregistré en arrière-plan…
+                    </span>
+                  ) : null}
                 </label>
                 {row.subject ? (
                   <p className="mt-1 truncate text-xs text-muted">Sujet du mail : {row.subject}</p>
@@ -508,6 +575,7 @@ export function EmailIngestInbox({
                   <select
                     className="admin-af-input text-sm"
                     value={selectedBooking[row.id] || ""}
+                    aria-label="Voyage du client"
                     onFocus={() => {
                       if (!options) loadBookings(row.id, customerId, row.suggested_booking_id);
                     }}
@@ -515,8 +583,8 @@ export function EmailIngestInbox({
                       setSelectedBooking((prev) => ({ ...prev, [row.id]: e.target.value }))
                     }
                   >
-                    {!options ? (
-                      <option value="">Charger les voyages…</option>
+                    {!options || loadingBookings ? (
+                      <option value="">{loadingBookings ? "Voyages en cours de chargement…" : "Charger les voyages…"}</option>
                     ) : options.length ? (
                       options.map((b) => (
                         <option key={b.id} value={b.id}>
@@ -572,6 +640,17 @@ export function EmailIngestInbox({
                   <Icon name="add" className="h-4 w-4" />
                   Créer un dossier
                 </button>
+                {row.extract ? (
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    className="admin-tap inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-sm font-medium text-[var(--admin-navy)] disabled:opacity-40"
+                    onClick={() => void rematch(row.id)}
+                  >
+                    <Icon name="sync_alt" className="h-4 w-4" />
+                    Reproposer
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   disabled={isBusy}
@@ -582,6 +661,22 @@ export function EmailIngestInbox({
                   Refuser
                 </button>
               </div>
+              {row.created_booking_id ? (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-white px-3 py-2 text-sm">
+                  <Link href={`/admin/reservations/${row.created_booking_id}`} className="font-semibold text-[var(--admin-navy)] underline">
+                    Dossier créé depuis ce mail
+                  </Link>
+                  <ConfirmAction
+                    size="sm"
+                    tone="danger"
+                    label="Retirer du dossier"
+                    confirmLabel="Retirer"
+                    question="Le mail quitte le dossier. Les cartes qu’il avait remplies sont retirées ; un dossier vide créé par ce mail est supprimé."
+                    disabled={isBusy}
+                    onConfirm={() => detach(row.id)}
+                  />
+                </div>
+              ) : null}
             </div>
 
             <CustomerPickDialog
