@@ -25,6 +25,8 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const password = String(body?.password || "");
   const confirm = String(body?.confirm || "");
+  /** Changement depuis Mon compte › Sécurité : ni bienvenue, ni WhatsApp d’accès, ni cookie de première fois. */
+  const change = body?.change === true;
   if (password.length < MIN_PASSWORD_LENGTH) {
     return jsonError(`Le mot de passe doit contenir au moins ${MIN_PASSWORD_LENGTH} caractères`);
   }
@@ -35,6 +37,7 @@ export async function POST(request: Request) {
     console.error("[client/password]", error.code ?? "?", error.message);
     return jsonError(passwordErrorMessage(error), 400);
   }
+  if (change) return NextResponse.json({ ok: true });
 
   const admin = createServiceClient();
   const { data: fresh } = await admin.auth.admin.getUserById(user.id);

@@ -1,3 +1,4 @@
+import { PasswordChangeForm } from "@/components/account/PasswordChangeForm";
 import { ProfileForm } from "@/components/account/ProfileForm";
 import { ProfileSubnav } from "@/components/account/ProfileSubnav";
 import { EXAMPLE_BASE } from "@/lib/crm/example-session";
@@ -22,6 +23,7 @@ export default function ExampleProfilPage() {
 
       <ProfileSubnav basePath={EXAMPLE_BASE} />
       <ProfileForm customer={session.customer} documents={session.holderDocuments} />
+      <PasswordChangeForm />
     </div>
   );
 }
