@@ -87,6 +87,15 @@ export async function POST(request: Request) {
     .single();
   if (error) return dbError(error, 400);
   const booking = data as CrmBooking;
-  await syncBookingLedger(auth.supabase, booking);
+  try {
+    await syncBookingLedger(auth.supabase, booking);
+  } catch (err) {
+    return jsonError(
+      `Dossier ${reference} créé, mais le grand livre n’a pas pu être mis à jour : ${
+        err instanceof Error ? err.message : "écriture refusée"
+      }`,
+      500
+    );
+  }
   return NextResponse.json({ booking });
 }
