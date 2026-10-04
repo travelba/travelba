@@ -4,8 +4,8 @@ import type { ServiceDeskLine } from "@/lib/crm/service-desk";
 export function ServiceDesk({ lines }: { lines: ServiceDeskLine[] }) {
   if (!lines.length) return null;
   return (
-    <section id="services" className="admin-af-card rounded-3xl p-5">
-      <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Services à confirmer</h2>
+    <section id="services" className="rounded-2xl border border-[var(--border)] bg-white/70 p-4">
+      <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">Services à confirmer</h3>
       <ul className="mt-2 divide-y divide-border text-sm">
         {lines.map((line) => (
           <li key={line.itemId} className="py-3">
