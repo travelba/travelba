@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { manualStayCardBody, manualStayCardDraft, stayCardCanBeShared, stayCardIsManual } from "./manual-stay-card";
+import {
+  bookingCardValidity,
+  manualStayCardBody,
+  manualStayCardDraft,
+  sameCardNameCount,
+  stayCardCanBeShared,
+  stayCardIsManual,
+} from "./manual-stay-card";
 
 test("carte manuelle : euros, prénom et nom, sans plafond ni restriction", () => {
   const body = manualStayCardBody({
@@ -50,6 +57,31 @@ test("carte manuelle : montant et nom obligatoires", () => {
   assert.equal(ready.body.limit.value, 150050);
   assert.equal(ready.body.customFirstName, "Camille");
   assert.equal(ready.body.customLastName, "Martin");
+});
+
+test("une deuxième carte au même nom porte un numéro", () => {
+  const count = sameCardNameCount(
+    [
+      { firstName: "Camille", lastName: "Martin" },
+      { firstName: " camille ", lastName: "martin" },
+    ],
+    "Camille",
+    "Martin"
+  );
+  assert.equal(count, 2);
+  const body = manualStayCardBody({
+    firstName: "Camille",
+    lastName: "Martin",
+    limitCents: 10000,
+    validFrom: "2026-10-04",
+    validTo: "2026-11-07",
+    organizationId: "org",
+    existingCards: count,
+  });
+  assert.equal(body.label, "Camille Martin 3");
+  assert.equal(bookingCardValidity("2026-10-04", "2026-11-04").validTo, "2026-11-07");
+  assert.equal(bookingCardValidity("2026-10-04", null).validTo, "2027-01-02");
+  assert.equal(bookingCardValidity("2026-12-01", "2026-10-01").validTo, "2026-12-01");
 });
 
 test("une carte saisie n’est pas partagée avec un autre hôtel", () => {

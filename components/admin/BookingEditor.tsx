@@ -9,6 +9,7 @@ import {
   isLedgerExpenseKind,
   visibleServiceCopy,
   type CrmBooking,
+  type CrmBookingCard,
   type CrmBookingDocument,
   type CrmBookingItem,
   type CrmBookingTraveler,
@@ -40,6 +41,7 @@ import {
 import { unsplashKeywordMatch } from "@/lib/crm/covers";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
+import { BookingCards } from "@/components/admin/BookingCards";
 import { HotelArrivalPanel } from "@/components/admin/HotelArrivalPanel";
 import { principalGuest } from "@/lib/crm/hotel-arrival";
 import { BookingExpensesPanel } from "@/components/admin/BookingExpensesPanel";
@@ -130,6 +132,7 @@ export function BookingEditor({
   littleEmperors = null,
   expenseBilling = [],
   ledger = null,
+  bookingCards = [],
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -180,6 +183,7 @@ export function BookingEditor({
   } | null;
   expenseBilling?: { id: string; title: string; billing_company_id: string | null }[];
   ledger?: ClientLedgerView | null;
+  bookingCards?: CrmBookingCard[];
 }) {
   const router = useRouter();
   const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
@@ -194,7 +198,7 @@ export function BookingEditor({
   const routeTitle = stayHeadline(booking.title, booking.destination, stayCitiesFromSteps(items));
   const titleShown = titleDraft === titleFromServer ? routeTitle : titleDraft;
   const [coverOpen, setCoverOpen] = useState(false);
-  const [tab, setTab] = useState<"voyage" | "client" | "argent" | "todo" | "interface">("voyage");
+  const [tab, setTab] = useState<"voyage" | "cartes" | "client" | "argent" | "todo" | "interface">("voyage");
   const [more, setMore] = useState(false);
   const [hotelCardOpen, setHotelCardOpen] = useState(false);
   const [coverNotice, setCoverNotice] = useState<string | null>(null);
@@ -573,6 +577,7 @@ export function BookingEditor({
   const hasSteps = items.some((item) => !isLedgerExpenseKind(item.kind));
   const tabs = [
     ["voyage", "Le voyage"],
+    ["cartes", "Carte"],
     ["todo", "À faire"],
     ["argent", "L’argent"],
     ["client", "Le client"],
@@ -1399,6 +1404,15 @@ export function BookingEditor({
         </>
       ) : null}
 
+      {tab === "cartes" ? (
+        <BookingCards
+          bookingId={booking.id}
+          cards={bookingCards}
+          firstName={stayGuest.firstName}
+          lastName={stayGuest.lastName}
+        />
+      ) : null}
+
       {tab === "todo" ? (
         <div className="space-y-6">
           {passportGap.length ? (
@@ -1494,8 +1508,6 @@ export function BookingEditor({
                   items={items}
                   arrivals={arrivals}
                   holder={`${stayGuest.firstName} ${stayGuest.lastName}`.trim()}
-                  guestFirst={stayGuest.firstName}
-                  guestLast={stayGuest.lastName}
                   cardViews={cardViews}
                   bookingStatus={booking.status}
                   currency={booking.currency}
