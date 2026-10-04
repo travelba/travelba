@@ -1,11 +1,11 @@
 import type {
-  CrmBooking,
   CrmBookingDocument,
   CrmBookingItem,
   CrmBookingTraveler,
   CrmCompanion,
   CrmCustomer,
 } from "@/lib/crm/types";
+import type { PublicBooking } from "@/lib/crm/public-booking";
 import { BOOKING_ITEM_LABELS, visibleServiceCopy, type BookingItemKind } from "@/lib/crm/types";
 import { Icon } from "@/components/crm/icons";
 import { BrandMark } from "@/components/crm/BrandMark";
@@ -294,7 +294,7 @@ export function CarnetItinerary({
   partage = null,
   pricesVisible = true,
 }: {
-  booking: CrmBooking;
+  booking: PublicBooking;
   items: CrmBookingItem[];
   docs: CrmBookingDocument[];
   calendarBase?: string | null;

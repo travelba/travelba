@@ -50,6 +50,7 @@ import { loadClientLedger } from "@/lib/crm/client-ledger";
 import { stripePublishableKey } from "@/lib/crm/stripe";
 import { StayExpenses } from "@/components/account/StayExpenses";
 import { isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
+import { toPublicBooking } from "@/lib/crm/public-booking";
 
 type Props = { params: Promise<{ reference: string }> };
 
@@ -70,6 +71,8 @@ export default async function ReservationDetailPage({ params }: Props) {
   if (!booking) notFound();
   const b = booking as CrmBooking;
   if (b.archived_at) notFound();
+  // Composants « use client » : projection publique seulement, jamais la ligne brute (B-16).
+  const pub = toPublicBooking(b);
 
   const [{ data: items }, { data: travelers }, { data: docs }, { data: identityDocs }, { data: companions }, { data: declined }, { data: visaRows }] =
     await Promise.all([
@@ -208,7 +211,7 @@ export default async function ReservationDetailPage({ params }: Props) {
           </Link>
 
           <BookingHero
-            booking={b}
+            booking={pub}
             items={withoutHotelRosterItems((items || []) as CrmBookingItem[])}
             priority
             className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]"
@@ -240,7 +243,7 @@ export default async function ReservationDetailPage({ params }: Props) {
       }
       itinerary={
         <CarnetItinerary
-          booking={b}
+          booking={pub}
           items={visibleItems}
           docs={visibleDocs}
           pricesVisible={b.prices_visible !== false}
@@ -259,7 +262,7 @@ export default async function ReservationDetailPage({ params }: Props) {
       services={
         <ExtrasPanel
           variant="client"
-          booking={b}
+          booking={pub}
           items={visibleItems}
           travelers={party}
           holder={customer}

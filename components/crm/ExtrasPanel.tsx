@@ -22,7 +22,8 @@ import { formatMoney } from "@/lib/crm/money";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { Icon } from "@/components/crm/icons";
 import type { FrenchPassportTrip } from "@/lib/crm/visa-trip";
-import type { CrmBooking, CrmBookingItem, CrmBookingTraveler, CrmCompanion, CrmCustomer } from "@/lib/crm/types";
+import type { PublicBooking } from "@/lib/crm/public-booking";
+import type { CrmBookingItem, CrmBookingTraveler, CrmCompanion, CrmCustomer } from "@/lib/crm/types";
 
 export function ExtrasPanel({
   variant,
@@ -33,7 +34,7 @@ export function ExtrasPanel({
   refusals = [],
 }: {
   variant: "admin" | "client";
-  booking: CrmBooking;
+  booking: PublicBooking;
   items: CrmBookingItem[];
   travelers: CrmBookingTraveler[];
   holder: CrmCustomer;
