@@ -18,6 +18,7 @@ import {
 import { formatDateFr } from "@/lib/crm/money";
 import { appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-extract";
 import { identityForPerson } from "@/lib/crm/passport-assign";
+import { documentNameNotice } from "@/lib/crm/document-identity";
 import type { PersonName } from "@/lib/crm/person-match";
 import { vaultDocumentsForPerson } from "@/lib/crm/trip-documents";
 import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
@@ -119,6 +120,8 @@ export function PersonPassportCard({
   const router = useRouter();
   const vault = vaultDocumentsForPerson(documents, companionId);
   const [scan, setScan] = useState<ScanResult | null>(null);
+  /** Client : la pièce lue attend « Confirmer » avant d’être enregistrée et appliquée au profil. */
+  const [pending, setPending] = useState<ScanResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -130,12 +133,16 @@ export function PersonPassportCard({
     variant === "admin" ? "/api/admin/travel-documents/scan" : "/api/client/documents/scan";
   const expired = vault.find((doc) => documentExpiryWarning(doc.expires_on));
 
-  async function persistScan(result: ScanResult) {
-    if (!result.file) return;
-    if (variant === "admin" && !customerId) return;
+  function wouldPersist(result: ScanResult) {
+    if (!result.file) return false;
+    if (variant === "admin" && !customerId) return false;
     const identities = listedIdentities(result.identity, result.identities);
-    const importParty = persist || identities.length > 1;
-    if (!importParty || !identities.length) return;
+    return (persist || identities.length > 1) && identities.length > 0;
+  }
+
+  async function persistScan(result: ScanResult) {
+    if (!wouldPersist(result)) return;
+    const identities = listedIdentities(result.identity, result.identities);
     setBusy(true);
     setError(null);
     setNotice(null);
@@ -170,16 +177,56 @@ export function PersonPassportCard({
     router.refresh();
   }
 
-  function handleResult(result: ScanResult) {
-    setScan(result);
+  function shareIdentity(result: ScanResult) {
     const identities = listedIdentities(result.identity, result.identities);
     if (!(identities.length > 1 && !persist)) {
       const mine = identityForPerson(identities, person);
       if (mine) onIdentity?.(mine);
     }
+  }
+
+  function handleResult(result: ScanResult) {
+    setScan(result);
+    setPending(null);
+    if (variant === "client" && wouldPersist(result)) {
+      // Rien n’est écrit tant que le client n’a pas confirmé que c’est bien sa pièce.
+      setPending(result);
+      onScan?.(result);
+      return;
+    }
+    shareIdentity(result);
     onScan?.(result);
     void persistScan(result);
   }
+
+  function confirmPending() {
+    const result = pending;
+    if (!result) return;
+    setPending(null);
+    shareIdentity(result);
+    void persistScan(result);
+  }
+
+  function cancelPending() {
+    setPending(null);
+    setScan(null);
+  }
+
+  const pendingIdentities = pending ? listedIdentities(pending.identity, pending.identities) : [];
+  const pendingMine = pending ? identityForPerson(pendingIdentities, person) : null;
+  const pendingNotice =
+    pending && pendingIdentities.length === 1
+      ? documentNameNotice(pendingMine || pendingIdentities[0], person, {
+          applyIdentity: true,
+          isHolder: !companionId,
+        })
+      : null;
+  const pendingQuestion =
+    pendingIdentities.length > 1
+      ? `Importer ces ${pendingIdentities.length} passeports ?`
+      : companionId
+        ? `C’est bien la pièce de ${person?.first_name || "ce voyageur"} ?`
+        : "C’est bien votre pièce ?";
 
   async function remove(id: string) {
     setBusy(true);
@@ -270,12 +317,14 @@ export function PersonPassportCard({
 
       {adding || !vault.length ? (
         <>
-          <IdentityScan
-            compact
-            endpoint={scanEndpoint}
-            title={busy ? "Enregistrement…" : "Photo ou PDF du passeport"}
-            onResult={handleResult}
-          />
+          {pending ? null : (
+            <IdentityScan
+              compact
+              endpoint={scanEndpoint}
+              title={busy ? "Enregistrement…" : "Photo ou PDF du passeport"}
+              onResult={handleResult}
+            />
+          )}
           {scan ? (
             <ScanStatus
               identity={scan.identity}
@@ -289,19 +338,54 @@ export function PersonPassportCard({
                 type="button"
                 onClick={() => setScanOpen((value) => !value)}
                 className="flex w-full items-center justify-between gap-2 text-left text-sm font-semibold text-[var(--admin-navy)]"
-                aria-expanded={scanOpen}
+                aria-expanded={pending ? true : scanOpen}
               >
                 <span className="truncate">{passportCompactLabel(identity)}</span>
-                <ChevronDown className={`h-4 w-4 shrink-0 transition ${scanOpen ? "rotate-180" : ""}`} />
+                <ChevronDown className={`h-4 w-4 shrink-0 transition ${pending || scanOpen ? "rotate-180" : ""}`} />
               </button>
-              {scanOpen ? (
+              {pending || scanOpen ? (
                 <div className="mt-2">
                   <PassportDetails source={identity} />
                 </div>
               ) : null}
             </div>
           ))}
-          {vault.length ? (
+          {pending ? (
+            <div
+              className="space-y-3 rounded-xl border border-[var(--admin-gold)]/50 bg-white/90 p-3"
+              role="group"
+              aria-label={pendingQuestion}
+            >
+              <p className="text-sm font-semibold text-[var(--admin-navy)]">{pendingQuestion}</p>
+              {pendingIdentities.length > 1 ? (
+                <p className="text-xs text-muted">Chaque personne inconnue du foyer devient un accompagnateur.</p>
+              ) : null}
+              {pendingNotice ? (
+                <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
+                  {pendingNotice}
+                </p>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={confirmPending}
+                  disabled={busy}
+                  className="admin-af-btn inline-flex min-h-11 flex-1 items-center justify-center rounded-full px-4 text-sm"
+                >
+                  Confirmer
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelPending}
+                  disabled={busy}
+                  className="inline-flex min-h-11 flex-1 items-center justify-center rounded-full border border-[var(--border)] bg-white px-4 text-sm font-semibold text-[var(--admin-navy)]"
+                >
+                  Annuler
+                </button>
+              </div>
+            </div>
+          ) : null}
+          {vault.length && !pending ? (
             <button
               type="button"
               disabled={busy}

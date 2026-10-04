@@ -6,7 +6,7 @@ import { ChevronDown } from "lucide-react";
 import type { CrmCustomer, CrmTravelDocument } from "@/lib/crm/types";
 import { resolveCountryCode } from "@/lib/crm/countries";
 import { identityNationalityFromSources, nationalityFromIdentity } from "@/lib/crm/document-identity";
-import { identityOverwriteWarning, type ExtractedIdentity } from "@/lib/crm/identity";
+import { identityAppliedNotice, type ExtractedIdentity } from "@/lib/crm/identity";
 import { loyaltyFromCustomer, type LoyaltyMap } from "@/lib/crm/loyalty";
 import { formatDateFr } from "@/lib/crm/money";
 import { vaultDocumentsForPerson } from "@/lib/crm/trip-documents";
@@ -90,7 +90,8 @@ export function ProfileForm({
   const [openLoyalty, setOpenLoyalty] = useState(false);
 
   function applyIdentity(id: ExtractedIdentity) {
-    const warn = identityOverwriteWarning({ first_name: firstName, last_name: lastName }, id);
+    // Appelé après « Confirmer » : la pièce est enregistrée et le profil suit.
+    const warn = identityAppliedNotice({ first_name: firstName, last_name: lastName }, id);
     setNameWarn(warn);
     if (id.first_name) setFirstName(id.first_name);
     if (id.last_name) setLastName(id.last_name);

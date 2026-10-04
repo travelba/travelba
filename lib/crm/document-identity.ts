@@ -1,5 +1,6 @@
 import { resolveNationality } from "./countries";
-import { emptyToNull } from "./identity";
+import { emptyToNull, identityOverwriteWarning } from "./identity";
+import { foldName, matchTravelerToParty, namesReferToSamePerson, type PersonName } from "./person-match";
 
 export type DocumentIdentityFields = {
   first_name: string | null;
@@ -90,4 +91,60 @@ export function documentHolderName(
     }
   }
   return [customer.first_name, customer.last_name].filter(Boolean).join(" ").trim();
+}
+
+export type DocumentTarget = {
+  /** `""` = le titulaire, sinon l’id du compagnon. */
+  companionId: string;
+  applyIdentity: boolean;
+  /** Nom lu qui ne correspond à personne du foyer : la pièce entre au coffre sans toucher le profil. */
+  mismatch: string | null;
+};
+
+function readName(person: PersonName | null | undefined) {
+  return [person?.first_name, person?.last_name].filter(Boolean).join(" ").trim();
+}
+
+/**
+ * Présélection « Pour qui » d’après le nom lu sur la pièce.
+ * Compagnon reconnu → sa fiche. Titulaire reconnu, ou titulaire encore sans nom → « Moi ».
+ * Inconnu → « Moi » mais sans report d’identité : le passeport d’un proche ne renomme pas le titulaire.
+ */
+export function preselectDocumentTarget(
+  identity: PersonName | null | undefined,
+  holder: PersonName,
+  companions: (PersonName & { id: string })[]
+): DocumentTarget {
+  const read = readName(identity);
+  if (!identity || !read) return { companionId: "", applyIdentity: true, mismatch: null };
+  const holderNamed = Boolean(foldName(holder.first_name) || foldName(holder.last_name));
+  if (!holderNamed) return { companionId: "", applyIdentity: true, mismatch: null };
+  const match = matchTravelerToParty(identity, holder, companions);
+  if (match?.kind === "companion") return { companionId: match.id, applyIdentity: true, mismatch: null };
+  if (match?.kind === "holder" || namesReferToSamePerson(identity, holder)) {
+    return { companionId: "", applyIdentity: true, mismatch: null };
+  }
+  return { companionId: "", applyIdentity: false, mismatch: read };
+}
+
+/**
+ * Message sous le scan, selon la personne choisie et la case « Reporter … sur le profil ».
+ * Report coché et nom différent → « seront mis à jour ». Report décoché et inconnu → la pièce
+ * entre au coffre sans modifier la fiche. Même personne → rien.
+ */
+export function documentNameNotice(
+  identity: PersonName | null | undefined,
+  target: PersonName | null | undefined,
+  opts: { applyIdentity: boolean; isHolder: boolean }
+): string | null {
+  const read = readName(identity);
+  if (!identity || !target || !read) return null;
+  const current = readName(target);
+  if (!current) return null;
+  if (opts.applyIdentity) return identityOverwriteWarning(target, identity);
+  if (namesReferToSamePerson(identity, target)) return null;
+  if (opts.isHolder) {
+    return `Le nom lu (${read}) diffère du vôtre : la pièce sera ajoutée au coffre sans modifier votre profil.`;
+  }
+  return `Le nom lu (${read}) diffère de celui de ${current} : la pièce sera ajoutée au coffre sans modifier sa fiche.`;
 }
