@@ -20,6 +20,7 @@ import {
 import { type ScanResult } from "@/components/crm/IdentityScan";
 import { PersonPassportCard } from "@/components/crm/PersonPassportCard";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
 
 function CompanionPhoneEditor({ companion }: { companion: CrmCompanion }) {
   const router = useRouter();
@@ -180,8 +181,13 @@ export function CompanionsManager({
   }
 
   async function remove(id: string) {
-    await fetch(`/api/client/companions?id=${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/client/companions?id=${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const json = (await res.json().catch(() => null)) as { error?: string } | null;
+      return { ok: false, error: json?.error || "Impossible de retirer ce voyageur. Réessayez ou écrivez à l’agence." };
+    }
     router.refresh();
+    return { ok: true };
   }
 
   return (
@@ -196,9 +202,10 @@ export function CompanionsManager({
           const doc = primaryIdentityDoc(documentsForPerson(documents, c.id));
           const expanded = expandedId === c.id;
           const piece = doc?.number ? `n° ${doc.number}` : "Pièce à joindre";
+          const pieces = documentsForPerson(documents, c.id).length;
           return (
             <li key={c.id} className="admin-af-card rounded-2xl px-4 py-3">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setExpandedId(expanded ? null : c.id)}
@@ -212,9 +219,19 @@ export function CompanionsManager({
                     {[relationshipLabel(c.relationship), piece].filter(Boolean).join(" · ")}
                   </p>
                 </button>
-                <button type="button" onClick={() => remove(c.id)} className="shrink-0 text-xs font-semibold text-accent">
-                  Retirer
-                </button>
+                <ConfirmAction
+                  label="Retirer"
+                  question={`Retirer ${c.first_name || "ce voyageur"} et ses pièces ?`}
+                  hint={
+                    pieces
+                      ? `${pieces} pièce${pieces > 1 ? "s" : ""} d’identité ser${pieces > 1 ? "ont" : "a"} supprimée${pieces > 1 ? "s" : ""} avec la fiche.`
+                      : null
+                  }
+                  confirmLabel="Retirer"
+                  busyLabel="Suppression…"
+                  className="inline-flex min-h-11 shrink-0 items-center px-2 text-xs font-semibold text-accent"
+                  onConfirm={() => remove(c.id)}
+                />
               </div>
               {expanded ? (
                 <div className="mt-3 space-y-3">

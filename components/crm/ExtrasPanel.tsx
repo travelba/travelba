@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CLIENT_PREVIEW_NOTE, useClientPreview } from "@/components/account/client-preview";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { IssuesList } from "@/components/crm/IssuesList";
-import { issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
+import { issuesFromResponse, issuesSummary, type BookingIssue } from "@/lib/crm/booking-issues";
 import {
   bookingHasFlight,
   checkinProposed,
@@ -23,6 +24,12 @@ import { BusyBar } from "@/components/crm/BusyBar";
 import { Icon } from "@/components/crm/icons";
 import type { FrenchPassportTrip } from "@/lib/crm/visa-trip";
 import type { CrmBooking, CrmBookingItem, CrmBookingTraveler, CrmCompanion, CrmCustomer } from "@/lib/crm/types";
+
+const PRIMARY_BTN =
+  "inline-flex min-h-11 items-center justify-center rounded-full bg-[var(--admin-navy)] px-4 text-sm font-semibold text-white disabled:opacity-50";
+const SECONDARY_BTN =
+  "inline-flex min-h-11 items-center justify-center rounded-full border border-[var(--border)] bg-white px-4 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50";
+const LINK_BTN = "inline-flex min-h-11 items-center px-2 text-sm font-semibold text-muted";
 
 export function ExtrasPanel({
   variant,
@@ -46,11 +53,28 @@ export function ExtrasPanel({
   const preview = useClientPreview();
   const [busy, setBusy] = useState<string | null>(null);
   const [hidden, setHidden] = useState<string[]>([]);
+  /** « Valider » ouvre le récapitulatif de ce service ; la demande part à « Confirmer la demande ». */
+  const [review, setReview] = useState<"checkin" | "visa" | null>(null);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
   if (!bookingHasFlight(items)) return null;
   const isAdmin = variant === "admin";
   const pricesVisible = isAdmin || booking.prices_visible !== false;
   const passengers = Math.max(1, travelers.length || formalities?.passengers || 1);
+
+  async function post(url: string, body: Record<string, unknown>) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) return { ok: false as const, issues: issuesFromResponse(json) };
+      return { ok: true as const, issues: [] as BookingIssue[] };
+    } catch {
+      return { ok: false as const, issues: [{ field: "network", message: "Connexion interrompue. Réessayez." }] };
+    }
+  }
 
   async function request(kind: "checkin" | "visa") {
     if (preview) {
@@ -63,40 +87,25 @@ export function ExtrasPanel({
       variant === "admin"
         ? `/api/admin/bookings/${booking.id}/extras`
         : `/api/client/bookings/${booking.reference}/extras`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind }),
-    });
-    const json = await res.json().catch(() => ({}));
+    const result = await post(url, { kind });
     setBusy(null);
-    if (!res.ok) {
-      setIssues(issuesFromResponse(json));
+    if (!result.ok) {
+      setIssues(result.issues);
       return;
     }
+    setReview(null);
     router.refresh();
   }
 
   async function refuse(kind: "checkin" | "visa") {
-    if (isAdmin || busy) return;
-    if (preview) {
-      setIssues([{ field: "preview", message: CLIENT_PREVIEW_NOTE }]);
-      return;
-    }
-    setHidden((current) => (current.includes(kind) ? current : [...current, kind]));
+    if (isAdmin || busy) return { ok: false, error: "Cette proposition ne peut plus être masquée." };
+    if (preview) return { ok: false, error: CLIENT_PREVIEW_NOTE };
     setIssues([]);
-    const res = await fetch(`/api/client/bookings/${booking.reference}/extras`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ decline: true, kind }),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setHidden((current) => current.filter((row) => row !== kind));
-      setIssues(issuesFromResponse(json));
-      return;
-    }
+    const result = await post(`/api/client/bookings/${booking.reference}/extras`, { decline: true, kind });
+    if (!result.ok) return { ok: false, error: issuesSummary(result.issues) || "La proposition n’a pas pu être masquée." };
+    setHidden((current) => (current.includes(kind) ? current : [...current, kind]));
     router.refresh();
+    return { ok: true };
   }
 
   async function confirmCheckin(itemId: string) {
@@ -159,23 +168,26 @@ export function ExtrasPanel({
     const pending =
       busy === input.kind ||
       (input.existing && (busy === `cancel:${input.existing.id}` || busy === `confirm:${input.existing.id}`));
+    const reviewing = review === input.kind && !input.existing;
     const refuseButton =
-      !input.existing && !isAdmin ? (
-        <button
-          type="button"
-          onClick={() => void refuse(input.kind)}
-          className="inline-flex h-5 items-center text-[11px] font-semibold leading-none text-muted"
-        >
-          Refuser
-        </button>
+      !input.existing && !isAdmin && !reviewing ? (
+        <ConfirmAction
+          label="Refuser"
+          question="Masquer cette proposition ?"
+          hint="Elle ne sera plus affichée pour ce séjour. L’agence reste joignable pour la rouvrir."
+          confirmLabel="Masquer"
+          className={LINK_BTN}
+          confirmClassName={PRIMARY_BTN}
+          onConfirm={() => refuse(input.kind)}
+        />
       ) : null;
     const validate = input.existing ? (
       confirmed ? null : (
-        <span className="inline-flex items-center gap-2">
+        <span className="flex flex-wrap items-center justify-end gap-2">
           {isAdmin && input.kind === "checkin" ? (
             <button
               type="button"
-              className="inline-flex h-5 items-center justify-center rounded-full bg-[var(--admin-navy)] px-2.5 text-[11px] font-semibold leading-none text-white disabled:opacity-50"
+              className={PRIMARY_BTN}
               disabled={busy !== null}
               onClick={() => void confirmCheckin(input.existing!.id)}
             >
@@ -184,7 +196,7 @@ export function ExtrasPanel({
           ) : null}
           <button
             type="button"
-            className="inline-flex h-5 items-center justify-center rounded-full bg-[var(--admin-navy)] px-2.5 text-[11px] font-semibold leading-none text-white disabled:opacity-50"
+            className={SECONDARY_BTN}
             disabled={busy !== null}
             onClick={() => void cancel(input.kind, input.existing!.id)}
           >
@@ -192,14 +204,17 @@ export function ExtrasPanel({
           </button>
         </span>
       )
-    ) : (
+    ) : reviewing ? null : (
       <button
         type="button"
         disabled={busy !== null}
-        onClick={() => void request(input.kind)}
-        className="inline-flex h-5 items-center justify-center rounded-full bg-[var(--admin-navy)] px-2.5 text-[11px] font-semibold leading-none text-white disabled:opacity-50"
+        onClick={() => {
+          setIssues([]);
+          setReview(input.kind);
+        }}
+        className={PRIMARY_BTN}
       >
-        {busy === input.kind ? "…" : "Valider"}
+        Valider
       </button>
     );
 
@@ -212,32 +227,77 @@ export function ExtrasPanel({
             : "w-full min-w-0 overflow-hidden rounded-2xl border border-dashed border-[var(--admin-gold)] bg-[#faf9f6]"
         }
       >
-        <div className="flex min-w-0 items-start gap-3 overflow-hidden px-3.5 py-3">
+        <div className="flex min-w-0 items-start gap-3 overflow-hidden px-3.5 pt-3">
           <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--admin-peach)] text-[var(--admin-navy)]">
             <Icon name={input.icon} className="h-5 w-5" />
           </span>
           <div className="min-w-0 flex-1 overflow-hidden">
             <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--aura-blue)]">{input.title}</p>
             <p className="break-words text-sm font-semibold leading-snug text-[var(--admin-navy)]">{input.note}</p>
-            <p className="truncate text-xs text-muted" title={subtitle}>
-              {subtitle}
-            </p>
-            <p className="mt-1 flex items-center justify-between gap-2 sm:hidden">
-              <span className="text-sm font-bold text-[var(--admin-navy)]">{priceLabel}</span>
-              <span className="inline-flex items-center gap-2">
-                {refuseButton}
-                {validate}
-              </span>
-            </p>
+            <p className="break-words text-xs text-muted">{subtitle}</p>
           </div>
-          <div className="hidden shrink-0 items-start gap-2 sm:flex">
-            <p className="max-w-[7.5rem] text-right text-sm font-bold leading-snug text-[var(--admin-navy)]">{priceLabel}</p>
-            <span className="inline-flex items-center gap-2">
+        </div>
+        {reviewing ? null : (
+          <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 pb-3 pt-2">
+            <span className="text-sm font-bold text-[var(--admin-navy)]">{priceLabel}</span>
+            <span className="flex flex-wrap items-center justify-end gap-2">
               {refuseButton}
               {validate}
             </span>
           </div>
-        </div>
+        )}
+        {reviewing ? (
+          <div
+            className="mx-3.5 mb-3 mt-2 space-y-3 rounded-xl border border-[var(--admin-gold)]/50 bg-white p-3"
+            role="group"
+            aria-label="Récapitulatif de la demande"
+            aria-live="polite"
+          >
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+              Récapitulatif de la demande
+            </p>
+            <dl className="grid gap-x-4 gap-y-1.5 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="text-[10px] font-bold uppercase tracking-wide text-muted">Prestation</dt>
+                <dd className="font-medium text-[var(--admin-navy)]">{input.title}</dd>
+              </div>
+              <div>
+                <dt className="text-[10px] font-bold uppercase tracking-wide text-muted">Passagers</dt>
+                <dd className="font-medium text-[var(--admin-navy)]">
+                  {input.count} passager{input.count > 1 ? "s" : ""} · {input.note}
+                </dd>
+              </div>
+              <div className="sm:col-span-2">
+                <dt className="text-[10px] font-bold uppercase tracking-wide text-muted">Prix</dt>
+                <dd className="font-bold text-[var(--admin-navy)]">{priceLabel}</dd>
+              </div>
+            </dl>
+            {pricesVisible ? null : (
+              <p className="text-xs text-muted">Le prix est communiqué par l’agence à la publication du séjour.</p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={() => void request(input.kind)}
+                className={`${PRIMARY_BTN} flex-1`}
+              >
+                {busy === input.kind ? "Envoi…" : "Confirmer la demande"}
+              </button>
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={() => {
+                  setIssues([]);
+                  setReview(null);
+                }}
+                className={`${SECONDARY_BTN} flex-1`}
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        ) : null}
         {pending ? (
           <div className="px-3.5 pb-3">
             <BusyBar
@@ -246,7 +306,7 @@ export function ExtrasPanel({
                   ? "Annulation…"
                   : busy?.startsWith("confirm")
                     ? "Confirmation…"
-                    : "Validation…"
+                    : "Envoi de la demande…"
               }
             />
           </div>

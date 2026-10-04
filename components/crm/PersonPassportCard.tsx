@@ -23,6 +23,7 @@ import type { PersonName } from "@/lib/crm/person-match";
 import { vaultDocumentsForPerson } from "@/lib/crm/trip-documents";
 import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
 import { identityPreview } from "@/lib/crm/preview-files";
 import { StatusChip } from "@/components/crm/ui";
@@ -231,14 +232,23 @@ export function PersonPassportCard({
   async function remove(id: string) {
     setBusy(true);
     setError(null);
-    const res = await fetch(`${endpoint}?id=${id}`, { method: "DELETE" });
-    setBusy(false);
-    if (!res.ok) {
-      const json = await res.json().catch(() => ({}));
-      setError(json.error || "Suppression impossible");
-      return;
+    try {
+      const res = await fetch(`${endpoint}?id=${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        const message = json.error || "Suppression impossible";
+        if (variant === "admin") setError(message);
+        return { ok: false, error: message };
+      }
+      router.refresh();
+      return { ok: true };
+    } catch {
+      const message = "Connexion interrompue. Réessayez.";
+      if (variant === "admin") setError(message);
+      return { ok: false, error: message };
+    } finally {
+      setBusy(false);
     }
-    router.refresh();
   }
 
   return (
@@ -301,14 +311,27 @@ export function PersonPassportCard({
                     }
                   />
                 ) : null}
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void remove(current.id)}
-                  className="text-xs font-semibold text-accent underline"
-                >
-                  Retirer
-                </button>
+                {variant === "client" ? (
+                  <ConfirmAction
+                    label="Retirer"
+                    question="Retirer cette pièce ?"
+                    hint="Le fichier est supprimé du coffre. Le profil n’est pas modifié."
+                    confirmLabel="Retirer"
+                    busyLabel="Suppression…"
+                    disabled={busy}
+                    className="inline-flex min-h-11 items-center text-xs font-semibold text-accent underline"
+                    onConfirm={() => remove(current.id)}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void remove(current.id)}
+                    className="text-xs font-semibold text-accent underline"
+                  >
+                    Retirer
+                  </button>
+                )}
               </>
             ) : null}
           </div>
