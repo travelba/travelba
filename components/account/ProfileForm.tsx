@@ -7,6 +7,7 @@ import type { CrmCustomer, CrmTravelDocument } from "@/lib/crm/types";
 import { resolveCountryCode } from "@/lib/crm/countries";
 import { identityNationalityFromSources, nationalityFromIdentity } from "@/lib/crm/document-identity";
 import { identityAppliedNotice, type ExtractedIdentity } from "@/lib/crm/identity";
+import { postJson } from "@/lib/crm/client-fetch";
 import { loyaltyFromCustomer, type LoyaltyMap } from "@/lib/crm/loyalty";
 import { formatDateFr } from "@/lib/crm/money";
 import { vaultDocumentsForPerson } from "@/lib/crm/trip-documents";
@@ -107,35 +108,36 @@ export function ProfileForm({
     setSaving(true);
     setError(null);
     setSaved(false);
-    const res = await fetch("/api/client/profile", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        first_name: firstName,
-        last_name: lastName,
-        usage_name: usageName,
-        birth_date: birthDate,
-        sex,
-        nationality,
-        phone,
-        phone_secondary: phoneSecondary,
-        address_line: addressLine,
-        postal_code: postalCode,
-        city,
-        country,
-        loyalty,
-        flying_blue: loyalty.flying_blue,
-      }),
-    });
-    const json = await res.json();
-    if (!res.ok) {
+    try {
+      const result = await postJson(
+        "/api/client/profile",
+        {
+          first_name: firstName,
+          last_name: lastName,
+          usage_name: usageName,
+          birth_date: birthDate,
+          sex,
+          nationality,
+          phone,
+          phone_secondary: phoneSecondary,
+          address_line: addressLine,
+          postal_code: postalCode,
+          city,
+          country,
+          loyalty,
+          flying_blue: loyalty.flying_blue,
+        },
+        { method: "PATCH" }
+      );
+      if (!result.ok) {
+        setError(result.error || "Impossible d’enregistrer votre fiche. Réessayez ou écrivez à l’agence.");
+        return;
+      }
+      setSaved(true);
+      router.refresh();
+    } finally {
       setSaving(false);
-      setError(json.error || "Erreur");
-      return;
     }
-    setSaving(false);
-    setSaved(true);
-    router.refresh();
   }
 
   const identitySummary =

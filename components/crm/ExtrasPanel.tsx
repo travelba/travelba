@@ -6,6 +6,7 @@ import { CLIENT_PREVIEW_NOTE, useClientPreview } from "@/components/account/clie
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { IssuesList } from "@/components/crm/IssuesList";
 import { issuesFromResponse, issuesSummary, type BookingIssue } from "@/lib/crm/booking-issues";
+import { deleteJson, postJson, type ClientResult } from "@/lib/crm/client-fetch";
 import {
   bookingHasFlight,
   checkinProposed,
@@ -61,19 +62,17 @@ export function ExtrasPanel({
   const pricesVisible = isAdmin || booking.prices_visible !== false;
   const passengers = Math.max(1, travelers.length || formalities?.passengers || 1);
 
+  function outcome(result: ClientResult<{ error?: string; issues?: BookingIssue[] }>) {
+    if (result.ok) return { ok: true as const, issues: [] as BookingIssue[] };
+    const issues = issuesFromResponse(result.data || {});
+    return {
+      ok: false as const,
+      issues: issues.length ? issues : [{ field: "form", message: result.error || "La demande n’a pas abouti. Réessayez." }],
+    };
+  }
+
   async function post(url: string, body: Record<string, unknown>) {
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) return { ok: false as const, issues: issuesFromResponse(json) };
-      return { ok: true as const, issues: [] as BookingIssue[] };
-    } catch {
-      return { ok: false as const, issues: [{ field: "network", message: "Connexion interrompue. Réessayez." }] };
-    }
+    return outcome(await postJson<{ error?: string; issues?: BookingIssue[] }>(url, body));
   }
 
   async function request(kind: "checkin" | "visa") {
@@ -87,14 +86,17 @@ export function ExtrasPanel({
       variant === "admin"
         ? `/api/admin/bookings/${booking.id}/extras`
         : `/api/client/bookings/${booking.reference}/extras`;
-    const result = await post(url, { kind });
-    setBusy(null);
-    if (!result.ok) {
-      setIssues(result.issues);
-      return;
+    try {
+      const result = await post(url, { kind });
+      if (!result.ok) {
+        setIssues(result.issues);
+        return;
+      }
+      setReview(null);
+      router.refresh();
+    } finally {
+      setBusy(null);
     }
-    setReview(null);
-    router.refresh();
   }
 
   async function refuse(kind: "checkin" | "visa") {
@@ -112,18 +114,16 @@ export function ExtrasPanel({
     if (!isAdmin || busy) return;
     setBusy(`confirm:${itemId}`);
     setIssues([]);
-    const res = await fetch(`/api/admin/bookings/${booking.id}/extras`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ confirm: true, kind: "checkin" }),
-    });
-    const json = await res.json().catch(() => ({}));
-    setBusy(null);
-    if (!res.ok) {
-      setIssues(issuesFromResponse(json));
-      return;
+    try {
+      const result = await post(`/api/admin/bookings/${booking.id}/extras`, { confirm: true, kind: "checkin" });
+      if (!result.ok) {
+        setIssues(result.issues);
+        return;
+      }
+      router.refresh();
+    } finally {
+      setBusy(null);
     }
-    router.refresh();
   }
 
   async function cancel(kind: "checkin" | "visa", itemId: string) {
@@ -134,22 +134,26 @@ export function ExtrasPanel({
     }
     setBusy(`cancel:${itemId}`);
     setIssues([]);
-    const res = isAdmin && kind !== "checkin"
-      ? await fetch(`/api/admin/bookings/${booking.id}/items?itemId=${encodeURIComponent(itemId)}`, {
-          method: "DELETE",
-        })
-      : await fetch(isAdmin ? `/api/admin/bookings/${booking.id}/extras` : `/api/client/bookings/${booking.reference}/extras`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ cancel: true, kind }),
-        });
-    const json = await res.json().catch(() => ({}));
-    setBusy(null);
-    if (!res.ok) {
-      setIssues(issuesFromResponse(json));
-      return;
+    try {
+      const result =
+        isAdmin && kind !== "checkin"
+          ? outcome(
+              await deleteJson<{ error?: string; issues?: BookingIssue[] }>(
+                `/api/admin/bookings/${booking.id}/items?itemId=${encodeURIComponent(itemId)}`
+              )
+            )
+          : await post(
+              isAdmin ? `/api/admin/bookings/${booking.id}/extras` : `/api/client/bookings/${booking.reference}/extras`,
+              { cancel: true, kind }
+            );
+      if (!result.ok) {
+        setIssues(result.issues);
+        return;
+      }
+      router.refresh();
+    } finally {
+      setBusy(null);
     }
-    router.refresh();
   }
 
   function serviceCard(input: {
