@@ -2,6 +2,7 @@ import { siteConfig } from "@/lib/site";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { getSessionUser, getStaffForUser } from "@/lib/crm/auth";
 import { adminBadges, EMPTY_ADMIN_BADGES } from "@/lib/crm/admin-badges";
+import { exampleSessionEnabled } from "@/lib/crm/example-session";
 
 export const metadata = {
   title: `Admin — ${siteConfig.shortName}`,
@@ -24,8 +25,10 @@ export default async function AdminLayout({
         unmatchedCount={badges.revolut}
         emailCount={badges.emails}
         leCount={badges.le}
+        pieceCount={badges.pieces}
         staffName={staff?.full_name || ""}
         staffRole={staff?.role}
+        showExample={exampleSessionEnabled()}
       >
         {children}
       </AdminNav>

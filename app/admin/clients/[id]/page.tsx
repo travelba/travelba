@@ -280,7 +280,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-display text-lg font-bold">Réservations</h2>
           <Link
-            href="/admin/reservations"
+            href="/admin/reservations/nouveau"
             className="text-xs font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline"
           >
             Nouveau dossier
@@ -326,7 +326,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
           </ul>
         ) : (
           <p className="mt-2 text-sm text-muted">
-            Aucun dossier pour ce client. Importez ses confirmations depuis Réservations.
+            Aucun dossier pour ce client. Importez ses confirmations depuis Nouveau dossier.
           </p>
         )}
         {archivedBookings.length ? (

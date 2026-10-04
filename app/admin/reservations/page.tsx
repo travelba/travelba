@@ -1,10 +1,9 @@
-import { NewBookingForm } from "@/components/admin/NewBookingForm";
+import Link from "next/link";
 import { BookingsTable } from "@/components/admin/BookingsTable";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { loadStayMaps } from "@/lib/crm/carnet-query";
 import { loadDisplayedStayAmounts } from "@/lib/crm/displayed-stay";
-import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 import type { CrmBooking } from "@/lib/crm/types";
 import { CUSTOMER_NAME_SELECT, type CustomerNameRow } from "@/lib/crm/customer-search";
 import {
@@ -64,12 +63,11 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
   const order = BOOKING_SORTS[sort];
   const listQuery = supabase.from("crm_bookings").select("*", { count: "exact" });
   const archivedCountQuery = supabase.from("crm_bookings").select("id", { count: "exact", head: true });
-  const [{ data: bookings, count }, { data: companies }, hiddenArchived] = await Promise.all([
+  const [{ data: bookings, count }, hiddenArchived] = await Promise.all([
     (applyFilters(listQuery as unknown as FilterableQuery, state === "archive") as unknown as typeof listQuery)
       .order(order.column, { ascending: order.ascending, nullsFirst: false })
       .order("created_at", { ascending: false })
       .range(from, to),
-    supabase.from("crm_billing_companies").select("id, customer_id, company_name, sort_order").order("sort_order"),
     pattern && state !== "archive"
       ? (applyFilters(archivedCountQuery as unknown as FilterableQuery, true) as unknown as typeof archivedCountQuery)
       : Promise.resolve({ count: 0 }),
@@ -93,18 +91,12 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
       <PageTitle
         title="Réservations"
         subtitle="Enregistrez le dossier, puis montrez-le au client. Enregistrer ne le rend pas visible."
+        actions={
+          <Link href="/admin/reservations/nouveau" className="admin-af-btn admin-tap inline-flex items-center rounded-xl px-4 py-2.5 text-sm">
+            + Nouveau dossier
+          </Link>
+        }
       />
-      <div className="mt-6">
-        <NewBookingForm
-          companies={(companies || []) as {
-            id: string;
-            customer_id: string;
-            company_name: string | null;
-            sort_order: number;
-          }[]}
-          aiConfigured={aiGatewayConfigured()}
-        />
-      </div>
       <BookingsTable
         bookings={rows}
         customers={(customers || []) as CustomerNameRow[]}
