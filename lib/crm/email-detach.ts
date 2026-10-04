@@ -7,11 +7,13 @@ export const EMAIL_DETACH_MARGIN_MS = 10 * 60 * 1000;
 export const IMPORT_QUOTE_NOTE = "Devis importé — tarifs non bloqués, à confirmer.";
 export const IMPORT_DOCUMENTS_NOTE = "Dossier créé par lecture de documents.";
 export const IMPORT_AGENCY_NOTE = "Dossier créé par l’agence.";
+export const IMPORT_AUTO_NOTE = "Dossier créé automatiquement depuis un mail fournisseur.";
 
 export const IMPORT_CREATED_BOOKING_NOTES = [
   IMPORT_QUOTE_NOTE,
   IMPORT_DOCUMENTS_NOTE,
   IMPORT_AGENCY_NOTE,
+  IMPORT_AUTO_NOTE,
 ] as const;
 
 const BLOCKED_MESSAGE =
