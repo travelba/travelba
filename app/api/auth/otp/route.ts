@@ -5,7 +5,7 @@ import { siteConfig } from "@/lib/site";
 import { agencyEmailHtml } from "@/lib/crm/email-html";
 import { connexionMessage, greetingForWhatsapp, sendConnexionWhatsapp } from "@/lib/crm/whatsapp";
 import { createEntryLink } from "@/lib/crm/entry-link";
-import { agencyCopyCc } from "@/lib/crm/outbound-mail";
+import { tokenMailCc } from "@/lib/crm/outbound-mail";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 
 export const runtime = "nodejs";
@@ -105,7 +105,7 @@ export async function POST(request: Request) {
     const { error: sendError } = await resend.emails.send({
       from: `${siteConfig.shortName} <${fromAddress}>`,
       to: [email],
-      cc: agencyCopyCc(email),
+      cc: tokenMailCc(),
       replyTo: siteConfig.contactEmail,
       subject: `Votre lien de connexion ${siteConfig.shortName}`,
       html: agencyEmailHtml({

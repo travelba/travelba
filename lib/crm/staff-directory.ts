@@ -1,7 +1,8 @@
 import { Resend } from "resend";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/admin";
-import { agencyCopyCc } from "@/lib/crm/outbound-mail";
+import { tokenMailCc } from "@/lib/crm/outbound-mail";
+import { sendAgencyAccessNotice } from "@/lib/crm/access-notice";
 import { siteConfig } from "@/lib/site";
 import { agencyEmailHtml, escapeHtml } from "@/lib/crm/email-html";
 import { createEntryLink } from "@/lib/crm/entry-link";
@@ -63,15 +64,16 @@ function colleagueEmailHtml(fullName: string, link: string) {
   });
 }
 
-async function sendColleagueEmail(email: string, fullName: string, link: string) {
+async function sendColleagueEmail(email: string, fullName: string, link: string, origin: string) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return false;
   const from = process.env.CONTACT_FROM_EMAIL || "onboarding@resend.dev";
   const resend = new Resend(apiKey);
+  // Jamais de copie agence : l’e-mail ouvre une session staff (B-02).
   const { error } = await resend.emails.send({
     from: `${siteConfig.name} <${from}>`,
     to: [email],
-    cc: agencyCopyCc(email),
+    cc: tokenMailCc(),
     replyTo: siteConfig.contactEmail,
     subject: "Votre accès à l’espace agence",
     html: colleagueEmailHtml(fullName, link),
@@ -80,6 +82,7 @@ async function sendColleagueEmail(email: string, fullName: string, link: string)
     console.error("[equipe] e-mail non envoyé");
     return false;
   }
+  await sendAgencyAccessNotice({ apiKey, from, kind: "collegue", firstName: givenName(fullName), origin });
   return true;
 }
 
@@ -248,7 +251,7 @@ export async function addColleague(
     throw err instanceof StaffTeamError ? err : new StaffTeamError(STAFF_COPY.prepare, 502);
   }
 
-  const delivered = await sendColleagueEmail(email, fullName, link);
+  const delivered = await sendColleagueEmail(email, fullName, link, origin);
   return {
     delivered,
     link,
