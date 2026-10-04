@@ -17,6 +17,19 @@ const nextConfig: NextConfig = {
   },
   serverExternalPackages: ["sharp", "unpdf", "@napi-rs/canvas", "pdfjs-dist", "puppeteer-core", "@sparticuz/chromium"],
   outputFileTracingIncludes: CHROMIUM_TRACE_INCLUDES,
+  // En-têtes de sécurité (B-31). Pas de CSP ici : Stripe / Supabase / Unsplash exigeraient un test dédié.
+  // La page publique /v/CODE peut être encadrée par le site lui-même, le reste jamais.
+  async headers() {
+    const common = [
+      { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+    ];
+    return [
+      { source: "/:path*", headers: [...common, { key: "X-Frame-Options", value: "DENY" }] },
+      { source: "/v/:path*", headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }] },
+    ];
+  },
   async redirects() {
     return [
       {
