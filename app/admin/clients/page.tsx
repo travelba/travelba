@@ -2,6 +2,7 @@ import { NewCustomerForm } from "@/components/admin/NewCustomerForm";
 import { ClientsTable } from "@/components/admin/ClientsTable";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { customerFullName, type CrmBalance, type CrmTravelDocument } from "@/lib/crm/types";
 import { CUSTOMER_LIST_SELECT, CUSTOMER_NAME_SELECT, type CustomerListRow, type CustomerNameRow } from "@/lib/crm/customer-search";
@@ -9,9 +10,13 @@ import { formatDateFr, isoDateInDays } from "@/lib/crm/money";
 import {
   ADMIN_PAGE_SIZE,
   firstParam,
+  joinOrFilters,
+  listHref,
   orSearchFilter,
+  pageOverflow,
   pageRange,
   parseClientFilter,
+  phoneSearchFilter,
   parsePage,
   searchPattern,
   type SearchParamValue,
@@ -78,7 +83,15 @@ export default async function AdminClientsPage({
   const { from, to } = pageRange(page);
   let query = supabase.from("crm_customers").select(CUSTOMER_LIST_SELECT, { count: "exact" });
   if (filter === "veille") query = query.eq("on_hold", true);
-  if (pattern) query = query.or(orSearchFilter(pattern, ["first_name", "last_name", "usage_name", "company_name", "email", "phone"]));
+  if (pattern) {
+    // Nom, société, e-mail en `ilike` ; un numéro tapé « 06 12 34 » retrouve aussi le `+33612…` stocké.
+    query = query.or(
+      joinOrFilters(
+        orSearchFilter(pattern, ["first_name", "last_name", "usage_name", "company_name", "email", "phone"]),
+        phoneSearchFilter(q)
+      )
+    );
+  }
   const { data: customers, error: customersError, count } = await query
     .order("last_name")
     .order("first_name")
@@ -86,6 +99,8 @@ export default async function AdminClientsPage({
   if (customersError) {
     console.error("[admin/clients]", customersError.code ?? "?", customersError.message ?? "");
   }
+  const lastPage = pageOverflow(page, count);
+  if (lastPage != null) redirect(listHref("/admin/clients", { q, filtre: filter }, lastPage));
   const rows = (customers || []) as CustomerListRow[];
   const { data: balances } = rows.length
     ? await supabase

@@ -1,17 +1,23 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { BookingsTable } from "@/components/admin/BookingsTable";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { loadStayMaps } from "@/lib/crm/carnet-query";
 import { loadDisplayedStayAmounts } from "@/lib/crm/displayed-stay";
 import type { CrmBooking } from "@/lib/crm/types";
+import { todayIsoDate } from "@/lib/crm/money";
 import { CUSTOMER_NAME_SELECT, type CustomerNameRow } from "@/lib/crm/customer-search";
 import {
   ADMIN_PAGE_SIZE,
   BOOKING_SORTS,
   firstParam,
+  joinOrFilters,
+  listHref,
   orSearchFilter,
+  pageOverflow,
   pageRange,
+  phoneSearchFilter,
   parseBookingSort,
   parseBookingState,
   parseBookingStatus,
@@ -41,7 +47,7 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
     const { data: matched } = await supabase
       .from("crm_customers")
       .select("id")
-      .or(orSearchFilter(pattern, ["first_name", "last_name", "company_name"]))
+      .or(joinOrFilters(orSearchFilter(pattern, ["first_name", "last_name", "company_name"]), phoneSearchFilter(q)))
       .limit(50);
     matchedCustomerIds = ((matched || []) as { id: string }[]).map((row) => row.id);
   }
@@ -52,6 +58,9 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
     else next = next.is("archived_at", null);
     if (!archivedOnly && state === "preparation") next = next.eq("visible_to_client", false);
     if (!archivedOnly && state === "montre") next = next.eq("visible_to_client", true);
+    if (!archivedOnly && state === "a-venir") {
+      next = next.gte("start_date", todayIsoDate()).neq("status", "cancelled");
+    }
     if (status) next = next.eq("status", status);
     if (pattern) {
       next = next.or(orSearchFilter(pattern, ["reference", "title", "destination"], "customer_id", matchedCustomerIds));
@@ -72,6 +81,11 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
       ? (applyFilters(archivedCountQuery as unknown as FilterableQuery, true) as unknown as typeof archivedCountQuery)
       : Promise.resolve({ count: 0 }),
   ]);
+  // `?page=999` : on renvoie sur la dernière page plutôt qu’un résumé « 301-312 » au-dessus d’une liste vide.
+  const lastPage = pageOverflow(page, count);
+  if (lastPage != null) {
+    redirect(listHref("/admin/reservations", { q, etat: state, statut: status, tri: sort === "depart" ? null : sort }, lastPage));
+  }
   const rows = (bookings || []) as CrmBooking[];
   const customerIds = [...new Set(rows.map((row) => row.customer_id).filter(Boolean))];
   const [{ data: customers }, maps, displayed] = await Promise.all([

@@ -5,8 +5,13 @@ import {
   listHref,
   orSearchFilter,
   pageCount,
+  pageOverflow,
   pageRange,
   paginationSummary,
+  phoneSearchDigits,
+  phoneSearchFilter,
+  joinOrFilters,
+  BOOKING_SORTS,
   parseBookingSort,
   parseBookingState,
   parseBookingStatus,
@@ -44,6 +49,34 @@ test("la recherche devient un motif ilike sans casser la syntaxe PostgREST", () 
     "reference.ilike.%rome%,title.ilike.%rome%,customer_id.in.(a,b)"
   );
   assert.equal(orSearchFilter("%rome%", ["reference"], "customer_id", []), "reference.ilike.%rome%");
+});
+
+test("un numéro tapé retrouve le +33 stocké, les noms ne déclenchent pas la recherche téléphone", () => {
+  assert.equal(phoneSearchDigits("06 12 34"), "61234");
+  assert.equal(phoneSearchDigits("+33 6 12 34 56 78"), "612345678");
+  assert.equal(phoneSearchDigits("0033612345678"), "612345678");
+  assert.equal(phoneSearchDigits("TB-2024"), "");
+  assert.equal(phoneSearchDigits("Dupont"), "");
+  assert.equal(phoneSearchDigits("12"), "");
+  assert.equal(phoneSearchFilter("06 12 34"), "phone.ilike.%61234%,phone_secondary.ilike.%61234%");
+  assert.equal(phoneSearchFilter("Dupont"), "");
+  assert.equal(joinOrFilters("a.ilike.%x%", "", "phone.ilike.%1%"), "a.ilike.%x%,phone.ilike.%1%");
+});
+
+test("les tris disent ce qu’ils font : asc = le plus proche d’abord", () => {
+  assert.equal(BOOKING_SORTS["depart-asc"].ascending, true);
+  assert.match(BOOKING_SORTS["depart-asc"].label, /plus proche/);
+  assert.equal(BOOKING_SORTS.depart.ascending, false);
+  assert.match(BOOKING_SORTS.depart.label, /plus lointain/);
+  assert.equal(parseBookingState("a-venir"), "a-venir");
+});
+
+test("une page au-delà du total renvoie vers la dernière page", () => {
+  assert.equal(pageOverflow(999, 312), 7);
+  assert.equal(pageOverflow(7, 312), null);
+  assert.equal(pageOverflow(2, 50), 1);
+  assert.equal(pageOverflow(3, 0), null);
+  assert.equal(pageOverflow(3, null), null);
 });
 
 test("les filtres inconnus retombent sur la valeur par défaut", () => {

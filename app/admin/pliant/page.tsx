@@ -8,7 +8,7 @@ import { pliantStayForCard, type PliantStayRef } from "@/lib/crm/pliant-tx";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmPliantTransaction } from "@/lib/crm/types";
 import Link from "next/link";
-import { CUSTOMER_PICK_LIMIT, CUSTOMER_PICK_SELECT } from "@/lib/crm/customer-search";
+import { CUSTOMER_PICK_SELECT } from "@/lib/crm/customer-search";
 import { parseLoadMore, type SearchParamValue } from "@/lib/crm/admin-list";
 
 /** Dépenses lues par page : 500, puis « Charger plus » (A-22). */
@@ -29,11 +29,12 @@ export default async function AdminPliantPage({
   if (configured) {
     try {
       const admin = createServiceClient();
+      // Sélecteur de payeur de `PliantAccount` (composant d’un autre lot) : colonnes du sélecteur, sans
+      // plafond — un plafond ferait disparaître des clients du <select>.
       const { data: people } = await admin
         .from("crm_customers")
         .select(CUSTOMER_PICK_SELECT)
-        .order("last_name")
-        .limit(CUSTOMER_PICK_LIMIT);
+        .order("last_name");
       customers = (people || []) as PickableCustomer[];
       const rows: CrmPliantTransaction[] = [];
       for (let from = 0; from < limit; from += PLIANT_PAGE) {
