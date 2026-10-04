@@ -11,6 +11,7 @@ import {
   pliantTokenStillValid,
   type PliantTokenStore,
 } from "./pliant-auth";
+import { pliantOtpToken, pliantPciWidgetUrl } from "./pliant-pci";
 import { annotatePliantPayload, pliantCardFace, pliantHolderId, pliantHolderName, pliantTransactionPage } from "./pliant-tx";
 
 const PROD = {
@@ -256,6 +257,31 @@ export async function readPliantCardSecrets(cardId: string) {
   const secrets = cardSecretsFromPayload(json);
   if (!secrets) throw new Error("Pliant n’a pas renvoyé la carte.");
   return secrets;
+}
+
+/** Cadre PCI. Le numéro est dessiné par Pliant, pas par nos serveurs. */
+export async function pliantPciWidget(cardId: string, frameId: string) {
+  const traceId = crypto.randomUUID();
+  const token = await accessToken();
+  const host = process.env.PLIANT_SANDBOX === "1" ? PCI.sandbox : PCI.prod;
+  const res = await fetch(`${host}/card-details/widget/${encodeURIComponent(cardId)}/otp`, {
+    headers: {
+      authorization: `Bearer ${token}`,
+      accept: "application/json",
+      "Pliant-API-Version": "2.1.0",
+      "Pliant-Trace-Id": traceId,
+    },
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    console.error("[pliant] pci", res.status);
+    throw new Error("Pliant n’a pas ouvert la carte.");
+  }
+  const otp = pliantOtpToken(text);
+  const safeFrame = frameId.replace(/[^\w-]/g, "").slice(0, 80);
+  const src = otp ? pliantPciWidgetUrl({ host, traceId, cardId, token: otp, frameId: safeFrame }) : null;
+  if (!src || !safeFrame) throw new Error("Pliant n’a pas ouvert la carte.");
+  return { src, frameId: safeFrame };
 }
 
 export async function raisePliantLimit(cardId: string, limit: { value: number; currency: "EUR" }, count: number) {
