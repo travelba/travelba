@@ -19,6 +19,8 @@ import { formatDateFr } from "@/lib/crm/money";
 import { appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-extract";
 import { identityForPerson } from "@/lib/crm/passport-assign";
 import { documentNameNotice } from "@/lib/crm/document-identity";
+import { scanAwaitsConfirmation, scanWouldPersist } from "@/lib/crm/passport-confirm";
+import { sendForm } from "@/lib/crm/client-fetch";
 import type { PersonName } from "@/lib/crm/person-match";
 import { vaultDocumentsForPerson } from "@/lib/crm/trip-documents";
 import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
@@ -106,6 +108,8 @@ export function PersonPassportCard({
   person,
   onIdentity,
   onScan,
+  onCancel,
+  onBusyChange,
   onImported,
 }: {
   variant: "admin" | "client";
@@ -115,7 +119,12 @@ export function PersonPassportCard({
   persist?: boolean;
   person?: PersonName | null;
   onIdentity?: (identity: ExtractedIdentity) => void;
+  /** Client : reçu seulement à « Confirmer » (ou tout de suite quand rien ne s’enregistre). */
   onScan?: (result: ScanResult) => void;
+  /** Client : « Annuler » sur la pièce lue, le parent oublie le scan. */
+  onCancel?: () => void;
+  /** L’enregistrement est en cours : le parent peut bloquer son propre bouton. */
+  onBusyChange?: (busy: boolean) => void;
   onImported?: (info: { createdCompanions: number }) => void;
 }) {
   const router = useRouter();
@@ -134,48 +143,58 @@ export function PersonPassportCard({
     variant === "admin" ? "/api/admin/travel-documents/scan" : "/api/client/documents/scan";
   const expired = vault.find((doc) => documentExpiryWarning(doc.expires_on));
 
-  function wouldPersist(result: ScanResult) {
-    if (!result.file) return false;
-    if (variant === "admin" && !customerId) return false;
-    const identities = listedIdentities(result.identity, result.identities);
-    return (persist || identities.length > 1) && identities.length > 0;
+  function flowInput(result: ScanResult) {
+    return {
+      variant,
+      persist,
+      hasFile: Boolean(result.file),
+      identityCount: listedIdentities(result.identity, result.identities).length,
+      customerId,
+    };
+  }
+
+  function setBusyShared(next: boolean) {
+    setBusy(next);
+    onBusyChange?.(next);
   }
 
   async function persistScan(result: ScanResult) {
-    if (!wouldPersist(result)) return;
+    if (!scanWouldPersist(flowInput(result))) return;
     const identities = listedIdentities(result.identity, result.identities);
-    setBusy(true);
+    setBusyShared(true);
     setError(null);
     setNotice(null);
-    const form = appendPassportImportForm(new FormData(), {
-      identities,
-      file: result.file,
-      customerId,
-      companionId,
-      createUnmatchedOnly: identities.length > 1 && !companionId,
-    });
-    const res = await fetch(endpoint, { method: "POST", body: form });
-    const json = await res.json().catch(() => ({}));
-    setBusy(false);
-    if (!res.ok) {
-      setError(json.error || "Enregistrement de la pièce impossible");
-      return;
+    try {
+      const form = appendPassportImportForm(new FormData(), {
+        identities,
+        file: result.file,
+        customerId,
+        companionId,
+        createUnmatchedOnly: identities.length > 1 && !companionId,
+      });
+      const res = await sendForm<{ created_companions?: number }>(endpoint, form);
+      if (!res.ok) {
+        setError(res.error || "Enregistrement de la pièce impossible. Réessayez ou écrivez à l’agence.");
+        return;
+      }
+      const created = Number(res.data?.created_companions || 0);
+      if (created > 0) {
+        setNotice(
+          created === 1
+            ? "1 accompagnateur a été ajouté."
+            : `${created} accompagnateurs ont été ajoutés.`
+        );
+        document.getElementById("accompagnateurs")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      setScan(null);
+      setAdding(false);
+      if (!persist && identities.length > 1) {
+        onImported?.({ createdCompanions: created });
+      }
+      router.refresh();
+    } finally {
+      setBusyShared(false);
     }
-    const created = Number(json.created_companions || 0);
-    if (created > 0) {
-      setNotice(
-        created === 1
-          ? "1 accompagnateur a été ajouté."
-          : `${created} accompagnateurs ont été ajoutés.`
-      );
-      document.getElementById("accompagnateurs")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-    setScan(null);
-    setAdding(false);
-    if (!persist && identities.length > 1) {
-      onImported?.({ createdCompanions: created });
-    }
-    router.refresh();
   }
 
   function shareIdentity(result: ScanResult) {
@@ -189,10 +208,9 @@ export function PersonPassportCard({
   function handleResult(result: ScanResult) {
     setScan(result);
     setPending(null);
-    if (variant === "client" && wouldPersist(result)) {
-      // Rien n’est écrit tant que le client n’a pas confirmé que c’est bien sa pièce.
+    if (scanAwaitsConfirmation(flowInput(result))) {
+      // Rien n’est écrit, et le parent ne reçoit rien, tant que le client n’a pas confirmé.
       setPending(result);
-      onScan?.(result);
       return;
     }
     shareIdentity(result);
@@ -205,12 +223,14 @@ export function PersonPassportCard({
     if (!result) return;
     setPending(null);
     shareIdentity(result);
+    onScan?.(result);
     void persistScan(result);
   }
 
   function cancelPending() {
     setPending(null);
     setScan(null);
+    onCancel?.();
   }
 
   const pendingIdentities = pending ? listedIdentities(pending.identity, pending.identities) : [];
