@@ -35,6 +35,16 @@ export function parseIncludeInLedger(value: unknown, fallback: boolean) {
   return fallback;
 }
 
+export const MAX_SORT_ORDER = 10000;
+
+/** Rang d’une carte : entier de 0 à 10000, sinon null. */
+export function parseSortOrder(value: unknown): number | null {
+  const n =
+    typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : Number.NaN;
+  if (!Number.isInteger(n) || n < 0 || n > MAX_SORT_ORDER) return null;
+  return n;
+}
+
 const BOOKING_META_KEYS = [
   "title",
   "destination",
