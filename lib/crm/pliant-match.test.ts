@@ -7,6 +7,7 @@ import {
   pliantLedgerDraft,
   pliantMatchReasonLabel,
   scorePliantMatches,
+  suggestedCustomerId,
   type PliantLedgerRow,
   type PliantMatchCustomer,
 } from "./pliant-match";
@@ -69,6 +70,37 @@ describe("pliant-match", () => {
     assert.equal(result.autoCustomerId, null);
     assert.equal(result.candidates.length, 2);
     assert.ok(result.candidates.every((c) => c.score < 90));
+  });
+
+  it("compare des mots entiers : Martineau n’est pas Martin, Leroy n’est pas Roy", () => {
+    const martin = scorePliantMatches({ card_label: "Jean Martineau" }, [
+      customer({ id: "a", first_name: "Jean", last_name: "Martin" }),
+      customer({ id: "b", first_name: "Alice", last_name: "Boukris" }),
+    ]);
+    assert.equal(martin.autoCustomerId, null);
+    assert.equal(martin.candidates.length, 0);
+    for (const label of ["Leroy", "Royal Hotel"]) {
+      const roy = scorePliantMatches({ card_label: label }, [
+        customer({ id: "a", first_name: "Paul", last_name: "Roy" }),
+        customer({ id: "b", first_name: "Alice", last_name: "Boukris" }),
+      ]);
+      assert.equal(roy.autoCustomerId, null, label);
+      assert.equal(roy.candidates.length, 0, label);
+    }
+  });
+
+  it("deux homonymes : aucune présélection", () => {
+    const result = scorePliantMatches({ card_label: "Dupont" }, [
+      customer({ id: "a", first_name: "Alice", last_name: "Dupont" }),
+      customer({ id: "b", first_name: "Paul", last_name: "Dupont" }),
+    ]);
+    assert.equal(suggestedCustomerId(result.candidates), "");
+    assert.equal(result.autoCustomerId, null);
+    const sure = scorePliantMatches({ card_label: "Paul Dupont" }, [
+      customer({ id: "a", first_name: "Alice", last_name: "Dupont" }),
+      customer({ id: "b", first_name: "Paul", last_name: "Dupont" }),
+    ]);
+    assert.equal(suggestedCustomerId(sure.candidates), "b");
   });
 
   it("laisse les cartes agence sans proposition", () => {
