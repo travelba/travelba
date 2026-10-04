@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { MIN_PASSWORD_LENGTH } from "@/lib/crm/session";
+import { postJson } from "@/lib/crm/client-fetch";
 import { Field, fieldControlClass } from "@/components/crm/fields";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
@@ -37,25 +38,18 @@ export function PasswordChangeForm() {
     }
     setSaving(true);
     try {
-      const res = await fetch("/api/client/password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password, confirm, change: true }),
-      });
-      const json = (await res.json().catch(() => null)) as { error?: string } | null;
-      if (res.status === 401) {
+      const result = await postJson("/api/client/password", { password, confirm, change: true });
+      if (result.status === 401) {
         setError("Votre session a expiré. Reconnectez-vous pour changer le mot de passe.");
         return;
       }
-      if (!res.ok) {
-        setError(json?.error || "Le mot de passe n’a pas pu être modifié. Réessayez.");
+      if (!result.ok) {
+        setError(result.error || "Le mot de passe n’a pas pu être modifié. Réessayez.");
         return;
       }
       setPassword("");
       setConfirm("");
       setDone(true);
-    } catch {
-      setError("Connexion interrompue. Réessayez.");
     } finally {
       setSaving(false);
     }

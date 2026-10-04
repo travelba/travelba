@@ -8,6 +8,7 @@ import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { Icon } from "@/components/crm/icons";
 import { IssuesList } from "@/components/crm/IssuesList";
 import { issuesFromResponse, issuesSummary, type BookingIssue } from "@/lib/crm/booking-issues";
+import { postJson } from "@/lib/crm/client-fetch";
 import { CLIENT_PREVIEW_NOTE, useClientPreview } from "@/components/account/client-preview";
 import { HIDDEN_PRICE_LABEL, kindIcon } from "@/lib/crm/carnet";
 import { addressCity } from "@/lib/crm/address-suggest";
@@ -87,18 +88,13 @@ export function ServiceOfferCard({
   }
 
   async function post(body: Record<string, unknown>) {
-    try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) return { ok: false as const, issues: issuesFromResponse(json) };
-      return { ok: true as const, issues: [] as BookingIssue[] };
-    } catch {
-      return { ok: false as const, issues: [{ field: "network", message: "Connexion interrompue. Réessayez." }] };
-    }
+    const result = await postJson<{ error?: string; issues?: BookingIssue[] }>(endpoint, body);
+    if (result.ok) return { ok: true as const, issues: [] as BookingIssue[] };
+    const issues = issuesFromResponse(result.data || {});
+    return {
+      ok: false as const,
+      issues: issues.length ? issues : [{ field: "form", message: result.error || "La demande n’a pas abouti. Réessayez." }],
+    };
   }
 
   async function request() {
@@ -112,14 +108,17 @@ export function ServiceOfferCard({
     }
     setBusy("validate");
     setIssues([]);
-    const result = await post(addressBody());
-    setBusy(null);
-    if (!result.ok) {
-      setIssues(result.issues);
-      return;
+    try {
+      const result = await post(addressBody());
+      if (!result.ok) {
+        setIssues(result.issues);
+        return;
+      }
+      setReview(false);
+      router.refresh();
+    } finally {
+      setBusy(null);
     }
-    setReview(false);
-    router.refresh();
   }
 
   async function cancel() {
@@ -130,19 +129,22 @@ export function ServiceOfferCard({
     }
     setBusy("cancel");
     setIssues([]);
-    const result = await post({
-      cancel: true,
-      kind: offer.kind,
-      leg: offer.leg,
-      place: offer.place,
-      moment: offer.moment,
-    });
-    setBusy(null);
-    if (!result.ok) {
-      setIssues(result.issues);
-      return;
+    try {
+      const result = await post({
+        cancel: true,
+        kind: offer.kind,
+        leg: offer.leg,
+        place: offer.place,
+        moment: offer.moment,
+      });
+      if (!result.ok) {
+        setIssues(result.issues);
+        return;
+      }
+      router.refresh();
+    } finally {
+      setBusy(null);
     }
-    router.refresh();
   }
 
   async function refuse() {
@@ -174,32 +176,38 @@ export function ServiceOfferCard({
     }
     setBusy("save");
     setIssues([]);
-    const result = await post(addressBody(true));
-    setBusy(null);
-    if (!result.ok) {
-      setIssues(result.issues);
-      return;
+    try {
+      const result = await post(addressBody(true));
+      if (!result.ok) {
+        setIssues(result.issues);
+        return;
+      }
+      router.refresh();
+    } finally {
+      setBusy(null);
     }
-    router.refresh();
   }
 
   async function confirm() {
     if (!existing || !isAdmin || busy || confirmed) return;
     setBusy("confirm");
     setIssues([]);
-    const result = await post({
-      confirm: true,
-      kind: offer.kind,
-      leg: offer.leg,
-      place: offer.place,
-      moment: offer.moment,
-    });
-    setBusy(null);
-    if (!result.ok) {
-      setIssues(result.issues);
-      return;
+    try {
+      const result = await post({
+        confirm: true,
+        kind: offer.kind,
+        leg: offer.leg,
+        place: offer.place,
+        moment: offer.moment,
+      });
+      if (!result.ok) {
+        setIssues(result.issues);
+        return;
+      }
+      router.refresh();
+    } finally {
+      setBusy(null);
     }
-    router.refresh();
   }
 
   function openReview() {

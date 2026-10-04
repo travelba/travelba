@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import type { CrmCompanion, CrmTravelDocument } from "@/lib/crm/types";
+import { deleteJson, postJson, sendForm } from "@/lib/crm/client-fetch";
 import { nationalityFromIdentity } from "@/lib/crm/document-identity";
 import { identityOverwriteWarning, RELATIONSHIP_OPTIONS } from "@/lib/crm/identity";
 import { appendPassportForm, appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-extract";
@@ -29,30 +30,33 @@ function CompanionPhoneEditor({ companion }: { companion: CrmCompanion }) {
   const [error, setError] = useState<string | null>(null);
 
   async function save() {
+    if (saving) return;
     setSaving(true);
     setError(null);
-    const response = await fetch("/api/client/companions", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: companion.id,
-        first_name: companion.first_name,
-        last_name: companion.last_name,
-        usage_name: companion.usage_name,
-        birth_date: companion.birth_date,
-        sex: companion.sex,
-        nationality: companion.nationality,
-        relationship: companion.relationship,
-        phone,
-      }),
-    });
-    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-    setSaving(false);
-    if (!response.ok) {
-      setError(payload?.error || "Téléphone invalide");
-      return;
+    try {
+      const result = await postJson(
+        "/api/client/companions",
+        {
+          id: companion.id,
+          first_name: companion.first_name,
+          last_name: companion.last_name,
+          usage_name: companion.usage_name,
+          birth_date: companion.birth_date,
+          sex: companion.sex,
+          nationality: companion.nationality,
+          relationship: companion.relationship,
+          phone,
+        },
+        { method: "PATCH" }
+      );
+      if (!result.ok) {
+        setError(result.error || "Téléphone invalide. Vérifiez l’indicatif et le numéro.");
+        return;
+      }
+      router.refresh();
+    } finally {
+      setSaving(false);
     }
-    router.refresh();
   }
 
   return (
@@ -115,8 +119,17 @@ export function CompanionsManager({
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving) return;
     setSaving(true);
     setError(null);
+    try {
+      await submit();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submit() {
     const identities = listedIdentities(scan?.identity, scan?.identities);
     if (identities.length > 1 && scan?.file) {
       const patched = identities.map((identity, index) =>
@@ -137,54 +150,54 @@ export function CompanionsManager({
         file: scan.file,
         createUnmatchedOnly: true,
       });
-      const docs = await fetch("/api/client/documents", { method: "POST", body: form });
-      const docsJson = await docs.json().catch(() => ({}));
-      setSaving(false);
+      const docs = await sendForm("/api/client/documents", form);
       if (!docs.ok) {
-        setError(docsJson.error || "Impossible d’importer les passeports");
+        setError(docs.error || "Impossible d’importer ces passeports. Réessayez ou écrivez à l’agence.");
         return;
       }
       closeForm();
       router.refresh();
       return;
     }
-    const res = await fetch("/api/client/companions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        first_name: firstName,
-        last_name: lastName,
-        usage_name: usageName,
-        relationship,
-        nationality,
-        birth_date: birthDate,
-        sex,
-        phone,
-      }),
+    const created = await postJson<{ companion?: { id: string } }>("/api/client/companions", {
+      first_name: firstName,
+      last_name: lastName,
+      usage_name: usageName,
+      relationship,
+      nationality,
+      birth_date: birthDate,
+      sex,
+      phone,
     });
-    const json = await res.json();
-    if (!res.ok) {
-      setSaving(false);
-      setError(json.error || "Erreur");
+    if (!created.ok || !created.data?.companion?.id) {
+      setError(created.error || "Impossible d’ajouter ce voyageur. Réessayez ou écrivez à l’agence.");
       return;
     }
     if (scan?.file) {
       const form = new FormData();
       form.set("file", scan.file);
-      form.set("companion_id", json.companion.id);
+      form.set("companion_id", created.data.companion.id);
       appendPassportForm(form, scan.identity, true);
-      await fetch("/api/client/documents", { method: "POST", body: form });
+      const upload = await sendForm("/api/client/documents", form);
+      if (!upload.ok) {
+        // Le voyageur existe : on le dit, et la pièce se rajoute depuis sa fiche.
+        router.refresh();
+        setError(
+          `${firstName || "Le voyageur"} est ajouté, mais sa pièce n’a pas pu être enregistrée (${
+            upload.error || "erreur"
+          }). Rouvrez sa fiche pour la joindre.`
+        );
+        return;
+      }
     }
-    setSaving(false);
     closeForm();
     router.refresh();
   }
 
   async function remove(id: string) {
-    const res = await fetch(`/api/client/companions?id=${id}`, { method: "DELETE" });
-    if (!res.ok) {
-      const json = (await res.json().catch(() => null)) as { error?: string } | null;
-      return { ok: false, error: json?.error || "Impossible de retirer ce voyageur. Réessayez ou écrivez à l’agence." };
+    const result = await deleteJson(`/api/client/companions?id=${id}`);
+    if (!result.ok) {
+      return { ok: false, error: result.error || "Impossible de retirer ce voyageur. Réessayez ou écrivez à l’agence." };
     }
     router.refresh();
     return { ok: true };

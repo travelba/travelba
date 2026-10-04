@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DOC_TYPE_LABELS, type CrmCompanion, type CrmTravelDocument, type TravelDocType } from "@/lib/crm/types";
+import { deleteJson, sendForm } from "@/lib/crm/client-fetch";
 import { countryName } from "@/lib/crm/countries";
 import {
   documentHolderName,
@@ -92,10 +93,36 @@ export function DocumentsManager({
     if (id.sex) setSex(id.sex);
   }
 
+  function resetForm() {
+    setScan(null);
+    setNumber("");
+    setDocIssued("");
+    setDocExpiry("");
+    setPlaceOfBirth("");
+    setAuthority("");
+    setPersonalNumber("");
+    setIssuingCountry("");
+    setFirstName("");
+    setLastName("");
+    setUsageName("");
+    setBirthDate("");
+    setNationality("");
+    setSex("");
+  }
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving) return;
     setSaving(true);
     setError(null);
+    try {
+      await submit(event.currentTarget);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submit(formElement: HTMLFormElement) {
     const identities = listedIdentities(scan?.identity, scan?.identities);
     if (identities.length > 1 && scan?.file) {
       const patched = identities.map((identity, index) =>
@@ -125,27 +152,12 @@ export function DocumentsManager({
         companionId: companionId || null,
         applyIdentity,
       });
-      const res = await fetch("/api/client/documents", { method: "POST", body: form });
-      const json = await res.json();
-      setSaving(false);
-      if (!res.ok) {
-        setError(json.error || "Erreur");
+      const result = await sendForm("/api/client/documents", form);
+      if (!result.ok) {
+        setError(result.error || "Impossible d’importer ces passeports. Réessayez ou écrivez à l’agence.");
         return;
       }
-      setScan(null);
-      setNumber("");
-      setDocIssued("");
-      setDocExpiry("");
-      setPlaceOfBirth("");
-      setAuthority("");
-      setPersonalNumber("");
-      setIssuingCountry("");
-      setFirstName("");
-      setLastName("");
-      setUsageName("");
-      setBirthDate("");
-      setNationality("");
-      setSex("");
+      resetForm();
       router.refresh();
       return;
     }
@@ -167,39 +179,23 @@ export function DocumentsManager({
     form.set("nationality", nationality);
     form.set("sex", sex);
     form.set("apply_identity", applyIdentity ? "1" : "0");
-    const extra = event.currentTarget.elements.namedItem("extra_file");
+    const extra = formElement.elements.namedItem("extra_file");
     if (extra instanceof HTMLInputElement && extra.files?.[0] && !scan?.file) {
       form.set("file", extra.files[0]);
     }
-    const res = await fetch("/api/client/documents", { method: "POST", body: form });
-    const json = await res.json();
-    setSaving(false);
-    if (!res.ok) {
-      setError(json.error || "Erreur");
+    const result = await sendForm("/api/client/documents", form);
+    if (!result.ok) {
+      setError(result.error || "Impossible d’ajouter cette pièce. Réessayez ou écrivez à l’agence.");
       return;
     }
-    setScan(null);
-    setNumber("");
-    setDocIssued("");
-    setDocExpiry("");
-    setPlaceOfBirth("");
-    setAuthority("");
-    setPersonalNumber("");
-    setIssuingCountry("");
-    setFirstName("");
-    setLastName("");
-    setUsageName("");
-    setBirthDate("");
-    setNationality("");
-    setSex("");
+    resetForm();
     router.refresh();
   }
 
   async function remove(id: string) {
-    const res = await fetch(`/api/client/documents?id=${id}`, { method: "DELETE" });
-    if (!res.ok) {
-      const json = (await res.json().catch(() => null)) as { error?: string } | null;
-      return { ok: false, error: json?.error || "Impossible de retirer cette pièce. Réessayez ou écrivez à l’agence." };
+    const result = await deleteJson(`/api/client/documents?id=${id}`);
+    if (!result.ok) {
+      return { ok: false, error: result.error || "Impossible de retirer cette pièce. Réessayez ou écrivez à l’agence." };
     }
     router.refresh();
     return { ok: true };

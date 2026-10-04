@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { CrmBillingCompany, CrmCustomer } from "@/lib/crm/types";
 import { resolveCountryCode } from "@/lib/crm/countries";
 import { formatIbanInput, ibanError, normalizeIban } from "@/lib/crm/billing";
+import { postJson } from "@/lib/crm/client-fetch";
 import { Field, fieldControlClass } from "@/components/crm/fields";
 import { BusyBar } from "@/components/crm/BusyBar";
 import {
@@ -53,21 +54,20 @@ export function BillingForm({
     setError(null);
     setSaved(false);
     try {
-      const res = await fetch("/api/client/profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const result = await postJson<{ billing_companies?: CrmBillingCompany[] }>(
+        "/api/client/profile",
+        {
           iban: normalized,
           billing_companies: billingCompaniesPayload(companyDrafts, profileAddress),
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        setError(json.error || "Erreur");
+        },
+        { method: "PATCH" }
+      );
+      if (!result.ok) {
+        setError(result.error || "Impossible d’enregistrer la facturation. Réessayez ou écrivez à l’agence.");
         return;
       }
-      if (Array.isArray(json.billing_companies)) {
-        setCompanyDrafts(billingCompanyDrafts(json.billing_companies, customer, profileAddress));
+      if (Array.isArray(result.data?.billing_companies)) {
+        setCompanyDrafts(billingCompanyDrafts(result.data.billing_companies, customer, profileAddress));
       }
       setSaved(true);
       router.refresh();
