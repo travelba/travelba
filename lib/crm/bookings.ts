@@ -26,6 +26,7 @@ import { debitBillingCompanyId } from "@/lib/crm/billing-companies";
 import { emptyToNull } from "@/lib/crm/identity";
 import { stayCurrency } from "@/lib/crm/stay-currency";
 import { agencyFeeFromGross } from "@/lib/crm/money";
+import { visibilityOnRequest } from "@/lib/crm/visa-flow";
 
 export function parseIncludeInLedger(value: unknown, fallback: boolean) {
   if (value === true || value === "on" || value === "true") return true;
@@ -699,11 +700,17 @@ export function canPublishCarnet(items: { kind: string }[]) {
   return items.some((item) => countsAsCarnetCard(item.kind));
 }
 
+/**
+ * Montrer / cacher le carnet. Publier révèle les cartes (`publishRevealIds`) et leurs pièces.
+ * `prices` (défaut : suivre `visible`) : la formalité ouvre le séjour sans révéler des prix masqués.
+ */
 export async function setCarnetPublished(
   supabase: SupabaseClient,
   bookingId: string,
-  visible: boolean
+  visible: boolean,
+  options?: { prices?: boolean }
 ) {
+  const pricesVisible = visible ? options?.prices !== false : false;
   if (visible) {
     const { data: items, error: itemsLookupError } = await supabase
       .from("crm_booking_items")
@@ -718,7 +725,7 @@ export async function setCarnetPublished(
   }
   const { error: bookingError } = await supabase
     .from("crm_bookings")
-    .update({ visible_to_client: visible, prices_visible: visible })
+    .update({ visible_to_client: visible, prices_visible: pricesVisible })
     .eq("id", bookingId);
   if (bookingError) throw new Error(bookingError.message);
   if (!visible) return;
@@ -758,3 +765,27 @@ export async function setCarnetPublished(
   }
 }
 
+
+/**
+ * Formalité (ETA-IL, ESTA, Royaume-Uni) : le séjour s’ouvre par le même chemin que « Montrer au client »
+ * (garde-fou carnet, cartes et pièces révélées, grand livre), sans révéler des prix encore masqués.
+ * Lève si le dossier n’a aucune carte.
+ */
+export async function openStayForVisa(
+  supabase: SupabaseClient,
+  booking: CrmBooking,
+  options?: { prices?: boolean }
+) {
+  const opened = visibilityOnRequest({
+    visible: booking.visible_to_client,
+    prices: booking.prices_visible !== false && booking.visible_to_client,
+  });
+  const prices = options?.prices ?? opened.prices;
+  await setCarnetPublished(supabase, booking.id, opened.visible, { prices });
+  const { data } = await supabase.from("crm_bookings").select("*").eq("id", booking.id).maybeSingle();
+  const refreshed: CrmBooking = data
+    ? (data as CrmBooking)
+    : { ...booking, visible_to_client: opened.visible, prices_visible: prices };
+  await syncBookingLedger(supabase, refreshed, booking.status);
+  return { booking: refreshed, newlyPublished: !booking.visible_to_client };
+}
