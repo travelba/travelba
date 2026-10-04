@@ -4,6 +4,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { createEntryLink, entryButtonSuffix, entryCodeFromLink } from "./entry-link";
 import { tripDocCoverage } from "./trip-documents";
+import { ensureTripShareCode } from "./trip-share-code";
 import { entryForFrenchPassport } from "./visa-fr";
 import { frenchPassportTrip } from "./visa-trip";
 import { proactiveWhatsappAllowed } from "./whatsapp-concierge";
@@ -288,10 +289,23 @@ async function deliverTemplate(admin: Admin, input: {
   );
 }
 
-async function bookingCover(booking: { reference: string; destination: string | null; title: string | null; cover_image_path: string | null }) {
+async function bookingCover(
+  admin: Admin,
+  booking: { id: string; reference: string; destination: string | null; title: string | null; cover_image_path: string | null }
+) {
   const place = stayPlaceName(booking.destination, booking.title);
-  const url = stayHasPublishedCover(booking) ? stayCoverUrl(booking.reference, true) : null;
+  const shareCode = stayHasPublishedCover(booking) ? await shareCodeFor(admin, booking.id) : null;
+  const url = shareCode ? stayCoverUrl(booking.reference, true, shareCode) : null;
   return { place, mediaUrl: await liveStayCover(url) };
+}
+
+/** Code /v/CODE du dossier, créé s’il manque. Sans lui, la photo ne part pas. */
+async function shareCodeFor(admin: Admin, bookingId: string) {
+  try {
+    return await ensureTripShareCode(admin as unknown as SupabaseClient, bookingId);
+  } catch {
+    return null;
+  }
 }
 
 async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
@@ -306,12 +320,14 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
   const key = row.dedupe_key;
 
   if (key.startsWith("sejour:")) {
+    const hasCover = stayHasPublishedCover(booking);
     const plan = planStayNotice({
       published: true,
       reference: booking.reference,
       destination: booking.destination,
       title: booking.title,
-      hasCover: stayHasPublishedCover(booking),
+      hasCover,
+      shareCode: hasCover ? await shareCodeFor(admin, booking.id) : null,
     });
     if (!plan) {
       await dropQueue(admin, row.id);
@@ -352,7 +368,7 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       await dropQueue(admin, row.id);
       return;
     }
-    const cover = await bookingCover(booking);
+    const cover = await bookingCover(admin, booking);
     await deliverTemplate(admin, {
       row,
       customer,
@@ -376,7 +392,7 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       await dropQueue(admin, row.id);
       return;
     }
-    const cover = await bookingCover(booking);
+    const cover = await bookingCover(admin, booking);
     await deliverTemplate(admin, {
       row,
       customer,
@@ -399,7 +415,7 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       await dropQueue(admin, row.id);
       return;
     }
-    const cover = await bookingCover(booking);
+    const cover = await bookingCover(admin, booking);
     await deliverTemplate(admin, {
       row,
       customer,
@@ -470,12 +486,14 @@ export async function notifyStayPublished(bookingId: string) {
   const admin = createServiceClient();
   const booking = await loadBooking(admin, bookingId);
   if (!booking?.visible_to_client) return;
+  const hasCover = stayHasPublishedCover(booking);
   const plan = planStayNotice({
     published: true,
     reference: booking.reference,
     destination: booking.destination,
     title: booking.title,
-    hasCover: stayHasPublishedCover(booking),
+    hasCover,
+    shareCode: hasCover ? await shareCodeFor(admin, booking.id) : null,
   });
   if (!plan) return;
   const row = await saveQueue(admin, {

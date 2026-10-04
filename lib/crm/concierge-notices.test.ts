@@ -31,7 +31,9 @@ test("un séjour non publié ne part pas", () => {
     hasCover: true,
   });
   assert.equal(plan, null);
-  assert.equal(stayCoverUrl(reference, true)?.includes("token"), false);
+  assert.equal(stayCoverUrl(reference, true, "ABCDEFGH")?.includes("token"), false);
+  assert.equal(stayCoverUrl(reference, true), null);
+  assert.equal(stayCoverUrl(reference, true, "pas-un-code"), null);
   assert.equal(
     planPiecesNotices({
       published: false,
@@ -132,17 +134,28 @@ test("sans ville d’arrivée, aucun message séjour", () => {
   );
 });
 
-test("la couverture publiée est une URL HTTPS, pas une signed URL", () => {
-  const plan = planStayNotice({
+test("la couverture publiée est une URL HTTPS avec le code de partage, pas une signed URL", () => {
+  const withoutCode = planStayNotice({
     published: true,
     reference,
     destination: "Paris · Marrakech",
     title: "Week-end",
     hasCover: true,
   });
+  assert.ok(withoutCode);
+  assert.equal(withoutCode.mediaUrl, null);
+  assert.equal(withoutCode.template, "sejour_texte");
+  const plan = planStayNotice({
+    published: true,
+    reference,
+    destination: "Paris · Marrakech",
+    title: "Week-end",
+    hasCover: true,
+    shareCode: "ABCDEFGH",
+  });
   assert.ok(plan);
   assert.equal(plan.place, "Marrakech");
-  assert.equal(plan.mediaUrl, `https://travelba.fr/api/covers/sejour/${reference}`);
+  assert.equal(plan.mediaUrl, `https://travelba.fr/api/covers/sejour/${reference}?partage=ABCDEFGH`);
   assert.match(plan.mediaUrl, /^https:\/\//);
   assert.equal(/token=|supabase\.co/i.test(plan.mediaUrl), false);
   assert.equal(plan.template, "sejour");
@@ -348,12 +361,10 @@ test("la photo du lieu est sur la carte, le texte reste le repli", () => {
       const sampleCover = Object.values(draft.create.variables).find(
         (value) => String(value).includes("/api/covers/sejour/") || String(value).includes("/whatsapp/")
       );
-      if (draft.template === "sejour" || draft.template === "sejour_sans_lieu") {
-        assert.match(String(sampleCover), /\/api\/covers\/sejour\/TB-2026-0028$/);
-      } else {
-        assert.match(String(sampleCover), /\/whatsapp\/[a-z]+\.jpg$/);
-        assert.equal(String(sampleCover).includes("/api/covers/sejour/"), false);
-      }
+      // Échantillon Meta : une illustration statique du site. La couverture d’un vrai
+      // dossier exige son code de partage et ne sert plus d’exemple.
+      assert.match(String(sampleCover), /\/whatsapp\/[a-z]+\.jpg$/);
+      assert.equal(String(sampleCover).includes("/api/covers/sejour/"), false);
       withPhoto += 1;
     } else {
       assert.ok(text);

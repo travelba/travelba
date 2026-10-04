@@ -9,6 +9,7 @@ import { ensureCustomerForUser, ensureStaff } from "@/lib/crm/auth";
 import { recordCustomerLogin } from "@/lib/crm/customer-login";
 import { PASSWORD_SETUP_COOKIE, mustSetPassword } from "@/lib/crm/session";
 import { stayHasPublishedCover, stayPlaceName } from "./concierge-notices";
+import { ensureTripShareCode } from "./trip-share-code";
 import {
   entryDestination,
   entryLinkExpiresAt,
@@ -35,14 +36,17 @@ async function stayBehindCode(origin: string, code: string): Promise<EntryPrevie
     if (!reference) return null;
     const { data: booking } = await admin
       .from("crm_bookings")
-      .select("reference, destination, title, cover_image_path, visible_to_client, archived_at")
+      .select("id, reference, destination, title, cover_image_path, visible_to_client, archived_at, share_code")
       .eq("reference", reference)
       .maybeSingle();
     if (!booking?.reference || booking.archived_at) return null;
     const place = stayPlaceName(booking.destination, booking.title);
     const hasCover =
       link?.show_cover === true && Boolean(booking.visible_to_client) && stayHasPublishedCover(booking);
-    return stayPreviewCopy({ origin, reference: booking.reference, place, hasCover });
+    const shareCode = hasCover
+      ? (booking.share_code as string | null) || (await ensureTripShareCode(admin, booking.id))
+      : null;
+    return stayPreviewCopy({ origin, reference: booking.reference, place, hasCover, shareCode });
   } catch {
     return null;
   }

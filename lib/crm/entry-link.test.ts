@@ -98,15 +98,20 @@ test("WhatsApp reçoit le titre sans consommer le jeton", () => {
     }),
     false
   );
+  assert.equal(
+    stayPreviewCopy({ origin: "https://travelba.fr", reference: "TB-2026-0004", place: "Avoriaz", hasCover: true }).image,
+    null
+  );
   const stay = stayPreviewCopy({
     origin: "https://travelba.fr",
     reference: "TB-2026-0004",
     place: "Avoriaz",
     hasCover: true,
+    shareCode: "ABCDEFGH",
   });
   assert.equal(stay.title, "Séjour à Avoriaz");
   assert.equal(stay.description, "Réservation TB-2026-0004 · Travel Business Agency");
-  assert.equal(stay.image, "https://travelba.fr/api/covers/sejour/TB-2026-0004");
+  assert.equal(stay.image, "https://travelba.fr/api/covers/sejour/TB-2026-0004?partage=ABCDEFGH");
   assert.equal(referenceFromNextPath("/mon-compte/reservations/TB-2026-0004"), "TB-2026-0004");
   assert.equal(referenceFromNextPath("/mon-compte"), null);
   const html = entryPreviewHtml("https://travelba.fr", "K7MQ2PX4", stay);
@@ -114,7 +119,7 @@ test("WhatsApp reçoit le titre sans consommer le jeton", () => {
   assert.match(html, /og:title" content="Séjour à Avoriaz"/);
   assert.match(html, /og:description" content="Réservation TB-2026-0004 · Travel Business Agency"/);
   assert.match(html, /og:url" content="https:\/\/travelba\.fr\/e\/c\/K7MQ2PX4"/);
-  assert.match(html, /og:image" content="https:\/\/travelba\.fr\/api\/covers\/sejour\/TB-2026-0004"/);
+  assert.match(html, /og:image" content="https:\/\/travelba\.fr\/api\/covers\/sejour\/TB-2026-0004\?partage=ABCDEFGH"/);
   assert.match(html, /og:image:width" content="1200"/);
   assert.match(html, /og:image:height" content="630"/);
   assert.match(html, /favicon\.ico/);
@@ -126,7 +131,7 @@ test("WhatsApp reçoit le titre sans consommer le jeton", () => {
   assert.match(html, /<script>location\.replace\(location\.pathname\+"\?ouvrir=1"\)<\/script>/);
   assert.equal(html.includes("forms[0].submit"), false);
   assert.match(html, /name="viewport" content="width=device-width, initial-scale=1"/);
-  assert.match(html, /<img src="https:\/\/travelba\.fr\/api\/covers\/sejour\/TB-2026-0004"/);
+  assert.match(html, /<img src="https:\/\/travelba\.fr\/api\/covers\/sejour\/TB-2026-0004\?partage=ABCDEFGH"/);
   assert.match(html, /class="door photo"/);
   assert.match(html, /<p class="lead">Réservation TB-2026-0004<\/p>/);
   assert.equal(html.includes("http-equiv"), false);

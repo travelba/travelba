@@ -244,13 +244,16 @@ export function stayPreviewCopy(input: {
   reference: string;
   place: string | null;
   hasCover: boolean;
+  /** Code /v/CODE du dossier : la couverture ne se sert qu’avec lui. */
+  shareCode?: string | null;
 }): EntryPreview {
   const base = input.origin.replace(/\/$/, "");
   const title = input.place ? `Séjour à ${input.place}` : `Réservation ${input.reference}`;
+  const code = input.shareCode && /^[23456789A-HJ-NP-Z]{8}$/.test(input.shareCode) ? input.shareCode : null;
   return {
     title,
     description: `Réservation ${input.reference} · Travel Business Agency`,
-    image: input.hasCover ? `${base}/api/covers/sejour/${input.reference}` : null,
+    image: input.hasCover && code ? `${base}/api/covers/sejour/${input.reference}?partage=${code}` : null,
   };
 }
 
