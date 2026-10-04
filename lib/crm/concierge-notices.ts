@@ -1,3 +1,4 @@
+import { isTripShareCode } from "./trip-share";
 import { coverQuery } from "./carnet";
 import { unsplashKeywordMatch } from "./covers";
 import { siteConfig } from "../site";
@@ -88,10 +89,14 @@ export function stayHasPublishedCover(booking: {
   );
 }
 
-/** JPEG public, sans jeton. Twilio le récupère en HTTPS. */
-export function stayCoverUrl(reference: string, hasCover: boolean) {
+/**
+ * JPEG public, sans jeton Supabase. Twilio le récupère en HTTPS.
+ * L’adresse porte le code de partage du dossier : sans code, pas de photo (texte seul).
+ */
+export function stayCoverUrl(reference: string, hasCover: boolean, shareCode?: string | null) {
   if (!hasCover || !REFERENCE.test(reference)) return null;
-  return `${siteConfig.url}/api/covers/sejour/${reference}`;
+  if (!isTripShareCode(shareCode)) return null;
+  return `${siteConfig.url}/api/covers/sejour/${reference}?partage=${shareCode}`;
 }
 
 /** Photo du séjour : JPEG public du lieu d’arrivée. Jamais le monogramme, jamais une signed URL. */
@@ -231,13 +236,15 @@ export function planStayNotice(input: {
   destination: string | null;
   title: string | null;
   hasCover: boolean;
+  /** Code /v/CODE du dossier : la photo ne part qu’avec lui. */
+  shareCode?: string | null;
 }): StayPlan | null {
   if (!input.published) return null;
   const path = reservationPath(input.reference);
   if (!path) return null;
   const place = stayPlaceName(input.destination, input.title);
   if (!place) return null;
-  const mediaUrl = stayCoverUrl(input.reference, input.hasCover);
+  const mediaUrl = stayCoverUrl(input.reference, input.hasCover, input.shareCode);
   return {
     body: withConciergeSignature(stayNoticeLine(place, input.reference)),
     place,
@@ -513,8 +520,12 @@ function contentDraft(input: {
   };
 }
 
-/** Couverture publiée d’Avoriaz. Échantillon Meta, jamais le monogramme. */
-const SAMPLE_COVER = `${siteConfig.url}/api/covers/sejour/TB-2026-0028`;
+/**
+ * Échantillon Meta : illustration statique du site, jamais le monogramme.
+ * La couverture d’un vrai dossier exige désormais son code de partage (B-14) :
+ * elle ne sert plus d’exemple.
+ */
+const SAMPLE_COVER = `${siteConfig.url}/whatsapp/hotel.jpg`;
 const SAMPLE_STAY = "Avoriaz, réservation TB-2026-0028,";
 const SAMPLE_CODE = "c/23456789";
 

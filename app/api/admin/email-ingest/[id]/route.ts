@@ -155,7 +155,6 @@ export async function POST(request: Request, ctx: Ctx) {
         extract,
         files,
         staffUserId: auth.user.id,
-        referenceClient: auth.supabase,
         status: "draft",
         visibleToClient: false,
         emailIngestId: id,
