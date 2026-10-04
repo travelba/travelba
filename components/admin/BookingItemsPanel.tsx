@@ -24,6 +24,7 @@ import {
 } from "@/lib/crm/carnet";
 import { flightCountsInStay } from "@/lib/crm/bookings";
 import { groupAttachedEmails } from "@/lib/crm/email-duplicates";
+import { bookingStepAnchor } from "@/lib/crm/booking-tabs";
 import { formatMoney } from "@/lib/crm/money";
 import { shortStayDay, shortStayRange } from "@/lib/crm/staff-stay";
 import { Icon } from "@/components/crm/icons";
@@ -190,16 +191,12 @@ export function BookingItemsPanel({
   const [notice, setNotice] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
-  const [deskFor, setDeskFor] = useState<string | null>(null);
-  const openedHotel = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!openHotelItemId || openedHotel.current === openHotelItemId) return;
-    const item = rows.find((row) => row.id === openHotelItemId && row.kind === "hotel");
-    if (!item || !hotelRequests.some((row) => row.booking_item_id === item.id)) return;
-    openedHotel.current = openHotelItemId;
-    setDeskFor(item.id);
-  }, [openHotelItemId, rows, hotelRequests]);
+  // `?hotel=` (toast « l’hôtel a répondu ») ouvre le bureau de cet hôtel dès le montage.
+  const [deskFor, setDeskFor] = useState<string | null>(() => {
+    if (!openHotelItemId) return null;
+    const item = items.find((row) => row.id === openHotelItemId && row.kind === "hotel");
+    return item && hotelRequests.some((row) => row.booking_item_id === item.id) ? item.id : null;
+  });
 
   useEffect(() => {
     if (!openHotelItemId || deskFor !== openHotelItemId) return;
@@ -422,8 +419,9 @@ export function BookingItemsPanel({
             className={`relative mt-2 ${locked ? "" : "cursor-grab active:cursor-grabbing"}`}
           >
             <div
+              id={bookingStepAnchor(item.id)}
               onPointerDown={blockDragFromControl}
-              className={`rounded-2xl border px-3 py-3 ${
+              className={`scroll-mt-28 rounded-2xl border px-3 py-3 ${
                 unshown
                   ? "border-[var(--admin-gold)] bg-[var(--admin-peach)]"
                   : "border-[var(--border)] bg-white"

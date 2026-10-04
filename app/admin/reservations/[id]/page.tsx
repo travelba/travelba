@@ -184,6 +184,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
 
   return (
     <BookingEditor
+          key={b.updated_at}
           booking={b}
           items={bookingItems}
           travelers={bookingTravelers}
