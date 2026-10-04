@@ -133,12 +133,6 @@ export function formatDateRangeShort(start?: string | null, end?: string | null)
   return formatDateFr(start || end);
 }
 
-export function formatMonthYear(value?: string | null) {
-  const d = value ? parseFrDate(value) : null;
-  if (!d) return "";
-  return capitalize(d.toLocaleDateString("fr-FR", { month: "long", year: "numeric" }));
-}
-
 function capitalize(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }

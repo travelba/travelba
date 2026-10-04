@@ -660,11 +660,6 @@ export function composeItineraryDay<T extends { id: string }>(
   return [...rest, ...rows];
 }
 
-export function returnStay(items: ServiceFlightRow[]) {
-  const inbound = serviceFlightLegs(items).find((leg) => leg.role === "inbound");
-  return matchedStay(items, inbound?.cityFrom || null);
-}
-
 export function extraFlightAt(
   items: { kind?: string | null; start_at?: string | null }[],
   leg: ExtraLeg,

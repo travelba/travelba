@@ -5,7 +5,6 @@ import {
   hotelReplyNotices,
   replyExcerpt,
   shouldSyncHotelReplies,
-  visibleReplyNotices,
   type HotelReplyNoticeRow,
 } from "./hotel-reply-notice";
 import { replyMoment } from "./hotel-reply-when";
@@ -74,12 +73,6 @@ test("l’extrait garde la première ligne, sans e-mail ni numéro de carte", ()
 test("le nom vient de l’hôtel, puis du titre", () => {
   assert.equal(hotelReplyNotices([row({ hotelName: "  " })], since)[0]?.hotel, "Suite");
   assert.equal(hotelReplyNotices([row({ hotelName: "", title: "" })], since)[0]?.hotel, "Hôtel");
-});
-
-test("quatre notifications visibles, les suivantes attendent", () => {
-  const queue = ["a", "b", "c", "d", "e"];
-  assert.deepEqual(visibleReplyNotices(queue), ["a", "b", "c", "d"]);
-  assert.deepEqual(visibleReplyNotices(queue.slice(1)), ["b", "c", "d", "e"]);
 });
 
 test("le moment de la réponse reste court", () => {

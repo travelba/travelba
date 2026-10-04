@@ -27,7 +27,6 @@ import {
   aiGatewayConfigured,
   bookingStatusFromExtract,
   guessIngestMime,
-  isAllowedIngestType,
   isCancellationExtract,
   keepAgentPrices,
   normalizeHotelExtractItem,
@@ -99,21 +98,6 @@ export function collectStagedFiles(form: FormData): IngestStagedFile[] {
       .filter((row) => row.path && row.name);
   } catch {
     throw new Error("Fichiers joints invalides");
-  }
-}
-
-export function assertIngestFiles(files: File[]) {
-  if (files.length === 0) throw new Error("Ajoutez au moins un PDF ou une photo.");
-  if (files.length > MAX_INGEST_FILES) {
-    throw new Error(`Maximum ${MAX_INGEST_FILES} fichiers.`);
-  }
-  for (const file of files) {
-    if (file.size > MAX_INGEST_BYTES) {
-      throw new Error(`${file.name} dépasse 25 Mo.`);
-    }
-    if (!isAllowedIngestType(file.type, file.name)) {
-      throw new Error(`${file.name} : PDF ou image uniquement.`);
-    }
   }
 }
 

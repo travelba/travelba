@@ -390,12 +390,6 @@ function normalizeCountryKey(value: string) {
     .replace(/[^a-z]/g, "");
 }
 
-export function flagEmoji(iso2: string) {
-  return iso2
-    .toUpperCase()
-    .replace(/./g, (char) => String.fromCodePoint(127397 + char.charCodeAt(0)));
-}
-
 export function flagImageUrl(iso2: string, width = 40) {
   return `https://flagcdn.com/w${width}/${iso2.toLowerCase()}.png`;
 }

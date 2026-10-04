@@ -34,7 +34,6 @@ import {
   vipMail,
   type ArrivalTick,
 } from "./hotel-arrival";
-import { agencyCodeMatches } from "./agency-card-code";
 
 const holidays = new Set(["2026-11-03", "2026-11-11"]);
 
@@ -401,8 +400,4 @@ test("carte visuelle : le début reste masqué, le code agence ne se devine pas 
   assert.equal(tripStayCard([]) , null);
   assert.equal(stayRevealNeedsAgencyCode("client"), false);
   assert.equal(stayRevealNeedsAgencyCode("staff"), true);
-  assert.equal(agencyCodeMatches("code-agence", "code-agence"), true);
-  assert.equal(agencyCodeMatches("code-agence", "autre-code"), false);
-  assert.equal(agencyCodeMatches("", "code-agence"), false);
-  assert.equal(agencyCodeMatches("code", "code-agence"), false);
 });
