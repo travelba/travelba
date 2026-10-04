@@ -11,8 +11,11 @@ import { PASSWORD_SETUP_COOKIE, mustSetPassword } from "@/lib/crm/session";
 import { stayHasPublishedCover, stayPlaceName } from "./concierge-notices";
 import {
   entryDestination,
+  entryLinkExpiresAt,
   entryPreviewHtml,
+  entryReopenDecision,
   isEntryCode,
+  isMissingColumnError,
   referenceFromNextPath,
   safeOtpType,
   stayPreviewCopy,
@@ -61,32 +64,55 @@ type LinkRow = {
   otp_type: string | null;
   next_path: string | null;
   email: string | null;
+  created_at?: string | null;
+  expires_at?: string | null;
+  used_at?: string | null;
+  revoked_at?: string | null;
 };
 
-/** Le GET ne vient pas ici. Le POST vérifie le jeton, pose la session, ouvre next. */
+/**
+ * Le GET nu ne vient pas ici. Un appui ou le POST vérifie le jeton, pose la session, ouvre next.
+ * Un lien révoqué ou expiré n’ouvre rien. Un jeton consommé n’est régénéré que si le lien
+ * n’a jamais servi, ou a servi il y a moins de 15 min (aperçu puis navigateur).
+ */
 export async function openEntry(origin: string, code: string) {
   const safe = isEntryCode(code) ? code : "";
   const admin = createServiceClient();
   const { data } = safe
-    ? await admin
-        .from("crm_entry_links")
-        .select("token_hash, otp_type, next_path, email")
-        .eq("code", safe)
-        .maybeSingle()
+    ? await admin.from("crm_entry_links").select("*").eq("code", safe).maybeSingle()
     : { data: null };
   const link = data as LinkRow | null;
   if (!link?.token_hash) return entryPreviewResponse(origin, safe, false);
+
+  const now = new Date();
+  const expiresAt = entryLinkExpiresAt(link);
+  const gate = entryReopenDecision({
+    now,
+    expiresAt,
+    usedAt: link.used_at,
+    revokedAt: link.revoked_at,
+    tokenValid: true,
+  });
+  if (gate === "refuse") return entryPreviewResponse(origin, safe, false);
 
   const otpType = safeOtpType(link.otp_type);
   const response = NextResponse.redirect(new URL("/mon-compte", origin));
   let user = await verifyOn(response, link.token_hash, otpType);
   if (!user) {
-    const email = storedEntryEmail(link.email);
+    const decision = entryReopenDecision({
+      now,
+      expiresAt,
+      usedAt: link.used_at,
+      revokedAt: link.revoked_at,
+      tokenValid: false,
+    });
+    const email = decision === "regenerate" ? storedEntryEmail(link.email) : null;
     const fresh = email ? await freshMagicHash(email) : null;
     if (fresh) user = await verifyOn(response, fresh, "magiclink");
   }
   if (!user) return entryPreviewResponse(origin, safe, false);
 
+  if (!link.used_at) await markEntryUsed(safe, now);
   await ensureCustomerForUser(user);
   const staff = await ensureStaff(user);
   if (!staff) await recordCustomerLogin(user.id, "entry");
@@ -141,6 +167,23 @@ async function verifyOn(response: NextResponse, tokenHash: string, type: string)
   if (verified.error) return null;
   const { data } = await supabase.auth.getUser();
   return data.user;
+}
+
+/** Première ouverture. Sans la migration, la colonne manque : on continue. */
+async function markEntryUsed(code: string, now: Date) {
+  try {
+    const admin = createServiceClient();
+    const { error } = await admin
+      .from("crm_entry_links")
+      .update({ used_at: now.toISOString() })
+      .eq("code", code)
+      .is("used_at", null);
+    if (error && !isMissingColumnError(error, "used_at")) {
+      console.error("[entry] used_at non posé");
+    }
+  } catch {
+    console.error("[entry] used_at non posé");
+  }
 }
 
 async function freshMagicHash(email: string) {

@@ -2,11 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   ENTRY_CODE_LENGTH,
+  ENTRY_REOPEN_WINDOW_MS,
   entryCode,
   entryCodeFromLink,
   entryButtonSuffix,
+  entryLinkExpiresAt,
+  entryLinkTtlMs,
   entryLinkUrl,
   entryOpenRequested,
+  entryReopenDecision,
+  isMissingColumnError,
   isPreviewBot,
   shouldOpenFromGet,
   entryDestination,
@@ -193,6 +198,87 @@ test("l’e-mail du lien est celui du titulaire, et l’entrée n’ouvre pas la
   const held = entryPreviewHtml("https://travelba.fr", "K7MQ2PX4", null, false);
   assert.equal(held.includes("<script"), false);
   assert.equal(held.includes("/connexion"), false);
-  assert.match(held, /Ouvrir mon espace/);
+  assert.equal(held.includes("Ouvrir mon espace"), false);
+  assert.equal(held.includes("<form"), false);
   assert.match(held, /Demandez-en un nouveau à l'agence/);
+});
+
+test("le lien court vit 24 h en magique, 30 jours en invitation ou réinitialisation", () => {
+  const hour = 60 * 60 * 1000;
+  assert.equal(entryLinkTtlMs("magiclink"), 24 * hour);
+  assert.equal(entryLinkTtlMs("invite"), 30 * 24 * hour);
+  assert.equal(entryLinkTtlMs("recovery"), 30 * 24 * hour);
+  assert.equal(entryLinkTtlMs(null), 24 * hour);
+  assert.equal(entryLinkTtlMs("signup"), 24 * hour);
+});
+
+test("une ligne sans expires_at expire 30 jours après sa création", () => {
+  const created = "2026-10-01T10:00:00.000Z";
+  assert.equal(
+    entryLinkExpiresAt({ expires_at: null, created_at: created }).toISOString(),
+    "2026-10-31T10:00:00.000Z"
+  );
+  assert.equal(
+    entryLinkExpiresAt({ expires_at: "2026-10-02T10:00:00.000Z", created_at: created }).toISOString(),
+    "2026-10-02T10:00:00.000Z"
+  );
+  assert.equal(entryLinkExpiresAt({}).getTime(), 0);
+});
+
+test("un lien révoqué ou expiré ne s’ouvre plus, même avec un jeton valable", () => {
+  const now = new Date("2026-10-04T12:00:00.000Z");
+  const later = new Date("2026-10-05T12:00:00.000Z");
+  const earlier = new Date("2026-10-04T11:59:00.000Z");
+  assert.equal(
+    entryReopenDecision({ now, expiresAt: later, usedAt: null, revokedAt: now, tokenValid: true }),
+    "refuse"
+  );
+  assert.equal(
+    entryReopenDecision({ now, expiresAt: earlier, usedAt: null, revokedAt: null, tokenValid: true }),
+    "refuse"
+  );
+  assert.equal(
+    entryReopenDecision({ now, expiresAt: later, usedAt: null, revokedAt: null, tokenValid: true }),
+    "open"
+  );
+});
+
+test("un jeton consommé n’est régénéré que si le lien n’a pas servi, ou depuis moins de 15 min", () => {
+  const now = new Date("2026-10-04T12:00:00.000Z");
+  const later = new Date("2026-10-05T12:00:00.000Z");
+  assert.equal(
+    entryReopenDecision({ now, expiresAt: later, usedAt: null, revokedAt: null, tokenValid: false }),
+    "regenerate"
+  );
+  const justUsed = new Date(now.getTime() - 5 * 60 * 1000);
+  assert.equal(
+    entryReopenDecision({ now, expiresAt: later, usedAt: justUsed, revokedAt: null, tokenValid: false }),
+    "regenerate"
+  );
+  const edge = new Date(now.getTime() - ENTRY_REOPEN_WINDOW_MS);
+  assert.equal(
+    entryReopenDecision({ now, expiresAt: later, usedAt: edge, revokedAt: null, tokenValid: false }),
+    "refuse"
+  );
+  const usedYesterday = new Date("2026-10-03T12:00:00.000Z").toISOString();
+  assert.equal(
+    entryReopenDecision({ now, expiresAt: later, usedAt: usedYesterday, revokedAt: null, tokenValid: false }),
+    "refuse"
+  );
+  const expired = new Date("2026-10-04T11:00:00.000Z");
+  assert.equal(
+    entryReopenDecision({ now, expiresAt: expired, usedAt: justUsed, revokedAt: null, tokenValid: false }),
+    "refuse"
+  );
+});
+
+test("une colonne absente se reconnaît au code ou au message", () => {
+  assert.equal(isMissingColumnError({ code: "42703", message: "column does not exist" }, "expires_at"), true);
+  assert.equal(isMissingColumnError({ code: "PGRST204", message: "" }, "expires_at"), true);
+  assert.equal(
+    isMissingColumnError({ code: null, message: "Could not find the 'expires_at' column" }, "expires_at"),
+    true
+  );
+  assert.equal(isMissingColumnError({ code: "23505", message: "duplicate key" }, "expires_at"), false);
+  assert.equal(isMissingColumnError(null, "expires_at"), false);
 });
