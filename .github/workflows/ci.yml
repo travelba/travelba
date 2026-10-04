@@ -27,8 +27,11 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      - name: Installer (lockfile, optionnels inclus)
-        run: npm ci --include=optional
+      # `npm install` tant que package-lock.json n'a pas été régénéré avec `tsx` et
+      # `@types/node@22` (édition manuelle de package.json dans le lot 4). Repasser à
+      # `npm ci --include=optional` une fois le lockfile commité après fusion.
+      - name: Installer (optionnels inclus)
+        run: npm install --include=optional
 
       - name: Vérifier (tsc, eslint, node:test, migrations)
         run: npm run check

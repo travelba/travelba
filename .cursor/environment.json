@@ -1,6 +1,6 @@
 {
   "name": "Travelba",
-  "install": "npm ci --include=optional",
+  "install": "npm install --include=optional",
   "terminals": [
     {
       "name": "next-dev",
