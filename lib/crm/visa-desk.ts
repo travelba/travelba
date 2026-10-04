@@ -1,3 +1,4 @@
+import { addIsoDays } from "./dates";
 import type { EurFx, VisaCorridor } from "./visa-fees";
 
 export type { EurFx, VisaCorridor };
@@ -24,18 +25,12 @@ function dayStamp(iso: string) {
   return iso.slice(0, 10);
 }
 
-function addDays(isoDate: string, days: number) {
-  const date = new Date(`${isoDate}T12:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-
 export function deskView(tasks: DeskTask[], today: string) {
   const open = tasks
     .filter((task) => !task.doneAt)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const grey = tasks
-    .filter((task) => task.doneAt && addDays(dayStamp(task.doneAt), 7) >= today)
+    .filter((task) => task.doneAt && addIsoDays(dayStamp(task.doneAt), 7) >= today)
     .sort((a, b) => (b.doneAt || "").localeCompare(a.doneAt || ""));
   return {
     open,
@@ -59,10 +54,10 @@ export function parisClock(now: Date) {
 
 export function shouldCloseCard(endDate: string, now: Date) {
   const clock = parisClock(now);
-  const morningAfter = addDays(endDate, 1);
+  const morningAfter = addIsoDays(endDate, 1);
   return clock.date > morningAfter || (clock.date === morningAfter && clock.hour >= 9);
 }
 
 export function retryStillDue(firstFailureOn: string, today: string) {
-  return today <= addDays(firstFailureOn, 3);
+  return today <= addIsoDays(firstFailureOn, 3);
 }
