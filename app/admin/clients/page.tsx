@@ -3,7 +3,8 @@ import { ClientsTable } from "@/components/admin/ClientsTable";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import Link from "next/link";
 import { requireStaffPage } from "@/lib/crm/auth";
-import { customerFullName, type CrmBalance, type CrmCustomer, type CrmTravelDocument } from "@/lib/crm/types";
+import { customerFullName, type CrmBalance, type CrmTravelDocument } from "@/lib/crm/types";
+import { CUSTOMER_LIST_SELECT, type CustomerListRow } from "@/lib/crm/customer-search";
 import { formatDateFr, isoDateInDays } from "@/lib/crm/money";
 
 export default async function AdminClientsPage({
@@ -25,7 +26,7 @@ export default async function AdminClientsPage({
     expiring = (data || []) as CrmTravelDocument[];
   }
   const [{ data: customers, error: customersError }, { data: balances }] = await Promise.all([
-    supabase.from("crm_customers").select("*").order("last_name"),
+    supabase.from("crm_customers").select(CUSTOMER_LIST_SELECT).order("last_name"),
     supabase.from("crm_customer_balances").select("*"),
   ]);
   if (customersError) {
@@ -54,7 +55,7 @@ export default async function AdminClientsPage({
           </h2>
           <ul className="divide-y divide-border text-sm">
             {expiring.map((doc) => {
-              const owner = ((customers || []) as CrmCustomer[]).find((row) => row.id === doc.customer_id);
+              const owner = ((customers || []) as CustomerListRow[]).find((row) => row.id === doc.customer_id);
               return (
                 <li key={doc.id} className="flex items-center justify-between gap-3 px-5 py-3">
                   <Link href={`/admin/clients/${doc.customer_id}`} className="font-semibold text-[var(--admin-navy)]">
@@ -69,7 +70,7 @@ export default async function AdminClientsPage({
         </section>
       ) : (
         <ClientsTable
-          customers={(customers || []) as CrmCustomer[]}
+          customers={(customers || []) as CustomerListRow[]}
           balances={(balances || []) as CrmBalance[]}
           initialQuery={q || ""}
         />

@@ -135,7 +135,10 @@ function normalizeName(value: string | null | undefined) {
     .replace(/[^a-z]/g, "");
 }
 
-export function matchCustomerId(customers: CrmCustomer[], extract: BookingExtract) {
+export function matchCustomerId(
+  customers: Pick<CrmCustomer, "id" | "email" | "first_name" | "last_name">[],
+  extract: BookingExtract
+) {
   const email = extract.customer_email?.trim().toLowerCase();
   if (email) {
     const hit = customers.find((c) => c.email.toLowerCase() === email);

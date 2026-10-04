@@ -5,7 +5,8 @@ import { requireStaffPage } from "@/lib/crm/auth";
 import { loadStayMaps } from "@/lib/crm/carnet-query";
 import { loadDisplayedStayAmounts } from "@/lib/crm/displayed-stay";
 import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
-import type { CrmBooking, CrmCustomer } from "@/lib/crm/types";
+import type { CrmBooking } from "@/lib/crm/types";
+import { CUSTOMER_NAME_SELECT, type CustomerNameRow } from "@/lib/crm/customer-search";
 
 export default async function AdminReservationsPage() {
   const { supabase } = await requireStaffPage();
@@ -14,7 +15,7 @@ export default async function AdminReservationsPage() {
       .from("crm_bookings")
       .select("*")
       .order("start_date", { ascending: false, nullsFirst: false }),
-    supabase.from("crm_customers").select("*").order("last_name"),
+    supabase.from("crm_customers").select(CUSTOMER_NAME_SELECT).order("last_name"),
     supabase.from("crm_billing_companies").select("id, customer_id, company_name, sort_order").order("sort_order"),
   ]);
   const rows = (bookings || []) as CrmBooking[];
@@ -35,7 +36,6 @@ export default async function AdminReservationsPage() {
       />
       <div className="mt-6">
         <NewBookingForm
-          customers={(customers || []) as CrmCustomer[]}
           companies={(companies || []) as {
             id: string;
             customer_id: string;
@@ -47,7 +47,7 @@ export default async function AdminReservationsPage() {
       </div>
       <BookingsTable
         bookings={rows}
-        customers={(customers || []) as CrmCustomer[]}
+        customers={(customers || []) as CustomerNameRow[]}
         places={maps.arrival}
         routes={maps.route}
         displayAmounts={Object.fromEntries(displayed)}

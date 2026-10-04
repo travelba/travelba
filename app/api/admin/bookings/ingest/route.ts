@@ -4,7 +4,7 @@ import { extractBookingFromPrepared } from "@/lib/crm/ingest-file";
 import { collectIngestFiles, matchCustomerId } from "@/lib/crm/ingest-booking";
 import { assertStaffIngestPath } from "@/lib/crm/ingest-storage";
 import { MAX_INGEST_FILES, type IngestStreamEvent } from "@/lib/crm/ingest-types";
-import type { CrmCustomer } from "@/lib/crm/types";
+import { CUSTOMER_PICK_SELECT, type PickableCustomer } from "@/lib/crm/customer-search";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -111,15 +111,16 @@ export async function POST(request: Request) {
             onEvent: emit,
           }
         );
-        const { data: customers } = await auth.supabase.from("crm_customers").select("*");
-        const suggested_customer_id = matchCustomerId(
-          (customers || []) as CrmCustomer[],
-          extract
-        );
+        const { data: customers } = await auth.supabase
+          .from("crm_customers")
+          .select(CUSTOMER_PICK_SELECT);
+        const pickable = (customers || []) as PickableCustomer[];
+        const suggested_customer_id = matchCustomerId(pickable, extract);
         emit({
           event: "done",
           extract,
           suggested_customer_id,
+          suggested_customer: pickable.find((row) => row.id === suggested_customer_id) || null,
           warnings,
         });
       } catch (err) {

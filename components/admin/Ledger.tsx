@@ -5,8 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { companyLabelForTransaction } from "@/lib/crm/billing-companies";
 import { clientLedgerAdminHref } from "@/lib/crm/client-ledger";
-import type { CrmBillingCompany, CrmCustomer, CrmTransaction } from "@/lib/crm/types";
+import type { CrmBillingCompany, CrmTransaction } from "@/lib/crm/types";
 import { TX_KIND_LABELS, customerFullName, isCreditTransfer } from "@/lib/crm/types";
+import type { CustomerNameRow, PickableCustomer } from "@/lib/crm/customer-search";
+import { CustomerPickField } from "@/components/admin/CustomerPickField";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { StatusChip } from "@/components/crm/ui";
 import { DateFrInput, MoneyInput } from "@/components/crm/fields";
@@ -21,15 +23,17 @@ const STATUS_LABELS: Record<CrmTransaction["status"], string> = {
 
 export function Ledger({
   transactions,
-  customers,
+  names,
   billingCompanies = [],
 }: {
   transactions: CrmTransaction[];
-  customers: CrmCustomer[];
+  /** Seulement les clients des lignes affichées : nom, pas la fiche. */
+  names: CustomerNameRow[];
   billingCompanies?: Pick<CrmBillingCompany, "id" | "customer_id" | "company_name">[];
 }) {
   const router = useRouter();
-  const [customerId, setCustomerId] = useState("");
+  const [filterCustomer, setFilterCustomer] = useState<PickableCustomer | null>(null);
+  const customerId = filterCustomer?.id || "";
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [status, setStatus] = useState("all");
@@ -38,8 +42,8 @@ export function Ledger({
   const [notice, setNotice] = useState<string | null>(null);
 
   const byId = useMemo(
-    () => new Map(customers.map((c) => [c.id, customerFullName(c)])),
-    [customers]
+    () => new Map(names.map((c) => [c.id, customerFullName(c)])),
+    [names]
   );
 
   const filtered = useMemo(() => {
@@ -91,17 +95,13 @@ export function Ledger({
   return (
     <div className="space-y-6">
       <form onSubmit={onSubmit} className="admin-af-card grid gap-3 rounded-3xl p-5 sm:grid-cols-3">
-        <label className={labelClass}>
-          Client
-          <select name="customer_id" required disabled={saving} className={fieldClass}>
-            <option value="">Choisir un client…</option>
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.last_name} {c.first_name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <CustomerPickField
+          name="customer_id"
+          label="Client"
+          title="Client crédité"
+          selected={null}
+          controlClass={`${fieldClass} w-full`}
+        />
         <label className={labelClass}>
           Montant (€)
           <MoneyInput
@@ -136,19 +136,16 @@ export function Ledger({
       </form>
 
       <div className="flex flex-col gap-2 lg:flex-row">
-        <select
-          value={customerId}
-          onChange={(e) => setCustomerId(e.target.value)}
-          aria-label="Filtrer par client"
-          className="rounded-xl border border-border bg-white px-3 py-2.5 text-sm"
-        >
-          <option value="">Tous les clients</option>
-          {customers.map((c) => (
-            <option key={c.id} value={c.id}>
-              {customerFullName(c)}
-            </option>
-          ))}
-        </select>
+        <CustomerPickField
+          name="filter_customer_id"
+          label="Filtrer par client"
+          title="Filtrer par client"
+          selected={filterCustomer}
+          placeholder="Tous les clients"
+          onPick={setFilterCustomer}
+          onClear={() => setFilterCustomer(null)}
+          controlClass="rounded-xl border border-border bg-white px-3 py-2.5 text-sm"
+        />
         <DateFrInput
           value={from}
           onChange={setFrom}
