@@ -34,6 +34,7 @@ import {
   type BookingExtract,
   type IngestWarning,
 } from "@/lib/crm/ingest-types";
+import { autoCreateBookingFromIngestId } from "@/lib/crm/email-ingest-create-run";
 import { uploadCrmFile, downloadCrmFile, safeFileName } from "@/lib/crm/files";
 import {
   extractReferences,
@@ -331,8 +332,9 @@ async function computeSuggestions(admin: Admin, extract: BookingExtract) {
 }
 
 /**
- * Enregistre l’extract et les suggestions. Ne rattache pas, ne crée pas de
- * dossier ni de client, n’annule pas. L’agence le fait depuis /admin/emails.
+ * Enregistre l’extract et les suggestions. Ne rattache pas, ne crée pas,
+ * n’annule pas. La création automatique suit uniquement dans
+ * processEmailIngestRow.
  */
 export async function matchAndStoreExtract(
   admin: Admin,
@@ -423,7 +425,7 @@ async function storeAttachment(
   return { name, path, mime_type: mime };
 }
 
-/** Traite une ligne `received` : télécharge le mail, extrait, rapproche. */
+/** Traite une ligne `received` : télécharge le mail, extrait, rapproche, crée le dossier si besoin. */
 export async function processEmailIngestRow(row: CrmEmailIngest) {
   const admin = createServiceClient();
   const message = await getMessage(row.gmail_message_id);
@@ -482,6 +484,7 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
   }
   await admin.from("crm_email_ingest").update(basePatch).eq("id", row.id);
   await matchAndStoreExtract(admin, row.id, extract, warnings, stored);
+  await autoCreateBookingFromIngestId(row.id);
 }
 
 /** Traite en lot les lignes `received` (appelé par le cron / après capture). */

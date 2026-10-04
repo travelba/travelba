@@ -24,7 +24,7 @@ Produit FR pour agence de voyage : back-office `/admin` (clients, réservations,
 | Invite, magique, sessions | `travelba-auth` |
 | Carnet / publier / timeline | `travelba-carnet` |
 | **Import PDF/photos** (dropzone, relecture humaine) | `travelba-document-ingest` |
-| **Gmail / `crm_email_ingest`** (Little Emperors, Expedia TAAP, billet-avion, rattachement manuel) | `travelba-email-ingest` |
+| **Gmail / `crm_email_ingest`** (Little Emperors, Expedia TAAP, billet-avion, création auto, rattachement manuel) | `travelba-email-ingest` |
 | Ledger / Stripe / Revolut | `travelba-money` |
 | Cursor Design / fichiers | `travelba-ui` |
 | Fiche / passeports | `travelba-identity` |
@@ -54,4 +54,4 @@ Produit FR pour agence de voyage : back-office `/admin` (clients, réservations,
 - Ingest documents côté client
 - Committer des PDF d’entraînement ou de la PII (PAN, noms) — skill `travelba-document-ingest`
 - Redemander un jeton Pliant. Auth0 en donne une poignée par jour : un seul appel, gardé dans `crm_integrations` jusqu’à expiration, verrou `crm_claim_integration_refresh`. Preview ne présente pas les identifiants (`productionOnlySecret`). Pas de `client_credentials` hors `lib/crm/pliant.ts`. Skill `travelba-visa`
-- Rattachement autonome d’un mail fournisseur (dossier, client ou annulation) — la file `/admin/emails` attend le clic agence. `received` et `error` y restent. Skill `travelba-email-ingest`
+- Rattachement ou annulation autonome d’un mail fournisseur — la file `/admin/emails` attend le clic agence. La création d’un dossier (et de la fiche s’il n’existe pas) part seule sur une confirmation sans voyage reconnu : brouillon caché, sans invitation. `received` et `error` y restent. Skill `travelba-email-ingest`
