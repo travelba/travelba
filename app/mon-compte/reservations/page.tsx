@@ -2,12 +2,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
-import { clientBookingStatusLabel, stayHeadline } from "@/lib/crm/carnet";
-import { clientStayPriceLabel } from "@/lib/crm/ledger-display";
+import { clientBookingStatusLabel, HIDDEN_PRICE_LABEL, stayHeadline } from "@/lib/crm/carnet";
 import { loadDisplayedStayAmounts } from "@/lib/crm/displayed-stay";
 import { isClientPastStay, isClientUpcomingStay } from "@/lib/crm/client-stays";
 import {
   formatDateRangeShort,
+  formatMoney,
   jMinusLabel,
   tripDurationDays,
 } from "@/lib/crm/money";
@@ -114,6 +114,10 @@ export default async function ReservationsPage({
         {list.map((b) => {
           const countdown = !showPast ? jMinusLabel(b.start_date) : null;
           const nights = tripDurationDays(b.start_date, b.end_date);
+          // Même montant que le détail (cartes + commission + billetterie + dépenses) ; sinon « — », jamais le total nu.
+          const displayed = displayedAmounts.get(b.id);
+          const amountLabel =
+            b.prices_visible === false ? HIDDEN_PRICE_LABEL : displayed == null ? "—" : formatMoney(displayed, b.currency);
           return (
             <li key={b.id}>
               <article className="relative overflow-hidden rounded-xl border border-[#c5c6cd]/35 bg-white shadow-sm">
@@ -140,28 +144,20 @@ export default async function ReservationsPage({
                   </div>
                 </BookingHero>
                 <div className="flex flex-col gap-3 bg-white p-4">
-                  <div className="grid grid-cols-2 gap-2 rounded-lg border border-[#c5c6cd]/25 bg-[#f4f3f0] p-2.5">
+                  <div className="grid grid-cols-1 gap-2 rounded-lg border border-[#c5c6cd]/25 bg-[#f4f3f0] p-2.5 min-[400px]:grid-cols-2">
                     <div className="flex flex-col">
                       <span className="text-[10px] font-semibold uppercase tracking-wider text-[#44474c]">
                         Référence
                       </span>
-                      <span className="text-[16px] font-bold text-[var(--admin-navy)]">
+                      <span className="whitespace-nowrap text-[16px] font-bold tabular-nums text-[var(--admin-navy)]">
                         {b.reference}
                       </span>
                     </div>
-                    <div className="flex flex-col items-end">
+                    <div className="flex flex-col min-[400px]:items-end min-[400px]:text-right">
                       <span className="text-[10px] font-semibold uppercase tracking-wider text-[#44474c]">
                         Montant
                       </span>
-                      <span className="text-[16px] font-bold text-[var(--admin-navy)]">
-                        {clientStayPriceLabel({
-                          stayTotal: displayedAmounts.get(b.id) ?? Number(b.total_amount),
-                          currency: b.currency,
-                          pricesVisible: b.prices_visible !== false,
-                          agencyCommission: false,
-                          expenses: [],
-                        })}
-                      </span>
+                      <span className="text-[16px] font-bold tabular-nums text-[var(--admin-navy)]">{amountLabel}</span>
                     </div>
                   </div>
                   <Link
@@ -179,7 +175,11 @@ export default async function ReservationsPage({
           <li>
             <EmptyState
               title={showPast ? "Aucun voyage passé" : "Aucun voyage à venir"}
-              description="L’agence publiera le carnet dès que le dossier sera prêt."
+              description={
+                showPast
+                  ? "Vos voyages terminés apparaîtront ici."
+                  : "L’agence publiera le carnet dès que le dossier sera prêt."
+              }
             />
           </li>
         ) : null}

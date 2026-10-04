@@ -382,7 +382,7 @@ export function DocumentsManager({
                 <Field label="Nom">
                   <input value={lastName} onChange={(event) => setLastName(event.target.value)} className={fieldControlClass} />
                 </Field>
-                <Field label="Nom d'épouse" hint="Nom d'usage s'il est imprimé" className="sm:col-span-2">
+                <Field label="Nom d'usage" hint="S'il est imprimé sur la pièce" className="sm:col-span-2">
                   <input value={usageName} onChange={(event) => setUsageName(event.target.value)} className={fieldControlClass} />
                 </Field>
                 <Field label="Naissance">

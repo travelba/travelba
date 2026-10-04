@@ -12,10 +12,10 @@ import {
   jMinusLabel,
   tripDurationDays,
 } from "@/lib/crm/money";
-import { clientBookingStatusLabel, clientVisibleItems } from "@/lib/crm/carnet";
+import { clientBookingStatusLabel, clientVisibleItems, HIDDEN_PRICE_LABEL } from "@/lib/crm/carnet";
 import { stayTitleFromItems } from "@/lib/crm/staff-stay";
-import { clientStayPriceLabel } from "@/lib/crm/ledger-display";
-import { isLedgerExpenseKind } from "@/lib/crm/types";
+import { displayedStayAmount } from "@/lib/crm/displayed-stay";
+import { formatMoney } from "@/lib/crm/money";
 
 export default async function ExampleReservationsPage({
   searchParams,
@@ -96,6 +96,13 @@ export default async function ExampleReservationsPage({
         {list.map((b) => {
           const countdown = !showPast ? jMinusLabel(b.start_date) : null;
           const nights = tripDurationDays(b.start_date, b.end_date);
+          // Même formule que le détail : cartes + commission + billetterie + dépenses.
+          const stayItems = session.items.filter((item) => item.booking_id === b.id);
+          const travelerCount = b.id === session.booking.id ? session.travelers.length : 0;
+          const amountLabel =
+            b.prices_visible === false
+              ? HIDDEN_PRICE_LABEL
+              : formatMoney(displayedStayAmount(b, stayItems, travelerCount), b.currency);
           return (
             <li key={b.id}>
               <article className="relative overflow-hidden rounded-xl border border-[#c5c6cd]/35 bg-white shadow-sm">
@@ -124,28 +131,20 @@ export default async function ExampleReservationsPage({
                   </div>
                 </BookingHero>
                 <div className="flex flex-col gap-3 bg-white p-4">
-                  <div className="grid grid-cols-2 gap-2 rounded-lg border border-[#c5c6cd]/25 bg-[#f4f3f0] p-2.5">
+                  <div className="grid grid-cols-1 gap-2 rounded-lg border border-[#c5c6cd]/25 bg-[#f4f3f0] p-2.5 min-[400px]:grid-cols-2">
                     <div className="flex flex-col">
                       <span className="text-[10px] font-semibold uppercase tracking-wider text-[#44474c]">
                         Référence
                       </span>
-                      <span className="text-[16px] font-bold text-[var(--admin-navy)]">{b.reference}</span>
+                      <span className="whitespace-nowrap text-[16px] font-bold tabular-nums text-[var(--admin-navy)]">
+                        {b.reference}
+                      </span>
                     </div>
-                    <div className="flex flex-col items-end">
+                    <div className="flex flex-col min-[400px]:items-end min-[400px]:text-right">
                       <span className="text-[10px] font-semibold uppercase tracking-wider text-[#44474c]">
                         Montant
                       </span>
-                      <span className="text-[16px] font-bold text-[var(--admin-navy)]">
-                        {clientStayPriceLabel({
-                          stayTotal: Number(b.total_amount),
-                          currency: b.currency,
-                          pricesVisible: b.prices_visible !== false,
-                          agencyCommission: b.agency_commission === true,
-                          expenses: session.items
-                            .filter((item) => item.booking_id === b.id && isLedgerExpenseKind(item.kind))
-                            .map((item) => ({ amount: item.amount })),
-                        })}
-                      </span>
+                      <span className="text-[16px] font-bold tabular-nums text-[var(--admin-navy)]">{amountLabel}</span>
                     </div>
                   </div>
                   <Link
@@ -163,7 +162,11 @@ export default async function ExampleReservationsPage({
           <li>
             <EmptyState
               title={showPast ? "Aucun voyage passé" : "Aucun voyage à venir"}
-              description="L’agence publiera le carnet dès que le dossier sera prêt."
+              description={
+                showPast
+                  ? "Vos voyages terminés apparaîtront ici."
+                  : "L’agence publiera le carnet dès que le dossier sera prêt."
+              }
             />
           </li>
         ) : null}

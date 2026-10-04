@@ -58,7 +58,7 @@ export function passportDetailRows(source: PassportSource) {
     ["Type", type],
     ["N° de document", source.number],
     ["Nom", source.last_name],
-    ["Nom d'épouse", source.usage_name],
+    ["Nom d'usage", source.usage_name],
     ["Prénom(s)", source.first_name],
     ["Date de naissance", source.birth_date ? formatDateFr(source.birth_date) : null],
     ["Lieu de naissance", source.place_of_birth],

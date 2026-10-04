@@ -309,7 +309,7 @@ export function CompanionsManager({
               className={fieldControlClass}
             />
           </Field>
-          <Field label="Nom d'épouse" hint="Nom d'usage s'il est imprimé" className="sm:col-span-2">
+          <Field label="Nom d'usage" hint="S'il est imprimé sur la pièce" className="sm:col-span-2">
             <input
               autoComplete="off"
               value={usageName}
