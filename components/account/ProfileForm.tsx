@@ -193,7 +193,7 @@ export function ProfileForm({
             required
           />
         </Field>
-        <Field label="Nom d'épouse" hint="Nom d'usage s'il est imprimé sur le passeport ou la CNI">
+        <Field label="Nom d'usage" hint="S'il est imprimé sur le passeport ou la CNI (nom d'épouse, par exemple)">
           <input
             spellCheck={false}
             value={usageName}

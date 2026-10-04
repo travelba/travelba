@@ -81,7 +81,9 @@ export default async function ExampleHomePage() {
             <p className="absolute left-5 top-5 z-10 inline-flex w-fit items-center gap-1.5 rounded-full border border-[var(--admin-gold)]/30 bg-white/95 px-3 py-1 text-[12px] font-semibold text-[var(--admin-navy)] shadow-sm">
               <Icon name="timer" className="h-[15px] w-[15px] text-[var(--admin-gold)]" />
               <span className="font-bold">{countdown}</span>
-              {countdown.startsWith("J") ? <span className="font-normal text-[#5a5c60]">avant l’envol</span> : null}
+              {countdown.startsWith("J") ? (
+                <span className="font-normal text-[#5a5c60]">{homeFlight ? "avant l’envol" : "avant le départ"}</span>
+              ) : null}
             </p>
           ) : null}
           {weather ? (

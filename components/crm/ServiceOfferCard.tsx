@@ -10,7 +10,7 @@ import { IssuesList } from "@/components/crm/IssuesList";
 import { issuesFromResponse, issuesSummary, type BookingIssue } from "@/lib/crm/booking-issues";
 import { postJson } from "@/lib/crm/client-fetch";
 import { CLIENT_PREVIEW_NOTE, useClientPreview } from "@/components/account/client-preview";
-import { HIDDEN_PRICE_LABEL, kindIcon } from "@/lib/crm/carnet";
+import { kindIcon } from "@/lib/crm/carnet";
 import { addressCity } from "@/lib/crm/address-suggest";
 import { extraAgencyStatus, serviceClock, storedTransferAddresses, type ServiceOffer } from "@/lib/crm/extras";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
@@ -70,7 +70,8 @@ export function ServiceOfferCard({
     : confirmed
       ? "Confirmé"
       : "En attente de confirmation";
-  const priceLabel = pricesVisible ? formatMoney(price, currency) : HIDDEN_PRICE_LABEL;
+  /** Prix masqué : pas de ligne prix ici, la mention ne vit que dans le bloc Montant du séjour. */
+  const priceLabel = pricesVisible ? formatMoney(price, currency) : null;
   const endpoint = isAdmin ? `/api/admin/bookings/${bookingId}/extras` : `/api/client/bookings/${reference}/extras`;
   const whenLabel = [offer.day ? formatDateFr(offer.day) : null, clock || null].filter(Boolean).join(" · ");
 
@@ -297,7 +298,7 @@ export function ServiceOfferCard({
       </div>
       {review ? null : (
         <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 pb-3 pt-2">
-          <span className="text-sm font-bold text-[var(--admin-navy)]">{priceLabel}</span>
+          {priceLabel ? <span className="text-sm font-bold text-[var(--admin-navy)]">{priceLabel}</span> : <span />}
           {controls()}
         </div>
       )}
@@ -330,12 +331,14 @@ export function ServiceOfferCard({
                 <dd className="font-medium text-[var(--admin-navy)]">{[detail, offer.flightLine].filter(Boolean).join(" · ")}</dd>
               </div>
             ) : null}
-            <div className="sm:col-span-2">
-              <dt className="text-[10px] font-bold uppercase tracking-wide text-muted">Prix</dt>
-              <dd className="font-bold text-[var(--admin-navy)]">{priceLabel}</dd>
-            </div>
+            {priceLabel ? (
+              <div className="sm:col-span-2">
+                <dt className="text-[10px] font-bold uppercase tracking-wide text-muted">Prix</dt>
+                <dd className="font-bold text-[var(--admin-navy)]">{priceLabel}</dd>
+              </div>
+            ) : null}
           </dl>
-          {pricesVisible ? null : (
+          {priceLabel ? null : (
             <p className="text-xs text-muted">Le prix est communiqué par l’agence à la publication du séjour.</p>
           )}
           {showAddresses ? (

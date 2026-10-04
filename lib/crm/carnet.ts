@@ -329,6 +329,14 @@ export function carnetVisible(
 /** Une seule phrase partout où un prix est masqué au client. */
 export const HIDDEN_PRICE_LABEL = "Prix à la publication";
 
+/** Ligne d’assurance du bloc Montant : « Assurance {titre} », sauf si le titre le dit déjà. */
+export function insuranceLineLabel(title: string | null | undefined) {
+  const text = (title || "").trim();
+  if (!text) return "Assurance";
+  if (/assurance/i.test(text)) return text;
+  return `Assurance ${text}`;
+}
+
 export function itemPriceLabel(
   item: Pick<CrmBookingItem, "kind" | "start_at" | "end_at" | "amount"> & {
     details?: Record<string, unknown> | null;

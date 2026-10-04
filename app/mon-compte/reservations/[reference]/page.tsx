@@ -21,10 +21,13 @@ import {
   carnetVisible,
   clientBookingStatusLabel,
   clientVisibleItems,
+  insuranceLineLabel,
   itemPriceLabel,
   tripPlaceLine,
+  unlinkedDocuments,
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
+import { HiddenStayNotice } from "@/components/account/HiddenStayNotice";
 import { stayTitleFromItems } from "@/lib/crm/staff-stay";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { EncoursPayment } from "@/components/account/EncoursPayment";
@@ -53,6 +56,22 @@ import { isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
 
 type Props = { params: Promise<{ reference: string }> };
 
+/** Le dossier est bien à ce client mais la RLS le cache (dépublié, archivé) : on l’explique, pas un 404. */
+async function stayExistsForCustomer(customerId: string, reference: string) {
+  try {
+    const admin = createServiceClient();
+    const { data } = await admin
+      .from("crm_bookings")
+      .select("id")
+      .eq("customer_id", customerId)
+      .eq("reference", reference)
+      .maybeSingle();
+    return Boolean(data);
+  } catch {
+    return false;
+  }
+}
+
 export default async function ReservationDetailPage({ params }: Props) {
   const { reference } = await params;
   const { supabase, user } = await getSessionUser();
@@ -67,9 +86,12 @@ export default async function ReservationDetailPage({ params }: Props) {
     .eq("customer_id", customer.id)
     .eq("reference", reference)
     .maybeSingle();
-  if (!booking) notFound();
+  if (!booking) {
+    if (await stayExistsForCustomer(customer.id, reference)) return <HiddenStayNotice reference={reference} />;
+    notFound();
+  }
   const b = booking as CrmBooking;
-  if (b.archived_at) notFound();
+  if (b.archived_at) return <HiddenStayNotice reference={b.reference} />;
 
   const [{ data: items }, { data: travelers }, { data: docs }, { data: identityDocs }, { data: companions }, { data: declined }, { data: visaRows }] =
     await Promise.all([
@@ -94,7 +116,7 @@ export default async function ReservationDetailPage({ params }: Props) {
     .filter((row): row is ServiceRefusal => Boolean(row));
 
   const rawItems = clientVisibleItems((items || []) as CrmBookingItem[]);
-  if (!carnetVisible(b, rawItems)) notFound();
+  if (!carnetVisible(b, rawItems)) return <HiddenStayNotice reference={b.reference} />;
   const visibleItems = withoutHotelRosterItems(await loadHotelContacts(b.id, rawItems));
 
   const insurances = visibleItems.filter((item) => item.kind === "insurance");
@@ -332,10 +354,11 @@ export default async function ReservationDetailPage({ params }: Props) {
             })}
           </p>
           {insurances.map((item) => {
-            const price = itemPriceLabel(item, b.currency, null, b.prices_visible !== false);
+            // Prix masqué : la mention « Prix à la publication » reste au montant, pas sur chaque ligne.
+            const price = b.prices_visible !== false ? itemPriceLabel(item, b.currency, null, true) : null;
             return (
               <p key={item.id} className="text-sm text-muted">
-                Assurance {item.title}
+                {insuranceLineLabel(item.title)}
                 {price ? ` · ${price}` : ""}
               </p>
             );
@@ -347,7 +370,7 @@ export default async function ReservationDetailPage({ params }: Props) {
         <>
           <ReservationFiles
             showPassports={false}
-            attachments={attachmentPreviews(visibleDocs, visibleItems, b.reference)}
+            attachments={attachmentPreviews(unlinkedDocuments(visibleDocs, visibleItems), visibleItems, b.reference)}
           />
           {customer.phone ? (
             <a

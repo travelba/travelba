@@ -20,6 +20,7 @@ import {
   hotelDisplayName,
   hotelStayLabel,
   itemClock,
+  insuranceLineLabel,
   itemPriceLabel,
   nextFlightPass,
   nextTimelineFlight,
@@ -467,5 +468,15 @@ describe("carnet", () => {
       ]),
       false
     );
+  });
+});
+
+describe("insuranceLineLabel", () => {
+  it("ne préfixe pas par « Assurance » quand le titre le contient déjà", () => {
+    assert.equal(insuranceLineLabel("Assurance voyage"), "Assurance voyage");
+    assert.equal(insuranceLineLabel("assurance annulation Allianz"), "assurance annulation Allianz");
+    assert.equal(insuranceLineLabel("Multirisque Allianz"), "Assurance Multirisque Allianz");
+    assert.equal(insuranceLineLabel("  "), "Assurance");
+    assert.equal(insuranceLineLabel(null), "Assurance");
   });
 });

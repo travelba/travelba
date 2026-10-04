@@ -19,7 +19,6 @@ import {
   VISA_EUR,
   type ServiceRefusal,
 } from "@/lib/crm/extras";
-import { HIDDEN_PRICE_LABEL } from "@/lib/crm/carnet";
 import { formatMoney } from "@/lib/crm/money";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { Icon } from "@/components/crm/icons";
@@ -167,7 +166,8 @@ export function ExtrasPanel({
   }) {
     const confirmed = input.existing ? extraAgencyStatus(input.existing) === "confirmed" : false;
     const status = !input.existing ? "Non validé" : confirmed ? "Confirmé" : "Validé";
-    const priceLabel = pricesVisible ? formatMoney(input.amount, booking.currency) : HIDDEN_PRICE_LABEL;
+    /** Prix masqué : pas de ligne prix ici, la mention ne vit que dans le bloc Montant du séjour. */
+    const priceLabel = pricesVisible ? formatMoney(input.amount, booking.currency) : null;
     const subtitle = `${status} · ${input.note} · ${input.count} passager${input.count > 1 ? "s" : ""}`;
     const pending =
       busy === input.kind ||
@@ -243,7 +243,7 @@ export function ExtrasPanel({
         </div>
         {reviewing ? null : (
           <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 pb-3 pt-2">
-            <span className="text-sm font-bold text-[var(--admin-navy)]">{priceLabel}</span>
+            {priceLabel ? <span className="text-sm font-bold text-[var(--admin-navy)]">{priceLabel}</span> : <span />}
             <span className="flex flex-wrap items-center justify-end gap-2">
               {refuseButton}
               {validate}
@@ -271,12 +271,14 @@ export function ExtrasPanel({
                   {input.count} passager{input.count > 1 ? "s" : ""} · {input.note}
                 </dd>
               </div>
-              <div className="sm:col-span-2">
-                <dt className="text-[10px] font-bold uppercase tracking-wide text-muted">Prix</dt>
-                <dd className="font-bold text-[var(--admin-navy)]">{priceLabel}</dd>
-              </div>
+              {priceLabel ? (
+                <div className="sm:col-span-2">
+                  <dt className="text-[10px] font-bold uppercase tracking-wide text-muted">Prix</dt>
+                  <dd className="font-bold text-[var(--admin-navy)]">{priceLabel}</dd>
+                </div>
+              ) : null}
             </dl>
-            {pricesVisible ? null : (
+            {priceLabel ? null : (
               <p className="text-xs text-muted">Le prix est communiqué par l’agence à la publication du séjour.</p>
             )}
             <div className="flex flex-wrap gap-2">
