@@ -3,7 +3,7 @@ import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { parseEurosToCents } from "@/lib/crm/hotel-arrival";
 import { issueHotelCheckinCard } from "@/lib/crm/hotel-desk-run";
 import { openAgencyCard } from "@/lib/crm/staff-card-open";
-import { advanceHotelItem } from "@/lib/crm/hotel-arrival-run";
+import { advanceHotelItem, issueManualStayCard } from "@/lib/crm/hotel-arrival-run";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmHotelArrival } from "@/lib/crm/types";
 
@@ -16,7 +16,17 @@ export async function POST(request: Request, ctx: Ctx) {
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
   const body = (await request.json().catch(() => null)) as
-    | { itemId?: string; action?: string; net?: string; code?: string; source?: string; define?: boolean }
+    | {
+        itemId?: string;
+        action?: string;
+        net?: string;
+        code?: string;
+        source?: string;
+        define?: boolean;
+        amount?: string;
+        firstName?: string;
+        lastName?: string;
+      }
     | null;
   const itemId = (body?.itemId || "").trim();
   const action = body?.action;
@@ -30,6 +40,21 @@ export async function POST(request: Request, ctx: Ctx) {
     .eq("booking_item_id", itemId)
     .maybeSingle();
   const row = data as CrmHotelArrival | null;
+
+  if (action === "issue-manual") {
+    try {
+      await issueManualStayCard(admin, {
+        bookingId: id,
+        itemId,
+        amount: typeof body?.amount === "string" ? body.amount : "",
+        firstName: typeof body?.firstName === "string" ? body.firstName : "",
+        lastName: typeof body?.lastName === "string" ? body.lastName : "",
+      });
+      return NextResponse.json({ ok: true });
+    } catch (error) {
+      return jsonError(error instanceof Error ? error.message : "La carte n’a pas pu être créée.", 400);
+    }
+  }
 
   if (action === "issue") {
     const { data: item } = await admin
