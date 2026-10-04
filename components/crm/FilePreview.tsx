@@ -6,6 +6,9 @@ import { fileDownloadHref, fileInlineHref, fileThumbHref } from "@/lib/crm/file-
 import { isPreviewImage, isPreviewPdf, type FilePreviewModel } from "@/lib/crm/preview-files";
 import { siteConfig } from "@/lib/site";
 import { Icon } from "@/components/crm/icons";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
+
+type RemoveResult = void | string | null | undefined;
 
 function whatsappHref(text: string) {
   return `https://wa.me/${siteConfig.whatsappNumber}?text=${encodeURIComponent(text)}`;
@@ -52,9 +55,12 @@ function FileThumb({ file }: { file: FilePreviewModel }) {
 export function FilePreviewTile({
   file,
   onRemove,
+  removeQuestion,
 }: {
   file: FilePreviewModel;
-  onRemove?: () => void;
+  /** Renvoie une phrase d’erreur pour l’afficher sous le bouton. */
+  onRemove?: () => RemoveResult | Promise<RemoveResult>;
+  removeQuestion?: string;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -73,14 +79,18 @@ export function FilePreviewTile({
         </span>
       </button>
       {onRemove ? (
-        <button
-          type="button"
-          className="admin-tap rounded-full text-xs font-semibold text-accent"
-          aria-label={`Retirer ${file.label}`}
-          onClick={onRemove}
-        >
-          Retirer
-        </button>
+        <ConfirmAction
+          size="sm"
+          tone="danger"
+          label="Retirer"
+          confirmLabel="Retirer"
+          ariaLabel={`Retirer ${file.label}`}
+          question={removeQuestion || `${file.label} quitte le dossier et son fichier est supprimé.`}
+          onConfirm={async () => {
+            const result = await onRemove();
+            return typeof result === "string" ? result : undefined;
+          }}
+        />
       ) : null}
       {open ? <FilePreviewDialog file={file} onClose={() => setOpen(false)} /> : null}
     </div>
@@ -90,16 +100,22 @@ export function FilePreviewTile({
 export function FilePreviewGrid({
   files,
   onRemove,
+  removeQuestion,
 }: {
   files: FilePreviewModel[];
-  onRemove?: (file: FilePreviewModel) => void;
+  onRemove?: (file: FilePreviewModel) => RemoveResult | Promise<RemoveResult>;
+  removeQuestion?: string | ((file: FilePreviewModel) => string);
 }) {
   if (!files.length) return null;
   return (
     <ul className="flex flex-wrap gap-3">
       {files.map((file) => (
         <li key={file.id}>
-          <FilePreviewTile file={file} onRemove={onRemove ? () => onRemove(file) : undefined} />
+          <FilePreviewTile
+            file={file}
+            onRemove={onRemove ? () => onRemove(file) : undefined}
+            removeQuestion={typeof removeQuestion === "function" ? removeQuestion(file) : removeQuestion}
+          />
         </li>
       ))}
     </ul>
@@ -115,7 +131,9 @@ function FilePreviewDialog({
 }) {
   const titleId = useId();
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
   const [sharing, setSharing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const image = isPreviewImage(file.mimeType, file.fileName);

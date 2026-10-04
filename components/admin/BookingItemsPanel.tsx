@@ -35,6 +35,8 @@ import type { CardViewLine, CrmBookingTraveler, CrmHotelArrival, CrmHotelMessage
 import { FilePreviewTile } from "@/components/crm/FilePreview";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
+import { adminAction } from "@/lib/crm/admin-action";
 import type { CrmBookingDocument } from "@/lib/crm/types";
 import type { HouseholdMember } from "@/lib/crm/household";
 
@@ -190,7 +192,6 @@ export function BookingItemsPanel({
   const orderDirty = useRef(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
-  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   // `?hotel=` (toast « l’hôtel a répondu ») ouvre le bureau de cet hôtel dès le montage.
   const [deskFor, setDeskFor] = useState<string | null>(() => {
     if (!openHotelItemId) return null;
@@ -352,14 +353,20 @@ export function BookingItemsPanel({
     router.refresh();
   }
 
+  /** Confirmé dans le menu : renvoie l’erreur pour l’afficher sous le bouton. */
   async function removeItem(id: string) {
     setBusy(true);
-    await fetch(`/api/admin/bookings/${bookingId}/items?itemId=${encodeURIComponent(id)}`, {
-      method: "DELETE",
-    });
+    setError(null);
+    const result = await adminAction(
+      `/api/admin/bookings/${bookingId}/items?itemId=${encodeURIComponent(id)}`,
+      { method: "DELETE" }
+    );
     setBusy(false);
+    if (!result.ok) return result.error || "L’étape n’a pas pu être retirée.";
     if (editingId === id) setEditingId(null);
+    setMenuFor(null);
     router.refresh();
+    return undefined;
   }
 
   return (
@@ -508,15 +515,12 @@ export function BookingItemsPanel({
                     type="button"
                     aria-label="Autres actions de l’étape"
                     className={flatIconBtn}
-                    onClick={() => {
-                      setMenuFor(menuFor === item.id ? null : item.id);
-                      setConfirmRemove(null);
-                    }}
+                    onClick={() => setMenuFor(menuFor === item.id ? null : item.id)}
                   >
                     …
                   </button>
                   {menuFor === item.id ? (
-                    <div className="absolute right-0 top-9 z-20 flex w-44 flex-col gap-1 rounded-2xl border border-[var(--border)] bg-white p-2">
+                    <div className="absolute right-0 top-9 z-20 flex w-60 flex-col gap-2 rounded-2xl border border-[var(--border)] bg-white p-2">
                       <button
                         type="button"
                         className={flatBtn}
@@ -525,15 +529,16 @@ export function BookingItemsPanel({
                       >
                         {item.visible_to_client ? "Cacher" : "Montrer"}
                       </button>
-                      {confirmRemove === item.id ? (
-                        <button type="button" className={flatBtn} onClick={() => void removeItem(item.id)}>
-                          Confirmer
-                        </button>
-                      ) : (
-                        <button type="button" className={flatBtn} onClick={() => setConfirmRemove(item.id)}>
-                          Retirer
-                        </button>
-                      )}
+                      <ConfirmAction
+                        size="sm"
+                        tone="danger"
+                        label="Retirer"
+                        confirmLabel="Retirer l’étape"
+                        ariaLabel={`Retirer ${stepTitle(item)}`}
+                        question="L’étape quitte le voyage. Le fichier reste dans le dossier."
+                        disabled={busy}
+                        onConfirm={() => removeItem(item.id)}
+                      />
                     </div>
                   ) : null}
                   </div>
@@ -588,27 +593,38 @@ function ItemAttachments({
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy) return;
     const form = event.currentTarget;
     const fd = new FormData(form);
     fd.set("booking_item_id", itemId);
     setBusy(true);
-    await fetch(`/api/admin/bookings/${bookingId}/documents`, { method: "POST", body: fd });
+    setError(null);
+    const result = await adminAction(`/api/admin/bookings/${bookingId}/documents`, {
+      method: "POST",
+      formData: fd,
+    });
     setBusy(false);
+    if (!result.ok) {
+      setError(result.error || "Pièce non jointe. Réessayez.");
+      return;
+    }
     form.reset();
     router.refresh();
   }
 
+  /** Confirmé sur la vignette : renvoie l’erreur pour l’afficher sous le bouton. */
   async function removeDoc(documentId: string) {
-    setBusy(true);
-    await fetch(
+    const result = await adminAction(
       `/api/admin/bookings/${bookingId}/documents?id=${encodeURIComponent(documentId)}`,
       { method: "DELETE" }
     );
-    setBusy(false);
+    if (!result.ok) return result.error || "Retrait impossible. Réessayez.";
     router.refresh();
+    return undefined;
   }
 
   if (compact) return null;
@@ -619,7 +635,7 @@ function ItemAttachments({
         {docs.map((doc) => (
           <FilePreviewTile
             key={doc.id}
-            onRemove={() => void removeDoc(doc.id)}
+            onRemove={() => removeDoc(doc.id)}
             file={{
               id: doc.id,
               path: doc.storage_path,
@@ -633,10 +649,15 @@ function ItemAttachments({
       </div>
       <form onSubmit={upload} className="flex flex-wrap items-center gap-2">
         <BusyBar active={busy} label="Envoi…" />
-        <input name="file" type="file" required className="text-xs" />
+        <input name="file" type="file" required disabled={busy} className="text-xs" />
         <button type="submit" disabled={busy} className={flatBtn}>
           {busy ? "Envoi…" : "Joindre"}
         </button>
+        {error ? (
+          <p role="alert" className="basis-full text-xs text-[var(--admin-red)]">
+            {error}
+          </p>
+        ) : null}
       </form>
     </div>
   );

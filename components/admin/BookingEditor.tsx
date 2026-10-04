@@ -7,7 +7,6 @@ import {
   BOOKING_STATUSES,
   BOOKING_STATUS_LABELS,
   isLedgerExpenseKind,
-  visibleServiceCopy,
   type CrmBooking,
   type CrmBookingCard,
   type CrmBookingDocument,
@@ -50,10 +49,10 @@ import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
 import { ClientInterfacePreview } from "@/components/account/ClientInterfacePreview";
 import type { ClientLedgerView } from "@/lib/crm/client-ledger";
 import {
-  DeleteBookingButton,
+  ArchiveBookingButton,
   DuplicateBookingButton,
   RestoreBookingButton,
-} from "@/components/admin/DeleteBookingButton";
+} from "@/components/admin/ArchiveBookingButton";
 import { LittleEmperorsCancel } from "@/components/admin/LittleEmperorsCancel";
 import { hotelTripChecklist } from "@/lib/crm/hotel-desk";
 import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
@@ -101,6 +100,7 @@ import {
   type BookingTabId,
 } from "@/lib/crm/booking-tabs";
 import { bookingFlashKey, readBookingFlash, writeBookingFlash } from "@/lib/crm/booking-flash";
+import { adminAction } from "@/lib/crm/admin-action";
 
 const noopSubscribe = () => () => {};
 
@@ -227,6 +227,11 @@ export function BookingEditor({
   const flashShown = flash === undefined ? storedFlash : flash;
   const [confirm, setConfirm] = useState<null | "publish" | "unpublish">(null);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
+  const [partyBusy, setPartyBusy] = useState(false);
+  const [partyIssues, setPartyIssues] = useState<BookingIssue[]>([]);
+  const [partyError, setPartyError] = useState<string | null>(null);
+  const [docBusy, setDocBusy] = useState(false);
+  const [docError, setDocError] = useState<string | null>(null);
   const [compact, setCompact] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const pendingStep = useRef<string | null>(null);
@@ -466,6 +471,23 @@ export function BookingEditor({
     router.refresh();
   }
 
+  /** Ajout d’un voyageur : le retour serveur (déjà sur le séjour, hors du foyer…) s’affiche sous le formulaire. */
+  async function postTraveler(body: Record<string, unknown>, afterOk?: () => void) {
+    if (partyBusy) return;
+    setPartyBusy(true);
+    setPartyIssues([]);
+    setPartyError(null);
+    const result = await adminAction(`/api/admin/bookings/${booking.id}/travelers`, { method: "POST", body });
+    setPartyBusy(false);
+    if (!result.ok) {
+      if (result.issues?.length) setPartyIssues(result.issues);
+      else setPartyError(result.error || "Ajout impossible. Réessayez.");
+      return;
+    }
+    afterOk?.();
+    router.refresh();
+  }
+
   async function addTraveler(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -475,64 +497,59 @@ export function BookingEditor({
     const companionId = key.startsWith("companion:") ? key.slice("companion:".length) : "";
     const documentIndex = key.startsWith("doc:") ? Number(key.slice(4)) : -1;
     const fromDocument = documentChoices[documentIndex];
-    const res = await fetch(`/api/admin/bookings/${booking.id}/travelers`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(
-        fromDocument
-          ? { first_name: fromDocument.first_name, last_name: fromDocument.last_name }
-          : {
-              companion_id: companionId || null,
-              is_account_holder: isHolder,
-            }
-      ),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setIssues(issuesFromResponse(json));
-      return;
-    }
-    setIssues([]);
-    form.reset();
-    router.refresh();
+    await postTraveler(
+      fromDocument
+        ? { first_name: fromDocument.first_name, last_name: fromDocument.last_name }
+        : { companion_id: companionId || null, is_account_holder: isHolder },
+      () => form.reset()
+    );
   }
 
+  /** Confirmé dans la liste : renvoie l’erreur pour l’afficher sous le bouton. */
   async function removeTraveler(travelerId: string) {
-    await fetch(
+    const result = await adminAction(
       `/api/admin/bookings/${booking.id}/travelers?travelerId=${encodeURIComponent(travelerId)}`,
       { method: "DELETE" }
     );
+    if (!result.ok) return result.error || "Retrait impossible. Réessayez.";
     router.refresh();
+    return undefined;
   }
 
   async function addHolder() {
-    await fetch(`/api/admin/bookings/${booking.id}/travelers`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        is_account_holder: true,
-        first_name: holderName.first_name,
-        last_name: holderName.last_name,
-      }),
+    await postTraveler({
+      is_account_holder: true,
+      first_name: holderName.first_name,
+      last_name: holderName.last_name,
     });
-    router.refresh();
   }
 
+  /** Confirmé sur la vignette : renvoie l’erreur pour l’afficher sous le bouton. */
   async function removeDocument(documentId: string) {
-    await fetch(
+    const result = await adminAction(
       `/api/admin/bookings/${booking.id}/documents?id=${encodeURIComponent(documentId)}`,
       { method: "DELETE" }
     );
+    if (!result.ok) return result.error || "Retrait impossible. Réessayez.";
     router.refresh();
+    return undefined;
   }
 
   async function addDoc(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (docBusy) return;
     const form = event.currentTarget;
-    await fetch(`/api/admin/bookings/${booking.id}/documents`, {
+    setDocBusy(true);
+    setDocError(null);
+    const result = await adminAction(`/api/admin/bookings/${booking.id}/documents`, {
       method: "POST",
-      body: new FormData(form),
+      formData: new FormData(form),
     });
+    setDocBusy(false);
+    if (!result.ok) {
+      setDocError(result.error || "Pièce non jointe. Réessayez.");
+      return;
+    }
     form.reset();
     router.refresh();
   }
@@ -785,7 +802,7 @@ export function BookingEditor({
         ) : null}
       </div>
       {booking.archived_at ? null : (
-        <DeleteBookingButton
+        <ArchiveBookingButton
           bookingId={booking.id}
           label={`${booking.reference} — ${titleShown || booking.title}`}
           compact
@@ -1384,8 +1401,18 @@ export function BookingEditor({
       </div>
       <form onSubmit={addDoc} className="admin-af-card order-6 flex flex-wrap items-center gap-3 rounded-3xl p-5">
         <p className="text-sm font-semibold text-[var(--admin-navy)]">Ou joindre une pièce sans la lire</p>
-        <input name="file" type="file" required className="text-sm" />
-        <button className="admin-af-btn rounded-full px-3 py-2 text-sm">Joindre</button>
+        <input name="file" type="file" required disabled={docBusy} className="text-sm" />
+        <button disabled={docBusy} className="admin-af-btn admin-tap rounded-full px-3 py-2 text-sm disabled:opacity-50">
+          {docBusy ? "Envoi…" : "Joindre"}
+        </button>
+        <div className="basis-full">
+          <BusyBar active={docBusy} label="Envoi de la pièce…" />
+          {docError ? (
+            <p role="alert" className="text-sm text-[var(--admin-red)]">
+              {docError}
+            </p>
+          ) : null}
+        </div>
       </form>
       <div className="order-2">
       <BookingItemsPanel
@@ -1437,7 +1464,8 @@ export function BookingEditor({
         variant="admin"
         showPassports={false}
         attachments={attachmentPreviews(documents, items, booking.reference)}
-        onRemoveAttachment={(file) => void removeDocument(file.id)}
+        onRemoveAttachment={(file) => removeDocument(file.id)}
+        removeQuestion={(file) => `${file.label} quitte le dossier et son fichier est supprimé.`}
       />
       {mailGroups.sources.length ? (
         <ul className="admin-af-card space-y-1 rounded-3xl p-5 text-sm text-[var(--admin-navy)]">
@@ -1466,10 +1494,11 @@ export function BookingEditor({
         {!travelers.length ? (
           <button
             type="button"
+            disabled={partyBusy}
             onClick={() => void addHolder()}
-            className="rounded-full bg-[var(--admin-peach)] px-4 py-2 text-sm font-semibold text-[var(--admin-navy)]"
+            className="admin-tap rounded-full bg-[var(--admin-peach)] px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
           >
-            Ajouter {holderName.first_name} {holderName.last_name} (titulaire)
+            {partyBusy ? "Ajout…" : `Ajouter ${holderName.first_name} ${holderName.last_name} (titulaire)`}
           </button>
         ) : (
           <TripPassportPicker
@@ -1480,7 +1509,7 @@ export function BookingEditor({
             travelers={travelers}
             documents={identityDocs}
             holder={holderProfile}
-            onRemove={(id) => void removeTraveler(id)}
+            onRemove={(id) => removeTraveler(id)}
           />
         )}
         {travelers.some(
@@ -1496,7 +1525,7 @@ export function BookingEditor({
           </Link>
         ) : null}
         <form onSubmit={addTraveler} className="grid gap-2 sm:grid-cols-[1fr_auto]">
-          <select name="party_key" required className={fieldControlClass}>
+          <select name="party_key" required disabled={partyBusy} className={fieldControlClass}>
             <option value="">Ajouter un voyageur…</option>
             {documentChoices.length ? (
               <optgroup label="Dans les documents">
@@ -1522,7 +1551,18 @@ export function BookingEditor({
                 ))}
             </optgroup>
           </select>
-          <button className="admin-af-btn rounded-full px-3 py-2 text-sm">Ajouter</button>
+          <button disabled={partyBusy} className="admin-af-btn admin-tap rounded-full px-3 py-2 text-sm disabled:opacity-50">
+            {partyBusy ? "Ajout…" : "Ajouter"}
+          </button>
+          <div className="sm:col-span-2">
+            <BusyBar active={partyBusy} label="Ajout du voyageur…" />
+            <IssuesList issues={partyIssues} />
+            {partyError && !partyIssues.length ? (
+              <p role="alert" className="text-sm text-[var(--admin-red)]">
+                {partyError}
+              </p>
+            ) : null}
+          </div>
         </form>
       </section>
 

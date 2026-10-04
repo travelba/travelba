@@ -9,6 +9,7 @@ export function ReservationFiles({
   attachmentsLabel = "Pièces jointes de la réservation",
   emptyLabel = "Aucune pièce jointe sur cette réservation.",
   onRemoveAttachment,
+  removeQuestion,
 }: {
   passports?: FilePreviewModel[];
   attachments: FilePreviewModel[];
@@ -16,7 +17,8 @@ export function ReservationFiles({
   showPassports?: boolean;
   attachmentsLabel?: string;
   emptyLabel?: string;
-  onRemoveAttachment?: (file: FilePreviewModel) => void;
+  onRemoveAttachment?: (file: FilePreviewModel) => void | string | null | undefined | Promise<void | string | null | undefined>;
+  removeQuestion?: string | ((file: FilePreviewModel) => string);
 }) {
   const card =
     variant === "admin"
@@ -41,7 +43,7 @@ export function ReservationFiles({
           {attachmentsLabel}
         </p>
         {attachments.length ? (
-          <FilePreviewGrid files={attachments} onRemove={onRemoveAttachment} />
+          <FilePreviewGrid files={attachments} onRemove={onRemoveAttachment} removeQuestion={removeQuestion} />
         ) : (
           <p className="text-sm text-muted">{emptyLabel}</p>
         )}
