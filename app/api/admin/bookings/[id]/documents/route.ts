@@ -3,6 +3,7 @@ import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { queuePublishedPieces, safeConcierge } from "@/lib/crm/concierge-send";
 import { normalizePieceKind } from "@/lib/crm/concierge-notices";
 import { removeCrmFiles, safeFileName, uploadCrmFile } from "@/lib/crm/files";
+import { uploadIssue } from "@/lib/crm/upload-policy";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -13,10 +14,10 @@ export async function POST(request: Request, ctx: Ctx) {
   const form = await request.formData();
   const file = form.get("file");
   if (!(file instanceof File)) return jsonError("Fichier requis");
+  const issue = uploadIssue(file);
+  if (issue) return jsonError(issue, 400);
   const kind = String(form.get("kind") || "other");
-  const bytes = Buffer.from(await file.arrayBuffer());
-  const path = `bookings/${id}/${Date.now()}-${safeFileName(file.name)}`;
-  await uploadCrmFile(path, bytes, file.type || "application/octet-stream");
+  // La carte est vérifiée avant le téléversement : pas de fichier orphelin sur « Carte introuvable ».
   const itemId = String(form.get("booking_item_id") || "").trim() || null;
   if (itemId) {
     const { data: item } = await auth.supabase
@@ -25,8 +26,11 @@ export async function POST(request: Request, ctx: Ctx) {
       .eq("id", itemId)
       .eq("booking_id", id)
       .maybeSingle();
-    if (!item) return jsonError("Carte introuvable");
+    if (!item) return jsonError("Carte introuvable", 404);
   }
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const path = `bookings/${id}/${Date.now()}-${safeFileName(file.name)}`;
+  await uploadCrmFile(path, bytes, file.type || "application/octet-stream");
   const { data, error } = await auth.supabase
     .from("crm_booking_documents")
     .insert({
