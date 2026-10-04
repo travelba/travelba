@@ -1,9 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { adminAction } from "@/lib/crm/admin-action";
 import { Icon } from "@/components/crm/icons";
 import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
@@ -215,14 +213,6 @@ export function EmailIngestInbox({
     });
     preloaded.current.delete(rowId);
     router.refresh();
-  }
-
-  /** Retirer du dossier : détache le mail du voyage créé ou rattaché ; renvoie l’erreur au bouton. */
-  async function detach(rowId: string) {
-    const result = await adminAction(`/api/admin/email-ingest/${rowId}`, { method: "POST", body: { action: "detach" } });
-    if (!result.ok) return result.error || "Retrait impossible.";
-    router.refresh();
-    return undefined;
   }
 
   function viewOf(row: CrmEmailIngest): ExtractView {
@@ -661,22 +651,6 @@ export function EmailIngestInbox({
                   Refuser
                 </button>
               </div>
-              {row.created_booking_id ? (
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-white px-3 py-2 text-sm">
-                  <Link href={`/admin/reservations/${row.created_booking_id}`} className="font-semibold text-[var(--admin-navy)] underline">
-                    Dossier créé depuis ce mail
-                  </Link>
-                  <ConfirmAction
-                    size="sm"
-                    tone="danger"
-                    label="Retirer du dossier"
-                    confirmLabel="Retirer"
-                    question="Le mail quitte le dossier. Les cartes qu’il avait remplies sont retirées ; un dossier vide créé par ce mail est supprimé."
-                    disabled={isBusy}
-                    onConfirm={() => detach(row.id)}
-                  />
-                </div>
-              ) : null}
             </div>
 
             <CustomerPickDialog
