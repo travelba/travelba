@@ -29,9 +29,17 @@ async function releaseBankMatches(admin: SupabaseClient, customerId: string) {
   if (pliantError) throw new CustomerDeleteError(pliantError.message);
 }
 
-export async function deleteCustomerById(customerId: string) {
+export type DeleteCustomerDeps = {
+  admin: SupabaseClient;
+  listFiles: (prefix: string) => Promise<string[]>;
+  removeFiles: (paths: string[]) => Promise<void>;
+};
+
+export async function deleteCustomerById(customerId: string, deps?: Partial<DeleteCustomerDeps>) {
   if (!isUuid(customerId)) throw new CustomerDeleteError("Identifiant invalide");
-  const admin = createServiceClient();
+  const admin = deps?.admin ?? createServiceClient();
+  const listFiles = deps?.listFiles ?? listCrmFiles;
+  const removeFiles = deps?.removeFiles ?? removeCrmFiles;
 
   const { data: customer, error: loadError } = await admin
     .from("crm_customers")
@@ -71,15 +79,16 @@ export async function deleteCustomerById(customerId: string) {
     if (booking.cover_image_path) paths.push(booking.cover_image_path);
   }
   for (const prefix of customerFilePrefixes(customerId, bookingIds)) {
-    paths.push(...(await listCrmFiles(prefix)));
+    paths.push(...(await listFiles(prefix)));
   }
+
+  // Avant toute suppression : si cette écriture échoue, rien n’est à moitié effacé.
+  await releaseBankMatches(admin, customerId);
 
   if (bookingIds.length) {
     const { error } = await admin.from("crm_bookings").delete().in("id", bookingIds);
     if (error) throw new CustomerDeleteError(error.message);
   }
-
-  await releaseBankMatches(admin, customerId);
 
   const { error: txError } = await admin
     .from("crm_transactions")
@@ -90,7 +99,7 @@ export async function deleteCustomerById(customerId: string) {
   const { error: delError } = await admin.from("crm_customers").delete().eq("id", customerId);
   if (delError) throw new CustomerDeleteError(delError.message);
 
-  await removeCrmFiles(paths);
+  await removeFiles(paths);
 
   if (customer.auth_user_id) {
     const { data: staff } = await admin
