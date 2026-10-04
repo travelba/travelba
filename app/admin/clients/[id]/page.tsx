@@ -3,10 +3,10 @@ import { notFound } from "next/navigation";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { CustomerEditor } from "@/components/admin/CustomerEditor";
 import {
-  DeleteBookingButton,
+  ArchiveBookingButton,
   DuplicateBookingButton,
   RestoreBookingButton,
-} from "@/components/admin/DeleteBookingButton";
+} from "@/components/admin/ArchiveBookingButton";
 import { ClientRevolutSuggestions } from "@/components/admin/ClientRevolutSuggestions";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import { InviteCustomerPanel } from "@/components/admin/InviteCustomerPanel";
@@ -312,7 +312,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
                   </Link>
                   <div className="flex flex-col items-end gap-1">
                     <DuplicateBookingButton compact bookingId={b.id} />
-                    <DeleteBookingButton
+                    <ArchiveBookingButton
                       compact
                       redirectTo={null}
                       bookingId={b.id}

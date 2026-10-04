@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { BusyBar } from "@/components/crm/BusyBar";
 import { HotelThread } from "@/components/admin/HotelThread";
 import { PrecheckPack } from "@/components/admin/PrecheckPack";
 import { hotelDisplayName } from "@/lib/crm/carnet";
@@ -78,14 +79,20 @@ export function HotelDesk({
   const router = useRouter();
   const [open, setOpen] = useState<HotelDeskKind | null>(null);
   const [marking, setMarking] = useState<string | null>(null);
+  const [markError, setMarkError] = useState<string | null>(null);
   if (!rows.length) return null;
   const stay = hotelStayChecklist(item.id, rows);
 
   async function mark(row: CrmHotelRequest, action: "skip" | "restore") {
+    if (marking) return;
     setMarking(row.kind);
+    setMarkError(null);
     const result = await post(bookingId, row, action);
     setMarking(null);
-    if (!result.ok) return;
+    if (!result.ok) {
+      setMarkError(result.error || "Le courrier n’a pas pu être marqué.");
+      return;
+    }
     if (open === row.kind) setOpen(null);
     router.refresh();
   }
@@ -94,6 +101,16 @@ export function HotelDesk({
     <div id={`hotel-desk-${item.id}`} className="mt-3 scroll-mt-24 space-y-3">
       <section className="overflow-hidden rounded-2xl border border-[#e5e0d4] bg-[#faf9f6]" aria-label={`Courriers pour ${hotelDisplayName(item) || item.title}`}>
         <p className="border-b border-[#e5e0d4] px-3 py-2 text-xs font-medium text-[#0B192C]">{stay.summary}</p>
+        {marking ? (
+          <div className="px-3 py-2">
+            <BusyBar label="Mise à jour du courrier…" />
+          </div>
+        ) : null}
+        {markError ? (
+          <p role="alert" className="px-3 py-2 text-xs font-semibold text-red-700">
+            {markError}
+          </p>
+        ) : null}
         <ul>
           {stay.lines.map((line) => {
             const row = rows.find((itemRow) => itemRow.kind === line.kind);
@@ -118,21 +135,21 @@ export function HotelDesk({
                 {line.mark === "open" ? (
                   <button
                     type="button"
-                    className="shrink-0 px-3 py-2.5 text-xs font-semibold text-[#0B192C]"
-                    disabled={marking === line.kind}
+                    className="shrink-0 px-3 py-2.5 text-xs font-semibold text-[#0B192C] disabled:opacity-50"
+                    disabled={Boolean(marking)}
                     onClick={() => void mark(row, "skip")}
                   >
-                    Pas besoin
+                    {marking === line.kind ? "…" : "Pas besoin"}
                   </button>
                 ) : null}
                 {line.mark === "unneeded" ? (
                   <button
                     type="button"
-                    className="shrink-0 px-3 py-2.5 text-xs font-semibold text-[#0B192C]"
-                    disabled={marking === line.kind}
+                    className="shrink-0 px-3 py-2.5 text-xs font-semibold text-[#0B192C] disabled:opacity-50"
+                    disabled={Boolean(marking)}
                     onClick={() => void mark(row, "restore")}
                   >
-                    Remettre
+                    {marking === line.kind ? "…" : "Remettre"}
                   </button>
                 ) : null}
               </li>

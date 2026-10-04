@@ -15,10 +15,10 @@ import { StatusChip, bookingStatusTone } from "@/components/crm/ui";
 import { bookingsListEmptyMessage } from "@/lib/crm/launch-status";
 import { stayHeadline } from "@/lib/crm/carnet";
 import {
-  DeleteBookingButton,
+  ArchiveBookingButton,
   DuplicateBookingButton,
   RestoreBookingButton,
-} from "@/components/admin/DeleteBookingButton";
+} from "@/components/admin/ArchiveBookingButton";
 import { staffStayLabel } from "@/lib/crm/staff-stay";
 
 export function BookingsTable({
@@ -133,7 +133,7 @@ export function BookingsTable({
               {b.archived_at ? (
                 <RestoreBookingButton compact bookingId={b.id} />
               ) : (
-                <DeleteBookingButton
+                <ArchiveBookingButton
                   compact
                   redirectTo={null}
                   bookingId={b.id}

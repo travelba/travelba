@@ -13,6 +13,7 @@ import {
 } from "@/lib/crm/trip-documents";
 import { formatDateFr } from "@/lib/crm/money";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
 
 function passportLabel(doc: CrmTravelDocument) {
   return [DOC_TYPE_LABELS[doc.doc_type], doc.number, doc.expires_on ? `exp. ${formatDateFr(doc.expires_on)}` : null]
@@ -37,7 +38,8 @@ export function TripPassportPicker({
   documents: CrmTravelDocument[];
   holder?: PersonName | null;
   embedded?: boolean;
-  onRemove?: (travelerId: string) => void;
+  /** Renvoie une phrase d’erreur pour l’afficher sous le bouton. */
+  onRemove?: (travelerId: string) => void | string | null | undefined | Promise<void | string | null | undefined>;
 }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -196,13 +198,20 @@ export function TripPassportPicker({
                   ) : null}
                 </div>
                 {onRemove ? (
-                  <button
-                    type="button"
-                    className="shrink-0 text-xs font-semibold text-accent"
-                    onClick={() => onRemove(traveler.id)}
-                  >
-                    Retirer
-                  </button>
+                  <ConfirmAction
+                    size="sm"
+                    tone="danger"
+                    label="Retirer"
+                    confirmLabel="Retirer du séjour"
+                    ariaLabel={`Retirer ${name} du séjour`}
+                    question="Le voyageur quitte ce séjour. Sa fiche et ses pièces restent sur le compte."
+                    align="end"
+                    className="shrink-0"
+                    onConfirm={async () => {
+                      const result = await onRemove(traveler.id);
+                      return typeof result === "string" ? result : undefined;
+                    }}
+                  />
                 ) : null}
               </div>
               {choices.length > 1
