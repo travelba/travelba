@@ -160,6 +160,7 @@ describe("revolut-match", () => {
 
   it("compare des mots entiers, jamais des sous-chaînes", () => {
     assert.deepEqual(matchTokens("Payment from Jean-Pierre MARTINEAU"), ["payment", "from", "jean", "pierre", "martineau"]);
+    assert.deepEqual(matchTokens("VIR DUPONT2026 MARTIN123 4x"), ["vir", "dupont", "2026", "martin", "123", "4", "x"]);
     assert.equal(tokensSpell(["jean", "martineau"], "jeanmartin"), false);
     assert.equal(tokensSpell(["jean", "martin"], "jeanmartin"), true);
     assert.equal(tokensSpell(["jean", "pierre", "martin"], "jeanpierremartin"), true);
@@ -199,6 +200,19 @@ describe("revolut-match", () => {
     );
     assert.equal(spaced.autoCustomerId, "3");
     assert.equal(spaced.candidates[0]?.reason, "unique_last_name");
+  });
+
+  it("un nom collé à des chiffres dans la désignation est reconnu", () => {
+    const customers = [
+      customer({ id: "1", first_name: "Benjamin", last_name: "Dupont" }),
+      customer({ id: "2", first_name: "Alice", last_name: "Martin" }),
+    ];
+    const result = scoreRevolutMatches({ counterparty_name: null, reference: "DUPONT2026" }, customers);
+    assert.equal(result.autoCustomerId, "1");
+    assert.equal(result.candidates[0]?.reason, "unique_last_name");
+    const full = scoreRevolutMatches({ counterparty_name: "ALICE MARTIN123", reference: null }, customers);
+    assert.equal(full.autoCustomerId, "2");
+    assert.equal(full.candidates[0]?.reason, "full_name");
   });
 
   it("deux homonymes : aucune présélection", () => {
