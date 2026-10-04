@@ -30,13 +30,20 @@ export async function GET(request: Request) {
   if (auth instanceof NextResponse) return auth;
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
-  const state = url.searchParams.get("state");
+  const state = url.searchParams.get("state") || "";
+  const denied = url.searchParams.get("error");
 
-  if (code || state) {
+  if (denied) {
+    // Refus ou annulation côté Revolut (access_denied…) : retour à l’écran, cookie effacé.
+    return clearState(NextResponse.redirect(new URL("/admin/revolut?error=oauth", url.origin)));
+  }
+
+  if (code) {
     // Retour de Revolut : le state doit être celui posé au départ, sinon rien n’est échangé.
+    // Depuis une preview (NEXT_PUBLIC_SITE_URL = prod), le cookie ne suit pas : connecter Revolut depuis la prod.
     const jar = await cookies();
     const expected = jar.get(STATE_COOKIE)?.value || "";
-    if (!code || !state || !STATE_RE.test(expected) || !secretEquals(state, expected)) {
+    if (!state || !STATE_RE.test(expected) || !secretEquals(state, expected)) {
       return clearState(jsonError("État OAuth invalide", 400));
     }
     try {
