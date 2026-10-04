@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createBookingSchema, parseBody } from "@/lib/crm/admin-schemas";
 import { dbError, jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
 import { collectManualCreateIssues } from "@/lib/crm/booking-issues";
 import { nextBookingReference, parseIncludeInLedger, syncBookingLedger } from "@/lib/crm/bookings";
@@ -20,11 +21,17 @@ export async function GET() {
 export async function POST(request: Request) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
-  const body = await request.json().catch(() => null);
-  const customerId = String(body?.customer_id || "");
-  const title = String(body?.title || "").trim();
-  const createIssues = collectManualCreateIssues({ customerId, title });
+  const raw = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  const createIssues = collectManualCreateIssues({
+    customerId: String(raw?.customer_id || ""),
+    title: String(raw?.title || ""),
+  });
   if (createIssues.length) return jsonIssues(createIssues);
+  const parsed = parseBody(createBookingSchema, raw);
+  if (parsed.error !== null) return jsonError(parsed.error, 400);
+  const body = parsed.data;
+  const customerId = body.customer_id;
+  const title = body.title;
   const { data: traveler, error: travelerError } = await auth.supabase
     .from("crm_customers")
     .select("id, company_role, billing_parent_id")
@@ -34,9 +41,7 @@ export async function POST(request: Request) {
   if (!traveler) {
     return jsonIssues([{ field: "customer_id", message: "Client introuvable." }], 404);
   }
-  const billingCustomerId = body?.billing_customer_id
-    ? String(body.billing_customer_id)
-    : resolveBillingCustomerId(traveler as CrmCustomer);
+  const billingCustomerId = body.billing_customer_id || resolveBillingCustomerId(traveler as CrmCustomer);
   const { data: companyRows, error: companyError } = await auth.supabase
     .from("crm_billing_companies")
     .select("id, sort_order")
@@ -44,10 +49,9 @@ export async function POST(request: Request) {
     .order("sort_order");
   if (companyError) return dbError(companyError, 500);
   const companies = (companyRows || []) as PayerCompany[];
-  const payer =
-    body?.payer_kind != null && body.payer_kind !== ""
-      ? assignPayer({ payerKind: body.payer_kind, companyId: body.billing_company_id, companies })
-      : defaultPayer(companies);
+  const payer = body.payer_kind
+    ? assignPayer({ payerKind: body.payer_kind, companyId: body.billing_company_id, companies })
+    : defaultPayer(companies);
   if ("error" in payer) return jsonError(payer.error);
   let reference: string;
   try {
@@ -65,22 +69,22 @@ export async function POST(request: Request) {
       payer_kind: payer.payer_kind,
       fees_follow_stay: resolveFeesFollowStay({
         stayKind: payer.payer_kind,
-        requested: parseIncludeInLedger(body?.fees_follow_stay, true),
+        requested: parseIncludeInLedger(body.fees_follow_stay, true),
         companyCount: companies.length,
       }),
       reference,
       title,
-      destination: body?.destination || null,
-      status: body?.status || "draft",
-      start_date: body?.start_date || null,
-      end_date: body?.end_date || null,
-      currency: body?.currency || "EUR",
+      destination: body.destination?.trim() || null,
+      status: body.status || "draft",
+      start_date: body.start_date || null,
+      end_date: body.end_date || null,
+      currency: body.currency,
       total_amount: 0,
-      include_in_ledger: parseIncludeInLedger(body?.include_in_ledger, true),
-      agency_commission: parseIncludeInLedger(body?.agency_commission, false),
-      client_settles_stay: parseIncludeInLedger(body?.client_settles_stay, false),
-      notes_client: body?.notes_client || null,
-      notes_internal: body?.notes_internal || null,
+      include_in_ledger: parseIncludeInLedger(body.include_in_ledger, true),
+      agency_commission: parseIncludeInLedger(body.agency_commission, false),
+      client_settles_stay: parseIncludeInLedger(body.client_settles_stay, false),
+      notes_client: body.notes_client?.trim() || null,
+      notes_internal: body.notes_internal?.trim() || null,
       visible_to_client: false,
     })
     .select("*")

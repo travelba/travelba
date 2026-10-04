@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { parseBody, patchCustomerSchema } from "@/lib/crm/admin-schemas";
 import { dbError, jsonError, requireAdmin, requireStaff } from "@/lib/crm/auth";
 import { saveCustomerBillingCompanies } from "@/lib/crm/billing-companies";
 import { CUSTOMER_EMAIL_COPY, otherCustomerEmailBlock } from "@/lib/crm/customer-email";
@@ -30,10 +31,12 @@ export async function PATCH(request: Request, ctx: Ctx) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
-  const body = await request.json().catch(() => ({}));
+  const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+  const flags = parseBody(patchCustomerSchema, body);
+  if (flags.error !== null) return jsonError(flags.error, 400);
   const { patch, error: patchError } = customerPatchFromBody(body, { allowEmail: true });
   if (patchError) return jsonError(patchError);
-  if ("on_hold" in body) patch.on_hold = Boolean(body.on_hold);
+  if (flags.data.on_hold !== undefined) patch.on_hold = flags.data.on_hold;
 
   const { data: current } = await auth.supabase
     .from("crm_customers")
@@ -96,8 +99,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
-  if ("billing_companies" in body) {
-    const saved = await saveCustomerBillingCompanies(auth.supabase, id, body.billing_companies);
+  if (flags.data.billing_companies) {
+    const saved = await saveCustomerBillingCompanies(auth.supabase, id, flags.data.billing_companies);
     if ("error" in saved) return jsonError(saved.error);
     return NextResponse.json({ customer: data, billing_companies: saved.companies });
   }
