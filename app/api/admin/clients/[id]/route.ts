@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
-import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
+import { dbError, jsonError, requireAdmin, requireStaff } from "@/lib/crm/auth";
 import { saveCustomerBillingCompanies } from "@/lib/crm/billing-companies";
 import { CUSTOMER_EMAIL_COPY, otherCustomerEmailBlock } from "@/lib/crm/customer-email";
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
+import { customerDeleteConfirmed, DELETE_CUSTOMER_CONFIRM_ERROR } from "@/lib/crm/delete-confirm";
 import { CustomerDeleteError, deleteCustomerById } from "@/lib/crm/delete-customer";
+import { customerFullName } from "@/lib/crm/types";
 import { createServiceClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -102,10 +104,21 @@ export async function PATCH(request: Request, ctx: Ctx) {
   return NextResponse.json({ customer: data });
 }
 
-export async function DELETE(_req: Request, ctx: Ctx) {
-  const auth = await requireStaff();
+/** Suppression définitive : administrateurs seulement, nom complet du client saisi en confirmation. */
+export async function DELETE(request: Request, ctx: Ctx) {
+  const auth = await requireAdmin();
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
+  const body = (await request.json().catch(() => null)) as { confirm?: unknown } | null;
+  const { data: customer } = await auth.supabase
+    .from("crm_customers")
+    .select("first_name, last_name")
+    .eq("id", id)
+    .maybeSingle();
+  if (!customer) return jsonError("Client introuvable", 404);
+  if (!customerDeleteConfirmed(body?.confirm, customerFullName(customer))) {
+    return jsonError(DELETE_CUSTOMER_CONFIRM_ERROR, 400);
+  }
   try {
     const result = await deleteCustomerById(id);
     return NextResponse.json(result);

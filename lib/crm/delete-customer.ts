@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { listCrmFiles, removeCrmFiles } from "@/lib/crm/files";
 import { customerFilePrefixes, isUuid } from "@/lib/crm/ids";
@@ -9,6 +10,23 @@ export class CustomerDeleteError extends Error {
     super(message);
     this.status = status;
   }
+}
+
+/**
+ * Les mouvements Revolut / Pliant rapprochés à ce client reviennent dans l’inbox (`unmatched`)
+ * avant la suppression de ses crédits : sans cela ils resteraient `matched` vers des pointeurs nuls.
+ */
+async function releaseBankMatches(admin: SupabaseClient, customerId: string) {
+  const { error: revolutError } = await admin
+    .from("crm_revolut_transactions")
+    .update({ status: "unmatched", matched_customer_id: null, matched_transaction_id: null })
+    .eq("matched_customer_id", customerId);
+  if (revolutError) throw new CustomerDeleteError(revolutError.message);
+  const { error: pliantError } = await admin
+    .from("crm_pliant_transactions")
+    .update({ match_status: "unmatched", matched_customer_id: null, matched_transaction_id: null, customer_id: null })
+    .eq("matched_customer_id", customerId);
+  if (pliantError) throw new CustomerDeleteError(pliantError.message);
 }
 
 export async function deleteCustomerById(customerId: string) {
@@ -60,6 +78,8 @@ export async function deleteCustomerById(customerId: string) {
     const { error } = await admin.from("crm_bookings").delete().in("id", bookingIds);
     if (error) throw new CustomerDeleteError(error.message);
   }
+
+  await releaseBankMatches(admin, customerId);
 
   const { error: txError } = await admin
     .from("crm_transactions")
