@@ -7,6 +7,7 @@ import { mergeExtractItems } from "./item-match";
 import { parseMoney } from "./money";
 import { stayCurrency } from "./stay-currency";
 import { INGEST_ITEM_KINDS, type BookingStatus } from "./types";
+import type { PickableCustomer } from "./customer-search";
 
 const looseString = z.string().nullable().optional();
 const looseNumber = z.number().nullable().optional();
@@ -266,6 +267,8 @@ export type IngestStreamEvent =
       event: "done";
       extract: BookingExtract;
       suggested_customer_id: string | null;
+      /** Le client proposé, prêt pour le sélecteur (pas toute la fiche). */
+      suggested_customer?: PickableCustomer | null;
       warnings: IngestWarning[];
     }
   | { event: "fatal"; error: string };

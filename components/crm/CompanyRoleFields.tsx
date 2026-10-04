@@ -1,6 +1,7 @@
 "use client";
 
-import type { CompanyRole, CrmCustomer } from "@/lib/crm/types";
+import type { CompanyRole } from "@/lib/crm/types";
+import type { PickableCustomer } from "@/lib/crm/customer-search";
 import { companyRoleLabel } from "@/lib/crm/company-role";
 import { customerFullName } from "@/lib/crm/types";
 import { Field, fieldControlClass } from "@/components/crm/fields";
@@ -17,7 +18,7 @@ export function CompanyRoleFields({
   onRoleChange: (role: CompanyRole | null) => void;
   billingParentId: string;
   onBillingParentChange: (id: string) => void;
-  companyAdmins: CrmCustomer[];
+  companyAdmins: PickableCustomer[];
   selfId: string;
 }) {
   return (

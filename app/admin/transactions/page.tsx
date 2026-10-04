@@ -5,11 +5,12 @@ import { companyLabelForTransaction } from "@/lib/crm/billing-companies";
 import type { CrmBillingCompany } from "@/lib/crm/types";
 import { stripeConfigured, stripeWebhookConfigured } from "@/lib/crm/stripe";
 import { formatDateFr, formatMoney, postedLedgerTotals } from "@/lib/crm/money";
-import { customerFullName, visibleServiceCopy, type CrmCustomer, type CrmTransaction } from "@/lib/crm/types";
+import { customerFullName, visibleServiceCopy, type CrmTransaction } from "@/lib/crm/types";
+import { CUSTOMER_NAME_SELECT, type CustomerNameRow } from "@/lib/crm/customer-search";
 
 export default async function AdminTransactionsPage() {
   const { supabase } = await requireStaffPage();
-  const [{ data: transactions }, { data: expenses }, { data: customers }, { data: billingCompanies }] =
+  const [{ data: transactions }, { data: expenses }, { data: billingCompanies }] =
     await Promise.all([
     supabase
       .from("crm_transactions")
@@ -25,7 +26,6 @@ export default async function AdminTransactionsPage() {
       .eq("status", "posted")
       .order("occurred_on", { ascending: false })
       .limit(80),
-    supabase.from("crm_customers").select("*").order("last_name"),
     supabase.from("crm_billing_companies").select("id, customer_id, company_name"),
   ]);
   const companies = (billingCompanies || []) as Pick<
@@ -35,12 +35,16 @@ export default async function AdminTransactionsPage() {
   const stripeReady = stripeConfigured() && stripeWebhookConfigured();
   const rows = (transactions || []) as CrmTransaction[];
   const expenseRows = (expenses || []) as CrmTransaction[];
+  // Les noms des seuls clients présents dans ces lignes : pas toute la table (A-06).
+  const customerIds = [...new Set([...rows, ...expenseRows].map((row) => row.customer_id).filter(Boolean))];
+  const { data: customers } = customerIds.length
+    ? await supabase.from("crm_customers").select(CUSTOMER_NAME_SELECT).in("id", customerIds)
+    : { data: [] as CustomerNameRow[] };
+  const nameRows = (customers || []) as CustomerNameRow[];
   const posted = rows.filter((row) => row.status === "posted");
   const { credits } = postedLedgerTotals(posted);
   const { debits } = postedLedgerTotals(expenseRows);
-  const names = new Map(
-    ((customers || []) as CrmCustomer[]).map((customer) => [customer.id, customerFullName(customer)])
-  );
+  const names = new Map(nameRows.map((customer) => [customer.id, customerFullName(customer)]));
 
   return (
     <div>
@@ -75,11 +79,7 @@ export default async function AdminTransactionsPage() {
       <div className="mt-6 grid items-start gap-6 xl:grid-cols-2">
         <section>
           <h2 className="mb-3 font-display text-lg font-bold text-[var(--admin-navy)]">Encaissements</h2>
-          <Ledger
-            transactions={rows}
-            customers={(customers || []) as CrmCustomer[]}
-            billingCompanies={companies}
-          />
+          <Ledger transactions={rows} names={nameRows} billingCompanies={companies} />
         </section>
         <section className="admin-af-card overflow-hidden rounded-2xl">
           <div className="border-b border-[var(--border)] px-5 py-4">

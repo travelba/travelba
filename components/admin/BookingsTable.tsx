@@ -6,9 +6,9 @@ import {
   BOOKING_STATUS_LABELS,
   type BookingStatus,
   type CrmBooking,
-  type CrmCustomer,
 } from "@/lib/crm/types";
 import { customerFullName } from "@/lib/crm/types";
+import type { CustomerNameRow } from "@/lib/crm/customer-search";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { StatusChip, bookingStatusTone } from "@/components/crm/ui";
@@ -29,7 +29,7 @@ export function BookingsTable({
   displayAmounts = {},
 }: {
   bookings: CrmBooking[];
-  customers: CrmCustomer[];
+  customers: CustomerNameRow[];
   places?: Record<string, string[]>;
   routes?: Record<string, string[]>;
   displayAmounts?: Record<string, number>;

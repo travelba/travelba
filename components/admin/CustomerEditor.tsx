@@ -34,6 +34,7 @@ import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { adminAction } from "@/lib/crm/admin-action";
 import { type ScanResult } from "@/components/crm/IdentityScan";
 import { vaultDocumentsForPerson } from "@/lib/crm/trip-documents";
+import type { PickableCustomer } from "@/lib/crm/customer-search";
 
 function applyIdentityState(
   id: ExtractedIdentity,
@@ -65,7 +66,7 @@ export function CustomerEditor({
   customer: CrmCustomer;
   companions: CrmCompanion[];
   documents: CrmTravelDocument[];
-  companyAdmins?: CrmCustomer[];
+  companyAdmins?: PickableCustomer[];
   billingCompanies?: CrmBillingCompany[];
 }) {
   const router = useRouter();

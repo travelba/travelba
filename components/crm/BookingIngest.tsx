@@ -26,7 +26,9 @@ import { stayCitiesFromSteps } from "@/lib/crm/staff-stay";
 import { stayTitleForExtract } from "@/lib/crm/ingest-title";
 import { formatMoney } from "@/lib/crm/money";
 import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
-import { customerFullName, type CrmCompanion, type CrmCustomer } from "@/lib/crm/types";
+import type { CrmCompanion, CrmCustomer } from "@/lib/crm/types";
+import type { PickableCustomer } from "@/lib/crm/customer-search";
+import { CustomerPickField } from "@/components/admin/CustomerPickField";
 import { DateFrInput, Field, fieldControlClass } from "@/components/crm/fields";
 import { PlaceField } from "@/components/crm/PlaceField";
 import { IssuesList } from "@/components/crm/IssuesList";
@@ -145,6 +147,7 @@ async function readNdjson(res: Response, onEvent: (event: IngestStreamEvent) => 
         event: "done",
         extract: json.extract,
         suggested_customer_id: json.suggested_customer_id || null,
+        suggested_customer: json.suggested_customer || null,
         warnings: json.warnings || [],
       });
     } else {
@@ -205,7 +208,6 @@ function mergeRetryExtract(
 export function BookingIngest({
   role,
   mode,
-  customers = [],
   householdHolder = null,
   householdCompanions = EMPTY_COMPANIONS,
   ingestUrl,
@@ -216,7 +218,6 @@ export function BookingIngest({
 }: {
   role: "admin" | "client";
   mode: "create" | "append";
-  customers?: CrmCustomer[];
   householdHolder?: Pick<CrmCustomer, "first_name" | "last_name"> & { birth_date?: string | null } | null;
   householdCompanions?: CrmCompanion[];
   ingestUrl: string;
@@ -239,42 +240,58 @@ export function BookingIngest({
   );
   const [error, setError] = useState<string | null>(null);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
-  const [fetchedCompanions, setFetchedCompanions] = useState<CrmCompanion[]>([]);
+  // Foyer du client choisi en création : gardé avec son id pour ne jamais montrer celui d’un autre client.
+  const [fetched, setFetched] = useState<{ customerId: string; rows: CrmCompanion[] }>({
+    customerId: "",
+    rows: [],
+  });
   const [warnings, setWarnings] = useState<IngestWarning[]>([]);
   const [extract, setExtract] = useState<BookingExtract | null>(null);
   const [seenInDocuments, setSeenInDocuments] = useState<PersonName[]>([]);
-  const [customerId, setCustomerId] = useState("");
-  const selectedCustomer = customers.find((row) => row.id === customerId) || null;
-  const holder = householdHolder || selectedCustomer;
+  // Client du dossier (mode création) : choisi dans le sélecteur ou proposé par la lecture.
+  const [customerPick, setCustomerPick] = useState<PickableCustomer | null>(null);
+  const customerId = customerPick?.id || "";
+  const holder = householdHolder || customerPick;
+  const fetchedCompanions = fetched.customerId === customerId ? fetched.rows : [];
   const companions = householdCompanions.length ? householdCompanions : fetchedCompanions;
   const household: HouseholdMember[] = holder ? householdMembers(holder, companions) : [];
   const documentChoices = peopleNotOnStay(seenInDocuments, extract?.travelers || []);
 
+  /** Rattache les voyageurs lus au foyer connu (titulaire, accompagnateurs). */
+  function relinkTravelers(
+    nextHolder: { first_name: string | null; last_name: string | null } | null,
+    nextCompanions: CrmCompanion[]
+  ) {
+    if (!nextHolder) return;
+    setExtract((prev) =>
+      prev ? { ...prev, travelers: linkExtractTravelers(prev.travelers, nextHolder, nextCompanions) } : prev
+    );
+  }
+
+  function pickCustomer(customer: PickableCustomer) {
+    setCustomerPick(customer);
+    relinkTravelers(customer, householdCompanions.length ? householdCompanions : []);
+  }
+
   useEffect(() => {
-    if (mode !== "create" || !customerId) {
-      if (mode === "create") setFetchedCompanions([]);
-      return;
-    }
+    if (mode !== "create" || !customerPick) return;
+    const picked = customerPick;
     let cancelled = false;
-    fetch(`/api/admin/companions?customer_id=${encodeURIComponent(customerId)}`)
+    fetch(`/api/admin/companions?customer_id=${encodeURIComponent(picked.id)}`)
       .then((res) => res.json())
       .then((json) => {
-        if (!cancelled) setFetchedCompanions(json.companions || []);
+        if (cancelled) return;
+        const rows = (json.companions || []) as CrmCompanion[];
+        setFetched({ customerId: picked.id, rows });
+        relinkTravelers(householdHolder || picked, householdCompanions.length ? householdCompanions : rows);
       })
       .catch(() => {
-        if (!cancelled) setFetchedCompanions([]);
+        if (!cancelled) setFetched({ customerId: picked.id, rows: [] });
       });
     return () => {
       cancelled = true;
     };
-  }, [customerId, mode]);
-
-  useEffect(() => {
-    if (!holder) return;
-    setExtract((prev) =>
-      prev ? { ...prev, travelers: linkExtractTravelers(prev.travelers, holder, companions) } : prev
-    );
-  }, [holder, companions]);
+  }, [customerPick, mode, householdHolder, householdCompanions]);
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const slotsRef = useRef<Slot[]>([]);
   useEffect(() => {
@@ -435,6 +452,13 @@ export function BookingIngest({
             ),
           ]);
           setSeenInDocuments((prev) => uniquePeople([...prev, ...incomingPeople]));
+          const suggested = mode === "create" ? event.suggested_customer || null : null;
+          const linkHolder = householdHolder || suggested || customerPick;
+          const linkCompanions = householdCompanions.length
+            ? householdCompanions
+            : suggested && suggested.id !== customerId
+              ? []
+              : fetchedCompanions;
           setExtract((prev) => {
             const incoming = {
               ...emptyBookingExtract(),
@@ -452,10 +476,13 @@ export function BookingIngest({
                 ? kept
                 : stayHeadline(kept, merged.destination, stayCitiesFromSteps(merged.items)),
               currency: prev?.currency ? stayCurrency(prev.currency) : stayCurrency(merged.currency),
+              travelers: linkHolder
+                ? linkExtractTravelers(merged.travelers, linkHolder, linkCompanions)
+                : merged.travelers,
             };
           });
           setWarnings(event.warnings || []);
-          if (event.suggested_customer_id) setCustomerId(event.suggested_customer_id);
+          if (suggested) setCustomerPick(suggested);
         }
         if (event.event === "fatal") fatal = event.error;
       });
@@ -815,24 +842,17 @@ export function BookingIngest({
             </p>
           ) : null}
           {role === "admin" && mode === "create" ? (
-            <Field label="Client">
-              <select
-                required
-                value={customerId}
-                onChange={(event) => {
-                  setIssues([]);
-                  setCustomerId(event.target.value);
-                }}
-                className={fieldControlClass}
-              >
-                <option value="">Choisir…</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {customerFullName(c)} — {c.email}
-                  </option>
-                ))}
-              </select>
-            </Field>
+            <CustomerPickField
+              key={customerPick?.id || "none"}
+              name="customer_id"
+              label="Client"
+              title="Client du dossier"
+              selected={customerPick}
+              onPick={(customer) => {
+                setIssues([]);
+                pickCustomer(customer);
+              }}
+            />
           ) : null}
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Titre">

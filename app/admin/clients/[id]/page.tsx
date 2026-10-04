@@ -40,6 +40,7 @@ import { identityPreview } from "@/lib/crm/preview-files";
 import { clientLedgerAdminHref } from "@/lib/crm/client-ledger";
 import { ficheBookingTravelerLine, ficheTravelerCaption, mergeFicheBookings } from "@/lib/crm/fiche-bookings";
 import { formatDateFr, formatMoney, formatCreditDisponible } from "@/lib/crm/money";
+import { CUSTOMER_PICK_SELECT, type PickableCustomer } from "@/lib/crm/customer-search";
 import { WhatsappThread } from "@/components/admin/WhatsappThread";
 
 type Props = { params: Promise<{ id: string }> };
@@ -88,7 +89,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
     supabase.from("crm_customer_balances").select("*").eq("customer_id", id),
     supabase
       .from("crm_customers")
-      .select("*")
+      .select(CUSTOMER_PICK_SELECT)
       .eq("company_role", "admin")
       .order("last_name"),
     supabase.from("crm_billing_companies").select("*").eq("customer_id", id).order("sort_order"),
@@ -271,7 +272,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         customer={c}
         companions={(companions || []) as CrmCompanion[]}
         documents={(documents || []) as CrmTravelDocument[]}
-        companyAdmins={(companyAdmins || []) as CrmCustomer[]}
+        companyAdmins={(companyAdmins || []) as PickableCustomer[]}
         billingCompanies={(billingCompanies || []) as CrmBillingCompany[]}
       />
       <ClientRevolutSuggestions suggestions={revolutSuggestions} />

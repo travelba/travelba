@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
-import type { CrmBalance, CrmCustomer } from "@/lib/crm/types";
+import type { CrmBalance } from "@/lib/crm/types";
 import { customerFullName } from "@/lib/crm/types";
+import type { CustomerListRow } from "@/lib/crm/customer-search";
 import { clientLedgerAdminHref } from "@/lib/crm/client-ledger";
 import { formatCreditDisponible, formatMoney } from "@/lib/crm/money";
 import { formatPhoneDisplay } from "@/lib/crm/phone";
 
-function initials(c: CrmCustomer) {
+function initials(c: CustomerListRow) {
   return [c.first_name?.[0], c.last_name?.[0]].filter(Boolean).join("").toUpperCase() || "?";
 }
 
@@ -18,7 +19,7 @@ export function ClientsTable({
   balances,
   initialQuery = "",
 }: {
-  customers: CrmCustomer[];
+  customers: CustomerListRow[];
   balances: CrmBalance[];
   initialQuery?: string;
 }) {
