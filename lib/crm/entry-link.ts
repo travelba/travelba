@@ -9,6 +9,73 @@ export const ENTRY_CODE_LENGTH = 8;
 
 const OTP_TYPES = new Set(["magiclink", "invite", "recovery"]);
 
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+
+/** Durée de vie du lien court : 24 h pour un lien magique, 30 jours pour une invitation ou une réinitialisation. */
+export function entryLinkTtlMs(otpType: string | null | undefined) {
+  return safeOtpType(otpType) === "magiclink" ? 24 * HOUR_MS : 30 * DAY_MS;
+}
+
+/** Après la première ouverture, le jeton ne se régénère que pendant cette fenêtre. */
+export const ENTRY_REOPEN_WINDOW_MS = 15 * 60 * 1000;
+
+/** Lignes créées avant la migration : 30 jours après la création. */
+export const ENTRY_LEGACY_TTL_MS = 30 * DAY_MS;
+
+function asDate(value: Date | string | null | undefined) {
+  if (!value) return null;
+  const d = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** Expiration effective d’une ligne, même sans colonne `expires_at`. */
+export function entryLinkExpiresAt(row: {
+  expires_at?: string | Date | null;
+  created_at?: string | Date | null;
+}) {
+  const explicit = asDate(row.expires_at);
+  if (explicit) return explicit;
+  const created = asDate(row.created_at);
+  if (created) return new Date(created.getTime() + ENTRY_LEGACY_TTL_MS);
+  return new Date(0);
+}
+
+export type EntryReopenDecision = "open" | "regenerate" | "refuse";
+
+/**
+ * Ce que fait l’ouverture d’un lien court.
+ * - révoqué ou expiré : refus, sans toucher au jeton ;
+ * - jeton encore valable : ouverture ;
+ * - jeton consommé : nouveau jeton seulement si le lien n’a jamais servi
+ *   (jeton Supabase expiré avant la première ouverture) ou s’il a servi il y a moins de 15 min.
+ */
+export function entryReopenDecision(input: {
+  now: Date;
+  expiresAt: Date;
+  usedAt: Date | string | null | undefined;
+  revokedAt: Date | string | null | undefined;
+  tokenValid: boolean;
+}): EntryReopenDecision {
+  if (asDate(input.revokedAt)) return "refuse";
+  if (input.now.getTime() > input.expiresAt.getTime()) return "refuse";
+  if (input.tokenValid) return "open";
+  const usedAt = asDate(input.usedAt);
+  if (!usedAt) return "regenerate";
+  if (input.now.getTime() - usedAt.getTime() < ENTRY_REOPEN_WINDOW_MS) return "regenerate";
+  return "refuse";
+}
+
+/** Colonne absente : la migration `entry_links_expiry` n’est pas encore appliquée. */
+export function isMissingColumnError(
+  error: { message?: string | null; code?: string | null } | null | undefined,
+  column: string
+) {
+  if (!error) return false;
+  if (error.code === "42703" || error.code === "PGRST204") return true;
+  return (error.message || "").includes(column);
+}
+
 export function entryCode(length = ENTRY_CODE_LENGTH) {
   let code = "";
   for (let i = 0; i < length; i += 1) code += ALPHABET[randomInt(ALPHABET.length)];
@@ -239,8 +306,11 @@ export function entryPreviewHtml(
   const hero = image
     ? `<div class="hero"><img src="${imageUrl}" alt="" onerror="this.closest('main').className='door plain';this.parentElement.remove()"></div>`
     : "";
-  const note = enter
-    ? ""
+  const door = enter
+    ? `<form method="post" action="${action}">
+<input type="hidden" name="ouvrir" value="1">
+<button type="submit">Ouvrir mon espace</button>
+</form>`
     : `<p class="note">Ce lien ne s'ouvre plus. Demandez-en un nouveau à l'agence.</p>`;
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -352,11 +422,7 @@ ${hero}
 <p class="mark">Travel Business Agency</p>
 <h1>${title}</h1>
 <p class="lead">${lead}</p>
-<form method="post" action="${action}">
-<input type="hidden" name="ouvrir" value="1">
-<button type="submit">Ouvrir mon espace</button>
-</form>
-${note}
+${door}
 </div>
 </main>
 ${enter ? `<script>location.replace(location.pathname+"?ouvrir=1")</script>` : ""}
@@ -372,17 +438,29 @@ export async function createEntryLink(
   const otpType = safeOtpType(input.otpType);
   const nextPath = safeNextPath(input.nextPath);
   const email = storedEntryEmail(input.email);
-  for (let attempt = 0; attempt < 5; attempt += 1) {
+  const expiresAt = new Date(Date.now() + entryLinkTtlMs(otpType)).toISOString();
+  let withExpiry = true;
+  let attempts = 0;
+  while (attempts < 5) {
     const code = entryCode();
-    const { error } = await supabase.from("crm_entry_links").insert({
+    const row: Record<string, unknown> = {
       code,
       token_hash: input.tokenHash,
       otp_type: otpType,
       next_path: nextPath,
       email,
       show_cover: input.showCover === true,
-    });
+    };
+    if (withExpiry) row.expires_at = expiresAt;
+    const { error } = await supabase.from("crm_entry_links").insert(row);
     if (!error) return entryLinkUrl(origin, code);
+    if (withExpiry && isMissingColumnError(error, "expires_at")) {
+      // Déploiement avant la migration : le lien part quand même, sans date.
+      console.warn("[entry] migration entry_links_expiry non appliquée");
+      withExpiry = false;
+      continue;
+    }
+    attempts += 1;
     if (!/duplicate|unique/i.test(error.message)) throw new Error("Lien court indisponible");
   }
   throw new Error("Lien court indisponible");
