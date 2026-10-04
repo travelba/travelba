@@ -4,15 +4,22 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AddressSuggest } from "@/components/crm/AddressSuggest";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { Icon } from "@/components/crm/icons";
 import { IssuesList } from "@/components/crm/IssuesList";
-import { issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
+import { issuesFromResponse, issuesSummary, type BookingIssue } from "@/lib/crm/booking-issues";
 import { CLIENT_PREVIEW_NOTE, useClientPreview } from "@/components/account/client-preview";
 import { HIDDEN_PRICE_LABEL, kindIcon } from "@/lib/crm/carnet";
 import { addressCity } from "@/lib/crm/address-suggest";
 import { extraAgencyStatus, serviceClock, storedTransferAddresses, type ServiceOffer } from "@/lib/crm/extras";
-import { formatMoney } from "@/lib/crm/money";
+import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { BOOKING_ITEM_LABELS, type CrmBookingItem } from "@/lib/crm/types";
+
+const PRIMARY_BTN =
+  "inline-flex min-h-11 items-center justify-center rounded-full bg-[var(--admin-navy)] px-4 text-sm font-semibold text-white disabled:opacity-50";
+const SECONDARY_BTN =
+  "inline-flex min-h-11 items-center justify-center rounded-full border border-[var(--border)] bg-white px-4 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50";
+const LINK_BTN = "inline-flex min-h-11 items-center px-2 text-sm font-semibold text-muted";
 
 export function ServiceOfferCard({
   offer,
@@ -46,6 +53,8 @@ export function ServiceOfferCard({
   const [depart, setDepart] = useState(saved.depart);
   const [arrive, setArrive] = useState(saved.arrive);
   const [busy, setBusy] = useState<"validate" | "cancel" | "confirm" | "save" | null>(null);
+  /** « Valider » ouvre le récapitulatif ; la demande ne part qu’à « Confirmer la demande ». */
+  const [review, setReview] = useState(false);
   const [gone, setGone] = useState(false);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
   const isAdmin = variant === "admin";
@@ -61,6 +70,8 @@ export function ServiceOfferCard({
       ? "Confirmé"
       : "En attente de confirmation";
   const priceLabel = pricesVisible ? formatMoney(price, currency) : HIDDEN_PRICE_LABEL;
+  const endpoint = isAdmin ? `/api/admin/bookings/${bookingId}/extras` : `/api/client/bookings/${reference}/extras`;
+  const whenLabel = [offer.day ? formatDateFr(offer.day) : null, clock || null].filter(Boolean).join(" · ");
 
   function addressBody(addresses = false) {
     return {
@@ -75,6 +86,21 @@ export function ServiceOfferCard({
     };
   }
 
+  async function post(body: Record<string, unknown>) {
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) return { ok: false as const, issues: issuesFromResponse(json) };
+      return { ok: true as const, issues: [] as BookingIssue[] };
+    } catch {
+      return { ok: false as const, issues: [{ field: "network", message: "Connexion interrompue. Réessayez." }] };
+    }
+  }
+
   async function request() {
     if (offer.kind === "chauffeur" && (!depart.trim() || !arrive.trim())) {
       setIssues([{ field: "address", message: "Indiquez l’adresse de départ et l’adresse d’arrivée." }]);
@@ -86,21 +112,13 @@ export function ServiceOfferCard({
     }
     setBusy("validate");
     setIssues([]);
-    const url =
-      variant === "admin"
-        ? `/api/admin/bookings/${bookingId}/extras`
-        : `/api/client/bookings/${reference}/extras`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(addressBody()),
-    });
-    const json = await res.json().catch(() => ({}));
+    const result = await post(addressBody());
     setBusy(null);
-    if (!res.ok) {
-      setIssues(issuesFromResponse(json));
+    if (!result.ok) {
+      setIssues(result.issues);
       return;
     }
+    setReview(false);
     router.refresh();
   }
 
@@ -112,56 +130,36 @@ export function ServiceOfferCard({
     }
     setBusy("cancel");
     setIssues([]);
-    const res = await fetch(
-      isAdmin ? `/api/admin/bookings/${bookingId}/extras` : `/api/client/bookings/${reference}/extras`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          cancel: true,
-          kind: offer.kind,
-          leg: offer.leg,
-          place: offer.place,
-          moment: offer.moment,
-        }),
-      }
-    );
-    const json = await res.json().catch(() => ({}));
+    const result = await post({
+      cancel: true,
+      kind: offer.kind,
+      leg: offer.leg,
+      place: offer.place,
+      moment: offer.moment,
+    });
     setBusy(null);
-    if (!res.ok) {
-      setIssues(issuesFromResponse(json));
+    if (!result.ok) {
+      setIssues(result.issues);
       return;
     }
     router.refresh();
   }
 
   async function refuse() {
-    if (busy || existing || isAdmin) return;
-    if (preview) {
-      setIssues([{ field: "preview", message: CLIENT_PREVIEW_NOTE }]);
-      return;
-    }
-    setGone(true);
+    if (busy || existing || isAdmin) return { ok: false, error: "Cette proposition ne peut plus être masquée." };
+    if (preview) return { ok: false, error: CLIENT_PREVIEW_NOTE };
     setIssues([]);
-    const url = `/api/client/bookings/${reference}/extras`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        decline: true,
-        kind: offer.kind,
-        leg: offer.leg,
-        place: offer.place,
-        moment: offer.moment,
-      }),
+    const result = await post({
+      decline: true,
+      kind: offer.kind,
+      leg: offer.leg,
+      place: offer.place,
+      moment: offer.moment,
     });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setGone(false);
-      setIssues(issuesFromResponse(json));
-      return;
-    }
+    if (!result.ok) return { ok: false, error: issuesSummary(result.issues) || "La proposition n’a pas pu être masquée." };
+    setGone(true);
     router.refresh();
+    return { ok: true };
   }
 
   async function saveAddresses() {
@@ -176,18 +174,10 @@ export function ServiceOfferCard({
     }
     setBusy("save");
     setIssues([]);
-    const res = await fetch(
-      isAdmin ? `/api/admin/bookings/${bookingId}/extras` : `/api/client/bookings/${reference}/extras`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(addressBody(true)),
-      }
-    );
-    const json = await res.json().catch(() => ({}));
+    const result = await post(addressBody(true));
     setBusy(null);
-    if (!res.ok) {
-      setIssues(issuesFromResponse(json));
+    if (!result.ok) {
+      setIssues(result.issues);
       return;
     }
     router.refresh();
@@ -197,97 +187,79 @@ export function ServiceOfferCard({
     if (!existing || !isAdmin || busy || confirmed) return;
     setBusy("confirm");
     setIssues([]);
-    const res = await fetch(`/api/admin/bookings/${bookingId}/extras`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        confirm: true,
-        kind: offer.kind,
-        leg: offer.leg,
-        place: offer.place,
-        moment: offer.moment,
-      }),
+    const result = await post({
+      confirm: true,
+      kind: offer.kind,
+      leg: offer.leg,
+      place: offer.place,
+      moment: offer.moment,
     });
-    const json = await res.json().catch(() => ({}));
     setBusy(null);
-    if (!res.ok) {
-      setIssues(issuesFromResponse(json));
+    if (!result.ok) {
+      setIssues(result.issues);
       return;
     }
     router.refresh();
   }
 
-  function controls() {
-    const refuseButton =
-      !existing && !isAdmin ? (
-        <button
-          type="button"
-          onClick={() => void refuse()}
-          className="inline-flex h-5 items-center text-[11px] font-semibold leading-none text-muted"
-        >
-          Refuser
-        </button>
-      ) : null;
-    const primary = action();
-    if (!refuseButton && !primary) return null;
-    return (
-      <span className="inline-flex items-center gap-2">
-        {refuseButton}
-        {primary}
-      </span>
-    );
+  function openReview() {
+    setIssues([]);
+    setReview(true);
   }
 
-  function action() {
+  function closeReview() {
+    setIssues([]);
+    setDepart(saved.depart);
+    setArrive(saved.arrive);
+    setReview(false);
+  }
+
+  function controls() {
     if (existing) {
       if (confirmed) return null;
       return (
-        <span className="inline-flex items-center gap-2">
+        <span className="flex flex-wrap items-center justify-end gap-2">
           {offer.kind === "chauffeur" && addressesDirty ? (
-            <button
-              type="button"
-              disabled={busy !== null}
-              onClick={() => void saveAddresses()}
-              className="inline-flex h-5 items-center justify-center rounded-full bg-[var(--admin-navy)] px-2.5 text-[11px] font-semibold leading-none text-white disabled:opacity-50"
-            >
+            <button type="button" disabled={busy !== null} onClick={() => void saveAddresses()} className={PRIMARY_BTN}>
               {busy === "save" ? "…" : "Enregistrer"}
             </button>
           ) : null}
           {isAdmin ? (
-            <button
-              type="button"
-              disabled={busy !== null}
-              onClick={() => void confirm()}
-              className="inline-flex h-5 items-center justify-center rounded-full bg-[var(--admin-navy)] px-2.5 text-[11px] font-semibold leading-none text-white disabled:opacity-50"
-            >
+            <button type="button" disabled={busy !== null} onClick={() => void confirm()} className={PRIMARY_BTN}>
               {busy === "confirm" ? "…" : "Confirmer"}
             </button>
           ) : null}
-          <button
-            type="button"
-            disabled={busy !== null}
-            onClick={() => void cancel()}
-            className="inline-flex h-5 items-center justify-center rounded-full bg-[var(--admin-navy)] px-2.5 text-[11px] font-semibold leading-none text-white disabled:opacity-50"
-          >
+          <button type="button" disabled={busy !== null} onClick={() => void cancel()} className={SECONDARY_BTN}>
             {busy === "cancel" ? "…" : "Annuler"}
           </button>
         </span>
       );
     }
-    if (locked) return null;
+    if (locked || review) return null;
     return (
-      <button
-        type="button"
-        disabled={busy !== null}
-        onClick={() => void request()}
-        className="inline-flex h-5 items-center justify-center rounded-full bg-[var(--admin-navy)] px-2.5 text-[11px] font-semibold leading-none text-white disabled:opacity-50"
-      >
-        {busy === "validate" ? "…" : "Valider"}
-      </button>
+      <span className="flex flex-wrap items-center justify-end gap-2">
+        {!isAdmin ? (
+          <ConfirmAction
+            label="Refuser"
+            question="Masquer cette proposition ?"
+            hint="Elle ne sera plus affichée pour ce vol. L’agence reste joignable pour la rouvrir."
+            confirmLabel="Masquer"
+            busyLabel="Un instant…"
+            className={LINK_BTN}
+            confirmClassName={PRIMARY_BTN}
+            onConfirm={refuse}
+          />
+        ) : null}
+        <button type="button" disabled={busy !== null} onClick={openReview} className={PRIMARY_BTN}>
+          Valider
+        </button>
+      </span>
     );
   }
 
   if (gone) return null;
+
+  const showAddresses = offer.kind === "chauffeur" && (Boolean(existing) || review);
 
   return (
     <article
@@ -297,7 +269,7 @@ export function ServiceOfferCard({
           : "w-full min-w-0 rounded-2xl border border-dashed border-[var(--admin-gold)] bg-[#faf9f6]"
       }
     >
-      <div className="flex min-w-0 items-start gap-3 px-3.5 py-3">
+      <div className="flex min-w-0 items-start gap-3 px-3.5 pt-3">
         <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--admin-peach)] text-[var(--admin-navy)]">
           <Icon name={kindIcon(offer.kind)} className="h-5 w-5" />
         </span>
@@ -311,19 +283,82 @@ export function ServiceOfferCard({
           </p>
           <p className="break-words text-sm font-semibold leading-snug text-[var(--admin-navy)]">{offer.route}</p>
           {offer.kind === "chauffeur" ? null : (
-            <p className="truncate text-xs text-muted">{[detail, offer.flightLine].filter(Boolean).join(" · ")}</p>
+            <p className="break-words text-xs text-muted">{[detail, offer.flightLine].filter(Boolean).join(" · ")}</p>
           )}
-          <p className="mt-1 flex items-center justify-between gap-2 sm:hidden">
-            <span className="text-sm font-bold text-[var(--admin-navy)]">{priceLabel}</span>
-            {controls()}
-          </p>
-        </div>
-        <div className="hidden shrink-0 items-start gap-2 sm:flex">
-          <p className="max-w-[7.5rem] text-right text-sm font-bold leading-snug text-[var(--admin-navy)]">{priceLabel}</p>
-          {controls()}
         </div>
       </div>
-      {offer.kind === "chauffeur" ? (
+      {review ? null : (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 pb-3 pt-2">
+          <span className="text-sm font-bold text-[var(--admin-navy)]">{priceLabel}</span>
+          {controls()}
+        </div>
+      )}
+      {review ? (
+        <div
+          className="mx-3.5 mb-3 mt-2 space-y-3 rounded-xl border border-[var(--admin-gold)]/50 bg-white p-3"
+          role="group"
+          aria-label="Récapitulatif de la demande"
+          aria-live="polite"
+        >
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+            Récapitulatif de la demande
+          </p>
+          <dl className="grid gap-x-4 gap-y-1.5 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-[10px] font-bold uppercase tracking-wide text-muted">Prestation</dt>
+              <dd className="font-medium text-[var(--admin-navy)]">
+                {kindLabel} · {offer.route}
+              </dd>
+            </div>
+            {whenLabel ? (
+              <div>
+                <dt className="text-[10px] font-bold uppercase tracking-wide text-muted">Horaire</dt>
+                <dd className="font-medium text-[var(--admin-navy)]">{whenLabel}</dd>
+              </div>
+            ) : null}
+            {detail || offer.flightLine ? (
+              <div className="sm:col-span-2">
+                <dt className="text-[10px] font-bold uppercase tracking-wide text-muted">Détail</dt>
+                <dd className="font-medium text-[var(--admin-navy)]">{[detail, offer.flightLine].filter(Boolean).join(" · ")}</dd>
+              </div>
+            ) : null}
+            <div className="sm:col-span-2">
+              <dt className="text-[10px] font-bold uppercase tracking-wide text-muted">Prix</dt>
+              <dd className="font-bold text-[var(--admin-navy)]">{priceLabel}</dd>
+            </div>
+          </dl>
+          {pricesVisible ? null : (
+            <p className="text-xs text-muted">Le prix est communiqué par l’agence à la publication du séjour.</p>
+          )}
+          {showAddresses ? (
+            <div className="grid gap-2">
+              <AddressSuggest
+                label="Départ"
+                value={depart}
+                onChange={setDepart}
+                readOnly={false}
+                near={addressCity(saved.depart) || addressCity(homeAddress)}
+              />
+              <AddressSuggest
+                label="Arrivée"
+                value={arrive}
+                onChange={setArrive}
+                readOnly={false}
+                near={addressCity(saved.arrive) || addressCity(offer.airport)}
+              />
+            </div>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            <button type="button" disabled={busy !== null} onClick={() => void request()} className={`${PRIMARY_BTN} flex-1`}>
+              {busy === "validate" ? "Envoi…" : "Confirmer la demande"}
+            </button>
+            <button type="button" disabled={busy !== null} onClick={closeReview} className={`${SECONDARY_BTN} flex-1`}>
+              Annuler
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {showAddresses && !review ? (
         <div className="grid gap-2 px-3.5 pb-3">
           <AddressSuggest
             label="Départ"
@@ -352,7 +387,7 @@ export function ServiceOfferCard({
                   ? "Confirmation…"
                   : busy === "save"
                     ? "Enregistrement…"
-                    : "Validation…"
+                    : "Envoi de la demande…"
             }
           />
         </div>

@@ -105,6 +105,7 @@ export function BillingForm({
         drafts={companyDrafts}
         onChange={setCompanyDrafts}
         profileAddress={profileAddress}
+        confirmRemove
       />
       {error ? <p className="text-sm text-accent">{error}</p> : null}
       <div className="sticky bottom-[calc(7.5rem+env(safe-area-inset-bottom,0px))] z-20 border-t border-[#e5e3dc] bg-[rgba(250,249,246,0.95)] py-3 backdrop-blur md:bottom-4">

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { billingCompanyTabLabel } from "@/lib/crm/billing-companies";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import type { CrmBillingCompany } from "@/lib/crm/types";
 import {
   billingJson,
@@ -76,10 +77,13 @@ export function BillingCompaniesTabs({
   drafts,
   onChange,
   profileAddress,
+  confirmRemove = false,
 }: {
   drafts: BillingCompanyDraft[];
   onChange: (next: BillingCompanyDraft[]) => void;
   profileAddress: ProfileAddress;
+  /** Espace client : « Retirer cette société ? » avant de retirer l’onglet. L’admin garde le geste direct. */
+  confirmRemove?: boolean;
 }) {
   const [active, setActive] = useState(0);
   const index = drafts.length ? Math.min(active, drafts.length - 1) : 0;
@@ -87,6 +91,12 @@ export function BillingCompaniesTabs({
 
   function updateCurrent(partial: Partial<BillingCompanyDraft>) {
     onChange(drafts.map((draft, i) => (i === index ? { ...draft, ...partial } : draft)));
+  }
+
+  function removeCurrent() {
+    const next = drafts.filter((_, i) => i !== index);
+    onChange(next);
+    setActive(Math.max(0, index - 1));
   }
 
   if (!drafts.length) {
@@ -150,17 +160,23 @@ export function BillingCompaniesTabs({
             onSameAsProfileChange={(sameAsProfile) => updateCurrent({ sameAsProfile })}
             profileAddress={profileAddress}
           />
-          <button
-            type="button"
-            onClick={() => {
-              const next = drafts.filter((_, i) => i !== index);
-              onChange(next);
-              setActive(Math.max(0, index - 1));
-            }}
-            className="text-sm font-semibold text-accent"
-          >
-            Retirer cette société
-          </button>
+          {confirmRemove ? (
+            <ConfirmAction
+              label="Retirer cette société"
+              question="Retirer cette société ?"
+              hint="Le retrait prend effet au prochain « Enregistrer »."
+              confirmLabel="Retirer"
+              className="inline-flex min-h-11 items-center text-sm font-semibold text-accent"
+              onConfirm={async () => {
+                removeCurrent();
+                return { ok: true };
+              }}
+            />
+          ) : (
+            <button type="button" onClick={removeCurrent} className="text-sm font-semibold text-accent">
+              Retirer cette société
+            </button>
+          )}
         </div>
       ) : null}
     </section>

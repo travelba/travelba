@@ -24,6 +24,7 @@ import {
 } from "@/components/crm/fields";
 import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
 import { identityPreview } from "@/lib/crm/preview-files";
 
@@ -195,8 +196,13 @@ export function DocumentsManager({
   }
 
   async function remove(id: string) {
-    await fetch(`/api/client/documents?id=${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/client/documents?id=${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const json = (await res.json().catch(() => null)) as { error?: string } | null;
+      return { ok: false, error: json?.error || "Impossible de retirer cette pièce. Réessayez ou écrivez à l’agence." };
+    }
     router.refresh();
+    return { ok: true };
   }
 
   const vault = documents.filter(isVaultDocument);
@@ -214,7 +220,7 @@ export function DocumentsManager({
             .join(" · ");
           return (
             <li key={d.id} className="admin-af-card rounded-2xl px-4 py-3">
-              <div className="flex items-start gap-2">
+              <div className="flex flex-wrap items-start gap-2">
                 <button
                   type="button"
                   onClick={() => setOpenId(open ? null : d.id)}
@@ -229,13 +235,15 @@ export function DocumentsManager({
                   </span>
                   <StatusChip tone={status.tone}>{status.label}</StatusChip>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => remove(d.id)}
-                  className="shrink-0 text-xs font-semibold text-accent"
-                >
-                  Retirer
-                </button>
+                <ConfirmAction
+                  label="Retirer"
+                  question="Retirer cette pièce ?"
+                  hint="Le fichier est supprimé du coffre. Le profil n’est pas modifié."
+                  confirmLabel="Retirer"
+                  busyLabel="Suppression…"
+                  className="inline-flex min-h-11 shrink-0 items-center px-2 text-xs font-semibold text-accent"
+                  onConfirm={() => remove(d.id)}
+                />
               </div>
               {open ? (
                 <div className="mt-2 space-y-2">
