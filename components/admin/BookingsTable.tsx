@@ -1,7 +1,4 @@
-"use client";
-
 import Link from "next/link";
-import { useMemo, useState } from "react";
 import {
   BOOKING_STATUS_LABELS,
   type BookingStatus,
@@ -20,80 +17,119 @@ import {
   RestoreBookingButton,
 } from "@/components/admin/ArchiveBookingButton";
 import { staffStayLabel } from "@/lib/crm/staff-stay";
+import { Pagination } from "@/components/admin/Pagination";
+import {
+  ADMIN_PAGE_SIZE,
+  BOOKING_SORTS,
+  listHref,
+  type BookingSort,
+  type BookingStateFilter,
+} from "@/lib/crm/admin-list";
 
+const STATE_LABELS: Record<BookingStateFilter, string> = {
+  preparation: "En préparation",
+  montre: "Montrés au client",
+  archive: "Archivés",
+};
+
+export type BookingsListFilters = {
+  q: string;
+  etat: BookingStateFilter | null;
+  statut: BookingStatus | null;
+  tri: BookingSort;
+};
+
+/** Liste paginée côté serveur : les filtres vivent dans l’URL (formulaire GET). */
 export function BookingsTable({
   bookings,
   customers,
   places = {},
   routes = {},
   displayAmounts = {},
+  page = 1,
+  pageSize = ADMIN_PAGE_SIZE,
+  total = bookings.length,
+  filters = { q: "", etat: null, statut: null, tri: "depart" },
+  hiddenArchiveHits = 0,
 }: {
   bookings: CrmBooking[];
   customers: CustomerNameRow[];
   places?: Record<string, string[]>;
   routes?: Record<string, string[]>;
   displayAmounts?: Record<string, number>;
+  page?: number;
+  pageSize?: number;
+  total?: number;
+  filters?: BookingsListFilters;
+  hiddenArchiveHits?: number;
 }) {
-  const [q, setQ] = useState("");
-  const [status, setStatus] = useState<string>("all");
-  const byId = useMemo(
-    () => new Map(customers.map((c) => [c.id, customerFullName(c)])),
-    [customers]
-  );
-
-  const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return bookings.filter((b) => {
-      const archived = Boolean(b.archived_at);
-      if (status === "archived") {
-        if (!archived) return false;
-      } else if (archived) {
-        return false;
-      } else if (status !== "all" && b.status !== status) {
-        return false;
-      }
-      if (!needle) return true;
-      const hay = `${b.reference} ${b.title} ${b.destination || ""} ${byId.get(b.customer_id) || ""}`.toLowerCase();
-      return hay.includes(needle);
-    });
-  }, [bookings, byId, q, status]);
-
-  const hiddenArchiveHits = useMemo(() => {
-    if (status === "archived") return 0;
-    const needle = q.trim().toLowerCase();
-    if (!needle) return 0;
-    return bookings.filter((b) => {
-      if (!b.archived_at) return false;
-      const hay = `${b.reference} ${b.title} ${b.destination || ""} ${byId.get(b.customer_id) || ""}`.toLowerCase();
-      return hay.includes(needle);
-    }).length;
-  }, [bookings, byId, q, status]);
+  const byId = new Map(customers.map((c) => [c.id, customerFullName(c)]));
+  const urlFilters = {
+    q: filters.q,
+    etat: filters.etat,
+    statut: filters.statut,
+    tri: filters.tri === "depart" ? null : filters.tri,
+  };
+  const filtering = Boolean(filters.q || filters.etat || filters.statut);
+  const archivedOnly = filters.etat === "archive";
 
   return (
     <div className="mt-6 space-y-3">
-      <div className="flex flex-col gap-2 sm:flex-row">
+      <form method="get" action="/admin/reservations" className="flex flex-col gap-2 sm:flex-row sm:flex-wrap" role="search">
         <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Référence, destination, client…"
-          className="admin-af-input w-full text-sm"
+          type="search"
+          name="q"
+          defaultValue={filters.q}
+          placeholder="Référence, destination, titre, client…"
+          aria-label="Rechercher un dossier"
+          className="admin-af-input w-full text-sm sm:flex-1"
         />
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-          className="admin-af-input text-sm sm:w-56"
-        >
-          <option value="all">Tous les statuts</option>
-          <option value="archived">Archivées</option>
+        <select name="etat" defaultValue={filters.etat || ""} aria-label="État du dossier" className="admin-af-input text-sm sm:w-48">
+          <option value="">Tous les états</option>
+          {(Object.keys(STATE_LABELS) as BookingStateFilter[]).map((state) => (
+            <option key={state} value={state}>
+              {STATE_LABELS[state]}
+            </option>
+          ))}
+        </select>
+        <select name="statut" defaultValue={filters.statut || ""} aria-label="Statut métier" className="admin-af-input text-sm sm:w-48">
+          <option value="">Tous les statuts</option>
           {(Object.keys(BOOKING_STATUS_LABELS) as BookingStatus[]).map((s) => (
             <option key={s} value={s}>
               {BOOKING_STATUS_LABELS[s]}
             </option>
           ))}
         </select>
-      </div>
+        <select name="tri" defaultValue={filters.tri} aria-label="Tri" className="admin-af-input text-sm sm:w-56">
+          {(Object.keys(BOOKING_SORTS) as BookingSort[]).map((sort) => (
+            <option key={sort} value={sort}>
+              {BOOKING_SORTS[sort].label}
+            </option>
+          ))}
+        </select>
+        <div className="flex gap-2">
+          <button type="submit" className="admin-af-btn admin-tap rounded-lg px-4 text-sm">
+            Filtrer
+          </button>
+          {filtering || filters.tri !== "depart" ? (
+            <Link
+              href="/admin/reservations"
+              className="admin-tap inline-flex items-center rounded-lg border border-[var(--border)] bg-white px-4 text-sm font-semibold text-[var(--admin-navy)]"
+            >
+              Effacer
+            </Link>
+          ) : null}
+        </div>
+      </form>
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={total}
+        label={total > 1 ? "dossiers" : "dossier"}
+        hrefFor={(next) => listHref("/admin/reservations", urlFilters, next)}
+      />
       <ul className="admin-af-card divide-y divide-border overflow-hidden rounded-2xl">
-        {filtered.map((b) => (
+        {bookings.map((b) => (
           <li key={b.id} className="flex flex-col gap-2 px-5 py-4 transition hover:bg-[var(--admin-sky)]/40 sm:flex-row sm:items-center sm:justify-between">
             <Link
               href={`/admin/reservations/${b.id}`}
@@ -143,19 +179,34 @@ export function BookingsTable({
             </div>
           </li>
         ))}
-        {!filtered.length ? (
+        {!bookings.length ? (
           <li className="px-5 py-8 text-center text-sm text-muted">
-            {status === "archived" ? "Aucun dossier archivé." : bookingsListEmptyMessage(bookings.length > 0)}
+            {archivedOnly
+              ? "Aucun dossier archivé."
+              : filtering
+                ? "Aucune réservation trouvée."
+                : bookingsListEmptyMessage(total > 0)}
           </li>
         ) : null}
         {hiddenArchiveHits > 0 ? (
           <li className="px-5 py-3 text-center text-xs text-muted">
-            {hiddenArchiveHits > 1
-              ? `${hiddenArchiveHits} dossiers archivés correspondent. Choisissez Archivées pour les réactiver.`
-              : "Un dossier archivé correspond. Choisissez Archivées pour le réactiver."}
+            <Link href={listHref("/admin/reservations", { ...urlFilters, etat: "archive" })} className="underline">
+              {hiddenArchiveHits > 1
+                ? `${hiddenArchiveHits} dossiers archivés correspondent. Voir les archivés pour les réactiver.`
+                : "Un dossier archivé correspond. Voir les archivés pour le réactiver."}
+            </Link>
           </li>
         ) : null}
       </ul>
+      {total > pageSize ? (
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          label={total > 1 ? "dossiers" : "dossier"}
+          hrefFor={(next) => listHref("/admin/reservations", urlFilters, next)}
+        />
+      ) : null}
     </div>
   );
 }
