@@ -145,7 +145,7 @@ function capitalize(value: string) {
 
 /** Garde chiffres, espaces, un seul séparateur décimal (virgule) et les points de milliers. */
 export function maskMoneyTyping(raw: string) {
-  let s = raw.replace(/[^\d,.\s\u00a0\u202f]/g, "");
+  const s = raw.replace(/[^\d,.\s\u00a0\u202f]/g, "");
   const comma = s.indexOf(",");
   if (comma === -1) return s;
   const head = s.slice(0, comma + 1);

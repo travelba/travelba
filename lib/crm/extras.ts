@@ -1,4 +1,4 @@
-import type { CrmBookingItem, CrmBookingTraveler, CrmCompanion, CrmCustomer } from "./types";
+import type { CrmBookingTraveler, CrmCompanion, CrmCustomer } from "./types";
 import { householdMembers, memberFromTravelerLink } from "./household";
 
 export const CHAUFFEUR_EUR = 150;
