@@ -81,10 +81,17 @@ export function StayPayment({
   const [paid, setPaid] = useState(false);
   /** Règlement parti chez Stripe : l’encours se recharge, le message attend la banque. */
   const [settled, setSettled] = useState<string | null>(null);
-  const nonce = useRef<string | null>(null);
+  /** Un nonce par (part, moyen) : rouvrir la même pastille réutilise le même PaymentIntent. */
+  const nonce = useRef<{ key: string; value: string } | null>(null);
   const preview = useClientPreview();
 
+  function nonceFor(key: string) {
+    if (!nonce.current || nonce.current.key !== key) nonce.current = { key, value: freshNonce() };
+    return nonce.current.value;
+  }
+
   async function choose(part: ClientPayPart, next: StayPayMethod) {
+    if (busy) return;
     setOpenKind(part.kind);
     setMethod(next);
     setError(null);
@@ -98,13 +105,13 @@ export function StayPayment({
       return;
     }
     if (next !== "revolut" && !stripeKey) return;
-    // Un nonce par ouverture du formulaire : il entre dans la clé d’idempotence côté serveur.
-    nonce.current = freshNonce();
+    // Le nonce entre dans la clé d’idempotence côté serveur ; il ne change qu’avec la pastille ou après un règlement.
+    const currentNonce = nonceFor(`${part.kind}:${next}`);
     setBusy(true);
     try {
       const result = await postJson<{ alreadyPaid?: boolean; transfer?: TransferView; clientSecret?: string }>(
         "/api/client/ledger/pay",
-        { method: next, payerKind: part.kind, nonce: nonce.current }
+        { method: next, payerKind: part.kind, nonce: currentNonce }
       );
       const json = result.data || {};
       if (!result.ok) {
@@ -112,6 +119,7 @@ export function StayPayment({
         return;
       }
       if (json.alreadyPaid) {
+        nonce.current = null;
         setPaid(true);
         return;
       }
@@ -127,6 +135,7 @@ export function StayPayment({
   }
 
   function onPaid(message: string) {
+    nonce.current = null;
     setSettled(message);
     setClientSecret(null);
   }
@@ -176,6 +185,7 @@ export function StayPayment({
                       key={item}
                       type="button"
                       aria-pressed={selected}
+                      disabled={busy}
                       onClick={() => void choose(part, item)}
                       className={`inline-flex h-8 items-center rounded-full px-3 text-[12px] font-semibold ${
                         selected
