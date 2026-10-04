@@ -27,3 +27,11 @@ comment on column public.crm_entry_links.revoked_at is
 
 -- Journal des lectures de carte : écrit par le service role à chaque lecture (B-05).
 grant all on public.crm_card_views to service_role;
+
+-- Historique des connexions : le mode desk (code agence) est désormais journalisé (C-03 / B-06).
+alter table public.crm_customer_logins
+  drop constraint if exists crm_customer_logins_method_check;
+alter table public.crm_customer_logins
+  add constraint crm_customer_logins_method_check check (
+    method in ('password', 'magiclink', 'invite', 'recovery', 'entry', 'precedent', 'desk')
+  );
