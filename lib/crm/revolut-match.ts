@@ -45,12 +45,13 @@ export function normalizeMatchText(value: string | null | undefined) {
     .replace(/[^a-z0-9]/g, "");
 }
 
-/** Mots normalisés, séparateurs conservés : « Jean Martineau » → [jean, martineau]. */
+/** Mots normalisés, séparateurs conservés : « Jean Martineau » → [jean, martineau], « DUPONT2026 » → [dupont, 2026]. */
 export function matchTokens(value: string | null | undefined) {
   return (value || "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+    .replace(/([a-z])(?=\d)|(\d)(?=[a-z])/g, "$1$2 ")
     .split(/[^a-z0-9]+/)
     .filter(Boolean);
 }
