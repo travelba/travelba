@@ -277,3 +277,220 @@ export function MobileTabBar({
     </nav>
   );
 }
+
+const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
+/** Piège de focus simple : Tab boucle dans le panneau, Escape ferme, le focus revient au déclencheur. */
+export function useDialogFocus(open: boolean, panelRef: React.RefObject<HTMLElement | null>, onClose: () => void) {
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+  useEffect(() => {
+    if (!open) return;
+    const panel = panelRef.current;
+    const previous = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const first = panel?.querySelector<HTMLElement>(FOCUSABLE);
+    const timer = window.setTimeout(() => (first || panel)?.focus(), 10);
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab" || !panel) return;
+      const nodes = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+        (node) => !node.hasAttribute("hidden") && node.offsetParent !== null
+      );
+      if (!nodes.length) return;
+      const firstNode = nodes[0];
+      const lastNode = nodes[nodes.length - 1];
+      if (event.shiftKey && document.activeElement === firstNode) {
+        event.preventDefault();
+        lastNode.focus();
+      } else if (!event.shiftKey && document.activeElement === lastNode) {
+        event.preventDefault();
+        firstNode.focus();
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previousOverflow;
+      window.clearTimeout(timer);
+      previous?.focus?.();
+    };
+  }, [open, panelRef]);
+}
+
+/** Feuille basse « Plus » du téléphone : boîtes, outils, équipe, puis l’utilisateur (D-09). */
+export function MoreSheet({
+  open,
+  groups,
+  activeHref,
+  counts,
+  name,
+  role,
+  onClose,
+  onSignOut,
+}: {
+  open: boolean;
+  groups: AdminNavGroup[];
+  activeHref: string | null;
+  counts: AdminNavCounts;
+  name: string;
+  role?: StaffRole | "";
+  onClose: () => void;
+  onSignOut: () => void | Promise<void>;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  useDialogFocus(open, panelRef, onClose);
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-end bg-[#0b192c]/55 lg:hidden"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div
+        id="admin-more-sheet"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="max-h-[85vh] w-full overflow-y-auto rounded-t-3xl bg-[#faf9f6] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 text-[var(--admin-navy)] shadow-[0_-18px_50px_rgba(11,25,44,0.3)]"
+      >
+        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--border)]" aria-hidden />
+        <div className="flex items-center justify-between gap-3">
+          <p id={titleId} className="font-display text-base font-bold">
+            Plus
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fermer"
+            className="admin-tap inline-flex h-11 w-11 items-center justify-center rounded-full"
+          >
+            <Icon name="close" className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="mt-2">
+          <SidebarGroups
+            groups={groups}
+            activeHref={activeHref}
+            counts={counts}
+            openIds={groups.map((group) => group.id)}
+            onToggle={() => {}}
+            onNavigate={onClose}
+            variant="light"
+            ariaLabel="Autres pages"
+          />
+        </div>
+        <div className="mt-4 rounded-2xl border border-[var(--border)] bg-white">
+          <div className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3">
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[11px] font-bold text-[var(--admin-gold)]">
+              {staffInitials(name)}
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate font-display text-sm font-bold">{name || "Agent connecté"}</span>
+              {role ? <span className="block text-xs text-muted">{staffRoleLabel(role)}</span> : null}
+            </span>
+          </div>
+          <a
+            href={`https://wa.me/${siteConfig.whatsappNumber}`}
+            target="_blank"
+            rel="noreferrer"
+            className="admin-tap flex items-center gap-2 px-4 py-3 text-sm font-medium"
+          >
+            <Icon name="support_agent" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
+            WhatsApp agence
+          </a>
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              void onSignOut();
+            }}
+            className="admin-tap flex w-full items-center gap-2 border-t border-[var(--border)] px-4 py-3 text-left text-sm font-medium"
+          >
+            <Icon name="logout" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
+            Déconnexion
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Recherche en plein écran sur téléphone : la loupe l’ouvre, le clavier arrive tout de suite. */
+export function SearchOverlay({
+  open,
+  initialQuery,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  initialQuery: string;
+  onClose: () => void;
+  onSubmit: (query: string) => void;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [query, setQuery] = useState(initialQuery);
+  useDialogFocus(open, panelRef, onClose);
+  if (!open) return null;
+  return (
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Rechercher"
+      tabIndex={-1}
+      className="fixed inset-0 z-[60] flex flex-col bg-[var(--admin-navy)] pt-[env(safe-area-inset-top)] text-white lg:hidden"
+    >
+      <form
+        role="search"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit(query.trim());
+        }}
+        className="flex items-center gap-2 px-3 py-3"
+      >
+        <div className="relative flex-1">
+          <Icon
+            name="search"
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#c5c6cd]"
+          />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            className="w-full rounded-md bg-white/10 py-3 pl-10 pr-4 text-[15px] text-white outline-none placeholder:text-[#c5c6cd] focus:bg-white/15 focus:ring-2 focus:ring-[var(--admin-gold)]/40"
+            placeholder="Client, référence TB-, hôtel, confirmation…"
+            aria-label="Rechercher un client ou un dossier"
+            type="search"
+            autoComplete="off"
+            enterKeyHint="search"
+          />
+        </div>
+        <button type="submit" className="admin-af-btn-accent admin-tap rounded-md px-3 py-2.5 text-sm">
+          Chercher
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Fermer la recherche"
+          className="admin-tap inline-flex h-11 w-11 items-center justify-center rounded-lg"
+        >
+          <Icon name="close" className="h-5 w-5" />
+        </button>
+      </form>
+      <p className="px-4 text-sm text-[#c5c6cd]">
+        Un nom ouvre la fiche. Une référence, un hôtel ou une confirmation ouvre le dossier.
+      </p>
+    </div>
+  );
+}

@@ -5,7 +5,9 @@ import {
   activeAdminNavHref,
   adminNavBadge,
   adminNavGroups,
+  adminPageTitle,
   mobileTabActive,
+  moreSheetGroups,
   mobileTabBadge,
   openAdminNavGroups,
   parseCollapsedGroups,
@@ -72,4 +74,20 @@ test("barre basse : cinq entrées, Argent et Plus portent les badges des boîtes
   assert.equal(mobileTabActive(ADMIN_MOBILE_TABS[0], "/admin"), true);
   assert.equal(staffInitials("Victoria Bernard"), "VB");
   assert.equal(staffInitials(""), "TB");
+});
+
+test("le titre court suit la page, la feuille Plus porte boîtes, outils et équipe", () => {
+  const groups = adminNavGroups({ role: "admin", showExample: false });
+  assert.equal(adminPageTitle(groups, "/admin"), "Tableau de bord");
+  assert.equal(adminPageTitle(groups, "/admin/reservations"), "Réservations");
+  assert.equal(adminPageTitle(groups, "/admin/reservations/nouveau"), "Nouveau dossier");
+  assert.equal(adminPageTitle(groups, "/admin/reservations/abc-123"), "Dossier");
+  assert.equal(adminPageTitle(groups, "/admin/clients/abc"), "Fiche client");
+  assert.equal(adminPageTitle(groups, "/admin/clients", "?pieces=echeance"), "Pièces à échéance");
+  assert.equal(adminPageTitle(groups, "/admin/recherche", "?q=x"), "Recherche");
+  assert.equal(adminPageTitle(groups, "/admin/inconnu"), "Espace agence");
+  assert.deepEqual(
+    moreSheetGroups(groups).map((group) => group.id),
+    ["boites", "outils", "equipe"]
+  );
 });

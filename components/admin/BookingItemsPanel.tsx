@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, PointerEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, PointerEvent, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Reorder } from "framer-motion";
+import { Reorder, useDragControls } from "framer-motion";
 import {
   countsAsCarnetCard,
   isExtraItemKind,
@@ -119,10 +119,39 @@ const flatBtn =
 const flatIconBtn =
   "admin-tap inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-white text-sm font-bold text-[var(--admin-navy)]";
 
-function blockDragFromControl(event: PointerEvent<HTMLElement>) {
-  const target = event.target;
-  if (!(target instanceof Element)) return;
-  if (target.closest("button, a, input, textarea, select, label")) event.stopPropagation();
+/**
+ * Une étape déplaçable : seule la poignée (icône grip) démarre le glisser, le reste de la carte
+ * laisse passer le défilement tactile et les clics (A-35). Les flèches du menu font la même chose au clavier.
+ */
+function ReorderStep({
+  item,
+  locked,
+  onDragEnd,
+  children,
+}: {
+  item: CrmBookingItem;
+  locked: boolean;
+  onDragEnd: () => void;
+  children: (handle: { onPointerDown: (event: PointerEvent<HTMLElement>) => void }) => ReactNode;
+}) {
+  const controls = useDragControls();
+  return (
+    <Reorder.Item
+      value={item}
+      dragListener={false}
+      dragControls={controls}
+      onDragEnd={onDragEnd}
+      whileDrag={{ zIndex: 30, background: "#ffffff" }}
+      className="relative mt-2"
+    >
+      {children({
+        onPointerDown: (event) => {
+          if (locked) return;
+          controls.start(event);
+        },
+      })}
+    </Reorder.Item>
+  );
 }
 
 export function BookingItemsPanel({
@@ -263,6 +292,19 @@ export function BookingItemsPanel({
     void persistOrder(cardRowsRef.current);
   }
 
+  /** Monter / Descendre au clavier : même ordre, même enregistrement que le glisser. */
+  function moveCard(item: CrmBookingItem, delta: -1 | 1) {
+    const current = cardRowsRef.current;
+    const index = current.findIndex((row) => row.id === item.id);
+    const target = index + delta;
+    if (index < 0 || target < 0 || target >= current.length) return;
+    const next = [...current];
+    [next[index], next[target]] = [next[target], next[index]];
+    applyCardOrder(next);
+    finishCardDrag();
+    setMenuFor(null);
+  }
+
   async function saveDraft() {
     if (!editingId) return true;
     if (!draft.title.trim()) {
@@ -377,7 +419,7 @@ export function BookingItemsPanel({
           Ajouter une étape
         </button>
       </div>
-      <p className="mt-1 text-xs text-muted">Glissez une étape pour changer l’ordre. Par défaut, l’ordre suit les dates.</p>
+      <p className="mt-1 text-xs text-muted">Déplacez une étape par sa poignée, ou Monter / Descendre dans son menu. Par défaut, l’ordre suit les dates.</p>
       <div className="mt-3">
         <BusyBar active={busy} label="Enregistrement…" />
       </div>
@@ -416,18 +458,12 @@ export function BookingItemsPanel({
           ]
             .filter(Boolean)
             .join(" · ");
+          const position = cardRows.findIndex((row) => row.id === item.id);
           return (
-          <Reorder.Item
-            key={item.id}
-            value={item}
-            dragListener={!locked}
-            onDragEnd={finishCardDrag}
-            whileDrag={{ zIndex: 30, background: "#ffffff" }}
-            className={`relative mt-2 ${locked ? "" : "cursor-grab active:cursor-grabbing"}`}
-          >
+          <ReorderStep key={item.id} item={item} locked={locked} onDragEnd={finishCardDrag}>
+            {(handle) => (
             <div
               id={bookingStepAnchor(item.id)}
-              onPointerDown={blockDragFromControl}
               className={`scroll-mt-28 rounded-2xl border px-3 py-3 ${
                 unshown
                   ? "border-[var(--admin-gold)] bg-[var(--admin-peach)]"
@@ -464,6 +500,15 @@ export function BookingItemsPanel({
               </div>
             ) : (
               <div className="flex items-start gap-3">
+                <button
+                  type="button"
+                  aria-label={`Déplacer ${stepTitle(item)}`}
+                  disabled={locked}
+                  onPointerDown={handle.onPointerDown}
+                  className="-ml-1 mt-0.5 inline-flex h-6 w-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-muted active:cursor-grabbing disabled:opacity-30"
+                >
+                  <Icon name="grip" className="h-4 w-4" />
+                </button>
                 <p className="w-16 shrink-0 pt-0.5 text-xs font-semibold text-muted">{when || "Sans date"}</p>
                 <Icon name={kindIcon(item.kind)} className="mt-0.5 h-4 w-4 shrink-0 text-[var(--admin-navy)]" />
                 <div className="min-w-0 flex-1">
@@ -529,6 +574,26 @@ export function BookingItemsPanel({
                       >
                         {item.visible_to_client ? "Cacher" : "Montrer"}
                       </button>
+                      <div className="flex gap-1">
+                        <button
+                          type="button"
+                          className={`${flatBtn} flex-1 gap-1`}
+                          disabled={busy || position <= 0}
+                          onClick={() => moveCard(item, -1)}
+                        >
+                          <Icon name="arrow_up" className="h-3.5 w-3.5" />
+                          Monter
+                        </button>
+                        <button
+                          type="button"
+                          className={`${flatBtn} flex-1 gap-1`}
+                          disabled={busy || position < 0 || position >= cardRows.length - 1}
+                          onClick={() => moveCard(item, 1)}
+                        >
+                          <Icon name="arrow_down" className="h-3.5 w-3.5" />
+                          Descendre
+                        </button>
+                      </div>
                       <ConfirmAction
                         size="sm"
                         tone="danger"
@@ -546,7 +611,8 @@ export function BookingItemsPanel({
               </div>
             )}
             </div>
-          </Reorder.Item>
+            )}
+          </ReorderStep>
           );
         })}
       </Reorder.Group>
