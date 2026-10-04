@@ -35,6 +35,14 @@ export function agencyCardSiblingPaths(path: string) {
   return ["jpg", "png", "webp", "pdf"].filter((ext) => ext !== current).map((ext) => `${match[1]}.${ext}`);
 }
 
+/** Seuls une image ou un PDF s’affichent dans le navigateur ; tout autre type (.eml, .docx, .txt…) se télécharge. */
+export function isInlineSafeFile(path: string, contentType: string | null | undefined) {
+  const type = String(contentType || "").split(";")[0].trim().toLowerCase();
+  if (type.startsWith("image/") && type !== "image/svg+xml") return true;
+  if (type === "application/pdf") return true;
+  return !type || type === "application/octet-stream" ? /\.(pdf|jpe?g|png|webp|heic|heif)$/i.test(path) : false;
+}
+
 /** Chemin storage acceptable : relatif, sans remontée, sans segment vide. */
 export function isSafeCrmPath(path: string): boolean {
   if (!path || path.length > 512) return false;

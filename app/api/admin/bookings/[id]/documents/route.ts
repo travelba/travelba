@@ -14,7 +14,7 @@ export async function POST(request: Request, ctx: Ctx) {
   const form = await request.formData();
   const file = form.get("file");
   if (!(file instanceof File)) return jsonError("Fichier requis");
-  const issue = uploadIssue(file);
+  const issue = uploadIssue(file, "dossier");
   if (issue) return jsonError(issue, 400);
   const kind = String(form.get("kind") || "other");
   // La carte est vérifiée avant le téléversement : pas de fichier orphelin sur « Carte introuvable ».
