@@ -36,19 +36,6 @@ const FIRST_NAME = "Camille";
 const COVER = `${siteConfig.url}/api/covers/sejour/${REFERENCE}`;
 
 /** Modèles rédigés, sans chemin d’envoi. */
-const UNWIRED = new Set<ConciergeTemplate>([
-  "sejour_sans_lieu",
-  "sejour_sans_lieu_texte",
-  "encours",
-  "chauffeur",
-  "rappel",
-  "connexion_carte",
-  "encours_photo",
-  "chauffeur_photo",
-  "rappel_photo",
-  "connexion_carte_photo",
-]);
-
 export type WhatsappBubble = {
   body: string;
   button: string | null;
@@ -717,13 +704,3 @@ export function whatsappCatalog() {
   return cached;
 }
 
-export function whatsappCatalogTemplates() {
-  return {
-    wired: new Set(
-      conciergeContentDrafts()
-        .map((draft) => draft.template)
-        .filter((template) => !UNWIRED.has(template))
-    ),
-    unwired: UNWIRED,
-  };
-}

@@ -754,14 +754,6 @@ export function hotelTripChecklist(requests: Pick<CrmHotelRequest, "booking_item
   return { stays, openStays, openCount };
 }
 
-export function hotelsNeedingDesk(rows: Pick<CrmHotelRequest, "booking_item_id" | "status" | "due_on">[], parisToday: string) {
-  return new Set(rows.filter((row) => deskNeedsAttention(row, parisToday)).map((row) => row.booking_item_id)).size;
-}
-
-export function deskStatusLabel(row: Pick<CrmHotelRequest, "status">, _parisToday?: string) {
-  return hotelLetterCaption(row.status);
-}
-
 export function nextDeskMark(input: {
   status: HotelDeskStatus;
   dueOn: string | null;

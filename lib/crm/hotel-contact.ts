@@ -91,11 +91,6 @@ export function extractHotelEmail(text: string) {
   return value;
 }
 
-export function isLittleEmperorsHotel(item: Pick<CrmBookingItem, "supplier" | "details">) {
-  if (detailStr(item as CrmBookingItem, "source_family") === "little_emperors") return true;
-  return /little emperors/i.test(item.supplier || "");
-}
-
 const PHONE_KEYS = ["phone", "telephone", "phone_number"] as const;
 const EMAIL_KEYS = [
   "email",

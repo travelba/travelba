@@ -170,10 +170,6 @@ export function sortItemsByOrder<T extends { start_at?: string | null; sort_orde
   return [...items].sort(compareItemsByOrder);
 }
 
-export function hotelsOf(items: CrmBookingItem[]) {
-  return sortItemsByOrder(items.filter((item) => item.kind === "hotel"));
-}
-
 export function timelineItems(items: CrmBookingItem[]) {
   return items.filter((item) => isTimelineKind(item.kind));
 }
@@ -248,10 +244,6 @@ export function documentsForItem(item: CrmBookingItem, docs: CrmBookingDocument[
   return list;
 }
 
-export function confirmationForItem(item: CrmBookingItem, docs: CrmBookingDocument[]) {
-  return documentsForItem(item, docs)[0] || null;
-}
-
 export function kindIcon(kind: string) {
   switch (kind) {
     case "flight":
@@ -296,10 +288,6 @@ export function flightCities(item: CrmBookingItem) {
   const cityTo = detailStr(item, "city_to");
   if (cityFrom && cityTo) return `${cityFrom} → ${cityTo}`;
   return cityFrom || cityTo || "";
-}
-
-export function flightRoute(item: CrmBookingItem) {
-  return flightIata(item) || flightCities(item);
 }
 
 /** Titre de carte : les villes. Le code aéroport va en dessous. */
