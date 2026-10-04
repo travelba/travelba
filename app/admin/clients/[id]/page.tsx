@@ -50,7 +50,7 @@ type Props = { params: Promise<{ id: string }> };
 
 export default async function AdminClientDetailPage({ params }: Props) {
   const { id } = await params;
-  const { supabase } = await requireStaffPage();
+  const { supabase, staff } = await requireStaffPage();
   const { data: customer } = await supabase
     .from("crm_customers")
     .select("*")
@@ -184,7 +184,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
           >
             Transactions du client
           </Link>
-          <DeleteCustomerButton customerId={c.id} name={customerFullName(c)} />
+          {staff.role === "admin" ? <DeleteCustomerButton customerId={c.id} name={customerFullName(c)} /> : null}
         </div>
       </div>
       <InviteCustomerPanel customerId={c.id} initial={portal} />
