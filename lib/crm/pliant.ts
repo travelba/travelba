@@ -11,7 +11,10 @@ import {
   pliantTokenStillValid,
   type PliantTokenStore,
 } from "./pliant-auth";
+import { settlePliantLimit, type PliantAccount } from "./pliant-account";
 import { annotatePliantPayload, pliantCardFace, pliantHolderId, pliantHolderName, pliantTransactionPage } from "./pliant-tx";
+import { ECB_SNAPSHOT } from "./visa-fees";
+import { euroRates } from "./visa-ecb";
 
 const PROD = {
   api: "https://partner-api.getpliant.com/api",
@@ -175,6 +178,7 @@ export async function issuePliantCard(cardholderId: string, body: unknown) {
     cardholderId: cardholderId || process.env.PLIANT_CARDHOLDER_ID || "",
     cardConfig: raw.cardConfig || "PLIANT_VIRTUAL_TRAVEL",
   });
+  const posted = await pliantIssueBody(raw, resolved.organizationId);
   const token = await accessToken();
   const res = await fetch(`${endpoints().api}/cards/${resolved.cardholderId}`, {
     method: "POST",
@@ -183,7 +187,7 @@ export async function issuePliantCard(cardholderId: string, body: unknown) {
       "content-type": "application/json",
       "Pliant-API-Version": "2.1.0",
     },
-    body: JSON.stringify({ ...raw, organizationId: resolved.organizationId, cardConfig: resolved.cardConfig }),
+    body: JSON.stringify({ ...posted, organizationId: resolved.organizationId, cardConfig: resolved.cardConfig }),
   });
   const text = await res.text();
   if (!res.ok) {
@@ -212,6 +216,47 @@ async function resolvePliantIssue(preferred: { organizationId: string; cardholde
   const cardConfig = configs ? pickTravelConfig(preferred.cardConfig, configs) : preferred.cardConfig;
   if (!cardConfig) throw new Error("Pliant : la configuration de carte est introuvable.");
   return { organizationId, cardholderId, cardConfig };
+}
+
+function moneyField(value: unknown) {
+  if (!value || typeof value !== "object") return null;
+  const row = value as { value?: unknown; currency?: unknown };
+  const amount = typeof row.value === "number" ? row.value : Number(row.value);
+  const currency = typeof row.currency === "string" ? row.currency : "";
+  if (!Number.isFinite(amount) || !currency) return null;
+  return { value: amount, currency };
+}
+
+/** Le plafond suit le compte carte. Livre et dollar passent en euros s’il n’y a que ce compte. */
+async function pliantIssueBody(raw: { organizationId?: string; cardConfig?: string }, organizationId: string) {
+  const limit = moneyField((raw as { limit?: unknown }).limit);
+  const transaction = moneyField((raw as { transactionLimit?: unknown }).transactionLimit) || limit;
+  if (!limit || !transaction) return raw;
+  const accounts = await pliantCardAccounts(organizationId);
+  const rates =
+    limit.currency.toUpperCase() === "EUR" && transaction.currency.toUpperCase() === "EUR"
+      ? ECB_SNAPSHOT.rates
+      : (await euroRates()).rates;
+  const settled = settlePliantLimit({ cents: limit.value, currency: limit.currency, accounts, rates });
+  const settledTx = settlePliantLimit({ cents: transaction.value, currency: transaction.currency, accounts, rates });
+  if (!settled || !settledTx) throw new Error("Pliant n’accepte pas cette devise sur le compte carte.");
+  return {
+    ...raw,
+    ...(settled.cardAccountId ? { cardAccountId: settled.cardAccountId } : {}),
+    limit: { value: settled.value, currency: settled.currency },
+    transactionLimit: { value: settledTx.value, currency: settledTx.currency },
+  };
+}
+
+async function pliantCardAccounts(organizationId: string): Promise<PliantAccount[]> {
+  const payload = await pliantJson(`/card-accounts?organizationId=${encodeURIComponent(organizationId)}&limit=50`);
+  if (!payload || !Array.isArray(payload.data)) return [];
+  return payload.data.flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const record = row as { id?: unknown; currency?: unknown; status?: unknown; defaultAccount?: unknown };
+    if (typeof record.id !== "string" || typeof record.currency !== "string" || typeof record.status !== "string") return [];
+    return [{ id: record.id, currency: record.currency, status: record.status, defaultAccount: record.defaultAccount === true }];
+  });
 }
 
 function rows(payload: { data?: unknown } | null, key: "organizationId" | "cardholderId") {
@@ -283,6 +328,17 @@ export async function setPliantCardLimit(
   count: number
 ) {
   const token = await accessToken();
+  const accountCurrency = (await cardSettlementCurrency(cardId)) || "EUR";
+  const rates =
+    accountCurrency.toUpperCase() === limit.currency.toUpperCase() ? ECB_SNAPSHOT.rates : (await euroRates()).rates;
+  const next = settlePliantLimit({
+    cents: limit.value,
+    currency: limit.currency,
+    accounts: [{ id: "card", currency: accountCurrency, status: "ACTIVE", defaultAccount: true }],
+    rates,
+  });
+  if (!next) throw new Error("Pliant n’a pas modifié le plafond.");
+  const money = { value: next.value, currency: next.currency };
   const res = await fetch(`${endpoints().api}/cards/${cardId}`, {
     method: "PATCH",
     headers: {
@@ -291,13 +347,22 @@ export async function setPliantCardLimit(
       "Pliant-API-Version": "2.1.0",
     },
     body: JSON.stringify({
-      limit,
-      transactionLimit: limit,
+      limit: money,
+      transactionLimit: money,
       limitRenewFrequency: "TOTAL",
       maxTransactionCount: count,
     }),
   });
   if (!res.ok) throw new Error("Pliant n’a pas modifié le plafond.");
+}
+
+async function cardSettlementCurrency(cardId: string) {
+  const payload = await pliantJson(`/cards/${encodeURIComponent(cardId)}`);
+  const record = unwrapRecord(payload);
+  if (!record || typeof record !== "object") return null;
+  const limit = (record as { limit?: unknown }).limit;
+  const currency = moneyField(limit)?.currency;
+  return currency ? currency.toUpperCase() : null;
 }
 
 const TX_PAGE = 100;
