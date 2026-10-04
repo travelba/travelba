@@ -346,6 +346,20 @@ export type CrmHotelArrival = {
   updated_at: string;
 };
 
+export type CrmBookingCard = {
+  id: string;
+  booking_id: string;
+  pliant_card_id: string;
+  label: string;
+  first_name: string;
+  last_name: string;
+  limit_cents: number;
+  currency: string;
+  valid_from: string;
+  valid_to: string;
+  created_at: string;
+};
+
 export const HOTEL_DESK_KINDS = [
   "payment_link",
   "upgrade",

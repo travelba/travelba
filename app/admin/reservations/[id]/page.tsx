@@ -19,6 +19,7 @@ import { principalGuest } from "@/lib/crm/hotel-arrival";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
 import type {
   CrmBooking,
+  CrmBookingCard,
   CrmBookingDocument,
   CrmBookingItem,
   CrmBookingTraveler,
@@ -99,6 +100,14 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     .filter((row): row is ServiceRefusal => Boolean(row));
   const allIdentity = (identityDocs || []) as CrmTravelDocument[];
   const bookingItems = await loadHotelContacts(id, (items || []) as CrmBookingItem[]);
+  let bookingCards: CrmBookingCard[] = [];
+  const { data: cardRows, error: cardError } = await supabase
+    .from("crm_booking_cards")
+    .select("id, booking_id, pliant_card_id, label, first_name, last_name, limit_cents, currency, valid_from, valid_to, created_at")
+    .eq("booking_id", id)
+    .order("created_at", { ascending: true });
+  if (!cardError && cardRows) bookingCards = cardRows as CrmBookingCard[];
+
   let arrivals: CrmHotelArrival[] = [];
   let hotelRequests: CrmHotelRequest[] = [];
   let hotelMessages: CrmHotelMessage[] = [];
@@ -230,6 +239,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           }[]}
           littleEmperors={le}
           ledger={ledger}
+          bookingCards={bookingCards}
         />
   );
 }
