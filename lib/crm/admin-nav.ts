@@ -184,6 +184,25 @@ export function mobileTabBadge(tab: AdminMobileTab, counts: AdminNavCounts) {
   return total > 0 ? total : null;
 }
 
+/** Titre court de l’en-tête téléphone : l’entrée du menu, sinon la page connue, sinon « Espace agence ». */
+export function adminPageTitle(groups: AdminNavGroup[], pathname: string, search = "") {
+  if (pathname === "/admin/reservations/nouveau") return "Nouveau dossier";
+  if (/^\/admin\/reservations\/[^/]+/.test(pathname)) return "Dossier";
+  if (/^\/admin\/clients\/[^/]+/.test(pathname)) return "Fiche client";
+  if (pathname.startsWith("/admin/transactions/client/")) return "Transactions du client";
+  if (pathname === "/admin/recherche") return "Recherche";
+  const active = activeAdminNavHref(groups, pathname, search);
+  const item = groups.flatMap((group) => group.items).find((entry) => entry.href === active);
+  return item?.label || "Espace agence";
+}
+
+/** Groupes de la feuille « Plus » du téléphone : ce que la barre basse ne porte pas. */
+export const MORE_SHEET_GROUP_IDS = ["boites", "outils", "equipe"] as const;
+
+export function moreSheetGroups(groups: AdminNavGroup[]) {
+  return groups.filter((group) => (MORE_SHEET_GROUP_IDS as readonly string[]).includes(group.id));
+}
+
 /** Initiales de l’agent pour l’avatar : « VB », sinon « TB ». */
 export function staffInitials(name: string) {
   return (

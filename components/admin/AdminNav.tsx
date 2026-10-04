@@ -1,16 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { FormEvent, useMemo, useState, useSyncExternalStore } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { AgencyLogo } from "@/components/AgencyLogo";
 import { HotelReplyToasts } from "@/components/admin/HotelReplyToasts";
 import { Icon } from "@/components/crm/icons";
-import { SidebarGroups, UserMenu } from "@/components/admin/AdminNavParts";
+import { MobileTabBar, MoreSheet, SearchOverlay, SidebarGroups, UserMenu } from "@/components/admin/AdminNavParts";
 import {
   activeAdminNavHref,
   adminNavGroups,
+  adminPageTitle,
+  moreSheetGroups,
   openAdminNavGroups,
   parseCollapsedGroups,
   toggleCollapsedGroup,
@@ -76,20 +78,14 @@ export function AdminNav({
   const search = searchParams.toString();
   const activeHref = activeAdminNavHref(groups, pathname, search);
   const searching = pathname === "/admin/recherche";
-  const [query, setQuery] = useState(searching ? searchParams.get("q") || "" : "");
-  const [menuOpen, setMenuOpen] = useState(false);
+  const currentQuery = searching ? searchParams.get("q") || "" : "";
+  const [query, setQuery] = useState(currentQuery);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const collapsedRaw = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => "[]");
   const collapsed = useMemo(() => parseCollapsedGroups(collapsedRaw), [collapsedRaw]);
   const openIds = openAdminNavGroups(groups, collapsed, activeHref);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previous;
-    };
-  }, [menuOpen]);
+  const pageTitle = adminPageTitle(groups, pathname, search);
 
   if (pathname === "/admin/login") {
     return <main className="px-4 py-6 sm:px-6 sm:py-8">{children}</main>;
@@ -102,11 +98,15 @@ export function AdminNav({
     router.refresh();
   }
 
+  function goSearch(q: string) {
+    setSearchOpen(false);
+    setMoreOpen(false);
+    router.push(q ? `/admin/recherche?q=${encodeURIComponent(q)}` : "/admin/recherche");
+  }
+
   function onSearch(event: FormEvent) {
     event.preventDefault();
-    const q = query.trim();
-    setMenuOpen(false);
-    router.push(q ? `/admin/recherche?q=${encodeURIComponent(q)}` : "/admin/recherche");
+    goSearch(query.trim());
   }
 
   function toggleGroup(groupId: string) {
@@ -116,7 +116,6 @@ export function AdminNav({
   const newBooking = (
     <Link
       href="/admin/reservations/nouveau"
-      onClick={() => setMenuOpen(false)}
       aria-current={pathname === "/admin/reservations/nouveau" ? "page" : undefined}
       className="admin-af-btn-accent admin-tap inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm"
     >
@@ -128,72 +127,40 @@ export function AdminNav({
   return (
     <>
       <header className="sticky top-0 z-50 w-full max-w-full overflow-hidden bg-[var(--admin-navy)] pt-[env(safe-area-inset-top)] text-white lg:hidden">
-        <div className="flex items-center justify-between gap-2 px-3 py-3">
-          <div className="flex min-w-0 items-center gap-1">
-            <Link href="/admin" className="flex min-w-0 items-center gap-2">
-              <AgencyLogo className="h-9 w-9 shrink-0" />
-              <span className="truncate font-display text-sm font-semibold">Espace agence</span>
+        <div className="flex h-14 items-center justify-between gap-2 px-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <Link href="/admin" aria-label="Tableau de bord" className="shrink-0">
+              <AgencyLogo className="h-9 w-9" />
             </Link>
+            <p className="truncate font-display text-sm font-semibold" aria-live="polite">
+              {pageTitle}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
-              className="admin-tap inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-white"
-              aria-expanded={menuOpen}
-              aria-controls="admin-mobile-menu"
-              aria-label={menuOpen ? "Fermer le menu" : "Ouvrir le menu"}
-              onClick={() => setMenuOpen((open) => !open)}
+              aria-label="Rechercher"
+              aria-expanded={searchOpen}
+              onClick={() => setSearchOpen(true)}
+              className="admin-tap inline-flex h-11 w-11 items-center justify-center rounded-lg text-white"
             >
-              <Icon name={menuOpen ? "close" : "menu"} className="h-5 w-5" />
+              <Icon name="search" className="h-5 w-5" />
             </button>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
             <UserMenu name={staffName} role={staffRole} onSignOut={signOut} variant="dark" />
           </div>
         </div>
-        <form onSubmit={onSearch} className="relative px-3 pb-3" role="search">
-          <Icon
-            name="search"
-            className="pointer-events-none absolute left-7 top-1/2 h-4 w-4 -translate-y-1/2 text-[#c5c6cd]"
-          />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="w-full rounded-md bg-white/10 py-2.5 pl-10 pr-4 text-[13px] text-white outline-none placeholder:text-[#c5c6cd] focus:bg-white/15 focus:ring-2 focus:ring-[var(--admin-gold)]/40"
-            placeholder="Client, référence TB-, hôtel, confirmation…"
-            aria-label="Rechercher un client ou un dossier"
-            type="search"
-          />
-        </form>
       </header>
-
-      {menuOpen ? (
-        <div
-          id="admin-mobile-menu"
-          className="fixed inset-0 z-[60] flex flex-col bg-[var(--admin-navy)] pt-[env(safe-area-inset-top)] text-white lg:hidden"
-        >
-          <div className="flex items-center justify-between gap-3 px-3 py-3">
-            <p className="font-display text-sm font-semibold">Menu</p>
-            <button
-              type="button"
-              className="admin-tap inline-flex h-11 w-11 items-center justify-center rounded-lg"
-              aria-label="Fermer le menu"
-              onClick={() => setMenuOpen(false)}
-            >
-              <Icon name="close" className="h-5 w-5" />
-            </button>
-          </div>
-          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
-            {newBooking}
-            <SidebarGroups
-              groups={groups}
-              activeHref={activeHref}
-              counts={counts}
-              openIds={openIds}
-              onToggle={toggleGroup}
-              onNavigate={() => setMenuOpen(false)}
-            />
-          </div>
-        </div>
-      ) : null}
+      <SearchOverlay open={searchOpen} initialQuery={currentQuery} onClose={() => setSearchOpen(false)} onSubmit={goSearch} />
+      <MoreSheet
+        open={moreOpen}
+        groups={moreSheetGroups(groups)}
+        activeHref={activeHref}
+        counts={counts}
+        name={staffName}
+        role={staffRole}
+        onClose={() => setMoreOpen(false)}
+        onSignOut={signOut}
+      />
 
       <aside
         aria-label="Barre latérale agence"
@@ -251,9 +218,10 @@ export function AdminNav({
           <UserMenu name={staffName} role={staffRole} onSignOut={signOut} />
         </div>
       </header>
-      <main className="min-w-0 max-w-full px-4 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:pt-8 sm:pb-[max(2rem,env(safe-area-inset-bottom))] lg:pt-8 lg:pb-8 lg:pl-[calc(18rem+2rem)] lg:pr-8">
+      <main className="min-w-0 max-w-full px-4 pt-6 pb-[calc(5rem+env(safe-area-inset-bottom))] sm:px-6 sm:pt-8 lg:pt-8 lg:pb-8 lg:pl-[calc(18rem+2rem)] lg:pr-8">
         {children}
       </main>
+      <MobileTabBar pathname={pathname} counts={counts} moreOpen={moreOpen} onMore={() => setMoreOpen((open) => !open)} />
       <HotelReplyToasts />
     </>
   );

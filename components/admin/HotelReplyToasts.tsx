@@ -177,7 +177,7 @@ export function HotelReplyToastStack({
   if (!notices.length) return null;
   return (
     <div
-      className="pointer-events-none fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-[55] flex w-[min(24rem,calc(100vw-2rem))] flex-col items-end gap-2"
+      className="pointer-events-none fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] right-4 z-[55] flex w-[min(24rem,calc(100vw-2rem))] flex-col items-end gap-2 lg:bottom-[max(1rem,env(safe-area-inset-bottom))]"
       aria-live="polite"
     >
       {waiting > 0 ? (
