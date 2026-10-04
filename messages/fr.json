@@ -193,6 +193,7 @@
     "rights": "Tous droits réservés.",
     "madeWith": "Voyages d'exception, partout dans le monde.",
     "legalLink": "Mentions légales",
+    "privacyLink": "Confidentialité",
     "accreditations": "Accréditée IATA · Membre APST"
   },
   "Legal": {
@@ -205,7 +206,7 @@
     "ipTitle": "Propriété intellectuelle",
     "ipText": "L'ensemble des contenus de ce site (textes, visuels, logo, identité graphique) est protégé par le droit de la propriété intellectuelle. Toute reproduction, totale ou partielle, sans autorisation préalable est interdite.",
     "dataTitle": "Données personnelles",
-    "dataText": "Les informations transmises via le formulaire de contact sont utilisées uniquement pour traiter votre demande. Conformément au RGPD, vous disposez d'un droit d'accès, de rectification et de suppression de vos données en écrivant à {email}.",
+    "dataText": "Les informations transmises via le formulaire de contact sont utilisées uniquement pour traiter votre demande. Conformément au RGPD, vous disposez d'un droit d'accès, de rectification et de suppression de vos données en écrivant à {email}. La politique complète est sur la page Confidentialité.",
     "fields": {
       "legalName": "Dénomination sociale",
       "legalForm": "Forme juridique",
@@ -222,6 +223,26 @@
       "email": "E-mail",
       "phone": "Téléphone"
     }
+  },
+  "Privacy": {
+    "title": "Politique de confidentialité",
+    "intro": "Travel Business Agency (TBA) traite vos données pour organiser vos voyages et vous ouvrir l’espace client — sur le site et dans l’application iPhone.",
+    "controllerTitle": "Responsable du traitement",
+    "controllerText": "TRAVEL BUSINESS AGENCY, SASU, 9 rue Greffulhe, 92300 Levallois-Perret, France — {email}.",
+    "dataTitle": "Données concernées",
+    "dataText": "Identité, coordonnées, pièces d’identité (passeport, carte), compagnons, dossiers de voyage, encours, traces de connexion. Jamais un numéro de carte bancaire complet ni un CVC.",
+    "useTitle": "Finalités",
+    "useText": "Fiche client, carnet publié, formalités, facturation, invitation et connexion, notifications du séjour, support WhatsApp de l’agence.",
+    "appTitle": "Application iPhone",
+    "appText": "L’app stocke la session dans le trousseau, peut mémoriser le carnet hors ligne, proposer Face ID, le calendrier, Wallet et les notifications. Ces accès restent optionnels et liés à votre séjour.",
+    "shareTitle": "Destinataires",
+    "shareText": "Hébergeurs (Vercel, Supabase), e-mail (Resend), WhatsApp (Twilio), prestataires nécessaires au voyage. Pas de revente.",
+    "rightsTitle": "Vos droits",
+    "rightsText": "Accès, rectification, suppression, opposition : écrivez à {email}. L’agence peut supprimer votre fiche. L’application n’offre pas de bouton « supprimer mon compte ».",
+    "retentionTitle": "Durée",
+    "retentionText": "Le temps du dossier et des obligations comptables. Session jusqu’à déconnexion (cookies web 400 jours, jetons app renouvelés).",
+    "cookiesTitle": "Cookies et jetons",
+    "cookiesText": "Le site utilise des cookies de session. L’app utilise un jeton d’accès dans le trousseau, jamais partagé avec Safari."
   },
   "Common": {
     "whatsapp": "WhatsApp",

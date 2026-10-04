@@ -1,0 +1,73 @@
+{
+  "expo": {
+    "name": "TBA",
+    "slug": "travelba-espace",
+    "scheme": "travelba",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "fr.travelba.espace",
+      "buildNumber": "1",
+      "associatedDomains": [
+        "applinks:travelba.fr",
+        "applinks:www.travelba.fr",
+        "webcredentials:travelba.fr"
+      ],
+      "entitlements": {
+        "com.apple.security.application-groups": ["group.fr.travelba.espace"],
+        "com.apple.developer.pass-type-identifiers": ["$(TeamIdentifierPrefix)pass.fr.travelba.espace"]
+      },
+      "infoPlist": {
+        "CFBundleDisplayName": "TBA",
+        "NSFaceIDUsageDescription": "Déverrouiller votre espace TBA.",
+        "NSCameraUsageDescription": "Photographier un passeport ou une pièce pour votre fiche.",
+        "NSPhotoLibraryUsageDescription": "Choisir une photo de pièce d’identité.",
+        "NSCalendarsUsageDescription": "Ajouter les étapes du séjour dans Calendrier.",
+        "NSCalendarsFullAccessUsageDescription": "Ajouter les étapes du séjour dans Calendrier.",
+        "UIBackgroundModes": ["remote-notification"],
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "privacyManifests": {
+        "NSPrivacyAccessedAPITypes": [
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": ["CA92.1"]
+          }
+        ],
+        "NSPrivacyCollectedDataTypes": [],
+        "NSPrivacyTracking": false
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-local-authentication",
+      "expo-calendar",
+      "expo-notifications",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Photographier un passeport ou une pièce pour votre fiche."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "replace-after-eas-init"
+      },
+      "siteUrl": "https://travelba.fr",
+      "distribution": "unlisted",
+      "privacyUrl": "https://travelba.fr/fr/confidentialite"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "enabled": false
+    }
+  }
+}

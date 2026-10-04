@@ -1,7 +1,7 @@
 import { siteConfig } from "@/lib/site";
 import { routing } from "@/i18n/routing";
 
-const PATHS = ["", "/legal"] as const;
+const PATHS = ["", "/legal", "/confidentialite"] as const;
 
 export default function sitemap() {
   const lastModified = new Date();
