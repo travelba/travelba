@@ -37,7 +37,7 @@ export default async function ExampleReservationsPage({
           Mon espace voyage
         </p>
         <h1 className="mt-1 font-display text-[1.625rem] font-bold tracking-tight text-[var(--admin-navy)]">
-          Mes réservations
+          Réservations
         </h1>
         <p className="mt-1 text-[13px] text-muted">
           Itinéraires publiés par l’agence, billets et vouchers du dossier.

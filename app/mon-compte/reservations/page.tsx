@@ -16,6 +16,9 @@ import { BookingStatusBadge, EmptyState } from "@/components/crm/ui";
 import { loadStayMaps, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { Icon } from "@/components/crm/icons";
+import { siteConfig } from "@/lib/site";
+
+export const metadata = { title: `Réservations — ${siteConfig.shortName}` };
 
 export default async function ReservationsPage({
   searchParams,
@@ -55,7 +58,7 @@ export default async function ReservationsPage({
           Mon espace voyage
         </p>
         <h1 className="mt-1 font-display text-[1.625rem] font-bold tracking-tight text-[var(--admin-navy)]">
-          Mes réservations
+          Réservations
         </h1>
         <p className="mt-1 text-[13px] text-muted">
           Itinéraires publiés par l’agence, billets et vouchers du dossier.
