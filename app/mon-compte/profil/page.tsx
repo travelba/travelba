@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
 import { DESK_COOKIE, deskBypass } from "@/lib/crm/admin-client-login";
 import { customerFullName, type CrmTravelDocument } from "@/lib/crm/types";
+import { PasswordChangeForm } from "@/components/account/PasswordChangeForm";
 import { ProfileForm } from "@/components/account/ProfileForm";
 import { ProfileSubnav } from "@/components/account/ProfileSubnav";
 import { PhoneWallBanner } from "@/components/crm/ui";
@@ -43,6 +44,8 @@ export default async function ProfilPage() {
       {!customer.phone && !desk ? <PhoneWallBanner /> : null}
 
       <ProfileForm key={customer.updated_at} customer={customer} documents={(documents || []) as CrmTravelDocument[]} />
+
+      <PasswordChangeForm />
 
       <SignOutButton />
     </div>

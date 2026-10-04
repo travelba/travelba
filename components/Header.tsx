@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { Menu, X } from "lucide-react";
 import { BrandMark } from "./BrandMark";
@@ -62,6 +63,9 @@ export function Header() {
               {t(item.key)}
             </a>
           ))}
+          <Link href="/connexion" className="text-sm text-muted transition-colors hover:text-foreground">
+            {t("account")}
+          </Link>
         </nav>
 
         <div className="flex items-center gap-3">
@@ -92,11 +96,18 @@ export function Header() {
                 key={item.key}
                 href={item.href}
                 onClick={() => setOpen(false)}
-                className="border-b border-border/60 py-3 text-base text-foreground/90 last:border-0"
+                className="border-b border-border/60 py-3 text-base text-foreground/90"
               >
                 {t(item.key)}
               </a>
             ))}
+            <Link
+              href="/connexion"
+              onClick={() => setOpen(false)}
+              className="py-3 text-base font-semibold text-foreground"
+            >
+              {t("account")}
+            </Link>
             <a
               href={`https://wa.me/${siteConfig.whatsappNumber}`}
               target="_blank"
