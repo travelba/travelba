@@ -1,9 +1,8 @@
 import "server-only";
 
-import { cardLast4 } from "./hotel-arrival";
 import { downloadCrmFile } from "./files";
 import { isAgencyCardPath, isSafeCrmPath } from "./files-access";
-import { pliantConfigured, readPliantCardSecrets } from "./pliant";
+import { pliantConfigured, pliantPciWidget } from "./pliant";
 import { AGENCY_MASTER_CODE_HASH, staffCardCodeMatches } from "./staff-card-code";
 import type { CardViewLine, CrmHotelArrival } from "./types";
 
@@ -91,7 +90,7 @@ export async function openAgencyCard(input: {
   | {
       viewer: string;
       viewedAt: string;
-      secrets?: { pan: string; expiry: string; cvc: string };
+      widget?: { src: string; frameId: string };
       file?: { mime: string; name: string; bytes: string };
     }
 > {
@@ -114,7 +113,7 @@ export async function openAgencyCard(input: {
   const row = data as Pick<CrmHotelArrival, "id" | "pliant_card_id" | "card_closed_at" | "client_card_path" | "client_card_name"> | null;
   if (!row) return fail("Suivi introuvable.", 404);
 
-  let secrets: { pan: string; expiry: string; cvc: string } | undefined;
+  let widget: { src: string; frameId: string } | undefined;
   let file: { mime: string; name: string; bytes: string } | undefined;
 
   if (input.source === "pliant") {
@@ -122,12 +121,7 @@ export async function openAgencyCard(input: {
     if (!row.pliant_card_id) return fail("Aucune carte émise.", 400);
     if (!pliantConfigured()) return fail("Pliant n’est pas branché.", 400);
     try {
-      const read = await readPliantCardSecrets(row.pliant_card_id);
-      secrets = { pan: read.pan, expiry: read.expiry, cvc: read.cvc };
-      const last4 = cardLast4(read.pan);
-      if (last4.length === 4) {
-        await input.admin.from("crm_hotel_arrivals").update({ card_last4: last4 }).eq("id", row.id);
-      }
+      widget = await pliantPciWidget(row.pliant_card_id, `carte-${input.itemId}`);
     } catch {
       return fail("La carte n’a pas pu être lue.", 502);
     }
@@ -157,5 +151,5 @@ export async function openAgencyCard(input: {
     if (viewError) return fail("La consultation n’a pas pu être notée.", 500);
   }
 
-  return { viewer: input.staffName || "Agence", viewedAt, secrets, file };
+  return { viewer: input.staffName || "Agence", viewedAt, widget, file };
 }
