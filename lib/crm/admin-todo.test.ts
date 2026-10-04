@@ -19,7 +19,7 @@ test("la liste À faire suit l’ordre du travail et cache les zéros", () => {
   assert.equal(lines[0].label, "2 virements Revolut à rapprocher");
   assert.equal(lines[1].label, "1 séjour Little Emperors sans dossier");
   assert.equal(lines[2].label, "1 formalité ouverte");
-  assert.equal(lines[3].href, "/admin/reservations?tri=depart-asc");
+  assert.equal(lines[3].href, "/admin/reservations?etat=a-venir&tri=depart-asc");
   assert.equal(adminTodoTotal(lines), 8);
 });
 

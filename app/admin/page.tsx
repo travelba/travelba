@@ -234,7 +234,7 @@ export default async function AdminHomePage() {
       label: "Départs sous 7 jours",
       value: String(departSoonCount ?? 0),
       hint: `${bookingCount ?? 0} dossier${(bookingCount ?? 0) > 1 ? "s" : ""} au portefeuille`,
-      href: "/admin/reservations?tri=depart-asc",
+      href: "/admin/reservations?etat=a-venir&tri=depart-asc",
       tone: "navy" as const,
     },
   ];

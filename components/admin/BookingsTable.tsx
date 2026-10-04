@@ -27,6 +27,7 @@ import {
 } from "@/lib/crm/admin-list";
 
 const STATE_LABELS: Record<BookingStateFilter, string> = {
+  "a-venir": "À venir",
   preparation: "En préparation",
   montre: "Montrés au client",
   archive: "Archivés",

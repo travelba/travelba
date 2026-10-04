@@ -54,7 +54,36 @@ export function orSearchFilter(pattern: string, columns: string[], idColumn?: st
   return parts.join(",");
 }
 
-export const BOOKING_STATE_FILTERS = ["preparation", "montre", "archive"] as const;
+/**
+ * Chiffres d’un numéro tapé « 06 12 34 » ou « +33 6 12 » → `61234`, comparables au `+33612345678` stocké.
+ * Vide si la recherche n’est pas un numéro : moins de 4 chiffres, ou une lettre (« TB-2024 », « Dupont »).
+ */
+export function phoneSearchDigits(query: string | undefined | null) {
+  const raw = (query || "").trim();
+  const digits = raw.replace(/\D/g, "");
+  const hasLetter = /\p{L}/u.test(raw);
+  if (digits.length < 4 || hasLetter) return "";
+  let national = digits;
+  if (national.startsWith("0033")) national = national.slice(4);
+  if (national.startsWith("33") && national.length >= 11) national = national.slice(2);
+  else if (national.startsWith("0")) national = national.slice(1);
+  return national;
+}
+
+/** Morceau `.or()` pour retrouver un client par son numéro (téléphone et second téléphone), ou vide. */
+export function phoneSearchFilter(query: string | undefined | null, columns: string[] = ["phone", "phone_secondary"]) {
+  const digits = phoneSearchDigits(query);
+  if (!digits) return "";
+  return columns.map((column) => `${column}.ilike.%${digits}%`).join(",");
+}
+
+/** Assemble des morceaux `.or()` en ignorant les vides. */
+export function joinOrFilters(...parts: string[]) {
+  return parts.filter(Boolean).join(",");
+}
+
+/** `a-venir` : départ aujourd’hui ou plus tard, ni archivé ni annulé (liens « départs » du tableau de bord). */
+export const BOOKING_STATE_FILTERS = ["a-venir", "preparation", "montre", "archive"] as const;
 export type BookingStateFilter = (typeof BOOKING_STATE_FILTERS)[number];
 
 export function parseBookingState(value: SearchParamValue): BookingStateFilter | null {
@@ -68,8 +97,8 @@ export function parseBookingStatus(value: SearchParamValue): BookingStatus | nul
 }
 
 export const BOOKING_SORTS = {
-  depart: { column: "start_date", ascending: false, label: "Départ, du plus proche" },
-  "depart-asc": { column: "start_date", ascending: true, label: "Départ, du plus ancien" },
+  depart: { column: "start_date", ascending: false, label: "Départ, du plus lointain" },
+  "depart-asc": { column: "start_date", ascending: true, label: "Départ, du plus proche" },
   creation: { column: "created_at", ascending: false, label: "Création, du plus récent" },
   montant: { column: "total_amount", ascending: false, label: "Montant, du plus élevé" },
 } as const;
@@ -99,9 +128,18 @@ export function parseLoadMore(value: SearchParamValue, step: number, max: number
 export type FilterableQuery = {
   or(filters: string): FilterableQuery;
   eq(column: string, value: unknown): FilterableQuery;
+  neq(column: string, value: unknown): FilterableQuery;
+  gte(column: string, value: unknown): FilterableQuery;
   is(column: string, value: null): FilterableQuery;
   not(column: string, operator: string, value: null): FilterableQuery;
 };
+
+/** Page demandée au-delà du total : page réelle où renvoyer, sinon null. */
+export function pageOverflow(page: number, total: number | null | undefined, size = ADMIN_PAGE_SIZE) {
+  if (!total || total <= 0) return null;
+  const { from } = pageRange(page, size);
+  return from >= total ? pageCount(total, size) : null;
+}
 
 /** URL de la liste avec les filtres gardés et la page changée (ou retirée pour la première). */
 export function listHref(base: string, params: Record<string, string | number | null | undefined>, page?: number) {
