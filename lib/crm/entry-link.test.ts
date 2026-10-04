@@ -162,6 +162,8 @@ test("le chemin de retour reste interne", () => {
   assert.equal(safeNextPath("/mon-compte"), "/mon-compte");
   assert.equal(safeNextPath("https://evil.example"), "/mon-compte");
   assert.equal(safeNextPath("//evil.example"), "/mon-compte");
+  assert.equal(safeNextPath("/\\evil.example"), "/mon-compte");
+  assert.equal(safeNextPath("/%5Cevil.example"), "/mon-compte");
 });
 
 test("l’e-mail du lien est celui du titulaire, et l’entrée n’ouvre pas la connexion", () => {

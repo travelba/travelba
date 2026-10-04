@@ -1,6 +1,7 @@
 import { randomInt } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { SET_PASSWORD_PATH, shouldForcePasswordSetup } from "./session";
+import { safeInternalPath } from "./safe-path";
 
 const ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 
@@ -217,11 +218,9 @@ export function safeOtpType(value: string | null | undefined) {
   return value && OTP_TYPES.has(value) ? value : "magiclink";
 }
 
+/** Chemin de retour du lien court : interne, sinon l’espace client. */
 export function safeNextPath(value: string | null | undefined) {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("://")) {
-    return "/mon-compte";
-  }
-  return value;
+  return safeInternalPath(value, "/mon-compte");
 }
 
 export const ENTRY_PREVIEW_TITLE = "Le Concierge";
