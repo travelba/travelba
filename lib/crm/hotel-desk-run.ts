@@ -56,8 +56,9 @@ import type {
   CrmTravelDocument,
   HotelDeskKind,
 } from "./types";
+import type { Db } from "../supabase/db";
 
-type Admin = { from: (table: string) => any };
+type Admin = Db;
 
 const OPEN_BOOKING = ["confirmed", "travelling"];
 const LIVE = ["waiting", "due", "draft", "sent", "follow_up"];

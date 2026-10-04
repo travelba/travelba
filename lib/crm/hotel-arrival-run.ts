@@ -43,8 +43,9 @@ import type {
   CrmTravelDocument,
   HotelArrivalChannel,
 } from "./types";
+import type { Db } from "../supabase/db";
 
-type Admin = { from: (table: string) => any };
+type Admin = Db;
 
 type Reply = { from: string; subject: string; body: string; receivedAtMs: number };
 
@@ -294,7 +295,7 @@ async function alignStayCard(input: {
   reuseCardId?: string | null;
 }) {
   const channel = channelOf(input.item);
-  let row = input.row.channel === channel ? input.row : { ...input.row, channel };
+  const row = input.row.channel === channel ? input.row : { ...input.row, channel };
   if (row.pliant_card_id && stayCardIsManual(row.task_note)) {
     if (row.channel !== input.row.channel) await save(input.admin, row.id, { channel });
     return row;
