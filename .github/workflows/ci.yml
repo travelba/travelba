@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+  PUPPETEER_SKIP_DOWNLOAD: "1"
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  check:
+    name: typecheck · lint · tests · migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Installer (lockfile, optionnels inclus)
+        run: npm ci --include=optional
+
+      - name: Vérifier (tsc, eslint, node:test, migrations)
+        run: npm run check
