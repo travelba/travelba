@@ -18,8 +18,14 @@ export function entryLinkTtlMs(otpType: string | null | undefined) {
   return safeOtpType(otpType) === "magiclink" ? 24 * HOUR_MS : 30 * DAY_MS;
 }
 
-/** Après la première ouverture, le jeton ne se régénère que pendant cette fenêtre. */
-export const ENTRY_REOPEN_WINDOW_MS = 15 * 60 * 1000;
+/** Ouvertures réussies au plus pour un même lien court. */
+export const MAX_ENTRY_OPENS = 5;
+
+export type EntryChannel = "email" | "whatsapp";
+
+export function isEntryChannel(value: unknown): value is EntryChannel {
+  return value === "email" || value === "whatsapp";
+}
 
 /** Lignes créées avant la migration : 30 jours après la création. */
 export const ENTRY_LEGACY_TTL_MS = 30 * DAY_MS;
@@ -42,29 +48,56 @@ export function entryLinkExpiresAt(row: {
   return new Date(0);
 }
 
-export type EntryReopenDecision = "open" | "regenerate" | "refuse";
+export type EntryReopenDecision = "session" | "open" | "regenerate" | "refuse";
 
 /**
  * Ce que fait l’ouverture d’un lien court.
- * - révoqué ou expiré : refus, sans toucher au jeton ;
+ * - révoqué : refus, même avec une session ;
+ * - une session déjà ouverte : on y va sans consommer le jeton ni compter l’ouverture ;
+ * - expiré, ou déjà ouvert 5 fois : refus ;
  * - jeton encore valable : ouverture ;
- * - jeton consommé : nouveau jeton seulement si le lien n’a jamais servi
- *   (jeton Supabase expiré avant la première ouverture) ou s’il a servi il y a moins de 15 min.
+ * - jeton consommé (aperçu, scanner d’e-mail) : nouveau jeton, tant que le lien est dans son délai.
  */
 export function entryReopenDecision(input: {
   now: Date;
   expiresAt: Date;
-  usedAt: Date | string | null | undefined;
   revokedAt: Date | string | null | undefined;
+  openCount: number | null | undefined;
+  hasSession: boolean;
   tokenValid: boolean;
 }): EntryReopenDecision {
   if (asDate(input.revokedAt)) return "refuse";
+  if (input.hasSession) return "session";
   if (input.now.getTime() > input.expiresAt.getTime()) return "refuse";
-  if (input.tokenValid) return "open";
-  const usedAt = asDate(input.usedAt);
-  if (!usedAt) return "regenerate";
-  if (input.now.getTime() - usedAt.getTime() < ENTRY_REOPEN_WINDOW_MS) return "regenerate";
-  return "refuse";
+  if ((input.openCount ?? 0) >= MAX_ENTRY_OPENS) return "refuse";
+  return input.tokenValid ? "open" : "regenerate";
+}
+
+/** Un lien parti par WhatsApp et ouvert par un client vaut consentement aux messages du Concierge. */
+export function entryOptInFromLink(input: { channel: string | null | undefined; staff: boolean }) {
+  return input.channel === "whatsapp" && !input.staff;
+}
+
+/**
+ * `/api/covers/sejour/REF?e=CODE` : la couverture ne se sert que pour un lien vivant,
+ * marqué « Votre séjour », qui pointe sur cette référence.
+ */
+export function entryCoverAllowed(input: {
+  link: {
+    revoked_at?: string | Date | null;
+    expires_at?: string | Date | null;
+    created_at?: string | Date | null;
+    show_cover?: boolean | null;
+    next_path?: string | null;
+  } | null | undefined;
+  reference: string;
+  now: Date;
+}) {
+  const link = input.link;
+  if (!link || link.show_cover !== true) return false;
+  if (asDate(link.revoked_at)) return false;
+  if (input.now.getTime() > entryLinkExpiresAt(link).getTime()) return false;
+  return referenceFromNextPath(link.next_path) === input.reference;
 }
 
 /** Colonne absente : la migration `entry_links_expiry` n’est pas encore appliquée. */
@@ -244,16 +277,16 @@ export function stayPreviewCopy(input: {
   reference: string;
   place: string | null;
   hasCover: boolean;
-  /** Code /v/CODE du dossier : la couverture ne se sert qu’avec lui. */
-  shareCode?: string | null;
+  /** Le code du lien lui-même : la couverture se sert avec lui, jamais avec le code de partage /v/. */
+  entryCode?: string | null;
 }): EntryPreview {
   const base = input.origin.replace(/\/$/, "");
   const title = input.place ? `Séjour à ${input.place}` : `Réservation ${input.reference}`;
-  const code = input.shareCode && /^[23456789A-HJ-NP-Z]{8}$/.test(input.shareCode) ? input.shareCode : null;
+  const code = input.entryCode && isEntryCode(input.entryCode) ? input.entryCode : null;
   return {
     title,
     description: `Réservation ${input.reference} · Travel Business Agency`,
-    image: input.hasCover && code ? `${base}/api/covers/sejour/${input.reference}?partage=${code}` : null,
+    image: input.hasCover && code ? `${base}/api/covers/sejour/${input.reference}?e=${code}` : null,
   };
 }
 
@@ -308,12 +341,14 @@ export function entryPreviewHtml(
   const hero = image
     ? `<div class="hero"><img src="${imageUrl}" alt="" onerror="this.closest('main').className='door plain';this.parentElement.remove()"></div>`
     : "";
+  const login = escapeHtml(`${base}/connexion`);
   const door = enter
     ? `<form method="post" action="${action}">
 <input type="hidden" name="ouvrir" value="1">
 <button type="submit">Ouvrir mon espace</button>
 </form>`
-    : `<p class="note">Ce lien ne s'ouvre plus. Demandez-en un nouveau à l'agence.</p>`;
+    : `<p class="note">Ce lien ne s'ouvre plus. Demandez-en un nouveau à l'agence.</p>
+<p class="note"><a class="login" href="${login}">Se connecter</a></p>`;
   return `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -415,6 +450,7 @@ ${imageTags}
     line-height: 1.4;
     color: rgba(243, 237, 226, 0.72);
   }
+  .login { color: #C5A880; font-weight: 600; text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -435,13 +471,22 @@ ${enter ? `<script>location.replace(location.pathname+"?ouvrir=1")</script>` : "
 export async function createEntryLink(
   supabase: SupabaseClient,
   origin: string,
-  input: { tokenHash: string; otpType: string; nextPath: string; email?: string | null; showCover?: boolean }
+  input: {
+    tokenHash: string;
+    otpType: string;
+    nextPath: string;
+    email?: string | null;
+    showCover?: boolean;
+    /** Par où le lien part. Un lien WhatsApp ouvert vaut opt-in. */
+    channel?: EntryChannel | null;
+  }
 ) {
   const otpType = safeOtpType(input.otpType);
   const nextPath = safeNextPath(input.nextPath);
   const email = storedEntryEmail(input.email);
   const expiresAt = new Date(Date.now() + entryLinkTtlMs(otpType)).toISOString();
-  let withExpiry = true;
+  const channel = isEntryChannel(input.channel) ? input.channel : null;
+  let withExtras = true;
   let attempts = 0;
   while (attempts < 5) {
     const code = entryCode();
@@ -453,17 +498,32 @@ export async function createEntryLink(
       email,
       show_cover: input.showCover === true,
     };
-    if (withExpiry) row.expires_at = expiresAt;
+    if (withExtras) {
+      row.expires_at = expiresAt;
+      row.channel = channel;
+    }
     const { error } = await supabase.from("crm_entry_links").insert(row);
     if (!error) return entryLinkUrl(origin, code);
-    if (withExpiry && isMissingColumnError(error, "expires_at")) {
-      // Déploiement avant la migration : le lien part quand même, sans date.
+    if (withExtras && (isMissingColumnError(error, "expires_at") || isMissingColumnError(error, "channel"))) {
+      // Déploiement avant la migration : le lien part quand même, sans date ni canal.
       console.warn("[entry] migration entry_links_expiry non appliquée");
-      withExpiry = false;
+      withExtras = false;
       continue;
     }
     attempts += 1;
     if (!/duplicate|unique/i.test(error.message)) throw new Error("Lien court indisponible");
   }
   throw new Error("Lien court indisponible");
+}
+
+/** Corrige le canal après coup (l’invitation apprend après l’envoi si WhatsApp est parti). Best-effort. */
+export async function setEntryLinkChannel(supabase: SupabaseClient, link: string, channel: EntryChannel) {
+  const code = entryCodeFromLink(link);
+  if (!code || !isEntryChannel(channel)) return false;
+  try {
+    const { error } = await supabase.from("crm_entry_links").update({ channel }).eq("code", code);
+    return !error;
+  } catch {
+    return false;
+  }
 }
