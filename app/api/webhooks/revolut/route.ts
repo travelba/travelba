@@ -5,6 +5,7 @@ import {
   type RevolutTx,
 } from "@/lib/crm/revolut";
 import { autoMatchUnmatchedRevolut } from "@/lib/crm/revolut-match";
+import { isRevolutTimestampFresh } from "@/lib/crm/revolut-webhook";
 
 export const runtime = "nodejs";
 
@@ -12,6 +13,10 @@ export async function POST(request: Request) {
   const raw = await request.text();
   const timestamp = request.headers.get("Revolut-Request-Timestamp") || "";
   const signature = request.headers.get("Revolut-Signature") || "";
+  // Rejeu : un timestamp absent, illisible ou vieux de plus de 5 minutes est refusé avant la signature.
+  if (!isRevolutTimestampFresh(timestamp)) {
+    return NextResponse.json({ error: "timestamp" }, { status: 401 });
+  }
   try {
     if (!verifyRevolutWebhook(raw, timestamp, signature)) {
       return NextResponse.json({ error: "signature" }, { status: 401 });
