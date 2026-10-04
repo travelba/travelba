@@ -1,8 +1,8 @@
-export const INGEST_TMP_PREFIX = "ingest-tmp";
+import { safeFileName } from "./files";
 
-function safeFileName(name: string) {
-  return name.replace(/[^\w.\-]+/g, "_").slice(0, 120) || "fichier";
-}
+export { safeFileName };
+
+export const INGEST_TMP_PREFIX = "ingest-tmp";
 
 export function isIngestUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(

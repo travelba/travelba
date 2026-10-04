@@ -1,5 +1,31 @@
 /** Affichage saisie : jj/mm/aaaa. Stockage : yyyy-mm-dd. */
 
+/** « 12 oct. 2026 ». Une date seule (10 caractères) est lue à midi local, sans décalage de jour. */
+export function formatDateFr(value: string | null | undefined) {
+  if (!value) return "—";
+  const d = new Date(value.length === 10 ? `${value}T12:00:00` : value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString("fr-FR", { dateStyle: "medium" });
+}
+
+/** « 12 oct. 2026 14:30 » ; une date seule retombe sur `formatDateFr`. */
+export function formatDateTimeFr(value: string | null | undefined) {
+  if (!value) return "";
+  if (value.length === 10) return formatDateFr(value);
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
+}
+
+/**
+ * Décale une date `yyyy-mm-dd` de `days` jours calendaires, en UTC.
+ * Indépendant du fuseau du serveur ; accepte un horodatage (seuls les 10 premiers caractères comptent).
+ */
+export function addIsoDays(iso: string, days: number) {
+  const [year, month, day] = iso.slice(0, 10).split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}
+
 export function isoToFrInput(iso: string | null | undefined): string {
   if (!iso) return "";
   const match = iso.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);

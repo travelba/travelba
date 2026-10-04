@@ -1,4 +1,8 @@
+import { addIsoDays } from "./dates";
+import { centsToAmount } from "./money";
 import type { HotelArrivalChannel, HotelArrivalStatus } from "./types";
+
+export { addIsoDays };
 
 /** Carte de check-in après le règlement, et carte Expedia. */
 export const CHECKIN_CARD_CENTS = 50_000;
@@ -199,12 +203,6 @@ export function isoDate(value: string | null | undefined) {
   return (value || "").match(/^(\d{4}-\d{2}-\d{2})/)?.[1] || "";
 }
 
-export function addIsoDays(iso: string, days: number) {
-  const [year, month, day] = iso.split("-").map(Number);
-  const utc = new Date(Date.UTC(year, month - 1, day + days));
-  return utc.toISOString().slice(0, 10);
-}
-
 function weekday(iso: string) {
   const [year, month, day] = iso.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
@@ -319,8 +317,9 @@ export function parseEurosToCents(value: string) {
   return parseMoneyToCents(value);
 }
 
+/** « 2400,00 EUR » : code ISO, sans séparateur de milliers — lisible par un hôtel étranger. */
 export function formatArrivalAmount(cents: number, currency: string) {
-  const major = (cents / 100).toFixed(2).replace(".", ",");
+  const major = centsToAmount(cents).toFixed(2).replace(".", ",");
   return `${major} ${currency || "EUR"}`;
 }
 

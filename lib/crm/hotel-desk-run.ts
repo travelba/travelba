@@ -6,16 +6,14 @@ import { downloadCrmFile, removeCrmFiles, uploadCrmFile } from "./files";
 import { agencyCardObjectPath, agencyCardSiblingPaths, clientCardMime, isAgencyCardPath, isSafeCrmPath } from "./files-access";
 import { getThread, gmailConfigured, searchInbox } from "./gmail";
 import { attachLittleEmperorsCatalog } from "./hotel-catalog-load";
+import { holidaysFor } from "./holidays";
 import { hotelContact } from "./hotel-contact";
 import {
   CHECKIN_CARD_CENTS,
   CHECKIN_CARD_CURRENCY,
   cardCloseDate,
   cardLast4,
-  countryIso,
-  holidayDatesFromNager,
   hotelLanguage,
-  nagerHolidayUrl,
   parisIsoDate,
   principalGuest,
 } from "./hotel-arrival";
@@ -62,27 +60,6 @@ type Admin = Db;
 
 const OPEN_BOOKING = ["confirmed", "travelling"];
 const LIVE = ["waiting", "due", "draft", "sent", "follow_up"];
-
-async function holidaysFor(country: string, checkIn: string, fetchImpl: typeof fetch, cache: Map<string, string[]>) {
-  const iso = countryIso(country);
-  if (!iso || !checkIn) return [];
-  const year = Number(checkIn.slice(0, 4));
-  const key = `${iso}:${year}`;
-  const hit = cache.get(key);
-  if (hit) return hit;
-  const dates: string[] = [];
-  for (const current of [year - 1, year]) {
-    try {
-      const res = await fetchImpl(nagerHolidayUrl(current, iso), { signal: AbortSignal.timeout(4000) });
-      if (!res.ok) continue;
-      dates.push(...holidayDatesFromNager(await res.json()));
-    } catch {
-      continue;
-    }
-  }
-  cache.set(key, dates);
-  return dates;
-}
 
 export async function ensureHotelRequests(
   admin: Admin,

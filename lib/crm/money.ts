@@ -1,8 +1,27 @@
-export function formatMoney(amount: number, currency = "EUR") {
-  return amount.toLocaleString("fr-FR", {
+import { formatDateFr } from "./dates";
+
+export { formatDateFr, formatDateTimeFr } from "./dates";
+
+export type MoneyLang = "fr" | "en";
+
+const MONEY_LOCALES: Record<MoneyLang, string> = { fr: "fr-FR", en: "en-GB" };
+
+/** « 1 234,50 € » en français, « €1,234.50 » en anglais. */
+export function formatMoney(amount: number, currency = "EUR", opts?: { lang?: MoneyLang }) {
+  return amount.toLocaleString(MONEY_LOCALES[opts?.lang || "fr"], {
     style: "currency",
     currency: currency || "EUR",
   });
+}
+
+/** Montant décimal → centimes entiers (Stripe, Pliant). */
+export function amountToCents(amount: number) {
+  return Math.round(amount * 100);
+}
+
+/** Centimes entiers → montant décimal. */
+export function centsToAmount(cents: number) {
+  return cents / 100;
 }
 
 /** Commission d’agence : 10 % du montant du séjour, si le voyage l’active. */
@@ -39,21 +58,6 @@ export function encoursCaption(amount: number) {
 
 export function formatCreditDisponible(balance: number, currency = "EUR") {
   return formatMoney(creditDisponible(balance), currency);
-}
-
-export function formatDateFr(value: string | null | undefined) {
-  if (!value) return "—";
-  const d = new Date(value.length === 10 ? `${value}T12:00:00` : value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleDateString("fr-FR", { dateStyle: "medium" });
-}
-
-export function formatDateTimeFr(value: string | null | undefined) {
-  if (!value) return "";
-  if (value.length === 10) return formatDateFr(value);
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
 }
 
 export function todayIsoDate() {
