@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  AMBIGUOUS_HOUSEHOLD_NOTICE,
   documentHolderName,
   documentNameNotice,
   filledIdentity,
@@ -54,20 +55,33 @@ test("« Pour qui » suit le nom lu : compagnon, titulaire, inconnu", () => {
   const companions = [{ id: "c1", first_name: "Inès", last_name: "Morel" }];
   assert.deepEqual(
     preselectDocumentTarget({ first_name: "Ines", last_name: "MOREL" }, holder, companions),
-    { companionId: "c1", applyIdentity: true, mismatch: null }
+    { companionId: "c1", applyIdentity: true, mismatch: null, ambiguous: false }
   );
   assert.deepEqual(
     preselectDocumentTarget({ first_name: "Camille Rose", last_name: "Morel" }, holder, companions),
-    { companionId: "", applyIdentity: true, mismatch: null }
+    { companionId: "", applyIdentity: true, mismatch: null, ambiguous: false }
   );
   assert.deepEqual(
     preselectDocumentTarget({ first_name: "Noah", last_name: "Dupont" }, holder, companions),
-    { companionId: "", applyIdentity: false, mismatch: "Noah Dupont" }
+    { companionId: "", applyIdentity: false, mismatch: "Noah Dupont", ambiguous: false }
   );
 });
 
+test("titulaire et compagnon homonymes : « Moi » sans report, et le client choisit", () => {
+  const holder = { first_name: "Camille", last_name: "Morel" };
+  const companions = [
+    { id: "c1", first_name: "Inès", last_name: "Morel" },
+    { id: "c2", first_name: "Camille", last_name: "Morel" },
+  ];
+  assert.deepEqual(
+    preselectDocumentTarget({ first_name: "Camille", last_name: "Morel" }, holder, companions),
+    { companionId: "", applyIdentity: false, mismatch: null, ambiguous: true }
+  );
+  assert.equal(AMBIGUOUS_HOUSEHOLD_NOTICE.length > 0, true);
+});
+
 test("sans nom lu ou sans nom de titulaire, « Moi » et le report restent par défaut", () => {
-  const empty = { companionId: "", applyIdentity: true, mismatch: null };
+  const empty = { companionId: "", applyIdentity: true, mismatch: null, ambiguous: false };
   assert.deepEqual(
     preselectDocumentTarget({ first_name: null, last_name: null }, { first_name: "Camille", last_name: "Morel" }, []),
     empty

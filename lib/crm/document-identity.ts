@@ -99,7 +99,11 @@ export type DocumentTarget = {
   applyIdentity: boolean;
   /** Nom lu qui ne correspond à personne du foyer : la pièce entre au coffre sans toucher le profil. */
   mismatch: string | null;
+  /** Le titulaire et un compagnon portent ce nom : on ne devine pas, le client choisit. */
+  ambiguous: boolean;
 };
+
+export const AMBIGUOUS_HOUSEHOLD_NOTICE = "Deux personnes du foyer portent ce nom : choisissez pour qui.";
 
 function readName(person: PersonName | null | undefined) {
   return [person?.first_name, person?.last_name].filter(Boolean).join(" ").trim();
@@ -115,16 +119,20 @@ export function preselectDocumentTarget(
   holder: PersonName,
   companions: (PersonName & { id: string })[]
 ): DocumentTarget {
+  const plain = { companionId: "", applyIdentity: true, mismatch: null, ambiguous: false };
   const read = readName(identity);
-  if (!identity || !read) return { companionId: "", applyIdentity: true, mismatch: null };
+  if (!identity || !read) return plain;
   const holderNamed = Boolean(foldName(holder.first_name) || foldName(holder.last_name));
-  if (!holderNamed) return { companionId: "", applyIdentity: true, mismatch: null };
+  if (!holderNamed) return plain;
   const match = matchTravelerToParty(identity, holder, companions);
-  if (match?.kind === "companion") return { companionId: match.id, applyIdentity: true, mismatch: null };
-  if (match?.kind === "holder" || namesReferToSamePerson(identity, holder)) {
-    return { companionId: "", applyIdentity: true, mismatch: null };
+  if (match?.kind === "companion") return { ...plain, companionId: match.id };
+  if (match?.kind === "holder") return plain;
+  if (namesReferToSamePerson(identity, holder)) {
+    // Titulaire et compagnon homonymes : « Moi » par défaut mais sans report, et on le dit.
+    const twin = companions.some((companion) => namesReferToSamePerson(identity, companion));
+    return twin ? { ...plain, applyIdentity: false, ambiguous: true } : plain;
   }
-  return { companionId: "", applyIdentity: false, mismatch: read };
+  return { ...plain, applyIdentity: false, mismatch: read };
 }
 
 /**

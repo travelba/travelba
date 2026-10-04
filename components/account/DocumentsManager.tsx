@@ -6,6 +6,7 @@ import { DOC_TYPE_LABELS, type CrmCompanion, type CrmTravelDocument, type Travel
 import { deleteJson, sendForm } from "@/lib/crm/client-fetch";
 import { countryName } from "@/lib/crm/countries";
 import {
+  AMBIGUOUS_HOUSEHOLD_NOTICE,
   documentHolderName,
   documentNameNotice,
   nationalityFromIdentity,
@@ -59,6 +60,8 @@ export function DocumentsManager({
   const [sex, setSex] = useState("");
   const [applyIdentity, setApplyIdentity] = useState(true);
   const [scan, setScan] = useState<ScanResult | null>(null);
+  /** Titulaire et compagnon homonymes : rien n’est reporté tant que « Pour qui » n’est pas choisi. */
+  const [ambiguous, setAmbiguous] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const target = companionId ? companions.find((c) => c.id === companionId) || null : holder;
   // Comparé au titulaire (ou au compagnon choisi), jamais à l’état local vide du formulaire.
@@ -76,6 +79,7 @@ export function DocumentsManager({
     const preselect = preselectDocumentTarget(id, holder, companions);
     setCompanionId(preselect.companionId);
     setApplyIdentity(preselect.applyIdentity);
+    setAmbiguous(preselect.ambiguous);
     setDocType(id.doc_type);
     if (id.number) setNumber(id.number);
     if (id.issuing_country) setIssuingCountry(id.issuing_country);
@@ -295,6 +299,11 @@ export function DocumentsManager({
             <div className="min-w-0 flex-1 space-y-2">
               <ScanStatus identity={scan.identity} identities={scan.identities} warning={scan.warning} />
               {expiryWarn ? <p className="text-sm text-accent">{expiryWarn}</p> : null}
+              {ambiguous ? (
+                <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
+                  {AMBIGUOUS_HOUSEHOLD_NOTICE}
+                </p>
+              ) : null}
               {nameWarn ? (
                 <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
                   {nameWarn}
@@ -318,7 +327,10 @@ export function DocumentsManager({
               <Field label="Pour qui">
                 <select
                   value={companionId}
-                  onChange={(event) => setCompanionId(event.target.value)}
+                  onChange={(event) => {
+                    setCompanionId(event.target.value);
+                    setAmbiguous(false);
+                  }}
                   className={fieldControlClass}
                 >
                   <option value="">Moi (titulaire)</option>

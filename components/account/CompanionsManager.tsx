@@ -99,6 +99,8 @@ export function CompanionsManager({
   const [sex, setSex] = useState("");
   const [phone, setPhone] = useState("");
   const [scan, setScan] = useState<ScanResult | null>(null);
+  /** La carte passeport importe déjà (plusieurs livrets) : « Ajouter » attend, pour ne pas importer deux fois. */
+  const [cardBusy, setCardBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [nameWarn, setNameWarn] = useState<string | null>(null);
@@ -285,6 +287,8 @@ export function CompanionsManager({
             if (id.sex) setSex(id.sex);
           }}
           onScan={setScan}
+          onCancel={() => setScan(null)}
+          onBusyChange={setCardBusy}
           onImported={() => {
             closeForm();
             router.refresh();
@@ -345,8 +349,8 @@ export function CompanionsManager({
         ) : null}
         {error ? <p className="text-sm text-accent">{error}</p> : null}
           <BusyBar active={saving} label="Enregistrement…" />
-          <button className="admin-af-btn rounded-full px-4 py-2.5 text-sm" disabled={saving}>
-            {saving ? "Enregistrement…" : "Ajouter l’accompagnateur"}
+          <button className="admin-af-btn rounded-full px-4 py-2.5 text-sm" disabled={saving || cardBusy}>
+            {saving ? "Enregistrement…" : cardBusy ? "Import des passeports…" : "Ajouter l’accompagnateur"}
           </button>
         </form>
       ) : (
