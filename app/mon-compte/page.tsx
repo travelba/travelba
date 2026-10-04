@@ -1,3 +1,4 @@
+import { toPublicBooking } from "@/lib/crm/public-booking";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -130,7 +131,7 @@ export default async function AccountHomePage() {
 
       {nextTrip ? (
         <article className="overflow-hidden rounded-2xl border border-[#e5e3dc] shadow-xl">
-          <BookingHero booking={nextTrip} places={places[nextTrip.id]} priority frameClassName="relative h-[22rem] w-full">
+          <BookingHero booking={toPublicBooking(nextTrip)} places={places[nextTrip.id]} priority frameClassName="relative h-[22rem] w-full">
             {countdown ? (
               <p className="absolute left-5 top-5 z-10 inline-flex w-fit items-center gap-1.5 rounded-full border border-[var(--admin-gold)]/30 bg-white/95 px-3 py-1 text-[12px] font-semibold text-[var(--admin-navy)] shadow-sm">
                 <Icon name="timer" className="h-[15px] w-[15px] text-[var(--admin-gold)]" />
