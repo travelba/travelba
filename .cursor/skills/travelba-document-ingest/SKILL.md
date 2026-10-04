@@ -6,7 +6,7 @@ description: >-
   SIXT, TAAP/Talixo, devis). Use when the user sends PDFs or images, trains
   extraction, tunes ingest-parse / PROMPT / merge, BookingIngest, or PAN
   redaction. Identity scans (passeport MRZ) use travelba-identity instead.
-  Gmail labels / crm_email_ingest (suggestions, rattachement manuel) use travelba-email-ingest.
+  Gmail labels / crm_email_ingest (suggestions, création auto, rattachement manuel) use travelba-email-ingest.
 ---
 
 # Travelba — import (qualité)
