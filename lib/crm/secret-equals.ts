@@ -1,10 +1,8 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 
-const MAX_SECRET = 512;
-
+/** sha256 accepte toute longueur : la chaîne entière est hachée, jamais tronquée ni résumée. */
 function digestSecret(value: string) {
-  const bounded = value.length > MAX_SECRET ? `len:${value.length}` : value;
-  return createHash("sha256").update(bounded).digest();
+  return createHash("sha256").update(value, "utf8").digest();
 }
 
 /**
