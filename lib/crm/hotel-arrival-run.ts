@@ -28,6 +28,12 @@ import {
   type StayProvision,
 } from "./hotel-arrival";
 import { passportPreviewsForStay } from "./preview-files";
+import {
+  MANUAL_CARD_NOTE,
+  manualStayCardDraft,
+  stayCardCanBeShared,
+  stayCardIsManual,
+} from "./manual-stay-card";
 import { issuePliantCard, pliantConfigured, setPliantCardLimit } from "./pliant";
 import type {
   CrmBookingItem,
@@ -193,6 +199,66 @@ export async function ensureHotelArrivals(admin: Admin, bookingId: string, items
   if (rows.length) await admin.from("crm_hotel_arrivals").insert(rows);
 }
 
+/** Carte au montant saisi, libellée nom et prénom, sans restriction, sur le porteur configuré. */
+export async function issueManualStayCard(
+  admin: Admin,
+  input: { bookingId: string; itemId: string; amount: string; firstName: string; lastName: string }
+) {
+  const { data: itemData } = await admin
+    .from("crm_booking_items")
+    .select("*")
+    .eq("booking_id", input.bookingId)
+    .eq("id", input.itemId)
+    .maybeSingle();
+  const item = itemData as CrmBookingItem | null;
+  if (!item || item.kind !== "hotel") throw new Error("Hôtel introuvable.");
+
+  const { data: existingData } = await admin
+    .from("crm_hotel_arrivals")
+    .select("id, pliant_card_id")
+    .eq("booking_id", input.bookingId)
+    .eq("booking_item_id", input.itemId)
+    .maybeSingle();
+  const existing = existingData as { id: string; pliant_card_id: string | null } | null;
+  if (existing?.pliant_card_id) throw new Error("Une carte est déjà liée à ce séjour.");
+
+  const today = parisIsoDate(new Date());
+  const checkout = isoDate(item.end_at) || isoDate(item.start_at) || today;
+  const closeOn = cardCloseDate(checkout);
+  const draft = manualStayCardDraft({
+    amount: input.amount,
+    firstName: input.firstName,
+    lastName: input.lastName,
+    validFrom: today,
+    validTo: closeOn < today ? today : closeOn,
+    organizationId: process.env.PLIANT_ORGANIZATION_ID || "",
+  });
+  if ("error" in draft) throw new Error(draft.error);
+  if (!pliantConfigured()) throw new Error("Pliant n'est pas branché.");
+
+  const issued = await issuePliantCard(process.env.PLIANT_CARDHOLDER_ID || "", draft.body);
+  if (!issued.cardId) throw new Error("Pliant n'a pas créé la carte.");
+
+  const patch = {
+    pliant_card_id: issued.cardId,
+    card_limit_cents: draft.body.limit.value,
+    currency: "EUR",
+    task_open: false,
+    task_note: MANUAL_CARD_NOTE,
+  };
+  if (existing?.id) {
+    await admin.from("crm_hotel_arrivals").update(patch).eq("id", existing.id);
+  } else {
+    await admin.from("crm_hotel_arrivals").insert({
+      booking_id: input.bookingId,
+      booking_item_id: input.itemId,
+      channel: channelOf(item),
+      ...patch,
+    });
+  }
+  return { ok: true as const };
+}
+
 function stayProvisionFor(
   item: CrmBookingItem,
   row: Pick<CrmHotelArrival, "channel" | "net_cents">,
@@ -229,6 +295,10 @@ async function alignStayCard(input: {
 }) {
   const channel = channelOf(input.item);
   let row = input.row.channel === channel ? input.row : { ...input.row, channel };
+  if (row.pliant_card_id && stayCardIsManual(row.task_note)) {
+    if (row.channel !== input.row.channel) await save(input.admin, row.id, { channel });
+    return row;
+  }
   if (row.status === "closed" || row.card_closed_at) {
     if (row.channel !== input.row.channel) await save(input.admin, row.id, { channel });
     return row;
@@ -328,9 +398,7 @@ export async function syncStayCards(
   );
   const parisToday = parisIsoDate(input.deps?.now || new Date());
   const deps = input.deps || {};
-  let sharedCardId =
-    rows.find((row) => row.pliant_card_id && !row.card_closed_at && row.status !== "closed")?.pliant_card_id ||
-    null;
+  let sharedCardId = rows.find((row) => stayCardCanBeShared(row))?.pliant_card_id || null;
   for (const item of hotels) {
     const row = rows.find((entry) => entry.booking_item_id === item.id);
     if (!row) continue;
@@ -350,7 +418,7 @@ export async function syncStayCards(
       reuseCardId: sharedCardId,
     });
     const issued = rows[index];
-    if (issued.pliant_card_id && !issued.card_closed_at && issued.status !== "closed" && !sharedCardId) {
+    if (stayCardCanBeShared(issued) && !sharedCardId) {
       sharedCardId = issued.pliant_card_id;
     }
   }
@@ -359,11 +427,16 @@ export async function syncStayCards(
 }
 
 async function raiseSharedStayLimit(
-  rows: Pick<CrmHotelArrival, "pliant_card_id" | "card_closed_at" | "status" | "card_limit_cents" | "currency">[],
+  rows: Pick<CrmHotelArrival, "pliant_card_id" | "card_closed_at" | "status" | "card_limit_cents" | "currency" | "task_note">[],
   deps: ArrivalDeps
 ) {
   const open = rows.filter(
-    (row) => row.pliant_card_id && !row.card_closed_at && row.status !== "closed" && (row.card_limit_cents || 0) > 0
+    (row) =>
+      row.pliant_card_id &&
+      !row.card_closed_at &&
+      row.status !== "closed" &&
+      (row.card_limit_cents || 0) > 0 &&
+      !stayCardIsManual(row.task_note)
   );
   const ids = [...new Set(open.map((row) => row.pliant_card_id))];
   if (ids.length !== 1) return;
@@ -562,11 +635,11 @@ async function stepArrival(input: {
   });
   const { data: siblings } = await input.admin
     .from("crm_hotel_arrivals")
-    .select("pliant_card_id, card_closed_at, status")
+    .select("pliant_card_id, card_closed_at, status, task_note")
     .eq("booking_id", input.booking.id);
   const reuseCardId =
-    ((siblings || []) as Pick<CrmHotelArrival, "pliant_card_id" | "card_closed_at" | "status">[]).find(
-      (row) => row.pliant_card_id && !row.card_closed_at && row.status !== "closed"
+    ((siblings || []) as Pick<CrmHotelArrival, "pliant_card_id" | "card_closed_at" | "status" | "task_note">[]).find(
+      (row) => stayCardCanBeShared(row)
     )?.pliant_card_id || null;
   let row = await alignStayCard({
     admin: input.admin,
@@ -583,10 +656,13 @@ async function stepArrival(input: {
   });
   const { data: limitRows } = await input.admin
     .from("crm_hotel_arrivals")
-    .select("pliant_card_id, card_closed_at, status, card_limit_cents, currency")
+    .select("pliant_card_id, card_closed_at, status, card_limit_cents, currency, task_note")
     .eq("booking_id", input.booking.id);
   await raiseSharedStayLimit(
-    (limitRows || []) as Pick<CrmHotelArrival, "pliant_card_id" | "card_closed_at" | "status" | "card_limit_cents" | "currency">[],
+    (limitRows || []) as Pick<
+      CrmHotelArrival,
+      "pliant_card_id" | "card_closed_at" | "status" | "card_limit_cents" | "currency" | "task_note"
+    >[],
     input.deps
   );
   if (!row.payment_url && row.requested_at && emails.length) {

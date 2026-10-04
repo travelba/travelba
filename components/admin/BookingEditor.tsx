@@ -260,6 +260,7 @@ export function BookingEditor({
     last_name: account?.last_name || holderName.last_name,
     usage_name: account?.usage_name ?? null,
   };
+  const stayGuest = principalGuest({ travelers, holder: holderProfile });
   const documentChoices = peopleNotOnStay(
     items.flatMap((item) => passengersFromDetails(item.details)),
     travelers
@@ -1492,10 +1493,9 @@ export function BookingEditor({
                   bookingId={booking.id}
                   items={items}
                   arrivals={arrivals}
-                  holder={(() => {
-                    const guest = principalGuest({ travelers, holder: holderProfile });
-                    return `${guest.firstName} ${guest.lastName}`.trim();
-                  })()}
+                  holder={`${stayGuest.firstName} ${stayGuest.lastName}`.trim()}
+                  guestFirst={stayGuest.firstName}
+                  guestLast={stayGuest.lastName}
                   cardViews={cardViews}
                   bookingStatus={booking.status}
                   currency={booking.currency}
