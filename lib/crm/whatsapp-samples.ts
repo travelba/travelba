@@ -7,8 +7,10 @@ import { connexionContentSid, connexionContentVariables, sendContentTemplate, wh
 import { sendWhatsappSession, whatsappSessionConfigured } from "./whatsapp-session";
 import { whatsappCatalog } from "./whatsapp-catalog";
 
-/** Ligne de l’agence pour relire les messages. Déjà utilisée par les exemples de vol. */
-const SAMPLE_PHONE = "0772158257";
+/** Ligne de relecture des échantillons (WHATSAPP_SAMPLE_PHONE). Vide = aucun envoi d’échantillon. */
+function samplePhone() {
+  return (process.env.WHATSAPP_SAMPLE_PHONE || "").trim();
+}
 const PROVIDER = "whatsapp_samples";
 
 type Extra = {
@@ -154,7 +156,7 @@ export async function sendCatalogSamples(
   inspect: (to: string) => Promise<DeliveryReport> = (to) => inspectSampleDelivery(to, fetchImpl)
 ) {
   if (isVercelPreview() || !whatsappSessionConfigured()) return { skipped: "not_configured" as const };
-  const to = whatsappAddress(SAMPLE_PHONE);
+  const to = whatsappAddress(samplePhone());
   if (!to) return { skipped: "no_phone" as const };
 
   const { data } = await admin.from("crm_integrations").select("id, extra").eq("provider", PROVIDER).maybeSingle();
@@ -218,7 +220,7 @@ export async function sendCatalogSamples(
     const draft = approvedDraft(sample);
     if (draft?.sid && draft.variables) {
       const template = await deliverTemplate({
-        phone: SAMPLE_PHONE,
+        phone: samplePhone(),
         contentSid: draft.sid,
         variables: draft.variables,
         fetchImpl,

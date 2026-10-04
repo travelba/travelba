@@ -46,6 +46,7 @@ test("sans image en ligne, aucun message ne part", async () => {
   process.env.TWILIO_ACCOUNT_SID = "ACtest";
   process.env.TWILIO_AUTH_TOKEN = "token";
   process.env.TWILIO_WHATSAPP_FROM = "whatsapp:+33756841315";
+  process.env.WHATSAPP_SAMPLE_PHONE = "0601020304";
   delete process.env.VERCEL_ENV;
   const { client, writes } = admin(null);
   let calls = 0;
@@ -66,6 +67,7 @@ test("une fois les images en ligne, chaque exemplaire part une seule fois", asyn
   process.env.TWILIO_ACCOUNT_SID = "ACtest";
   process.env.TWILIO_AUTH_TOKEN = "token";
   process.env.TWILIO_WHATSAPP_FROM = "whatsapp:+33756841315";
+  process.env.WHATSAPP_SAMPLE_PHONE = "0601020304";
   delete process.env.VERCEL_ENV;
   const phones: string[] = [];
   const { client, writes } = admin(null);
@@ -79,7 +81,7 @@ test("une fois les images en ligne, chaque exemplaire part une seule fois", asyn
   );
   assert.equal(result.skipped, null);
   assert.equal(result.delivered, catalogSamples().length);
-  assert.ok(phones.every((phone) => phone === "whatsapp:+33772158257"));
+  assert.ok(phones.every((phone) => phone === "whatsapp:+33601020304"));
   const again = admin({
     done_at: "2026-09-30T00:00:00.000Z",
     sent: Object.fromEntries(catalogSamples().map((sample) => [sample.id, "session"])),
@@ -104,6 +106,7 @@ test("si rien n’est arrivé sur le téléphone, le modèle approuvé part", as
   process.env.TWILIO_ACCOUNT_SID = "ACtest";
   process.env.TWILIO_AUTH_TOKEN = "token";
   process.env.TWILIO_WHATSAPP_FROM = "whatsapp:+33756841315";
+  process.env.WHATSAPP_SAMPLE_PHONE = "0601020304";
   process.env.TWILIO_CONTENT_CONNEXION = "HXconnexion";
   process.env.TWILIO_CONTENT_PIECE_HOTEL = "HXhotel";
   delete process.env.VERCEL_ENV;
@@ -128,3 +131,25 @@ test("si rien n’est arrivé sur le téléphone, le modèle approuvé part", as
   assert.ok(templates.includes("HXhotel"));
   assert.ok((result.delivered ?? 0) >= 1);
 });
+
+test("sans WHATSAPP_SAMPLE_PHONE, aucun échantillon ne part", async () => {
+  process.env.TWILIO_ACCOUNT_SID = "ACtest";
+  process.env.TWILIO_AUTH_TOKEN = "token";
+  process.env.TWILIO_WHATSAPP_FROM = "whatsapp:+33756841315";
+  delete process.env.WHATSAPP_SAMPLE_PHONE;
+  delete process.env.VERCEL_ENV;
+  const { client, writes } = admin(null);
+  let calls = 0;
+  const result = await sendCatalogSamples(
+    client,
+    async () => {
+      calls += 1;
+      return new Response(null, { status: 200, headers: { "content-type": "image/jpeg" } });
+    },
+    async () => ({ ok: true, sid: "SM1" })
+  );
+  assert.equal(result.skipped, "no_phone");
+  assert.equal(calls, 0);
+  assert.equal(writes.length, 0);
+});
+

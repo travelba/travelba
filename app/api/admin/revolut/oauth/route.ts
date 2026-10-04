@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { secretEquals } from "@/lib/crm/admin-client-login";
+import { secretEquals } from "@/lib/crm/secret-equals";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { exchangeRevolutAuthCode, revolutClientId } from "@/lib/crm/revolut";
 
