@@ -58,7 +58,6 @@ export default async function AdminHomePage() {
     { count: withPhoneCount },
     { data: balances },
     { count: departSoonCount },
-    { count: expiringCount },
     { count: departTomorrowCount },
     { data: taskRows },
     { data: activeBookings },
@@ -100,11 +99,6 @@ export default async function AdminHomePage() {
       .lte("start_date", isoDateInDays(7))
       .neq("status", "cancelled")
       .is("archived_at", null),
-    supabase
-      .from("crm_travel_documents")
-      .select("id", { count: "exact", head: true })
-      .not("expires_on", "is", null)
-      .lte("expires_on", soon),
     supabase
       .from("crm_bookings")
       .select("id", { count: "exact", head: true })
@@ -223,7 +217,7 @@ export default async function AdminHomePage() {
     formalities: desk.open.length,
     services: services.length,
     departTomorrow: departTomorrowCount ?? 0,
-    expiring: expiringCount ?? 0,
+    expiring: badges.pieces,
   });
   const staffFirst = (staff.full_name || "l’agence").split(" ")[0];
   const featured = upcoming[0];
@@ -363,10 +357,10 @@ export default async function AdminHomePage() {
             description="Importez les PDF d’un vrai dossier, Enregistrer, puis Montrer au client. Le carnet n’apparaît côté client qu’après ce geste."
             action={
               <Link
-                href="/admin/reservations"
+                href="/admin/reservations/nouveau"
                 className="admin-af-btn inline-flex rounded-xl px-4 py-2.5 text-sm"
               >
-                Importer un dossier
+                Nouveau dossier
               </Link>
             }
           />
