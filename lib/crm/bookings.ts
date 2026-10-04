@@ -35,6 +35,21 @@ export function parseIncludeInLedger(value: unknown, fallback: boolean) {
   return fallback;
 }
 
+/**
+ * Après un enregistrement réussi, une écriture du grand livre refusée devient un avertissement
+ * (`ledger_warning`) plutôt qu’une erreur : la route répond 200 et un second clic ne duplique rien.
+ */
+export async function ledgerWarning(saved: string, run: () => Promise<unknown>): Promise<string | null> {
+  try {
+    await run();
+    return null;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "écriture refusée";
+    console.error("[crm] grand livre:", message);
+    return `${saved}, mais le grand livre n’a pas pu être mis à jour : ${message}`;
+  }
+}
+
 export const MAX_SORT_ORDER = 10000;
 
 /** Rang d’une carte : entier de 0 à 10000, sinon null. */

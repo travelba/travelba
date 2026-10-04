@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { parseBillingCompanyId } from "@/lib/crm/billing-companies";
-import { MAX_SORT_ORDER, parseIncludeInLedger, parseSortOrder, refreshBookingLedger } from "@/lib/crm/bookings";
+import {
+  ledgerWarning,
+  MAX_SORT_ORDER,
+  parseIncludeInLedger,
+  parseSortOrder,
+  refreshBookingLedger,
+} from "@/lib/crm/bookings";
 import { parseItemDetails } from "@/lib/crm/ingest-types";
 import { parseMoney } from "@/lib/crm/money";
 import { BOOKING_ITEM_KINDS, isLedgerExpenseKind, type BookingItemKind } from "@/lib/crm/types";
@@ -16,19 +22,10 @@ type Ctx = { params: Promise<{ id: string }> };
 
 const SORT_ORDER_ERROR = `Ordre de la carte invalide (0 à ${MAX_SORT_ORDER}).`;
 
-/** La carte est enregistrée ; une écriture du grand livre refusée remonte au lieu de passer en silence. */
+/** La carte est enregistrée ; un grand livre refusé devient `ledger_warning` (200), pas une erreur à rejouer. */
 async function ledgerAfterItemWrite(supabase: SupabaseClient, bookingId: string) {
-  try {
-    await refreshBookingLedger(supabase, bookingId);
-    return null;
-  } catch (err) {
-    return jsonError(
-      `Carte enregistrée, mais le grand livre n’a pas pu être mis à jour : ${
-        err instanceof Error ? err.message : "écriture refusée"
-      }`,
-      500
-    );
-  }
+  const warning = await ledgerWarning("Carte enregistrée", () => refreshBookingLedger(supabase, bookingId));
+  return warning ? { ledger_warning: warning } : {};
 }
 
 async function billingCompanyPatch(supabase: SupabaseClient, bookingId: string, value: unknown) {
@@ -103,9 +100,7 @@ export async function POST(request: Request, ctx: Ctx) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
-  const ledgerError = await ledgerAfterItemWrite(auth.supabase, id);
-  if (ledgerError) return ledgerError;
-  return NextResponse.json({ item: data });
+  return NextResponse.json({ item: data, ...(await ledgerAfterItemWrite(auth.supabase, id)) });
 }
 
 export async function PATCH(request: Request, ctx: Ctx) {
@@ -191,9 +186,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
-  const ledgerError = await ledgerAfterItemWrite(auth.supabase, bookingId);
-  if (ledgerError) return ledgerError;
-  return NextResponse.json({ item: data });
+  return NextResponse.json({ item: data, ...(await ledgerAfterItemWrite(auth.supabase, bookingId)) });
 }
 
 export async function DELETE(request: Request, ctx: Ctx) {
@@ -208,7 +201,5 @@ export async function DELETE(request: Request, ctx: Ctx) {
     .eq("id", itemId)
     .eq("booking_id", bookingId);
   if (error) return dbError(error, 400);
-  const ledgerError = await ledgerAfterItemWrite(auth.supabase, bookingId);
-  if (ledgerError) return ledgerError;
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, ...(await ledgerAfterItemWrite(auth.supabase, bookingId)) });
 }

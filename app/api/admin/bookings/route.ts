@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createBookingSchema, parseBody } from "@/lib/crm/admin-schemas";
 import { dbError, jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
 import { collectManualCreateIssues } from "@/lib/crm/booking-issues";
-import { nextBookingReference, parseIncludeInLedger, syncBookingLedger } from "@/lib/crm/bookings";
+import { ledgerWarning, nextBookingReference, parseIncludeInLedger, syncBookingLedger } from "@/lib/crm/bookings";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { assignPayer, defaultPayer, resolveFeesFollowStay, type PayerCompany } from "@/lib/crm/payer";
 import type { CrmBooking, CrmCustomer } from "@/lib/crm/types";
@@ -91,15 +91,7 @@ export async function POST(request: Request) {
     .single();
   if (error) return dbError(error, 400);
   const booking = data as CrmBooking;
-  try {
-    await syncBookingLedger(auth.supabase, booking);
-  } catch (err) {
-    return jsonError(
-      `Dossier ${reference} créé, mais le grand livre n’a pas pu être mis à jour : ${
-        err instanceof Error ? err.message : "écriture refusée"
-      }`,
-      500
-    );
-  }
-  return NextResponse.json({ booking });
+  // Le dossier existe : un grand livre refusé devient `ledger_warning` (200), un second envoi ne le dupliquerait pas.
+  const warning = await ledgerWarning(`Dossier ${reference} créé`, () => syncBookingLedger(auth.supabase, booking));
+  return NextResponse.json({ booking, ...(warning ? { ledger_warning: warning } : {}) });
 }
