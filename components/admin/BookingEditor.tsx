@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, KeyboardEvent, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { FormEvent, KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -99,10 +99,8 @@ import {
   nextBookingTab,
   type BookingTabId,
 } from "@/lib/crm/booking-tabs";
-import { bookingFlashKey, readBookingFlash, writeBookingFlash } from "@/lib/crm/booking-flash";
+import { useMirror } from "@/lib/crm/use-mirror";
 import { adminAction } from "@/lib/crm/admin-action";
-
-const noopSubscribe = () => () => {};
 
 const coverField =
   "w-full rounded-2xl border border-transparent bg-white px-4 py-3 text-sm text-[var(--admin-navy)] shadow-[0_1px_2px_rgba(11,25,44,0.04)] outline-none transition focus:border-[var(--admin-gold)] focus:shadow-[0_0_0_3px_rgba(197,168,128,0.22)]";
@@ -204,9 +202,9 @@ export function BookingEditor({
   const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
   const needsReview = items.some((item) => item.details?.needs_review === true);
   const [busy, setBusy] = useState<"idle" | "save" | "publish" | "cover">("idle");
-  // L’état miroir des props est réinitialisé par `key={booking.updated_at}` posé par la page :
-  // aucune resynchronisation à la main ici.
-  const [titleDraft, setTitleDraft] = useState(booking.title);
+  // Champs du formulaire méta : `useMirror` — un champ touché par l’agent gagne, un champ intact suit
+  // le serveur à chaque `router.refresh()` (une étape ajoutée met déjà à jour la ligne du dossier).
+  const [titleDraft, setTitleDraft] = useMirror(booking.title);
   const routeTitle = stayHeadline(booking.title, booking.destination, stayCitiesFromSteps(items));
   const titleShown = titleDraft === booking.title ? routeTitle : titleDraft;
   const [coverOpen, setCoverOpen] = useState(false);
@@ -216,15 +214,7 @@ export function BookingEditor({
   const [coverNotice, setCoverNotice] = useState<string | null>(null);
   const arrival = coverQuery(booking.destination, booking.title);
   const coverPlace = arrival === "voyage" ? "" : arrival;
-  // undefined : aucun geste depuis le montage → on montre le message gardé par le geste précédent.
-  const [flash, setFlash] = useState<string | null | undefined>(undefined);
-  const flashKey = bookingFlashKey(booking.id);
-  const storedFlash = useSyncExternalStore(
-    noopSubscribe,
-    () => readBookingFlash(window.sessionStorage, flashKey),
-    () => null
-  );
-  const flashShown = flash === undefined ? storedFlash : flash;
+  const [flash, setFlash] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<null | "publish" | "unpublish">(null);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
   const [partyBusy, setPartyBusy] = useState(false);
@@ -248,26 +238,27 @@ export function BookingEditor({
         : "personal";
   const serverCompanyId =
     serverPayer === "personal" ? "" : booking.billing_company_id || defaultCompany?.id || "";
-  const [payerKind, setPayerKind] = useState<"company" | "personal">(serverPayer);
-  const [payerCompanyId, setPayerCompanyId] = useState(serverCompanyId);
+  const [payerKind, setPayerKind] = useMirror<"company" | "personal">(serverPayer);
+  const [payerCompanyId, setPayerCompanyId] = useMirror(serverCompanyId);
   const serverFeesFollow = booking.fees_follow_stay !== false;
-  const [feesFollowStay, setFeesFollowStay] = useState(serverFeesFollow);
+  const [feesFollowStay, setFeesFollowStay] = useMirror(serverFeesFollow);
   const serverSettles = booking.client_settles_stay === true;
-  const [clientSettles, setClientSettles] = useState(serverSettles);
-  const [startDraft, setStartDraft] = useState(booking.start_date || "");
-  const [endDraft, setEndDraft] = useState(booking.end_date || "");
-  const [statusDraft, setStatusDraft] = useState(booking.status);
-  const [destinationDraft, setDestinationDraft] = useState(booking.destination || "");
+  const [clientSettles, setClientSettles] = useMirror(serverSettles);
+  const [startDraft, setStartDraft] = useMirror(booking.start_date || "");
+  const [endDraft, setEndDraft] = useMirror(booking.end_date || "");
+  const [statusDraft, setStatusDraft] = useMirror(booking.status);
+  const [destinationDraft, setDestinationDraft] = useMirror(booking.destination || "");
   const serverCurrency = stayCurrency(booking.currency);
-  const [currencyDraft, setCurrencyDraft] = useState(serverCurrency);
+  const [currencyDraft, setCurrencyDraft] = useMirror(serverCurrency);
   const serverIncludeInLedger = booking.include_in_ledger !== false;
-  const [includeInLedger, setIncludeInLedger] = useState(serverIncludeInLedger);
-  const [notesInternal, setNotesInternal] = useState(booking.notes_internal || "");
-  const [notesClient, setNotesClient] = useState(booking.notes_client || "");
+  const [includeInLedger, setIncludeInLedger] = useMirror(serverIncludeInLedger);
+  const [notesInternal, setNotesInternal] = useMirror(booking.notes_internal || "");
+  const [notesClient, setNotesClient] = useMirror(booking.notes_client || "");
   const datesInverted = Boolean(startDraft && endDraft && endDraft < startDraft);
-  const [clientPick, setClientPick] = useState<PickableCustomer | null>(customer);
-  const [payerPick, setPayerPick] = useState<PickableCustomer | null>(billingCustomer || customer);
-  const serverPayerPickId = (billingCustomer || customer)?.id || null;
+  const serverPayerPick: PickableCustomer | null = billingCustomer || customer;
+  const [clientPick, setClientPick] = useMirror<PickableCustomer | null>(customer);
+  const [payerPick, setPayerPick] = useMirror<PickableCustomer | null>(serverPayerPick);
+  const serverPayerPickId = serverPayerPick?.id || null;
   const dirty =
     titleDraft !== booking.title ||
     statusDraft !== booking.status ||
@@ -284,10 +275,12 @@ export function BookingEditor({
     notesClient !== (booking.notes_client || "") ||
     (clientPick?.id || null) !== (customer?.id || null) ||
     (payerPick?.id || null) !== serverPayerPickId;
+  // `replaceState(null, …)` : Next recopie lui-même ses internes et prévient le routeur, donc
+  // `useSearchParams()` suit sans rejouer le GET du dossier. Avec `history.state`, l’appel serait ignoré.
   const setTab = useCallback(
     (next: BookingTabId) => {
       const query = bookingTabQuery(searchParams.toString(), next);
-      window.history.replaceState(window.history.state, "", `${pathname}?${query}`);
+      window.history.replaceState(null, "", `${pathname}?${query}`);
     },
     [pathname, searchParams]
   );
@@ -319,6 +312,7 @@ export function BookingEditor({
     if (!dirty) return;
     function guard(event: BeforeUnloadEvent) {
       event.preventDefault();
+      event.returnValue = "";
     }
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
@@ -333,10 +327,14 @@ export function BookingEditor({
   useEffect(() => {
     function onKey(event: globalThis.KeyboardEvent) {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "s") return;
-      event.preventDefault();
+      if (event.defaultPrevented) return;
+      // Un dialogue ouvert (choix du client, aperçu de pièce) garde son raccourci.
+      if (event.target instanceof Element && event.target.closest('[role="dialog"]')) return;
       if (busyRef.current !== "idle" || !dirtyRef.current) return;
       const form = document.getElementById("booking-meta");
-      if (form instanceof HTMLFormElement) form.requestSubmit();
+      if (!(form instanceof HTMLFormElement)) return;
+      event.preventDefault();
+      form.requestSubmit();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -364,10 +362,20 @@ export function BookingEditor({
     };
   }, []);
 
-  /** Le geste remonte la fiche (`key`) : le message est gardé pour l’instance suivante. */
-  function rememberFlash(message: string) {
-    setFlash(message);
-    writeBookingFlash(window.sessionStorage, flashKey, message);
+  /** Champs du formulaire méta tels que `save()` les envoie. Null si le formulaire n’est pas dans la page. */
+  function metaPayload(): Record<string, unknown> | null {
+    const form = document.getElementById("booking-meta");
+    if (!(form instanceof HTMLFormElement)) return null;
+    const fd = new FormData(form);
+    const settles = fd.get("client_settles_stay") === "on";
+    const payload: Record<string, unknown> = {
+      ...Object.fromEntries(fd.entries()),
+      title: titleShown.trim(),
+      client_settles_stay: settles,
+    };
+    if (settles) delete payload.include_in_ledger;
+    else payload.include_in_ledger = fd.get("include_in_ledger") === "on";
+    return payload;
   }
 
   const account = customer;
@@ -384,24 +392,11 @@ export function BookingEditor({
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form =
-      event.currentTarget instanceof HTMLFormElement
-        ? event.currentTarget
-        : document.getElementById("booking-meta");
-    if (!(form instanceof HTMLFormElement)) {
+    const payload = metaPayload();
+    if (!payload) {
       setFlash("Enregistrement impossible. Réessayez.");
       return;
     }
-    const fd = new FormData(form);
-    const title = titleShown.trim();
-    const settles = fd.get("client_settles_stay") === "on";
-    const payload: Record<string, unknown> = {
-      ...Object.fromEntries(fd.entries()),
-      title,
-      client_settles_stay: settles,
-    };
-    if (settles) delete payload.include_in_ledger;
-    else payload.include_in_ledger = fd.get("include_in_ledger") === "on";
     setBusy("save");
     setFlash(null);
     setIssues([]);
@@ -428,7 +423,7 @@ export function BookingEditor({
         return;
       }
       setIssues([]);
-      rememberFlash(
+      setFlash(
         cardOk
           ? booking.visible_to_client
             ? "Enregistré."
@@ -452,13 +447,19 @@ export function BookingEditor({
         return;
       }
     }
+    // Les champs modifiés partent dans le même PATCH : la route applique le méta puis la publication.
+    const payload = dirty ? metaPayload() : null;
+    if (dirty && !payload) {
+      setFlash("Enregistrement impossible. Réessayez.");
+      return;
+    }
     setBusy("publish");
     setFlash(null);
     setIssues([]);
     const res = await fetch(`/api/admin/bookings/${booking.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ visible_to_client: visible }),
+      body: JSON.stringify({ ...(payload || {}), visible_to_client: visible }),
     });
     const json = await res.json().catch(() => ({}));
     setBusy("idle");
@@ -467,7 +468,8 @@ export function BookingEditor({
       setFlash(null);
       return;
     }
-    rememberFlash(visible ? "Le client voit ce séjour." : "Le client ne voit plus ce séjour.");
+    const saved = payload ? "Enregistré. " : "";
+    setFlash(`${saved}${visible ? "Le client voit ce séjour." : "Le client ne voit plus ce séjour."}`);
     router.refresh();
   }
 
@@ -566,7 +568,7 @@ export function BookingEditor({
       return;
     }
     setCoverOpen(false);
-    rememberFlash(json.retouched === false ? "Photo d’origine conservée." : "Photo importée.");
+    setFlash(json.retouched === false ? "Photo d’origine conservée." : "Photo importée.");
     router.refresh();
   }
 
@@ -594,7 +596,7 @@ export function BookingEditor({
       return;
     }
     setCoverOpen(false);
-    rememberFlash("Nouvelle version enregistrée.");
+    setFlash("Nouvelle version enregistrée.");
     router.refresh();
   }
 
@@ -621,7 +623,7 @@ export function BookingEditor({
       setFlash(typeof json.error === "string" ? json.error : "Photo du lieu indisponible.");
       return;
     }
-    rememberFlash("Photo du lieu.");
+    setFlash("Photo du lieu.");
     router.refresh();
   }
 
@@ -955,7 +957,7 @@ export function BookingEditor({
           </p>
         ) : null}
         {needsReview ? <p className="text-sm text-accent">Certaines étapes sont marquées lecture douteuse.</p> : null}
-        {flashShown ? <p className="text-sm text-[var(--admin-navy)]">{flashShown}</p> : null}
+        {flash ? <p className="text-sm text-[var(--admin-navy)]">{flash}</p> : null}
         <IssuesList issues={issues} />
       </header>
       <CoverPickDialog
@@ -993,6 +995,11 @@ export function BookingEditor({
           ) : (
             <p className="text-sm text-muted">Le client ne verra plus ce séjour.</p>
           )}
+          {dirty ? (
+            <p className="text-sm font-semibold text-[var(--admin-gold-dark)]">
+              Vos modifications sont enregistrées en même temps.
+            </p>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             <button
               type="button"

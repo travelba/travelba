@@ -32,9 +32,13 @@ export function bookingTabFromParam(value: string | null | undefined): BookingTa
   return "voyage";
 }
 
-/** Nouvelle query string avec l’onglet, sans toucher aux autres paramètres (`hotel`, …). */
+/**
+ * Nouvelle query string avec l’onglet. Les autres paramètres restent, sauf `?hotel=` : il a servi à
+ * ouvrir le bureau de l’hôtel au chargement et ne doit pas le rouvrir à chaque retour sur Le voyage.
+ */
 export function bookingTabQuery(current: string, tab: BookingTabId) {
   const params = new URLSearchParams(current);
+  params.delete("hotel");
   params.set("tab", BOOKING_TAB_SLUGS[tab]);
   return params.toString();
 }
