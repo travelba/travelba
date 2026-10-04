@@ -7,10 +7,14 @@ import { connexionMessage, greetingForWhatsapp, sendConnexionWhatsapp } from "@/
 import { createEntryLink } from "@/lib/crm/entry-link";
 import { tokenMailCc } from "@/lib/crm/outbound-mail";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
+import { padDuration, rateLimitAll, rateLimitKey, requestIp } from "@/lib/crm/rate-limit";
 
 export const runtime = "nodejs";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** Temps de réponse plancher : la branche « e-mail inconnu » ne doit pas se reconnaître à sa vitesse. */
+const MIN_RESPONSE_MS = 400;
+const WINDOW_SECONDS = 15 * 60;
 
 function authErrorMessage(message: string) {
   const lower = message.toLowerCase();
@@ -21,6 +25,7 @@ function authErrorMessage(message: string) {
 }
 
 export async function POST(request: Request) {
+  const started = Date.now();
   let body: { email?: string; channel?: string };
   try {
     body = await request.json();
@@ -34,6 +39,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Adresse e-mail invalide" }, { status: 400 });
   }
 
+  const response = await handle(request, email, channel);
+  await padDuration(started, MIN_RESPONSE_MS);
+  return response;
+}
+
+async function handle(request: Request, email: string, channel: "whatsapp" | "email") {
   const apiKey = productionOnlySecret(process.env.RESEND_API_KEY);
   const fromAddress =
     process.env.CONTACT_FROM_EMAIL?.trim() || "contact@travelba.fr";
@@ -44,10 +55,17 @@ export async function POST(request: Request) {
   ).replace(/\/$/, "");
 
   try {
+    // 5 envois par e-mail et 20 par adresse IP sur 15 min. Au-delà : même réponse, rien n’est envoyé.
+    const allowed = await rateLimitAll([
+      { key: rateLimitKey("otp:email", email), limit: 5, windowSeconds: WINDOW_SECONDS },
+      { key: rateLimitKey("otp:ip", requestIp(request.headers)), limit: 20, windowSeconds: WINDOW_SECONDS },
+    ]);
+    if (!allowed) return NextResponse.json({ ok: true });
+
     const supabase = createServiceClient();
     const { data: customer } = await supabase
       .from("crm_customers")
-      .select("id, auth_user_id, first_name, phone, whatsapp_opt_in_at")
+      .select("id, auth_user_id, first_name, phone")
       .eq("email", email)
       .maybeSingle();
     if (!customer?.auth_user_id) {
@@ -72,12 +90,8 @@ export async function POST(request: Request) {
     });
 
     if (channel === "whatsapp") {
-      if (!customer.whatsapp_opt_in_at) {
-        await supabase
-          .from("crm_customers")
-          .update({ whatsapp_opt_in_at: new Date().toISOString() })
-          .eq("id", customer.id);
-      }
+      // L’opt-in WhatsApp ne se pose jamais depuis une requête anonyme (B-09) :
+      // il vient de l’invitation agence ou d’un geste du client connecté.
       const sent = await sendConnexionWhatsapp({
         phone: customer.phone,
         firstName: customer.first_name,
