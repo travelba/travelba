@@ -3,6 +3,12 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { RevolutInbox } from "@/components/admin/RevolutInbox";
 import { revolutClientId, revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
+import {
+  REVOLUT_MATCH_SELECT,
+  scoreRevolutMatches,
+  type RevolutMatchCandidate,
+  type RevolutMatchCustomer,
+} from "@/lib/crm/revolut-match";
 import type { CrmRevolutTransaction } from "@/lib/crm/types";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 
@@ -20,10 +26,20 @@ export default async function AdminRevolutPage({
         ? "Compte Revolut connecté. Les virements sans ambiguïté seront crédités automatiquement."
         : null;
   const admin = createServiceClient();
-  const { data: customers } = await admin
+  const { data: people } = await admin
     .from("crm_customers")
-    .select("id, first_name, last_name, company_name, email, phone")
+    .select(`${REVOLUT_MATCH_SELECT}, email, phone`)
     .order("last_name");
+  const index = (people || []) as (RevolutMatchCustomer & PickableCustomer)[];
+  // Le score (IBAN compris) se calcule ici ; le navigateur ne reçoit que les colonnes du sélecteur.
+  const customers: PickableCustomer[] = index.map(({ id, first_name, last_name, company_name, email, phone }) => ({
+    id,
+    first_name,
+    last_name,
+    company_name,
+    email,
+    phone,
+  }));
 
   let rows: CrmRevolutTransaction[] = [];
   try {
@@ -38,6 +54,12 @@ export default async function AdminRevolutPage({
     rows = [];
   }
 
+  const suggestions: Record<string, RevolutMatchCandidate[]> = {};
+  for (const row of rows) {
+    if (row.status !== "unmatched") continue;
+    suggestions[row.id] = scoreRevolutMatches(row, index).candidates;
+  }
+
   const hasClientId = Boolean(revolutClientId());
 
   return (
@@ -45,12 +67,13 @@ export default async function AdminRevolutPage({
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
         title="Rapprochement Revolut"
-        subtitle="Virements reçus : expéditeur et désignation. Proposition pré-sélectionnée : Valider ou Refuser."
+        subtitle="Virements reçus : expéditeur et désignation. Proposition pré-sélectionnée seulement si elle est certaine : Valider, choisir ou Refuser."
       />
       <div className="mt-6">
         <RevolutInbox
           rows={rows}
-          customers={(customers || []) as PickableCustomer[]}
+          customers={customers}
+          suggestions={suggestions}
           configured={revolutConfigured()}
           connected={await revolutConnected()}
           hasClientId={hasClientId}

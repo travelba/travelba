@@ -43,3 +43,9 @@ export function revolutSyncSummary(
       : `${autoMatched} crédit automatique`;
   return `${base}, ${auto}.`;
 }
+
+/** « 3 clients possibles — choisir » : des candidats, aucun assez sûr pour être présélectionné. */
+export function possibleClientsLabel(count: number) {
+  const plural = count > 1 ? "s" : "";
+  return `${count} client${plural} possible${plural} — choisir`;
+}

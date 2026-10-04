@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { revolutStatusLabel, revolutStatusTone, revolutSyncSummary } from "./revolut-labels";
+import { possibleClientsLabel, revolutStatusLabel, revolutStatusTone, revolutSyncSummary } from "./revolut-labels";
 
 test("revolut statuses are shown in French", () => {
   assert.equal(revolutStatusLabel("unmatched"), "À rapprocher");
@@ -18,4 +18,9 @@ test("sync summary handles singular and plural", () => {
     revolutSyncSummary(4, 2, 1),
     "Synchronisation terminée : 4 mouvements lus, 2 nouveaux, 1 crédit automatique."
   );
+});
+
+test("libellé des candidats sans présélection", () => {
+  assert.equal(possibleClientsLabel(1), "1 client possible — choisir");
+  assert.equal(possibleClientsLabel(3), "3 clients possibles — choisir");
 });
