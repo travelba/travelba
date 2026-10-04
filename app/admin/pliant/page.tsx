@@ -7,22 +7,36 @@ import { pliantConfigured } from "@/lib/crm/pliant";
 import { pliantStayForCard, type PliantStayRef } from "@/lib/crm/pliant-tx";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmPliantTransaction } from "@/lib/crm/types";
+import Link from "next/link";
+import { CUSTOMER_PICK_LIMIT, CUSTOMER_PICK_SELECT } from "@/lib/crm/customer-search";
+import { parseLoadMore, type SearchParamValue } from "@/lib/crm/admin-list";
 
-export default async function AdminPliantPage() {
+/** Dépenses lues par page : 500, puis « Charger plus » (A-22). */
+const PLIANT_PAGE = 500;
+const PLIANT_MAX = 4000;
+
+export default async function AdminPliantPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, SearchParamValue>>;
+}) {
   await requireStaffPage();
+  const limit = parseLoadMore((await searchParams).limite, PLIANT_PAGE, PLIANT_MAX);
   const configured = pliantConfigured();
   let lines: PliantLine[] = [];
   let customers: PickableCustomer[] = [];
+  let more = false;
   if (configured) {
     try {
       const admin = createServiceClient();
       const { data: people } = await admin
         .from("crm_customers")
-        .select("id, first_name, last_name, usage_name, company_name, email, phone")
-        .order("last_name");
+        .select(CUSTOMER_PICK_SELECT)
+        .order("last_name")
+        .limit(CUSTOMER_PICK_LIMIT);
       customers = (people || []) as PickableCustomer[];
       const rows: CrmPliantTransaction[] = [];
-      for (let from = 0; from < 4000; from += 1000) {
+      for (let from = 0; from < limit; from += PLIANT_PAGE) {
         const { data, error } = await admin
           .from("crm_pliant_transactions")
           .select(
@@ -30,11 +44,12 @@ export default async function AdminPliantPage() {
           )
           .or("type.is.null,type.neq.STATUS_INQUIRY")
           .order("booked_at", { ascending: false, nullsFirst: false })
-          .range(from, from + 999);
+          .range(from, from + PLIANT_PAGE - 1);
         if (error) throw error;
         const batch = (data || []) as CrmPliantTransaction[];
         rows.push(...batch);
-        if (batch.length < 1000) break;
+        if (batch.length < PLIANT_PAGE) break;
+        if (from + PLIANT_PAGE >= limit) more = limit < PLIANT_MAX;
       }
       const cardIds = [...new Set(rows.map((row) => row.card_id).filter((id): id is string => Boolean(id)))];
       const stays: PliantStayRef[] = [];
@@ -103,8 +118,10 @@ export default async function AdminPliantPage() {
           linkedCustomerIds: row.card_id ? payersByCard.get(row.card_id) || [] : [],
         };
       });
-    } catch {
+    } catch (err) {
+      console.error("[admin/pliant]", err instanceof Error ? err.message : err);
       lines = [];
+      more = false;
     }
   }
 
@@ -117,6 +134,16 @@ export default async function AdminPliantPage() {
       />
       <div className="mt-6">
         <PliantAccount configured={configured} lines={lines} customers={customers} />
+        {more ? (
+          <p className="mt-4 text-center">
+            <Link
+              href={`/admin/pliant?limite=${limit + PLIANT_PAGE}`}
+              className="admin-tap inline-flex min-h-11 items-center rounded-full border border-[var(--border)] bg-white px-5 text-sm font-semibold text-[var(--admin-navy)]"
+            >
+              Charger plus ({lines.length} dépenses affichées)
+            </Link>
+          </p>
+        ) : null}
       </div>
     </div>
   );
