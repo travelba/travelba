@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { CrmBookingItem } from "./types";
+import type { CrmBookingDocument, CrmBookingItem } from "./types";
 import {
   canConfirmCarnetPublish,
   carnetVisible,
@@ -478,5 +478,31 @@ describe("insuranceLineLabel", () => {
     assert.equal(insuranceLineLabel("Multirisque Allianz"), "Assurance Multirisque Allianz");
     assert.equal(insuranceLineLabel("  "), "Assurance");
     assert.equal(insuranceLineLabel(null), "Assurance");
+  });
+});
+
+describe("unlinkedDocuments", () => {
+  it("garde en bas une pièce rattachée à une carte cachée au client", () => {
+    const doc = (partial: Partial<CrmBookingDocument> & { id: string }): CrmBookingDocument => ({
+      booking_id: "b1",
+      kind: "confirmation",
+      file_name: null,
+      mime_type: null,
+      storage_path: `bookings/b1/${partial.id}.pdf`,
+      visible_to_client: true,
+      created_at: "2026-01-01",
+      ...partial,
+    });
+    const shown = { ...item({ title: "Hôtel montré" }), id: "shown", source_document_id: "d-source" };
+    const docs = [
+      doc({ id: "d-free" }),
+      doc({ id: "d-hidden-card", booking_item_id: "hidden" }),
+      doc({ id: "d-shown-card", booking_item_id: "shown" }),
+      doc({ id: "d-source" }),
+    ];
+    assert.deepEqual(
+      unlinkedDocuments(docs, [shown]).map((row) => row.id),
+      ["d-free", "d-hidden-card"]
+    );
   });
 });
