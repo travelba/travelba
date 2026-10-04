@@ -89,6 +89,24 @@ export function ProfileForm({
   const [openIdentity, setOpenIdentity] = useState(!customer.first_name && !hasPassport);
   const [openAddress, setOpenAddress] = useState(false);
   const [openLoyalty, setOpenLoyalty] = useState(false);
+  const snapshot = JSON.stringify({
+    firstName,
+    lastName,
+    usageName,
+    birthDate,
+    sex,
+    nationality,
+    phone,
+    phoneSecondary,
+    country,
+    addressLine,
+    postalCode,
+    city,
+    loyalty,
+  });
+  const [initial, setInitial] = useState(snapshot);
+  /** La barre Enregistrer ne se fixe en bas que lorsqu’il y a quelque chose à enregistrer. */
+  const dirty = snapshot !== initial;
 
   function applyIdentity(id: ExtractedIdentity) {
     // Appelé après « Confirmer » : la pièce est enregistrée et le profil suit.
@@ -134,6 +152,7 @@ export function ProfileForm({
         return;
       }
       setSaved(true);
+      setInitial(snapshot);
       router.refresh();
     } finally {
       setSaving(false);
@@ -250,7 +269,13 @@ export function ProfileForm({
       ) : null}
 
       {error ? <p className="py-2 text-sm text-accent">{error}</p> : null}
-      <div className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom,0px))] z-20 -mx-4 border-t border-[#e5e3dc] bg-[rgba(250,249,246,0.95)] px-4 py-3 backdrop-blur md:bottom-4">
+      <div
+        className={
+          dirty
+            ? "sticky bottom-[calc(4rem+env(safe-area-inset-bottom,0px))] z-20 -mx-4 border-t border-[#e5e3dc] bg-[rgba(250,249,246,0.95)] px-4 py-3 backdrop-blur md:bottom-4"
+            : "-mx-4 border-t border-[#e5e3dc] px-4 py-3"
+        }
+      >
         {saved ? <p className="mb-2 text-sm text-[var(--admin-navy)]">Enregistré.</p> : null}
         <BusyBar active={saving} label="Enregistrement…" />
         <button className="admin-af-btn w-full rounded-full px-5 py-2.5 text-sm" disabled={saving}>
