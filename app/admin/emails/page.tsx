@@ -1,7 +1,6 @@
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { EmailIngestInbox } from "@/components/admin/EmailIngestInbox";
 import { requireStaffPage } from "@/lib/crm/auth";
-import { backfillEmailBodies } from "@/lib/crm/email-ingest";
 import { sanitizeEmailHtml } from "@/lib/crm/email-source";
 import { EMAIL_INBOX_QUEUE_STATUSES, type CrmEmailIngest } from "@/lib/crm/types";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
@@ -20,7 +19,8 @@ export default async function AdminEmailsPage() {
       .order("last_name"),
   ]);
 
-  const inbox = (await backfillEmailBodies((rows || []) as CrmEmailIngest[])).map((row) => ({
+  // Le corps manquant d’un mail se complète au cron gmail-ingest, pas pendant l’affichage (A-26).
+  const inbox = ((rows || []) as CrmEmailIngest[]).map((row) => ({
     ...row,
     body_html: sanitizeEmailHtml(row.body_html),
   }));

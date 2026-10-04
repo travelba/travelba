@@ -202,15 +202,106 @@ export function bookingStatusTone(
   }
 }
 
-export function CrmSkeleton({ rows = 3 }: { rows?: number }) {
+export type CrmSkeletonKind = "list" | "table" | "detail" | "kpis";
+
+const skeletonBlock = "rounded-2xl bg-white ring-1 ring-[#e5e3dc]";
+
+/**
+ * Squelette de chargement à la forme de la page (D-19) :
+ * `list` = titre + filtre + lignes ; `table` = titre + en-tête + lignes ; `detail` = hero + onglets + cartes ;
+ * `kpis` = titre + bandeau + cartes KPI + liste. Sans `kind`, l’ancien squelette (titre + N cartes).
+ */
+export function CrmSkeleton({ rows = 3, kind }: { rows?: number; kind?: CrmSkeletonKind }) {
+  const title = <div className="h-7 w-44 rounded-lg bg-[var(--admin-peach)]" />;
+  if (kind === "list") {
+    return (
+      <div className="animate-pulse space-y-3" aria-hidden>
+        {title}
+        <div className="h-4 w-72 max-w-full rounded bg-[#ece9e2]" />
+        <div className="flex gap-2">
+          <div className="h-11 flex-1 rounded-lg bg-[#ece9e2]" />
+          <div className="hidden h-11 w-40 rounded-lg bg-[#ece9e2] sm:block" />
+        </div>
+        <div className={`${skeletonBlock} divide-y divide-[#e5e3dc] overflow-hidden`}>
+          {Array.from({ length: rows }).map((_, index) => (
+            <div key={index} className="flex items-center gap-3 px-5 py-4">
+              <div className="h-14 w-24 shrink-0 rounded-xl bg-[#ece9e2]" />
+              <div className="flex-1 space-y-2">
+                <div className="h-4 w-2/3 rounded bg-[#ece9e2]" />
+                <div className="h-3 w-1/3 rounded bg-[#f1efea]" />
+              </div>
+              <div className="h-5 w-20 rounded-full bg-[var(--admin-peach)]" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  if (kind === "table") {
+    return (
+      <div className="animate-pulse space-y-3" aria-hidden>
+        {title}
+        <div className="h-11 w-full rounded-lg bg-[#ece9e2]" />
+        <div className={`${skeletonBlock} overflow-hidden`}>
+          <div className="h-10 bg-[var(--admin-sky)]/70" />
+          {Array.from({ length: rows }).map((_, index) => (
+            <div key={index} className="flex items-center gap-4 border-t border-[#e5e3dc] px-5 py-3">
+              <div className="h-9 w-9 shrink-0 rounded-full bg-[#ece9e2]" />
+              <div className="h-4 w-1/4 rounded bg-[#ece9e2]" />
+              <div className="hidden h-4 w-1/4 rounded bg-[#f1efea] sm:block" />
+              <div className="ml-auto h-4 w-16 rounded bg-[#ece9e2]" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  if (kind === "detail") {
+    return (
+      <div className="animate-pulse space-y-4" aria-hidden>
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-2">
+            <div className="h-8 w-64 max-w-full rounded-lg bg-[var(--admin-peach)]" />
+            <div className="h-4 w-40 rounded bg-[#ece9e2]" />
+          </div>
+          <div className="flex gap-2">
+            <div className="h-10 w-28 rounded-full bg-[#ece9e2]" />
+            <div className="h-10 w-10 rounded-full bg-[#ece9e2]" />
+          </div>
+        </div>
+        <div className="flex gap-6 border-b border-[#e5e3dc] pb-3">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="h-4 w-20 rounded bg-[#ece9e2]" />
+          ))}
+        </div>
+        {Array.from({ length: rows }).map((_, index) => (
+          <div key={index} className={`${skeletonBlock} h-28 rounded-3xl`} />
+        ))}
+      </div>
+    );
+  }
+  if (kind === "kpis") {
+    return (
+      <div className="animate-pulse space-y-4" aria-hidden>
+        {title}
+        <div className={`${skeletonBlock} h-28`} />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="h-24 rounded-2xl bg-[#f3eee4]" />
+          <div className="h-24 rounded-2xl bg-[var(--admin-navy)]/85" />
+        </div>
+        <div className={`${skeletonBlock} divide-y divide-[#e5e3dc] overflow-hidden`}>
+          {Array.from({ length: rows }).map((_, index) => (
+            <div key={index} className="h-16 px-5" />
+          ))}
+        </div>
+      </div>
+    );
+  }
   return (
-    <div className="animate-pulse space-y-3">
-      <div className="h-7 w-44 rounded-lg bg-[var(--admin-peach)]" />
+    <div className="animate-pulse space-y-3" aria-hidden>
+      {title}
       {Array.from({ length: rows }).map((_, index) => (
-        <div
-          key={index}
-          className="h-24 rounded-2xl bg-white ring-1 ring-[#e5e3dc]"
-        />
+        <div key={index} className={`${skeletonBlock} h-24`} />
       ))}
     </div>
   );

@@ -10,7 +10,7 @@ export const BOOKING_STATUSES = [
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 
 export const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
-  draft: "Brouillon",
+  draft: "À l’étude",
   quoted: "Devis",
   confirmed: "Confirmée",
   travelling: "En voyage",
