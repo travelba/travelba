@@ -231,9 +231,16 @@ export function documentLabel(doc: CrmBookingDocument, items: CrmBookingItem[]) 
 }
 
 /** Pièces publiées qui ne sont rattachées à aucune carte : à lister à part dans le carnet client. */
+/**
+ * Pièces à lister en bas de la réservation : celles qu’aucune des cartes passées (les cartes
+ * visibles) ne montre déjà. Une pièce rattachée à une carte cachée au client reste listée ici.
+ */
 export function unlinkedDocuments(docs: CrmBookingDocument[], items: CrmBookingItem[]) {
   const linked = new Set(items.map((item) => item.source_document_id).filter(Boolean));
-  return docs.filter((doc) => !linked.has(doc.id) && !doc.booking_item_id);
+  const shownIds = new Set(items.map((item) => item.id));
+  return docs.filter(
+    (doc) => !linked.has(doc.id) && !(doc.booking_item_id && shownIds.has(doc.booking_item_id))
+  );
 }
 
 export function documentsForItem(item: CrmBookingItem, docs: CrmBookingDocument[]) {

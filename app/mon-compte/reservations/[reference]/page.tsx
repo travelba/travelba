@@ -57,19 +57,29 @@ import { isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
 
 type Props = { params: Promise<{ reference: string }> };
 
-/** Titre d’onglet : « {titre du séjour} · {référence} — TBA ». */
+/**
+ * Titre d’onglet : « {titre du séjour} · {référence} — TBA », seulement pour un dossier du client,
+ * montré et non archivé. Sinon le titre reste neutre : un dossier en préparation ne se devine pas.
+ */
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { reference } = await params;
+  const neutral = { title: `Réservation · ${reference} — ${siteConfig.shortName}` };
   const { supabase, user } = await getSessionUser();
-  if (!user) return { title: `Réservation — ${siteConfig.shortName}` };
+  if (!user) return neutral;
+  const customer = await ensureCustomerForUser(user);
+  if (!customer) return neutral;
   const { data } = await supabase
     .from("crm_bookings")
-    .select("title, destination, reference")
+    .select("title, destination, reference, visible_to_client, archived_at")
+    .eq("customer_id", customer.id)
     .eq("reference", reference)
     .maybeSingle();
-  const stay = (data as Pick<CrmBooking, "title" | "destination" | "reference"> | null) || null;
-  const name = (stay?.title || "").trim() || (stay?.destination || "").trim() || "Réservation";
-  return { title: `${name} · ${stay?.reference || reference} — ${siteConfig.shortName}` };
+  const stay =
+    (data as Pick<CrmBooking, "title" | "destination" | "reference" | "visible_to_client" | "archived_at"> | null) ||
+    null;
+  if (!stay || !stay.visible_to_client || stay.archived_at) return neutral;
+  const name = (stay.title || "").trim() || (stay.destination || "").trim() || "Réservation";
+  return { title: `${name} · ${stay.reference || reference} — ${siteConfig.shortName}` };
 }
 
 /** Le dossier est bien à ce client mais la RLS le cache (dépublié, archivé) : on l’explique, pas un 404. */
