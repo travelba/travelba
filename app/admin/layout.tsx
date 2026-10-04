@@ -1,8 +1,7 @@
 import { siteConfig } from "@/lib/site";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { getSessionUser, getStaffForUser } from "@/lib/crm/auth";
-import { createServiceClient } from "@/lib/supabase/admin";
-import { EMAIL_INBOX_QUEUE_STATUSES } from "@/lib/crm/types";
+import { adminBadges, EMPTY_ADMIN_BADGES } from "@/lib/crm/admin-badges";
 
 export const metadata = {
   title: `Admin — ${siteConfig.shortName}`,
@@ -14,47 +13,18 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  let unmatched = 0;
-  let emailPending = 0;
-  let lePending = 0;
-  let staffName = "";
   const { user } = await getSessionUser();
   const staff = user ? await getStaffForUser(user.id) : null;
-  if (staff) {
-    staffName = staff.full_name || "";
-    try {
-      const admin = createServiceClient();
-      const [revolut, emails] = await Promise.all([
-        admin
-          .from("crm_revolut_transactions")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "unmatched")
-          .eq("direction", "credit"),
-        admin
-          .from("crm_email_ingest")
-          .select("id", { count: "exact", head: true })
-          .in("status", [...EMAIL_INBOX_QUEUE_STATUSES]),
-      ]);
-      unmatched = revolut.count ?? 0;
-      emailPending = emails.count ?? 0;
-      const le = await admin
-        .from("crm_le_bookings")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "unmatched");
-      if (!le.error) lePending = le.count ?? 0;
-    } catch {
-      unmatched = 0;
-      emailPending = 0;
-    }
-  }
+  // Comptés une fois par requête : le tableau de bord réutilise le même résultat (A-23, D-41).
+  const badges = staff ? await adminBadges() : EMPTY_ADMIN_BADGES;
 
   return (
     <div className="admin-af min-h-screen">
       <AdminNav
-        unmatchedCount={unmatched}
-        emailCount={emailPending}
-        leCount={lePending}
-        staffName={staffName}
+        unmatchedCount={badges.revolut}
+        emailCount={badges.emails}
+        leCount={badges.le}
+        staffName={staff?.full_name || ""}
         staffRole={staff?.role}
       >
         {children}
