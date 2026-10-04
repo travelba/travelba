@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useMemo, useState, useSyncExternalStore } from "react";
+import { useMirror } from "@/lib/crm/use-mirror";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { AgencyLogo } from "@/components/AgencyLogo";
@@ -79,7 +80,8 @@ export function AdminNav({
   const activeHref = activeAdminNavHref(groups, pathname, search);
   const searching = pathname === "/admin/recherche";
   const currentQuery = searching ? searchParams.get("q") || "" : "";
-  const [query, setQuery] = useState(currentQuery);
+  // Le layout persiste d’une page à l’autre : le champ suit l’URL (`?q=`) tant qu’on n’y tape pas.
+  const [query, setQuery] = useMirror(currentQuery);
   const [moreOpen, setMoreOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const collapsedRaw = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => "[]");
@@ -150,7 +152,9 @@ export function AdminNav({
           </div>
         </div>
       </header>
-      <SearchOverlay open={searchOpen} initialQuery={currentQuery} onClose={() => setSearchOpen(false)} onSubmit={goSearch} />
+      {searchOpen ? (
+        <SearchOverlay open initialQuery={currentQuery} onClose={() => setSearchOpen(false)} onSubmit={goSearch} />
+      ) : null}
       <MoreSheet
         open={moreOpen}
         groups={moreSheetGroups(groups)}
