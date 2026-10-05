@@ -3,5 +3,9 @@
 import { ErrorPanel, type RouteErrorProps } from "@/components/crm/ErrorPanel";
 
 export default function RootError(props: RouteErrorProps) {
-  return <ErrorPanel {...props} homeHref="/" homeLabel="Retour à l’accueil" />;
+  return (
+    <div className="admin-af account-app min-h-screen">
+      <ErrorPanel {...props} homeHref="/" homeLabel="Retour à l’accueil" />
+    </div>
+  );
 }

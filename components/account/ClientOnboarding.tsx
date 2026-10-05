@@ -12,6 +12,7 @@ import {
 import { CLIENT_PROFILE_NAV } from "@/lib/crm/profile-nav";
 import { HIDDEN_PRICE_LABEL } from "@/lib/crm/carnet";
 import { ONBOARDING_PATH, pathAfterPassword } from "@/lib/crm/session";
+import { postJson } from "@/lib/crm/client-fetch";
 
 type ProfileLabel = (typeof CLIENT_PROFILE_NAV)[number]["label"];
 
@@ -35,15 +36,17 @@ export function ClientOnboarding({ previewHref = null }: { previewHref?: string 
     }
     setBusy(true);
     setError(null);
-    const res = await fetch("/api/client/onboarding", { method: "POST" });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
+    try {
+      const result = await postJson<{ next?: string }>("/api/client/onboarding", {});
+      if (!result.ok) {
+        setError(result.error || "Impossible d’enregistrer. Réessayez.");
+        return;
+      }
+      router.push(result.data?.next || pathAfterPassword(null));
+      router.refresh();
+    } finally {
       setBusy(false);
-      setError(json.error || "Impossible d’enregistrer. Réessayez.");
-      return;
     }
-    router.push(json.next || pathAfterPassword(null));
-    router.refresh();
   }
 
   return (

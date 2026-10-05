@@ -38,19 +38,54 @@ export type ClientLedgerBooking = {
   payer_kind?: "company" | "personal" | null;
 };
 
-export type ClientLedgerView = {
-  member: boolean;
+export type ClientLedgerWallet = {
   currency: string;
   balanceValue: number;
   debits: number;
   remaining: number;
   remainingPct: number | null;
   creditCount: number;
+};
+
+export type ClientLedgerView = {
+  member: boolean;
+  /** Devise principale (euros si le compte en a) : le règlement et les champs à plat la suivent. */
+  currency: string;
+  balanceValue: number;
+  debits: number;
+  remaining: number;
+  remainingPct: number | null;
+  creditCount: number;
+  /** Un encours par devise de crm_customer_balances (un seul bloc dans le cas courant). */
+  wallets: ClientLedgerWallet[];
   /** Somme due, puis part société et part particulier. */
   owed: { total: number; company: number; personal: number };
   soleCompanyName: string | null;
   movements: LedgerMovementRow[];
 };
+
+function walletView(
+  currency: string,
+  balance: number,
+  rows: { direction: "debit" | "credit"; amount: number | string; currency: string }[]
+): ClientLedgerWallet {
+  const inCurrency = rows.filter((row) => (row.currency || "EUR") === currency);
+  const { debits, settledPct } = postedLedgerTotals(inCurrency);
+  return {
+    currency,
+    balanceValue: balance,
+    debits,
+    remaining: Math.max(0, -balance),
+    remainingPct: settledPct == null ? null : Math.max(0, 100 - settledPct),
+    creditCount: inCurrency.filter((row) => row.direction === "credit").length,
+  };
+}
+
+/** L’euro d’abord quand il existe, sinon la première devise. */
+export function primaryWallet<T extends { currency: string }>(wallets: T[]): T | null {
+  if (!wallets.length) return null;
+  return wallets.find((wallet) => (wallet.currency || "EUR").toUpperCase() === "EUR") || wallets[0];
+}
 
 export function clientLedgerAdminHref(customerId: string) {
   return `/admin/transactions/client/${customerId}`;
@@ -66,6 +101,8 @@ export function shapeClientLedger(input: {
   audience: ClientLedgerAudience;
   billingCompanyCount?: number;
   companyNames?: Map<string, string | null>;
+  /** Tous les soldes du compte (une ligne par devise). Absent : le seul walletBalance / currency. */
+  wallets?: { currency: string; balance: number }[];
 }): ClientLedgerView {
   const member = isCompanyMember({ company_role: input.companyRole ?? null });
   const scoped = filterClientLedgerRows(input.rows, {
@@ -122,6 +159,12 @@ export function shapeClientLedger(input: {
     (input.billingCompanyCount || 0) === 1
       ? [...(input.companyNames?.values() || [])][0] || null
       : null;
+  const walletRows = member
+    ? [{ currency, balance: balanceValue }]
+    : input.wallets && input.wallets.length
+      ? input.wallets.map((wallet) => ({ currency: wallet.currency || "EUR", balance: Number(wallet.balance) || 0 }))
+      : [{ currency, balance: balanceValue }];
+  const wallets = walletRows.map((wallet) => walletView(wallet.currency, wallet.balance, scoped));
 
   return {
     member,
@@ -131,6 +174,7 @@ export function shapeClientLedger(input: {
     remaining,
     remainingPct: settledPct == null ? null : Math.max(0, 100 - settledPct),
     creditCount: shown.filter((row) => row.direction === "credit").length,
+    wallets,
     owed,
     soleCompanyName,
     movements,
@@ -169,6 +213,7 @@ export async function loadClientLedger(
   let rows: CrmTransaction[] = [];
   let walletBalance: number | null = null;
   let currency = "EUR";
+  let wallets: { currency: string; balance: number }[] = [];
 
   if (member) {
     if (bookingIds.length) {
@@ -192,8 +237,13 @@ export async function loadClientLedger(
       supabase.from("crm_customer_balances").select("*").eq("customer_id", customer.id),
     ]);
     rows = (txs || []) as CrmTransaction[];
-    const balance = ((balances || []) as CrmBalance[])[0];
-    walletBalance = balance ? Number(balance.balance) : 0;
+    // Un solde par devise : l’euro reste la devise principale (règlement), les autres ont leur bloc.
+    wallets = ((balances || []) as CrmBalance[]).map((row) => ({
+      currency: row.currency || "EUR",
+      balance: Number(row.balance),
+    }));
+    const balance = primaryWallet(wallets);
+    walletBalance = balance ? balance.balance : 0;
     currency = balance?.currency || "EUR";
   }
 
@@ -224,5 +274,6 @@ export async function loadClientLedger(
     audience,
     billingCompanyCount: billingCompanies.length,
     companyNames,
+    wallets,
   });
 }

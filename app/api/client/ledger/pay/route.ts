@@ -19,6 +19,9 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const method = stayPayMethodOf(body?.method);
   const payer = payerKindOf(body?.payerKind);
+  /** Nonce du formulaire : deux règlements du même montant dans la journée ne se confondent plus. */
+  const nonce =
+    typeof body?.nonce === "string" && /^[A-Za-z0-9-]{8,64}$/.test(body.nonce) ? body.nonce : null;
   if (!method) return jsonError("Choisissez un moyen de règlement.");
   if (!payer) return jsonError("Choisissez la part société ou la part particulier.");
 
@@ -90,7 +93,7 @@ export async function POST(request: Request) {
           reference,
         },
       },
-      { idempotencyKey: `ledger-${auth.customer.id}-${payer}-${method}-${cents}` }
+      { idempotencyKey: `ledger-${auth.customer.id}-${payer}-${method}-${cents}${nonce ? `-${nonce}` : ""}` }
     );
 
     if (intent.status === "succeeded") {

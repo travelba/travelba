@@ -6,7 +6,8 @@ import { ChevronDown } from "lucide-react";
 import type { CrmCustomer, CrmTravelDocument } from "@/lib/crm/types";
 import { resolveCountryCode } from "@/lib/crm/countries";
 import { identityNationalityFromSources, nationalityFromIdentity } from "@/lib/crm/document-identity";
-import { identityOverwriteWarning, type ExtractedIdentity } from "@/lib/crm/identity";
+import { identityAppliedNotice, type ExtractedIdentity } from "@/lib/crm/identity";
+import { postJson } from "@/lib/crm/client-fetch";
 import { loyaltyFromCustomer, type LoyaltyMap } from "@/lib/crm/loyalty";
 import { formatDateFr } from "@/lib/crm/money";
 import { vaultDocumentsForPerson } from "@/lib/crm/trip-documents";
@@ -88,9 +89,28 @@ export function ProfileForm({
   const [openIdentity, setOpenIdentity] = useState(!customer.first_name && !hasPassport);
   const [openAddress, setOpenAddress] = useState(false);
   const [openLoyalty, setOpenLoyalty] = useState(false);
+  const snapshot = JSON.stringify({
+    firstName,
+    lastName,
+    usageName,
+    birthDate,
+    sex,
+    nationality,
+    phone,
+    phoneSecondary,
+    country,
+    addressLine,
+    postalCode,
+    city,
+    loyalty,
+  });
+  const [initial, setInitial] = useState(snapshot);
+  /** La barre Enregistrer ne se fixe en bas que lorsqu’il y a quelque chose à enregistrer. */
+  const dirty = snapshot !== initial;
 
   function applyIdentity(id: ExtractedIdentity) {
-    const warn = identityOverwriteWarning({ first_name: firstName, last_name: lastName }, id);
+    // Appelé après « Confirmer » : la pièce est enregistrée et le profil suit.
+    const warn = identityAppliedNotice({ first_name: firstName, last_name: lastName }, id);
     setNameWarn(warn);
     if (id.first_name) setFirstName(id.first_name);
     if (id.last_name) setLastName(id.last_name);
@@ -106,35 +126,37 @@ export function ProfileForm({
     setSaving(true);
     setError(null);
     setSaved(false);
-    const res = await fetch("/api/client/profile", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        first_name: firstName,
-        last_name: lastName,
-        usage_name: usageName,
-        birth_date: birthDate,
-        sex,
-        nationality,
-        phone,
-        phone_secondary: phoneSecondary,
-        address_line: addressLine,
-        postal_code: postalCode,
-        city,
-        country,
-        loyalty,
-        flying_blue: loyalty.flying_blue,
-      }),
-    });
-    const json = await res.json();
-    if (!res.ok) {
+    try {
+      const result = await postJson(
+        "/api/client/profile",
+        {
+          first_name: firstName,
+          last_name: lastName,
+          usage_name: usageName,
+          birth_date: birthDate,
+          sex,
+          nationality,
+          phone,
+          phone_secondary: phoneSecondary,
+          address_line: addressLine,
+          postal_code: postalCode,
+          city,
+          country,
+          loyalty,
+          flying_blue: loyalty.flying_blue,
+        },
+        { method: "PATCH" }
+      );
+      if (!result.ok) {
+        setError(result.error || "Impossible d’enregistrer votre fiche. Réessayez ou écrivez à l’agence.");
+        return;
+      }
+      setSaved(true);
+      setInitial(snapshot);
+      router.refresh();
+    } finally {
       setSaving(false);
-      setError(json.error || "Erreur");
-      return;
     }
-    setSaving(false);
-    setSaved(true);
-    router.refresh();
   }
 
   const identitySummary =
@@ -171,7 +193,7 @@ export function ProfileForm({
             required
           />
         </Field>
-        <Field label="Nom d'épouse" hint="Nom d'usage s'il est imprimé sur le passeport ou la CNI">
+        <Field label="Nom d'usage" hint="S'il est imprimé sur le passeport ou la CNI (nom d'épouse, par exemple)">
           <input
             spellCheck={false}
             value={usageName}
@@ -247,7 +269,13 @@ export function ProfileForm({
       ) : null}
 
       {error ? <p className="py-2 text-sm text-accent">{error}</p> : null}
-      <div className="sticky bottom-[calc(7.5rem+env(safe-area-inset-bottom,0px))] z-20 -mx-4 border-t border-[#e5e3dc] bg-[rgba(250,249,246,0.95)] px-4 py-3 backdrop-blur md:bottom-4">
+      <div
+        className={
+          dirty
+            ? "sticky bottom-[calc(4rem+env(safe-area-inset-bottom,0px))] z-20 -mx-4 border-t border-[#e5e3dc] bg-[rgba(250,249,246,0.95)] px-4 py-3 backdrop-blur md:bottom-4"
+            : "-mx-4 border-t border-[#e5e3dc] px-4 py-3"
+        }
+      >
         {saved ? <p className="mb-2 text-sm text-[var(--admin-navy)]">Enregistré.</p> : null}
         <BusyBar active={saving} label="Enregistrement…" />
         <button className="admin-af-btn w-full rounded-full px-5 py-2.5 text-sm" disabled={saving}>

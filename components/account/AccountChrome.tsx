@@ -53,7 +53,8 @@ export function AccountChrome({
 
   async function signOut() {
     const supabase = createClient();
-    await supabase.auth.signOut();
+    // Cet appareil seulement : « Se déconnecter de tous les appareils » vit dans Mon compte › Sécurité.
+    await supabase.auth.signOut({ scope: "local" });
     router.push("/connexion");
     router.refresh();
   }
@@ -75,7 +76,7 @@ export function AccountChrome({
               <Icon name="chat" className="h-[22px] w-[22px]" />
             </a>
             <Link
-              href="/mon-compte/profil"
+              href={`${basePath}/profil`}
               className="relative inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[11px] font-bold text-white ring-1 ring-[var(--admin-gold)]/40"
               aria-label={`Compte ${customerName}`}
             >
@@ -94,6 +95,7 @@ export function AccountChrome({
               <Link
                 key={tab.href}
                 href={tab.href}
+                aria-current={active ? "page" : undefined}
                 className={`pb-1 text-sm tracking-wide transition ${
                   active
                     ? "border-b-2 border-[var(--admin-gold)] font-bold text-[var(--admin-navy)]"
@@ -116,7 +118,7 @@ export function AccountChrome({
         </nav>
       </header>
 
-      <main className="mx-auto max-w-[480px] px-4 pb-[calc(9.5rem+env(safe-area-inset-bottom,0px))] pt-4 sm:px-5 md:pb-28">
+      <main className="mx-auto max-w-[480px] px-4 pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] pt-4 sm:px-5 md:pb-28">
         {phoneWall ? (
           <p className="mb-3 rounded-2xl bg-[var(--admin-gold)]/25 px-4 py-3 text-sm text-[var(--admin-navy)]">
             Ajoutez un téléphone dans{" "}
@@ -130,7 +132,7 @@ export function AccountChrome({
       </main>
 
       <nav className="account-tabbar md:hidden" aria-label="Navigation compte">
-        <div className="mx-auto flex max-w-[480px] items-end justify-around px-1.5 py-2">
+        <div className="mx-auto flex h-14 max-w-[480px] items-stretch justify-around px-1.5">
           {tabs.map((tab) => {
             const active =
               "exact" in tab && tab.exact
@@ -140,22 +142,21 @@ export function AccountChrome({
               <Link
                 key={tab.href}
                 href={tab.href}
-                className={`flex min-h-12 min-w-[68px] flex-col items-center justify-center gap-1 rounded-2xl px-1 py-1 text-[11px] leading-none tracking-tight transition ${
+                aria-current={active ? "page" : undefined}
+                className={`flex min-h-11 min-w-[68px] flex-col items-center justify-center gap-0.5 px-1 text-[12px] leading-none tracking-tight transition ${
                   active
                     ? "font-bold text-[var(--admin-navy)]"
                     : "font-semibold text-[#1a2740] hover:text-[var(--admin-navy)]"
                 }`}
               >
                 <span
-                  className={`flex h-9 w-9 items-center justify-center rounded-2xl ${
-                    active
-                      ? "bg-[var(--admin-navy)] text-[var(--admin-gold)] shadow-[0_8px_16px_rgba(11,25,44,0.28)]"
-                      : "bg-[rgba(11,25,44,0.08)] text-[var(--admin-navy)]"
+                  className={`flex h-7 w-10 items-center justify-center rounded-full ${
+                    active ? "bg-[var(--admin-navy)] text-[var(--admin-gold)]" : "text-[var(--admin-navy)]"
                   }`}
                 >
                   <Icon
                     name={tab.icon}
-                    className="h-[1.35rem] w-[1.35rem]"
+                    className="h-[1.3rem] w-[1.3rem]"
                     filled={active}
                     strokeWidth={active ? 2.4 : 2.15}
                   />

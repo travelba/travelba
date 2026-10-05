@@ -3,20 +3,57 @@ import Link from "next/link";
 import { LedgerMovements } from "@/components/account/LedgerMovements";
 import { EmptyState } from "@/components/crm/ui";
 import { Icon } from "@/components/crm/icons";
-import type { ClientLedgerView } from "@/lib/crm/client-ledger";
+import type { ClientLedgerView, ClientLedgerWallet } from "@/lib/crm/client-ledger";
 import { formatMoney } from "@/lib/crm/money";
 import { siteConfig } from "@/lib/site";
+
+/** Sujet du mail « Demander un relevé », avec le nom du client quand on l’a. */
+export function statementMailto(name: string | null | undefined) {
+  const subject = name?.trim() ? `Relevé de compte — ${name.trim()}` : "Relevé de compte";
+  return `mailto:${siteConfig.contactEmail}?subject=${encodeURIComponent(subject)}`;
+}
+
+function WalletBlock({ wallet, label }: { wallet: ClientLedgerWallet; label: string }) {
+  return (
+    <div className="mt-3">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9c7c4e]">{label}</p>
+      <p className="font-display text-[1.75rem] font-bold tracking-tight text-[var(--admin-navy)]">
+        {formatMoney(wallet.balanceValue, wallet.currency)}
+      </p>
+      {wallet.remainingPct != null ? (
+        <div className="mt-3">
+          <div className="h-2.5 overflow-hidden rounded-full bg-[#e9e8e5]">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-[var(--admin-navy)] to-[var(--admin-gold)]"
+              style={{ width: `${Math.min(100, 100 - wallet.remainingPct)}%` }}
+            />
+          </div>
+          <p className="mt-1.5 text-right text-[10px] font-bold text-[#9c7c4e]">
+            {wallet.remaining > 0 ? `${Math.max(0, 100 - wallet.remainingPct)}% réglé` : "Soldé"}
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 export function ClientTransactionsPanel({
   view,
   billingHref = null,
   payments = null,
+  statementName = null,
 }: {
   view: ClientLedgerView;
   billingHref?: string | null;
   payments?: ReactNode | null;
+  /** Nom du client pour le sujet du relevé demandé par e-mail. */
+  statementName?: string | null;
 }) {
   const { member, currency, remaining, remainingPct, debits, creditCount, movements } = view;
+  const wallets: ClientLedgerWallet[] = view.wallets?.length
+    ? view.wallets
+    : [{ currency, balanceValue: view.balanceValue, debits, remaining, remainingPct, creditCount }];
+  const several = wallets.length > 1;
 
   return (
     <div className="space-y-5">
@@ -47,27 +84,13 @@ export function ClientTransactionsPanel({
           </>
         ) : (
           <>
-            <div className="mt-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9c7c4e]">
-                Encours
-              </p>
-              <p className="font-display text-[1.75rem] font-bold tracking-tight text-[var(--admin-navy)]">
-                {formatMoney(view.balanceValue, currency)}
-              </p>
-            </div>
-            {remainingPct != null ? (
-              <div className="mt-3">
-                <div className="h-2.5 overflow-hidden rounded-full bg-[#e9e8e5]">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-[var(--admin-navy)] to-[var(--admin-gold)]"
-                    style={{ width: `${Math.min(100, 100 - remainingPct)}%` }}
-                  />
-                </div>
-                <p className="mt-1.5 text-right text-[10px] font-bold text-[#9c7c4e]">
-                  {remaining > 0 ? `${Math.max(0, 100 - remainingPct)}% réglé` : "Soldé"}
-                </p>
-              </div>
-            ) : null}
+            {wallets.map((wallet) => (
+              <WalletBlock
+                key={wallet.currency}
+                wallet={wallet}
+                label={several ? `Encours ${wallet.currency.toUpperCase()}` : "Encours"}
+              />
+            ))}
             {payments ? <div className="mt-3">{payments}</div> : null}
             {billingHref ? (
               <Link
@@ -78,6 +101,13 @@ export function ClientTransactionsPanel({
                 Facturation
               </Link>
             ) : null}
+            <a
+              href={statementMailto(statementName)}
+              className="mt-2 inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-full border border-[#e5e3dc] bg-white text-[12px] font-semibold uppercase tracking-[0.06em] text-[var(--admin-navy)]"
+            >
+              <Icon name="mail" className="h-[18px] w-[18px] text-[#9c7c4e]" />
+              Demander un relevé
+            </a>
           </>
         )}
 
