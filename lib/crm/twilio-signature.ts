@@ -1,4 +1,5 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac } from "node:crypto";
+import { secretEquals } from "./secret-equals";
 
 /** Signature Twilio : HMAC-SHA1 du token sur l’URL puis les champs POST triés. */
 export function twilioRequestSignature(
@@ -22,10 +23,7 @@ export function verifyTwilioSignature(input: {
   const token = input.authToken.trim();
   if (!signature || !token || !input.url) return false;
   const expected = twilioRequestSignature(token, input.url, input.params);
-  const left = Buffer.from(signature);
-  const right = Buffer.from(expected);
-  if (left.length !== right.length) return false;
-  return timingSafeEqual(left, right);
+  return secretEquals(signature, expected);
 }
 
 export function formParams(params: URLSearchParams | Record<string, string>) {

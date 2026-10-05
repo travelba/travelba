@@ -1,3 +1,5 @@
+import { foldLetters } from "./text";
+
 export type Country = {
   iso2: string;
   iso3: string;
@@ -186,7 +188,7 @@ export const COUNTRIES: Country[] = RAW.split("\n").map((line) => {
 
 const BY_ISO2 = new Map(COUNTRIES.map((c) => [c.iso2, c]));
 const BY_ISO3 = new Map(COUNTRIES.map((c) => [c.iso3, c]));
-const BY_NAME = new Map(COUNTRIES.map((c) => [normalizeCountryKey(c.name), c]));
+const BY_NAME = new Map(COUNTRIES.map((c) => [foldLetters(c.name), c]));
 
 const PRIORITY = [
   "FR",
@@ -382,20 +384,6 @@ const DEMONYM_SUFFIXES = [
   "ish",
 ];
 
-function normalizeCountryKey(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z]/g, "");
-}
-
-export function flagEmoji(iso2: string) {
-  return iso2
-    .toUpperCase()
-    .replace(/./g, (char) => String.fromCodePoint(127397 + char.charCodeAt(0)));
-}
-
 export function flagImageUrl(iso2: string, width = 40) {
   return `https://flagcdn.com/w${width}/${iso2.toLowerCase()}.png`;
 }
@@ -417,9 +405,9 @@ export function resolveCountryCode(value: string | null | undefined): string | n
   if (MRZ_ALIASES[upper]) return MRZ_ALIASES[upper];
   if (/^[A-Z]{2}$/.test(upper) && BY_ISO2.has(upper)) return upper;
   if (/^[A-Z]{3}$/.test(upper) && BY_ISO3.has(upper)) return BY_ISO3.get(upper)!.iso2;
-  const byName = BY_NAME.get(normalizeCountryKey(raw));
+  const byName = BY_NAME.get(foldLetters(raw));
   if (byName) return byName.iso2;
-  const starts = COUNTRIES.find((c) => normalizeCountryKey(c.name).startsWith(normalizeCountryKey(raw)));
+  const starts = COUNTRIES.find((c) => foldLetters(c.name).startsWith(foldLetters(raw)));
   return starts?.iso2 || null;
 }
 
@@ -443,11 +431,11 @@ function matchCountryStem(normalized: string): string | null {
     }
   }
   const hits = COUNTRIES.filter((country) => {
-    const name = normalizeCountryKey(country.name);
+    const name = foldLetters(country.name);
     return name === stem || name.startsWith(stem);
   });
   if (hits.length === 1) return hits[0].iso2;
-  const exact = hits.filter((country) => normalizeCountryKey(country.name) === stem);
+  const exact = hits.filter((country) => foldLetters(country.name) === stem);
   return exact.length === 1 ? exact[0].iso2 : null;
 }
 
@@ -457,7 +445,7 @@ function resolveNationalityToken(value: string | null | undefined): string | nul
   if (!peeled) return null;
   const direct = resolveCountryCode(peeled);
   if (direct) return direct;
-  const key = normalizeCountryKey(peeled);
+  const key = foldLetters(peeled);
   if (!key) return null;
   if (NATIONALITY_ALIASES[key]) return NATIONALITY_ALIASES[key];
   return matchCountryStem(key);

@@ -66,10 +66,6 @@ export function hotelReplyNotices(rows: HotelReplyNoticeRow[], sinceIso: string 
     }));
 }
 
-export function visibleReplyNotices<T>(queue: T[], limit = 4) {
-  return queue.slice(0, Math.max(0, limit));
-}
-
 /** Vrai si la dernière synchro légère a plus de deux minutes, ou n’a jamais eu lieu. */
 export function shouldSyncHotelReplies(lastSyncMs: number | null, nowMs: number, gapMs = SYNC_GAP_MS) {
   if (lastSyncMs == null || !Number.isFinite(lastSyncMs)) return true;

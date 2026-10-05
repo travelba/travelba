@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { customerPliantCardCount, etaIlPliantCard, pickListedId, pickTravelConfig, pliantCardName, pliantRefusal } from "./eta-il-fee";
 import { corridorCeilingCents, ECB_SNAPSHOT, centsToEur } from "./visa-fees";
+import type { Db } from "../supabase/db";
 
 const NAME_CHARS = /^[A-Za-z0-9äöüÄÖÜ.\-]+$/;
 
@@ -105,7 +106,7 @@ test("le décompte ignore les cartes sans identifiant Pliant", async () => {
       return builder;
     },
   };
-  assert.equal(await customerPliantCardCount(supabase, "cust-synthetique"), 1);
+  assert.equal(await customerPliantCardCount(supabase as unknown as Db, "cust-synthetique"), 1);
   const empty = {
     from() {
       const builder = {
@@ -122,7 +123,7 @@ test("le décompte ignore les cartes sans identifiant Pliant", async () => {
       return builder;
     },
   };
-  assert.equal(await customerPliantCardCount(empty, "cust-synthetique"), 0);
+  assert.equal(await customerPliantCardCount(empty as unknown as Db, "cust-synthetique"), 0);
 });
 
 test("un refus Pliant reste court et sans identifiant", () => {

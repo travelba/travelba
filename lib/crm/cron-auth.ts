@@ -1,4 +1,5 @@
 import { productionOnlySecret } from "./preview-secrets";
+import { secretEquals } from "./secret-equals";
 
 export function cronSecret() {
   return productionOnlySecret(process.env.CRON_SECRET);
@@ -10,5 +11,5 @@ export function cronAuthorized(
 ) {
   const expected = secret?.trim();
   if (!expected) return false;
-  return (authorizationHeader || "") === `Bearer ${expected}`;
+  return secretEquals(authorizationHeader || "", `Bearer ${expected}`);
 }

@@ -1,7 +1,7 @@
-import { catalogRetouchJobs } from "../lib/crm/cover-catalog";
-import { readPublicCover, toCoverJpeg, toCoverWebp, writePublicCover } from "../lib/crm/cover-file";
-import { downloadCoverImage } from "../lib/crm/cover-search";
-import { retouchCoverBytes } from "../lib/crm/cover-retouch";
+import { catalogRetouchJobs } from "../../lib/crm/cover-catalog";
+import { readPublicCover, toCoverJpeg, toCoverWebp, writePublicCover } from "../../lib/crm/cover-file";
+import { downloadCoverImage } from "../../lib/crm/cover-search";
+import { retouchCoverBytes } from "../../lib/crm/cover-retouch";
 
 async function main() {
 const jobs = catalogRetouchJobs();

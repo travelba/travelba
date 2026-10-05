@@ -1,12 +1,11 @@
 import { customerPliantCardCount, etaIlPliantCard } from "./eta-il-fee";
 import { paymentHold } from "./visa-flow";
 import type { EurFx } from "./visa-fees";
+import type { Db } from "../supabase/db";
 
 type CardRow = { pliant_card_id?: string | null; ceiling_cents?: number | null };
 
-export type VisaCardDb = {
-  from: (table: string) => any;
-};
+export type VisaCardDb = Db;
 
 export type IlPliantCardResult = {
   issued: boolean;
