@@ -42,7 +42,6 @@ import { unsplashKeywordMatch } from "@/lib/crm/covers";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
 import { BookingCards } from "@/components/admin/BookingCards";
-import { HotelArrivalPanel } from "@/components/admin/HotelArrivalPanel";
 import { PliantCardDesk } from "@/components/admin/PliantCardDesk";
 import { principalGuest, stayCardFace } from "@/lib/crm/hotel-arrival";
 import type { PliantCardDraft, PliantSpendLine } from "@/lib/crm/pliant-cards";
@@ -1753,20 +1752,6 @@ export function BookingEditor({
               deadline={littleEmperors.cancellation_deadline}
               policies={littleEmperors.cancellation_policies || []}
               state={littleEmperors.state}
-            />
-          ) : null}
-          {hasHotel ? (
-            <HotelArrivalPanel
-              bookingId={booking.id}
-              items={items}
-              arrivals={arrivals}
-              holder={`${stayGuest.firstName} ${stayGuest.lastName}`.trim()}
-              cardViews={cardViews}
-              bookingStatus={booking.status}
-              currency={booking.currency}
-              registry={pliantCard}
-              spends={pliantSpends}
-              account={pliantAccount}
             />
           ) : null}
           <ServiceOfferToggles
