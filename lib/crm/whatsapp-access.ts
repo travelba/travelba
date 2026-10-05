@@ -20,5 +20,6 @@ export async function issueConciergeMagicLink(
     otpType: "magiclink",
     nextPath: "/mon-compte",
     email: clean,
+    channel: "whatsapp",
   });
 }

@@ -145,7 +145,7 @@ test("crée le modèle manquant et garde le budget à côté des SID", async () 
 });
 
 test("le 07 72 15 82 57 est un mobile français", () => {
-  assert.equal(whatsappAddress("0772158257"), "whatsapp:+33772158257");
+  assert.equal(whatsappAddress("0601020304"), "whatsapp:+33601020304");
 });
 
 test("un modèle encore en attente n’est pas envoyé", async () => {
@@ -171,6 +171,7 @@ test("un modèle approuvé part une fois, avec l’exemple Marrakech, et n’est
   delete process.env.VERCEL_ENV;
   process.env.TWILIO_ACCOUNT_SID = "ACtest";
   process.env.TWILIO_AUTH_TOKEN = "token";
+  process.env.WHATSAPP_SAMPLE_PHONE = "0601020304";
   const phones: string[] = [];
   const variables: Record<string, string>[] = [];
   let fetches = 0;
@@ -194,7 +195,7 @@ test("un modèle approuvé part une fois, avec l’exemple Marrakech, et n’est
     fetchImpl,
     deliver
   );
-  assert.deepEqual(phones, ["0772158257", "0772158257"]);
+  assert.deepEqual(phones, ["0601020304", "0601020304"]);
   assert.equal(variables.some((row) => row["1"] === "à Marrakech"), true);
   assert.equal(variables.some((row) => row["3"] === "14h40"), true);
   assert.equal(writes.length, 1);

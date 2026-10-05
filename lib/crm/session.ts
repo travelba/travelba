@@ -1,3 +1,5 @@
+import { safeInternalPath } from "./safe-path";
+
 export const SET_PASSWORD_PATH = "/connexion/mot-de-passe";
 export const ONBOARDING_PATH = "/mon-compte/bienvenue";
 export const MIN_PASSWORD_LENGTH = 8;
@@ -120,18 +122,12 @@ export function pathAfterKnownPassword(opts: {
 }) {
   if (opts.staff) return "/admin";
   if (opts.needsOnboarding) return ONBOARDING_PATH;
-  const next = opts.next || "";
+  const next = safeInternalPath(opts.next, "/mon-compte");
   const path = next.split("?")[0];
-  if (
-    path.startsWith("/") &&
-    !path.startsWith("//") &&
-    !path.startsWith("/admin") &&
-    path !== SET_PASSWORD_PATH &&
-    path !== "/connexion"
-  ) {
-    return next;
+  if (path.startsWith("/admin") || path === SET_PASSWORD_PATH || path === "/connexion") {
+    return "/mon-compte";
   }
-  return "/mon-compte";
+  return next;
 }
 
 /** Retire le drapeau sans toucher au mot de passe ni au reste des métadonnées. */
