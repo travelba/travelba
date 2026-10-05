@@ -4,6 +4,7 @@ import {
   BOOKING_ITEM_LABELS,
   countsAsCarnetCard,
   visibleServiceCopy,
+  isActiveItem,
   isExtraItemKind,
   isLedgerExpenseKind,
   type BookingItemKind,
@@ -25,7 +26,7 @@ import { coversStayRollup, isStayRollupDebit } from "@/lib/crm/ledger-display";
 import { debitBillingCompanyId } from "@/lib/crm/billing-companies";
 import { emptyToNull } from "@/lib/crm/identity";
 import { stayCurrency } from "@/lib/crm/stay-currency";
-import { agencyFeeFromGross } from "@/lib/crm/money";
+import { agencyFeeBaseAmount, agencyFeeFromGross } from "@/lib/crm/money";
 import { must } from "@/lib/crm/must";
 import { visibilityOnRequest } from "@/lib/crm/visa-flow";
 
@@ -263,11 +264,13 @@ export function bookingTotalFromItems(
     amount?: number | null;
     start_at?: string | null;
     details?: Record<string, unknown> | null;
+    lifecycle?: string | null;
   }[]
 ): number {
   let sum = 0;
-  const fareFlights = new Set(flightsInStayTotal(items));
-  for (const item of items) {
+  const active = items.filter((item) => isActiveItem(item));
+  const fareFlights = new Set(flightsInStayTotal(active));
+  for (const item of active) {
     if (!isStayAmountKind(item.kind)) continue;
     if (item.kind === "flight" && !fareFlights.has(item)) continue;
     const n = itemSellingAmount(item);
@@ -279,7 +282,7 @@ export function bookingTotalFromItems(
 
 export async function syncBookingTotalFromItems(supabase: SupabaseClient, bookingId: string) {
   const items = must(
-    await supabase.from("crm_booking_items").select("amount, kind, details, start_at").eq("booking_id", bookingId),
+    await supabase.from("crm_booking_items").select("amount, kind, details, start_at, lifecycle").eq("booking_id", bookingId),
     "Cartes du séjour"
   );
   const total = bookingTotalFromItems(items || []);
@@ -299,11 +302,46 @@ export function agencyCommissionExternalId(bookingId: string) {
   return `booking:${bookingId}:agency-commission`;
 }
 
-/** 10 % du montant du séjour, seulement si le voyage l’active et qu’il est au livre. */
+type AgencyFeeItem = {
+  kind?: string | null;
+  amount?: number | null;
+  start_at?: string | null;
+  details?: Record<string, unknown> | null;
+  lifecycle?: string | null;
+};
+
+/** Étapes actives (séjour et extras) plus dépenses. Une étape annulée ou remplacée sort. */
+export function agencyFeeBaseFromItems(items: AgencyFeeItem[]) {
+  const extras: { amount: number | null }[] = [];
+  const expenses: { amount: number | null }[] = [];
+  for (const item of items) {
+    if (!isActiveItem(item)) continue;
+    const amount = itemSellingAmount(item);
+    if (isExtraItemKind(item.kind)) extras.push({ amount });
+    else if (isLedgerExpenseKind(item.kind)) expenses.push({ amount });
+  }
+  return agencyFeeBaseAmount({
+    stayTotal: bookingTotalFromItems(items),
+    extras,
+    expenses,
+  });
+}
+
+/** Montants d’extras actifs, pour le même calcul côté affichage. */
+export function agencyFeeExtraAmounts(items: AgencyFeeItem[]) {
+  const extras: { amount: number | null }[] = [];
+  for (const item of items) {
+    if (!isActiveItem(item) || !isExtraItemKind(item.kind)) continue;
+    extras.push({ amount: itemSellingAmount(item) });
+  }
+  return extras;
+}
+
+/** 10 % de l’assiette, seulement si le voyage l’active et qu’il est au livre. */
 export function agencyCommissionAmount(input: {
   enabled: boolean;
   status: BookingStatus;
-  totalAmount: number;
+  base: number;
   visibleToClient?: boolean | null;
 }) {
   const active =
@@ -313,7 +351,7 @@ export function agencyCommissionAmount(input: {
       input.status === "travelling" ||
       input.status === "completed");
   if (!active) return 0;
-  return agencyFeeFromGross(input.totalAmount);
+  return agencyFeeFromGross(input.base);
 }
 
 export function bookingChargeExternalId(
@@ -521,10 +559,17 @@ export async function syncTicketingFee(supabase: SupabaseClient, booking: CrmBoo
 }
 
 export async function syncAgencyCommission(supabase: SupabaseClient, booking: CrmBooking) {
+  const itemRows = must(
+    await supabase
+      .from("crm_booking_items")
+      .select("amount, kind, details, start_at, lifecycle")
+      .eq("booking_id", booking.id),
+    "Assiette des frais d’agence"
+  );
   const amount = agencyCommissionAmount({
     enabled: booking.agency_commission === true,
     status: booking.status,
-    totalAmount: Number(booking.total_amount || 0),
+    base: agencyFeeBaseFromItems(itemRows || []),
     visibleToClient: booking.visible_to_client,
   });
   const externalId = agencyCommissionExternalId(booking.id);
@@ -714,7 +759,7 @@ export async function syncBookingTitleFromSteps(supabase: SupabaseClient, bookin
   if (!booking) return "";
   const { data: items } = await supabase
     .from("crm_booking_items")
-    .select("id, kind, title, start_at, end_at, sort_order, details")
+    .select("id, kind, title, start_at, end_at, sort_order, details, lifecycle")
     .eq("booking_id", bookingId);
   const next = stayTitleFromItems(
     booking.title,
@@ -741,8 +786,8 @@ export async function refreshTicketingFee(supabase: SupabaseClient, bookingId: s
   await refreshBookingLedger(supabase, bookingId);
 }
 
-export function canPublishCarnet(items: { kind: string }[]) {
-  return items.some((item) => countsAsCarnetCard(item.kind));
+export function canPublishCarnet(items: { kind: string; lifecycle?: string | null }[]) {
+  return items.some((item) => isActiveItem(item) && countsAsCarnetCard(item.kind));
 }
 
 /**
@@ -776,7 +821,7 @@ export async function setCarnetPublished(
   if (!visible) return;
   const { data: rows, error: rowsError } = await supabase
     .from("crm_booking_items")
-    .select("id, kind, details")
+    .select("id, kind, details, lifecycle")
     .eq("booking_id", bookingId);
   if (rowsError) throw new Error(rowsError.message);
   const typedRows = (rows || []) as {

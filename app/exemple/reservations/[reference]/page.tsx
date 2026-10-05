@@ -22,8 +22,9 @@ import {
 import { collectableTicketingFee, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
 import { stayTitleFromItems } from "@/lib/crm/staff-stay";
 import { withoutHotelRosterItems } from "@/lib/crm/hotel-contact";
+import { agencyFeeExtraAmounts } from "@/lib/crm/bookings";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
-import { isLedgerExpenseKind } from "@/lib/crm/types";
+import { isActiveItem, isLedgerExpenseKind } from "@/lib/crm/types";
 import { findVisaExtra, visaProposed } from "@/lib/crm/extras";
 import { EXAMPLE_BASE, EXAMPLE_REFERENCE } from "@/lib/crm/example-session";
 import { readExample } from "@/lib/crm/example-store";
@@ -73,18 +74,20 @@ export default async function ExampleReservationPage({ params }: Props) {
     travelerCount: party.length,
   });
   const expenseChoices = visibleItems
-    .filter((item) => isLedgerExpenseKind(item.kind))
+    .filter((item) => isActiveItem(item) && isLedgerExpenseKind(item.kind))
     .map((item) => ({
       id: item.id,
       title: item.title,
       amount: item.amount == null ? null : Number(item.amount),
     }));
+  const feeExtras = agencyFeeExtraAmounts(session.items);
   const expenseLines = clientStayExpenseLines({
     expenses: expenseChoices,
     agencyCommission: b.agency_commission === true,
     stayTotal: Number(b.total_amount),
     currency: b.currency,
     pricesVisible: b.prices_visible !== false,
+    extras: feeExtras,
     ticketingFee,
     ticketCount,
   });
@@ -214,6 +217,7 @@ export default async function ExampleReservationPage({ params }: Props) {
               pricesVisible: b.prices_visible !== false,
               agencyCommission: b.agency_commission === true,
               expenses: expenseChoices,
+              extras: feeExtras,
               ticketingFee,
             })}
           </p>

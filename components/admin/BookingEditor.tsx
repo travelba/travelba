@@ -7,6 +7,7 @@ import {
   BOOKING_STATUSES,
   BOOKING_STATUS_LABELS,
   customerFullName,
+  isActiveItem,
   isLedgerExpenseKind,
   type CrmBooking,
   type CrmBookingCard,
@@ -26,7 +27,7 @@ import { BusyBar } from "@/components/crm/BusyBar";
 import { formatMoney, jMinusLabel, todayIsoDate } from "@/lib/crm/money";
 import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
-import { bookingTotalFromItems } from "@/lib/crm/bookings";
+import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
 import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
 import { collectableTicketingFee } from "@/lib/crm/ticketing-fee";
 import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
@@ -417,9 +418,13 @@ export function BookingEditor({
         cardOk = await Promise.race([
           saveOpenCard.current().catch(() => false),
           new Promise<boolean>((resolve) => {
-            window.setTimeout(() => resolve(false), 12000);
+            window.setTimeout(() => resolve(false), 25000);
           }),
         ]);
+        if (!cardOk) {
+          setFlash("Les étapes n’ont pas été enregistrées. Le séjour n’a pas changé.");
+          return;
+        }
       }
       const res = await fetch(`/api/admin/bookings/${booking.id}`, {
         method: "PATCH",
@@ -435,11 +440,9 @@ export function BookingEditor({
       }
       setIssues([]);
       setFlash(
-        cardOk
-          ? booking.visible_to_client
-            ? "Enregistré."
-            : "Enregistré. Le client ne voit pas encore ce séjour."
-          : "Titre enregistré. L’étape ouverte n’a pas été enregistrée."
+        booking.visible_to_client
+          ? "Enregistré."
+          : "Enregistré. Le client ne voit pas encore ce séjour."
       );
       router.refresh();
     } catch {
@@ -701,7 +704,8 @@ export function BookingEditor({
   const stayAmount = stayPriceWithExpenses({
     stayTotal: bookingTotalFromItems(items),
     agencyCommission: booking.agency_commission === true,
-    expenses: items.filter((item) => isLedgerExpenseKind(item.kind)),
+    expenses: items.filter((item) => isActiveItem(item) && isLedgerExpenseKind(item.kind)),
+    extras: agencyFeeExtraAmounts(items),
     ticketingFee: collectableTicketingFee({
       status: booking.status,
       hasFlight,
@@ -1645,7 +1649,6 @@ export function BookingEditor({
         status={booking.status}
         currency={booking.currency}
         agencyCommission={booking.agency_commission === true}
-        stayTotal={bookingTotalFromItems(items)}
       />
       </div>
         </>

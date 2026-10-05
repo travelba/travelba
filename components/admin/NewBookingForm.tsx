@@ -254,7 +254,7 @@ function ManualNewBookingForm({
         <span>
           Appliquer la commission de 10 %
           <span className="mt-0.5 block text-xs font-normal text-muted">
-            Ajoute 10 % du montant du séjour aux dépenses. Le virement reçu reste crédité en entier.
+            10 % des étapes et des dépenses de cette réservation. Une ligne dans les transactions, qui suit les ajouts et les retraits.
           </span>
         </span>
       </label>

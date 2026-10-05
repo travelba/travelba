@@ -24,13 +24,35 @@ export function centsToAmount(cents: number) {
   return cents / 100;
 }
 
-/** Commission d’agence : 10 % du montant du séjour, si le voyage l’active. */
+/** Commission d’agence : 10 % des étapes et des dépenses, si le voyage l’active. */
 export const AGENCY_FEE_RATE = 0.1;
 
 export function agencyFeeFromGross(gross: number) {
   const n = Number(gross);
   if (!Number.isFinite(n) || n <= 0) return 0;
   return Math.round(n * AGENCY_FEE_RATE * 100) / 100;
+}
+
+function addPositiveAmounts(sum: number, rows: { amount: number | null }[] | undefined) {
+  for (const row of rows || []) {
+    const amount = Number(row.amount);
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    sum += amount;
+  }
+  return sum;
+}
+
+/** Assiette des 10 % : étapes (montant du séjour + extras) et dépenses. Hors billeterie. */
+export function agencyFeeBaseAmount(input: {
+  stayTotal: number;
+  expenses?: { amount: number | null }[];
+  extras?: { amount: number | null }[];
+}) {
+  const stay = Number(input.stayTotal);
+  let sum = Number.isFinite(stay) && stay > 0 ? stay : 0;
+  sum = addPositiveAmounts(sum, input.extras);
+  sum = addPositiveAmounts(sum, input.expenses);
+  return Math.round(sum * 100) / 100;
 }
 
 export function netAfterAgencyFee(gross: number) {

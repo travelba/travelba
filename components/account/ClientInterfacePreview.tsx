@@ -29,6 +29,7 @@ import {
 } from "@/lib/crm/carnet";
 import { stayTitleFromItems } from "@/lib/crm/staff-stay";
 import { findVisaExtra, visaProposed, type ServiceRefusal } from "@/lib/crm/extras";
+import { agencyFeeExtraAmounts } from "@/lib/crm/bookings";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
@@ -38,6 +39,7 @@ import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import type { ShareCompanion } from "@/lib/crm/trip-share";
 import {
+  isActiveItem,
   isLedgerExpenseKind,
   visibleServiceCopy,
   type CrmBooking,
@@ -262,8 +264,9 @@ function ClientScreen({
   const headline = stayTitleFromItems(booking.title, booking.destination, items);
   const placeLine = tripPlaceLine(headline, booking.destination);
   const formalities = frenchPassportTrip(items, travelers.length);
+  const feeExtras = agencyFeeExtraAmounts(allItems);
   const expenseChoices = allItems
-    .filter((item) => isLedgerExpenseKind(item.kind))
+    .filter((item) => isActiveItem(item) && isLedgerExpenseKind(item.kind))
     .map((item) => ({
       id: item.id,
       title: visibleServiceCopy(item.title),
@@ -286,6 +289,7 @@ function ClientScreen({
     stayTotal: Number(booking.total_amount),
     currency: booking.currency,
     pricesVisible,
+    extras: feeExtras,
     ticketingFee,
     ticketCount,
   });
@@ -454,6 +458,7 @@ function ClientScreen({
                     pricesVisible,
                     agencyCommission: booking.agency_commission === true,
                     expenses: expenseChoices,
+                    extras: feeExtras,
                     ticketingFee,
                   })}
                 </p>

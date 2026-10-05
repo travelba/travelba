@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
 import { collectableTicketingFee } from "@/lib/crm/ticketing-fee";
-import { isLedgerExpenseKind } from "@/lib/crm/types";
+import { isActiveItem, isExtraItemKind, isLedgerExpenseKind } from "@/lib/crm/types";
 
 type StayRow = {
   id: string;
@@ -10,27 +10,30 @@ type StayRow = {
   agency_commission?: boolean | null;
 };
 
-type StayItemRow = { kind: string; amount: number | string | null };
+type StayItemRow = { kind: string; amount: number | string | null; lifecycle?: string | null };
 
 /**
  * Montant lu par le client : cartes + commission d’agence + billetterie + dépenses libres.
- * Une seule formule pour la liste, le détail et l’aperçu.
+ * Les 10 % portent sur les étapes et les dépenses. Une seule formule pour la liste, le détail et l’aperçu.
  */
 export function displayedStayAmount(
   booking: Pick<StayRow, "status" | "total_amount" | "agency_commission">,
   items: StayItemRow[],
   travelerCount: number
 ) {
-  const expenses = items
-    .filter((item) => isLedgerExpenseKind(item.kind))
-    .map((item) => ({ amount: item.amount == null ? null : Number(item.amount) }));
+  const active = items.filter((item) => isActiveItem(item));
+  const amounts = (kind: (value: string | null | undefined) => boolean) =>
+    active
+      .filter((item) => kind(item.kind))
+      .map((item) => ({ amount: item.amount == null ? null : Number(item.amount) }));
   return stayPriceWithExpenses({
     stayTotal: Number(booking.total_amount),
     agencyCommission: booking.agency_commission === true,
-    expenses,
+    expenses: amounts(isLedgerExpenseKind),
+    extras: amounts(isExtraItemKind),
     ticketingFee: collectableTicketingFee({
       status: booking.status,
-      hasFlight: items.some((item) => item.kind === "flight"),
+      hasFlight: active.some((item) => item.kind === "flight"),
       travelerCount,
     }),
   });
@@ -43,12 +46,21 @@ export async function loadDisplayedStayAmounts(supabase: SupabaseClient, booking
   if (bookings.length) {
     const ids = bookings.map((booking) => booking.id);
     const [{ data }, { data: travelerRows }] = await Promise.all([
-      supabase.from("crm_booking_items").select("booking_id, kind, amount").in("booking_id", ids).in("kind", ["expense", "flight"]),
+      supabase
+        .from("crm_booking_items")
+        .select("booking_id, kind, amount, lifecycle")
+        .in("booking_id", ids)
+        .in("kind", ["expense", "flight", "chauffeur", "greeter", "visa", "checkin"]),
       supabase.from("crm_booking_travelers").select("booking_id").in("booking_id", ids),
     ]);
-    for (const row of (data || []) as { booking_id: string; kind: string; amount: number | null }[]) {
+    for (const row of (data || []) as {
+      booking_id: string;
+      kind: string;
+      amount: number | null;
+      lifecycle?: string | null;
+    }[]) {
       const list = itemsByBooking.get(row.booking_id) || [];
-      list.push({ kind: row.kind, amount: row.amount });
+      list.push({ kind: row.kind, amount: row.amount, lifecycle: row.lifecycle });
       itemsByBooking.set(row.booking_id, list);
     }
     for (const row of (travelerRows || []) as { booking_id: string }[]) {

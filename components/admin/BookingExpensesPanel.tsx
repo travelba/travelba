@@ -6,6 +6,7 @@ import { BusyBar } from "@/components/crm/BusyBar";
 import { LedgerWarningNotice } from "@/components/crm/LedgerWarningNotice";
 import { Field, MoneyInput, fieldControlClass } from "@/components/crm/fields";
 import { readLedgerWarning } from "@/lib/crm/ledger-warning";
+import { agencyFeeBaseFromItems } from "@/lib/crm/bookings";
 import { agencyFeeFromGross, formatMoney } from "@/lib/crm/money";
 import {
   AGENCY_FEE_LABEL,
@@ -25,14 +26,12 @@ export function BookingExpensesPanel({
   status,
   currency = "EUR",
   agencyCommission = false,
-  stayTotal = 0,
 }: {
   bookingId: string;
   items: CrmBookingItem[];
   status: BookingStatus;
   currency?: string;
   agencyCommission?: boolean;
-  stayTotal?: number;
 }) {
   const router = useRouter();
   const expenses = items.filter((item) => isLedgerExpenseKind(item.kind));
@@ -150,7 +149,7 @@ export function BookingExpensesPanel({
     router.refresh();
   }
 
-  const commissionAmount = agencyFeeFromGross(stayTotal);
+  const commissionAmount = agencyFeeFromGross(agencyFeeBaseFromItems(items));
 
   const form = editingId ? (
     <div className="mt-3 space-y-3 rounded-2xl border border-border p-3">
@@ -211,7 +210,7 @@ export function BookingExpensesPanel({
         <span>
           Appliquer la commission de 10 %
           <span className="mt-0.5 block text-xs font-normal text-muted">
-            10 % du montant du séjour, ajoutés aux dépenses. Le virement reçu reste crédité en entier.
+            10 % des étapes et des dépenses de cette réservation. Une ligne dans les transactions, qui suit les ajouts et les retraits.
           </span>
         </span>
       </label>
@@ -230,7 +229,7 @@ export function BookingExpensesPanel({
             <p className="text-xs text-muted">
               {formatMoney(commissionAmount, currency)}
               {" · "}
-              Calculée sur le montant du séjour
+              Calculée sur les étapes et les dépenses
               {postsNow(status) ? "" : " · débit à la confirmation"}
             </p>
           </div>

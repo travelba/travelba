@@ -1,4 +1,4 @@
-import { agencyFeeFromGross } from "@/lib/crm/money";
+import { agencyFeeBaseAmount, agencyFeeFromGross } from "@/lib/crm/money";
 
 export { amountToCents } from "@/lib/crm/money";
 
@@ -116,6 +116,8 @@ export function paymentSlips(input: {
   clientSettlesStay: boolean;
   pricesVisible: boolean;
   expenses: { amount: number | null }[];
+  /** Extras (chauffeur, VIP, visa, enregistrement) : dans les 10 %, pas dans le séjour encaissé. */
+  extras?: { amount: number | null }[];
   /** Frais de billeterie déjà dus au grand livre. Même facture que les autres frais. */
   ticketingFee?: number;
   stayKind: PayerKind;
@@ -127,8 +129,14 @@ export function paymentSlips(input: {
   const stay = Number(input.stayTotal);
   const stayBase = input.clientSettlesStay || !Number.isFinite(stay) || stay <= 0 ? 0 : roundMoney(stay);
   let fees = 0;
-  if (input.agencyCommission && Number.isFinite(stay) && stay > 0) {
-    fees += agencyFeeFromGross(stay);
+  if (input.agencyCommission) {
+    fees += agencyFeeFromGross(
+      agencyFeeBaseAmount({
+        stayTotal: Number.isFinite(stay) ? stay : 0,
+        expenses: input.expenses,
+        extras: input.extras,
+      })
+    );
   }
   for (const expense of input.expenses) {
     const amount = Number(expense.amount);
@@ -205,6 +213,7 @@ export function collectableStayAmount(input: {
   clientSettlesStay: boolean;
   pricesVisible: boolean;
   expenses: { amount: number | null }[];
+  extras?: { amount: number | null }[];
 }) {
   const payable = paymentSlips({
     ...input,

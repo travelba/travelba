@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   agencyCommissionAmount,
+  agencyFeeBaseFromItems,
   agencyCommissionExternalId,
   bookingDebitIntent,
   bookingExpenseDebitExternalId,
@@ -66,7 +67,7 @@ test("un confirmé caché ne débite pas, un devis montré non plus", () => {
     agencyCommissionAmount({
       enabled: true,
       status: "confirmed",
-      totalAmount: 1000,
+      base: 1000,
       visibleToClient: false,
     }),
     0
@@ -226,38 +227,38 @@ test("la devise du séjour reste EUR USD CHF ou GBP, même si le formulaire envo
   assert.equal(bookingMetaPatch({ currency: "JPY" }).currency, "EUR");
 });
 
-test("la commission est 10 % du séjour seulement quand le voyage l’active", () => {
+test("la commission est 10 % de l’assiette seulement quand le voyage l’active", () => {
   assert.equal(agencyCommissionExternalId("b1"), "booking:b1:agency-commission");
   assert.equal(
-    agencyCommissionAmount({ enabled: true, status: "confirmed", totalAmount: 1000 }),
+    agencyCommissionAmount({ enabled: true, status: "confirmed", base: 1000 }),
     100
   );
   assert.equal(
-    agencyCommissionAmount({ enabled: true, status: "travelling", totalAmount: 1700 }),
+    agencyCommissionAmount({ enabled: true, status: "travelling", base: 1700 }),
     170
   );
   assert.equal(
-    agencyCommissionAmount({ enabled: true, status: "completed", totalAmount: 80.5 }),
+    agencyCommissionAmount({ enabled: true, status: "completed", base: 80.5 }),
     8.05
   );
   assert.equal(
-    agencyCommissionAmount({ enabled: false, status: "confirmed", totalAmount: 1000 }),
+    agencyCommissionAmount({ enabled: false, status: "confirmed", base: 1000 }),
     0
   );
   assert.equal(
-    agencyCommissionAmount({ enabled: true, status: "draft", totalAmount: 1000 }),
+    agencyCommissionAmount({ enabled: true, status: "draft", base: 1000 }),
     0
   );
   assert.equal(
-    agencyCommissionAmount({ enabled: true, status: "quoted", totalAmount: 1000 }),
+    agencyCommissionAmount({ enabled: true, status: "quoted", base: 1000 }),
     0
   );
   assert.equal(
-    agencyCommissionAmount({ enabled: true, status: "cancelled", totalAmount: 1000 }),
+    agencyCommissionAmount({ enabled: true, status: "cancelled", base: 1000 }),
     0
   );
   assert.equal(
-    agencyCommissionAmount({ enabled: true, status: "completed", totalAmount: 0 }),
+    agencyCommissionAmount({ enabled: true, status: "completed", base: 0 }),
     0
   );
   assert.equal(bookingMetaPatch({ agency_commission: "on" }).agency_commission, true);
@@ -329,13 +330,72 @@ test("quand le client règle le séjour, le montant et l’hôtel sortent du liv
     false
   );
   assert.equal(
-    agencyCommissionAmount({ enabled: true, status: "confirmed", totalAmount: 1700 }),
+    agencyCommissionAmount({ enabled: true, status: "confirmed", base: 1700 }),
     170
   );
   assert.equal(ticketingFeeAmount({ hasFlight: true, travelerCount: 4 }), 100);
   assert.equal(
     stayIncludedInLedger({ include_in_ledger: true, client_settles_stay: false }),
     true
+  );
+});
+
+test("les frais d’agence suivent les étapes actives et les dépenses", () => {
+  assert.equal(
+    agencyFeeBaseFromItems([
+      { kind: "hotel", amount: 2000 },
+      { kind: "flight", amount: 800 },
+    ]),
+    2800
+  );
+  assert.equal(
+    agencyFeeBaseFromItems([
+      { kind: "hotel", amount: 2000 },
+      { kind: "flight", amount: 800 },
+      { kind: "expense", amount: 400 },
+    ]),
+    3200
+  );
+  assert.equal(
+    agencyFeeBaseFromItems([
+      { kind: "hotel", amount: 2000 },
+      { kind: "expense", amount: 400 },
+      { kind: "chauffeur", amount: 150 },
+      { kind: "greeter", amount: 80 },
+      { kind: "hotel", amount: 900, lifecycle: "cancelled" },
+      { kind: "expense", amount: 50, lifecycle: "superseded" },
+    ]),
+    2630
+  );
+  assert.equal(
+    agencyFeeBaseFromItems([
+      {
+        kind: "flight",
+        amount: 800,
+        start_at: "2026-08-01T08:00:00",
+        details: { from: "CDG", to: "RAK" },
+      },
+      {
+        kind: "flight",
+        amount: 800,
+        start_at: "2026-08-08T18:00:00",
+        details: { from: "RAK", to: "CDG" },
+      },
+      { kind: "expense", amount: 100 },
+    ]),
+    900
+  );
+  assert.equal(
+    agencyCommissionAmount({
+      enabled: true,
+      status: "confirmed",
+      base: agencyFeeBaseFromItems([
+        { kind: "hotel", amount: 2000 },
+        { kind: "flight", amount: 800 },
+        { kind: "expense", amount: 400 },
+      ]),
+    }),
+    320
   );
 });
 
@@ -393,5 +453,13 @@ test("stay total is always the sum of card selling prices", () => {
       { kind: "flight", amount: 350, start_at: "2026-08-03", details: { from: "CDG", to: "LIS" } },
     ]),
     750
+  );
+  assert.equal(
+    bookingTotalFromItems([
+      { kind: "hotel", amount: 900, lifecycle: "superseded" },
+      { kind: "hotel", amount: 900, lifecycle: "active" },
+      { kind: "hotel", amount: 400, lifecycle: "cancelled" },
+    ]),
+    900
   );
 });

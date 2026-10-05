@@ -57,7 +57,7 @@ test("le montant à régler laisse le séjour hors agence et garde la commission
       pricesVisible: true,
       expenses: [{ amount: 40 }],
     }),
-    1140
+    1144
   );
   assert.equal(
     collectableStayAmount({
@@ -67,7 +67,7 @@ test("le montant à régler laisse le séjour hors agence et garde la commission
       pricesVisible: true,
       expenses: [{ amount: 40 }],
     }),
-    140
+    144
   );
   assert.equal(
     collectableStayAmount({
@@ -95,7 +95,7 @@ test("une même facture tient en une carte, une autre facture en deux", () => {
   const one = paymentSlips({ ...shared, feesFollowStay: true });
   assert.equal(one.length, 1);
   assert.equal(one[0]?.slice, "stay");
-  assert.equal(one[0]?.amount, 1140);
+  assert.equal(one[0]?.amount, 1144);
   assert.equal(one[0]?.kind, "company");
 
   const two = paymentSlips({ ...shared, feesFollowStay: false });
@@ -103,7 +103,7 @@ test("une même facture tient en une carte, une autre facture en deux", () => {
     two.map((slip) => [slip.slice, slip.kind, slip.amount, slip.payable]),
     [
       ["stay", "company", 1000, true],
-      ["fees", "personal", 140, true],
+      ["fees", "personal", 144, true],
     ]
   );
   assert.equal(slipMention("personal", "Horizon"), "Sans facture société");
@@ -156,7 +156,7 @@ test("l’hôtel hors agence ne s’encaisse pas, les frais si", () => {
   assert.equal(slips[1]?.slice, "fees");
   assert.equal(slips[1]?.kind, "company");
   assert.equal(slips[1]?.companyId, "a");
-  assert.equal(slips[1]?.amount, 140);
+  assert.equal(slips[1]?.amount, 144);
   assert.equal(resolveFeesFollowStay({ stayKind: "personal", requested: false, companyCount: 0 }), true);
 });
 

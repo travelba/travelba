@@ -222,7 +222,7 @@ test("le prix du séjour ajoute les frais d’agence et les dépenses libres", (
       agencyCommission: true,
       expenses: [{ amount: 40 }, { amount: null }, { amount: 0 }],
     }),
-    1140
+    1144
   );
   assert.equal(
     stayPriceWithExpenses({
@@ -234,7 +234,17 @@ test("le prix du séjour ajoute les frais d’agence et les dépenses libres", (
   );
   assert.equal(
     stayPriceWithExpenses({ stayTotal: 0, agencyCommission: true, expenses: [{ amount: 40 }] }),
-    40
+    44
+  );
+  assert.equal(
+    stayPriceWithExpenses({
+      stayTotal: 2000,
+      agencyCommission: true,
+      expenses: [],
+      extras: [{ amount: 150 }],
+      ticketingFee: 100,
+    }),
+    2315
   );
   assert.equal(
     stayPriceWithExpenses({
@@ -264,7 +274,7 @@ test("le prix du séjour ajoute les frais d’agence et les dépenses libres", (
       agencyCommission: true,
       expenses: [{ amount: 40 }],
     }),
-    formatMoney(1140, "EUR")
+    formatMoney(1144, "EUR")
   );
   assert.equal(
     clientStayPriceLabel({
@@ -293,7 +303,7 @@ test("la réservation client liste les frais d’agence puis les dépenses libre
     lines.map((line) => line.title),
     [AGENCY_FEE_LABEL, "Pourboire"]
   );
-  assert.equal(lines[0]?.amountLabel, formatMoney(agencyFeeFromGross(1000), "EUR"));
+  assert.equal(lines[0]?.amountLabel, formatMoney(agencyFeeFromGross(1050), "EUR"));
   assert.equal(lines[1]?.amountLabel, formatMoney(40, "EUR"));
   // Prix masqué : la ligne de dépense n’affiche rien, « Prix à la publication » reste au bloc Montant.
   assert.equal(

@@ -78,6 +78,15 @@ export function countsAsCarnetCard(kind: string | null | undefined) {
   return Boolean(kind) && kind !== "fee" && !isLedgerExpenseKind(kind) && !isExtraItemKind(kind);
 }
 
+export const ITEM_LIFECYCLES = ["active", "superseded", "cancelled"] as const;
+
+export type ItemLifecycle = (typeof ITEM_LIFECYCLES)[number];
+
+/** Une carte sans cycle, ou active, compose le séjour. Remplacée ou annulée : hors total et hors carnet. */
+export function isActiveItem(item: { lifecycle?: string | null }) {
+  return item.lifecycle !== "superseded" && item.lifecycle !== "cancelled";
+}
+
 export const DOC_TYPES = [
   "passport",
   "id_card",
@@ -125,7 +134,7 @@ export function filterCreditTransfers<T extends { direction: string; kind: strin
   return rows.filter(isCreditTransfer);
 }
 
-/** Libellé ledger de la commission 10 % sur le montant du séjour. */
+/** Libellé ledger de la commission 10 % sur les étapes et les dépenses de la réservation. */
 export const AGENCY_FEE_LABEL = "Frais d’agence 10 %";
 
 export type CrmStaff = {
@@ -243,7 +252,7 @@ export type CrmBooking = {
   total_amount: number;
   /** Si false : montant du séjour affiché au carnet, pas au grand livre. */
   include_in_ledger: boolean;
-  /** Si true : 10 % du montant du séjour en dépense du dossier. */
+  /** Si true : 10 % des étapes et des dépenses, en une ligne du dossier. */
   agency_commission?: boolean;
   /** Si true : le client règle le séjour sur sa carte. Le montant sort du grand livre. */
   client_settles_stay?: boolean;
@@ -289,6 +298,10 @@ export type CrmBookingItem = {
   details: Record<string, unknown>;
   visible_to_client: boolean;
   source_document_id: string | null;
+  /** active, ou archivée (remplacée / annulée). Absent = active. */
+  lifecycle?: ItemLifecycle | null;
+  /** Carte qui a pris la suite, quand lifecycle = superseded. */
+  superseded_by?: string | null;
   created_at: string;
   updated_at: string;
 };

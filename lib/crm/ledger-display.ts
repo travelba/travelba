@@ -1,5 +1,5 @@
 import { HIDDEN_PRICE_LABEL } from "@/lib/crm/carnet";
-import { agencyFeeFromGross, formatMoney } from "@/lib/crm/money";
+import { agencyFeeBaseAmount, agencyFeeFromGross, formatMoney } from "@/lib/crm/money";
 import { ticketingFeeLabel } from "@/lib/crm/ticketing-fee";
 import { AGENCY_FEE_LABEL, visibleServiceCopy } from "@/lib/crm/types";
 
@@ -103,17 +103,27 @@ export type ClientExpenseLine = {
 
 /**
  * Prix lu sur la réservation : cartes + frais d’agence + billeterie + dépenses libres.
- * L’assiette stockée (`total_amount`) reste la somme des cartes.
+ * Les 10 % portent sur les étapes (séjour + extras) et les dépenses, pas sur la billeterie.
+ * L’assiette stockée (`total_amount`) reste la somme des cartes du séjour.
  */
 export function stayPriceWithExpenses(input: {
   stayTotal: number;
   agencyCommission: boolean;
   expenses: { amount: number | null }[];
+  extras?: { amount: number | null }[];
   ticketingFee?: number;
 }) {
   const stay = Number(input.stayTotal);
   let sum = Number.isFinite(stay) ? stay : 0;
-  if (input.agencyCommission) sum += agencyFeeFromGross(sum);
+  if (input.agencyCommission) {
+    sum += agencyFeeFromGross(
+      agencyFeeBaseAmount({
+        stayTotal: sum,
+        expenses: input.expenses,
+        extras: input.extras,
+      })
+    );
+  }
   for (const expense of input.expenses) {
     const amount = Number(expense.amount);
     if (!Number.isFinite(amount) || amount <= 0) continue;
@@ -130,6 +140,7 @@ export function clientStayPriceLabel(input: {
   pricesVisible: boolean;
   agencyCommission: boolean;
   expenses: { amount: number | null }[];
+  extras?: { amount: number | null }[];
   ticketingFee?: number;
 }) {
   if (!input.pricesVisible) return HIDDEN_PRICE_LABEL;
@@ -143,6 +154,7 @@ export function clientStayExpenseLines(input: {
   stayTotal: number;
   currency: string;
   pricesVisible: boolean;
+  extras?: { amount: number | null }[];
   ticketingFee?: number;
   ticketCount?: number;
 }): ClientExpenseLine[] {
@@ -151,7 +163,17 @@ export function clientStayExpenseLines(input: {
     lines.push({
       id: "agency-commission",
       title: AGENCY_FEE_LABEL,
-      amountLabel: expenseAmountLabel(agencyFeeFromGross(input.stayTotal), input.currency, input.pricesVisible),
+      amountLabel: expenseAmountLabel(
+        agencyFeeFromGross(
+          agencyFeeBaseAmount({
+            stayTotal: input.stayTotal,
+            expenses: input.expenses,
+            extras: input.extras,
+          })
+        ),
+        input.currency,
+        input.pricesVisible
+      ),
     });
   }
   const ticketing = Number(input.ticketingFee);
