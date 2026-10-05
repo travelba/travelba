@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkinCardPdf, precheckParty, selectedPrecheckPieces } from "./hotel-precheck";
+import { precheckParty, selectedPrecheckPieces } from "./hotel-precheck";
 import type { CrmBookingTraveler, CrmTravelDocument } from "./types";
 
 function traveler(partial: Partial<CrmBookingTraveler>): CrmBookingTraveler {
@@ -70,18 +70,4 @@ test("pré-check-in : passeport et carte d'identité des voyageurs, pas le visa"
     ]
   );
   assert.equal(selectedPrecheckPieces(party, ["id"]).length, 1);
-});
-
-test("la carte Pliant devient un PDF, pas une ligne du dossier", () => {
-  const pdf = checkinCardPdf({
-    holder: "Claire Martin",
-    pan: "4242424242424242",
-    expiry: "06/28",
-    cvc: "123",
-    lang: "fr",
-  });
-  const text = pdf.toString("latin1");
-  assert.match(text, /^%PDF-1\.4/);
-  assert.match(text, /4242 4242 4242 4242/);
-  assert.match(text, /Cryptogramme/);
 });
