@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readdir } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import type { ExtractedIdentity } from "./identity";
@@ -18,11 +18,17 @@ function tesseractInstalled() {
 
 const tesseractAvailable = tesseractInstalled();
 
+/**
+ * Vrais passeports scannés : jamais dans le dépôt, ni les PDF ni les valeurs attendues.
+ * Le dossier contient les PDF et `expected.json` (tableau d’`Expectation`), sur la machine
+ * qui les a reçus. Sans eux, le test est sauté.
+ */
 const FIXTURE_DIR =
   process.env.TRAVELBA_PASSPORT_DIR ||
   "/home/ubuntu/.cursor/projects/workspace/uploads";
 
 type Expectation = {
+  /** Fin du nom de fichier du PDF dans FIXTURE_DIR. */
   suffix: string;
   people: Array<{
     first_name: string;
@@ -40,122 +46,10 @@ type Expectation = {
     address_line?: string | null;
     postal_code?: string | null;
     city?: string | null;
+    /** Ordres de prénoms à ne jamais renvoyer (ligne hébraïque lue à l’envers, etc.). */
+    not_first_names?: string[];
   }>;
 };
-
-const EXPECTED: Expectation[] = [
-  {
-    suffix: "02ee.pdf",
-    people: [
-      {
-        first_name: "Lyelle Jeanne Arlette",
-        last_name: "Deddouch",
-        number: "43325975",
-        nationality: "IL",
-        issuing_country: "IL",
-        birth_date: "2011-02-10",
-        expires_on: "2031-06-10",
-        sex: "F",
-        issued_on: "2026-06-11",
-        place_of_birth: "FRANCE",
-        authority: "JERUSALEM",
-        personal_number: "3-4130259-4",
-      },
-    ],
-  },
-  {
-    suffix: "e675.pdf",
-    people: [
-      {
-        first_name: "Olga Eve",
-        last_name: "Deddouch",
-        number: "43328182",
-        nationality: "IL",
-        issuing_country: "IL",
-        birth_date: "1976-06-18",
-        expires_on: "2036-06-10",
-        sex: "F",
-        issued_on: "2026-06-11",
-        place_of_birth: "FRANCE",
-        authority: "JERUSALEM",
-        personal_number: "3-4130258-6",
-      },
-    ],
-  },
-  {
-    suffix: "b579.pdf",
-    people: [
-      {
-        first_name: "Elina Rachel",
-        last_name: "Deddouch",
-        number: "43000652",
-        nationality: "IL",
-        issuing_country: "IL",
-        birth_date: "2005-09-01",
-        expires_on: "2036-04-08",
-        sex: "F",
-        issued_on: "2026-04-09",
-        place_of_birth: "FRANCE",
-        authority: "JERUSALEM",
-        personal_number: "3-4130261-0",
-      },
-    ],
-  },
-  {
-    suffix: "0c59.pdf",
-    people: [
-      {
-        first_name: "Benoit",
-        last_name: "Deddouch",
-        number: "23AF45891",
-        nationality: "FR",
-        issuing_country: "FR",
-        birth_date: "1977-12-14",
-        expires_on: "2033-01-18",
-        sex: "M",
-        issued_on: "2023-01-19",
-        place_of_birth: "PARIS 20E ARRONDISSEMENT",
-        authority: "TEL AVIV - CONSULAT GENERAL DE FRANCE",
-        address_line: "22 RUE MENDELE MOCHER SFORIM",
-        postal_code: "4670921",
-        city: "HERZLYA",
-      },
-    ],
-  },
-  {
-    suffix: "20f7.pdf",
-    people: [
-      {
-        first_name: "Orène Wilhem Benjamin",
-        last_name: "Deddouch",
-        number: "43450083",
-        nationality: "IL",
-        issuing_country: "IL",
-        birth_date: "2007-08-17",
-        expires_on: "2036-06-29",
-        sex: "M",
-        issued_on: null,
-        authority: "JERUSALEM",
-        personal_number: "3-4130260-2",
-      },
-      {
-        first_name: "Orène Wilhem Benjamin",
-        last_name: "Deddouch",
-        number: "25HA65836",
-        nationality: "FR",
-        issuing_country: "FR",
-        birth_date: "2007-08-17",
-        expires_on: "2035-10-14",
-        sex: "M",
-        issued_on: "2025-10-15",
-        place_of_birth: "PARIS 12E ARRONDISSEMENT",
-        address_line: "22 RUE MENDELE MOCHER SFORIM",
-        postal_code: "4670921",
-        city: "HERZLYA",
-      },
-    ],
-  },
-];
 
 function assertPerson(row: ExtractedIdentity, expected: Expectation["people"][number]) {
   assert.equal(row.first_name, expected.first_name);
@@ -176,12 +70,20 @@ function assertPerson(row: ExtractedIdentity, expected: Expectation["people"][nu
   if (expected.address_line) assert.equal(row.address_line, expected.address_line);
   if (expected.postal_code) assert.equal(row.postal_code, expected.postal_code);
   if (expected.city) assert.equal(row.city, expected.city);
-  assert.notEqual(row.first_name, "Arlette Jeanne Lyelle");
-  assert.notEqual(row.first_name, "Benjamin Wilhem Orène");
+  for (const wrong of expected.not_first_names || []) assert.notEqual(row.first_name, wrong);
+}
+
+async function readExpectations(): Promise<Expectation[] | null> {
+  try {
+    const parsed = JSON.parse(await readFile(join(FIXTURE_DIR, "expected.json"), "utf8")) as unknown;
+    return Array.isArray(parsed) ? (parsed as Expectation[]) : null;
+  } catch {
+    return null;
+  }
 }
 
 test(
-  "passport scans keep Latin given-name order",
+  "real passport scans match their expected identities",
   { skip: tesseractAvailable ? false : "tesseract absent : binaire système requis (apt install tesseract-ocr)" },
   async (t) => {
     let names: string[] = [];
@@ -191,8 +93,12 @@ test(
       t.skip("passport fixtures absent");
       return;
     }
-    const { readFile } = await import("node:fs/promises");
-    for (const spec of EXPECTED) {
+    const expectations = await readExpectations();
+    if (!expectations?.length) {
+      t.skip("expected.json absent du dossier des passeports (TRAVELBA_PASSPORT_DIR)");
+      return;
+    }
+    for (const spec of expectations) {
       const file = names.find((name) => name.endsWith(spec.suffix));
       if (!file) {
         t.skip(`missing ${spec.suffix}`);

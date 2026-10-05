@@ -25,62 +25,62 @@ function td3Line(doc: string, nat: string, birth: string, sex: string, exp: stri
 
 test("Latin given-name order stays, a reversed or Hebrew line does not replace it", () => {
   const rows = identitiesFromPassportOcr(
-    ["P<FRADUPONT<<LYELLE<JEANNE<ARLETTE<<<<<<<<<<<<<<", td3Line("12AB34567", "FRA", "900402", "M", "280312", "")].join(
+    ["P<FRADUPONT<<MAELLE<LOUISE<ROSALIE<<<<<<<<<<<<<<", td3Line("12AB34567", "FRA", "900402", "M", "280312", "")].join(
       "\n"
     ),
-    "Given name Arlette Jeanne Lyelle\nארלט ז'אן ליאל"
+    "Given name Rosalie Louise Maelle\nרוזלי לואיז מאל"
   );
   assert.equal(rows.length, 1);
   assert.equal(rows[0].last_name, "Dupont");
-  assert.equal(rows[0].first_name, "Lyelle Jeanne Arlette");
+  assert.equal(rows[0].first_name, "Maelle Louise Rosalie");
 });
 
 test("a check-digit collision keeps the number read on the left of the MRZ", () => {
-  const collided = td3Line("65450083", "ISR", "070817", "M", "360629", "3<4130260<2");
+  const collided = td3Line("17720094", "ISR", "080522", "M", "340814", "3<5207719<4");
   const rows = identitiesFromPassportOcr(
-    ["PPISRDEDDOUCH<<ORENE<WILHEM<BENJAMIN<<<<<<<<", collided, "P43450083<1"].join("\n"),
-    "Given name Orène Wilhem Benjamin"
+    ["PPISRDELACOUR<<HELIE<GASPAR<AUGUSTIN<<<<<<<<", collided, "P51720094<4"].join("\n"),
+    "Given name Hélie Gaspar Augustin"
   );
   assert.equal(rows.length, 1);
-  assert.equal(rows[0].number, "43450083");
-  assert.equal(rows[0].first_name, "Orène Wilhem Benjamin");
+  assert.equal(rows[0].number, "51720094");
+  assert.equal(rows[0].first_name, "Hélie Gaspar Augustin");
 });
 
 test("a glare digit does not replace a check-digit-valid MRZ number", () => {
   const rows = identitiesFromPassportOcr(
     [
-      "PPISRDEDDOUCH<<LYELLE<JEANNE<ARLETTE<<<<<<<<<<<",
-      td3Line("43325975<", "ISR", "110210", "F", "310610", "3<4130259<4"),
+      "PPISRDELACOUR<<MAELLE<LOUISE<ROSALIE<<<<<<<<<<<",
+      td3Line("51834267<", "ISR", "120305", "F", "300317", "3<5207718<6"),
     ].join("\n"),
-    "Passport No. 43325976\nI.D. No. 8-4130259-4\nGiven name Arlette Jeanne Lyelle"
+    "Passport No. 51834268\nI.D. No. 8-5207718-6\nGiven name Rosalie Louise Maelle"
   );
   assert.equal(rows.length, 1);
-  assert.equal(rows[0].number, "43325975");
-  assert.equal(rows[0].personal_number, "3-4130259-4");
-  assert.equal(rows[0].last_name, "Deddouch");
-  assert.equal(rows[0].first_name, "Lyelle Jeanne Arlette");
+  assert.equal(rows[0].number, "51834267");
+  assert.equal(rows[0].personal_number, "3-5207718-6");
+  assert.equal(rows[0].last_name, "Delacour");
+  assert.equal(rows[0].first_name, "Maelle Louise Rosalie");
   assert.equal(rows[0].nationality, "IL");
 });
 
 test("a split OCR day is still the issue date", () => {
-  const identity = { ...emptyIdentity(), birth_date: "2011-02-10", expires_on: "2031-06-10" };
-  assert.equal(readIssueDate("1 1/06/2026\n10/06/2031", identity), "2026-06-11");
-  assert.equal(readIssueDate("1 | 1/06/2026\n10/06/2036", { ...identity, expires_on: "2036-06-10" }), "2026-06-11");
-  assert.equal(readIssueDate("Holder 1 { 1/06/2026\n10/06/2036", { ...identity, expires_on: "2036-06-10" }), "2026-06-11");
-  assert.equal(readIssueDate("11 1068/2026\n10/06/2031", identity), "2026-06-11");
-  const french = { ...emptyIdentity(), birth_date: "2007-08-17", expires_on: "2035-10-14" };
-  assert.equal(readIssueDate("15 10.2025\n14 10 2035", french), "2025-10-15");
+  const identity = { ...emptyIdentity(), birth_date: "2012-03-05", expires_on: "2030-03-17" };
+  assert.equal(readIssueDate("1 8/03/2025\n17/03/2030", identity), "2025-03-18");
+  assert.equal(readIssueDate("1 | 8/03/2025\n17/03/2035", { ...identity, expires_on: "2035-03-17" }), "2025-03-18");
+  assert.equal(readIssueDate("Holder 1 { 8/03/2025\n17/03/2035", { ...identity, expires_on: "2035-03-17" }), "2025-03-18");
+  assert.equal(readIssueDate("18 1038/2025\n17/03/2030", identity), "2025-03-18");
+  const french = { ...emptyIdentity(), birth_date: "2008-05-22", expires_on: "2034-11-26" };
+  assert.equal(readIssueDate("27 11.2024\n26 11 2034", french), "2024-11-27");
 });
 
 test("the postal code next to the street wins over a glare digit", () => {
   const domicile = readDomicile(
-    "4470921 HERZLYA 22 RUE MENDELE MOCHER SFORIM 4670921 HERZLYA"
+    "4410287 HERZLYA 8 RUE DES OLIVIERS 4610287 HERZLYA"
   );
-  assert.equal(domicile.postal_code, "4670921");
+  assert.equal(domicile.postal_code, "4610287");
   assert.equal(domicile.city, "HERZLYA");
-  assert.equal(domicile.address_line, "22 RUE MENDELE MOCHER SFORIM");
-  const postalOnly = readDomicile("MOCHER stORIM 4670921 HERZLYA");
-  assert.equal(postalOnly.postal_code, "4670921");
+  assert.equal(domicile.address_line, "8 RUE DES OLIVIERS");
+  const postalOnly = readDomicile("DES OLlVIERS 4610287 HERZLYA");
+  assert.equal(postalOnly.postal_code, "4610287");
   assert.equal(postalOnly.city, "HERZLYA");
   assert.equal(postalOnly.address_line, null);
 });
@@ -88,17 +88,17 @@ test("the postal code next to the street wins over a glare digit", () => {
 test("French MRZ fragments keep printed given-name order and accents", () => {
   const rows = identitiesFromPassportOcr(
     [
-      "EEFRADEDDOUCH<<ORENE<WILHEM<BEN",
-      "UCH<<ORENE<WILHEM<BENJAMIN<<<<<<<<",
-      "Y25HA658560FRA0708177M3510144<<<<<<<<<<<<<<06",
+      "EEFRADELACOUR<<HELIE<GASPAR<AUG",
+      "OUR<<HELIE<GASPAR<AUGUSTIN<<<<<<<<",
+      "Y24KD718560FRA0805227M3411263<<<<<<<<<<<<<<00",
     ].join("\n"),
-    "Prénoms Orène, Wilhem, Benjamin\n25HA65836"
+    "Prénoms Hélie, Gaspar, Augustin\n24KD71836"
   );
   assert.equal(rows.length, 1);
-  assert.equal(rows[0].last_name, "Deddouch");
-  assert.equal(rows[0].first_name, "Orène Wilhem Benjamin");
-  assert.equal(rows[0].number, "25HA65836");
+  assert.equal(rows[0].last_name, "Delacour");
+  assert.equal(rows[0].first_name, "Hélie Gaspar Augustin");
+  assert.equal(rows[0].number, "24KD71836");
   assert.equal(rows[0].nationality, "FR");
-  assert.equal(rows[0].birth_date, "2007-08-17");
-  assert.equal(rows[0].expires_on, "2035-10-14");
+  assert.equal(rows[0].birth_date, "2008-05-22");
+  assert.equal(rows[0].expires_on, "2034-11-26");
 });

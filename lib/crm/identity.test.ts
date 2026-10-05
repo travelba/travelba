@@ -34,26 +34,26 @@ test("la liste la plus complète l’emporte si l’ordre est conservé", () => 
 
 test("l’ordre latin prime, l’hébreu ne retourne pas les prénoms", () => {
   assert.equal(
-    completeGivenNames("Lyelle Jeanne Arlette", "Arlette Jeanne Lyelle"),
-    "Lyelle Jeanne Arlette"
+    completeGivenNames("Maelle Louise Rosalie", "Rosalie Louise Maelle"),
+    "Maelle Louise Rosalie"
   );
   assert.equal(
-    completeGivenNames("Lyelle Jeanne Arlette", "ארלט ז'אן ליאל Arlette Jeanne Lyelle"),
-    "Lyelle Jeanne Arlette"
+    completeGivenNames("Maelle Louise Rosalie", "רוזלי לואיז מאל Rosalie Louise Maelle"),
+    "Maelle Louise Rosalie"
   );
-  assert.equal(completeGivenNames("Lyelle Jeanne Arlette", "ליאל ז'אן ארלט"), "Lyelle Jeanne Arlette");
-  assert.deepEqual(givenNameTokens("ליאל Lyelle Jeanne"), ["Lyelle", "Jeanne"]);
-  assert.deepEqual(givenNameTokens("OLGA EVE GGG"), ["Olga", "Eve"]);
-  assert.equal(completeGivenNames("Orene Wilhem Benjamin", "Orène"), "Orène Wilhem Benjamin");
-  assert.equal(completeGivenNames("Orene Wilhem Benjamin", "Orèn"), "Orène Wilhem Benjamin");
+  assert.equal(completeGivenNames("Maelle Louise Rosalie", "מאל לואיז רוזלי"), "Maelle Louise Rosalie");
+  assert.deepEqual(givenNameTokens("מאל Maelle Louise"), ["Maelle", "Louise"]);
+  assert.deepEqual(givenNameTokens("CLAIRE EVE GGG"), ["Claire", "Eve"]);
+  assert.equal(completeGivenNames("Helie Gaspar Augustin", "Hélie"), "Hélie Gaspar Augustin");
+  assert.equal(completeGivenNames("Helie Gaspar Augustin", "Héli"), "Hélie Gaspar Augustin");
   assert.equal(
-    completeGivenNames("Orene Wilhem Benjamin", "Benjamin, Wilhem, Orène"),
-    "Orène Wilhem Benjamin"
+    completeGivenNames("Helie Gaspar Augustin", "Augustin, Gaspar, Hélie"),
+    "Hélie Gaspar Augustin"
   );
   assert.equal(completeGivenNames("Benolt", "Benoit"), "Benoit");
   assert.equal(completeGivenNames("Benolt", "Nationalité Benoit"), "Benoit");
-  assert.equal(completeGivenNames("Wilhem", "Wilhe"), "Wilhem");
-  assert.equal(completeGivenNames("Orene", "Orenec"), "Orene");
+  assert.equal(completeGivenNames("Gaspar", "Gaspa"), "Gaspar");
+  assert.equal(completeGivenNames("Helie", "Heliec"), "Helie");
 });
 
 test("l’accueil ne garde que le premier prénom", () => {
