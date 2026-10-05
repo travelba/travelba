@@ -218,7 +218,6 @@ export function BookingEditor({
   const [coverOpen, setCoverOpen] = useState(false);
   const tab = bookingTabFromParam(searchParams.get("tab"));
   const [more, setMore] = useState(false);
-  const [hotelCardOpen, setHotelCardOpen] = useState(false);
   const [coverNotice, setCoverNotice] = useState<string | null>(null);
   const arrival = coverQuery(booking.destination, booking.title);
   const coverPlace = arrival === "voyage" ? "" : arrival;
@@ -1737,35 +1736,18 @@ export function BookingEditor({
             />
           ) : null}
           {hasHotel ? (
-            <section className="admin-af-card space-y-3 rounded-3xl p-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Carte pour l’hôtel</h2>
-                  <p className="text-sm text-muted">Elle se prépare avec le séjour.</p>
-                </div>
-                <button
-                  type="button"
-                  className="rounded-full border border-border px-4 py-2 text-sm font-semibold"
-                  onClick={() => setHotelCardOpen((open) => !open)}
-                >
-                  {hotelCardOpen ? "Fermer" : "Voir"}
-                </button>
-              </div>
-              {hotelCardOpen ? (
-                <HotelArrivalPanel
-                  bookingId={booking.id}
-                  items={items}
-                  arrivals={arrivals}
-                  holder={`${stayGuest.firstName} ${stayGuest.lastName}`.trim()}
-                  cardViews={cardViews}
-                  bookingStatus={booking.status}
-                  currency={booking.currency}
-                  registry={pliantCard}
-                  spends={pliantSpends}
-                  account={pliantAccount}
-                />
-              ) : null}
-            </section>
+            <HotelArrivalPanel
+              bookingId={booking.id}
+              items={items}
+              arrivals={arrivals}
+              holder={`${stayGuest.firstName} ${stayGuest.lastName}`.trim()}
+              cardViews={cardViews}
+              bookingStatus={booking.status}
+              currency={booking.currency}
+              registry={pliantCard}
+              spends={pliantSpends}
+              account={pliantAccount}
+            />
           ) : null}
           <ServiceOfferToggles
             bookingId={booking.id}

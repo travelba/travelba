@@ -351,6 +351,24 @@ export async function unlockPliantCard(cardId: string) {
   if (!ok) throw new Error("Pliant n’a pas débloqué la carte.");
 }
 
+/** Suppression définitive. Pliant refuse ensuite tout paiement. */
+export async function terminatePliantCard(cardId: string) {
+  const token = await accessToken();
+  const res = await fetch(`${endpoints().api}/cards/${encodeURIComponent(cardId)}/terminate`, {
+    method: "POST",
+    signal: AbortSignal.timeout(PLIANT_TIMEOUT_MS),
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+      "Pliant-API-Version": "2.1.0",
+    },
+    body: JSON.stringify({ reason: "OTHER" }),
+  });
+  if (res.ok || res.status === 404) return;
+  console.error("[pliant] carte", "terminate", res.status);
+  throw new Error("Pliant n’a pas supprimé la carte.");
+}
+
 async function pliantCardAction(cardId: string, action: "lock" | "unlock") {
   const token = await accessToken();
   const res = await fetch(`${endpoints().api}/cards/${encodeURIComponent(cardId)}/${action}`, {

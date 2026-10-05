@@ -28,6 +28,29 @@ export function BookingCards({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  async function act(cardRowId: string, action: "lock" | "unlock" | "terminate", failure: string) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/bookings/${bookingId}/cards`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action, itemId: cardRowId }),
+      });
+      const json = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) {
+        setError(json?.error || failure);
+        return;
+      }
+      router.refresh();
+    } catch {
+      setError(failure);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (busy) return;
@@ -101,7 +124,6 @@ export function BookingCards({
               />
             </label>
           </div>
-          {error ? <p className="text-sm text-[#8a3b2b]">{error}</p> : null}
           <button
             type="submit"
             className="rounded-full bg-[#0B192C] px-4 py-2 text-sm font-semibold text-[#faf9f6] disabled:opacity-50"
@@ -111,15 +133,18 @@ export function BookingCards({
           </button>
         </form>
       </section>
-      {cards.length ? (
+      {cards.some((card) => card.status !== "terminated") ? (
         <ul className="space-y-4">
-          {cards.map((card) => (
+          {cards
+            .filter((card) => card.status !== "terminated")
+            .map((card) => (
             <li key={card.id} className="admin-af-card space-y-3 rounded-3xl p-5">
               <div>
                 <p className="font-display text-lg font-extrabold tracking-tight text-[var(--admin-navy)]">{card.label}</p>
                 <p className="text-sm text-[var(--admin-navy)]/70">
                   {formatMoney(card.limit_cents / 100, card.currency || "EUR")} · du {formatDateFr(card.valid_from)} au{" "}
                   {formatDateFr(card.valid_to)}
+                  {card.status === "locked" ? " · bloquée" : ""}
                 </p>
               </div>
               <StayCard
@@ -132,13 +157,42 @@ export function BookingCards({
                   closed: false,
                 })}
                 revealUrl={`/api/admin/bookings/${bookingId}/cards`}
+                locked={card.status === "locked"}
               />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={busy}
+                  className="rounded-full border border-[#0B192C] px-4 py-2 text-sm font-semibold text-[#0B192C] disabled:opacity-60"
+                  onClick={() =>
+                    void act(
+                      card.id,
+                      card.status === "locked" ? "unlock" : "lock",
+                      card.status === "locked" ? "Pliant n’a pas débloqué la carte." : "Pliant n’a pas bloqué la carte."
+                    )
+                  }
+                >
+                  {card.status === "locked" ? "Débloquer la carte" : "Bloquer la carte"}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  className="rounded-full border border-[#8a3b2b] px-4 py-2 text-sm font-semibold text-[#8a3b2b] disabled:opacity-60"
+                  onClick={() => {
+                    if (!window.confirm("Supprimer cette carte ? Elle ne pourra plus payer.")) return;
+                    void act(card.id, "terminate", "Pliant n’a pas supprimé la carte.");
+                  }}
+                >
+                  Supprimer la carte
+                </button>
+              </div>
             </li>
           ))}
         </ul>
       ) : (
         <p className="text-sm text-[var(--admin-navy)]/70">Aucune carte sur ce dossier.</p>
       )}
+      {error ? <p className="text-sm text-[#8a3b2b]">{error}</p> : null}
     </div>
   );
 }

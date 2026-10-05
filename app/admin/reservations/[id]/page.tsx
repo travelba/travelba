@@ -105,7 +105,9 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
   let bookingCards: CrmBookingCard[] = [];
   const { data: cardRows, error: cardError } = await supabase
     .from("crm_booking_cards")
-    .select("id, booking_id, pliant_card_id, label, first_name, last_name, limit_cents, currency, valid_from, valid_to, created_at")
+    .select(
+      "id, booking_id, pliant_card_id, label, first_name, last_name, limit_cents, currency, valid_from, valid_to, status, created_at"
+    )
     .eq("booking_id", id)
     .order("created_at", { ascending: true });
   if (!cardError && cardRows) bookingCards = cardRows as CrmBookingCard[];

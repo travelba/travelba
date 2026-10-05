@@ -2,7 +2,7 @@ import "server-only";
 
 import { parisIsoDate } from "./hotel-arrival";
 import { bookingCardValidity, manualStayCardDraft, sameCardNameCount } from "./manual-stay-card";
-import { issuePliantCard, pliantConfigured } from "./pliant";
+import { issuePliantCard, lockPliantCard, pliantConfigured, terminatePliantCard, unlockPliantCard } from "./pliant";
 import type { Db } from "../supabase/db";
 
 type Admin = Db;
@@ -58,4 +58,42 @@ export async function issueBookingCard(
   });
   if (error) throw new Error("La carte a été créée, mais le dossier ne l’a pas enregistrée.");
   return { ok: true as const };
+}
+
+async function bookingCardRow(admin: Admin, bookingId: string, cardRowId: string) {
+  const { data } = await admin
+    .from("crm_booking_cards")
+    .select("id, pliant_card_id, status")
+    .eq("booking_id", bookingId)
+    .eq("id", cardRowId)
+    .maybeSingle();
+  const row = data as { id: string; pliant_card_id: string; status?: string | null } | null;
+  if (!row?.pliant_card_id) throw new Error("Carte introuvable.");
+  if (row.status === "terminated") throw new Error("Cette carte est déjà supprimée.");
+  return row;
+}
+
+export async function setBookingCardLocked(admin: Admin, bookingId: string, cardRowId: string, locked: boolean) {
+  if (!pliantConfigured()) throw new Error("Pliant n'est pas branché.");
+  const row = await bookingCardRow(admin, bookingId, cardRowId);
+  if (locked) await lockPliantCard(row.pliant_card_id);
+  else await unlockPliantCard(row.pliant_card_id);
+  const { error } = await admin
+    .from("crm_booking_cards")
+    .update({ status: locked ? "locked" : "active" })
+    .eq("id", row.id)
+    .eq("booking_id", bookingId);
+  if (error) throw new Error("Pliant a répondu, mais le dossier n’a pas enregistré le blocage.");
+}
+
+export async function terminateBookingCard(admin: Admin, bookingId: string, cardRowId: string) {
+  if (!pliantConfigured()) throw new Error("Pliant n'est pas branché.");
+  const row = await bookingCardRow(admin, bookingId, cardRowId);
+  await terminatePliantCard(row.pliant_card_id);
+  const { error } = await admin
+    .from("crm_booking_cards")
+    .update({ status: "terminated" })
+    .eq("id", row.id)
+    .eq("booking_id", bookingId);
+  if (error) throw new Error("Pliant a supprimé la carte, mais le dossier la montre encore.");
 }

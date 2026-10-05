@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
-import { issueBookingCard } from "@/lib/crm/booking-cards";
+import { issueBookingCard, setBookingCardLocked, terminateBookingCard } from "@/lib/crm/booking-cards";
 import { pliantConfigured, pliantPciWidget } from "@/lib/crm/pliant";
 import { createServiceClient } from "@/lib/supabase/admin";
 
@@ -31,6 +31,18 @@ export async function POST(request: Request, ctx: Ctx) {
       return NextResponse.json({ ok: true });
     } catch (error) {
       return jsonError(error instanceof Error ? error.message : "La carte n’a pas pu être créée.", 400);
+    }
+  }
+
+  if (action === "lock" || action === "unlock" || action === "terminate") {
+    const cardRowId = (body?.itemId || "").trim();
+    if (!cardRowId) return jsonError("Carte introuvable.", 404);
+    try {
+      if (action === "terminate") await terminateBookingCard(admin, id, cardRowId);
+      else await setBookingCardLocked(admin, id, cardRowId, action === "lock");
+      return NextResponse.json({ ok: true });
+    } catch (error) {
+      return jsonError(error instanceof Error ? error.message : "La carte n’a pas pu être mise à jour.", 400);
     }
   }
 
