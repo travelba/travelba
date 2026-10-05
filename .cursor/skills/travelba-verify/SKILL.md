@@ -20,7 +20,7 @@ npm run build
 
 Pas de script `test` npm : `node --test` (modules en imports relatifs, pas `@/` dans les tests — voir `ingest-types` / `carnet`).
 
-`npm run lint` si ESLint touche les fichiers édités.
+`npm run lint` avant de pousser : la CI le rend bloquant (`--max-warnings=0`), un seul avertissement fait échouer la PR. Un `<img>` voulu prend `// eslint-disable-next-line @next/next/no-img-element -- raison`.
 
 Prod build local : `npm run start` (port 3000). Ne pas laisser un zombie `next-server` + un second start.
 
