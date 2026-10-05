@@ -227,9 +227,16 @@ export function documentLabel(doc: CrmBookingDocument, items: CrmBookingItem[]) 
 }
 
 /** Pièces publiées qui ne sont rattachées à aucune carte : à lister à part dans le carnet client. */
+/**
+ * Pièces à lister en bas de la réservation : celles qu’aucune des cartes passées (les cartes
+ * visibles) ne montre déjà. Une pièce rattachée à une carte cachée au client reste listée ici.
+ */
 export function unlinkedDocuments(docs: CrmBookingDocument[], items: CrmBookingItem[]) {
   const linked = new Set(items.map((item) => item.source_document_id).filter(Boolean));
-  return docs.filter((doc) => !linked.has(doc.id) && !doc.booking_item_id);
+  const shownIds = new Set(items.map((item) => item.id));
+  return docs.filter(
+    (doc) => !linked.has(doc.id) && !(doc.booking_item_id && shownIds.has(doc.booking_item_id))
+  );
 }
 
 export function documentsForItem(item: CrmBookingItem, docs: CrmBookingDocument[]) {
@@ -316,6 +323,14 @@ export function carnetVisible(
 
 /** Une seule phrase partout où un prix est masqué au client. */
 export const HIDDEN_PRICE_LABEL = "Prix à la publication";
+
+/** Ligne d’assurance du bloc Montant : « Assurance {titre} », sauf si le titre le dit déjà. */
+export function insuranceLineLabel(title: string | null | undefined) {
+  const text = (title || "").trim();
+  if (!text) return "Assurance";
+  if (/assurance/i.test(text)) return text;
+  return `Assurance ${text}`;
+}
 
 export function itemPriceLabel(
   item: Pick<CrmBookingItem, "kind" | "start_at" | "end_at" | "amount"> & {

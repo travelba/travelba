@@ -353,3 +353,56 @@ test("sans la carte en double, le séjour réapparaît et le pourcentage suit le
   assert.match(html, /TB-2026-0038/);
   assert.equal(html.includes("Répartition"), false);
 });
+
+test("un encours par devise, l’euro reste la devise principale", () => {
+  const view = shapeClientLedger({
+    companyRole: null,
+    travelerBookingIds: [],
+    walletBalance: -300,
+    currency: "EUR",
+    audience: "client",
+    bookings: [],
+    wallets: [
+      { currency: "USD", balance: -1200 },
+      { currency: "EUR", balance: -300 },
+    ],
+    rows: [
+      tx({ id: "eur-debit", direction: "debit", kind: "booking", amount: 500, label: "Séjour" }),
+      tx({ id: "eur-credit", direction: "credit", kind: "transfer", amount: 200, label: "Virement" }),
+      tx({ id: "usd-debit", direction: "debit", kind: "booking", amount: 1200, currency: "USD", label: "Hôtel" }),
+    ],
+  });
+  assert.equal(view.currency, "EUR");
+  assert.deepEqual(
+    view.wallets.map((wallet) => [wallet.currency, wallet.balanceValue, wallet.remaining, wallet.remainingPct, wallet.creditCount]),
+    [
+      ["USD", -1200, 1200, 100, 0],
+      ["EUR", -300, 300, 60, 1],
+    ]
+  );
+  const html = renderToStaticMarkup(createElement(ClientTransactionsPanel, { view, statementName: "Camille Morel" }));
+  assert.match(html, /Encours USD/);
+  assert.match(html, /Encours EUR/);
+  assert.ok(html.includes(formatMoney(-1200, "USD")));
+  assert.ok(html.includes(formatMoney(-300, "EUR")));
+  assert.match(html, /Demander un relevé/);
+  assert.match(html, /Relev%C3%A9%20de%20compte%20%E2%80%94%20Camille%20Morel/);
+});
+
+test("sans liste de soldes, la vue garde un seul encours", () => {
+  const view = shapeClientLedger({
+    companyRole: null,
+    travelerBookingIds: [],
+    walletBalance: 80,
+    currency: "EUR",
+    audience: "client",
+    bookings: [],
+    rows: [],
+  });
+  assert.equal(view.wallets.length, 1);
+  assert.equal(view.wallets[0].currency, "EUR");
+  assert.equal(view.wallets[0].balanceValue, 80);
+  const html = renderToStaticMarkup(createElement(ClientTransactionsPanel, { view }));
+  assert.equal(html.includes("Encours EUR"), false);
+  assert.match(html, /Encours/);
+});

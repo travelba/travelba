@@ -7,6 +7,7 @@ import { siteConfig } from "@/lib/site";
 import { BrandMark } from "@/components/crm/ui";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { MIN_PASSWORD_LENGTH, pathAfterPassword } from "@/lib/crm/session";
+import { postJson } from "@/lib/crm/client-fetch";
 
 const fieldClass =
   "w-full rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-3 text-[var(--admin-navy)] outline-none focus:border-[var(--admin-gold)] focus:bg-white focus:ring-2 focus:ring-[var(--admin-gold)]/30";
@@ -22,26 +23,29 @@ export function SetPasswordForm({ desk = "client" }: { desk?: "client" | "agence
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
+    if (loading) return;
     setLoading(true);
     setError(null);
-    const res = await fetch("/api/client/password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password, confirm }),
-    });
-    const json = await res.json().catch(() => ({}));
-    setLoading(false);
-    if (res.status === 401) {
-      setExpired(true);
-      setError("Votre session a expiré. Demandez un nouveau lien de connexion.");
-      return;
+    try {
+      const result = await postJson<{ next?: string; needsPhone?: boolean }>("/api/client/password", {
+        password,
+        confirm,
+      });
+      if (result.status === 401) {
+        setExpired(true);
+        setError("Votre session a expiré. Demandez un nouveau lien de connexion.");
+        return;
+      }
+      if (!result.ok) {
+        setError(result.error || "Impossible d’enregistrer le mot de passe. Réessayez.");
+        return;
+      }
+      const json = result.data || {};
+      router.push(json.next || pathAfterPassword(json.needsPhone ? "" : "1", agence ? "staff" : "client"));
+      router.refresh();
+    } finally {
+      setLoading(false);
     }
-    if (!res.ok) {
-      setError(json.error || "Impossible d’enregistrer le mot de passe");
-      return;
-    }
-    router.push(json.next || pathAfterPassword(json.needsPhone ? "" : "1", agence ? "staff" : "client"));
-    router.refresh();
   }
 
   return (

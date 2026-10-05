@@ -5,16 +5,18 @@ export function PassportCoffre({
   rows,
   hrefFor,
   embedded = false,
+  title = "Coffre",
 }: {
   rows: PassportVaultRow[];
   hrefFor: (row: PassportVaultRow) => string | null;
   /** Dans un bloc déjà cadré, sans seconde carte. */
   embedded?: boolean;
+  title?: string;
 }) {
   if (!rows.length) return null;
   const body = (
     <>
-      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#C5A880]">Coffre</p>
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#C5A880]">{title}</p>
       <ul className="mt-3 space-y-2">
         {rows.map((row) => {
           const href = row.tone === "ok" ? null : hrefFor(row);

@@ -9,7 +9,17 @@ import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { BookingStatusBadge } from "@/components/crm/ui";
 import { VisaSection } from "@/components/crm/VisaSection";
-import { carnetVisible, clientBookingStatusLabel, clientVisibleItems, itemPriceLabel, tripPlaceLine, whatsappModifyHref } from "@/lib/crm/carnet";
+import {
+  carnetVisible,
+  clientBookingStatusLabel,
+  clientVisibleItems,
+  insuranceLineLabel,
+  itemPriceLabel,
+  tripPlaceLine,
+  unlinkedDocuments,
+  whatsappModifyHref,
+} from "@/lib/crm/carnet";
+import { collectableTicketingFee, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
 import { stayTitleFromItems } from "@/lib/crm/staff-stay";
 import { withoutHotelRosterItems } from "@/lib/crm/hotel-contact";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
@@ -52,18 +62,31 @@ export default async function ExampleReservationPage({ params }: Props) {
   const placeLine = tripPlaceLine(headline, b.destination);
   const missingCount = coverage.total - coverage.ready;
   const formalities = frenchPassportTrip(visibleItems, party.length);
+  // Même formule que la page réelle : commission + billetterie + dépenses.
+  const ticketCount = ticketingTicketCount({
+    hasFlight: session.items.some((item) => item.kind === "flight"),
+    travelerCount: party.length,
+  });
+  const ticketingFee = collectableTicketingFee({
+    status: b.status,
+    hasFlight: ticketCount > 0,
+    travelerCount: party.length,
+  });
+  const expenseChoices = visibleItems
+    .filter((item) => isLedgerExpenseKind(item.kind))
+    .map((item) => ({
+      id: item.id,
+      title: item.title,
+      amount: item.amount == null ? null : Number(item.amount),
+    }));
   const expenseLines = clientStayExpenseLines({
-    expenses: visibleItems
-      .filter((item) => isLedgerExpenseKind(item.kind))
-      .map((item) => ({
-        id: item.id,
-        title: item.title,
-        amount: item.amount == null ? null : Number(item.amount),
-      })),
+    expenses: expenseChoices,
     agencyCommission: b.agency_commission === true,
     stayTotal: Number(b.total_amount),
     currency: b.currency,
     pricesVisible: b.prices_visible !== false,
+    ticketingFee,
+    ticketCount,
   });
 
   return (
@@ -71,7 +94,7 @@ export default async function ExampleReservationPage({ params }: Props) {
       intro={
         <>
           <Link href={`${EXAMPLE_BASE}/reservations`} className="inline-flex text-sm font-semibold text-[var(--aura-blue)]">
-            ← Mes réservations
+            ← Réservations
           </Link>
 
           <BookingHero booking={pub} items={withoutHotelRosterItems(session.items)} priority className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]">
@@ -190,19 +213,19 @@ export default async function ExampleReservationPage({ params }: Props) {
               currency: b.currency,
               pricesVisible: b.prices_visible !== false,
               agencyCommission: b.agency_commission === true,
-              expenses: visibleItems
-                .filter((item) => isLedgerExpenseKind(item.kind))
-                .map((item) => ({ amount: item.amount })),
+              expenses: expenseChoices,
+              ticketingFee,
             })}
           </p>
-          {insurances.map((item) => (
-            <p key={item.id} className="text-sm text-muted">
-              Assurance {item.title}
-              {itemPriceLabel(item, b.currency, null, b.prices_visible !== false)
-                ? ` · ${itemPriceLabel(item, b.currency, null, b.prices_visible !== false)}`
-                : ""}
-            </p>
-          ))}
+          {insurances.map((item) => {
+            const price = b.prices_visible !== false ? itemPriceLabel(item, b.currency, null, true) : null;
+            return (
+              <p key={item.id} className="text-sm text-muted">
+                {insuranceLineLabel(item.title)}
+                {price ? ` · ${price}` : ""}
+              </p>
+            );
+          })}
         </section>
       }
       expenses={expenseLines.length ? <StayExpenses lines={expenseLines} /> : null}
@@ -210,7 +233,7 @@ export default async function ExampleReservationPage({ params }: Props) {
         <>
           <ReservationFiles
             showPassports={false}
-            attachments={attachmentPreviews([], visibleItems, b.reference)}
+            attachments={attachmentPreviews(unlinkedDocuments([], visibleItems), visibleItems, b.reference)}
           />
           <a
             href={modifyHref}
