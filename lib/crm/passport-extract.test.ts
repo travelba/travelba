@@ -312,25 +312,25 @@ test("uniquePassports drops a duplicate number", () => {
 });
 
 test("Israeli personal number keeps the printed hyphens", () => {
-  assert.equal(cleanPersonalNumber("3<4130259<4"), "3-4130259-4");
-  assert.equal(cleanPersonalNumber("3 4130259 4"), "3-4130259-4");
+  assert.equal(cleanPersonalNumber("3<5207718<6"), "3-5207718-6");
+  assert.equal(cleanPersonalNumber("3 5207718 6"), "3-5207718-6");
   assert.equal(cleanPersonalNumber("AB<<<12"), "AB12");
 });
 
 test("distinctPassportPeople keeps both nationalities of one person", () => {
   const israeli = identityFromVision({
-    number: "43450083",
-    last_name: "Deddouch",
-    first_name: "Orene Wilhem Benjamin",
-    birth_date: "2007-08-17",
+    number: "51720094",
+    last_name: "Delacour",
+    first_name: "Helie Gaspar Augustin",
+    birth_date: "2008-05-22",
     issuing_country: "IL",
     nationality: "IL",
   });
   const french = identityFromVision({
-    number: "25HA65836",
-    last_name: "Deddouch",
-    first_name: "Orène Wilhem Benjamin",
-    birth_date: "2007-08-17",
+    number: "24KD71836",
+    last_name: "Delacour",
+    first_name: "Hélie Gaspar Augustin",
+    birth_date: "2008-05-22",
     issuing_country: "FR",
     nationality: "FR",
   });

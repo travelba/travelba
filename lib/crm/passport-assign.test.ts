@@ -20,15 +20,15 @@ function person(
 
 test("two nationalities of one person stay on the same card", () => {
   const booklets = [
-    person("Orene Wilhem Benjamin", "Deddouch", {
-      number: "43450083",
-      birth_date: "2007-08-17",
+    person("Helie Gaspar Augustin", "Delacour", {
+      number: "51720094",
+      birth_date: "2008-05-22",
       issuing_country: "IL",
       nationality: "IL",
     }),
-    person("Orène Wilhem Benjamin", "Deddouch", {
-      number: "25HA65836",
-      birth_date: "2007-08-17",
+    person("Hélie Gaspar Augustin", "Delacour", {
+      number: "24KD71836",
+      birth_date: "2008-05-22",
       issuing_country: "FR",
       nationality: "FR",
     }),

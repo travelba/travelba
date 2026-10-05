@@ -21,10 +21,11 @@ export function entryLinkTtlMs(otpType: string | null | undefined) {
 /** Ouvertures réussies au plus pour un même lien court. */
 export const MAX_ENTRY_OPENS = 5;
 
-export type EntryChannel = "email" | "whatsapp";
+/** `desk` : ouverture de l’espace par un agent depuis la fiche client (lib/crm/desk-mode.ts). */
+export type EntryChannel = "email" | "whatsapp" | "desk";
 
 export function isEntryChannel(value: unknown): value is EntryChannel {
-  return value === "email" || value === "whatsapp";
+  return value === "email" || value === "whatsapp" || value === "desk";
 }
 
 /** Lignes créées avant la migration : 30 jours après la création. */
@@ -479,13 +480,23 @@ export async function createEntryLink(
     showCover?: boolean;
     /** Par où le lien part. Un lien WhatsApp ouvert vaut opt-in. */
     channel?: EntryChannel | null;
+    /** Durée de vie sur mesure (lien desk : 10 minutes). Sinon selon le type de jeton. */
+    ttlMs?: number;
+    /** Agent qui crée le lien (desk). */
+    createdByStaffId?: string | null;
   }
 ) {
   const otpType = safeOtpType(input.otpType);
   const nextPath = safeNextPath(input.nextPath);
   const email = storedEntryEmail(input.email);
-  const expiresAt = new Date(Date.now() + entryLinkTtlMs(otpType)).toISOString();
+  const ttlMs =
+    typeof input.ttlMs === "number" && Number.isFinite(input.ttlMs) && input.ttlMs > 0
+      ? input.ttlMs
+      : entryLinkTtlMs(otpType);
+  const expiresAt = new Date(Date.now() + ttlMs).toISOString();
   const channel = isEntryChannel(input.channel) ? input.channel : null;
+  // Un lien desk sans sa date, son canal ou son agent deviendrait un lien ordinaire de 30 jours : jamais.
+  const strict = channel === "desk";
   let withExtras = true;
   let attempts = 0;
   while (attempts < 5) {
@@ -501,9 +512,11 @@ export async function createEntryLink(
     if (withExtras) {
       row.expires_at = expiresAt;
       row.channel = channel;
+      if (input.createdByStaffId) row.created_by_staff_id = input.createdByStaffId;
     }
     const { error } = await supabase.from("crm_entry_links").insert(row);
     if (!error) return entryLinkUrl(origin, code);
+    if (strict && !/duplicate|unique/i.test(error.message)) throw new Error("Lien court indisponible");
     if (withExtras && (isMissingColumnError(error, "expires_at") || isMissingColumnError(error, "channel"))) {
       // Déploiement avant la migration : le lien part quand même, sans date ni canal.
       console.warn("[entry] migration entry_links_expiry non appliquée");

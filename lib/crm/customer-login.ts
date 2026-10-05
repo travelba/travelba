@@ -73,6 +73,7 @@ export type CustomerLoginStore = {
     customer_id: string;
     auth_user_id: string;
     method: CustomerLoginMethod;
+    staff_id?: string;
   }) => Promise<void>;
 };
 
@@ -81,6 +82,8 @@ export async function writeCustomerLogin(
     authUserId: string;
     method: CustomerLoginMethod;
     now?: Date;
+    /** Agent à l’origine de la connexion (desk). */
+    staffId?: string | null;
   },
   store: CustomerLoginStore
 ) {
@@ -89,27 +92,32 @@ export async function writeCustomerLogin(
   const customerId = await store.findCustomerId(authUserId);
   if (!customerId) return { recorded: false as const, reason: "customer" };
   const now = opts.now ?? new Date();
-  const previousAt = await store.latestCreatedAt(customerId);
-  if (!shouldRecordLogin({ previousAt, now })) {
-    return { recorded: false as const, reason: "debounce" };
+  // Une ouverture par l’agence se trace toujours, même juste après une connexion du client.
+  if (opts.method !== "desk") {
+    const previousAt = await store.latestCreatedAt(customerId);
+    if (!shouldRecordLogin({ previousAt, now })) {
+      return { recorded: false as const, reason: "debounce" };
+    }
   }
   await store.insert({
     customer_id: customerId,
     auth_user_id: authUserId,
     method: opts.method,
+    ...(opts.staffId ? { staff_id: opts.staffId } : {}),
   });
   return { recorded: true as const, customerId };
 }
 
 export async function recordCustomerLogin(
   authUserId: string,
-  method: CustomerLoginMethod
+  method: CustomerLoginMethod,
+  opts: { staffId?: string | null } = {}
 ) {
   try {
     const { createServiceClient } = await import("@/lib/supabase/admin");
     const admin = createServiceClient();
     await writeCustomerLogin(
-      { authUserId, method },
+      { authUserId, method, staffId: opts.staffId },
       {
         async findCustomerId(id) {
           const { data } = await admin
