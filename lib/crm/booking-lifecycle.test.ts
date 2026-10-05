@@ -126,7 +126,8 @@ test("supprimer depuis l’agence archive le dossier et le bouton dit Archiver",
   const src = readFileSync(join(root, "app/api/admin/bookings/[id]/route.ts"), "utf8");
   assert.match(src, /archiveBookingById/);
   assert.doesNotMatch(src, /deleteBookingById/);
-  const button = readFileSync(join(root, "components/admin/DeleteBookingButton.tsx"), "utf8");
-  assert.match(button, /Archiver/);
-  assert.doesNotMatch(button, />Supprimer</);
+  const button = readFileSync(join(root, "components/admin/ArchiveBookingButton.tsx"), "utf8");
+  assert.match(button, /ArchiveBookingButton/);
+  assert.match(button, /label="Archiver"/);
+  assert.doesNotMatch(button, /Supprimer/);
 });

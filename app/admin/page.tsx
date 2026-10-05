@@ -3,10 +3,8 @@ import { requireStaffPage } from "@/lib/crm/auth";
 import {
   BOOKING_STATUS_LABELS,
   customerFullName,
-  EMAIL_INBOX_QUEUE_STATUSES,
   type CrmBalance,
   type CrmBooking,
-  type CrmCustomer,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import {
@@ -37,29 +35,34 @@ import {
   bookingStatusTone,
 } from "@/components/crm/ui";
 import { staffRoleLabel } from "@/lib/crm/staff-team";
-import { morningBriefLine } from "@/lib/crm/morning-brief";
 import { serviceDeskLines, type ServiceDeskItem } from "@/lib/crm/service-desk";
-import { createServiceClient } from "@/lib/supabase/admin";
+import { adminBadges } from "@/lib/crm/admin-badges";
+import { adminTodoLines } from "@/lib/crm/admin-todo";
+import { CUSTOMER_NAME_SELECT, type CustomerNameRow } from "@/lib/crm/customer-search";
+
+const SERVICE_KINDS = ["chauffeur", "greeter", "checkin"] as const;
 
 export default async function AdminHomePage() {
   const { supabase, staff } = await requireStaffPage();
 
   const today = todayIsoDate();
   const soon = isoDateInDays(90);
+  const weekAgo = isoDateInDays(-7);
 
   const [
     { data: bookings },
     { data: docs },
-    { data: customers },
     { count: bookingCount },
     { count: publishedCount },
     { count: customerCount },
     { count: withPhoneCount },
     { data: balances },
     { count: departSoonCount },
-    { count: expiringCount },
     { count: departTomorrowCount },
+    { data: taskRows },
+    { data: activeBookings },
     revolutIsConnected,
+    badges,
   ] = await Promise.all([
     supabase
       .from("crm_bookings")
@@ -76,7 +79,6 @@ export default async function AdminHomePage() {
       .lte("expires_on", soon)
       .order("expires_on")
       .limit(40),
-    supabase.from("crm_customers").select("id, first_name, last_name"),
     supabase.from("crm_bookings").select("id", { count: "exact", head: true }).is("archived_at", null),
     supabase
       .from("crm_bookings")
@@ -98,23 +100,30 @@ export default async function AdminHomePage() {
       .neq("status", "cancelled")
       .is("archived_at", null),
     supabase
-      .from("crm_travel_documents")
-      .select("id", { count: "exact", head: true })
-      .not("expires_on", "is", null)
-      .lte("expires_on", soon),
-    supabase
       .from("crm_bookings")
       .select("id", { count: "exact", head: true })
       .eq("start_date", isoDateInDays(1))
       .neq("status", "cancelled")
       .is("archived_at", null),
+    // Formalités ouvertes, ou faites depuis moins de 7 jours : le reste n’intéresse plus le bureau (A-24).
+    supabase
+      .from("crm_visa_tasks")
+      .select("booking_id, holder_name, reference, reasons, done_at, created_at")
+      .or(`done_at.is.null,done_at.gte.${weekAgo}`)
+      .order("created_at", { ascending: false })
+      .limit(100),
+    // Dossiers vivants (ni annulés, ni archivés, pas terminés) : périmètre des services à confirmer.
+    supabase
+      .from("crm_bookings")
+      .select("id, reference, status, customer_id")
+      .neq("status", "cancelled")
+      .is("archived_at", null)
+      .or(`end_date.is.null,end_date.gte.${isoDateInDays(-1)}`)
+      .order("start_date", { ascending: true, nullsFirst: false })
+      .limit(300),
     revolutConnected(),
+    adminBadges(),
   ]);
-  const byId = new Map(
-    ((customers || []) as Pick<CrmCustomer, "id" | "first_name" | "last_name">[]).map(
-      (c) => [c.id, customerFullName(c)]
-    )
-  );
   const customersTotal = customerCount ?? 0;
   const launchItems = buildLaunchItems({
     customerCount: customersTotal,
@@ -130,16 +139,7 @@ export default async function AdminHomePage() {
     (sum, row) => sum + Math.max(0, -Number(row.balance) || 0),
     0
   );
-  const upcomingBookings = (bookings || []) as CrmBooking[];
-  const displayedStayAmounts = await loadDisplayedStayAmounts(supabase, upcomingBookings);
-  const pipelineVolume = upcomingBookings.reduce(
-    (sum, row) => sum + (displayedStayAmounts.get(row.id) ?? (Number(row.total_amount) || 0)),
-    0
-  );
-  const staffFirst = (staff.full_name || "l’agence").split(" ")[0];
-  const { data: taskRows } = await supabase
-    .from("crm_visa_tasks")
-    .select("booking_id, holder_name, reference, reasons, done_at, created_at");
+  const upcoming = (bookings || []) as CrmBooking[];
   const desk = deskView(
     ((taskRows || []) as {
       booking_id: string;
@@ -158,128 +158,83 @@ export default async function AdminHomePage() {
     })),
     today
   );
-  const { data: serviceRows } = await supabase
-    .from("crm_booking_items")
-    .select("id, booking_id, kind, title, start_at, end_at, details")
-    .in("kind", ["chauffeur", "greeter", "checkin"]);
+  const serviceBookings = (activeBookings || []) as {
+    id: string;
+    reference: string;
+    status: string;
+    customer_id: string;
+  }[];
+  const serviceBookingIds = serviceBookings.map((row) => row.id);
+  const { data: serviceRows } = serviceBookingIds.length
+    ? await supabase
+        .from("crm_booking_items")
+        .select("id, booking_id, kind, title, start_at, end_at, details")
+        .in("booking_id", serviceBookingIds)
+        .in("kind", [...SERVICE_KINDS])
+    : { data: [] as ServiceDeskItem[] };
   const serviceItems = (serviceRows || []) as ServiceDeskItem[];
-  const serviceBookingIds = [...new Set(serviceItems.map((row) => row.booking_id))];
-  const [{ data: serviceBookings }, { data: serviceFlights }] = serviceBookingIds.length
-    ? await Promise.all([
-        supabase
-          .from("crm_bookings")
-          .select("id, reference, status, customer_id")
-          .in("id", serviceBookingIds)
-          .neq("status", "cancelled")
-          .is("archived_at", null),
-        supabase
-          .from("crm_booking_items")
-          .select("id, booking_id, kind, title, start_at, end_at, details")
-          .in("booking_id", serviceBookingIds)
-          .eq("kind", "flight"),
-      ])
-    : [{ data: [] }, { data: [] }];
+  const withServices = [...new Set(serviceItems.map((row) => row.booking_id))];
+  const { data: serviceFlights } = withServices.length
+    ? await supabase
+        .from("crm_booking_items")
+        .select("id, booking_id, kind, title, start_at, end_at, details")
+        .in("booking_id", withServices)
+        .eq("kind", "flight")
+    : { data: [] as ServiceDeskItem[] };
+  const expiringPieces = reviewIdentityPieces((docs || []) as CrmTravelDocument[]).slice(0, 8);
+
+  // Noms des seuls clients affichés (prochains dossiers, services, pièces) : pas toute la table (A-24).
+  const nameIds = [
+    ...new Set(
+      [
+        ...upcoming.map((row) => row.customer_id),
+        ...serviceBookings.filter((row) => withServices.includes(row.id)).map((row) => row.customer_id),
+        ...expiringPieces.map((doc) => doc.customer_id),
+      ].filter(Boolean)
+    ),
+  ];
+  const [{ data: customers }, displayedStayAmounts, places] = await Promise.all([
+    nameIds.length
+      ? supabase.from("crm_customers").select(CUSTOMER_NAME_SELECT).in("id", nameIds)
+      : Promise.resolve({ data: [] as CustomerNameRow[] }),
+    loadDisplayedStayAmounts(supabase, upcoming),
+    loadStayMaps(
+      supabase,
+      upcoming.map((row) => row.id)
+    ),
+  ]);
+  const byId = new Map(((customers || []) as CustomerNameRow[]).map((c) => [c.id, customerFullName(c)]));
   const services = serviceDeskLines({
     now: new Date(),
     names: Object.fromEntries(byId),
-    bookings: (serviceBookings || []) as {
-      id: string;
-      reference: string;
-      status: string;
-      customer_id: string;
-    }[],
+    bookings: serviceBookings.filter((row) => withServices.includes(row.id)),
     items: [...serviceItems, ...((serviceFlights || []) as ServiceDeskItem[])],
   });
-  let unmatched = 0;
-  let emailPending = 0;
-  let lePending = 0;
-  try {
-    const admin = createServiceClient();
-    const [revolut, emails, le] = await Promise.all([
-      admin
-        .from("crm_revolut_transactions")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "unmatched")
-        .eq("direction", "credit"),
-      admin
-        .from("crm_email_ingest")
-        .select("id", { count: "exact", head: true })
-        .in("status", [...EMAIL_INBOX_QUEUE_STATUSES]),
-      admin.from("crm_le_bookings").select("id", { count: "exact", head: true }).eq("status", "unmatched"),
-    ]);
-    unmatched = revolut.count ?? 0;
-    emailPending = emails.count ?? 0;
-    if (!le.error) lePending = le.count ?? 0;
-  } catch {
-    unmatched = 0;
-  }
-  const brief = morningBriefLine({
-    unmatched,
+  const todo = adminTodoLines({
+    revolut: badges.revolut,
+    emails: badges.emails,
+    le: badges.le,
     formalities: desk.open.length,
+    services: services.length,
     departTomorrow: departTomorrowCount ?? 0,
-    departWeek: departSoonCount ?? 0,
+    expiring: badges.pieces,
   });
-  const queue = [
-    unmatched
-      ? { label: `${unmatched} virement${unmatched > 1 ? "s" : ""} Revolut`, href: "/admin/revolut" }
-      : null,
-    emailPending
-      ? { label: `${emailPending} e-mail${emailPending > 1 ? "s" : ""} à relire`, href: "/admin/emails" }
-      : null,
-    lePending
-      ? { label: `${lePending} séjour${lePending > 1 ? "s" : ""} Little Emperors`, href: "/admin/little-emperors" }
-      : null,
-    desk.open.length
-      ? { label: `${desk.open.length} formalité${desk.open.length > 1 ? "s" : ""}`, href: "#formalites" }
-      : null,
-    services.length
-      ? {
-          label: `${services.length} service${services.length > 1 ? "s" : ""} à confirmer`,
-          href: "#services",
-        }
-      : null,
-    (expiringCount ?? 0) > 0
-      ? {
-          label: `${expiringCount} pièce${(expiringCount ?? 0) > 1 ? "s" : ""} à échéance`,
-          href: "/admin/clients?pieces=echeance",
-        }
-      : null,
-  ].filter((row): row is { label: string; href: string } => Boolean(row));
-  const upcoming = upcomingBookings;
-  const places = await loadStayMaps(
-    supabase,
-    upcoming.map((row) => row.id)
-  );
-  const expiringPieces = reviewIdentityPieces((docs || []) as CrmTravelDocument[]).slice(0, 8);
+  const staffFirst = (staff.full_name || "l’agence").split(" ")[0];
   const featured = upcoming[0];
   const rest = upcoming.slice(1);
   const kpis = [
     {
-      label: "Portefeuille",
-      value: String(bookingCount ?? 0),
-      hint: `${formatMoney(pipelineVolume)} à venir`,
-      href: "/admin/reservations",
-      tone: "ivory" as const,
-    },
-    {
-      label: "Pièces à échéance",
-      value: String(expiringCount ?? 0),
-      hint: "Passeports et pièces < 90 jours",
-      href: "/admin/clients?pieces=echeance",
-      tone: "warn" as const,
-    },
-    {
-      label: "Soldes à encaisser",
+      label: "Encours à encaisser",
       value: formatMoney(remainingDue),
       hint: "Encours négatifs · voir les transactions",
       href: "/admin/transactions",
       tone: "gold" as const,
     },
     {
-      label: "Départs < 7 jours",
+      label: "Départs sous 7 jours",
       value: String(departSoonCount ?? 0),
-      hint: "Séjours non annulés",
-      href: "/admin/reservations",
+      hint: `${bookingCount ?? 0} dossier${(bookingCount ?? 0) > 1 ? "s" : ""} au portefeuille`,
+      href: "/admin/reservations?etat=a-venir&tri=depart-asc",
       tone: "navy" as const,
     },
   ];
@@ -291,51 +246,43 @@ export default async function AdminHomePage() {
         <PageTitle
           title={`Bonjour ${staffFirst}`}
           subtitle={`${staff.full_name || "Agent"} · ${staffRoleLabel(staff.role)} · ${formatDateFr(today)}`}
-          actions={
-            <Link
-              href="/admin/reservations"
-              className="admin-af-btn inline-flex rounded-xl px-4 py-2.5 text-sm"
-            >
-              + Nouvelle réservation
-            </Link>
-          }
         />
       </div>
 
-      {brief ? (
-        <p className="rounded-2xl bg-[#0B192C] px-4 py-3 text-sm font-semibold text-white">
-          <span className="mr-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#C5A880]">
-            Ce matin
-          </span>
-          {brief}
-        </p>
-      ) : null}
-
-      <section id="a-traiter" className="admin-af-card rounded-2xl p-5">
-        <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">À traiter</h2>
-        {queue.length ? (
-          <ul className="mt-3 divide-y divide-border text-sm">
-            {queue.map((row) => (
-              <li key={row.href}>
-                <Link href={row.href} className="flex items-center justify-between py-2.5 font-semibold text-[var(--admin-navy)]">
-                  {row.label}
+      <section id="a-faire" className="admin-af-card rounded-2xl p-5" aria-labelledby="a-faire-titre">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="a-faire-titre" className="font-display text-lg font-bold text-[var(--admin-navy)]">
+            À faire aujourd’hui
+          </h2>
+          {todo.length ? (
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#9e7e51]">
+              {todo.length} point{todo.length > 1 ? "s" : ""}
+            </p>
+          ) : null}
+        </div>
+        {todo.length ? (
+          <ol className="mt-3 divide-y divide-border text-sm">
+            {todo.map((row) => (
+              <li key={row.id}>
+                <Link href={row.href} className="flex items-center justify-between gap-3 py-2.5 font-semibold text-[var(--admin-navy)]">
+                  <span>{row.label}</span>
                   <span aria-hidden>→</span>
                 </Link>
               </li>
             ))}
-          </ul>
+          </ol>
         ) : (
-          <p className="mt-2 text-sm text-muted">Rien en attente.</p>
+          <p className="mt-2 text-sm text-muted">Rien en attente. Bonne journée.</p>
         )}
+        <div className="mt-4 space-y-4">
+          <div id="formalites">
+            <VisaDesk open={desk.open} grey={desk.grey} />
+          </div>
+          <ServiceDesk lines={services} />
+        </div>
       </section>
 
-      <div id="formalites">
-        <VisaDesk open={desk.open} grey={desk.grey} />
-      </div>
-
-      <ServiceDesk lines={services} />
-
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-3 sm:grid-cols-2">
         {kpis.map((kpi) => (
           <Link
             key={kpi.label}
@@ -343,11 +290,7 @@ export default async function AdminHomePage() {
             className={`rounded-2xl px-5 py-4 transition ${
               kpi.tone === "navy"
                 ? "bg-[var(--admin-navy)] text-white shadow-sm"
-                : kpi.tone === "gold"
-                  ? "border border-[var(--admin-gold)]/40 bg-[#f8f4ed] text-[var(--admin-navy)]"
-                  : kpi.tone === "warn"
-                    ? "border border-[var(--admin-gold)]/50 bg-white text-[var(--admin-navy)]"
-                    : "admin-af-card text-[var(--admin-navy)]"
+                : "border border-[var(--admin-gold)]/40 bg-[#f8f4ed] text-[var(--admin-navy)]"
             }`}
           >
             <p
@@ -365,8 +308,8 @@ export default async function AdminHomePage() {
         ))}
       </section>
 
-      <div className="grid items-start gap-6 xl:grid-cols-12">
-      <div className="space-y-6 xl:col-span-8">
+      <div className="grid items-start gap-6 lg:grid-cols-12">
+      <div className="space-y-6 lg:col-span-8">
       <section className="space-y-3">
         <div className="flex items-center justify-between px-1">
           <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">
@@ -414,10 +357,10 @@ export default async function AdminHomePage() {
             description="Importez les PDF d’un vrai dossier, Enregistrer, puis Montrer au client. Le carnet n’apparaît côté client qu’après ce geste."
             action={
               <Link
-                href="/admin/reservations"
+                href="/admin/reservations/nouveau"
                 className="admin-af-btn inline-flex rounded-xl px-4 py-2.5 text-sm"
               >
-                Importer un dossier
+                Nouveau dossier
               </Link>
             }
           />
@@ -462,7 +405,7 @@ export default async function AdminHomePage() {
       </section>
       </div>
 
-      <aside className="space-y-4 xl:col-span-4">
+      <aside className="space-y-4 lg:col-span-4">
       <AdminLaunchStatus items={launchItems} />
       <section className="admin-af-card overflow-hidden rounded-2xl">
         <div className="border-b border-[var(--border)] px-5 py-4">
@@ -477,7 +420,7 @@ export default async function AdminHomePage() {
                 href={d.booking_id ? `/admin/reservations/${d.booking_id}` : `/admin/clients/${d.customer_id}`}
                 className="min-w-0 break-words font-medium text-[var(--admin-navy)] hover:underline"
               >
-                {d.doc_type} {d.number || ""} · {byId.get(d.customer_id) || d.customer_id}
+                {d.doc_type} {d.number || ""} · {byId.get(d.customer_id) || "Client"}
               </Link>
               <span className="shrink-0 font-semibold text-[var(--admin-red)]">
                 {formatDateFr(d.expires_on)}

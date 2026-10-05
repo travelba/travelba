@@ -3,6 +3,8 @@
 import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
+import { adminAction } from "@/lib/crm/admin-action";
 import {
   roleActionLabel,
   staffRoleLabel,
@@ -217,7 +219,6 @@ function ColleagueRow({
   const router = useRouter();
   const [role, setRole] = useState<StaffRole>(member.role);
   const [busy, setBusy] = useState(false);
-  const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const action = roleActionLabel(member.role, role);
   const lastAdmin = member.role === "admin" && adminCount <= 1;
@@ -248,28 +249,12 @@ function ColleagueRow({
     }
   }
 
+  /** Confirmé dans la ligne : renvoie l’erreur pour l’afficher sous le bouton. */
   async function remove() {
-    if (!confirming) {
-      setConfirming(true);
-      setError(null);
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/admin/equipe/${member.id}`, { method: "DELETE" });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(json.error || "Retrait impossible.");
-        setConfirming(false);
-        return;
-      }
-      router.refresh();
-    } catch {
-      setError("Connexion interrompue. Réessayez.");
-    } finally {
-      setBusy(false);
-    }
+    const result = await adminAction(`/api/admin/equipe/${member.id}`, { method: "DELETE" });
+    if (!result.ok) return result.error || "Retrait impossible.";
+    router.refresh();
+    return undefined;
   }
 
   const roleId = `role-${layout}-${member.id}`;
@@ -310,44 +295,28 @@ function ColleagueRow({
           onClick={() => void saveRole()}
           className="rounded-full bg-[var(--admin-navy)] px-3 py-1.5 text-xs font-semibold text-[var(--admin-gold)] disabled:opacity-60"
         >
-          {busy && !confirming ? "Enregistrement…" : action}
+          {busy ? "Enregistrement…" : action}
         </button>
       ) : null}
-      <BusyBar active={busy && !confirming} label="Enregistrement…" />
+      <BusyBar active={busy} label="Enregistrement…" />
     </div>
   );
   const removal = (
     <>
-      <BusyBar active={busy && confirming} label="Retrait…" />
       {canRemove ? (
-        <div className={`mt-2 flex flex-col gap-1 ${layout === "card" ? "items-start" : "items-end"}`}>
-          <div className={`flex items-center gap-2 ${layout === "card" ? "justify-start" : "justify-end"}`}>
-            {confirming ? (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setConfirming(false)}
-                className="text-xs font-semibold text-muted"
-              >
-                Annuler
-              </button>
-            ) : null}
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void remove()}
-              className="text-xs font-semibold text-[var(--admin-red)]"
-              aria-label={`Retirer ${member.fullName}`}
-            >
-              {busy ? "Retrait…" : confirming ? "Confirmer" : "Retirer"}
-            </button>
-          </div>
-          {confirming && !busy ? (
-            <p className={`text-[11px] text-muted ${layout === "card" ? "" : "max-w-[16rem] text-right"}`}>
-              Retirer {member.fullName} coupe l’accès à l’espace agence. Les dossiers restent.
-            </p>
-          ) : null}
-        </div>
+        <ConfirmAction
+          size="sm"
+          tone="danger"
+          label="Retirer"
+          confirmLabel="Retirer l’accès"
+          busyLabel="Retrait…"
+          ariaLabel={`Retirer ${member.fullName}`}
+          question={`Retirer ${member.fullName} coupe l’accès à l’espace agence. Les dossiers restent.`}
+          align={layout === "card" ? "start" : "end"}
+          disabled={busy}
+          wrapperClassName="mt-2"
+          onConfirm={remove}
+        />
       ) : (
         <p className="text-xs text-muted">{member.role === "admin" ? "Non retiré" : "Votre accès"}</p>
       )}

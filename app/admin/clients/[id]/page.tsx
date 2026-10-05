@@ -3,10 +3,10 @@ import { notFound } from "next/navigation";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { CustomerEditor } from "@/components/admin/CustomerEditor";
 import {
-  DeleteBookingButton,
+  ArchiveBookingButton,
   DuplicateBookingButton,
   RestoreBookingButton,
-} from "@/components/admin/DeleteBookingButton";
+} from "@/components/admin/ArchiveBookingButton";
 import { ClientRevolutSuggestions } from "@/components/admin/ClientRevolutSuggestions";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import { InviteCustomerPanel } from "@/components/admin/InviteCustomerPanel";
@@ -44,6 +44,7 @@ import { identityPreview } from "@/lib/crm/preview-files";
 import { clientLedgerAdminHref } from "@/lib/crm/client-ledger";
 import { ficheBookingTravelerLine, ficheTravelerCaption, mergeFicheBookings } from "@/lib/crm/fiche-bookings";
 import { formatDateFr, formatMoney, formatCreditDisponible } from "@/lib/crm/money";
+import { CUSTOMER_PICK_SELECT, type PickableCustomer } from "@/lib/crm/customer-search";
 import { WhatsappThread } from "@/components/admin/WhatsappThread";
 
 type Props = { params: Promise<{ id: string }> };
@@ -92,7 +93,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
     supabase.from("crm_customer_balances").select("*").eq("customer_id", id),
     supabase
       .from("crm_customers")
-      .select("*")
+      .select(CUSTOMER_PICK_SELECT)
       .eq("company_role", "admin")
       .order("last_name"),
     supabase.from("crm_billing_companies").select("*").eq("customer_id", id).order("sort_order"),
@@ -281,7 +282,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         customer={c}
         companions={(companions || []) as CrmCompanion[]}
         documents={(documents || []) as CrmTravelDocument[]}
-        companyAdmins={(companyAdmins || []) as CrmCustomer[]}
+        companyAdmins={(companyAdmins || []) as PickableCustomer[]}
         billingCompanies={(billingCompanies || []) as CrmBillingCompany[]}
       />
       <ClientRevolutSuggestions suggestions={revolutSuggestions} />
@@ -289,7 +290,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-display text-lg font-bold">Réservations</h2>
           <Link
-            href="/admin/reservations"
+            href="/admin/reservations/nouveau"
             className="text-xs font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline"
           >
             Nouveau dossier
@@ -322,7 +323,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
                   </Link>
                   <div className="flex flex-col items-end gap-1">
                     <DuplicateBookingButton compact bookingId={b.id} />
-                    <DeleteBookingButton
+                    <ArchiveBookingButton
                       compact
                       redirectTo={null}
                       bookingId={b.id}
@@ -335,7 +336,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
           </ul>
         ) : (
           <p className="mt-2 text-sm text-muted">
-            Aucun dossier pour ce client. Importez ses confirmations depuis Réservations.
+            Aucun dossier pour ce client. Importez ses confirmations depuis Nouveau dossier.
           </p>
         )}
         {archivedBookings.length ? (

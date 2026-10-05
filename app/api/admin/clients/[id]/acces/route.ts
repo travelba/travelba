@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-/** Renvoie le lien d’accès quand le mot de passe est déjà enregistré. */
+/** Renvoie le lien d’accès (magique, par WhatsApp) quand le mot de passe est déjà enregistré. Ne le repose pas. */
 export async function POST(request: Request, ctx: Ctx) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
@@ -33,7 +33,10 @@ export async function POST(request: Request, ctx: Ctx) {
 
   const { data: userWrap } = await admin.auth.admin.getUserById(customer.auth_user_id);
   if (!userWrap.user || mustSetPassword(userWrap.user)) {
-    return jsonError("Le mot de passe n’est pas encore défini", 409);
+    return jsonError("Le mot de passe n’est pas encore défini : renvoyez l’invitation.", 409);
+  }
+  if (!customer.phone?.trim()) {
+    return jsonError("Ajoutez un téléphone à la fiche : le lien d’accès part par WhatsApp.", 409);
   }
 
   const result = await sendSpaceAccessWhatsapp({
@@ -44,6 +47,6 @@ export async function POST(request: Request, ctx: Ctx) {
     origin: appOrigin(request),
     repeat: true,
   });
-  if (result !== "sent") return jsonError("Message non envoyé", 502);
+  if (result !== "sent") return jsonError("Message WhatsApp non envoyé. Réessayez dans un instant.", 502);
   return NextResponse.json({ ok: true });
 }

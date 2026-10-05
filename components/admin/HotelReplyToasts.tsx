@@ -5,6 +5,14 @@ import { useRouter } from "next/navigation";
 import { Icon } from "@/components/crm/icons";
 import type { HotelReplyNotice } from "@/lib/crm/hotel-reply-notice";
 import { replyMoment } from "@/lib/crm/hotel-reply-when";
+import {
+  LEADER_KEY,
+  TAB_CHANNEL,
+  leaderRecord,
+  newTabId,
+  parseLeaderRecord,
+  shouldLead,
+} from "@/lib/crm/tab-leader";
 
 const STORAGE_KEY = "travelba-hotel-reply-since";
 const OPEN_KEY = "travelba-hotel-reply-open";
@@ -67,6 +75,51 @@ function writeDismissed(ids: Set<string>) {
   }
 }
 
+function readLeader() {
+  try {
+    return parseLeaderRecord(localStorage.getItem(LEADER_KEY));
+  } catch {
+    return null;
+  }
+}
+
+function writeLeader(id: string, now: number) {
+  try {
+    localStorage.setItem(LEADER_KEY, JSON.stringify(leaderRecord(id, now)));
+  } catch {
+    // Sans stockage partagé, chaque onglet sonde pour lui-même.
+  }
+}
+
+function clearLeader(id: string) {
+  try {
+    if (readLeader()?.id === id) localStorage.removeItem(LEADER_KEY);
+  } catch {
+    // Rien à libérer.
+  }
+}
+
+type TabMessage =
+  | { type: "notices"; notices: HotelReplyNotice[]; since: string }
+  | { type: "dismiss"; id: string }
+  | { type: "resign"; id: string };
+
+/** Horloge posée au montage puis rafraîchie chaque minute ; null au rendu serveur. */
+function useClock(active: boolean) {
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    const tick = () => setNow(Date.now());
+    const timer = window.setInterval(tick, 60_000);
+    const first = window.setTimeout(tick, 0);
+    return () => {
+      window.clearInterval(timer);
+      window.clearTimeout(first);
+    };
+  }, [active]);
+  return now;
+}
+
 export function HotelReplyToasts() {
   const router = useRouter();
   const [queue, setQueue] = useState<HotelReplyNotice[]>([]);
@@ -81,14 +134,34 @@ export function HotelReplyToasts() {
 
   useEffect(() => {
     let stopped = false;
+    const tabId = newTabId();
     dismissed.current = readDismissed();
     const kept = readOpen().filter((notice) => !dismissed.current.has(notice.id));
     setQueue(kept);
     setReady(true);
     let memorySince = readSince();
+    const channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(TAB_CHANNEL);
 
+    function enqueue(notices: HotelReplyNotice[]) {
+      if (!notices.length) return;
+      setQueue((current) => {
+        const seen = new Set(current.map((notice) => notice.id));
+        const next = [...current];
+        for (const notice of notices) {
+          if (!notice.id || seen.has(notice.id) || dismissed.current.has(notice.id)) continue;
+          seen.add(notice.id);
+          next.push(notice);
+        }
+        return next;
+      });
+    }
+
+    // Un seul onglet sonde (A-27) : le meneur bat toutes les POLL_MS ; les autres reçoivent ses réponses.
     async function tick() {
       if (stopped || document.visibilityState === "hidden") return;
+      const now = Date.now();
+      if (!shouldLead(readLeader(), tabId, now)) return;
+      writeLeader(tabId, now);
       if (!memorySince) {
         memorySince = new Date().toISOString();
         writeSince(memorySince);
@@ -107,16 +180,7 @@ export function HotelReplyToasts() {
         return;
       }
       if (stopped || !notices.length) return;
-      setQueue((current) => {
-        const seen = new Set(current.map((notice) => notice.id));
-        const next = [...current];
-        for (const notice of notices) {
-          if (!notice.id || seen.has(notice.id) || dismissed.current.has(notice.id)) continue;
-          seen.add(notice.id);
-          next.push(notice);
-        }
-        return next;
-      });
+      enqueue(notices);
       const sinceMs = Date.parse(since);
       const latestMs = notices.reduce((max, notice) => {
         const at = Date.parse(notice.receivedAt);
@@ -126,18 +190,44 @@ export function HotelReplyToasts() {
         memorySince = new Date(latestMs).toISOString();
         writeSince(memorySince);
       }
+      channel?.postMessage({ type: "notices", notices, since: memorySince } satisfies TabMessage);
     }
+
+    function onMessage(event: MessageEvent<TabMessage>) {
+      const message = event.data;
+      if (!message || typeof message !== "object") return;
+      if (message.type === "notices") {
+        memorySince = message.since || memorySince;
+        enqueue(Array.isArray(message.notices) ? message.notices.filter(isNotice) : []);
+      } else if (message.type === "dismiss") {
+        dismissed.current.add(message.id);
+        setQueue((current) => current.filter((notice) => notice.id !== message.id));
+      } else if (message.type === "resign") {
+        // Le meneur s’en va : le prochain battement de cet onglet prendra la main.
+        void tick();
+      }
+    }
+    channel?.addEventListener("message", onMessage);
 
     void tick();
     const timer = window.setInterval(() => void tick(), POLL_MS);
     const onVisible = () => {
       if (document.visibilityState === "visible") void tick();
     };
+    const onLeave = () => {
+      clearLeader(tabId);
+      channel?.postMessage({ type: "resign", id: tabId } satisfies TabMessage);
+    };
     document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("pagehide", onLeave);
     return () => {
       stopped = true;
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("pagehide", onLeave);
+      channel?.removeEventListener("message", onMessage);
+      onLeave();
+      channel?.close();
     };
   }, []);
 
@@ -147,6 +237,13 @@ export function HotelReplyToasts() {
     dismissed.current.add(id);
     writeDismissed(dismissed.current);
     setQueue((current) => current.filter((notice) => notice.id !== id));
+    try {
+      const channel = new BroadcastChannel(TAB_CHANNEL);
+      channel.postMessage({ type: "dismiss", id } satisfies TabMessage);
+      channel.close();
+    } catch {
+      // Les autres onglets fermeront la leur.
+    }
   }
 
   function open(notice: HotelReplyNotice) {
@@ -174,10 +271,12 @@ export function HotelReplyToastStack({
   onOpen: (notice: HotelReplyNotice) => void;
   onDismiss: (id: string) => void;
 }) {
+  // « Il y a N min » dépend de l’horloge : calculé après le montage pour que le serveur et le client rendent la même chose (V-03).
+  const now = useClock(notices.length > 0);
   if (!notices.length) return null;
   return (
     <div
-      className="pointer-events-none fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-[55] flex w-[min(24rem,calc(100vw-2rem))] flex-col items-end gap-2"
+      className="pointer-events-none fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] right-4 z-[55] flex w-[min(24rem,calc(100vw-2rem))] flex-col items-end gap-2 lg:bottom-[max(1rem,env(safe-area-inset-bottom))]"
       aria-live="polite"
     >
       {waiting > 0 ? (
@@ -186,7 +285,7 @@ export function HotelReplyToastStack({
         </p>
       ) : null}
       {notices.map((notice) => {
-        const when = replyMoment(notice.receivedAt);
+        const when = now == null ? "" : replyMoment(notice.receivedAt, now);
         return (
           <article
             key={notice.id}

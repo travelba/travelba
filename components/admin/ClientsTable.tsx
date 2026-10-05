@@ -1,70 +1,78 @@
-"use client";
-
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import type { CrmBalance, CrmCustomer } from "@/lib/crm/types";
+import { Pagination } from "@/components/admin/Pagination";
+import type { CrmBalance } from "@/lib/crm/types";
 import { customerFullName } from "@/lib/crm/types";
+import type { CustomerListRow } from "@/lib/crm/customer-search";
 import { clientLedgerAdminHref } from "@/lib/crm/client-ledger";
 import { formatCreditDisponible, formatMoney } from "@/lib/crm/money";
 import { formatPhoneDisplay } from "@/lib/crm/phone";
+import { ADMIN_PAGE_SIZE, listHref, type ClientFilter } from "@/lib/crm/admin-list";
 
-function initials(c: CrmCustomer) {
+function initials(c: CustomerListRow) {
   return [c.first_name?.[0], c.last_name?.[0]].filter(Boolean).join("").toUpperCase() || "?";
 }
 
+/** Liste paginée côté serveur : recherche et filtre passent par l’URL (formulaire GET). */
 export function ClientsTable({
   customers,
   balances,
-  initialQuery = "",
+  query = "",
+  filter = null,
+  page = 1,
+  pageSize = ADMIN_PAGE_SIZE,
+  total = customers.length,
 }: {
-  customers: CrmCustomer[];
+  customers: CustomerListRow[];
   balances: CrmBalance[];
-  initialQuery?: string;
+  query?: string;
+  filter?: ClientFilter | null;
+  page?: number;
+  pageSize?: number;
+  total?: number;
 }) {
-  const [q, setQ] = useState(initialQuery);
-  const [filter, setFilter] = useState<"all" | "hold">("all");
-  const bal = useMemo(() => {
-    const map = new Map<string, CrmBalance[]>();
-    for (const row of balances) {
-      const list = map.get(row.customer_id) || [];
-      list.push(row);
-      map.set(row.customer_id, list);
-    }
-    return map;
-  }, [balances]);
-
-  const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return customers.filter((c) => {
-      if (filter === "hold" && !c.on_hold) return false;
-      if (!needle) return true;
-      const hay = `${customerFullName(c)} ${c.email} ${c.phone || ""}`.toLowerCase();
-      return hay.includes(needle);
-    });
-  }, [customers, q, filter]);
+  const bal = new Map<string, CrmBalance[]>();
+  for (const row of balances) {
+    const list = bal.get(row.customer_id) || [];
+    list.push(row);
+    bal.set(row.customer_id, list);
+  }
+  const filtered = customers;
+  const urlFilters = { q: query, filtre: filter };
+  const hrefFor = (next: number) => listHref("/admin/clients", urlFilters, next);
 
   return (
     <div className="mt-6 space-y-3">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <form method="get" action="/admin/clients" role="search" className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Rechercher un client (nom, e-mail, téléphone)…"
+          type="search"
+          name="q"
+          defaultValue={query}
+          placeholder="Rechercher un client (nom, société, e-mail, téléphone)…"
+          aria-label="Rechercher un client"
           className="admin-af-input w-full text-sm"
         />
         <select
-          value={filter}
-          onChange={(e) => setFilter(e.target.value as "all" | "hold")}
+          name="filtre"
+          defaultValue={filter || ""}
           className="admin-af-input w-full text-sm sm:w-auto"
           aria-label="Filtrer les clients"
         >
-          <option value="all">Tous</option>
-          <option value="hold">En veille</option>
+          <option value="">Tous</option>
+          <option value="veille">En veille</option>
         </select>
-        <p className="shrink-0 font-label text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
-          {filtered.length} client{filtered.length > 1 ? "s" : ""}
-        </p>
-      </div>
+        <button type="submit" className="admin-af-btn admin-tap rounded-lg px-4 text-sm">
+          Filtrer
+        </button>
+        {query || filter ? (
+          <Link
+            href="/admin/clients"
+            className="admin-tap inline-flex items-center rounded-lg border border-[var(--border)] bg-white px-4 text-sm font-semibold text-[var(--admin-navy)]"
+          >
+            Effacer
+          </Link>
+        ) : null}
+      </form>
+      <Pagination page={page} pageSize={pageSize} total={total} label={total > 1 ? "clients" : "client"} hrefFor={hrefFor} />
       <div className="admin-af-card max-w-full overflow-hidden rounded-2xl">
         <ul className="divide-y divide-border lg:hidden">
           {filtered.map((c) => {
@@ -109,7 +117,7 @@ export function ClientsTable({
           })}
           {!filtered.length ? (
             <li className="px-4 py-8 text-center text-sm text-muted">
-              {customers.length === 0
+              {total === 0 && !query && !filter
                 ? "Aucun client. Créez une fiche titulaire puis invitez — pas de client fictif."
                 : "Aucun client trouvé."}
             </li>
@@ -183,7 +191,7 @@ export function ClientsTable({
               {!filtered.length ? (
                 <tr>
                   <td colSpan={4} className="px-5 py-8 text-center text-muted">
-                    {customers.length === 0
+                    {total === 0 && !query && !filter
                       ? "Aucun client. Créez une fiche titulaire puis invitez — pas de client fictif."
                       : "Aucun client trouvé."}
                   </td>
@@ -193,6 +201,9 @@ export function ClientsTable({
           </table>
         </div>
       </div>
+      {total > pageSize ? (
+        <Pagination page={page} pageSize={pageSize} total={total} label={total > 1 ? "clients" : "client"} hrefFor={hrefFor} />
+      ) : null}
     </div>
   );
 }
