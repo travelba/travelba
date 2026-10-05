@@ -206,7 +206,7 @@ export function TripPassportPicker({
                     ariaLabel={`Retirer ${name} du séjour`}
                     question="Le voyageur quitte ce séjour. Sa fiche et ses pièces restent sur le compte."
                     align="end"
-                    className="shrink-0"
+                    wrapperClassName="shrink-0"
                     onConfirm={async () => {
                       const result = await onRemove(traveler.id);
                       return typeof result === "string" ? result : undefined;

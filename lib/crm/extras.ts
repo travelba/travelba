@@ -1,4 +1,4 @@
-import type { CrmBookingItem, CrmBookingTraveler, CrmCompanion, CrmCustomer } from "./types";
+import type { CrmBookingTraveler, CrmCompanion, CrmCustomer } from "./types";
 import { householdMembers, memberFromTravelerLink } from "./household";
 
 export const CHAUFFEUR_EUR = 150;
@@ -658,11 +658,6 @@ export function composeItineraryDay<T extends { id: string }>(
     .filter((offer) => offer.day === day && !used.has(offer))
     .map((offer) => ({ type: "offer" as const, offer }));
   return [...rest, ...rows];
-}
-
-export function returnStay(items: ServiceFlightRow[]) {
-  const inbound = serviceFlightLegs(items).find((leg) => leg.role === "inbound");
-  return matchedStay(items, inbound?.cityFrom || null);
 }
 
 export function extraFlightAt(

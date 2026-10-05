@@ -1,6 +1,9 @@
 import { after, NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
 import { BookingIssuesError } from "@/lib/crm/booking-issues";
+import { openStayForVisa } from "@/lib/crm/bookings";
+import { notifyStayPublished, remindMissingPieces, safeConcierge } from "@/lib/crm/concierge-send";
 import { continueEtaIlRequest } from "@/lib/crm/eta-il-continue";
 import { customerPliantCardCount, etaIlPliantCard } from "@/lib/crm/eta-il-fee";
 import { issuePliantCard, pliantConfigured, raisePliantLimit } from "@/lib/crm/pliant";
@@ -19,7 +22,6 @@ import {
   readEstaAnswers,
   stepAfterPrepare,
   visaResetPatch,
-  visibilityOnRequest,
   type ClientVisaStep,
   type EstaAnswers,
 } from "@/lib/crm/visa-flow";
@@ -48,23 +50,28 @@ function corridor(value: unknown): VisaCorridor | null {
   return value === "IL" || value === "US" || value === "GB" ? value : null;
 }
 
-async function publishTrip(
-  supabase: { from: (table: string) => any },
+/**
+ * Même chemin que « Montrer au client » : garde-fou carnet, cartes et pièces révélées, grand livre,
+ * notifications. La formalité n’ouvre pas les prix déjà masqués.
+ */
+async function openStay(
+  supabase: SupabaseClient,
   booking: CrmBooking
-) {
-  const opened = visibilityOnRequest({
-    visible: booking.visible_to_client,
-    prices: booking.prices_visible !== false && booking.visible_to_client,
-  });
-  await supabase
-    .from("crm_bookings")
-    .update({ visible_to_client: opened.visible, prices_visible: opened.prices })
-    .eq("id", booking.id);
-  await supabase.from("crm_booking_items").update({ visible_to_client: true }).eq("booking_id", booking.id);
+): Promise<{ ok: true; booking: CrmBooking } | { ok: false; error: string }> {
+  try {
+    const { booking: opened, newlyPublished } = await openStayForVisa(supabase, booking);
+    if (newlyPublished) {
+      await safeConcierge(() => notifyStayPublished(opened.id));
+      await safeConcierge(() => remindMissingPieces(opened.id));
+    }
+    return { ok: true, booking: opened };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Publication impossible" };
+  }
 }
 
 async function saveVisaStep(
-  supabase: { from: (table: string) => any },
+  supabase: Pick<SupabaseClient, "from">,
   bookingId: string,
   country: VisaCorridor,
   step: ClientVisaStep,
@@ -173,16 +180,11 @@ export async function POST(request: Request, ctx: Ctx) {
     });
     if (block) return jsonError(block);
     if (!customer) return jsonError("Client introuvable", 404);
-    const opened = visibilityOnRequest({
-      visible: b.visible_to_client,
-      prices: b.prices_visible !== false && b.visible_to_client,
-    });
-    b.visible_to_client = opened.visible;
-    b.prices_visible = opened.prices;
-    await publishTrip(auth.supabase, b);
+    const stay = await openStay(auth.supabase, b);
+    if (!stay.ok) return jsonError(stay.error, 400);
     try {
       await openAcceptedVisa(auth.supabase, {
-        booking: b,
+        booking: stay.booking,
         country,
         step: decision.step,
         status: decision.status,
@@ -236,7 +238,8 @@ export async function POST(request: Request, ctx: Ctx) {
       resumable: true,
     });
     if (block) return jsonError(block);
-    await publishTrip(auth.supabase, b);
+    const stay = await openStay(auth.supabase, b);
+    if (!stay.ok) return jsonError(stay.error, 400);
     await saveVisaStep(auth.supabase, b.id, country, stepAfterPrepare(country), merged);
     return NextResponse.json({
       country,
@@ -359,7 +362,8 @@ export async function POST(request: Request, ctx: Ctx) {
     }
   }
 
-  await publishTrip(auth.supabase, b);
+  const stay = await openStay(auth.supabase, b);
+  if (!stay.ok) return jsonError(stay.error, 400);
   await saveVisaStep(auth.supabase, b.id, country, "paiement", esta);
 
   const pliant = pliantConfigured();

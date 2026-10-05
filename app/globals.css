@@ -13,6 +13,13 @@
   --accent-3: #9e7e51;
 }
 
+/* Pages hors scope .admin-af (404, /v/*) : les mêmes marine et champagne, pour que
+   les boutons qui lisent ces variables restent visibles. .admin-af les redéfinit à l’identique. */
+:root {
+  --admin-navy: #0b192c;
+  --admin-gold: #c5a880;
+}
+
 /**
  * CRM (espace client + admin) — Stitch Sovereign Horizon.
  * Scoped : n’altère pas le site public.
@@ -76,20 +83,17 @@
 
 .account-tabbar {
   position: fixed;
-  /* Toujours au-dessus de la barre système, avec un vide visible. */
-  bottom: calc(1.75rem + env(safe-area-inset-bottom, 0px));
-  left: 50%;
+  /* Collée au bord : 56 px de barre, puis la zone système (encoche basse) sous le même fond. */
+  bottom: 0;
+  left: 0;
+  right: 0;
   z-index: 50;
-  width: min(26.5rem, calc(100% - 2rem));
-  transform: translateX(-50%);
-  border: 1px solid rgba(197, 168, 128, 0.72);
-  border-radius: 1.75rem;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  border-top: 1px solid rgba(197, 168, 128, 0.55);
   background: rgba(255, 252, 248, 0.97);
   -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
-  box-shadow:
-    0 10px 22px rgba(11, 25, 44, 0.16),
-    0 1px 3px rgba(11, 25, 44, 0.08);
+  box-shadow: 0 -4px 16px rgba(11, 25, 44, 0.08);
 }
 
 .account-app .aura-card {
@@ -361,5 +365,14 @@ button:disabled,
   .admin-af textarea,
   .admin-af input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]) {
     min-height: 2.75rem;
+  }
+}
+
+/* Repère clavier unique sur tout le site : champagne, hors du contour. Liens, boutons et
+   éléments focalisables seulement : les champs gardent leur bordure / halo de focus. */
+@layer base {
+  :where(a, button, [role="button"], summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--admin-gold, #C5A880);
+    outline-offset: 2px;
   }
 }

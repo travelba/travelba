@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, Inter, Plus_Jakarta_Sans } from "next/font/google";
 import { siteConfig } from "@/lib/site";
 import "./globals.css";
@@ -24,9 +24,18 @@ const plusJakarta = Plus_Jakarta_Sans({
   preload: true,
 });
 
+/* Barre système marine sur le chrome client, et les env(safe-area-inset-*) deviennent réels. */
+export const viewport: Viewport = {
+  themeColor: "#0B192C",
+  viewportFit: "cover",
+  width: "device-width",
+  initialScale: 1,
+};
+
 export const metadata: Metadata = {
   metadataBase: new URL(siteConfig.url),
   title: siteConfig.name,
+  manifest: "/manifest.webmanifest",
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },

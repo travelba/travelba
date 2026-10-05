@@ -2,7 +2,14 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { parseBillingCompanyId } from "@/lib/crm/billing-companies";
-import { parseIncludeInLedger, refreshBookingLedger } from "@/lib/crm/bookings";
+import {
+  ledgerWarning,
+  MAX_SORT_ORDER,
+  parseIncludeInLedger,
+  parseSortOrder,
+  refreshBookingLedger,
+} from "@/lib/crm/bookings";
+import { parseItemDetails } from "@/lib/crm/ingest-types";
 import { parseMoney } from "@/lib/crm/money";
 import { BOOKING_ITEM_KINDS, isLedgerExpenseKind, type BookingItemKind } from "@/lib/crm/types";
 
@@ -12,6 +19,14 @@ function knownKind(value: unknown) {
 }
 
 type Ctx = { params: Promise<{ id: string }> };
+
+const SORT_ORDER_ERROR = `Ordre de la carte invalide (0 à ${MAX_SORT_ORDER}).`;
+
+/** La carte est enregistrée ; un grand livre refusé devient `ledger_warning` (200), pas une erreur à rejouer. */
+async function ledgerAfterItemWrite(supabase: SupabaseClient, bookingId: string) {
+  const warning = await ledgerWarning("Carte enregistrée", () => refreshBookingLedger(supabase, bookingId));
+  return warning ? { ledger_warning: warning } : {};
+}
 
 async function billingCompanyPatch(supabase: SupabaseClient, bookingId: string, value: unknown) {
   if (value === undefined) return {};
@@ -57,9 +72,10 @@ export async function POST(request: Request, ctx: Ctx) {
     -1
   );
   const sortOrder =
-    body?.sort_order == null || body.sort_order === ""
-      ? maxSort + 1
-      : Number(body.sort_order);
+    body?.sort_order == null || body.sort_order === "" ? maxSort + 1 : parseSortOrder(body.sort_order);
+  if (sortOrder == null) return jsonError(SORT_ORDER_ERROR);
+  const details = parseItemDetails(body?.details);
+  if ("error" in details) return jsonError(details.error);
   const company = await billingCompanyPatch(auth.supabase, id, body?.billing_company_id);
   if ("error" in company && company.error) return jsonError(company.error);
   const { data, error } = await auth.supabase
@@ -77,15 +93,14 @@ export async function POST(request: Request, ctx: Ctx) {
         ? true
         : parseIncludeInLedger(body?.include_in_ledger, false),
       sort_order: sortOrder,
-      details: body?.details || {},
+      details: details.details,
       visible_to_client: false,
       ...("billing_company_id" in company ? { billing_company_id: company.billing_company_id } : {}),
     })
     .select("*")
     .single();
   if (error) return dbError(error, 400);
-  await refreshBookingLedger(auth.supabase, id);
-  return NextResponse.json({ item: data });
+  return NextResponse.json({ item: data, ...(await ledgerAfterItemWrite(auth.supabase, id)) });
 }
 
 export async function PATCH(request: Request, ctx: Ctx) {
@@ -95,6 +110,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
   const body = await request.json().catch(() => null);
   if (Array.isArray(body?.order)) {
     const order = body.order.map((value: unknown) => String(value || "")).filter(Boolean);
+    if (order.length > MAX_SORT_ORDER + 1) return jsonError(SORT_ORDER_ERROR);
     for (let index = 0; index < order.length; index += 1) {
       const { error } = await auth.supabase
         .from("crm_booking_items")
@@ -134,8 +150,16 @@ export async function PATCH(request: Request, ctx: Ctx) {
     patch.include_in_ledger = true;
     if ("amount" in body) patch.amount = amount;
   }
-  if (body.sort_order != null) patch.sort_order = Number(body.sort_order);
-  if ("details" in body) patch.details = body.details || {};
+  if (body.sort_order != null) {
+    const sortOrder = parseSortOrder(body.sort_order);
+    if (sortOrder == null) return jsonError(SORT_ORDER_ERROR);
+    patch.sort_order = sortOrder;
+  }
+  if ("details" in body) {
+    const details = parseItemDetails(body.details);
+    if ("error" in details) return jsonError(details.error);
+    patch.details = details.details;
+  }
   if ("visible_to_client" in body) {
     const visible = Boolean(body.visible_to_client);
     patch.visible_to_client = visible;
@@ -162,8 +186,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
-  await refreshBookingLedger(auth.supabase, bookingId);
-  return NextResponse.json({ item: data });
+  return NextResponse.json({ item: data, ...(await ledgerAfterItemWrite(auth.supabase, bookingId)) });
 }
 
 export async function DELETE(request: Request, ctx: Ctx) {
@@ -178,6 +201,5 @@ export async function DELETE(request: Request, ctx: Ctx) {
     .eq("id", itemId)
     .eq("booking_id", bookingId);
   if (error) return dbError(error, 400);
-  await refreshBookingLedger(auth.supabase, bookingId);
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, ...(await ledgerAfterItemWrite(auth.supabase, bookingId)) });
 }

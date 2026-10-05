@@ -150,6 +150,18 @@ test("un mot de passe déjà accepté ouvre l’espace, pas la page de définiti
     }),
     "/mon-compte/reservations/TB-1"
   );
+  assert.equal(
+    pathAfterKnownPassword({ staff: false, needsOnboarding: false, next: "/\\evil.com" }),
+    "/mon-compte"
+  );
+  assert.equal(
+    pathAfterKnownPassword({ staff: false, needsOnboarding: false, next: "/%5Cevil.com" }),
+    "/mon-compte"
+  );
+  assert.equal(
+    pathAfterKnownPassword({ staff: false, needsOnboarding: false, next: "/admin" }),
+    "/mon-compte"
+  );
 });
 
 test("retirer le drapeau ne réécrit pas le mot de passe", () => {

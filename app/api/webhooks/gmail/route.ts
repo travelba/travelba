@@ -3,6 +3,7 @@ import { decodeGmailPushBody } from "@/lib/crm/gmail-parse";
 import { gmailConfigured } from "@/lib/crm/gmail";
 import { captureGmailHistory } from "@/lib/crm/email-ingest";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
+import { secretEquals } from "@/lib/crm/secret-equals";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -11,7 +12,7 @@ function tokenAuthorized(request: Request) {
   const expected = productionOnlySecret(process.env.GMAIL_PUSH_TOKEN);
   if (!expected) return false;
   const token = new URL(request.url).searchParams.get("token") || "";
-  return token === expected;
+  return secretEquals(token, expected);
 }
 
 export async function POST(request: Request) {

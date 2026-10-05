@@ -5,6 +5,7 @@ export const CUSTOMER_LOGIN_METHODS = [
   "recovery",
   "entry",
   "precedent",
+  "desk",
 ] as const;
 
 export type CustomerLoginMethod = (typeof CUSTOMER_LOGIN_METHODS)[number];
@@ -18,6 +19,7 @@ const METHOD_LABELS: Record<CustomerLoginMethod, string> = {
   recovery: "Réinitialisation",
   entry: "Lien d’accès",
   precedent: "Connexion précédente",
+  desk: "Ouverture par l’agence",
 };
 
 export function isCustomerLoginMethod(value: string): value is CustomerLoginMethod {

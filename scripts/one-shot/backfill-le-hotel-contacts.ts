@@ -2,15 +2,15 @@
  * Écrit l'annuaire Little Emperors sur chaque carte hôtel déjà en base,
  * passée ou à venir, et préremplit les destinataires des courriers non modifiés.
  *
- *   npx tsx scripts/backfill-le-hotel-contacts.ts
+ *   npx tsx scripts/one-shot/backfill-le-hotel-contacts.ts
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createClient } from "@supabase/supabase-js";
-import { applyMatchedCatalog, hotelContact, peopleFromContactRows, type HotelContactRow, type StoredHotelSource } from "../lib/crm/hotel-contact";
-import type { HotelDirectoryEntry } from "../lib/crm/hotel-catalog";
-import { hotelDeskRecipients, keepAgencyDraft } from "../lib/crm/hotel-desk";
-import type { CrmBookingItem, CrmHotelRequest, HotelDeskKind } from "../lib/crm/types";
+import { applyMatchedCatalog, hotelContact, peopleFromContactRows, type HotelContactRow, type StoredHotelSource } from "../../lib/crm/hotel-contact";
+import type { HotelDirectoryEntry } from "../../lib/crm/hotel-catalog";
+import { hotelDeskRecipients, keepAgencyDraft } from "../../lib/crm/hotel-desk";
+import type { CrmBookingItem, CrmHotelRequest, HotelDeskKind } from "../../lib/crm/types";
 
 function loadEnv() {
   if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) return;
@@ -71,7 +71,7 @@ async function main() {
   const { data: itemRows, error: itemError } = await admin.from("crm_booking_items").select("*").eq("kind", "hotel");
   if (itemError) throw new Error(itemError.message);
   const items = (itemRows || []) as CrmBookingItem[];
-  const { matchHotelDirectory } = await import("../lib/crm/hotel-catalog");
+  const { matchHotelDirectory } = await import("../../lib/crm/hotel-catalog");
   const matches = items
     .map((item) => matchHotelDirectory(item, directory))
     .filter((row): row is HotelDirectoryEntry => Boolean(row));

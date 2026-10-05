@@ -4,6 +4,7 @@ import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
 import { emptyToNull } from "@/lib/crm/identity";
 import { persistPassportsFromForm } from "@/lib/crm/passport-import";
+import { assertUpload } from "@/lib/crm/upload-policy";
 import {
   applyIdentityFromForm,
   cloneTravelDocument,
@@ -43,6 +44,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ document });
     }
     const file = form.get("file");
+    if (file instanceof File && file.size > 0) assertUpload(file);
     const imported = await persistPassportsFromForm(auth.supabase, form, auth.customer.id, {
       first_name: auth.customer.first_name,
       last_name: auth.customer.last_name,

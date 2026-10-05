@@ -27,7 +27,6 @@ import {
   aiGatewayConfigured,
   bookingStatusFromExtract,
   guessIngestMime,
-  isAllowedIngestType,
   isCancellationExtract,
   keepAgentPrices,
   normalizeHotelExtractItem,
@@ -60,6 +59,7 @@ import {
 } from "@/lib/crm/household";
 import { isPlaceholderTraveler, sameRecordedTraveler } from "@/lib/crm/person-match";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
+import { foldLetters } from "@/lib/crm/text";
 import {
   INGEST_ITEM_KINDS,
   type BookingItemKind,
@@ -102,21 +102,6 @@ export function collectStagedFiles(form: FormData): IngestStagedFile[] {
   }
 }
 
-export function assertIngestFiles(files: File[]) {
-  if (files.length === 0) throw new Error("Ajoutez au moins un PDF ou une photo.");
-  if (files.length > MAX_INGEST_FILES) {
-    throw new Error(`Maximum ${MAX_INGEST_FILES} fichiers.`);
-  }
-  for (const file of files) {
-    if (file.size > MAX_INGEST_BYTES) {
-      throw new Error(`${file.name} dépasse 25 Mo.`);
-    }
-    if (!isAllowedIngestType(file.type, file.name)) {
-      throw new Error(`${file.name} : PDF ou image uniquement.`);
-    }
-  }
-}
-
 export async function cleanupIngestBatch(staffUserId: string, batchId: string) {
   try {
     const prefix = ingestBatchPrefix(staffUserId, batchId);
@@ -125,14 +110,6 @@ export async function cleanupIngestBatch(staffUserId: string, batchId: string) {
   } catch (err) {
     console.error("[ingest-tmp] cleanup", err instanceof Error ? err.message : err);
   }
-}
-
-function normalizeName(value: string | null | undefined) {
-  return (value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z]/g, "");
 }
 
 export function matchCustomerId(
@@ -144,13 +121,13 @@ export function matchCustomerId(
     const hit = customers.find((c) => c.email.toLowerCase() === email);
     if (hit) return hit.id;
   }
-  const last = normalizeName(extract.customer_last_name);
-  const first = normalizeName(extract.customer_first_name);
+  const last = foldLetters(extract.customer_last_name);
+  const first = foldLetters(extract.customer_first_name);
   if (!last) return null;
   const hits = customers.filter((c) => {
-    if (normalizeName(c.last_name) !== last) return false;
+    if (foldLetters(c.last_name) !== last) return false;
     if (!first) return true;
-    const cf = normalizeName(c.first_name);
+    const cf = foldLetters(c.first_name);
     return cf === first || cf.startsWith(first) || first.startsWith(cf);
   });
   return hits.length === 1 ? hits[0].id : null;

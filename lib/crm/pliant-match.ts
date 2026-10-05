@@ -1,4 +1,6 @@
-import { normalizeMatchText } from "./revolut-match";
+import { matchTokens, normalizeMatchText, suggestedCustomerId, tokensSpell } from "./revolut-match";
+
+export { suggestedCustomerId } from "./revolut-match";
 
 export type PliantMatchReason =
   | "full_name"
@@ -151,6 +153,7 @@ function editDistance(a: string, b: string) {
 
 /**
  * Le libellé de la carte désigne le client. Le porteur (collaborateur agence) n’entre pas dans le score.
+ * Les noms se comparent mot à mot (frontières de mots), jamais par sous-chaîne.
  * Auto seulement s’il reste exactement un hit ≥ 90.
  */
 export function scorePliantMatches(
@@ -158,7 +161,9 @@ export function scorePliantMatches(
   customers: PliantMatchCustomer[],
   options?: { linkedCustomerIds?: string[] }
 ): PliantMatchResult {
-  const haystack = pliantAgencyCardLabel(row.card_label) ? "" : normalizeMatchText(row.card_label);
+  const label = pliantAgencyCardLabel(row.card_label) ? "" : row.card_label;
+  const haystack = normalizeMatchText(label);
+  const tokens = matchTokens(label);
   const byId = new Map<string, PliantMatchCandidate>();
 
   function upsert(customer: PliantMatchCustomer, score: number, reason: PliantMatchReason) {
@@ -188,7 +193,7 @@ export function scorePliantMatches(
       const lasts = lastKeys(c);
       const company = normalizeMatchText(c.company_name);
       const fullHit = givens.some((first) =>
-        lasts.some((last) => haystack.includes(`${first}${last}`) || haystack.includes(`${last}${first}`))
+        lasts.some((last) => tokensSpell(tokens, `${first}${last}`) || tokensSpell(tokens, `${last}${first}`))
       );
 
       if (fullHit) {
@@ -196,16 +201,16 @@ export function scorePliantMatches(
         continue;
       }
 
-      if (company.length >= 3 && haystack.includes(company)) {
+      if (company.length >= 3 && tokensSpell(tokens, company)) {
         const unique = (companyCounts.get(company) || 0) === 1;
         upsert(c, unique ? 95 : 70, unique ? "company_name" : "partial");
         continue;
       }
 
-      const lastHit = lasts.find((last) => haystack.includes(last));
+      const lastHit = lasts.find((last) => tokensSpell(tokens, last));
       if (lastHit) {
         const unique = (lastNameCounts.get(lastHit) || 0) === 1;
-        const givenHit = givens.some((first) => haystack.includes(first));
+        const givenHit = givens.some((first) => tokensSpell(tokens, first));
         if (unique) upsert(c, 90, "unique_last_name");
         else if (givenHit) upsert(c, 80, "partial");
         else upsert(c, 55, "partial");
@@ -242,9 +247,8 @@ export function scorePliantMatches(
   const candidates = [...byId.values()].sort(
     (a, b) => b.score - a.score || a.label.localeCompare(b.label, "fr")
   );
-  const strong = candidates.filter((c) => c.score >= 90);
   return {
-    autoCustomerId: strong.length === 1 ? strong[0].customer_id : null,
+    autoCustomerId: suggestedCustomerId(candidates) || null,
     candidates,
   };
 }

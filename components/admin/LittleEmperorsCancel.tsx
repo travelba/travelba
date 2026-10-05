@@ -49,7 +49,7 @@ export function LittleEmperorsCancel({
       {deadline ? <p className="mt-1 text-sm text-muted">Limite · {deadline}</p> : null}
       {isCancellable === true ? (
         <ConfirmAction
-          className="mt-3"
+          wrapperClassName="mt-3"
           label="Annuler chez Little Emperors"
           confirmLabel="Confirmer l’annulation"
           busyLabel="Annulation Little Emperors…"

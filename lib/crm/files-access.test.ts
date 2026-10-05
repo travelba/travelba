@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { customerPathScope, isSafeCrmPath } from "./files-access";
+import { customerPathScope, isInlineSafeFile, isSafeCrmPath } from "./files-access";
 
 const ME = "11111111-1111-4111-8111-111111111111";
 const OTHER = "22222222-2222-4222-8222-222222222222";
@@ -33,4 +33,17 @@ test("booking files require a real booking id and a second check", () => {
 test("staging and unknown prefixes are denied to customers", () => {
   assert.deepEqual(customerPathScope(`ingest-tmp/${ME}/batch/x.pdf`, ME), { kind: "denied" });
   assert.deepEqual(customerPathScope("revolut/export.csv", ME), { kind: "denied" });
+});
+
+test("seuls image et PDF s’affichent en ligne, le reste se télécharge", () => {
+  assert.equal(isInlineSafeFile("bookings/b/doc.pdf", "application/pdf"), true);
+  assert.equal(isInlineSafeFile("bookings/b/photo.jpg", "image/jpeg"), true);
+  assert.equal(isInlineSafeFile("bookings/b/scan.pdf", "application/octet-stream"), true);
+  assert.equal(isInlineSafeFile("bookings/b/scan.heic", ""), true);
+  assert.equal(isInlineSafeFile("bookings/b/mail.eml", "message/rfc822"), false);
+  assert.equal(isInlineSafeFile("bookings/b/lettre.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"), false);
+  assert.equal(isInlineSafeFile("bookings/b/notes.txt", "text/plain"), false);
+  assert.equal(isInlineSafeFile("bookings/b/page.html", "text/html; charset=utf-8"), false);
+  assert.equal(isInlineSafeFile("bookings/b/logo.svg", "image/svg+xml"), false);
+  assert.equal(isInlineSafeFile("bookings/b/mail.eml", "application/octet-stream"), false);
 });

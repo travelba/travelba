@@ -285,6 +285,7 @@ test("la réservation client liste les frais d’agence puis les dépenses libre
   );
   assert.equal(lines[0]?.amountLabel, formatMoney(agencyFeeFromGross(1000), "EUR"));
   assert.equal(lines[1]?.amountLabel, formatMoney(40, "EUR"));
+  // Prix masqué : la ligne de dépense n’affiche rien, « Prix à la publication » reste au bloc Montant.
   assert.equal(
     clientStayExpenseLines({
       expenses: [{ id: "e1", title: "Pourboire", amount: 40 }],
@@ -293,7 +294,7 @@ test("la réservation client liste les frais d’agence puis les dépenses libre
       currency: "EUR",
       pricesVisible: false,
     })[0]?.amountLabel,
-    HIDDEN_PRICE_LABEL
+    null
   );
   assert.equal(
     clientStayExpenseLines({

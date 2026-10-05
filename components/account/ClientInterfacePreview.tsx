@@ -21,6 +21,7 @@ import {
   carnetVisible,
   clientBookingStatusLabel,
   clientVisibleItems,
+  insuranceLineLabel,
   itemPriceLabel,
   publishRevealIds,
   tripPlaceLine,
@@ -332,7 +333,7 @@ function ClientScreen({
           <ClientTripBody
             intro={
               <>
-                <p className="text-sm font-semibold text-[var(--aura-blue)]">← Mes réservations</p>
+                <p className="text-sm font-semibold text-[var(--aura-blue)]">← Réservations</p>
                 <BookingHero
                   booking={booking}
                   items={allItems}
@@ -457,10 +458,10 @@ function ClientScreen({
                   })}
                 </p>
                 {insurances.map((item) => {
-                  const price = itemPriceLabel(item, booking.currency, null, pricesVisible);
+                  const price = pricesVisible ? itemPriceLabel(item, booking.currency, null, true) : null;
                   return (
                     <p key={item.id} className="text-sm text-muted">
-                      Assurance {item.title}
+                      {insuranceLineLabel(item.title)}
                       {price ? ` · ${price}` : ""}
                     </p>
                   );

@@ -176,10 +176,6 @@ export const ensureCustomerForUser = cache(async (user: User): Promise<CrmCustom
   }
 });
 
-export function isRedirect(value: unknown): value is NextResponse {
-  return value instanceof NextResponse;
-}
-
 /** Guard for App Router admin pages — redirects to /admin/login if needed. */
 export async function requireStaffPage(): Promise<{
   supabase: Awaited<ReturnType<typeof createClient>>;

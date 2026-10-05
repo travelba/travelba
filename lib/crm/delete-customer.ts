@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { listCrmFiles, removeCrmFiles } from "@/lib/crm/files";
 import { customerFilePrefixes, isUuid } from "@/lib/crm/ids";
@@ -11,9 +12,34 @@ export class CustomerDeleteError extends Error {
   }
 }
 
-export async function deleteCustomerById(customerId: string) {
+/**
+ * Les mouvements Revolut / Pliant rapprochés à ce client reviennent dans l’inbox (`unmatched`)
+ * avant la suppression de ses crédits : sans cela ils resteraient `matched` vers des pointeurs nuls.
+ */
+async function releaseBankMatches(admin: SupabaseClient, customerId: string) {
+  const { error: revolutError } = await admin
+    .from("crm_revolut_transactions")
+    .update({ status: "unmatched", matched_customer_id: null, matched_transaction_id: null })
+    .eq("matched_customer_id", customerId);
+  if (revolutError) throw new CustomerDeleteError(revolutError.message);
+  const { error: pliantError } = await admin
+    .from("crm_pliant_transactions")
+    .update({ match_status: "unmatched", matched_customer_id: null, matched_transaction_id: null, customer_id: null })
+    .eq("matched_customer_id", customerId);
+  if (pliantError) throw new CustomerDeleteError(pliantError.message);
+}
+
+export type DeleteCustomerDeps = {
+  admin: SupabaseClient;
+  listFiles: (prefix: string) => Promise<string[]>;
+  removeFiles: (paths: string[]) => Promise<void>;
+};
+
+export async function deleteCustomerById(customerId: string, deps?: Partial<DeleteCustomerDeps>) {
   if (!isUuid(customerId)) throw new CustomerDeleteError("Identifiant invalide");
-  const admin = createServiceClient();
+  const admin = deps?.admin ?? createServiceClient();
+  const listFiles = deps?.listFiles ?? listCrmFiles;
+  const removeFiles = deps?.removeFiles ?? removeCrmFiles;
 
   const { data: customer, error: loadError } = await admin
     .from("crm_customers")
@@ -53,8 +79,11 @@ export async function deleteCustomerById(customerId: string) {
     if (booking.cover_image_path) paths.push(booking.cover_image_path);
   }
   for (const prefix of customerFilePrefixes(customerId, bookingIds)) {
-    paths.push(...(await listCrmFiles(prefix)));
+    paths.push(...(await listFiles(prefix)));
   }
+
+  // Avant toute suppression : si cette écriture échoue, rien n’est à moitié effacé.
+  await releaseBankMatches(admin, customerId);
 
   if (bookingIds.length) {
     const { error } = await admin.from("crm_bookings").delete().in("id", bookingIds);
@@ -70,7 +99,7 @@ export async function deleteCustomerById(customerId: string) {
   const { error: delError } = await admin.from("crm_customers").delete().eq("id", customerId);
   if (delError) throw new CustomerDeleteError(delError.message);
 
-  await removeCrmFiles(paths);
+  await removeFiles(paths);
 
   if (customer.auth_user_id) {
     const { data: staff } = await admin

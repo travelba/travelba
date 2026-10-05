@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ensureCustomerForUser, getSessionUser } from "@/lib/crm/auth";
@@ -21,10 +22,13 @@ import {
   carnetVisible,
   clientBookingStatusLabel,
   clientVisibleItems,
+  insuranceLineLabel,
   itemPriceLabel,
   tripPlaceLine,
+  unlinkedDocuments,
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
+import { HiddenStayNotice } from "@/components/account/HiddenStayNotice";
 import { stayTitleFromItems } from "@/lib/crm/staff-stay";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { EncoursPayment } from "@/components/account/EncoursPayment";
@@ -50,8 +54,50 @@ import { loadClientLedger } from "@/lib/crm/client-ledger";
 import { stripePublishableKey } from "@/lib/crm/stripe";
 import { StayExpenses } from "@/components/account/StayExpenses";
 import { isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
+import { toPublicBooking } from "@/lib/crm/public-booking";
 
 type Props = { params: Promise<{ reference: string }> };
+
+/**
+ * Titre d’onglet : « {titre du séjour} · {référence} — TBA », seulement pour un dossier du client,
+ * montré et non archivé. Sinon le titre reste neutre : un dossier en préparation ne se devine pas.
+ */
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { reference } = await params;
+  const neutral = { title: `Réservation · ${reference} — ${siteConfig.shortName}` };
+  const { supabase, user } = await getSessionUser();
+  if (!user) return neutral;
+  const customer = await ensureCustomerForUser(user);
+  if (!customer) return neutral;
+  const { data } = await supabase
+    .from("crm_bookings")
+    .select("title, destination, reference, visible_to_client, archived_at")
+    .eq("customer_id", customer.id)
+    .eq("reference", reference)
+    .maybeSingle();
+  const stay =
+    (data as Pick<CrmBooking, "title" | "destination" | "reference" | "visible_to_client" | "archived_at"> | null) ||
+    null;
+  if (!stay || !stay.visible_to_client || stay.archived_at) return neutral;
+  const name = (stay.title || "").trim() || (stay.destination || "").trim() || "Réservation";
+  return { title: `${name} · ${stay.reference || reference} — ${siteConfig.shortName}` };
+}
+
+/** Le dossier est bien à ce client mais la RLS le cache (dépublié, archivé) : on l’explique, pas un 404. */
+async function stayExistsForCustomer(customerId: string, reference: string) {
+  try {
+    const admin = createServiceClient();
+    const { data } = await admin
+      .from("crm_bookings")
+      .select("id")
+      .eq("customer_id", customerId)
+      .eq("reference", reference)
+      .maybeSingle();
+    return Boolean(data);
+  } catch {
+    return false;
+  }
+}
 
 export default async function ReservationDetailPage({ params }: Props) {
   const { reference } = await params;
@@ -67,9 +113,14 @@ export default async function ReservationDetailPage({ params }: Props) {
     .eq("customer_id", customer.id)
     .eq("reference", reference)
     .maybeSingle();
-  if (!booking) notFound();
+  if (!booking) {
+    if (await stayExistsForCustomer(customer.id, reference)) return <HiddenStayNotice reference={reference} />;
+    notFound();
+  }
   const b = booking as CrmBooking;
-  if (b.archived_at) notFound();
+  if (b.archived_at) return <HiddenStayNotice reference={b.reference} />;
+  // Composants « use client » : projection publique seulement, jamais la ligne brute (B-16).
+  const pub = toPublicBooking(b);
 
   const [{ data: items }, { data: travelers }, { data: docs }, { data: identityDocs }, { data: companions }, { data: declined }, { data: visaRows }] =
     await Promise.all([
@@ -94,7 +145,7 @@ export default async function ReservationDetailPage({ params }: Props) {
     .filter((row): row is ServiceRefusal => Boolean(row));
 
   const rawItems = clientVisibleItems((items || []) as CrmBookingItem[]);
-  if (!carnetVisible(b, rawItems)) notFound();
+  if (!carnetVisible(b, rawItems)) return <HiddenStayNotice reference={b.reference} />;
   const visibleItems = withoutHotelRosterItems(await loadHotelContacts(b.id, rawItems));
 
   const insurances = visibleItems.filter((item) => item.kind === "insurance");
@@ -204,11 +255,11 @@ export default async function ReservationDetailPage({ params }: Props) {
             href="/mon-compte/reservations"
             className="inline-flex text-sm font-semibold text-[var(--aura-blue)]"
           >
-            ← Mes réservations
+            ← Réservations
           </Link>
 
           <BookingHero
-            booking={b}
+            booking={pub}
             items={withoutHotelRosterItems((items || []) as CrmBookingItem[])}
             priority
             className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]"
@@ -240,7 +291,7 @@ export default async function ReservationDetailPage({ params }: Props) {
       }
       itinerary={
         <CarnetItinerary
-          booking={b}
+          booking={pub}
           items={visibleItems}
           docs={visibleDocs}
           pricesVisible={b.prices_visible !== false}
@@ -259,7 +310,7 @@ export default async function ReservationDetailPage({ params }: Props) {
       services={
         <ExtrasPanel
           variant="client"
-          booking={b}
+          booking={pub}
           items={visibleItems}
           travelers={party}
           holder={customer}
@@ -332,10 +383,11 @@ export default async function ReservationDetailPage({ params }: Props) {
             })}
           </p>
           {insurances.map((item) => {
-            const price = itemPriceLabel(item, b.currency, null, b.prices_visible !== false);
+            // Prix masqué : la mention « Prix à la publication » reste au montant, pas sur chaque ligne.
+            const price = b.prices_visible !== false ? itemPriceLabel(item, b.currency, null, true) : null;
             return (
               <p key={item.id} className="text-sm text-muted">
-                Assurance {item.title}
+                {insuranceLineLabel(item.title)}
                 {price ? ` · ${price}` : ""}
               </p>
             );
@@ -347,7 +399,7 @@ export default async function ReservationDetailPage({ params }: Props) {
         <>
           <ReservationFiles
             showPassports={false}
-            attachments={attachmentPreviews(visibleDocs, visibleItems, b.reference)}
+            attachments={attachmentPreviews(unlinkedDocuments(visibleDocs, visibleItems), visibleItems, b.reference)}
           />
           {customer.phone ? (
             <a

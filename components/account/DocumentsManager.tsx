@@ -3,12 +3,18 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DOC_TYPE_LABELS, type CrmCompanion, type CrmTravelDocument, type TravelDocType } from "@/lib/crm/types";
+import { deleteJson, sendForm } from "@/lib/crm/client-fetch";
 import { countryName } from "@/lib/crm/countries";
-import { nationalityFromIdentity } from "@/lib/crm/document-identity";
-import { documentExpiryStatus, documentExpiryWarning, identityOverwriteWarning } from "@/lib/crm/identity";
+import {
+  AMBIGUOUS_HOUSEHOLD_NOTICE,
+  documentHolderName,
+  documentNameNotice,
+  nationalityFromIdentity,
+  preselectDocumentTarget,
+} from "@/lib/crm/document-identity";
+import { documentExpiryStatus, documentExpiryWarning } from "@/lib/crm/identity";
 import { formatDateFr } from "@/lib/crm/money";
 import { appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-extract";
-import { documentHolderName } from "@/lib/crm/document-identity";
 import { isVaultDocument } from "@/lib/crm/trip-documents";
 import { StatusChip } from "@/components/crm/ui";
 import {
@@ -20,6 +26,7 @@ import {
 } from "@/components/crm/fields";
 import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
 import { identityPreview } from "@/lib/crm/preview-files";
 
@@ -53,14 +60,26 @@ export function DocumentsManager({
   const [sex, setSex] = useState("");
   const [applyIdentity, setApplyIdentity] = useState(true);
   const [scan, setScan] = useState<ScanResult | null>(null);
-  const [nameWarn, setNameWarn] = useState<string | null>(null);
+  /** Titulaire et compagnon homonymes : rien n’est reporté tant que « Pour qui » n’est pas choisi. */
+  const [ambiguous, setAmbiguous] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
+  const target = companionId ? companions.find((c) => c.id === companionId) || null : holder;
+  // Comparé au titulaire (ou au compagnon choisi), jamais à l’état local vide du formulaire.
+  const nameWarn = documentNameNotice(scan?.identity, target, {
+    applyIdentity,
+    isHolder: !companionId,
+  });
 
   function applyScan(result: ScanResult) {
     setScan(result);
     setOtherDoc(false);
     const id = result.identity;
     if (!id) return;
+    // Le passeport d’un proche va sur sa fiche ; un inconnu reste au coffre sans renommer le titulaire.
+    const preselect = preselectDocumentTarget(id, holder, companions);
+    setCompanionId(preselect.companionId);
+    setApplyIdentity(preselect.applyIdentity);
+    setAmbiguous(preselect.ambiguous);
     setDocType(id.doc_type);
     if (id.number) setNumber(id.number);
     if (id.issuing_country) setIssuingCountry(id.issuing_country);
@@ -69,11 +88,6 @@ export function DocumentsManager({
     if (id.place_of_birth) setPlaceOfBirth(id.place_of_birth);
     if (id.authority) setAuthority(id.authority);
     if (id.personal_number) setPersonalNumber(id.personal_number);
-    if (id.first_name || id.last_name) {
-      setNameWarn(
-        identityOverwriteWarning({ first_name: firstName, last_name: lastName }, id)
-      );
-    }
     if (id.first_name) setFirstName(id.first_name);
     if (id.last_name) setLastName(id.last_name);
     setUsageName(id.usage_name || "");
@@ -83,10 +97,36 @@ export function DocumentsManager({
     if (id.sex) setSex(id.sex);
   }
 
+  function resetForm() {
+    setScan(null);
+    setNumber("");
+    setDocIssued("");
+    setDocExpiry("");
+    setPlaceOfBirth("");
+    setAuthority("");
+    setPersonalNumber("");
+    setIssuingCountry("");
+    setFirstName("");
+    setLastName("");
+    setUsageName("");
+    setBirthDate("");
+    setNationality("");
+    setSex("");
+  }
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving) return;
     setSaving(true);
     setError(null);
+    try {
+      await submit(event.currentTarget);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submit(formElement: HTMLFormElement) {
     const identities = listedIdentities(scan?.identity, scan?.identities);
     if (identities.length > 1 && scan?.file) {
       const patched = identities.map((identity, index) =>
@@ -116,27 +156,12 @@ export function DocumentsManager({
         companionId: companionId || null,
         applyIdentity,
       });
-      const res = await fetch("/api/client/documents", { method: "POST", body: form });
-      const json = await res.json();
-      setSaving(false);
-      if (!res.ok) {
-        setError(json.error || "Erreur");
+      const result = await sendForm("/api/client/documents", form);
+      if (!result.ok) {
+        setError(result.error || "Impossible d’importer ces passeports. Réessayez ou écrivez à l’agence.");
         return;
       }
-      setScan(null);
-      setNumber("");
-      setDocIssued("");
-      setDocExpiry("");
-      setPlaceOfBirth("");
-      setAuthority("");
-      setPersonalNumber("");
-      setIssuingCountry("");
-      setFirstName("");
-      setLastName("");
-      setUsageName("");
-      setBirthDate("");
-      setNationality("");
-      setSex("");
+      resetForm();
       router.refresh();
       return;
     }
@@ -158,37 +183,26 @@ export function DocumentsManager({
     form.set("nationality", nationality);
     form.set("sex", sex);
     form.set("apply_identity", applyIdentity ? "1" : "0");
-    const extra = event.currentTarget.elements.namedItem("extra_file");
+    const extra = formElement.elements.namedItem("extra_file");
     if (extra instanceof HTMLInputElement && extra.files?.[0] && !scan?.file) {
       form.set("file", extra.files[0]);
     }
-    const res = await fetch("/api/client/documents", { method: "POST", body: form });
-    const json = await res.json();
-    setSaving(false);
-    if (!res.ok) {
-      setError(json.error || "Erreur");
+    const result = await sendForm("/api/client/documents", form);
+    if (!result.ok) {
+      setError(result.error || "Impossible d’ajouter cette pièce. Réessayez ou écrivez à l’agence.");
       return;
     }
-    setScan(null);
-    setNumber("");
-    setDocIssued("");
-    setDocExpiry("");
-    setPlaceOfBirth("");
-    setAuthority("");
-    setPersonalNumber("");
-    setIssuingCountry("");
-    setFirstName("");
-    setLastName("");
-    setUsageName("");
-    setBirthDate("");
-    setNationality("");
-    setSex("");
+    resetForm();
     router.refresh();
   }
 
   async function remove(id: string) {
-    await fetch(`/api/client/documents?id=${id}`, { method: "DELETE" });
+    const result = await deleteJson(`/api/client/documents?id=${id}`);
+    if (!result.ok) {
+      return { ok: false, error: result.error || "Impossible de retirer cette pièce. Réessayez ou écrivez à l’agence." };
+    }
     router.refresh();
+    return { ok: true };
   }
 
   const vault = documents.filter(isVaultDocument);
@@ -206,7 +220,7 @@ export function DocumentsManager({
             .join(" · ");
           return (
             <li key={d.id} className="admin-af-card rounded-2xl px-4 py-3">
-              <div className="flex items-start gap-2">
+              <div className="flex flex-wrap items-start gap-2">
                 <button
                   type="button"
                   onClick={() => setOpenId(open ? null : d.id)}
@@ -221,13 +235,15 @@ export function DocumentsManager({
                   </span>
                   <StatusChip tone={status.tone}>{status.label}</StatusChip>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => remove(d.id)}
-                  className="shrink-0 text-xs font-semibold text-accent"
-                >
-                  Retirer
-                </button>
+                <ConfirmAction
+                  label="Retirer"
+                  question="Retirer cette pièce ?"
+                  hint="Le fichier est supprimé du coffre. Le profil n’est pas modifié."
+                  confirmLabel="Retirer"
+                  busyLabel="Suppression…"
+                  className="inline-flex min-h-11 shrink-0 items-center px-2 text-xs font-semibold text-accent"
+                  onConfirm={() => remove(d.id)}
+                />
               </div>
               {open ? (
                 <div className="mt-2 space-y-2">
@@ -283,6 +299,11 @@ export function DocumentsManager({
             <div className="min-w-0 flex-1 space-y-2">
               <ScanStatus identity={scan.identity} identities={scan.identities} warning={scan.warning} />
               {expiryWarn ? <p className="text-sm text-accent">{expiryWarn}</p> : null}
+              {ambiguous ? (
+                <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
+                  {AMBIGUOUS_HOUSEHOLD_NOTICE}
+                </p>
+              ) : null}
               {nameWarn ? (
                 <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
                   {nameWarn}
@@ -306,7 +327,10 @@ export function DocumentsManager({
               <Field label="Pour qui">
                 <select
                   value={companionId}
-                  onChange={(event) => setCompanionId(event.target.value)}
+                  onChange={(event) => {
+                    setCompanionId(event.target.value);
+                    setAmbiguous(false);
+                  }}
                   className={fieldControlClass}
                 >
                   <option value="">Moi (titulaire)</option>
@@ -370,7 +394,7 @@ export function DocumentsManager({
                 <Field label="Nom">
                   <input value={lastName} onChange={(event) => setLastName(event.target.value)} className={fieldControlClass} />
                 </Field>
-                <Field label="Nom d'épouse" hint="Nom d'usage s'il est imprimé" className="sm:col-span-2">
+                <Field label="Nom d'usage" hint="S'il est imprimé sur la pièce" className="sm:col-span-2">
                   <input value={usageName} onChange={(event) => setUsageName(event.target.value)} className={fieldControlClass} />
                 </Field>
                 <Field label="Naissance">

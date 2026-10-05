@@ -1,6 +1,7 @@
 import { activityLabel, legalFormLabel } from "./entreprise-labels";
 
 const ANNUAIRE_URL = "https://recherche-entreprises.api.gouv.fr/search";
+const ANNUAIRE_TIMEOUT_MS = 8_000;
 
 export type OfficialCompany = {
   legalName: string;
@@ -177,6 +178,7 @@ export async function searchOfficialCompanies(query: string): Promise<OfficialCo
       "User-Agent": "Travelba/1.0 (contact@travelba.fr)",
     },
     cache: "no-store",
+    signal: AbortSignal.timeout(ANNUAIRE_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error("Annuaire des entreprises indisponible");
   const json = (await res.json()) as { results?: CompanyHit[] };

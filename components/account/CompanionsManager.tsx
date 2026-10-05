@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import type { CrmCompanion, CrmTravelDocument } from "@/lib/crm/types";
+import { deleteJson, postJson, sendForm } from "@/lib/crm/client-fetch";
 import { nationalityFromIdentity } from "@/lib/crm/document-identity";
 import { identityOverwriteWarning, RELATIONSHIP_OPTIONS } from "@/lib/crm/identity";
 import { appendPassportForm, appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-extract";
@@ -20,6 +21,7 @@ import {
 import { type ScanResult } from "@/components/crm/IdentityScan";
 import { PersonPassportCard } from "@/components/crm/PersonPassportCard";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
 
 function CompanionPhoneEditor({ companion }: { companion: CrmCompanion }) {
   const router = useRouter();
@@ -28,30 +30,33 @@ function CompanionPhoneEditor({ companion }: { companion: CrmCompanion }) {
   const [error, setError] = useState<string | null>(null);
 
   async function save() {
+    if (saving) return;
     setSaving(true);
     setError(null);
-    const response = await fetch("/api/client/companions", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: companion.id,
-        first_name: companion.first_name,
-        last_name: companion.last_name,
-        usage_name: companion.usage_name,
-        birth_date: companion.birth_date,
-        sex: companion.sex,
-        nationality: companion.nationality,
-        relationship: companion.relationship,
-        phone,
-      }),
-    });
-    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-    setSaving(false);
-    if (!response.ok) {
-      setError(payload?.error || "Téléphone invalide");
-      return;
+    try {
+      const result = await postJson(
+        "/api/client/companions",
+        {
+          id: companion.id,
+          first_name: companion.first_name,
+          last_name: companion.last_name,
+          usage_name: companion.usage_name,
+          birth_date: companion.birth_date,
+          sex: companion.sex,
+          nationality: companion.nationality,
+          relationship: companion.relationship,
+          phone,
+        },
+        { method: "PATCH" }
+      );
+      if (!result.ok) {
+        setError(result.error || "Téléphone invalide. Vérifiez l’indicatif et le numéro.");
+        return;
+      }
+      router.refresh();
+    } finally {
+      setSaving(false);
     }
-    router.refresh();
   }
 
   return (
@@ -94,6 +99,8 @@ export function CompanionsManager({
   const [sex, setSex] = useState("");
   const [phone, setPhone] = useState("");
   const [scan, setScan] = useState<ScanResult | null>(null);
+  /** La carte passeport importe déjà (plusieurs livrets) : « Ajouter » attend, pour ne pas importer deux fois. */
+  const [cardBusy, setCardBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [nameWarn, setNameWarn] = useState<string | null>(null);
@@ -114,8 +121,17 @@ export function CompanionsManager({
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving) return;
     setSaving(true);
     setError(null);
+    try {
+      await submit();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submit() {
     const identities = listedIdentities(scan?.identity, scan?.identities);
     if (identities.length > 1 && scan?.file) {
       const patched = identities.map((identity, index) =>
@@ -136,52 +152,57 @@ export function CompanionsManager({
         file: scan.file,
         createUnmatchedOnly: true,
       });
-      const docs = await fetch("/api/client/documents", { method: "POST", body: form });
-      const docsJson = await docs.json().catch(() => ({}));
-      setSaving(false);
+      const docs = await sendForm("/api/client/documents", form);
       if (!docs.ok) {
-        setError(docsJson.error || "Impossible d’importer les passeports");
+        setError(docs.error || "Impossible d’importer ces passeports. Réessayez ou écrivez à l’agence.");
         return;
       }
       closeForm();
       router.refresh();
       return;
     }
-    const res = await fetch("/api/client/companions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        first_name: firstName,
-        last_name: lastName,
-        usage_name: usageName,
-        relationship,
-        nationality,
-        birth_date: birthDate,
-        sex,
-        phone,
-      }),
+    const created = await postJson<{ companion?: { id: string } }>("/api/client/companions", {
+      first_name: firstName,
+      last_name: lastName,
+      usage_name: usageName,
+      relationship,
+      nationality,
+      birth_date: birthDate,
+      sex,
+      phone,
     });
-    const json = await res.json();
-    if (!res.ok) {
-      setSaving(false);
-      setError(json.error || "Erreur");
+    if (!created.ok || !created.data?.companion?.id) {
+      setError(created.error || "Impossible d’ajouter ce voyageur. Réessayez ou écrivez à l’agence.");
       return;
     }
     if (scan?.file) {
       const form = new FormData();
       form.set("file", scan.file);
-      form.set("companion_id", json.companion.id);
+      form.set("companion_id", created.data.companion.id);
       appendPassportForm(form, scan.identity, true);
-      await fetch("/api/client/documents", { method: "POST", body: form });
+      const upload = await sendForm("/api/client/documents", form);
+      if (!upload.ok) {
+        // Le voyageur existe : on le dit, et la pièce se rajoute depuis sa fiche.
+        router.refresh();
+        setError(
+          `${firstName || "Le voyageur"} est ajouté, mais sa pièce n’a pas pu être enregistrée (${
+            upload.error || "erreur"
+          }). Rouvrez sa fiche pour la joindre.`
+        );
+        return;
+      }
     }
-    setSaving(false);
     closeForm();
     router.refresh();
   }
 
   async function remove(id: string) {
-    await fetch(`/api/client/companions?id=${id}`, { method: "DELETE" });
+    const result = await deleteJson(`/api/client/companions?id=${id}`);
+    if (!result.ok) {
+      return { ok: false, error: result.error || "Impossible de retirer ce voyageur. Réessayez ou écrivez à l’agence." };
+    }
     router.refresh();
+    return { ok: true };
   }
 
   return (
@@ -196,9 +217,10 @@ export function CompanionsManager({
           const doc = primaryIdentityDoc(documentsForPerson(documents, c.id));
           const expanded = expandedId === c.id;
           const piece = doc?.number ? `n° ${doc.number}` : "Pièce à joindre";
+          const pieces = documentsForPerson(documents, c.id).length;
           return (
             <li key={c.id} className="admin-af-card rounded-2xl px-4 py-3">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setExpandedId(expanded ? null : c.id)}
@@ -212,9 +234,19 @@ export function CompanionsManager({
                     {[relationshipLabel(c.relationship), piece].filter(Boolean).join(" · ")}
                   </p>
                 </button>
-                <button type="button" onClick={() => remove(c.id)} className="shrink-0 text-xs font-semibold text-accent">
-                  Retirer
-                </button>
+                <ConfirmAction
+                  label="Retirer"
+                  question={`Retirer ${c.first_name || "ce voyageur"} et ses pièces ?`}
+                  hint={
+                    pieces
+                      ? `${pieces} pièce${pieces > 1 ? "s" : ""} d’identité ser${pieces > 1 ? "ont" : "a"} supprimée${pieces > 1 ? "s" : ""} avec la fiche.`
+                      : null
+                  }
+                  confirmLabel="Retirer"
+                  busyLabel="Suppression…"
+                  className="inline-flex min-h-11 shrink-0 items-center px-2 text-xs font-semibold text-accent"
+                  onConfirm={() => remove(c.id)}
+                />
               </div>
               {expanded ? (
                 <div className="mt-3 space-y-3">
@@ -255,6 +287,8 @@ export function CompanionsManager({
             if (id.sex) setSex(id.sex);
           }}
           onScan={setScan}
+          onCancel={() => setScan(null)}
+          onBusyChange={setCardBusy}
           onImported={() => {
             closeForm();
             router.refresh();
@@ -279,7 +313,7 @@ export function CompanionsManager({
               className={fieldControlClass}
             />
           </Field>
-          <Field label="Nom d'épouse" hint="Nom d'usage s'il est imprimé" className="sm:col-span-2">
+          <Field label="Nom d'usage" hint="S'il est imprimé sur la pièce" className="sm:col-span-2">
             <input
               autoComplete="off"
               value={usageName}
@@ -315,8 +349,8 @@ export function CompanionsManager({
         ) : null}
         {error ? <p className="text-sm text-accent">{error}</p> : null}
           <BusyBar active={saving} label="Enregistrement…" />
-          <button className="admin-af-btn rounded-full px-4 py-2.5 text-sm" disabled={saving}>
-            {saving ? "Enregistrement…" : "Ajouter l’accompagnateur"}
+          <button className="admin-af-btn rounded-full px-4 py-2.5 text-sm" disabled={saving || cardBusy}>
+            {saving ? "Enregistrement…" : cardBusy ? "Import des passeports…" : "Ajouter l’accompagnateur"}
           </button>
         </form>
       ) : (

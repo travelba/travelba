@@ -1,35 +1,63 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { BusyBar } from "@/components/crm/BusyBar";
 
 /**
+ * Ce que `onConfirm` peut renvoyer : rien (réussi), une chaîne (l’erreur à afficher),
+ * ou `{ ok, error }` (résultat d’un appel `postJson` / `adminAction`).
+ */
+export type ConfirmOutcome = string | null | undefined | void | { ok: boolean; error?: string | null };
+
+function outcomeError(outcome: ConfirmOutcome): string | null {
+  if (typeof outcome === "string") return outcome.trim() ? outcome : null;
+  if (outcome && typeof outcome === "object" && outcome.ok === false) {
+    return outcome.error || "L’action n’a pas abouti. Réessayez.";
+  }
+  return null;
+}
+
+/**
  * Bouton à confirmation en deux temps, inline : premier clic → question + [Confirmer] [Annuler].
- * `onConfirm` renvoie une chaîne pour afficher une erreur, rien quand tout va bien.
+ * L’action ne part qu’au second clic ; l’erreur renvoyée reste affichée, l’attente est visible.
  * Même composant côté agence et côté client : garder cette API.
  */
 export function ConfirmAction({
   label,
   confirmLabel = "Confirmer",
+  cancelLabel = "Annuler",
   question,
+  hint = null,
   onConfirm,
+  onOpenChange,
   tone = "default",
   size = "md",
   busyLabel,
   disabled = false,
-  className = "",
+  className,
+  confirmClassName,
+  wrapperClassName = "",
   align = "start",
   ariaLabel,
 }: {
-  label: string;
+  label: ReactNode;
   confirmLabel?: string;
+  cancelLabel?: string;
   question: string;
-  onConfirm: () => Promise<string | null | undefined | void>;
+  /** Précision sous la question (ce qui part avec l’action). */
+  hint?: ReactNode;
+  onConfirm: () => Promise<ConfirmOutcome>;
+  onOpenChange?: (open: boolean) => void;
   tone?: "danger" | "default";
   size?: "sm" | "md";
   busyLabel?: string;
   disabled?: boolean;
+  /** Classe du bouton déclencheur ; remplace le style par défaut (pastille). */
   className?: string;
+  /** Classe du bouton de confirmation ; remplace le style par défaut. */
+  confirmClassName?: string;
+  /** Classe du conteneur (marges, placement dans une ligne). */
+  wrapperClassName?: string;
   /** Alignement de la question et des boutons (fin de ligne dans une table). */
   align?: "start" | "end";
   /** Libellé lu par les lecteurs d’écran sur le premier bouton (« Retirer Marie »). */
@@ -50,51 +78,63 @@ export function ConfirmAction({
       ? "bg-[var(--admin-red)] text-white"
       : "bg-[var(--admin-navy)] text-[#faf9f6]";
   const alignClass = align === "end" ? "items-end text-right" : "items-start text-left";
+  const questionClass =
+    size === "sm" ? "max-w-xs text-xs text-muted" : "text-sm font-semibold text-[var(--admin-navy)]";
+
+  function arm(next: boolean) {
+    setArmed(next);
+    setError(null);
+    onOpenChange?.(next);
+  }
 
   async function run() {
     if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      const result = await onConfirm();
-      if (typeof result === "string" && result.trim()) {
-        setError(result);
+      const message = outcomeError(await onConfirm());
+      if (message) {
+        setError(message);
         return;
       }
       setArmed(false);
+      onOpenChange?.(false);
     } catch {
-      setError("Action impossible. Réessayez.");
+      setError("Connexion interrompue. Réessayez.");
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className={`flex flex-col gap-1.5 ${alignClass} ${className}`}>
+    <div
+      className={`flex flex-col gap-1.5 ${alignClass} ${armed && align === "start" ? "w-full" : ""} ${wrapperClassName}`}
+    >
       {armed ? (
         <div className={`flex flex-col gap-2 ${alignClass}`} role="group" aria-describedby={questionId}>
-          <p id={questionId} className="max-w-xs text-xs text-muted">
+          <p id={questionId} className={questionClass}>
             {question}
           </p>
+          {hint ? <div className="text-xs text-muted">{hint}</div> : null}
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               disabled={busy || disabled}
               onClick={() => void run()}
-              className={`admin-tap inline-flex items-center justify-center rounded-full font-semibold disabled:opacity-50 ${height} ${confirmTone}`}
+              className={
+                confirmClassName ??
+                `admin-tap inline-flex items-center justify-center rounded-full font-semibold disabled:opacity-50 ${height} ${confirmTone}`
+              }
             >
               {busy ? busyLabel || "…" : confirmLabel}
             </button>
             <button
               type="button"
               disabled={busy}
-              onClick={() => {
-                setArmed(false);
-                setError(null);
-              }}
+              onClick={() => arm(false)}
               className={`admin-tap inline-flex items-center justify-center rounded-full bg-white font-semibold text-[var(--admin-navy)] ring-1 ring-[var(--border)] disabled:opacity-50 ${height}`}
             >
-              Annuler
+              {cancelLabel}
             </button>
           </div>
           {busy ? (
@@ -108,11 +148,11 @@ export function ConfirmAction({
           type="button"
           disabled={disabled}
           aria-label={ariaLabel}
-          onClick={() => {
-            setError(null);
-            setArmed(true);
-          }}
-          className={`admin-tap inline-flex items-center justify-center rounded-full bg-white font-semibold disabled:opacity-50 ${height} ${trigger}`}
+          onClick={() => arm(true)}
+          className={
+            className ??
+            `admin-tap inline-flex items-center justify-center rounded-full bg-white font-semibold disabled:opacity-50 ${height} ${trigger}`
+          }
         >
           {label}
         </button>

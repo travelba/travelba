@@ -6,29 +6,56 @@ import { catalogCachePath, isCatalogPhotoId } from "@/lib/crm/cover-retouch";
 import { unsplashKeywordMatch } from "@/lib/crm/covers";
 import { downloadCrmFile } from "@/lib/crm/files";
 import { isBookingReference } from "@/lib/crm/concierge-notices";
+import { entryCoverAllowed, isEntryCode } from "@/lib/crm/entry-link";
+import { isTripShareCode } from "@/lib/crm/trip-share";
 
 type Ctx = { params: Promise<{ reference: string }> };
+
+type CoverBooking = { destination: string | null; title: string | null; cover_image_path: string | null };
 
 /**
  * JPEG de la couverture déjà publiée.
  * Twilio / WhatsApp récupère cette URL en HTTPS, sans jeton Supabase.
- * Un brouillon répond 404.
+ * L’adresse porte une preuve d’accès, sinon les références séquentielles TB-AAAA-NNNN
+ * seraient énumérables (B-14) :
+ * - `?e=CODE` : le code d’un lien court vivant, « Votre séjour », qui pointe sur ce dossier
+ *   (aperçu /e/, modèle WhatsApp du séjour). Jamais le code de partage dans une page rendue.
+ * - `?partage=CODE` : le code /v/CODE, pour les médias Twilio seulement (réponse du Concierge).
+ * Un brouillon, un dossier archivé, un lien mort ou un code absent / différent répondent 404.
  */
-export async function GET(_request: Request, ctx: Ctx) {
+export async function GET(request: Request, ctx: Ctx) {
   const { reference } = await ctx.params;
   if (!isBookingReference(reference)) return new NextResponse(null, { status: 404 });
+  const params = new URL(request.url).searchParams;
+  const entry = (params.get("e") || "").trim().toUpperCase();
+  const partage = params.get("partage") || "";
+  if (!isEntryCode(entry) && !isTripShareCode(partage)) return new NextResponse(null, { status: 404 });
 
-  let booking: { destination: string | null; title: string | null; cover_image_path: string | null } | null =
-    null;
+  let booking: CoverBooking | null = null;
   try {
     const admin = createServiceClient();
-    const { data } = await admin
-      .from("crm_bookings")
-      .select("destination, title, cover_image_path")
-      .eq("reference", reference)
-      .eq("visible_to_client", true)
-      .maybeSingle();
-    booking = data;
+    if (isEntryCode(entry)) {
+      const { data: link } = await admin.from("crm_entry_links").select("*").eq("code", entry).maybeSingle();
+      if (!entryCoverAllowed({ link, reference, now: new Date() })) return new NextResponse(null, { status: 404 });
+      const { data } = await admin
+        .from("crm_bookings")
+        .select("destination, title, cover_image_path")
+        .eq("reference", reference)
+        .eq("visible_to_client", true)
+        .is("archived_at", null)
+        .maybeSingle();
+      booking = data;
+    } else {
+      const { data } = await admin
+        .from("crm_bookings")
+        .select("destination, title, cover_image_path")
+        .eq("reference", reference)
+        .eq("share_code", partage)
+        .eq("visible_to_client", true)
+        .is("archived_at", null)
+        .maybeSingle();
+      booking = data;
+    }
   } catch {
     return new NextResponse(null, { status: 404 });
   }
