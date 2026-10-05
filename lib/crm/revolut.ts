@@ -1,4 +1,5 @@
-import { createPrivateKey, createSign, createHmac, timingSafeEqual } from "crypto";
+import { createPrivateKey, createSign, createHmac } from "crypto";
+import { secretEquals } from "./secret-equals";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 import { createServiceClient } from "@/lib/supabase/admin";
 import {
@@ -360,9 +361,5 @@ export function verifyRevolutWebhook(rawBody: string, timestamp: string, signatu
   const digest = createHmac("sha256", secret).update(payloadToSign).digest("hex");
   const expected = `v1=${digest}`;
   const candidates = signatureHeader.split(" ").filter(Boolean);
-  return candidates.some((sig) => {
-    const a = Buffer.from(sig);
-    const b = Buffer.from(expected);
-    return a.length === b.length && timingSafeEqual(a, b);
-  });
+  return candidates.some((sig) => secretEquals(sig, expected));
 }

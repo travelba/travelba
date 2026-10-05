@@ -8,9 +8,10 @@ import { formatDateFr } from "@/lib/crm/money";
 import { attachmentPreviews } from "@/lib/crm/preview-files";
 import { siteConfig } from "@/lib/site";
 import type { PhoneCalendarLinks } from "@/lib/crm/calendar-ics";
-import type { CrmBooking, CrmBookingDocument, CrmBookingItem } from "@/lib/crm/types";
+import type { PublicBooking } from "@/lib/crm/public-booking";
+import type { CrmBookingDocument, CrmBookingItem } from "@/lib/crm/types";
 
-/** Page du voyage : itinéraire et documents. Pas de compte, pas de facturation. */
+/** Page du voyage : itinéraire et documents. Pas de compte, pas de facturation. Reçoit la projection publique, jamais la ligne brute. */
 export function PublicTripView({
   booking,
   items,
@@ -19,7 +20,7 @@ export function PublicTripView({
   calendarBase,
   phones = null,
 }: {
-  booking: CrmBooking;
+  booking: PublicBooking;
   items: CrmBookingItem[];
   docs: CrmBookingDocument[];
   partage?: string | null;

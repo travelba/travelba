@@ -3,6 +3,7 @@ import { Resend } from "resend";
 import { siteConfig } from "@/lib/site";
 import { agencyCopyCc } from "@/lib/crm/outbound-mail";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
+import { RATE_LIMITED_MESSAGE, rateLimit, rateLimitKey, requestIp } from "@/lib/crm/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -43,6 +44,14 @@ export async function POST(request: Request) {
 
   const phone = body.phone?.trim() || "—";
   const service = body.service?.trim() || "—";
+
+  // 5 demandes par heure et par adresse IP (B-09).
+  const allowed = await rateLimit({
+    key: rateLimitKey("contact:ip", requestIp(request.headers)),
+    limit: 5,
+    windowSeconds: 60 * 60,
+  });
+  if (!allowed) return NextResponse.json({ error: RATE_LIMITED_MESSAGE }, { status: 429 });
 
   const apiKey = productionOnlySecret(process.env.RESEND_API_KEY);
   // Sans RESEND_API_KEY (dev), la demande n’est pas envoyée ; on ne logue pas les

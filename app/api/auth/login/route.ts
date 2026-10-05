@@ -6,6 +6,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { AUTH_COOKIE_OPTIONS } from "@/lib/supabase/cookie-options";
 import { publicSupabaseEnv } from "@/lib/supabase/env";
 import { LOGIN_FAILURE_MESSAGE } from "@/lib/crm/login-message";
+import { recordCustomerLogin } from "@/lib/crm/customer-login";
 import {
   adminClientCode,
   attemptClientLogin,
@@ -67,6 +68,8 @@ export async function POST(request: Request) {
       if (result.action !== "open") return failure();
       const desk = deskSetCookie(result.authUserId);
       if (!desk) return failure();
+      // Le mode desk ouvre l’espace d’un client : il laisse une trace dans son historique (C-03 / B-06).
+      await recordCustomerLogin(result.authUserId, "desk");
       opened.cookies.set(desk.name, desk.value, desk.options);
       opened.headers.set("Cache-Control", "private, no-store");
       return opened;

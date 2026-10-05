@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { jsonError, requireAdmin, requireStaff } from "@/lib/crm/auth";
 import { parseEurosToCents } from "@/lib/crm/hotel-arrival";
 import { issueHotelCheckinCard } from "@/lib/crm/hotel-desk-run";
 import { openAgencyCard } from "@/lib/crm/staff-card-open";
@@ -96,10 +96,13 @@ export async function POST(request: Request, ctx: Ctx) {
   }
 
   if (action === "card") {
+    // Lecture d’un PAN / CVC : rôle admin seulement, jamais mis en cache, toujours journalisée (B-05).
+    const adminAuth = await requireAdmin();
+    if (adminAuth instanceof NextResponse) return adminAuth;
     const opened = await openAgencyCard({
       admin,
-      staffId: auth.staff.id,
-      staffName: auth.staff.full_name,
+      staffId: adminAuth.staff.id,
+      staffName: adminAuth.staff.full_name,
       code: typeof body?.code === "string" ? body.code : "",
       bookingId: id,
       itemId,
@@ -107,22 +110,29 @@ export async function POST(request: Request, ctx: Ctx) {
       define: body?.define === true,
     });
     if ("error" in opened) return jsonError(opened.error, opened.status);
+    const noStore = { "Cache-Control": "private, no-store" };
     if (opened.file) {
-      return NextResponse.json({
-        mime: opened.file.mime,
-        name: opened.file.name,
-        image: opened.file.bytes,
-        viewer: opened.viewer,
-        viewedAt: opened.viewedAt,
-      });
+      return NextResponse.json(
+        {
+          mime: opened.file.mime,
+          name: opened.file.name,
+          image: opened.file.bytes,
+          viewer: opened.viewer,
+          viewedAt: opened.viewedAt,
+        },
+        { headers: noStore }
+      );
     }
     if (opened.widget) {
-      return NextResponse.json({
-        widgetUrl: opened.widget.src,
-        frameId: opened.widget.frameId,
-        viewer: opened.viewer,
-        viewedAt: opened.viewedAt,
-      });
+      return NextResponse.json(
+        {
+          widgetUrl: opened.widget.src,
+          frameId: opened.widget.frameId,
+          viewer: opened.viewer,
+          viewedAt: opened.viewedAt,
+        },
+        { headers: noStore }
+      );
     }
     return jsonError("La carte n’a pas pu être lue.", 502);
   }

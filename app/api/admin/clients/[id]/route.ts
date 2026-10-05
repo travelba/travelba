@@ -87,7 +87,9 @@ export async function PATCH(request: Request, ctx: Ctx) {
     }
   }
 
-  const { data, error } = await auth.supabase
+  // email, iban, company_role, billing_parent_id, on_hold : hors des grants par colonne
+  // du rôle authenticated (B-15). Le staff est déjà vérifié : écriture avec le service role.
+  const { data, error } = await createServiceClient()
     .from("crm_customers")
     .update(patch)
     .eq("id", id)
