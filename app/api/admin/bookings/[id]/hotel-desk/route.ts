@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { appOrigin } from "@/lib/crm/invite";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { clearClientStayCard, issueHotelCheckinCard, restoreHotelRequest, saveHotelRequest, saveUploadedClientCard, sendHotelMessage, sendHotelRequest, skipHotelRequest } from "@/lib/crm/hotel-desk-run";
 import { HOTEL_DESK_KINDS } from "@/lib/crm/types";
@@ -167,7 +168,7 @@ export async function POST(request: Request, ctx: Ctx) {
       return NextResponse.json({ ok: true });
     }
     if (action === "send") {
-      await sendHotelRequest(admin, letter);
+      await sendHotelRequest(admin, { ...letter, origin: appOrigin(request), staffId: auth.staff.id });
       return NextResponse.json({ ok: true });
     }
   } catch (error) {

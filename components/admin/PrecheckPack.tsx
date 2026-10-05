@@ -139,6 +139,10 @@ export function PrecheckPack({
           />
         ) : null}
       </div>
+      <p className="text-[11px] text-[#9e7e51]">
+        La carte part par lien sécurisé, jamais en pièce jointe : 3 ouvertures, jusqu’à 3 jours après le départ.
+        Un nouvel envoi coupe l’ancien lien.
+      </p>
       {cardChoice === "pliant" && last4 ? (
         <StayCard
           personal
