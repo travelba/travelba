@@ -23,7 +23,7 @@ test("Régler propose carte, Apple Pay et virement au particulier", () => {
   assert.doesNotMatch(html, /Société/);
 });
 
-test("Régler propose prélèvement SEPA et virement à la société", () => {
+test("Régler propose carte, Apple Pay, prélèvement et virement à la société", () => {
   const html = renderToStaticMarkup(
     createElement(EncoursPayment, {
       company: 1200,
@@ -34,17 +34,18 @@ test("Régler propose prélèvement SEPA et virement à la société", () => {
     })
   );
   assert.match(html, /Régler/);
+  assert.match(html, /Carte bancaire/);
+  assert.match(html, /Apple Pay/);
   assert.match(html, /Prélèvement SEPA/);
   assert.match(html, /Virement/);
-  assert.doesNotMatch(html, /Carte bancaire/);
-  assert.doesNotMatch(html, /Apple Pay/);
   assert.match(html, /Société · Maison Dupont/);
   assert.doesNotMatch(html, /Particulier/);
 });
 
-test("Régler sépare la part société et la part particulier", () => {
+test("Régler sépare la part société et la part particulier en deux blocs", () => {
   const html = renderToStaticMarkup(
     createElement(EncoursPayment, {
+      compact: true,
       company: 800,
       personal: 150,
       currency: "EUR",
@@ -52,8 +53,11 @@ test("Régler sépare la part société et la part particulier", () => {
       stripeKey: "pk_test_preview",
     })
   );
+  assert.equal(html.match(/rounded-2xl border/g)?.length, 2);
   assert.match(html, /Société/);
   assert.match(html, /Particulier/);
+  assert.match(html, /Carte, Apple Pay, prélèvement ou virement/);
+  assert.match(html, /À régler par carte, Apple Pay ou virement/);
   assert.match(html, /Prélèvement SEPA/);
   assert.match(html, /Carte bancaire/);
 });

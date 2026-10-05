@@ -153,16 +153,16 @@ export function StayPayment({
           <section
             key={part.kind}
             className={
-              compact
-                ? named
-                  ? "space-y-2 rounded-2xl bg-[#f7f6f3] px-3 py-3"
-                  : "space-y-3"
-                : `space-y-3 rounded-[1.35rem] p-4 ${
-                    company ? "border border-[var(--admin-gold)] bg-white" : "border border-[#e5e3dc] bg-[#f7f6f3]"
-                  }`
+              named
+                ? "space-y-2 rounded-2xl border border-[#e5e3dc] bg-[#f7f6f3] px-3 py-3"
+                : compact
+                  ? "space-y-3"
+                  : `space-y-3 rounded-[1.35rem] p-4 ${
+                      company ? "border border-[var(--admin-gold)] bg-white" : "border border-[#e5e3dc] bg-[#f7f6f3]"
+                    }`
             }
           >
-            {compact && named ? (
+            {named ? (
               <div className="space-y-1">
                 <div className="flex items-baseline justify-between gap-3">
                   <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#9c7c4e]">{part.mention}</p>

@@ -49,7 +49,7 @@ export function EncoursPayment({
   if (!companyPart && !personalPart) return null;
 
   return (
-    <div className="space-y-3" aria-label="Régler">
+    <div className="space-y-4" aria-label="Régler">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9c7c4e]">Régler</p>
       {companyPart}
       {personalPart}
