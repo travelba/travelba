@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { CLIENT_PREVIEW_NOTE, useClientPreview } from "@/components/account/client-preview";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { IssuesList } from "@/components/crm/IssuesList";
+import { LedgerWarningNotice } from "@/components/crm/LedgerWarningNotice";
 import { issuesFromResponse, issuesSummary, type BookingIssue } from "@/lib/crm/booking-issues";
 import { deleteJson, postJson, type ClientResult } from "@/lib/crm/client-fetch";
 import {
@@ -19,6 +20,7 @@ import {
   VISA_EUR,
   type ServiceRefusal,
 } from "@/lib/crm/extras";
+import { readLedgerWarning } from "@/lib/crm/ledger-warning";
 import { formatMoney } from "@/lib/crm/money";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { Icon } from "@/components/crm/icons";
@@ -57,6 +59,8 @@ export function ExtrasPanel({
   /** « Valider » ouvre le récapitulatif de ce service ; la demande part à « Confirmer la demande ». */
   const [review, setReview] = useState<"checkin" | "visa" | null>(null);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
+  // Agence : visa retiré, mais grand livre refusé (`ledger_warning` de la route étapes).
+  const [ledgerNote, setLedgerNote] = useState<string | null>(null);
   if (!bookingHasFlight(items)) return null;
   const isAdmin = variant === "admin";
   const pricesVisible = isAdmin || booking.prices_visible !== false;
@@ -135,21 +139,23 @@ export function ExtrasPanel({
     setBusy(`cancel:${itemId}`);
     setIssues([]);
     try {
-      const result =
+      const removed =
         isAdmin && kind !== "checkin"
-          ? outcome(
-              await deleteJson<{ error?: string; issues?: BookingIssue[] }>(
-                `/api/admin/bookings/${booking.id}/items?itemId=${encodeURIComponent(itemId)}`
-              )
+          ? await deleteJson<{ error?: string; issues?: BookingIssue[]; ledger_warning?: string }>(
+              `/api/admin/bookings/${booking.id}/items?itemId=${encodeURIComponent(itemId)}`
             )
-          : await post(
-              isAdmin ? `/api/admin/bookings/${booking.id}/extras` : `/api/client/bookings/${booking.reference}/extras`,
-              { cancel: true, kind }
-            );
+          : null;
+      const result = removed
+        ? outcome(removed)
+        : await post(
+            isAdmin ? `/api/admin/bookings/${booking.id}/extras` : `/api/client/bookings/${booking.reference}/extras`,
+            { cancel: true, kind }
+          );
       if (!result.ok) {
         setIssues(result.issues);
         return;
       }
+      setLedgerNote(removed ? readLedgerWarning(removed.data) : null);
       router.refresh();
     } finally {
       setBusy(null);
@@ -363,6 +369,9 @@ export function ExtrasPanel({
             existing: visa,
           })
         : null}
+      {isAdmin ? (
+        <LedgerWarningNotice message={ledgerNote} onDismiss={() => setLedgerNote(null)} className="mt-3" />
+      ) : null}
       <IssuesList issues={issues} />
     </section>
   );

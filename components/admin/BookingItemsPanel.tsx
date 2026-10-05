@@ -37,6 +37,8 @@ import { IngestItemCard } from "@/components/crm/IngestItemCard";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { adminAction } from "@/lib/crm/admin-action";
+import { readLedgerWarning } from "@/lib/crm/ledger-warning";
+import { LedgerWarningNotice } from "@/components/crm/LedgerWarningNotice";
 import type { CrmBookingDocument } from "@/lib/crm/types";
 import type { HouseholdMember } from "@/lib/crm/household";
 
@@ -220,6 +222,8 @@ export function BookingItemsPanel({
   const cardRowsRef = useRef<CrmBookingItem[]>([]);
   const orderDirty = useRef(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // Étape enregistrée mais grand livre refusé : reste affiché après router.refresh(), jusqu’au prochain enregistrement.
+  const [ledgerNote, setLedgerNote] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   // `?hotel=` (toast « l’hôtel a répondu ») ouvre le bureau de cet hôtel dès le montage.
   const [deskFor, setDeskFor] = useState<string | null>(() => {
@@ -343,6 +347,7 @@ export function BookingItemsPanel({
       setError(json.error || "Enregistrement impossible");
       return false;
     }
+    setLedgerNote(readLedgerWarning(json));
     setEditingId(null);
     router.refresh();
     return true;
@@ -373,6 +378,7 @@ export function BookingItemsPanel({
       setError(json.error || "La carte n’a pas pu être masquée.");
       return;
     }
+    setLedgerNote(readLedgerWarning(json));
     router.refresh();
   }
 
@@ -405,6 +411,7 @@ export function BookingItemsPanel({
     );
     setBusy(false);
     if (!result.ok) return result.error || "L’étape n’a pas pu être retirée.";
+    setLedgerNote(readLedgerWarning(result.data));
     if (editingId === id) setEditingId(null);
     setMenuFor(null);
     router.refresh();
@@ -424,6 +431,7 @@ export function BookingItemsPanel({
         <BusyBar active={busy} label="Enregistrement…" />
       </div>
       {notice ? <p className="mt-2 text-sm text-[var(--admin-navy)]">{notice}</p> : null}
+      <LedgerWarningNotice message={ledgerNote} onDismiss={() => setLedgerNote(null)} className="mt-2" />
       <Reorder.Group
         axis="y"
         values={cardRows}

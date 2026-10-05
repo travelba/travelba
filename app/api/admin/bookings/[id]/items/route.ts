@@ -22,9 +22,9 @@ type Ctx = { params: Promise<{ id: string }> };
 
 const SORT_ORDER_ERROR = `Ordre de la carte invalide (0 à ${MAX_SORT_ORDER}).`;
 
-/** La carte est enregistrée ; un grand livre refusé devient `ledger_warning` (200), pas une erreur à rejouer. */
-async function ledgerAfterItemWrite(supabase: SupabaseClient, bookingId: string) {
-  const warning = await ledgerWarning("Carte enregistrée", () => refreshBookingLedger(supabase, bookingId));
+/** L’écriture est faite ; un grand livre refusé devient `ledger_warning` (200), pas une erreur à rejouer. */
+async function ledgerAfterItemWrite(supabase: SupabaseClient, bookingId: string, saved: string) {
+  const warning = await ledgerWarning(saved, () => refreshBookingLedger(supabase, bookingId));
   return warning ? { ledger_warning: warning } : {};
 }
 
@@ -100,7 +100,7 @@ export async function POST(request: Request, ctx: Ctx) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
-  return NextResponse.json({ item: data, ...(await ledgerAfterItemWrite(auth.supabase, id)) });
+  return NextResponse.json({ item: data, ...(await ledgerAfterItemWrite(auth.supabase, id, "Ajout enregistré")) });
 }
 
 export async function PATCH(request: Request, ctx: Ctx) {
@@ -186,7 +186,10 @@ export async function PATCH(request: Request, ctx: Ctx) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
-  return NextResponse.json({ item: data, ...(await ledgerAfterItemWrite(auth.supabase, bookingId)) });
+  return NextResponse.json({
+    item: data,
+    ...(await ledgerAfterItemWrite(auth.supabase, bookingId, "Modification enregistrée")),
+  });
 }
 
 export async function DELETE(request: Request, ctx: Ctx) {
@@ -201,5 +204,8 @@ export async function DELETE(request: Request, ctx: Ctx) {
     .eq("id", itemId)
     .eq("booking_id", bookingId);
   if (error) return dbError(error, 400);
-  return NextResponse.json({ ok: true, ...(await ledgerAfterItemWrite(auth.supabase, bookingId)) });
+  return NextResponse.json({
+    ok: true,
+    ...(await ledgerAfterItemWrite(auth.supabase, bookingId, "Suppression enregistrée")),
+  });
 }
