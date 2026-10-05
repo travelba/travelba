@@ -2,6 +2,7 @@ import "server-only";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 import { pickListedId, pickTravelConfig, pliantRefusal } from "./eta-il-fee";
+import { organizationCeilingCents } from "./manual-stay-card";
 import {
   acquirePliantToken,
   emptyPliantTokenMemory,
@@ -167,6 +168,32 @@ async function requestPliantToken() {
 
 function rethrowTokenFailure(err: unknown) {
   if (err instanceof Error && isPliantTokenFailure(err.message)) throw err;
+}
+
+const CEILING_MISSING = "Pliant n’a pas indiqué le plafond du compte.";
+
+/** Plafond du compte, via le jeton déjà gardé. La liste des organisations ne porte pas le montant. */
+export async function pliantAccountCeilingCents(preferredOrganizationId: string) {
+  const listed = await pliantJson("/organizations?status=ACTIVE&limit=100");
+  const organizationId = listed
+    ? pickListedId(preferredOrganizationId, rows(listed, "organizationId"))
+    : preferredOrganizationId;
+  if (!organizationId) throw new Error("Pliant : l’organisation configurée est introuvable.");
+  try {
+    const token = await accessToken();
+    const res = await fetch(`${endpoints().api}/organizations/${encodeURIComponent(organizationId)}`, {
+      headers: { authorization: `Bearer ${token}`, "Pliant-API-Version": "2.1.0" },
+      signal: AbortSignal.timeout(PLIANT_TIMEOUT_MS),
+    });
+    if (!res.ok) throw new Error(CEILING_MISSING);
+    const cents = organizationCeilingCents(await res.json());
+    if (cents == null) throw new Error(CEILING_MISSING);
+    return cents;
+  } catch (err) {
+    rethrowTokenFailure(err);
+    if (err instanceof Error && err.message === CEILING_MISSING) throw err;
+    throw new Error(CEILING_MISSING);
+  }
 }
 
 export async function issuePliantCard(cardholderId: string, body: unknown) {

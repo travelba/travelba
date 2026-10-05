@@ -13,7 +13,7 @@ export async function POST(request: Request, ctx: Ctx) {
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
   const body = (await request.json().catch(() => null)) as
-    | { action?: string; amount?: string; firstName?: string; lastName?: string; itemId?: string }
+    | { action?: string; firstName?: string; lastName?: string; itemId?: string }
     | null;
   const action = body?.action;
   if (!action) return jsonError("Action incomplète", 400);
@@ -24,7 +24,6 @@ export async function POST(request: Request, ctx: Ctx) {
     try {
       await issueBookingCard(admin, {
         bookingId: id,
-        amount: typeof body?.amount === "string" ? body.amount : "",
         firstName: typeof body?.firstName === "string" ? body.firstName : "",
         lastName: typeof body?.lastName === "string" ? body.lastName : "",
       });
