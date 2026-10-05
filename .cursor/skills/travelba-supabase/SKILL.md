@@ -44,6 +44,8 @@ Avant d’écrire du SQL : lister les tables (`crm_*`), lire la **dernière** mi
 | `20261004171000_customer_column_grants.sql` | `crm_customers` : grants `update` par colonne pour `authenticated` ; RPC référence service_role seulement — **déployer le code avant** |
 | `20261004172000_rate_limits.sql` | `crm_rate_limits` + `crm_rate_limit_hit` (fenêtre fixe), service_role |
 | `20261004180000_indexes.sql` | index FK et colonnes filtrées (`customer_id`, `booking_id`, `(kind, start_at)`, `status`, téléphones) — à appliquer en prod après fusion |
+| `20261004190000_pliant_customer_id.sql` | `crm_pliant_transactions.customer_id` (compte imputé par le rapprochement Pliant) |
+| `20261005100000_card_links.sql` | `crm_card_links` (lien carte /k/CODE envoyé à l’hôtel, empreinte seulement) ; `crm_card_views.viewer` / `card_link_id`, `staff_id` nullable — additive, avant le déploiement |
 
 Toute évolution = **nouveau fichier** `supabase/migrations/YYYYMMDDHHMMSS_slug.sql` (idempotent : `if not exists`, `drop policy if exists`). Appliquer via MCP `apply_migration` ou SQL Editor. Ne pas éditer une migration déjà poussée en prod.
 

@@ -1,3 +1,4 @@
+import { redactCardLinks } from "./card-link-text";
 import { hotelCityLine, hotelDisplayName, itemClock, nightsBetween } from "./carnet";
 import { hotelContact, leHotelIdFromItem, type HotelContact } from "./hotel-contact";
 import {
@@ -142,9 +143,9 @@ export function withoutQuotedOriginal(text: string) {
   return kept.join("\n");
 }
 
-/** Texte de réponse à montrer dans le dossier. Les lignes de carte sont retirées. */
+/** Texte de réponse à montrer dans le dossier. Les lignes de carte et les liens carte sont retirés. */
 export function hotelReplyForDesk(text: string) {
-  const cleaned = withoutQuotedOriginal(text)
+  const cleaned = redactCardLinks(withoutQuotedOriginal(text))
     .split(/\r?\n/)
     .filter((line) => !lineLooksLikeCard(line))
     .join("\n")
@@ -793,16 +794,6 @@ export function replyMatchesHotel(input: {
   if (!(input.receivedAtMs >= input.sentAtMs)) return false;
   const from = emailAddress(input.from);
   return input.hotelEmails.map((email) => emailAddress(email)).includes(from);
-}
-
-export function cardSendNote(choice: "pliant" | "client" | null, lang: "fr" | "en") {
-  if (choice === "client") {
-    return lang === "fr"
-      ? "La carte du client est jointe. Merci de ne pas encaisser le séjour sur une autre carte."
-      : "The guest's card is attached. Please do not charge the stay to another card.";
-  }
-  if (choice !== "pliant") return "";
-  return lang === "fr" ? "La carte d'enregistrement est jointe." : "The check-in card is attached.";
 }
 
 export function outboundHotelLetter(body: string, note: string) {

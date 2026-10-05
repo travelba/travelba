@@ -3,10 +3,10 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import test from "node:test";
+import { cardLinkNote } from "./card-link";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
-  cardSendNote,
   containsCardNumber,
   HOTEL_DESK_FROM,
   gmailAfterDate,
@@ -424,15 +424,24 @@ test("la réponse garde le lien d'autorisation et retire la citation", () => {
   assert.equal((queries[1] || "").includes("not"), false);
 });
 
-test("la carte n'entre pas dans le brouillon", () => {
+test("la carte n'entre pas dans le brouillon : un lien remplace la pièce jointe", () => {
   assert.equal(containsCardNumber("4242 4242 4242 4242"), true);
-  const note = cardSendNote("pliant", "fr");
+  const url = "https://travelba.fr/k/ABCDEFGH2345";
+  const note = cardLinkNote({ choice: "pliant", lang: "fr", url, expiresAt: new Date("2026-10-12T22:00:00Z") });
   const stored = "Les documents d'identité sont joints.";
   assert.equal(containsCardNumber(stored), false);
   assert.equal(containsCardNumber(outboundHotelLetter(stored, note)), false);
-  assert.match(note, /jointe/);
-  assert.match(cardSendNote("client", "fr"), /jointe/);
+  assert.ok(note.includes(url));
+  assert.equal(/jointe/.test(note), false);
+  assert.match(cardLinkNote({ choice: "client", lang: "fr", url, expiresAt: new Date() }), /pas encaisser/);
   assert.equal(note.includes("4242"), false);
+});
+
+test("une réponse d'hôtel qui cite le courrier perd le lien carte", () => {
+  const reply = "Bien reçu, merci.\nhttps://travelba.fr/k/ABCDEFGH2345\nCordialement";
+  const shown = hotelReplyForDesk(reply);
+  assert.equal(shown.includes("/k/ABCDEFGH2345"), false);
+  assert.match(shown, /lien carte sécurisé/);
 });
 
 function letter(patch: Partial<CrmHotelRequest> = {}): CrmHotelRequest {

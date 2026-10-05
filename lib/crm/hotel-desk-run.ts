@@ -19,7 +19,6 @@ import {
 } from "./hotel-arrival";
 import {
   HOTEL_DESK_KINDS,
-  cardSendNote,
   cleanRecipients,
   containsCardNumber,
   hotelDeskChannel,
@@ -41,9 +40,11 @@ import {
   subjectsToFollow,
 } from "./hotel-desk";
 import { shouldSyncHotelReplies } from "./hotel-reply-notice";
-import { checkinCardPdf, precheckParty, selectedPrecheckPieces } from "./hotel-precheck";
+import { precheckParty, selectedPrecheckPieces } from "./hotel-precheck";
 import { issuePliantCard, pliantConfigured, readPliantCardSecrets } from "./pliant";
-import { agencyCopyCc } from "./outbound-mail";
+import { agencyCopyCc, tokenMailCc } from "./outbound-mail";
+import { cardLinkExpiresAt, cardLinkNote, redactCardLinks } from "./card-link";
+import { createCardLink, settleCardLinks } from "./card-link-run";
 import { siteConfig } from "../site";
 import type {
   CrmBookingItem,
@@ -588,6 +589,10 @@ export async function sendHotelRequest(
     cardChoice: "pliant" | "client" | null;
     identityDocumentIds?: string[];
     clientCard?: { filename: string; content: Buffer; mime?: string } | null;
+    /** Origine du site, pour le lien carte (`/k/CODE`). */
+    origin: string;
+    /** Agent qui envoie : auteur du lien carte. */
+    staffId?: string | null;
   }
 ) {
   if (containsCardNumber(input.body) || containsCardNumber(input.subject)) {
@@ -599,32 +604,63 @@ export async function sendHotelRequest(
   const item = await loadItem(admin, input.bookingId, input.itemId);
   const lang = hotelLanguage(hotelContact(item).country);
   let note = "";
+  // La carte ne part jamais en pièce jointe (B-04) : un lien /k/CODE, quelques ouvertures journalisées.
+  let cardLinkId: string | null = null;
   const attachments: { filename: string; content: Buffer }[] = [];
   if (input.kind === "precheckin") {
     const choice = input.cardChoice || row.card_choice || "pliant";
     const pieceIds = input.identityDocumentIds ?? (row.identity_picked ? row.identity_document_ids || [] : null);
     attachments.push(...(await identityFiles(admin, input.bookingId, pieceIds)));
+    const today = parisIsoDate(new Date());
+    const expiresAt = cardLinkExpiresAt(cardCloseDate((item.end_at || item.start_at || today).slice(0, 10)));
     if (choice === "pliant") {
-      const card = await pliantForSend(admin, input.bookingId, item);
-      note = cardSendNote("pliant", lang);
-      attachments.push({
-        filename: lang === "fr" ? "carte-enregistrement.pdf" : "check-in-card.pdf",
-        content: checkinCardPdf({ holder: card.holder, pan: card.pan, expiry: card.expiry, cvc: card.cvc, lang }),
+      const card = await ensurePliantCheckinCard(admin, input.bookingId, item);
+      const link = await createCardLink(admin, {
+        origin: input.origin,
+        bookingId: input.bookingId,
+        itemId: input.itemId,
+        requestId: row.id,
+        source: "pliant",
+        pliantCardId: card.cardId,
+        staffId: input.staffId,
+        expiresAt,
       });
+      note = cardLinkNote({ choice: "pliant", lang, url: link.url, expiresAt: link.expiresAt });
+      cardLinkId = link.id;
     } else {
-      note = cardSendNote("client", lang);
-      let attachment = input.clientCard?.content?.length ? input.clientCard : null;
-      if (attachment) {
-        await storeClientStayCard(admin, input.bookingId, item, attachment);
-      } else {
-        attachment = await readStoredClientCard(admin, input.bookingId, input.itemId);
-      }
-      if (!attachment?.content?.length) throw new Error("Déposez la carte du client.");
-      attachments.push({ filename: attachment.filename, content: attachment.content });
+      const fresh = input.clientCard?.content?.length ? input.clientCard : null;
+      const path = fresh
+        ? (await storeClientStayCard(admin, input.bookingId, item, fresh)).path
+        : await storedClientCardPath(admin, input.bookingId, input.itemId);
+      if (!path) throw new Error("Déposez la carte du client.");
+      const link = await createCardLink(admin, {
+        origin: input.origin,
+        bookingId: input.bookingId,
+        itemId: input.itemId,
+        requestId: row.id,
+        source: "client",
+        clientCardPath: path,
+        staffId: input.staffId,
+        expiresAt,
+      });
+      note = cardLinkNote({ choice: "client", lang, url: link.url, expiresAt: link.expiresAt });
+      cardLinkId = link.id;
     }
   }
   const text = outboundHotelLetter(input.body, note);
-  await deliverHotelMail({ to: recipients, subject: input.subject.trim(), text, attachments });
+  try {
+    await deliverHotelMail({
+      to: recipients,
+      subject: input.subject.trim(),
+      text,
+      attachments,
+      carriesCardLink: Boolean(cardLinkId),
+    });
+  } catch (error) {
+    if (cardLinkId) await settleCardLinks(admin, { linkId: cardLinkId, requestId: row.id, sent: false });
+    throw error;
+  }
+  if (cardLinkId) await settleCardLinks(admin, { linkId: cardLinkId, requestId: row.id, sent: true });
   const now = new Date().toISOString();
   const followUp = row.status === "follow_up";
   const subject = input.subject.trim();
@@ -652,7 +688,8 @@ export async function sendHotelRequest(
     scope: "request",
     ownerId: row.id,
     subject,
-    body: text,
+    // Copie du dossier : le lien carte n’y reste pas (un agent ouvre la carte depuis le suivi, journalisé).
+    body: redactCardLinks(text),
     sentAt: now,
   });
 }
@@ -771,6 +808,8 @@ async function deliverHotelMail(mail: {
   subject: string;
   text: string;
   attachments: { filename: string; content: Buffer }[];
+  /** Le courrier porte un lien carte : jamais en copie de la boîte partagée de l’agence. */
+  carriesCardLink?: boolean;
 }) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) throw new Error("L'envoi n'est pas configuré.");
@@ -778,7 +817,7 @@ async function deliverHotelMail(mail: {
   const { error } = await resend.emails.send({
     from: `${siteConfig.name} <${HOTEL_DESK_FROM}>`,
     to: mail.to,
-    cc: agencyCopyCc(mail.to),
+    cc: mail.carriesCardLink ? tokenMailCc() : agencyCopyCc(mail.to),
     subject: mail.subject,
     text: mail.text,
     replyTo: HOTEL_DESK_FROM,
@@ -842,28 +881,32 @@ async function storeClientStayCard(
       client_card_name: name,
     });
   }
-  return { name };
+  return { name, path };
 }
 
-async function readStoredClientCard(admin: Admin, bookingId: string, itemId: string) {
+/** Chemin de la carte du client déjà déposée pour ce séjour, ou null. */
+async function storedClientCardPath(admin: Admin, bookingId: string, itemId: string) {
   const { data } = await admin
     .from("crm_hotel_arrivals")
-    .select("client_card_path, client_card_name")
+    .select("client_card_path")
     .eq("booking_id", bookingId)
     .eq("booking_item_id", itemId)
     .maybeSingle();
-  const row = data as { client_card_path: string | null; client_card_name: string | null } | null;
-  const path = row?.client_card_path || "";
+  const path = (data as { client_card_path: string | null } | null)?.client_card_path || "";
   if (!path || !isSafeCrmPath(path) || !isAgencyCardPath(path)) return null;
-  const downloaded = await downloadCrmFile(path);
-  const filename = (row?.client_card_name || "carte-client").replace(/\d{6,}/g, "").trim().slice(0, 80) || "carte-client";
-  return { filename, content: Buffer.from(downloaded.bytes) };
+  return path;
 }
 
 export async function issueHotelCheckinCard(admin: Admin, bookingId: string, itemId: string) {
   const item = await loadItem(admin, bookingId, itemId);
-  const card = await pliantForSend(admin, bookingId, item);
-  return { last4: cardLast4(card.pan), holder: card.holder };
+  const card = await ensurePliantCheckinCard(admin, bookingId, item);
+  // Lecture éphémère pour les 4 derniers chiffres affichés à l’agence ; rien n’est envoyé.
+  const secrets = await readPliantCardSecrets(card.cardId);
+  const last4 = cardLast4(secrets.pan);
+  if (card.arrivalId && last4.length === 4) {
+    await admin.from("crm_hotel_arrivals").update({ card_last4: last4, pliant_card_id: card.cardId }).eq("id", card.arrivalId);
+  }
+  return { last4, holder: await stayHolder(admin, bookingId) };
 }
 
 async function identityFiles(admin: Admin, bookingId: string, ids: string[] | null) {
@@ -897,7 +940,8 @@ async function identityFiles(admin: Admin, bookingId: string, ids: string[] | nu
   return attachments;
 }
 
-async function pliantForSend(admin: Admin, bookingId: string, item: CrmBookingItem) {
+/** Carte Pliant du séjour : celle de l’hôtel, sinon une du dossier, sinon une carte de 500 € émise. */
+async function ensurePliantCheckinCard(admin: Admin, bookingId: string, item: CrmBookingItem) {
   const { data } = await admin
     .from("crm_hotel_arrivals")
     .select("id, pliant_card_id")
@@ -964,13 +1008,7 @@ async function pliantForSend(admin: Admin, bookingId: string, item: CrmBookingIt
   if (cardId && arrival?.id && arrival.pliant_card_id !== cardId) {
     await admin.from("crm_hotel_arrivals").update({ pliant_card_id: cardId }).eq("id", arrival.id);
   }
-  const secrets = await readPliantCardSecrets(cardId);
-  const last4 = cardLast4(secrets.pan);
-  if (arrival?.id && last4.length === 4) {
-    await admin.from("crm_hotel_arrivals").update({ card_last4: last4, pliant_card_id: cardId }).eq("id", arrival.id);
-  }
-  const named = await stayHolder(admin, bookingId);
-  return { holder: named, pan: secrets.pan, expiry: secrets.expiry, cvc: secrets.cvc };
+  return { cardId, arrivalId: arrival?.id || null };
 }
 
 async function stayHolder(admin: Admin, bookingId: string) {

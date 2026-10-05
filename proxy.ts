@@ -51,6 +51,11 @@ export default async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Lien carte envoyé à l’hôtel (B-04) : public, sans session, hors i18n.
+  if (path === "/k" || path.startsWith("/k/")) {
+    return NextResponse.next();
+  }
+
   if (path === "/anniversaire-cyril" || path.startsWith("/anniversaire-cyril/")) {
     return NextResponse.next();
   }
