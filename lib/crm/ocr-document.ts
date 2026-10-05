@@ -32,7 +32,7 @@ Nationalité : code ISO 2 lettres UNIQUEMENT (FR, IL, MA, US, GB). « Israeli »
 Pays émetteur : même règle ISO 2.
 sex : M, F ou X. Sur un passeport israélien, נ = F et ז = M.
 doc_type : passport | id_card | visa | insurance | other.
-first_name : TOUS les prénoms, dans l’ordre de la ligne latine « Prénoms » / « Given name » et de la MRZ (gauche à droite). Maelle Louise Rosalie, jamais l’ordre inverse. Ne pas prendre l’ordre visuel du bloc hébreu (droite à gauche). Ne pas retourner les prénoms latins. Accents gardés (Orène).
+first_name : TOUS les prénoms, dans l’ordre de la ligne latine « Prénoms » / « Given name » et de la MRZ (gauche à droite). Maelle Louise Rosalie, jamais l’ordre inverse. Ne pas prendre l’ordre visuel du bloc hébreu (droite à gauche). Ne pas retourner les prénoms latins. Accents gardés (Hélie).
 Livret ouvert en portrait : seule la page du bas est une personne. Le haut (armoiries, « page réservée aux autorités ») n’en est pas une.
 Page tournée : lire après rotation. Un chiffre de reflet ne remplace pas une MRZ dont les contrôles sont valides.
 Deux livrets de pays différents pour la même personne = deux pièces, pas une seconde personne.
