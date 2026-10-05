@@ -29,6 +29,10 @@ export async function PATCH(request: Request, ctx: Ctx) {
   if (!data) return jsonError("Séjour introuvable", 404);
   const written = await writeBillingAssignment(admin, data as CrmBooking, body);
   if ("error" in written) return jsonError(written.error, written.status || 400);
-  await refreshBookingLedger(admin, id);
+  try {
+    await refreshBookingLedger(admin, id);
+  } catch (err) {
+    return jsonError(err instanceof Error ? err.message : "Écritures non mises à jour", 400);
+  }
   return NextResponse.json({ ok: true });
 }

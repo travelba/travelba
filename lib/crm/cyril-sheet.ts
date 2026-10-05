@@ -4,6 +4,7 @@ import { CYRIL_SHEET_HEADERS } from "@/lib/crm/cyril-flights";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
+const SHEETS_TIMEOUT_MS = 10_000;
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const TAB = "Réponses";
 
@@ -90,6 +91,7 @@ async function requestToken(subject: string) {
   const signature = signer.sign(createPrivateKey(sa.private_key), "base64url");
   const res = await fetch(TOKEN_URL, {
     method: "POST",
+    signal: AbortSignal.timeout(SHEETS_TIMEOUT_MS),
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
@@ -143,6 +145,7 @@ async function ensureHeaders(token: string, id: string) {
   const range = `'${TAB}'!A1:${end}1`;
   const read = await fetch(valuesUrl(id, range), {
     headers: { authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(SHEETS_TIMEOUT_MS),
   });
   if (!read.ok) {
     const detail = await read.text().catch(() => "");
@@ -154,6 +157,7 @@ async function ensureHeaders(token: string, id: string) {
   if (!first) {
     const write = await fetch(`${valuesUrl(id, range)}?valueInputOption=RAW`, {
       method: "PUT",
+      signal: AbortSignal.timeout(SHEETS_TIMEOUT_MS),
       headers: {
         authorization: `Bearer ${token}`,
         "content-type": "application/json",
@@ -175,6 +179,7 @@ async function appendWithToken(token: string, id: string, row: string[]) {
     ),
     {
       method: "POST",
+      signal: AbortSignal.timeout(SHEETS_TIMEOUT_MS),
       headers: {
         authorization: `Bearer ${token}`,
         "content-type": "application/json",

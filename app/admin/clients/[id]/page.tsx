@@ -13,7 +13,11 @@ import { InviteCustomerPanel } from "@/components/admin/InviteCustomerPanel";
 import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
 import { formatCustomerLoginAt } from "@/lib/crm/customer-login";
 import { getPortalAccess } from "@/lib/crm/invite";
-import { suggestionsForCustomer } from "@/lib/crm/revolut-match";
+import {
+  REVOLUT_MATCH_SELECT,
+  suggestionsForCustomer,
+  type RevolutMatchCustomer,
+} from "@/lib/crm/revolut-match";
 import { createServiceClient } from "@/lib/supabase/admin";
 import {
   customerFullName,
@@ -46,7 +50,7 @@ type Props = { params: Promise<{ id: string }> };
 
 export default async function AdminClientDetailPage({ params }: Props) {
   const { id } = await params;
-  const { supabase } = await requireStaffPage();
+  const { supabase, staff } = await requireStaffPage();
   const { data: customer } = await supabase
     .from("crm_customers")
     .select("*")
@@ -65,7 +69,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
     { data: companyAdmins },
     { data: billingCompanies },
     portal,
-    unmatchedRevolut,
+    revolut,
     whatsappMessages,
     whatsappRequests,
     { data: loginRows, error: loginError },
@@ -96,16 +100,22 @@ export default async function AdminClientDetailPage({ params }: Props) {
     (async () => {
       try {
         const admin = createServiceClient();
-        const { data } = await admin
-          .from("crm_revolut_transactions")
-          .select("*")
-          .eq("status", "unmatched")
-          .eq("direction", "credit")
-          .order("booked_at", { ascending: false, nullsFirst: false })
-          .limit(100);
-        return (data || []) as CrmRevolutTransaction[];
+        const [{ data }, { data: people }] = await Promise.all([
+          admin
+            .from("crm_revolut_transactions")
+            .select("*")
+            .eq("status", "unmatched")
+            .eq("direction", "credit")
+            .order("booked_at", { ascending: false, nullsFirst: false })
+            .limit(100),
+          admin.from("crm_customers").select(REVOLUT_MATCH_SELECT),
+        ]);
+        return {
+          rows: (data || []) as CrmRevolutTransaction[],
+          people: (people || []) as RevolutMatchCustomer[],
+        };
       } catch {
-        return [] as CrmRevolutTransaction[];
+        return { rows: [] as CrmRevolutTransaction[], people: [] as RevolutMatchCustomer[] };
       }
     })(),
     supabase
@@ -159,7 +169,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
           .order("created_at", { ascending: true })
       ).data || []
     : whatsappMessages.data || [];
-  const revolutSuggestions = suggestionsForCustomer(c, unmatchedRevolut);
+  const revolutSuggestions = suggestionsForCustomer(c, revolut.rows, revolut.people);
 
   return (
     <div className="space-y-6">
@@ -174,7 +184,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
           >
             Transactions du client
           </Link>
-          <DeleteCustomerButton customerId={c.id} name={customerFullName(c)} />
+          {staff.role === "admin" ? <DeleteCustomerButton customerId={c.id} name={customerFullName(c)} /> : null}
         </div>
       </div>
       <InviteCustomerPanel customerId={c.id} initial={portal} />

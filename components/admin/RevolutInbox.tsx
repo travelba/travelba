@@ -15,19 +15,21 @@ import {
   type PickableCustomer,
 } from "@/lib/crm/customer-search";
 import {
+  possibleClientsLabel,
   revolutStatusLabel,
   revolutStatusTone,
   revolutSyncSummary,
 } from "@/lib/crm/revolut-labels";
 import {
   matchReasonLabel,
-  scoreRevolutMatches,
+  suggestedCustomerId,
   type RevolutMatchCandidate,
 } from "@/lib/crm/revolut-match";
 
 export function RevolutInbox({
   rows,
   customers,
+  suggestions: suggestionsById,
   configured,
   connected,
   hasClientId,
@@ -35,6 +37,8 @@ export function RevolutInbox({
 }: {
   rows: CrmRevolutTransaction[];
   customers: PickableCustomer[];
+  /** Candidats par ligne, calculés côté serveur (l’IBAN ne quitte pas le serveur). */
+  suggestions: Record<string, RevolutMatchCandidate[]>;
   configured: boolean;
   connected: boolean;
   hasClientId: boolean;
@@ -55,19 +59,15 @@ export function RevolutInbox({
     [customers]
   );
 
-  const suggestions = useMemo(() => {
-    const map = new Map<string, RevolutMatchCandidate[]>();
-    for (const r of rows) {
-      if (r.status !== "unmatched") continue;
-      map.set(r.id, scoreRevolutMatches(r, customers).candidates);
-    }
-    return map;
-  }, [rows, customers]);
+  const suggestions = useMemo(
+    () => new Map<string, RevolutMatchCandidate[]>(Object.entries(suggestionsById)),
+    [suggestionsById]
+  );
 
+  /** Présélection seulement sur un rapprochement certain et unique ; un partiel reste à choisir. */
   function chosenFor(rowId: string) {
     if (picked[rowId]) return picked[rowId];
-    const top = suggestions.get(rowId)?.[0];
-    return top && top.score >= 55 ? top.customer_id : "";
+    return suggestedCustomerId(suggestions.get(rowId) || []);
   }
 
   function connect() {
@@ -184,7 +184,8 @@ export function RevolutInbox({
       <ul className="admin-af-card divide-y divide-border rounded-3xl">
         {shown.map((r) => {
           const candidates = suggestions.get(r.id) || [];
-          const top = candidates[0];
+          const suggestedId = suggestedCustomerId(candidates);
+          const top = suggestedId ? candidates.find((c) => c.customer_id === suggestedId) : undefined;
           const chosenId = chosenFor(r.id);
           const chosen = chosenId ? byId.get(chosenId) : undefined;
           const signed = `+${formatMoney(Number(r.amount), r.currency)}`;
@@ -226,7 +227,11 @@ export function RevolutInbox({
                       className="inline-flex w-full items-center justify-between gap-2 rounded-xl border border-border bg-white px-3 py-2 text-left text-sm text-[var(--admin-navy)] sm:min-w-[12rem] sm:max-w-xs sm:w-auto"
                     >
                       <span className="min-w-0 truncate">
-                        {chosen ? customerPickLabel(chosen) : "Choisir un client…"}
+                        {chosen
+                          ? customerPickLabel(chosen)
+                          : candidates.length
+                            ? possibleClientsLabel(candidates.length)
+                            : "Choisir un client…"}
                       </span>
                       <Icon name="search" className="h-4 w-4 shrink-0 text-muted" />
                     </button>

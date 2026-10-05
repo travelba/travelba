@@ -4,10 +4,9 @@ import { applyMatchedCatalog, peopleFromContactRows, type HotelContactRow, type 
 import { matchHotelDirectory, type HotelDirectoryEntry } from "@/lib/crm/hotel-catalog";
 import type { CrmBookingItem } from "@/lib/crm/types";
 import { createServiceClient } from "@/lib/supabase/admin";
+import type { Db } from "@/lib/supabase/db";
 
-type ContactDb = {
-  from: (table: string) => any;
-};
+type ContactDb = Db;
 
 const DIRECTORY_TTL_MS = 10 * 60 * 1000;
 const PAGE = 1000;

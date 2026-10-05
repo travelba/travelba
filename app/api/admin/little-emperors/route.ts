@@ -40,7 +40,6 @@ export async function POST(request: Request) {
       const result = await attachLittleEmperorsBooking({
         id: String(body.id || ""),
         customerId: String(body.customer_id || ""),
-        referenceClient: auth.supabase,
       });
       return NextResponse.json(result);
     }

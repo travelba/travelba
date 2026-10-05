@@ -28,3 +28,26 @@ export function agencyCopyCc(to: AddressField, cc?: AddressField, bcc?: AddressF
   }
   return [...listed(cc), copy];
 }
+
+/**
+ * Copie d’un e-mail porteur de jeton (invitation, lien magique, réinitialisation,
+ * accès agence) : jamais contact@travelba.fr. La boîte partagée ne doit détenir
+ * aucun lien de connexion. L’agence reçoit à la place `accessNoticeCopy`, sans le lien.
+ */
+export function tokenMailCc(cc?: AddressField): string[] | undefined {
+  const copy = AGENCY_MAIL_COPY.toLowerCase();
+  const kept = listed(cc).filter((item) => mailbox(item) !== copy);
+  return kept.length ? kept : undefined;
+}
+
+export type AccessNoticeKind = "client" | "collegue";
+
+/** Notification agence après une invitation. Prénom seulement, pas le lien. */
+export function accessNoticeCopy(input: { kind: AccessNoticeKind; firstName: string | null | undefined }) {
+  const who = (input.firstName || "").trim() || (input.kind === "collegue" ? "un collègue" : "un client");
+  const subject = `Invitation envoyée à ${who}`;
+  const where = input.kind === "collegue" ? "l’espace agence" : "son espace voyageur";
+  const body = `L’invitation à ${where} vient de partir. Le lien n’est pas recopié ici : il n’appartient qu’au destinataire.`;
+  return { subject, body };
+}
+

@@ -23,7 +23,8 @@ import { formatMoney } from "@/lib/crm/money";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { Icon } from "@/components/crm/icons";
 import type { FrenchPassportTrip } from "@/lib/crm/visa-trip";
-import type { CrmBooking, CrmBookingItem, CrmBookingTraveler, CrmCompanion, CrmCustomer } from "@/lib/crm/types";
+import type { PublicBooking } from "@/lib/crm/public-booking";
+import type { CrmBookingItem, CrmBookingTraveler, CrmCompanion, CrmCustomer } from "@/lib/crm/types";
 
 const PRIMARY_BTN =
   "inline-flex min-h-11 items-center justify-center rounded-full bg-[var(--admin-navy)] px-4 text-sm font-semibold text-white disabled:opacity-50";
@@ -40,7 +41,7 @@ export function ExtrasPanel({
   refusals = [],
 }: {
   variant: "admin" | "client";
-  booking: CrmBooking;
+  booking: PublicBooking;
   items: CrmBookingItem[];
   travelers: CrmBookingTraveler[];
   holder: CrmCustomer;

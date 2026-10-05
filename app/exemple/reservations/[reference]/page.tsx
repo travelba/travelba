@@ -28,6 +28,7 @@ import { findVisaExtra, visaProposed } from "@/lib/crm/extras";
 import { EXAMPLE_BASE, EXAMPLE_REFERENCE } from "@/lib/crm/example-session";
 import { readExample } from "@/lib/crm/example-store";
 import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
+import { toPublicBooking } from "@/lib/crm/public-booking";
 
 export const dynamic = "force-dynamic";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
@@ -48,6 +49,7 @@ export default async function ExampleReservationPage({ params }: Props) {
   if (reference !== EXAMPLE_REFERENCE) notFound();
   const session = readExample();
   const b = session.booking;
+  const pub = toPublicBooking(b);
   const visibleItems = withoutHotelRosterItems(clientVisibleItems(session.items));
   if (!carnetVisible(b, visibleItems)) notFound();
 
@@ -95,7 +97,7 @@ export default async function ExampleReservationPage({ params }: Props) {
             ← Réservations
           </Link>
 
-          <BookingHero booking={b} items={withoutHotelRosterItems(session.items)} priority className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]">
+          <BookingHero booking={pub} items={withoutHotelRosterItems(session.items)} priority className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]">
             <div className="absolute inset-0 flex flex-col justify-between p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <BookingStatusBadge label={clientBookingStatusLabel(b.status)} />
@@ -122,7 +124,7 @@ export default async function ExampleReservationPage({ params }: Props) {
       }
       itinerary={
         <CarnetItinerary
-          booking={b}
+          booking={pub}
           items={visibleItems}
           docs={[]}
           pricesVisible={b.prices_visible !== false}
@@ -141,7 +143,7 @@ export default async function ExampleReservationPage({ params }: Props) {
       services={
         <ExtrasPanel
           variant="client"
-          booking={b}
+          booking={pub}
           items={visibleItems}
           travelers={party}
           holder={session.customer}

@@ -23,6 +23,8 @@ export async function POST() {
 
   const jar = await cookies();
   if (deskBypass(jar.get(DESK_COOKIE)?.value, user.id)) {
+    // Mode desk : pas de drapeau à retirer, mais la connexion reste journalisée.
+    await recordCustomerLogin(user.id, "desk");
     return NextResponse.json({ ok: true });
   }
 

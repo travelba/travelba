@@ -13,6 +13,7 @@ import {
 
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GMAIL_TIMEOUT_MS = 20_000;
 const SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 
 type ServiceAccount = { client_email: string; private_key: string };
@@ -84,6 +85,7 @@ async function accessToken(): Promise<string> {
 
   const res = await fetch(TOKEN_URL, {
     method: "POST",
+    signal: AbortSignal.timeout(GMAIL_TIMEOUT_MS),
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
@@ -108,6 +110,7 @@ async function gmailApi(path: string, init?: RequestInit): Promise<Response> {
       ...(init?.headers || {}),
       authorization: `Bearer ${token}`,
     },
+    signal: init?.signal ?? AbortSignal.timeout(GMAIL_TIMEOUT_MS),
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");

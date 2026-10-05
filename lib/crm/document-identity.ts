@@ -50,29 +50,6 @@ export function identityNationalityFromSources(
   return "";
 }
 
-export function appendIdentityFields(
-  form: FormData,
-  fields: {
-    first_name?: string | null;
-    last_name?: string | null;
-    usage_name?: string | null;
-    birth_date?: string | null;
-    nationality?: string | null;
-    sex?: string | null;
-  },
-  applyIdentity?: boolean
-) {
-  form.set("first_name", fields.first_name || "");
-  form.set("last_name", fields.last_name || "");
-  form.set("usage_name", fields.usage_name || "");
-  form.set("birth_date", fields.birth_date || "");
-  form.set("nationality", fields.nationality || "");
-  form.set("sex", fields.sex || "");
-  if (applyIdentity !== undefined) {
-    form.set("apply_identity", applyIdentity ? "1" : "0");
-  }
-}
-
 export function documentHolderName(
   doc: {
     first_name: string | null;

@@ -253,15 +253,15 @@ describe("catalogue Little Emperors — contacts typés", () => {
     name: "Four Seasons Resort Sharm El Sheikh",
     location: "Sharm El Sheikh, Egypt",
     website: "https://www.fourseasons.com/sharmelsheikh/",
-    reservations_email: "res.sharmelsheikh@fourseasons.com",
-    concierge_email: "concierge.sharmelsheikh@fourseasons.com",
-    hotel_contact_email: "gihan.mekky@fourseasons.com",
+    reservations_email: "res.sharmelsheikh@example.com",
+    concierge_email: "concierge.sharmelsheikh@example.com",
+    hotel_contact_email: "nadia.rahal@example.com",
     contact_details: [
-      { type: "Concierge", email: "concierge.sharmelsheikh@fourseasons.com" },
-      { type: "Hotel contact", name: "Omar Ezz El Din", email: "omar.ezzeldin@fourseasons.com" },
-      { type: "Hotel contact", first_name: "Gihan", last_name: "Mekky", email: "gihan.mekky@fourseasons.com" },
-      { type: "Four Seasons", name: "Vanessa Green", email: "vanessa.green@fourseasons.com" },
-      { email: "omar.ezzeldin@fourseasons.com" },
+      { type: "Concierge", email: "concierge.sharmelsheikh@example.com" },
+      { type: "Hotel contact", name: "Omar Ben Youssef", email: "omar.benyoussef@example.com" },
+      { type: "Hotel contact", first_name: "Nadia", last_name: "Rahal", email: "nadia.rahal@example.com" },
+      { type: "Four Seasons", name: "Clara Dubois", email: "clara.dubois@example.com" },
+      { email: "omar.benyoussef@example.com" },
     ],
   };
 
@@ -271,18 +271,18 @@ describe("catalogue Little Emperors — contacts typés", () => {
     assert.equal(catalog.hotel_name, "Four Seasons Resort Sharm El Sheikh");
     assert.equal(catalog.city, "Sharm El Sheikh");
     assert.equal(catalog.country, "Egypt");
-    const omar = catalog.contacts.find((row) => row.email === "omar.ezzeldin@fourseasons.com");
+    const omar = catalog.contacts.find((row) => row.email === "omar.benyoussef@example.com");
     assert.ok(omar);
     assert.equal(omar?.type, "Hotel contact");
     assert.equal(omar?.first_name, "Omar");
-    assert.equal(omar?.last_name, "Ezz El Din");
-    const gihan = catalog.contacts.find((row) => row.email === "gihan.mekky@fourseasons.com" && row.type === "Hotel contact");
-    assert.equal(gihan?.first_name, "Gihan");
-    assert.equal(gihan?.last_name, "Mekky");
-    assert.ok(catalog.contacts.some((row) => row.type === "Reservations" && row.email === "res.sharmelsheikh@fourseasons.com"));
-    assert.ok(catalog.contacts.some((row) => row.type === "Concierge" && row.email === "concierge.sharmelsheikh@fourseasons.com"));
+    assert.equal(omar?.last_name, "Ben Youssef");
+    const nadia = catalog.contacts.find((row) => row.email === "nadia.rahal@example.com" && row.type === "Hotel contact");
+    assert.equal(nadia?.first_name, "Nadia");
+    assert.equal(nadia?.last_name, "Rahal");
+    assert.ok(catalog.contacts.some((row) => row.type === "Reservations" && row.email === "res.sharmelsheikh@example.com"));
+    assert.ok(catalog.contacts.some((row) => row.type === "Concierge" && row.email === "concierge.sharmelsheikh@example.com"));
     assert.equal(
-      catalog.contacts.some((row) => row.email === "omar.ezzeldin@fourseasons.com" && !row.type),
+      catalog.contacts.some((row) => row.email === "omar.benyoussef@example.com" && !row.type),
       false
     );
   });
@@ -313,7 +313,7 @@ describe("catalogue Little Emperors — contacts typés", () => {
     );
     const contact = hotelContact(item);
     assert.equal(contact.country, "Egypt");
-    assert.ok(contact.people.some((row) => row.last_name === "Ezz El Din" && row.first_name === "Omar"));
+    assert.ok(contact.people.some((row) => row.last_name === "Ben Youssef" && row.first_name === "Omar"));
     assert.equal(contact.people.length, catalog.contacts.length);
   });
 });
@@ -325,16 +325,16 @@ describe("withoutHotelRoster", () => {
       city: "Milan",
       address: "Via Gesù 6/8",
       website: "https://www.fourseasons.com/milan/",
-      email: "vanessa.green@fourseasons.com",
+      email: "clara.dubois@example.com",
       phone: "+39 02 77088",
       hotel_contacts: [
-        { type: "Concierge", first_name: "", last_name: "", email: "frontofhouse.milano@fourseasons.com", phone: "" },
-        { type: "Four Seasons", first_name: "Vanessa", last_name: "Green", email: "vanessa.green@fourseasons.com", phone: "+39 02 111" },
-        { type: "Reservations", first_name: "", last_name: "", email: "res.milano@fourseasons.com", phone: "" },
+        { type: "Concierge", first_name: "", last_name: "", email: "frontofhouse.milano@example.com", phone: "" },
+        { type: "Four Seasons", first_name: "Clara", last_name: "Dubois", email: "clara.dubois@example.com", phone: "+39 02 111" },
+        { type: "Reservations", first_name: "", last_name: "", email: "res.milano@example.com", phone: "" },
       ],
       hotel: {
-        email: "res.milano@fourseasons.com",
-        hotel_contacts: [{ type: "Hotel contact", first_name: "Bjorn", last_name: "Labee", email: "bjorn.labee@fourseasons.com", phone: "" }],
+        email: "res.milano@example.com",
+        hotel_contacts: [{ type: "Hotel contact", first_name: "Lars", last_name: "Nordin", email: "lars.nordin@example.com", phone: "" }],
       },
     });
     const hidden = withoutHotelRoster(source);
@@ -348,9 +348,9 @@ describe("withoutHotelRoster", () => {
     assert.equal(contact.phone, "+39 02 77088");
     assert.equal(hidden.details?.hotel_contacts, undefined);
     assert.equal((hidden.details?.hotel as { email?: string }).email, undefined);
-    assert.equal(JSON.stringify(hidden).includes("vanessa.green"), false);
-    assert.equal(JSON.stringify(hidden).includes("bjorn.labee"), false);
-    assert.equal(JSON.stringify(source).includes("vanessa.green@fourseasons.com"), true);
+    assert.equal(JSON.stringify(hidden).includes("clara.dubois"), false);
+    assert.equal(JSON.stringify(hidden).includes("lars.nordin"), false);
+    assert.equal(JSON.stringify(source).includes("clara.dubois@example.com"), true);
   });
 
   it("n’imprime aucun contact sur la carte client", () => {
@@ -358,23 +358,23 @@ describe("withoutHotelRoster", () => {
       hotel_name: "Four Seasons Hotel Milano",
       city: "Milan",
       address: "Via Gesù 6/8",
-      email: "vanessa.green@fourseasons.com",
+      email: "clara.dubois@example.com",
       hotel_contacts: [
-        { type: "Concierge", first_name: "", last_name: "", email: "frontofhouse.milano@fourseasons.com", phone: "" },
-        { type: "Four Seasons", first_name: "Vanessa", last_name: "Green", email: "vanessa.green@fourseasons.com", phone: "" },
-        { type: "Reservations", first_name: "", last_name: "", email: "res.milano@fourseasons.com", phone: "" },
+        { type: "Concierge", first_name: "", last_name: "", email: "frontofhouse.milano@example.com", phone: "" },
+        { type: "Four Seasons", first_name: "Clara", last_name: "Dubois", email: "clara.dubois@example.com", phone: "" },
+        { type: "Reservations", first_name: "", last_name: "", email: "res.milano@example.com", phone: "" },
       ],
     });
     const html = renderToStaticMarkup(createElement(HotelContactButton, { item, roster: false }));
     assert.match(html, /Voir l’hôtel/);
     assert.equal(html.includes("contact"), false);
-    assert.equal(html.includes("vanessa.green"), false);
+    assert.equal(html.includes("clara.dubois"), false);
     assert.equal(html.includes("frontofhouse"), false);
     assert.equal(html.includes("res.milano"), false);
     assert.equal(html.includes("Concierge"), false);
     const agency = renderToStaticMarkup(createElement(HotelContactButton, { item }));
     assert.match(agency, /Voir l’hôtel · 3 contacts/);
-    assert.match(agency, /vanessa\.green@fourseasons\.com/);
+    assert.match(agency, /clara\.dubois@example\.com/);
   });
 
   it("laisse un vol tel quel", () => {

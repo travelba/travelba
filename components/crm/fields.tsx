@@ -21,6 +21,7 @@ export const fieldControlClass =
 
 function FlagImg({ iso2 }: { iso2: string }) {
   return (
+    // eslint-disable-next-line @next/next/no-img-element -- drapeaux flagcdn.com, domaine distant hors next.config
     <img
       src={flagImageUrl(iso2, 40)}
       srcSet={`${flagImageUrl(iso2, 40)} 1x, ${flagImageUrl(iso2, 80)} 2x`}

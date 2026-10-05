@@ -1,3 +1,5 @@
+import { isTripShareCode } from "./trip-share";
+import { isEntryCode } from "./entry-link";
 import { coverQuery } from "./carnet";
 import { unsplashKeywordMatch } from "./covers";
 import { siteConfig } from "../site";
@@ -88,10 +90,20 @@ export function stayHasPublishedCover(booking: {
   );
 }
 
-/** JPEG public, sans jeton. Twilio le récupère en HTTPS. */
-export function stayCoverUrl(reference: string, hasCover: boolean) {
+/** Preuve d’accès à la couverture : le code du lien court du message, ou le code /v/ (médias Twilio seulement). */
+export type StayCoverAccess = { entryCode?: string | null; shareCode?: string | null };
+
+/**
+ * JPEG public, sans jeton Supabase. Twilio le récupère en HTTPS.
+ * L’adresse porte une preuve d’accès : sans elle, pas de photo (texte seul).
+ */
+export function stayCoverUrl(reference: string, hasCover: boolean, access?: StayCoverAccess | null) {
   if (!hasCover || !REFERENCE.test(reference)) return null;
-  return `${siteConfig.url}/api/covers/sejour/${reference}`;
+  const base = `${siteConfig.url}/api/covers/sejour/${reference}`;
+  const entry = access?.entryCode || "";
+  if (entry && isEntryCode(entry)) return `${base}?e=${entry}`;
+  if (isTripShareCode(access?.shareCode)) return `${base}?partage=${access?.shareCode}`;
+  return null;
 }
 
 /** Photo du séjour : JPEG public du lieu d’arrivée. Jamais le monogramme, jamais une signed URL. */
@@ -231,18 +243,20 @@ export function planStayNotice(input: {
   destination: string | null;
   title: string | null;
   hasCover: boolean;
+  /** Preuve d’accès à la couverture. Absente au moment du plan : la photo est résolue à l’envoi. */
+  coverAccess?: StayCoverAccess | null;
 }): StayPlan | null {
   if (!input.published) return null;
   const path = reservationPath(input.reference);
   if (!path) return null;
   const place = stayPlaceName(input.destination, input.title);
   if (!place) return null;
-  const mediaUrl = stayCoverUrl(input.reference, input.hasCover);
+  const mediaUrl = stayCoverUrl(input.reference, input.hasCover, input.coverAccess);
   return {
     body: withConciergeSignature(stayNoticeLine(place, input.reference)),
     place,
     mediaUrl,
-    template: mediaUrl ? "sejour" : "sejour_texte",
+    template: input.hasCover ? "sejour" : "sejour_texte",
     path,
   };
 }
@@ -513,8 +527,12 @@ function contentDraft(input: {
   };
 }
 
-/** Couverture publiée d’Avoriaz. Échantillon Meta, jamais le monogramme. */
-const SAMPLE_COVER = `${siteConfig.url}/api/covers/sejour/TB-2026-0028`;
+/**
+ * Échantillon Meta : illustration statique du site, jamais le monogramme.
+ * La couverture d’un vrai dossier exige désormais son code de partage (B-14) :
+ * elle ne sert plus d’exemple.
+ */
+const SAMPLE_COVER = `${siteConfig.url}/whatsapp/hotel.jpg`;
 const SAMPLE_STAY = "Avoriaz, réservation TB-2026-0028,";
 const SAMPLE_CODE = "c/23456789";
 
