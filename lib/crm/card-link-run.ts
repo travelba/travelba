@@ -108,9 +108,24 @@ export async function settleCardLinks(
   }
 }
 
+/** Lecture en échec : une erreur, jamais « lien mort » (l’hôtel réessaie au lieu de rappeler l’agence). */
+export class CardLinkUnavailable extends Error {
+  constructor() {
+    super("Lien carte momentanément illisible");
+  }
+}
+
 async function loadLink(admin: Admin, code: string) {
   if (!isCardLinkCode(code)) return null;
-  const { data } = await admin.from("crm_card_links").select("*").eq("code_hash", cardLinkHash(code)).maybeSingle();
+  const { data, error } = await admin
+    .from("crm_card_links")
+    .select("*")
+    .eq("code_hash", cardLinkHash(code))
+    .maybeSingle();
+  if (error) {
+    console.error("[card-link] lecture", error.code ?? "?");
+    throw new CardLinkUnavailable();
+  }
   return (data as LinkRow | null) ?? null;
 }
 
@@ -118,7 +133,10 @@ export type CardLinkStatus =
   | { alive: false }
   | { alive: true; hotel: string; reference: string; opensLeft: number; expiresAt: string; source: CardLinkSource };
 
-/** Lecture sans effet, pour la page d’accueil du lien (un aperçu ou un scanner n’ouvre rien). */
+/**
+ * Lecture sans effet, pour la page d’accueil du lien (un aperçu ou un scanner n’ouvre rien).
+ * Lève `CardLinkUnavailable` si la base ne répond pas : la page dit « réessayez », pas « lien mort ».
+ */
 export async function cardLinkStatus(code: string): Promise<CardLinkStatus> {
   const admin = createServiceClient();
   const link = await loadLink(admin, code);
@@ -159,7 +177,12 @@ const DEAD = "Ce lien ne s’ouvre plus. Demandez un nouveau lien à l’agence.
  */
 export async function openCardLink(code: string): Promise<CardLinkOpen> {
   const admin = createServiceClient();
-  const link = await loadLink(admin, code);
+  let link: LinkRow | null;
+  try {
+    link = await loadLink(admin, code);
+  } catch {
+    return { ok: false, status: 503, error: "Service momentanément indisponible. Réessayez dans un instant." };
+  }
   if (!link) return { ok: false, status: 404, error: DEAD };
   const decision = cardLinkDecision({
     now: new Date(),

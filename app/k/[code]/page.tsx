@@ -17,16 +17,30 @@ type Props = { params: Promise<{ code: string }> };
 export default async function CardLinkPage({ params }: Props) {
   const { code } = await params;
   let status: CardLinkStatus = { alive: false };
+  // Base injoignable : « réessayez », jamais « ce lien ne s’ouvre plus » (le lien est peut-être valable).
+  let unavailable = false;
   try {
     status = await cardLinkStatus(code);
   } catch {
-    status = { alive: false };
+    unavailable = true;
   }
 
   return (
     <main className="min-h-screen bg-[#faf9f6] px-4 py-10">
       <div className="mx-auto max-w-md rounded-3xl bg-white p-6 shadow-[0_1px_8px_rgba(11,25,44,0.06)]">
-        {status.alive ? (
+        {unavailable ? (
+          <section className="space-y-3">
+            <h1 className="text-xl font-bold text-[#0b192c]">Lien momentanément indisponible</h1>
+            <p className="text-sm text-[#5a5c60]">
+              Le service ne répond pas pour l’instant. Votre lien est peut-être toujours valable : rechargez la page dans
+              un instant.
+            </p>
+            <p className="text-sm text-[#5a5c60]">The service is temporarily unavailable. Please reload this page shortly.</p>
+            <a href="" className="inline-flex min-h-11 items-center rounded-full bg-[#0b192c] px-5 text-sm font-semibold text-white">
+              Recharger / Reload
+            </a>
+          </section>
+        ) : status.alive ? (
           <CardLinkReveal
             code={code}
             hotel={status.hotel}
