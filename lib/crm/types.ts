@@ -357,6 +357,7 @@ export type CrmBookingCard = {
   currency: string;
   valid_from: string;
   valid_to: string;
+  last4: string | null;
   status: "active" | "locked" | "terminated";
   created_at: string;
 };

@@ -6,7 +6,7 @@ import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { readEstaAnswers, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import { loadPliantAccountBalance, pliantConfigured } from "@/lib/crm/pliant";
-import { pliantCardForBooking, pliantSpendsForCards } from "@/lib/crm/pliant-card-run";
+import { pliantCardForBooking, pliantSpendsForCards, showPliantLast4 } from "@/lib/crm/pliant-card-run";
 import type { PliantCardDraft, PliantSpendLine } from "@/lib/crm/pliant-cards";
 import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
@@ -106,7 +106,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
   const { data: cardRows, error: cardError } = await supabase
     .from("crm_booking_cards")
     .select(
-      "id, booking_id, pliant_card_id, label, first_name, last_name, limit_cents, currency, valid_from, valid_to, status, created_at"
+      "id, booking_id, pliant_card_id, label, first_name, last_name, limit_cents, currency, valid_from, valid_to, last4, status, created_at"
     )
     .eq("booking_id", id)
     .order("created_at", { ascending: true });
@@ -168,6 +168,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     ];
     pliantSpends = await pliantSpendsForCards(cardAdmin, cardIds);
     pliantAccount = await loadPliantAccountBalance();
+    await showPliantLast4(cardAdmin, { bookingCards, arrivals, registry: pliantCard });
   } catch {
     pliantCard = null;
     pliantSpends = [];

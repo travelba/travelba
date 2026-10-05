@@ -22,7 +22,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { PliantCardDesk } from "@/components/admin/PliantCardDesk";
 import { stayCardFace } from "@/lib/crm/hotel-arrival";
 import { loadPliantAccountBalance } from "@/lib/crm/pliant";
-import { pliantCardForCustomer, pliantSpendsForCards } from "@/lib/crm/pliant-card-run";
+import { pliantCardForCustomer, pliantSpendsForCards, showPliantLast4 } from "@/lib/crm/pliant-card-run";
 import type { PliantSpendLine } from "@/lib/crm/pliant-cards";
 import {
   customerFullName,
@@ -182,6 +182,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
   try {
     const cardAdmin = createServiceClient();
     customerCard = await pliantCardForCustomer(cardAdmin, c.id);
+    await showPliantLast4(cardAdmin, { registry: customerCard });
     customerSpends = await pliantSpendsForCards(cardAdmin, [customerCard?.pliant_card_id || ""]);
     pliantAccount = await loadPliantAccountBalance();
   } catch {

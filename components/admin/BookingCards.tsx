@@ -134,11 +134,11 @@ export function BookingCards({
         </form>
       </section>
       {cards.some((card) => card.status !== "terminated") ? (
-        <ul className="space-y-4">
+        <ul className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
           {cards
             .filter((card) => card.status !== "terminated")
             .map((card) => (
-            <li key={card.id} className="admin-af-card space-y-3 rounded-3xl p-5">
+            <li key={card.id} className="admin-af-card min-w-0 space-y-3 rounded-3xl p-5">
               <div>
                 <p className="font-display text-lg font-extrabold tracking-tight text-[var(--admin-navy)]">{card.label}</p>
                 <p className="text-sm text-[var(--admin-navy)]/70">
@@ -153,7 +153,7 @@ export function BookingCards({
                   itemId: card.id,
                   hotel: "",
                   holder: `${card.first_name} ${card.last_name}`.trim(),
-                  last4: null,
+                  last4: card.last4,
                   closed: false,
                 })}
                 revealUrl={`/api/admin/bookings/${bookingId}/cards`}

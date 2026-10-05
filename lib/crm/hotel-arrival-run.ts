@@ -33,7 +33,7 @@ import {
   stayCardIsManual,
 } from "./manual-stay-card";
 import { manualPliantCardIds, rememberPliantCard, setRememberedCardLimit } from "./pliant-card-run";
-import { issuePliantCard, pliantConfigured, setPliantCardLimit } from "./pliant";
+import { issuePliantCard, pliantConfigured, readPliantCardFace, setPliantCardLimit } from "./pliant";
 import type {
   CrmBookingItem,
   CrmBookingTraveler,
@@ -212,9 +212,11 @@ export async function issueManualStayCard(
 
   const issued = await issuePliantCard(process.env.PLIANT_CARDHOLDER_ID || "", draft.body);
   if (!issued.cardId) throw new Error("Pliant n'a pas créé la carte.");
+  const last4 = (await readPliantCardFace(issued.cardId)).last4;
 
   const patch = {
     pliant_card_id: issued.cardId,
+    card_last4: last4,
     card_limit_cents: draft.body.limit.value,
     currency: "EUR",
     task_open: false,
@@ -322,7 +324,12 @@ async function alignStayCard(input: {
       return { ...row, ...basePatch, pliant_card_id: null, task_open: true, task_note: note };
     }
     const cleared = row.task_note?.startsWith("Pliant") ? { task_open: false, task_note: null } : {};
-    await save(input.admin, row.id, { ...basePatch, pliant_card_id: ready.cardId, ...cleared });
+    await save(input.admin, row.id, {
+      ...basePatch,
+      pliant_card_id: ready.cardId,
+      card_last4: ready.row.card_last4,
+      ...cleared,
+    });
     return { ...ready.row, ...basePatch, pliant_card_id: ready.cardId, ...cleared };
   }
   if (aligned && !row.task_note?.startsWith("Pliant")) return row;
@@ -761,6 +768,7 @@ async function stepArrival(input: {
       row = { ...ready.row, status: "paying", card_limit_cents: limitCents, amount_cents: provision?.baseCents ?? quoted.cents };
       await save(input.admin, row.id, {
         pliant_card_id: row.pliant_card_id,
+        card_last4: row.card_last4,
         card_limit_cents: limitCents,
         amount_cents: provision?.baseCents ?? quoted.cents,
         currency: provision?.currency || currencyCode(quoted.currency),
@@ -866,16 +874,19 @@ async function ensureCard(input: {
     const issue = input.deps.issueCard || ((body) => issuePliantCard(process.env.PLIANT_CARDHOLDER_ID || "", body));
     const issued = await issue(spec.body);
     if (!issued.cardId) return { cardId: null, row: input.row, note: "Pliant n'a pas créé la carte." };
+    const last4 = input.deps.issueCard ? null : (await readPliantCardFace(issued.cardId)).last4;
     await rememberPliantCard(input.admin, {
       pliant_card_id: issued.cardId,
       booking_id: input.row.booking_id,
       label: spec.body.label,
+      last4,
       limit_cents: input.limitCents,
       currency: input.currency,
     });
     const row = {
       ...input.row,
       pliant_card_id: issued.cardId,
+      card_last4: last4 || input.row.card_last4,
       card_limit_cents: input.limitCents,
       currency: input.currency,
     };

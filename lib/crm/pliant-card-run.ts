@@ -112,6 +112,44 @@ export async function changePliantCardLimit(admin: Admin, cardId: string, limitC
   });
 }
 
+/** Les 4 derniers chiffres, lus chez Pliant sans ouvrir le numéro complet. */
+export async function showPliantLast4(
+  admin: Admin,
+  input: {
+    bookingCards?: { pliant_card_id: string; last4?: string | null }[];
+    arrivals?: { pliant_card_id: string | null; card_last4: string | null }[];
+    registry?: { pliant_card_id: string; last4: string | null } | null;
+  }
+) {
+  if (!pliantConfigured()) return;
+  const missing = new Set<string>();
+  for (const card of input.bookingCards || []) {
+    if (card.pliant_card_id && !card.last4) missing.add(card.pliant_card_id);
+  }
+  for (const row of input.arrivals || []) {
+    if (row.pliant_card_id && !row.card_last4) missing.add(row.pliant_card_id);
+  }
+  if (input.registry?.pliant_card_id && !input.registry.last4) missing.add(input.registry.pliant_card_id);
+  for (const cardId of missing) {
+    const last4 = (await readPliantCardFace(cardId)).last4;
+    if (!last4) continue;
+    for (const card of input.bookingCards || []) {
+      if (card.pliant_card_id === cardId) card.last4 = last4;
+    }
+    for (const row of input.arrivals || []) {
+      if (row.pliant_card_id === cardId) row.card_last4 = last4;
+    }
+    if (input.registry?.pliant_card_id === cardId) input.registry.last4 = last4;
+    try {
+      await rememberPliantCard(admin, { pliant_card_id: cardId, last4 });
+      await admin.from("crm_booking_cards").update({ last4 }).eq("pliant_card_id", cardId).is("last4", null);
+      await admin.from("crm_hotel_arrivals").update({ card_last4: last4 }).eq("pliant_card_id", cardId).is("card_last4", null);
+    } catch {
+      // Les chiffres restent affichés pour cette ouverture.
+    }
+  }
+}
+
 export async function setPliantCardLocked(admin: Admin, cardId: string, locked: boolean) {
   if (!pliantConfigured()) throw new Error("Pliant n’est pas branché.");
   if (locked) await lockPliantCard(cardId);

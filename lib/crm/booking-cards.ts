@@ -2,7 +2,14 @@ import "server-only";
 
 import { parisIsoDate } from "./hotel-arrival";
 import { bookingCardValidity, manualStayCardDraft, sameCardNameCount } from "./manual-stay-card";
-import { issuePliantCard, lockPliantCard, pliantConfigured, terminatePliantCard, unlockPliantCard } from "./pliant";
+import {
+  issuePliantCard,
+  lockPliantCard,
+  pliantConfigured,
+  readPliantCardFace,
+  terminatePliantCard,
+  unlockPliantCard,
+} from "./pliant";
 import type { Db } from "../supabase/db";
 
 type Admin = Db;
@@ -44,6 +51,7 @@ export async function issueBookingCard(
 
   const issued = await issuePliantCard(process.env.PLIANT_CARDHOLDER_ID || "", draft.body);
   if (!issued.cardId) throw new Error("Pliant n'a pas créé la carte.");
+  const last4 = (await readPliantCardFace(issued.cardId)).last4;
 
   const { error } = await admin.from("crm_booking_cards").insert({
     booking_id: input.bookingId,
@@ -55,6 +63,7 @@ export async function issueBookingCard(
     currency: "EUR",
     valid_from: draft.body.validFrom,
     valid_to: draft.body.validTo,
+    last4,
   });
   if (error) throw new Error("La carte a été créée, mais le dossier ne l’a pas enregistrée.");
   return { ok: true as const };
