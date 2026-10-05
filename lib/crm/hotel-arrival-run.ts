@@ -172,7 +172,7 @@ export async function ensureHotelArrivals(admin: Admin, bookingId: string, items
   if (rows.length) await admin.from("crm_hotel_arrivals").insert(rows);
 }
 
-/** Carte au montant saisi, libellée nom et prénom, sans restriction, sur le porteur configuré. */
+/** Carte au montant saisi, libellée nom et prénom, sans plafond de transactions, sur le porteur configuré. */
 export async function issueManualStayCard(
   admin: Admin,
   input: { bookingId: string; itemId: string; amount: string; firstName: string; lastName: string }
