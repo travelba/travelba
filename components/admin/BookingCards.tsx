@@ -59,7 +59,9 @@ export function BookingCards({
         <div>
           <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Générer une carte</h2>
           <p className="mt-1 max-w-xl text-sm leading-relaxed text-[var(--admin-navy)]/70">
-            Autant de cartes que le dossier en a besoin. Chacune est en euros, libellée au prénom et au nom, sans restriction de paiement, et rattachée à Benjamin Boukris.
+            Autant de cartes que le dossier en a besoin. Le montant et le nom sont ceux saisis ici. Pliant ne bloque ni
+            les catégories (sauf le transfert d’argent), ni les devises, ni les pays. La carte est rattachée à Benjamin
+            Boukris.
           </p>
         </div>
         <form className="space-y-3" onSubmit={submit}>

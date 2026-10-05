@@ -37,6 +37,22 @@ export function bookingCardValidity(today: string, endDate: string | null | unde
   return { validFrom: today, validTo: close < today ? today : close };
 }
 
+/** Pliant plafonne une carte voyage à 3 transactions si ce champ est absent. */
+export const MANUAL_CARD_TX_MAX = 999_999_999;
+
+/** Transfert d’argent. Les retraits DAB (6010, 6011) restent ouverts. */
+const MONEY_TRANSFER_MCCS = ["4829", "6012", "6051", "6536", "6537", "6538", "6540"] as const;
+
+export function manualCardControls() {
+  return {
+    categories: {
+      type: "MCC" as const,
+      restriction: "BLOCKED" as const,
+      values: [...MONEY_TRANSFER_MCCS],
+    },
+  };
+}
+
 export function manualStayCardBody(input: {
   firstName: string;
   lastName: string;
@@ -61,6 +77,8 @@ export function manualStayCardBody(input: {
     limit: money,
     transactionLimit: money,
     limitRenewFrequency: "TOTAL" as const,
+    maxTransactionCount: MANUAL_CARD_TX_MAX,
+    cardControls: manualCardControls(),
     validFrom: input.validFrom,
     validTo: input.validTo,
     validTimezone: "Europe/Paris" as const,
