@@ -6,7 +6,7 @@ import {
   accessWhileDesk,
   deskBypass,
   deskClearCookie,
-} from "@/lib/crm/admin-client-login";
+} from "@/lib/crm/desk-mode";
 import {
   ONBOARDING_PATH,
   PASSWORD_SETUP_COOKIE,
