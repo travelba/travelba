@@ -172,8 +172,9 @@ export function clientStayExpenseLines(input: {
   return lines;
 }
 
+/** Prix masqué : rien sur la ligne, la mention « Prix à la publication » ne vit que dans le bloc Montant. */
 function expenseAmountLabel(amount: number | null, currency: string, pricesVisible: boolean) {
-  if (!pricesVisible) return HIDDEN_PRICE_LABEL;
+  if (!pricesVisible) return null;
   if (amount == null || Number.isNaN(Number(amount))) return null;
   return formatMoney(Number(amount), currency);
 }

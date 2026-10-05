@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
-import { ProfileSubnav } from "@/components/account/ProfileSubnav";
 import { DocumentsManager } from "@/components/account/DocumentsManager";
 import type { CrmCompanion, CrmTravelDocument } from "@/lib/crm/types";
 
@@ -19,11 +18,10 @@ export default async function DocumentsPage() {
   ]);
 
   return (
-    <div className="space-y-4 pb-6">
-      <ProfileSubnav />
+    <div className="space-y-4">
       <div>
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Coffre</p>
-        <h1 className="font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">Pièces</h1>
+        <h2 className="font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">Pièces</h2>
       </div>
       <DocumentsManager
         documents={(documents || []) as CrmTravelDocument[]}

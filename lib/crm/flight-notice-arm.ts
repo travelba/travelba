@@ -15,7 +15,10 @@ const KIND_BY_ENV: Record<string, FlightNoticeKind> = {
   TWILIO_CONTENT_VOL_ARRIVEE: "arrivee",
 };
 
-const SAMPLE_PHONE = "0772158257";
+/** Ligne de relecture des échantillons (WHATSAPP_SAMPLE_PHONE). Vide = aucun envoi d’échantillon. */
+function samplePhone() {
+  return (process.env.WHATSAPP_SAMPLE_PHONE || "").trim();
+}
 
 type Extra = {
   notice_sids?: Partial<Record<FlightNoticeKind, string>>;
@@ -180,6 +183,8 @@ export async function sendApprovedFlightSamples(
   deliver: typeof sendContentTemplate = sendContentTemplate
 ) {
   if (isVercelPreview() || !twilioReady()) return;
+  const phone = samplePhone();
+  if (!phone) return;
   const { data } = await admin.from("crm_integrations").select("id, extra").eq("provider", "aeroapi").maybeSingle();
   const extra = ((data?.extra || {}) as Extra) || {};
   const sent: Partial<Record<FlightNoticeKind, string>> = { ...(extra.sample_sent || {}) };
@@ -194,7 +199,7 @@ export async function sendApprovedFlightSamples(
     try {
       const { response, payload } = await twilio(`${CONTENT_URL}/${sid}/ApprovalRequests`, fetchImpl);
       if (!response.ok || (payload?.whatsapp?.status || payload?.status || "").toLowerCase() !== "approved") continue;
-      const result = await deliver({ phone: SAMPLE_PHONE, contentSid: sid, variables });
+      const result = await deliver({ phone, contentSid: sid, variables });
       if (!result.ok) continue;
       sent[kind] = new Date().toISOString();
       changed = true;

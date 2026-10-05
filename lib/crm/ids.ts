@@ -4,8 +4,13 @@ export function isUuid(value: string) {
   );
 }
 
+/** Fichiers d’un dossier : pièces et couverture, plus les photos de carte `agency-cards/` (résidu PAN). */
+export function bookingFilePrefixes(bookingId: string) {
+  return [`bookings/${bookingId}`, `agency-cards/${bookingId}`];
+}
+
 export function customerFilePrefixes(customerId: string, bookingIds: string[]) {
-  return [`customers/${customerId}`, ...bookingIds.map((id) => `bookings/${id}`)];
+  return [`customers/${customerId}`, ...bookingIds.flatMap((id) => bookingFilePrefixes(id))];
 }
 
 /** Chemins de pièces voyage encore référencés ailleurs (coffre client) restent en place. */

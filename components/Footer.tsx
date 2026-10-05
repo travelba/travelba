@@ -1,3 +1,4 @@
+import NextLink from "next/link";
 import { useTranslations } from "next-intl";
 import { MapPin, ShieldCheck } from "lucide-react";
 import { BrandMark } from "./BrandMark";
@@ -105,6 +106,14 @@ export function Footer() {
                 >
                   {tNav("testimonials")}
                 </a>
+              </li>
+              <li>
+                <NextLink
+                  href="/connexion"
+                  className="font-medium text-foreground/90 transition-colors hover:text-foreground"
+                >
+                  {tNav("account")}
+                </NextLink>
               </li>
             </ul>
           </div>

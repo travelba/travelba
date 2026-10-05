@@ -1,9 +1,22 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import type { ExtractedIdentity } from "./identity";
-import { scanPassportBytes, tesseractAvailable } from "./passport-scan";
+import { scanPassportBytes } from "./passport-scan";
+
+/** Binaire système requis : le test est sauté explicitement, jamais en silence. */
+function tesseractInstalled() {
+  try {
+    execFileSync("tesseract", ["--version"], { stdio: "ignore", timeout: 4000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const tesseractAvailable = tesseractInstalled();
 
 const FIXTURE_DIR =
   process.env.TRAVELBA_PASSPORT_DIR ||
@@ -167,32 +180,32 @@ function assertPerson(row: ExtractedIdentity, expected: Expectation["people"][nu
   assert.notEqual(row.first_name, "Benjamin Wilhem Orène");
 }
 
-test("passport scans keep Latin given-name order", async (t) => {
-  if (!(await tesseractAvailable())) {
-    t.skip("tesseract absent");
-    return;
-  }
-  let names: string[] = [];
-  try {
-    names = await readdir(FIXTURE_DIR);
-  } catch {
-    t.skip("passport fixtures absent");
-    return;
-  }
-  const { readFile } = await import("node:fs/promises");
-  for (const spec of EXPECTED) {
-    const file = names.find((name) => name.endsWith(spec.suffix));
-    if (!file) {
-      t.skip(`missing ${spec.suffix}`);
+test(
+  "passport scans keep Latin given-name order",
+  { skip: tesseractAvailable ? false : "tesseract absent : binaire système requis (apt install tesseract-ocr)" },
+  async (t) => {
+    let names: string[] = [];
+    try {
+      names = await readdir(FIXTURE_DIR);
+    } catch {
+      t.skip("passport fixtures absent");
       return;
     }
-    const bytes = new Uint8Array(await readFile(join(FIXTURE_DIR, file)));
-    const rows = await scanPassportBytes(bytes, "application/pdf", file);
-    assert.equal(rows.length, spec.people.length, spec.suffix);
-    for (const expected of spec.people) {
-      const row = rows.find((item) => item.number === expected.number);
-      assert.ok(row, spec.suffix);
-      assertPerson(row, expected);
+    const { readFile } = await import("node:fs/promises");
+    for (const spec of EXPECTED) {
+      const file = names.find((name) => name.endsWith(spec.suffix));
+      if (!file) {
+        t.skip(`missing ${spec.suffix}`);
+        return;
+      }
+      const bytes = new Uint8Array(await readFile(join(FIXTURE_DIR, file)));
+      const rows = await scanPassportBytes(bytes, "application/pdf", file);
+      assert.equal(rows.length, spec.people.length, spec.suffix);
+      for (const expected of spec.people) {
+        const row = rows.find((item) => item.number === expected.number);
+        assert.ok(row, spec.suffix);
+        assertPerson(row, expected);
+      }
     }
   }
-});
+);

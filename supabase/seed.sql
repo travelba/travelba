@@ -1,0 +1,4 @@
+-- Données de démo locales uniquement (supabase db reset / start les rejoue).
+-- Jamais en prod. Les migrations ne portent aucun insert de données : voir
+-- .cursor/skills/travelba-supabase/SKILL.md (« Seeds »). Vide pour l'instant :
+-- le jeu de démo vit dans scripts/seed-demo.mjs.

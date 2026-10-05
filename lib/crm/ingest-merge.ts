@@ -1,3 +1,4 @@
+import { foldLetters } from "./text";
 import { sortItemsByOrder, stayHeadline } from "./carnet";
 import { stayCitiesFromSteps } from "./staff-stay";
 import { isEmailBodyFile } from "./ingest-title";
@@ -20,14 +21,6 @@ export type FileExtractResult = {
   warning?: string;
 };
 
-function normalizePerson(value: string | null | undefined) {
-  return (value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z]/g, "");
-}
-
 export function dedupeTravelers(
   travelers: BookingExtract["travelers"]
 ): BookingExtract["travelers"] {
@@ -37,7 +30,7 @@ export function dedupeTravelers(
     const first = (traveler.first_name || "").trim();
     const last = (traveler.last_name || "").trim();
     if (!first && !last) continue;
-    const key = `${normalizePerson(first)}|${normalizePerson(last)}`;
+    const key = `${foldLetters(first)}|${foldLetters(last)}`;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push({ first_name: first || null, last_name: last || null });

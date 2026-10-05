@@ -1,7 +1,7 @@
 /**
  * Charge l'annuaire Little Emperors (export JSON) dans crm_le_hotels et crm_hotel_contacts.
  *
- *   node scripts/import-le-hotel-contacts.mjs /chemin/little-emperors-hotel-contacts-full.json
+ *   node scripts/one-shot/import-le-hotel-contacts.mjs /chemin/little-emperors-hotel-contacts-full.json
  *
  * Le fichier n'est pas versionné : il contient les e-mails des hôtels.
  */

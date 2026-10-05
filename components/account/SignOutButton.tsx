@@ -8,7 +8,8 @@ export function SignOutButton() {
 
   async function signOut() {
     const supabase = createClient();
-    await supabase.auth.signOut();
+    // Cet appareil seulement. Les autres appareils se ferment depuis Sécurité.
+    await supabase.auth.signOut({ scope: "local" });
     router.push("/connexion");
     router.refresh();
   }

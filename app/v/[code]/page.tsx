@@ -9,6 +9,7 @@ import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
 import { withoutHotelRosterItems } from "@/lib/crm/hotel-contact";
 import { googlePhoneMap } from "@/lib/crm/calendar-ics";
 import { loadPublishedTripShare } from "@/lib/crm/trip-share-load";
+import { toPublicBooking } from "@/lib/crm/public-booking";
 import { siteConfig } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
@@ -53,5 +54,7 @@ export default async function PublicTripPage({ params }: Props) {
   if (!trip) notFound();
   const items = withoutHotelRosterItems(await loadHotelContacts(trip.booking.id, trip.items));
   const phones = googlePhoneMap(trip.booking, items);
-  return <PublicTripView booking={trip.booking} items={items} docs={trip.docs} partage={code} phones={phones} />;
+  return (
+    <PublicTripView booking={toPublicBooking(trip.booking)} items={items} docs={trip.docs} partage={code} phones={phones} />
+  );
 }

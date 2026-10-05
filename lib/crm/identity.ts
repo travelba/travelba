@@ -348,3 +348,15 @@ export function identityOverwriteWarning(
   if (cur.toLocaleLowerCase("fr") === next.toLocaleLowerCase("fr")) return null;
   return `Le passeport indique ${next}. Les noms du profil (${cur}) seront mis à jour.`;
 }
+
+/** Même constat, une fois la pièce confirmée : le profil suit la pièce. */
+export function identityAppliedNotice(
+  current: { first_name?: string | null; last_name?: string | null },
+  incoming: { first_name?: string | null; last_name?: string | null }
+) {
+  const cur = [current.first_name, current.last_name].filter(Boolean).join(" ").trim();
+  const next = [incoming.first_name, incoming.last_name].filter(Boolean).join(" ").trim();
+  if (!cur || !next) return null;
+  if (cur.toLocaleLowerCase("fr") === next.toLocaleLowerCase("fr")) return null;
+  return `Le passeport indique ${next}. Les noms du profil (${cur}) sont mis à jour.`;
+}

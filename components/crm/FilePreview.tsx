@@ -133,7 +133,7 @@ function FilePreviewDialog({
   const onCloseRef = useRef(onClose);
   useEffect(() => {
     onCloseRef.current = onClose;
-  });
+  }, [onClose]);
   const [sharing, setSharing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const image = isPreviewImage(file.mimeType, file.fileName);

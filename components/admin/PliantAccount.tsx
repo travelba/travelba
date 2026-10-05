@@ -16,8 +16,10 @@ import {
   pliantLedgerDraft,
   pliantMatchReasonLabel,
   scorePliantMatches,
+  suggestedCustomerId,
   type PliantMatchCandidate,
 } from "@/lib/crm/pliant-match";
+import { possibleClientsLabel } from "@/lib/crm/revolut-labels";
 import {
   pliantCardDisplay,
   pliantCategoryLabel,
@@ -147,10 +149,10 @@ export function PliantAccount({
     return map;
   }, [lines, customers]);
 
+  /** Présélection seulement sur un rapprochement certain et unique ; un partiel reste à choisir. */
   function chosenFor(rowId: string) {
     if (picked[rowId]) return picked[rowId];
-    const top = suggestions.get(rowId)?.[0];
-    return top && top.score >= 55 ? top.customer_id : "";
+    return suggestedCustomerId(suggestions.get(rowId) || []);
   }
 
   async function sync() {
@@ -226,7 +228,9 @@ export function PliantAccount({
     }
     if (row.matchStatus === "ignored") return <p className="text-sm text-muted">Ignorée</p>;
     if (!needsMatch(row)) return <p className="text-sm text-muted">—</p>;
-    const top = suggestions.get(row.id)?.[0];
+    const candidates = suggestions.get(row.id) || [];
+    const suggestedId = suggestedCustomerId(candidates);
+    const top = suggestedId ? candidates.find((c) => c.customer_id === suggestedId) : undefined;
     const chosen = byId.get(chosenFor(row.id));
     return (
       <div className="flex w-full flex-col gap-2 sm:max-w-xs">
@@ -234,6 +238,8 @@ export function PliantAccount({
           <p className="text-xs font-semibold text-[#9e7e51]">
             Proposition : {top.label} ({pliantMatchReasonLabel(top.reason)})
           </p>
+        ) : candidates.length ? (
+          <p className="text-xs font-semibold text-[#9e7e51]">{possibleClientsLabel(candidates.length)}</p>
         ) : (
           <p className="text-xs text-muted">Aucune proposition</p>
         )}
@@ -247,7 +253,9 @@ export function PliantAccount({
           aria-label="Choisir le client à rapprocher"
           className="inline-flex items-center justify-between gap-2 rounded-xl border border-border bg-white px-3 py-2 text-left text-sm text-[var(--admin-navy)]"
         >
-          <span className="min-w-0 truncate">{chosen ? customerPickLabel(chosen) : "Choisir un client…"}</span>
+          <span className="min-w-0 truncate">
+            {chosen ? customerPickLabel(chosen) : candidates.length ? possibleClientsLabel(candidates.length) : "Choisir un client…"}
+          </span>
           <Icon name="search" className="h-4 w-4 shrink-0 text-muted" />
         </button>
         <div className="flex flex-wrap gap-2">

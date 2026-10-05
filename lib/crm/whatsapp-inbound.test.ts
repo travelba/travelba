@@ -74,6 +74,7 @@ const published = {
   cover_image_path: null,
   notes_client: null,
   notes_internal: "note interne secrète",
+  share_code: "ABCDEFGH",
 };
 
 const draft = {
@@ -345,7 +346,11 @@ test("sans horaire, sans prix publié et sans couverture, rien n’est inventé"
     bookings: [{ ...published, cover_image_path: "bookings/stay-pub/cover.webp" }],
   });
   const withPhoto = planConciergeTurn("Parlez-moi de mon séjour", covered);
-  assert.equal(withPhoto.cover, "https://travelba.fr/api/covers/sejour/PUB-1");
+  assert.equal(withPhoto.cover, "https://travelba.fr/api/covers/sejour/PUB-1?partage=ABCDEFGH");
+  const unshared = buildConciergeDossier({
+    bookings: [{ ...published, cover_image_path: "bookings/stay-pub/cover.webp", share_code: null }],
+  });
+  assert.equal(planConciergeTurn("Parlez-moi de mon séjour", unshared).cover, null);
   assert.equal(withPhoto.text.includes("cover.webp"), false);
   assert.equal(withPhoto.text.includes("/api/covers/"), false);
   const papers = buildConciergeDossier({
@@ -725,7 +730,7 @@ test("une réponse sur le séjour joint la photo du lieu", async () => {
       },
     }),
     fetchImpl: async (url) => {
-      assert.match(String(url), /\/api\/covers\/sejour\/PUB-1$/);
+      assert.match(String(url), /\/api\/covers\/sejour\/PUB-1\?partage=ABCDEFGH$/);
       return new Response(new Uint8Array([1, 2, 3]), {
         status: 200,
         headers: { "content-type": "image/jpeg" },
@@ -736,7 +741,7 @@ test("une réponse sur le séjour joint la photo du lieu", async () => {
       return { ok: true, sid: "SMsejourout" };
     },
   });
-  assert.equal(sent[0].mediaUrl, "https://travelba.fr/api/covers/sejour/PUB-1");
+  assert.equal(sent[0].mediaUrl, "https://travelba.fr/api/covers/sejour/PUB-1?partage=ABCDEFGH");
   assert.equal(sent[0].body.includes("cover.webp"), false);
   assert.equal(sent[0].body.includes("/api/covers/"), false);
 });

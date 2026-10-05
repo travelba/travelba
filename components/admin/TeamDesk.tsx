@@ -314,7 +314,7 @@ function ColleagueRow({
           question={`Retirer ${member.fullName} coupe l’accès à l’espace agence. Les dossiers restent.`}
           align={layout === "card" ? "start" : "end"}
           disabled={busy}
-          className="mt-2"
+          wrapperClassName="mt-2"
           onConfirm={remove}
         />
       ) : (

@@ -1,11 +1,7 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { createServiceClient } from "@/lib/supabase/admin";
-import {
-  exchangeRevolutAuthCode,
-  fetchRevolutTransactions,
-  upsertRevolutInbox,
-} from "@/lib/crm/revolut";
+import { fetchRevolutTransactions, upsertRevolutInbox } from "@/lib/crm/revolut";
 import { autoMatchUnmatchedRevolut } from "@/lib/crm/revolut-match";
 import type { CrmRevolutTransaction } from "@/lib/crm/types";
 
@@ -40,15 +36,7 @@ export async function POST(request: Request) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
   const body = await request.json().catch(() => ({}));
-  if (body?.action === "exchange" && body.code) {
-    try {
-      await exchangeRevolutAuthCode(String(body.code));
-    } catch (err) {
-      console.error("[revolut] exchange:", err);
-      return jsonError(revolutErrorMessage(err, "Connexion Revolut impossible. Réessayez."), 502);
-    }
-    return NextResponse.json({ ok: true });
-  }
+  // L’échange du code OAuth ne passe que par GET /api/admin/revolut/oauth, avec le state.
   if (body?.action === "sync") {
     try {
       const from = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();

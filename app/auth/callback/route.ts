@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { ensureCustomerForUser, ensureStaff } from "@/lib/crm/auth";
 import { loginMethodFromCallback, recordCustomerLogin } from "@/lib/crm/customer-login";
+import { safeInternalPath } from "@/lib/crm/safe-path";
 import {
   PASSWORD_SETUP_COOKIE,
   SET_PASSWORD_PATH,
@@ -69,12 +70,8 @@ export async function GET(request: Request) {
     return response;
   }
 
-  const dest =
-    next.startsWith("/admin") && staff
-      ? next
-      : next.startsWith("/") && !next.startsWith("//")
-        ? next
-        : "/mon-compte";
+  const safeNext = safeInternalPath(next, "/mon-compte");
+  const dest = safeNext.startsWith("/admin") && !staff ? "/mon-compte" : safeNext;
   const response = NextResponse.redirect(new URL(dest, url.origin));
   response.cookies.set(PASSWORD_SETUP_COOKIE, "", passwordSetupCookieOptions(false));
   return response;

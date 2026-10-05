@@ -1,4 +1,4 @@
-import { isPlaceholderTraveler, matchTravelerToParty, type PartyMatch } from "./person-match";
+import { isPlaceholderTraveler, matchTravelerToParty } from "./person-match";
 import type { CrmCompanion, CrmCustomer } from "./types";
 
 export type HouseholdMember = {
@@ -24,10 +24,6 @@ export function holderKey() {
 
 export function companionKey(id: string) {
   return `companion:${id}`;
-}
-
-export function partyKeyFromMatch(match: PartyMatch) {
-  return match.kind === "holder" ? holderKey() : companionKey(match.id);
 }
 
 export function personLabel(first: string | null | undefined, last: string | null | undefined) {

@@ -1,7 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/admin";
 import { clearBookingCharges } from "@/lib/crm/bookings";
 import { listCrmFiles, removeCrmFiles } from "@/lib/crm/files";
-import { exclusiveStoragePaths, isUuid } from "@/lib/crm/ids";
+import { bookingFilePrefixes, exclusiveStoragePaths, isUuid } from "@/lib/crm/ids";
 
 export class BookingDeleteError extends Error {
   status: number;
@@ -42,7 +42,9 @@ export async function deleteBookingById(bookingId: string) {
     .map((row) => row.storage_path as string | null)
     .filter((path): path is string => Boolean(path));
 
-  paths.push(...(await listCrmFiles(`bookings/${bookingId}`)));
+  for (const prefix of bookingFilePrefixes(bookingId)) {
+    paths.push(...(await listCrmFiles(prefix)));
+  }
 
   try {
     await clearBookingCharges(admin, bookingId);

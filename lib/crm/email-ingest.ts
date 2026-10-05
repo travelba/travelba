@@ -57,10 +57,6 @@ import {
 export const EMAIL_SYNC_PROVIDER = "gmail";
 
 /** Le webhook peut capturer même sans IA ; le parsing exige l'IA. */
-export function emailIngestReady() {
-  return gmailConfigured();
-}
-
 export function emailParsingReady() {
   return gmailConfigured() && aiGatewayConfigured();
 }

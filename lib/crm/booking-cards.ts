@@ -3,8 +3,9 @@ import "server-only";
 import { parisIsoDate } from "./hotel-arrival";
 import { bookingCardValidity, manualStayCardDraft, sameCardNameCount } from "./manual-stay-card";
 import { issuePliantCard, pliantConfigured } from "./pliant";
+import type { Db } from "../supabase/db";
 
-type Admin = { from: (table: string) => any };
+type Admin = Db;
 
 export async function issueBookingCard(
   admin: Admin,

@@ -18,10 +18,14 @@ import {
 import { formatDateFr } from "@/lib/crm/money";
 import { appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-extract";
 import { identityForPerson } from "@/lib/crm/passport-assign";
+import { documentNameNotice } from "@/lib/crm/document-identity";
+import { scanAwaitsConfirmation, scanWouldPersist } from "@/lib/crm/passport-confirm";
+import { sendForm } from "@/lib/crm/client-fetch";
 import type { PersonName } from "@/lib/crm/person-match";
 import { vaultDocumentsForPerson } from "@/lib/crm/trip-documents";
 import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
 import { identityPreview } from "@/lib/crm/preview-files";
 import { StatusChip } from "@/components/crm/ui";
@@ -56,7 +60,7 @@ export function passportDetailRows(source: PassportSource) {
     ["Type", type],
     ["N° de document", source.number],
     ["Nom", source.last_name],
-    ["Nom d'épouse", source.usage_name],
+    ["Nom d'usage", source.usage_name],
     ["Prénom(s)", source.first_name],
     ["Date de naissance", source.birth_date ? formatDateFr(source.birth_date) : null],
     ["Lieu de naissance", source.place_of_birth],
@@ -104,6 +108,8 @@ export function PersonPassportCard({
   person,
   onIdentity,
   onScan,
+  onCancel,
+  onBusyChange,
   onImported,
 }: {
   variant: "admin" | "client";
@@ -113,12 +119,19 @@ export function PersonPassportCard({
   persist?: boolean;
   person?: PersonName | null;
   onIdentity?: (identity: ExtractedIdentity) => void;
+  /** Client : reçu seulement à « Confirmer » (ou tout de suite quand rien ne s’enregistre). */
   onScan?: (result: ScanResult) => void;
+  /** Client : « Annuler » sur la pièce lue, le parent oublie le scan. */
+  onCancel?: () => void;
+  /** L’enregistrement est en cours : le parent peut bloquer son propre bouton. */
+  onBusyChange?: (busy: boolean) => void;
   onImported?: (info: { createdCompanions: number }) => void;
 }) {
   const router = useRouter();
   const vault = vaultDocumentsForPerson(documents, companionId);
   const [scan, setScan] = useState<ScanResult | null>(null);
+  /** Client : la pièce lue attend « Confirmer » avant d’être enregistrée et appliquée au profil. */
+  const [pending, setPending] = useState<ScanResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -130,68 +143,132 @@ export function PersonPassportCard({
     variant === "admin" ? "/api/admin/travel-documents/scan" : "/api/client/documents/scan";
   const expired = vault.find((doc) => documentExpiryWarning(doc.expires_on));
 
-  async function persistScan(result: ScanResult) {
-    if (!result.file) return;
-    if (variant === "admin" && !customerId) return;
-    const identities = listedIdentities(result.identity, result.identities);
-    const importParty = persist || identities.length > 1;
-    if (!importParty || !identities.length) return;
-    setBusy(true);
-    setError(null);
-    setNotice(null);
-    const form = appendPassportImportForm(new FormData(), {
-      identities,
-      file: result.file,
+  function flowInput(result: ScanResult) {
+    return {
+      variant,
+      persist,
+      hasFile: Boolean(result.file),
+      identityCount: listedIdentities(result.identity, result.identities).length,
       customerId,
-      companionId,
-      createUnmatchedOnly: identities.length > 1 && !companionId,
-    });
-    const res = await fetch(endpoint, { method: "POST", body: form });
-    const json = await res.json().catch(() => ({}));
-    setBusy(false);
-    if (!res.ok) {
-      setError(json.error || "Enregistrement de la pièce impossible");
-      return;
-    }
-    const created = Number(json.created_companions || 0);
-    if (created > 0) {
-      setNotice(
-        created === 1
-          ? "1 accompagnateur a été ajouté."
-          : `${created} accompagnateurs ont été ajoutés.`
-      );
-      document.getElementById("accompagnateurs")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-    setScan(null);
-    setAdding(false);
-    if (!persist && identities.length > 1) {
-      onImported?.({ createdCompanions: created });
-    }
-    router.refresh();
+    };
   }
 
-  function handleResult(result: ScanResult) {
-    setScan(result);
+  function setBusyShared(next: boolean) {
+    setBusy(next);
+    onBusyChange?.(next);
+  }
+
+  async function persistScan(result: ScanResult) {
+    if (!scanWouldPersist(flowInput(result))) return;
+    const identities = listedIdentities(result.identity, result.identities);
+    setBusyShared(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const form = appendPassportImportForm(new FormData(), {
+        identities,
+        file: result.file,
+        customerId,
+        companionId,
+        createUnmatchedOnly: identities.length > 1 && !companionId,
+      });
+      const res = await sendForm<{ created_companions?: number }>(endpoint, form);
+      if (!res.ok) {
+        setError(res.error || "Enregistrement de la pièce impossible. Réessayez ou écrivez à l’agence.");
+        return;
+      }
+      const created = Number(res.data?.created_companions || 0);
+      if (created > 0) {
+        setNotice(
+          created === 1
+            ? "1 accompagnateur a été ajouté."
+            : `${created} accompagnateurs ont été ajoutés.`
+        );
+        document.getElementById("accompagnateurs")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      setScan(null);
+      setAdding(false);
+      if (!persist && identities.length > 1) {
+        onImported?.({ createdCompanions: created });
+      }
+      router.refresh();
+    } finally {
+      setBusyShared(false);
+    }
+  }
+
+  function shareIdentity(result: ScanResult) {
     const identities = listedIdentities(result.identity, result.identities);
     if (!(identities.length > 1 && !persist)) {
       const mine = identityForPerson(identities, person);
       if (mine) onIdentity?.(mine);
     }
+  }
+
+  function handleResult(result: ScanResult) {
+    setScan(result);
+    setPending(null);
+    if (scanAwaitsConfirmation(flowInput(result))) {
+      // Rien n’est écrit, et le parent ne reçoit rien, tant que le client n’a pas confirmé.
+      setPending(result);
+      return;
+    }
+    shareIdentity(result);
     onScan?.(result);
     void persistScan(result);
   }
 
+  function confirmPending() {
+    const result = pending;
+    if (!result) return;
+    setPending(null);
+    shareIdentity(result);
+    onScan?.(result);
+    void persistScan(result);
+  }
+
+  function cancelPending() {
+    setPending(null);
+    setScan(null);
+    onCancel?.();
+  }
+
+  const pendingIdentities = pending ? listedIdentities(pending.identity, pending.identities) : [];
+  const pendingMine = pending ? identityForPerson(pendingIdentities, person) : null;
+  const pendingNotice =
+    pending && pendingIdentities.length === 1
+      ? documentNameNotice(pendingMine || pendingIdentities[0], person, {
+          applyIdentity: true,
+          isHolder: !companionId,
+        })
+      : null;
+  const pendingQuestion =
+    pendingIdentities.length > 1
+      ? `Importer ces ${pendingIdentities.length} passeports ?`
+      : companionId
+        ? `C’est bien la pièce de ${person?.first_name || "ce voyageur"} ?`
+        : "C’est bien votre pièce ?";
+
   async function remove(id: string) {
     setBusy(true);
     setError(null);
-    const res = await fetch(`${endpoint}?id=${id}`, { method: "DELETE" });
-    setBusy(false);
-    if (!res.ok) {
-      const json = await res.json().catch(() => ({}));
-      setError(json.error || "Suppression impossible");
-      return;
+    try {
+      const res = await fetch(`${endpoint}?id=${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        const message = json.error || "Suppression impossible";
+        if (variant === "admin") setError(message);
+        return { ok: false, error: message };
+      }
+      router.refresh();
+      return { ok: true };
+    } catch {
+      const message = "Connexion interrompue. Réessayez.";
+      if (variant === "admin") setError(message);
+      return { ok: false, error: message };
+    } finally {
+      setBusy(false);
     }
-    router.refresh();
   }
 
   return (
@@ -254,14 +331,27 @@ export function PersonPassportCard({
                     }
                   />
                 ) : null}
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void remove(current.id)}
-                  className="text-xs font-semibold text-accent underline"
-                >
-                  Retirer
-                </button>
+                {variant === "client" ? (
+                  <ConfirmAction
+                    label="Retirer"
+                    question="Retirer cette pièce ?"
+                    hint="Le fichier est supprimé du coffre. Le profil n’est pas modifié."
+                    confirmLabel="Retirer"
+                    busyLabel="Suppression…"
+                    disabled={busy}
+                    className="inline-flex min-h-11 items-center text-xs font-semibold text-accent underline"
+                    onConfirm={() => remove(current.id)}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void remove(current.id)}
+                    className="text-xs font-semibold text-accent underline"
+                  >
+                    Retirer
+                  </button>
+                )}
               </>
             ) : null}
           </div>
@@ -270,12 +360,14 @@ export function PersonPassportCard({
 
       {adding || !vault.length ? (
         <>
-          <IdentityScan
-            compact
-            endpoint={scanEndpoint}
-            title={busy ? "Enregistrement…" : "Photo ou PDF du passeport"}
-            onResult={handleResult}
-          />
+          {pending ? null : (
+            <IdentityScan
+              compact
+              endpoint={scanEndpoint}
+              title={busy ? "Enregistrement…" : "Photo ou PDF du passeport"}
+              onResult={handleResult}
+            />
+          )}
           {scan ? (
             <ScanStatus
               identity={scan.identity}
@@ -289,19 +381,54 @@ export function PersonPassportCard({
                 type="button"
                 onClick={() => setScanOpen((value) => !value)}
                 className="flex w-full items-center justify-between gap-2 text-left text-sm font-semibold text-[var(--admin-navy)]"
-                aria-expanded={scanOpen}
+                aria-expanded={pending ? true : scanOpen}
               >
                 <span className="truncate">{passportCompactLabel(identity)}</span>
-                <ChevronDown className={`h-4 w-4 shrink-0 transition ${scanOpen ? "rotate-180" : ""}`} />
+                <ChevronDown className={`h-4 w-4 shrink-0 transition ${pending || scanOpen ? "rotate-180" : ""}`} />
               </button>
-              {scanOpen ? (
+              {pending || scanOpen ? (
                 <div className="mt-2">
                   <PassportDetails source={identity} />
                 </div>
               ) : null}
             </div>
           ))}
-          {vault.length ? (
+          {pending ? (
+            <div
+              className="space-y-3 rounded-xl border border-[var(--admin-gold)]/50 bg-white/90 p-3"
+              role="group"
+              aria-label={pendingQuestion}
+            >
+              <p className="text-sm font-semibold text-[var(--admin-navy)]">{pendingQuestion}</p>
+              {pendingIdentities.length > 1 ? (
+                <p className="text-xs text-muted">Chaque personne inconnue du foyer devient un accompagnateur.</p>
+              ) : null}
+              {pendingNotice ? (
+                <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
+                  {pendingNotice}
+                </p>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={confirmPending}
+                  disabled={busy}
+                  className="admin-af-btn inline-flex min-h-11 flex-1 items-center justify-center rounded-full px-4 text-sm"
+                >
+                  Confirmer
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelPending}
+                  disabled={busy}
+                  className="inline-flex min-h-11 flex-1 items-center justify-center rounded-full border border-[var(--border)] bg-white px-4 text-sm font-semibold text-[var(--admin-navy)]"
+                >
+                  Annuler
+                </button>
+              </div>
+            </div>
+          ) : null}
+          {vault.length && !pending ? (
             <button
               type="button"
               disabled={busy}

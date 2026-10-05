@@ -3,7 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
 import { isCompanyMember } from "@/lib/crm/company-role";
 import { customerFullName, type CrmBillingCompany, type CrmCustomer } from "@/lib/crm/types";
-import { ProfileSubnav } from "@/components/account/ProfileSubnav";
 import { BillingForm } from "@/components/account/BillingForm";
 
 export default async function FacturationPage() {
@@ -33,11 +32,10 @@ export default async function FacturationPage() {
   }
 
   return (
-    <div className="space-y-4 pb-6">
-      <ProfileSubnav />
+    <div className="space-y-4">
       <div>
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Société</p>
-        <h1 className="font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">Facturation</h1>
+        <h2 className="font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">Facturation</h2>
       </div>
       {isCompanyMember(customer) ? (
         <section className="rounded-2xl border border-[#e5e3dc] bg-white p-4">

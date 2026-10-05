@@ -5,14 +5,6 @@ export function travelerDisplayName(traveler: CrmBookingTraveler) {
   return [traveler.first_name, traveler.last_name].filter(Boolean).join(" ").trim() || "Voyageur";
 }
 
-export function travelerInitials(traveler: CrmBookingTraveler) {
-  const letters = [traveler.first_name?.[0], traveler.last_name?.[0]]
-    .filter(Boolean)
-    .join("")
-    .toUpperCase();
-  return letters || "V";
-}
-
 export function isVaultDocument(doc: CrmTravelDocument) {
   return !doc.booking_id;
 }
@@ -94,13 +86,6 @@ export function vaultDocumentsForPerson(
   companionId: string | null | undefined
 ) {
   return reviewIdentityPieces(documentsForPerson(docs, companionId).filter(isVaultDocument));
-}
-
-export function personDocumentsForTraveler(
-  docs: CrmTravelDocument[],
-  traveler: CrmBookingTraveler
-) {
-  return docs.filter((doc) => samePerson(doc, traveler));
 }
 
 export function vaultDocumentsForTraveler(

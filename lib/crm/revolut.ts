@@ -1,4 +1,5 @@
-import { createPrivateKey, createSign, createHmac, timingSafeEqual } from "crypto";
+import { createPrivateKey, createSign, createHmac } from "crypto";
+import { secretEquals } from "./secret-equals";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 import { createServiceClient } from "@/lib/supabase/admin";
 import {
@@ -8,6 +9,7 @@ import {
 import { pickEurSepaWire, type AgencyWire } from "@/lib/crm/revolut-wire";
 
 const PROVIDER = "revolut";
+const REVOLUT_TIMEOUT_MS = 15_000;
 
 function apiBase() {
   if (process.env.REVOLUT_SANDBOX === "1") {
@@ -99,6 +101,7 @@ async function refreshAccessToken(refreshToken: string) {
   });
   const res = await fetch(`${apiBase()}/api/1.0/auth/token`, {
     method: "POST",
+    signal: AbortSignal.timeout(REVOLUT_TIMEOUT_MS),
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
@@ -128,6 +131,7 @@ export async function exchangeRevolutAuthCode(code: string) {
   });
   const res = await fetch(`${apiBase()}/api/1.0/auth/token`, {
     method: "POST",
+    signal: AbortSignal.timeout(REVOLUT_TIMEOUT_MS),
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
@@ -190,6 +194,7 @@ export async function fetchRevolutTransactions(fromIso: string) {
     if (to) url.searchParams.set("to", to);
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(REVOLUT_TIMEOUT_MS),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
@@ -284,6 +289,7 @@ async function revolutGet(path: string): Promise<unknown> {
   const token = await getRevolutAccessToken();
   const res = await fetch(`${apiBase()}${path}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+    signal: AbortSignal.timeout(REVOLUT_TIMEOUT_MS),
   });
   if (!res.ok) {
     await res.arrayBuffer().catch(() => undefined);
@@ -360,9 +366,5 @@ export function verifyRevolutWebhook(rawBody: string, timestamp: string, signatu
   const digest = createHmac("sha256", secret).update(payloadToSign).digest("hex");
   const expected = `v1=${digest}`;
   const candidates = signatureHeader.split(" ").filter(Boolean);
-  return candidates.some((sig) => {
-    const a = Buffer.from(sig);
-    const b = Buffer.from(expected);
-    return a.length === b.length && timingSafeEqual(a, b);
-  });
+  return candidates.some((sig) => secretEquals(sig, expected));
 }

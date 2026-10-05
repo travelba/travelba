@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { loadStripe } from "@stripe/stripe-js";
 import {
   Elements,
@@ -12,10 +13,27 @@ import {
 import { CLIENT_PREVIEW_NOTE, useClientPreview } from "@/components/account/client-preview";
 import { WireInstructions } from "@/components/account/WireInstructions";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { postJson } from "@/lib/crm/client-fetch";
 import type { PayerKind } from "@/lib/crm/payer";
 import { STAY_PAY_LABELS, type StayPayMethod } from "@/lib/crm/stripe-pay";
 
 const stripeCache = new Map<string, ReturnType<typeof loadStripe>>();
+
+export const PAYMENT_SENT_LABEL = "Règlement transmis, en attente de confirmation bancaire.";
+
+function freshNonce() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Après un règlement : recharge l’encours. Monté seulement à ce moment, donc hors rendu statique. */
+function RefreshOnSettle() {
+  const router = useRouter();
+  useEffect(() => {
+    router.refresh();
+  }, [router]);
+  return null;
+}
 
 function stripeFor(key: string) {
   const existing = stripeCache.get(key);
@@ -61,48 +79,65 @@ export function StayPayment({
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [transfer, setTransfer] = useState<TransferView | null>(null);
   const [paid, setPaid] = useState(false);
+  /** Règlement parti chez Stripe : l’encours se recharge, le message attend la banque. */
+  const [settled, setSettled] = useState<string | null>(null);
+  /** Un nonce par (part, moyen) : rouvrir la même pastille réutilise le même PaymentIntent. */
+  const nonce = useRef<{ key: string; value: string } | null>(null);
   const preview = useClientPreview();
 
+  function nonceFor(key: string) {
+    if (!nonce.current || nonce.current.key !== key) nonce.current = { key, value: freshNonce() };
+    return nonce.current.value;
+  }
+
   async function choose(part: ClientPayPart, next: StayPayMethod) {
+    if (busy) return;
     setOpenKind(part.kind);
     setMethod(next);
     setError(null);
     setClientSecret(null);
     setTransfer(null);
     setPaid(false);
+    setSettled(null);
     if (!part.canPay || !part.payable || !part.amountLabel) return;
     if (preview) {
       setError(CLIENT_PREVIEW_NOTE);
       return;
     }
     if (next !== "revolut" && !stripeKey) return;
+    // Le nonce entre dans la clé d’idempotence côté serveur ; il ne change qu’avec la pastille ou après un règlement.
+    const currentNonce = nonceFor(`${part.kind}:${next}`);
     setBusy(true);
     try {
-      const res = await fetch("/api/client/ledger/pay", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ method: next, payerKind: part.kind }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(json.error || "Le règlement n’a pas pu démarrer.");
+      const result = await postJson<{ alreadyPaid?: boolean; transfer?: TransferView; clientSecret?: string }>(
+        "/api/client/ledger/pay",
+        { method: next, payerKind: part.kind, nonce: currentNonce }
+      );
+      const json = result.data || {};
+      if (!result.ok) {
+        setError(result.error || "Le règlement n’a pas pu démarrer.");
         return;
       }
       if (json.alreadyPaid) {
+        nonce.current = null;
         setPaid(true);
         return;
       }
       if (json.transfer) {
-        setTransfer(json.transfer as TransferView);
+        setTransfer(json.transfer);
         return;
       }
       if (typeof json.clientSecret === "string") setClientSecret(json.clientSecret);
       else setError("Le règlement n’a pas pu démarrer.");
-    } catch {
-      setError("Connexion interrompue. Réessayez.");
     } finally {
       setBusy(false);
     }
+  }
+
+  function onPaid(message: string) {
+    nonce.current = null;
+    setSettled(message);
+    setClientSecret(null);
   }
 
   return (
@@ -150,6 +185,7 @@ export function StayPayment({
                       key={item}
                       type="button"
                       aria-pressed={selected}
+                      disabled={busy}
                       onClick={() => void choose(part, item)}
                       className={`inline-flex h-8 items-center rounded-full px-3 text-[12px] font-semibold ${
                         selected
@@ -169,6 +205,12 @@ export function StayPayment({
 
             {open ? <BusyBar active={busy} label="Préparation du règlement…" /> : null}
             {open && paid ? <p className="text-sm text-[var(--admin-navy)]">Ce règlement est déjà enregistré.</p> : null}
+            {open && settled ? (
+              <p className="rounded-xl bg-[#fbf7ec] px-3 py-2 text-sm text-[var(--admin-navy)]" aria-live="polite">
+                {settled}
+              </p>
+            ) : null}
+            {open && settled ? <RefreshOnSettle /> : null}
             {open && error ? <p className="text-sm text-accent">{error}</p> : null}
 
             {open && transfer ? (
@@ -197,7 +239,11 @@ export function StayPayment({
                   },
                 }}
               >
-                {method === "apple_pay" ? <ApplePayForm /> : <CardPayForm sepa={method === "sepa_debit"} />}
+                {method === "apple_pay" ? (
+                  <ApplePayForm onPaid={onPaid} />
+                ) : (
+                  <CardPayForm sepa={method === "sepa_debit"} onPaid={onPaid} />
+                )}
               </Elements>
             ) : null}
           </section>
@@ -211,12 +257,11 @@ function paymentReturnUrl() {
   return `${window.location.origin}/mon-compte/transactions`;
 }
 
-function CardPayForm({ sepa }: { sepa: boolean }) {
+function CardPayForm({ sepa, onPaid }: { sepa: boolean; onPaid: (message: string) => void }) {
   const stripe = useStripe();
   const elements = useElements();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<string | null>(null);
 
   async function pay() {
     if (!stripe || !elements) return;
@@ -239,10 +284,10 @@ function CardPayForm({ sepa }: { sepa: boolean }) {
       return;
     }
     if (paymentIntent?.status === "processing") {
-      setDone("Prélèvement lancé. Il peut prendre quelques jours.");
+      onPaid(sepa ? "Prélèvement lancé. Il peut prendre quelques jours." : PAYMENT_SENT_LABEL);
       return;
     }
-    setDone("Règlement envoyé.");
+    onPaid(PAYMENT_SENT_LABEL);
   }
 
   return (
@@ -254,7 +299,6 @@ function CardPayForm({ sepa }: { sepa: boolean }) {
         }}
       />
       <BusyBar active={busy} label={sepa ? "Prélèvement…" : "Règlement…"} />
-      {done ? <p className="text-sm text-[var(--admin-navy)]">{done}</p> : null}
       {error ? <p className="text-sm text-accent">{error}</p> : null}
       <button
         type="button"
@@ -268,7 +312,7 @@ function CardPayForm({ sepa }: { sepa: boolean }) {
   );
 }
 
-function ApplePayForm() {
+function ApplePayForm({ onPaid }: { onPaid: (message: string) => void }) {
   const stripe = useStripe();
   const elements = useElements();
   const [ready, setReady] = useState<boolean | null>(null);
@@ -296,7 +340,9 @@ function ApplePayForm() {
           if (confirmError) {
             event.paymentFailed({ message: confirmError.message });
             setError(confirmError.message || "Apple Pay n’a pas abouti.");
+            return;
           }
+          onPaid(PAYMENT_SENT_LABEL);
         }}
       />
       {ready === false ? <p className="text-sm text-muted">Apple Pay s’ouvre sur iPhone, iPad ou Safari.</p> : null}

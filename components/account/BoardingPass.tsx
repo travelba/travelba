@@ -15,7 +15,7 @@ export function BoardingPass({
       <div className="flex items-start justify-between gap-3 px-4 py-4">
         <div className="min-w-0">
           <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#C5A880]">
-            Carte d’embarquement
+            Prochain vol
           </p>
           <p className="mt-1 truncate font-display text-xl font-bold">
             {pass.airline || "Vol"}

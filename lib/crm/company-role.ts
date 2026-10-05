@@ -27,12 +27,6 @@ export function isCompanyMember(
   return customer?.company_role === "member";
 }
 
-export function isCompanyAdmin(
-  customer: Pick<CrmCustomer, "company_role"> | null | undefined
-) {
-  return customer?.company_role === "admin";
-}
-
 /**
  * Member : uniquement débits liés à ses dossiers (pas les revenus société).
  * Admin / particulier : grand livre complet de son wallet.

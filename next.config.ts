@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 import { CHROMIUM_TRACE_INCLUDES } from "./lib/crm/chromium-pack";
+import { securityHeaders } from "./lib/crm/security-headers";
 
 const withNextIntl = createNextIntlPlugin();
 
@@ -17,6 +18,10 @@ const nextConfig: NextConfig = {
   },
   serverExternalPackages: ["sharp", "unpdf", "@napi-rs/canvas", "pdfjs-dist", "puppeteer-core", "@sparticuz/chromium"],
   outputFileTracingIncludes: CHROMIUM_TRACE_INCLUDES,
+  // En-têtes de sécurité (B-31) : lib/crm/security-headers.ts (SAMEORIGIN, les aperçus PDF sont des iframes same-origin).
+  async headers() {
+    return securityHeaders();
+  },
   async redirects() {
     return [
       {
