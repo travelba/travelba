@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import type { CrmBalance, CrmCustomer } from "@/lib/crm/types";
 import { customerFullName } from "@/lib/crm/types";
 import { clientLedgerAdminHref } from "@/lib/crm/client-ledger";
@@ -104,12 +103,6 @@ export function ClientsTable({
                   ) : (
                     <span className="text-sm text-muted">—</span>
                   )}
-                  <DeleteCustomerButton
-                    compact
-                    redirectTo={null}
-                    customerId={c.id}
-                    name={customerFullName(c)}
-                  />
                 </div>
               </li>
             );
@@ -130,9 +123,6 @@ export function ClientsTable({
                 <th className="px-5 py-3">E-mail</th>
                 <th className="px-5 py-3">Téléphone</th>
                 <th className="px-5 py-3 text-right">Crédit dispo. / encours</th>
-                <th className="px-5 py-3 text-right">
-                  <span className="sr-only">Actions</span>
-                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -187,20 +177,12 @@ export function ClientsTable({
                         "—"
                       )}
                     </td>
-                    <td className="px-5 py-3 text-right">
-                      <DeleteCustomerButton
-                        compact
-                        redirectTo={null}
-                        customerId={c.id}
-                        name={customerFullName(c)}
-                      />
-                    </td>
                   </tr>
                 );
               })}
               {!filtered.length ? (
                 <tr>
-                  <td colSpan={5} className="px-5 py-8 text-center text-muted">
+                  <td colSpan={4} className="px-5 py-8 text-center text-muted">
                     {customers.length === 0
                       ? "Aucun client. Créez une fiche titulaire puis invitez — pas de client fictif."
                       : "Aucun client trouvé."}

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
+import { createTransactionSchema, parseBody } from "@/lib/crm/admin-schemas";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
-import { parseMoney } from "@/lib/crm/money";
 
 export async function GET() {
   const auth = await requireStaff();
@@ -19,26 +19,39 @@ export async function GET() {
 export async function POST(request: Request) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
-  const body = await request.json().catch(() => null);
-  const customerId = String(body?.customer_id || "");
-  const amount = parseMoney(body?.amount) ?? 0;
-  if (!customerId || !(amount > 0)) return jsonError("Client et montant requis");
-  const wantsOtherKind = Boolean(body?.kind) && body.kind !== "transfer";
-  const wantsDebit = body?.direction === "debit";
+  const parsed = parseBody(createTransactionSchema, await request.json().catch(() => null));
+  if (parsed.error !== null) return jsonError(parsed.error, 400);
+  const body = parsed.data;
+  const wantsOtherKind = Boolean(body.kind) && body.kind !== "transfer";
+  const wantsDebit = body.direction === "debit";
   if (wantsOtherKind || wantsDebit) {
     return jsonError("L’espace agence n’enregistre que les virements crédit.");
+  }
+  const { data: customer } = await auth.supabase
+    .from("crm_customers")
+    .select("id")
+    .eq("id", body.customer_id)
+    .maybeSingle();
+  if (!customer) return jsonError("Client introuvable", 404);
+  if (body.booking_id) {
+    const { data: booking } = await auth.supabase
+      .from("crm_bookings")
+      .select("id")
+      .eq("id", body.booking_id)
+      .maybeSingle();
+    if (!booking) return jsonError("Dossier introuvable", 404);
   }
   const { data, error } = await auth.supabase
     .from("crm_transactions")
     .insert({
-      customer_id: customerId,
-      booking_id: body?.booking_id || null,
+      customer_id: body.customer_id,
+      booking_id: body.booking_id || null,
       direction: "credit",
       kind: "transfer",
-      amount,
-      currency: body?.currency || "EUR",
-      occurred_on: body?.occurred_on || undefined,
-      label: String(body?.label || "").trim() || "Virement manuel",
+      amount: body.amount,
+      currency: body.currency,
+      occurred_on: body.occurred_on || undefined,
+      label: body.label || "Virement manuel",
       source: "manual",
       status: "posted",
     })

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CrmRevolutTransaction } from "@/lib/crm/types";
@@ -13,6 +14,8 @@ import {
 export type ClientRevolutSuggestion = {
   row: CrmRevolutTransaction;
   candidate: RevolutMatchCandidate;
+  /** Ce client est le seul candidat certain (≥ 90) dans tout le CRM. Sinon : choisir dans Revolut. */
+  certain: boolean;
 };
 
 export function ClientRevolutSuggestions({
@@ -52,11 +55,12 @@ export function ClientRevolutSuggestions({
     <section className="admin-af-card rounded-3xl p-5">
       <h2 className="font-display text-lg font-bold">Mouvements Revolut à rapprocher</h2>
       <p className="mt-1 text-sm text-muted">
-        Proposition automatique sur un crédit reçu. Validez pour créditer ce client, ou refusez.
+        Proposition automatique sur un crédit reçu. Validez pour créditer ce client, ou refusez. Une
+        correspondance partielle se rapproche depuis Revolut, après avoir choisi le client.
       </p>
       {error ? <p className="mt-2 text-sm text-accent">{error}</p> : null}
       <ul className="mt-3 divide-y divide-border text-sm">
-        {suggestions.map(({ row, candidate }) => {
+        {suggestions.map(({ row, candidate, certain }) => {
           const signed = `+${formatMoney(Number(row.amount), row.currency)}`;
           const { sender, designation } = revolutInboxCopy(row);
           return (
@@ -71,20 +75,29 @@ export function ClientRevolutSuggestions({
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                disabled={busyId === row.id}
-                className="admin-af-btn rounded-full px-3 py-1 text-sm"
-                onClick={() =>
-                  void act(
-                    row.id,
-                    { customer_id: candidate.customer_id },
-                    "Rapprochement impossible. Réessayez."
-                  )
-                }
-              >
-                {busyId === row.id ? "En cours…" : "Valider"}
-              </button>
+              {certain ? (
+                <button
+                  type="button"
+                  disabled={busyId === row.id}
+                  className="admin-af-btn rounded-full px-3 py-1 text-sm"
+                  onClick={() =>
+                    void act(
+                      row.id,
+                      { customer_id: candidate.customer_id },
+                      "Rapprochement impossible. Réessayez."
+                    )
+                  }
+                >
+                  {busyId === row.id ? "En cours…" : "Valider"}
+                </button>
+              ) : (
+                <Link
+                  href="/admin/revolut"
+                  className="rounded-full border border-border px-3 py-1 text-sm font-semibold text-[var(--admin-navy)]"
+                >
+                  Correspondance partielle — choisir dans Revolut
+                </Link>
+              )}
               <button
                 type="button"
                 disabled={busyId === row.id}

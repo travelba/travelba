@@ -174,6 +174,8 @@ function mapUpstream(status: number, message: string) {
   );
 }
 
+const LE_TIMEOUT_MS = 10_000;
+
 async function leJson(path: string, init: RequestInit = {}, fetchImpl: typeof fetch = fetch) {
   const key = littleEmperorsApiKey();
   if (!key) {
@@ -185,7 +187,11 @@ async function leJson(path: string, init: RequestInit = {}, fetchImpl: typeof fe
   if (init.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  const response = await fetchImpl(`${littleEmperorsOrigin()}${path}`, { ...init, headers });
+  const response = await fetchImpl(`${littleEmperorsOrigin()}${path}`, {
+    ...init,
+    headers,
+    signal: init.signal ?? AbortSignal.timeout(LE_TIMEOUT_MS),
+  });
   const body = await response.text();
   if (!response.ok) {
     let message = body;
