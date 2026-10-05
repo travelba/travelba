@@ -22,7 +22,6 @@ export function BookingCards({
   lastName: string;
 }) {
   const router = useRouter();
-  const [amount, setAmount] = useState("");
   const [first, setFirst] = useState(firstName);
   const [last, setLast] = useState(lastName);
   const [busy, setBusy] = useState(false);
@@ -37,14 +36,13 @@ export function BookingCards({
       const res = await fetch(`/api/admin/bookings/${bookingId}/cards`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "issue", amount, firstName: first, lastName: last }),
+        body: JSON.stringify({ action: "issue", firstName: first, lastName: last }),
       });
       const json = (await res.json().catch(() => null)) as { error?: string } | null;
       if (!res.ok) {
         setError(json?.error || "La carte n’a pas pu être créée.");
         return;
       }
-      setAmount("");
       router.refresh();
     } catch {
       setError("La carte n’a pas pu être créée.");
@@ -59,22 +57,12 @@ export function BookingCards({
         <div>
           <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Générer une carte</h2>
           <p className="mt-1 max-w-xl text-sm leading-relaxed text-[var(--admin-navy)]/70">
-            Autant de cartes que le dossier en a besoin. Chacune est en euros, libellée au prénom et au nom, sans restriction de paiement, et rattachée à Benjamin Boukris.
+            Autant de cartes que le dossier en a besoin. Chacune est au plafond du compte, libellée au prénom et au nom,
+            ouverte à toutes les catégories sauf le transfert d’argent, à toutes les devises et à tous les pays, et
+            rattachée à Benjamin Boukris.
           </p>
         </div>
         <form className="space-y-3" onSubmit={submit}>
-          <label className="block text-sm text-[var(--admin-navy)]">
-            Montant (€)
-            <input
-              className={`${fieldClass} mt-1`}
-              inputMode="decimal"
-              value={amount}
-              disabled={busy}
-              required
-              aria-label="Montant en euros"
-              onChange={(event) => setAmount(event.target.value)}
-            />
-          </label>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-sm text-[var(--admin-navy)]">
               Nom

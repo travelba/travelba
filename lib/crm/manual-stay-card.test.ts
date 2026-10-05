@@ -1,15 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  MANUAL_CARD_TX_MAX,
   bookingCardValidity,
+  manualCardControls,
   manualStayCardBody,
   manualStayCardDraft,
+  organizationCeilingCents,
   sameCardNameCount,
   stayCardCanBeShared,
   stayCardIsManual,
 } from "./manual-stay-card";
 
-test("carte manuelle : euros, prénom et nom, sans plafond ni restriction", () => {
+test("carte manuelle : plafond reçu, transactions illimitées, transfert d’argent bloqué", () => {
   const body = manualStayCardBody({
     firstName: "Camille",
     lastName: "Martin",
@@ -24,11 +27,25 @@ test("carte manuelle : euros, prénom et nom, sans plafond ni restriction", () =
   assert.deepEqual(body.limit, { value: 150050, currency: "EUR" });
   assert.deepEqual(body.transactionLimit, { value: 150050, currency: "EUR" });
   assert.equal(body.limitRenewFrequency, "TOTAL");
+  assert.equal(body.maxTransactionCount, MANUAL_CARD_TX_MAX);
   assert.equal(body.validTimezone, "Europe/Paris");
   assert.equal(body.cardConfig, "PLIANT_VIRTUAL_TRAVEL");
   assert.equal(body.label.length <= 40, true);
-  assert.equal(Object.hasOwn(body, "maxTransactionCount"), false);
-  assert.equal(Object.hasOwn(body, "cardControls"), false);
+  assert.deepEqual(body.cardControls, manualCardControls());
+  assert.deepEqual(body.cardControls.categories.values, ["4829", "6012", "6051", "6536", "6537", "6538", "6540"]);
+  assert.equal(Object.hasOwn(body.cardControls, "countries"), false);
+  assert.equal(Object.hasOwn(body.cardControls, "currencies"), false);
+});
+
+test("plafond du compte : crédit, puis solde préfinancé, borné à l’entier stockable", () => {
+  assert.equal(organizationCeilingCents({ creditLimit: { value: 100_000_000, currency: "EUR" } }), 100_000_000);
+  assert.equal(
+    organizationCeilingCents({ creditLimit: { value: 0, currency: "EUR" }, availableLimit: { value: 250_000, currency: "EUR" } }),
+    250_000
+  );
+  assert.equal(organizationCeilingCents({ creditLimit: { value: 3_000_000_000, currency: "EUR" } }), 2_147_483_647);
+  assert.equal(organizationCeilingCents({ creditLimit: { value: 0 }, availableLimit: { value: 0 } }), null);
+  assert.equal(organizationCeilingCents(null), null);
 });
 
 test("carte manuelle : le libellé tient dans quarante caractères", () => {
