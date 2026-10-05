@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { DESK_COOKIE, deskBypass } from "@/lib/crm/admin-client-login";
+import { DESK_COOKIE, deskBypass } from "@/lib/crm/desk-mode";
 import { jsonError } from "@/lib/crm/auth";
 import { recordCustomerLogin } from "@/lib/crm/customer-login";
 import { PASSWORD_SETUP_COOKIE, withoutMustSetPassword } from "@/lib/crm/session";

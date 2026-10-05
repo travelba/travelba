@@ -50,6 +50,17 @@ OTP : si l’e-mail n’est pas un client déjà invité (`crm_customers.auth_us
 
 Mot de passe oublié : `POST /api/auth/reset` (même garde titulaire, `generateLink` recovery + `must_set_password`, Resend). Pas `resetPasswordForEmail` client (PKCE sans `type=recovery`).
 
+Le formulaire mot de passe n’accepte que le mot de passe du client (`signInWithPassword` côté navigateur). **Aucun code maître** : `ADMIN_CLIENT_CODE` et `/api/auth/login` ont été supprimés (B-06) — ne pas les recréer.
+
+## Ouvrir l’espace d’un client (agence)
+
+Fiche client › « Ouvrir l’espace client » → `POST /api/admin/clients/[id]/ouvrir` (`requireStaff`, 30 par heure et par agent via `crm_rate_limit_hit`). `lib/crm/desk-open.ts` :
+- jamais pour un compte de l’agence (`crm_staff` ou rôle Auth staff), ni à la création ni à l’ouverture ;
+- fiche sans compte : compte Auth confirmé, sans mot de passe ni message (`linkCustomerAuth`) ; un e-mail déjà pris par un agent ne se rattache jamais ;
+- lien court `channel = 'desk'`, `created_by_staff_id`, **10 minutes, une ouverture, jamais régénéré** (`DESK_LINK_TTL_MS`, `deskOpenDecision`). Pas de repli sans colonnes : un lien desk sans date deviendrait un lien de 30 jours.
+
+À l’ouverture (`openDeskEntry` dans `entry-open.ts`) : une autre session déjà ouverte dans ce navigateur (souvent l’agent) n’est **jamais écrasée** — page « Une session est déjà ouverte ici », lien intact pour une fenêtre privée ou le téléphone du client. Sinon session client, cookie `tb_desk` 4 h (saute mot de passe à définir et mur téléphone, clé HMAC dérivée de la clé de service), ligne `crm_customer_logins` `desk` avec `staff_id`, jamais fusionnée par l’anti-doublon de 90 s. Bandeau « Espace ouvert par l’agence » + « Fermer l’espace » dans `AccountChrome` : la session Supabase dure 400 jours, la fermer sur un poste partagé.
+
 ## Sessions
 
 - Cookies `AUTH_COOKIE_OPTIONS` : `maxAge` 400 jours, `sameSite=lax`, `path=/`.

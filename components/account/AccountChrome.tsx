@@ -28,11 +28,14 @@ export function AccountChrome({
   needsPhone,
   basePath = "/mon-compte",
   preview = false,
+  desk = false,
   children,
 }: {
   customerName: string;
   initials: string;
   needsPhone: boolean;
+  /** Espace ouvert par l’agence (lien desk) : bandeau et « Fermer l’espace ». */
+  desk?: boolean;
   /** Racine des liens. `/exemple` pour l’aperçu local, sans session. */
   basePath?: string;
   /** Pas d’appel Auth : l’aperçu ne déconnecte pas une session réelle. */
@@ -119,6 +122,21 @@ export function AccountChrome({
       </header>
 
       <main className="mx-auto max-w-[480px] px-4 pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] pt-4 sm:px-5 md:pb-28">
+        {desk && !preview ? (
+          <div
+            role="status"
+            className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-[var(--admin-navy)] px-4 py-3 text-sm text-white"
+          >
+            <span>Espace ouvert par l’agence.</span>
+            <button
+              type="button"
+              onClick={signOut}
+              className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)]"
+            >
+              Fermer l’espace
+            </button>
+          </div>
+        ) : null}
         {phoneWall ? (
           <p className="mb-3 rounded-2xl bg-[var(--admin-gold)]/25 px-4 py-3 text-sm text-[var(--admin-navy)]">
             Ajoutez un téléphone dans{" "}
