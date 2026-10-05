@@ -71,6 +71,7 @@ export function RevolutInbox({
   }
 
   function connect() {
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- route API qui redirige vers l’OAuth Revolut : navigation complète voulue, pas une page
     window.location.assign("/api/admin/revolut/oauth");
   }
 
