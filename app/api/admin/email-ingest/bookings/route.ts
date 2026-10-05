@@ -10,11 +10,16 @@ export async function GET(request: Request) {
   const customerId = new URL(request.url).searchParams.get("customer_id") || "";
   if (!customerId) return jsonError("customer_id requis");
 
-  const { data } = await auth.supabase
+  const { data, error } = await auth.supabase
     .from("crm_bookings")
     .select("id, reference, title, destination, status, start_date")
     .eq("customer_id", customerId)
     .order("start_date", { ascending: false, nullsFirst: false });
+  // Une lecture en échec n’est pas « aucun voyage » : l’écran propose de réessayer.
+  if (error) {
+    console.error("[email-ingest/bookings]", error.code ?? "?", error.message ?? "");
+    return jsonError("Voyages indisponibles. Réessayez.", 500);
+  }
 
   const bookings = ((data || []) as Pick<
     CrmBooking,
