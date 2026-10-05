@@ -16,7 +16,7 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  serverExternalPackages: ["sharp", "unpdf", "@napi-rs/canvas", "pdfjs-dist", "puppeteer-core", "@sparticuz/chromium"],
+  serverExternalPackages: ["sharp", "unpdf", "@napi-rs/canvas", "puppeteer-core", "@sparticuz/chromium"],
   outputFileTracingIncludes: CHROMIUM_TRACE_INCLUDES,
   // En-têtes de sécurité (B-31) : lib/crm/security-headers.ts (SAMEORIGIN, les aperçus PDF sont des iframes same-origin).
   async headers() {
