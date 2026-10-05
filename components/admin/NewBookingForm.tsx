@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
 import { customerTravelerPickLabel } from "@/lib/crm/customer-search";
@@ -13,6 +14,8 @@ import { fieldControlClass, DateFrInput } from "@/components/crm/fields";
 import { PlaceField } from "@/components/crm/PlaceField";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { IssuesList } from "@/components/crm/IssuesList";
+import { LedgerWarningNotice } from "@/components/crm/LedgerWarningNotice";
+import { readLedgerWarning } from "@/lib/crm/ledger-warning";
 import { issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
 
 export function NewBookingForm({
@@ -64,6 +67,8 @@ function ManualNewBookingForm({
   const [error, setError] = useState<string | null>(null);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
   const [saving, setSaving] = useState(false);
+  // Dossier créé mais grand livre refusé : on reste ici pour le dire, et on ne renvoie plus le formulaire.
+  const [created, setCreated] = useState<{ id: string; warning: string } | null>(null);
   const [clientSettles, setClientSettles] = useState(false);
   const [customer, setCustomer] = useState<PickableCustomer | null>(null);
   const customerId = customer?.id || "";
@@ -77,6 +82,7 @@ function ManualNewBookingForm({
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (created) return;
     const fd = new FormData(event.currentTarget);
     const body = Object.fromEntries(fd.entries());
     setSaving(true);
@@ -98,6 +104,11 @@ function ManualNewBookingForm({
       if (!res.ok) {
         setIssues(issuesFromResponse(json));
         setError(null);
+        return;
+      }
+      const warning = readLedgerWarning(json);
+      if (warning) {
+        setCreated({ id: json.booking.id, warning });
         return;
       }
       router.push(`/admin/reservations/${json.booking.id}`);
@@ -258,12 +269,26 @@ function ManualNewBookingForm({
       <div className="sm:col-span-3">
         <IssuesList issues={issues} />
         {error && !issues.length ? <p className="text-sm text-accent">{error}</p> : null}
+        <LedgerWarningNotice message={created?.warning ?? null}>
+          {created ? (
+            <Link
+              href={`/admin/reservations/${created.id}?tab=argent`}
+              className="admin-af-btn admin-tap inline-flex items-center rounded-xl px-4 py-2 text-sm"
+            >
+              Ouvrir l’onglet Argent du dossier
+            </Link>
+          ) : null}
+        </LedgerWarningNotice>
       </div>
       <div className="sm:col-span-3">
         <BusyBar active={saving} label="Création…" />
       </div>
-      <button type="submit" disabled={saving} className="admin-af-btn admin-tap rounded-xl px-4 py-2.5 text-sm sm:col-span-3">
-        {saving ? "Création…" : "Créer la réservation"}
+      <button
+        type="submit"
+        disabled={saving || Boolean(created)}
+        className="admin-af-btn admin-tap rounded-xl px-4 py-2.5 text-sm disabled:opacity-50 sm:col-span-3"
+      >
+        {saving ? "Création…" : created ? "Dossier créé" : "Créer la réservation"}
       </button>
     </form>
   );
