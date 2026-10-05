@@ -6,9 +6,8 @@ import type { DeskRosterPerson } from "@/lib/crm/hotel-desk";
 const fieldClass =
   "w-full rounded-xl border border-[#d9d1c3] bg-white px-3 py-2.5 text-sm text-[#0B192C] outline-none transition placeholder:text-[#3d4654] focus:border-[#0B192C]";
 
-function personLabel(person: DeskRosterPerson) {
-  const name = [person.firstName, person.lastName].filter(Boolean).join(" ").trim();
-  return [person.role, name, person.email].filter(Boolean).join(" · ");
+function personName(person: DeskRosterPerson) {
+  return [person.firstName, person.lastName].filter(Boolean).join(" ").trim();
 }
 
 /** Cases du formulaire d’envoi. Pas sur la carte, l’aperçu client ni le lien public. */
@@ -53,25 +52,41 @@ export function HotelMailTo({
 
   return (
     <fieldset className="space-y-2">
-      <legend className="text-xs font-semibold text-[#0B192C]">Destinataires</legend>
+      <legend className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#6f552c]">Destinataires</legend>
       {shown.length ? (
         <ul className="space-y-1.5">
-          {shown.map((person) => (
-            <li key={person.email}>
-              <label className="flex items-start gap-2 text-sm text-[#0B192C]">
-                <input
-                  type="checkbox"
-                  className="mt-0.5 accent-[#0B192C]"
-                  checked={selected.includes(person.email)}
-                  onChange={() => toggle(person.email)}
-                />
-                <span className="min-w-0 break-all">{personLabel(person)}</span>
-              </label>
-            </li>
-          ))}
+          {shown.map((person) => {
+            const on = selected.includes(person.email);
+            const name = personName(person);
+            return (
+              <li key={person.email}>
+                <label
+                  className={
+                    on
+                      ? "flex cursor-pointer items-start gap-2.5 rounded-2xl border border-[#e5e0d4] border-l-4 border-l-[#C5A880] bg-[#faf9f6] px-3 py-2.5 text-[#0B192C] shadow-[0_1px_2px_rgba(11,25,44,0.06)]"
+                      : "flex cursor-pointer items-start gap-2.5 rounded-2xl border border-[#e5e0d4] bg-white px-3 py-2.5 text-[#0B192C]"
+                  }
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-1 accent-[#0B192C]"
+                    checked={on}
+                    onChange={() => toggle(person.email)}
+                  />
+                  <span className="min-w-0">
+                    {person.role ? (
+                      <span className="block text-[10px] font-bold uppercase tracking-[0.14em] text-[#6f552c]">{person.role}</span>
+                    ) : null}
+                    <span className="block break-all text-sm font-semibold">{name || person.email}</span>
+                    {name ? <span className="block break-all text-xs font-medium text-[#3d4654]">{person.email}</span> : null}
+                  </span>
+                </label>
+              </li>
+            );
+          })}
         </ul>
       ) : (
-        <p className="text-xs text-[#3d4654]">Cet hôtel n’a pas d’adresse connue.</p>
+        <p className="text-xs font-medium text-[#3d4654]">Cet hôtel n’a pas d’adresse connue.</p>
       )}
       <div className="flex items-end gap-2">
         <label className="min-w-0 flex-1 text-xs font-semibold text-[#0B192C]">
@@ -97,7 +112,7 @@ export function HotelMailTo({
         </button>
       </div>
       {invalid ? <p className="text-sm text-red-700">Cette adresse n’est pas valide.</p> : null}
-      <p className="text-xs text-[#3d4654]">Le message part seulement vers les adresses cochées.</p>
+      <p className="text-xs font-medium text-[#3d4654]">Le message part seulement vers les adresses cochées.</p>
     </fieldset>
   );
 }
