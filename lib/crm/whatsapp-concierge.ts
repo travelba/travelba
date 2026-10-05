@@ -40,7 +40,7 @@ export const MISSING_PRICE = "Je n’ai pas ce prix dans votre dossier.";
 export const MISSING_DRIVER = "Je n’ai pas de chauffeur dans votre dossier.";
 export const MISSING_FORMALITY = "Je n’ai pas de formalité déposée dans votre dossier.";
 
-export const HANDOFF_KINDS = ["change", "cancel", "payment", "formality", "chauffeur", "complaint"] as const;
+export const HANDOFF_KINDS = ["change", "cancel", "payment", "formality", "chauffeur", "complaint", "question"] as const;
 export type HandoffKind = (typeof HANDOFF_KINDS)[number];
 
 export const HANDOFF_LABELS: Record<HandoffKind, string> = {
@@ -50,6 +50,7 @@ export const HANDOFF_LABELS: Record<HandoffKind, string> = {
   formality: "Dépôt d’une formalité",
   chauffeur: "Chauffeur",
   complaint: "Plainte",
+  question: "Question à l’agence",
 };
 
 /** Ces cinq demandes partent à l’agent. Le ton du retour ne sert qu’à elles. */
@@ -752,8 +753,12 @@ function offerAgency(lang: ReplyLang) {
     : "Je n’ai pas cette information. Souhaitez-vous que j’en parle à l’agence ?";
 }
 
-function handoffSentence(lang: ReplyLang) {
+export function agencyHandoffSentence(lang: ReplyLang = "fr") {
   return lang === "en" ? "I’m passing this to the agency." : HANDOFF_SENTENCE;
+}
+
+function handoffSentence(lang: ReplyLang) {
+  return agencyHandoffSentence(lang);
 }
 
 function stopText(lang: ReplyLang) {

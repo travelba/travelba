@@ -15,10 +15,10 @@ import {
   messageLanguage,
   panRefusedReply,
   pieceSavedLine,
-  planConciergeTurn,
   UNKNOWN_NUMBER_REPLY,
   type HandoffKind,
 } from "./whatsapp-concierge";
+import { planConciergeConversation, type ConciergeGenerator, type ConciergeHistoryTurn } from "./whatsapp-conversation";
 import { sessionAddress } from "./whatsapp-session";
 
 export type WhatsappMessageInsert = {
@@ -66,6 +66,8 @@ export type WhatsappStore = {
     contentType: string;
   }): Promise<WhatsappPieceResult>;
   recentThread?(customerId: string): Promise<WhatsappThreadRow[]>;
+  /** Derniers messages des 24 h, pour la mémoire du Concierge. Distinct de la rafale. */
+  conversationHistory?(customerId: string): Promise<WhatsappThreadRow[]>;
   tagMessage?(id: string, bookingId: string): Promise<void>;
 };
 
@@ -172,6 +174,7 @@ export async function receiveWhatsappWebhook(input: {
   burstWaitMs?: number;
   fetchImpl?: typeof fetch;
   openAccess?(customer: WhatsappCustomer): Promise<string | null>;
+  converse?: ConciergeGenerator;
   store: WhatsappStore;
   send(message: { to: string; body: string; mediaUrl?: string | null }): Promise<{
     ok: boolean;
@@ -260,7 +263,17 @@ export async function receiveWhatsappWebhook(input: {
     if (!content && hadPiece && !stopping) {
       reply = withConciergeSignature(pieceSavedLine(lang));
     } else {
-      const turn = planConciergeTurn(content || said, dossier);
+      const history = input.store.conversationHistory ? await input.store.conversationHistory(customer.id) : [];
+      const prior: ConciergeHistoryTurn[] = history
+        .filter((row) => row.twilio_sid !== sid)
+        .slice(-16)
+        .map((row) => ({ direction: row.direction, body: row.body }));
+      const turn = await planConciergeConversation({
+        message: content || said,
+        dossier,
+        history: prior,
+        generate: input.converse,
+      });
       bookingId = turn.bookingId;
       handoff = turn.handoff;
       const replyLang = messageLanguage(content || said);
@@ -467,6 +480,18 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
         .limit(30);
       if (error) throw error;
       return (data || []) as WhatsappThreadRow[];
+    },
+    async conversationHistory(customerId) {
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data, error } = await admin
+        .from("crm_whatsapp_messages")
+        .select("direction, body, twilio_sid, created_at")
+        .eq("customer_id", customerId)
+        .gte("created_at", since)
+        .order("created_at", { ascending: false })
+        .limit(17);
+      if (error) throw error;
+      return ((data || []) as WhatsappThreadRow[]).reverse();
     },
     async tagMessage(id, bookingId) {
       const { error } = await admin.from("crm_whatsapp_messages").update({ booking_id: bookingId }).eq("id", id);
