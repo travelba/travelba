@@ -30,8 +30,11 @@ import {
 import { CompanyRoleFields } from "@/components/crm/CompanyRoleFields";
 import { PersonPassportCard } from "@/components/crm/PersonPassportCard";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
+import { adminAction } from "@/lib/crm/admin-action";
 import { type ScanResult } from "@/components/crm/IdentityScan";
 import { vaultDocumentsForPerson } from "@/lib/crm/trip-documents";
+import type { PickableCustomer } from "@/lib/crm/customer-search";
 
 function applyIdentityState(
   id: ExtractedIdentity,
@@ -63,7 +66,7 @@ export function CustomerEditor({
   customer: CrmCustomer;
   companions: CrmCompanion[];
   documents: CrmTravelDocument[];
-  companyAdmins?: CrmCustomer[];
+  companyAdmins?: PickableCustomer[];
   billingCompanies?: CrmBillingCompany[];
 }) {
   const router = useRouter();
@@ -356,14 +359,16 @@ function CompanionCard({
   const [sex, setSex] = useState(companion.sex || "");
   const [phone, setPhone] = useState(companion.phone || "");
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [nameWarn, setNameWarn] = useState<string | null>(null);
 
   async function save() {
+    if (saving) return;
     setSaving(true);
-    await fetch("/api/admin/companions", {
+    setSaveError(null);
+    const result = await adminAction("/api/admin/companions", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+      body: {
         id: companion.id,
         customer_id: customerId,
         first_name: firstName,
@@ -374,15 +379,24 @@ function CompanionCard({
         birth_date: birthDate,
         sex,
         phone,
-      }),
+      },
     });
     setSaving(false);
+    if (!result.ok) {
+      setSaveError(result.error || "Enregistrement impossible. Réessayez.");
+      return;
+    }
     router.refresh();
   }
 
+  /** Confirmé sur la carte : renvoie l’erreur pour l’afficher sous le bouton. */
   async function remove() {
-    await fetch(`/api/admin/companions?id=${companion.id}`, { method: "DELETE" });
+    const result = await adminAction(`/api/admin/companions?id=${encodeURIComponent(companion.id)}`, {
+      method: "DELETE",
+    });
+    if (!result.ok) return result.error || "Retrait impossible. Réessayez.";
     router.refresh();
+    return undefined;
   }
 
   return (
@@ -391,9 +405,16 @@ function CompanionCard({
         <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">
           {companion.first_name} {companion.last_name}
         </h3>
-        <button type="button" onClick={() => void remove()} className="text-xs font-semibold text-accent">
-          Retirer
-        </button>
+        <ConfirmAction
+          size="sm"
+          tone="danger"
+          label="Retirer"
+          confirmLabel="Retirer l’accompagnateur"
+          ariaLabel={`Retirer ${companion.first_name} ${companion.last_name}`}
+          question="L’accompagnateur et ses pièces d’identité sont supprimés du compte. Les séjours passés restent."
+          align="end"
+          onConfirm={remove}
+        />
       </div>
       <PersonPassportCard
         variant="admin"
@@ -449,6 +470,11 @@ function CompanionCard({
         </div>
       </div>
       <BusyBar active={saving} label="Enregistrement…" />
+      {saveError ? (
+        <p role="alert" className="text-sm text-[var(--admin-red)]">
+          {saveError}
+        </p>
+      ) : null}
       <button
         type="button"
         onClick={() => void save()}

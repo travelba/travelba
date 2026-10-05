@@ -4,11 +4,21 @@ export type PickableCustomer = Pick<
   CrmCustomer,
   "id" | "first_name" | "last_name" | "company_name" | "email" | "phone"
 > &
-  Partial<Pick<CrmCustomer, "usage_name" | "company_role">>;
+  Partial<Pick<CrmCustomer, "usage_name" | "company_role" | "billing_parent_id">>;
 
 /** Colonnes du sélecteur — pas de `select("*")` (IBAN, adresse, etc.). */
 export const CUSTOMER_PICK_SELECT =
-  "id, first_name, last_name, usage_name, company_name, email, phone, company_role";
+  "id, first_name, last_name, usage_name, company_name, email, phone, company_role, billing_parent_id";
+
+/** Ligne de la liste Clients : ce que la table affiche, rien de plus (A-06). */
+export type CustomerListRow = PickableCustomer & Pick<CrmCustomer, "on_hold" | "created_at">;
+
+export const CUSTOMER_LIST_SELECT = `${CUSTOMER_PICK_SELECT}, on_hold, created_at`;
+
+/** Juste le nom : listes et grand livre. */
+export type CustomerNameRow = Pick<CrmCustomer, "id" | "first_name" | "last_name">;
+
+export const CUSTOMER_NAME_SELECT = "id, first_name, last_name";
 
 /** Plafond typeahead ; pagination liste complète = suivi. */
 export const CUSTOMER_PICK_LIMIT = 300;

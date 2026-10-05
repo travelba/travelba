@@ -48,12 +48,13 @@ export function EtaIlMonitor({ bookingId }: { bookingId: string }) {
       setTick((value) => value + 1);
     }
     void load();
-    const timer = window.setInterval(() => void load(), 2000);
+    // Sondage toutes les 2 s seulement pendant le direct ; hors direct, une lecture suffit (A-27).
+    const timer = live ? window.setInterval(() => void load(), 2000) : null;
     return () => {
       stop = true;
-      window.clearInterval(timer);
+      if (timer != null) window.clearInterval(timer);
     };
-  }, [bookingId]);
+  }, [bookingId, live]);
 
   useEffect(() => {
     end.current?.scrollIntoView({ block: "nearest" });
@@ -68,6 +69,7 @@ export function EtaIlMonitor({ bookingId }: { bookingId: string }) {
       {down ? <p className="text-sm text-red-700">Le suivi du portail est indisponible.</p> : null}
       {note ? <p className="text-sm font-medium text-red-700">{note}</p> : null}
       {events.length ? (
+        // eslint-disable-next-line @next/next/no-img-element -- image vivante du portail, servie par /api/files
         <img
           src={`/api/files?path=${encodeURIComponent(etaIlLiveFramePath(bookingId))}&inline=1&v=${tick}`}
           alt="Écran du portail ETA-IL"

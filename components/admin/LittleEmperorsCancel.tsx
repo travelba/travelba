@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { BusyBar } from "@/components/crm/BusyBar";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
+import { adminAction } from "@/lib/crm/admin-action";
 
 const LATE_CANCEL =
   "La date limite d’annulation est passée. Écrivez à bookings@littleemperors.com : la politique d’annulation s’applique.";
@@ -23,32 +23,22 @@ export function LittleEmperorsCancel({
   state: string | null;
 }) {
   const router = useRouter();
-  const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const cancelled = (state || "").toLowerCase() === "cancelled" || (state || "").toLowerCase() === "canceled";
   if (cancelled) return null;
 
+  /** Confirmé en place : renvoie l’erreur pour l’afficher sous le bouton. */
   async function cancel() {
-    setBusy(true);
-    setError(null);
-    const response = await fetch("/api/admin/little-emperors", {
+    const result = await adminAction("/api/admin/little-emperors", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "cancel", id }),
+      body: { action: "cancel", id },
     });
-    const json = await response.json().catch(() => ({}));
-    setBusy(false);
-    if (!response.ok) {
-      setError(json.error || "Annulation impossible.");
-      return;
-    }
+    if (!result.ok) return result.error || "Annulation impossible.";
     router.refresh();
+    return undefined;
   }
 
   return (
     <div className="mb-4 rounded-2xl border border-[#e5e3dc] bg-white px-4 py-3">
-      {busy ? <BusyBar label="Annulation Little Emperors" /> : null}
       <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Little Emperors</p>
       <p className="text-sm font-semibold text-[var(--admin-navy)]">{hotelName || "Hôtel"}</p>
       {policies.map((policy) => (
@@ -58,14 +48,14 @@ export function LittleEmperorsCancel({
       ))}
       {deadline ? <p className="mt-1 text-sm text-muted">Limite · {deadline}</p> : null}
       {isCancellable === true ? (
-        <button
-          type="button"
-          onClick={() => (confirming ? cancel() : setConfirming(true))}
-          disabled={busy}
-          className="mt-3 rounded-md bg-[var(--admin-navy)] px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-        >
-          {confirming ? "Confirmer l’annulation" : "Annuler chez Little Emperors"}
-        </button>
+        <ConfirmAction
+          wrapperClassName="mt-3"
+          label="Annuler chez Little Emperors"
+          confirmLabel="Confirmer l’annulation"
+          busyLabel="Annulation Little Emperors…"
+          question={`La réservation ${hotelName || "de cet hôtel"} est annulée chez Little Emperors. La politique d’annulation s’applique.`}
+          onConfirm={cancel}
+        />
       ) : (
         <p className="mt-2 text-sm text-muted">
           {isCancellable === false
@@ -73,7 +63,6 @@ export function LittleEmperorsCancel({
             : "Little Emperors n’indique pas que cette réservation peut être annulée depuis l’API."}
         </p>
       )}
-      {error ? <p className="mt-2 text-sm text-[#8a5a2a]">{error}</p> : null}
     </div>
   );
 }

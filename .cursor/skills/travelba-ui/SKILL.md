@@ -53,7 +53,10 @@ Même langage sur **toutes** les réservations, pas un dossier d’exemple.
 Client bas / header : **Accueil / Réservations / Transactions / Mon compte**.  
 Profil : **Vous / Pièces / Voyageurs / Facturation**. Pas « Cartes », pas WhatsApp champ.
 
-Admin : Tableau de bord, Clients, Réservations, Transactions, Revolut (badge unmatched). Rapprochement : popup recherche client (`CustomerPickDialog`), pas un select natif.
+Admin (`AdminNav`, modèle dans `lib/crm/admin-nav.ts`) : sidebar en groupes repliables (état `localStorage`) — **Activité** (Tableau de bord) · **Clients** (Clients, Pièces à échéance [badge]) · **Dossiers** (Réservations, Formalités, Services à confirmer) · **Argent** (Transactions, Revolut [badge], Pliant) · **Boîtes de réception** (E-mails [badge], Little Emperors [badge]) · **Outils** (Messages types WhatsApp, Diagnostic Gmail, Aperçu espace client hors prod) · **Équipe** (admins).
+Un seul CTA **Nouveau dossier** → `/admin/reservations/nouveau`. L’avatar ouvre le menu utilisateur (nom, rôle, WhatsApp agence, Déconnexion) : pas de « Sortir » épars.
+Téléphone (< 1024) : en-tête 56 px (logo, titre court, loupe → recherche en overlay, avatar) et barre basse fixe **Accueil / Clients / Dossiers / Argent / Plus** (badges Argent = Revolut, Plus = E-mails + LE) ; « Plus » ouvre une feuille basse (Boîtes, Outils, Équipe, utilisateur).
+`aria-current="page"` sur l’entrée active ; `/admin/recherche` allume l’omnibar. Rapprochement : popup recherche client (`CustomerPickDialog`), pas un select natif.
 
 ## Perf perçue
 

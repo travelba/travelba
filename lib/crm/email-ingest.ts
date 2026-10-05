@@ -23,6 +23,7 @@ import {
   type PreparedIngestFile,
 } from "@/lib/crm/ingest-file";
 import { clipEmailBody } from "@/lib/crm/email-source";
+import { EMAIL_BODY_MISSING_MARK, bodyBackfillSince, hasBodyMissingMark, markBodyMissing } from "@/lib/crm/email-body-backfill";
 import { reopenFalseSupplierCancellation } from "@/lib/crm/ingest-parse";
 import {
   aiGatewayConfigured,
@@ -43,13 +44,14 @@ import {
   suggestBookingByTripSignals,
   suggestCustomerFromExtract,
 } from "@/lib/crm/email-match";
-import type {
-  CrmBooking,
-  CrmBookingItem,
-  CrmCustomer,
-  CrmEmailIngest,
-  EmailIngestAttachment,
-  EmailIngestCandidate,
+import {
+  EMAIL_INBOX_QUEUE_STATUSES,
+  type CrmBooking,
+  type CrmBookingItem,
+  type CrmCustomer,
+  type CrmEmailIngest,
+  type EmailIngestAttachment,
+  type EmailIngestCandidate,
 } from "@/lib/crm/types";
 
 export const EMAIL_SYNC_PROVIDER = "gmail";
@@ -532,8 +534,46 @@ export async function loadEmailIngestFiles(
   return files;
 }
 
+/**
+ * Cron : complète le corps des mails de la file qui n’en ont pas encore (idempotent, borné).
+ * Un mail déjà complété n’est pas relu ; un mail dont Gmail ne rend aucun corps est marqué
+ * (`EMAIL_BODY_MISSING_MARK` dans `warnings`) et n’est plus relu ; au-delà de 14 jours, on n’insiste plus.
+ */
+export async function backfillQueuedEmailBodies(limit = 20, now = Date.now()) {
+  if (!gmailConfigured()) return { scanned: 0, filled: 0, marked: 0 };
+  const admin = createServiceClient();
+  const { data } = await admin
+    .from("crm_email_ingest")
+    .select("*")
+    .in("status", [...EMAIL_INBOX_QUEUE_STATUSES])
+    .or("body_text.is.null,body_text.eq.")
+    .or("body_html.is.null,body_html.eq.")
+    .not("gmail_message_id", "like", "sim-%")
+    .not("warnings", "cs", JSON.stringify([EMAIL_BODY_MISSING_MARK]))
+    .gte("received_at", bodyBackfillSince(now))
+    .order("received_at", { ascending: false, nullsFirst: false })
+    .limit(limit);
+  const rows = (data || []) as CrmEmailIngest[];
+  let marked = 0;
+  const filled = await backfillEmailBodies(rows, async (row) => {
+    await admin
+      .from("crm_email_ingest")
+      .update({ warnings: markBodyMissing(row.warnings) })
+      .eq("id", row.id);
+    marked += 1;
+  });
+  return {
+    scanned: rows.length,
+    filled: filled.filter((row, index) => row !== rows[index]).length,
+    marked,
+  };
+}
+
 /** Relit Gmail pour les lignes de revue dont le corps n’a pas encore été conservé. */
-export async function backfillEmailBodies(rows: CrmEmailIngest[]): Promise<CrmEmailIngest[]> {
+export async function backfillEmailBodies(
+  rows: CrmEmailIngest[],
+  onEmpty?: (row: CrmEmailIngest) => Promise<void>
+): Promise<CrmEmailIngest[]> {
   if (!gmailConfigured()) return rows;
   const admin = createServiceClient();
   const out: CrmEmailIngest[] = [];
@@ -551,6 +591,8 @@ export async function backfillEmailBodies(rows: CrmEmailIngest[]): Promise<CrmEm
       const body_text = clipEmailBody(message.text);
       const body_html = clipEmailBody(message.html);
       if (!body_text && !body_html) {
+        // Gmail a répondu sans corps : on le note pour ne pas relire ce mail à chaque cron.
+        if (onEmpty && !hasBodyMissingMark(row)) await onEmpty(row).catch(() => undefined);
         out.push(row);
         continue;
       }
@@ -561,30 +603,4 @@ export async function backfillEmailBodies(rows: CrmEmailIngest[]): Promise<CrmEm
     }
   }
   return out;
-}
-
-/** Insère une ligne simulée déjà parsée (tests / démo, sans dépendre de Gmail). */
-export async function seedSimulatedEmailIngest(input: {
-  subject: string;
-  from_email: string;
-  label?: string;
-  extract: unknown;
-}) {
-  const admin = createServiceClient();
-  const extract = parseExtractPayloadSafe(input.extract);
-  const { data, error } = await admin
-    .from("crm_email_ingest")
-    .insert({
-      gmail_message_id: `sim-${crypto.randomUUID()}`,
-      label: input.label || "little-emperors",
-      from_email: input.from_email,
-      subject: input.subject,
-      received_at: new Date().toISOString(),
-      status: "parsed",
-    })
-    .select("*")
-    .single();
-  if (error || !data) throw error || new Error("Insertion simulée impossible");
-  await matchAndStoreExtract(admin, data.id, extract, [], []);
-  return data.id as string;
 }

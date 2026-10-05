@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, PointerEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, PointerEvent, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Reorder } from "framer-motion";
+import { Reorder, useDragControls } from "framer-motion";
 import {
   countsAsCarnetCard,
   isExtraItemKind,
@@ -24,6 +24,7 @@ import {
 } from "@/lib/crm/carnet";
 import { flightCountsInStay } from "@/lib/crm/bookings";
 import { groupAttachedEmails } from "@/lib/crm/email-duplicates";
+import { bookingStepAnchor } from "@/lib/crm/booking-tabs";
 import { formatMoney } from "@/lib/crm/money";
 import { shortStayDay, shortStayRange } from "@/lib/crm/staff-stay";
 import { Icon } from "@/components/crm/icons";
@@ -34,6 +35,8 @@ import type { CardViewLine, CrmBookingTraveler, CrmHotelArrival, CrmHotelMessage
 import { FilePreviewTile } from "@/components/crm/FilePreview";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
+import { adminAction } from "@/lib/crm/admin-action";
 import type { CrmBookingDocument } from "@/lib/crm/types";
 import type { HouseholdMember } from "@/lib/crm/household";
 
@@ -116,10 +119,39 @@ const flatBtn =
 const flatIconBtn =
   "admin-tap inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-white text-sm font-bold text-[var(--admin-navy)]";
 
-function blockDragFromControl(event: PointerEvent<HTMLElement>) {
-  const target = event.target;
-  if (!(target instanceof Element)) return;
-  if (target.closest("button, a, input, textarea, select, label")) event.stopPropagation();
+/**
+ * Une étape déplaçable : seule la poignée (icône grip) démarre le glisser, le reste de la carte
+ * laisse passer le défilement tactile et les clics (A-35). Les flèches du menu font la même chose au clavier.
+ */
+function ReorderStep({
+  item,
+  locked,
+  onDragEnd,
+  children,
+}: {
+  item: CrmBookingItem;
+  locked: boolean;
+  onDragEnd: () => void;
+  children: (handle: { onPointerDown: (event: PointerEvent<HTMLElement>) => void }) => ReactNode;
+}) {
+  const controls = useDragControls();
+  return (
+    <Reorder.Item
+      value={item}
+      dragListener={false}
+      dragControls={controls}
+      onDragEnd={onDragEnd}
+      whileDrag={{ zIndex: 30, background: "#ffffff" }}
+      className="relative mt-2"
+    >
+      {children({
+        onPointerDown: (event) => {
+          if (locked) return;
+          controls.start(event);
+        },
+      })}
+    </Reorder.Item>
+  );
 }
 
 export function BookingItemsPanel({
@@ -189,17 +221,12 @@ export function BookingItemsPanel({
   const orderDirty = useRef(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
-  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
-  const [deskFor, setDeskFor] = useState<string | null>(null);
-  const openedHotel = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!openHotelItemId || openedHotel.current === openHotelItemId) return;
-    const item = rows.find((row) => row.id === openHotelItemId && row.kind === "hotel");
-    if (!item || !hotelRequests.some((row) => row.booking_item_id === item.id)) return;
-    openedHotel.current = openHotelItemId;
-    setDeskFor(item.id);
-  }, [openHotelItemId, rows, hotelRequests]);
+  // `?hotel=` (toast « l’hôtel a répondu ») ouvre le bureau de cet hôtel dès le montage.
+  const [deskFor, setDeskFor] = useState<string | null>(() => {
+    if (!openHotelItemId) return null;
+    const item = items.find((row) => row.id === openHotelItemId && row.kind === "hotel");
+    return item && hotelRequests.some((row) => row.booking_item_id === item.id) ? item.id : null;
+  });
 
   useEffect(() => {
     if (!openHotelItemId || deskFor !== openHotelItemId) return;
@@ -263,6 +290,19 @@ export function BookingItemsPanel({
     if (!orderDirty.current) return;
     orderDirty.current = false;
     void persistOrder(cardRowsRef.current);
+  }
+
+  /** Monter / Descendre au clavier : même ordre, même enregistrement que le glisser. */
+  function moveCard(item: CrmBookingItem, delta: -1 | 1) {
+    const current = cardRowsRef.current;
+    const index = current.findIndex((row) => row.id === item.id);
+    const target = index + delta;
+    if (index < 0 || target < 0 || target >= current.length) return;
+    const next = [...current];
+    [next[index], next[target]] = [next[target], next[index]];
+    applyCardOrder(next);
+    finishCardDrag();
+    setMenuFor(null);
   }
 
   async function saveDraft() {
@@ -355,14 +395,20 @@ export function BookingItemsPanel({
     router.refresh();
   }
 
+  /** Confirmé dans le menu : renvoie l’erreur pour l’afficher sous le bouton. */
   async function removeItem(id: string) {
     setBusy(true);
-    await fetch(`/api/admin/bookings/${bookingId}/items?itemId=${encodeURIComponent(id)}`, {
-      method: "DELETE",
-    });
+    setError(null);
+    const result = await adminAction(
+      `/api/admin/bookings/${bookingId}/items?itemId=${encodeURIComponent(id)}`,
+      { method: "DELETE" }
+    );
     setBusy(false);
+    if (!result.ok) return result.error || "L’étape n’a pas pu être retirée.";
     if (editingId === id) setEditingId(null);
+    setMenuFor(null);
     router.refresh();
+    return undefined;
   }
 
   return (
@@ -373,7 +419,7 @@ export function BookingItemsPanel({
           Ajouter une étape
         </button>
       </div>
-      <p className="mt-1 text-xs text-muted">Glissez une étape pour changer l’ordre. Par défaut, l’ordre suit les dates.</p>
+      <p className="mt-1 text-xs text-muted">Déplacez une étape par sa poignée, ou Monter / Descendre dans son menu. Par défaut, l’ordre suit les dates.</p>
       <div className="mt-3">
         <BusyBar active={busy} label="Enregistrement…" />
       </div>
@@ -412,18 +458,13 @@ export function BookingItemsPanel({
           ]
             .filter(Boolean)
             .join(" · ");
+          const position = cardRows.findIndex((row) => row.id === item.id);
           return (
-          <Reorder.Item
-            key={item.id}
-            value={item}
-            dragListener={!locked}
-            onDragEnd={finishCardDrag}
-            whileDrag={{ zIndex: 30, background: "#ffffff" }}
-            className={`relative mt-2 ${locked ? "" : "cursor-grab active:cursor-grabbing"}`}
-          >
+          <ReorderStep key={item.id} item={item} locked={locked} onDragEnd={finishCardDrag}>
+            {(handle) => (
             <div
-              onPointerDown={blockDragFromControl}
-              className={`rounded-2xl border px-3 py-3 ${
+              id={bookingStepAnchor(item.id)}
+              className={`scroll-mt-28 rounded-2xl border px-3 py-3 ${
                 unshown
                   ? "border-[var(--admin-gold)] bg-[var(--admin-peach)]"
                   : "border-[var(--border)] bg-white"
@@ -459,6 +500,15 @@ export function BookingItemsPanel({
               </div>
             ) : (
               <div className="flex items-start gap-3">
+                <button
+                  type="button"
+                  aria-label={`Déplacer ${stepTitle(item)}`}
+                  disabled={locked}
+                  onPointerDown={handle.onPointerDown}
+                  className="-ml-1 mt-0.5 inline-flex h-6 w-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-muted active:cursor-grabbing disabled:opacity-30"
+                >
+                  <Icon name="grip" className="h-4 w-4" />
+                </button>
                 <p className="w-16 shrink-0 pt-0.5 text-xs font-semibold text-muted">{when || "Sans date"}</p>
                 <Icon name={kindIcon(item.kind)} className="mt-0.5 h-4 w-4 shrink-0 text-[var(--admin-navy)]" />
                 <div className="min-w-0 flex-1">
@@ -510,15 +560,12 @@ export function BookingItemsPanel({
                     type="button"
                     aria-label="Autres actions de l’étape"
                     className={flatIconBtn}
-                    onClick={() => {
-                      setMenuFor(menuFor === item.id ? null : item.id);
-                      setConfirmRemove(null);
-                    }}
+                    onClick={() => setMenuFor(menuFor === item.id ? null : item.id)}
                   >
                     …
                   </button>
                   {menuFor === item.id ? (
-                    <div className="absolute right-0 top-9 z-20 flex w-44 flex-col gap-1 rounded-2xl border border-[var(--border)] bg-white p-2">
+                    <div className="absolute right-0 top-9 z-20 flex w-60 flex-col gap-2 rounded-2xl border border-[var(--border)] bg-white p-2">
                       <button
                         type="button"
                         className={flatBtn}
@@ -527,15 +574,36 @@ export function BookingItemsPanel({
                       >
                         {item.visible_to_client ? "Cacher" : "Montrer"}
                       </button>
-                      {confirmRemove === item.id ? (
-                        <button type="button" className={flatBtn} onClick={() => void removeItem(item.id)}>
-                          Confirmer
+                      <div className="flex gap-1">
+                        <button
+                          type="button"
+                          className={`${flatBtn} flex-1 gap-1`}
+                          disabled={busy || position <= 0}
+                          onClick={() => moveCard(item, -1)}
+                        >
+                          <Icon name="arrow_up" className="h-3.5 w-3.5" />
+                          Monter
                         </button>
-                      ) : (
-                        <button type="button" className={flatBtn} onClick={() => setConfirmRemove(item.id)}>
-                          Retirer
+                        <button
+                          type="button"
+                          className={`${flatBtn} flex-1 gap-1`}
+                          disabled={busy || position < 0 || position >= cardRows.length - 1}
+                          onClick={() => moveCard(item, 1)}
+                        >
+                          <Icon name="arrow_down" className="h-3.5 w-3.5" />
+                          Descendre
                         </button>
-                      )}
+                      </div>
+                      <ConfirmAction
+                        size="sm"
+                        tone="danger"
+                        label="Retirer"
+                        confirmLabel="Retirer l’étape"
+                        ariaLabel={`Retirer ${stepTitle(item)}`}
+                        question="L’étape quitte le voyage. Le fichier reste dans le dossier."
+                        disabled={busy}
+                        onConfirm={() => removeItem(item.id)}
+                      />
                     </div>
                   ) : null}
                   </div>
@@ -543,7 +611,8 @@ export function BookingItemsPanel({
               </div>
             )}
             </div>
-          </Reorder.Item>
+            )}
+          </ReorderStep>
           );
         })}
       </Reorder.Group>
@@ -590,27 +659,38 @@ function ItemAttachments({
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy) return;
     const form = event.currentTarget;
     const fd = new FormData(form);
     fd.set("booking_item_id", itemId);
     setBusy(true);
-    await fetch(`/api/admin/bookings/${bookingId}/documents`, { method: "POST", body: fd });
+    setError(null);
+    const result = await adminAction(`/api/admin/bookings/${bookingId}/documents`, {
+      method: "POST",
+      formData: fd,
+    });
     setBusy(false);
+    if (!result.ok) {
+      setError(result.error || "Pièce non jointe. Réessayez.");
+      return;
+    }
     form.reset();
     router.refresh();
   }
 
+  /** Confirmé sur la vignette : renvoie l’erreur pour l’afficher sous le bouton. */
   async function removeDoc(documentId: string) {
-    setBusy(true);
-    await fetch(
+    const result = await adminAction(
       `/api/admin/bookings/${bookingId}/documents?id=${encodeURIComponent(documentId)}`,
       { method: "DELETE" }
     );
-    setBusy(false);
+    if (!result.ok) return result.error || "Retrait impossible. Réessayez.";
     router.refresh();
+    return undefined;
   }
 
   if (compact) return null;
@@ -621,7 +701,7 @@ function ItemAttachments({
         {docs.map((doc) => (
           <FilePreviewTile
             key={doc.id}
-            onRemove={() => void removeDoc(doc.id)}
+            onRemove={() => removeDoc(doc.id)}
             file={{
               id: doc.id,
               path: doc.storage_path,
@@ -635,10 +715,15 @@ function ItemAttachments({
       </div>
       <form onSubmit={upload} className="flex flex-wrap items-center gap-2">
         <BusyBar active={busy} label="Envoi…" />
-        <input name="file" type="file" required className="text-xs" />
+        <input name="file" type="file" required disabled={busy} className="text-xs" />
         <button type="submit" disabled={busy} className={flatBtn}>
           {busy ? "Envoi…" : "Joindre"}
         </button>
+        {error ? (
+          <p role="alert" className="basis-full text-xs text-[var(--admin-red)]">
+            {error}
+          </p>
+        ) : null}
       </form>
     </div>
   );

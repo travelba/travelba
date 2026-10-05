@@ -112,7 +112,10 @@ export async function cleanupIngestBatch(staffUserId: string, batchId: string) {
   }
 }
 
-export function matchCustomerId(customers: CrmCustomer[], extract: BookingExtract) {
+export function matchCustomerId(
+  customers: Pick<CrmCustomer, "id" | "email" | "first_name" | "last_name">[],
+  extract: BookingExtract
+) {
   const email = extract.customer_email?.trim().toLowerCase();
   if (email) {
     const hit = customers.find((c) => c.email.toLowerCase() === email);

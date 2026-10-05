@@ -2,8 +2,10 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CrmCustomer } from "@/lib/crm/types";
+import type { PickableCustomer } from "@/lib/crm/customer-search";
+import { customerTravelerPickLabel } from "@/lib/crm/customer-search";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
+import { CustomerPickField } from "@/components/admin/CustomerPickField";
 import { billingCompanyTabLabel } from "@/lib/crm/billing-companies";
 import { defaultBillingCompany } from "@/lib/crm/payer";
 import { BookingIngest } from "@/components/crm/BookingIngest";
@@ -14,11 +16,9 @@ import { IssuesList } from "@/components/crm/IssuesList";
 import { issuesFromResponse, type BookingIssue } from "@/lib/crm/booking-issues";
 
 export function NewBookingForm({
-  customers,
   companies = [],
   aiConfigured,
 }: {
-  customers: CrmCustomer[];
   companies?: { id: string; customer_id: string; company_name: string | null; sort_order: number }[];
   aiConfigured: boolean;
 }) {
@@ -29,7 +29,6 @@ export function NewBookingForm({
       <BookingIngest
         role="admin"
         mode="create"
-        customers={customers}
         ingestUrl="/api/admin/bookings/ingest"
         saveUrl="/api/admin/bookings/from-ingest"
         aiConfigured={aiConfigured}
@@ -42,16 +41,23 @@ export function NewBookingForm({
       >
         {manual ? "Masquer la saisie manuelle" : "Saisie manuelle (sans document)"}
       </button>
-      {manual ? <ManualNewBookingForm customers={customers} companies={companies} /> : null}
+      {manual ? <ManualNewBookingForm companies={companies} /> : null}
     </div>
   );
 }
 
+function walletOf(customer: PickableCustomer | null) {
+  if (!customer) return "";
+  return resolveBillingCustomerId({
+    id: customer.id,
+    company_role: customer.company_role ?? null,
+    billing_parent_id: customer.billing_parent_id ?? null,
+  });
+}
+
 function ManualNewBookingForm({
-  customers,
   companies,
 }: {
-  customers: CrmCustomer[];
   companies: { id: string; customer_id: string; company_name: string | null; sort_order: number }[];
 }) {
   const router = useRouter();
@@ -59,13 +65,11 @@ function ManualNewBookingForm({
   const [issues, setIssues] = useState<BookingIssue[]>([]);
   const [saving, setSaving] = useState(false);
   const [clientSettles, setClientSettles] = useState(false);
-  const [customerId, setCustomerId] = useState("");
+  const [customer, setCustomer] = useState<PickableCustomer | null>(null);
+  const customerId = customer?.id || "";
   const [payerKind, setPayerKind] = useState<"company" | "personal">("personal");
   const [companyId, setCompanyId] = useState("");
-  const walletId = (() => {
-    const customer = customers.find((row) => row.id === customerId);
-    return customer ? resolveBillingCustomerId(customer) : "";
-  })();
+  const walletId = walletOf(customer);
   const walletCompanies = companies
     .filter((company) => company.customer_id === walletId)
     .sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id));
@@ -108,18 +112,16 @@ function ManualNewBookingForm({
 
   return (
     <form onSubmit={onSubmit} className="admin-af-card grid gap-3 rounded-2xl p-5 sm:grid-cols-3">
-      <label className={`${labelClass} sm:col-span-3`}>
-        Client
-        <select
+      <div className="sm:col-span-3">
+        <CustomerPickField
           name="customer_id"
-          required
-          disabled={saving}
-          value={customerId}
-          onChange={(event) => {
-            const nextId = event.target.value;
-            setCustomerId(nextId);
-            const customer = customers.find((row) => row.id === nextId);
-            const wallet = customer ? resolveBillingCustomerId(customer) : "";
+          label="Client"
+          title="Client du dossier"
+          selected={customer}
+          formatLabel={customerTravelerPickLabel}
+          onPick={(next) => {
+            setCustomer(next);
+            const wallet = walletOf(next);
             const list = companies
               .filter((company) => company.customer_id === wallet)
               .sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id));
@@ -132,18 +134,9 @@ function ManualNewBookingForm({
               setCompanyId("");
             }
           }}
-          className={`${fieldControlClass} bg-white`}
-        >
-          <option value="">Choisir un client…</option>
-          {customers.map((c) => (
-            <option key={c.id} value={c.id}>
-      {c.last_name} {c.first_name} — {c.email}
-              {c.company_role === "member" ? " · rattaché" : ""}
-              {c.company_role === "admin" ? " · admin société" : ""}
-            </option>
-          ))}
-        </select>
-      </label>
+          controlClass={`${fieldControlClass} bg-white`}
+        />
+      </div>
       <label className={labelClass}>
         Titre du voyage
         <input name="title" required disabled={saving} placeholder="Ex. Séjour à Bali" className={fieldControlClass} />

@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { ConfirmAction } from "@/components/crm/ConfirmAction";
+import { adminAction } from "@/lib/crm/admin-action";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
 import { formatDateFr } from "@/lib/crm/money";
 import type { CrmLeBooking } from "@/lib/crm/types";
@@ -50,7 +52,6 @@ export function LittleEmperorsInbox({
   const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
-  const [confirmId, setConfirmId] = useState<string | null>(null);
   const [attachId, setAttachId] = useState<string | null>(null);
 
   async function post(body: Record<string, string>) {
@@ -83,14 +84,12 @@ export function LittleEmperorsInbox({
     if (json?.redirect_url) setRedirectUrl(String(json.redirect_url));
   }
 
+  /** Confirmé sur la ligne : renvoie l’erreur pour l’afficher sous le bouton. */
   async function cancel(id: string) {
-    setBusy(id);
-    const json = await post({ action: "cancel", id });
-    setBusy(null);
-    if (json) {
-      setConfirmId(null);
-      router.refresh();
-    }
+    const result = await adminAction("/api/admin/little-emperors", { method: "POST", body: { action: "cancel", id } });
+    if (!result.ok) return result.error || "Annulation impossible.";
+    router.refresh();
+    return undefined;
   }
 
   async function attach(customer: PickableCustomer) {
@@ -283,24 +282,14 @@ export function LittleEmperorsInbox({
                   </button>
                 ) : null}
                 {!cancelled && row.is_cancellable === true ? (
-                  confirmId === row.id ? (
-                    <button
-                      type="button"
-                      disabled={busy === row.id}
-                      onClick={() => cancel(row.id)}
-                      className="rounded-md bg-[var(--admin-navy)] px-3 py-2 text-sm font-semibold text-white"
-                    >
-                      Confirmer l’annulation
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmId(row.id)}
-                      className="rounded-md border border-[#e5e3dc] px-3 py-2 text-sm"
-                    >
-                      Annuler chez Little Emperors
-                    </button>
-                  )
+                  <ConfirmAction
+                    label="Annuler chez Little Emperors"
+                    confirmLabel="Confirmer l’annulation"
+                    busyLabel="Annulation Little Emperors…"
+                    question={`La réservation ${row.hotel_name || "de cet hôtel"} est annulée chez Little Emperors. La politique d’annulation s’applique.`}
+                    disabled={Boolean(busy)}
+                    onConfirm={() => cancel(row.id)}
+                  />
                 ) : null}
               </div>
               {!cancelled && row.is_cancellable === false ? <p className="mt-2 text-sm text-muted">{LATE_CANCEL}</p> : null}
