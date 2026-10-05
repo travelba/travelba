@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
-import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
+import { parseBody, patchCustomerSchema } from "@/lib/crm/admin-schemas";
+import { dbError, jsonError, requireAdmin, requireStaff } from "@/lib/crm/auth";
 import { saveCustomerBillingCompanies } from "@/lib/crm/billing-companies";
 import { CUSTOMER_EMAIL_COPY, otherCustomerEmailBlock } from "@/lib/crm/customer-email";
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
+import { customerDeleteConfirmed, DELETE_CUSTOMER_CONFIRM_ERROR } from "@/lib/crm/delete-confirm";
 import { CustomerDeleteError, deleteCustomerById } from "@/lib/crm/delete-customer";
+import { customerFullName } from "@/lib/crm/types";
 import { createServiceClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -28,10 +31,12 @@ export async function PATCH(request: Request, ctx: Ctx) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
-  const body = await request.json().catch(() => ({}));
+  const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+  const flags = parseBody(patchCustomerSchema, body);
+  if (flags.error !== null) return jsonError(flags.error, 400);
   const { patch, error: patchError } = customerPatchFromBody(body, { allowEmail: true });
   if (patchError) return jsonError(patchError);
-  if ("on_hold" in body) patch.on_hold = Boolean(body.on_hold);
+  if (flags.data.on_hold !== undefined) patch.on_hold = flags.data.on_hold;
 
   const { data: current } = await auth.supabase
     .from("crm_customers")
@@ -96,18 +101,29 @@ export async function PATCH(request: Request, ctx: Ctx) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
-  if ("billing_companies" in body) {
-    const saved = await saveCustomerBillingCompanies(auth.supabase, id, body.billing_companies);
+  if (flags.data.billing_companies) {
+    const saved = await saveCustomerBillingCompanies(auth.supabase, id, flags.data.billing_companies);
     if ("error" in saved) return jsonError(saved.error);
     return NextResponse.json({ customer: data, billing_companies: saved.companies });
   }
   return NextResponse.json({ customer: data });
 }
 
-export async function DELETE(_req: Request, ctx: Ctx) {
-  const auth = await requireStaff();
+/** Suppression définitive : administrateurs seulement, nom complet du client saisi en confirmation. */
+export async function DELETE(request: Request, ctx: Ctx) {
+  const auth = await requireAdmin();
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
+  const body = (await request.json().catch(() => null)) as { confirm?: unknown } | null;
+  const { data: customer } = await auth.supabase
+    .from("crm_customers")
+    .select("first_name, last_name")
+    .eq("id", id)
+    .maybeSingle();
+  if (!customer) return jsonError("Client introuvable", 404);
+  if (!customerDeleteConfirmed(body?.confirm, customerFullName(customer))) {
+    return jsonError(DELETE_CUSTOMER_CONFIRM_ERROR, 400);
+  }
   try {
     const result = await deleteCustomerById(id);
     return NextResponse.json(result);

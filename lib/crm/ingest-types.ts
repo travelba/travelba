@@ -21,7 +21,7 @@ const roomSchemaLoose = z
   })
   .optional();
 
-const detailsSchemaLoose = z
+const detailsObjectLoose = z
   .object({
     airline: looseString,
     airline_iata: looseString,
@@ -84,9 +84,27 @@ const detailsSchemaLoose = z
         })
       )
       .optional(),
-  })
-  .optional()
-  .default({});
+  });
+
+export const detailsSchemaLoose = detailsObjectLoose.optional().default({});
+
+/** Clés inconnues tolérées en surface (ex. `client_hidden`) ; les champs connus doivent avoir le bon type. */
+const detailsPassthrough = detailsObjectLoose.loose();
+
+/**
+ * `details` d’une carte saisie par l’agence : objet dont les champs connus sont bien typés.
+ * L’objet d’origine est conservé (aucune clé perdue) ; `null` / absent → `{}`.
+ */
+export function parseItemDetails(value: unknown): { details: Record<string, unknown> } | { error: string } {
+  if (value == null || value === "") return { details: {} };
+  if (typeof value !== "object" || Array.isArray(value)) return { error: "Détails de carte invalides." };
+  const result = detailsPassthrough.safeParse(value);
+  if (!result.success) {
+    const field = result.error.issues[0]?.path.map(String).filter(Boolean).join(".");
+    return { error: field ? `Détails de carte invalides (${field}).` : "Détails de carte invalides." };
+  }
+  return { details: value as Record<string, unknown> };
+}
 
 /** Validation souple (saisie agent / save). */
 export const bookingExtractSchema = z.object({

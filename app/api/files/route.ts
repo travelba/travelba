@@ -3,7 +3,7 @@ import { jsonError, requireCustomer, requireStaff } from "@/lib/crm/auth";
 import { exampleSessionEnabled } from "@/lib/crm/example-session";
 import { readExampleFile } from "@/lib/crm/example-store";
 import { safeFileName, signedCrmUrl } from "@/lib/crm/files";
-import { customerPathScope, isAgencyCardPath, isSafeCrmPath } from "@/lib/crm/files-access";
+import { customerPathScope, isAgencyCardPath, isInlineSafeFile, isSafeCrmPath } from "@/lib/crm/files-access";
 import { rasterPdfPages } from "@/lib/crm/pdf-raster";
 import { isTripShareCode } from "@/lib/crm/trip-share";
 import { sharePathAllowed } from "@/lib/crm/trip-share-load";
@@ -17,6 +17,7 @@ function isPdf(path: string, contentType: string) {
 
 async function thumbnailResponse(bytes: Uint8Array, path: string, contentType: string) {
   if (!isPdf(path, contentType)) {
+    if (!isInlineSafeFile(path, contentType)) return jsonError("Aperçu indisponible", 415);
     return new NextResponse(Buffer.from(bytes), {
       status: 200,
       headers: {
@@ -53,11 +54,13 @@ async function sendCrmFile(path: string, requestUrl: URL) {
     return thumbnailResponse(bytes, path, contentType.toLowerCase());
   }
   const filename = safeFileName(requestUrl.searchParams.get("name") || "document");
+  // Un .eml, .docx, .txt… ne s’ouvre jamais dans l’onglet, même avec inline=1 : téléchargement.
+  const disposition = download || !isInlineSafeFile(path, contentType) ? "attachment" : "inline";
   return new NextResponse(upstream.body, {
     status: 200,
     headers: {
       "Content-Type": contentType,
-      "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${filename}"`,
+      "Content-Disposition": `${disposition}; filename="${filename}"`,
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
     },

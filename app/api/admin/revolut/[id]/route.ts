@@ -18,24 +18,23 @@ export async function POST(request: Request, ctx: Ctx) {
     .eq("id", id)
     .maybeSingle();
   if (!row) return jsonError("Virement introuvable", 404);
+  const movement = row as CrmRevolutTransaction;
 
   if (body?.action === "ignore" || body?.action === "refuse") {
-    await admin
+    if (movement.status === "matched") return jsonError("Déjà rapprochée");
+    const { error } = await admin
       .from("crm_revolut_transactions")
       .update({ status: "ignored" })
       .eq("id", id);
+    if (error) return jsonError("Impossible de refuser ce mouvement.", 400);
     return NextResponse.json({ ok: true });
   }
 
   const customerId = String(body?.customer_id || "");
   if (!customerId) return jsonError("Client requis");
-  const result = await applyRevolutToCustomer(
-    admin,
-    row as CrmRevolutTransaction,
-    customerId
-  );
+  const result = await applyRevolutToCustomer(admin, movement, customerId);
   if (!result.ok) {
-    if (result.error === "already_matched") return jsonError("Déjà rapproché");
+    if (result.error === "already_matched") return jsonError("Déjà rapprochée");
     if (result.error === "not_a_credit") {
       return jsonError("Le rapprochement ne porte que sur les crédits reçus.");
     }

@@ -26,11 +26,38 @@ import { debitBillingCompanyId } from "@/lib/crm/billing-companies";
 import { emptyToNull } from "@/lib/crm/identity";
 import { stayCurrency } from "@/lib/crm/stay-currency";
 import { agencyFeeFromGross } from "@/lib/crm/money";
+import { must } from "@/lib/crm/must";
+import { visibilityOnRequest } from "@/lib/crm/visa-flow";
 
 export function parseIncludeInLedger(value: unknown, fallback: boolean) {
   if (value === true || value === "on" || value === "true") return true;
   if (value === false || value === "off" || value === "false") return false;
   return fallback;
+}
+
+/**
+ * Après un enregistrement réussi, une écriture du grand livre refusée devient un avertissement
+ * (`ledger_warning`) plutôt qu’une erreur : la route répond 200 et un second clic ne duplique rien.
+ */
+export async function ledgerWarning(saved: string, run: () => Promise<unknown>): Promise<string | null> {
+  try {
+    await run();
+    return null;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "écriture refusée";
+    console.error("[crm] grand livre:", message);
+    return `${saved}, mais le grand livre n’a pas pu être mis à jour : ${message}`;
+  }
+}
+
+export const MAX_SORT_ORDER = 10000;
+
+/** Rang d’une carte : entier de 0 à 10000, sinon null. */
+export function parseSortOrder(value: unknown): number | null {
+  const n =
+    typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : Number.NaN;
+  if (!Number.isInteger(n) || n < 0 || n > MAX_SORT_ORDER) return null;
+  return n;
 }
 
 const BOOKING_META_KEYS = [
@@ -251,12 +278,12 @@ export function bookingTotalFromItems(
 }
 
 export async function syncBookingTotalFromItems(supabase: SupabaseClient, bookingId: string) {
-  const { data: items } = await supabase
-    .from("crm_booking_items")
-    .select("amount, kind, details, start_at")
-    .eq("booking_id", bookingId);
+  const items = must(
+    await supabase.from("crm_booking_items").select("amount, kind, details, start_at").eq("booking_id", bookingId),
+    "Cartes du séjour"
+  );
   const total = bookingTotalFromItems(items || []);
-  await supabase.from("crm_bookings").update({ total_amount: total }).eq("id", bookingId);
+  must(await supabase.from("crm_bookings").update({ total_amount: total }).eq("id", bookingId), "Montant du séjour");
 }
 
 export function bookingItemDebitExternalId(bookingId: string, itemId: string) {
@@ -333,15 +360,18 @@ export async function syncBookingDebit(
   booking: CrmBooking,
   previousStatus?: BookingStatus
 ) {
-  const { data: existing } = await supabase
-    .from("crm_transactions")
-    .select("*")
-    .eq("booking_id", booking.id)
-    .eq("kind", "booking")
-    .eq("direction", "debit")
-    .is("external_id", null)
-    .neq("status", "void")
-    .maybeSingle();
+  const existing = must(
+    await supabase
+      .from("crm_transactions")
+      .select("*")
+      .eq("booking_id", booking.id)
+      .eq("kind", "booking")
+      .eq("direction", "debit")
+      .is("external_id", null)
+      .neq("status", "void")
+      .maybeSingle(),
+    "Débit séjour"
+  );
 
   const debit = existing as CrmTransaction | null;
   const amount = Number(booking.total_amount || 0);
@@ -360,28 +390,28 @@ export async function syncBookingDebit(
   }
 
   if (intent === "void" && debit) {
-    await supabase
-      .from("crm_transactions")
-      .update({ status: "void" })
-      .eq("id", debit.id);
+    must(await supabase.from("crm_transactions").update({ status: "void" }).eq("id", debit.id), "Débit séjour");
     return;
   }
 
   const companyId = debitBillingCompanyId(booking);
 
   if (intent === "insert") {
-    await supabase.from("crm_transactions").insert({
-      customer_id: booking.billing_customer_id || booking.customer_id,
-      booking_id: booking.id,
-      billing_company_id: companyId,
-      direction: "debit",
-      kind: "booking",
-      amount,
-      currency: booking.currency || "EUR",
-      label,
-      source: "manual",
-      status: "posted",
-    });
+    must(
+      await supabase.from("crm_transactions").insert({
+        customer_id: booking.billing_customer_id || booking.customer_id,
+        booking_id: booking.id,
+        billing_company_id: companyId,
+        direction: "debit",
+        kind: "booking",
+        amount,
+        currency: booking.currency || "EUR",
+        label,
+        source: "manual",
+        status: "posted",
+      }),
+      "Débit séjour"
+    );
     return;
   }
 
@@ -403,17 +433,20 @@ export async function syncBookingDebit(
     currencyChanged ||
     debit.status !== "posted"
   ) {
-    await supabase
-      .from("crm_transactions")
-      .update({
-        customer_id: payerId,
-        billing_company_id: companyId,
-        amount,
-        currency: booking.currency || "EUR",
-        label,
-        status: "posted",
-      })
-      .eq("id", debit.id);
+    must(
+      await supabase
+        .from("crm_transactions")
+        .update({
+          customer_id: payerId,
+          billing_company_id: companyId,
+          amount,
+          currency: booking.currency || "EUR",
+          label,
+          status: "posted",
+        })
+        .eq("id", debit.id),
+      "Débit séjour"
+    );
   }
 }
 
@@ -446,39 +479,45 @@ export async function syncTicketingFee(supabase: SupabaseClient, booking: CrmBoo
 
   if (!shouldPost) {
     if (debit && debit.status !== "void") {
-      await supabase.from("crm_transactions").update({ status: "void" }).eq("id", debit.id);
+      must(await supabase.from("crm_transactions").update({ status: "void" }).eq("id", debit.id), "Frais de billeterie");
     }
     return;
   }
 
   if (!debit) {
-    await supabase.from("crm_transactions").insert({
-      customer_id: payerId,
-      booking_id: booking.id,
-      billing_company_id: companyId,
-      direction: "debit",
-      kind: "adjustment",
-      amount,
-      currency: booking.currency || "EUR",
-      label,
-      source: "manual",
-      external_id: ticketingFeeExternalId(booking.id),
-      status: "posted",
-    });
+    must(
+      await supabase.from("crm_transactions").insert({
+        customer_id: payerId,
+        booking_id: booking.id,
+        billing_company_id: companyId,
+        direction: "debit",
+        kind: "adjustment",
+        amount,
+        currency: booking.currency || "EUR",
+        label,
+        source: "manual",
+        external_id: ticketingFeeExternalId(booking.id),
+        status: "posted",
+      }),
+      "Frais de billeterie"
+    );
     return;
   }
 
-  await supabase
-    .from("crm_transactions")
-    .update({
-      customer_id: payerId,
-      billing_company_id: companyId,
-      amount,
-      currency: booking.currency || "EUR",
-      label,
-      status: "posted",
-    })
-    .eq("id", debit.id);
+  must(
+    await supabase
+      .from("crm_transactions")
+      .update({
+        customer_id: payerId,
+        billing_company_id: companyId,
+        amount,
+        currency: booking.currency || "EUR",
+        label,
+        status: "posted",
+      })
+      .eq("id", debit.id),
+    "Frais de billeterie"
+  );
 }
 
 export async function syncAgencyCommission(supabase: SupabaseClient, booking: CrmBooking) {
@@ -501,42 +540,45 @@ export async function syncAgencyCommission(supabase: SupabaseClient, booking: Cr
 
   if (amount <= 0) {
     if (debit && debit.status !== "void") {
-      const { error } = await supabase.from("crm_transactions").update({ status: "void" }).eq("id", debit.id);
-      if (error) throw new Error(error.message);
+      must(await supabase.from("crm_transactions").update({ status: "void" }).eq("id", debit.id), "Frais d’agence");
     }
     return;
   }
 
   if (!debit) {
-    const { error } = await supabase.from("crm_transactions").insert({
-      customer_id: payerId,
-      booking_id: booking.id,
-      billing_company_id: companyId,
-      direction: "debit",
-      kind: "adjustment",
-      amount,
-      currency: booking.currency || "EUR",
-      label: AGENCY_FEE_LABEL,
-      source: "manual",
-      external_id: externalId,
-      status: "posted",
-    });
-    if (error) throw new Error(error.message);
+    must(
+      await supabase.from("crm_transactions").insert({
+        customer_id: payerId,
+        booking_id: booking.id,
+        billing_company_id: companyId,
+        direction: "debit",
+        kind: "adjustment",
+        amount,
+        currency: booking.currency || "EUR",
+        label: AGENCY_FEE_LABEL,
+        source: "manual",
+        external_id: externalId,
+        status: "posted",
+      }),
+      "Frais d’agence"
+    );
     return;
   }
 
-  const { error } = await supabase
-    .from("crm_transactions")
-    .update({
-      customer_id: payerId,
-      billing_company_id: companyId,
-      amount,
-      currency: booking.currency || "EUR",
-      label: AGENCY_FEE_LABEL,
-      status: "posted",
-    })
-    .eq("id", debit.id);
-  if (error) throw new Error(error.message);
+  must(
+    await supabase
+      .from("crm_transactions")
+      .update({
+        customer_id: payerId,
+        billing_company_id: companyId,
+        amount,
+        currency: booking.currency || "EUR",
+        label: AGENCY_FEE_LABEL,
+        status: "posted",
+      })
+      .eq("id", debit.id),
+    "Frais d’agence"
+  );
 }
 
 export async function syncBookingItemDebits(supabase: SupabaseClient, booking: CrmBooking) {
@@ -582,64 +624,68 @@ export async function syncBookingItemDebits(supabase: SupabaseClient, booking: C
     const companyId = debitBillingCompanyId(booking, item);
 
     if (intent === "void" && debit && debit.status !== "void") {
-      const { error } = await supabase.from("crm_transactions").update({ status: "void" }).eq("id", debit.id);
-      if (error) throw new Error(error.message);
+      must(await supabase.from("crm_transactions").update({ status: "void" }).eq("id", debit.id), "Débit carte");
       continue;
     }
     if (intent === "insert") {
-      const { error } = await supabase.from("crm_transactions").insert({
-        customer_id: payerId,
-        booking_id: booking.id,
-        billing_company_id: companyId,
-        direction: "debit",
-        kind: "booking",
-        amount,
-        currency: booking.currency || "EUR",
-        label,
-        source: "manual",
-        external_id: externalId,
-        status: "posted",
-      });
-      if (error) throw new Error(error.message);
+      must(
+        await supabase.from("crm_transactions").insert({
+          customer_id: payerId,
+          booking_id: booking.id,
+          billing_company_id: companyId,
+          direction: "debit",
+          kind: "booking",
+          amount,
+          currency: booking.currency || "EUR",
+          label,
+          source: "manual",
+          external_id: externalId,
+          status: "posted",
+        }),
+        "Débit carte"
+      );
       continue;
     }
     if (intent !== "update" || !debit) continue;
-    const { error } = await supabase
-      .from("crm_transactions")
-      .update({
-        customer_id: payerId,
-        billing_company_id: companyId,
-        amount,
-        currency: booking.currency || "EUR",
-        label,
-        status: "posted",
-      })
-      .eq("id", debit.id);
-    if (error) throw new Error(error.message);
+    must(
+      await supabase
+        .from("crm_transactions")
+        .update({
+          customer_id: payerId,
+          billing_company_id: companyId,
+          amount,
+          currency: booking.currency || "EUR",
+          label,
+          status: "posted",
+        })
+        .eq("id", debit.id),
+      "Débit carte"
+    );
   }
 
   for (const [externalId, debit] of byExternal) {
     if (billed.has(externalId)) continue;
     if (debit.status === "void") continue;
-    await supabase.from("crm_transactions").update({ status: "void" }).eq("id", debit.id);
+    must(await supabase.from("crm_transactions").update({ status: "void" }).eq("id", debit.id), "Débit carte retiré");
   }
 }
 
 /** Le montant global du séjour quitte le livre dès qu’une carte ou un frais du dossier est posté. Une dépense libre ou la commission 10 % ne le retire pas. */
 export async function dropCoveredStayRollup(supabase: SupabaseClient, bookingId: string) {
-  const { data, error } = await supabase
-    .from("crm_transactions")
-    .select("id, direction, kind, external_id, status")
-    .eq("booking_id", bookingId)
-    .eq("direction", "debit")
-    .eq("status", "posted");
-  if (error) throw new Error(error.message);
+  const data = must(
+    await supabase
+      .from("crm_transactions")
+      .select("id, direction, kind, external_id, status")
+      .eq("booking_id", bookingId)
+      .eq("direction", "debit")
+      .eq("status", "posted"),
+    "Montant global du séjour"
+  );
   const rows = (data || []) as Pick<CrmTransaction, "id" | "direction" | "kind" | "external_id" | "status">[];
   if (!rows.some((row) => coversStayRollup({ ...row, booking_id: bookingId }))) return;
   const rollupIds = rows.filter((row) => isStayRollupDebit(row)).map((row) => row.id);
   if (!rollupIds.length) return;
-  const { error: deleteError } = await supabase.from("crm_transactions").delete().in("id", rollupIds);
-  if (deleteError) throw new Error(deleteError.message);
+  must(await supabase.from("crm_transactions").delete().in("id", rollupIds), "Montant global du séjour");
 }
 
 export async function syncBookingLedger(
@@ -699,11 +745,17 @@ export function canPublishCarnet(items: { kind: string }[]) {
   return items.some((item) => countsAsCarnetCard(item.kind));
 }
 
+/**
+ * Montrer / cacher le carnet. Publier révèle les cartes (`publishRevealIds`) et leurs pièces.
+ * `prices` (défaut : suivre `visible`) : la formalité ouvre le séjour sans révéler des prix masqués.
+ */
 export async function setCarnetPublished(
   supabase: SupabaseClient,
   bookingId: string,
-  visible: boolean
+  visible: boolean,
+  options?: { prices?: boolean }
 ) {
+  const pricesVisible = visible ? options?.prices !== false : false;
   if (visible) {
     const { data: items, error: itemsLookupError } = await supabase
       .from("crm_booking_items")
@@ -718,7 +770,7 @@ export async function setCarnetPublished(
   }
   const { error: bookingError } = await supabase
     .from("crm_bookings")
-    .update({ visible_to_client: visible, prices_visible: visible })
+    .update({ visible_to_client: visible, prices_visible: pricesVisible })
     .eq("id", bookingId);
   if (bookingError) throw new Error(bookingError.message);
   if (!visible) return;
@@ -758,3 +810,27 @@ export async function setCarnetPublished(
   }
 }
 
+
+/**
+ * Formalité (ETA-IL, ESTA, Royaume-Uni) : le séjour s’ouvre par le même chemin que « Montrer au client »
+ * (garde-fou carnet, cartes et pièces révélées, grand livre), sans révéler des prix encore masqués.
+ * Lève si le dossier n’a aucune carte.
+ */
+export async function openStayForVisa(
+  supabase: SupabaseClient,
+  booking: CrmBooking,
+  options?: { prices?: boolean }
+) {
+  const opened = visibilityOnRequest({
+    visible: booking.visible_to_client,
+    prices: booking.prices_visible !== false && booking.visible_to_client,
+  });
+  const prices = options?.prices ?? opened.prices;
+  await setCarnetPublished(supabase, booking.id, opened.visible, { prices });
+  const { data } = await supabase.from("crm_bookings").select("*").eq("id", booking.id).maybeSingle();
+  const refreshed: CrmBooking = data
+    ? (data as CrmBooking)
+    : { ...booking, visible_to_client: opened.visible, prices_visible: prices };
+  await syncBookingLedger(supabase, refreshed, booking.status);
+  return { booking: refreshed, newlyPublished: !booking.visible_to_client };
+}
