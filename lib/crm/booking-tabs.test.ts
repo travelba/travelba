@@ -14,6 +14,7 @@ test("l’onglet se lit dans l’URL et retombe sur Le voyage", () => {
   assert.equal(bookingTabFromParam("a-faire"), "todo");
   assert.equal(bookingTabFromParam("todo"), "todo");
   assert.equal(bookingTabFromParam("carte"), "cartes");
+  assert.equal(bookingTabFromParam("transactions"), "transactions");
   assert.equal(bookingTabFromParam("Interface"), "interface");
   assert.equal(bookingTabFromParam("inconnu"), "voyage");
 });

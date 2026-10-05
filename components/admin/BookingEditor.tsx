@@ -6,6 +6,7 @@ import Link from "next/link";
 import {
   BOOKING_STATUSES,
   BOOKING_STATUS_LABELS,
+  customerFullName,
   isLedgerExpenseKind,
   type CrmBooking,
   type CrmBookingCard,
@@ -46,6 +47,7 @@ import { PliantCardDesk } from "@/components/admin/PliantCardDesk";
 import { principalGuest, stayCardFace } from "@/lib/crm/hotel-arrival";
 import type { PliantCardDraft, PliantSpendLine } from "@/lib/crm/pliant-cards";
 import { BookingExpensesPanel } from "@/components/admin/BookingExpensesPanel";
+import { ClientTransactionsPanel } from "@/components/account/ClientTransactionsPanel";
 import { ServiceOfferToggles } from "@/components/admin/ServiceOfferToggles";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
 import { ClientInterfacePreview } from "@/components/account/ClientInterfacePreview";
@@ -148,6 +150,7 @@ export function BookingEditor({
   littleEmperors = null,
   expenseBilling = [],
   ledger = null,
+  accountLedger = null,
   bookingCards = [],
 }: {
   booking: CrmBooking;
@@ -202,6 +205,8 @@ export function BookingEditor({
   } | null;
   expenseBilling?: { id: string; title: string; billing_company_id: string | null }[];
   ledger?: ClientLedgerView | null;
+  /** Grand livre du compte, même lecture que Transactions du client. */
+  accountLedger?: ClientLedgerView | null;
   bookingCards?: CrmBookingCard[];
 }) {
   const router = useRouter();
@@ -704,6 +709,7 @@ export function BookingEditor({
       travelerCount: travelers.length,
     }),
   });
+  const accountName = billingCustomer || customer;
   const tabs = BOOKING_TAB_IDS;
   const tabButtonId = (id: BookingTabId) => `booking-tab-${BOOKING_TAB_SLUGS[id]}`;
 
@@ -1644,6 +1650,20 @@ export function BookingEditor({
       />
       </div>
         </>
+      ) : null}
+
+      {tab === "transactions" ? (
+        <div className="max-w-[480px]">
+          <p className="mb-3 text-sm text-muted">Même lecture que l’espace du client.</p>
+          {accountLedger ? (
+            <ClientTransactionsPanel
+              view={accountLedger}
+              statementName={accountName ? customerFullName(accountName) : null}
+            />
+          ) : (
+            <p className="text-sm text-muted">Le grand livre n’est pas lisible pour le moment.</p>
+          )}
+        </div>
       ) : null}
 
       {tab === "cartes" ? (

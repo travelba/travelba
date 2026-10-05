@@ -185,12 +185,17 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
   }
 
   let ledger: ClientLedgerView | null = null;
-  if (customer) {
-    try {
-      ledger = await loadClientLedger(supabase, customer, "client");
-    } catch {
-      ledger = null;
-    }
+  let accountLedger: ClientLedgerView | null = null;
+  const accountHolder = billingCustomer || customer;
+  if (customer || accountHolder) {
+    const [clientView, staffView] = await Promise.all([
+      customer ? loadClientLedger(supabase, customer, "client").catch(() => null) : Promise.resolve(null),
+      accountHolder
+        ? loadClientLedger(supabase, accountHolder, "staff").catch(() => null)
+        : Promise.resolve(null),
+    ]);
+    ledger = clientView;
+    accountLedger = staffView;
   }
 
   const le = ((leRows || [])[0] || null) as {
@@ -262,6 +267,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           }[]}
           littleEmperors={le}
           ledger={ledger}
+          accountLedger={accountLedger}
           bookingCards={bookingCards}
         />
   );
