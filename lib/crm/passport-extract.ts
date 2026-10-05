@@ -85,7 +85,7 @@ export function cleanPersonalNumber(value: string | null | undefined) {
   if (!text) return null;
   const spaced = text.replace(/</g, " ").replace(/\s+/g, " ").trim();
   if (!spaced) return null;
-  // Passeport israélien : les « < » de la MRZ sont les tirets du n° d’identité (3-5207718-6).
+  // Passeport israélien : les « < » de la MRZ sont les tirets du n° d’identité (3-1234567-8).
   if (/^\d(?: \d+)+$/.test(spaced)) return spaced.replace(/ /g, "-");
   const stripped = spaced.replace(/ /g, "");
   return stripped || null;

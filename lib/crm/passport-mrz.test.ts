@@ -38,7 +38,7 @@ test("Latin given-name order stays, a reversed or Hebrew line does not replace i
 test("a check-digit collision keeps the number read on the left of the MRZ", () => {
   const collided = td3Line("17720094", "ISR", "080522", "M", "340814", "3<5207719<4");
   const rows = identitiesFromPassportOcr(
-    ["PPISRDEDDOOUR<<HELIE<GASPAR<AUGUSTIN<<<<<<<<", collided, "P51720094<4"].join("\n"),
+    ["PPISRDELACOUR<<HELIE<GASPAR<AUGUSTIN<<<<<<<<", collided, "P51720094<4"].join("\n"),
     "Given name Hélie Gaspar Augustin"
   );
   assert.equal(rows.length, 1);
@@ -63,13 +63,13 @@ test("a glare digit does not replace a check-digit-valid MRZ number", () => {
 });
 
 test("a split OCR day is still the issue date", () => {
-  const identity = { ...emptyIdentity(), birth_date: "2012-03-05", expires_on: "2031-06-10" };
-  assert.equal(readIssueDate("1 1/06/2026\n10/06/2031", identity), "2026-06-11");
-  assert.equal(readIssueDate("1 | 1/06/2026\n10/06/2036", { ...identity, expires_on: "2036-06-10" }), "2026-06-11");
-  assert.equal(readIssueDate("Holder 1 { 1/06/2026\n10/06/2036", { ...identity, expires_on: "2036-06-10" }), "2026-06-11");
-  assert.equal(readIssueDate("11 1068/2026\n10/06/2031", identity), "2026-06-11");
-  const french = { ...emptyIdentity(), birth_date: "2008-05-22", expires_on: "2035-10-14" };
-  assert.equal(readIssueDate("15 10.2025\n14 10 2035", french), "2025-10-15");
+  const identity = { ...emptyIdentity(), birth_date: "2012-03-05", expires_on: "2030-03-17" };
+  assert.equal(readIssueDate("1 8/03/2025\n17/03/2030", identity), "2025-03-18");
+  assert.equal(readIssueDate("1 | 8/03/2025\n17/03/2035", { ...identity, expires_on: "2035-03-17" }), "2025-03-18");
+  assert.equal(readIssueDate("Holder 1 { 8/03/2025\n17/03/2035", { ...identity, expires_on: "2035-03-17" }), "2025-03-18");
+  assert.equal(readIssueDate("18 1038/2025\n17/03/2030", identity), "2025-03-18");
+  const french = { ...emptyIdentity(), birth_date: "2008-05-22", expires_on: "2034-11-26" };
+  assert.equal(readIssueDate("27 11.2024\n26 11 2034", french), "2024-11-27");
 });
 
 test("the postal code next to the street wins over a glare digit", () => {
@@ -100,5 +100,5 @@ test("French MRZ fragments keep printed given-name order and accents", () => {
   assert.equal(rows[0].number, "24KD71836");
   assert.equal(rows[0].nationality, "FR");
   assert.equal(rows[0].birth_date, "2008-05-22");
-  assert.equal(rows[0].expires_on, "2035-10-14");
+  assert.equal(rows[0].expires_on, "2034-11-26");
 });
