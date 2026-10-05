@@ -6,6 +6,7 @@ import {
   VISA_OFFICIAL,
   type EurFx,
 } from "./visa-fees";
+import type { Db } from "../supabase/db";
 
 /** Frais publiés sur israel-entry.piba.gov.il : 25 ILS par demande. */
 export const ETA_IL_FEE_ILS = VISA_OFFICIAL.IL.amount;
@@ -44,7 +45,7 @@ export function pliantCardNomination(input: { firstName: string; lastName: strin
 }
 
 export async function customerPliantCardCount(
-  supabase: { from: (table: string) => any },
+  supabase: Db,
   customerId: string,
 ) {
   const { data: bookings } = await supabase.from("crm_bookings").select("id").eq("customer_id", customerId);

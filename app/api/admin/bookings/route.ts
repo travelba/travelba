@@ -6,6 +6,7 @@ import { ledgerWarning, nextBookingReference, parseIncludeInLedger, syncBookingL
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { assignPayer, defaultPayer, resolveFeesFollowStay, type PayerCompany } from "@/lib/crm/payer";
 import type { CrmBooking, CrmCustomer } from "@/lib/crm/types";
+import { createServiceClient } from "@/lib/supabase/admin";
 
 export async function GET() {
   const auth = await requireStaff();
@@ -55,7 +56,8 @@ export async function POST(request: Request) {
   if ("error" in payer) return jsonError(payer.error);
   let reference: string;
   try {
-    reference = await nextBookingReference(auth.supabase);
+    // La RPC n’est plus exécutable par le rôle authenticated (B-14).
+    reference = await nextBookingReference(createServiceClient());
   } catch (err) {
     console.error("[bookings] reference:", err);
     return jsonError("Impossible de générer la référence du dossier. Réessayez.", 500);

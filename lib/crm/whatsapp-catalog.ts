@@ -33,22 +33,11 @@ const REFERENCE = "TB-2026-0028";
 const OTHER_REFERENCE = "TB-2026-0042";
 const SUFFIX = "c/23456789";
 const FIRST_NAME = "Camille";
-const COVER = `${siteConfig.url}/api/covers/sejour/${REFERENCE}`;
+/** Code de partage fictif de l’exemple : l’aperçu ne charge pas cette adresse. */
+const SAMPLE_SHARE = "23456789";
+const COVER = `${siteConfig.url}/api/covers/sejour/${REFERENCE}?partage=${SAMPLE_SHARE}`;
 
 /** Modèles rédigés, sans chemin d’envoi. */
-const UNWIRED = new Set<ConciergeTemplate>([
-  "sejour_sans_lieu",
-  "sejour_sans_lieu_texte",
-  "encours",
-  "chauffeur",
-  "rappel",
-  "connexion_carte",
-  "encours_photo",
-  "chauffeur_photo",
-  "rappel_photo",
-  "connexion_carte_photo",
-]);
-
 export type WhatsappBubble = {
   body: string;
   button: string | null;
@@ -118,11 +107,16 @@ function altFor(image: string | null) {
   return null;
 }
 
-/** L’aperçu charge l’image du déploiement courant. Twilio, lui, reçoit l’URL absolue. */
+/**
+ * L’aperçu charge l’image du déploiement courant. Twilio, lui, reçoit l’URL absolue.
+ * La couverture d’un dossier exige son code de partage : l’exemple montre l’illustration hôtel.
+ */
 function displayImage(image: string | null) {
   if (!image) return null;
   const kind = whatsappTypeImageKind(image);
-  return kind ? `/whatsapp/${kind}.jpg` : image;
+  if (kind) return `/whatsapp/${kind}.jpg`;
+  if (image.includes("/api/covers/sejour/")) return "/whatsapp/hotel.jpg";
+  return image;
 }
 
 function bubbleFrom(template: ConciergeTemplate, variables: Record<string, string> | null): WhatsappBubble {
@@ -231,6 +225,7 @@ function sampleStay(reference: string, destination: string): ConciergeStay {
     currency: "EUR",
     notesClient: null,
     cover: { kind: "catalog", photoId: "photo-1674043613875-eabfa5a45425" },
+    shareCode: SAMPLE_SHARE,
     items: [
       {
         kind: "flight",
@@ -717,13 +712,3 @@ export function whatsappCatalog() {
   return cached;
 }
 
-export function whatsappCatalogTemplates() {
-  return {
-    wired: new Set(
-      conciergeContentDrafts()
-        .map((draft) => draft.template)
-        .filter((template) => !UNWIRED.has(template))
-    ),
-    unwired: UNWIRED,
-  };
-}

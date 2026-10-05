@@ -91,8 +91,6 @@ export const CYRIL_DIETS = [
   { id: "vegetarien", label: "Végétarien", image: "/anniversaire/regime-vegetarien.jpg" },
 ] as const;
 
-export type CyrilDiet = (typeof CYRIL_DIETS)[number]["id"];
-
 export function cyrilDietLabel(value: string | null | undefined) {
   return CYRIL_DIETS.find((diet) => diet.id === value)?.label || null;
 }

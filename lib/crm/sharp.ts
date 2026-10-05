@@ -16,10 +16,6 @@ async function loadSharp(): Promise<SharpFn> {
   }
 }
 
-export async function getSharp(): Promise<SharpFn> {
-  return loadSharp();
-}
-
 export async function trySharp(): Promise<SharpFn | null> {
   try {
     return await loadSharp();

@@ -494,7 +494,6 @@ function pairLines(names: string[], numbers: string[], visualText: string, corpu
       const enriched = enrichPassportVisual(identity, corpus);
       const score = pairScore(enriched, corpus) + (enriched.place_of_birth ? 1 : 0);
       const prev = found.get(identity.number);
-      const givenCount = (value: string | null) => (value || "").split(/\s+/).filter(Boolean).length;
       const fold = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
       const nearer = (current: string | null, incoming: string | null) => {
         const left = (current || "").split(/\s+/).filter(Boolean);

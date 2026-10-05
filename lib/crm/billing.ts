@@ -1,16 +1,5 @@
 import { emptyToNull } from "./identity";
 
-export const CUSTOMER_BILLING_KEYS = [
-  "company_name",
-  "siret",
-  "vat_number",
-  "billing_email",
-  "billing_address_line",
-  "billing_postal_code",
-  "billing_city",
-  "billing_country",
-] as const;
-
 export function digitsOnly(value: string) {
   return value.replace(/\D/g, "");
 }

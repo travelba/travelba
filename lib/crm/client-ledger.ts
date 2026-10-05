@@ -197,12 +197,6 @@ export async function loadClientLedger(
     currency = balance?.currency || "EUR";
   }
 
-  const shown = visibleLedgerRows(
-    filterClientLedgerRows(rows, {
-      companyRole: customer.company_role,
-      travelerBookingIds: bookingIds,
-    })
-  );
   const { data: companyRows } = await supabase
     .from("crm_billing_companies")
     .select("id, company_name")
