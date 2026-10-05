@@ -35,7 +35,7 @@ function memory(card: { pliant_card_id?: string | null; ceiling_cents?: number }
       return api;
     },
   };
-  return db;
+  return db as unknown as VisaCardDb & { saved: Record<string, unknown> | null };
 }
 
 const input = {

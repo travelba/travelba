@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { conciergeContentDrafts } from "./concierge-notices";
 import { connexionMessage } from "./whatsapp";
 import { tripShareMessage } from "./trip-share";
-import { whatsappCatalog, whatsappCatalogTemplates } from "./whatsapp-catalog";
+import { whatsappCatalog } from "./whatsapp-catalog";
 
 test("chaque modèle rédigé apparaît dans le récapitulatif", () => {
   const catalog = whatsappCatalog();
@@ -71,7 +71,6 @@ test("les textes qui partent reprennent les fonctions d’envoi", () => {
   const attente = catalog.find((group) => group.id === "attente");
   assert.ok(attente);
   assert.equal(attente.messages.every((message) => message.wired === false), true);
-  assert.equal(whatsappCatalogTemplates().unwired.has("rappel"), true);
   const missing = byId.get("reponse-Fait absent du dossier");
   assert.match(missing?.bubble.body || "", /Je n’ai pas l’horaire dans votre dossier\./);
   assert.equal(

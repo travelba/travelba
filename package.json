@@ -2,12 +2,18 @@
   "name": "travelba",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "node scripts/stage-chromium.mjs && next build",
     "postinstall": "node scripts/stage-chromium.mjs",
     "start": "next start",
-    "test": "npx tsx --test lib/crm/*.test.ts",
+    "typecheck": "next typegen && tsc --noEmit",
+    "lint": "eslint . --max-warnings=0",
+    "test": "tsx --test lib/crm/*.test.ts",
+    "check": "npm run typecheck && npm run lint && npm run test && node scripts/check-migrations.mjs",
     "seed:demo": "node scripts/seed-demo.mjs"
   },
   "dependencies": {
@@ -42,12 +48,13 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }
