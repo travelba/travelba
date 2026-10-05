@@ -14,7 +14,7 @@ Site vitrine bilingue (FR/EN) + CRM agence (back-office `/admin`, espace client 
 Agents : `.cursor/skills/travelba-voyage-crm/SKILL.md` (index) → `travelba-bootstrap` en local, `travelba-go-live` pour `https://travelba.fr`.
 
 ```bash
-npm install --include=optional
+npm ci --include=optional   # versions du lockfile ; `npm install <paquet>` pour en ajouter une, lockfile commité
 # Copier .env.example → .env.local (jamais commit)
 # Appliquer supabase/migrations/ dans l’ordre — sauf le seed démo en production
 npm run dev

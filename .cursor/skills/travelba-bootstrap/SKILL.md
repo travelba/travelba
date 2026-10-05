@@ -31,12 +31,12 @@ avant toute API Next.js nouvelle (v16.2 casse le training data).
 Install (sharp optionnel Linux) :
 
 ```bash
-npm install --include=optional
+npm ci --include=optional    # versions exactes de package-lock.json
 cp .env.example .env.local   # remplir, jamais commit
 npm run dev                  # http://localhost:3000
 ```
 
-`vercel.json` impose `installCommand: npm install --include=optional`.
+`vercel.json` impose `installCommand: npm ci --include=optional`, comme la CI : un `package.json` modifié sans son `package-lock.json` casse le build. Ajouter une dépendance avec `npm install <paquet>` et commiter les deux fichiers ensemble.
 
 ## Arborescence à respecter
 
