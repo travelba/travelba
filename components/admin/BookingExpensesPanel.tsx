@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { LedgerWarningNotice } from "@/components/crm/LedgerWarningNotice";
 import { Field, MoneyInput, fieldControlClass } from "@/components/crm/fields";
+import { readLedgerWarning } from "@/lib/crm/ledger-warning";
 import { agencyFeeFromGross, formatMoney } from "@/lib/crm/money";
 import {
   AGENCY_FEE_LABEL,
@@ -35,14 +37,19 @@ export function BookingExpensesPanel({
   const router = useRouter();
   const expenses = items.filter((item) => isLedgerExpenseKind(item.kind));
   const [commissionOn, setCommissionOn] = useState(agencyCommission);
-  useEffect(() => {
+  // Le serveur a changé la commission (router.refresh) : l’interrupteur suit, sans effet.
+  const [syncedCommission, setSyncedCommission] = useState(agencyCommission);
+  if (syncedCommission !== agencyCommission) {
+    setSyncedCommission(agencyCommission);
     setCommissionOn(agencyCommission);
-  }, [agencyCommission]);
+  }
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Dépense enregistrée mais grand livre refusé : visible jusqu’au prochain enregistrement réussi.
+  const [ledgerNote, setLedgerNote] = useState<string | null>(null);
 
   function beginNew() {
     setEditingId("new");
@@ -99,6 +106,7 @@ export function BookingExpensesPanel({
       setError(json.error || "Enregistrement impossible");
       return;
     }
+    setLedgerNote(readLedgerWarning(json));
     setEditingId(null);
     setTitle("");
     setAmount(null);
@@ -112,11 +120,13 @@ export function BookingExpensesPanel({
       `/api/admin/bookings/${bookingId}/items?itemId=${encodeURIComponent(id)}`,
       { method: "DELETE" }
     );
+    const json = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
-      setError("Suppression impossible.");
+      setError(json.error || "Suppression impossible.");
       return;
     }
+    setLedgerNote(readLedgerWarning(json));
     if (editingId === id) setEditingId(null);
     router.refresh();
   }
@@ -274,6 +284,7 @@ export function BookingExpensesPanel({
       )}
       {editingId === "new" ? form : null}
       {error ? <p className="mt-2 text-sm text-accent">{error}</p> : null}
+      <LedgerWarningNotice message={ledgerNote} onDismiss={() => setLedgerNote(null)} className="mt-2" />
     </section>
   );
 }
