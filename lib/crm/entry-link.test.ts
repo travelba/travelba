@@ -24,6 +24,7 @@ import {
   shouldServePreview,
   stayPreviewCopy,
   storedEntryEmail,
+  isEntryChannel,
 } from "./entry-link";
 
 test("le code tient en huit signes", () => {
@@ -304,4 +305,12 @@ test("une colonne absente se reconnaît au code ou au message", () => {
   );
   assert.equal(isMissingColumnError({ code: "23505", message: "duplicate key" }, "expires_at"), false);
   assert.equal(isMissingColumnError(null, "expires_at"), false);
+});
+
+test("desk is an entry channel, other strings are not", () => {
+  assert.equal(isEntryChannel("desk"), true);
+  assert.equal(isEntryChannel("email"), true);
+  assert.equal(isEntryChannel("whatsapp"), true);
+  assert.equal(isEntryChannel("sms"), false);
+  assert.equal(isEntryChannel(null), false);
 });

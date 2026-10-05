@@ -8,6 +8,8 @@ import { publicSupabaseEnv } from "@/lib/supabase/env";
 import { ensureCustomerForUser, ensureStaff } from "@/lib/crm/auth";
 import { recordCustomerLogin } from "@/lib/crm/customer-login";
 import { PASSWORD_SETUP_COOKIE, mustSetPassword } from "@/lib/crm/session";
+import { deskOpenDecision, deskSetCookie } from "@/lib/crm/desk-mode";
+import { isStaffAccount } from "@/lib/crm/desk-open";
 import { stayHasPublishedCover, stayPlaceName } from "./concierge-notices";
 import {
   entryDestination,
@@ -36,6 +38,7 @@ type LinkRow = {
   revoked_at?: string | null;
   open_count?: number | null;
   channel?: string | null;
+  created_by_staff_id?: string | null;
 };
 
 /**
@@ -90,6 +93,7 @@ export async function openEntry(origin: string, code: string) {
     : { data: null };
   const link = data as LinkRow | null;
   if (!link?.token_hash) return entryPreviewResponse(origin, safe, false);
+  if (link.channel === "desk") return openDeskEntry(origin, safe, link);
 
   const now = new Date();
   const expiresAt = entryLinkExpiresAt(link);
@@ -153,6 +157,79 @@ export async function openEntry(origin: string, code: string) {
   }
   response.headers.set("Cache-Control", "private, no-store");
   return response;
+}
+
+/**
+ * Lien desk (l’agence ouvre l’espace d’un client) : 10 minutes, une ouverture, jamais régénéré.
+ * Une autre session ouverte ici (souvent l’agent) n’est jamais écrasée. Un compte de l’agence
+ * n’est jamais ouvert. L’ouverture est journalisée avec l’agent qui a créé le lien.
+ */
+async function openDeskEntry(origin: string, code: string, link: LinkRow) {
+  const now = new Date();
+  const response = NextResponse.redirect(new URL("/mon-compte", origin));
+  response.headers.set("Cache-Control", "private, no-store");
+  const supabase = await cookieClient(response);
+  const existing = await currentUser(supabase);
+  const decision = deskOpenDecision({
+    now,
+    expiresAt: entryLinkExpiresAt(link),
+    revokedAt: link.revoked_at,
+    openCount: link.open_count ?? 0,
+    sessionEmail: existing?.email ?? null,
+    linkEmail: link.email,
+  });
+  if (decision === "refuse") return entryPreviewResponse(origin, code, false);
+  if (decision === "other-session") return deskBusyResponse();
+  if (decision === "same-session") return response;
+
+  const user = await verifyOn(supabase, link.token_hash || "", "magiclink");
+  if (!user) return entryPreviewResponse(origin, code, false);
+  await markEntryOpened(code, link, now);
+
+  const admin = createServiceClient();
+  if (await isStaffAccount(admin, user.id)) {
+    // Ne doit pas arriver (refusé à la création) : on referme la session tout juste posée.
+    await supabase.auth.signOut({ scope: "local" });
+    const refusal = await entryPreviewResponse(origin, code, false);
+    for (const cookie of response.cookies.getAll()) refusal.cookies.set(cookie);
+    return refusal;
+  }
+
+  await ensureCustomerForUser(user);
+  await recordCustomerLogin(user.id, "desk", { staffId: link.created_by_staff_id ?? null });
+  const desk = deskSetCookie(user.id);
+  if (desk) response.cookies.set(desk.name, desk.value, desk.options);
+  response.cookies.set(PASSWORD_SETUP_COOKIE, "", {
+    path: "/",
+    sameSite: "lax",
+    httpOnly: true,
+    maxAge: 0,
+  });
+  return response;
+}
+
+/** Une session est déjà ouverte dans ce navigateur : le lien desk reste intact pour une fenêtre privée. */
+function deskBusyResponse() {
+  const html = `<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Le Concierge</title>
+</head>
+<body style="margin:0;font-family:system-ui,-apple-system,sans-serif;background:#faf9f6;color:#0b192c">
+<main style="max-width:420px;margin:12vh auto;padding:0 20px">
+<h1 style="font-size:20px;margin:0 0 12px">Une session est déjà ouverte ici</h1>
+<p style="font-size:15px;line-height:1.5;margin:0 0 12px">Ce navigateur est connecté à un autre compte. Pour ne pas le fermer, ce lien ne s’ouvre pas ici.</p>
+<p style="font-size:15px;line-height:1.5;margin:0">Ouvrez-le dans une fenêtre privée ou sur le téléphone du client. Il reste valable 10 minutes, pour une seule ouverture.</p>
+</main>
+</body>
+</html>`;
+  return new NextResponse(html, {
+    status: 409,
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "private, no-store" },
+  });
 }
 
 /** Client Supabase sur les cookies de la requête ; les cookies posés partent avec la réponse. */

@@ -75,36 +75,12 @@ function LoginForm() {
     event.preventDefault();
     setLoading(true);
     setError(null);
-    const trimmedEmail = email.trim();
+    // Mot de passe du client uniquement : l’agence ouvre un espace depuis la fiche (lien desk).
     try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: trimmedEmail, password }),
-      });
-      const json = (await res.json().catch(() => ({}))) as {
-        fallback?: boolean;
-        ok?: boolean;
-        home?: boolean;
-      };
-      if (json.fallback) {
-        await completePasswordLogin(trimmedEmail);
-        return;
-      }
-      if (!res.ok || !json.ok) {
-        setLoading(false);
-        setError(LOGIN_FAILURE_MESSAGE);
-        return;
-      }
-      if (json.home) {
-        setLoading(false);
-        router.push("/mon-compte");
-        router.refresh();
-        return;
-      }
-      await goAfterClientSession();
+      await completePasswordLogin(email.trim());
     } catch {
-      await completePasswordLogin(trimmedEmail);
+      setLoading(false);
+      setError(LOGIN_FAILURE_MESSAGE);
     }
   }
 
