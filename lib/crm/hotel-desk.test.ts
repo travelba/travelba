@@ -828,13 +828,18 @@ test("le fil hôtel coche le destinataire prévu et laisse décocher les autres"
       })
     );
     assert.match(html, /Destinataires/);
-    assert.match(html, /Directrice · Claire Martin · claire@bristol\.test/);
-    assert.match(html, /Concierge · concierge@bristol\.test/);
+    assert.match(html, /Directrice/);
+    assert.match(html, /Claire Martin/);
+    assert.match(html, /claire@bristol\.test/);
+    assert.match(html, /Concierge/);
+    assert.match(html, /concierge@bristol\.test/);
     assert.match(html, /reservations@bristol\.test/);
+    assert.match(html, /border-l-\[#C5A880\]/);
     assert.match(html, /Le message part seulement vers les adresses cochées/);
     const boxes = html.match(/<input[^>]*type="checkbox"[^>]*>/g) || [];
     assert.equal(boxes.length, 3);
     assert.equal(boxes.filter((box) => box.includes("checked")).length, 1);
+    assert.equal((html.match(/border-l-\[#C5A880\]/g) || []).length, 1);
     assert.doesNotMatch(html, /RecipientRoster/);
   } finally {
     Module._load = load;
