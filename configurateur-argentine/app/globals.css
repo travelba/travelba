@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+@theme {
+  --color-marine: #0b192c;
+  --color-marine-soft: #12263c;
+  --color-lagoon: #1b3a56;
+  --color-champagne: #c5a880;
+  --color-champagne-bright: #e7d5b4;
+  --color-ivory: #f6f1e8;
+  --color-sand: #d9cbb8;
+  --color-ink: #14120f;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 480px at 10% -10%, rgba(197, 168, 128, 0.18), transparent 55%),
+    radial-gradient(900px 420px at 100% 0%, rgba(27, 58, 86, 0.65), transparent 50%),
+    var(--color-marine);
+  color: var(--color-ivory);
+}
+
+.font-display {
+  font-family: var(--font-serif), "Times New Roman", serif;
+}
+
+.select {
+  width: 100%;
+  appearance: none;
+  border-radius: 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--color-champagne) 42%, transparent);
+  background-color: rgba(11, 25, 44, 0.72);
+  color: var(--color-ivory);
+  padding: 0.72rem 2.3rem 0.72rem 0.85rem;
+  font: inherit;
+  font-size: 0.92rem;
+  line-height: 1.35;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--color-champagne) 50%),
+    linear-gradient(135deg, var(--color-champagne) 50%, transparent 50%);
+  background-position:
+    calc(100% - 1.05rem) 1.15rem,
+    calc(100% - 0.72rem) 1.15rem;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+
+.select:focus-visible,
+.preset:focus-visible,
+.link-quiet:focus-visible {
+  outline: 2px solid var(--color-champagne);
+  outline-offset: 2px;
+}
+
+.preset {
+  border: 1px solid color-mix(in srgb, var(--color-champagne) 45%, transparent);
+  color: var(--color-champagne-bright);
+  background: transparent;
+  border-radius: 999px;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+}
+
+.preset[aria-pressed="true"] {
+  background: var(--color-champagne);
+  color: var(--color-ink);
+  border-color: var(--color-champagne);
+}
+
+.day-card {
+  border: 1px solid color-mix(in srgb, var(--color-champagne) 22%, transparent);
+  background: color-mix(in srgb, var(--color-marine-soft) 88%, transparent);
+  border-radius: 1.15rem;
+  padding: 0.95rem;
+}
+
+.day-card[data-active="true"] {
+  border-color: color-mix(in srgb, var(--color-champagne) 70%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-champagne) 35%, transparent);
+}
