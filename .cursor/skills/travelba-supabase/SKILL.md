@@ -40,6 +40,9 @@ Avant d’écrire du SQL : lister les tables (`crm_*`), lire la **dernière** mi
 | `20260928150000_booking_reference_service_role.sql` | `crm_next_booking_reference` security definer (cron Gmail / service_role) |
 | `20260930161000_pliant_token_claim.sql` | `crm_claim_integration_refresh` : un seul jeton Auth0 Pliant à la fois, service_role |
 | `20261004153000_crm_booking_cards.sql` | `crm_booking_cards` : plusieurs cartes Pliant libres par dossier |
+| `20261004170000_entry_links_expiry.sql` | liens courts : `expires_at`, `used_at`, `revoked_at`, `open_count`, `channel` ; méthode `desk` ; grant `crm_card_views` |
+| `20261004171000_customer_column_grants.sql` | `crm_customers` : grants `update` par colonne pour `authenticated` ; RPC référence service_role seulement — **déployer le code avant** |
+| `20261004172000_rate_limits.sql` | `crm_rate_limits` + `crm_rate_limit_hit` (fenêtre fixe), service_role |
 | `20261004180000_indexes.sql` | index FK et colonnes filtrées (`customer_id`, `booking_id`, `(kind, start_at)`, `status`, téléphones) — à appliquer en prod après fusion |
 
 Toute évolution = **nouveau fichier** `supabase/migrations/YYYYMMDDHHMMSS_slug.sql` (idempotent : `if not exists`, `drop policy if exists`). Appliquer via MCP `apply_migration` ou SQL Editor. Ne pas éditer une migration déjà poussée en prod.
@@ -79,6 +82,7 @@ Visibilité carnet : `crm_bookings.visible_to_client` et `crm_booking_items.visi
 - Vue encours : déjà `security_invoker = true`. Toute nouvelle vue : pareil, ou hors `public`.
 - Fonctions `security definer` : `search_path = public` (ou `crm_private`), grant ciblé, pas `public` execute large.
 - **Jamais** `select` sur `crm_customers` dans une policy de `crm_customers` (récursion → liste clients vide). Helper `crm_private.billing_parent_id()`.
+- `crm_customers` : `update` accordé **colonne par colonne** au rôle `authenticated` (`20261004171000_customer_column_grants.sql`). Toute future `add column` sur `crm_customers` qu’un client ou le staff doit modifier via RLS exige un `grant update (col) on public.crm_customers to authenticated;` explicite dans la même migration, sinon l’écriture échoue (`permission denied`). Les colonnes sensibles (`email`, `iban`, `company_role`, `billing_parent_id`, `on_hold`, `is_vip`, `whatsapp_opt_*`, `auth_user_id`, `stripe_customer_id`) ne s’écrivent qu’avec le service role après `requireStaff` / `requireCustomer`.
 
 SQL : paramètres liés uniquement. Pas de concat d’email/id dans une string SQL.
 

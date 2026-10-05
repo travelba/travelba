@@ -3,7 +3,8 @@ import { toE164 } from "./phone";
 import { uploadCrmFile } from "./files";
 import { redactIngestText } from "./ingest-redact";
 import { formParams, verifyTwilioSignature } from "./twilio-signature";
-import { liveConciergeImage } from "./concierge-notices";
+import { liveConciergeImage, stayHasPublishedCover } from "./concierge-notices";
+import { ensureTripShareCode } from "./trip-share-code";
 import { withConciergeSignature } from "./whatsapp";
 import {
   accessLinkReply,
@@ -395,11 +396,20 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
       const { data: bookings, error: bookingError } = await admin
         .from("crm_bookings")
         .select(
-          "id, reference, title, destination, start_date, end_date, currency, total_amount, notes_client, visible_to_client, prices_visible, cover_image_path"
+          "id, reference, title, destination, start_date, end_date, currency, total_amount, notes_client, visible_to_client, prices_visible, cover_image_path, share_code"
         )
         .eq("customer_id", customerId)
         .is("archived_at", null);
       if (bookingError) throw bookingError;
+      // La photo du séjour exige le code de partage : on le crée pour un séjour publié qui en a une.
+      for (const booking of bookings || []) {
+        if (!booking.visible_to_client || booking.share_code || !stayHasPublishedCover(booking)) continue;
+        try {
+          booking.share_code = await ensureTripShareCode(admin, booking.id);
+        } catch {
+          booking.share_code = null;
+        }
+      }
       const ids = (bookings || []).map((booking) => booking.id);
       const [items, docs, visas, txs, balances, papers] = await Promise.all([
         ids.length
