@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { secretEquals } from "./secret-equals";
 
 /** API de test uniquement. La clé de test ne part pas vers api.littleemperors.com ni vers Vercel Production. */
 export const LITTLE_EMPERORS_STAGING_ORIGIN = "https://api-staging.littleemperors.com";
@@ -97,10 +97,8 @@ export function littleEmperorsOrigin() {
 }
 
 export function webhookKeyMatches(given: string, expected: string) {
-  const left = Buffer.from(given);
-  const right = Buffer.from(expected);
-  if (left.length === 0 || left.length !== right.length) return false;
-  return timingSafeEqual(left, right);
+  if (!given || !expected) return false;
+  return secretEquals(given, expected);
 }
 
 export function littleEmperorsWebhookAuthorized(headers: Headers) {

@@ -72,6 +72,7 @@ async function reservationSuffix(admin: Admin, email: string, reference: string)
     otpType: "magiclink",
     nextPath: `/mon-compte/reservations/${reference}`,
     email: cleanEmail,
+    channel: "whatsapp",
   });
   const code = entryCodeFromLink(link);
   if (!code) return null;

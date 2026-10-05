@@ -1,4 +1,5 @@
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
+import { secretEquals } from "./secret-equals";
 
 /** Cookie court : saute le mot de passe à définir et le mur téléphone, seulement pour cette ouverture. */
 export const DESK_COOKIE = "tb_desk";
@@ -7,7 +8,6 @@ export const DESK_TTL_SECONDS = 4 * 60 * 60;
 const WINDOW_MS = 15 * 60 * 1000;
 const IP_LIMIT = 40;
 const EMAIL_LIMIT = 12;
-const MAX_SECRET = 512;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const USER_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -42,17 +42,8 @@ export function adminClientCode() {
   return trimmed.length ? trimmed : null;
 }
 
-/** Comparaison indépendante de la longueur. Ne journalise rien. */
-export function secretEquals(given: string, expected: string) {
-  const left = digestSecret(given);
-  const right = digestSecret(expected);
-  return timingSafeEqual(left, right);
-}
-
-function digestSecret(value: string) {
-  const bounded = value.length > MAX_SECRET ? `len:${value.length}` : value;
-  return createHash("sha256").update(bounded).digest();
-}
+/** Comparaison indépendante de la longueur. Ne journalise rien. Implémentation : secret-equals.ts. */
+export { secretEquals };
 
 export function normalizeLoginEmail(value: string) {
   const email = value.trim().toLowerCase();

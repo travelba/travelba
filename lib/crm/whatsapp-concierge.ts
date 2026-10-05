@@ -96,6 +96,8 @@ export type ConciergeStay = {
   currency: string;
   notesClient: string | null;
   cover: ConciergeCover | null;
+  /** Code /v/CODE : la photo du séjour ne s’envoie qu’avec lui. */
+  shareCode: string | null;
   items: ConciergeItem[];
   documents: string[];
   formalities: ConciergeFormality[];
@@ -156,6 +158,7 @@ type RawBooking = Pick<
   prices_visible?: boolean | null;
   notes_client?: string | null;
   notes_internal?: string | null;
+  share_code?: string | null;
 };
 
 type RawItem = Pick<
@@ -371,6 +374,7 @@ export function buildConciergeDossier(input: {
       currency: booking.currency || "EUR",
       notesClient: booking.notes_client?.trim() || null,
       cover: publishedCover(booking),
+      shareCode: typeof booking.share_code === "string" && booking.share_code ? booking.share_code : null,
       items,
       documents: docsByBooking.get(booking.id) || [],
       formalities: visasByBooking.get(booking.id) || [],
@@ -801,9 +805,9 @@ function replyImage(message: string, topic: string, stay: ConciergeStay | null, 
     if (/hotel|chambre/.test(text)) return typeImage("hotel");
     if (/\bvol\b|avion|billet|flight/.test(text)) return typeImage("billet");
     if (/transfert/.test(text)) return typeImage("transfert");
-    if (stay?.cover) return stayCoverUrl(stay.reference, true);
+    if (stay?.cover) return stayCoverUrl(stay.reference, true, { shareCode: stay.shareCode });
   }
-  if (topic === "hello" && stay?.cover) return stayCoverUrl(stay.reference, true);
+  if (topic === "hello" && stay?.cover) return stayCoverUrl(stay.reference, true, { shareCode: stay.shareCode });
   return null;
 }
 

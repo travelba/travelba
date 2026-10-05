@@ -141,15 +141,14 @@ export async function openAgencyCard(input: {
   }
 
   const viewedAt = new Date().toISOString();
-  if (STAFF_CARD_CODE_REQUIRED) {
-    const { error: viewError } = await input.admin.from("crm_card_views").insert({
-      staff_id: input.staffId,
-      booking_id: input.bookingId,
-      booking_item_id: input.itemId,
-      source: input.source,
-    });
-    if (viewError) return fail("La consultation n’a pas pu être notée.", 500);
-  }
+  // Chaque lecture est notée, code demandé ou non : qui, quel dossier, quelle carte, quand (B-05).
+  const { error: viewError } = await input.admin.from("crm_card_views").insert({
+    staff_id: input.staffId,
+    booking_id: input.bookingId,
+    booking_item_id: input.itemId,
+    source: input.source,
+  });
+  if (viewError) return fail("La consultation n’a pas pu être notée.", 500);
 
   return { viewer: input.staffName || "Agence", viewedAt, widget, file };
 }
