@@ -3,6 +3,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "@/components/crm/icons";
+import { useIsClient } from "@/lib/crm/use-is-client";
 import {
   customerPickLabel,
   filterCustomersForPick,
@@ -29,17 +30,20 @@ export function CustomerPickDialog({
   const titleId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-  const [query, setQuery] = useState("");
-  const [mounted, setMounted] = useState(false);
-
   useEffect(() => {
-    setMounted(true);
-  }, []);
+    onCloseRef.current = onClose;
+  }, [onClose]);
+  const [query, setQuery] = useState("");
+  const mounted = useIsClient();
+  // Chaque ouverture repart d’une recherche vide (au rendu, pas dans un effet).
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setQuery("");
+  }
 
   useEffect(() => {
     if (!open) return;
-    setQuery("");
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const t = window.setTimeout(() => inputRef.current?.focus(), 20);
