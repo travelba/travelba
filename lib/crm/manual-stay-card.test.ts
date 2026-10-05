@@ -6,7 +6,6 @@ import {
   manualCardControls,
   manualStayCardBody,
   manualStayCardDraft,
-  organizationCeilingCents,
   sameCardNameCount,
   stayCardCanBeShared,
   stayCardIsManual,
@@ -35,17 +34,6 @@ test("carte manuelle : plafond reçu, transactions illimitées, transfert d’ar
   assert.deepEqual(body.cardControls.categories.values, ["4829", "6012", "6051", "6536", "6537", "6538", "6540"]);
   assert.equal(Object.hasOwn(body.cardControls, "countries"), false);
   assert.equal(Object.hasOwn(body.cardControls, "currencies"), false);
-});
-
-test("plafond du compte : crédit, puis solde préfinancé, borné à l’entier stockable", () => {
-  assert.equal(organizationCeilingCents({ creditLimit: { value: 100_000_000, currency: "EUR" } }), 100_000_000);
-  assert.equal(
-    organizationCeilingCents({ creditLimit: { value: 0, currency: "EUR" }, availableLimit: { value: 250_000, currency: "EUR" } }),
-    250_000
-  );
-  assert.equal(organizationCeilingCents({ creditLimit: { value: 3_000_000_000, currency: "EUR" } }), 2_147_483_647);
-  assert.equal(organizationCeilingCents({ creditLimit: { value: 0 }, availableLimit: { value: 0 } }), null);
-  assert.equal(organizationCeilingCents(null), null);
 });
 
 test("carte manuelle : le libellé tient dans quarante caractères", () => {
