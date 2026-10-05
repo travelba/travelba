@@ -44,6 +44,7 @@ function DietPicker({
               }`}
             >
               <span className="relative block bg-[#faf9f6]">
+                {/* eslint-disable-next-line @next/next/no-img-element -- vignettes fixes de /public, carré en CSS */}
                 <img
                   src={diet.image}
                   alt=""
