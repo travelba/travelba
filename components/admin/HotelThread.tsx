@@ -2,11 +2,13 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { HotelMailTo } from "@/components/admin/HotelMailTo";
 import { BusyBar } from "@/components/crm/BusyBar";
 import {
+  hotelSendDefaults,
+  hotelSendPeople,
   hotelStayContext,
   hotelThread,
-  knownHotelRecipients,
   type HotelMailPiece,
 } from "@/lib/crm/hotel-desk";
 import { formatDateTimeFr } from "@/lib/crm/money";
@@ -36,9 +38,9 @@ export function HotelThread({
   const logRef = useRef<HTMLOListElement>(null);
   const messageRef = useRef<HTMLTextAreaElement>(null);
   const context = hotelStayContext(item);
-  const canWrite = knownHotelRecipients(item, requests).length > 0;
   const [subject, setSubject] = useState(context.subject);
   const [body, setBody] = useState("");
+  const [picked, setPicked] = useState<string[] | null>(null);
   const [sent, setSent] = useState<CrmHotelMessage[]>([]);
   const [syncedMessages, setSyncedMessages] = useState(messages);
   const [busy, setBusy] = useState(false);
@@ -48,6 +50,9 @@ export function HotelThread({
     setSent([]);
   }
   const turns = hotelThread({ item, requests, messages: [...messages, ...sent], attached, thread });
+  const mailbox = [...syncedMessages, ...sent];
+  const people = hotelSendPeople(item, requests, mailbox);
+  const selected = picked ?? hotelSendDefaults(item, requests, mailbox);
 
   useEffect(() => {
     const node = logRef.current;
@@ -61,13 +66,13 @@ export function HotelThread({
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!canWrite) return;
+    if (!selected.length) return;
     setBusy(true);
     setError(null);
     const res = await fetch(`/api/admin/bookings/${bookingId}/hotel-desk`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "send-message", itemId: item.id, subject, body }),
+      body: JSON.stringify({ action: "send-message", itemId: item.id, subject, body, recipients: selected }),
     });
     const json = (await res.json().catch(() => null)) as { error?: string } | null;
     setBusy(false);
@@ -83,7 +88,7 @@ export function HotelThread({
         booking_item_id: item.id,
         subject: subject.trim(),
         body: body.trim(),
-        recipients: [],
+        recipients: selected,
         sent_at: new Date().toISOString(),
         reply_from: "",
         reply_subject: "",
@@ -150,40 +155,36 @@ export function HotelThread({
       ) : (
         <p className="px-3 py-4 text-sm text-[#3d4654]">Aucun échange avec cet hôtel pour l’instant.</p>
       )}
-      {canWrite ? (
-        <form onSubmit={(event) => void onSubmit(event)} className="space-y-2 border-t border-[#e5e0d4] bg-white px-3 py-3">
-          <label className="block text-xs font-semibold text-[#0B192C]">
-            Objet
-            <input
-              className={`${threadFieldClass} mt-1`}
-              value={subject}
-              autoComplete="off"
-              onChange={(event) => setSubject(event.target.value)}
-            />
-          </label>
-          <label className="block text-xs font-semibold text-[#0B192C]">
-            Message
-            <textarea
-              ref={messageRef}
-              className={`${threadFieldClass} mt-1 min-h-28`}
-              value={body}
-              onChange={(event) => setBody(event.target.value)}
-            />
-          </label>
-          <p className="text-xs text-[#3d4654]">Le message part pour ce séjour.</p>
-          {busy ? <BusyBar label="Envoi du message" /> : null}
-          {error ? <p className="text-sm text-red-700">{error}</p> : null}
-          <button
-            type="submit"
-            className="admin-af-btn rounded-full bg-[#0B192C] px-3 py-2 text-sm text-[#faf9f6]"
-            disabled={busy || !subject.trim() || !body.trim()}
-          >
-            {busy ? "Envoi…" : "Envoyer"}
-          </button>
-        </form>
-      ) : (
-        <p className="border-t border-[#e5e0d4] px-3 py-3 text-sm text-[#3d4654]">Cet hôtel n’a pas d’adresse connue.</p>
-      )}
+      <form onSubmit={(event) => void onSubmit(event)} className="space-y-2 border-t border-[#e5e0d4] bg-white px-3 py-3">
+        <HotelMailTo people={people} selected={selected} onChange={setPicked} fieldClassName={threadFieldClass} />
+        <label className="block text-xs font-semibold text-[#0B192C]">
+          Objet
+          <input
+            className={`${threadFieldClass} mt-1`}
+            value={subject}
+            autoComplete="off"
+            onChange={(event) => setSubject(event.target.value)}
+          />
+        </label>
+        <label className="block text-xs font-semibold text-[#0B192C]">
+          Message
+          <textarea
+            ref={messageRef}
+            className={`${threadFieldClass} mt-1 min-h-28`}
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+          />
+        </label>
+        {busy ? <BusyBar label="Envoi du message" /> : null}
+        {error ? <p className="text-sm text-red-700">{error}</p> : null}
+        <button
+          type="submit"
+          className="admin-af-btn rounded-full bg-[#0B192C] px-3 py-2 text-sm text-[#faf9f6]"
+          disabled={busy || !subject.trim() || !body.trim() || selected.length === 0}
+        >
+          {busy ? "Envoi…" : "Envoyer"}
+        </button>
+      </form>
     </section>
   );
 }

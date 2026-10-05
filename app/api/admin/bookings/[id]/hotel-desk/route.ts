@@ -110,6 +110,9 @@ export async function POST(request: Request, ctx: Ctx) {
         itemId,
         subject: typeof body?.subject === "string" ? body.subject : "",
         body: typeof body?.body === "string" ? body.body : "",
+        recipients: Array.isArray(body?.recipients)
+          ? body.recipients.filter((value): value is string => typeof value === "string")
+          : undefined,
       });
       return NextResponse.json({ ok: true });
     } catch (error) {
