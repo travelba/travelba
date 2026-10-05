@@ -29,7 +29,6 @@ import {
   hotelStayLabel,
   itemClock,
   itemPriceLabel,
-  kindIcon,
   undatedTimeline,
 } from "@/lib/crm/carnet";
 import { itemTicketCount } from "@/lib/crm/item-match";

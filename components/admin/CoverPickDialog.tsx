@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { fieldControlClass } from "@/components/crm/fields";
 import { Icon } from "@/components/crm/icons";
+import { useIsClient } from "@/lib/crm/use-is-client";
 
 type CoverHit = {
   id: string;
@@ -12,6 +13,9 @@ type CoverHit = {
   thumb: string;
   credit: string | null;
 };
+
+/** Réponse de la recherche, rangée sous la requête qui l’a produite. */
+type CoverSearch = { q: string; photos: CoverHit[]; error: string | null };
 
 export function CoverPickDialog({
   open,
@@ -37,22 +41,31 @@ export function CoverPickDialog({
   const titleId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-  const [mounted, setMounted] = useState(false);
-  const [query, setQuery] = useState(place);
-  const [photos, setPhotos] = useState<CoverHit[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
   useEffect(() => {
-    setMounted(true);
-  }, []);
+    onCloseRef.current = onClose;
+  }, [onClose]);
+  const mounted = useIsClient();
+  const [query, setQuery] = useState(place);
+  const [search, setSearch] = useState<CoverSearch | null>(null);
+  // À l’ouverture (ou si la ville change dialogue ouvert) : requête = ville, résultats effacés.
+  const [seen, setSeen] = useState({ open, place });
+  if (seen.open !== open || seen.place !== place) {
+    setSeen({ open, place });
+    if (open) {
+      setQuery(place);
+      setSearch(null);
+    }
+  }
+  // Résultats, erreur et attente se déduisent de la requête courante : rien à remettre à zéro.
+  const trimmed = query.trim();
+  const searchable = trimmed.length >= 2;
+  const current = searchable && search?.q === trimmed ? search : null;
+  const photos = current?.photos ?? [];
+  const error = current?.error ?? null;
+  const loading = open && searchable && !current;
 
   useEffect(() => {
     if (!open) return;
-    setQuery(place);
-    setPhotos([]);
-    setError(null);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const focus = window.setTimeout(() => inputRef.current?.focus(), 20);
@@ -77,14 +90,8 @@ export function CoverPickDialog({
   useEffect(() => {
     if (!open) return;
     const q = query.trim();
-    if (q.length < 2) {
-      setPhotos([]);
-      setError(null);
-      setLoading(false);
-      return;
-    }
+    if (q.length < 2) return;
     const ctrl = new AbortController();
-    setLoading(true);
     const timer = window.setTimeout(async () => {
       try {
         const res = await fetch(
@@ -92,19 +99,15 @@ export function CoverPickDialog({
           { signal: ctrl.signal }
         );
         const json = await res.json().catch(() => ({}));
+        if (ctrl.signal.aborted) return;
         if (!res.ok) {
-          setPhotos([]);
-          setError(typeof json.error === "string" ? json.error : "Recherche impossible.");
+          setSearch({ q, photos: [], error: typeof json.error === "string" ? json.error : "Recherche impossible." });
           return;
         }
-        setPhotos(Array.isArray(json.photos) ? json.photos : []);
-        setError(null);
+        setSearch({ q, photos: Array.isArray(json.photos) ? json.photos : [], error: null });
       } catch (err) {
         if ((err as Error).name === "AbortError") return;
-        setPhotos([]);
-        setError("Recherche impossible.");
-      } finally {
-        if (!ctrl.signal.aborted) setLoading(false);
+        setSearch({ q, photos: [], error: "Recherche impossible." });
       }
     }, 280);
     return () => {
@@ -193,6 +196,7 @@ export function CoverPickDialog({
                   className="group block w-full overflow-hidden rounded-2xl border border-border text-left disabled:opacity-50"
                   aria-label={photo.title}
                 >
+                  {/* eslint-disable-next-line @next/next/no-img-element -- vignette Unsplash, hôte tiers sans optimisation Next */}
                   <img
                     src={photo.thumb}
                     alt=""

@@ -79,6 +79,7 @@ export function AgencyCardPeek({
       {image ? (
         <span className="inline-flex items-center gap-2">
           {image.mime.startsWith("image/") ? (
+            // eslint-disable-next-line @next/next/no-img-element -- carte en data: URI, rien à optimiser ni à mettre en cache
             <img src={`data:${image.mime};base64,${image.image}`} alt="Carte du client" className="max-h-8 rounded" />
           ) : (
             <a className="text-[#9e7e51]" href={`data:${image.mime};base64,${image.image}`} download={image.name}>

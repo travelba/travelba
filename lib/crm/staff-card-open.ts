@@ -1,12 +1,14 @@
 import "server-only";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { downloadCrmFile } from "./files";
 import { isAgencyCardPath, isSafeCrmPath } from "./files-access";
 import { pliantConfigured, pliantPciWidget } from "./pliant";
 import { AGENCY_MASTER_CODE_HASH, staffCardCodeMatches } from "./staff-card-code";
 import type { CardViewLine, CrmHotelArrival } from "./types";
 
-type Admin = { from: (table: string) => any };
+/** Client service role : seul `.from()` sert ici. */
+type Admin = Pick<SupabaseClient, "from">;
 
 export type AgencyCardSource = "pliant" | "client";
 
