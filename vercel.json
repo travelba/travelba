@@ -1,5 +1,5 @@
 {
-  "installCommand": "npm install --include=optional",
+  "installCommand": "npm ci --include=optional",
   "regions": ["cdg1"],
   "crons": [
     {

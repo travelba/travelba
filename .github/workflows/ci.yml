@@ -27,11 +27,10 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      # `npm install` tant que package-lock.json n'a pas été régénéré avec `tsx` et
-      # `@types/node@22` (édition manuelle de package.json dans le lot 4). Repasser à
-      # `npm ci --include=optional` une fois le lockfile commité après fusion.
+      # `npm ci` échoue si package.json et package-lock.json divergent : toute dépendance
+      # s'ajoute avec `npm install <paquet>` et le lockfile part dans le même commit.
       - name: Installer (optionnels inclus)
-        run: npm install --include=optional
+        run: npm ci --include=optional
 
       - name: Types (next typegen + tsc)
         run: npm run typecheck
