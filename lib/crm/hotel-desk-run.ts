@@ -594,7 +594,7 @@ export async function sendHotelRequest(
     throw new Error("Le brouillon ne peut pas contenir un numéro de carte.");
   }
   const recipients = cleanRecipients(input.recipients);
-  if (!recipients.length) throw new Error("Cet hôtel n'a pas d'adresse connue.");
+  if (!recipients.length) throw new Error("Choisissez au moins un destinataire.");
   const row = await loadRequest(admin, input.bookingId, input.itemId, input.kind);
   const item = await loadItem(admin, input.bookingId, input.itemId);
   const lang = hotelLanguage(hotelContact(item).country);
@@ -659,7 +659,7 @@ export async function sendHotelRequest(
 
 export async function sendHotelMessage(
   admin: Admin,
-  input: { bookingId: string; itemId: string; subject: string; body: string }
+  input: { bookingId: string; itemId: string; subject: string; body: string; recipients?: string[] }
 ) {
   const subject = input.subject.trim().slice(0, 300);
   const text = input.body.trim().slice(0, 8000);
@@ -668,13 +668,19 @@ export async function sendHotelMessage(
     throw new Error("Le message ne peut pas contenir un numéro de carte.");
   }
   const item = await loadItem(admin, input.bookingId, input.itemId);
-  const { data: letters } = await admin
-    .from("crm_hotel_requests")
-    .select("booking_item_id, recipients")
-    .eq("booking_id", input.bookingId)
-    .eq("booking_item_id", input.itemId);
-  const recipients = knownHotelRecipients(item, (letters || []) as Pick<CrmHotelRequest, "booking_item_id" | "recipients">[]);
-  if (!recipients.length) throw new Error("Cet hôtel n'a pas d'adresse connue.");
+  const chosen = Array.isArray(input.recipients) ? cleanRecipients(input.recipients) : null;
+  let recipients = chosen;
+  if (!recipients) {
+    const { data: letters } = await admin
+      .from("crm_hotel_requests")
+      .select("booking_item_id, recipients")
+      .eq("booking_id", input.bookingId)
+      .eq("booking_item_id", input.itemId);
+    recipients = knownHotelRecipients(item, (letters || []) as Pick<CrmHotelRequest, "booking_item_id" | "recipients">[]);
+  }
+  if (!recipients.length) {
+    throw new Error(chosen ? "Choisissez au moins un destinataire." : "Cet hôtel n'a pas d'adresse connue.");
+  }
   await deliverHotelMail({ to: recipients, subject, text, attachments: [] });
   const sentAt = new Date().toISOString();
   const { data, error } = await admin
