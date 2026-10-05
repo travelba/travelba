@@ -14,3 +14,4 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - Création / clone local : `.cursor/skills/travelba-bootstrap/SKILL.md`
 - Prod `travelba.fr` : `.cursor/skills/travelba-go-live/SKILL.md`
 - Prefer shipping working CRM flows over speculative refactors.
+- Cloud Agent : `.cursor/environment.json` lance `npm install --include=optional`, puis `npm run dev` sur le port 3000 (`start`). `NEXT_PUBLIC_SITE_URL` retombe sur `http://localhost:3000` s’il n’est pas déjà défini. Les clés Supabase viennent des secrets de l’environnement, pas d’un fichier commité.
