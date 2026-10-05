@@ -71,10 +71,10 @@ export function stayPayMethodOf(value: unknown): StayPayMethod | null {
   return (STAY_PAY_METHODS as readonly string[]).includes(value) ? (value as StayPayMethod) : null;
 }
 
-/** Société : prélèvement SEPA et virement, en euros. Particulier : carte, Apple Pay, virement. */
+/** Société : carte, Apple Pay, prélèvement SEPA et virement. Particulier : carte, Apple Pay, virement. Hors euros : carte et Apple Pay. */
 export function stayPayMethods(payer: PayerKind, currency: string): StayPayMethod[] {
   const eur = currency.toUpperCase() === "EUR";
-  if (payer === "company") return eur ? ["sepa_debit", "revolut"] : [];
+  if (payer === "company") return eur ? ["card", "apple_pay", "sepa_debit", "revolut"] : ["card", "apple_pay"];
   return eur ? ["card", "apple_pay", "revolut"] : ["card", "apple_pay"];
 }
 

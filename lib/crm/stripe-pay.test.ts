@@ -18,10 +18,9 @@ test("particulier : carte, Apple Pay, virement en euros ; carte et Apple Pay seu
   assert.deepEqual(stayPayMethods("personal", "CHF"), ["card", "apple_pay"]);
 });
 
-test("société : prélèvement SEPA et virement en euros, rien en devise", () => {
-  assert.deepEqual(stayPayMethods("company", "EUR"), ["sepa_debit", "revolut"]);
-  assert.deepEqual(stayPayMethods("company", "USD"), []);
-  assert.equal(stayPayMethods("company", "EUR").includes("card"), false);
+test("société : carte, Apple Pay, prélèvement et virement en euros ; carte et Apple Pay en devise", () => {
+  assert.deepEqual(stayPayMethods("company", "EUR"), ["card", "apple_pay", "sepa_debit", "revolut"]);
+  assert.deepEqual(stayPayMethods("company", "USD"), ["card", "apple_pay"]);
   assert.equal(stayPayMethods("personal", "EUR").includes("sepa_debit"), false);
 });
 

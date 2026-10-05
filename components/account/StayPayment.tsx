@@ -66,11 +66,14 @@ export function StayPayment({
   parts,
   stripeKey,
   compact = false,
+  named = false,
 }: {
   parts: ClientPayPart[];
   stripeKey: string | null;
   /** Les montants sont déjà dans l’encours. Ici, seulement le règlement. */
   compact?: boolean;
+  /** Deux parts dues : chaque bloc nomme la sienne, pour ne pas confondre les virements. */
+  named?: boolean;
 }) {
   const [openKind, setOpenKind] = useState<PayerKind | null>(null);
   const [method, setMethod] = useState<StayPayMethod | null>(null);
@@ -151,13 +154,29 @@ export function StayPayment({
             key={part.kind}
             className={
               compact
-                ? "space-y-3"
+                ? named
+                  ? "space-y-2 rounded-2xl bg-[#f7f6f3] px-3 py-3"
+                  : "space-y-3"
                 : `space-y-3 rounded-[1.35rem] p-4 ${
                     company ? "border border-[var(--admin-gold)] bg-white" : "border border-[#e5e3dc] bg-[#f7f6f3]"
                   }`
             }
           >
-            {compact ? null : (
+            {compact && named ? (
+              <div className="space-y-1">
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#9c7c4e]">{part.mention}</p>
+                  {part.amountLabel ? (
+                    <p className="font-display text-base font-extrabold tabular-nums text-[#0B192C]">{part.amountLabel}</p>
+                  ) : null}
+                </div>
+                <p className="text-xs leading-snug text-[#3d4654]">
+                  {company
+                    ? "Carte, Apple Pay, prélèvement ou virement."
+                    : "À régler par carte, Apple Pay ou virement."}
+                </p>
+              </div>
+            ) : compact ? null : (
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
                   {part.mention}

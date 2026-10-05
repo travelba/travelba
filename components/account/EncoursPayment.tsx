@@ -19,13 +19,14 @@ export function EncoursPayment({
   stripeKey: string | null;
   compact?: boolean;
 }) {
-  function part(kind: PayerKind) {
+  function part(kind: PayerKind, named: boolean) {
     const amount = kind === "company" ? company : personal;
     if (amount < 0.5) return null;
     return (
       <StayPayment
         key={kind}
         compact={compact}
+        named={named}
         stripeKey={stripeKey}
         parts={[
           {
@@ -42,8 +43,9 @@ export function EncoursPayment({
     );
   }
 
-  const companyPart = part("company");
-  const personalPart = part("personal");
+  const both = company >= 0.5 && personal >= 0.5;
+  const companyPart = part("company", both);
+  const personalPart = part("personal", both);
   if (!companyPart && !personalPart) return null;
 
   return (

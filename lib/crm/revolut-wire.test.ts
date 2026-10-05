@@ -166,3 +166,31 @@ test("le règlement de l’encours distingue société et particulier", () => {
   assert.equal(personal.includes("Régler ce voyage"), false);
   assert.equal(personal.includes("/api/client/bookings/"), false);
 });
+
+test("deux parts dues : la société a la carte et Apple Pay dans son bloc", () => {
+  const html = renderToStaticMarkup(
+    createElement(StayPayment, {
+      stripeKey: "pk_test_preview",
+      compact: true,
+      named: true,
+      parts: [
+        {
+          kind: "company",
+          mention: "Société",
+          amountLabel: "4 800,00 €",
+          payable: true,
+          canPay: true,
+          methods: ["card", "apple_pay", "sepa_debit", "revolut"],
+          companyName: null,
+        },
+      ],
+    })
+  );
+  assert.match(html, /Société/);
+  assert.match(html, /4 800,00 €/);
+  assert.match(html, /Carte, Apple Pay, prélèvement ou virement/);
+  assert.match(html, /Carte bancaire/);
+  assert.match(html, /Apple Pay/);
+  assert.match(html, /Prélèvement SEPA/);
+  assert.match(html, /Virement/);
+});
