@@ -32,6 +32,7 @@ import {
   stayCardCanBeShared,
   stayCardIsManual,
 } from "./manual-stay-card";
+import { manualPliantCardIds, rememberPliantCard, setRememberedCardLimit } from "./pliant-card-run";
 import { issuePliantCard, pliantConfigured, setPliantCardLimit } from "./pliant";
 import type {
   CrmBookingItem,
@@ -265,6 +266,7 @@ async function alignStayCard(input: {
   parisToday: string;
   deps: ArrivalDeps;
   reuseCardId?: string | null;
+  limitManual?: boolean;
 }) {
   const channel = channelOf(input.item);
   const row = input.row.channel === channel ? input.row : { ...input.row, channel };
@@ -324,11 +326,17 @@ async function alignStayCard(input: {
     return { ...ready.row, ...basePatch, pliant_card_id: ready.cardId, ...cleared };
   }
   if (aligned && !row.task_note?.startsWith("Pliant")) return row;
-  if (row.card_limit_cents !== provision.ceilingCents) {
+  if (row.card_limit_cents !== provision.ceilingCents && !input.limitManual) {
     try {
       if (!pliantConfigured() && !input.deps.setLimit) throw new Error("Pliant n'est pas branché.");
       const setLimit = input.deps.setLimit || setPliantCardLimit;
       await setLimit(row.pliant_card_id, { value: provision.ceilingCents, currency: provision.currency }, 20);
+      await rememberPliantCard(input.admin, {
+        pliant_card_id: row.pliant_card_id,
+        booking_id: row.booking_id,
+        limit_cents: provision.ceilingCents,
+        currency: provision.currency,
+      });
     } catch (error) {
       const note = error instanceof Error && error.message.startsWith("Pliant") ? error.message : "Pliant n'a pas modifié le plafond.";
       await save(input.admin, row.id, { ...basePatch, task_open: true, task_note: note });
@@ -371,6 +379,10 @@ export async function syncStayCards(
   );
   const parisToday = parisIsoDate(input.deps?.now || new Date());
   const deps = input.deps || {};
+  const manualCards = await manualPliantCardIds(
+    admin,
+    rows.map((row) => row.pliant_card_id || "")
+  );
   let sharedCardId = rows.find((row) => stayCardCanBeShared(row))?.pliant_card_id || null;
   for (const item of hotels) {
     const row = rows.find((entry) => entry.booking_item_id === item.id);
@@ -389,19 +401,25 @@ export async function syncStayCards(
       parisToday,
       deps,
       reuseCardId: sharedCardId,
+      limitManual: Boolean(row.pliant_card_id && manualCards.has(row.pliant_card_id)),
     });
     const issued = rows[index];
     if (stayCardCanBeShared(issued) && !sharedCardId) {
       sharedCardId = issued.pliant_card_id;
     }
   }
-  await raiseSharedStayLimit(rows, deps);
+  await raiseSharedStayLimit(admin, rows, deps, manualCards);
   return rows;
 }
 
 async function raiseSharedStayLimit(
-  rows: Pick<CrmHotelArrival, "pliant_card_id" | "card_closed_at" | "status" | "card_limit_cents" | "currency" | "task_note">[],
-  deps: ArrivalDeps
+  admin: Admin,
+  rows: Pick<
+    CrmHotelArrival,
+    "pliant_card_id" | "card_closed_at" | "status" | "card_limit_cents" | "currency" | "booking_id" | "task_note"
+  >[],
+  deps: ArrivalDeps,
+  manualCards: Set<string>
 ) {
   const open = rows.filter(
     (row) =>
@@ -414,7 +432,7 @@ async function raiseSharedStayLimit(
   const ids = [...new Set(open.map((row) => row.pliant_card_id))];
   if (ids.length !== 1) return;
   const cardId = ids[0];
-  if (!cardId) return;
+  if (!cardId || manualCards.has(cardId)) return;
   const onCard = open.filter((row) => row.pliant_card_id === cardId);
   if (onCard.length < 2) return;
   const currency = onCard[0].currency;
@@ -423,8 +441,16 @@ async function raiseSharedStayLimit(
   if (sum <= 0) return;
   try {
     if (!pliantConfigured() && !deps.setLimit) return;
-    const setLimit = deps.setLimit || setPliantCardLimit;
+    const setLimit = deps.setLimit || ((id, limit, count) => setRememberedCardLimit(admin, id, limit, count, false));
     await setLimit(cardId, { value: sum, currency }, 20);
+    if (deps.setLimit) {
+      await rememberPliantCard(admin, {
+        pliant_card_id: cardId,
+        booking_id: onCard.find((row) => row.booking_id)?.booking_id || null,
+        limit_cents: sum,
+        currency,
+      });
+    }
   } catch (error) {
     console.error("[hotel-arrival] plafond", error instanceof Error ? error.message : "carte");
   }
@@ -614,6 +640,7 @@ async function stepArrival(input: {
     ((siblings || []) as Pick<CrmHotelArrival, "pliant_card_id" | "card_closed_at" | "status" | "task_note">[]).find(
       (row) => stayCardCanBeShared(row)
     )?.pliant_card_id || null;
+  const arrivalManual = await manualPliantCardIds(input.admin, [input.arrival.pliant_card_id || ""]);
   let row = await alignStayCard({
     admin: input.admin,
     row: input.arrival,
@@ -626,17 +653,24 @@ async function stepArrival(input: {
     parisToday: input.parisToday,
     deps: input.deps,
     reuseCardId,
+    limitManual: Boolean(input.arrival.pliant_card_id && arrivalManual.has(input.arrival.pliant_card_id)),
   });
   const { data: limitRows } = await input.admin
     .from("crm_hotel_arrivals")
-    .select("pliant_card_id, card_closed_at, status, card_limit_cents, currency, task_note")
+    .select("pliant_card_id, card_closed_at, status, card_limit_cents, currency, booking_id, task_note")
     .eq("booking_id", input.booking.id);
+  const sharedRows = (limitRows || []) as Pick<
+    CrmHotelArrival,
+    "pliant_card_id" | "card_closed_at" | "status" | "card_limit_cents" | "currency" | "booking_id" | "task_note"
+  >[];
   await raiseSharedStayLimit(
-    (limitRows || []) as Pick<
-      CrmHotelArrival,
-      "pliant_card_id" | "card_closed_at" | "status" | "card_limit_cents" | "currency" | "task_note"
-    >[],
-    input.deps
+    input.admin,
+    sharedRows,
+    input.deps,
+    await manualPliantCardIds(
+      input.admin,
+      sharedRows.map((row) => row.pliant_card_id || "")
+    )
   );
   if (!row.payment_url && row.requested_at && emails.length) {
     const since = Date.parse(row.requested_at);
@@ -832,6 +866,13 @@ async function ensureCard(input: {
     const issue = input.deps.issueCard || ((body) => issuePliantCard(process.env.PLIANT_CARDHOLDER_ID || "", body));
     const issued = await issue(spec.body);
     if (!issued.cardId) return { cardId: null, row: input.row, note: "Pliant n'a pas créé la carte." };
+    await rememberPliantCard(input.admin, {
+      pliant_card_id: issued.cardId,
+      booking_id: input.row.booking_id,
+      label: spec.body.label,
+      limit_cents: input.limitCents,
+      currency: input.currency,
+    });
     const row = {
       ...input.row,
       pliant_card_id: issued.cardId,

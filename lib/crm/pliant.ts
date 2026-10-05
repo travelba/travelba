@@ -12,7 +12,14 @@ import {
   type PliantTokenStore,
 } from "./pliant-auth";
 import { pliantOtpToken, pliantPciWidgetUrl } from "./pliant-pci";
-import { annotatePliantPayload, pliantCardFace, pliantHolderId, pliantHolderName, pliantTransactionPage } from "./pliant-tx";
+import {
+  annotatePliantPayload,
+  pliantAvailableLimit,
+  pliantCardFace,
+  pliantHolderId,
+  pliantHolderName,
+  pliantTransactionPage,
+} from "./pliant-tx";
 
 const PROD = {
   api: "https://partner-api.getpliant.com/api",
@@ -309,6 +316,57 @@ export async function raisePliantLimit(cardId: string, limit: { value: number; c
     }),
   });
   if (!res.ok) throw new Error("Pliant n’a pas relevé le plafond.");
+}
+
+/** Disponible du compte Pliant (organisation), pas le plafond d’une carte. */
+export async function fetchPliantAccountBalance() {
+  if (!pliantConfigured()) throw new Error("Pliant n’est pas branché.");
+  const organizationId = process.env.PLIANT_ORGANIZATION_ID || "";
+  const token = await accessToken();
+  const res = await fetch(`${endpoints().api}/organizations/${encodeURIComponent(organizationId)}`, {
+    headers: { authorization: `Bearer ${token}`, "Pliant-API-Version": "2.1.0" },
+  });
+  if (!res.ok) throw new Error("Pliant n’a pas renvoyé le solde du compte.");
+  const money = pliantAvailableLimit(await res.json());
+  return { availableCents: money?.cents ?? null, currency: money?.currency || "EUR" };
+}
+
+export async function loadPliantAccountBalance() {
+  if (!pliantConfigured()) return null;
+  try {
+    return await fetchPliantAccountBalance();
+  } catch (err) {
+    console.error("[pliant] solde", err instanceof Error ? err.message : "échec");
+    return { availableCents: null as number | null, currency: "EUR" };
+  }
+}
+
+export async function lockPliantCard(cardId: string) {
+  const ok = await pliantCardAction(cardId, "lock");
+  if (!ok) throw new Error("Pliant n’a pas bloqué la carte.");
+}
+
+export async function unlockPliantCard(cardId: string) {
+  const ok = await pliantCardAction(cardId, "unlock");
+  if (!ok) throw new Error("Pliant n’a pas débloqué la carte.");
+}
+
+async function pliantCardAction(cardId: string, action: "lock" | "unlock") {
+  const token = await accessToken();
+  const res = await fetch(`${endpoints().api}/cards/${encodeURIComponent(cardId)}/${action}`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "Pliant-API-Version": "2.1.0" },
+  });
+  if (!res.ok) console.error("[pliant] carte", action, res.status);
+  return res.ok;
+}
+
+export async function readPliantCardFace(cardId: string) {
+  try {
+    return pliantCardFace(unwrapRecord(await pliantGet(`/cards/${encodeURIComponent(cardId)}`)));
+  } catch {
+    return { id: cardId, label: null as string | null, last4: null as string | null };
+  }
 }
 
 export async function setPliantCardLimit(

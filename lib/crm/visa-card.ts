@@ -34,6 +34,7 @@ export async function ensureIlPliantCard(opts: {
   cardholderId?: string;
   issue?: (cardholderId: string, body: unknown) => Promise<{ cardId: string | null }>;
   raise?: (cardId: string, limit: { value: number; currency: "EUR" }, count: number) => Promise<void>;
+  preserveLimit?: boolean;
 }): Promise<IlPliantCardResult> {
   const count = Math.max(1, Math.floor(Number(opts.travelerCount)) || 1);
   const spec = etaIlPliantCard({
@@ -67,6 +68,17 @@ export async function ensureIlPliantCard(opts: {
   const journal = `Carte Pliant ${spec.body.label}. Plafond ${spec.ceilingEur} € pour ${feeIls} ILS.`;
 
   if (existing?.pliant_card_id) {
+    if (opts.preserveLimit) {
+      return {
+        issued: true,
+        ceilingEur: spec.ceilingEur,
+        feeIls,
+        cardId: existing.pliant_card_id,
+        label: spec.body.label,
+        level: "fini",
+        journal,
+      };
+    }
     try {
       const raise = opts.raise || (await import("./pliant")).raisePliantLimit;
       await raise(existing.pliant_card_id, limit, spec.body.maxTransactionCount);

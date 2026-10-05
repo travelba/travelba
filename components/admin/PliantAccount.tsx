@@ -20,6 +20,7 @@ import {
   type PliantMatchCandidate,
 } from "@/lib/crm/pliant-match";
 import { possibleClientsLabel } from "@/lib/crm/revolut-labels";
+import { PliantAccountBalance } from "@/components/admin/PliantCardDesk";
 import {
   pliantCardDisplay,
   pliantCategoryLabel,
@@ -120,10 +121,12 @@ export function PliantAccount({
   configured,
   lines,
   customers,
+  account = null,
 }: {
   configured: boolean;
   lines: PliantLine[];
   customers: PickableCustomer[];
+  account?: { availableCents: number | null; currency: string } | null;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -283,6 +286,11 @@ export function PliantAccount({
   return (
     <div className="space-y-4">
       <BusyBar active={busy} label="Synchronisation…" />
+      {configured ? (
+        <div className="admin-af-card max-w-xs rounded-3xl px-5 py-4">
+          <PliantAccountBalance account={account || { availableCents: null, currency: "EUR" }} />
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center gap-3">
         <button type="button" onClick={() => void sync()} disabled={busy || !configured} className="admin-af-btn rounded-full px-4 py-2 text-sm">
           {busy ? "Synchronisation…" : "Synchroniser Pliant"}

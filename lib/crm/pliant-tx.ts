@@ -213,6 +213,26 @@ function merchantName(row: Record<string, unknown>) {
   return legacy ? legacy.slice(0, 200) : null;
 }
 
+/** Solde du compte : `availableLimit` de l’organisation, en centimes. Pas le reste d’une carte. */
+export function pliantAvailableLimit(payload: unknown): { cents: number; currency: string } | null {
+  const row = recordOf(payload);
+  if (!row) return null;
+  return moneyPair(row.availableLimit) || moneyPair(row.balance);
+}
+
+function recordOf(payload: unknown): Record<string, unknown> | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const data = (payload as { data?: unknown }).data;
+  if (data && typeof data === "object" && !Array.isArray(data)) return data as Record<string, unknown>;
+  return payload as Record<string, unknown>;
+}
+
+function moneyPair(value: unknown): { cents: number; currency: string } | null {
+  const parsed = money(value);
+  if (parsed.cents == null) return null;
+  return { cents: parsed.cents, currency: (parsed.currency || "EUR").toUpperCase().slice(0, 3) || "EUR" };
+}
+
 function money(value: unknown) {
   if (!value || typeof value !== "object") return { cents: null as number | null, currency: null as string | null };
   const row = value as Record<string, unknown>;

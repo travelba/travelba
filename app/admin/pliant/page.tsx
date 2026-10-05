@@ -3,7 +3,7 @@ import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireStaffPage } from "@/lib/crm/auth";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
 import { billingCustomersByCard } from "@/lib/crm/pliant-match";
-import { pliantConfigured } from "@/lib/crm/pliant";
+import { loadPliantAccountBalance, pliantConfigured } from "@/lib/crm/pliant";
 import { pliantStayForCard, type PliantStayRef } from "@/lib/crm/pliant-tx";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmPliantTransaction } from "@/lib/crm/types";
@@ -23,6 +23,7 @@ export default async function AdminPliantPage({
   await requireStaffPage();
   const limit = parseLoadMore((await searchParams).limite, PLIANT_PAGE, PLIANT_MAX);
   const configured = pliantConfigured();
+  const account = configured ? await loadPliantAccountBalance() : null;
   let lines: PliantLine[] = [];
   let customers: PickableCustomer[] = [];
   let more = false;
@@ -134,7 +135,7 @@ export default async function AdminPliantPage({
         subtitle="Chaque dépense indique la carte. Proposition vers le compte client : Valider ou Refuser."
       />
       <div className="mt-6">
-        <PliantAccount configured={configured} lines={lines} customers={customers} />
+        <PliantAccount configured={configured} lines={lines} customers={customers} account={account} />
         {more ? (
           <p className="mt-4 text-center">
             <Link

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   annotatePliantPayload,
   mapPliantTransaction,
+  pliantAvailableLimit,
   pliantCardDisplay,
   pliantSignedCents,
   pliantStayForCard,
@@ -90,4 +91,13 @@ test("le séjour se retrouve par la carte, pas par un autre dossier", () => {
   assert.equal(pliantTransactionPage({ data: [{ id: "a" }], hasNextPage: false }).done, true);
   assert.equal(pliantTransactionPage({ data: new Array(100).fill({ id: "a" }) }).done, false);
   assert.equal(pliantTransactionPage({ data: [{ id: "a" }] }).done, true);
+  assert.deepEqual(pliantAvailableLimit({ availableLimit: { value: 250000, currency: "EUR" } }), {
+    cents: 250000,
+    currency: "EUR",
+  });
+  assert.deepEqual(
+    pliantAvailableLimit({ data: { balance: { value: 90000, currency: "eur" } } }),
+    { cents: 90000, currency: "EUR" }
+  );
+  assert.equal(pliantAvailableLimit({ name: "Travelba" }), null);
 });

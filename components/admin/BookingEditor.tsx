@@ -42,7 +42,9 @@ import { BookingIngest } from "@/components/crm/BookingIngest";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
 import { BookingCards } from "@/components/admin/BookingCards";
 import { HotelArrivalPanel } from "@/components/admin/HotelArrivalPanel";
-import { principalGuest } from "@/lib/crm/hotel-arrival";
+import { PliantCardDesk } from "@/components/admin/PliantCardDesk";
+import { principalGuest, stayCardFace } from "@/lib/crm/hotel-arrival";
+import type { PliantCardDraft, PliantSpendLine } from "@/lib/crm/pliant-cards";
 import { BookingExpensesPanel } from "@/components/admin/BookingExpensesPanel";
 import { ServiceOfferToggles } from "@/components/admin/ServiceOfferToggles";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
@@ -132,6 +134,9 @@ export function BookingEditor({
   shareUrl = null,
   shareCompanions = [],
   arrivals = [],
+  pliantCard = null,
+  pliantSpends = [],
+  pliantAccount = null,
   hotelRequests = [],
   hasCardCode = false,
   cardViews = [],
@@ -168,6 +173,9 @@ export function BookingEditor({
   shareUrl?: string | null;
   shareCompanions?: ShareCompanion[];
   arrivals?: CrmHotelArrival[];
+  pliantCard?: PliantCardDraft | null;
+  pliantSpends?: PliantSpendLine[];
+  pliantAccount?: { availableCents: number | null; currency: string } | null;
   hotelRequests?: CrmHotelRequest[];
   hasCardCode?: boolean;
   cardViews?: CardViewLine[];
@@ -1603,6 +1611,29 @@ export function BookingEditor({
         ) : null}
       </section>
 
+      {!hasHotel && pliantCard ? (
+        <section className="order-2 admin-af-card rounded-3xl px-5 py-5">
+          <PliantCardDesk
+            mode="booking"
+            bookingId={booking.id}
+            cardId={pliantCard.pliant_card_id}
+            face={stayCardFace({
+              itemId: booking.id,
+              hotel: "",
+              holder: `${stayGuest.firstName} ${stayGuest.lastName}`.trim() || "Voyageur",
+              last4: pliantCard.last4,
+              closed: false,
+            })}
+            ceilingCents={pliantCard.limit_cents}
+            currency={pliantCard.currency}
+            locked={pliantCard.status === "locked"}
+            revealUrl=""
+            account={pliantAccount}
+            spends={pliantSpends}
+          />
+        </section>
+      ) : null}
+
       <div className="order-3">
       <BookingExpensesPanel
         bookingId={booking.id}
@@ -1729,6 +1760,9 @@ export function BookingEditor({
                   cardViews={cardViews}
                   bookingStatus={booking.status}
                   currency={booking.currency}
+                  registry={pliantCard}
+                  spends={pliantSpends}
+                  account={pliantAccount}
                 />
               ) : null}
             </section>

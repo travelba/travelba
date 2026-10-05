@@ -6,7 +6,9 @@ import { openStayForVisa } from "@/lib/crm/bookings";
 import { notifyStayPublished, remindMissingPieces, safeConcierge } from "@/lib/crm/concierge-send";
 import { continueEtaIlRequest } from "@/lib/crm/eta-il-continue";
 import { customerPliantCardCount, etaIlPliantCard } from "@/lib/crm/eta-il-fee";
+import { pliantLimitIsManual, rememberPliantCard } from "@/lib/crm/pliant-card-run";
 import { issuePliantCard, pliantConfigured, raisePliantLimit } from "@/lib/crm/pliant";
+import { createServiceClient } from "@/lib/supabase/admin";
 import { openAcceptedVisa } from "@/lib/crm/visa-accept";
 import { postVisaCharge } from "@/lib/crm/visa-post";
 import { euroRates } from "@/lib/crm/visa-ecb";
@@ -346,9 +348,11 @@ export async function POST(request: Request, ctx: Ctx) {
 
   let cardId = (card as { pliant_card_id?: string } | null)?.pliant_card_id || null;
   if (pliantConfigured()) {
-    if (cardId) {
+    const service = createServiceClient();
+    const manual = cardId ? await pliantLimitIsManual(service, cardId) : false;
+    if (cardId && !manual) {
       await raisePliantLimit(cardId, limit, spec.body.maxTransactionCount);
-    } else {
+    } else if (!cardId) {
       const issued = await issuePliantCard(process.env.PLIANT_CARDHOLDER_ID || "", spec.body);
       cardId = issued.cardId;
     }
@@ -358,6 +362,14 @@ export async function POST(request: Request, ctx: Ctx) {
         pliant_card_id: cardId,
         ceiling_cents: cents,
         countries,
+      });
+      await rememberPliantCard(service, {
+        pliant_card_id: cardId,
+        booking_id: b.id,
+        customer_id: b.billing_customer_id || b.customer_id,
+        label: spec.body.label,
+        limit_cents: manual ? undefined : cents,
+        currency: "EUR",
       });
     }
   }

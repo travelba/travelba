@@ -5,7 +5,9 @@ import { BookingEditor } from "@/components/admin/BookingEditor";
 import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { readEstaAnswers, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
-import { pliantConfigured } from "@/lib/crm/pliant";
+import { loadPliantAccountBalance, pliantConfigured } from "@/lib/crm/pliant";
+import { pliantCardForBooking, pliantSpendsForCards } from "@/lib/crm/pliant-card-run";
+import type { PliantCardDraft, PliantSpendLine } from "@/lib/crm/pliant-cards";
 import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -152,6 +154,22 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     arrivals = [];
     hotelRequests = [];
   }
+  let pliantCard: PliantCardDraft | null = null;
+  let pliantSpends: PliantSpendLine[] = [];
+  let pliantAccount: { availableCents: number | null; currency: string } | null = null;
+  try {
+    const cardAdmin = createServiceClient();
+    pliantCard = await pliantCardForBooking(cardAdmin, id);
+    const cardIds = [
+      pliantCard?.pliant_card_id || "",
+      ...arrivals.map((row) => row.pliant_card_id || ""),
+    ];
+    pliantSpends = await pliantSpendsForCards(cardAdmin, cardIds);
+    pliantAccount = await loadPliantAccountBalance();
+  } catch {
+    pliantCard = null;
+    pliantSpends = [];
+  }
   const shareCompanions = companionsForShare(bookingTravelers, (companions || []) as CrmCompanion[]);
   let shareUrl: string | null = null;
   if (b.visible_to_client) {
@@ -212,6 +230,9 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           shareUrl={shareUrl}
           shareCompanions={shareCompanions}
           arrivals={arrivals}
+          pliantCard={pliantCard}
+          pliantSpends={pliantSpends}
+          pliantAccount={pliantAccount}
           hotelRequests={hotelRequests}
           hotelMessages={hotelMessages}
           hotelThreadMessages={hotelThreadMessages}

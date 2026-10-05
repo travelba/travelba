@@ -109,6 +109,20 @@ export function pliantLedgerDraft(
   };
 }
 
+/** Carte de dossier → détail du séjour. Carte client, ou carte inconnue → ligne générale. */
+async function bookingIdForCard(admin: PliantAdmin, cardId: string | null | undefined) {
+  if (!cardId) return null;
+  const table = admin.from("crm_pliant_cards");
+  if (!table || typeof table.select !== "function") return null;
+  const selected = table.select("booking_id");
+  if (!selected || typeof selected.eq !== "function") return null;
+  const filtered = selected.eq("pliant_card_id", cardId);
+  if (!filtered || typeof filtered.maybeSingle !== "function") return null;
+  const { data } = await filtered.maybeSingle();
+  const id = data && typeof data === "object" ? (data as { booking_id?: unknown }).booking_id : null;
+  return typeof id === "string" && id ? id : null;
+}
+
 function customerLabel(c: PliantMatchCustomer) {
   const name = [c.first_name, c.last_name].filter(Boolean).join(" ").trim();
   if (c.company_name?.trim()) {
@@ -293,11 +307,13 @@ export async function applyPliantToCustomer(admin: PliantAdmin, row: PliantLedge
   if (row.match_status === "matched") return { ok: false as const, error: "already_matched" };
   const draft = pliantLedgerDraft(row);
   if (!draft) return { ok: false as const, error: "not_postable" };
+  const bookingId = await bookingIdForCard(admin, row.card_id);
 
   const { data: tx, error } = await admin
     .from("crm_transactions")
     .insert({
       customer_id: customerId,
+      booking_id: bookingId,
       direction: draft.direction,
       kind: draft.kind,
       amount: draft.amount,

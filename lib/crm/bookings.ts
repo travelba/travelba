@@ -675,13 +675,13 @@ export async function dropCoveredStayRollup(supabase: SupabaseClient, bookingId:
   const data = must(
     await supabase
       .from("crm_transactions")
-      .select("id, direction, kind, external_id, status")
+      .select("id, direction, kind, external_id, status, source")
       .eq("booking_id", bookingId)
       .eq("direction", "debit")
       .eq("status", "posted"),
     "Montant global du séjour"
   );
-  const rows = (data || []) as Pick<CrmTransaction, "id" | "direction" | "kind" | "external_id" | "status">[];
+  const rows = (data || []) as Pick<CrmTransaction, "id" | "direction" | "kind" | "external_id" | "status" | "source">[];
   if (!rows.some((row) => coversStayRollup({ ...row, booking_id: bookingId }))) return;
   const rollupIds = rows.filter((row) => isStayRollupDebit(row)).map((row) => row.id);
   if (!rollupIds.length) return;

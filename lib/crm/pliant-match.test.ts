@@ -232,8 +232,39 @@ describe("pliant-match", () => {
     assert.equal(inserts[0]?.row.source, "pliant");
     assert.equal(inserts[0]?.row.external_id, "pl-1000");
     assert.equal(inserts[0]?.row.amount, 364.09);
+    assert.equal(inserts[0]?.row.booking_id, null);
     assert.equal(inserts[1]?.row.match_status, "matched");
     assert.equal(inserts[1]?.row.customer_id, "customer-1");
+
+    const linked = {
+      from(table: string) {
+        return {
+          select() {
+            return {
+              eq() {
+                return { maybeSingle: async () => ({ data: { booking_id: "booking-9" } }) };
+              },
+            };
+          },
+          insert(payload: Record<string, unknown>) {
+            inserts.push({ table, row: payload });
+            const result = { data: { id: "tx-2", ...payload }, error: null };
+            return { select: () => ({ single: async () => result }) };
+          },
+          update(payload: Record<string, unknown>) {
+            inserts.push({ table, row: payload });
+            return { eq: async () => ({ error: null }) };
+          },
+        };
+      },
+    };
+    const stay = await applyPliantToCustomer(
+      linked,
+      expense({ id: "inbox-2", pliant_transaction_id: "pl-2000", card_id: "card-stay" }),
+      "customer-1"
+    );
+    assert.equal(stay.ok, true);
+    assert.equal(inserts.at(-2)?.row.booking_id, "booking-9");
 
     const again = await applyPliantToCustomer(admin, { ...row, match_status: "matched" }, "customer-1");
     assert.equal(again.ok, false);

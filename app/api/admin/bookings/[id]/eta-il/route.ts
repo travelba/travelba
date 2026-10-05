@@ -73,6 +73,16 @@ export async function POST(request: Request, ctx: Ctx) {
     if (!pliantConfigured()) return jsonError("Pliant n’est pas configuré.");
     const party = (travelers || []) as CrmBookingTraveler[];
     const fx = await euroRates();
+    const { createServiceClient } = await import("@/lib/supabase/admin");
+    const { pliantLimitIsManual, rememberPliantCard } = await import("@/lib/crm/pliant-card-run");
+    const service = createServiceClient();
+    const { data: visaCard } = await auth.supabase
+      .from("crm_visa_cards")
+      .select("pliant_card_id")
+      .eq("booking_id", b.id)
+      .maybeSingle();
+    const existingId = (visaCard as { pliant_card_id?: string } | null)?.pliant_card_id || "";
+    const manual = existingId ? await pliantLimitIsManual(service, existingId) : false;
     const card = await ensureIlPliantCard({
       db: auth.supabase,
       bookingId: b.id,
@@ -84,8 +94,18 @@ export async function POST(request: Request, ctx: Ctx) {
       startDate: b.start_date,
       endDate: b.end_date,
       rates: fx.rates,
+      preserveLimit: manual,
     });
     if (!card.issued) return jsonError(card.journal);
+    if (card.cardId) {
+      await rememberPliantCard(service, {
+        pliant_card_id: card.cardId,
+        booking_id: b.id,
+        customer_id: b.billing_customer_id || b.customer_id,
+        label: card.label,
+        ...(manual ? {} : { limit_cents: Math.round(card.ceilingEur * 100), currency: "EUR" }),
+      });
+    }
     return NextResponse.json({
       holderName: card.label,
       feeIls: card.feeIls,

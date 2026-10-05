@@ -1,8 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { PliantCardDesk } from "@/components/admin/PliantCardDesk";
 import type { EtaIlPersonView, EtaIlPhase } from "@/lib/crm/eta-il-draft";
 import { etaIlPliantCard } from "@/lib/crm/eta-il-fee";
+import { stayCardFace } from "@/lib/crm/hotel-arrival";
+import type { PliantSpendLine } from "@/lib/crm/pliant-cards";
 
 type View = {
   phase: EtaIlPhase;
@@ -22,6 +25,9 @@ export function EtaIlPanel({
   bookingReference,
   startDate,
   endDate,
+  issuedCard = null,
+  spends = [],
+  account = null,
 }: {
   bookingId: string;
   firstName: string;
@@ -30,6 +36,15 @@ export function EtaIlPanel({
   bookingReference: string;
   startDate: string | null;
   endDate: string | null;
+  issuedCard?: {
+    cardId: string;
+    ceilingCents: number | null;
+    currency: string;
+    last4: string | null;
+    locked: boolean;
+  } | null;
+  spends?: PliantSpendLine[];
+  account?: { availableCents: number | null; currency: string } | null;
 }) {
   const [view, setView] = useState<View | null>(null);
   const [busy, setBusy] = useState(false);
@@ -126,16 +141,40 @@ export function EtaIlPanel({
           onClick={confirmRequest}
           className="mt-2 mr-2 inline-flex h-7 items-center rounded-full bg-[var(--admin-navy)] px-3 text-xs font-semibold text-white disabled:opacity-50"
         >
-          Confirmer et créer la carte
+          {issuedCard ? "Confirmer" : "Confirmer et créer la carte"}
         </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={createCard}
-          className="mt-2 inline-flex h-7 items-center rounded-full border border-[var(--admin-navy)] px-3 text-xs font-semibold disabled:opacity-50"
-        >
-          Créer la carte
-        </button>
+        {issuedCard ? null : (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={createCard}
+            className="mt-2 inline-flex h-7 items-center rounded-full border border-[var(--admin-navy)] px-3 text-xs font-semibold disabled:opacity-50"
+          >
+            Créer la carte
+          </button>
+        )}
+        {issuedCard ? (
+          <div className="mt-3">
+            <PliantCardDesk
+              mode="booking"
+              bookingId={bookingId}
+              cardId={issuedCard.cardId}
+              face={stayCardFace({
+                itemId: bookingId,
+                hotel: "",
+                holder: `${card.holderFirstName} ${card.holderLastName}`.trim(),
+                last4: issuedCard.last4,
+                closed: false,
+              })}
+              ceilingCents={issuedCard.ceilingCents}
+              currency={issuedCard.currency}
+              locked={issuedCard.locked}
+              revealUrl=""
+              account={account}
+              spends={spends}
+            />
+          </div>
+        ) : null}
         {cardMessage ? <p className="mt-2">{cardMessage}</p> : null}
       </div>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}

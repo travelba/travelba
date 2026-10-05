@@ -10,12 +10,18 @@ export function StayCard({
   face,
   revealUrl,
   personal = false,
+  ceilingLabel = null,
+  locked = false,
+  sealed = false,
 }: {
   face: StayCardFace;
   revealUrl: string;
   personal?: boolean;
   needsCode?: boolean;
   views?: { name: string; at: string }[];
+  ceilingLabel?: string | null;
+  locked?: boolean;
+  sealed?: boolean;
 }) {
   const [code, setCode] = useState("");
   const [frame, setFrame] = useState<{ src: string; frameId: string } | null>(null);
@@ -59,7 +65,7 @@ export function StayCard({
 
   return (
     <div className="w-full max-w-xl">
-      <article className="relative aspect-[1.586/1] w-full max-w-[22rem] overflow-hidden rounded-[1.15rem] bg-[#0B192C] p-5 text-white shadow-[0_18px_40px_rgba(11,25,44,0.28)]">
+      <article className="relative min-h-[13.5rem] w-full max-w-[22rem] overflow-hidden rounded-[1.15rem] bg-[#0B192C] p-5 text-white shadow-[0_18px_40px_rgba(11,25,44,0.28)]">
         <div className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-[#C5A880]/20" />
         <div className="pointer-events-none absolute -bottom-14 -left-10 h-32 w-44 rounded-full bg-[#C5A880]/10" />
         <div className="relative flex items-start justify-between gap-3">
@@ -70,6 +76,10 @@ export function StayCard({
               <p className="mt-2 inline-flex rounded-full border border-[#C5A880]/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#C5A880]">
                 Clôturée
               </p>
+            ) : locked ? (
+              <p className="mt-2 inline-flex rounded-full border border-[#C5A880]/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#C5A880]">
+                Bloquée
+              </p>
             ) : null}
           </div>
           <span className="relative mt-1 h-8 w-11 shrink-0 rounded-[7px] bg-gradient-to-br from-[#e8d7b6] to-[#C5A880]" aria-hidden>
@@ -78,6 +88,12 @@ export function StayCard({
           </span>
         </div>
         <p className="relative mt-5 font-mono text-[1.05rem] tracking-[0.14em]">{number}</p>
+        {ceilingLabel ? (
+          <p className="relative mt-3">
+            <span className="text-[9px] uppercase tracking-[0.14em] text-white/50">Plafond</span>
+            <span className="block text-lg font-semibold tabular-nums">{ceilingLabel}</span>
+          </p>
+        ) : null}
         <div className="relative mt-4 flex items-end justify-between gap-3 text-xs">
           <div className="min-w-0">
             <p className="text-[9px] uppercase tracking-[0.14em] text-white/50">Titulaire</p>
@@ -97,7 +113,7 @@ export function StayCard({
           </div>
         ) : null}
       </article>
-      {frame ? (
+      {face.closed || sealed ? null : frame ? (
         <div className="mt-3 space-y-2">
           <PliantCardFrame
             src={frame.src}
@@ -112,7 +128,7 @@ export function StayCard({
             Masquer
           </button>
         </div>
-      ) : face.closed ? null : personal ? (
+      ) : personal ? (
         <form className="mt-2" onSubmit={reveal}>
           <button type="submit" className="text-xs text-[#9e7e51] disabled:opacity-50" disabled={busy}>
             {busy ? "…" : "Voir"}

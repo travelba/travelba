@@ -108,6 +108,16 @@ test("la commission 10 % reste à côté du montant du séjour", () => {
   };
   assert.equal(isAgencyCommissionDebit(commission), true);
   assert.equal(coversStayRollup(commission), false);
+  assert.equal(
+    coversStayRollup({
+      booking_id: "b1",
+      direction: "debit",
+      kind: "card_payment",
+      external_id: "pl-1",
+      source: "pliant",
+    }),
+    false
+  );
   assert.deepEqual(
     visibleLedgerRows([stay, commission]).map((row) => row.id),
     ["stay", "fee"]

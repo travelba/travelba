@@ -1,12 +1,13 @@
 "use client";
 
 import { AgencyCardPeek } from "@/components/admin/AgencyCardPeek";
+import { PliantCardDesk } from "@/components/admin/PliantCardDesk";
 import { hotelDisplayName } from "@/lib/crm/carnet";
 import { shownStayProvision, stayCardFace, tripStayCard } from "@/lib/crm/hotel-arrival";
 import { stayCardIsManual } from "@/lib/crm/manual-stay-card";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
+import type { PliantCardDraft, PliantSpendLine } from "@/lib/crm/pliant-cards";
 import type { CardViewLine, CrmBookingItem, CrmHotelArrival } from "@/lib/crm/types";
-import { StayCard } from "@/components/crm/StayCard";
 
 const ACTIVE = new Set(["confirmed", "travelling"]);
 
@@ -18,6 +19,9 @@ export function HotelArrivalPanel({
   cardViews = [],
   bookingStatus = "",
   currency = "EUR",
+  registry = null,
+  spends = [],
+  account = null,
 }: {
   bookingId: string;
   items: CrmBookingItem[];
@@ -26,6 +30,9 @@ export function HotelArrivalPanel({
   cardViews?: CardViewLine[];
   bookingStatus?: string;
   currency?: string | null;
+  registry?: PliantCardDraft | null;
+  spends?: PliantSpendLine[];
+  account?: { availableCents: number | null; currency: string } | null;
 }) {
   const hotels = items.filter((item) => item.kind === "hotel");
   if (!hotels.length) return null;
@@ -44,6 +51,21 @@ export function HotelArrivalPanel({
       ];
     })
   );
+  const cardId =
+    registry?.pliant_card_id ||
+    arrivals.find((row) => row.pliant_card_id && !row.card_closed_at && row.status !== "closed")?.pliant_card_id ||
+    arrivals.find((row) => row.pliant_card_id)?.pliant_card_id ||
+    null;
+  const ceiling = cardCeiling(hotels, arrivals, currency, registry);
+  const face =
+    stayCard ||
+    stayCardFace({
+      itemId: hotels[0]?.id || bookingId,
+      hotel: "",
+      holder,
+      last4: registry?.last4 || null,
+      closed: false,
+    });
   return (
     <section className="admin-af-card overflow-hidden rounded-3xl">
       <div className="border-b border-[#e7e1d6] px-5 py-4">
@@ -66,17 +88,48 @@ export function HotelArrivalPanel({
           />
         ))}
       </div>
-      {stayCard ? (
-        <div className="border-t border-[#e7e1d6] px-5 py-5">
-          <StayCard
-            face={stayCard}
-            revealUrl={`/api/admin/bookings/${bookingId}/hotel-arrival`}
-            views={cardViews.filter((line) => line.itemId === stayCard.itemId && line.source === "pliant")}
-          />
-        </div>
-      ) : null}
+      <div className="border-t border-[#e7e1d6] px-5 py-5">
+        <PliantCardDesk
+          mode="booking"
+          bookingId={bookingId}
+          cardId={cardId}
+          face={{ ...face, last4: face.last4 || registry?.last4 || null, closed: face.closed }}
+          ceilingCents={ceiling?.cents ?? null}
+          currency={ceiling?.currency || registry?.currency || currency || "EUR"}
+          locked={registry?.status === "locked"}
+          closed={face.closed}
+          revealUrl={cardId ? `/api/admin/bookings/${bookingId}/hotel-arrival` : ""}
+          account={account}
+          spends={spends}
+          views={cardViews.filter((line) => line.itemId === face.itemId && line.source === "pliant")}
+        />
+      </div>
     </section>
   );
+}
+
+function cardCeiling(
+  hotels: CrmBookingItem[],
+  arrivals: CrmHotelArrival[],
+  currency: string | null,
+  registry: PliantCardDraft | null
+) {
+  if (registry?.limit_cents && registry.limit_cents > 0) {
+    return { cents: registry.limit_cents, currency: registry.currency || currency || "EUR" };
+  }
+  let cents = 0;
+  let code = currency || "EUR";
+  for (const item of hotels) {
+    const provision = shownStayProvision(
+      item,
+      arrivals.find((row) => row.booking_item_id === item.id) || null,
+      currency
+    );
+    if (!provision) continue;
+    cents += provision.ceilingCents;
+    code = provision.currency;
+  }
+  return cents > 0 ? { cents, currency: code } : null;
 }
 
 function HotelCard({

@@ -7,6 +7,7 @@ type LedgerKindRow = {
   direction: string;
   kind: string;
   external_id: string | null;
+  source?: string | null;
 };
 
 type LedgerRow = LedgerKindRow & {
@@ -40,6 +41,7 @@ export function coversStayRollup(row: LedgerKindRow & { booking_id?: string | nu
   if (isFreeExpenseDebit(row)) return false;
   if (isAgencyCommissionDebit(row)) return false;
   if (isTicketingFeeDebit(row)) return false;
+  if (row.source === "pliant") return false;
   return true;
 }
 
