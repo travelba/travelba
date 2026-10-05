@@ -72,7 +72,7 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
   const order = BOOKING_SORTS[sort];
   const listQuery = supabase.from("crm_bookings").select("*", { count: "exact" });
   const archivedCountQuery = supabase.from("crm_bookings").select("id", { count: "exact", head: true });
-  const [{ data: bookings, count }, hiddenArchived] = await Promise.all([
+  const [{ data: bookings, count, error: listError }, hiddenArchived] = await Promise.all([
     (applyFilters(listQuery as unknown as FilterableQuery, state === "archive") as unknown as typeof listQuery)
       .order(order.column, { ascending: order.ascending, nullsFirst: false })
       .order("created_at", { ascending: false })
@@ -81,6 +81,11 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
       ? (applyFilters(archivedCountQuery as unknown as FilterableQuery, true) as unknown as typeof archivedCountQuery)
       : Promise.resolve({ count: 0 }),
   ]);
+  // Lecture en échec : la page d’erreur (« Réessayer ») plutôt qu’un faux « Aucune réservation trouvée ».
+  if (listError) {
+    console.error("[admin/reservations]", listError.code ?? "?", listError.message ?? "");
+    throw new Error("Réservations indisponibles");
+  }
   // `?page=999` : on renvoie sur la dernière page plutôt qu’un résumé « 301-312 » au-dessus d’une liste vide.
   const lastPage = pageOverflow(page, count);
   if (lastPage != null) {

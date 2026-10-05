@@ -134,6 +134,10 @@ export function EmailIngestInbox({
   const [pickFor, setPickFor] = useState<string | null>(null);
   const [bookings, setBookings] = useState<Record<string, BookingOption[]>>({});
   const [loadingRows, setLoadingRows] = useState<Record<string, boolean>>({});
+  // Échec de chargement des voyages : distinct de « aucun voyage », avec « Réessayer ».
+  const [loadErrors, setLoadErrors] = useState<Record<string, string>>({});
+  // Dernier client demandé par ligne : une réponse tardive d’un autre client est ignorée.
+  const latestLoad = useRef<Record<string, string>>({});
   const [selectedBooking, setSelectedBooking] = useState<Record<string, string>>({});
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [drafts, setDrafts] = useState<Record<string, ExtractView>>({});
@@ -147,13 +151,34 @@ export function EmailIngestInbox({
   const loadBookings = useCallback(
     async (rowId: string, customerId: string, preselect?: string | null) => {
       if (!customerId) return;
+      latestLoad.current[rowId] = customerId;
+      const stale = () => latestLoad.current[rowId] !== customerId;
       setLoadingRows((prev) => ({ ...prev, [rowId]: true }));
+      // Pas de voyage d’un autre client gardé sélectionné pendant le chargement ou après un échec.
+      setSelectedBooking((prev) => (prev[rowId] ? { ...prev, [rowId]: "" } : prev));
+      setLoadErrors((prev) => {
+        if (!(rowId in prev)) return prev;
+        const next = { ...prev };
+        delete next[rowId];
+        return next;
+      });
       try {
         const res = await fetch(
           `/api/admin/email-ingest/bookings?customer_id=${encodeURIComponent(customerId)}`
         );
-        const data = (await res.json()) as { bookings?: BookingOption[] };
-        const list = data.bookings || [];
+        const data = (await res.json().catch(() => ({}))) as {
+          bookings?: BookingOption[];
+          error?: string;
+        };
+        if (stale()) return;
+        if (!res.ok || !Array.isArray(data.bookings)) {
+          setLoadErrors((prev) => ({
+            ...prev,
+            [rowId]: data.error || "Impossible de charger les voyages de ce client.",
+          }));
+          return;
+        }
+        const list = data.bookings;
         setBookings((prev) => ({ ...prev, [rowId]: list }));
         setSelectedBooking((prev) => ({
           ...prev,
@@ -163,9 +188,14 @@ export function EmailIngestInbox({
               : list[0]?.id || "",
         }));
       } catch {
-        setBookings((prev) => ({ ...prev, [rowId]: [] }));
+        if (!stale()) {
+          setLoadErrors((prev) => ({
+            ...prev,
+            [rowId]: "Connexion interrompue : voyages non chargés.",
+          }));
+        }
       } finally {
-        setLoadingRows((prev) => ({ ...prev, [rowId]: false }));
+        if (!stale()) setLoadingRows((prev) => ({ ...prev, [rowId]: false }));
       }
     },
     []
@@ -316,6 +346,7 @@ export function EmailIngestInbox({
         ];
         const options = bookings[row.id];
         const loadingBookings = Boolean(loadingRows[row.id]);
+        const bookingsError = loadingBookings ? null : loadErrors[row.id] || null;
         const isBusy = busy === row.id;
         const cardTitle =
           titles[row.id] ??
@@ -574,7 +605,13 @@ export function EmailIngestInbox({
                     }
                   >
                     {!options || loadingBookings ? (
-                      <option value="">{loadingBookings ? "Voyages en cours de chargement…" : "Charger les voyages…"}</option>
+                      <option value="">
+                        {loadingBookings
+                          ? "Voyages en cours de chargement…"
+                          : bookingsError
+                            ? "Voyages non chargés"
+                            : "Charger les voyages…"}
+                      </option>
                     ) : options.length ? (
                       options.map((b) => (
                         <option key={b.id} value={b.id}>
@@ -605,6 +642,21 @@ export function EmailIngestInbox({
                   >
                     Rattacher au voyage
                   </button>
+                  {bookingsError ? (
+                    <p
+                      role="alert"
+                      className="flex flex-wrap items-center gap-2 text-sm text-[var(--admin-red)] sm:col-span-2"
+                    >
+                      {bookingsError}
+                      <button
+                        type="button"
+                        className="admin-tap rounded-full px-3 py-1 text-xs font-semibold text-[var(--admin-navy)] ring-1 ring-[var(--border)]"
+                        onClick={() => void loadBookings(row.id, customerId, row.suggested_booking_id)}
+                      >
+                        Réessayer
+                      </button>
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
 
