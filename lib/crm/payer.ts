@@ -1,5 +1,7 @@
 import { agencyFeeFromGross } from "@/lib/crm/money";
 
+export { amountToCents } from "@/lib/crm/money";
+
 export type PayerKind = "company" | "personal";
 
 export type PayerCompany = {
@@ -213,10 +215,6 @@ export function collectableStayAmount(input: {
   }).reduce((sum, slip) => sum + (slip.payable && slip.amount ? slip.amount : 0), 0);
   const rounded = roundMoney(payable);
   return rounded > 0 ? rounded : null;
-}
-
-export function amountToCents(amount: number) {
-  return Math.round(amount * 100);
 }
 
 export function encoursPartLabel(kind: PayerKind, companyName: string | null | undefined) {

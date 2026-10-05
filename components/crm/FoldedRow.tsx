@@ -8,7 +8,7 @@ export function FoldedRow({
   className = "aura-card overflow-hidden rounded-[1.35rem] bg-white",
 }: {
   title: string;
-  children: ReactNode;
+  children?: ReactNode;
   className?: string;
 }) {
   return (

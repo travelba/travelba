@@ -1,6 +1,7 @@
 import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
 import { BOOKING_ITEM_LABELS, isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
 import { itemClock, flightIata, flightCities, hotelDisplayName } from "@/lib/crm/carnet";
+import { addIsoDays } from "./dates";
 
 function icsEscape(value: string) {
   return value
@@ -16,15 +17,6 @@ function icsStampUtc(date = new Date()) {
 
 function allDay(iso: string) {
   return iso.slice(0, 10).replace(/-/g, "");
-}
-
-function addDays(isoDate: string, days: number) {
-  const d = new Date(`${isoDate.slice(0, 10)}T12:00:00`);
-  d.setDate(d.getDate() + days);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 
 function hasRealTime(iso: string | null | undefined) {
@@ -81,8 +73,8 @@ export function veventFromItem(item: CrmBookingItem, booking: CrmBooking): strin
   if (item.kind === "hotel" || !hasRealTime(item.start_at)) {
     const endExclusive = item.end_at
       ? item.end_at.slice(0, 10)
-      : addDays(start, 1);
-    const end = endExclusive > start ? endExclusive : addDays(start, 1);
+      : addIsoDays(start, 1);
+    const end = endExclusive > start ? endExclusive : addIsoDays(start, 1);
     lines.push(`DTSTART;VALUE=DATE:${allDay(start)}`);
     lines.push(`DTEND;VALUE=DATE:${allDay(end)}`);
   } else {
@@ -100,7 +92,7 @@ export function veventFromStay(booking: CrmBooking): string | null {
   const start = (booking.start_date || "").slice(0, 10);
   const end = (booking.end_date || "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return null;
-  const endExclusive = /^\d{4}-\d{2}-\d{2}$/.test(end) && end > start ? addDays(end, 1) : addDays(start, 1);
+  const endExclusive = /^\d{4}-\d{2}-\d{2}$/.test(end) && end > start ? addIsoDays(end, 1) : addIsoDays(start, 1);
   const summary = icsEscape(`Séjour · ${booking.title}`);
   const description = icsEscape([booking.reference, booking.destination].filter(Boolean).join(" · "));
   return [
@@ -238,8 +230,8 @@ function googleDates(item: CrmBookingItem) {
   const start = (item.start_at || "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return null;
   if (item.kind === "hotel" || !hasRealTime(item.start_at)) {
-    const endExclusive = item.end_at ? item.end_at.slice(0, 10) : addDays(start, 1);
-    const end = endExclusive > start ? endExclusive : addDays(start, 1);
+    const endExclusive = item.end_at ? item.end_at.slice(0, 10) : addIsoDays(start, 1);
+    const end = endExclusive > start ? endExclusive : addIsoDays(start, 1);
     return `${allDay(start)}/${allDay(end)}`;
   }
   const startStamp = timedStamp(item.start_at!);

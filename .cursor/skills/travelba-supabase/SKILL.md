@@ -39,11 +39,19 @@ Avant d’écrire du SQL : lister les tables (`crm_*`), lire la **dernière** mi
 | `20260930233000_booking_fees_follow_stay.sql` | `fees_follow_stay` : frais sur la même facture, ou l’autre mention |
 | `20260928150000_booking_reference_service_role.sql` | `crm_next_booking_reference` security definer (cron Gmail / service_role) |
 | `20260930161000_pliant_token_claim.sql` | `crm_claim_integration_refresh` : un seul jeton Auth0 Pliant à la fois, service_role |
+| `20261004153000_crm_booking_cards.sql` | `crm_booking_cards` : plusieurs cartes Pliant libres par dossier |
 | `20261004170000_entry_links_expiry.sql` | liens courts : `expires_at`, `used_at`, `revoked_at`, `open_count`, `channel` ; méthode `desk` ; grant `crm_card_views` |
 | `20261004171000_customer_column_grants.sql` | `crm_customers` : grants `update` par colonne pour `authenticated` ; RPC référence service_role seulement — **déployer le code avant** |
 | `20261004172000_rate_limits.sql` | `crm_rate_limits` + `crm_rate_limit_hit` (fenêtre fixe), service_role |
+| `20261004180000_indexes.sql` | index FK et colonnes filtrées (`customer_id`, `booking_id`, `(kind, start_at)`, `status`, téléphones) — à appliquer en prod après fusion |
 
 Toute évolution = **nouveau fichier** `supabase/migrations/YYYYMMDDHHMMSS_slug.sql` (idempotent : `if not exists`, `drop policy if exists`). Appliquer via MCP `apply_migration` ou SQL Editor. Ne pas éditer une migration déjà poussée en prod.
+
+**Horodatage unique.** `node scripts/check-migrations.mjs` (inclus dans `npm run check`) refuse un nom hors `YYYYMMDDHHMMSS_slug.sql` et deux fichiers de même version. Six paires historiques déjà appliquées sont tolérées dans sa liste blanche ; ne pas les renommer, ne pas en ajouter.
+
+**Seeds dans `supabase/seed.sql`, jamais dans `migrations/`.** `20260915154500_crm_demo_client_aura.sql` est l’exception héritée (fiche démo, déjà en prod, commentaire d’avertissement en tête) : tout `db push` / `db reset` la rejouerait. Un jeu de données local va dans `supabase/seed.sql` ou `scripts/seed-demo.mjs`.
+
+**Objets hors dépôt.** La prod porte des objets qu’aucune migration ne crée : `crm_private.has_staff_permission(text)`, `crm_private.next_booking_reference()`, tables `crm_mtrip_publications`, `crm_full_credits`, trigger `sync_booking_debit`. Avant de toucher une policy, un trigger ou une fonction, vérifier l’état réel (`select * from pg_trigger`, `pg_policies`, `pg_proc` via MCP `execute_sql`) et ramener l’objet dans une migration plutôt que de le modifier à la main.
 
 Helper privé : schema `crm_private` (`is_staff()`, `customer_id()`). Ne pas exposer au Data API.
 

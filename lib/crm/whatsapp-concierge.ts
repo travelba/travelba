@@ -517,8 +517,7 @@ function whichStayText(stays: ConciergeStay[], lang: ReplyLang) {
 }
 
 function moneyLabel(amount: number, currency: string, lang: ReplyLang) {
-  if (lang === "fr") return formatMoney(amount, currency);
-  return amount.toLocaleString("en-GB", { style: "currency", currency: currency || "EUR" });
+  return formatMoney(amount, currency, { lang });
 }
 
 function sign(body: string) {

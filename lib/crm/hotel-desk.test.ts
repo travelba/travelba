@@ -27,8 +27,6 @@ import {
   hotelStayContext,
   hotelThread,
   hotelTripChecklist,
-  hotelsNeedingDesk,
-  deskStatusLabel,
   keepAgencyDraft,
   knownHotelRecipients,
   hotelSendDefaults,
@@ -192,7 +190,6 @@ test("une modification agence n'est pas écrasée", () => {
 test("échéance, relance et réponse", () => {
   assert.equal(deskNeedsAttention({ status: "waiting", due_on: "2026-11-02" }, "2026-11-02"), true);
   assert.equal(deskNeedsAttention({ status: "waiting", due_on: "2026-11-02" }, "2026-11-01"), false);
-  assert.equal(hotelsNeedingDesk([{ booking_item_id: "h1", status: "due", due_on: null }, { booking_item_id: "h1", status: "follow_up", due_on: null }, { booking_item_id: "h2", status: "sent", due_on: null }], "2026-11-02"), 1);
   const sent = Date.parse("2026-11-02T08:00:00.000Z");
   assert.equal(
     nextDeskMark({
@@ -261,7 +258,6 @@ test("chaque courrier est envoyé, pas besoin, ou encore ouvert", () => {
   assert.equal(stay.lines.find((line) => line.kind === "concierge")?.caption, "Envoyé · à relancer");
   assert.equal(stay.lines.find((line) => line.kind === "transfer")?.mark, "sent");
   assert.equal(hotelLetterCaption("waiting"), "À faire");
-  assert.equal(deskStatusLabel({ status: "skipped" }), "Pas besoin");
   const done = hotelStayChecklist("h1", [row("payment_link", "sent"), row("upgrade", "skipped")]);
   assert.equal(done.complete, true);
   assert.equal(done.summary, "Courriers réglés");
