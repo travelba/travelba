@@ -11,9 +11,10 @@ import {
   sendConnexionWhatsapp,
   type WhatsappSendResult,
 } from "@/lib/crm/whatsapp";
-import { createEntryLink } from "@/lib/crm/entry-link";
+import { createEntryLink, setEntryLinkChannel } from "@/lib/crm/entry-link";
 import { greetingGivenName } from "@/lib/crm/identity";
-import { agencyCopyCc } from "@/lib/crm/outbound-mail";
+import { tokenMailCc } from "@/lib/crm/outbound-mail";
+import { sendAgencyAccessNotice } from "@/lib/crm/access-notice";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 
 export type PortalAccess = {
@@ -61,7 +62,7 @@ function inviteEmailHtml(customer: CrmCustomer, link: string) {
   });
 }
 
-async function sendInviteEmail(customer: CrmCustomer, link: string) {
+async function sendInviteEmail(customer: CrmCustomer, link: string, origin: string) {
   const apiKey = productionOnlySecret(process.env.RESEND_API_KEY);
   if (!apiKey) {
     console.info("[invite] RESEND_API_KEY manquante — e-mail non envoyé, lien renvoyé à l’écran admin");
@@ -70,10 +71,11 @@ async function sendInviteEmail(customer: CrmCustomer, link: string) {
 
   const from = process.env.CONTACT_FROM_EMAIL || "onboarding@resend.dev";
   const resend = new Resend(apiKey);
+  // Jamais de copie agence : l’e-mail porte le lien de connexion (B-02).
   const { error } = await resend.emails.send({
     from: `${siteConfig.name} <${from}>`,
     to: [customer.email],
-    cc: agencyCopyCc(customer.email),
+    cc: tokenMailCc(),
     replyTo: siteConfig.contactEmail,
     subject: "Votre espace voyageur est prêt",
     html: inviteEmailHtml(customer, link),
@@ -82,6 +84,7 @@ async function sendInviteEmail(customer: CrmCustomer, link: string) {
     console.error("[invite] Resend error:", error);
     throw new Error("L’envoi de l’invitation a échoué");
   }
+  await sendAgencyAccessNotice({ apiKey, from, kind: "client", firstName: customer.first_name, origin });
   return true;
 }
 
@@ -170,6 +173,7 @@ export async function inviteCustomer(
     otpType: linkType,
     nextPath: SET_PASSWORD_PATH,
     email,
+    channel: "email",
   });
   let whatsapp: WhatsappSendResult = { ok: false, reason: "rejected" };
   try {
@@ -183,6 +187,8 @@ export async function inviteCustomer(
       firstName: linked.first_name,
       link,
     });
+    // Parti par WhatsApp : l’ouverture du lien vaudra opt-in (le client a bien reçu le message).
+    if (whatsapp.ok) await setEntryLinkChannel(admin, link, "whatsapp");
     if (!whatsapp.ok && whatsapp.reason === "not_configured") {
       console.info("[invite] TWILIO_CONTENT_CONNEXION absente — WhatsApp non envoyé");
     }
@@ -204,7 +210,7 @@ export async function inviteCustomer(
   }
   let delivered = false;
   try {
-    delivered = await sendInviteEmail(linked, link);
+    delivered = await sendInviteEmail(linked, link, origin);
   } catch (err) {
     console.error("[invite] e-mail:", err instanceof Error ? err.message : "échec");
   }

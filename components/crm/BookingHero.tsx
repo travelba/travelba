@@ -13,7 +13,6 @@ import { CoverPhoto } from "@/components/crm/CoverPhoto";
 
 export function BookingHero({
   booking,
-  width = 960,
   priority = false,
   plain = false,
   className = "",

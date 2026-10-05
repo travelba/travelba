@@ -5,7 +5,6 @@ import { leBookingExtract, suggestLittleEmperorsBooking } from "@/lib/crm/little
 import {
   applyHotelPublicFields,
   cancelLittleEmperorsBooking,
-  canRemoteCancel,
   fetchLittleEmperorsHotel,
   benefitsFromLeRaw,
   isLeCancelled,

@@ -5,14 +5,19 @@ import { siteConfig } from "@/lib/site";
 import { SET_PASSWORD_PATH } from "@/lib/crm/session";
 import { agencyEmailHtml } from "@/lib/crm/email-html";
 import { createEntryLink } from "@/lib/crm/entry-link";
-import { agencyCopyCc } from "@/lib/crm/outbound-mail";
+import { tokenMailCc } from "@/lib/crm/outbound-mail";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
+import { padDuration, rateLimitAll, rateLimitKey, requestIp } from "@/lib/crm/rate-limit";
 
 export const runtime = "nodejs";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** Temps de réponse plancher : la branche « e-mail inconnu » ne doit pas se reconnaître à sa vitesse. */
+const MIN_RESPONSE_MS = 400;
+const WINDOW_SECONDS = 15 * 60;
 
 export async function POST(request: Request) {
+  const started = Date.now();
   let body: { email?: string };
   try {
     body = await request.json();
@@ -25,6 +30,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Adresse e-mail invalide" }, { status: 400 });
   }
 
+  const response = await handle(request, email);
+  await padDuration(started, MIN_RESPONSE_MS);
+  return response;
+}
+
+async function handle(request: Request, email: string) {
   const apiKey = productionOnlySecret(process.env.RESEND_API_KEY);
   const fromAddress =
     process.env.CONTACT_FROM_EMAIL?.trim() || "contact@travelba.fr";
@@ -35,6 +46,13 @@ export async function POST(request: Request) {
   ).replace(/\/$/, "");
 
   try {
+    // 5 envois par e-mail et 20 par adresse IP sur 15 min. Au-delà : même réponse, rien n’est envoyé.
+    const allowed = await rateLimitAll([
+      { key: rateLimitKey("reset:email", email), limit: 5, windowSeconds: WINDOW_SECONDS },
+      { key: rateLimitKey("reset:ip", requestIp(request.headers)), limit: 20, windowSeconds: WINDOW_SECONDS },
+    ]);
+    if (!allowed) return NextResponse.json({ ok: true });
+
     const supabase = createServiceClient();
     const { data: customer } = await supabase
       .from("crm_customers")
@@ -62,6 +80,7 @@ export async function POST(request: Request) {
       otpType: "recovery",
       nextPath: SET_PASSWORD_PATH,
       email,
+      channel: "email",
     });
 
     if (!apiKey) {
@@ -73,7 +92,7 @@ export async function POST(request: Request) {
     const { error: sendError } = await resend.emails.send({
       from: `${siteConfig.shortName} <${fromAddress}>`,
       to: [email],
-      cc: agencyCopyCc(email),
+      cc: tokenMailCc(),
       replyTo: siteConfig.contactEmail,
       subject: `Réinitialiser votre mot de passe ${siteConfig.shortName}`,
       html: agencyEmailHtml({

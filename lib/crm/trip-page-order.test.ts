@@ -76,7 +76,7 @@ test("partager le voyage et les visas reçus sont repliés sur une ligne", () =>
   assert.doesNotMatch(summary, /Ce lien ouvre/);
 
   const visas = renderToStaticMarkup(
-    createElement(FoldedRow, { title: "Visas reçus", children: "Détail" })
+    createElement(FoldedRow, { title: "Visas reçus" }, "Détail")
   );
   const visaSummary = visas.match(/<summary[\s\S]*?<\/summary>/)?.[0] || "";
   assert.match(visaSummary, /Visas reçus/);

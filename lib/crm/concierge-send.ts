@@ -63,7 +63,8 @@ function quiet(err: unknown) {
   console.error("[concierge]", message.replace(/https?:\/\/\S+/g, "").slice(0, 180));
 }
 
-async function buttonSuffix(admin: Admin, email: string, path: string, showCover = false) {
+/** Lien court du message. Le code sert aussi de preuve d’accès à la couverture (`?e=CODE`). */
+async function entryButton(admin: Admin, email: string, path: string, showCover = false) {
   const cleanEmail = email.trim().toLowerCase();
   const generated = await admin.auth.admin.generateLink({
     type: "magiclink",
@@ -77,10 +78,11 @@ async function buttonSuffix(admin: Admin, email: string, path: string, showCover
     nextPath: path,
     email: cleanEmail,
     showCover,
+    channel: "whatsapp",
   });
   const code = entryCodeFromLink(link);
   if (!code) return null;
-  return entryButtonSuffix(code);
+  return { suffix: entryButtonSuffix(code), code };
 }
 
 async function loadBooking(admin: Admin, bookingId: string) {
@@ -184,21 +186,33 @@ async function deliverTemplate(admin: Admin, input: {
   variable?: string | null;
   sentDedupe?: string;
   card?: ConciergeTemplate | null;
+  /** Message du séjour avec couverture : la photo est servie par le code du lien de ce message. */
+  stayCover?: boolean;
 }) {
   if (!input.customer.email || !input.customer.phone || !proactiveWhatsappAllowed(input.customer)) {
     return;
   }
-  const suffix = await buttonSuffix(
+  const button = await entryButton(
     admin,
     input.customer.email,
     input.path,
-    input.template === "sejour"
+    input.template === "sejour" && input.stayCover === true
   );
-  if (!suffix) {
+  if (!button) {
     await markResult(admin, input.row.id, { ok: false, reason: "rejected", detail: "lien absent" });
     return;
   }
-  const photoTemplate = conciergePhotoTemplate(input.card || input.template);
+  const suffix = button.suffix;
+  let template = input.template;
+  let mediaUrl = input.mediaUrl ?? null;
+  if (template === "sejour") {
+    const cover = input.stayCover && input.reference
+      ? await liveStayCover(stayCoverUrl(input.reference, true, { entryCode: button.code }))
+      : null;
+    mediaUrl = cover;
+    if (!cover) template = "sejour_texte";
+  }
+  const photoTemplate = conciergePhotoTemplate(input.card || template);
   const photoSid = photoTemplate ? conciergeContentSid(photoTemplate) : "";
   const photoMedia = photoTemplate ? await liveConciergeImage(conciergeTemplateImage(photoTemplate)) : null;
   const photoVariables =
@@ -237,7 +251,7 @@ async function deliverTemplate(admin: Admin, input: {
           buttonSuffix: suffix,
           place: input.place,
           reference: input.reference,
-          mediaUrl: input.mediaUrl,
+          mediaUrl,
           variable: input.variable,
         })
       : null;
@@ -258,22 +272,22 @@ async function deliverTemplate(admin: Admin, input: {
       return;
     }
   }
-  const contentSid = conciergeContentSid(input.template);
+  const contentSid = conciergeContentSid(template);
   if (!contentSid) return;
   const variables = conciergeContentVariables({
-    template: input.template,
+    template,
     buttonSuffix: suffix,
     place: input.place,
     reference: input.reference,
-    mediaUrl: input.mediaUrl,
+    mediaUrl,
     variable: input.variable,
   });
   if (!variables) {
     await markResult(admin, input.row.id, { ok: false, reason: "rejected", detail: "lien absent" });
     return;
   }
-  if (input.body !== input.row.body) {
-    await admin.from("crm_whatsapp_messages").update({ body: input.body, template_key: input.template }).eq("id", input.row.id);
+  if (input.body !== input.row.body || template !== input.row.template_key) {
+    await admin.from("crm_whatsapp_messages").update({ body: input.body, template_key: template }).eq("id", input.row.id);
   }
   const result = await sendContentTemplate({
     phone: input.customer.phone,
@@ -284,14 +298,13 @@ async function deliverTemplate(admin: Admin, input: {
     admin,
     input.row.id,
     result,
-    result.ok ? { dedupeKey: input.sentDedupe, templateKey: input.template } : undefined
+    result.ok ? { dedupeKey: input.sentDedupe, templateKey: template } : undefined
   );
 }
 
-async function bookingCover(booking: { reference: string; destination: string | null; title: string | null; cover_image_path: string | null }) {
-  const place = stayPlaceName(booking.destination, booking.title);
-  const url = stayHasPublishedCover(booking) ? stayCoverUrl(booking.reference, true) : null;
-  return { place, mediaUrl: await liveStayCover(url) };
+/** Lieu d’arrivée. Seul le modèle « Votre séjour » porte la couverture : les autres cartes ont leur image de type. */
+function stayPlace(booking: { destination: string | null; title: string | null }) {
+  return stayPlaceName(booking.destination, booking.title);
 }
 
 async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
@@ -306,32 +319,28 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
   const key = row.dedupe_key;
 
   if (key.startsWith("sejour:")) {
+    const hasCover = stayHasPublishedCover(booking);
     const plan = planStayNotice({
       published: true,
       reference: booking.reference,
       destination: booking.destination,
       title: booking.title,
-      hasCover: stayHasPublishedCover(booking),
+      hasCover,
     });
     if (!plan) {
       await dropQueue(admin, row.id);
       return;
     }
-    let template = plan.template;
-    let mediaUrl = plan.mediaUrl;
-    if (template === "sejour") {
-      mediaUrl = await liveStayCover(mediaUrl);
-      if (!mediaUrl) template = "sejour_texte";
-    }
+    // La photo est résolue dans deliverTemplate, par le code du lien de ce message.
     await deliverTemplate(admin, {
       row,
       customer,
-      template,
+      template: plan.template,
       path: plan.path,
       body: plan.body,
       place: plan.place,
       reference: booking.reference,
-      mediaUrl,
+      stayCover: hasCover,
     });
     return;
   }
@@ -352,7 +361,6 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       await dropQueue(admin, row.id);
       return;
     }
-    const cover = await bookingCover(booking);
     await deliverTemplate(admin, {
       row,
       customer,
@@ -362,7 +370,6 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       place: plan.place,
       reference: booking.reference,
       variable: plan.variable,
-      mediaUrl: cover.mediaUrl,
       card: pieceCardTemplate(plan),
       sentDedupe: `pieces-sent:${booking.id}:${pieces[0].at}`,
     });
@@ -376,7 +383,6 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       await dropQueue(admin, row.id);
       return;
     }
-    const cover = await bookingCover(booking);
     await deliverTemplate(admin, {
       row,
       customer,
@@ -384,9 +390,8 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       path: plan.path,
       body: plan.body,
       variable: plan.variable,
-      place: cover.place,
+      place: stayPlace(booking),
       reference: booking.reference,
-      mediaUrl: cover.mediaUrl,
       card: noticeCardTemplate(plan.template),
     });
     return;
@@ -399,7 +404,6 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       await dropQueue(admin, row.id);
       return;
     }
-    const cover = await bookingCover(booking);
     await deliverTemplate(admin, {
       row,
       customer,
@@ -407,9 +411,8 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       path: plan.path,
       body: plan.body,
       variable: plan.variable,
-      place: cover.place,
+      place: stayPlace(booking),
       reference: booking.reference,
-      mediaUrl: cover.mediaUrl,
       card: noticeCardTemplate(plan.template),
     });
   }

@@ -2,6 +2,7 @@ import { isRevolutCredit, revolutSenderName } from "./revolut-inbox";
 import type { CrmCustomer, CrmRevolutTransaction } from "./types";
 
 export type RevolutMatchReason =
+  | "iban"
   | "full_name"
   | "unique_last_name"
   | "company_name"
@@ -19,6 +20,18 @@ export type RevolutMatchResult = {
   candidates: RevolutMatchCandidate[];
 };
 
+/** Fiche minimale pour le rapprochement. L’IBAN reste côté serveur : il n’est jamais envoyé au navigateur. */
+export type RevolutMatchCustomer = Pick<CrmCustomer, "id" | "first_name" | "last_name" | "company_name"> &
+  Partial<Pick<CrmCustomer, "iban">>;
+
+/** Colonnes de l’index de rapprochement (auto-match et pages serveur). */
+export const REVOLUT_MATCH_SELECT = "id, first_name, last_name, company_name, iban";
+
+export type RevolutMatchRow = Pick<CrmRevolutTransaction, "counterparty_name" | "reference"> & {
+  raw?: unknown;
+  counterparty_iban?: string | null;
+};
+
 /** Loose admin client shape used by credit helper (avoids pulling Supabase into unit tests). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type RevolutAdmin = { from: (table: string) => any };
@@ -32,10 +45,48 @@ export function normalizeMatchText(value: string | null | undefined) {
     .replace(/[^a-z0-9]/g, "");
 }
 
-function haystackFor(row: Pick<CrmRevolutTransaction, "counterparty_name" | "reference"> & { raw?: unknown }) {
-  return normalizeMatchText(
-    `${revolutSenderName(row)} ${row.counterparty_name || ""} ${row.reference || ""}`
-  );
+/** Mots normalisés, séparateurs conservés : « Jean Martineau » → [jean, martineau], « DUPONT2026 » → [dupont, 2026]. */
+export function matchTokens(value: string | null | undefined) {
+  return (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/([a-z])(?=\d)|(\d)(?=[a-z])/g, "$1$2 ")
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
+
+/**
+ * Vrai si une suite de mots entiers, collés, vaut exactement `glued`.
+ * « jean martineau » n’épelle pas « jeanmartin » ; « leroy » n’épelle pas « roy » ; « le roy » épelle « leroy ».
+ */
+export function tokensSpell(tokens: string[], glued: string) {
+  if (!glued) return false;
+  for (let start = 0; start < tokens.length; start += 1) {
+    let acc = "";
+    for (let end = start; end < tokens.length; end += 1) {
+      acc += tokens[end];
+      if (acc === glued) return true;
+      if (acc.length >= glued.length) break;
+    }
+  }
+  return false;
+}
+
+/** IBAN comparable : sans espaces, majuscules, forme plausible. Un simple numéro de compte ne compte pas. */
+export function ibanMatchKey(value: string | null | undefined) {
+  const key = String(value || "").replace(/\s+/g, "").toUpperCase();
+  return /^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(key) ? key : "";
+}
+
+/** Présélection : un seul candidat certain (≥ 90), sinon l’agent choisit. */
+export function suggestedCustomerId(candidates: { customer_id: string; score: number }[]) {
+  const strong = candidates.filter((c) => c.score >= 90);
+  return strong.length === 1 ? strong[0].customer_id : "";
+}
+
+function haystackTokens(row: RevolutMatchRow) {
+  return matchTokens(`${revolutSenderName(row)} ${row.counterparty_name || ""} ${row.reference || ""}`);
 }
 
 function customerLabel(c: Pick<CrmCustomer, "first_name" | "last_name" | "company_name">) {
@@ -48,14 +99,13 @@ function customerLabel(c: Pick<CrmCustomer, "first_name" | "last_name" | "compan
 
 /**
  * Rank customers against a Revolut inbox row.
- * Auto-match only when exactly one strong unique hit (full name, unique last name, or unique company).
+ * Les noms se comparent mot à mot (frontières de mots), jamais par sous-chaîne.
+ * Auto-match only when exactly one strong unique hit (IBAN, full name, unique last name, or unique company).
  */
-export function scoreRevolutMatches(
-  row: Pick<CrmRevolutTransaction, "counterparty_name" | "reference"> & { raw?: unknown },
-  customers: Pick<CrmCustomer, "id" | "first_name" | "last_name" | "company_name">[]
-): RevolutMatchResult {
-  const haystack = haystackFor(row);
-  if (!haystack || !customers.length) {
+export function scoreRevolutMatches(row: RevolutMatchRow, customers: RevolutMatchCustomer[]): RevolutMatchResult {
+  const tokens = haystackTokens(row);
+  const rowIban = ibanMatchKey(row.counterparty_iban);
+  if ((!tokens.length && !rowIban) || !customers.length) {
     return { autoCustomerId: null, candidates: [] };
   }
 
@@ -72,11 +122,7 @@ export function scoreRevolutMatches(
 
   const byId = new Map<string, RevolutMatchCandidate>();
 
-  function upsert(
-    customer: Pick<CrmCustomer, "id" | "first_name" | "last_name" | "company_name">,
-    score: number,
-    reason: RevolutMatchReason
-  ) {
+  function upsert(customer: RevolutMatchCustomer, score: number, reason: RevolutMatchReason) {
     const prev = byId.get(customer.id);
     if (prev && prev.score >= score) return;
     byId.set(customer.id, {
@@ -88,30 +134,33 @@ export function scoreRevolutMatches(
   }
 
   for (const c of customers) {
+    if (rowIban && ibanMatchKey(c.iban) === rowIban) {
+      upsert(c, 100, "iban");
+      continue;
+    }
+
     const first = normalizeMatchText(c.first_name);
     const last = normalizeMatchText(c.last_name);
     const company = normalizeMatchText(c.company_name);
 
     if (first && last && first.length >= 2 && last.length >= 2) {
-      const full = `${first}${last}`;
-      const fullRev = `${last}${first}`;
-      if (haystack.includes(full) || haystack.includes(fullRev)) {
+      if (tokensSpell(tokens, `${first}${last}`) || tokensSpell(tokens, `${last}${first}`)) {
         upsert(c, 100, "full_name");
         continue;
       }
     }
 
-    if (company.length >= 3 && haystack.includes(company)) {
+    if (company.length >= 3 && tokensSpell(tokens, company)) {
       const unique = (companyCounts.get(company) || 0) === 1;
       upsert(c, unique ? 95 : 70, unique ? "company_name" : "partial");
       continue;
     }
 
-    if (last.length >= 3 && haystack.includes(last)) {
+    if (last.length >= 3 && tokensSpell(tokens, last)) {
       const unique = (lastNameCounts.get(last) || 0) === 1;
       if (unique) {
         upsert(c, 90, "unique_last_name");
-      } else if (first && haystack.includes(first)) {
+      } else if (first && tokensSpell(tokens, first)) {
         upsert(c, 80, "partial");
       } else {
         upsert(c, 55, "partial");
@@ -122,24 +171,30 @@ export function scoreRevolutMatches(
   const candidates = [...byId.values()].sort(
     (a, b) => b.score - a.score || a.label.localeCompare(b.label, "fr")
   );
-  const strong = candidates.filter((c) => c.score >= 90);
-  const autoCustomerId = strong.length === 1 ? strong[0].customer_id : null;
 
-  return { autoCustomerId, candidates };
+  return { autoCustomerId: suggestedCustomerId(candidates) || null, candidates };
 }
 
+/**
+ * Virements qui désignent ce client. `population` = l’index complet, pour détecter les homonymes :
+ * `certain` n’est vrai que si ce client est le seul candidat ≥ 90.
+ */
 export function suggestionsForCustomer(
-  customer: Pick<CrmCustomer, "id" | "first_name" | "last_name" | "company_name">,
-  rows: CrmRevolutTransaction[]
+  customer: RevolutMatchCustomer,
+  rows: CrmRevolutTransaction[],
+  population: RevolutMatchCustomer[] = [customer]
 ) {
+  const people = population.some((p) => p.id === customer.id) ? population : [customer, ...population];
   return rows
     .filter((r) => r.status === "unmatched" && isRevolutCredit(r.direction))
     .map((row) => {
-      const { candidates } = scoreRevolutMatches(row, [customer]);
+      const { candidates } = scoreRevolutMatches(row, people);
       const hit = candidates.find((c) => c.customer_id === customer.id);
-      return hit ? { row, candidate: hit } : null;
+      return hit ? { row, candidate: hit, certain: suggestedCustomerId(candidates) === customer.id } : null;
     })
-    .filter((x): x is { row: CrmRevolutTransaction; candidate: RevolutMatchCandidate } => Boolean(x))
+    .filter(
+      (x): x is { row: CrmRevolutTransaction; candidate: RevolutMatchCandidate; certain: boolean } => Boolean(x)
+    )
     .sort((a, b) => b.candidate.score - a.candidate.score);
 }
 
@@ -225,14 +280,11 @@ export async function autoMatchUnmatchedRevolut(limit = 100) {
       .eq("direction", "credit")
       .order("booked_at", { ascending: false, nullsFirst: false })
       .limit(limit),
-    service.from("crm_customers").select("id, first_name, last_name, company_name"),
+    service.from("crm_customers").select(REVOLUT_MATCH_SELECT),
   ]);
 
   const list = (rows || []) as CrmRevolutTransaction[];
-  const people = (customers || []) as Pick<
-    CrmCustomer,
-    "id" | "first_name" | "last_name" | "company_name"
-  >[];
+  const people = (customers || []) as RevolutMatchCustomer[];
 
   let matched = 0;
   for (const row of list) {
@@ -246,6 +298,8 @@ export async function autoMatchUnmatchedRevolut(limit = 100) {
 
 export function matchReasonLabel(reason: RevolutMatchReason) {
   switch (reason) {
+    case "iban":
+      return "IBAN du client";
     case "full_name":
       return "Nom complet";
     case "unique_last_name":

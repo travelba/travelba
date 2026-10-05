@@ -1,6 +1,8 @@
 import { isJpeg, loadWhatsappImage, whatsappImageKind } from "@/lib/crm/whatsapp-images";
 
-export async function GET(_request: Request, ctx: RouteContext<"/whatsapp/[name]">) {
+type Ctx = { params: Promise<{ name: string }> };
+
+export async function GET(_request: Request, ctx: Ctx) {
   const { name } = await ctx.params;
   const kind = whatsappImageKind(name);
   if (!kind) return new Response("Introuvable", { status: 404 });
