@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
-import { DESK_COOKIE, deskBypass } from "@/lib/crm/admin-client-login";
+import { DESK_COOKIE, deskBypass } from "@/lib/crm/desk-mode";
 import type { CrmTravelDocument } from "@/lib/crm/types";
 import { PasswordChangeForm } from "@/components/account/PasswordChangeForm";
 import { ProfileForm } from "@/components/account/ProfileForm";

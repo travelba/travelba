@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { ensureCustomerForUser, ensureStaff, getSessionUser } from "@/lib/crm/auth";
-import { DESK_COOKIE, deskBypass } from "@/lib/crm/admin-client-login";
+import { DESK_COOKIE, deskBypass } from "@/lib/crm/desk-mode";
 import { customerFullName } from "@/lib/crm/types";
 import { siteConfig } from "@/lib/site";
 import { AccountChrome } from "@/components/account/AccountChrome";
@@ -35,7 +35,7 @@ export default async function AccountLayout({
   const desk = deskBypass(jar.get(DESK_COOKIE)?.value, user.id);
 
   return (
-    <AccountChrome customerName={name} initials={initials} needsPhone={!customer.phone && !desk}>
+    <AccountChrome customerName={name} initials={initials} needsPhone={!customer.phone && !desk} desk={desk}>
       {children}
     </AccountChrome>
   );

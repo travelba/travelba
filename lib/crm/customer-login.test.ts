@@ -97,3 +97,32 @@ test("un second clic immédiat n’ajoute pas de ligne", async () => {
   assert.equal(result.recorded, false);
   assert.equal(store.rows.length, 0);
 });
+
+test("une ouverture par l’agence est toujours tracée, avec l’agent", async () => {
+  const inserted: Array<Record<string, unknown>> = [];
+  const result = await writeCustomerLogin(
+    {
+      authUserId: "11111111-1111-4111-8111-111111111111",
+      method: "desk",
+      staffId: "44444444-4444-4444-8444-444444444444",
+      now: new Date("2026-10-05T10:00:30Z"),
+    },
+    {
+      findCustomerId: async () => "cust-1",
+      // Connexion du client 30 secondes plus tôt : un desk ne se fond pas dedans.
+      latestCreatedAt: async () => "2026-10-05T10:00:00Z",
+      insert: async (row) => {
+        inserted.push(row);
+      },
+    }
+  );
+  assert.equal(result.recorded, true);
+  assert.deepEqual(inserted, [
+    {
+      customer_id: "cust-1",
+      auth_user_id: "11111111-1111-4111-8111-111111111111",
+      method: "desk",
+      staff_id: "44444444-4444-4444-8444-444444444444",
+    },
+  ]);
+});
