@@ -10,6 +10,7 @@ import {
   refreshBookingLedger,
 } from "@/lib/crm/bookings";
 import { parseItemDetails } from "@/lib/crm/ingest-types";
+import { linkedPliantTransactionIds, pliantExpenseTransactionId } from "@/lib/crm/pliant-booking";
 import { parseMoney } from "@/lib/crm/money";
 import { BOOKING_ITEM_KINDS, isActiveItem, isLedgerExpenseKind, type BookingItemKind } from "@/lib/crm/types";
 
@@ -243,7 +244,7 @@ export async function POST(request: Request, ctx: Ctx) {
   }
   const { data: existing } = await auth.supabase
     .from("crm_booking_items")
-    .select("sort_order")
+    .select("sort_order, kind, lifecycle, details")
     .eq("booking_id", id);
   const maxSort = (existing || []).reduce(
     (max, row) => Math.max(max, Number(row.sort_order || 0)),
@@ -254,6 +255,10 @@ export async function POST(request: Request, ctx: Ctx) {
   if (sortOrder == null) return jsonError(SORT_ORDER_ERROR);
   const details = parseItemDetails(body?.details);
   if ("error" in details) return jsonError(details.error);
+  const txId = isLedgerExpenseKind(kind) ? pliantExpenseTransactionId(details.details) : null;
+  if (txId && linkedPliantTransactionIds(existing || []).has(txId)) {
+    return jsonError("Cette dépense est déjà au dossier.", 409);
+  }
   const company = await billingCompanyPatch(auth.supabase, id, body?.billing_company_id);
   if ("error" in company && company.error) return jsonError(company.error);
   const { data, error } = await auth.supabase

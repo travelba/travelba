@@ -7,6 +7,8 @@ import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { readEstaAnswers, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import { loadPliantAccountBalance, pliantConfigured } from "@/lib/crm/pliant";
 import { pliantCardForBooking, pliantSpendsForCards, showPliantLast4 } from "@/lib/crm/pliant-card-run";
+import { pliantBookingCards, pliantCardRecaps } from "@/lib/crm/pliant-booking";
+import { hotelDisplayName } from "@/lib/crm/carnet";
 import type { PliantCardDraft, PliantSpendLine } from "@/lib/crm/pliant-cards";
 import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
@@ -158,6 +160,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
   }
   let pliantCard: PliantCardDraft | null = null;
   let pliantSpends: PliantSpendLine[] = [];
+  let pliantTabSpends: PliantSpendLine[] = [];
   let pliantAccount: { availableCents: number | null; currency: string } | null = null;
   try {
     const cardAdmin = createServiceClient();
@@ -167,12 +170,39 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
       ...arrivals.map((row) => row.pliant_card_id || ""),
     ];
     pliantSpends = await pliantSpendsForCards(cardAdmin, cardIds);
+    pliantTabSpends = await pliantSpendsForCards(
+      cardAdmin,
+      [
+        ...bookingCards.map((card) => card.pliant_card_id),
+        ...arrivals.map((row) => row.pliant_card_id || ""),
+        pliantCard?.pliant_card_id || "",
+      ],
+      { limit: null }
+    );
     pliantAccount = await loadPliantAccountBalance();
-    await showPliantLast4(cardAdmin, { bookingCards, arrivals, registry: pliantCard });
+    try {
+      await showPliantLast4(cardAdmin, { bookingCards, arrivals, registry: pliantCard });
+    } catch {
+      // Les quatre derniers chiffres manquent ; le récap des dépenses reste lisible.
+    }
   } catch {
     pliantCard = null;
     pliantSpends = [];
+    pliantTabSpends = [];
   }
+  const hotelNames: Record<string, string> = {};
+  for (const item of bookingItems) {
+    if (item.kind === "hotel") hotelNames[item.id] = hotelDisplayName(item);
+  }
+  const pliantRecap = pliantCardRecaps(
+    pliantBookingCards({
+      bookingCards,
+      arrivals,
+      hotelNames,
+      registry: pliantCard,
+    }),
+    pliantTabSpends
+  );
   const shareCompanions = companionsForShare(bookingTravelers, (companions || []) as CrmCompanion[]);
   let shareUrl: string | null = null;
   if (b.visible_to_client) {
@@ -270,6 +300,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           ledger={ledger}
           accountLedger={accountLedger}
           bookingCards={bookingCards}
+          pliantRecap={pliantRecap}
         />
   );
 }

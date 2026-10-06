@@ -228,17 +228,25 @@ export async function issueCustomerPliantCard(
   return { cardId: issued.cardId, created: true as const };
 }
 
-export async function pliantSpendsForCards(admin: Admin, cardIds: string[]) {
+/** Plafond historique du bureau carte. L’onglet Pliant du dossier passe `limit: null`. */
+export async function pliantSpendsForCards(
+  admin: Admin,
+  cardIds: string[],
+  options?: { limit?: number | null }
+) {
   const ids = [...new Set(cardIds.filter(Boolean))];
   if (!ids.length) return [] as PliantSpendLine[];
-  const { data } = await admin
+  let query = admin
     .from("crm_pliant_transactions")
     .select("id, merchant, status, type, billing_cents, billing_currency, booked_at, card_id")
     .in("card_id", ids)
-    .order("booked_at", { ascending: false, nullsFirst: false })
-    .limit(30);
+    .order("booked_at", { ascending: false, nullsFirst: false });
+  const cap = options?.limit === undefined ? 30 : options.limit;
+  if (cap != null) query = query.limit(cap);
+  const { data } = await query;
   return ((data || []) as {
     id: string;
+    card_id: string | null;
     merchant: string | null;
     status: string | null;
     type: string | null;
@@ -247,6 +255,7 @@ export async function pliantSpendsForCards(admin: Admin, cardIds: string[]) {
     booked_at: string | null;
   }[]).map((row) => ({
     id: row.id,
+    cardId: row.card_id,
     merchant: row.merchant,
     status: row.status,
     type: row.type,

@@ -14,6 +14,7 @@ test("l’onglet se lit dans l’URL et retombe sur Le voyage", () => {
   assert.equal(bookingTabFromParam("a-faire"), "todo");
   assert.equal(bookingTabFromParam("todo"), "todo");
   assert.equal(bookingTabFromParam("carte"), "cartes");
+  assert.equal(bookingTabFromParam("pliant"), "pliant");
   assert.equal(bookingTabFromParam("transactions"), "transactions");
   assert.equal(bookingTabFromParam("Interface"), "interface");
   assert.equal(bookingTabFromParam("inconnu"), "voyage");
@@ -28,6 +29,8 @@ test("changer d’onglet garde les autres paramètres de l’URL, sauf ?hotel= q
 
 test("les flèches bouclent sur les onglets", () => {
   assert.equal(nextBookingTab(BOOKING_TAB_IDS, "voyage", "ArrowRight"), "cartes");
+  assert.equal(nextBookingTab(BOOKING_TAB_IDS, "cartes", "ArrowRight"), "pliant");
+  assert.equal(nextBookingTab(BOOKING_TAB_IDS, "pliant", "ArrowRight"), "todo");
   assert.equal(nextBookingTab(BOOKING_TAB_IDS, "voyage", "ArrowLeft"), "interface");
   assert.equal(nextBookingTab(BOOKING_TAB_IDS, "interface", "ArrowRight"), "voyage");
   assert.equal(nextBookingTab(BOOKING_TAB_IDS, "argent", "Home"), "voyage");

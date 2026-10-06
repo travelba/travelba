@@ -43,9 +43,11 @@ import { unsplashKeywordMatch } from "@/lib/crm/covers";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
 import { BookingCards } from "@/components/admin/BookingCards";
+import { PliantBookingTab } from "@/components/admin/PliantBookingTab";
 import { PliantCardDesk } from "@/components/admin/PliantCardDesk";
 import { principalGuest, stayCardFace } from "@/lib/crm/hotel-arrival";
 import type { PliantCardDraft, PliantSpendLine } from "@/lib/crm/pliant-cards";
+import type { PliantCardRecap } from "@/lib/crm/pliant-booking";
 import { BookingExpensesPanel } from "@/components/admin/BookingExpensesPanel";
 import { ClientTransactionsPanel } from "@/components/account/ClientTransactionsPanel";
 import { ServiceOfferToggles } from "@/components/admin/ServiceOfferToggles";
@@ -171,6 +173,7 @@ export function BookingEditor({
   ledger = null,
   accountLedger = null,
   bookingCards = [],
+  pliantRecap = [],
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -227,6 +230,7 @@ export function BookingEditor({
   /** Grand livre du compte, même lecture que Transactions du client. */
   accountLedger?: ClientLedgerView | null;
   bookingCards?: CrmBookingCard[];
+  pliantRecap?: PliantCardRecap[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -1699,6 +1703,15 @@ export function BookingEditor({
           cards={bookingCards}
           firstName={stayGuest.firstName}
           lastName={stayGuest.lastName}
+        />
+      ) : null}
+
+      {tab === "pliant" ? (
+        <PliantBookingTab
+          bookingId={booking.id}
+          currency={booking.currency}
+          cards={pliantRecap}
+          items={items}
         />
       ) : null}
 

@@ -1,5 +1,6 @@
 export type PliantSpendLine = {
   id: string;
+  cardId?: string | null;
   merchant: string | null;
   status: string | null;
   type: string | null;

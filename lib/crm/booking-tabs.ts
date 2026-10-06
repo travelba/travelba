@@ -1,5 +1,5 @@
 /** Onglets de la fiche dossier : l’onglet courant vit dans l’URL (`?tab=`). */
-export const BOOKING_TAB_IDS = ["voyage", "cartes", "todo", "argent", "transactions", "client", "interface"] as const;
+export const BOOKING_TAB_IDS = ["voyage", "cartes", "pliant", "todo", "argent", "transactions", "client", "interface"] as const;
 
 export type BookingTabId = (typeof BOOKING_TAB_IDS)[number];
 
@@ -7,6 +7,7 @@ export type BookingTabId = (typeof BOOKING_TAB_IDS)[number];
 export const BOOKING_TAB_SLUGS: Record<BookingTabId, string> = {
   voyage: "voyage",
   cartes: "carte",
+  pliant: "pliant",
   todo: "a-faire",
   argent: "argent",
   transactions: "transactions",
@@ -17,6 +18,7 @@ export const BOOKING_TAB_SLUGS: Record<BookingTabId, string> = {
 export const BOOKING_TAB_LABELS: Record<BookingTabId, string> = {
   voyage: "Le voyage",
   cartes: "Carte",
+  pliant: "Pliant",
   todo: "À faire",
   argent: "L’argent",
   transactions: "Transactions",
