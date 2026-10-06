@@ -366,6 +366,13 @@ button:disabled,
   .admin-af input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]) {
     min-height: 2.75rem;
   }
+
+  /* 16px : Safari iOS ne zoome plus le champ, et ne laisse plus la page décalée. */
+  .account-app select,
+  .account-app textarea,
+  .account-app input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]) {
+    font-size: 16px;
+  }
 }
 
 /* Repère clavier unique sur tout le site : champagne, hors du contour. Liens, boutons et

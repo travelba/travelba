@@ -78,38 +78,44 @@ export default async function ExampleHomePage() {
 
       <article className="overflow-hidden rounded-2xl border border-[#e5e3dc] shadow-xl">
         <BookingHero booking={toPublicBooking(nextTrip)} items={session.items} priority frameClassName="relative h-[22rem] w-full">
-          {countdown ? (
-            <p className="absolute left-5 top-5 z-10 inline-flex w-fit items-center gap-1.5 rounded-full border border-[var(--admin-gold)]/30 bg-white/95 px-3 py-1 text-[12px] font-semibold text-[var(--admin-navy)] shadow-sm">
-              <Icon name="timer" className="h-[15px] w-[15px] text-[var(--admin-gold)]" />
-              <span className="font-bold">{countdown}</span>
-              {countdown.startsWith("J") ? (
-                <span className="font-normal text-[#5a5c60]">{homeFlight ? "avant l’envol" : "avant le départ"}</span>
+          <div className="flex h-full min-w-0 flex-col justify-between gap-3 p-4">
+            <div className="flex min-w-0 flex-wrap items-start gap-2">
+              {countdown ? (
+                <p className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-[var(--admin-gold)]/30 bg-white/95 px-3 py-1 text-[12px] font-semibold text-[var(--admin-navy)] shadow-sm">
+                  <Icon name="timer" className="h-[15px] w-[15px] shrink-0 text-[var(--admin-gold)]" />
+                  <span className="font-bold">{countdown}</span>
+                  {countdown.startsWith("J") ? (
+                    <span className="font-normal text-[#5a5c60]">
+                      {homeFlight ? "avant l’envol" : "avant le départ"}
+                    </span>
+                  ) : null}
+                </p>
               ) : null}
-            </p>
-          ) : null}
-          {weather ? (
-            <p className="absolute right-5 top-5 z-10 inline-flex items-center gap-1.5 rounded-full border border-white/40 bg-white/90 px-3 py-1 text-[12px] font-semibold text-[var(--admin-navy)] shadow-sm">
-              <Icon name={weather.icon} className="h-[15px] w-[15px] text-[var(--admin-gold)]" />
-              <span className="font-bold">{weather.tempC}°</span>
-              <span className="font-normal text-[#5a5c60]">{weather.label}</span>
-            </p>
-          ) : null}
-          <div className="absolute inset-x-0 bottom-0 flex flex-col gap-3 p-5">
-            <div>
-              <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--admin-gold)]">
-                <Icon name="flight_takeoff" className="h-3.5 w-3.5" />
-                {formatDateRangeShort(nextTrip.start_date, nextTrip.end_date)}
-              </p>
-              <h2 className="mt-1 font-display text-2xl font-bold leading-tight text-white">{tripName}</h2>
-              {tripPlace ? <p className="line-clamp-2 text-[13px] text-white/80">{tripPlace}</p> : null}
+              {weather ? (
+                <p className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-white/40 bg-white/90 px-3 py-1 text-[12px] font-semibold text-[var(--admin-navy)] shadow-sm">
+                  <Icon name={weather.icon} className="h-[15px] w-[15px] shrink-0 text-[var(--admin-gold)]" />
+                  <span className="font-bold">{weather.tempC}°</span>
+                  <span className="font-normal text-[#5a5c60]">{weather.label}</span>
+                </p>
+              ) : null}
             </div>
-            <Link
-              href={tripHref}
-              className="ml-auto flex h-12 w-fit items-center gap-3 rounded-full bg-white px-5 text-sm font-semibold text-[var(--admin-navy)] shadow-md"
-            >
-              Accéder à ma réservation
-              <Icon name="arrow_forward" className="h-5 w-5 text-[var(--admin-gold)]" />
-            </Link>
+            <div className="flex min-w-0 flex-col gap-3">
+              <div>
+                <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--admin-gold)]">
+                  <Icon name="flight_takeoff" className="h-3.5 w-3.5" />
+                  {formatDateRangeShort(nextTrip.start_date, nextTrip.end_date)}
+                </p>
+                <h2 className="mt-1 font-display text-2xl font-bold leading-tight text-white">{tripName}</h2>
+                {tripPlace ? <p className="line-clamp-2 text-[13px] text-white/80">{tripPlace}</p> : null}
+              </div>
+              <Link
+                href={tripHref}
+                className="flex h-12 w-full items-center justify-center gap-3 rounded-full bg-white px-5 text-sm font-semibold text-[var(--admin-navy)] shadow-md"
+              >
+                Accéder à ma réservation
+                <Icon name="arrow_forward" className="h-5 w-5 text-[var(--admin-gold)]" />
+              </Link>
+            </div>
           </div>
         </BookingHero>
       </article>

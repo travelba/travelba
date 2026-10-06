@@ -16,6 +16,13 @@ const TAB_DEFS = [
   { suffix: "/profil", label: "Mon compte", exact: false, icon: "badge" },
 ] as const;
 
+/** Coupure seulement si le mot ne tient pas dans son quart d’écran. */
+function tabLabel(label: string) {
+  if (label === "Réservations") return "Réserva\u00adtions";
+  if (label === "Transactions") return "Transac\u00adtions";
+  return label;
+}
+
 function tabsFor(basePath: string) {
   return TAB_DEFS.map((tab) => ({
     ...tab,
@@ -170,7 +177,7 @@ export function AccountChrome({
       </main>
 
       <nav className="account-tabbar md:hidden" aria-label="Navigation compte">
-        <div className="mx-auto flex h-14 max-w-[480px] items-stretch justify-around px-1.5">
+        <div className="mx-auto flex h-14 w-full max-w-[480px] items-stretch px-1">
           {tabs.map((tab) => {
             const active =
               "exact" in tab && tab.exact
@@ -181,14 +188,14 @@ export function AccountChrome({
                 key={tab.href}
                 href={tab.href}
                 aria-current={active ? "page" : undefined}
-                className={`flex min-h-11 min-w-[68px] flex-col items-center justify-center gap-0.5 px-1 text-[12px] leading-none tracking-tight transition ${
+                className={`flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-0.5 text-center text-[12px] leading-none tracking-tight transition ${
                   active
                     ? "font-bold text-[var(--admin-navy)]"
                     : "font-semibold text-[#1a2740] hover:text-[var(--admin-navy)]"
                 }`}
               >
                 <span
-                  className={`flex h-7 w-10 items-center justify-center rounded-full ${
+                  className={`flex h-7 w-10 shrink-0 items-center justify-center rounded-full ${
                     active ? "bg-[var(--admin-navy)] text-[var(--admin-gold)]" : "text-[var(--admin-navy)]"
                   }`}
                 >
@@ -199,7 +206,7 @@ export function AccountChrome({
                     strokeWidth={active ? 2.4 : 2.15}
                   />
                 </span>
-                {tab.label}
+                <span className="block max-w-full">{tabLabel(tab.label)}</span>
               </Link>
             );
           })}
