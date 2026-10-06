@@ -23,11 +23,11 @@ export async function POST(request: Request, ctx: Ctx) {
 
   const { data } = await auth.supabase
     .from("crm_bookings")
-    .select("id, title, destination, visible_to_client, customer_id")
+    .select("id, reference, title, destination, visible_to_client, customer_id")
     .eq("id", id)
     .eq("customer_id", auth.customer.id)
     .maybeSingle();
-  const booking = data as Pick<CrmBooking, "id" | "title" | "destination" | "visible_to_client"> | null;
+  const booking = data as Pick<CrmBooking, "id" | "reference" | "title" | "destination" | "visible_to_client"> | null;
   if (!booking?.visible_to_client) return jsonError("Ce voyage n’est pas publié", 404);
   if (!auth.customer.phone?.trim()) {
     return jsonError("Ajoutez un téléphone dans Vous pour envoyer ce lien.");

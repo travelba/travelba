@@ -148,31 +148,29 @@ export function profileActivitySummary(keys: string[], billingCompanies = false)
 }
 
 /** Valeurs saisies. L’IBAN n’est jamais recopié. */
-export function profileActivityDetail(
-  values: Record<string, string | null | undefined>,
-  ibanTouched = false
-) {
+export function profileActivityDetail(values: Record<string, unknown>, ibanTouched = false) {
+  const text = (key: string) => (typeof values[key] === "string" ? values[key] : null);
   const parts: string[] = [];
-  const name = [tidyName(values.first_name), tidyName(values.last_name)].filter(Boolean).join(" ");
+  const name = [tidyName(text("first_name")), tidyName(text("last_name"))].filter(Boolean).join(" ");
   if (name) parts.push(name);
-  if (tidyName(values.usage_name)) parts.push(`nom d’usage ${tidyName(values.usage_name)}`);
-  if (tidyName(values.phone)) parts.push(`téléphone ${tidyName(values.phone)}`);
-  if (tidyName(values.phone_secondary)) parts.push(`second téléphone ${tidyName(values.phone_secondary)}`);
-  if (tidyName(values.email)) parts.push(tidyName(values.email));
-  if (values.birth_date) parts.push(`né(e) le ${formatDateFr(values.birth_date)}`);
-  if (values.sex === "F") parts.push("femme");
-  else if (values.sex === "M") parts.push("homme");
-  if (values.nationality) parts.push(countryName(values.nationality));
-  const cityLine = [tidyName(values.postal_code), tidyName(values.city)].filter(Boolean).join(" ");
-  const address = [tidyName(values.address_line), cityLine, values.country ? countryName(values.country) : ""]
+  if (tidyName(text("usage_name"))) parts.push(`nom d’usage ${tidyName(text("usage_name"))}`);
+  if (tidyName(text("phone"))) parts.push(`téléphone ${tidyName(text("phone"))}`);
+  if (tidyName(text("phone_secondary"))) parts.push(`second téléphone ${tidyName(text("phone_secondary"))}`);
+  if (tidyName(text("email"))) parts.push(tidyName(text("email")));
+  if (text("birth_date")) parts.push(`né(e) le ${formatDateFr(text("birth_date"))}`);
+  if (text("sex") === "F") parts.push("femme");
+  else if (text("sex") === "M") parts.push("homme");
+  if (text("nationality")) parts.push(countryName(text("nationality") || ""));
+  const cityLine = [tidyName(text("postal_code")), tidyName(text("city"))].filter(Boolean).join(" ");
+  const address = [tidyName(text("address_line")), cityLine, text("country") ? countryName(text("country") || "") : ""]
     .filter(Boolean)
     .join(", ");
   if (address) parts.push(address);
-  if (tidyName(values.flying_blue)) parts.push(`Flying Blue ${tidyName(values.flying_blue)}`);
-  if (tidyName(values.company_name)) parts.push(tidyName(values.company_name));
-  if (ibanTouched || values.iban) parts.push("IBAN modifié");
-  const text = parts.join(" · ");
-  return text ? text.slice(0, 400) : null;
+  if (tidyName(text("flying_blue"))) parts.push(`Flying Blue ${tidyName(text("flying_blue"))}`);
+  if (tidyName(text("company_name"))) parts.push(tidyName(text("company_name")));
+  if (ibanTouched || text("iban")) parts.push("IBAN modifié");
+  const line = parts.join(" · ");
+  return line ? line.slice(0, 400) : null;
 }
 
 export function pieceActivityDetail(piece: {
