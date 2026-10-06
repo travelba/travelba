@@ -169,8 +169,16 @@ Match unique → le cron appelle `applyReplacementToBooking`. Sinon, clic
 est annulé) :
 - même référence : la carte est mise à jour, le prix vendu ne change pas, et
   une carte déjà montrée le reste ;
+- train : même code, autre jour = une carte nouvelle. On ne réécrit pas le trajet déjà là. Deux billets du même train le même jour restent une carte ;
+- réservation Little Emperors : `64570` et `64570SH046795` sont la même carte
+  (`hotelRefsShareBooking`). Le numéro court ou une ancienne chambre complète
+  la carte active : le nom, la référence complète et les dates restent, les
+  avantages nouveaux s’ajoutent. Une chambre déjà annulée ne revient pas.
+  Deux chambres actives de la même réservation : l’agence choisit ;
 - autre référence : l’ancienne carte passe `lifecycle=superseded`, la nouvelle
-  reprend ce prix vendu et reste cachée. Plusieurs cartes du même type : l’agence choisit ;
+  reprend ce prix vendu et reste cachée. Le choix d’une carte n’apparaît que
+  pour **une** carte nouvelle face à plusieurs cartes du même type. Plusieurs
+  cartes nouvelles rejoignent le séjour (bouton **Mettre à jour le séjour**) ;
 - les dates du dossier suivent les cartes actives ;
 - le mail appliqué seul sort de la file (`attached`), note « Itinéraire mis à jour depuis le mail. » ;
 - la nouvelle carte d’un remplacement reste cachée jusqu’au clic Montrer ;
@@ -207,7 +215,7 @@ Sans re-télécharger Gmail (ne pas remettre `received`) et **sans rattacher** :
 ## Vérifier
 
 ```bash
-npx tsx --test lib/crm/email-ingest-policy.test.ts lib/crm/email-ingest-create.test.ts lib/crm/email-match.test.ts lib/crm/gmail-parse.test.ts
+npx tsx --test lib/crm/email-ingest-policy.test.ts lib/crm/email-ingest-create.test.ts lib/crm/email-match.test.ts lib/crm/gmail-parse.test.ts lib/crm/item-lifecycle.test.ts lib/crm/item-match.test.ts
 npx tsc --noEmit
 ```
 

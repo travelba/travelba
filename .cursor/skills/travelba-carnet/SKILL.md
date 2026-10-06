@@ -21,7 +21,7 @@ Un seul état que l’agence peut croire : **En préparation** (`visible_to_clie
 
 | Geste | Effet |
 |-------|--------|
-| **Enregistrer** | sauve le dossier ; ne le montre pas et ne débite pas un séjour encore caché |
+| **Enregistrer** | sauve le dossier ; ne le montre pas et ne débite pas un séjour encore caché. Il s’allume dès qu’une étape est retirée, ajoutée, modifiée ou réordonnée |
 | **Montrer au client** | le client voit ; items + PDFs du dossier passent visibles. Un confirmé entre au grand livre. Un devis montré ne débite pas |
 
 Un seul interrupteur séjour (plus de case fichier séparée). Guard serveur `canPublishCarnet` : au moins **une** carte `kind !== "fee"`.

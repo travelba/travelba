@@ -129,7 +129,7 @@ Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Co
 | rail | n° de train + jour, sinon réf. + jour, sinon titre + jour. Un autre jour = une carte nouvelle. Deux billets du même train le même jour = une carte |
 | car / transfer / activity / insurance | réf. sinon titre + jour |
 
-Réimport même clé = **remplace** la carte. Dans un même extract, 10 duplicatas → 1 item (`mergeExtractItems`). Aller et retour (n° ou jours différents) → 2 items.
+Réimport même clé = **remplace** la carte. Dans un même extract, 10 duplicatas → 1 item (`mergeExtractItems`). Aller et retour (n° ou jours différents) → 2 items. Un code train partagé (`FEFZ75`) sur deux jours = **deux** cartes : ne pas fusionner sur la réf. seule.
 
 ## Voyageurs / titre
 
