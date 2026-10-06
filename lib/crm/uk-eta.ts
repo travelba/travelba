@@ -1,6 +1,6 @@
 import { countryForIata } from "@/lib/crm/airports";
 import { addIsoDays } from "@/lib/crm/dates";
-import { countryIso, foldCountry } from "@/lib/crm/hotel-arrival";
+import { countryIso, foldCountry, parisIsoDate } from "@/lib/crm/hotel-arrival";
 import { resolveNationality } from "@/lib/crm/countries";
 import { isActiveItem } from "@/lib/crm/types";
 import {
@@ -11,20 +11,30 @@ import {
   passportLast3,
 } from "@/lib/crm/esta";
 import {
-  ukEtaFeedback,
+  ukEtaCheckPending,
+  ukEtaCheckedLabel,
+  ukEtaLineAsPending,
+  ukEtaRequestAt,
   type UkEtaStatus,
   type UkEtaTravelerLine,
 } from "@/lib/crm/uk-eta-ui";
 import type { CrmBookingItem, CrmBookingTraveler, CrmTravelDocument } from "@/lib/crm/types";
 
 export {
-  ukEtaCheckedLabel,
-  ukEtaFeedback,
+  UK_ETA_PENDING_LABEL,
   UK_ETA_PENDING_STALE_MS,
-  UK_ETA_POLL_MS,
+  UK_ETA_POLL_INTERVAL_MS,
   UK_ETA_POLL_WINDOW_MS,
+  UK_ETA_STALE_LABEL,
   UK_ETA_STATUSES,
   isUkEtaStatus,
+  mergeUkEtaPoll,
+  ukEtaCheckPending,
+  ukEtaCheckedLabel,
+  ukEtaLineAsPending,
+  ukEtaRequestAt,
+  ukEtaRequestStale,
+  ukEtaRequestedLabel,
 } from "@/lib/crm/uk-eta-ui";
 export type { UkEtaStatus, UkEtaTravelerLine } from "@/lib/crm/uk-eta-ui";
 
@@ -417,6 +427,7 @@ export type UkEtaWebhookBody = {
   booking_id: string;
   traveler_id: string;
   departure_date: string | null;
+  kind: "uk_eta";
 };
 
 /** Identifiants seuls. Jamais le passeport, la MRZ ou la date de naissance. */
@@ -431,6 +442,7 @@ export function ukEtaWebhookBody(input: {
     booking_id: input.bookingId,
     traveler_id: input.travelerId,
     departure_date: isoDay(input.departureDate),
+    kind: "uk_eta",
   };
 }
 
@@ -552,6 +564,7 @@ export function ukEtaOnDailyList(input: {
   if (!departure || !today) return false;
   if (input.status === "non_concerne") return false;
   if (departure < today || departure > addIsoDays(today, UK_ETA_DAILY_HORIZON_DAYS)) return false;
+  if (input.status === "a_verifier") return true;
   if (!input.checkedAt) return true;
   const alerts = ukEtaAlerts({
     status: input.status,
@@ -577,7 +590,8 @@ export function ukEtaTravelerLine(input: {
   passport: CrmTravelDocument | null;
   passportLast3?: string | null;
   clientSentAt?: string | null;
-  requestedAt?: string | null;
+  dispatchedAt?: string | null;
+  attemptAt?: string | null;
   nowMs?: number;
 }): UkEtaTravelerLine {
   const alerts = ukEtaAlerts({
@@ -603,28 +617,68 @@ export function ukEtaTravelerLine(input: {
     alerts,
     passportExpires: input.passport?.expires_on,
   });
-  const requestedAt = input.status === "a_verifier" ? input.requestedAt || null : null;
-  const feedback = ukEtaFeedback({
-    status: input.status,
+  const requestedAt = ukEtaRequestAt({ dispatchedAt: input.dispatchedAt, attemptAt: input.attemptAt });
+  const pending = ukEtaCheckPending({
+    dispatchedAt: input.dispatchedAt,
+    attemptAt: input.attemptAt,
     checkedAt: input.checkedAt,
-    requestedAt,
-    nowMs: input.nowMs ?? Date.now(),
   });
-  return {
+  const nowMs = input.nowMs ?? Date.now();
+  const line: UkEtaTravelerLine = {
     travelerId: input.traveler.id,
     name: [input.traveler.first_name, input.traveler.last_name].filter(Boolean).join(" ").trim() || "Voyageur",
     badge: badge.label,
     tone: badge.tone,
-    checkedLabel: feedback.label,
+    checkedLabel: ukEtaCheckedLabel(input.checkedAt),
     caption,
     canVerify: input.status !== "non_concerne",
     canSend: Boolean(draft) && !input.clientSentAt,
     sent: Boolean(input.clientSentAt),
-    status: input.status,
-    checkedAt: input.checkedAt || null,
+    pending: false,
+    stale: false,
     requestedAt,
-    validUntil: isoDay(input.validUntil),
+    checkedAt: input.checkedAt || null,
   };
+  if (!pending) return line;
+  return ukEtaLineAsPending(line, requestedAt || new Date(nowMs).toISOString(), nowMs);
+}
+
+/** Départ du cron : date du dossier, sinon premier début de carte active, heure de Paris. */
+export function ukEtaCronDeparture(input: {
+  startDate?: string | null;
+  items?: { start_at?: string | null; lifecycle?: string | null }[] | null;
+}) {
+  const booked = isoDay(input.startDate);
+  if (booked) return booked;
+  let earliest: string | null = null;
+  for (const item of input.items || []) {
+    const life = item.lifecycle || "active";
+    if (life === "cancelled" || life === "superseded") continue;
+    const raw = String(item.start_at || "").trim();
+    if (!raw) continue;
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) continue;
+    const day = parisIsoDate(date);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+    if (!earliest || day < earliest) earliest = day;
+  }
+  return earliest;
+}
+
+/** Les départs les plus proches d’abord, puis l’id. Plafond du passage. */
+export function pickUkEtaCronBookings(
+  rows: { id: string; departure: string | null }[],
+  today: string,
+  limit = 200
+) {
+  const until = addIsoDays(today, UK_ETA_DAILY_HORIZON_DAYS);
+  return rows
+    .filter((row): row is { id: string; departure: string } => {
+      const day = row.departure;
+      return Boolean(day && day >= today && day <= until);
+    })
+    .sort((a, b) => a.departure.localeCompare(b.departure) || a.id.localeCompare(b.id))
+    .slice(0, limit);
 }
 
 export function touchingUkItems(items: Pick<CrmBookingItem, "kind" | "lifecycle" | "title" | "details">[]) {

@@ -7,13 +7,18 @@ export const runtime = "nodejs";
 
 type Ctx = { params: Promise<{ id: string }> };
 
+function linesResponse(lines: unknown) {
+  return NextResponse.json({ ok: true, lines }, { headers: { "Cache-Control": "no-store" } });
+}
+
+/** Lecture des badges. Ne déclenche pas le webhook. */
 export async function GET(_request: Request, ctx: Ctx) {
   const auth = await requireStaff();
   if (auth instanceof NextResponse) return auth;
   const { id } = await ctx.params;
   try {
     const lines = await readUkEtaLines(createServiceClient(), id);
-    return NextResponse.json({ ok: true, lines });
+    return linesResponse(lines);
   } catch {
     return jsonError("ETA indisponible", 503);
   }
@@ -33,12 +38,12 @@ export async function POST(request: Request, ctx: Ctx) {
       const lines = await syncUkEtaForBookingId(admin, id, { travelerId, stamp: new Date().toISOString() });
       const line = lines.find((row) => row.travelerId === travelerId);
       if (!line?.canVerify) return jsonError("Ce voyageur n’est pas soumis à l’ETA.");
-      return NextResponse.json({ ok: true, lines });
+      return linesResponse(lines);
     }
     const result = await sendUkEtaToClient(admin, id, travelerId);
     if (!result.ok) return jsonError(result.error);
     const lines = await readUkEtaLines(admin, id);
-    return NextResponse.json({ ok: true, lines });
+    return linesResponse(lines);
   } catch {
     return jsonError("ETA indisponible", 503);
   }

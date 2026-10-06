@@ -98,6 +98,7 @@ Lecture **service_role** uniquement. `anon` et `authenticated` n’ont pas le dr
 Elle liste les vérifications dont le départ (date du dossier, sinon premier début de carte, heure de Paris) est **aujourd’hui ou dans les 90 jours**, dossier non archivé, statut autre que `non_concerne`, et au moins un de ces cas :
 
 - jamais vérifié (`checked_at` null) ;
+- statut `a_verifier`, même si `checked_at` est récent (clic « Vérifier l’ESTA ») ;
 - statut autre que `approuve`, vérifié il y a **plus de 7 jours** ;
 - `approuve` mais `valid_until` avant le retour ;
 - `esta_passport_last3` différent du passeport enregistré.
@@ -119,7 +120,7 @@ from public.esta_a_verifier;
 
 Quand une vérification **passe à** `a_verifier` (nouveau segment ou hôtel aux États-Unis, passeport ajouté ou changé, bouton « Vérifier l’ESTA »), le serveur fait un `POST` JSON.
 
-Un seul appel par changement. La fonction `crm_claim_esta_dispatch` pose le verrou. Si l’appel échoue, un nouvel essai est possible après 15 minutes. Si les variables manquent, rien ne casse : journal `[esta] webhook non configuré`, la ligne reste `a_verifier`.
+Un seul appel par changement. La fonction `crm_claim_esta_dispatch` pose le verrou. Si l’appel échoue, un nouvel essai est possible après 15 minutes. Une nouvelle clé (clic ou changement de passeport) remet `dispatched_at` à vide, pour que cet essai ait lieu. Si les variables manquent, rien ne casse : journal `[esta] webhook non configuré`, la ligne reste `a_verifier`.
 
 Corps, et rien d’autre :
 
@@ -128,11 +129,12 @@ Corps, et rien d’autre :
   "id": "<crm_esta_checks.id>",
   "booking_id": "<dossier>",
   "traveler_id": "<voyageur>",
-  "departure_date": "2026-11-01"
+  "departure_date": "2026-11-01",
+  "kind": "esta"
 }
 ```
 
-`departure_date` peut être `null`.
+`departure_date` peut être `null`. `kind` vaut toujours `esta`. L’ETA Royaume-Uni peut viser la même URL : son corps porte `"kind": "uk_eta"`.
 
 En-tête : `ESTA_WEBHOOK_KEY_HEADER` (défaut `Authorization`). Si le nom est `Authorization`, la valeur est `Bearer <ESTA_WEBHOOK_KEY>`. Sinon la valeur est la clé seule.
 
@@ -159,4 +161,6 @@ Client, en français, depuis la fiche : ESTA valable jusqu’au JJ/MM/AAAA ; man
 
 ## Migration
 
-Fichier `supabase/migrations/20261006153000_esta_checks.sql`. À appliquer sur le projet Supabase `fsmfozxgujskluxakeoq` (SQL editor ou `apply_migration`) **avant** que l’assistant lise la vue. Le code tolère l’absence de la table : la fiche s’ouvre, la vérification attend le schéma.
+Fichier `supabase/migrations/20261006153000_esta_checks.sql`.
+
+`supabase/migrations/20261006224500_esta_uk_eta_dispatch_retry.sql` remplace le claim et la vue : un clic `a_verifier` reste dans la file, et une nouvelle clé d’envoi remet `dispatched_at` à vide. À appliquer sur `fsmfozxgujskluxakeoq`. Le code tolère l’absence de la table : la fiche s’ouvre, la vérification attend le schéma.

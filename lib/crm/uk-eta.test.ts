@@ -14,14 +14,26 @@ import {
   ukEtaClientAutoSend,
   ukEtaClientDraft,
   ukEtaCoversTrip,
+  pickUkEtaCronBookings,
+  ukEtaCronDeparture,
   ukEtaDispatchDue,
   ukEtaExempt,
   ukEtaNoteCaption,
   ukEtaOnDailyList,
+  ukEtaTravelerLine,
   ukEtaWebhookBody,
   ukEtaWebhookHeader,
 } from "./uk-eta";
-import { ukEtaCheckedLabel, ukEtaFeedback } from "./uk-eta-ui";
+import {
+  UK_ETA_PENDING_LABEL,
+  UK_ETA_STALE_LABEL,
+  mergeUkEtaPoll,
+  ukEtaCheckPending,
+  ukEtaCheckedLabel,
+  ukEtaRequestAt,
+  ukEtaRequestedLabel,
+} from "./uk-eta-ui";
+import type { CrmBookingTraveler, CrmTravelDocument } from "./types";
 
 const PASSPORT = "12AB34567";
 const NOW = Date.parse("2026-10-06T12:00:00Z");
@@ -176,6 +188,7 @@ test("la file reprend les mêmes cas que l’ESTA, dans les 90 jours", () => {
     nowMs: NOW,
   };
   assert.equal(ukEtaOnDailyList({ ...base, status: "a_verifier", checkedAt: null }), true);
+  assert.equal(ukEtaOnDailyList({ ...base, status: "a_verifier", checkedAt: "2026-10-06T11:50:00Z" }), true);
   assert.equal(ukEtaOnDailyList({ ...base, status: "introuvable", checkedAt: "2026-10-05T12:00:00Z" }), false);
   assert.equal(ukEtaOnDailyList({ ...base, status: "introuvable", checkedAt: "2026-09-01T12:00:00Z" }), true);
   assert.equal(
@@ -299,7 +312,8 @@ test("le webhook ne porte que les identifiants, avec Bearer", () => {
     travelerId: "traveler-1",
     departureDate: "2026-10-30T08:00:00Z",
   });
-  assert.deepEqual(Object.keys(body).sort(), ["booking_id", "departure_date", "id", "traveler_id"]);
+  assert.deepEqual(Object.keys(body).sort(), ["booking_id", "departure_date", "id", "kind", "traveler_id"]);
+  assert.equal(body.kind, "uk_eta");
   assert.equal(body.departure_date, "2026-10-30");
   const json = JSON.stringify(body);
   assert.doesNotMatch(json, /passport|passeport|mrz|birth|naissance|12AB34567/i);
@@ -331,29 +345,120 @@ test("le webhook ne porte que les identifiants, avec Bearer", () => {
   );
 });
 
-test("retour visuel : en cours à l’heure de Paris, relance après 20 min, vérifié avec l’heure", () => {
-  const pending = ukEtaFeedback({
-    status: "a_verifier",
-    requestedAt: "2026-10-06T12:00:00Z",
-    checkedAt: null,
-    nowMs: NOW,
+const TRAVELER = { id: "traveler-1", first_name: "Camille", last_name: "Martin" } as CrmBookingTraveler;
+
+function line(input: {
+  status: "a_verifier" | "approuve" | "introuvable" | "refuse" | "en_attente" | "erreur";
+  validUntil?: string | null;
+  checkedAt?: string | null;
+  note?: string | null;
+  dispatchedAt?: string | null;
+  attemptAt?: string | null;
+  nowMs?: number;
+}) {
+  return ukEtaTravelerLine({
+    traveler: TRAVELER,
+    status: input.status,
+    validUntil: input.validUntil,
+    checkedAt: input.checkedAt,
+    note: input.note,
+    returnOn: "2026-11-03",
+    passport: { number: PASSPORT, expires_on: "2028-06-01" } as CrmTravelDocument,
+    passportLast3: "567",
+    dispatchedAt: input.dispatchedAt,
+    attemptAt: input.attemptAt,
+    nowMs: input.nowMs ?? NOW,
   });
+}
+
+test("une vérification en cours affiche l’heure de Paris, puis le résultat", () => {
+  assert.equal(ukEtaRequestAt({ dispatchedAt: "2026-10-06T12:00:00Z", attemptAt: "2026-10-06T11:59:00Z" }), "2026-10-06T12:00:00Z");
+  assert.equal(ukEtaRequestAt({ dispatchedAt: "2026-10-06T11:00:00Z", attemptAt: "2026-10-06T12:10:00Z" }), "2026-10-06T12:10:00Z");
+  assert.equal(ukEtaCheckPending({ dispatchedAt: "2026-10-06T12:00:00Z", checkedAt: null }), true);
+  assert.equal(ukEtaCheckPending({ dispatchedAt: "2026-10-06T12:00:00Z", checkedAt: "2026-10-06T11:00:00Z" }), true);
+  assert.equal(ukEtaCheckPending({ dispatchedAt: "2026-10-06T12:00:00Z", checkedAt: "2026-10-06T12:05:00Z" }), false);
+
+  const pending = line({ status: "a_verifier", dispatchedAt: "2026-10-06T12:00:00Z" });
   assert.equal(pending.pending, true);
-  assert.equal(pending.label, "Vérification en cours… demandée à 14:00");
-  const stale = ukEtaFeedback({
+  assert.equal(pending.stale, false);
+  assert.equal(pending.badge, UK_ETA_PENDING_LABEL);
+  assert.equal(pending.checkedLabel, "demandée à 14:00");
+  assert.equal(ukEtaRequestedLabel("2026-10-06T12:00:00Z"), "demandée à 14:00");
+  assert.equal(pending.canSend, false);
+  assert.equal(pending.caption, null);
+
+  const stale = line({
     status: "a_verifier",
-    requestedAt: "2026-10-06T11:30:00Z",
-    checkedAt: null,
-    nowMs: NOW,
+    dispatchedAt: "2026-10-06T12:00:00Z",
+    nowMs: Date.parse("2026-10-06T12:20:00Z"),
   });
-  assert.equal(stale.label, "Toujours en attente — relancée automatiquement");
-  assert.equal(ukEtaCheckedLabel("2026-10-06T12:07:00Z"), "Vérifié le 06/10 à 14:07");
-  const done = ukEtaFeedback({
+  assert.equal(stale.stale, true);
+  assert.equal(stale.badge, UK_ETA_STALE_LABEL);
+  assert.equal(stale.checkedLabel, "demandée à 14:00");
+
+  const done = line({
     status: "introuvable",
-    requestedAt: "2026-10-06T12:00:00Z",
     checkedAt: "2026-10-06T12:07:00Z",
+    dispatchedAt: "2026-10-06T12:00:00Z",
     nowMs: NOW + 60_000,
   });
   assert.equal(done.pending, false);
-  assert.equal(done.label, "Vérifié le 06/10 à 14:07");
+  assert.equal(done.badge, "Introuvable");
+  assert.equal(done.checkedLabel, "Vérifié le 06/10 à 14:07");
+  assert.equal(ukEtaCheckedLabel("2026-10-06T12:07:00Z"), "Vérifié le 06/10 à 14:07");
+
+  const optimistic = {
+    ...line({ status: "a_verifier" }),
+    pending: true,
+    badge: UK_ETA_PENDING_LABEL,
+    checkedLabel: "demandée à 14:00",
+    requestedAt: "2026-10-06T12:00:00Z",
+    caption: null,
+    canSend: false,
+  };
+  const unchanged = line({ status: "a_verifier", checkedAt: "2026-10-05T08:00:00Z" });
+  assert.equal(mergeUkEtaPoll([optimistic], [unchanged], NOW)[0]?.badge, UK_ETA_PENDING_LABEL);
+  const answered = line({
+    status: "approuve",
+    validUntil: "2028-03-26",
+    checkedAt: "2026-10-06T12:07:00Z",
+    dispatchedAt: "2026-10-06T12:00:00Z",
+  });
+  assert.equal(mergeUkEtaPoll([optimistic], [answered], NOW)[0]?.badge, "Valable jusqu’au 26/03/2028");
+});
+
+test("le cron prend la date du dossier, sinon le premier début de carte", () => {
+  assert.equal(
+    ukEtaCronDeparture({
+      startDate: "2026-11-02",
+      items: [{ start_at: "2026-10-20T08:00:00Z", lifecycle: "active" }],
+    }),
+    "2026-11-02"
+  );
+  assert.equal(
+    ukEtaCronDeparture({
+      startDate: null,
+      items: [
+        { start_at: "2026-11-04T22:30:00Z", lifecycle: "active" },
+        { start_at: "2026-10-29T23:30:00Z", lifecycle: "cancelled" },
+        { start_at: "2026-11-01T10:00:00Z", lifecycle: "active" },
+      ],
+    }),
+    "2026-11-01"
+  );
+  const picked = pickUkEtaCronBookings(
+    [
+      { id: "b", departure: "2026-12-02" },
+      { id: "a", departure: "2026-12-02" },
+      { id: "c", departure: "2026-10-01" },
+      { id: "d", departure: null },
+      { id: "e", departure: "2027-02-01" },
+    ],
+    "2026-10-06",
+    2
+  );
+  assert.deepEqual(
+    picked.map((row) => row.id),
+    ["a", "b"]
+  );
 });

@@ -121,6 +121,7 @@ Lecture **service_role** uniquement. `anon` et `authenticated` n’ont pas le dr
 Elle liste les vérifications dont le départ (date du dossier, sinon premier début de carte, heure de Paris) est **aujourd’hui ou dans les 90 jours**, dossier non archivé, statut autre que `non_concerne`, et au moins un de ces cas :
 
 - jamais vérifié (`checked_at` null) ;
+- statut `a_verifier`, même si `checked_at` est récent (clic « Vérifier l’ETA ») ;
 - statut autre que `approuve`, vérifié il y a **plus de 7 jours** ;
 - `approuve` mais `valid_until` avant le retour ;
 - `passport_last3` différent du passeport enregistré.
@@ -142,7 +143,7 @@ from public.uk_eta_a_verifier;
 
 Quand une vérification **passe à** `a_verifier` (nouveau séjour au Royaume-Uni, passeport ajouté ou changé, bouton « Vérifier l’ETA »), le serveur fait un `POST` JSON.
 
-Un seul appel par changement. La fonction `crm_claim_uk_eta_dispatch` pose le verrou. Si l’appel échoue, un nouvel essai est possible après 15 minutes. Si `UK_ETA_WEBHOOK_URL` ou `UK_ETA_WEBHOOK_KEY` manque, rien n’est appelé et rien n’est journalisé : la ligne reste `a_verifier`.
+Un seul appel par changement. La fonction `crm_claim_uk_eta_dispatch` pose le verrou. Si l’appel échoue, un nouvel essai est possible après 15 minutes. Une nouvelle clé (clic ou changement de passeport) remet `dispatched_at` à vide, pour que cet essai ait lieu. Si `UK_ETA_WEBHOOK_URL` ou `UK_ETA_WEBHOOK_KEY` manque, rien n’est appelé et rien n’est journalisé : la ligne reste `a_verifier`.
 
 Corps, et rien d’autre :
 
@@ -151,11 +152,14 @@ Corps, et rien d’autre :
   "id": "<crm_uk_eta_checks.id>",
   "booking_id": "<dossier>",
   "traveler_id": "<voyageur>",
-  "departure_date": "2026-10-30"
+  "departure_date": "2026-10-30",
+  "kind": "uk_eta"
 }
 ```
 
-`departure_date` peut être `null`.
+`departure_date` peut être `null`. `kind` vaut toujours `uk_eta`. L’ESTA peut viser la même URL : son corps porte `"kind": "esta"`.
+
+Le passage `GET /api/cron/uk-eta` reprend le même départ que la vue : date du dossier, sinon le premier début de carte active à l’heure de Paris. Il traite les 200 départs les plus proches, ordre date puis id.
 
 En-tête : `UK_ETA_WEBHOOK_KEY_HEADER` (défaut `Authorization`). Si le nom est `Authorization`, la valeur est `Bearer <UK_ETA_WEBHOOK_KEY>`. Sinon la valeur est la clé seule.
 
@@ -180,8 +184,8 @@ Client, en français, depuis la fiche (clic « Envoyer au client », sauf `UK_ET
 
 `crm_uk_eta_checks` et `crm_uk_eta_notices` : RLS activée. L’agence lit. L’écriture (résultat, webhook, e-mail) passe par la clé service. Pas de lecture client. La vue `uk_eta_a_verifier` n’est lisible que par `service_role`.
 
-## Migration
+## Migrations
 
-Fichier `supabase/migrations/20261006201000_uk_eta_checks.sql`. Idempotente. À appliquer sur le projet Supabase `fsmfozxgujskluxakeoq` (SQL editor ou `apply_migration`) **avant** que l’assistant lise la vue. Le code tolère l’absence de la table : la fiche s’ouvre, la vérification attend le schéma.
+`supabase/migrations/20261006201000_uk_eta_checks.sql` est appliquée en production (version enregistrée `20261006143711`).
 
-Ne pas appliquer cette migration depuis l’agent : elle part en revue, puis s’applique à la main.
+`supabase/migrations/20261006224500_esta_uk_eta_dispatch_retry.sql` reste à appliquer sur `fsmfozxgujskluxakeoq`. Elle remplace seulement `crm_claim_esta_dispatch`, `crm_claim_uk_eta_dispatch`, `esta_a_verifier` et `uk_eta_a_verifier`. Idempotente. Le code tolère l’absence de la table : la fiche s’ouvre, la vérification attend le schéma.

@@ -4,9 +4,11 @@ import {
   UK_ETA_APPLY_URL,
   isUkEtaStatus,
   passportForEsta,
+  pickUkEtaCronBookings,
   planUkEtaCheck,
   tripUkEtaDates,
   ukEtaAgencyDraft,
+  ukEtaCronDeparture,
   ukEtaAlerts,
   ukEtaClientAutoSend,
   ukEtaClientDraft,
@@ -106,8 +108,10 @@ async function dispatchCheck(admin: Admin, row: CheckRow, desiredKey: string | n
   const url = (process.env.UK_ETA_WEBHOOK_URL || "").trim();
   const key = productionOnlySecret(process.env.UK_ETA_WEBHOOK_KEY);
   if (!ukEtaWebhookConfigured(url, key) || !desiredKey) return;
+  const keyChanged = (row.dispatch_key || null) !== desiredKey;
   const { data, error } = await admin.rpc("crm_claim_uk_eta_dispatch", { p_id: row.id, p_key: desiredKey });
   if (error || data !== true) return;
+  if (keyChanged) row.dispatched_at = null;
   row.dispatch_key = desiredKey;
   row.dispatch_attempt_at = new Date().toISOString();
   const sent = await postUkEtaWebhook(
@@ -150,7 +154,8 @@ function linesFor(
         passport,
         passportLast3: row.passport_last3,
         clientSentAt: row.client_message_sent_at,
-        requestedAt: row.dispatch_attempt_at,
+        dispatchedAt: row.dispatched_at,
+        attemptAt: row.dispatch_attempt_at,
         nowMs,
       })
     );
@@ -513,20 +518,61 @@ export async function flushUkEtaClientMails(admin: Admin) {
   return sent;
 }
 
+const UK_ETA_CRON_SCAN = 1000;
+
+async function itemStartsByBooking(admin: Admin, bookingIds: string[]) {
+  const grouped = new Map<string, { start_at: string | null; lifecycle: string | null }[]>();
+  for (let index = 0; index < bookingIds.length; index += 100) {
+    const slice = bookingIds.slice(index, index + 100);
+    const { data } = await admin
+      .from("crm_booking_items")
+      .select("booking_id, start_at, lifecycle")
+      .in("booking_id", slice)
+      .not("start_at", "is", null);
+    for (const item of (data || []) as { booking_id: string; start_at: string | null; lifecycle: string | null }[]) {
+      const list = grouped.get(item.booking_id) || [];
+      list.push({ start_at: item.start_at, lifecycle: item.lifecycle });
+      grouped.set(item.booking_id, list);
+    }
+  }
+  return grouped;
+}
+
 export async function runUkEtaCron(admin: Admin) {
   const today = parisIsoDate(new Date());
   const until = addIsoDays(today, 90);
-  const { data } = await admin
+  const { data: dated } = await admin
     .from("crm_bookings")
-    .select("id")
+    .select("id, start_date")
     .gte("start_date", today)
     .lte("start_date", until)
     .is("archived_at", null)
     .neq("status", "cancelled")
-    .limit(200);
+    .order("start_date", { ascending: true })
+    .order("id", { ascending: true })
+    .limit(UK_ETA_CRON_SCAN);
+  const { data: undated } = await admin
+    .from("crm_bookings")
+    .select("id")
+    .is("start_date", null)
+    .is("archived_at", null)
+    .neq("status", "cancelled")
+    .order("id", { ascending: true })
+    .limit(UK_ETA_CRON_SCAN);
+  const rows: { id: string; departure: string | null }[] = ((dated || []) as { id: string; start_date: string | null }[]).map(
+    (row) => ({ id: row.id, departure: ukEtaCronDeparture({ startDate: row.start_date }) })
+  );
+  const missing = ((undated || []) as { id: string }[]).map((row) => row.id);
+  if (missing.length) {
+    const items = await itemStartsByBooking(admin, missing);
+    for (const id of missing) {
+      rows.push({ id, departure: ukEtaCronDeparture({ startDate: null, items: items.get(id) || [] }) });
+    }
+  }
+  const chosen = pickUkEtaCronBookings(rows, today, 200);
   let synced = 0;
-  for (const row of data || []) {
-    await syncUkEtaForBookingId(admin, (row as { id: string }).id);
+  for (const row of chosen) {
+    await syncUkEtaForBookingId(admin, row.id);
     synced += 1;
   }
   const mailed = await flushUkEtaNotices(admin);
