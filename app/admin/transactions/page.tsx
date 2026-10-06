@@ -15,7 +15,7 @@ export default async function AdminTransactionsPage() {
     supabase
       .from("crm_transactions")
       .select("*")
-      .eq("kind", "transfer")
+      .in("kind", ["transfer", "card_payment"])
       .eq("direction", "credit")
       .order("occurred_on", { ascending: false })
       .limit(200),
@@ -51,7 +51,7 @@ export default async function AdminTransactionsPage() {
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
         title="Transactions"
-        subtitle="Virements crédit uniquement — rapprochement Revolut ou saisie manuelle. Le nom d’un client ouvre les transactions qu’il voit dans son espace."
+        subtitle="Virements Revolut, règlements Stripe et saisie manuelle. Le nom d’un client ouvre les transactions qu’il voit dans son espace."
       />
       <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div className="admin-af-card rounded-2xl px-4 py-3">

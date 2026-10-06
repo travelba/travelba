@@ -32,6 +32,7 @@ import {
   type CrmEmailIngest,
   type CrmLeBooking,
   type CrmRevolutTransaction,
+  type CrmStripeTransaction,
   type CrmTravelDocument,
   type TravelDocType,
 } from "@/lib/crm/types";
@@ -241,6 +242,7 @@ export async function readTableauDeBord() {
   return {
     a_faire: adminTodoLines({
       revolut: badges.revolut,
+      stripe: badges.stripe,
       emails: badges.emails,
       le: badges.le,
       formalities: desk.open.length,
@@ -655,6 +657,36 @@ const EMAIL_STATUS: Record<string, string> = {
   matched: "proposition",
   error: "erreur",
 };
+
+export async function readStripeEnAttente() {
+  const admin = db();
+  const { data, error } = await admin
+    .from("crm_stripe_transactions")
+    .select("id, amount, currency, payer_name, reference, method, booked_at, status, direction")
+    .eq("status", "unmatched")
+    .eq("direction", "credit")
+    .order("booked_at", { ascending: false, nullsFirst: false })
+    .limit(INBOX_LIMIT);
+  if (error) {
+    logRead("stripe", error);
+    throw new Error("Lecture impossible.");
+  }
+  const rows = (data || []) as Pick<
+    CrmStripeTransaction,
+    "id" | "amount" | "currency" | "payer_name" | "reference" | "method" | "booked_at"
+  >[];
+  return {
+    lien: "/admin/stripe",
+    paiements: rows.map((row) => ({
+      id: row.id,
+      montant: formatMoney(Number(row.amount), row.currency || "EUR"),
+      payeur: row.payer_name,
+      libelle: row.reference,
+      moyen: row.method,
+      date: row.booked_at ? formatDateFr(row.booked_at) : null,
+    })),
+  };
+}
 
 export async function readEmailsEnAttente() {
   const admin = db();

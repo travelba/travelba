@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { companyLabelForTransaction } from "@/lib/crm/billing-companies";
 import { clientLedgerAdminHref } from "@/lib/crm/client-ledger";
 import type { CrmBillingCompany, CrmTransaction } from "@/lib/crm/types";
-import { TX_KIND_LABELS, customerFullName, isCreditTransfer } from "@/lib/crm/types";
+import { TX_KIND_LABELS, customerFullName, isAgencyReceipt } from "@/lib/crm/types";
 import type { CustomerNameRow, PickableCustomer } from "@/lib/crm/customer-search";
 import { CustomerPickField } from "@/components/admin/CustomerPickField";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
@@ -48,7 +48,7 @@ export function Ledger({
 
   const filtered = useMemo(() => {
     return transactions.filter((t) => {
-      if (!isCreditTransfer(t)) return false;
+      if (!isAgencyReceipt(t)) return false;
       if (customerId && t.customer_id !== customerId) return false;
       if (status !== "all" && t.status !== status) return false;
       if (from && t.occurred_on < from) return false;

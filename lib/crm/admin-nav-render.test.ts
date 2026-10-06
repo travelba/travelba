@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MobileTabBar, SidebarGroups, UserMenu } from "../../components/admin/AdminNavParts";
 import { adminNavGroups, openAdminNavGroups } from "./admin-nav";
 
-const counts = { revolut: 3, emails: 2, le: 0, pieces: 1 };
+const counts = { revolut: 3, stripe: 0, emails: 2, le: 0, pieces: 1 };
 
 test("la sidebar rend les groupes, l’entrée active et les badges", () => {
   const groups = adminNavGroups({ role: "admin", showExample: true });

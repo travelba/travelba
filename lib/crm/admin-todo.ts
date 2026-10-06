@@ -11,6 +11,7 @@ function plural(count: number, one: string, many: string) {
  */
 export function adminTodoLines(input: {
   revolut: number;
+  stripe: number;
   emails: number;
   le: number;
   formalities: number;
@@ -24,6 +25,12 @@ export function adminTodoLines(input: {
       count: input.revolut,
       label: `${plural(input.revolut, "virement Revolut", "virements Revolut")} à rapprocher`,
       href: "/admin/revolut",
+    },
+    {
+      id: "stripe",
+      count: input.stripe,
+      label: `${plural(input.stripe, "paiement Stripe", "paiements Stripe")} à rapprocher`,
+      href: "/admin/stripe",
     },
     {
       id: "emails",

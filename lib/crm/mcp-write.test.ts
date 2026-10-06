@@ -12,6 +12,7 @@ import {
   prepareEmailAction,
   prepareManualCredit,
   prepareRevolutCredit,
+  prepareStripeCredit,
   publishBlock,
 } from "./mcp-write";
 
@@ -129,6 +130,14 @@ test("a manual credit inserts one posted transfer", async () => {
   assert.equal(result.mouvement.client_id, CLIENT);
 });
 
+test("un crédit Stripe exige le paiement et le client", () => {
+  const credit = prepareStripeCredit({ paiement_id: WIRE, client_id: CLIENT });
+  assert.equal(credit.paiementId, WIRE);
+  assert.equal(credit.clientId, CLIENT);
+  assert.throws(() => prepareStripeCredit({ client_id: CLIENT }), /Paiement invalide/);
+  assert.throws(() => prepareStripeCredit({ paiement_id: WIRE }), /Client invalide/);
+});
+
 test("an already matched revolut transfer is not credited again", async () => {
   const writes: string[] = [];
   const admin = fakeAdmin({
@@ -158,6 +167,7 @@ test("write tools are not marked read-only", () => {
   assert.equal(seen.find((tool) => tool.name === "tableau_de_bord")?.readOnly, true);
   assert.equal(seen.find((tool) => tool.name === "confirmer_service")?.openWorld, true);
   assert.equal(seen.find((tool) => tool.name === "crediter_revolut")?.openWorld, false);
+  assert.equal(seen.find((tool) => tool.name === "crediter_stripe")?.openWorld, false);
 });
 
 function fakeAdmin(script: {

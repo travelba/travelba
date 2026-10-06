@@ -1,10 +1,10 @@
 /** Menu de l’espace agence : groupes repliables, badges, entrée active, barre basse mobile. */
 
-export type AdminBadgeKey = "revolut" | "emails" | "le" | "pieces";
+export type AdminBadgeKey = "revolut" | "stripe" | "emails" | "le" | "pieces";
 
 export type AdminNavCounts = Record<AdminBadgeKey, number>;
 
-export const EMPTY_NAV_COUNTS: AdminNavCounts = { revolut: 0, emails: 0, le: 0, pieces: 0 };
+export const EMPTY_NAV_COUNTS: AdminNavCounts = { revolut: 0, stripe: 0, emails: 0, le: 0, pieces: 0 };
 
 export type AdminNavItem = {
   href: string;
@@ -53,6 +53,7 @@ export function adminNavGroups(input: { role?: "admin" | "agent" | ""; showExamp
       items: [
         { href: "/admin/transactions", label: "Transactions", icon: "landmark" },
         { href: "/admin/revolut", label: "Revolut", icon: "sync_alt", badge: "revolut" },
+        { href: "/admin/stripe", label: "Stripe", icon: "credit_card", badge: "stripe" },
         { href: "/admin/pliant", label: "Pliant", icon: "credit_card" },
       ],
     },
@@ -164,8 +165,8 @@ export const ADMIN_MOBILE_TABS: AdminMobileTab[] = [
     label: "Argent",
     icon: "landmark",
     href: "/admin/transactions",
-    paths: ["/admin/transactions", "/admin/revolut", "/admin/pliant"],
-    badges: ["revolut"],
+    paths: ["/admin/transactions", "/admin/revolut", "/admin/stripe", "/admin/pliant"],
+    badges: ["revolut", "stripe"],
   },
   {
     id: "plus",

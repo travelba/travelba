@@ -134,6 +134,17 @@ export function filterCreditTransfers<T extends { direction: string; kind: strin
   return rows.filter(isCreditTransfer);
 }
 
+/** Encaissements agence : virement Revolut, règlement Stripe (carte ou prélèvement), saisie manuelle. */
+const AGENCY_RECEIPT_KINDS = new Set(["transfer", "card_payment"]);
+
+export function isAgencyReceipt(row: { direction: string; kind: string }) {
+  return row.direction === "credit" && AGENCY_RECEIPT_KINDS.has(row.kind);
+}
+
+export function filterAgencyReceipts<T extends { direction: string; kind: string }>(rows: T[]) {
+  return rows.filter(isAgencyReceipt);
+}
+
 /** Libellé ledger de la commission 10 % sur les étapes et les dépenses de la réservation. */
 export const AGENCY_FEE_LABEL = "Frais d’agence 10 %";
 
@@ -570,6 +581,26 @@ export type CrmPliantTransaction = {
   matched_customer_id: string | null;
   matched_transaction_id: string | null;
   raw: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CrmStripeTransaction = {
+  id: string;
+  stripe_payment_intent_id: string;
+  amount: number;
+  currency: string;
+  direction: "credit" | "debit";
+  payer_name: string | null;
+  payer_email: string | null;
+  reference: string | null;
+  method: "card" | "apple_pay" | "sepa" | "other" | null;
+  last4: string | null;
+  booked_at: string | null;
+  raw: Record<string, unknown>;
+  matched_customer_id: string | null;
+  matched_transaction_id: string | null;
+  status: "unmatched" | "matched" | "ignored";
   created_at: string;
   updated_at: string;
 };

@@ -11,6 +11,7 @@ import {
   readGrandLivre,
   readLittleEmperorsEnAttente,
   readRevolutEnAttente,
+  readStripeEnAttente,
   readServicesAConfirmer,
   readTableauDeBord,
 } from "@/lib/crm/mcp-read";
@@ -19,6 +20,7 @@ import {
   createClient,
   creditManualTransfer,
   creditRevolutTransfer,
+  creditStripePayment,
   McpWriteError,
   publishCarnet,
   settleEmail,
@@ -156,6 +158,12 @@ export const MCP_TOOLS: ToolDef[] = [
     run: () => readRevolutEnAttente(),
   },
   {
+    name: "stripe_en_attente",
+    description:
+      "Paiements Stripe reçus, pas encore rapprochés. L’identifiant sert à crediter_stripe, avec le client désigné.",
+    run: () => readStripeEnAttente(),
+  },
+  {
     name: "emails_en_attente",
     description:
       "Mails fournisseurs en attente. L’identifiant sert à traiter_email : refuser, ou rattacher au dossier désigné.",
@@ -193,6 +201,17 @@ export const MCP_TOOLS: ToolDef[] = [
       client_id: z.string().trim().describe("Identifiant du client à créditer"),
     },
     run: (args) => creditRevolutTransfer(args),
+  },
+  {
+    name: "crediter_stripe",
+    write: true,
+    description:
+      "Crédite un paiement Stripe en attente au client désigné. Les deux identifiants sont obligatoires. Ne choisit pas un client à la place de l’agence.",
+    input: {
+      paiement_id: z.string().trim().describe("Identifiant du paiement Stripe en attente"),
+      client_id: z.string().trim().describe("Identifiant du client à créditer"),
+    },
+    run: (args) => creditStripePayment(args),
   },
   {
     name: "publier_carnet",

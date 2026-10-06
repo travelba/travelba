@@ -7,7 +7,7 @@ import { unsplashKeywordMatch, bookingCoverPlan, bookingCoverUrl } from "./cover
 import { stayArrivalPlaces } from "./carnet";
 import { countriesWithPhoto, COUNTRY_CODES } from "./cover-catalog";
 import { vaultDocumentsForPerson } from "./trip-documents";
-import { filterCreditTransfers, isCreditTransfer, type CrmTravelDocument } from "./types";
+import { filterAgencyReceipts, filterCreditTransfers, isAgencyReceipt, isCreditTransfer, type CrmTravelDocument } from "./types";
 
 test("identity overwrite warns only when names differ", () => {
   assert.equal(
@@ -70,6 +70,16 @@ test("agency ledger keeps only credit transfers", () => {
   ]);
   assert.equal(kept.length, 1);
   assert.equal(kept[0].kind, "transfer");
+  assert.equal(isAgencyReceipt({ direction: "credit", kind: "card_payment" }), true);
+  assert.equal(isAgencyReceipt({ direction: "credit", kind: "transfer" }), true);
+  assert.equal(isAgencyReceipt({ direction: "debit", kind: "card_payment" }), false);
+  assert.equal(isAgencyReceipt({ direction: "credit", kind: "booking" }), false);
+  const receipts = filterAgencyReceipts([
+    { direction: "credit", kind: "transfer" },
+    { direction: "credit", kind: "card_payment" },
+    { direction: "debit", kind: "booking" },
+  ]);
+  assert.equal(receipts.length, 2);
 });
 
 test("ledger totals stay honest from posted movements", () => {

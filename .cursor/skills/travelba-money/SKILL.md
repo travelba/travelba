@@ -63,6 +63,11 @@ Ajustements / remboursements : lignes manuelles admin `kind=adjustment|refund`.
 - Virement = compte **Revolut Business** (IBAN SEPA du compte euros actif nommé **Main**), pas Stripe `customer_balance`. La route ne crée pas de PaymentIntent. Elle renvoie IBAN, BIC, titulaire, le montant de la part et le **nom du client** comme référence. Jamais d’IBAN dans les logs. Une poche au nom différent n’est pas proposée. Plusieurs comptes Main, ou aucun IBAN SEPA unique → le virement reste fermé. Sans compte Main, un seul IBAN euros distinct ouvre le virement.
 - Le crédit du virement passe par l’inbox Revolut (sync / rapprochement), pas par le webhook Stripe.
 - Webhook `payment_intent.succeeded` → crédit `source=stripe`, `external_id` = id du PaymentIntent, wallet = `crm_customer_id` des métadonnées. Un règlement d’encours n’a pas de dossier : `payer_kind` range la part. Un `pay_method=revolut` ne crédite pas.
+- Les PaymentIntents `succeeded` des 14 derniers jours entrent dans `crm_stripe_transactions` (cron `/api/cron/stripe-sync` toutes les 15 min, bouton Synchroniser, et le webhook). Crédit strictement positif. Hors file : `pay_method=revolut`, montant nul, autre statut. Le `raw` ne garde que l’id, le montant, le statut, la description, l’e-mail, le customer Stripe, les metadata, le moyen et le last4. Pas de PAN.
+- Déjà au grand livre (`source=stripe`, `external_id` = PaymentIntent) : la file passe `matched`, sans second crédit.
+- Auto seulement si un seul hit certain : `metadata.crm_customer_id`, un seul `stripe_customer_id`, ou un seul e-mail. Nom ou société : proposition, jamais de crédit auto. Plusieurs candidats : `/admin/stripe` attend Valider, Choisir ou Refuser. Refuser = `ignored`, aucun crédit.
+- Crédit agent : `kind=card_payment` (carte, Apple Pay) ou `transfer` (prélèvement). Libellé « Règlement Stripe · {payeur} · {moyen} ». `payer_kind` et `billing_company_id` seulement s’ils sont dans les metadata. Déjà `matched` → 400.
+- Les versements Stripe qui arrivent sur Revolut restent exclus du rapprochement Revolut.
 - SetupIntent (`/api/client/stripe/setup-intent`) + `setup_intent.succeeded` → `crm_payment_methods`. `payment_method.detached` → delete.
 - Pas de page cartes : `/mon-compte/profil/paiement` reste la facturation.
 
@@ -84,7 +89,7 @@ Flux : API Business → `crm_revolut_transactions` (`unmatched`, **crédits seul
 
 ## Saisie manuelle
 
-Admin `/admin/transactions` (et fiche client) : **uniquement les virements crédit** (`kind=transfer`, `direction=credit`). Pas de débits résa, frais billeterie ni commission 10 % dans cette liste — ils restent sur le dossier et `/mon-compte/transactions`. Saisie manuelle = crédit seulement. Pas de SQL collé dans l’UI.
+Admin `/admin/transactions` (et fiche client) : **encaissements** `direction=credit` et `kind` `transfer` ou `card_payment` (Revolut, Stripe, saisie). Pas de débits résa, frais billeterie ni commission 10 % dans cette liste — ils restent sur le dossier et `/mon-compte/transactions`. Saisie manuelle = virement crédit seulement. Pas de SQL collé dans l’UI.
 
 ## PCI / PII
 

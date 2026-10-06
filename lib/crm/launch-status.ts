@@ -133,9 +133,16 @@ export function bookingsListEmptyMessage(hasAnyBookings: boolean): string {
   return "Aucune réservation trouvée.";
 }
 
+export function stripeInboxEmptyMessage(opts: { configured: boolean }): string {
+  if (!opts.configured) {
+    return "Stripe n’est pas ouvert. Les paiements par carte apparaîtront ici une fois les clés posées.";
+  }
+  return "Aucun paiement importé. Synchronisez ou attendez le cron (toutes les 15 min). Un seul client certain est crédité automatiquement.";
+}
+
 export function ledgerEmptyMessage(hasAnyTransactions: boolean): string {
   if (!hasAnyTransactions) {
-    return "Aucun virement crédit. Un virement Revolut apparaît ici après rapprochement (auto si sans doute, sinon manuel).";
+    return "Aucun encaissement. Un virement Revolut ou un règlement Stripe apparaît ici après rapprochement (auto si sans doute, sinon manuel).";
   }
-  return "Aucun virement pour ces filtres.";
+  return "Aucun encaissement pour ces filtres.";
 }
