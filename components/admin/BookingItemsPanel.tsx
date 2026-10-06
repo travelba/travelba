@@ -553,14 +553,16 @@ export function BookingItemsPanel({
             item.kind === "hotel" ? shortStayRange(item.start_at, item.end_at) : shortStayDay(item.start_at);
           const retired =
             item.lifecycle === "superseded" || item.lifecycle === "cancelled";
-          const retiredLabel = item.lifecycle === "cancelled" ? "Annulée" : retired ? "Remplacée" : "";
+          const cancelled = item.lifecycle === "cancelled";
+          const retiredLabel = cancelled ? "" : retired ? "Remplacée" : "";
           const unshown =
             stayVisible &&
             !retired &&
             !item.visible_to_client &&
             !keptHiddenFromClient(item.details) &&
             countsAsCarnetCard(item.kind);
-          const price = flightCountsInStay(item, rows) ? itemPriceLabel(item, currency) : null;
+          const price =
+            retired || !flightCountsInStay(item, rows) ? null : itemPriceLabel(item, currency);
           const printed = readDocumentAmount(item.details);
           const stepAmount = item.amount == null ? null : Number(item.amount);
           const priceDiffers =
@@ -645,7 +647,14 @@ export function BookingItemsPanel({
                   <span className="w-16 shrink-0 pt-0.5 text-xs font-semibold text-muted">{when || "Sans date"}</span>
                   <Icon name={kindIcon(item.kind)} className="mt-0.5 h-4 w-4 shrink-0 text-[var(--admin-navy)]" />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold text-[var(--admin-navy)]">{stepTitle(item)}</span>
+                    <span className={`block truncate text-sm font-semibold ${cancelled ? "text-muted line-through" : "text-[var(--admin-navy)]"}`}>
+                      {stepTitle(item)}
+                    </span>
+                    {cancelled ? (
+                      <span className="mt-1 inline-flex rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--admin-navy)] ring-1 ring-[var(--border)]">
+                        Annulée
+                      </span>
+                    ) : null}
                     {ticketNames.length ? (
                       <span className="block text-sm font-semibold text-[var(--admin-navy)]">{ticketNames.join(", ")}</span>
                     ) : null}

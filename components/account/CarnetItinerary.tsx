@@ -6,7 +6,7 @@ import type {
   CrmCustomer,
 } from "@/lib/crm/types";
 import type { PublicBooking } from "@/lib/crm/public-booking";
-import { BOOKING_ITEM_LABELS, visibleServiceCopy, type BookingItemKind } from "@/lib/crm/types";
+import { BOOKING_ITEM_LABELS, isActiveItem, visibleServiceCopy, type BookingItemKind } from "@/lib/crm/types";
 import { Icon } from "@/components/crm/icons";
 import { BrandMark } from "@/components/crm/BrandMark";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
@@ -320,17 +320,18 @@ export function CarnetItinerary({
     whatsappHref?: string;
   } | null;
 }) {
-  const days = groupByDay(items);
-  const undated = undatedTimeline(items);
+  const liveItems = items.filter((item) => isActiveItem(item));
+  const days = groupByDay(liveItems);
+  const undated = undatedTimeline(liveItems);
   const now = new Date();
   const offers =
-    services && bookingHasFlight(items)
-      ? itineraryOffers(items).filter((offer) => {
+    services && bookingHasFlight(liveItems)
+      ? itineraryOffers(liveItems).filter((offer) => {
           if (isServiceRefused(refusals, offer)) return false;
-          const booked = findExtra(items, offer.kind, offer.leg, offer.place, offer.moment);
+          const booked = findExtra(liveItems, offer.kind, offer.leg, offer.place, offer.moment);
           if (booked) return true;
           if (!extraProposed(booking, offer.kind)) return false;
-          if (services.variant === "client" && !extraNoticeOk(extraFlightAt(items, offer.leg, booking.start_date || booking.end_date), now)) {
+          if (services.variant === "client" && !extraNoticeOk(extraFlightAt(liveItems, offer.leg, booking.start_date || booking.end_date), now)) {
             return false;
           }
           return true;

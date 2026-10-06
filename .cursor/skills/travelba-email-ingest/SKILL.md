@@ -150,7 +150,7 @@ sur l’objet / le corps (« Cancellation confirmation », « has been cancelled
 
 Match unique (la référence désigne la carte) → le cron appelle
 `applyCancellationToBooking`. Sinon, clic agence :
-- cartes reconnues par leur référence : `lifecycle=cancelled`, hors carnet, hors total ;
+- cartes reconnues par leur référence : `lifecycle=cancelled`, hors carnet, hors total. Sur la fiche agence la carte est barrée, pastille **Annulée**, sans prix. Dans la file, la carte du mail et celle du séjour portent **Serait annulée**.
 - une carte déjà remplacée ne fait pas annuler le dossier s’il reste une carte active ;
 - sans référence, et s’il reste des cartes actives : la file demande laquelle. Elle n’annule pas tout le séjour ;
 - plus aucune carte active → `crm_bookings.status=cancelled` ;

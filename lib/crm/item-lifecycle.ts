@@ -202,6 +202,8 @@ export type InboxStayAction = {
   label: string;
   itemId: string | null;
   choices: { id: string; kind: string; title: string }[];
+  /** Cartes que le mail d’annulation retirerait. */
+  cancelCards?: { id: string; title: string }[];
   hint: string;
 };
 
@@ -243,12 +245,21 @@ export function inboxStayAction(input: {
       };
     }
     if (plan.itemIds.length) {
+      const cancelCards = plan.itemIds.map((id) => {
+        const row = input.items.find((item) => item.id === id);
+        return { id, title: (row?.title || "").trim() || "Carte" };
+      });
+      const names = cancelCards.map((card) => card.title).join(", ");
       return {
         action: "cancel",
-        label: "Annuler la carte",
+        label: cancelCards.length > 1 ? "Annuler ces cartes" : "Annuler la carte",
         itemId: null,
         choices: [],
-        hint: CANCEL_CARD_HINT,
+        cancelCards,
+        hint:
+          cancelCards.length > 1
+            ? `${names} sortent du total et du carnet. L’argent déjà reçu reste.`
+            : `${names} sort du total et du carnet. L’argent déjà reçu reste.`,
       };
     }
     return {

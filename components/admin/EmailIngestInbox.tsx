@@ -407,6 +407,11 @@ export function EmailIngestInbox({
                       Devis
                     </span>
                   ) : null}
+                  {extract.document_status === "cancelled" ? (
+                    <span className="rounded-full bg-[#F4F1EA] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--admin-navy)] ring-1 ring-[var(--border)]">
+                      Annulation
+                    </span>
+                  ) : null}
                 </div>
                 {row.error ? (
                   <p className="mt-2 text-sm text-accent">{row.error}</p>
@@ -493,14 +498,29 @@ export function EmailIngestInbox({
                       ? stayCurrency(currency)
                       : "";
                   const needsPrice = itemRequiresDocumentPrice(item.kind);
+                  const cancelling = extract.document_status === "cancelled";
                   return (
-                    <li key={index} className="rounded-xl border border-border p-2 text-sm">
+                    <li
+                      key={index}
+                      className={`rounded-xl border p-2 text-sm ${
+                        cancelling
+                          ? "border-[var(--border)] bg-[#F4F1EA] text-muted"
+                          : "border-border"
+                      }`}
+                    >
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
                         <span className="mt-0.5 w-fit rounded bg-[var(--surface-2)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
                           {itemLabel(item.kind)}
                         </span>
-                        <span className="min-w-0 flex-1 text-[var(--admin-navy)]">
-                          <span className="block truncate">{visibleServiceCopy(item.title || "—")}</span>
+                        <span className={`min-w-0 flex-1 ${cancelling ? "text-muted" : "text-[var(--admin-navy)]"}`}>
+                          <span className={`block truncate ${cancelling ? "line-through" : ""}`}>
+                            {visibleServiceCopy(item.title || "—")}
+                          </span>
+                          {cancelling ? (
+                            <span className="mt-1 inline-flex rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--admin-navy)] ring-1 ring-[var(--border)]">
+                              Serait annulée
+                            </span>
+                          ) : null}
                           {item.confirmation_ref ? (
                             <span className="block truncate text-xs text-muted">
                               Réf. {item.confirmation_ref}
@@ -516,7 +536,7 @@ export function EmailIngestInbox({
                           Retirer
                         </button>
                       </div>
-                      {needsPrice ? (
+                      {cancelling ? null : needsPrice ? (
                         <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_7.5rem]">
                           <Field
                             label="Prix imprimé sur le document"
@@ -655,6 +675,21 @@ export function EmailIngestInbox({
                     const waitingForCard = Boolean(gesture?.choices.length && !gesture.itemId);
                     return (
                       <>
+                        {gesture?.cancelCards?.length ? (
+                          <ul className="space-y-1 sm:col-span-2">
+                            {gesture.cancelCards.map((card) => (
+                              <li
+                                key={card.id}
+                                className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--border)] bg-[#F4F1EA] px-3 py-2 text-sm"
+                              >
+                                <span className="text-muted line-through">{card.title}</span>
+                                <span className="inline-flex rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--admin-navy)] ring-1 ring-[var(--border)]">
+                                  Serait annulée
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
                         {gesture?.choices.length ? (
                           <select
                             className="admin-af-input text-sm sm:col-span-2"

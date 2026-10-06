@@ -108,4 +108,15 @@ describe("annulation partielle", () => {
     );
     assert.equal(plan.cancelBooking, true);
   });
+
+  it("nomme la carte qu’un mail d’annulation retirerait", () => {
+    const gesture = inboxStayAction({
+      documentStatus: "cancelled",
+      incoming: [{ kind: "hotel", title: "Hotel Eden", confirmation_ref: "97620170" }],
+      items: [hotel(), { id: "f1", kind: "flight", title: "Rome → Paris", confirmation_ref: "PNR1" }],
+    });
+    assert.equal(gesture.action, "cancel");
+    assert.deepEqual(gesture.cancelCards, [{ id: "h1", title: "Hotel Eden" }]);
+    assert.match(gesture.hint, /Hotel Eden/);
+  });
 });
