@@ -34,7 +34,7 @@ import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-d
 import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
 import { stripePublishableKey } from "@/lib/crm/stripe";
-import { collectableTicketingFee, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
+import { chargeableTicketingFee, isAutoTicketingExpense, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import type { ShareCompanion } from "@/lib/crm/trip-share";
@@ -272,14 +272,15 @@ function ClientScreen({
       title: visibleServiceCopy(item.title),
       amount: item.amount == null ? null : Number(item.amount),
       billing_company_id: item.billing_company_id || null,
+      agencyFee: !isAutoTicketingExpense(item),
     }));
   const ticketCount = ticketingTicketCount({
     hasFlight: allItems.some((item) => item.kind === "flight"),
     travelerCount: travelers.length,
   });
-  const ticketingFee = collectableTicketingFee({
+  const ticketingFee = chargeableTicketingFee({
+    items: allItems,
     status: booking.status,
-    hasFlight: ticketCount > 0,
     travelerCount: travelers.length,
   });
   const pricesVisible = booking.prices_visible !== false;

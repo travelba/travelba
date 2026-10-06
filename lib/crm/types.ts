@@ -258,6 +258,8 @@ export type CrmBooking = {
   include_in_ledger: boolean;
   /** Si true : 10 % des étapes et des dépenses, en une ligne du dossier. */
   agency_commission?: boolean;
+  /** `ticketing_off` : la billeterie automatique ne se recrée pas après un retrait. */
+  fee_mode?: string | null;
   /** Si true : le client règle le séjour sur sa carte. Le montant sort du grand livre. */
   client_settles_stay?: boolean;
   cover_image_path: string | null;

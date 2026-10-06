@@ -1,15 +1,38 @@
 import { countryForIata } from "@/lib/crm/airports";
-import { addIsoDays } from "@/lib/crm/dates";
-import { countryIso, foldCountry } from "@/lib/crm/hotel-arrival";
 import { resolveNationality } from "@/lib/crm/countries";
-import { isActiveItem } from "@/lib/crm/types";
+import { addIsoDays } from "@/lib/crm/dates";
+import {
+  estaCheckPending,
+  estaCheckedLabel,
+  estaLineAsPending,
+  estaRequestAt,
+  type EstaTravelerLine,
+} from "@/lib/crm/esta-status";
+import { countryIso, foldCountry } from "@/lib/crm/hotel-arrival";
+import type { PersonName } from "@/lib/crm/person-match";
 import {
   reusableDocumentsForTraveler,
   travelerDisplayName,
   tripDocumentsForTraveler,
 } from "@/lib/crm/trip-documents";
-import type { CrmBookingItem, CrmBookingTraveler, CrmTravelDocument } from "@/lib/crm/types";
-import type { PersonName } from "@/lib/crm/person-match";
+import { isActiveItem, type CrmBookingItem, type CrmBookingTraveler, type CrmTravelDocument } from "@/lib/crm/types";
+
+export {
+  ESTA_PENDING_LABEL,
+  ESTA_PENDING_STALE_MS,
+  ESTA_POLL_INTERVAL_MS,
+  ESTA_POLL_WINDOW_MS,
+  ESTA_STALE_LABEL,
+  estaCheckPending,
+  estaCheckedLabel,
+  estaLineAsPending,
+  estaRequestAt,
+  estaRequestStale,
+  estaRequestedLabel,
+  formatEstaClock,
+  mergeEstaPoll,
+  type EstaTravelerLine,
+} from "@/lib/crm/esta-status";
 
 /**
  * Territoires où l’ESTA est exigé (CBP : États-Unis, Porto Rico, Guam,
@@ -307,7 +330,7 @@ export function estaBadge(input: { status: EstaStatus; validUntil?: string | nul
   }
   if (input.status === "approuve") {
     const date = formatEstaDate(input.validUntil);
-    return { label: date ? `Valable jusqu’au ${date}` : "Valable", tone: "ok" as const };
+    return { label: date ? `Approuvé jusqu’au ${date}` : "Approuvé", tone: "ok" as const };
   }
   const tone = input.status === "a_verifier" || input.status === "refuse" || input.status === "inacheve" || input.status === "introuvable" || input.status === "erreur"
     ? "warn" as const
@@ -324,11 +347,6 @@ export function estaPassportCaption(alerts: EstaAlert[], passportExpires?: strin
     return date ? `Passeport expire le ${date}, avant la fin de l’ESTA` : "Passeport expire avant la fin de l’ESTA";
   }
   return null;
-}
-
-export function estaCheckedLabel(checkedAt: string | null | undefined) {
-  const date = formatEstaDate(checkedAt);
-  return date ? `Vérifié le ${date}` : "Pas encore vérifié";
 }
 
 export function estaNoteCaption(note: string | null | undefined, passportNumbers: string[] = []) {
@@ -573,18 +591,6 @@ export function estaAgencyDraft(input: {
   };
 }
 
-export type EstaTravelerLine = {
-  travelerId: string;
-  name: string;
-  badge: string;
-  tone: "ok" | "warn" | "muted";
-  checkedLabel: string;
-  caption: string | null;
-  canVerify: boolean;
-  canSend: boolean;
-  sent: boolean;
-};
-
 export function estaTravelerLine(input: {
   traveler: CrmBookingTraveler;
   status: EstaStatus;
@@ -595,6 +601,9 @@ export function estaTravelerLine(input: {
   passport: CrmTravelDocument | null;
   estaPassportLast3?: string | null;
   clientSentAt?: string | null;
+  dispatchedAt?: string | null;
+  attemptAt?: string | null;
+  nowMs?: number;
 }): EstaTravelerLine {
   const alerts = estaAlerts({
     status: input.status,
@@ -614,7 +623,14 @@ export function estaTravelerLine(input: {
     alerts,
     passportExpires: input.passport?.expires_on,
   });
-  return {
+  const requestedAt = estaRequestAt({ dispatchedAt: input.dispatchedAt, attemptAt: input.attemptAt });
+  const pending = estaCheckPending({
+    dispatchedAt: input.dispatchedAt,
+    attemptAt: input.attemptAt,
+    checkedAt: input.checkedAt,
+  });
+  const nowMs = input.nowMs ?? Date.now();
+  const line: EstaTravelerLine = {
     travelerId: input.traveler.id,
     name: travelerDisplayName(input.traveler),
     badge: badge.label,
@@ -624,7 +640,13 @@ export function estaTravelerLine(input: {
     canVerify: input.status !== "non_concerne",
     canSend: Boolean(draft) && !input.clientSentAt,
     sent: Boolean(input.clientSentAt),
+    pending: false,
+    stale: false,
+    requestedAt,
+    checkedAt: input.checkedAt || null,
   };
+  if (!pending) return line;
+  return estaLineAsPending(line, requestedAt || new Date(nowMs).toISOString(), nowMs);
 }
 
 export function isEstaStatus(value: string | null | undefined): value is EstaStatus {

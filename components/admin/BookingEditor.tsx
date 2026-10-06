@@ -28,12 +28,12 @@ import { formatMoney, jMinusLabel, todayIsoDate } from "@/lib/crm/money";
 import { EstaOnBooking } from "@/components/admin/EstaOnBooking";
 import { UkEtaOnBooking } from "@/components/admin/UkEtaOnBooking";
 import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
-import type { EstaTravelerLine } from "@/lib/crm/esta";
+import type { EstaTravelerLine } from "@/lib/crm/esta-status";
 import type { UkEtaTravelerLine } from "@/lib/crm/uk-eta-ui";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
 import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
-import { collectableTicketingFee } from "@/lib/crm/ticketing-fee";
+import { chargeableTicketingFee, isAutoTicketingExpense } from "@/lib/crm/ticketing-fee";
 import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
 import {
   canConfirmCarnetPublish,
@@ -748,11 +748,13 @@ export function BookingEditor({
   const stayAmount = stayPriceWithExpenses({
     stayTotal: bookingTotalFromItems(pricedItems),
     agencyCommission: booking.agency_commission === true,
-    expenses: pricedItems.filter((item) => isActiveItem(item) && isLedgerExpenseKind(item.kind)),
+    expenses: pricedItems
+      .filter((item) => isActiveItem(item) && isLedgerExpenseKind(item.kind))
+      .map((item) => ({ ...item, agencyFee: !isAutoTicketingExpense(item) })),
     extras: agencyFeeExtraAmounts(pricedItems),
-    ticketingFee: collectableTicketingFee({
+    ticketingFee: chargeableTicketingFee({
+      items: pricedItems,
       status: booking.status,
-      hasFlight: bookingHasFlight(pricedItems),
       travelerCount: travelers.length,
     }),
   });

@@ -366,12 +366,21 @@ function CompanionCard({
   const [phone, setPhone] = useState(companion.phone || "");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const [nameWarn, setNameWarn] = useState<string | null>(null);
+
+  function edit<T>(setter: (value: T) => void) {
+    return (value: T) => {
+      setSaved(false);
+      setter(value);
+    };
+  }
 
   async function save() {
     if (saving) return;
     setSaving(true);
     setSaveError(null);
+    setSaved(false);
     const result = await adminAction("/api/admin/companions", {
       method: "PATCH",
       body: {
@@ -392,6 +401,7 @@ function CompanionCard({
       setSaveError(result.error || "Enregistrement impossible. Réessayez.");
       return;
     }
+    setSaved(true);
     router.refresh();
   }
 
@@ -429,6 +439,7 @@ function CompanionCard({
         documents={documents}
         person={{ first_name: firstName, last_name: lastName }}
         onIdentity={(id) => {
+          setSaved(false);
           setNameWarn(identityOverwriteWarning({ first_name: firstName, last_name: lastName }, id));
           applyIdentityState(id, {
             setFirstName,
@@ -447,38 +458,43 @@ function CompanionCard({
       ) : null}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Prénom(s)" hint="Tous les prénoms, dans l’ordre du passeport">
-          <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
+          <input value={firstName} onChange={(e) => edit(setFirstName)(e.target.value)} className={fieldControlClass} />
         </Field>
         <Field label="Nom" hint="Nom de naissance, comme sur la pièce">
-          <input value={lastName} onChange={(e) => setLastName(e.target.value)} className={fieldControlClass} />
+          <input value={lastName} onChange={(e) => edit(setLastName)(e.target.value)} className={fieldControlClass} />
         </Field>
         <Field label="Nom d'épouse" hint="Nom d'usage s'il est imprimé" className="sm:col-span-2">
-          <input value={usageName} onChange={(e) => setUsageName(e.target.value)} className={fieldControlClass} />
+          <input value={usageName} onChange={(e) => edit(setUsageName)(e.target.value)} className={fieldControlClass} />
         </Field>
         <Field label="Lien">
-          <RelationshipSelect name="relationship" value={relationship} onChange={setRelationship} />
+          <RelationshipSelect name="relationship" value={relationship} onChange={edit(setRelationship)} />
         </Field>
         <Field label="Nationalité">
-          <CountrySelect name="nationality" value={nationality} onChange={setNationality} />
+          <CountrySelect name="nationality" value={nationality} onChange={edit(setNationality)} />
         </Field>
         <Field label="Naissance">
           <DateFrInput
             value={birthDate}
-            onChange={setBirthDate}
+            onChange={edit(setBirthDate)}
             max={new Date().toISOString().slice(0, 10)}
           />
         </Field>
         <Field label="Sexe">
-          <SexSelect name="sex" value={sex} onChange={setSex} />
+          <SexSelect name="sex" value={sex} onChange={edit(setSex)} />
         </Field>
         <div className="sm:col-span-2">
-          <PhoneField name={`companion-phone-${companion.id}`} label="Téléphone" value={phone} onChange={setPhone} />
+          <PhoneField name={`companion-phone-${companion.id}`} label="Téléphone" value={phone} onChange={edit(setPhone)} />
         </div>
       </div>
       <BusyBar active={saving} label="Enregistrement…" />
       {saveError ? (
         <p role="alert" className="text-sm text-[var(--admin-red)]">
           {saveError}
+        </p>
+      ) : null}
+      {saved ? (
+        <p role="status" className="rounded-xl bg-[#fbf7ec] px-3 py-2 text-sm font-semibold text-[var(--admin-navy)]">
+          Enregistré.
         </p>
       ) : null}
       <button

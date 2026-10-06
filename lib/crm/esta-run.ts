@@ -44,6 +44,17 @@ type CheckRow = {
   client_message_sent_at: string | null;
 };
 
+const CHECK_COLUMNS =
+  "id, booking_id, traveler_id, travel_document_id, status, valid_until, esta_passport_last3, checked_at, note, dispatch_key, dispatch_attempt_at, dispatched_at, client_message_sent_at";
+
+type EstaBundle = {
+  booking: { id: string; start_date?: string | null; end_date?: string | null };
+  items: Pick<CrmBookingItem, "kind" | "lifecycle" | "details" | "start_at" | "end_at">[];
+  travelers: CrmBookingTraveler[];
+  documents: CrmTravelDocument[];
+  holder?: PersonName | null;
+};
+
 function missingRelation(error: { code?: string; message?: string } | null) {
   if (!error) return false;
   const message = error.message || "";
@@ -52,6 +63,49 @@ function missingRelation(error: { code?: string; message?: string } | null) {
 
 function dossierHref(bookingId: string) {
   return `${siteConfig.url}/admin/reservations/${bookingId}`;
+}
+
+function composeEstaLines(input: {
+  travelers: CrmBookingTraveler[];
+  documents: CrmTravelDocument[];
+  holder?: PersonName | null;
+  returnOn: string | null;
+  rows: CheckRow[];
+}) {
+  const byTraveler = new Map(input.rows.map((row) => [row.traveler_id, row]));
+  const nowMs = Date.now();
+  const lines: EstaTravelerLine[] = [];
+  for (const traveler of input.travelers) {
+    const row = byTraveler.get(traveler.id);
+    if (!row || !isEstaStatus(row.status)) continue;
+    const passport = passportForEsta(traveler, input.documents, input.holder);
+    lines.push(
+      estaTravelerLine({
+        traveler,
+        status: row.status,
+        validUntil: row.valid_until,
+        checkedAt: row.checked_at,
+        note: row.note,
+        returnOn: input.returnOn,
+        passport,
+        estaPassportLast3: row.esta_passport_last3,
+        clientSentAt: row.client_message_sent_at,
+        dispatchedAt: row.dispatched_at,
+        attemptAt: row.dispatch_attempt_at,
+        nowMs,
+      })
+    );
+  }
+  return lines;
+}
+
+async function fetchChecks(admin: Admin, bookingId: string) {
+  const { data, error } = await admin.from("crm_esta_checks").select(CHECK_COLUMNS).eq("booking_id", bookingId);
+  if (error) {
+    if (missingRelation(error)) console.info("[esta] table absente");
+    return null;
+  }
+  return (data as CheckRow[] | null) || [];
 }
 
 async function postEstaWebhook(body: ReturnType<typeof estaWebhookBody>) {
@@ -137,12 +191,7 @@ export async function syncEstaForBooking(
   }
 ): Promise<EstaTravelerLine[]> {
   const dates = tripEstaDates(input.items, input.booking);
-  const { data: existing, error } = await admin
-    .from("crm_esta_checks")
-    .select(
-      "id, booking_id, traveler_id, travel_document_id, status, valid_until, esta_passport_last3, checked_at, note, dispatch_key, dispatch_attempt_at, dispatched_at, client_message_sent_at"
-    )
-    .eq("booking_id", input.booking.id);
+  const { data: existing, error } = await admin.from("crm_esta_checks").select(CHECK_COLUMNS).eq("booking_id", input.booking.id);
   if (error) {
     if (missingRelation(error)) console.info("[esta] table absente");
     return [];
@@ -201,9 +250,7 @@ export async function syncEstaForBooking(
     const { data: saved, error: writeError } = await admin
       .from("crm_esta_checks")
       .upsert(payload, { onConflict: "booking_id,traveler_id" })
-      .select(
-        "id, booking_id, traveler_id, travel_document_id, status, valid_until, esta_passport_last3, checked_at, note, dispatch_key, dispatch_attempt_at, dispatched_at, client_message_sent_at"
-      )
+      .select(CHECK_COLUMNS)
       .maybeSingle();
     if (writeError || !saved) {
       if (writeError && !missingRelation(writeError)) console.info("[esta] écriture ignorée");
@@ -217,39 +264,23 @@ export async function syncEstaForBooking(
   }
 
   if (!dates.needsEsta) return [];
-  const lines: EstaTravelerLine[] = [];
-  for (const traveler of input.travelers) {
-    const row = byTraveler.get(traveler.id);
-    if (!row || !isEstaStatus(row.status)) continue;
-    const passport = passportForEsta(traveler, input.documents, input.holder);
-    lines.push(
-      estaTravelerLine({
-        traveler,
-        status: row.status,
-        validUntil: row.valid_until,
-        checkedAt: row.checked_at,
-        note: row.note,
-        returnOn: dates.returnOn,
-        passport,
-        estaPassportLast3: row.esta_passport_last3,
-        clientSentAt: row.client_message_sent_at,
-      })
-    );
-  }
-  return lines;
+  const fresh = await fetchChecks(admin, input.booking.id);
+  return composeEstaLines({
+    travelers: input.travelers,
+    documents: input.documents,
+    holder: input.holder,
+    returnOn: dates.returnOn,
+    rows: fresh || [...byTraveler.values()],
+  });
 }
 
-export async function syncEstaForBookingId(
-  admin: Admin,
-  bookingId: string,
-  manual?: { travelerId: string; stamp: string } | null
-) {
+async function loadEstaBundle(admin: Admin, bookingId: string): Promise<EstaBundle | null> {
   const { data: booking, error } = await admin
     .from("crm_bookings")
     .select("id, customer_id, start_date, end_date")
     .eq("id", bookingId)
     .maybeSingle();
-  if (error || !booking) return [];
+  if (error || !booking) return null;
   const customerId = (booking as { customer_id: string }).customer_id;
   const [items, travelers, documents, customer] = await Promise.all([
     admin.from("crm_booking_items").select("kind, lifecycle, details, start_at, end_at").eq("booking_id", bookingId),
@@ -257,13 +288,39 @@ export async function syncEstaForBookingId(
     admin.from("crm_travel_documents").select("*").eq("customer_id", customerId),
     admin.from("crm_customers").select("first_name, last_name").eq("id", customerId).maybeSingle(),
   ]);
-  return syncEstaForBooking(admin, {
+  return {
     booking: booking as { id: string; start_date: string | null; end_date: string | null },
     items: (items.data || []) as CrmBookingItem[],
     travelers: (travelers.data || []) as CrmBookingTraveler[],
     documents: (documents.data || []) as CrmTravelDocument[],
     holder: (customer.data as PersonName | null) || null,
-    manual,
+  };
+}
+
+export async function syncEstaForBookingId(
+  admin: Admin,
+  bookingId: string,
+  manual?: { travelerId: string; stamp: string } | null
+) {
+  const bundle = await loadEstaBundle(admin, bookingId);
+  if (!bundle) return [];
+  return syncEstaForBooking(admin, { ...bundle, manual });
+}
+
+/** Lecture seule : le sondage de la fiche ne relance pas le webhook. */
+export async function loadEstaForBookingId(admin: Admin, bookingId: string) {
+  const bundle = await loadEstaBundle(admin, bookingId);
+  if (!bundle) return [];
+  const dates = tripEstaDates(bundle.items, bundle.booking);
+  if (!dates.needsEsta) return [];
+  const rows = await fetchChecks(admin, bookingId);
+  if (!rows) return [];
+  return composeEstaLines({
+    travelers: bundle.travelers,
+    documents: bundle.documents,
+    holder: bundle.holder,
+    returnOn: dates.returnOn,
+    rows,
   });
 }
 

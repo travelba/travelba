@@ -45,13 +45,16 @@ function addPositiveAmounts(sum: number, rows: { amount: number | null }[] | und
 /** Assiette des 10 % : étapes (montant du séjour + extras) et dépenses. Hors billeterie. */
 export function agencyFeeBaseAmount(input: {
   stayTotal: number;
-  expenses?: { amount: number | null }[];
+  expenses?: { amount: number | null; agencyFee?: boolean }[];
   extras?: { amount: number | null }[];
 }) {
   const stay = Number(input.stayTotal);
   let sum = Number.isFinite(stay) && stay > 0 ? stay : 0;
   sum = addPositiveAmounts(sum, input.extras);
-  sum = addPositiveAmounts(sum, input.expenses);
+  sum = addPositiveAmounts(
+    sum,
+    (input.expenses || []).filter((row) => row.agencyFee !== false)
+  );
   return Math.round(sum * 100) / 100;
 }
 

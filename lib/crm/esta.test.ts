@@ -7,13 +7,20 @@ import {
   estaAgencyDraft,
   estaAirports,
   estaAlerts,
+  ESTA_PENDING_LABEL,
+  ESTA_STALE_LABEL,
   estaBadge,
+  estaCheckPending,
+  estaCheckedLabel,
   estaClientDraft,
   estaCoversTrip,
   estaDispatchDue,
   estaEligibility,
   estaNoteCaption,
   estaOnDailyList,
+  estaRequestAt,
+  estaRequestedLabel,
+  estaTravelerLine,
   estaWebhookBody,
   estaWebhookHeader,
   flightTouchIatas,
@@ -21,9 +28,11 @@ import {
   itemTouchesEsta,
   maskPassportInText,
   maskPassportNumber,
+  mergeEstaPoll,
   planEstaCheck,
   tripNeedsEsta,
 } from "./esta";
+import type { CrmBookingTraveler, CrmTravelDocument } from "./types";
 
 const PASSPORT = "12AB34567";
 const NOW = Date.parse("2026-10-06T12:00:00Z");
@@ -137,7 +146,7 @@ test("ESTA approuvé jusqu’au 26/03/2027, passeport expire le même jour", () 
   });
   assert.deepEqual(alerts, []);
   assert.equal(estaCoversTrip("approuve", alerts), true);
-  assert.equal(estaBadge({ status: "approuve", validUntil: "2027-03-26", alerts }).label, "Valable jusqu’au 26/03/2027");
+  assert.equal(estaBadge({ status: "approuve", validUntil: "2027-03-26", alerts }).label, "Approuvé jusqu’au 26/03/2027");
   assert.equal(formatEstaDate("2027-03-26"), "26/03/2027");
 
   const beforeReturn = estaAlerts({
@@ -187,7 +196,7 @@ test("ESTA approuvé jusqu’au 29/08/2027", () => {
     estaPassportLast3: "567",
   });
   assert.equal(estaCoversTrip("approuve", alerts), true);
-  assert.equal(estaBadge({ status: "approuve", validUntil: "2027-08-29", alerts }).label, "Valable jusqu’au 29/08/2027");
+  assert.equal(estaBadge({ status: "approuve", validUntil: "2027-08-29", alerts }).label, "Approuvé jusqu’au 29/08/2027");
   const draft = estaClientDraft({ status: "approuve", validUntil: "2027-08-29", alerts, reference: "TB-2026-0042" });
   assert.match(draft?.text || "", /valable jusqu’au 29\/08\/2027/);
   assert.equal(estaAgencyDraft({
@@ -339,6 +348,135 @@ test("la file quotidienne reprend les cas demandés, dans les 90 jours", () => {
   );
   assert.equal(estaOnDailyList({ ...base, departure: "2027-02-01", status: "a_verifier", checkedAt: null }), false);
   assert.equal(estaOnDailyList({ ...base, status: "non_concerne", checkedAt: null }), false);
+});
+
+const TRAVELER: CrmBookingTraveler = {
+  id: "traveler-1",
+  booking_id: "booking-1",
+  companion_id: null,
+  is_account_holder: true,
+  first_name: "Camille",
+  last_name: "Martin",
+  created_at: "2026-10-01T00:00:00Z",
+};
+
+function line(input: {
+  status: "a_verifier" | "approuve" | "inacheve" | "introuvable" | "refuse" | "en_attente" | "erreur";
+  checkedAt?: string | null;
+  dispatchedAt?: string | null;
+  attemptAt?: string | null;
+  validUntil?: string | null;
+  note?: string | null;
+  nowMs?: number;
+}) {
+  return estaTravelerLine({
+    traveler: TRAVELER,
+    status: input.status,
+    validUntil: input.validUntil,
+    checkedAt: input.checkedAt,
+    note: input.note,
+    returnOn: "2026-11-02",
+    passport: { number: PASSPORT, expires_on: "2028-06-01" } as CrmTravelDocument,
+    estaPassportLast3: "567",
+    dispatchedAt: input.dispatchedAt,
+    attemptAt: input.attemptAt,
+    nowMs: input.nowMs ?? NOW,
+  });
+}
+
+test("une vérification en cours affiche l’heure de Paris, puis le résultat", () => {
+  assert.equal(estaRequestAt({ dispatchedAt: "2026-10-06T12:00:00Z", attemptAt: "2026-10-06T11:59:00Z" }), "2026-10-06T12:00:00Z");
+  assert.equal(estaRequestAt({ dispatchedAt: "2026-10-06T11:00:00Z", attemptAt: "2026-10-06T12:10:00Z" }), "2026-10-06T12:10:00Z");
+  assert.equal(estaCheckPending({ dispatchedAt: "2026-10-06T12:00:00Z", checkedAt: null }), true);
+  assert.equal(estaCheckPending({ dispatchedAt: "2026-10-06T12:00:00Z", checkedAt: "2026-10-06T11:00:00Z" }), true);
+  assert.equal(
+    estaCheckPending({
+      dispatchedAt: "2026-10-06T11:00:00Z",
+      attemptAt: "2026-10-06T12:10:00Z",
+      checkedAt: "2026-10-06T11:30:00Z",
+    }),
+    true
+  );
+  assert.equal(estaCheckPending({ dispatchedAt: "2026-10-06T12:00:00Z", checkedAt: "2026-10-06T12:05:00Z" }), false);
+  assert.equal(estaCheckPending({ checkedAt: null }), false);
+
+  const pending = line({ status: "a_verifier", dispatchedAt: "2026-10-06T12:00:00Z" });
+  assert.equal(pending.pending, true);
+  assert.equal(pending.stale, false);
+  assert.equal(pending.badge, ESTA_PENDING_LABEL);
+  assert.equal(pending.checkedLabel, "demandée à 14:00");
+  assert.equal(estaRequestedLabel("2026-10-06T12:00:00Z"), "demandée à 14:00");
+  assert.equal(pending.canSend, false);
+  assert.equal(pending.caption, null);
+
+  const stale = line({
+    status: "a_verifier",
+    dispatchedAt: "2026-10-06T12:00:00Z",
+    nowMs: Date.parse("2026-10-06T12:20:00Z"),
+  });
+  assert.equal(stale.stale, true);
+  assert.equal(stale.badge, ESTA_STALE_LABEL);
+  assert.equal(stale.checkedLabel, "demandée à 14:00");
+
+  const approved = line({
+    status: "approuve",
+    validUntil: "2027-08-29",
+    checkedAt: "2026-10-06T12:06:00Z",
+    dispatchedAt: "2026-10-06T12:00:00Z",
+    note: "étape 4 sur 7, jamais payé",
+  });
+  assert.equal(approved.pending, false);
+  assert.equal(approved.badge, "Approuvé jusqu’au 29/08/2027");
+  assert.equal(approved.checkedLabel, "Vérifié le 06/10 à 14:06");
+  assert.equal(estaCheckedLabel("2026-01-15T12:34:00Z"), "Vérifié le 15/01 à 13:34");
+  assert.equal(estaCheckedLabel("2026-10-06T23:30:00Z"), "Vérifié le 07/10 à 01:30");
+  assert.equal(approved.caption, "étape 4 sur 7, jamais payé");
+  const masked = line({
+    status: "approuve",
+    validUntil: "2027-08-29",
+    checkedAt: "2026-10-06T12:06:00Z",
+    dispatchedAt: "2026-10-06T12:00:00Z",
+    note: `passeport ${PASSPORT}`,
+  });
+  assert.match(masked.caption || "", /567/);
+  assert.doesNotMatch(masked.caption || "", new RegExp(PASSPORT));
+  const json = JSON.stringify(masked);
+  assert.doesNotMatch(json, new RegExp(PASSPORT));
+  assert.doesNotMatch(json, /mrz/i);
+
+  for (const [status, label] of [
+    ["inacheve", "Inachevé"],
+    ["introuvable", "Introuvable"],
+    ["refuse", "Refusé"],
+    ["en_attente", "En attente"],
+    ["erreur", "Erreur"],
+  ] as const) {
+    assert.equal(line({ status, checkedAt: "2026-10-06T12:06:00Z", dispatchedAt: "2026-10-06T12:00:00Z" }).badge, label);
+  }
+});
+
+test("le sondage garde l’attente tant que le serveur n’a pas d’envoi plus récent", () => {
+  const local = line({ status: "a_verifier", dispatchedAt: null, nowMs: NOW });
+  const optimistic = {
+    ...local,
+    pending: true,
+    stale: false,
+    badge: ESTA_PENDING_LABEL,
+    checkedLabel: "demandée à 14:00",
+    requestedAt: "2026-10-06T12:00:00Z",
+    caption: null,
+    canSend: false,
+  };
+  const unchanged = line({ status: "a_verifier", checkedAt: "2026-10-05T08:00:00Z" });
+  assert.equal(mergeEstaPoll([optimistic], [unchanged], NOW)[0]?.badge, ESTA_PENDING_LABEL);
+  const answered = line({
+    status: "approuve",
+    validUntil: "2027-08-29",
+    checkedAt: "2026-10-06T12:06:00Z",
+    dispatchedAt: "2026-10-06T12:00:00Z",
+  });
+  assert.equal(mergeEstaPoll([optimistic], [answered], NOW)[0]?.badge, "Approuvé jusqu’au 29/08/2027");
+  assert.equal(mergeEstaPoll([optimistic], [], NOW)[0]?.badge, ESTA_PENDING_LABEL);
 });
 
 test("aucun e-mail ne laisse un numéro de passeport en clair", () => {
