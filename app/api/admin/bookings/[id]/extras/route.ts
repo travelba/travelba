@@ -78,6 +78,7 @@ export async function POST(request: Request, ctx: Ctx) {
         leg: extra.leg,
         place: extra.place,
         moment: extra.moment,
+        holder: (holder as CrmCustomer | null) || null,
       });
       return NextResponse.json(confirmed);
     }
@@ -98,6 +99,8 @@ export async function POST(request: Request, ctx: Ctx) {
       address: extra.address,
       departAddress: extra.depart,
       arriveAddress: extra.arrive,
+      rateId: extra.rateId,
+      vehicle: extra.vehicle,
       enforceWindow: false,
     });
     return NextResponse.json(created);

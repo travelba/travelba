@@ -57,7 +57,7 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 ## Prix
 
 - Prix vendu (`item.amount`) : **uniquement le premier jour** de l’événement (check-in hôtel, départ vol, prise en charge location). Les nuits / jours suivants gardent la carte, sans recompter le montant.
-- **Vols** : plusieurs e-tickets du même segment = **une** carte, `details.ticket_count`. `item.amount` = **prix du billet pour l’aller-retour** (× passagers). Affichage `2 × 800 €`. Aller simple : ce prix est celui du seul vol. Ne pas additionner l’aller et le retour.
+- **Vols** : plusieurs e-tickets du même segment = **une** carte, `details.ticket_count`. `item.amount` = **prix du billet pour l’aller-retour** (× passagers). Affichage `2 × 800 €`. Aller simple : ce prix est celui du seul vol. Ne pas additionner l’aller et le retour. Sur la carte, sous le trajet, le prénom et le nom du billet (`details.passengers`). On les coche dans le foyer à la relecture. Le train suit la même ligne.
 - Carte vol compacte : **villes** en titre, code aéroport en dessous. Prix **sous** la route en mobile (pas à droite : ça déborde).
 - **Montant du séjour affiché** = somme des prix vendus des cartes, plus les frais d’agence et les dépenses libres. `booking.total_amount` reste la somme des cartes (skill `travelba-money`).
 - `item.amount` extrait = **null** (jamais le net fournisseur sur la carte client).

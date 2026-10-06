@@ -1,6 +1,6 @@
 import { documentPriceIssues } from "@/lib/crm/booking-issues";
+import { cityPlaceKey } from "@/lib/crm/city-names";
 import { isCancellationExtract, type BookingExtract } from "@/lib/crm/ingest-types";
-import { findMatchingItem } from "@/lib/crm/item-match";
 import {
   firstNamesMatch,
   foldName,
@@ -9,7 +9,6 @@ import {
 } from "@/lib/crm/person-match";
 import { siteConfig } from "@/lib/site";
 import {
-  countsAsCarnetCard,
   customerFullName,
   type CrmBooking,
   type CrmBookingItem,
@@ -121,7 +120,18 @@ function placeParts(value: string | null | undefined) {
     .filter((part) => part.length >= 3);
 }
 
-/** Ville / pays : égalité, inclusion (« dan tel aviv » ⊃ « tel aviv ») ou jeton commun. */
+function cityKeys(value: string | null | undefined) {
+  const keys = new Set<string>();
+  const add = (part: string) => {
+    const key = cityPlaceKey(part);
+    if (key) keys.add(key);
+  };
+  if (value && value.trim()) add(value);
+  for (const part of placeParts(value)) add(part);
+  return keys;
+}
+
+/** Ville / pays : égalité, inclusion (« dan tel aviv » ⊃ « tel aviv »), alias (Milano = Milan) ou jeton commun. */
 export function destinationsOverlap(
   left: string | null | undefined,
   right: string | null | undefined
@@ -133,7 +143,13 @@ export function destinationsOverlap(
   if (a.includes(b) || b.includes(a)) return true;
   const leftParts = placeParts(left);
   const rightParts = placeParts(right);
-  return leftParts.some((part) => rightParts.includes(part));
+  if (leftParts.some((part) => rightParts.includes(part))) return true;
+  const leftKeys = cityKeys(left);
+  const rightKeys = cityKeys(right);
+  for (const key of leftKeys) {
+    if (rightKeys.has(key)) return true;
+  }
+  return false;
 }
 
 export function extractDay(value: string | null | undefined) {
@@ -193,7 +209,7 @@ export function usableCustomerEmail(email: string | null | undefined): string | 
   const value = (email || "").trim().toLowerCase();
   if (!value || !value.includes("@")) return null;
   if (AGENCY_INBOXES.has(value)) return null;
-  if (/^(contact|agence|hello|info|bonjour|admin)@travelba\.fr$/.test(value)) return null;
+  if (/^(contact|agence|hello|info|bonjour|admin|crm)@travelba\.fr$/.test(value)) return null;
   return value;
 }
 
@@ -498,6 +514,63 @@ export function suggestBookingByTripSignals(
   return { autoBookingId: pickAutoBookingId(candidates), candidates };
 }
 
+export const SAME_DESTINATION_REASON = "Même client, même destination";
+export const SAME_DESTINATION_CANCELLED_REASON = "Même client, même destination, séjour annulé";
+
+/** Sous le seuil de rattachement automatique : la file propose, elle ne crée pas. */
+const SAME_DESTINATION_SCORE = 80;
+
+/**
+ * Même client, même ville, dates ignorées. Un dossier annulé compte :
+ * l’annulation et la nouvelle confirmation n’arrivent pas dans le même ordre.
+ * Jamais de rattachement automatique.
+ */
+export function suggestBookingByDestination(
+  extract: BookingExtract,
+  bookings: TripBooking[],
+  customers: CustomerLite[]
+): BookingSuggestion {
+  if (isCancellationExtract(extract)) return { autoBookingId: null, candidates: [] };
+  const people = extractPeople(extract);
+  const email = usableCustomerEmail(extract.customer_email);
+  const byCustomer = new Map(customers.map((row) => [row.id, row]));
+  const emailCustomer = email
+    ? customers.find((row) => (row.email || "").toLowerCase() === email)
+    : undefined;
+  const candidates: BookingSuggestion["candidates"] = [];
+
+  for (const booking of bookings) {
+    const customer = booking.customer_id ? byCustomer.get(booking.customer_id) : undefined;
+    if (!customer) continue;
+    const nameHit = people.some((person) => personMatchesCustomer(person, customer).last);
+    const emailHit = Boolean(emailCustomer && emailCustomer.id === customer.id);
+    if (!nameHit && !emailHit) continue;
+    if (!extractDestinationsOverlap(extract, booking)) continue;
+    const cancelled = booking.status === "cancelled";
+    candidates.push({
+      booking_id: booking.id,
+      customer_id: booking.customer_id || null,
+      label: bookingLabel(booking),
+      reason: cancelled ? SAME_DESTINATION_CANCELLED_REASON : SAME_DESTINATION_REASON,
+      score: cancelled ? SAME_DESTINATION_SCORE - 2 : SAME_DESTINATION_SCORE,
+    });
+  }
+
+  candidates.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label, "fr"));
+  return { autoBookingId: null, candidates };
+}
+
+export function blocksSecondDossier(
+  candidates: { booking_id?: string | null; reason?: string | null; score?: number | null }[]
+) {
+  return candidates.some(
+    (row) =>
+      Boolean(row.booking_id) &&
+      (row.reason === SAME_DESTINATION_REASON || row.reason === SAME_DESTINATION_CANCELLED_REASON) &&
+      (row.score ?? 0) < STRONG_BOOKING_SCORE
+  );
+}
+
 export function hasUsableTrip(extract: BookingExtract) {
   if (extract.document_status === "identity") return false;
   if ((extract.destination || "").trim()) return true;
@@ -527,36 +600,8 @@ export type EmailIngestSuggestionInput = {
  * Décide du geste automatique : rattacher, créer, ou laisser en relecture.
  * Ambiguïté (plusieurs voyages au même score fort) → review.
  */
-export type CancellationApplyPlan = {
-  cancelBooking: boolean;
-  itemIds: string[];
-};
-
-/** Items à masquer ; dossier annulé s’il ne reste plus de carte carnet, ou sans item ciblé. */
-export function cancellationApplyPlan(
-  extract: BookingExtract,
-  items: {
-    id: string;
-    kind: string;
-    confirmation_ref?: string | null;
-    start_at?: string | null;
-    title?: string | null;
-    details?: Record<string, unknown> | null;
-  }[]
-): CancellationApplyPlan {
-  const remaining = [...items];
-  const itemIds: string[] = [];
-  for (const incoming of extract.items || []) {
-    const hit = findMatchingItem(remaining, incoming);
-    if (!hit) continue;
-    itemIds.push(hit.id);
-    const idx = remaining.findIndex((row) => row.id === hit.id);
-    if (idx >= 0) remaining.splice(idx, 1);
-  }
-  const leftoverCards = remaining.filter((row) => countsAsCarnetCard(row.kind));
-  const cancelBooking = itemIds.length === 0 || leftoverCards.length === 0;
-  return { cancelBooking, itemIds: [...new Set(itemIds)] };
-}
+export type { CancellationApplyPlan } from "@/lib/crm/item-lifecycle";
+export { cancellationApplyPlan } from "@/lib/crm/item-lifecycle";
 
 export function decideEmailIngestAction(input: EmailIngestSuggestionInput): EmailIngestDecision {
   const { extract } = input;

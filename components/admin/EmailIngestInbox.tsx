@@ -6,7 +6,7 @@ import { adminAction } from "@/lib/crm/admin-action";
 import { Icon } from "@/components/crm/icons";
 import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
 import { EmptyState } from "@/components/crm/ui";
-import { Field, MoneyInput } from "@/components/crm/fields";
+import { Field, MoneyInput, fieldControlClass } from "@/components/crm/fields";
 import { FilePreviewGrid } from "@/components/crm/FilePreview";
 import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
 import {
@@ -27,7 +27,7 @@ import {
 import { emailCardTitle } from "@/lib/crm/ingest-title";
 import { formatDateFr, formatDateRangeShort, formatDateTimeFr, formatMoney } from "@/lib/crm/money";
 import { sanitizeEmailHtml } from "@/lib/crm/email-source";
-import { fieldControlClass } from "@/components/crm/fields";
+import { inboxStayAction, type LifecycleCard } from "@/lib/crm/item-lifecycle";
 
 type ExtractItem = {
   kind?: string;
@@ -63,7 +63,23 @@ type ExtractView = {
   items?: ExtractItem[];
 };
 
-type BookingOption = { id: string; reference: string; label: string; status: string };
+type BookingCard = {
+  id: string;
+  kind: string;
+  title: string;
+  confirmation_ref: string | null;
+  lifecycle: string | null;
+  amount: number | null;
+};
+
+type BookingOption = {
+  id: string;
+  reference: string;
+  label: string;
+  status: string;
+  statusKey?: string;
+  items?: BookingCard[];
+};
 
 function printedTravelers(row: CrmEmailIngest) {
   const raw = row.extract?.travelers;
@@ -139,6 +155,7 @@ export function EmailIngestInbox({
   // Dernier client demandé par ligne : une réponse tardive d’un autre client est ignorée.
   const latestLoad = useRef<Record<string, string>>({});
   const [selectedBooking, setSelectedBooking] = useState<Record<string, string>>({});
+  const [selectedItem, setSelectedItem] = useState<Record<string, string>>({});
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [drafts, setDrafts] = useState<Record<string, ExtractView>>({});
   const [currencyChosen, setCurrencyChosen] = useState<Record<string, boolean>>({});
@@ -285,6 +302,7 @@ export function EmailIngestInbox({
       title?: string;
       extract?: ExtractView;
       apply_stay_currency?: boolean;
+      item_id?: string;
     },
     opts?: { refresh?: boolean }
   ) {
@@ -600,9 +618,10 @@ export function EmailIngestInbox({
                     onFocus={() => {
                       if (!options) loadBookings(row.id, customerId, row.suggested_booking_id);
                     }}
-                    onChange={(e) =>
-                      setSelectedBooking((prev) => ({ ...prev, [row.id]: e.target.value }))
-                    }
+                    onChange={(e) => {
+                      setSelectedBooking((prev) => ({ ...prev, [row.id]: e.target.value }));
+                      setSelectedItem((prev) => ({ ...prev, [row.id]: "" }));
+                    }}
                   >
                     {!options || loadingBookings ? (
                       <option value="">
@@ -622,26 +641,64 @@ export function EmailIngestInbox({
                       <option value="">Aucun voyage pour ce client</option>
                     )}
                   </select>
-                  <button
-                    type="button"
-                    disabled={isBusy || !selectedBooking[row.id]}
-                    className="admin-af-btn-accent admin-tap rounded-lg px-3 py-2 text-sm disabled:opacity-50"
-                    onClick={() =>
-                      act(row.id, {
-                        action: "attach_booking",
-                        booking_id: selectedBooking[row.id],
-                        title: cardTitle.trim(),
-                        ...(drafts[row.id]
-                          ? {
-                              extract: drafts[row.id],
-                              apply_stay_currency: Boolean(currencyChosen[row.id]),
+                  {(() => {
+                    const stay = options?.find((booking) => booking.id === selectedBooking[row.id]);
+                    const gesture = stay
+                      ? inboxStayAction({
+                          documentStatus: extract.document_status,
+                          incoming: items,
+                          bookingStatus: stay.statusKey,
+                          items: (stay.items || []) as LifecycleCard[],
+                          chosenItemId: selectedItem[row.id] || null,
+                        })
+                      : null;
+                    const waitingForCard = Boolean(gesture?.choices.length && !gesture.itemId);
+                    return (
+                      <>
+                        {gesture?.choices.length ? (
+                          <select
+                            className="admin-af-input text-sm sm:col-span-2"
+                            value={selectedItem[row.id] || ""}
+                            aria-label="Carte du séjour"
+                            onChange={(event) =>
+                              setSelectedItem((prev) => ({ ...prev, [row.id]: event.target.value }))
                             }
-                          : {}),
-                      })
-                    }
-                  >
-                    Rattacher au voyage
-                  </button>
+                          >
+                            <option value="">Choisir la carte</option>
+                            {gesture.choices.map((card) => (
+                              <option key={card.id} value={card.id}>
+                                {itemLabel(card.kind)} — {card.title}
+                              </option>
+                            ))}
+                          </select>
+                        ) : null}
+                        <button
+                          type="button"
+                          disabled={isBusy || !selectedBooking[row.id] || waitingForCard}
+                          className="admin-af-btn-accent admin-tap rounded-lg px-3 py-2 text-sm disabled:opacity-50"
+                          onClick={() =>
+                            act(row.id, {
+                              action: gesture?.action === "replace" ? "replace_booking" : "attach_booking",
+                              booking_id: selectedBooking[row.id],
+                              item_id: gesture?.itemId || undefined,
+                              title: cardTitle.trim(),
+                              ...(drafts[row.id]
+                                ? {
+                                    extract: drafts[row.id],
+                                    apply_stay_currency: Boolean(currencyChosen[row.id]),
+                                  }
+                                : {}),
+                            })
+                          }
+                        >
+                          {gesture?.label || "Rattacher au voyage"}
+                        </button>
+                        {gesture?.hint ? (
+                          <p className="text-xs text-muted sm:col-span-2">{gesture.hint}</p>
+                        ) : null}
+                      </>
+                    );
+                  })()}
                   {bookingsError ? (
                     <p
                       role="alert"

@@ -6,7 +6,7 @@ import { applyEditedExtractTitle } from "@/lib/crm/ingest-title";
 import { isCancellationExtract, parseExtractPayloadSafe } from "@/lib/crm/ingest-types";
 import {
   applyCancellationToBooking,
-  applyExtractToBooking,
+  applyReplacementToBooking,
   parseExtractPayload,
   persistNewBookingFromExtract,
 } from "@/lib/crm/ingest-booking";
@@ -32,6 +32,7 @@ export async function POST(request: Request, ctx: Ctx) {
     title?: string;
     extract?: unknown;
     apply_stay_currency?: boolean;
+    item_id?: string;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -107,7 +108,7 @@ export async function POST(request: Request, ctx: Ctx) {
     const files = await loadEmailIngestFiles(row);
     const extractPatch = body.extract ? { extract } : {};
 
-    if (action === "attach_booking") {
+    if (action === "attach_booking" || action === "replace_booking") {
       const bookingId = String(body.booking_id || "");
       if (!bookingId) return jsonError("Choisissez un voyage");
       const { data: booking } = await admin
@@ -124,9 +125,10 @@ export async function POST(request: Request, ctx: Ctx) {
           files,
           staffUserId: auth.user.id,
           visibleToClient: false,
+          itemId: body.item_id || null,
         });
       } else {
-        await applyExtractToBooking({
+        await applyReplacementToBooking({
           bookingId,
           customerId: booking.customer_id,
           extract,
@@ -135,6 +137,7 @@ export async function POST(request: Request, ctx: Ctx) {
           visibleToClient: false,
           applyStayFields: body.apply_stay_currency === true,
           emailIngestId: id,
+          replaceItemId: body.item_id || null,
         });
       }
       await admin

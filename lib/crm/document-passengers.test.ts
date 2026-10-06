@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { peopleNotOnStay, passengersFromDetails, uniquePeople } from "./document-passengers";
+import { peopleNotOnStay, passengersFromDetails, ticketPartyKeys, ticketTravelerNames, uniquePeople } from "./document-passengers";
 
 test("les passagers du document s’ajoutent s’ils ne sont pas déjà sur le séjour", () => {
   const details = {
@@ -28,4 +28,24 @@ test("les passagers du document s’ajoutent s’ils ne sont pas déjà sur le s
     [{ first_name: "Paul", last_name: "Martin" }]
   );
   assert.deepEqual(loose, [{ first_name: "Lea", last_name: null }]);
+});
+
+test("un billet affiche les voyageurs concernés et retrouve leur case", () => {
+  const details = {
+    passengers: [
+      { first_name: "Judith", last_name: "Charbit" },
+      { first_name: "Judith", last_name: "Charbit" },
+    ],
+  };
+  assert.deepEqual(ticketTravelerNames(details), ["Judith Charbit"]);
+  assert.deepEqual(
+    ticketPartyKeys(details, [
+      { key: "holder", first_name: "Arnaud", last_name: "Vinciguerra" },
+      { key: "companion:j", first_name: "Judith", last_name: "Charbit" },
+    ]),
+    ["companion:j"]
+  );
+  assert.deepEqual(ticketPartyKeys({ party_keys: ["holder"] }, [{ key: "holder", first_name: "Arnaud", last_name: "Vinciguerra" }]), [
+    "holder",
+  ]);
 });

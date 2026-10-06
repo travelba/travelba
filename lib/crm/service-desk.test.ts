@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { serviceCancelLocked } from "./extras";
+import { chauffeurCancelOpen, serviceCancelLocked } from "./extras";
 import { checkinAttemptDue } from "./flight-watch";
 import { checkinDeskNote, serviceDeskLines, type ServiceDeskItem } from "./service-desk";
 
@@ -131,6 +131,13 @@ test("un service confirmé ne s’annule plus, une demande en attente si", () =>
   assert.equal(serviceCancelLocked("checkin", { details: { agency_status: "confirmed" } }), true);
   assert.equal(serviceCancelLocked("greeter", { details: { agency_status: "confirmed" } }), true);
   assert.equal(serviceCancelLocked("visa", { details: { agency_status: "confirmed" } }), false);
+  const open = {
+    start_at: "2026-12-20T10:00:00",
+    details: { agency_status: "confirmed", rolzo_booking_id: "abc", rolzo_cancel_hours: 4 },
+  };
+  assert.equal(chauffeurCancelOpen(open, new Date("2026-12-20T05:00:00")), true);
+  assert.equal(serviceCancelLocked("chauffeur", open, new Date("2026-12-20T05:00:00")), false);
+  assert.equal(serviceCancelLocked("chauffeur", open, new Date("2026-12-20T07:00:00")), true);
 });
 
 test("l’enregistrement confié à l’agence ne déclenche pas « présentez-vous »", () => {

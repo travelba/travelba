@@ -14,6 +14,7 @@ import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
 import { DateFrInput, Field, MoneyInput, fieldControlClass } from "@/components/crm/fields";
 import { BrandMark } from "@/components/crm/BrandMark";
 import { applyRoomGuestLabels, guestsLabelFromKeys, type HouseholdMember } from "@/lib/crm/household";
+import { ticketPartyKeys } from "@/lib/crm/document-passengers";
 import { Trash2 } from "lucide-react";
 
 type ItemDraft = BookingExtract["items"][number];
@@ -455,6 +456,47 @@ export function IngestItemCard({
           <Field label="Gare arrivée">
             <Text value={d.to || d.city_to || ""} onChange={(v) => onChange(patchDetails(item, "to", v))} />
           </Field>
+        </div>
+      ) : null}
+
+      {item.kind === "flight" || item.kind === "rail" ? (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-muted">Voyageurs concernés</p>
+          {household.length ? (
+            <div className="flex flex-wrap gap-2">
+              {household.map((person) => {
+                const keys = ticketPartyKeys(item.details, household);
+                const checked = keys.includes(person.key);
+                return (
+                  <label key={person.key} className="flex items-center gap-1 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => {
+                        const nextKeys = checked
+                          ? keys.filter((key) => key !== person.key)
+                          : [...keys, person.key];
+                        const passengers = nextKeys
+                          .map((key) => household.find((member) => member.key === key))
+                          .filter((member): member is HouseholdMember => Boolean(member))
+                          .map((member) => ({
+                            first_name: member.first_name,
+                            last_name: member.last_name,
+                          }));
+                        onChange({
+                          ...item,
+                          details: { ...item.details, party_keys: nextKeys, passengers },
+                        });
+                      }}
+                    />
+                    {person.label}
+                  </label>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-muted">Choisissez un client pour attribuer les voyageurs du foyer.</p>
+          )}
         </div>
       ) : null}
 

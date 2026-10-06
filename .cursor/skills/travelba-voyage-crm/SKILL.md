@@ -14,7 +14,7 @@ Site public : `https://travelba.fr`. Compte : Travel Business Agency (TBA).
 
 Lire **ce fichier en premier**, puis **un seul** skill spécialisé ci-dessous.
 PDF / photos / « entraîne l’import » → **`travelba-document-ingest`** (dropzone admin, relecture humaine avant Enregistrer).
-Gmail / `crm_email_ingest` / labels Little Emperors, Expedia TAAP, billet-avion et `crm` → **`travelba-email-ingest`** (parse → suggestions, création auto du dossier, rattachement **manuel**).
+Gmail / `crm_email_ingest` / labels Little Emperors, Expedia TAAP, billet-avion, booking-cancellation et `crm` → **`travelba-email-ingest`** (parse → suggestions, création auto du dossier, mise à jour auto sur un match unique).
 Ne pas ré-ouvrir le QCM produit : les règles sont déjà ancrées dans les skills.
 
 ## Dossier agence (toutes les réservations)
@@ -35,7 +35,7 @@ Carte vol : **villes en titre** (`Rome → Paris`), code aéroport en dessous (`
 | Invitation, magique, mot de passe, sessions, staff | `.cursor/skills/travelba-auth/SKILL.md` |
 | Carnet, timeline, publier, cartes vol/hôtel | `.cursor/skills/travelba-carnet/SKILL.md` |
 | **Import PDF/photos** (dropzone admin, relecture puis Enregistrer) | `.cursor/skills/travelba-document-ingest/SKILL.md` |
-| **Gmail / `crm_email_ingest`** (labels Little Emperors, Expedia TAAP, billet-avion, `crm` → création auto, rattachement manuel) | `.cursor/skills/travelba-email-ingest/SKILL.md` |
+| **Gmail / `crm_email_ingest`** (labels Little Emperors, Expedia TAAP, billet-avion, booking-cancellation, `crm` → création auto, mise à jour auto sur un match unique) | `.cursor/skills/travelba-email-ingest/SKILL.md` |
 | Ledger, encours, Stripe, Revolut | `.cursor/skills/travelba-money/SKILL.md` |
 | Cursor Design, Lucide, `/api/files`, copy FR | `.cursor/skills/travelba-ui/SKILL.md` |
 | Fiche, passeports, compagnons, facturation | `.cursor/skills/travelba-identity/SKILL.md` |

@@ -176,7 +176,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
       if (body.visible_to_client) {
         const { data: publishItems } = await auth.supabase
           .from("crm_booking_items")
-          .select("kind")
+          .select("kind, lifecycle")
           .eq("booking_id", id);
         const publishIssues = collectPublishIssues(publishItems || []);
         if (publishIssues.length) return jsonIssues(publishIssues);

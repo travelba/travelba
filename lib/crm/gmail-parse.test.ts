@@ -3,8 +3,10 @@ import { describe, it } from "node:test";
 import {
   BILLET_AVION_LABEL,
   BILLET_BACKFILL_DONE,
+  BOOKING_CANCELLATION_LABEL,
   CRM_ALIAS_ADDRESS,
   CRM_ALIAS_LABEL,
+  isBookingCancellationLabel,
   buildGmailHistorySearchParams,
   collectAttachments,
   collectBodyText,
@@ -226,6 +228,7 @@ describe("labels Gmail billet-avion", () => {
       "Little Emperors",
       "Expedia TAAP",
       BILLET_AVION_LABEL,
+      BOOKING_CANCELLATION_LABEL,
       CRM_ALIAS_LABEL,
     ]);
   });
@@ -235,6 +238,7 @@ describe("labels Gmail billet-avion", () => {
       "billet avion",
       "Little Emperors",
       "expedia-taap",
+      BOOKING_CANCELLATION_LABEL,
       CRM_ALIAS_LABEL,
     ]);
   });
@@ -244,6 +248,7 @@ describe("labels Gmail billet-avion", () => {
       "little-emperors",
       "expedia-taap",
       BILLET_AVION_LABEL,
+      BOOKING_CANCELLATION_LABEL,
       CRM_ALIAS_LABEL,
     ]);
   });
@@ -252,8 +257,17 @@ describe("labels Gmail billet-avion", () => {
     assert.equal(CRM_ALIAS_ADDRESS, "crm@travelba.fr");
     assert.equal(gmailLabelMatchKey("CRM"), CRM_ALIAS_LABEL);
     assert.equal(gmailLabelMatchKey("crm"), CRM_ALIAS_LABEL);
-    const map = matchGmailLabelIds(["crm"], [{ id: "Label_CRM", name: "CRM" }]);
+    const map = matchGmailLabelIds(
+      ["crm"],
+      [{ id: "Label_CRM", name: "CRM" }]
+    );
     assert.equal(map.get("crm"), "Label_CRM");
+  });
+
+  it("rapproche Booking cancellation de label:booking-cancellation", () => {
+    assert.equal(gmailLabelMatchKey("Booking cancellation"), BOOKING_CANCELLATION_LABEL);
+    assert.equal(isBookingCancellationLabel("booking-cancellation"), true);
+    assert.equal(isBookingCancellationLabel("Little Emperors"), false);
   });
 
   it("rapproche Billet avion de label:billet-avion", () => {

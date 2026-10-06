@@ -43,7 +43,7 @@ import {
   IMPORT_DOCUMENTS_NOTE,
   IMPORT_QUOTE_NOTE,
 } from "@/lib/crm/email-detach";
-import { cancellationApplyPlan } from "@/lib/crm/email-match";
+import { activeCardDateRange, cancellationApplyPlan, cardStaysShown, replacementPlan } from "@/lib/crm/item-lifecycle";
 import { findMatchingItem } from "@/lib/crm/item-match";
 import { inferAirlineIata } from "@/lib/crm/brand-marks";
 import {
@@ -61,6 +61,8 @@ import { isPlaceholderTraveler, sameRecordedTraveler } from "@/lib/crm/person-ma
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { foldLetters } from "@/lib/crm/text";
 import {
+  countsAsCarnetCard,
+  isActiveItem,
   INGEST_ITEM_KINDS,
   type BookingItemKind,
   type BookingStatus,
@@ -118,7 +120,7 @@ export function matchCustomerId(
 ) {
   const email = extract.customer_email?.trim().toLowerCase();
   if (email) {
-    const hit = customers.find((c) => c.email.toLowerCase() === email);
+    const hit = customers.find((c) => (c.email || "").toLowerCase() === email);
     if (hit) return hit.id;
   }
   const last = foldLetters(extract.customer_last_name);
@@ -273,13 +275,18 @@ async function upsertItemsAndTravelers(
   existingTravelers: { first_name: string | null; last_name: string | null }[],
   existingItems: CrmBookingItem[],
   docs: UploadedDoc[],
-  emailIngestId?: string
+  emailIngestId?: string,
+  opts?: {
+    keepSellingPrice?: boolean;
+    replacements?: { itemId: string; kind: string; amount: number | null; includeInLedger: boolean }[];
+  }
 ) {
   const remaining = [...existingItems];
   let sort = existingItems.reduce((max, row) => Math.max(max, row.sort_order || 0), -1) + 1;
   const ordered = sortItemsByOrder(extract.items || []);
   let saved = 0;
   let lastError = "";
+  const consumedReplacements = new Set<string>();
 
   for (const raw of ordered) {
     const item = raw.kind === "hotel" ? normalizeHotelExtractItem(raw) : raw;
@@ -313,7 +320,8 @@ async function upsertItemsAndTravelers(
         householdMembers(customer, companions)
       );
     }
-    const match = findMatchingItem(remaining, {
+    const pool = opts?.keepSellingPrice ? remaining.filter((row) => isActiveItem(row)) : remaining;
+    const match = findMatchingItem(pool, {
       kind,
       confirmation_ref: emptyToNull(item.confirmation_ref),
       start_at: emptyToNull(item.start_at),
@@ -321,6 +329,22 @@ async function upsertItemsAndTravelers(
       details,
     });
     const incomingAmount = parseMoney(item.amount);
+    const replacing =
+      !match && opts?.replacements
+        ? opts.replacements.find((row) => row.kind === kind && !consumedReplacements.has(row.itemId))
+        : undefined;
+    if (replacing) consumedReplacements.add(replacing.itemId);
+    const amount = opts?.keepSellingPrice
+      ? match
+        ? parseMoney(match.amount)
+        : replacing
+          ? parseMoney(replacing.amount)
+          : null
+      : incomingAmount != null
+        ? incomingAmount
+        : match
+          ? parseMoney(match.amount)
+          : null;
     const payload = {
       kind,
       title,
@@ -328,13 +352,15 @@ async function upsertItemsAndTravelers(
       confirmation_ref: emptyToNull(item.confirmation_ref),
       start_at: emptyToNull(item.start_at),
       end_at: emptyToNull(item.end_at),
-      amount: incomingAmount != null ? incomingAmount : match ? parseMoney(match.amount) : null,
+      amount,
       details,
-      visible_to_client: false,
+      visible_to_client: cardStaysShown(match, Boolean(opts?.keepSellingPrice)),
       source_document_id: sourceDocId(details, docs),
-      ...(typeof item.include_in_ledger === "boolean"
-        ? { include_in_ledger: item.include_in_ledger }
-        : {}),
+      ...(replacing
+        ? { include_in_ledger: replacing.includeInLedger }
+        : typeof item.include_in_ledger === "boolean"
+          ? { include_in_ledger: item.include_in_ledger }
+          : {}),
     };
     try {
       if (match) {
@@ -367,6 +393,25 @@ async function upsertItemsAndTravelers(
           .single();
         if (error) throw dbFailure(error, "Carte non enregistrée.");
         if (inserted?.id) {
+          if (replacing) {
+            const { error: retireError } = await supabase
+              .from("crm_booking_items")
+              .update({
+                lifecycle: "superseded",
+                superseded_by: inserted.id,
+                visible_to_client: false,
+                include_in_ledger: false,
+              })
+              .eq("id", replacing.itemId)
+              .eq("booking_id", bookingId);
+            if (retireError) throw dbFailure(retireError, "Ancienne carte non archivée.");
+            const retired = remaining.find((row) => row.id === replacing.itemId);
+            if (retired) {
+              retired.lifecycle = "superseded";
+              retired.include_in_ledger = false;
+              retired.visible_to_client = false;
+            }
+          }
           remaining.push({
             id: inserted.id,
             booking_id: bookingId,
@@ -554,6 +599,11 @@ export async function applyExtractToBooking(opts: {
   applyStayFields?: boolean;
   /** Mail source : tamponné sur les cartes créées, pour pouvoir les remettre dans la file. */
   emailIngestId?: string;
+  /** Le montant du mail ne remplace pas le prix vendu. */
+  keepSellingPrice?: boolean;
+  replacements?: { itemId: string; kind: string; amount: number | null; includeInLedger: boolean }[];
+  /** Un dossier annulé redevient confirmé, sans être montré. */
+  reopenIfCancelled?: boolean;
 }) {
   const admin = createServiceClient();
   const { data: booking } = await admin
@@ -574,6 +624,15 @@ export async function applyExtractToBooking(opts: {
   if (!customer) throw new BookingIssuesError("Client introuvable", [
     { field: "customer_id", message: "Client introuvable." },
   ]);
+  if (opts.reopenIfCancelled && booking.status === "cancelled") {
+    const { error } = await admin
+      .from("crm_bookings")
+      .update({ status: "confirmed", visible_to_client: false })
+      .eq("id", opts.bookingId);
+    if (error) throw dbFailure(error, "Séjour non rouvert.");
+    booking.status = "confirmed";
+    booking.visible_to_client = false;
+  }
   const persistIssues = collectExtractIssues(opts.extract);
   if (persistIssues.length) throw new BookingIssuesError(issuesSummary(persistIssues), persistIssues);
   const docs = await attachBookingFiles(
@@ -596,7 +655,8 @@ export async function applyExtractToBooking(opts: {
     (travelers || []) as { first_name: string | null; last_name: string | null }[],
     (items || []) as CrmBookingItem[],
     docs,
-    opts.emailIngestId
+    opts.emailIngestId,
+    { keepSellingPrice: opts.keepSellingPrice, replacements: opts.replacements }
   );
   const patch: Record<string, unknown> = {};
   const chosenTitle = emptyToNull(opts.extract.title);
@@ -606,8 +666,18 @@ export async function applyExtractToBooking(opts: {
     patch.currency = bookingCurrencyFromReview(opts.extract.currency, opts.extract.items);
   }
   if (!booking.destination && opts.extract.destination) patch.destination = opts.extract.destination;
-  if (!booking.start_date && opts.extract.start_date) patch.start_date = opts.extract.start_date;
-  if (!booking.end_date && opts.extract.end_date) patch.end_date = opts.extract.end_date;
+  if (opts.keepSellingPrice) {
+    const { data: dated } = await admin
+      .from("crm_booking_items")
+      .select("kind, start_at, end_at, lifecycle")
+      .eq("booking_id", opts.bookingId);
+    const range = activeCardDateRange(dated || []);
+    if (range.start) patch.start_date = range.start;
+    if (range.end) patch.end_date = range.end;
+  } else {
+    if (!booking.start_date && opts.extract.start_date) patch.start_date = opts.extract.start_date;
+    if (!booking.end_date && opts.extract.end_date) patch.end_date = opts.extract.end_date;
+  }
   if (booking.status === "draft" && opts.extract.document_status === "confirmed") {
     patch.status = "confirmed";
   }
@@ -626,7 +696,44 @@ export async function applyExtractToBooking(opts: {
   return next;
 }
 
-/** Annulation fournisseur : masque les cartes concernées, annule le dossier s’il ne reste plus de carnet. */
+/** Confirmation sur un dossier déjà là : met à jour ou remplace, sans deuxième dossier. */
+export async function applyReplacementToBooking(opts: {
+  bookingId: string;
+  customerId: string;
+  extract: BookingExtract;
+  files?: File[];
+  staged?: IngestStagedFile[];
+  staffUserId?: string;
+  batchId?: string;
+  visibleToClient: boolean;
+  applyStayFields?: boolean;
+  emailIngestId?: string;
+  replaceItemId?: string | null;
+}) {
+  const admin = createServiceClient();
+  const { data: items } = await admin
+    .from("crm_booking_items")
+    .select("*")
+    .eq("booking_id", opts.bookingId);
+  const plan = replacementPlan(
+    opts.extract.items || [],
+    (items || []) as CrmBookingItem[],
+    opts.replaceItemId
+  );
+  if (plan.choices.length) {
+    throw new BookingIssuesError("Choisissez la carte à remplacer.", [
+      { field: "item_id", message: "Choisissez la carte à remplacer." },
+    ]);
+  }
+  return applyExtractToBooking({
+    ...opts,
+    keepSellingPrice: true,
+    replacements: plan.replacements,
+    reopenIfCancelled: true,
+  });
+}
+
+/** Annulation fournisseur : retire les cartes reconnues. Le dossier n’est annulé que s’il ne reste plus de carte. */
 export async function applyCancellationToBooking(opts: {
   bookingId: string;
   customerId: string;
@@ -636,6 +743,7 @@ export async function applyCancellationToBooking(opts: {
   staffUserId?: string;
   batchId?: string;
   visibleToClient: boolean;
+  itemId?: string | null;
 }) {
   const admin = createServiceClient();
   const { data: booking } = await admin
@@ -650,6 +758,7 @@ export async function applyCancellationToBooking(opts: {
     .from("crm_booking_items")
     .select("*")
     .eq("booking_id", opts.bookingId);
+  const rows = (items || []) as CrmBookingItem[];
   await attachBookingFiles(
     opts.bookingId,
     opts.staged || [],
@@ -661,23 +770,51 @@ export async function applyCancellationToBooking(opts: {
   if (opts.staffUserId && opts.batchId) {
     await cleanupIngestBatch(opts.staffUserId, opts.batchId);
   }
-  const plan = cancellationApplyPlan(opts.extract, (items || []) as CrmBookingItem[]);
-  for (const itemId of plan.itemIds) {
+  const plan = cancellationApplyPlan(opts.extract, rows);
+  let itemIds = plan.itemIds;
+  let cancelBooking = plan.cancelBooking;
+  if (opts.itemId) {
+    const target = rows.find((row) => row.id === opts.itemId && isActiveItem(row));
+    if (!target) {
+      throw new BookingIssuesError("Choisissez la carte à annuler.", [
+        { field: "item_id", message: "Choisissez une carte encore active." },
+      ]);
+    }
+    itemIds = [target.id];
+    const leftover = rows.filter(
+      (row) => row.id !== target.id && isActiveItem(row) && countsAsCarnetCard(row.kind)
+    );
+    cancelBooking = leftover.length === 0;
+  } else if (plan.needsCardChoice) {
+    throw new BookingIssuesError("Choisissez la carte à annuler.", [
+      { field: "item_id", message: "Choisissez la carte à annuler." },
+    ]);
+  }
+  for (const itemId of itemIds) {
     const { error } = await admin
       .from("crm_booking_items")
-      .update({ visible_to_client: false, include_in_ledger: false })
+      .update({ lifecycle: "cancelled", visible_to_client: false, include_in_ledger: false })
       .eq("id", itemId)
       .eq("booking_id", opts.bookingId);
     if (error) throw dbFailure(error, "Carte non mise à jour.");
   }
-  const note = "Annulation fournisseur appliquée automatiquement.";
+  const note = "Annulation fournisseur appliquée.";
   const patch: Record<string, unknown> = {};
-  if (plan.cancelBooking && booking.status !== "cancelled") {
+  if (cancelBooking && booking.status !== "cancelled") {
     patch.status = "cancelled";
   }
   const previousNotes = String(booking.notes_internal || "").trim();
-  if (!previousNotes.includes(note)) {
+  if (itemIds.length && !previousNotes.includes(note)) {
     patch.notes_internal = previousNotes ? `${previousNotes}\n${note}` : note;
+  }
+  if (itemIds.length && !cancelBooking) {
+    const { data: dated } = await admin
+      .from("crm_booking_items")
+      .select("kind, start_at, end_at, lifecycle")
+      .eq("booking_id", opts.bookingId);
+    const range = activeCardDateRange(dated || []);
+    if (range.start) patch.start_date = range.start;
+    if (range.end) patch.end_date = range.end;
   }
   if (Object.keys(patch).length) {
     const { error } = await admin.from("crm_bookings").update(patch).eq("id", opts.bookingId);

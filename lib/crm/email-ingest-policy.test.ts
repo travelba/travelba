@@ -14,6 +14,7 @@ describe("pas de rattachement autonome", () => {
       "applyExtractToBooking",
       "persistNewBookingFromExtract",
       "applyCancellationToBooking",
+      "applyReplacementToBooking",
       "autoApplyEmailIngest",
       "createCustomerFromExtract",
       "inviteCustomer",
@@ -33,15 +34,12 @@ describe("pas de rattachement autonome", () => {
     assert.equal(rematch.includes("autoCreateBookingFromIngestId"), false);
   });
 
-  it("le geste automatique crée un brouillon caché, sans invitation ni rattachement", () => {
-    for (const name of [
-      "applyExtractToBooking",
-      "applyCancellationToBooking",
-      "inviteCustomer",
-      "visibleToClient: true",
-    ]) {
+  it("le premier dossier est un brouillon caché ; seul ce fichier applique un séjour unique", () => {
+    for (const name of ["applyExtractToBooking", "inviteCustomer", "visibleToClient: true"]) {
       assert.equal(createRun.includes(name), false, name);
     }
+    assert.match(createRun, /applyReplacementToBooking/);
+    assert.match(createRun, /applyCancellationToBooking/);
     assert.match(createRun, /visibleToClient:\s*false/);
     assert.match(createRun, /status:\s*"draft"/);
     assert.match(createRun, /notes_internal:\s*IMPORT_AUTO_NOTE,\s*status:\s*"draft"/);

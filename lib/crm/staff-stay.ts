@@ -1,4 +1,4 @@
-import { countsAsCarnetCard, type BookingStatus } from "@/lib/crm/types";
+import { countsAsCarnetCard, isActiveItem, type BookingStatus } from "@/lib/crm/types";
 import { CITY_ALIASES, cityLabel, cityPlaceKey, foldCityName } from "@/lib/crm/city-names";
 import {
   flightCities,
@@ -86,6 +86,7 @@ type Step = {
   end_at?: string | null;
   sort_order?: number | null;
   details?: Record<string, unknown> | null;
+  lifecycle?: string | null;
 };
 
 function isoDay(value: string | null | undefined) {
@@ -140,7 +141,7 @@ function stepSortKey(item: Step) {
 
 function carnetSteps(items: Step[]) {
   return items
-    .filter((item) => countsAsCarnetCard(item.kind))
+    .filter((item) => countsAsCarnetCard(item.kind) && isActiveItem(item))
     .slice()
     .sort((a, b) => {
       const byDate = stepSortKey(a).localeCompare(stepSortKey(b));

@@ -15,8 +15,10 @@ import {
 import {
   BILLET_AVION_LABEL,
   BILLET_BACKFILL_DONE,
+  BOOKING_CANCELLATION_LABEL,
   CRM_ALIAS_LABEL,
   gmailLabelMatchKey,
+  isBookingCancellationLabel,
   nextBilletBackfillCursor,
 } from "@/lib/crm/gmail-parse";
 import {
@@ -32,6 +34,7 @@ import {
   MAX_INGEST_BYTES,
   MAX_INGEST_FILES,
   detectCancellationDocument,
+  isCancellationExtract,
   parseExtractPayloadSafe,
   type BookingExtract,
   type IngestWarning,
@@ -41,6 +44,7 @@ import { uploadCrmFile, downloadCrmFile, safeFileName } from "@/lib/crm/files";
 import {
   extractReferences,
   mergeBookingSuggestions,
+  suggestBookingByDestination,
   suggestBookingByReference,
   suggestBookingByTripSignals,
   suggestCustomerFromExtract,
@@ -177,6 +181,7 @@ export async function catchUpGmailHistory() {
 }
 
 const BILLET_BACKFILL_PROVIDER = "gmail-billet-avion";
+const CANCELLATION_BACKFILL_PROVIDER = "gmail-booking-cancellation";
 const BILLET_BACKFILL_PAGE = 40;
 const BILLET_BACKFILL_NEW = 15;
 
@@ -269,6 +274,10 @@ export function backfillBilletAvionMessages() {
   return backfillLabeledMessages(BILLET_BACKFILL_PROVIDER, BILLET_AVION_LABEL);
 }
 
+export function backfillBookingCancellationMessages() {
+  return backfillLabeledMessages(CANCELLATION_BACKFILL_PROVIDER, BOOKING_CANCELLATION_LABEL);
+}
+
 const CRM_BACKFILL_PROVIDER = "gmail-crm";
 
 /** Importe les messages déjà sous `label:crm`. */
@@ -289,7 +298,6 @@ async function computeSuggestions(admin: Admin, extract: BookingExtract) {
   const { data: bookings } = await admin
     .from("crm_bookings")
     .select("id, customer_id, reference, title, destination, start_date, end_date, status")
-    .neq("status", "cancelled")
     .is("archived_at", null);
   const bookingList = (bookings || []) as (Pick<
     CrmBooking,
@@ -309,10 +317,18 @@ async function computeSuggestions(admin: Admin, extract: BookingExtract) {
     }
   }
 
+  const destination = isCancellationExtract(extract)
+    ? { autoBookingId: null, candidates: [] }
+    : suggestBookingByDestination(extract, bookingList, people);
   const booking = mergeBookingSuggestions(
     suggestBookingByReference(extract, bookingList, itemsByBooking),
-    suggestBookingByTripSignals(extract, bookingList, people)
+    suggestBookingByTripSignals(extract, bookingList, people),
+    destination
   );
+  let suggestedBookingId = booking.autoBookingId;
+  if (!suggestedBookingId && destination.candidates.length === 1) {
+    suggestedBookingId = destination.candidates[0].booking_id;
+  }
 
   const merged: EmailIngestCandidate[] = [...candidates];
   for (const cand of booking.candidates) {
@@ -327,7 +343,6 @@ async function computeSuggestions(admin: Admin, extract: BookingExtract) {
     });
   }
 
-  const suggestedBookingId = booking.autoBookingId;
   const bookingCustomerId = suggestedBookingId
     ? booking.candidates.find((row) => row.booking_id === suggestedBookingId)?.customer_id
     : null;
@@ -377,7 +392,8 @@ export async function rematchEmailIngestRow(row: CrmEmailIngest) {
   );
   if (
     extract.document_status !== "identity" &&
-    detectCancellationDocument(`${row.subject || ""}\n${extract.title || ""}\n${extract.notes_client || ""}`)
+    (isBookingCancellationLabel(row.label) ||
+      detectCancellationDocument(`${row.subject || ""}\n${extract.title || ""}\n${extract.notes_client || ""}`))
   ) {
     extract.document_status = "cancelled";
   }
@@ -486,7 +502,8 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
   const { extract, warnings } = await extractBookingFromPrepared(prepared);
   if (
     extract.document_status !== "identity" &&
-    detectCancellationDocument(`${message.subject || ""}\n${body}`)
+    (isBookingCancellationLabel(row.label) ||
+      detectCancellationDocument(`${message.subject || ""}\n${body}`))
   ) {
     extract.document_status = "cancelled";
   }

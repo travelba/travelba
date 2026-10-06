@@ -1,21 +1,26 @@
 import "server-only";
 
 import { IMPORT_AUTO_NOTE } from "@/lib/crm/email-detach";
-import { runEmailAutoCreate } from "@/lib/crm/email-ingest-create";
-import { persistNewBookingFromExtract } from "@/lib/crm/ingest-booking";
+import { AUTO_STAY_NOTE, runEmailAutoCreate } from "@/lib/crm/email-ingest-create";
+import {
+  applyCancellationToBooking,
+  applyReplacementToBooking,
+  persistNewBookingFromExtract,
+} from "@/lib/crm/ingest-booking";
 import { parseExtractPayloadSafe } from "@/lib/crm/ingest-types";
+import type { LifecycleCard } from "@/lib/crm/item-lifecycle";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmEmailIngest } from "@/lib/crm/types";
 
 /**
- * Après le parse d’un mail reçu : crée le dossier, et la fiche client s’il
- * n’en existe pas. Ne rattache pas, n’annule pas, n’invite pas, ne publie pas.
+ * Après le parse d’un mail reçu : crée le premier dossier, ou met à jour
+ * l’itinéraire quand un seul séjour est reconnu. N’invite pas, ne publie pas.
  */
 export async function autoCreateBookingFromIngestId(id: string) {
   const admin = createServiceClient();
   try {
     const { data } = await admin.from("crm_email_ingest").select("*").eq("id", id).maybeSingle();
-    if (!data) return { created: false, bookingId: null, hold: null };
+    if (!data) return { created: false, applied: false, bookingId: null, hold: null };
     const row = data as CrmEmailIngest;
     return await runEmailAutoCreate(row, {
       findCustomerByEmail: async (email) => {
@@ -27,6 +32,25 @@ export async function autoCreateBookingFromIngestId(id: string) {
         return (existing?.id as string | undefined) || null;
       },
       createCustomer: async (input) => {
+        if (!input.email) {
+          const { data: named } = await admin
+            .from("crm_customers")
+            .select("id, first_name, last_name")
+            .ilike("last_name", input.lastName);
+          const fold = (value: string | null) =>
+            (value || "")
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "")
+              .trim()
+              .toLowerCase();
+          const hits = (named || []).filter(
+            (row) =>
+              fold(row.first_name) === fold(input.firstName) &&
+              fold(row.last_name) === fold(input.lastName)
+          );
+          if (hits.length > 1) throw new Error("Plusieurs fiches portent ce nom.");
+          if (hits.length === 1 && hits[0].id) return hits[0].id as string;
+        }
         const { data: created, error } = await admin
           .from("crm_customers")
           .insert({
@@ -37,7 +61,7 @@ export async function autoCreateBookingFromIngestId(id: string) {
           })
           .select("id")
           .single();
-        if (error?.code === "23505") {
+        if (error?.code === "23505" && input.email) {
           const { data: existing } = await admin
             .from("crm_customers")
             .select("id")
@@ -67,6 +91,61 @@ export async function autoCreateBookingFromIngestId(id: string) {
           .eq("id", booking.id);
         return { id: booking.id };
       },
+      loadItems: async (bookingId) => {
+        const { data } = await admin
+          .from("crm_booking_items")
+          .select("id, kind, title, confirmation_ref, start_at, end_at, details, lifecycle, amount, include_in_ledger")
+          .eq("booking_id", bookingId);
+        return (data || []) as LifecycleCard[];
+      },
+      applyStay: async (input) => {
+        const { loadEmailIngestFiles } = await import("@/lib/crm/email-ingest");
+        const files = await loadEmailIngestFiles(row);
+        const extract = parseExtractPayloadSafe(row.extract);
+        if (input.gesture === "cancel") {
+          await applyCancellationToBooking({
+            bookingId: input.bookingId,
+            customerId: input.customerId,
+            extract,
+            files,
+            visibleToClient: false,
+          });
+        } else {
+          await applyReplacementToBooking({
+            bookingId: input.bookingId,
+            customerId: input.customerId,
+            extract,
+            files,
+            visibleToClient: false,
+            emailIngestId: row.id,
+          });
+        }
+        const { data: booking } = await admin
+          .from("crm_bookings")
+          .select("notes_internal")
+          .eq("id", input.bookingId)
+          .maybeSingle();
+        const previous = String(booking?.notes_internal || "").trim();
+        if (!previous.includes(AUTO_STAY_NOTE)) {
+          await admin
+            .from("crm_bookings")
+            .update({
+              notes_internal: previous ? `${previous}\n${AUTO_STAY_NOTE}` : AUTO_STAY_NOTE,
+            })
+            .eq("id", input.bookingId);
+        }
+      },
+      markApplied: async (bookingId, customerId) => {
+        await admin
+          .from("crm_email_ingest")
+          .update({
+            status: "attached",
+            suggested_booking_id: bookingId,
+            suggested_customer_id: customerId,
+            error: null,
+          })
+          .eq("id", row.id);
+      },
       markCreated: async (bookingId, customerId) => {
         await admin
           .from("crm_email_ingest")
@@ -93,6 +172,6 @@ export async function autoCreateBookingFromIngestId(id: string) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Création automatique impossible";
     await admin.from("crm_email_ingest").update({ error: message }).eq("id", id);
-    return { created: false, bookingId: null, hold: null };
+    return { created: false, applied: false, bookingId: null, hold: null };
   }
 }

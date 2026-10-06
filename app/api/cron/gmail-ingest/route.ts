@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cronAuthorized, cronSecret } from "@/lib/crm/cron-auth";
 import {
   backfillBilletAvionMessages,
+  backfillBookingCancellationMessages,
   backfillCrmMessages,
   backfillQueuedEmailBodies,
   catchUpGmailHistory,
@@ -50,6 +51,15 @@ export async function GET(request: Request) {
         err instanceof Error ? err.message : err
       );
     }
+    let cancellationBackfill = { captured: 0, scanned: 0 };
+    try {
+      cancellationBackfill = await backfillBookingCancellationMessages();
+    } catch (err) {
+      console.error(
+        "[cron/gmail-ingest] booking-cancellation",
+        err instanceof Error ? err.message : err
+      );
+    }
     let crmBackfill = { captured: 0, scanned: 0 };
     try {
       crmBackfill = await backfillCrmMessages();
@@ -82,6 +92,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       captured,
       backfill,
+      cancellationBackfill,
       crmBackfill,
       ...result,
       rematch,

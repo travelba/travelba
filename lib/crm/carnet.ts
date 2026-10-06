@@ -3,6 +3,7 @@ import {
   BOOKING_ITEM_LABELS,
   BOOKING_STATUS_LABELS,
   countsAsCarnetCard,
+  isActiveItem,
   isLedgerExpenseKind,
   visibleServiceCopy,
 } from "@/lib/crm/types";
@@ -317,7 +318,10 @@ export function carnetVisible(
   if (!booking.visible_to_client) return false;
   return items.some(
     (item) =>
-      item.visible_to_client !== false && item.kind !== "fee" && !isLedgerExpenseKind(item.kind)
+      item.visible_to_client !== false &&
+      isActiveItem(item) &&
+      item.kind !== "fee" &&
+      !isLedgerExpenseKind(item.kind)
   );
 }
 
@@ -368,10 +372,16 @@ export function keptHiddenFromClient(details: Record<string, unknown> | null | u
 
 /** Cartes du séjour encore à montrer. Une dépense n’est pas une carte du carnet. */
 export function pendingPublishCards<
-  T extends { kind: string; visible_to_client?: boolean | null; details?: Record<string, unknown> | null },
+  T extends {
+    kind: string;
+    visible_to_client?: boolean | null;
+    details?: Record<string, unknown> | null;
+    lifecycle?: string | null;
+  },
 >(items: T[]) {
   return items.filter(
     (item) =>
+      isActiveItem(item) &&
       item.visible_to_client === false &&
       !keptHiddenFromClient(item.details) &&
       countsAsCarnetCard(item.kind)
@@ -393,10 +403,10 @@ export function canConfirmCarnetPublish(input: {
 
 /** Ids passés visibles. Les dépenses restent au grand livre. */
 export function publishRevealIds(
-  rows: { id: string; kind: string; details?: Record<string, unknown> | null }[]
+  rows: { id: string; kind: string; lifecycle?: string | null; details?: Record<string, unknown> | null }[]
 ) {
   return rows
-    .filter((row) => !keptHiddenFromClient(row.details) && !isLedgerExpenseKind(row.kind))
+    .filter((row) => isActiveItem(row) && !keptHiddenFromClient(row.details) && !isLedgerExpenseKind(row.kind))
     .map((row) => row.id);
 }
 

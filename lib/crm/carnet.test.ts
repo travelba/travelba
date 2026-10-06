@@ -420,6 +420,13 @@ describe("carnet", () => {
     );
     assert.deepEqual(publishRevealIds(rows), ["hotel"]);
     assert.deepEqual(
+      publishRevealIds([
+        ...rows,
+        item({ id: "ancien", kind: "hotel", visible_to_client: true, lifecycle: "superseded" }),
+      ]),
+      ["hotel"]
+    );
+    assert.deepEqual(
       pendingPublishCards([
         item({ id: "nuit", kind: "hotel", visible_to_client: false }),
         item({ id: "frais", kind: "expense", visible_to_client: false }),

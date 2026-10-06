@@ -119,7 +119,8 @@ export async function inviteCustomer(
   origin: string
 ): Promise<InviteResult> {
   const admin = createServiceClient();
-  const email = customer.email.trim().toLowerCase();
+  const email = (customer.email || "").trim().toLowerCase();
+  if (!email) throw new Error("Cette fiche n'a pas d'e-mail.");
   const metadata = {
     first_name: customer.first_name,
     last_name: customer.last_name,

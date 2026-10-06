@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { Icon } from "@/components/crm/icons";
-import { CHAUFFEUR_EUR, CHECKIN_EUR, GREETER_ADULT_EUR, VISA_EUR } from "@/lib/crm/extras";
+import { CHECKIN_EUR, GREETER_ADULT_EUR, VISA_EUR } from "@/lib/crm/extras";
 
 type OfferKey = "offer_chauffeur" | "offer_greeter" | "offer_checkin" | "offer_visa";
 
@@ -19,7 +19,7 @@ const OFFERS: {
     key: "offer_chauffeur",
     title: "Chauffeur",
     note: "Transfert domicile ou hôtel, collé au vol.",
-    price: `${CHAUFFEUR_EUR} € le trajet`,
+    price: "Tarif Rolzo, au devis",
     icon: "airport_shuttle",
   },
   {

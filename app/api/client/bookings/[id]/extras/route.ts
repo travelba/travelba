@@ -116,6 +116,8 @@ export async function POST(request: Request, ctx: Ctx) {
       address: extra.address,
       departAddress: extra.depart,
       arriveAddress: extra.arrive,
+      rateId: extra.rateId,
+      vehicle: extra.vehicle,
       enforceWindow: true,
     });
     if (extra.kind === "chauffeur" || extra.kind === "greeter" || extra.kind === "checkin") {

@@ -1,10 +1,11 @@
 ---
 name: travelba-email-ingest
 description: >-
-  Travelba Gmail labels (little-emperors, expedia-taap, billet-avion, crm) → crm_email_ingest →
+  Travelba Gmail labels (little-emperors, expedia-taap, billet-avion, booking-cancellation, crm) → crm_email_ingest →
   parse → suggestions. Création automatique du dossier (et de la fiche s’il
-  n’existe pas) sur une confirmation sans voyage reconnu. Rattachement et
-  annulation restent manuels. Use when touching Gmail webhook, cron
+  n’existe pas) sur une confirmation sans voyage reconnu. Un match unique
+  (un client, un séjour, une carte) met à jour l’itinéraire seul. Le reste
+  attend le clic. Use when touching Gmail webhook, cron
   gmail-ingest / gmail-watch-renew, email-match, cancellation mail, or a booking
   confirmation. Dropzone PDF/photos (relecture humaine) : travelba-document-ingest.
   Identity / MRZ : travelba-identity.
@@ -12,13 +13,17 @@ description: >-
 
 # Travelba — e-mails fournisseur (Gmail)
 
-Push Gmail (labels **little-emperors**, **expedia-taap**, **billet-avion**, **crm**) → ligne
+Push Gmail (labels **little-emperors**, **expedia-taap**, **billet-avion**, **booking-cancellation**,
+**crm**) → ligne
 `crm_email_ingest` → parse extract → suggestions (client / voyage).
-**Aucun rattachement autonome.** Un voyage déjà reconnu, une annulation, un devis
-ou une pièce d’identité restent dans `/admin/emails` jusqu’au clic de l’agence.
+**Rattachement autonome seulement si le match est unique** : un client déjà
+reconnu, un seul séjour (référence forte, ou une seule destination, y compris
+annulée), et `replacementPlan` / `cancellationApplyPlan` sans choix. Deux
+séjours vers la même ville, deux cartes du même type, une annulation sans
+référence, un devis ou une pièce d’identité restent dans `/admin/emails`.
 
-L’IA **ne publie jamais** le carnet (`visible_to_client=false`).
-L’IA **ne rattache pas** et **n’annule pas**.
+L’IA **ne publie jamais** le carnet. Une carte nouvelle reste cachée. Une carte
+déjà montrée, mise à jour sur la même référence, le reste.
 Sur une confirmation sans voyage reconnu, elle **crée** le dossier en brouillon.
 Si aucun client n’est reconnu et que le mail porte un e-mail de voyageur (ni
 boîte agence, ni expéditeur, ni domaine fournisseur), elle crée d’abord la fiche.
@@ -45,7 +50,7 @@ Identité / MRZ : skill `travelba-identity`.
 ## Pipeline (contrat)
 
 ```
-Gmail label (little-emperors | expedia-taap | billet-avion | crm)
+Gmail label (little-emperors | expedia-taap | billet-avion | booking-cancellation | crm)
   → webhook / cron capture → crm_email_ingest status=received
   → parse extract (pièces + corps ; mêmes parseurs / LLM que l’import)
   → suggestCustomerFromExtract
@@ -56,9 +61,10 @@ Gmail label (little-emperors | expedia-taap | billet-avion | crm)
 
 `matchAndStoreExtract` enregistre l’extract et les suggestions. Il n’applique
 rien. Juste après, sur un mail **reçu** seulement, `autoCreateBookingFromIngestId`
-peut créer le dossier. Le rematch ne crée pas. Il n’appelle ni
-`applyExtractToBooking`, ni `applyCancellationToBooking`.
-`received` et `error` restent dans la file, pas seulement `parsed` / `matched`.
+peut créer le dossier, ou appliquer un séjour unique
+(`applyReplacementToBooking` / `applyCancellationToBooking`). Le rematch ne crée
+pas et n’applique pas. `received` et `error` restent dans la file, pas seulement
+`parsed` / `matched`.
 
 Le clic **Rattacher au voyage** sur une annulation appelle
 `applyCancellationToBooking`. **Créer un dossier** est refusé si le mail est une
@@ -78,12 +84,22 @@ L'historique Gmail ne voit pas les mails déjà labellisés. Le cron
 Le billet arrive dans la file, comme les autres mails.
 Le watch Pub/Sub se met à jour au cron `gmail-watch-renew`.
 
+## Annulations fournisseur
+
+Label Gmail **`booking-cancellation`** (`label:booking-cancellation`). « Booking
+cancellation » compte aussi. Il est toujours suivi, même si `GMAIL_LABELS` ne le
+cite pas. Le cron `gmail-ingest` appelle `backfillBookingCancellationMessages`
+(curseur `gmail-booking-cancellation`). Un mail sous ce label est une annulation
+(`document_status=cancelled`), même si l’objet ressemble à une confirmation. Il
+ne crée ni fiche ni dossier.
+
 ## Label crm
 
 Label Gmail **`crm`** (`label:crm`). « CRM » compte aussi. Il est toujours suivi,
 même si `GMAIL_LABELS` ne le cite pas. Le cron `gmail-ingest` appelle
 `backfillCrmMessages` (curseur `gmail-crm`). L’adresse `crm@travelba.fr` n’est
-jamais l’e-mail d’une fiche. Le reste du contrat est le même.
+jamais l’e-mail d’une fiche. Le reste du contrat (match unique, pas de second
+dossier, pas d’invitation, pas de publication) est le même.
 
 ## Match voyage
 
@@ -106,16 +122,16 @@ Confirmation avec une carte (vol, hôtel, transfert…) et une date, sans candid
 de voyage fort : le cron crée le dossier et le laisse en **brouillon**
 (`status=draft`, même si le mail est une confirmation, `visible_to_client=false`,
 note `IMPORT_AUTO_NOTE`). Client déjà reconnu →
-dossier sur cette fiche. Sinon fiche nouvelle, seulement avec un e-mail
-voyageur utilisable. Sans cet e-mail, le mail reste dans la file avec une
-attente. Devis, extrait mince, identité : pas de création.
+dossier sur cette fiche. Sinon fiche nouvelle. L'e-mail voyageur utilisable
+est enregistré. S'il manque, ou s'il est celui du fournisseur ou de l'agence,
+la fiche est créée avec le nom seul : pas d'invitation. Devis, extrait mince,
+identité : pas de création.
 
 Le clic **Créer un dossier** reste disponible (`persistNewBookingFromExtract`).
 
 Ne jamais créer depuis `matchAndStoreExtract` ni depuis le rematch. E-mail
 extract seulement s’il n’est **pas** une boîte agence (`contact@travelba.fr`,
-`crm@travelba.fr`,
-`agence@`, `hello@`, `info@`, `CONTACT_FROM_EMAIL`), **pas** l’expéditeur du
+`crm@travelba.fr`, `agence@`, `hello@`, `info@`, `CONTACT_FROM_EMAIL`), **pas** l’expéditeur du
 mail, **pas** un domaine fournisseur (Little Emperors, Expedia, Amadeus).
 Jamais d’invitation dans ce geste.
 
@@ -132,12 +148,37 @@ Signal extract : `document_status=cancelled` (LLM + parseur). Détecté aussi
 sur l’objet / le corps (« Cancellation confirmation », « has been cancelled »,
 « a été annulée ») — **pas** une politique « free cancellation ».
 
-Clic agence sur le voyage → `applyCancellationToBooking` :
-- cartes matchées (`findMatchingItem`) : `visible_to_client=false`, hors ledger ;
-- plus aucune carte carnet, ou aucun item ciblé (annulation du séjour) →
-  `crm_bookings.status=cancelled` (enum existant ; les items n’ont pas de statut) ;
-- `syncBookingLedger` (un dossier `cancelled` purge les débits) ;
+Match unique (la référence désigne la carte) → le cron appelle
+`applyCancellationToBooking`. Sinon, clic agence :
+- cartes reconnues par leur référence : `lifecycle=cancelled`, hors carnet, hors total ;
+- une carte déjà remplacée ne fait pas annuler le dossier s’il reste une carte active ;
+- sans référence, et s’il reste des cartes actives : la file demande laquelle. Elle n’annule pas tout le séjour ;
+- plus aucune carte active → `crm_bookings.status=cancelled` ;
+- `syncBookingLedger` (un dossier `cancelled` purge les débits ; les encaissements restent un avoir) ;
 - fichiers en `visible_to_client=false`. L’IA ne publie pas le carnet.
+
+## Remplacement
+
+Un mail de confirmation ne crée pas un deuxième dossier si le client a déjà un
+séjour (ouvert ou annulé, non archivé) vers la même destination. Les dates
+peuvent avoir changé. Milano = Milan. Deux séjours vers la même ville restent
+tous les deux proposés.
+
+Match unique → le cron appelle `applyReplacementToBooking`. Sinon, clic
+**Remplacer sur ce dossier** (ou **Rouvrir et remplacer** si le dossier
+est annulé) :
+- même référence : la carte est mise à jour, le prix vendu ne change pas, et
+  une carte déjà montrée le reste ;
+- autre référence : l’ancienne carte passe `lifecycle=superseded`, la nouvelle
+  reprend ce prix vendu et reste cachée. Plusieurs cartes du même type : l’agence choisit ;
+- les dates du dossier suivent les cartes actives ;
+- le mail appliqué seul sort de la file (`attached`), note « Itinéraire mis à jour depuis le mail. » ;
+- la nouvelle carte d’un remplacement reste cachée jusqu’au clic Montrer ;
+- un dossier annulé redevient Confirmée, sans être montré : pas de débit tant
+  que le séjour n’est pas montré ;
+- le montant lu dans le mail n’est jamais écrit comme prix vendu.
+
+« Créer un dossier » reste un clic, pour un vrai second voyage.
 
 ## Relancer une ligne déjà parsée
 
@@ -151,11 +192,12 @@ Sans re-télécharger Gmail (ne pas remettre `received`) et **sans rattacher** :
 | Rôle | Path |
 |------|------|
 | Orchestration (parse + suggestions, création auto après un reçu) | `lib/crm/email-ingest.ts` |
-| Création auto (dossier, fiche, jamais apply / invite) | `lib/crm/email-ingest-create.ts`, `email-ingest-create-run.ts` |
+| Création auto, et apply d’un séjour unique (jamais invite, jamais publish) | `lib/crm/email-ingest-create.ts`, `email-ingest-create-run.ts` |
 | Match + décision apply/create/review | `lib/crm/email-match.ts` |
 | Client Gmail (labels, history, watch) | `lib/crm/gmail.ts` |
 | Parse message / pièces | `lib/crm/gmail-parse.ts` |
-| Persist (`applyExtractToBooking` / `applyCancellationToBooking` / `persistNewBookingFromExtract`) | `lib/crm/ingest-booking.ts` |
+| Persist (`applyExtractToBooking` / `applyReplacementToBooking` / `applyCancellationToBooking` / `persistNewBookingFromExtract`) | `lib/crm/ingest-booking.ts` |
+| Cycle de vie des cartes (`active` / `superseded` / `cancelled`) | `lib/crm/item-lifecycle.ts` |
 | Push labels | `app/api/webhooks/gmail/route.ts` |
 | Cron capture + parse + rematch | `app/api/cron/gmail-ingest/route.ts` |
 | Renouvellement watch | `app/api/cron/gmail-watch-renew/route.ts` |
@@ -170,7 +212,7 @@ npx tsc --noEmit
 ```
 
 Couvrir : réf. exacte, dates+dest+nom flou, deux voyages égaux, *Albilla* / *Albilila*.
-`lib/crm/email-ingest-policy.test.ts` interdit apply, annulation et invitation dans le pipeline. La création auto n’est appelée qu’une fois, après le parse d’un reçu.
+`lib/crm/email-ingest-policy.test.ts` interdit apply, annulation et invitation dans le parse et le rematch. Seul `email-ingest-create-run.ts` applique un séjour unique. La création auto n’est appelée qu’une fois, après le parse d’un reçu.
 Ne pas rejouer un vrai mail prod. Echo PII interdit dans PR / logs.
 
 ## Hôtel Little Emperors
@@ -181,8 +223,10 @@ Contacts de l’hôtel : catalogue Little Emperors à l’affichage, pas l’adr
 
 ## Interdits
 
-- Rattachement ou annulation **sans clic agence**
+- Rattachement, remplacement ou annulation **ambigu** sans clic agence (deux séjours, deux cartes, annulation sans référence)
 - Créer un dossier (ou un client) depuis un mail d’annulation, un devis, ou sans carte ni date
+- Créer un deuxième dossier quand le client a déjà un séjour vers la même destination
+- Écrire le montant du mail comme prix vendu sur une carte déjà tarifée
 - Inviter le client, ou publier le carnet, dans la création automatique
 - Publier le carnet / `visible_to_client=true`
 - Retirer `received` ou `error` de la file `/admin/emails`

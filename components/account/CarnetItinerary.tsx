@@ -13,6 +13,7 @@ import { FilePreviewTile } from "@/components/crm/FilePreview";
 import { HotelContactButton } from "@/components/crm/HotelContact";
 import { withoutHotelRoster } from "@/lib/crm/hotel-contact";
 import { flightGate, flightTerminal, flightWatchBadge } from "@/lib/crm/flight-watch";
+import { ticketTravelerNames } from "@/lib/crm/document-passengers";
 import {
   documentsForItem,
   dayHeading,
@@ -122,6 +123,8 @@ function CardBody({
   const city = detailStr(item, "city");
   const board = detailStr(item, "board");
   const hotelName = item.kind === "hotel" ? hotelDisplayName(item) : "";
+  const ticketTravelers =
+    item.kind === "flight" || item.kind === "rail" ? ticketTravelerNames(item.details).join(", ") : "";
   const hotelCity = item.kind === "hotel" ? hotelCityLine(item) : "";
 
   return (
@@ -145,9 +148,14 @@ function CardBody({
                 : visibleServiceCopy(item.title)}
           </p>
           {item.kind === "flight" || item.kind === "rail" ? (
-            flightSubtitle ? (
-              <p className="break-words text-xs leading-snug text-muted">{flightSubtitle}</p>
-            ) : null
+            <>
+              {flightSubtitle ? (
+                <p className="break-words text-xs leading-snug text-muted">{flightSubtitle}</p>
+              ) : null}
+              {ticketTravelers ? (
+                <p className="break-words text-xs leading-snug text-[var(--admin-navy)]">{ticketTravelers}</p>
+              ) : null}
+            </>
           ) : item.kind === "hotel" ? (
             <>
               {hotelCity ? <p className="truncate text-xs text-muted">{hotelCity}</p> : null}
@@ -350,7 +358,9 @@ export function CarnetItinerary({
     const existing = findExtra(items, offer.kind, offer.leg, offer.place, offer.moment) as CrmBookingItem | null;
     const at = extraFlightAt(items, offer.leg, booking.start_date || booking.end_date);
     const price =
-      offer.kind === "chauffeur" ? extraAmount("chauffeur") : extraAmount("greeter", heads.adults, heads.children);
+      offer.kind === "chauffeur"
+        ? Number(existing?.amount) || 0
+        : extraAmount("greeter", heads.adults, heads.children);
     const detail =
       offer.kind === "greeter"
         ? `${heads.adults} adulte${heads.adults > 1 ? "s" : ""} · ${heads.children} enfant${heads.children > 1 ? "s" : ""}${

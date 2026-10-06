@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AddressSuggest } from "@/components/crm/AddressSuggest";
 import { BusyBar } from "@/components/crm/BusyBar";
@@ -12,7 +12,13 @@ import { postJson } from "@/lib/crm/client-fetch";
 import { CLIENT_PREVIEW_NOTE, useClientPreview } from "@/components/account/client-preview";
 import { kindIcon } from "@/lib/crm/carnet";
 import { addressCity } from "@/lib/crm/address-suggest";
-import { extraAgencyStatus, serviceClock, storedTransferAddresses, type ServiceOffer } from "@/lib/crm/extras";
+import {
+  chauffeurCancelOpen,
+  extraAgencyStatus,
+  serviceClock,
+  storedTransferAddresses,
+  type ServiceOffer,
+} from "@/lib/crm/extras";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { BOOKING_ITEM_LABELS, type CrmBookingItem } from "@/lib/crm/types";
 
@@ -21,6 +27,17 @@ const PRIMARY_BTN =
 const SECONDARY_BTN =
   "inline-flex min-h-11 items-center justify-center rounded-full border border-[var(--border)] bg-white px-4 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50";
 const LINK_BTN = "inline-flex min-h-11 items-center px-2 text-sm font-semibold text-muted";
+
+type ChauffeurVehicle = {
+  rateId: string;
+  label: string;
+  amount: number;
+  currency: string;
+  passengers: number;
+  luggage: number;
+  cancellationHours: number | null;
+  freeWaiting: string | null;
+};
 
 export function ServiceOfferCard({
   offer,
@@ -58,6 +75,10 @@ export function ServiceOfferCard({
   const [review, setReview] = useState(false);
   const [gone, setGone] = useState(false);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
+  const [vehicles, setVehicles] = useState<ChauffeurVehicle[]>([]);
+  const [rateId, setRateId] = useState<string | null>(null);
+  const [quoteBusy, setQuoteBusy] = useState(false);
+  const [quoteNote, setQuoteNote] = useState<string | null>(null);
   const isAdmin = variant === "admin";
   const clock = serviceClock(offer.whenIso);
   const kindLabel = BOOKING_ITEM_LABELS[offer.kind];
@@ -70,10 +91,96 @@ export function ServiceOfferCard({
     : confirmed
       ? "Confirmé"
       : "En attente de confirmation";
-  /** Prix masqué : pas de ligne prix ici, la mention ne vit que dans le bloc Montant du séjour. */
-  const priceLabel = pricesVisible ? formatMoney(price, currency) : null;
   const endpoint = isAdmin ? `/api/admin/bookings/${bookingId}/extras` : `/api/client/bookings/${reference}/extras`;
+  const chosen = vehicles.find((row) => row.rateId === rateId) || null;
+  const storedVehicle =
+    typeof existing?.details?.rolzo_vehicle === "string" ? existing.details.rolzo_vehicle : null;
+  const fromAmount = vehicles.length ? Math.min(...vehicles.map((row) => row.amount)) : null;
+  const chauffeurPrice =
+    offer.kind !== "chauffeur"
+      ? price
+      : existing
+        ? Number(existing.amount)
+        : chosen
+          ? chosen.amount
+          : fromAmount;
+  const priceLabel = !pricesVisible
+    ? null
+    : offer.kind === "chauffeur" && !existing && chauffeurPrice == null
+      ? quoteBusy
+        ? "Devis…"
+        : null
+      : offer.kind === "chauffeur" && !existing && !chosen && chauffeurPrice != null
+        ? `À partir de ${formatMoney(chauffeurPrice, currency)}`
+        : formatMoney(chauffeurPrice ?? price, currency);
   const whenLabel = [offer.day ? formatDateFr(offer.day) : null, clock || null].filter(Boolean).join(" · ");
+  const canCancelRolzo = Boolean(existing && offer.kind === "chauffeur" && chauffeurCancelOpen(existing));
+
+  useEffect(() => {
+    if (offer.kind !== "chauffeur" || confirmed || existing) return;
+    const departQuery = depart.trim();
+    const arriveQuery = arrive.trim();
+    if (!departQuery || !arriveQuery) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setQuoteBusy(true);
+      const quoteEndpoint =
+        isAdmin || preview
+          ? `/api/admin/bookings/${bookingId}/chauffeur-quote`
+          : `/api/client/bookings/${reference}/chauffeur-quote`;
+      void fetch(quoteEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          depart: departQuery,
+          arrive: arriveQuery,
+          leg: offer.leg,
+          place: offer.place,
+        }),
+      })
+        .then(async (res) => {
+          const json = (await res.json().catch(() => ({}))) as {
+            error?: string;
+            vehicles?: ChauffeurVehicle[];
+          };
+          if (controller.signal.aborted) return;
+          if (!res.ok) {
+            setVehicles([]);
+            setRateId(null);
+            setQuoteNote(json.error || "Le devis chauffeur est indisponible.");
+            return;
+          }
+          const rows = Array.isArray(json.vehicles) ? json.vehicles : [];
+          setVehicles(rows);
+          setRateId((current) => (rows.some((row) => row.rateId === current) ? current : rows[0]?.rateId || null));
+          setQuoteNote(rows.length ? null : "Aucun véhicule pour ce trajet.");
+        })
+        .catch(() => {
+          if (controller.signal.aborted) return;
+          setQuoteNote("Le devis chauffeur est indisponible.");
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setQuoteBusy(false);
+        });
+    }, 350);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [
+    arrive,
+    bookingId,
+    confirmed,
+    depart,
+    existing,
+    isAdmin,
+    offer.kind,
+    offer.leg,
+    offer.place,
+    preview,
+    reference,
+  ]);
 
   function addressBody(addresses = false) {
     return {
@@ -103,6 +210,10 @@ export function ServiceOfferCard({
       setIssues([{ field: "address", message: "Indiquez l’adresse de départ et l’adresse d’arrivée." }]);
       return;
     }
+    if (offer.kind === "chauffeur" && !rateId) {
+      setIssues([{ field: "vehicle", message: "Choisissez un véhicule." }]);
+      return;
+    }
     if (preview) {
       setIssues([{ field: "preview", message: CLIENT_PREVIEW_NOTE }]);
       return;
@@ -110,7 +221,11 @@ export function ServiceOfferCard({
     setBusy("validate");
     setIssues([]);
     try {
-      const result = await post(addressBody());
+      const result = await post({
+        ...addressBody(),
+        rateId: offer.kind === "chauffeur" ? rateId : null,
+        vehicle: offer.kind === "chauffeur" ? chosen?.label || null : null,
+      });
       if (!result.ok) {
         setIssues(result.issues);
         return;
@@ -225,7 +340,14 @@ export function ServiceOfferCard({
 
   function controls() {
     if (existing) {
-      if (confirmed) return null;
+      if (confirmed) {
+        if (!canCancelRolzo) return null;
+        return (
+          <button type="button" disabled={busy !== null} onClick={() => void cancel()} className={SECONDARY_BTN}>
+            {busy === "cancel" ? "…" : "Annuler"}
+          </button>
+        );
+      }
       return (
         <span className="flex flex-wrap items-center justify-end gap-2">
           {offer.kind === "chauffeur" && addressesDirty ? (
@@ -291,6 +413,7 @@ export function ServiceOfferCard({
             {clock ? ` · ${clock}` : ""}
           </p>
           <p className="break-words text-sm font-semibold leading-snug text-[var(--admin-navy)]">{offer.route}</p>
+          {storedVehicle ? <p className="break-words text-xs text-muted">{storedVehicle}</p> : null}
           {offer.kind === "chauffeur" ? null : (
             <p className="break-words text-xs text-muted">{[detail, offer.flightLine].filter(Boolean).join(" · ")}</p>
           )}
@@ -338,6 +461,39 @@ export function ServiceOfferCard({
               </div>
             ) : null}
           </dl>
+          {offer.kind === "chauffeur" ? (
+            <fieldset className="grid gap-2">
+              <legend className="text-[10px] font-bold uppercase tracking-wide text-muted">Véhicule</legend>
+              {quoteNote ? <p className="text-sm text-muted">{quoteNote}</p> : null}
+              {vehicles.map((vehicle) => {
+                const policy = [
+                  vehicle.passengers ? `${vehicle.passengers} places` : "",
+                  vehicle.cancellationHours != null ? `annulation ${vehicle.cancellationHours} h avant` : "",
+                  vehicle.freeWaiting ? `attente offerte ${vehicle.freeWaiting}` : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
+                return (
+                  <label key={vehicle.rateId} className="flex items-start gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name={`rolzo-${offer.flightId}-${offer.place}`}
+                      className="mt-1"
+                      checked={rateId === vehicle.rateId}
+                      onChange={() => setRateId(vehicle.rateId)}
+                    />
+                    <span>
+                      <span className="font-medium text-[var(--admin-navy)]">
+                        {vehicle.label}
+                        {pricesVisible ? ` · ${formatMoney(vehicle.amount, vehicle.currency || currency)}` : ""}
+                      </span>
+                      {policy ? <span className="block text-xs text-muted">{policy}</span> : null}
+                    </span>
+                  </label>
+                );
+              })}
+            </fieldset>
+          ) : null}
           {priceLabel ? null : (
             <p className="text-xs text-muted">Le prix est communiqué par l’agence à la publication du séjour.</p>
           )}
@@ -360,7 +516,12 @@ export function ServiceOfferCard({
             </div>
           ) : null}
           <div className="flex flex-wrap gap-2">
-            <button type="button" disabled={busy !== null} onClick={() => void request()} className={`${PRIMARY_BTN} flex-1`}>
+            <button
+              type="button"
+              disabled={busy !== null || (offer.kind === "chauffeur" && (quoteBusy || !rateId))}
+              onClick={() => void request()}
+              className={`${PRIMARY_BTN} flex-1`}
+            >
               {busy === "validate" ? "Envoi…" : "Confirmer la demande"}
             </button>
             <button type="button" disabled={busy !== null} onClick={closeReview} className={`${SECONDARY_BTN} flex-1`}>

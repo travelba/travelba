@@ -10,6 +10,7 @@ import {
   lastNamesClose,
   mergeBookingSuggestions,
   referenceTokens,
+  suggestBookingByDestination,
   suggestBookingByReference,
   suggestBookingByTripSignals,
   suggestCustomerFromExtract,
@@ -194,6 +195,8 @@ describe("lastNamesClose / destinationsOverlap", () => {
     assert.equal(destinationsOverlap("Tel Aviv", "tel aviv"), true);
     assert.equal(destinationsOverlap("Dan Tel Aviv Hotel", "Tel Aviv"), true);
     assert.equal(destinationsOverlap("Tel Aviv", "Avoriaz"), false);
+    assert.equal(destinationsOverlap("Roma", "Rome"), true);
+    assert.equal(destinationsOverlap("Milano", "Milan"), true);
   });
 });
 
@@ -649,6 +652,67 @@ describe("executeEmailIngestDecision", () => {
   });
 });
 
+describe("suggestBookingByDestination", () => {
+  const people = [
+    {
+      id: "c1",
+      first_name: "Léa",
+      last_name: "Bernard",
+      company_name: null,
+      email: "lea.bernard@example.com",
+    },
+  ];
+  const openRome = {
+    id: "b-rome",
+    customer_id: "c1",
+    reference: "TB-1",
+    title: "Rome",
+    destination: "Rome",
+    start_date: "2026-04-01",
+    end_date: "2026-04-05",
+    status: "confirmed",
+  };
+  const cancelledRome = { ...openRome, id: "b-old", reference: "TB-0", status: "cancelled" };
+  const lisbon = {
+    ...openRome,
+    id: "b-lis",
+    reference: "TB-2",
+    title: "Lisbonne",
+    destination: "Lisbonne",
+  };
+
+  it("propose le dossier annulé de la même ville, sans le choisir seul s’il y en a deux", () => {
+    const extract = extractWith({
+      document_status: "confirmed",
+      destination: "Roma",
+      customer_first_name: "Léa",
+      customer_last_name: "Bernard",
+      start_date: "2026-06-01",
+      end_date: "2026-06-04",
+    });
+    const one = suggestBookingByDestination(extract, [cancelledRome], people);
+    assert.equal(one.autoBookingId, null);
+    assert.equal(one.candidates.length, 1);
+    assert.equal(one.candidates[0].booking_id, "b-old");
+    assert.match(one.candidates[0].reason, /annulé/);
+
+    const two = suggestBookingByDestination(extract, [openRome, cancelledRome], people);
+    assert.equal(two.candidates.length, 2);
+    assert.equal(two.autoBookingId, null);
+  });
+
+  it("ignore une autre ville", () => {
+    const extract = extractWith({
+      document_status: "confirmed",
+      destination: "Rome",
+      customer_first_name: "Léa",
+      customer_last_name: "Bernard",
+    });
+    const res = suggestBookingByDestination(extract, [lisbon], people);
+    assert.deepEqual(res.candidates, []);
+  });
+});
+
 describe("annulation extract", () => {
   it("détecte un mail d’annulation, pas une politique", () => {
     assert.equal(detectCancellationDocument("Booking cancelled for Dan Tel Aviv Hotel"), true);
@@ -702,6 +766,27 @@ describe("annulation extract", () => {
       { id: "i-hotel", kind: "hotel", confirmation_ref: "ABC", title: "Hôtel" },
     ]);
     assert.deepEqual(stayLevel.itemIds, []);
-    assert.equal(stayLevel.cancelBooking, true);
+    assert.equal(stayLevel.cancelBooking, false);
+    assert.equal(stayLevel.needsCardChoice, true);
+
+    const alreadyReplaced = cancellationApplyPlan(
+      extractWith({
+        document_status: "cancelled",
+        items: [hotelItem({ confirmation_ref: "38181SH005103", title: "Hôtel" })],
+      }),
+      [
+        {
+          id: "old",
+          kind: "hotel",
+          confirmation_ref: "38181SH005103",
+          title: "Hôtel",
+          lifecycle: "superseded",
+        },
+        { id: "next", kind: "hotel", confirmation_ref: "97620199", title: "Nouvel hôtel" },
+      ]
+    );
+    assert.equal(alreadyReplaced.cancelBooking, false);
+    assert.equal(alreadyReplaced.needsCardChoice, false);
+    assert.deepEqual(alreadyReplaced.itemIds, []);
   });
 });

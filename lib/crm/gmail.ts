@@ -34,7 +34,7 @@ export function gmailPubsubTopic() {
   return productionOnlySecret(process.env.GMAIL_PUBSUB_TOPIC);
 }
 
-/** Labels Gmail suivis. L'env complète les défauts (dont billet-avion et crm). */
+/** Labels Gmail suivis. L'env complète les défauts (dont billet-avion, booking-cancellation et crm). */
 export function gmailLabelNames(): string[] {
   return mergeGmailLabelNames(process.env.GMAIL_LABELS);
 }

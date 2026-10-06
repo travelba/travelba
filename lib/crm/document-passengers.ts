@@ -4,6 +4,10 @@ import {
   type PersonName,
 } from "./person-match";
 
+function personLine(person: PersonName) {
+  return [person.first_name, person.last_name].filter(Boolean).join(" ").trim();
+}
+
 /** Noms saisis ou extraits : le prénom peut être absent du schéma souple. */
 type LoosePerson = {
   first_name?: string | null;
@@ -33,6 +37,34 @@ export function passengersFromDetails(
     people.push({ first_name: first || null, last_name: last || null });
   }
   return people;
+}
+
+/** Noms des voyageurs d’un billet (vol ou train), dans l’ordre enregistré. */
+export function ticketTravelerNames(details: Record<string, unknown> | null | undefined) {
+  const names: string[] = [];
+  for (const person of passengersFromDetails(details)) {
+    const line = personLine(person);
+    if (!line || names.some((row) => row.localeCompare(line, "fr", { sensitivity: "accent" }) === 0)) continue;
+    names.push(line);
+  }
+  return names;
+}
+
+/** Cases du foyer déjà cochées pour ce billet. */
+export function ticketPartyKeys(
+  details: Record<string, unknown> | null | undefined,
+  household: { key: string; first_name?: string | null; last_name?: string | null }[]
+) {
+  const stored = Array.isArray(details?.party_keys)
+    ? details.party_keys.map((key) => String(key || "")).filter((key) => household.some((member) => member.key === key))
+    : [];
+  if (stored.length) return stored;
+  const keys: string[] = [];
+  for (const person of passengersFromDetails(details)) {
+    const hit = household.find((member) => sameRecordedTraveler(member, person));
+    if (hit && !keys.includes(hit.key)) keys.push(hit.key);
+  }
+  return keys;
 }
 
 export function uniquePeople(people: LoosePerson[]): PersonName[] {

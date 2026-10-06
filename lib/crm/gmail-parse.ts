@@ -269,11 +269,15 @@ export const CRM_ALIAS_ADDRESS = "crm@travelba.fr";
 /** Label Gmail `label:crm`. « CRM » compte aussi. */
 export const CRM_ALIAS_LABEL = "crm";
 
+/** Label Gmail des annulations fournisseur (`label:booking-cancellation`). */
+export const BOOKING_CANCELLATION_LABEL = "booking-cancellation";
+
 /** Labels suivis si `GMAIL_LABELS` est vide. */
 export const DEFAULT_GMAIL_LABELS = [
   "little-emperors",
   "expedia-taap",
   BILLET_AVION_LABEL,
+  BOOKING_CANCELLATION_LABEL,
   CRM_ALIAS_LABEL,
 ];
 
@@ -285,6 +289,10 @@ export function gmailLabelMatchKey(name: string): string {
   return name.trim().toLowerCase().replace(/[\s_]+/g, "-");
 }
 
+export function isBookingCancellationLabel(name: string | null | undefined) {
+  return gmailLabelMatchKey(name || "") === BOOKING_CANCELLATION_LABEL;
+}
+
 function splitGmailLabelList(raw: string | undefined | null): string[] {
   return (raw || "")
     .split(",")
@@ -294,7 +302,7 @@ function splitGmailLabelList(raw: string | undefined | null): string[] {
 
 /**
  * Labels à suivre. L'env est prioritaire (noms affichés Gmail), puis les
- * défauts manquants — dont `billet-avion` et `crm` — sont ajoutés.
+ * défauts manquants — dont `billet-avion`, `booking-cancellation` et `crm` — sont ajoutés.
  */
 export function mergeGmailLabelNames(raw: string | undefined | null): string[] {
   const used = new Set<string>();

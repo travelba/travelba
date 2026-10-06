@@ -192,12 +192,28 @@ export function extraAgencyStatus(item: {
   return item.details?.agency_status === "confirmed" ? "confirmed" : "pending";
 }
 
-/** Transfert, VIP et enregistrement confirmés ne s’annulent plus. Avant confirmation, l’annulation reste ouverte. */
+/** Fenêtre Rolzo encore ouverte : le transfert confirmé peut s’annuler. */
+export function chauffeurCancelOpen(
+  item: { start_at?: string | null; details?: Record<string, unknown> | null },
+  now = new Date()
+) {
+  const bookingId = item.details?.rolzo_booking_id;
+  const hours = Number(item.details?.rolzo_cancel_hours);
+  if (typeof bookingId !== "string" || !bookingId.trim()) return false;
+  if (!Number.isFinite(hours) || hours < 0 || !item.start_at) return false;
+  const start = new Date(item.start_at);
+  if (Number.isNaN(start.getTime())) return false;
+  return start.getTime() - now.getTime() >= hours * 60 * 60 * 1000;
+}
+
+/** Transfert, VIP et enregistrement confirmés ne s’annulent plus. Avant confirmation, l’annulation reste ouverte. Un transfert Rolzo confirmé s’annule tant que la politique le permet. */
 export function serviceCancelLocked(
   kind: ExtraKind | "visa" | "checkin",
-  item: { details?: Record<string, unknown> | null }
+  item: { start_at?: string | null; details?: Record<string, unknown> | null },
+  now = new Date()
 ) {
   if (kind === "visa") return false;
+  if (kind === "chauffeur" && chauffeurCancelOpen(item, now)) return false;
   return extraAgencyStatus(item) === "confirmed";
 }
 
@@ -710,6 +726,16 @@ export function extraItemPayload(input: {
   children?: number;
   visibleToClient: boolean;
   agencyStatus?: ExtraAgencyStatus;
+  rolzo?: {
+    rateId: string;
+    vehicle: string;
+    passengers: number;
+    luggage: number;
+    cancellationHours: number | null;
+    freeWaiting: string | null;
+    commissionPercent: number;
+  } | null;
+  rolzoBookingId?: string | null;
 }) {
   const place = input.kind === "chauffeur" ? input.place || null : null;
   const depart = (input.departAddress || "").trim();
@@ -720,8 +746,8 @@ export function extraItemPayload(input: {
   return {
     kind: input.kind,
     title: extraTitle(input.kind, input.leg),
-    supplier: "Travelba",
-    confirmation_ref: null as string | null,
+    supplier: input.rolzo ? "Rolzo" : "Travelba",
+    confirmation_ref: input.rolzoBookingId || null,
     start_at: input.startAt,
     end_at: null as string | null,
     amount: input.amount,
@@ -737,6 +763,18 @@ export function extraItemPayload(input: {
       children: input.kind === "greeter" ? input.children ?? 0 : null,
       extra: true,
       agency_status: input.agencyStatus === "confirmed" ? "confirmed" : "pending",
+      ...(input.rolzo
+        ? {
+            rolzo_rate_id: input.rolzo.rateId,
+            rolzo_vehicle: input.rolzo.vehicle,
+            rolzo_passengers: input.rolzo.passengers,
+            rolzo_luggage: input.rolzo.luggage,
+            rolzo_cancel_hours: input.rolzo.cancellationHours,
+            rolzo_free_waiting: input.rolzo.freeWaiting,
+            rolzo_commission_percent: input.rolzo.commissionPercent,
+            rolzo_booking_id: input.rolzoBookingId || null,
+          }
+        : {}),
     },
     visible_to_client: input.visibleToClient,
   };

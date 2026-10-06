@@ -3,6 +3,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { refreshBookingLedger } from "@/lib/crm/bookings";
 import { BookingIssuesError } from "@/lib/crm/booking-issues";
 import {
+  bookChauffeurWithRolzo,
+  cancelChauffeurWithRolzo,
+  listChauffeurQuotes,
+  requoteChauffeurVehicle,
+} from "@/lib/crm/chauffeur-quote";
+import { addressLooksLikeAirport } from "@/lib/crm/rolzo-place";
+import {
   bookingHasFlight,
   checkinItemPayload,
   extraAmount,
@@ -23,6 +30,7 @@ import {
   isGreeterMoment,
   isServicePlace,
   itineraryOffers,
+  serviceFlightLegs,
   visaItemPayload,
   type ExtraKind,
   type ExtraLeg,
@@ -170,6 +178,8 @@ export async function createBookingExtra(
     address?: string | null;
     departAddress?: string | null;
     arriveAddress?: string | null;
+    rateId?: string | null;
+    vehicle?: string | null;
     enforceWindow?: boolean;
     now?: Date;
   }
@@ -260,7 +270,41 @@ export async function createBookingExtra(
     companions: opts.companions,
     at,
   });
-  const amount = extraAmount(opts.kind, heads.adults, heads.children);
+  const party = heads.adults + heads.children;
+  const depart = departAddress || (opts.address || "").trim();
+  let rolzo =
+    opts.kind === "chauffeur"
+      ? await quotedChauffeur({
+          depart,
+          arrive: arriveAddress,
+          pickUpIso: startAt,
+          currency: opts.booking.currency || "EUR",
+          rateId: opts.rateId,
+          vehicle: opts.vehicle,
+          party,
+        })
+      : null;
+  let rolzoBookingId: string | null = null;
+  if (rolzo && opts.enforceWindow === false) {
+    const booked = await bookChauffeurWithRolzo(
+      chauffeurBookInput({
+        booking: opts.booking,
+        items: opts.items,
+        holder: opts.holder,
+        leg,
+        depart,
+        arrive: arriveAddress,
+        pickUpIso: startAt,
+        rateId: rolzo.rateId,
+        vehicle: rolzo.label,
+        party,
+        luggage: party,
+      })
+    );
+    rolzo = booked.quote;
+    rolzoBookingId = booked.bookingId;
+  }
+  const amount = rolzo ? rolzo.amount : extraAmount(opts.kind, heads.adults, heads.children);
   if (amount <= 0) {
     throw new BookingIssuesError("Montant invalide.", [
       { field: "amount", message: "Impossible de calculer le tarif de ce service." },
@@ -285,6 +329,18 @@ export async function createBookingExtra(
     children: heads.children,
     visibleToClient: opts.booking.visible_to_client,
     agencyStatus: opts.enforceWindow === false ? "confirmed" : "pending",
+    rolzo: rolzo
+      ? {
+          rateId: rolzo.rateId,
+          vehicle: rolzo.label,
+          passengers: party,
+          luggage: party,
+          cancellationHours: rolzo.cancellationHours,
+          freeWaiting: rolzo.freeWaiting,
+          commissionPercent: rolzo.commissionPercent,
+        }
+      : null,
+    rolzoBookingId,
   });
   const { data, error } = await supabase
     .from("crm_booking_items")
@@ -482,6 +538,8 @@ export async function cancelBookingExtra(
       { field: "kind", message: "Ce service est confirmé par l’agence et ne peut plus être annulé." },
     ]);
   }
+  const rolzoId = textDetail(item.details, "rolzo_booking_id");
+  if (opts.kind === "chauffeur" && rolzoId) await cancelChauffeurWithRolzo(rolzoId);
   const { error } = await supabase
     .from("crm_booking_items")
     .delete()
@@ -507,6 +565,7 @@ export async function confirmBookingExtra(
     leg: ExtraLeg | null;
     place?: ServicePlace | null;
     moment?: GreeterMoment | null;
+    holder?: Pick<CrmCustomer, "first_name" | "last_name" | "phone" | "whatsapp" | "sex"> | null;
   }
 ) {
   if (!opts.leg) {
@@ -522,10 +581,50 @@ export async function confirmBookingExtra(
       { field: "kind", message: "Ce service n’est pas en attente." },
     ]);
   }
-  const details = { ...(item.details || {}), agency_status: "confirmed" };
+  let details: Record<string, unknown> = { ...(item.details || {}), agency_status: "confirmed" };
+  let amount = item.amount;
+  if (opts.kind === "chauffeur" && textDetail(item.details, "rolzo_rate_id") && !textDetail(item.details, "rolzo_booking_id")) {
+    if (!opts.holder) {
+      throw new BookingIssuesError("Passager incomplet.", [
+        { field: "form", message: "Le client manque pour réserver le chauffeur." },
+      ]);
+    }
+    const depart = textDetail(item.details, "depart_address");
+    const arrive = textDetail(item.details, "arrive_address");
+    const party = Number(item.details?.rolzo_passengers) || 1;
+    const booked = await bookChauffeurWithRolzo(
+      chauffeurBookInput({
+        booking: opts.booking,
+        items: opts.items,
+        holder: opts.holder,
+        leg: opts.leg,
+        depart,
+        arrive,
+        pickUpIso: item.start_at,
+        rateId: textDetail(item.details, "rolzo_rate_id"),
+        vehicle: textDetail(item.details, "rolzo_vehicle"),
+        party,
+        luggage: Number(item.details?.rolzo_luggage) || party,
+      })
+    );
+    amount = booked.quote.amount;
+    details = {
+      ...details,
+      rolzo_rate_id: booked.quote.rateId,
+      rolzo_vehicle: booked.quote.label,
+      rolzo_cancel_hours: booked.quote.cancellationHours,
+      rolzo_free_waiting: booked.quote.freeWaiting,
+      rolzo_commission_percent: booked.quote.commissionPercent,
+      rolzo_booking_id: booked.bookingId,
+    };
+  }
+  const confirmationRef =
+    typeof details.rolzo_booking_id === "string" && details.rolzo_booking_id
+      ? details.rolzo_booking_id
+      : item.confirmation_ref;
   const { error } = await supabase
     .from("crm_booking_items")
-    .update({ details })
+    .update({ details, amount, confirmation_ref: confirmationRef })
     .eq("id", item.id)
     .eq("booking_id", opts.booking.id);
   if (error) {
@@ -534,6 +633,7 @@ export async function confirmBookingExtra(
       { field: "form", message: "Le service n’a pas pu être confirmé. Réessayez." },
     ]);
   }
+  if (amount !== item.amount) await refreshBookingLedger(supabase, opts.booking.id);
   return { confirmed: true as const };
 }
 
@@ -574,15 +674,34 @@ export async function updateTransferAddresses(
     ]);
   }
   const dropAtHome = (extraPlaceOf(item) || place) === "home" && opts.leg === "arrival";
+  const vehicle = textDetail(item.details, "rolzo_vehicle");
+  const requoted = vehicle
+    ? await requoteChauffeurVehicle({
+        depart,
+        arrive,
+        pickUpIso: item.start_at,
+        currency: opts.booking.currency || "EUR",
+        vehicle,
+      })
+    : null;
   const details = {
     ...(item.details || {}),
     depart_address: depart,
     arrive_address: arrive,
     pickup: dropAtHome ? arrive : depart,
+    ...(requoted
+      ? {
+          rolzo_rate_id: requoted.rateId,
+          rolzo_vehicle: requoted.label,
+          rolzo_cancel_hours: requoted.cancellationHours,
+          rolzo_free_waiting: requoted.freeWaiting,
+          rolzo_commission_percent: requoted.commissionPercent,
+        }
+      : {}),
   };
   const { error } = await supabase
     .from("crm_booking_items")
-    .update({ details })
+    .update({ details, ...(requoted ? { amount: requoted.amount } : {}) })
     .eq("id", item.id)
     .eq("booking_id", opts.booking.id);
   if (error) {
@@ -591,6 +710,7 @@ export async function updateTransferAddresses(
       { field: "form", message: "L’adresse n’a pas pu être enregistrée. Réessayez." },
     ]);
   }
+  if (requoted) await refreshBookingLedger(supabase, opts.booking.id);
   return { updated: true as const };
 }
 
@@ -628,10 +748,10 @@ export function parseExtraRequest(body: Record<string, unknown> | null) {
   const depart = String(body?.depart || "").trim() || null;
   const arrive = String(body?.arrive || "").trim() || null;
   if (kind === "visa") {
-    return { kind: "visa" as const, leg: null, place: null, moment: null, address: null, depart: null, arrive: null };
+    return { kind: "visa" as const, leg: null, place: null, moment: null, address: null, depart: null, arrive: null, rateId: null, vehicle: null };
   }
   if (kind === "checkin") {
-    return { kind: "checkin" as const, leg: null, place: null, moment: null, address: null, depart: null, arrive: null };
+    return { kind: "checkin" as const, leg: null, place: null, moment: null, address: null, depart: null, arrive: null, rateId: null, vehicle: null };
   }
   const leg = String(body?.leg || "");
   const placeRaw = String(body?.place || "");
@@ -653,5 +773,84 @@ export function parseExtraRequest(body: Record<string, unknown> | null) {
     address: String(body?.address || "").trim() || null,
     depart,
     arrive,
+    rateId: typeof body?.rateId === "string" ? body.rateId.trim() || null : null,
+    vehicle: typeof body?.vehicle === "string" ? body.vehicle.trim() || null : null,
+  };
+}
+
+function textDetail(details: Record<string, unknown> | null | undefined, key: string) {
+  const value = details?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+async function quotedChauffeur(input: {
+  depart: string;
+  arrive: string;
+  pickUpIso: string | null;
+  currency: string;
+  rateId?: string | null;
+  vehicle?: string | null;
+  party: number;
+}) {
+  const rateId = (input.rateId || "").trim();
+  const vehicle = (input.vehicle || "").trim();
+  if (!rateId && !vehicle) {
+    throw new BookingIssuesError("Véhicule requis.", [
+      { field: "vehicle", message: "Choisissez un véhicule." },
+    ]);
+  }
+  const quotes = await listChauffeurQuotes({
+    depart: input.depart,
+    arrive: input.arrive,
+    pickUpIso: input.pickUpIso,
+    currency: input.currency,
+  });
+  const quote = quotes.find((row) => row.rateId === rateId) || quotes.find((row) => row.label === vehicle);
+  if (!quote) {
+    throw new BookingIssuesError("Tarif expiré.", [
+      { field: "vehicle", message: "Ce tarif a expiré. Choisissez à nouveau un véhicule." },
+    ]);
+  }
+  if (quote.passengers > 0 && quote.passengers < input.party) {
+    throw new BookingIssuesError("Véhicule trop petit.", [
+      { field: "vehicle", message: "Ce véhicule est trop petit pour les voyageurs." },
+    ]);
+  }
+  return quote;
+}
+
+function chauffeurBookInput(input: {
+  booking: CrmBooking;
+  items: CrmBookingItem[];
+  holder: Pick<CrmCustomer, "first_name" | "last_name" | "phone" | "whatsapp" | "sex">;
+  leg: ExtraLeg;
+  depart: string;
+  arrive: string;
+  pickUpIso: string | null;
+  rateId: string;
+  vehicle: string;
+  party: number;
+  luggage: number;
+}) {
+  const flight = serviceFlightLegs(input.items).find((row) => row.leg === input.leg)?.flightNumber || null;
+  return {
+    depart: input.depart,
+    arrive: input.arrive,
+    pickUpIso: input.pickUpIso,
+    currency: input.booking.currency || "EUR",
+    rateId: input.rateId,
+    vehicle: input.vehicle,
+    reference: input.booking.reference,
+    passenger: {
+      firstName: input.holder.first_name,
+      lastName: input.holder.last_name,
+      sex: input.holder.sex,
+      phone: input.holder.phone || input.holder.whatsapp,
+      count: input.party,
+      luggage: input.luggage,
+    },
+    flightNumber: flight,
+    pickupIsAirport: addressLooksLikeAirport(input.depart),
+    dropoffIsAirport: addressLooksLikeAirport(input.arrive),
   };
 }

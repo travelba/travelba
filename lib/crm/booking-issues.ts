@@ -1,6 +1,6 @@
 import type { ZodError } from "zod";
 import { parseMoney } from "./money";
-import { countsAsCarnetCard } from "./types";
+import { countsAsCarnetCard, isActiveItem } from "./types";
 
 export type BookingIssue = { field: string; message: string };
 
@@ -131,8 +131,8 @@ export function collectExtractIssues(
   return issues;
 }
 
-export function collectPublishIssues(items: { kind: string }[]): BookingIssue[] {
-  if (items.some((item) => countsAsCarnetCard(item.kind))) {
+export function collectPublishIssues(items: { kind: string; lifecycle?: string | null }[]): BookingIssue[] {
+  if (items.some((item) => isActiveItem(item) && countsAsCarnetCard(item.kind))) {
     return [];
   }
   return [

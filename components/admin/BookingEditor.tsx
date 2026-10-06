@@ -106,6 +106,25 @@ import {
 import { useMirror } from "@/lib/crm/use-mirror";
 import { adminAction } from "@/lib/crm/admin-action";
 
+/** Assez pour recalculer le montant : prix, billets, aéroports, aller-retour. */
+function stayAmountKey(list: CrmBookingItem[]) {
+  return list
+    .map((item) => {
+      const details = item.details || {};
+      return [
+        item.id,
+        item.kind,
+        item.lifecycle || "",
+        item.amount ?? "",
+        item.start_at || "",
+        details.ticket_count ?? "",
+        details.from ?? "",
+        details.to ?? "",
+      ].join("\u001f");
+    })
+    .join("\u001e");
+}
+
 const coverField =
   "w-full rounded-2xl border border-transparent bg-white px-4 py-3 text-sm text-[var(--admin-navy)] shadow-[0_1px_2px_rgba(11,25,44,0.04)] outline-none transition focus:border-[var(--admin-gold)] focus:shadow-[0_0_0_3px_rgba(197,168,128,0.22)]";
 
@@ -213,6 +232,10 @@ export function BookingEditor({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
+  const [pricedItems, setPricedItems] = useState(items);
+  const onLiveItems = useCallback((next: CrmBookingItem[]) => {
+    setPricedItems((current) => (stayAmountKey(current) === stayAmountKey(next) ? current : next));
+  }, []);
   const needsReview = items.some((item) => item.details?.needs_review === true);
   const [busy, setBusy] = useState<"idle" | "save" | "publish" | "cover">("idle");
   // Champs du formulaire méta : `useMirror` — un champ touché par l’agent gagne, un champ intact suit
@@ -702,13 +725,13 @@ export function BookingEditor({
         : "Société"
       : "Particulier";
   const stayAmount = stayPriceWithExpenses({
-    stayTotal: bookingTotalFromItems(items),
+    stayTotal: bookingTotalFromItems(pricedItems),
     agencyCommission: booking.agency_commission === true,
-    expenses: items.filter((item) => isActiveItem(item) && isLedgerExpenseKind(item.kind)),
-    extras: agencyFeeExtraAmounts(items),
+    expenses: pricedItems.filter((item) => isActiveItem(item) && isLedgerExpenseKind(item.kind)),
+    extras: agencyFeeExtraAmounts(pricedItems),
     ticketingFee: collectableTicketingFee({
       status: booking.status,
-      hasFlight,
+      hasFlight: bookingHasFlight(pricedItems),
       travelerCount: travelers.length,
     }),
   });
@@ -1458,6 +1481,8 @@ export function BookingEditor({
         hotelMessages={hotelMessages}
         hotelThreadMessages={hotelThreadMessages}
         openHotelItemId={openHotelItemId}
+        reference={booking.reference}
+        onLiveItems={onLiveItems}
         onBindDraftSave={(save) => {
           saveOpenCard.current = save;
         }}
