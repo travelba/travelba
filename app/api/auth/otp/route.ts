@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
-import { agencyEmailHtml } from "@/lib/crm/email-html";
+import { magicLinkClientMail } from "@/lib/crm/client-mails";
 import { connexionMessage, greetingForWhatsapp, sendConnexionWhatsapp } from "@/lib/crm/whatsapp";
 import { createEntryLink } from "@/lib/crm/entry-link";
 import { tokenMailCc } from "@/lib/crm/outbound-mail";
@@ -117,20 +117,14 @@ async function handle(request: Request, email: string, channel: "whatsapp" | "em
     }
 
     const resend = new Resend(apiKey);
+    const mail = magicLinkClientMail({ link });
     const { error: sendError } = await resend.emails.send({
       from: `${siteConfig.shortName} <${fromAddress}>`,
       to: [email],
       cc: tokenMailCc(),
       replyTo: siteConfig.contactEmail,
-      subject: `Votre lien de connexion ${siteConfig.shortName}`,
-      html: agencyEmailHtml({
-        title: "Votre lien de connexion",
-        preheader: "Le lien expire sous 24 heures.",
-        bodyHtml: `<p style="margin:0;line-height:1.5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#0B192C">Cliquez sur le bouton pour ouvrir votre espace. Le lien expire sous 24&nbsp;heures.</p>`,
-        ctaLabel: "Me connecter",
-        ctaHref: link,
-        footnote: "Si vous n’êtes pas à l’origine de cette demande, ignorez cet e-mail.",
-      }),
+      subject: mail.subject,
+      html: mail.html,
     });
 
     if (sendError) {

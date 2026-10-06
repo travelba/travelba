@@ -21,7 +21,8 @@ test("le menu est groupé par domaine, Équipe pour les admins, aperçu hors pro
     agent.map((group) => group.label),
     ["Activité", "Clients", "Dossiers", "Argent", "Boîtes de réception", "Outils"]
   );
-  assert.equal(agent.find((g) => g.id === "outils")?.items.length, 2);
+  assert.equal(agent.find((g) => g.id === "outils")?.items.length, 3);
+  assert.ok(agent.find((g) => g.id === "outils")?.items.some((item) => item.href === "/admin/outils/mails"));
   const admin = adminNavGroups({ role: "admin", showExample: true });
   assert.equal(admin.at(-1)?.label, "Équipe");
   assert.ok(admin.find((g) => g.id === "outils")?.items.some((item) => item.href === "/exemple" && item.newTab));

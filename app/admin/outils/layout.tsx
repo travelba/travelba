@@ -11,7 +11,7 @@ export default async function OutilsLayout({ children }: { children: React.React
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
         title="Outils"
-        subtitle="Les messages que l’agence envoie au client, l’état de la boîte Gmail, et l’aperçu de l’espace client hors production."
+        subtitle="Les messages et les e-mails que le client reçoit, l’état de la boîte Gmail, et l’aperçu de l’espace client hors production."
       />
       <OutilsTabs showExample={exampleSessionEnabled()} />
       {children}

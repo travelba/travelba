@@ -69,6 +69,7 @@ export function adminNavGroups(input: { role?: "admin" | "agent" | ""; showExamp
       label: "Outils",
       items: [
         { href: "/admin/outils/whatsapp", label: "Messages types WhatsApp", icon: "forum" },
+        { href: "/admin/outils/mails", label: "E-mails au client", icon: "mail" },
         { href: "/admin/outils/gmail", label: "Diagnostic Gmail", icon: "activity" },
         ...(input.showExample
           ? [{ href: "/exemple", label: "Aperçu espace client", icon: "eye", newTab: true } satisfies AdminNavItem]

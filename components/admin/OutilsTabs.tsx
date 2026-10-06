@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-/** Trois onglets : messages WhatsApp, diagnostic Gmail, aperçu client (hors production). */
+/** Onglets : messages WhatsApp, e-mails au client, diagnostic Gmail, aperçu client (hors production). */
 export function outilsTabs(showExample: boolean) {
   return [
     { href: "/admin/outils/whatsapp", label: "Messages WhatsApp", newTab: false },
+    { href: "/admin/outils/mails", label: "E-mails au client", newTab: false },
     { href: "/admin/outils/gmail", label: "Diagnostic Gmail", newTab: false },
     ...(showExample ? [{ href: "/exemple", label: "Aperçu espace client", newTab: true }] : []),
   ];

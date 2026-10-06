@@ -3,7 +3,7 @@ import { Resend } from "resend";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { SET_PASSWORD_PATH } from "@/lib/crm/session";
-import { agencyEmailHtml } from "@/lib/crm/email-html";
+import { resetPasswordClientMail } from "@/lib/crm/client-mails";
 import { createEntryLink } from "@/lib/crm/entry-link";
 import { tokenMailCc } from "@/lib/crm/outbound-mail";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
@@ -89,20 +89,14 @@ async function handle(request: Request, email: string) {
     }
 
     const resend = new Resend(apiKey);
+    const mail = resetPasswordClientMail({ link });
     const { error: sendError } = await resend.emails.send({
       from: `${siteConfig.shortName} <${fromAddress}>`,
       to: [email],
       cc: tokenMailCc(),
       replyTo: siteConfig.contactEmail,
-      subject: `Réinitialiser votre mot de passe ${siteConfig.shortName}`,
-      html: agencyEmailHtml({
-        title: "Choisissez un nouveau mot de passe",
-        preheader: "Ce lien ouvre la page pour définir votre mot de passe.",
-        bodyHtml: `<p style="margin:0;line-height:1.5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#0B192C">Cliquez sur le bouton pour choisir un nouveau mot de passe.</p>`,
-        ctaLabel: "Définir mon mot de passe",
-        ctaHref: link,
-        footnote: "Si vous n’êtes pas à l’origine de cette demande, ignorez cet e-mail.",
-      }),
+      subject: mail.subject,
+      html: mail.html,
     });
 
     if (sendError) {

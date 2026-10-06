@@ -3,7 +3,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { customerFullName, type CrmCustomer } from "@/lib/crm/types";
 import { SET_PASSWORD_PATH, mustSetPassword } from "@/lib/crm/session";
-import { agencyEmailHtml, escapeHtml } from "@/lib/crm/email-html";
+import { inviteClientMail } from "@/lib/crm/client-mails";
 import {
   connexionMessage,
   greetingForWhatsapp,
@@ -12,7 +12,6 @@ import {
   type WhatsappSendResult,
 } from "@/lib/crm/whatsapp";
 import { createEntryLink, setEntryLinkChannel } from "@/lib/crm/entry-link";
-import { greetingGivenName } from "@/lib/crm/identity";
 import { tokenMailCc } from "@/lib/crm/outbound-mail";
 import { sendAgencyAccessNotice } from "@/lib/crm/access-notice";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
@@ -42,26 +41,6 @@ function isAlreadyRegistered(message: string) {
   );
 }
 
-function inviteEmailHtml(customer: CrmCustomer, link: string) {
-  const who = greetingGivenName(customer.first_name);
-  const hello = who ? `Bonjour ${escapeHtml(who)},` : "Bonjour,";
-  return agencyEmailHtml({
-    title: "Votre espace est prêt",
-    preheader: "Définissez votre mot de passe — le lien reste valable 30 jours.",
-    bodyHtml: `
-      <p style="margin:0 0 16px;line-height:1.5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#0B192C">${hello}</p>
-      <p style="margin:0;line-height:1.5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#0B192C">
-        Votre espace ${escapeHtml(siteConfig.name)} est prêt.
-        Définissez votre mot de passe pour y accéder — le lien reste valable 30&nbsp;jours.
-      </p>
-    `,
-    ctaLabel: "Accéder à mon espace",
-    ctaHref: link,
-    footnote:
-      "Si vous n’êtes pas à l’origine de cette invitation, ignorez cet e-mail.",
-  });
-}
-
 async function sendInviteEmail(customer: CrmCustomer, link: string, origin: string) {
   const apiKey = productionOnlySecret(process.env.RESEND_API_KEY);
   if (!apiKey) {
@@ -72,13 +51,14 @@ async function sendInviteEmail(customer: CrmCustomer, link: string, origin: stri
   const from = process.env.CONTACT_FROM_EMAIL || "onboarding@resend.dev";
   const resend = new Resend(apiKey);
   // Jamais de copie agence : l’e-mail porte le lien de connexion (B-02).
+  const mail = inviteClientMail({ firstName: customer.first_name, link });
   const { error } = await resend.emails.send({
     from: `${siteConfig.name} <${from}>`,
     to: [customer.email],
     cc: tokenMailCc(),
     replyTo: siteConfig.contactEmail,
-    subject: "Votre espace voyageur est prêt",
-    html: inviteEmailHtml(customer, link),
+    subject: mail.subject,
+    html: mail.html,
   });
   if (error) {
     console.error("[invite] Resend error:", error);
