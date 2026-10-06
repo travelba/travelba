@@ -26,6 +26,8 @@ const LEGACY_DUPLICATE_VERSIONS = new Set([
   "20260928150000", // booking_reference_service_role / crm_hotel_arrivals
   "20260929183000", // declined_services_staff_write / staff_card_code
   "20260930235000", // booking_archive_client_read / transaction_payer_kind
+  "20261005100000", // card_links / crm_pliant_cards
+  "20261006153000", // booking_items_order_custom / esta_checks
 ]);
 
 const files = readdirSync(DIR).filter((name) => !name.startsWith("."));
