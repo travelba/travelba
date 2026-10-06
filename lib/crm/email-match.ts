@@ -42,6 +42,7 @@ const AGENCY_INBOXES = new Set(
     "hello@travelba.fr",
     "info@travelba.fr",
     "bonjour@travelba.fr",
+    "crm@travelba.fr",
     process.env.CONTACT_FROM_EMAIL,
   ]
     .filter(Boolean)

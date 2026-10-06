@@ -414,6 +414,7 @@ describe("mergeBookingSuggestions + decideEmailIngestAction", () => {
 
   it("ignore l’e-mail partagé de l’agence", () => {
     assert.equal(usableCustomerEmail("contact@travelba.fr"), null);
+    assert.equal(usableCustomerEmail("crm@travelba.fr"), null);
     const decision = decideEmailIngestAction({
       extract: extractWith({
         customer_first_name: "Léa",

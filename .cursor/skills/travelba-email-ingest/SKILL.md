@@ -1,7 +1,7 @@
 ---
 name: travelba-email-ingest
 description: >-
-  Travelba Gmail labels (little-emperors, expedia-taap, billet-avion) → crm_email_ingest →
+  Travelba Gmail labels (little-emperors, expedia-taap, billet-avion, crm) → crm_email_ingest →
   parse → suggestions. Création automatique du dossier (et de la fiche s’il
   n’existe pas) sur une confirmation sans voyage reconnu. Rattachement et
   annulation restent manuels. Use when touching Gmail webhook, cron
@@ -12,7 +12,7 @@ description: >-
 
 # Travelba — e-mails fournisseur (Gmail)
 
-Push Gmail (labels **little-emperors**, **expedia-taap**, **billet-avion**) → ligne
+Push Gmail (labels **little-emperors**, **expedia-taap**, **billet-avion**, **crm**) → ligne
 `crm_email_ingest` → parse extract → suggestions (client / voyage).
 **Aucun rattachement autonome.** Un voyage déjà reconnu, une annulation, un devis
 ou une pièce d’identité restent dans `/admin/emails` jusqu’au clic de l’agence.
@@ -45,7 +45,7 @@ Identité / MRZ : skill `travelba-identity`.
 ## Pipeline (contrat)
 
 ```
-Gmail label (little-emperors | expedia-taap | billet-avion)
+Gmail label (little-emperors | expedia-taap | billet-avion | crm)
   → webhook / cron capture → crm_email_ingest status=received
   → parse extract (pièces + corps ; mêmes parseurs / LLM que l’import)
   → suggestCustomerFromExtract
@@ -78,6 +78,13 @@ L'historique Gmail ne voit pas les mails déjà labellisés. Le cron
 Le billet arrive dans la file, comme les autres mails.
 Le watch Pub/Sub se met à jour au cron `gmail-watch-renew`.
 
+## Label crm
+
+Label Gmail **`crm`** (`label:crm`). « CRM » compte aussi. Il est toujours suivi,
+même si `GMAIL_LABELS` ne le cite pas. Le cron `gmail-ingest` appelle
+`backfillCrmMessages` (curseur `gmail-crm`). L’adresse `crm@travelba.fr` n’est
+jamais l’e-mail d’une fiche. Le reste du contrat est le même.
+
 ## Match voyage
 
 Les suggestions servent la relecture. Elles ne rattachent jamais.
@@ -107,6 +114,7 @@ Le clic **Créer un dossier** reste disponible (`persistNewBookingFromExtract`).
 
 Ne jamais créer depuis `matchAndStoreExtract` ni depuis le rematch. E-mail
 extract seulement s’il n’est **pas** une boîte agence (`contact@travelba.fr`,
+`crm@travelba.fr`,
 `agence@`, `hello@`, `info@`, `CONTACT_FROM_EMAIL`), **pas** l’expéditeur du
 mail, **pas** un domaine fournisseur (Little Emperors, Expedia, Amadeus).
 Jamais d’invitation dans ce geste.

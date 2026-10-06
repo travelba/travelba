@@ -15,6 +15,7 @@ import {
 import {
   BILLET_AVION_LABEL,
   BILLET_BACKFILL_DONE,
+  CRM_ALIAS_LABEL,
   gmailLabelMatchKey,
   nextBilletBackfillCursor,
 } from "@/lib/crm/gmail-parse";
@@ -180,18 +181,16 @@ const BILLET_BACKFILL_PAGE = 40;
 const BILLET_BACKFILL_NEW = 15;
 
 /**
- * Importe les confirmations déjà sous `billet-avion`.
+ * Importe les messages déjà sous un label suivi.
  * L'historique Gmail ne voit que les changements après le curseur : sans ce
- * passage, les billets déjà labellisés ne rentrent jamais.
+ * passage, les mails déjà labellisés ne rentrent jamais.
  * Le curseur (page Gmail, puis `done`) vit dans `crm_email_sync`.
  */
-export async function backfillBilletAvionMessages(): Promise<{
-  captured: number;
-  scanned: number;
-}> {
-  const target = gmailLabelNames().find(
-    (name) => gmailLabelMatchKey(name) === BILLET_AVION_LABEL
-  );
+async function backfillLabeledMessages(
+  provider: string,
+  labelKey: string
+): Promise<{ captured: number; scanned: number }> {
+  const target = gmailLabelNames().find((name) => gmailLabelMatchKey(name) === labelKey);
   if (!target) return { captured: 0, scanned: 0 };
 
   const labelIds = await resolveLabelIds([target]);
@@ -202,7 +201,7 @@ export async function backfillBilletAvionMessages(): Promise<{
   const { data: sync } = await admin
     .from("crm_email_sync")
     .select("history_id")
-    .eq("provider", BILLET_BACKFILL_PROVIDER)
+    .eq("provider", provider)
     .maybeSingle();
   const stored = String(sync?.history_id || "").trim();
   const headOnly = stored === BILLET_BACKFILL_DONE;
@@ -257,13 +256,24 @@ export async function backfillBilletAvionMessages(): Promise<{
 
   await admin.from("crm_email_sync").upsert(
     {
-      provider: BILLET_BACKFILL_PROVIDER,
+      provider,
       history_id: (failed ? resumeToken : cursor) || null,
     },
     { onConflict: "provider" }
   );
 
   return { captured, scanned: page.ids.length };
+}
+
+export function backfillBilletAvionMessages() {
+  return backfillLabeledMessages(BILLET_BACKFILL_PROVIDER, BILLET_AVION_LABEL);
+}
+
+const CRM_BACKFILL_PROVIDER = "gmail-crm";
+
+/** Importe les messages déjà sous `label:crm`. */
+export function backfillCrmMessages() {
+  return backfillLabeledMessages(CRM_BACKFILL_PROVIDER, CRM_ALIAS_LABEL);
 }
 
 async function computeSuggestions(admin: Admin, extract: BookingExtract) {

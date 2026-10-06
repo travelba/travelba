@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import {
   BILLET_AVION_LABEL,
   BILLET_BACKFILL_DONE,
+  CRM_ALIAS_ADDRESS,
+  CRM_ALIAS_LABEL,
   buildGmailHistorySearchParams,
   collectAttachments,
   collectBodyText,
@@ -224,6 +226,7 @@ describe("labels Gmail billet-avion", () => {
       "Little Emperors",
       "Expedia TAAP",
       BILLET_AVION_LABEL,
+      CRM_ALIAS_LABEL,
     ]);
   });
 
@@ -232,15 +235,25 @@ describe("labels Gmail billet-avion", () => {
       "billet avion",
       "Little Emperors",
       "expedia-taap",
+      CRM_ALIAS_LABEL,
     ]);
   });
 
-  it("retombe sur les trois labels par défaut", () => {
+  it("retombe sur les labels par défaut", () => {
     assert.deepEqual(mergeGmailLabelNames("  "), [
       "little-emperors",
       "expedia-taap",
       BILLET_AVION_LABEL,
+      CRM_ALIAS_LABEL,
     ]);
+  });
+
+  it("rapproche CRM de label:crm", () => {
+    assert.equal(CRM_ALIAS_ADDRESS, "crm@travelba.fr");
+    assert.equal(gmailLabelMatchKey("CRM"), CRM_ALIAS_LABEL);
+    assert.equal(gmailLabelMatchKey("crm"), CRM_ALIAS_LABEL);
+    const map = matchGmailLabelIds(["crm"], [{ id: "Label_CRM", name: "CRM" }]);
+    assert.equal(map.get("crm"), "Label_CRM");
   });
 
   it("rapproche Billet avion de label:billet-avion", () => {
