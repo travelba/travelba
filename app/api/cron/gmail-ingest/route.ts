@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cronAuthorized, cronSecret } from "@/lib/crm/cron-auth";
+import { retryObsoleteEmailHolds } from "@/lib/crm/email-ingest-create-run";
 import {
   backfillBilletAvionMessages,
   backfillBookingCancellationMessages,
@@ -89,6 +90,15 @@ export async function GET(request: Request) {
         err instanceof Error ? err.message : err
       );
     }
+    let replay = { scanned: 0, created: 0, applied: 0, held: 0 };
+    try {
+      replay = await retryObsoleteEmailHolds(20);
+    } catch (err) {
+      console.error(
+        "[cron/gmail-ingest] replay",
+        err instanceof Error ? err.message : err
+      );
+    }
     return NextResponse.json({
       captured,
       backfill,
@@ -97,6 +107,7 @@ export async function GET(request: Request) {
       ...result,
       rematch,
       bodies,
+      replay,
     });
   } catch (err) {
     console.error("[cron/gmail-ingest]", err instanceof Error ? err.message : err);

@@ -49,4 +49,11 @@ describe("pas de rattachement autonome", () => {
   it("la file garde les mails non traités, y compris reçus et en erreur", () => {
     assert.deepEqual(EMAIL_INBOX_QUEUE_STATUSES, ["received", "parsed", "matched", "error"]);
   });
+
+  it("le cron reprend un mail tenu par l’absence d’e-mail, pas le rematch", () => {
+    const cron = readFileSync(new URL("../../app/api/cron/gmail-ingest/route.ts", import.meta.url), "utf8");
+    assert.match(cron, /retryObsoleteEmailHolds/);
+    assert.match(createRun, /export async function retryObsoleteEmailHolds/);
+    assert.equal(ingest.includes("retryObsoleteEmailHolds"), false);
+  });
 });
