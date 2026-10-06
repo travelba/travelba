@@ -27,6 +27,7 @@ import { fitPayerOwed, owedByPayer } from "@/lib/crm/payer";
 import {
   TX_KIND_LABELS,
   customerFullName,
+  visibleServiceCopy,
   type CompanyRole,
   type CrmBalance,
   type CrmBillingCompany,
@@ -381,6 +382,126 @@ export async function loadClientLedger(
     viewerId: customer.id,
     spendAccounts: spend.accounts,
   });
+}
+
+function roundLedger(amount: number) {
+  return Math.round(amount * 100) / 100;
+}
+
+export function expenseMovementTitle(title: string) {
+  return `Dépense · ${visibleServiceCopy(title.trim())}`;
+}
+
+function shiftBalance(balance: number, debits: number, delta: number) {
+  const credits = balance + debits;
+  const nextDebits = roundLedger(debits + delta);
+  const nextBalance = roundLedger(balance - delta);
+  const settled = nextDebits > 0 ? Math.min(100, Math.round((credits / nextDebits) * 100)) : null;
+  return {
+    balanceValue: nextBalance,
+    debits: nextDebits,
+    remaining: Math.max(0, roundLedger(-nextBalance)),
+    remainingPct: settled == null ? null : Math.max(0, 100 - settled),
+  };
+}
+
+function patchExpenseMovements(
+  rows: LedgerMovementRow[],
+  change: {
+    bookingId: string;
+    itemId: string;
+    previousTitle: string;
+    title: string;
+    amount: number;
+    removed: boolean;
+    currency: string;
+  }
+) {
+  const previous = expenseMovementTitle(change.previousTitle);
+  const next = expenseMovementTitle(change.title);
+  let found = false;
+  const mapped = rows.flatMap((row) => {
+    const same =
+      !row.credit &&
+      row.bookingId === change.bookingId &&
+      (row.title === previous || row.id === `expense:${change.itemId}`);
+    if (!same) return [row];
+    found = true;
+    if (change.removed || change.amount <= 0) return [];
+    return [{ ...row, id: row.id.startsWith("expense:") ? `expense:${change.itemId}` : row.id, title: next, amountLabel: `−${formatMoney(change.amount, change.currency)}` }];
+  });
+  if (!found && !change.removed && change.amount > 0) {
+    mapped.unshift({
+      id: `expense:${change.itemId}`,
+      credit: false,
+      title: next,
+      amountLabel: `−${formatMoney(change.amount, change.currency)}`,
+      occurredLabel: formatDateFr(new Date().toISOString().slice(0, 10)),
+      kindLabel: "Dépense",
+      whenWhere: null,
+      reference: null,
+      carnetHref: null,
+      bookingId: change.bookingId,
+    });
+  }
+  return mapped;
+}
+
+/** Le prix affiché dans Transactions suit la dépense tout de suite, avant le rechargement du dossier. */
+export function applyExpenseLedgerChange(
+  view: ClientLedgerView | null,
+  change: {
+    bookingId: string;
+    itemId: string;
+    previousTitle: string;
+    title: string;
+    previousAmount: number;
+    amount: number;
+    removed?: boolean;
+    currency?: string;
+  }
+): ClientLedgerView | null {
+  if (!view) return view;
+  const currency = change.currency || view.currency || "EUR";
+  const removed = change.removed === true;
+  const delta = roundLedger((removed ? 0 : change.amount) - change.previousAmount);
+  const patch = {
+    bookingId: change.bookingId,
+    itemId: change.itemId,
+    previousTitle: change.previousTitle,
+    title: change.title,
+    amount: change.amount,
+    removed,
+    currency,
+  };
+  const shifted = shiftBalance(view.balanceValue, view.debits, delta);
+  const owedRemaining = shifted.remaining;
+  const solePersonal = view.owed.company <= 0;
+  const soleCompany = view.owed.personal <= 0 && view.owed.company > 0;
+  return {
+    ...view,
+    ...shifted,
+    wallets: view.wallets.map((wallet) =>
+      wallet.currency === currency ? { ...wallet, ...shiftBalance(wallet.balanceValue, wallet.debits, delta) } : wallet
+    ),
+    owed: {
+      total: owedRemaining,
+      company: soleCompany ? roundLedger(Math.max(0, view.owed.company + delta)) : view.owed.company,
+      personal: solePersonal ? roundLedger(Math.max(0, view.owed.personal + delta)) : view.owed.personal,
+    },
+    movements: patchExpenseMovements(view.movements, patch),
+    spending: view.spending
+      ? {
+          ...view.spending,
+          cards: view.spending.cards.map((card) =>
+            card.id === change.bookingId
+              ? { ...card, movements: patchExpenseMovements(card.movements, patch) }
+              : card
+          ),
+          otherMovements: patchExpenseMovements(view.spending.otherMovements, patch),
+        }
+      : null,
+  };
 }
 
 async function loadSpendAccounts(

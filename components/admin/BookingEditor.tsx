@@ -52,12 +52,12 @@ import { PliantCardDesk } from "@/components/admin/PliantCardDesk";
 import { principalGuest, stayCardFace } from "@/lib/crm/hotel-arrival";
 import type { PliantCardDraft, PliantSpendLine } from "@/lib/crm/pliant-cards";
 import type { PliantCardRecap } from "@/lib/crm/pliant-booking";
-import { BookingExpensesPanel } from "@/components/admin/BookingExpensesPanel";
+import { BookingExpensesPanel, type ExpenseWrite } from "@/components/admin/BookingExpensesPanel";
 import { ClientTransactionsPanel } from "@/components/account/ClientTransactionsPanel";
 import { ServiceOfferToggles } from "@/components/admin/ServiceOfferToggles";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
 import { ClientInterfacePreview } from "@/components/account/ClientInterfacePreview";
-import type { ClientLedgerView } from "@/lib/crm/client-ledger";
+import { applyExpenseLedgerChange, type ClientLedgerView } from "@/lib/crm/client-ledger";
 import {
   ArchiveBookingButton,
   DuplicateBookingButton,
@@ -113,6 +113,46 @@ import { useMirror } from "@/lib/crm/use-mirror";
 import { adminAction } from "@/lib/crm/admin-action";
 
 /** Assez pour recalculer le montant : prix, billets, aéroports, aller-retour. */
+function ledgerMoneyKey(view: ClientLedgerView | null) {
+  if (!view) return "";
+  return [
+    view.balanceValue,
+    view.debits,
+    ...view.movements.map((row) => `${row.id}:${row.title}:${row.amountLabel}`),
+  ].join("|");
+}
+
+function withExpenseWrite(items: CrmBookingItem[], change: ExpenseWrite, bookingId: string): CrmBookingItem[] {
+  if (change.removed) return items.filter((item) => item.id !== change.id);
+  if (items.some((item) => item.id === change.id)) {
+    return items.map((item) =>
+      item.id === change.id ? { ...item, title: change.title, amount: change.amount, kind: "expense" } : item
+    );
+  }
+  return [
+    ...items,
+    {
+      id: change.id,
+      booking_id: bookingId,
+      kind: "expense",
+      title: change.title,
+      supplier: null,
+      confirmation_ref: null,
+      start_at: null,
+      end_at: null,
+      amount: change.amount,
+      include_in_ledger: true,
+      sort_order: items.length,
+      details: {},
+      visible_to_client: false,
+      source_document_id: null,
+      lifecycle: "active",
+      created_at: "",
+      updated_at: "",
+    },
+  ];
+}
+
 function stayAmountKey(list: CrmBookingItem[]) {
   return list
     .map((item) => {
@@ -245,9 +285,34 @@ export function BookingEditor({
   const searchParams = useSearchParams();
   const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
   const [pricedItems, setPricedItems] = useState(items);
+  const ledgerKey = ledgerMoneyKey(accountLedger);
+  const [seenLedgerKey, setSeenLedgerKey] = useState(ledgerKey);
+  const [liveLedger, setLiveLedger] = useState(accountLedger);
+  if (ledgerKey !== seenLedgerKey) {
+    setSeenLedgerKey(ledgerKey);
+    setLiveLedger(accountLedger);
+  }
   const onLiveItems = useCallback((next: CrmBookingItem[]) => {
     setPricedItems((current) => (stayAmountKey(current) === stayAmountKey(next) ? current : next));
   }, []);
+  const onExpenseWrite = useCallback(
+    (change: ExpenseWrite) => {
+      setPricedItems((current) => withExpenseWrite(current, change, booking.id));
+      setLiveLedger((current) =>
+        applyExpenseLedgerChange(current, {
+          bookingId: booking.id,
+          itemId: change.id,
+          previousTitle: change.previousTitle,
+          title: change.title,
+          previousAmount: change.previousAmount,
+          amount: change.amount,
+          removed: change.removed,
+          currency: booking.currency,
+        })
+      );
+    },
+    [booking.currency, booking.id]
+  );
   const needsReview = items.some((item) => item.details?.needs_review === true);
   const [busy, setBusy] = useState<"idle" | "save" | "publish" | "cover">("idle");
   // Champs du formulaire méta : `useMirror` — un champ touché par l’agent gagne, un champ intact suit
@@ -1696,10 +1761,11 @@ export function BookingEditor({
       <div className="order-3">
       <BookingExpensesPanel
         bookingId={booking.id}
-        items={items}
+        items={pricedItems}
         status={booking.status}
         currency={booking.currency}
         agencyCommission={booking.agency_commission === true}
+        onExpenseWrite={onExpenseWrite}
       />
       </div>
         </>
@@ -1708,9 +1774,9 @@ export function BookingEditor({
       {tab === "transactions" ? (
         <div className="max-w-[480px]">
           <p className="mb-3 text-sm text-muted">Même lecture que l’espace du client.</p>
-          {accountLedger ? (
+          {liveLedger ? (
             <ClientTransactionsPanel
-              view={accountLedger}
+              view={liveLedger}
               statementName={accountName ? customerFullName(accountName) : null}
             />
           ) : (
