@@ -77,6 +77,7 @@ const detailsObjectLoose = z
     document_amount: looseNumber,
     document_currency: looseString,
     ticket_count: looseNumber,
+    party_keys: z.array(z.string()).optional(),
     passengers: z
       .array(
         z.object({

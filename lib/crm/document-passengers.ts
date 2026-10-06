@@ -61,7 +61,12 @@ export function ticketPartyKeys(
   if (stored.length) return stored;
   const keys: string[] = [];
   for (const person of passengersFromDetails(details)) {
-    const hit = household.find((member) => sameRecordedTraveler(member, person));
+    const hit = household.find((member) =>
+      sameRecordedTraveler(
+        { first_name: member.first_name ?? null, last_name: member.last_name ?? null },
+        person
+      )
+    );
     if (hit && !keys.includes(hit.key)) keys.push(hit.key);
   }
   return keys;
