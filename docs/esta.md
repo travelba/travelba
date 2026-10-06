@@ -155,6 +155,19 @@ Agence (`contact@travelba.fr`) : alerte si le résultat ne couvre pas tout le s�
 
 Client, en français, depuis la fiche : ESTA valable jusqu’au JJ/MM/AAAA ; manquant ou inachevé avec `https://esta.cbp.dhs.gov/` et la consigne des 72 h ; ESTA lié à un ancien passeport. Si un numéro de passeport apparaissait, il est masqué sauf les 3 derniers caractères.
 
+Le badge envoie le cas connu par WhatsApp, au clic « Envoyer au client ». `ESTA_CLIENT_AUTO_SEND` reste éteint : rien ne part seul. Le même modèle ne part qu’une fois pour ce voyageur et ce séjour, sauf le bouton « Renvoyer ». Le numéro de passeport, la MRZ et la date de naissance ne sont pas dans le texte.
+
+| Cas | Modèle | Repli sans photo |
+|---|---|---|
+| Introuvable | `TWILIO_CONTENT_ESTA_MANQUANT_CARTE_PHOTO` | `TWILIO_CONTENT_ESTA_MANQUANT_CARTE` |
+| Expire avant le retour ou le départ | `TWILIO_CONTENT_ESTA_EXPIRE_CARTE_PHOTO` | `TWILIO_CONTENT_ESTA_EXPIRE_CARTE` |
+| Ancien passeport | `TWILIO_CONTENT_ESTA_ANCIEN_PASSEPORT_CARTE_PHOTO` | `TWILIO_CONTENT_ESTA_ANCIEN_PASSEPORT_CARTE` |
+| Approuvé pour tout le séjour | `TWILIO_CONTENT_ESTA_APPROUVE_CARTE_PHOTO` | `TWILIO_CONTENT_ESTA_APPROUVE_CARTE` |
+
+Sans téléphone, sans acceptation WhatsApp, ou sans SID approuvé, le badge dit pourquoi. La photo est `/whatsapp/visa.jpg`. Le bouton ouvre le séjour.
+
+Soumettre à Meta : `npx tsx scripts/arm-whatsapp-concierge.ts` (compte Twilio déjà configuré). Coller chaque SID dans la variable ci-dessus sur Vercel Production, puis redéployer. Ne pas commiter les SID.
+
 ## RLS
 
 `crm_esta_checks` et `crm_esta_notices` : RLS activée. L’agence lit. L’écriture (résultat, webhook, e-mail) passe par la clé service. Pas de lecture client.

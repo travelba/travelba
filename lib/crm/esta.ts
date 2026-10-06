@@ -8,6 +8,7 @@ import {
   estaRequestAt,
   type EstaTravelerLine,
 } from "@/lib/crm/esta-status";
+import { authorizationClientFields, authorizationTravelerName } from "@/lib/crm/authorization-notice";
 import { countryIso, foldCountry } from "@/lib/crm/hotel-arrival";
 import type { PersonName } from "@/lib/crm/person-match";
 import {
@@ -604,6 +605,16 @@ export function estaTravelerLine(input: {
   dispatchedAt?: string | null;
   attemptAt?: string | null;
   nowMs?: number;
+  stay?: {
+    place: string | null;
+    reference: string | null;
+    departureOn?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    optInAt?: string | null;
+    optOutAt?: string | null;
+    boundDocumentId?: string | null;
+  } | null;
 }): EstaTravelerLine {
   const alerts = estaAlerts({
     status: input.status,
@@ -639,12 +650,45 @@ export function estaTravelerLine(input: {
     caption,
     canVerify: input.status !== "non_concerne",
     canSend: Boolean(draft) && !input.clientSentAt,
+    canResend: false,
+    preview: null,
+    sendBlock: null,
     sent: Boolean(input.clientSentAt),
     pending: false,
     stale: false,
     requestedAt,
     checkedAt: input.checkedAt || null,
   };
+  if (input.stay && !pending) {
+    const client = authorizationClientFields({
+      kind: "esta",
+      status: input.status,
+      validUntil: input.validUntil,
+      returnOn: input.returnOn,
+      departureOn: input.stay.departureOn,
+      passportExpires: input.passport?.expires_on,
+      currentNumber: input.passport?.number,
+      boundLast3: input.estaPassportLast3,
+      currentDocumentId: input.passport?.id,
+      boundDocumentId: input.stay.boundDocumentId,
+      passportIssuedOn: input.passport?.issued_on,
+      authorizationOn: input.checkedAt,
+      name: authorizationTravelerName(input.traveler.first_name, input.traveler.last_name),
+      place: input.stay.place,
+      reference: input.stay.reference,
+      sent: Boolean(input.clientSentAt),
+      phone: input.stay.phone,
+      email: input.stay.email,
+      optInAt: input.stay.optInAt,
+      optOutAt: input.stay.optOutAt,
+    });
+    if (client) {
+      line.preview = client.preview;
+      line.sendBlock = client.sendBlock;
+      line.canSend = client.canSend;
+      line.canResend = client.canResend;
+    }
+  }
   if (!pending) return line;
   return estaLineAsPending(line, requestedAt || new Date(nowMs).toISOString(), nowMs);
 }

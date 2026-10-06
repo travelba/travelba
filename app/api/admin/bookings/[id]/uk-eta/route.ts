@@ -30,7 +30,7 @@ export async function POST(request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   const body = await request.json().catch(() => null);
   const travelerId = String(body?.travelerId || "");
-  const action = body?.action === "send" || body?.action === "verify" ? body.action : null;
+  const action = body?.action === "send" || body?.action === "verify" || body?.action === "resend" ? body.action : null;
   if (!travelerId || !action) return jsonError("Action inconnue");
   try {
     const admin = createServiceClient();
@@ -40,7 +40,7 @@ export async function POST(request: Request, ctx: Ctx) {
       if (!line?.canVerify) return jsonError("Ce voyageur n’est pas soumis à l’ETA.");
       return linesResponse(lines);
     }
-    const result = await sendUkEtaToClient(admin, id, travelerId);
+    const result = await sendUkEtaToClient(admin, id, travelerId, { again: action === "resend" });
     if (!result.ok) return jsonError(result.error);
     const lines = await readUkEtaLines(admin, id);
     return linesResponse(lines);

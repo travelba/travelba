@@ -15,6 +15,9 @@ export type EstaTravelerLine = {
   caption: string | null;
   canVerify: boolean;
   canSend: boolean;
+  canResend: boolean;
+  preview: string | null;
+  sendBlock: string | null;
   sent: boolean;
   pending: boolean;
   stale: boolean;
@@ -107,6 +110,9 @@ export function estaLineAsPending(line: EstaTravelerLine, requestedAt: string, n
     checkedLabel: estaRequestedLabel(requestedAt),
     caption: null,
     canSend: false,
+    canResend: false,
+    preview: null,
+    sendBlock: null,
     pending: true,
     stale,
     requestedAt,

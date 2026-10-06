@@ -9,6 +9,7 @@ const FILTERS = [
   { id: "sejour", label: "Séjour" },
   { id: "pieces", label: "Pièces" },
   { id: "depart", label: "Départ" },
+  { id: "esta-eta", label: "ESTA / ETA" },
   { id: "vols", label: "Vols" },
   { id: "partage", label: "Partage" },
   { id: "reponses", label: "Réponses" },

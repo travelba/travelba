@@ -103,7 +103,7 @@ export function EstaOnBooking({ bookingId, rows: initialRows }: { bookingId: str
 
   if (!rows.length) return null;
 
-  async function run(travelerId: string, action: "verify" | "send") {
+  async function run(travelerId: string, action: "verify" | "send" | "resend") {
     const snapshot = rows;
     const requestedAt = new Date().toISOString();
     if (action === "verify") {
@@ -170,7 +170,25 @@ export function EstaOnBooking({ bookingId, rows: initialRows }: { bookingId: str
                 </button>
               ) : null}
               {row.sent ? <span className="text-xs text-[#5c6570]">Envoyé au client</span> : null}
+              {row.canResend ? (
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => void run(row.travelerId, "resend")}
+                  className="admin-tap rounded-full border border-[#0B192C] px-3 py-1 text-xs font-semibold text-[#0B192C] disabled:opacity-50"
+                >
+                  {busy === `resend:${row.travelerId}` ? "Envoi…" : "Renvoyer"}
+                </button>
+              ) : null}
             </span>
+            {row.preview && !row.pending ? (
+              <p className="w-full whitespace-pre-wrap rounded-2xl bg-[#f4efe4] px-3 py-2 text-sm leading-relaxed text-[#0B192C]">
+                {row.preview}
+              </p>
+            ) : null}
+            {row.sendBlock && !row.pending ? (
+              <p className="w-full text-xs text-[#5c6570]">{row.sendBlock}</p>
+            ) : null}
           </li>
         ))}
       </ul>

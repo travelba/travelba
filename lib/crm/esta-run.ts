@@ -18,7 +18,13 @@ import {
   type EstaStatus,
   type EstaTravelerLine,
 } from "@/lib/crm/esta";
+import {
+  authorizationNoticeCase,
+  authorizationTravelerName,
+} from "@/lib/crm/authorization-notice";
+import { sendAuthorizationWhatsapp } from "@/lib/crm/authorization-send";
 import { deliverEstaMail, estaAgencyMail, estaClientMail } from "@/lib/crm/esta-mail";
+import { stayPlaceName } from "@/lib/crm/concierge-notices";
 import { parisIsoDate } from "@/lib/crm/hotel-arrival";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 import { travelerDisplayName } from "@/lib/crm/trip-documents";
@@ -48,11 +54,22 @@ const CHECK_COLUMNS =
   "id, booking_id, traveler_id, travel_document_id, status, valid_until, esta_passport_last3, checked_at, note, dispatch_key, dispatch_attempt_at, dispatched_at, client_message_sent_at";
 
 type EstaBundle = {
-  booking: { id: string; start_date?: string | null; end_date?: string | null };
+  booking: {
+    id: string;
+    reference: string | null;
+    destination: string | null;
+    title: string | null;
+    start_date: string | null;
+    end_date: string | null;
+  };
   items: Pick<CrmBookingItem, "kind" | "lifecycle" | "details" | "start_at" | "end_at">[];
   travelers: CrmBookingTraveler[];
   documents: CrmTravelDocument[];
   holder?: PersonName | null;
+  phone: string | null;
+  email: string | null;
+  optInAt: string | null;
+  optOutAt: string | null;
 };
 
 function missingRelation(error: { code?: string; message?: string } | null) {
@@ -70,6 +87,13 @@ function composeEstaLines(input: {
   documents: CrmTravelDocument[];
   holder?: PersonName | null;
   returnOn: string | null;
+  departureOn?: string | null;
+  place?: string | null;
+  reference?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  optInAt?: string | null;
+  optOutAt?: string | null;
   rows: CheckRow[];
 }) {
   const byTraveler = new Map(input.rows.map((row) => [row.traveler_id, row]));
@@ -93,6 +117,16 @@ function composeEstaLines(input: {
         dispatchedAt: row.dispatched_at,
         attemptAt: row.dispatch_attempt_at,
         nowMs,
+        stay: {
+          place: input.place || null,
+          reference: input.reference || null,
+          departureOn: input.departureOn,
+          phone: input.phone,
+          email: input.email,
+          optInAt: input.optInAt,
+          optOutAt: input.optOutAt,
+          boundDocumentId: row.travel_document_id,
+        },
       })
     );
   }
@@ -182,7 +216,18 @@ async function dispatchCheck(
 export async function syncEstaForBooking(
   admin: Admin,
   input: {
-    booking: { id: string; start_date?: string | null; end_date?: string | null };
+    booking: {
+      id: string;
+      reference?: string | null;
+      destination?: string | null;
+      title?: string | null;
+      start_date?: string | null;
+      end_date?: string | null;
+    };
+    phone?: string | null;
+    email?: string | null;
+    optInAt?: string | null;
+    optOutAt?: string | null;
     items: Pick<CrmBookingItem, "kind" | "lifecycle" | "details" | "start_at" | "end_at">[];
     travelers: CrmBookingTraveler[];
     documents: CrmTravelDocument[];
@@ -270,6 +315,13 @@ export async function syncEstaForBooking(
     documents: input.documents,
     holder: input.holder,
     returnOn: dates.returnOn,
+    departureOn: dates.departure,
+    place: stayPlaceName(input.booking.destination || null, input.booking.title || null),
+    reference: input.booking.reference || null,
+    phone: input.phone,
+    email: input.email,
+    optInAt: input.optInAt,
+    optOutAt: input.optOutAt,
     rows: fresh || [...byTraveler.values()],
   });
 }
@@ -277,7 +329,7 @@ export async function syncEstaForBooking(
 async function loadEstaBundle(admin: Admin, bookingId: string): Promise<EstaBundle | null> {
   const { data: booking, error } = await admin
     .from("crm_bookings")
-    .select("id, customer_id, start_date, end_date")
+    .select("id, customer_id, reference, destination, title, start_date, end_date")
     .eq("id", bookingId)
     .maybeSingle();
   if (error || !booking) return null;
@@ -286,14 +338,28 @@ async function loadEstaBundle(admin: Admin, bookingId: string): Promise<EstaBund
     admin.from("crm_booking_items").select("kind, lifecycle, details, start_at, end_at").eq("booking_id", bookingId),
     admin.from("crm_booking_travelers").select("*").eq("booking_id", bookingId),
     admin.from("crm_travel_documents").select("*").eq("customer_id", customerId),
-    admin.from("crm_customers").select("first_name, last_name").eq("id", customerId).maybeSingle(),
+    admin
+      .from("crm_customers")
+      .select("first_name, last_name, email, phone, whatsapp_opt_in_at, whatsapp_opt_out_at")
+      .eq("id", customerId)
+      .maybeSingle(),
   ]);
+  const holder = (customer.data as (PersonName & {
+    email?: string | null;
+    phone?: string | null;
+    whatsapp_opt_in_at?: string | null;
+    whatsapp_opt_out_at?: string | null;
+  }) | null) || null;
   return {
-    booking: booking as { id: string; start_date: string | null; end_date: string | null },
+    booking: booking as EstaBundle["booking"],
     items: (items.data || []) as CrmBookingItem[],
     travelers: (travelers.data || []) as CrmBookingTraveler[],
     documents: (documents.data || []) as CrmTravelDocument[],
-    holder: (customer.data as PersonName | null) || null,
+    holder,
+    phone: holder?.phone || null,
+    email: holder?.email || null,
+    optInAt: holder?.whatsapp_opt_in_at || null,
+    optOutAt: holder?.whatsapp_opt_out_at || null,
   };
 }
 
@@ -304,7 +370,13 @@ export async function syncEstaForBookingId(
 ) {
   const bundle = await loadEstaBundle(admin, bookingId);
   if (!bundle) return [];
-  return syncEstaForBooking(admin, { ...bundle, manual });
+  return syncEstaForBooking(admin, {
+    ...bundle,
+    phone: bundle.phone,
+    optInAt: bundle.optInAt,
+    optOutAt: bundle.optOutAt,
+    manual,
+  });
 }
 
 /** Lecture seule : le sondage de la fiche ne relance pas le webhook. */
@@ -320,6 +392,13 @@ export async function loadEstaForBookingId(admin: Admin, bookingId: string) {
     documents: bundle.documents,
     holder: bundle.holder,
     returnOn: dates.returnOn,
+    departureOn: dates.departure,
+    place: stayPlaceName(bundle.booking.destination, bundle.booking.title),
+    reference: bundle.booking.reference,
+    phone: bundle.phone,
+    email: bundle.email,
+    optInAt: bundle.optInAt,
+    optOutAt: bundle.optOutAt,
     rows,
   });
 }
@@ -381,7 +460,7 @@ export async function loadOpenEstaNotices(admin: Admin): Promise<EstaNoticeLine[
 async function stayContext(admin: Admin, bookingId: string) {
   const { data: booking } = await admin
     .from("crm_bookings")
-    .select("id, reference, customer_id, start_date, end_date")
+    .select("id, reference, customer_id, destination, title, start_date, end_date")
     .eq("id", bookingId)
     .maybeSingle();
   if (!booking) return null;
@@ -389,6 +468,8 @@ async function stayContext(admin: Admin, bookingId: string) {
     id: string;
     reference: string;
     customer_id: string;
+    destination: string | null;
+    title: string | null;
     start_date: string | null;
     end_date: string | null;
   };
@@ -400,12 +481,17 @@ async function stayContext(admin: Admin, bookingId: string) {
   return { booking: row, dates };
 }
 
-export async function sendEstaToClient(admin: Admin, bookingId: string, travelerId: string) {
+export async function sendEstaToClient(
+  admin: Admin,
+  bookingId: string,
+  travelerId: string,
+  options?: { again?: boolean }
+) {
   const stay = await stayContext(admin, bookingId);
   if (!stay) return { ok: false as const, error: "Dossier introuvable." };
   const { data: check } = await admin
     .from("crm_esta_checks")
-    .select("id, status, valid_until, esta_passport_last3, travel_document_id, client_message_sent_at")
+    .select("id, status, valid_until, esta_passport_last3, travel_document_id, checked_at, client_message_sent_at")
     .eq("booking_id", bookingId)
     .eq("traveler_id", travelerId)
     .maybeSingle();
@@ -415,27 +501,73 @@ export async function sendEstaToClient(admin: Admin, bookingId: string, traveler
     valid_until: string | null;
     esta_passport_last3: string | null;
     travel_document_id: string | null;
+    checked_at: string | null;
     client_message_sent_at: string | null;
   } | null;
   if (!row || !isEstaStatus(row.status)) return { ok: false as const, error: "Pas de vérification ESTA." };
-  if (row.client_message_sent_at) return { ok: true as const };
-  const { data: customer } = await admin
-    .from("crm_customers")
-    .select("email")
-    .eq("id", stay.booking.customer_id)
-    .maybeSingle();
-  const email = ((customer as { email?: string | null } | null)?.email || "").trim();
-  if (!email) return { ok: false as const, error: "Pas d’adresse pour ce client." };
-  let passport: CrmTravelDocument | null = null;
-  if (row.travel_document_id) {
-    const { data } = await admin
-      .from("crm_travel_documents")
-      .select("number, expires_on")
-      .eq("id", row.travel_document_id)
-      .maybeSingle();
-    passport = (data as CrmTravelDocument | null) || null;
-  }
+  if (row.client_message_sent_at && !options?.again) return { ok: true as const };
+  const [{ data: customer }, { data: traveler }, { data: documents }] = await Promise.all([
+    admin
+      .from("crm_customers")
+      .select("email, phone, first_name, last_name, whatsapp_opt_in_at, whatsapp_opt_out_at")
+      .eq("id", stay.booking.customer_id)
+      .maybeSingle(),
+    admin.from("crm_booking_travelers").select("*").eq("id", travelerId).maybeSingle(),
+    admin.from("crm_travel_documents").select("*").eq("customer_id", stay.booking.customer_id),
+  ]);
+  const account = (customer as {
+    email?: string | null;
+    phone?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+    whatsapp_opt_in_at?: string | null;
+    whatsapp_opt_out_at?: string | null;
+  } | null) || null;
+  const person = (traveler as CrmBookingTraveler | null) || null;
+  const passport = person
+    ? passportForEsta(person, (documents || []) as CrmTravelDocument[], {
+        first_name: account?.first_name ?? null,
+        last_name: account?.last_name ?? null,
+      })
+    : null;
   const status = row.status as EstaStatus;
+  const notice = authorizationNoticeCase({
+    status,
+    validUntil: row.valid_until,
+    returnOn: stay.dates.returnOn,
+    departureOn: stay.dates.departure,
+    passportExpires: passport?.expires_on,
+    currentNumber: passport?.number,
+    boundLast3: row.esta_passport_last3,
+    currentDocumentId: passport?.id,
+    boundDocumentId: row.travel_document_id,
+    passportIssuedOn: passport?.issued_on,
+    authorizationOn: row.checked_at,
+  });
+  if (notice && person) {
+    const sent = await sendAuthorizationWhatsapp(admin, {
+      kind: "esta",
+      notice,
+      customerId: stay.booking.customer_id,
+      bookingId,
+      travelerId,
+      phone: account?.phone || null,
+      email: account?.email || null,
+      name: authorizationTravelerName(person.first_name, person.last_name),
+      place: stayPlaceName(stay.booking.destination, stay.booking.title),
+      reference: stay.booking.reference,
+      validUntil: row.valid_until,
+      optInAt: account?.whatsapp_opt_in_at,
+      optOutAt: account?.whatsapp_opt_out_at,
+      again: options?.again,
+    });
+    if (!sent.ok) return sent;
+    await admin.from("crm_esta_checks").update({ client_message_sent_at: new Date().toISOString() }).eq("id", row.id);
+    return { ok: true as const };
+  }
+  if (row.client_message_sent_at) return { ok: true as const };
+  const email = (account?.email || "").trim();
+  if (!email) return { ok: false as const, error: "Pas d’adresse pour ce client." };
   const alerts = estaAlerts({
     status,
     validUntil: row.valid_until,

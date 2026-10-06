@@ -51,6 +51,22 @@ export const CONCIERGE_TEMPLATE_ENV = {
   passeports_carte_photo: "TWILIO_CONTENT_PASSEPORTS_CARTE_PHOTO",
   formalite_manquante_carte_photo: "TWILIO_CONTENT_FORMALITE_MANQUANTE_CARTE_PHOTO",
   formalite_prete_carte_photo: "TWILIO_CONTENT_FORMALITE_PRETE_CARTE_PHOTO",
+  esta_manquant_carte: "TWILIO_CONTENT_ESTA_MANQUANT_CARTE",
+  esta_expire_carte: "TWILIO_CONTENT_ESTA_EXPIRE_CARTE",
+  esta_ancien_passeport_carte: "TWILIO_CONTENT_ESTA_ANCIEN_PASSEPORT_CARTE",
+  esta_approuve_carte: "TWILIO_CONTENT_ESTA_APPROUVE_CARTE",
+  eta_uk_manquant_carte: "TWILIO_CONTENT_ETA_UK_MANQUANT_CARTE",
+  eta_uk_expire_carte: "TWILIO_CONTENT_ETA_UK_EXPIRE_CARTE",
+  eta_uk_ancien_passeport_carte: "TWILIO_CONTENT_ETA_UK_ANCIEN_PASSEPORT_CARTE",
+  eta_uk_approuve_carte: "TWILIO_CONTENT_ETA_UK_APPROUVE_CARTE",
+  esta_manquant_carte_photo: "TWILIO_CONTENT_ESTA_MANQUANT_CARTE_PHOTO",
+  esta_expire_carte_photo: "TWILIO_CONTENT_ESTA_EXPIRE_CARTE_PHOTO",
+  esta_ancien_passeport_carte_photo: "TWILIO_CONTENT_ESTA_ANCIEN_PASSEPORT_CARTE_PHOTO",
+  esta_approuve_carte_photo: "TWILIO_CONTENT_ESTA_APPROUVE_CARTE_PHOTO",
+  eta_uk_manquant_carte_photo: "TWILIO_CONTENT_ETA_UK_MANQUANT_CARTE_PHOTO",
+  eta_uk_expire_carte_photo: "TWILIO_CONTENT_ETA_UK_EXPIRE_CARTE_PHOTO",
+  eta_uk_ancien_passeport_carte_photo: "TWILIO_CONTENT_ETA_UK_ANCIEN_PASSEPORT_CARTE_PHOTO",
+  eta_uk_approuve_carte_photo: "TWILIO_CONTENT_ETA_UK_APPROUVE_CARTE_PHOTO",
   connexion_carte_photo: "TWILIO_CONTENT_CONNEXION_CARTE_PHOTO",
   encours_photo: "TWILIO_CONTENT_ENCOURS_PHOTO",
   chauffeur_photo: "TWILIO_CONTENT_CHAUFFEUR_PHOTO",
@@ -581,6 +597,52 @@ function stayPhotoDraft(input: {
   };
 }
 
+const SAMPLE_NAME = "Camille";
+const SAMPLE_DATE = "29/08/2027";
+
+/** Carte ESTA / ETA : {{1}} prénom, {{2}} séjour, bouton. La date, quand elle existe, est {{3}}. */
+function authorizationCardPair(input: {
+  text: ConciergeTemplate;
+  photo: ConciergeTemplate;
+  textName: string;
+  photoName: string;
+  body: string;
+  dated: boolean;
+}) {
+  const button = "Voir le séjour";
+  const image = whatsappTypeImageUrl("visa");
+  const textVars: Record<string, string> = input.dated
+    ? { "1": SAMPLE_NAME, "2": SAMPLE_STAY, "3": SAMPLE_DATE, "4": SAMPLE_CODE }
+    : { "1": SAMPLE_NAME, "2": SAMPLE_STAY, "3": SAMPLE_CODE };
+  const photoVars: Record<string, string> = input.dated
+    ? { "1": SAMPLE_NAME, "2": SAMPLE_STAY, "3": SAMPLE_DATE, "4": image, "5": SAMPLE_CODE }
+    : { "1": SAMPLE_NAME, "2": SAMPLE_STAY, "3": image, "4": SAMPLE_CODE };
+  return [
+    {
+      template: input.text,
+      env: CONCIERGE_TEMPLATE_ENV[input.text],
+      friendlyName: input.textName,
+      exemplar: true as const,
+      create: contentDraft({
+        friendlyName: input.textName,
+        variables: textVars,
+        types: textTemplate(signed(input.body), button, input.dated ? "4" : "3"),
+      }),
+    },
+    {
+      template: input.photo,
+      env: CONCIERGE_TEMPLATE_ENV[input.photo],
+      friendlyName: input.photoName,
+      exemplar: true as const,
+      create: contentDraft({
+        friendlyName: input.photoName,
+        variables: photoVars,
+        types: mediaTemplate(signed(input.body), button, input.dated ? "4" : "3", input.dated ? "5" : "4"),
+      }),
+    },
+  ];
+}
+
 function stayCardPair(input: {
   text: ConciergeTemplate;
   photo: ConciergeTemplate;
@@ -1000,6 +1062,108 @@ export function conciergeContentDrafts() {
         ),
       }),
     },
+    ...authorizationCardPair({
+      text: "esta_manquant_carte",
+      photo: "esta_manquant_carte_photo",
+      textName: "esta_manquant_bouton",
+      photoName: "esta_manquant_photo",
+      dated: false,
+      body: [
+        "Bonjour {{1}},",
+        "",
+        "Nous n’avons pas trouvé d’ESTA en cours pour le séjour à {{2}} avant le départ.",
+        "La demande se fait uniquement sur esta.cbp.dhs.gov, au moins 72 h avant le départ. L’agence peut s’en charger.",
+      ].join("\n"),
+    }),
+    ...authorizationCardPair({
+      text: "esta_expire_carte",
+      photo: "esta_expire_carte_photo",
+      textName: "esta_expire_bouton",
+      photoName: "esta_expire_photo",
+      dated: true,
+      body: [
+        "Bonjour {{1}},",
+        "",
+        "Votre ESTA pour le séjour à {{2}} expire le {{3}}, avant votre retour.",
+        "Renouvelez-le uniquement sur esta.cbp.dhs.gov, au moins 72 h avant le départ. L’agence peut s’en charger.",
+      ].join("\n"),
+    }),
+    ...authorizationCardPair({
+      text: "esta_ancien_passeport_carte",
+      photo: "esta_ancien_passeport_carte_photo",
+      textName: "esta_ancien_passeport_bouton",
+      photoName: "esta_ancien_passeport_photo",
+      dated: false,
+      body: [
+        "Bonjour {{1}},",
+        "",
+        "Votre ESTA pour le séjour à {{2}} est lié à un ancien passeport.",
+        "Une nouvelle demande est nécessaire avec le passeport actuel, uniquement sur esta.cbp.dhs.gov. L’agence peut s’en charger.",
+      ].join("\n"),
+    }),
+    ...authorizationCardPair({
+      text: "esta_approuve_carte",
+      photo: "esta_approuve_carte_photo",
+      textName: "esta_approuve_bouton",
+      photoName: "esta_approuve_photo",
+      dated: true,
+      body: [
+        "Bonjour {{1}},",
+        "",
+        "Votre ESTA pour le séjour à {{2}} est valable jusqu’au {{3}}. Il couvre tout le séjour.",
+      ].join("\n"),
+    }),
+    ...authorizationCardPair({
+      text: "eta_uk_manquant_carte",
+      photo: "eta_uk_manquant_carte_photo",
+      textName: "eta_uk_manquant_bouton",
+      photoName: "eta_uk_manquant_photo",
+      dated: false,
+      body: [
+        "Bonjour {{1}},",
+        "",
+        "Nous n’avons pas trouvé d’ETA Royaume-Uni en cours pour le séjour à {{2}} avant le départ.",
+        "Elle est obligatoire. Elle coûte 20 £ par personne, enfants compris. La demande se fait uniquement sur gov.uk/eta ou dans l’application UK ETA. L’agence peut s’en charger.",
+      ].join("\n"),
+    }),
+    ...authorizationCardPair({
+      text: "eta_uk_expire_carte",
+      photo: "eta_uk_expire_carte_photo",
+      textName: "eta_uk_expire_bouton",
+      photoName: "eta_uk_expire_photo",
+      dated: true,
+      body: [
+        "Bonjour {{1}},",
+        "",
+        "Votre ETA Royaume-Uni pour le séjour à {{2}} expire le {{3}}, avant votre retour.",
+        "Il faut en demander une nouvelle, uniquement sur gov.uk/eta. Elle coûte 20 £ par personne, enfants compris. L’agence peut s’en charger.",
+      ].join("\n"),
+    }),
+    ...authorizationCardPair({
+      text: "eta_uk_ancien_passeport_carte",
+      photo: "eta_uk_ancien_passeport_carte_photo",
+      textName: "eta_uk_ancien_passeport_bouton",
+      photoName: "eta_uk_ancien_passeport_photo",
+      dated: false,
+      body: [
+        "Bonjour {{1}},",
+        "",
+        "Votre ETA Royaume-Uni pour le séjour à {{2}} est liée à un ancien passeport.",
+        "Une nouvelle demande est nécessaire avec le passeport actuel, uniquement sur gov.uk/eta. L’agence peut s’en charger.",
+      ].join("\n"),
+    }),
+    ...authorizationCardPair({
+      text: "eta_uk_approuve_carte",
+      photo: "eta_uk_approuve_carte_photo",
+      textName: "eta_uk_approuve_bouton",
+      photoName: "eta_uk_approuve_photo",
+      dated: true,
+      body: [
+        "Bonjour {{1}},",
+        "",
+        "Votre ETA Royaume-Uni pour le séjour à {{2}} est valable jusqu’au {{3}}. Elle couvre tout le séjour.",
+      ].join("\n"),
+    }),
   ];
 }
 
@@ -1029,6 +1193,8 @@ export function conciergeContentVariables(input: {
   reference?: string | null;
   mediaUrl?: string | null;
   variable?: string | null;
+  /** Date affichée `JJ/MM/AAAA`, pour les modèles qui expirent ou qui sont approuvés. */
+  date?: string | null;
 }): Record<string, string> | null {
   const suffix = cleanToken(input.buttonSuffix);
   if (!suffix.startsWith("c/") || suffix.includes("://") || /token|password|mot de passe/i.test(suffix)) {
@@ -1038,7 +1204,11 @@ export function conciergeContentVariables(input: {
   const place = cleanToken(input.place || "");
   const reference = cleanToken(input.reference || "");
   const media = cleanToken(input.mediaUrl || "");
-  if (/https?:|travelba\.fr/i.test(`${text} ${place} ${reference}`)) return null;
+  const when = cleanToken(input.date || "");
+  if (/https?:|travelba\.fr/i.test(`${text} ${place} ${reference} ${when}`)) return null;
+  if (AUTHORIZATION_CARDS.has(input.template)) {
+    return authorizationVariables(input.template, text, place, reference, media, when, suffix);
+  }
   if (input.template === "sejour_sans_lieu" || input.template === "sejour_sans_lieu_texte") return null;
   if (input.template === "sejour" || input.template === "sejour_texte") {
     if (!place || !REFERENCE.test(reference) || HUB.test(place)) return null;
@@ -1089,6 +1259,63 @@ export function conciergeContentVariables(input: {
   return { "1": text, "2": suffix };
 }
 
+const AUTHORIZATION_DATED = new Set<ConciergeTemplate>([
+  "esta_expire_carte",
+  "esta_expire_carte_photo",
+  "esta_approuve_carte",
+  "esta_approuve_carte_photo",
+  "eta_uk_expire_carte",
+  "eta_uk_expire_carte_photo",
+  "eta_uk_approuve_carte",
+  "eta_uk_approuve_carte_photo",
+]);
+
+const AUTHORIZATION_PHOTO = new Set<ConciergeTemplate>([
+  "esta_manquant_carte_photo",
+  "esta_expire_carte_photo",
+  "esta_ancien_passeport_carte_photo",
+  "esta_approuve_carte_photo",
+  "eta_uk_manquant_carte_photo",
+  "eta_uk_expire_carte_photo",
+  "eta_uk_ancien_passeport_carte_photo",
+  "eta_uk_approuve_carte_photo",
+]);
+
+const AUTHORIZATION_CARDS = new Set<ConciergeTemplate>([
+  "esta_manquant_carte",
+  "esta_expire_carte",
+  "esta_ancien_passeport_carte",
+  "esta_approuve_carte",
+  "eta_uk_manquant_carte",
+  "eta_uk_expire_carte",
+  "eta_uk_ancien_passeport_carte",
+  "eta_uk_approuve_carte",
+  ...AUTHORIZATION_PHOTO,
+]);
+
+function authorizationVariables(
+  template: ConciergeTemplate,
+  name: string,
+  place: string,
+  reference: string,
+  media: string,
+  when: string,
+  suffix: string
+): Record<string, string> | null {
+  if (!name || !place || !REFERENCE.test(reference) || HUB.test(place)) return null;
+  if (/\d/.test(name) && name.replace(/[^A-Za-z0-9]/g, "").length >= 6) return null;
+  const stay = stayTemplateSlot(place, reference);
+  const dated = AUTHORIZATION_DATED.has(template);
+  if (dated && !/^\d{2}\/\d{2}\/\d{4}$/.test(when)) return null;
+  if (AUTHORIZATION_PHOTO.has(template)) {
+    if (!isWhatsappTypeMedia(media)) return null;
+    if (dated) return { "1": name, "2": stay, "3": when, "4": media, "5": suffix };
+    return { "1": name, "2": stay, "3": media, "4": suffix };
+  }
+  if (dated) return { "1": name, "2": stay, "3": when, "4": suffix };
+  return { "1": name, "2": stay, "3": suffix };
+}
+
 const PIECE_PHOTO = new Set<ConciergeTemplate>(["piece_photo", "pieces_photo", "pieces_composees_photo"]);
 
 const STAY_PHOTO = new Set<ConciergeTemplate>([
@@ -1116,6 +1343,14 @@ export function conciergePhotoTemplate(template: ConciergeTemplate): ConciergeTe
     passeports_carte: "passeports_carte_photo",
     formalite_prete_carte: "formalite_prete_carte_photo",
     formalite_manquante_carte: "formalite_manquante_carte_photo",
+    esta_manquant_carte: "esta_manquant_carte_photo",
+    esta_expire_carte: "esta_expire_carte_photo",
+    esta_ancien_passeport_carte: "esta_ancien_passeport_carte_photo",
+    esta_approuve_carte: "esta_approuve_carte_photo",
+    eta_uk_manquant_carte: "eta_uk_manquant_carte_photo",
+    eta_uk_expire_carte: "eta_uk_expire_carte_photo",
+    eta_uk_ancien_passeport_carte: "eta_uk_ancien_passeport_carte_photo",
+    eta_uk_approuve_carte: "eta_uk_approuve_carte_photo",
     connexion_carte: "connexion_carte_photo",
     encours: "encours_photo",
     chauffeur: "chauffeur_photo",
@@ -1156,6 +1391,22 @@ const TEMPLATE_IMAGE: Partial<Record<ConciergeTemplate, WhatsappImageKind>> = {
   formalite_manquante: "visa",
   formalite_manquante_carte: "visa",
   formalite_manquante_carte_photo: "visa",
+  esta_manquant_carte: "visa",
+  esta_manquant_carte_photo: "visa",
+  esta_expire_carte: "visa",
+  esta_expire_carte_photo: "visa",
+  esta_ancien_passeport_carte: "visa",
+  esta_ancien_passeport_carte_photo: "visa",
+  esta_approuve_carte: "visa",
+  esta_approuve_carte_photo: "visa",
+  eta_uk_manquant_carte: "visa",
+  eta_uk_manquant_carte_photo: "visa",
+  eta_uk_expire_carte: "visa",
+  eta_uk_expire_carte_photo: "visa",
+  eta_uk_ancien_passeport_carte: "visa",
+  eta_uk_ancien_passeport_carte_photo: "visa",
+  eta_uk_approuve_carte: "visa",
+  eta_uk_approuve_carte_photo: "visa",
   encours: "encours",
   encours_photo: "encours",
   chauffeur: "chauffeur",

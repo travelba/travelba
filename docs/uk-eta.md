@@ -180,6 +180,19 @@ Agence (`contact@travelba.fr`) : alerte si l’ETA est introuvable, refusée, ex
 
 Client, en français, depuis la fiche (clic « Envoyer au client », sauf `UK_ETA_CLIENT_AUTO_SEND`) : l’ETA est obligatoire, 20 £ par personne enfants compris, demande uniquement sur `https://www.gov.uk/eta` ou dans l’application UK ETA, décision en général dans la journée et au plus tard sous 3 jours ouvrés, valable 2 ans ou jusqu’à l’expiration du passeport, liée au passeport. Si un numéro de passeport apparaissait, il est masqué sauf les 3 derniers caractères.
 
+Le badge envoie le cas connu par WhatsApp. `UK_ETA_CLIENT_AUTO_SEND` reste éteint. Le même modèle ne part qu’une fois pour ce voyageur et ce séjour, sauf le bouton « Renvoyer ». Le contrat du webhook et les colonnes `dispatch_*` ne changent pas.
+
+| Cas | Modèle | Repli sans photo |
+|---|---|---|
+| Introuvable | `TWILIO_CONTENT_ETA_UK_MANQUANT_CARTE_PHOTO` | `TWILIO_CONTENT_ETA_UK_MANQUANT_CARTE` |
+| Expire avant le retour ou le départ | `TWILIO_CONTENT_ETA_UK_EXPIRE_CARTE_PHOTO` | `TWILIO_CONTENT_ETA_UK_EXPIRE_CARTE` |
+| Ancien passeport | `TWILIO_CONTENT_ETA_UK_ANCIEN_PASSEPORT_CARTE_PHOTO` | `TWILIO_CONTENT_ETA_UK_ANCIEN_PASSEPORT_CARTE` |
+| Approuvée pour tout le séjour | `TWILIO_CONTENT_ETA_UK_APPROUVE_CARTE_PHOTO` | `TWILIO_CONTENT_ETA_UK_APPROUVE_CARTE` |
+
+Sans téléphone, sans acceptation WhatsApp, ou sans SID approuvé, le badge dit pourquoi. La photo est `/whatsapp/visa.jpg`. Le bouton ouvre le séjour.
+
+Soumettre à Meta : `npx tsx scripts/arm-whatsapp-concierge.ts`. Coller chaque SID dans la variable sur Vercel Production, puis redéployer. Ne pas commiter les SID.
+
 ## RLS
 
 `crm_uk_eta_checks` et `crm_uk_eta_notices` : RLS activée. L’agence lit. L’écriture (résultat, webhook, e-mail) passe par la clé service. Pas de lecture client. La vue `uk_eta_a_verifier` n’est lisible que par `service_role`.
