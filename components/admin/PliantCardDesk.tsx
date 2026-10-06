@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { StayCard } from "@/components/crm/StayCard";
+import { parseEurosToCents } from "@/lib/crm/hotel-arrival";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { pliantSignedCents, pliantStatusLabel } from "@/lib/crm/pliant-tx";
 import type { PliantSpendLine } from "@/lib/crm/pliant-cards";
@@ -77,6 +78,14 @@ export function PliantCardDesk({
   const [transactionCountInput, setTransactionCountInput] = useState("");
   const ceilingLabel = ceilingCents != null && ceilingCents > 0 ? formatMoney(ceilingCents / 100, currency) : null;
   const issuedTransactions = issuedTransactionLine(transactionCount, transactionLimitCents, currency);
+  const draftCeiling = parseEurosToCents(limit);
+  const draftAmount = parseEurosToCents(transactionAmount);
+  const draftCount = Number(transactionCountInput.replace(/\s/g, ""));
+  const draftTransactions = issuedTransactionLine(
+    Number.isInteger(draftCount) && draftCount > 0 ? draftCount : null,
+    draftAmount,
+    currency
+  );
 
   async function post(body: Record<string, unknown>, failure: string) {
     setBusy(true);
@@ -125,13 +134,24 @@ export function PliantCardDesk({
           <p className="mt-1 break-words text-sm font-semibold">
             {note.trim() || "Nom de la carte"}
           </p>
-          {ceilingLabel ? (
-            <p className="mt-4">
-              <span className="text-[9px] uppercase tracking-[0.14em] text-white/50">Plafond</span>
-              <span className="block text-lg font-semibold tabular-nums">{ceilingLabel}</span>
-            </p>
-          ) : (
+          {mode === "booking" ? (
             <p className="mt-4 text-sm text-white/70">Le plafond se calcule avec le prix de l’hôtel, plus 30 %.</p>
+          ) : draftCeiling || draftTransactions ? (
+            <div className="mt-4">
+              {draftCeiling ? (
+                <p>
+                  <span className="text-[9px] uppercase tracking-[0.14em] text-white/50">Plafond</span>
+                  <span className="block text-lg font-semibold tabular-nums">
+                    {formatMoney(draftCeiling / 100, currency)}
+                  </span>
+                </p>
+              ) : null}
+              {draftTransactions ? <p className="mt-2 text-sm text-white/70">{draftTransactions}</p> : null}
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-white/70">
+              Indiquez le plafond, le montant par transaction et le nombre de transactions.
+            </p>
           )}
         </div>
       )}
