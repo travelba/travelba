@@ -1,4 +1,4 @@
-import { pliantCardNomination } from "./eta-il-fee";
+import { pliantCardNomination, pliantDesignation } from "./eta-il-fee";
 import { addIsoDays, cardCloseDate, isoDate, parseEurosToCents } from "./hotel-arrival";
 
 /** Marque une carte dont le montant a été choisi sur le dossier. Le cron ne la réécrit pas. */
@@ -40,6 +40,30 @@ export function bookingCardValidity(today: string, endDate: string | null | unde
 /** Pliant plafonne une carte voyage à 3 transactions si ce champ est absent. */
 export const MANUAL_CARD_TX_MAX = 999_999_999;
 
+/** Nombre de paiements et montant maximum de chacun. Le montant reste sous le plafond. */
+export function cardTransactionRules(input: {
+  limitCents: number;
+  transactionAmount: string;
+  transactionCount: string;
+}): { error: string } | { transactionLimitCents: number; maxTransactionCount: number } {
+  const transactionLimitCents = parseEurosToCents(input.transactionAmount);
+  if (transactionLimitCents == null) return { error: "Indiquez le montant par transaction." };
+  if (transactionLimitCents > input.limitCents) {
+    return { error: "Le montant par transaction ne peut pas dépasser le plafond." };
+  }
+  const maxTransactionCount = parseTransactionCount(input.transactionCount);
+  if (maxTransactionCount == null) return { error: "Indiquez le nombre de transactions." };
+  return { transactionLimitCents, maxTransactionCount };
+}
+
+function parseTransactionCount(value: string) {
+  const raw = value.trim().replace(/\s/g, "");
+  if (!/^\d+$/.test(raw)) return null;
+  const count = Number(raw);
+  if (!Number.isInteger(count) || count < 1 || count > MANUAL_CARD_TX_MAX) return null;
+  return count;
+}
+
 /** Transfert d’argent. Les retraits DAB (6010, 6011) restent ouverts. */
 const MONEY_TRANSFER_MCCS = ["4829", "6012", "6051", "6536", "6537", "6538", "6540"] as const;
 
@@ -61,6 +85,9 @@ export function manualStayCardBody(input: {
   validTo: string;
   organizationId: string;
   existingCards?: number;
+  designation?: string | null;
+  transactionLimitCents?: number;
+  maxTransactionCount?: number;
 }) {
   const name = pliantCardNomination({
     firstName: input.firstName,
@@ -68,16 +95,17 @@ export function manualStayCardBody(input: {
     existingCards: input.existingCards,
   });
   const money = { value: input.limitCents, currency: "EUR" as const };
+  const perTransaction = input.transactionLimitCents ?? input.limitCents;
   return {
     organizationId: input.organizationId,
     cardConfig: "PLIANT_VIRTUAL_TRAVEL" as const,
-    label: name.label,
+    label: pliantDesignation(input.designation) || name.label,
     customFirstName: name.customFirstName,
     customLastName: name.customLastName,
     limit: money,
-    transactionLimit: money,
+    transactionLimit: { value: perTransaction, currency: "EUR" as const },
     limitRenewFrequency: "TOTAL" as const,
-    maxTransactionCount: MANUAL_CARD_TX_MAX,
+    maxTransactionCount: input.maxTransactionCount ?? MANUAL_CARD_TX_MAX,
     cardControls: manualCardControls(),
     validFrom: input.validFrom,
     validTo: input.validTo,
@@ -93,12 +121,24 @@ export function manualStayCardDraft(input: {
   validTo: string;
   organizationId: string;
   existingCards?: number;
+  designation?: string | null;
+  transactionAmount?: string;
+  transactionCount?: string;
 }): { error: string } | { body: ReturnType<typeof manualStayCardBody> } {
   const limitCents = parseEurosToCents(input.amount);
   const firstName = input.firstName.trim();
   const lastName = input.lastName.trim();
   if (limitCents == null) return { error: "Indiquez un montant en euros." as const };
   if (!firstName || !lastName) return { error: "Indiquez le nom et le prénom." as const };
+  const asked = input.transactionAmount != null || input.transactionCount != null;
+  const rules = asked
+    ? cardTransactionRules({
+        limitCents,
+        transactionAmount: input.transactionAmount || "",
+        transactionCount: input.transactionCount || "",
+      })
+    : null;
+  if (rules && "error" in rules) return { error: rules.error };
   return {
     body: manualStayCardBody({
       firstName,
@@ -108,6 +148,9 @@ export function manualStayCardDraft(input: {
       validTo: input.validTo,
       organizationId: input.organizationId,
       existingCards: input.existingCards,
+      designation: input.designation,
+      transactionLimitCents: rules?.transactionLimitCents,
+      maxTransactionCount: rules?.maxTransactionCount,
     }),
   };
 }

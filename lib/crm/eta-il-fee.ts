@@ -19,6 +19,13 @@ export function pliantCardName(value: string) {
   return value.replace(NAME_CHARS, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, NAME_MAX);
 }
 
+/** Désignation interne Pliant (`label`, 40 caractères). Vide si rien n’est saisi. */
+export function pliantDesignation(value: string | null | undefined) {
+  const text = (value || "").replace(/[\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim();
+  if (!text) return null;
+  return text.slice(0, LABEL_MAX);
+}
+
 function cardOrdinal(existingCards: number | undefined) {
   return Math.max(0, Math.floor(Number(existingCards)) || 0) + 1;
 }

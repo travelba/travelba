@@ -367,6 +367,8 @@ export type CrmBookingCard = {
   first_name: string;
   last_name: string;
   limit_cents: number;
+  transaction_limit_cents: number | null;
+  max_transaction_count: number | null;
   currency: string;
   valid_from: string;
   valid_to: string;

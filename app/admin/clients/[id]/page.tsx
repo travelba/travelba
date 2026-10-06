@@ -324,6 +324,9 @@ export default async function AdminClientDetailPage({ params }: Props) {
             ceilingCents={customerCard?.limit_cents ?? null}
             currency={customerCard?.currency || "EUR"}
             locked={customerCard?.status === "locked"}
+            designation={customerCard?.label}
+            transactionCount={customerCard?.max_transaction_count}
+            transactionLimitCents={customerCard?.transaction_limit_cents}
             account={pliantAccount}
             spends={customerSpends}
           />

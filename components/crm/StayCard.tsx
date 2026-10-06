@@ -13,6 +13,7 @@ export function StayCard({
   ceilingLabel = null,
   locked = false,
   sealed = false,
+  title = "Carte hôtel",
 }: {
   face: StayCardFace;
   revealUrl: string;
@@ -22,6 +23,7 @@ export function StayCard({
   ceilingLabel?: string | null;
   locked?: boolean;
   sealed?: boolean;
+  title?: string;
 }) {
   const [code, setCode] = useState("");
   const [frame, setFrame] = useState<{ src: string; frameId: string } | null>(null);
@@ -71,7 +73,7 @@ export function StayCard({
         <div className="relative flex items-start justify-between gap-3">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#C5A880]">Travelba</p>
-            <p className="mt-0.5 text-sm font-semibold">Carte hôtel</p>
+            <p className="mt-0.5 break-words text-sm font-semibold">{title.trim() || "Carte hôtel"}</p>
             {face.closed ? (
               <p className="mt-2 inline-flex rounded-full border border-[#C5A880]/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#C5A880]">
                 Clôturée

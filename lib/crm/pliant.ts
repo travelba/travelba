@@ -390,7 +390,8 @@ export async function readPliantCardFace(cardId: string) {
 export async function setPliantCardLimit(
   cardId: string,
   limit: { value: number; currency: string },
-  count: number
+  count: number,
+  transactionLimit?: { value: number; currency: string }
 ) {
   const token = await accessToken();
   const res = await fetch(`${endpoints().api}/cards/${cardId}`, {
@@ -403,7 +404,7 @@ export async function setPliantCardLimit(
     },
     body: JSON.stringify({
       limit,
-      transactionLimit: limit,
+      transactionLimit: transactionLimit || limit,
       limitRenewFrequency: "TOTAL",
       maxTransactionCount: count,
     }),

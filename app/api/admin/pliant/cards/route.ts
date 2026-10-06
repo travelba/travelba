@@ -26,6 +26,9 @@ export async function POST(request: Request) {
     bookingId?: string;
     cardId?: string;
     limit?: unknown;
+    designation?: unknown;
+    transactionAmount?: unknown;
+    transactionCount?: unknown;
   } | null;
   const action = body?.action;
   if (action !== "issue" && action !== "limit" && action !== "lock" && action !== "unlock") {
@@ -66,6 +69,9 @@ export async function POST(request: Request) {
         lastName: person.last_name || "Travelba",
         limitCents: cents,
         currency: "EUR",
+        designation: typeof body.designation === "string" ? body.designation : "",
+        transactionAmount: typeof body.transactionAmount === "string" ? body.transactionAmount : "",
+        transactionCount: typeof body.transactionCount === "string" ? body.transactionCount : "",
       });
       return NextResponse.json({ ok: true, ...issued });
     }
@@ -78,7 +84,10 @@ export async function POST(request: Request) {
     console.error("[pliant] carte", err instanceof Error ? err.message : "échec");
     const message = err instanceof Error ? err.message : "";
     const known =
-      message.startsWith("Pliant") || message === "Pliant n’est pas branché.";
+      message.startsWith("Pliant") ||
+      message === "Pliant n’est pas branché." ||
+      message.startsWith("Indiquez ") ||
+      message.startsWith("Le montant ");
     return jsonError(known ? message : "La carte n’a pas pu être mise à jour.", 502);
   }
 }

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   MANUAL_CARD_TX_MAX,
   bookingCardValidity,
+  cardTransactionRules,
   manualCardControls,
   manualStayCardBody,
   manualStayCardDraft,
@@ -34,6 +35,71 @@ test("carte manuelle : plafond reçu, transactions illimitées, transfert d’ar
   assert.deepEqual(body.cardControls.categories.values, ["4829", "6012", "6051", "6536", "6537", "6538", "6540"]);
   assert.equal(Object.hasOwn(body.cardControls, "countries"), false);
   assert.equal(Object.hasOwn(body.cardControls, "currencies"), false);
+});
+
+test("carte manuelle : nombre et montant de transaction choisis", () => {
+  const over = cardTransactionRules({ limitCents: 10000, transactionAmount: "200", transactionCount: "2" });
+  assert.equal("error" in over, true);
+  const missing = cardTransactionRules({ limitCents: 50000, transactionAmount: "", transactionCount: "2" });
+  assert.equal("error" in missing, true);
+  const ready = manualStayCardDraft({
+    amount: "500",
+    firstName: "Camille",
+    lastName: "Martin",
+    validFrom: "2026-10-04",
+    validTo: "2026-10-12",
+    organizationId: "org",
+    transactionAmount: "200",
+    transactionCount: "3",
+  });
+  if (!("body" in ready)) {
+    assert.fail(ready.error);
+    return;
+  }
+  assert.equal(ready.body.limit.value, 50000);
+  assert.equal(ready.body.transactionLimit.value, 20000);
+  assert.equal(ready.body.maxTransactionCount, 3);
+  assert.equal(ready.body.transactionLimit.value <= ready.body.limit.value, true);
+});
+
+test("carte manuelle : la désignation interne remplace le libellé du nom", () => {
+  const named = manualStayCardBody({
+    firstName: "Camille",
+    lastName: "Martin",
+    limitCents: 10000,
+    validFrom: "2026-10-04",
+    validTo: "2026-10-12",
+    organizationId: "org",
+    designation: "  Hôtel Milan  ",
+  });
+  assert.equal(named.label, "Hôtel Milan");
+  assert.equal(named.customFirstName, "Camille");
+  assert.equal(named.customLastName, "Martin");
+  const blank = manualStayCardDraft({
+    amount: "100",
+    firstName: "Camille",
+    lastName: "Martin",
+    validFrom: "2026-10-04",
+    validTo: "2026-10-12",
+    organizationId: "org",
+    designation: "   ",
+  });
+  if (!("body" in blank)) {
+    assert.fail(blank.error);
+    return;
+  }
+  assert.equal(blank.body.label, "Camille Martin");
+  const long = manualStayCardBody({
+    firstName: "Camille",
+    lastName: "Martin",
+    limitCents: 100,
+    validFrom: "2026-10-04",
+    validTo: "2026-10-04",
+    organizationId: "org",
+    designation: "Séjour d’été " + "x".repeat(40),
+  });
+  assert.equal(long.label.length, 40);
+  assert.equal(long.label.startsWith("Séjour d’été"), true);
 });
 
 test("carte manuelle : le libellé tient dans quarante caractères", () => {

@@ -12,6 +12,8 @@ const existing: PliantCardDraft = {
   currency: "EUR",
   status: "active",
   limit_manual: true,
+  transaction_limit_cents: 4000,
+  max_transaction_count: 3,
 };
 
 test("un plafond saisi n’est pas réécrit par la synchro", () => {
@@ -23,6 +25,8 @@ test("un plafond saisi n’est pas réécrit par la synchro", () => {
   assert.equal(next.limit_cents, 13000);
   assert.equal(next.limit_manual, true);
   assert.equal(next.booking_id, "b1");
+  assert.equal(next.max_transaction_count, 3);
+  assert.equal(next.transaction_limit_cents, 4000);
 });
 
 test("modifier le plafond remplace le montant et le garde manuel", () => {

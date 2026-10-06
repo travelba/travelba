@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { customerPliantCardCount, etaIlPliantCard, pickListedId, pickTravelConfig, pliantCardName, pliantRefusal } from "./eta-il-fee";
+import {
+  customerPliantCardCount,
+  etaIlPliantCard,
+  pickListedId,
+  pickTravelConfig,
+  pliantCardName,
+  pliantDesignation,
+  pliantRefusal,
+} from "./eta-il-fee";
 import { corridorCeilingCents, ECB_SNAPSHOT, centsToEur } from "./visa-fees";
 import type { Db } from "../supabase/db";
 
@@ -8,6 +16,12 @@ const NAME_CHARS = /^[A-Za-z0-9äöüÄÖÜ.\-]+$/;
 
 test("le nom sur la carte Pliant n’a que les caractères acceptés", () => {
   assert.equal(pliantCardName("Simon, Iony"), "Simon-Iony");
+});
+
+test("la désignation interne garde les accents et tient dans quarante caractères", () => {
+  assert.equal(pliantDesignation("  Hôtel d’été  "), "Hôtel d’été");
+  assert.equal(pliantDesignation("   "), null);
+  assert.equal(pliantDesignation("a".repeat(50))?.length, 40);
 });
 
 test("la carte est au nom du client, plafonnée sur les 25 ILS au cours BCE", () => {

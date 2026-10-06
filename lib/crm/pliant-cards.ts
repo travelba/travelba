@@ -20,6 +20,8 @@ export type PliantCardDraft = {
   currency: string;
   status: PliantCardStatus;
   limit_manual: boolean;
+  transaction_limit_cents: number | null;
+  max_transaction_count: number | null;
 };
 
 export type PliantCardPatch = Partial<Omit<PliantCardDraft, "pliant_card_id">> & {
@@ -39,6 +41,8 @@ export function mergePliantCard(existing: PliantCardDraft | null, incoming: Plia
     currency: currencyOf(incoming.currency || existing?.currency),
     status: incoming.status || existing?.status || "active",
     limit_manual: incoming.limit_manual === true ? true : existing?.limit_manual === true,
+    transaction_limit_cents: incoming.transaction_limit_cents ?? existing?.transaction_limit_cents ?? null,
+    max_transaction_count: incoming.max_transaction_count ?? existing?.max_transaction_count ?? null,
   };
 }
 

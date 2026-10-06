@@ -1,5 +1,6 @@
 import "server-only";
 
+import { pliantDesignation } from "./eta-il-fee";
 import { parisIsoDate } from "./hotel-arrival";
 import { bookingCardValidity, manualStayCardDraft, sameCardNameCount } from "./manual-stay-card";
 import {
@@ -16,7 +17,15 @@ type Admin = Db;
 
 export async function issueBookingCard(
   admin: Admin,
-  input: { bookingId: string; amount: string; firstName: string; lastName: string }
+  input: {
+    bookingId: string;
+    amount: string;
+    firstName: string;
+    lastName: string;
+    designation?: string | null;
+    transactionAmount?: string;
+    transactionCount?: string;
+  }
 ) {
   const { data: bookingData } = await admin
     .from("crm_bookings")
@@ -25,6 +34,8 @@ export async function issueBookingCard(
     .maybeSingle();
   const booking = bookingData as { id: string; end_date: string | null } | null;
   if (!booking) throw new Error("Dossier introuvable.");
+
+  if (!pliantDesignation(input.designation)) throw new Error("Indiquez le nom de la carte.");
 
   const today = parisIsoDate(new Date());
   const window = bookingCardValidity(today, booking.end_date);
@@ -40,6 +51,9 @@ export async function issueBookingCard(
     validFrom: window.validFrom,
     validTo: window.validTo,
     organizationId: process.env.PLIANT_ORGANIZATION_ID || "",
+    designation: input.designation,
+    transactionAmount: input.transactionAmount ?? "",
+    transactionCount: input.transactionCount ?? "",
     existingCards: sameCardNameCount(
       prior.map((row) => ({ firstName: row.first_name, lastName: row.last_name })),
       input.firstName,
@@ -60,6 +74,8 @@ export async function issueBookingCard(
     first_name: draft.body.customFirstName,
     last_name: draft.body.customLastName,
     limit_cents: draft.body.limit.value,
+    transaction_limit_cents: draft.body.transactionLimit.value,
+    max_transaction_count: draft.body.maxTransactionCount,
     currency: "EUR",
     valid_from: draft.body.validFrom,
     valid_to: draft.body.validTo,

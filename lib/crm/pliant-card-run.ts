@@ -1,6 +1,7 @@
 import "server-only";
 
-import { pliantCardNomination } from "./eta-il-fee";
+import { pliantCardNomination, pliantDesignation } from "./eta-il-fee";
+import { cardTransactionRules } from "./manual-stay-card";
 import { addIsoDays, parisIsoDate } from "./hotel-arrival";
 import {
   mergePliantCard,
@@ -22,7 +23,7 @@ import {
 type Admin = { from: (table: string) => any };
 
 const CARD_COLUMNS =
-  "pliant_card_id, customer_id, booking_id, label, last4, ceiling_cents, currency, status, limit_manual";
+  "pliant_card_id, customer_id, booking_id, label, last4, ceiling_cents, currency, status, limit_manual, transaction_limit_cents, max_transaction_count";
 
 export async function rememberPliantCard(admin: Admin, incoming: PliantCardPatch) {
   try {
@@ -43,6 +44,8 @@ export async function rememberPliantCard(admin: Admin, incoming: PliantCardPatch
         currency: row.currency,
         status: row.status,
         limit_manual: row.limit_manual,
+        transaction_limit_cents: row.transaction_limit_cents,
+        max_transaction_count: row.max_transaction_count,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "pliant_card_id" }
@@ -103,12 +106,18 @@ export async function setRememberedCardLimit(
 
 export async function changePliantCardLimit(admin: Admin, cardId: string, limitCents: number, currency: string) {
   if (!pliantConfigured()) throw new Error("Pliant n’est pas branché.");
-  await setPliantCardLimit(cardId, { value: limitCents, currency }, 20);
+  const kept = await rememberedTransactionRules(admin, cardId, limitCents);
+  await setPliantCardLimit(cardId, { value: limitCents, currency }, kept.count, {
+    value: kept.transactionLimitCents,
+    currency,
+  });
   await rememberPliantCard(admin, {
     pliant_card_id: cardId,
     limit_cents: limitCents,
     currency,
     limit_manual: true,
+    transaction_limit_cents: kept.transactionLimitCents,
+    max_transaction_count: kept.count,
   });
 }
 
@@ -162,24 +171,41 @@ export async function setPliantCardLocked(admin: Admin, cardId: string, locked: 
 
 export async function issueCustomerPliantCard(
   admin: Admin,
-  input: { customerId: string; firstName: string; lastName: string; limitCents: number; currency: string }
+  input: {
+    customerId: string;
+    firstName: string;
+    lastName: string;
+    limitCents: number;
+    currency: string;
+    designation?: string | null;
+    transactionAmount?: string;
+    transactionCount?: string;
+  }
 ) {
   if (!pliantConfigured()) throw new Error("Pliant n’est pas branché.");
   const open = await openCustomerCard(admin, input.customerId);
   if (open) return { cardId: open, created: false as const };
   const name = pliantCardNomination({ firstName: input.firstName, lastName: input.lastName });
+  const designation = pliantDesignation(input.designation);
+  if (!designation) throw new Error("Indiquez le nom de la carte.");
+  const rules = cardTransactionRules({
+    limitCents: input.limitCents,
+    transactionAmount: input.transactionAmount || "",
+    transactionCount: input.transactionCount || "",
+  });
+  if ("error" in rules) throw new Error(rules.error);
   const today = parisIsoDate(new Date());
   const money = { value: input.limitCents, currency: input.currency };
   const issued = await issuePliantCard(process.env.PLIANT_CARDHOLDER_ID || "", {
     organizationId: process.env.PLIANT_ORGANIZATION_ID || "",
     cardConfig: "PLIANT_VIRTUAL_TRAVEL",
-    label: name.label,
+    label: designation || name.label,
     customFirstName: name.customFirstName,
     customLastName: name.customLastName,
     limit: money,
-    transactionLimit: money,
+    transactionLimit: { value: rules.transactionLimitCents, currency: input.currency },
     limitRenewFrequency: "TOTAL",
-    maxTransactionCount: 20,
+    maxTransactionCount: rules.maxTransactionCount,
     validFrom: today,
     validTo: addIsoDays(today, 365),
     validTimezone: "Europe/Paris",
@@ -190,12 +216,14 @@ export async function issueCustomerPliantCard(
     pliant_card_id: issued.cardId,
     customer_id: input.customerId,
     booking_id: null,
-    label: face.label || name.label,
+    label: designation || face.label || name.label,
     last4: face.last4,
     limit_cents: input.limitCents,
     currency: input.currency,
     status: "active",
     limit_manual: true,
+    transaction_limit_cents: rules.transactionLimitCents,
+    max_transaction_count: rules.maxTransactionCount,
   });
   return { cardId: issued.cardId, created: true as const };
 }
@@ -276,7 +304,28 @@ function asDraft(data: unknown): PliantCardDraft | null {
     currency: row.currency || "EUR",
     status,
     limit_manual: row.limit_manual === true,
+    transaction_limit_cents: numberOrNull(row.transaction_limit_cents),
+    max_transaction_count: numberOrNull(row.max_transaction_count),
   };
+}
+
+async function rememberedTransactionRules(admin: Admin, cardId: string, limitCents: number) {
+  try {
+    const { data } = await admin
+      .from("crm_pliant_cards")
+      .select("max_transaction_count, transaction_limit_cents")
+      .eq("pliant_card_id", cardId)
+      .maybeSingle();
+    const row = data as { max_transaction_count?: number | null; transaction_limit_cents?: number | null } | null;
+    const count = numberOrNull(row?.max_transaction_count);
+    const tx = numberOrNull(row?.transaction_limit_cents);
+    return {
+      count: count != null && count >= 1 ? count : 20,
+      transactionLimitCents: tx != null && tx > 0 ? Math.min(tx, limitCents) : limitCents,
+    };
+  } catch {
+    return { count: 20, transactionLimitCents: limitCents };
+  }
 }
 
 function numberOrNull(value: unknown) {

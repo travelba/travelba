@@ -8,6 +8,15 @@ import { pliantSignedCents, pliantStatusLabel } from "@/lib/crm/pliant-tx";
 import type { PliantSpendLine } from "@/lib/crm/pliant-cards";
 import type { StayCardFace } from "@/lib/crm/hotel-arrival";
 
+function issuedTransactionLine(count: number | null | undefined, cents: number | null | undefined, currency: string) {
+  const bits: string[] = [];
+  if (typeof count === "number" && count > 0 && count < 999_999_999) {
+    bits.push(count === 1 ? "1 transaction" : `${count.toLocaleString("fr-FR")} transactions`);
+  }
+  if (typeof cents === "number" && cents > 0) bits.push(`${formatMoney(cents / 100, currency)} par transaction`);
+  return bits.join(" · ");
+}
+
 export function PliantAccountBalance({
   account,
 }: {
@@ -38,6 +47,9 @@ export function PliantCardDesk({
   account = null,
   spends = [],
   views = [],
+  designation = null,
+  transactionCount = null,
+  transactionLimitCents = null,
 }: {
   mode: "booking" | "customer";
   bookingId?: string | null;
@@ -52,12 +64,19 @@ export function PliantCardDesk({
   account?: { availableCents: number | null; currency: string } | null;
   spends?: PliantSpendLine[];
   views?: { name: string; at: string }[];
+  designation?: string | null;
+  transactionCount?: number | null;
+  transactionLimitCents?: number | null;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [limit, setLimit] = useState(ceilingCents != null ? (ceilingCents / 100).toFixed(2).replace(".", ",") : "");
+  const [note, setNote] = useState("");
+  const [transactionAmount, setTransactionAmount] = useState("");
+  const [transactionCountInput, setTransactionCountInput] = useState("");
   const ceilingLabel = ceilingCents != null && ceilingCents > 0 ? formatMoney(ceilingCents / 100, currency) : null;
+  const issuedTransactions = issuedTransactionLine(transactionCount, transactionLimitCents, currency);
 
   async function post(body: Record<string, unknown>, failure: string) {
     setBusy(true);
@@ -98,11 +117,14 @@ export function PliantCardDesk({
           locked={locked}
           sealed={!revealUrl}
           views={views}
+          title={designation || undefined}
         />
       ) : (
         <div className="max-w-[22rem] rounded-[1.15rem] border border-dashed border-[#C5A880] bg-[#0B192C] p-5 text-white">
           <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#C5A880]">Travelba</p>
-          <p className="mt-1 text-sm font-semibold">{mode === "customer" ? "Carte client" : "Carte du voyage"}</p>
+          <p className="mt-1 break-words text-sm font-semibold">
+            {note.trim() || "Nom de la carte"}
+          </p>
           {ceilingLabel ? (
             <p className="mt-4">
               <span className="text-[9px] uppercase tracking-[0.14em] text-white/50">Plafond</span>
@@ -147,6 +169,7 @@ export function PliantCardDesk({
           </button>
         </form>
       ) : null}
+      {cardId && issuedTransactions ? <p className="text-sm text-[var(--admin-navy)]/70">{issuedTransactions}</p> : null}
       {!cardId && mode === "booking" && bookingId ? (
         <button
           type="button"
@@ -162,9 +185,52 @@ export function PliantCardDesk({
           className="flex max-w-md flex-wrap items-end gap-2"
           onSubmit={(event) => {
             event.preventDefault();
-            void post({ action: "issue", customerId, limit }, "Pliant n’a pas créé la carte.");
+            void post(
+              {
+                action: "issue",
+                customerId,
+                limit,
+                designation: note,
+                transactionAmount,
+                transactionCount: transactionCountInput,
+              },
+              "Pliant n’a pas créé la carte."
+            );
           }}
         >
+          <label className="basis-full text-sm text-[var(--admin-navy)]">
+            Nom de la carte
+            <input
+              className="mt-1 w-full rounded-xl border border-[#e5e3dc] bg-white px-3 py-2 text-sm outline-none focus:border-[#0B192C]"
+              value={note}
+              required
+              maxLength={40}
+              onChange={(event) => setNote(event.target.value)}
+              aria-label="Nom de la carte"
+            />
+          </label>
+          <label className="text-sm text-[var(--admin-navy)]">
+            Montant par transaction
+            <input
+              className="mt-1 w-36 rounded-xl border border-[#e5e3dc] bg-white px-3 py-2 text-sm outline-none focus:border-[#0B192C]"
+              inputMode="decimal"
+              value={transactionAmount}
+              onChange={(event) => setTransactionAmount(event.target.value)}
+              aria-label="Montant par transaction"
+              required
+            />
+          </label>
+          <label className="text-sm text-[var(--admin-navy)]">
+            Nombre de transactions
+            <input
+              className="mt-1 w-36 rounded-xl border border-[#e5e3dc] bg-white px-3 py-2 text-sm outline-none focus:border-[#0B192C]"
+              inputMode="numeric"
+              value={transactionCountInput}
+              onChange={(event) => setTransactionCountInput(event.target.value)}
+              aria-label="Nombre de transactions"
+              required
+            />
+          </label>
           <label className="text-sm text-[var(--admin-navy)]">
             Plafond
             <input
