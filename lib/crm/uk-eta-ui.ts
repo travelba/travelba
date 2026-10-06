@@ -31,6 +31,9 @@ export type UkEtaTravelerLine = {
   caption: string | null;
   canVerify: boolean;
   canSend: boolean;
+  canResend: boolean;
+  preview: string | null;
+  sendBlock: string | null;
   sent: boolean;
   pending: boolean;
   stale: boolean;
@@ -123,6 +126,9 @@ export function ukEtaLineAsPending(line: UkEtaTravelerLine, requestedAt: string,
     checkedLabel: ukEtaRequestedLabel(requestedAt),
     caption: null,
     canSend: false,
+    preview: null,
+    sendBlock: null,
+    canResend: false,
     pending: true,
     stale,
     requestedAt,

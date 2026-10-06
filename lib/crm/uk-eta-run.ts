@@ -20,6 +20,12 @@ import {
   type UkEtaStatus,
   type UkEtaTravelerLine,
 } from "@/lib/crm/uk-eta";
+import {
+  authorizationNoticeCase,
+  authorizationTravelerName,
+} from "@/lib/crm/authorization-notice";
+import { sendAuthorizationWhatsapp } from "@/lib/crm/authorization-send";
+import { stayPlaceName } from "@/lib/crm/concierge-notices";
 import { deliverUkEtaMail, ukEtaAgencyMail, ukEtaClientMail } from "@/lib/crm/uk-eta-mail";
 import { parisIsoDate } from "@/lib/crm/hotel-arrival";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
@@ -51,6 +57,7 @@ type CheckRow = {
 
 type StayBooking = {
   id: string;
+  reference?: string | null;
   destination?: string | null;
   title?: string | null;
   start_date?: string | null;
@@ -132,7 +139,12 @@ function linesFor(
   items: Pick<CrmBookingItem, "kind" | "lifecycle" | "title" | "details" | "start_at" | "end_at">[],
   travelers: CrmBookingTraveler[],
   documents: CrmTravelDocument[],
-  holder: PersonName | null,
+  holder: (PersonName & {
+    email?: string | null;
+    phone?: string | null;
+    whatsapp_opt_in_at?: string | null;
+    whatsapp_opt_out_at?: string | null;
+  }) | null,
   byTraveler: Map<string, CheckRow>
 ) {
   const dates = tripUkEtaDates(items, booking);
@@ -157,6 +169,16 @@ function linesFor(
         dispatchedAt: row.dispatched_at,
         attemptAt: row.dispatch_attempt_at,
         nowMs,
+        stay: {
+          place: stayPlaceName(booking.destination || null, booking.title || null),
+          reference: booking.reference || null,
+          departureOn: dates.departure,
+          phone: holder?.phone || null,
+          email: holder?.email || null,
+          optInAt: holder?.whatsapp_opt_in_at,
+          optOutAt: holder?.whatsapp_opt_out_at,
+          boundDocumentId: row.travel_document_id,
+        },
       })
     );
   }
@@ -260,14 +282,24 @@ async function loadStay(admin: Admin, bookingId: string) {
     admin.from("crm_booking_items").select("kind, lifecycle, title, details, start_at, end_at").eq("booking_id", bookingId),
     admin.from("crm_booking_travelers").select("*").eq("booking_id", bookingId),
     admin.from("crm_travel_documents").select("*").eq("customer_id", row.customer_id),
-    admin.from("crm_customers").select("first_name, last_name, email").eq("id", row.customer_id).maybeSingle(),
+    admin
+      .from("crm_customers")
+      .select("first_name, last_name, email, phone, whatsapp_opt_in_at, whatsapp_opt_out_at")
+      .eq("id", row.customer_id)
+      .maybeSingle(),
   ]);
   return {
     booking: row,
     items: (items.data || []) as CrmBookingItem[],
     travelers: (travelers.data || []) as CrmBookingTraveler[],
     documents: (documents.data || []) as CrmTravelDocument[],
-    holder: (customer.data as (PersonName & { email?: string | null }) | null) || null,
+    holder:
+      (customer.data as (PersonName & {
+        email?: string | null;
+        phone?: string | null;
+        whatsapp_opt_in_at?: string | null;
+        whatsapp_opt_out_at?: string | null;
+      }) | null) || null,
   };
 }
 
@@ -364,12 +396,17 @@ async function stayContext(admin: Admin, bookingId: string) {
   return { booking: stay.booking, dates };
 }
 
-export async function sendUkEtaToClient(admin: Admin, bookingId: string, travelerId: string) {
+export async function sendUkEtaToClient(
+  admin: Admin,
+  bookingId: string,
+  travelerId: string,
+  options?: { again?: boolean }
+) {
   const stay = await stayContext(admin, bookingId);
   if (!stay) return { ok: false as const, error: "Dossier introuvable." };
   const { data: check } = await admin
     .from("crm_uk_eta_checks")
-    .select("id, status, valid_until, passport_last3, travel_document_id, client_message_sent_at")
+    .select("id, status, valid_until, passport_last3, travel_document_id, checked_at, client_message_sent_at")
     .eq("booking_id", bookingId)
     .eq("traveler_id", travelerId)
     .maybeSingle();
@@ -379,19 +416,53 @@ export async function sendUkEtaToClient(admin: Admin, bookingId: string, travele
     valid_until: string | null;
     passport_last3: string | null;
     travel_document_id: string | null;
+    checked_at: string | null;
     client_message_sent_at: string | null;
   } | null;
   if (!row || !isUkEtaStatus(row.status)) return { ok: false as const, error: "Pas de vérification ETA." };
-  if (row.client_message_sent_at) return { ok: true as const };
+  if (row.client_message_sent_at && !options?.again) return { ok: true as const };
   const loaded = await loadStay(admin, bookingId);
-  const email = (loaded?.holder && "email" in loaded.holder ? loaded.holder.email || "" : "").trim();
-  if (!email) return { ok: false as const, error: "Pas d’adresse pour ce client." };
-  let passport: CrmTravelDocument | null = null;
-  if (row.travel_document_id) {
-    const { data } = await admin.from("crm_travel_documents").select("number, expires_on").eq("id", row.travel_document_id).maybeSingle();
-    passport = (data as CrmTravelDocument | null) || null;
-  }
+  const account = loaded?.holder || null;
+  const person = (loaded?.travelers || []).find((traveler) => traveler.id === travelerId) || null;
+  const passport = person ? passportForEsta(person, loaded?.documents || [], account) : null;
   const status = row.status as UkEtaStatus;
+  const notice = authorizationNoticeCase({
+    status,
+    validUntil: row.valid_until,
+    returnOn: stay.dates.returnOn,
+    departureOn: stay.dates.departure,
+    passportExpires: passport?.expires_on,
+    currentNumber: passport?.number,
+    boundLast3: row.passport_last3,
+    currentDocumentId: passport?.id,
+    boundDocumentId: row.travel_document_id,
+    passportIssuedOn: passport?.issued_on,
+    authorizationOn: row.checked_at,
+  });
+  if (notice && person && loaded) {
+    const sent = await sendAuthorizationWhatsapp(admin, {
+      kind: "uk_eta",
+      notice,
+      customerId: loaded.booking.customer_id,
+      bookingId,
+      travelerId,
+      phone: account?.phone || null,
+      email: account?.email || null,
+      name: authorizationTravelerName(person.first_name, person.last_name),
+      place: stayPlaceName(loaded.booking.destination || null, loaded.booking.title || null),
+      reference: loaded.booking.reference,
+      validUntil: row.valid_until,
+      optInAt: account?.whatsapp_opt_in_at,
+      optOutAt: account?.whatsapp_opt_out_at,
+      again: options?.again,
+    });
+    if (!sent.ok) return sent;
+    await admin.from("crm_uk_eta_checks").update({ client_message_sent_at: new Date().toISOString() }).eq("id", row.id);
+    return { ok: true as const };
+  }
+  if (row.client_message_sent_at) return { ok: true as const };
+  const email = (account?.email || "").trim();
+  if (!email) return { ok: false as const, error: "Pas d’adresse pour ce client." };
   const alerts = ukEtaAlerts({
     status,
     validUntil: row.valid_until,

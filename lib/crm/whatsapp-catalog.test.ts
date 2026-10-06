@@ -47,6 +47,9 @@ test("les textes qui partent reprennent les fonctions d’envoi", () => {
   assert.match(byId.get("vol-arrivee")?.bubble.body || "", /Vous voici à Marrakech/);
   assert.equal(byId.get("vol-retard")?.bubble.image, null);
   assert.match(byId.get("formalite-prete")?.bubble.image || "", /\/whatsapp\/visa\.jpg$/);
+  assert.match(byId.get("esta-approuve")?.bubble.body || "", /valable jusqu’au 29\/08\/2027/);
+  assert.equal(byId.get("esta-manquant")?.fallback?.photo, false);
+  assert.match(byId.get("eta-manquant")?.bubble.body || "", /20 £/);
   assert.match(byId.get("passeport")?.bubble.image || "", /\/whatsapp\/passeport\.jpg$/);
   assert.equal((hotel?.bubble.image || "").includes("/api/covers/sejour/"), false);
   assert.match(byId.get("sejour-photo")?.bubble.image || "", /\/whatsapp\/hotel\.jpg$/);

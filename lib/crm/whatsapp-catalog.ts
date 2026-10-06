@@ -141,7 +141,7 @@ function bubbleFrom(template: ConciergeTemplate, variables: Record<string, strin
 
 function wiredBubble(
   template: ConciergeTemplate,
-  extra?: { variable?: string | null; media?: boolean }
+  extra?: { variable?: string | null; media?: boolean; date?: string | null }
 ): WhatsappBubble {
   const variables = conciergeContentVariables({
     template,
@@ -150,6 +150,7 @@ function wiredBubble(
     reference: REFERENCE,
     mediaUrl: extra?.media === false ? null : conciergeTemplateImage(template) || COVER,
     variable: extra?.variable,
+    date: extra?.date,
   });
   if (!variables) throw new Error(`envoi impossible: ${template}`);
   return bubbleFrom(template, variables);
@@ -162,7 +163,7 @@ function message(input: {
   kind?: "modele" | "session";
   wired?: boolean;
   bubble: WhatsappBubble;
-  fallback?: { template: ConciergeTemplate; variable?: string | null; label?: string } | null;
+  fallback?: { template: ConciergeTemplate; variable?: string | null; date?: string | null; label?: string } | null;
   earlier?: { template: ConciergeTemplate; variable?: string | null; label?: string } | null;
 }): WhatsappCatalogMessage {
   const withMedia = (template: ConciergeTemplate) => template.endsWith("_photo") || template === "sejour" || template === "sejour_sans_lieu";
@@ -171,6 +172,7 @@ function message(input: {
         label: input.fallback.label || "Si la photo n’est pas encore approuvée",
         ...wiredBubble(input.fallback.template, {
           variable: input.fallback.variable,
+          date: input.fallback.date,
           media: withMedia(input.fallback.template),
         }),
       }
@@ -527,6 +529,7 @@ function catalogGroups(): WhatsappCatalogGroup[] {
         }),
       ],
     },
+    authorizationGroup(),
     {
       id: "vols",
       title: "Vol en cours",
@@ -703,6 +706,100 @@ function catalogGroups(): WhatsappCatalogGroup[] {
       ],
     },
   ];
+}
+
+const AUTH_DATE = "29/08/2027";
+
+function authorizationMessage(input: {
+  id: string;
+  title: string;
+  when: string;
+  photo: ConciergeTemplate;
+  text: ConciergeTemplate;
+  dated: boolean;
+}): WhatsappCatalogMessage {
+  return message({
+    id: input.id,
+    title: input.title,
+    when: input.when,
+    bubble: wiredBubble(input.photo, { variable: FIRST_NAME, date: input.dated ? AUTH_DATE : null }),
+    fallback: { template: input.text, variable: FIRST_NAME, date: input.dated ? AUTH_DATE : null },
+  });
+}
+
+function authorizationGroup(): WhatsappCatalogGroup {
+  return {
+    id: "esta-eta",
+    title: "ESTA et ETA Royaume-Uni",
+    intro:
+      "Ces messages partent depuis le badge du voyageur, après un résultat, si le client a accepté WhatsApp. Un clic montre le texte puis l’envoie. Rien ne part seul. L’image est celle du visa. Sans le modèle illustré, le même texte part sans photo.",
+    messages: [
+      authorizationMessage({
+        id: "esta-manquant",
+        title: "ESTA manquant",
+        when: "Aucun ESTA en cours pour ce voyageur et ce séjour : le résultat est introuvable.",
+        photo: "esta_manquant_carte_photo",
+        text: "esta_manquant_carte",
+        dated: false,
+      }),
+      authorizationMessage({
+        id: "esta-expire",
+        title: "ESTA qui expire avant le retour",
+        when: "Un ESTA existe, mais il expire avant la date de retour du séjour, ou avant le départ.",
+        photo: "esta_expire_carte_photo",
+        text: "esta_expire_carte",
+        dated: true,
+      }),
+      authorizationMessage({
+        id: "esta-ancien",
+        title: "ESTA sur un ancien passeport",
+        when: "L’ESTA est lié à un passeport qui n’est plus le passeport actuel. Une nouvelle demande est nécessaire avec le passeport en cours.",
+        photo: "esta_ancien_passeport_carte_photo",
+        text: "esta_ancien_passeport_carte",
+        dated: false,
+      }),
+      authorizationMessage({
+        id: "esta-approuve",
+        title: "ESTA approuvé",
+        when: "L’ESTA est valable pour tout le séjour. La date de fin est dans le message.",
+        photo: "esta_approuve_carte_photo",
+        text: "esta_approuve_carte",
+        dated: true,
+      }),
+      authorizationMessage({
+        id: "eta-manquant",
+        title: "ETA Royaume-Uni manquante",
+        when: "Aucune ETA en cours pour ce voyageur et ce séjour : le résultat est introuvable.",
+        photo: "eta_uk_manquant_carte_photo",
+        text: "eta_uk_manquant_carte",
+        dated: false,
+      }),
+      authorizationMessage({
+        id: "eta-expire",
+        title: "ETA qui expire avant le retour",
+        when: "Une ETA existe, mais elle expire avant la date de retour du séjour, ou avant le départ.",
+        photo: "eta_uk_expire_carte_photo",
+        text: "eta_uk_expire_carte",
+        dated: true,
+      }),
+      authorizationMessage({
+        id: "eta-ancien",
+        title: "ETA sur un ancien passeport",
+        when: "L’ETA est liée à un passeport qui n’est plus le passeport actuel. Une nouvelle demande est nécessaire avec le passeport en cours.",
+        photo: "eta_uk_ancien_passeport_carte_photo",
+        text: "eta_uk_ancien_passeport_carte",
+        dated: false,
+      }),
+      authorizationMessage({
+        id: "eta-approuve",
+        title: "ETA Royaume-Uni approuvée",
+        when: "L’ETA est valable pour tout le séjour. La date de fin est dans le message.",
+        photo: "eta_uk_approuve_carte_photo",
+        text: "eta_uk_approuve_carte",
+        dated: true,
+      }),
+    ],
+  };
 }
 
 let cached: WhatsappCatalogGroup[] | null = null;
