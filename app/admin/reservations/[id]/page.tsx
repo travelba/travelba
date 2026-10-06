@@ -13,6 +13,7 @@ import type { PliantCardDraft, PliantSpendLine } from "@/lib/crm/pliant-cards";
 import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
 import { markEstaNoticesSeen, syncEstaForBookingId } from "@/lib/crm/esta-run";
+import { markUkEtaNoticesSeen, syncUkEtaForBookingId } from "@/lib/crm/uk-eta-run";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
@@ -239,6 +240,15 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     estaLines = [];
   }
 
+  let ukEtaLines: Awaited<ReturnType<typeof syncUkEtaForBookingId>> = [];
+  try {
+    const ukEtaAdmin = createServiceClient();
+    ukEtaLines = await syncUkEtaForBookingId(ukEtaAdmin, id);
+    await markUkEtaNoticesSeen(ukEtaAdmin, id);
+  } catch {
+    ukEtaLines = [];
+  }
+
   const le = ((leRows || [])[0] || null) as {
     id: string;
     hotel_name: string | null;
@@ -312,6 +322,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           bookingCards={bookingCards}
           pliantRecap={pliantRecap}
           estaLines={estaLines}
+          ukEtaLines={ukEtaLines}
         />
   );
 }

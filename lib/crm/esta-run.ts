@@ -160,8 +160,12 @@ async function dispatchCheck(
     console.info("[esta] webhook non configuré");
     return;
   }
+  const keyChanged = (row.dispatch_key || null) !== desiredKey;
   const { data, error } = await admin.rpc("crm_claim_esta_dispatch", { p_id: row.id, p_key: desiredKey });
   if (error || data !== true) return;
+  if (keyChanged) row.dispatched_at = null;
+  row.dispatch_key = desiredKey;
+  row.dispatch_attempt_at = new Date().toISOString();
   const sent = await postEstaWebhook(
     estaWebhookBody({
       id: row.id,
@@ -171,7 +175,8 @@ async function dispatchCheck(
     })
   );
   if (!sent) return;
-  await admin.from("crm_esta_checks").update({ dispatched_at: new Date().toISOString() }).eq("id", row.id).eq("dispatch_key", desiredKey);
+  row.dispatched_at = new Date().toISOString();
+  await admin.from("crm_esta_checks").update({ dispatched_at: row.dispatched_at }).eq("id", row.id).eq("dispatch_key", desiredKey);
 }
 
 export async function syncEstaForBooking(

@@ -361,6 +361,7 @@ export type EstaWebhookBody = {
   booking_id: string;
   traveler_id: string;
   departure_date: string | null;
+  kind: "esta";
 };
 
 /** Identifiants seuls. Jamais le passeport, la MRZ ou la date de naissance. */
@@ -375,6 +376,7 @@ export function estaWebhookBody(input: {
     booking_id: input.bookingId,
     traveler_id: input.travelerId,
     departure_date: isoDay(input.departureDate),
+    kind: "esta",
   };
 }
 
@@ -497,6 +499,7 @@ export function estaOnDailyList(input: {
   if (!departure || !today) return false;
   if (input.status === "non_concerne") return false;
   if (departure < today || departure > addIsoDays(today, ESTA_DAILY_HORIZON_DAYS)) return false;
+  if (input.status === "a_verifier") return true;
   if (!input.checkedAt) return true;
   const alerts = estaAlerts({
     status: input.status,

@@ -233,7 +233,8 @@ test("le corps du webhook ne contient aucun champ passeport", () => {
     travelerId: "traveler-1",
     departureDate: "2026-11-01T08:00:00Z",
   });
-  assert.deepEqual(Object.keys(body).sort(), ["booking_id", "departure_date", "id", "traveler_id"]);
+  assert.deepEqual(Object.keys(body).sort(), ["booking_id", "departure_date", "id", "kind", "traveler_id"]);
+  assert.equal(body.kind, "esta");
   assert.equal(body.departure_date, "2026-11-01");
   const json = JSON.stringify(body);
   assert.doesNotMatch(json, /passport|passeport|mrz|birth|naissance|12AB34567/i);
@@ -306,6 +307,7 @@ test("la file quotidienne reprend les cas demandés, dans les 90 jours", () => {
     nowMs: NOW,
   };
   assert.equal(estaOnDailyList({ ...base, status: "a_verifier", checkedAt: null }), true);
+  assert.equal(estaOnDailyList({ ...base, status: "a_verifier", checkedAt: "2026-10-06T11:50:00Z" }), true);
   assert.equal(
     estaOnDailyList({ ...base, status: "introuvable", checkedAt: "2026-10-05T12:00:00Z" }),
     false
