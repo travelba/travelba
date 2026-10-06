@@ -4,7 +4,6 @@ import { EncoursPayment } from "@/components/account/EncoursPayment";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
 import { loadClientLedger } from "@/lib/crm/client-ledger";
-import { customerFullName } from "@/lib/crm/types";
 import { stripePublishableKey } from "@/lib/crm/stripe";
 import { siteConfig } from "@/lib/site";
 
@@ -32,7 +31,7 @@ export default async function TransactionsPage() {
       <ClientTransactionsPanel
         view={view}
         billingHref="/mon-compte/profil/facturation"
-        statementName={customerFullName(customer)}
+        statementEndpoint="/api/client/ledger/releve"
         payments={
           view.member || view.owed.total <= 0 ? null : (
             <EncoursPayment

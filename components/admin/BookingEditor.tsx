@@ -6,7 +6,6 @@ import Link from "next/link";
 import {
   BOOKING_STATUSES,
   BOOKING_STATUS_LABELS,
-  customerFullName,
   isActiveItem,
   isLedgerExpenseKind,
   type CrmBooking,
@@ -823,7 +822,7 @@ export function BookingEditor({
       travelerCount: travelers.length,
     }),
   });
-  const accountName = billingCustomer || customer;
+  const statementCustomer = billingCustomer || customer;
   const tabs = BOOKING_TAB_IDS;
   const tabButtonId = (id: BookingTabId) => `booking-tab-${BOOKING_TAB_SLUGS[id]}`;
 
@@ -1777,7 +1776,10 @@ export function BookingEditor({
           {liveLedger ? (
             <ClientTransactionsPanel
               view={liveLedger}
-              statementName={accountName ? customerFullName(accountName) : null}
+              statementEndpoint={
+                statementCustomer ? `/api/admin/clients/${statementCustomer.id}/releve` : null
+              }
+              statementAudience="staff"
             />
           ) : (
             <p className="text-sm text-muted">Le grand livre n’est pas lisible pour le moment.</p>

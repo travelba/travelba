@@ -4,16 +4,11 @@ import { LedgerMovements } from "@/components/account/LedgerMovements";
 import { SpendingBookings } from "@/components/account/SpendingBookings";
 import { EmptyState } from "@/components/crm/ui";
 import { Icon } from "@/components/crm/icons";
+import { StatementRequest } from "@/components/account/StatementRequest";
 import type { ClientLedgerView, ClientLedgerWallet } from "@/lib/crm/client-ledger";
 import { formatMoney } from "@/lib/crm/money";
 import { spendingUsedPct, type SpendingAccount } from "@/lib/crm/spending-desk";
 import { siteConfig } from "@/lib/site";
-
-/** Sujet du mail « Demander un relevé », avec le nom du client quand on l’a. */
-export function statementMailto(name: string | null | undefined) {
-  const subject = name?.trim() ? `Relevé de compte — ${name.trim()}` : "Relevé de compte";
-  return `mailto:${siteConfig.contactEmail}?subject=${encodeURIComponent(subject)}`;
-}
 
 function AllowanceBar({ account, currency }: { account: SpendingAccount; currency: string }) {
   const used = spendingUsedPct(account.allowance, account.spent);
@@ -64,13 +59,15 @@ export function ClientTransactionsPanel({
   view,
   billingHref = null,
   payments = null,
-  statementName = null,
+  statementEndpoint = null,
+  statementAudience = "client",
 }: {
   view: ClientLedgerView;
   billingHref?: string | null;
   payments?: ReactNode | null;
-  /** Nom du client pour le sujet du relevé demandé par e-mail. */
-  statementName?: string | null;
+  /** GET télécharge le PDF, POST l’envoie sur WhatsApp. */
+  statementEndpoint?: string | null;
+  statementAudience?: "client" | "staff";
 }) {
   const { member, currency, remaining, remainingPct, debits, creditCount, movements, spending } = view;
   const wallets: ClientLedgerWallet[] = view.wallets?.length
@@ -134,13 +131,7 @@ export function ClientTransactionsPanel({
                 Facturation
               </Link>
             ) : null}
-            <a
-              href={statementMailto(statementName)}
-              className="mt-2 inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-full border border-[#e5e3dc] bg-white text-[12px] font-semibold uppercase tracking-[0.06em] text-[var(--admin-navy)]"
-            >
-              <Icon name="mail" className="h-[18px] w-[18px] text-[#9c7c4e]" />
-              Demander un relevé
-            </a>
+            <StatementRequest endpoint={statementEndpoint} audience={statementAudience} />
             {spending?.accounts.length ? (
               <div className="mt-4 space-y-2">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9c7c4e]">

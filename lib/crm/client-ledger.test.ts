@@ -380,13 +380,13 @@ test("un encours par devise, l’euro reste la devise principale", () => {
       ["EUR", -300, 300, 60, 1],
     ]
   );
-  const html = renderToStaticMarkup(createElement(ClientTransactionsPanel, { view, statementName: "Camille Morel" }));
+  const html = renderToStaticMarkup(createElement(ClientTransactionsPanel, { view }));
   assert.match(html, /Encours USD/);
   assert.match(html, /Encours EUR/);
   assert.ok(html.includes(formatMoney(-1200, "USD")));
   assert.ok(html.includes(formatMoney(-300, "EUR")));
   assert.match(html, /Demander un relevé/);
-  assert.match(html, /Relev%C3%A9%20de%20compte%20%E2%80%94%20Camille%20Morel/);
+  assert.equal(html.includes("mailto:"), false);
 });
 
 test("modifier une dépense change le prix du mouvement tout de suite", () => {

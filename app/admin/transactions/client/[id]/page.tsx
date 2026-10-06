@@ -39,7 +39,11 @@ export default async function AdminClientTransactionsPage({ params }: Props) {
         Vue client
       </p>
       <div className="mt-4 max-w-[480px]">
-        <ClientTransactionsPanel view={view} />
+        <ClientTransactionsPanel
+          view={view}
+          statementEndpoint={`/api/admin/clients/${profile.id}/releve`}
+          statementAudience="staff"
+        />
       </div>
     </div>
   );

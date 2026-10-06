@@ -88,4 +88,4 @@ Nouvelle page CRM : `loading.tsx` sibling. Nouvelle API : `runtime = "nodejs"` s
 
 ## Ce qu’il ne faut pas reconstruire
 
-Stripe Checkout, un second Auth, Material Icons, un bucket public, un ingest côté client, un PDF relevé auto, une cloche de notif, un champ WhatsApp client, Cache Components.
+Stripe Checkout, un second Auth, Material Icons, un bucket public, un ingest côté client, un envoi mail automatique du relevé, une cloche de notif, un champ WhatsApp client, Cache Components.

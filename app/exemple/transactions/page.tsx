@@ -5,7 +5,7 @@ import { readExample } from "@/lib/crm/example-store";
 export const dynamic = "force-dynamic";
 
 export default function ExampleTransactionsPage() {
-  const { ledger, name } = readExample();
+  const { ledger } = readExample();
   return (
     <div className="space-y-4">
       <div>
@@ -14,7 +14,11 @@ export default function ExampleTransactionsPage() {
           Transactions
         </h1>
       </div>
-      <ClientTransactionsPanel view={ledger} billingHref={`${EXAMPLE_BASE}/profil/facturation`} statementName={name} />
+      <ClientTransactionsPanel
+        view={ledger}
+        billingHref={`${EXAMPLE_BASE}/profil/facturation`}
+        statementEndpoint="/api/exemple/releve"
+      />
     </div>
   );
 }
