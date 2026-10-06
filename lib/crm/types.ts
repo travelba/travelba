@@ -180,6 +180,8 @@ export type CrmCustomer = {
   company_role: CompanyRole | null;
   /** Pour member : wallet / admin société qui paie */
   billing_parent_id: string | null;
+  /** Droit de dépense en euros sur le wallet société. Null = pas de plafond personnel. */
+  spending_allowance?: number | null;
   language: string;
   stripe_customer_id: string | null;
   /** Badge / filtre admin — aucun effet côté espace client. */

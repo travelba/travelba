@@ -15,9 +15,18 @@ import {
   postedLedgerTotals,
 } from "@/lib/crm/money";
 import { transactionCompanyLabel } from "@/lib/crm/billing-companies";
+import { loadDisplayedStayAmounts } from "@/lib/crm/displayed-stay";
+import {
+  hasSpendingAllowance,
+  shapeSpendingDesk,
+  type SpendingAccountInput,
+  type SpendingDesk,
+} from "@/lib/crm/spending-desk";
+import { createServiceClient } from "@/lib/supabase/admin";
 import { fitPayerOwed, owedByPayer } from "@/lib/crm/payer";
 import {
   TX_KIND_LABELS,
+  customerFullName,
   type CompanyRole,
   type CrmBalance,
   type CrmBillingCompany,
@@ -36,6 +45,14 @@ export type ClientLedgerBooking = {
   end_date: string | null;
   visible_to_client: boolean;
   payer_kind?: "company" | "personal" | null;
+  /** Titulaire du dossier : le compte de rattachement du droit de dépense. */
+  customer_id?: string | null;
+  owner_name?: string | null;
+  /** Prix affiché du séjour. Absent : la carte reprend les débits postés. */
+  displayed_amount?: number | null;
+  status?: string | null;
+  total_amount?: number | string | null;
+  agency_commission?: boolean | null;
 };
 
 export type ClientLedgerWallet = {
@@ -62,6 +79,8 @@ export type ClientLedgerView = {
   owed: { total: number; company: number; personal: number };
   soleCompanyName: string | null;
   movements: LedgerMovementRow[];
+  /** Null tant qu’aucun droit de dépense n’est fixé : le grand livre actuel reste. */
+  spending: SpendingDesk | null;
 };
 
 function walletView(
@@ -103,6 +122,8 @@ export function shapeClientLedger(input: {
   companyNames?: Map<string, string | null>;
   /** Tous les soldes du compte (une ligne par devise). Absent : le seul walletBalance / currency. */
   wallets?: { currency: string; balance: number }[];
+  viewerId?: string;
+  spendAccounts?: SpendingAccountInput[];
 }): ClientLedgerView {
   const member = isCompanyMember({ company_role: input.companyRole ?? null });
   const scoped = filterClientLedgerRows(input.rows, {
@@ -122,7 +143,7 @@ export function shapeClientLedger(input: {
     const place = ledgerPlace(visibleBooking);
     const reference = visibleBooking?.reference || null;
     const rawTitle = ledgerMovementTitle(row, TX_KIND_LABELS[row.kind] || row.kind);
-    const carnet = carnetLink(booking, input.audience);
+    const carnet = carnetLink(booking, input.audience, input.viewerId);
     const companyName = row.billing_company_id
       ? input.companyNames?.get(row.billing_company_id)
       : null;
@@ -138,6 +159,7 @@ export function shapeClientLedger(input: {
       carnetHref: carnet.href,
       carnetLabel: carnet.label,
       companyLabel: transactionCompanyLabel(input.billingCompanyCount || 0, companyName),
+      bookingId: row.booking_id,
     };
   });
 
@@ -178,16 +200,36 @@ export function shapeClientLedger(input: {
     owed,
     soleCompanyName,
     movements,
+    spending: input.spendAccounts?.length
+      ? shapeSpendingDesk({
+          member,
+          viewerId: input.viewerId || "",
+          currency,
+          accounts: input.spendAccounts,
+          bookings: input.bookings,
+          movements,
+          rows: shown.map((row) => ({
+            booking_id: row.booking_id,
+            direction: row.direction,
+            amount: row.amount,
+            currency: row.currency,
+          })),
+        })
+      : null,
   };
 }
 
 function carnetLink(
   booking: ClientLedgerBooking | undefined,
-  audience: ClientLedgerAudience
+  audience: ClientLedgerAudience,
+  viewerId?: string
 ): { href: string | null; label: string | null } {
   if (!booking) return { href: null, label: null };
   if (audience === "staff") {
     return { href: `/admin/reservations/${booking.id}`, label: "Ouvrir le dossier" };
+  }
+  if (booking.customer_id && viewerId && booking.customer_id !== viewerId) {
+    return { href: null, label: null };
   }
   if (booking.visible_to_client && booking.reference) {
     return {
@@ -198,9 +240,67 @@ function carnetLink(
   return { href: null, label: null };
 }
 
+type SpendPerson = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  spending_allowance: number | string | null;
+};
+
+function spendPersonName(person: { first_name?: string | null; last_name?: string | null }) {
+  return customerFullName({
+    first_name: person.first_name || "",
+    last_name: person.last_name || "",
+  });
+}
+
+function serviceClientOrNull() {
+  try {
+    return createServiceClient();
+  } catch {
+    return null;
+  }
+}
+
+const SPEND_BOOKING_SELECT =
+  "id, title, destination, reference, start_date, end_date, visible_to_client, payer_kind, customer_id, status, total_amount, agency_commission";
+
+async function enrichSpendBookings(
+  reader: SupabaseClient,
+  bookings: ClientLedgerBooking[],
+  people: Map<string, SpendPerson>
+) {
+  const priced = bookings.filter((booking) => booking.id);
+  if (!priced.length) return bookings;
+  let amounts = new Map<string, number>();
+  try {
+    amounts = await loadDisplayedStayAmounts(
+      reader,
+      priced.map((booking) => ({
+        id: booking.id,
+        status: booking.status || "confirmed",
+        total_amount: booking.total_amount ?? 0,
+        agency_commission: booking.agency_commission === true,
+      }))
+    );
+  } catch {
+    amounts = new Map();
+  }
+  return bookings.map((booking) => {
+    const owner = booking.customer_id ? people.get(booking.customer_id) : undefined;
+    const displayed = amounts.get(booking.id);
+    return {
+      ...booking,
+      owner_name: owner ? spendPersonName(owner) : booking.owner_name || null,
+      displayed_amount: displayed == null ? booking.displayed_amount ?? null : displayed,
+    };
+  });
+}
+
 export async function loadClientLedger(
   supabase: SupabaseClient,
-  customer: Pick<CrmCustomer, "id" | "company_role">,
+  customer: Pick<CrmCustomer, "id" | "company_role"> &
+    Partial<Pick<CrmCustomer, "first_name" | "last_name" | "spending_allowance">>,
   audience: ClientLedgerAudience
 ): Promise<ClientLedgerView> {
   const member = isCompanyMember(customer);
@@ -259,10 +359,13 @@ export async function loadClientLedger(
   if (contextIds.length) {
     const { data: linked } = await supabase
       .from("crm_bookings")
-      .select("id, title, destination, reference, start_date, end_date, visible_to_client, payer_kind")
+      .select(SPEND_BOOKING_SELECT)
       .in("id", contextIds);
     bookings = (linked || []) as ClientLedgerBooking[];
   }
+
+  const spend = await loadSpendAccounts(supabase, customer, bookings, contextIds);
+  bookings = spend.bookings;
 
   return shapeClientLedger({
     companyRole: customer.company_role,
@@ -275,5 +378,75 @@ export async function loadClientLedger(
     billingCompanyCount: billingCompanies.length,
     companyNames,
     wallets,
+    viewerId: customer.id,
+    spendAccounts: spend.accounts,
   });
+}
+
+async function loadSpendAccounts(
+  supabase: SupabaseClient,
+  customer: Pick<CrmCustomer, "id" | "company_role"> &
+    Partial<Pick<CrmCustomer, "first_name" | "last_name" | "spending_allowance">>,
+  bookings: ClientLedgerBooking[],
+  contextIds: string[]
+): Promise<{ bookings: ClientLedgerBooking[]; accounts: SpendingAccountInput[] }> {
+  let allowance = customer.spending_allowance;
+  let firstName = customer.first_name;
+  let lastName = customer.last_name;
+  if (allowance === undefined || (!firstName && !lastName)) {
+    const { data } = await supabase
+      .from("crm_customers")
+      .select("first_name, last_name, spending_allowance")
+      .eq("id", customer.id)
+      .maybeSingle();
+    const row = data as SpendPerson | null;
+    if (row) {
+      if (allowance === undefined) allowance = row.spending_allowance == null ? null : Number(row.spending_allowance);
+      firstName = firstName || row.first_name || undefined;
+      lastName = lastName || row.last_name || undefined;
+    }
+  }
+
+  const people = new Map<string, SpendPerson>();
+  people.set(customer.id, {
+    id: customer.id,
+    first_name: firstName || null,
+    last_name: lastName || null,
+    spending_allowance: allowance ?? null,
+  });
+
+  const member = isCompanyMember(customer);
+  if (!member && customer.company_role === "admin") {
+    const admin = serviceClientOrNull();
+    if (admin) {
+      const { data: members } = await admin
+        .from("crm_customers")
+        .select("id, first_name, last_name, spending_allowance")
+        .eq("billing_parent_id", customer.id)
+        .eq("company_role", "member");
+      for (const row of (members || []) as SpendPerson[]) people.set(row.id, row);
+
+      if (contextIds.length) {
+        const { data: linked } = await admin.from("crm_bookings").select(SPEND_BOOKING_SELECT).in("id", contextIds);
+        const byId = new Map(bookings.map((booking) => [booking.id, booking]));
+        for (const row of (linked || []) as ClientLedgerBooking[]) {
+          const current = byId.get(row.id);
+          byId.set(row.id, { ...current, ...row, customer_id: row.customer_id ?? current?.customer_id });
+        }
+        bookings = [...byId.values()];
+      }
+    }
+  }
+
+  const accounts: SpendingAccountInput[] = [...people.values()].map((person) => ({
+    id: person.id,
+    name: spendPersonName(person),
+    allowance: person.spending_allowance == null ? null : Number(person.spending_allowance),
+  }));
+  if (!accounts.some((account) => hasSpendingAllowance(account.allowance))) {
+    return { bookings, accounts: [] };
+  }
+
+  const reader = !member && customer.company_role === "admin" ? serviceClientOrNull() || supabase : supabase;
+  return { bookings: await enrichSpendBookings(reader, bookings, people), accounts };
 }

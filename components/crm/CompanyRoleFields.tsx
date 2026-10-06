@@ -13,6 +13,8 @@ export function CompanyRoleFields({
   onBillingParentChange,
   companyAdmins,
   selfId,
+  spendingAllowance,
+  onSpendingAllowanceChange,
 }: {
   role: CompanyRole | null;
   onRoleChange: (role: CompanyRole | null) => void;
@@ -20,6 +22,8 @@ export function CompanyRoleFields({
   onBillingParentChange: (id: string) => void;
   companyAdmins: PickableCustomer[];
   selfId: string;
+  spendingAllowance: string;
+  onSpendingAllowanceChange: (value: string) => void;
 }) {
   return (
     <section className="space-y-3 rounded-2xl border border-[#e5e3dc] bg-[#faf9f6] p-4">
@@ -28,8 +32,8 @@ export function CompanyRoleFields({
           Société et paiement
         </p>
         <p className="mt-1 text-sm text-muted">
-          Un voyageur peut être payé par une société. L’admin voit le grand livre (revenus inclus) ;
-          le collaborateur rattaché ne voit que les frais de ses voyages.
+          Un voyageur peut être payé par une société. L’admin voit le grand livre. Le collaborateur
+          voit son droit de dépense et les frais de ses voyages, pas les versements de la société.
         </p>
       </div>
       <Field label="Rôle">
@@ -67,6 +71,20 @@ export function CompanyRoleFields({
                 </option>
               ))}
           </select>
+        </Field>
+      ) : null}
+      {role === "admin" || role === "member" ? (
+        <Field
+          label="Droit de dépense"
+          hint="Plafond personnel en euros sur le wallet société. Vide : pas de droit séparé. Le virement reste un seul crédit."
+        >
+          <input
+            value={spendingAllowance}
+            onChange={(e) => onSpendingAllowanceChange(e.target.value)}
+            inputMode="decimal"
+            className={fieldControlClass}
+            placeholder="10 000"
+          />
         </Field>
       ) : null}
       {role === "admin" ? (

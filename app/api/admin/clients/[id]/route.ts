@@ -74,6 +74,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
     "billing_parent_id" in patch
       ? (patch.billing_parent_id as string | null)
       : current.billing_parent_id;
+  if (nextRole == null) patch.spending_allowance = null;
+
   if (nextRole === "member") {
     if (!nextParent) {
       return jsonError("Choisissez l’admin société qui paie pour ce collaborateur.");
@@ -92,7 +94,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
     }
   }
 
-  // email, iban, company_role, billing_parent_id, on_hold : hors des grants par colonne
+  // email, iban, company_role, billing_parent_id, spending_allowance, on_hold : hors des grants par colonne
   // du rôle authenticated (B-15). Le staff est déjà vérifié : écriture avec le service role.
   const { data, error } = await createServiceClient()
     .from("crm_customers")

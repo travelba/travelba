@@ -9,6 +9,8 @@ export type LedgerMovementRow = {
   reference: string | null;
   carnetHref: string | null;
   carnetLabel?: string | null;
+  /** Séjour du mouvement, pour regrouper les cartes. Absent d’un virement. */
+  bookingId?: string | null;
   /** Raison sociale, seulement si le compte a plusieurs sociétés. */
   companyLabel?: string | null;
 };

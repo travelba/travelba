@@ -28,8 +28,8 @@ export function isCompanyMember(
 }
 
 /**
- * Member : uniquement débits liés à ses dossiers (pas les revenus société).
- * Admin / particulier : grand livre complet de son wallet.
+ * Member : mouvements de ses dossiers (débits, et un crédit rattaché à l’un d’eux).
+ * Pas les versements société. Admin / particulier : grand livre complet de son wallet.
  */
 export function filterClientLedgerRows(
   rows: CrmTransaction[],
@@ -37,12 +37,7 @@ export function filterClientLedgerRows(
 ) {
   if (opts.companyRole !== "member") return rows;
   const allowed = new Set(opts.travelerBookingIds);
-  return rows.filter(
-    (t) =>
-      t.direction === "debit" &&
-      t.booking_id != null &&
-      allowed.has(t.booking_id)
-  );
+  return rows.filter((t) => t.booking_id != null && allowed.has(t.booking_id));
 }
 
 export function parseCompanyRole(value: unknown): CompanyRole | null {

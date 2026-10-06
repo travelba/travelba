@@ -19,6 +19,7 @@ export async function PATCH(request: Request) {
   // Rôle société / payeur : réservé à l’agence.
   delete patch.company_role;
   delete patch.billing_parent_id;
+  delete patch.spending_allowance;
   // L’IBAN n’est pas dans les grants par colonne du rôle authenticated (B-15) :
   // le titulaire est déjà vérifié, on l’écrit avec le service role, sur sa seule fiche.
   if ("iban" in patch) {

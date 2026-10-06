@@ -24,6 +24,8 @@ Ledger visible côté client (`/mon-compte/transactions`) : lignes `posted` seul
 
 **Société** : si `company_role=member`, le client ne voit que les **débits** de ses dossiers (pas les crédits / encours société). `company_role=admin` (ou null) = grand livre complet de son wallet. Débits résa → `billing_customer_id` du dossier.
 
+**Droit de dépense** (`spending_allowance`, null = pas de plafond) : l’agence le saisit sur la fiche, en euros, pour l’admin et chaque collaborateur. Un seul wallet. Le virement crédite l’admin. Le droit consommé = débits postés des dossiers de cette personne (un crédit rattaché à son dossier le rend) ; le montant global affiché sur la carte est le prix du séjour. Si au moins un droit est fixé, `/mon-compte/transactions` montre une carte par séjour (montant, compte de rattachement, reste) et le détail des mouvements au clic. Le collaborateur ne voit que ses séjours : son encours restant est en grand, son droit de dépense en petit. L’admin voit l’encours société en grand, et sur chaque pastille le reste en grand, le droit en petit. Sinon l’écran actuel. Pas de second solde. Le collaborateur ne règle pas.
+
 PDF relevé = bouton **Demander un relevé** (`mailto:`), **pas** de génération PDF auto ni d’envoi mail automatique.
 
 ## Débit réservation

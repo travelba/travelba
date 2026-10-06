@@ -36,6 +36,7 @@ export const CUSTOMER_PATCH_KEYS = [
   "billing_country",
   "company_role",
   "billing_parent_id",
+  "spending_allowance",
 ] as const;
 
 export function customerPatchFromBody(
@@ -122,7 +123,23 @@ export function customerPatchFromBody(
       patch.billing_parent_id = emptyToNull(body[key]);
       continue;
     }
+    if (key === "spending_allowance") {
+      const raw = emptyToNull(body[key]);
+      if (raw == null) {
+        patch.spending_allowance = null;
+        continue;
+      }
+      const amount = Number(String(raw).replace(/\s/g, "").replace(",", "."));
+      if (!Number.isFinite(amount) || amount < 0) {
+        return { patch, error: "Le droit de dépense est un montant en euros." };
+      }
+      patch.spending_allowance = Math.round(amount * 100) / 100;
+      continue;
+    }
     patch[key] = emptyToNull(body[key]);
+  }
+  if ("company_role" in patch && patch.company_role == null) {
+    patch.spending_allowance = null;
   }
   // Un PATCH partiel (ex. facturation) ne touche pas au téléphone ; on refuse seulement de l’effacer.
   if (opts.requirePhone && "phone" in body) {

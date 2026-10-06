@@ -89,6 +89,9 @@ export function CustomerEditor({
   const [iban, setIban] = useState(() => formatIbanInput(customer.iban || ""));
   const [companyRole, setCompanyRole] = useState<CompanyRole | null>(customer.company_role || null);
   const [billingParentId, setBillingParentId] = useState(customer.billing_parent_id || "");
+  const [spendingAllowance, setSpendingAllowance] = useState(
+    customer.spending_allowance == null ? "" : String(customer.spending_allowance).replace(".", ",")
+  );
   const [nameWarn, setNameWarn] = useState<string | null>(null);
   const [companyDrafts, setCompanyDrafts] = useState(() =>
     billingCompanyDrafts(billingCompanies, customer, {
@@ -145,6 +148,7 @@ export function CustomerEditor({
           iban: normalizedIban,
           company_role: companyRole,
           billing_parent_id: companyRole === "member" ? billingParentId || null : null,
+          spending_allowance: companyRole ? spendingAllowance : null,
           on_hold: onHold,
           billing_companies: billingCompaniesPayload(companyDrafts, profileAddress),
         }),
@@ -297,6 +301,8 @@ export function CustomerEditor({
           onBillingParentChange={setBillingParentId}
           companyAdmins={companyAdmins}
           selfId={customer.id}
+          spendingAllowance={spendingAllowance}
+          onSpendingAllowanceChange={setSpendingAllowance}
         />
 
         <BillingCompaniesTabs

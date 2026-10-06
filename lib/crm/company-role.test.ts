@@ -55,20 +55,28 @@ test("member ledger hides company credits", () => {
       booking_id: "other",
       amount: 500,
     },
+    {
+      id: "4",
+      direction: "credit",
+      booking_id: "b1",
+      amount: 100,
+    },
   ] as CrmTransaction[];
 
   const visible = filterClientLedgerRows(rows, {
     companyRole: "member",
     travelerBookingIds: ["b1"],
   });
-  assert.equal(visible.length, 1);
-  assert.equal(visible[0].id, "2");
+  assert.deepEqual(
+    visible.map((row) => row.id),
+    ["2", "4"]
+  );
 
   const full = filterClientLedgerRows(rows, {
     companyRole: "admin",
     travelerBookingIds: ["b1"],
   });
-  assert.equal(full.length, 3);
+  assert.equal(full.length, 4);
 });
 
 test("company role labels and parse", () => {
