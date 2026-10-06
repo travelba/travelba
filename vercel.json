@@ -37,6 +37,10 @@
     {
       "path": "/api/cron/flight-status",
       "schedule": "15 * * * *"
+    },
+    {
+      "path": "/api/cron/esta",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

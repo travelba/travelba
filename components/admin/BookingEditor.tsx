@@ -25,7 +25,9 @@ import {
 } from "@/lib/crm/types";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { formatMoney, jMinusLabel, todayIsoDate } from "@/lib/crm/money";
+import { EstaOnBooking } from "@/components/admin/EstaOnBooking";
 import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
+import type { EstaTravelerLine } from "@/lib/crm/esta";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
 import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
@@ -174,6 +176,7 @@ export function BookingEditor({
   accountLedger = null,
   bookingCards = [],
   pliantRecap = [],
+  estaLines = [],
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -231,6 +234,7 @@ export function BookingEditor({
   accountLedger?: ClientLedgerView | null;
   bookingCards?: CrmBookingCard[];
   pliantRecap?: PliantCardRecap[];
+  estaLines?: EstaTravelerLine[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -1552,6 +1556,7 @@ export function BookingEditor({
             hrefFor={() => `/admin/clients/${booking.customer_id}`}
             passports={passportPreviewsForStay(travelers, identityDocs, holderName, booking.reference)}
           />
+          <EstaOnBooking bookingId={booking.id} rows={estaLines} />
         </div>
         {!travelers.length ? (
           <button

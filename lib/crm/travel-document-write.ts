@@ -146,6 +146,15 @@ export async function insertTravelDocument(
     .select("*")
     .single();
   if (error) throw new Error(error.message);
+  if (docType === "passport") {
+    try {
+      const { createServiceClient } = await import("@/lib/supabase/admin");
+      const { syncEstaForCustomer } = await import("@/lib/crm/esta-run");
+      await syncEstaForCustomer(input.customerId, createServiceClient());
+    } catch {
+      console.info("[esta] synchro après passeport ignorée");
+    }
+  }
   const replacesVaultPiece = !bookingId && (docType === "passport" || docType === "id_card");
   if (input.replacePrevious !== false && (bookingId || replacesVaultPiece)) {
     await retirePreviousSameType(supabase, {

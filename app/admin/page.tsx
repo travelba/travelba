@@ -20,7 +20,9 @@ import { buildLaunchItems } from "@/lib/crm/launch-status";
 import { stayHeadline } from "@/lib/crm/carnet";
 import { AdminLaunchStatus } from "@/components/admin/AdminLaunchStatus";
 import { ServiceDesk } from "@/components/admin/ServiceDesk";
+import { EstaNoticeList } from "@/components/admin/EstaNoticeList";
 import { VisaDesk } from "@/components/admin/VisaDesk";
+import { loadOpenEstaNotices } from "@/lib/crm/esta-run";
 import { deskView, type DeskTask } from "@/lib/crm/visa-desk";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { loadStayMaps } from "@/lib/crm/carnet-query";
@@ -63,6 +65,7 @@ export default async function AdminHomePage() {
     { data: activeBookings },
     revolutIsConnected,
     badges,
+    estaNotices,
   ] = await Promise.all([
     supabase
       .from("crm_bookings")
@@ -123,6 +126,7 @@ export default async function AdminHomePage() {
       .limit(300),
     revolutConnected(),
     adminBadges(),
+    loadOpenEstaNotices(supabase).catch(() => []),
   ]);
   const customersTotal = customerCount ?? 0;
   const launchItems = buildLaunchItems({
@@ -277,6 +281,7 @@ export default async function AdminHomePage() {
         <div className="mt-4 space-y-4">
           <div id="formalites">
             <VisaDesk open={desk.open} grey={desk.grey} />
+            <EstaNoticeList notices={estaNotices} />
           </div>
           <ServiceDesk lines={services} />
         </div>

@@ -221,6 +221,7 @@ async function commitStaySteps(
       .eq("booking_id", bookingId);
     if (error) return dbError(error, 400);
   }
+  await touchEsta(bookingId);
   return NextResponse.json({
     ok: true,
     ids: Object.fromEntries(idMap),
@@ -283,6 +284,7 @@ export async function POST(request: Request, ctx: Ctx) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
+  await touchEsta(id);
   return NextResponse.json({ item: data, ...(await ledgerAfterItemWrite(auth.supabase, id, "Ajout enregistré")) });
 }
 
@@ -306,6 +308,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
   }
   const updated = await updateBookingItem(auth.supabase, bookingId, body || {});
   if ("error" in updated) return updated.error;
+  await touchEsta(bookingId);
   return NextResponse.json({
     item: updated.item,
     ...(await ledgerAfterItemWrite(auth.supabase, bookingId, "Modification enregistrée")),
@@ -324,8 +327,19 @@ export async function DELETE(request: Request, ctx: Ctx) {
     .eq("id", itemId)
     .eq("booking_id", bookingId);
   if (error) return dbError(error, 400);
+  await touchEsta(bookingId);
   return NextResponse.json({
     ok: true,
     ...(await ledgerAfterItemWrite(auth.supabase, bookingId, "Suppression enregistrée")),
   });
+}
+
+async function touchEsta(bookingId: string) {
+  try {
+    const { createServiceClient } = await import("@/lib/supabase/admin");
+    const { syncEstaForBookingId } = await import("@/lib/crm/esta-run");
+    await syncEstaForBookingId(createServiceClient(), bookingId);
+  } catch {
+    console.info("[esta] synchro dossier ignorée");
+  }
 }
