@@ -14,7 +14,7 @@ npm install
 npm run dev
 ```
 
-Ouvrir [http://localhost:3000](http://localhost:3000).
+Ouvrir [http://localhost:3000](http://localhost:3000). L’écran se parcourt comme une borne : toucher pour commencer, choisir une formule, puis un jour à la fois avec de grandes cartes. Le ticket du séjour et le total restent affichés.
 
 ## Autres commandes
 
