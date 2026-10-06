@@ -12,6 +12,7 @@ import { hotelDisplayName } from "@/lib/crm/carnet";
 import type { PliantCardDraft, PliantSpendLine } from "@/lib/crm/pliant-cards";
 import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
+import { markEstaNoticesSeen, syncEstaForBookingId } from "@/lib/crm/esta-run";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
@@ -229,6 +230,15 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     accountLedger = staffView;
   }
 
+  let estaLines: Awaited<ReturnType<typeof syncEstaForBookingId>> = [];
+  try {
+    const estaAdmin = createServiceClient();
+    estaLines = await syncEstaForBookingId(estaAdmin, id);
+    await markEstaNoticesSeen(estaAdmin, id);
+  } catch {
+    estaLines = [];
+  }
+
   const le = ((leRows || [])[0] || null) as {
     id: string;
     hotel_name: string | null;
@@ -301,6 +311,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           accountLedger={accountLedger}
           bookingCards={bookingCards}
           pliantRecap={pliantRecap}
+          estaLines={estaLines}
         />
   );
 }
