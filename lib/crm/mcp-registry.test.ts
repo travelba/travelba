@@ -14,6 +14,25 @@ const EXPECTED = [
   "revolut_en_attente",
   "emails_en_attente",
   "little_emperors_en_attente",
+  "crediter_virement",
+  "crediter_revolut",
+  "publier_carnet",
+  "mettre_a_jour_dossier",
+  "confirmer_service",
+  "traiter_email",
+  "creer_client",
+  "mettre_a_jour_client",
+];
+
+const WRITE_TOOLS = [
+  "crediter_virement",
+  "crediter_revolut",
+  "publier_carnet",
+  "mettre_a_jour_dossier",
+  "confirmer_service",
+  "traiter_email",
+  "creer_client",
+  "mettre_a_jour_client",
 ];
 
 test("mcp tools stay unique, named, and under the cap", () => {
@@ -24,4 +43,10 @@ test("mcp tools stay unique, named, and under the cap", () => {
   for (const tool of MCP_TOOLS) {
     assert.ok(tool.description.length > 20);
   }
+  assert.deepEqual(
+    MCP_TOOLS.filter((tool) => tool.write).map((tool) => tool.name),
+    WRITE_TOOLS
+  );
+  assert.equal(MCP_TOOLS.find((tool) => tool.name === "confirmer_service")?.openWorld, true);
+  assert.equal(MCP_TOOLS.find((tool) => tool.name === "grand_livre")?.write, undefined);
 });

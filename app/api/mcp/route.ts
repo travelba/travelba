@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const INSTRUCTIONS =
-  "CRM Travel BA, lecture seule pour l’agence. Ne pas inventer d’horaires ni de prix. Ne pas créditer Revolut, publier un carnet, ni rattacher un mail. Les numéros de pièce ne sont pas dans les réponses.";
+  "CRM Travel BA pour l’agence. Lectures et écritures : crédit d’un virement, crédit Revolut vers le client désigné, montrer un carnet, mettre à jour un dossier, confirmer un service, traiter un e-mail, créer ou mettre à jour un client. Ne pas inventer d’horaires ni de prix. Ne pas choisir un client à la place de l’agence. Un carnet sans carte reste caché. Les numéros de pièce ne sont pas dans les réponses.";
 
 function unauthorized() {
   return NextResponse.json({ error: "Non autorisé" }, { status: 401 });

@@ -14,6 +14,17 @@ import {
   readServicesAConfirmer,
   readTableauDeBord,
 } from "@/lib/crm/mcp-read";
+import {
+  confirmService,
+  createClient,
+  creditManualTransfer,
+  creditRevolutTransfer,
+  McpWriteError,
+  publishCarnet,
+  settleEmail,
+  updateBooking,
+  updateClient,
+} from "@/lib/crm/mcp-write";
 import { redactMcp } from "@/lib/crm/mcp-redact";
 
 /** Au-delà, Grok n’arrive plus à garder tous les outils en tête. */
@@ -23,17 +34,20 @@ const text = (value: unknown) => ({
   content: [{ type: "text" as const, text: JSON.stringify(redactMcp(value)) }],
 });
 
-const failed = {
-  isError: true as const,
-  content: [{ type: "text" as const, text: "Lecture impossible." }],
-};
+function failed(message: string) {
+  return {
+    isError: true as const,
+    content: [{ type: "text" as const, text: message }],
+  };
+}
 
-async function guard(name: string, run: () => Promise<unknown>) {
+async function guard(name: string, write: boolean, run: () => Promise<unknown>) {
   try {
     return text(await run());
   } catch (err) {
     console.error("[mcp]", name, err instanceof Error ? err.message : "error");
-    return failed;
+    if (write && err instanceof McpWriteError) return failed(err.message);
+    return failed(write ? "Écriture impossible." : "Lecture impossible.");
   }
 }
 
@@ -46,6 +60,10 @@ type ToolDef = {
   name: string;
   description: string;
   input?: Record<string, z.ZodType>;
+  /** Écriture : le modèle doit nommer la cible. Pas de lecture seule. */
+  write?: boolean;
+  /** Appel hors Travelba (réservation chauffeur). */
+  openWorld?: boolean;
   run: (args: ToolArgs) => Promise<unknown>;
 };
 
@@ -120,7 +138,8 @@ export const MCP_TOOLS: ToolDef[] = [
   },
   {
     name: "services_a_confirmer",
-    description: "Chauffeur, accueil VIP et enregistrement encore à confirmer.",
+    description:
+      "Chauffeur, accueil VIP et enregistrement encore à confirmer. dossier_id et carte_id servent à confirmer_service.",
     run: () => readServicesAConfirmer(),
   },
   {
@@ -132,18 +151,127 @@ export const MCP_TOOLS: ToolDef[] = [
   },
   {
     name: "revolut_en_attente",
-    description: "Virements Revolut reçus, pas encore rapprochés. Ne crédite personne.",
+    description:
+      "Virements Revolut reçus, pas encore rapprochés. L’identifiant sert à crediter_revolut, avec le client désigné.",
     run: () => readRevolutEnAttente(),
   },
   {
     name: "emails_en_attente",
-    description: "Mails fournisseurs en attente de relecture. Ne rattache rien.",
+    description:
+      "Mails fournisseurs en attente. L’identifiant sert à traiter_email : refuser, ou rattacher au dossier désigné.",
     run: () => readEmailsEnAttente(),
   },
   {
     name: "little_emperors_en_attente",
     description: "Séjours Little Emperors sans dossier. Ne crée rien.",
     run: () => readLittleEmperorsEnAttente(),
+  },
+  {
+    name: "crediter_virement",
+    write: true,
+    description:
+      "Crédite un virement au grand livre d’un client, comme la saisie agence. client_id obligatoire. Crédit seulement, jamais un débit.",
+    input: {
+      client_id: z.string().trim().describe("Identifiant du client"),
+      montant: z.union([z.number(), z.string()]).describe("Montant du crédit, supérieur à zéro"),
+      devise: z.string().trim().max(8).optional().describe("Devise, 3 lettres. Défaut EUR"),
+      date: z.string().trim().max(40).optional().describe("Date du virement, AAAA-MM-JJ"),
+      libelle: z.string().trim().max(200).optional().describe("Libellé du mouvement"),
+      dossier_id: z.string().trim().optional().describe("Dossier lié, s’il y en a un"),
+      sens: z.string().trim().optional().describe("Doit rester un crédit"),
+      type: z.string().trim().optional().describe("Doit rester un virement"),
+    },
+    run: (args) => creditManualTransfer(args),
+  },
+  {
+    name: "crediter_revolut",
+    write: true,
+    description:
+      "Crédite un virement Revolut en attente au client désigné. Les deux identifiants sont obligatoires. Ne choisit pas un client à la place de l’agence.",
+    input: {
+      virement_id: z.string().trim().describe("Identifiant du virement Revolut en attente"),
+      client_id: z.string().trim().describe("Identifiant du client à créditer"),
+    },
+    run: (args) => creditRevolutTransfer(args),
+  },
+  {
+    name: "publier_carnet",
+    write: true,
+    description:
+      "Montre le carnet au client. Il faut au moins une carte. Un dossier archivé reste caché. Un carnet déjà montré n’est pas renvoyé.",
+    input: {
+      id: z.string().trim().optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+    },
+    run: (args) => publishCarnet(args),
+  },
+  {
+    name: "mettre_a_jour_dossier",
+    write: true,
+    description:
+      "Met à jour le statut, les notes ou les dates d’un dossier, puis le grand livre. statut : draft, quoted, confirmed, travelling, completed, cancelled.",
+    input: {
+      id: z.string().trim().optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+      statut: z.string().trim().max(40).optional().describe("Statut métier du dossier"),
+      notes_client: z.string().max(5000).optional().describe("Note visible par le client"),
+      notes_internes: z.string().max(5000).optional().describe("Note interne à l’agence"),
+      date_depart: z.string().max(40).optional().describe("Date de départ, AAAA-MM-JJ, vide pour effacer"),
+      date_retour: z.string().max(40).optional().describe("Date de retour, AAAA-MM-JJ, vide pour effacer"),
+    },
+    run: (args) => updateBooking(args),
+  },
+  {
+    name: "confirmer_service",
+    write: true,
+    openWorld: true,
+    description:
+      "Confirme un chauffeur, un accueil VIP ou un enregistrement déjà demandé sur le dossier. dossier_id et carte_id viennent de services_a_confirmer.",
+    input: {
+      dossier_id: z.string().trim().describe("Identifiant du dossier"),
+      carte_id: z.string().trim().describe("Identifiant de la carte de service"),
+    },
+    run: (args) => confirmService(args),
+  },
+  {
+    name: "traiter_email",
+    write: true,
+    description:
+      "Sort un e-mail de la file. refuser le classe sans dossier. rattacher exige dossier_id : le mail met le séjour à jour, sans montrer le carnet.",
+    input: {
+      id: z.string().trim().describe("Identifiant de l’e-mail en attente"),
+      action: z.enum(["rattacher", "refuser"]).describe("rattacher ou refuser"),
+      dossier_id: z.string().trim().optional().describe("Dossier choisi, obligatoire pour rattacher"),
+    },
+    run: (args) => settleEmail(args),
+  },
+  {
+    name: "creer_client",
+    write: true,
+    description:
+      "Crée une fiche client (e-mail, prénom, nom). N’envoie pas d’invitation. Un e-mail déjà utilisé est refusé.",
+    input: {
+      email: z.string().trim().describe("E-mail du client"),
+      prenom: z.string().trim().describe("Prénom"),
+      nom: z.string().trim().describe("Nom"),
+      telephone: z.string().trim().max(40).optional().describe("Téléphone"),
+    },
+    run: (args) => createClient(args),
+  },
+  {
+    name: "mettre_a_jour_client",
+    write: true,
+    description:
+      "Met à jour le prénom, le nom, l’e-mail, le téléphone ou la société d’un client déjà identifié. Ne crée pas de fiche.",
+    input: {
+      id: z.string().trim().describe("Identifiant du client"),
+      prenom: z.string().max(80).optional().describe("Prénom"),
+      nom: z.string().max(80).optional().describe("Nom"),
+      email: z.string().trim().optional().describe("E-mail"),
+      telephone: z.string().max(40).optional().describe("Téléphone"),
+      societe: z.string().max(200).optional().describe("Société"),
+    },
+    run: (args) => updateClient(args),
   },
 ];
 
@@ -155,9 +283,13 @@ export function registerTravelbaTools(server: McpServer) {
       {
         description: tool.description,
         inputSchema: input,
-        annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+        annotations: {
+          readOnlyHint: tool.write !== true,
+          destructiveHint: false,
+          openWorldHint: tool.openWorld === true,
+        },
       },
-      async (args) => guard(tool.name, () => tool.run((args ?? {}) as ToolArgs))
+      async (args) => guard(tool.name, tool.write === true, () => tool.run((args ?? {}) as ToolArgs))
     );
   }
 }
