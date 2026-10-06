@@ -33,6 +33,7 @@ import {
   type CrmRevolutTransaction,
   type CrmTransaction,
   type CrmBillingCompany,
+  type CrmCustomerActivity,
   type CrmCustomerLogin,
   type CrmTravelDocument,
   DOC_TYPE_LABELS,
@@ -79,6 +80,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
     whatsappMessages,
     whatsappRequests,
     { data: loginRows, error: loginError },
+    { data: activityRows, error: activityError },
   ] = await Promise.all([
     supabase.from("crm_travel_companions").select("*").eq("customer_id", id),
     supabase.from("crm_travel_documents").select("*").eq("customer_id", id),
@@ -140,8 +142,15 @@ export default async function AdminClientDetailPage({ params }: Props) {
       .eq("customer_id", id)
       .order("created_at", { ascending: false })
       .limit(80),
+    supabase
+      .from("crm_customer_activity")
+      .select("id, customer_id, auth_user_id, action, summary, detail, path, booking_id, created_at")
+      .eq("customer_id", id)
+      .order("created_at", { ascending: false })
+      .limit(200),
   ]);
   const logins = loginError ? [] : ((loginRows || []) as CrmCustomerLogin[]);
+  const activity = activityError ? [] : ((activityRows || []) as CrmCustomerActivity[]);
   const bookingRows = mergeFicheBookings(
     (bookings || []) as CrmBooking[],
     (billedBookings || []) as CrmBooking[]
@@ -206,7 +215,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         </div>
       </div>
       <InviteCustomerPanel customerId={c.id} initial={portal} />
-      <CustomerLoginLog logins={logins} />
+      <CustomerLoginLog logins={logins} activity={activity} />
       <WhatsappThread
         messages={threadMessages}
         requests={whatsappRequests.error ? [] : whatsappRequests.data || []}

@@ -12,6 +12,7 @@ import {
   insertTravelDocument,
   travelDocumentFromForm,
 } from "@/lib/crm/travel-document-write";
+import { documentActivitySummary, pieceActivityDetail, recordCustomerActivity, stayMention } from "@/lib/crm/customer-activity";
 
 export async function GET() {
   const auth = await requireCustomer();
@@ -33,6 +34,7 @@ export async function POST(request: Request) {
   const travelerId = emptyToNull(form.get("traveler_id"));
   const sourceId = emptyToNull(form.get("source_id"));
   const companionId = emptyToNull(form.get("companion_id"));
+  const stay = await stayLabel(auth.supabase, auth.customer.id, bookingId);
   try {
     if (sourceId) {
       if (!bookingId) return jsonError("Réservation requise pour reprendre un document");
@@ -40,6 +42,13 @@ export async function POST(request: Request) {
         bookingId,
         travelerId,
         companionId,
+      });
+      await recordCustomerActivity({
+        customerId: auth.customer.id,
+        authUserId: auth.user.id,
+        action: "document",
+        summary: documentActivitySummary("reuse", null, stay),
+        bookingId,
       });
       return NextResponse.json({ document });
     }
@@ -50,6 +59,15 @@ export async function POST(request: Request) {
       last_name: auth.customer.last_name,
     });
     if (imported) {
+      const added = imported.documents[0];
+      await recordCustomerActivity({
+        customerId: auth.customer.id,
+        authUserId: auth.user.id,
+        action: "document",
+        summary: documentActivitySummary("add", added?.doc_type, stay),
+        detail: pieceActivityDetail(added),
+        bookingId,
+      });
       return NextResponse.json({
         document: imported.documents[0] || null,
         documents: imported.documents,
@@ -74,6 +92,14 @@ export async function POST(request: Request) {
     });
     await applyIdentityFromForm(auth.supabase, form, auth.customer.id, companionId, travelerId);
     await reconcileCustomerParty(auth.customer.id);
+    await recordCustomerActivity({
+      customerId: auth.customer.id,
+      authUserId: auth.user.id,
+      action: "document",
+      summary: documentActivitySummary("add", emptyToNull(form.get("doc_type")), stay),
+      detail: pieceActivityDetail(document),
+      bookingId,
+    });
     return NextResponse.json({ document });
   } catch (err) {
     return jsonError(err instanceof Error ? err.message : "Enregistrement impossible", 400);
@@ -90,5 +116,27 @@ export async function DELETE(request: Request) {
     customer_id: auth.customer.id,
   });
   if (error) return dbError(error, 400);
+  await recordCustomerActivity({
+    customerId: auth.customer.id,
+    authUserId: auth.user.id,
+    action: "document",
+    summary: documentActivitySummary("remove"),
+  });
   return NextResponse.json({ ok: true });
+}
+
+async function stayLabel(
+  supabase: Exclude<Awaited<ReturnType<typeof requireCustomer>>, NextResponse>["supabase"],
+  customerId: string,
+  bookingId: string | null
+) {
+  if (!bookingId) return null;
+  const { data } = await supabase
+    .from("crm_bookings")
+    .select("reference, title, destination")
+    .eq("id", bookingId)
+    .eq("customer_id", customerId)
+    .maybeSingle();
+  if (!data?.reference) return null;
+  return stayMention(data.reference, data.title, data.destination);
 }

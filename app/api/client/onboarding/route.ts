@@ -3,6 +3,7 @@ import { dbError, jsonError } from "@/lib/crm/auth";
 import { mustSetPassword, pathAfterPassword, withOnboardingDone } from "@/lib/crm/session";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { recordCustomerActivity } from "@/lib/crm/customer-activity";
 
 export const runtime = "nodejs";
 
@@ -26,9 +27,17 @@ export async function POST() {
   await supabase.auth.refreshSession();
   const { data: customer } = await admin
     .from("crm_customers")
-    .select("phone")
+    .select("id, phone")
     .eq("auth_user_id", user.id)
     .maybeSingle();
+  if (customer?.id) {
+    await recordCustomerActivity({
+      customerId: customer.id,
+      authUserId: user.id,
+      action: "onboarding",
+      summary: "A terminé la bienvenue",
+    });
+  }
 
   return NextResponse.json({ ok: true, next: pathAfterPassword(customer?.phone) });
 }

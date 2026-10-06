@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireCustomer } from "@/lib/crm/auth";
 import { getStripe } from "@/lib/crm/stripe";
+import { recordCustomerActivity } from "@/lib/crm/customer-activity";
 
 export async function PATCH(request: Request) {
   const auth = await requireCustomer();
@@ -20,6 +21,12 @@ export async function PATCH(request: Request) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
+  await recordCustomerActivity({
+    customerId: auth.customer.id,
+    authUserId: auth.user.id,
+    action: "card",
+    summary: "A choisi un autre moyen de paiement",
+  });
   return NextResponse.json({ paymentMethod: data });
 }
 
@@ -48,5 +55,11 @@ export async function DELETE(request: Request) {
     .delete()
     .eq("id", id);
   if (error) return dbError(error, 400);
+  await recordCustomerActivity({
+    customerId: auth.customer.id,
+    authUserId: auth.user.id,
+    action: "card",
+    summary: "A retiré un moyen de paiement",
+  });
   return NextResponse.json({ ok: true });
 }

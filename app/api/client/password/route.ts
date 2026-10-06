@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { appOrigin } from "@/lib/crm/invite";
 import { sendSpaceAccessWhatsapp } from "@/lib/crm/space-access";
+import { recordCustomerActivity } from "@/lib/crm/customer-activity";
 
 export const runtime = "nodejs";
 
@@ -37,9 +38,22 @@ export async function POST(request: Request) {
     console.error("[client/password]", error.code ?? "?", error.message);
     return jsonError(passwordErrorMessage(error), 400);
   }
+  const admin = createServiceClient();
+  const { data: customerRow } = await admin
+    .from("crm_customers")
+    .select("id")
+    .eq("auth_user_id", user.id)
+    .maybeSingle();
+  if (customerRow?.id) {
+    await recordCustomerActivity({
+      customerId: customerRow.id,
+      authUserId: user.id,
+      action: "password",
+      summary: change ? "A changé son mot de passe" : "A enregistré son mot de passe",
+    });
+  }
   if (change) return NextResponse.json({ ok: true });
 
-  const admin = createServiceClient();
   const { data: fresh } = await admin.auth.admin.getUserById(user.id);
   const [{ data: customer }, { data: staffRow }] = await Promise.all([
     admin

@@ -4,6 +4,7 @@ import { writeBillingAssignment } from "@/lib/crm/billing-companies";
 import { refreshBookingLedger } from "@/lib/crm/bookings";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmBooking } from "@/lib/crm/types";
+import { billingActivitySummary, recordCustomerActivity } from "@/lib/crm/customer-activity";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -34,5 +35,13 @@ export async function PATCH(request: Request, ctx: Ctx) {
   } catch (err) {
     return jsonError(err instanceof Error ? err.message : "Écritures non mises à jour", 400);
   }
+  const stay = data as CrmBooking;
+  await recordCustomerActivity({
+    customerId: auth.customer.id,
+    authUserId: auth.user.id,
+    action: "billing",
+    summary: billingActivitySummary(stay.reference, stay.title, stay.destination),
+    bookingId: id,
+  });
   return NextResponse.json({ ok: true });
 }

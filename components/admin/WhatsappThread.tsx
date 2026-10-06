@@ -1,6 +1,9 @@
 import Link from "next/link";
+import { Icon } from "@/components/crm/icons";
 import { formatDateTimeFr } from "@/lib/crm/money";
 import { HANDOFF_LABELS, type HandoffKind } from "@/lib/crm/whatsapp-concierge";
+
+const VISIBLE_MESSAGES = 3;
 
 export type WhatsappThreadMessage = {
   id: string;
@@ -24,6 +27,32 @@ function kindLabel(kind: string) {
   return "Demande";
 }
 
+function earlierLabel(count: number) {
+  return count === 1 ? "1 message précédent" : `${count} messages précédents`;
+}
+
+function MessageBubble({ message, stay }: { message: WhatsappThreadMessage; stay?: string | null }) {
+  const outbound = message.direction === "outbound";
+  return (
+    <li
+      className={
+        outbound
+          ? "ml-8 rounded-2xl bg-[var(--admin-navy)] px-4 py-3 text-white"
+          : "mr-8 rounded-2xl border border-[var(--border)] px-4 py-3"
+      }
+    >
+      <p className={outbound ? "text-[10px] font-bold uppercase tracking-[0.14em] text-[#e6d3b3]" : "text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]"}>
+        {outbound ? "Le Concierge" : "Client"}
+        {stay ? ` · ${stay}` : ""}
+      </p>
+      <p className="mt-1 whitespace-pre-wrap text-sm">{message.body}</p>
+      <p className={outbound ? "mt-1 text-xs text-[#e6d3b3]" : "mt-1 text-xs text-muted"}>
+        {formatDateTimeFr(message.created_at)}
+      </p>
+    </li>
+  );
+}
+
 export function WhatsappThread({
   messages,
   requests,
@@ -34,6 +63,8 @@ export function WhatsappThread({
   bookings: { id: string; reference: string }[];
 }) {
   const reference = new Map(bookings.map((booking) => [booking.id, booking.reference]));
+  const earlier = messages.length > VISIBLE_MESSAGES ? messages.slice(0, -VISIBLE_MESSAGES) : [];
+  const recent = earlier.length ? messages.slice(-VISIBLE_MESSAGES) : messages;
   return (
     <section className="admin-af-card rounded-3xl p-5">
       <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">WhatsApp</h2>
@@ -63,31 +94,26 @@ export function WhatsappThread({
         </ul>
       ) : null}
       {messages.length ? (
-        <ol className="mt-4 space-y-3">
-          {messages.map((message) => {
-            const outbound = message.direction === "outbound";
-            const stay = message.booking_id ? reference.get(message.booking_id) : null;
-            return (
-              <li
-                key={message.id}
-                className={
-                  outbound
-                    ? "ml-8 rounded-2xl bg-[var(--admin-navy)] px-4 py-3 text-white"
-                    : "mr-8 rounded-2xl border border-[var(--border)] px-4 py-3"
-                }
-              >
-                <p className={outbound ? "text-[10px] font-bold uppercase tracking-[0.14em] text-[#e6d3b3]" : "text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]"}>
-                  {outbound ? "Le Concierge" : "Client"}
-                  {stay ? ` · ${stay}` : ""}
-                </p>
-                <p className="mt-1 whitespace-pre-wrap text-sm">{message.body}</p>
-                <p className={outbound ? "mt-1 text-xs text-[#e6d3b3]" : "mt-1 text-xs text-muted"}>
-                  {formatDateTimeFr(message.created_at)}
-                </p>
-              </li>
-            );
-          })}
-        </ol>
+        <div className="mt-4 space-y-3">
+          {earlier.length ? (
+            <details className="group">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl border border-[var(--border)] px-4 py-3 text-sm font-semibold text-[var(--admin-navy)] [&::-webkit-details-marker]:hidden [&::marker]:content-none">
+                <span>{earlierLabel(earlier.length)}</span>
+                <Icon name="expand_more" className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180" />
+              </summary>
+              <ol className="mt-3 space-y-3">
+                {earlier.map((message) => (
+                  <MessageBubble key={message.id} message={message} stay={message.booking_id ? reference.get(message.booking_id) : null} />
+                ))}
+              </ol>
+            </details>
+          ) : null}
+          <ol className="space-y-3">
+            {recent.map((message) => (
+              <MessageBubble key={message.id} message={message} stay={message.booking_id ? reference.get(message.booking_id) : null} />
+            ))}
+          </ol>
+        </div>
       ) : (
         <p className="mt-2 text-sm text-muted">Aucun échange WhatsApp.</p>
       )}

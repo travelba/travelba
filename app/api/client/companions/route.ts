@@ -4,6 +4,7 @@ import { resolveNationality } from "@/lib/crm/countries";
 import { emptyToNull } from "@/lib/crm/identity";
 import { storedCompanionPhone } from "@/lib/crm/trip-share";
 import { deleteTravelDocuments } from "@/lib/crm/travel-document-write";
+import { companionActivityDetail, companionActivitySummary, recordCustomerActivity } from "@/lib/crm/customer-activity";
 
 function phonePatch(body: Record<string, unknown> | null) {
   if (!body || !Object.prototype.hasOwnProperty.call(body, "phone")) return {};
@@ -49,6 +50,18 @@ export async function POST(request: Request) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
+  await recordCustomerActivity({
+    customerId: auth.customer.id,
+    authUserId: auth.user.id,
+    action: "companion",
+    summary: companionActivitySummary("add", `${first} ${last}`),
+    detail: companionActivityDetail({
+      relationship: emptyToNull(body?.relationship),
+      birthDate: emptyToNull(body?.birth_date),
+      nationality: resolveNationality(String(body?.nationality || "")),
+      phone: "phone" in phone ? phone.phone : null,
+    }),
+  });
   return NextResponse.json({ companion: data });
 }
 
@@ -78,6 +91,21 @@ export async function PATCH(request: Request) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
+  await recordCustomerActivity({
+    customerId: auth.customer.id,
+    authUserId: auth.user.id,
+    action: "companion",
+    summary: companionActivitySummary(
+      "edit",
+      `${String(data.first_name || "")} ${String(data.last_name || "")}`
+    ),
+    detail: companionActivityDetail({
+      relationship: emptyToNull(data.relationship),
+      birthDate: emptyToNull(data.birth_date),
+      nationality: emptyToNull(data.nationality),
+      phone: emptyToNull(data.phone),
+    }),
+  });
   return NextResponse.json({ companion: data });
 }
 
@@ -97,5 +125,11 @@ export async function DELETE(request: Request) {
     .eq("id", id)
     .eq("customer_id", auth.customer.id);
   if (error) return dbError(error, 400);
+  await recordCustomerActivity({
+    customerId: auth.customer.id,
+    authUserId: auth.user.id,
+    action: "companion",
+    summary: companionActivitySummary("remove"),
+  });
   return NextResponse.json({ ok: true });
 }

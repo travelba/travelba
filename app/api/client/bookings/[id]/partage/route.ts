@@ -8,6 +8,7 @@ import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import type { CrmBooking } from "@/lib/crm/types";
+import { recordCustomerActivity, shareActivitySummary, stayMention } from "@/lib/crm/customer-activity";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -80,7 +81,17 @@ export async function POST(request: Request, ctx: Ctx) {
     url: tripShareUrl(siteConfig.url, code),
     mediaUrl,
   });
-  if (result.ok) return NextResponse.json({ ok: true });
+  if (result.ok) {
+    await recordCustomerActivity({
+      customerId: auth.customer.id,
+      authUserId: auth.user.id,
+      action: "share",
+      summary: shareActivitySummary(plan.firstName, stayMention(booking.reference, booking.title, booking.destination)),
+      detail: plan.phone,
+      bookingId: booking.id,
+    });
+    return NextResponse.json({ ok: true });
+  }
   if (result.reason === "not_configured") {
     return jsonError("WhatsApp n’est pas disponible. Le lien reste à copier.", 503);
   }

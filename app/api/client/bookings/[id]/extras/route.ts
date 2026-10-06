@@ -15,6 +15,7 @@ import { personLabel } from "@/lib/crm/household";
 import { notifyServiceRequest } from "@/lib/crm/service-request-mail";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmBooking, CrmBookingItem, CrmBookingTraveler, CrmCompanion, CrmCustomer } from "@/lib/crm/types";
+import { recordCustomerActivity, serviceActivitySummary } from "@/lib/crm/customer-activity";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -48,6 +49,20 @@ export async function POST(request: Request, ctx: Ctx) {
         leg: extra.leg,
         place: extra.place,
         moment: extra.moment,
+      });
+      await recordCustomerActivity({
+        customerId: auth.customer.id,
+        authUserId: auth.user.id,
+        action: "extra",
+        bookingId: b.id,
+        summary: serviceActivitySummary({
+          change: "cancel",
+          kind: extra.kind,
+          leg: extra.leg,
+          reference: b.reference,
+          title: b.title,
+          destination: b.destination,
+        }),
       });
       return NextResponse.json(cancelled);
     }
@@ -83,6 +98,21 @@ export async function POST(request: Request, ctx: Ctx) {
           items: list,
         });
       }
+      await recordCustomerActivity({
+        customerId: auth.customer.id,
+        authUserId: auth.user.id,
+        action: "extra",
+        bookingId: b.id,
+        summary: serviceActivitySummary({
+          change: "address",
+          kind: extra.kind,
+          leg: extra.leg,
+          reference: b.reference,
+          title: b.title,
+          destination: b.destination,
+        }),
+        detail: [extra.depart, extra.arrive].map((part) => (part || "").trim()).filter(Boolean).join(" → ") || null,
+      });
       return NextResponse.json(updated);
     }
     if (body?.decline === true) {
@@ -93,6 +123,20 @@ export async function POST(request: Request, ctx: Ctx) {
         leg: extra.leg,
         place: extra.place,
         moment: extra.moment,
+      });
+      await recordCustomerActivity({
+        customerId: auth.customer.id,
+        authUserId: auth.user.id,
+        action: "extra",
+        bookingId: b.id,
+        summary: serviceActivitySummary({
+          change: "decline",
+          kind: extra.kind,
+          leg: extra.leg,
+          reference: b.reference,
+          title: b.title,
+          destination: b.destination,
+        }),
       });
       return NextResponse.json(declined);
     }
@@ -132,6 +176,20 @@ export async function POST(request: Request, ctx: Ctx) {
         items: list,
       });
     }
+    await recordCustomerActivity({
+      customerId: auth.customer.id,
+      authUserId: auth.user.id,
+      action: "extra",
+      bookingId: b.id,
+      summary: serviceActivitySummary({
+        change: "ask",
+        kind: extra.kind,
+        leg: extra.leg,
+        reference: b.reference,
+        title: b.title,
+        destination: b.destination,
+      }),
+    });
     return NextResponse.json(created);
   } catch (err) {
     if (err instanceof BookingIssuesError) return jsonIssues(err.issues);

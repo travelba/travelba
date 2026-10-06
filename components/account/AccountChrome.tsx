@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { BrandMark } from "@/components/crm/ui";
@@ -50,11 +51,30 @@ export function AccountChrome({
     "Espace client";
   const phoneWall = needsPhone && !pathname.startsWith(`${basePath}/profil`);
 
+  useEffect(() => {
+    if (preview || desk) return;
+    if (!pathname.startsWith("/mon-compte")) return;
+    void fetch("/api/client/activity", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: pathname }),
+      keepalive: true,
+    }).catch(() => {});
+  }, [pathname, preview, desk]);
+
   if (pathname === ONBOARDING_PATH || pathname === `${basePath}/bienvenue`) {
     return <div className="account-app admin-af min-h-screen">{children}</div>;
   }
 
   async function signOut() {
+    if (!preview && !desk) {
+      await fetch("/api/client/activity", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "sign-out" }),
+        keepalive: true,
+      }).catch(() => {});
+    }
     const supabase = createClient();
     // Cet appareil seulement : « Se déconnecter de tous les appareils » vit dans Mon compte › Sécurité.
     await supabase.auth.signOut({ scope: "local" });

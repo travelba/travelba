@@ -8,6 +8,7 @@ import { notifyFormalitiesReady, safeConcierge } from "@/lib/crm/concierge-send"
 import { whatsappOnVisa } from "@/lib/crm/visa-flow";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import type { CrmBooking, CrmBookingItem, CrmBookingTraveler } from "@/lib/crm/types";
+import { formalitiesActivitySummary, recordCustomerActivity } from "@/lib/crm/customer-activity";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -48,6 +49,15 @@ export async function POST(request: Request, ctx: Ctx) {
     if (result.saved > 0 && whatsappOnVisa("piece")) {
       await markPaidVisasFiled(createServiceClient(), b.id, result.countries, party);
       await safeConcierge(() => notifyFormalitiesReady(b.id, result.countries));
+    }
+    if (result.saved > 0) {
+      await recordCustomerActivity({
+        customerId: auth.customer.id,
+        authUserId: auth.user.id,
+        action: "visa",
+        summary: formalitiesActivitySummary(b.reference, b.title, b.destination),
+        bookingId: b.id,
+      });
     }
     return NextResponse.json(result);
   } catch (err) {

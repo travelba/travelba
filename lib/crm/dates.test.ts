@@ -26,9 +26,10 @@ test("formatDateFr lit une date seule à midi, sans décalage de jour", () => {
   assert.equal(formatDateFr("pas une date"), "pas une date");
 });
 
-test("formatDateTimeFr garde l’heure et retombe sur la date seule", () => {
+test("formatDateTimeFr garde l’heure de Paris et retombe sur la date seule", () => {
   assert.equal(formatDateTimeFr("2026-11-08"), "8 nov. 2026");
-  assert.match(formatDateTimeFr("2026-11-08T14:30:00.000Z"), /^8 nov\. 2026,? \d{2}:\d{2}$/);
+  assert.match(formatDateTimeFr("2026-10-06T09:19:00.000Z"), /11:19/);
+  assert.match(formatDateTimeFr("2026-11-08T14:30:00.000Z"), /^8 nov\. 2026\D+15:30$/);
   assert.equal(formatDateTimeFr(null), "");
   assert.equal(formatDateTimeFr("pas une date"), "pas une date");
 });

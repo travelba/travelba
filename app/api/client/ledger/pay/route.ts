@@ -8,6 +8,7 @@ import { RevolutHttpError, loadAgencyEurWire } from "@/lib/crm/revolut";
 import { ensureStripeCustomer, getStripe, stripeConfigured } from "@/lib/crm/stripe";
 import { excludedStripeTypes, stayPayMethodOf, stayPayMethods } from "@/lib/crm/stripe-pay";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { payActivityDetail, payActivitySummary, recordCustomerActivity } from "@/lib/crm/customer-activity";
 
 export async function POST(request: Request) {
   const auth = await requireCustomer();
@@ -48,6 +49,13 @@ export async function POST(request: Request) {
     try {
       const wire = await loadAgencyEurWire();
       if (!wire) return jsonError("Le virement n’est pas encore ouvert.", 503);
+      await recordCustomerActivity({
+        customerId: auth.customer.id,
+        authUserId: auth.user.id,
+        action: "pay",
+        summary: payActivitySummary("revolut", payer),
+        detail: payActivityDetail(amount, view.currency),
+      });
       return NextResponse.json({
         transfer: {
           iban: wire.iban,
@@ -100,6 +108,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ alreadyPaid: true });
     }
     if (!intent.client_secret) return jsonError("Le règlement n’a pas pu démarrer.", 502);
+    await recordCustomerActivity({
+      customerId: auth.customer.id,
+      authUserId: auth.user.id,
+      action: "pay",
+      summary: payActivitySummary(method, payer),
+      detail: payActivityDetail(amount, view.currency),
+    });
     return NextResponse.json({ clientSecret: intent.client_secret });
   } catch (err) {
     const code =

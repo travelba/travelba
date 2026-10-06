@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireCustomer } from "@/lib/crm/auth";
 import { scanTravelDocument } from "@/lib/crm/ocr-document";
+import { documentActivitySummary, pieceActivityDetail, recordCustomerActivity } from "@/lib/crm/customer-activity";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -15,6 +16,14 @@ export async function POST(request: Request) {
   }
   try {
     const result = await scanTravelDocument(file);
+    const read = result.identities?.[0] || result.identity;
+    await recordCustomerActivity({
+      customerId: auth.customer.id,
+      authUserId: auth.user.id,
+      action: "document",
+      summary: documentActivitySummary("scan", read?.doc_type),
+      detail: pieceActivityDetail(read),
+    });
     return NextResponse.json(result);
   } catch (err) {
     console.error("[client/documents/scan]", err);

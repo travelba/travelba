@@ -18,6 +18,7 @@ import {
 } from "@/lib/crm/visa-flow";
 import type { VisaCorridor } from "@/lib/crm/visa-fees";
 import type { CrmBooking, CrmBookingItem, CrmBookingTraveler, CrmCompanion, CrmCustomer, CrmTravelDocument } from "@/lib/crm/types";
+import { recordCustomerActivity, visaActivitySummary } from "@/lib/crm/customer-activity";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -137,5 +138,12 @@ export async function POST(request: Request, ctx: Ctx) {
     enforceWindow: true,
   });
   if (astraFillsCountry(country) && decision.step === "preparation") after(() => continueEtaIlRequest(b.id));
+  await recordCustomerActivity({
+    customerId: auth.customer.id,
+    authUserId: auth.user.id,
+    action: "visa",
+    summary: visaActivitySummary(b.reference, country, b.title, b.destination),
+    bookingId: b.id,
+  });
   return NextResponse.json({ country, step: decision.step, accepted: true });
 }

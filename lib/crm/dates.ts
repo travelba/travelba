@@ -8,13 +8,17 @@ export function formatDateFr(value: string | null | undefined) {
   return d.toLocaleDateString("fr-FR", { dateStyle: "medium" });
 }
 
-/** « 12 oct. 2026 14:30 » ; une date seule retombe sur `formatDateFr`. */
+/** « 12 oct. 2026, 14:30 », heure de Paris. Une date seule retombe sur `formatDateFr`. */
 export function formatDateTimeFr(value: string | null | undefined) {
   if (!value) return "";
   if (value.length === 10) return formatDateFr(value);
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
+  return d.toLocaleString("fr-FR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Europe/Paris",
+  });
 }
 
 /**

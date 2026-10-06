@@ -3,6 +3,7 @@ import { jsonError, requireCustomer } from "@/lib/crm/auth";
 import { calendarHttpResponse } from "@/lib/crm/calendar-http";
 import { carnetVisible, clientVisibleItems } from "@/lib/crm/carnet";
 import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
+import { calendarActivitySummary, recordCustomerActivity } from "@/lib/crm/customer-activity";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -31,6 +32,13 @@ export async function GET(request: Request, ctx: Ctx) {
   const visible = clientVisibleItems(list);
   if (itemId && !visible.some((row) => row.id === itemId)) return jsonError("Séjour introuvable", 404);
 
+  await recordCustomerActivity({
+    customerId: auth.customer.id,
+    authUserId: auth.user.id,
+    action: "calendar",
+    summary: calendarActivitySummary(b.reference, b.title, b.destination),
+    bookingId: b.id,
+  });
   return calendarHttpResponse({
     request,
     booking: b,
