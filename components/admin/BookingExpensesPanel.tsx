@@ -21,18 +21,30 @@ function postsNow(status: BookingStatus) {
   return status === "confirmed" || status === "travelling" || status === "completed";
 }
 
+export type ExpenseWrite = {
+  id: string;
+  previousTitle: string;
+  title: string;
+  previousAmount: number;
+  amount: number;
+  removed?: boolean;
+};
+
 export function BookingExpensesPanel({
   bookingId,
   items,
   status,
   currency = "EUR",
   agencyCommission = false,
+  onExpenseWrite,
 }: {
   bookingId: string;
   items: CrmBookingItem[];
   status: BookingStatus;
   currency?: string;
   agencyCommission?: boolean;
+  /** Le prix dans Transactions suit tout de suite, sans recharger la page. */
+  onExpenseWrite?: (change: ExpenseWrite) => void;
 }) {
   const router = useRouter();
   const expenses = items.filter((item) => isLedgerExpenseKind(item.kind));
@@ -111,6 +123,17 @@ export function BookingExpensesPanel({
       return;
     }
     setLedgerNote(readLedgerWarning(json));
+    const id =
+      editingId && editingId !== "new" ? editingId : String((json.item as { id?: string } | undefined)?.id || "");
+    if (id) {
+      onExpenseWrite?.({
+        id,
+        previousTitle: current ? visibleServiceCopy(current.title) : label,
+        title: label,
+        previousAmount: current?.amount == null ? 0 : Number(current.amount),
+        amount,
+      });
+    }
     setEditingId(null);
     setTitle("");
     setAmount(null);
@@ -131,6 +154,17 @@ export function BookingExpensesPanel({
       return;
     }
     setLedgerNote(readLedgerWarning(json));
+    const current = expenses.find((item) => item.id === id);
+    if (current) {
+      onExpenseWrite?.({
+        id,
+        previousTitle: visibleServiceCopy(current.title),
+        title: visibleServiceCopy(current.title),
+        previousAmount: current.amount == null ? 0 : Number(current.amount),
+        amount: 0,
+        removed: true,
+      });
+    }
     if (editingId === id) setEditingId(null);
     router.refresh();
   }

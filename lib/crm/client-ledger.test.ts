@@ -3,7 +3,7 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ClientTransactionsPanel } from "../../components/account/ClientTransactionsPanel";
-import { shapeClientLedger } from "./client-ledger";
+import { applyExpenseLedgerChange, shapeClientLedger } from "./client-ledger";
 import { formatMoney } from "./money";
 import type { CrmTransaction } from "./types";
 
@@ -387,6 +387,59 @@ test("un encours par devise, l’euro reste la devise principale", () => {
   assert.ok(html.includes(formatMoney(-300, "EUR")));
   assert.match(html, /Demander un relevé/);
   assert.match(html, /Relev%C3%A9%20de%20compte%20%E2%80%94%20Camille%20Morel/);
+});
+
+test("modifier une dépense change le prix du mouvement tout de suite", () => {
+  const view = shapeClientLedger({
+    companyRole: null,
+    travelerBookingIds: [],
+    walletBalance: -50,
+    currency: "EUR",
+    audience: "staff",
+    bookings: [
+      {
+        id: "b1",
+        title: "Milan",
+        destination: null,
+        reference: "TB-1",
+        start_date: null,
+        end_date: null,
+        visible_to_client: true,
+      },
+    ],
+    rows: [
+      tx({
+        id: "t1",
+        direction: "debit",
+        kind: "booking",
+        amount: 50,
+        booking_id: "b1",
+        external_id: "booking:b1:expense:e1",
+        label: "D\u00e9pense \u00b7 Pourboire \u2014 TB-1",
+      }),
+    ],
+  });
+  const next = applyExpenseLedgerChange(view, {
+    bookingId: "b1",
+    itemId: "e1",
+    previousTitle: "Pourboire",
+    title: "Pourboire",
+    previousAmount: 50,
+    amount: 80,
+  });
+  assert.equal(next?.movements[0]?.amountLabel, `−${formatMoney(80, "EUR")}`);
+  assert.equal(next?.balanceValue, -80);
+  const gone = applyExpenseLedgerChange(next, {
+    bookingId: "b1",
+    itemId: "e1",
+    previousTitle: "Pourboire",
+    title: "Pourboire",
+    previousAmount: 80,
+    amount: 0,
+    removed: true,
+  });
+  assert.equal(gone?.movements.length, 0);
+  assert.equal(gone?.balanceValue, 0);
 });
 
 test("sans liste de soldes, la vue garde un seul encours", () => {

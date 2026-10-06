@@ -1,3 +1,4 @@
+import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
@@ -33,6 +34,9 @@ const SORT_ORDER_ERROR = `Ordre de la carte invalide (0 à ${MAX_SORT_ORDER}).`;
 /** L’écriture est faite ; un grand livre refusé devient `ledger_warning` (200), pas une erreur à rejouer. */
 async function ledgerAfterItemWrite(supabase: SupabaseClient, bookingId: string, saved: string) {
   const warning = await ledgerWarning(saved, () => refreshBookingLedger(supabase, bookingId));
+  revalidatePath(`/admin/reservations/${bookingId}`);
+  revalidatePath("/admin/transactions");
+  revalidatePath("/mon-compte/transactions");
   return warning ? { ledger_warning: warning } : {};
 }
 
