@@ -17,7 +17,12 @@ import { itemTicketCount } from "@/lib/crm/item-match";
 import { hotelDisplayName, publishRevealIds } from "@/lib/crm/carnet";
 import { stayTitleFromItems } from "@/lib/crm/staff-stay";
 import {
+  AUTO_TICKETING_FEE,
+  isAutoTicketingExpense,
+  ticketingExpenseAction,
+  ticketingExpenseTouched,
   ticketingFeeAmount,
+  ticketingFeeDismissed,
   ticketingFeeExternalId,
   ticketingFeeLabel,
   ticketingTicketCount,
@@ -318,7 +323,7 @@ export function agencyFeeBaseFromItems(items: AgencyFeeItem[]) {
     if (!isActiveItem(item)) continue;
     const amount = itemSellingAmount(item);
     if (isExtraItemKind(item.kind)) extras.push({ amount });
-    else if (isLedgerExpenseKind(item.kind)) expenses.push({ amount });
+    else if (isLedgerExpenseKind(item.kind) && !isAutoTicketingExpense(item)) expenses.push({ amount });
   }
   return agencyFeeBaseAmount({
     stayTotal: bookingTotalFromItems(items),
@@ -488,74 +493,94 @@ export async function syncBookingDebit(
   }
 }
 
+type TicketingItemRow = {
+  id: string;
+  kind: string;
+  title: string | null;
+  amount: number | null;
+  sort_order: number | null;
+  details: Record<string, unknown> | null;
+  lifecycle?: string | null;
+};
+
+/**
+ * La billeterie est une dépense du dossier.
+ * Le calcul (25 € par voyageur) la crée et la tient à jour tant que l’agence ne l’a pas modifiée.
+ * La transaction suit cette ligne. L’ancienne écriture `ticketing-fee` est annulée pour ne pas compter deux fois.
+ */
 export async function syncTicketingFee(supabase: SupabaseClient, booking: CrmBooking) {
-  const [{ data: items }, { data: travelers }, { data: existing }] = await Promise.all([
-    supabase.from("crm_booking_items").select("kind").eq("booking_id", booking.id),
+  const [{ data: itemRows }, { data: travelers }, { data: legacy }] = await Promise.all([
+    supabase
+      .from("crm_booking_items")
+      .select("id, kind, title, amount, sort_order, details, lifecycle")
+      .eq("booking_id", booking.id),
     supabase.from("crm_booking_travelers").select("id").eq("booking_id", booking.id),
     supabase
       .from("crm_transactions")
-      .select("*")
+      .select("id, status")
       .eq("source", "manual")
       .eq("external_id", ticketingFeeExternalId(booking.id))
       .maybeSingle(),
   ]);
 
-  const hasFlight = (items || []).some((row) => row.kind === "flight");
+  const items = (itemRows || []) as TicketingItemRow[];
+  const active = items.filter((row) => isActiveItem(row));
+  const hasFlight = active.some((row) => row.kind === "flight");
   const travelerCount = (travelers || []).length;
-  const ticketCount = ticketingTicketCount({ hasFlight, travelerCount });
+  const auto = active.find((row) => isAutoTicketingExpense(row)) || null;
   const amount = ticketingFeeAmount({ hasFlight, travelerCount });
-  const shouldPost =
-    booking.visible_to_client === true &&
-    (booking.status === "confirmed" ||
-      booking.status === "travelling" ||
-      booking.status === "completed") &&
-    amount > 0;
-  const label = ticketingFeeLabel(ticketCount);
-  const debit = existing as CrmTransaction | null;
-  const payerId = booking.billing_customer_id || booking.customer_id;
-  const companyId = debitBillingCompanyId(booking);
+  const title = ticketingFeeLabel(ticketingTicketCount({ hasFlight, travelerCount }));
+  const action = ticketingExpenseAction({
+    hasFlight,
+    dismissed: ticketingFeeDismissed(booking.fee_mode),
+    exists: Boolean(auto),
+    touched: ticketingExpenseTouched(auto?.details),
+    amount,
+    currentAmount: auto?.amount == null ? null : Number(auto.amount),
+    title,
+    currentTitle: auto?.title || null,
+  });
 
-  if (!shouldPost) {
-    if (debit && debit.status !== "void") {
-      must(await supabase.from("crm_transactions").update({ status: "void" }).eq("id", debit.id), "Frais de billeterie");
-    }
-    return;
-  }
-
-  if (!debit) {
+  if (action === "remove" && auto) {
+    must(await supabase.from("crm_booking_items").delete().eq("id", auto.id), "Frais de billeterie");
+  } else if (action === "create") {
+    const sortOrder =
+      items.reduce((max, row) => Math.max(max, Number(row.sort_order || 0)), -1) + 1;
     must(
-      await supabase.from("crm_transactions").insert({
-        customer_id: payerId,
+      await supabase.from("crm_booking_items").insert({
         booking_id: booking.id,
-        billing_company_id: companyId,
-        direction: "debit",
-        kind: "adjustment",
+        kind: "expense",
+        title,
         amount,
-        currency: booking.currency || "EUR",
-        label,
-        source: "manual",
-        external_id: ticketingFeeExternalId(booking.id),
-        status: "posted",
+        include_in_ledger: true,
+        sort_order: Math.min(sortOrder, MAX_SORT_ORDER),
+        details: { auto_fee: AUTO_TICKETING_FEE },
+        visible_to_client: false,
       }),
       "Frais de billeterie"
     );
-    return;
+  } else if (action === "update" && auto) {
+    must(
+      await supabase
+        .from("crm_booking_items")
+        .update({
+          title,
+          amount,
+          include_in_ledger: true,
+          details: { ...(auto.details || {}), auto_fee: AUTO_TICKETING_FEE },
+        })
+        .eq("id", auto.id),
+      "Frais de billeterie"
+    );
   }
 
-  must(
-    await supabase
-      .from("crm_transactions")
-      .update({
-        customer_id: payerId,
-        billing_company_id: companyId,
-        amount,
-        currency: booking.currency || "EUR",
-        label,
-        status: "posted",
-      })
-      .eq("id", debit.id),
-    "Frais de billeterie"
-  );
+  const previous = legacy as { id: string; status: string } | null;
+  if (previous && previous.status !== "void") {
+    must(
+      await supabase.from("crm_transactions").update({ status: "void" }).eq("id", previous.id),
+      "Frais de billeterie"
+    );
+  }
 }
 
 export async function syncAgencyCommission(supabase: SupabaseClient, booking: CrmBooking) {
@@ -743,8 +768,8 @@ export async function syncBookingLedger(
     return;
   }
   await syncBookingDebit(supabase, booking, previousStatus);
-  await syncBookingItemDebits(supabase, booking);
   await syncTicketingFee(supabase, booking);
+  await syncBookingItemDebits(supabase, booking);
   await syncAgencyCommission(supabase, booking);
   await dropCoveredStayRollup(supabase, booking.id);
 }

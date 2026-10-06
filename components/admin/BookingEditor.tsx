@@ -31,7 +31,7 @@ import type { EstaTravelerLine } from "@/lib/crm/esta";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
 import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
-import { collectableTicketingFee } from "@/lib/crm/ticketing-fee";
+import { chargeableTicketingFee, isAutoTicketingExpense } from "@/lib/crm/ticketing-fee";
 import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
 import {
   canConfirmCarnetPublish,
@@ -744,11 +744,13 @@ export function BookingEditor({
   const stayAmount = stayPriceWithExpenses({
     stayTotal: bookingTotalFromItems(pricedItems),
     agencyCommission: booking.agency_commission === true,
-    expenses: pricedItems.filter((item) => isActiveItem(item) && isLedgerExpenseKind(item.kind)),
+    expenses: pricedItems
+      .filter((item) => isActiveItem(item) && isLedgerExpenseKind(item.kind))
+      .map((item) => ({ ...item, agencyFee: !isAutoTicketingExpense(item) })),
     extras: agencyFeeExtraAmounts(pricedItems),
-    ticketingFee: collectableTicketingFee({
+    ticketingFee: chargeableTicketingFee({
+      items: pricedItems,
       status: booking.status,
-      hasFlight: bookingHasFlight(pricedItems),
       travelerCount: travelers.length,
     }),
   });

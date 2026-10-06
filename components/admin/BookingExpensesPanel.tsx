@@ -8,6 +8,7 @@ import { Field, MoneyInput, fieldControlClass } from "@/components/crm/fields";
 import { readLedgerWarning } from "@/lib/crm/ledger-warning";
 import { agencyFeeBaseFromItems } from "@/lib/crm/bookings";
 import { agencyFeeFromGross, formatMoney } from "@/lib/crm/money";
+import { isAutoTicketingExpense, ticketingExpenseTouched, AUTO_TICKETING_FEE } from "@/lib/crm/ticketing-fee";
 import {
   AGENCY_FEE_LABEL,
   isLedgerExpenseKind,
@@ -76,6 +77,7 @@ export function BookingExpensesPanel({
     }
     setBusy(true);
     setError(null);
+    const current = expenses.find((item) => item.id === editingId);
     const payload = {
       kind: "expense",
       title: label,
@@ -85,7 +87,10 @@ export function BookingExpensesPanel({
       confirmation_ref: null,
       start_at: null,
       end_at: null,
-      details: {},
+      details:
+        current && isAutoTicketingExpense(current)
+          ? { auto_fee: AUTO_TICKETING_FEE, fee_touched: true }
+          : {},
     };
     const res =
       editingId && editingId !== "new"
@@ -196,8 +201,8 @@ export function BookingExpensesPanel({
       </div>
       <p className="mt-1 text-xs text-muted">
         {postsNow(status)
-          ? "Le dossier est confirmé : le débit part au compte du client à l’enregistrement."
-          : "Le débit part au compte du client à la confirmation du dossier."}
+          ? "Les frais de billeterie se créent ici dès qu’il y a un vol. Modifier ou retirer une ligne met à jour la transaction."
+          : "Les frais de billeterie se créent ici dès qu’il y a un vol. Le débit part à la confirmation du dossier."}
       </p>
       <label className="mt-3 flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)]">
         <input
@@ -255,7 +260,11 @@ export function BookingExpensesPanel({
                   <p className="text-xs text-muted">
                     {item.amount != null ? formatMoney(Number(item.amount), currency) : "Montant manquant"}
                     {" · "}
-                    Absente de l’itinéraire
+                    {isAutoTicketingExpense(item)
+                      ? ticketingExpenseTouched(item.details)
+                        ? "Montant modifié. La transaction suit cette ligne."
+                        : "25 € par voyageur du dossier. Modifier ou retirer met à jour la transaction."
+                      : "Absente de l’itinéraire"}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">

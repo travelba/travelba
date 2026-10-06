@@ -19,7 +19,7 @@ import {
   unlinkedDocuments,
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
-import { collectableTicketingFee, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
+import { chargeableTicketingFee, isAutoTicketingExpense, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
 import { stayTitleFromItems } from "@/lib/crm/staff-stay";
 import { withoutHotelRosterItems } from "@/lib/crm/hotel-contact";
 import { agencyFeeExtraAmounts } from "@/lib/crm/bookings";
@@ -68,9 +68,9 @@ export default async function ExampleReservationPage({ params }: Props) {
     hasFlight: session.items.some((item) => item.kind === "flight"),
     travelerCount: party.length,
   });
-  const ticketingFee = collectableTicketingFee({
+  const ticketingFee = chargeableTicketingFee({
+    items: session.items,
     status: b.status,
-    hasFlight: ticketCount > 0,
     travelerCount: party.length,
   });
   const expenseChoices = visibleItems
@@ -79,6 +79,7 @@ export default async function ExampleReservationPage({ params }: Props) {
       id: item.id,
       title: item.title,
       amount: item.amount == null ? null : Number(item.amount),
+      agencyFee: !isAutoTicketingExpense(item),
     }));
   const feeExtras = agencyFeeExtraAmounts(session.items);
   const expenseLines = clientStayExpenseLines({

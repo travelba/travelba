@@ -358,6 +358,14 @@ test("les frais d’agence suivent les étapes actives et les dépenses", () => 
   );
   assert.equal(
     agencyFeeBaseFromItems([
+      { kind: "hotel", amount: 1000 },
+      { kind: "expense", amount: 125, details: { auto_fee: "ticketing" } },
+      { kind: "expense", amount: 40 },
+    ]),
+    1040
+  );
+  assert.equal(
+    agencyFeeBaseFromItems([
       { kind: "hotel", amount: 2000 },
       { kind: "expense", amount: 400 },
       { kind: "chauffeur", amount: 150 },

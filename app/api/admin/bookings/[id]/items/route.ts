@@ -13,6 +13,7 @@ import { parseItemDetails } from "@/lib/crm/ingest-types";
 import { linkedPliantTransactionIds, pliantExpenseTransactionId } from "@/lib/crm/pliant-booking";
 import { parseMoney } from "@/lib/crm/money";
 import { persistBookingCardOrder } from "@/lib/crm/item-order";
+import { isAutoTicketingExpense, TICKETING_FEE_OFF } from "@/lib/crm/ticketing-fee";
 import { BOOKING_ITEM_KINDS, isActiveItem, isLedgerExpenseKind, type BookingItemKind } from "@/lib/crm/types";
 
 function knownKind(value: unknown) {
@@ -334,6 +335,20 @@ export async function DELETE(request: Request, ctx: Ctx) {
   const { id: bookingId } = await ctx.params;
   const itemId = new URL(request.url).searchParams.get("itemId");
   if (!itemId) return jsonError("itemId requis");
+  const { data: current, error: lookupError } = await auth.supabase
+    .from("crm_booking_items")
+    .select("kind, details")
+    .eq("id", itemId)
+    .eq("booking_id", bookingId)
+    .maybeSingle();
+  if (lookupError) return dbError(lookupError, 400);
+  if (current && isAutoTicketingExpense(current)) {
+    const { error: modeError } = await auth.supabase
+      .from("crm_bookings")
+      .update({ fee_mode: TICKETING_FEE_OFF })
+      .eq("id", bookingId);
+    if (modeError) return dbError(modeError, 400);
+  }
   const { error } = await auth.supabase
     .from("crm_booking_items")
     .delete()

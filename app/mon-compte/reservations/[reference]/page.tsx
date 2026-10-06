@@ -50,7 +50,7 @@ import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
 import { agencyFeeExtraAmounts } from "@/lib/crm/bookings";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
-import { collectableTicketingFee, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
+import { chargeableTicketingFee, isAutoTicketingExpense, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
 import { loadClientLedger } from "@/lib/crm/client-ledger";
 import { stripePublishableKey } from "@/lib/crm/stripe";
 import { StayExpenses } from "@/components/account/StayExpenses";
@@ -172,13 +172,18 @@ export default async function ReservationDetailPage({ params }: Props) {
   const placeLine = tripPlaceLine(headline, b.destination);
   const missingCount = coverage.total - coverage.ready;
   const formalities = frenchPassportTrip(visibleItems, party.length);
-  let expenseChoices: { id: string; title: string; amount: number | null; billing_company_id: string | null }[] =
-    [];
+  let expenseChoices: {
+    id: string;
+    title: string;
+    amount: number | null;
+    billing_company_id: string | null;
+    agencyFee?: boolean;
+  }[] = [];
   try {
     const admin = createServiceClient();
     const { data: expenseRows } = await admin
       .from("crm_booking_items")
-      .select("id, title, kind, amount, billing_company_id, sort_order, lifecycle")
+      .select("id, title, kind, amount, billing_company_id, sort_order, lifecycle, details")
       .eq("booking_id", b.id)
       .eq("kind", "expense")
       .order("sort_order");
@@ -190,6 +195,7 @@ export default async function ReservationDetailPage({ params }: Props) {
         amount: number | null;
         billing_company_id: string | null;
         lifecycle?: string | null;
+        details?: Record<string, unknown> | null;
       }[]
     )
       .filter((item) => isActiveItem(item) && isLedgerExpenseKind(item.kind))
@@ -198,6 +204,7 @@ export default async function ReservationDetailPage({ params }: Props) {
         title: visibleServiceCopy(item.title),
         amount: item.amount == null ? null : Number(item.amount),
         billing_company_id: item.billing_company_id || null,
+        agencyFee: !isAutoTicketingExpense(item),
       }));
   } catch {
     expenseChoices = visibleItems
@@ -207,6 +214,7 @@ export default async function ReservationDetailPage({ params }: Props) {
         title: visibleServiceCopy(item.title),
         amount: item.amount == null ? null : Number(item.amount),
         billing_company_id: item.billing_company_id || null,
+        agencyFee: !isAutoTicketingExpense(item),
       }));
   }
   const feeExtras = agencyFeeExtraAmounts((items || []) as CrmBookingItem[]);
@@ -214,9 +222,9 @@ export default async function ReservationDetailPage({ params }: Props) {
     hasFlight: ((items || []) as CrmBookingItem[]).some((item) => item.kind === "flight"),
     travelerCount: party.length,
   });
-  const ticketingFee = collectableTicketingFee({
+  const ticketingFee = chargeableTicketingFee({
+    items: (items || []) as CrmBookingItem[],
     status: b.status,
-    hasFlight: ticketCount > 0,
     travelerCount: party.length,
   });
   const expenseLines = clientStayExpenseLines({
