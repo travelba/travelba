@@ -158,6 +158,8 @@ async function openServiceLines(admin: SupabaseClient, serviceBookings: ServiceB
     bookings: serviceBookings.filter((row) => withServices.includes(row.id)),
     items: [...serviceItems, ...((flights || []) as ServiceDeskItem[])],
   }).map((line) => ({
+    dossier_id: line.bookingId,
+    carte_id: line.itemId,
     reference: line.reference,
     client: line.holderName,
     service: line.kindLabel,
@@ -633,11 +635,12 @@ export async function readRevolutEnAttente() {
   }
   const rows = (data || []) as Pick<
     CrmRevolutTransaction,
-    "amount" | "currency" | "counterparty_name" | "reference" | "booked_at"
+    "id" | "amount" | "currency" | "counterparty_name" | "reference" | "booked_at"
   >[];
   return {
     lien: "/admin/revolut",
     virements: rows.map((row) => ({
+      id: row.id,
       montant: formatMoney(Number(row.amount), row.currency || "EUR"),
       expediteur: row.counterparty_name,
       libelle: row.reference,
@@ -665,16 +668,24 @@ export async function readEmailsEnAttente() {
     logRead("emails", error);
     throw new Error("Lecture impossible.");
   }
-  const rows = (data || []) as Pick<CrmEmailIngest, "label" | "from_email" | "subject" | "received_at" | "status" | "candidates" | "error">[];
+  const rows = (data || []) as Pick<
+    CrmEmailIngest,
+    "id" | "label" | "from_email" | "subject" | "received_at" | "status" | "candidates" | "error"
+  >[];
   return {
     lien: "/admin/emails",
     mails: rows.map((row) => ({
+      id: row.id,
       expediteur: row.from_email,
       sujet: row.subject,
       recu_le: row.received_at ? formatDateFr(row.received_at) : null,
       label: row.label,
       statut: EMAIL_STATUS[row.status] || row.status,
-      propositions: (row.candidates || []).slice(0, 5).map((candidate) => candidate.label),
+      propositions: (row.candidates || []).slice(0, 5).map((candidate) => ({
+        libelle: candidate.label,
+        client_id: candidate.customer_id,
+        dossier_id: candidate.booking_id || null,
+      })),
       erreur: row.error,
     })),
   };
