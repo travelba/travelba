@@ -26,8 +26,10 @@ import {
 import { BusyBar } from "@/components/crm/BusyBar";
 import { formatMoney, jMinusLabel, todayIsoDate } from "@/lib/crm/money";
 import { EstaOnBooking } from "@/components/admin/EstaOnBooking";
+import { UkEtaOnBooking } from "@/components/admin/UkEtaOnBooking";
 import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
 import type { EstaTravelerLine } from "@/lib/crm/esta";
+import type { UkEtaTravelerLine } from "@/lib/crm/uk-eta-ui";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
 import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
@@ -177,6 +179,7 @@ export function BookingEditor({
   bookingCards = [],
   pliantRecap = [],
   estaLines = [],
+  ukEtaLines = [],
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -235,6 +238,7 @@ export function BookingEditor({
   bookingCards?: CrmBookingCard[];
   pliantRecap?: PliantCardRecap[];
   estaLines?: EstaTravelerLine[];
+  ukEtaLines?: UkEtaTravelerLine[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -1557,6 +1561,7 @@ export function BookingEditor({
             passports={passportPreviewsForStay(travelers, identityDocs, holderName, booking.reference)}
           />
           <EstaOnBooking bookingId={booking.id} rows={estaLines} />
+          <UkEtaOnBooking bookingId={booking.id} rows={ukEtaLines} />
         </div>
         {!travelers.length ? (
           <button

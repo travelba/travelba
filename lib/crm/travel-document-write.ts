@@ -154,6 +154,13 @@ export async function insertTravelDocument(
     } catch {
       console.info("[esta] synchro après passeport ignorée");
     }
+    try {
+      const { createServiceClient } = await import("@/lib/supabase/admin");
+      const { syncUkEtaForCustomer } = await import("@/lib/crm/uk-eta-run");
+      await syncUkEtaForCustomer(input.customerId, createServiceClient());
+    } catch {
+      console.info("[uk-eta] synchro après passeport ignorée");
+    }
   }
   const replacesVaultPiece = !bookingId && (docType === "passport" || docType === "id_card");
   if (input.replacePrevious !== false && (bookingId || replacesVaultPiece)) {
