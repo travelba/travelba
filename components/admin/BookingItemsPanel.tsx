@@ -264,6 +264,7 @@ export function BookingItemsPanel({
   // Étape enregistrée mais grand livre refusé : reste affiché après router.refresh(), jusqu’au prochain enregistrement.
   const [ledgerNote, setLedgerNote] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [openStep, setOpenStep] = useState<string | null>(null);
   // `?hotel=` (toast « l’hôtel a répondu ») ouvre le bureau de cet hôtel dès le montage.
   const [deskFor, setDeskFor] = useState<string | null>(() => {
     if (!openHotelItemId) return null;
@@ -535,7 +536,6 @@ export function BookingItemsPanel({
         {cardRows.map((item) => {
           const locked = editingId === item.id || busy;
           const docs = documentsForItem(item, documents);
-          const previews = attachmentPreviews(docs, rows, reference);
           const subtitle = stepSubtitle(item);
           const ticketNames = item.kind === "flight" ? ticketTravelerNames(item.details) : [];
           const airport = item.kind === "flight" || item.kind === "rail" ? flightCardSubtitle(item) : "";
@@ -625,53 +625,69 @@ export function BookingItemsPanel({
                 >
                   <Icon name="grip" className="h-4 w-4" />
                 </button>
-                <p className="w-16 shrink-0 pt-0.5 text-xs font-semibold text-muted">{when || "Sans date"}</p>
-                <Icon name={kindIcon(item.kind)} className="mt-0.5 h-4 w-4 shrink-0 text-[var(--admin-navy)]" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">{stepTitle(item)}</p>
-                  {ticketNames.length ? (
-                    <p className="text-sm font-semibold text-[var(--admin-navy)]">{ticketNames.join(", ")}</p>
-                  ) : null}
-                  {airport ? <p className="truncate text-xs text-muted">{airport}</p> : null}
-                  {quiet ? <p className="truncate text-xs text-muted">{quiet}</p> : null}
-                  {unshown ? (
-                    <p className="text-xs font-semibold text-[var(--admin-gold-dark)]">Pas encore montré au client</p>
-                  ) : null}
-                  {item.kind === "hotel" && hotelRequests.some((row) => row.booking_item_id === item.id) ? (
-                    <div className="mt-1">
-                      {deskFor === item.id ? null : <HotelChecklistGlance itemId={item.id} requests={hotelRequests} />}
-                      <button
-                        type="button"
-                        className={flatBtn}
-                        onClick={() => setDeskFor(deskFor === item.id ? null : item.id)}
-                      >
-                        {deskFor === item.id ? "Fermer l’hôtel" : "Écrire à l’hôtel"}
-                      </button>
-                      {deskFor === item.id ? (
-                        <HotelDesk
-                          bookingId={bookingId}
-                          item={item}
-                          requests={hotelRequests}
-                          today={today}
-                          travelers={travelers}
-                          identityDocs={identityDocs}
-                          holder={holder}
-                          cardLast4={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.card_last4 || null}
-                          clientCardName={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.client_card_name || null}
-                          hasCardCode={hasCardCode}
-                          cardViews={cardViews.filter((line) => line.itemId === item.id)}
-                          messages={hotelMessages}
-                          thread={hotelThreadMessages}
-                          attached={attachedEmails}
-                          focusReply={openHotelItemId === item.id}
-                        />
-                      ) : null}
+                <button
+                  type="button"
+                  aria-expanded={openStep === item.id}
+                  onClick={() => setOpenStep(openStep === item.id ? null : item.id)}
+                  className="flex w-full items-start gap-3 rounded-xl text-left"
+                >
+                  <span className="w-16 shrink-0 pt-0.5 text-xs font-semibold text-muted">{when || "Sans date"}</span>
+                  <Icon name={kindIcon(item.kind)} className="mt-0.5 h-4 w-4 shrink-0 text-[var(--admin-navy)]" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-[var(--admin-navy)]">{stepTitle(item)}</span>
+                    {ticketNames.length ? (
+                      <span className="block text-sm font-semibold text-[var(--admin-navy)]">{ticketNames.join(", ")}</span>
+                    ) : null}
+                    {airport ? <span className="block truncate text-xs text-muted">{airport}</span> : null}
+                    {quiet ? <span className="block truncate text-xs text-muted">{quiet}</span> : null}
+                    {unshown ? (
+                      <span className="block text-xs font-semibold text-[var(--admin-gold-dark)]">Pas encore montré au client</span>
+                    ) : null}
+                  </span>
+                  {price ? <span className="shrink-0 text-sm font-semibold text-[var(--admin-navy)]">{price}</span> : null}
+                  <Icon
+                    name="expand_more"
+                    className={`mt-0.5 h-4 w-4 shrink-0 text-muted transition ${openStep === item.id ? "rotate-180" : ""}`}
+                  />
+                </button>
+                {item.kind === "hotel" && hotelRequests.some((row) => row.booking_item_id === item.id) ? (
+                  <div className="mt-2 flex gap-3">
+                    <span className="w-16 shrink-0" />
+                    <span className="w-4 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                    {deskFor === item.id ? null : <HotelChecklistGlance itemId={item.id} requests={hotelRequests} />}
+                    <button
+                      type="button"
+                      className={flatBtn}
+                      onClick={() => setDeskFor(deskFor === item.id ? null : item.id)}
+                    >
+                      {deskFor === item.id ? "Fermer l’hôtel" : "Écrire à l’hôtel"}
+                    </button>
+                    {deskFor === item.id ? (
+                      <HotelDesk
+                        bookingId={bookingId}
+                        item={item}
+                        requests={hotelRequests}
+                        today={today}
+                        travelers={travelers}
+                        identityDocs={identityDocs}
+                        holder={holder}
+                        cardLast4={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.card_last4 || null}
+                        clientCardName={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.client_card_name || null}
+                        hasCardCode={hasCardCode}
+                        cardViews={cardViews.filter((line) => line.itemId === item.id)}
+                        messages={hotelMessages}
+                        thread={hotelThreadMessages}
+                        attached={attachedEmails}
+                        focusReply={openHotelItemId === item.id}
+                      />
+                    ) : null}
                     </div>
-                  ) : null}
+                  </div>
+                ) : null}
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  {price ? <p className="text-sm font-semibold text-[var(--admin-navy)]">{price}</p> : null}
-                  <div className="relative flex items-center gap-2">
+                <div className="relative flex shrink-0 items-center gap-2">
                   <button type="button" className={flatBtn} onClick={() => startEdit(item)}>
                     Modifier
                   </button>
@@ -728,11 +744,17 @@ export function BookingItemsPanel({
                     </div>
                   ) : null}
                   </div>
-                </div>
               </div>
-              {previews.length ? (
-                <div className="mt-3">
-                  <FilePreviewGrid files={previews} />
+              {openStep === item.id ? (
+                <div className="mt-3 border-t border-[var(--border)] pt-3">
+                  <ItemAttachments
+                    bookingId={bookingId}
+                    itemId={item.id}
+                    docs={docs}
+                    items={rows}
+                    reference={reference}
+                    filesOnly
+                  />
                 </div>
               ) : null}
               </>
@@ -780,6 +802,7 @@ function ItemAttachments({
   items,
   reference = null,
   compact = false,
+  filesOnly = false,
 }: {
   bookingId: string;
   itemId: string;
@@ -787,6 +810,8 @@ function ItemAttachments({
   items: CrmBookingItem[];
   reference?: string | null;
   compact?: boolean;
+  /** Ligne déroulée : la vignette et Retirer, comme les pièces jointes. */
+  filesOnly?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -826,13 +851,20 @@ function ItemAttachments({
 
   if (compact) return null;
 
+  const files = attachmentPreviews(docs, items, reference);
+
   return (
-    <div className="mt-2 space-y-1">
-      <FilePreviewGrid
-        files={attachmentPreviews(docs, items, reference)}
-        onRemove={(file) => removeDoc(file.id)}
-        removeQuestion={(file) => `${file.label} quitte le dossier et son fichier est supprimé.`}
-      />
+    <div className={filesOnly ? "space-y-1" : "mt-2 space-y-1"}>
+      {files.length ? (
+        <FilePreviewGrid
+          files={files}
+          onRemove={(file) => removeDoc(file.id)}
+          removeQuestion={(file) => `${file.label} quitte le dossier et son fichier est supprimé.`}
+        />
+      ) : filesOnly ? (
+        <p className="text-xs text-muted">Aucun justificatif sur cette étape.</p>
+      ) : null}
+      {filesOnly ? null : (
       <form onSubmit={upload} className="flex flex-wrap items-center gap-2">
         <BusyBar active={busy} label="Envoi…" />
         <input name="file" type="file" required disabled={busy} className="text-xs" />
@@ -845,6 +877,7 @@ function ItemAttachments({
           </p>
         ) : null}
       </form>
+      )}
     </div>
   );
 }
