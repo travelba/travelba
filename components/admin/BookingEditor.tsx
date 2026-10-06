@@ -950,8 +950,8 @@ export function BookingEditor({
     <div className="flex flex-col gap-6">
       {compact ? (
         <div className="fixed inset-x-0 top-[calc(3.5rem+env(safe-area-inset-top))] z-30 border-b border-[var(--border)] bg-[rgba(250,249,246,0.94)] px-4 py-2 shadow-[0_1px_8px_rgba(11,25,44,0.06)] backdrop-blur-xl sm:px-6 lg:left-72 lg:top-20 lg:px-8">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <div className="min-w-0 max-w-full">
               <p className="truncate font-display text-base font-bold text-[var(--admin-navy)]">
                 {titleShown || booking.title}
               </p>
@@ -963,7 +963,7 @@ export function BookingEditor({
                 {unsaved ? <span>· Modifications non enregistrées</span> : null}
               </p>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {saveButton}
               {primaryAction}
               {moreButton}
@@ -974,9 +974,12 @@ export function BookingEditor({
       ) : null}
       <header className="relative space-y-4">
         <div ref={sentinelRef} aria-hidden className="absolute left-0 top-0 h-px w-px" />
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <Link href="/admin/reservations" className="inline-flex text-sm font-semibold text-[var(--admin-navy)] lg:hidden">
+          ← Réservations
+        </Link>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex min-w-0 flex-1 items-start gap-3">
-            <Link href="/admin/reservations" className="shrink-0 pt-2 text-sm font-semibold text-[var(--admin-navy)]">
+            <Link href="/admin/reservations" className="hidden shrink-0 pt-2 text-sm font-semibold text-[var(--admin-navy)] lg:inline">
               ← Réservations
             </Link>
             <div className="min-w-0 flex-1">
@@ -1194,7 +1197,7 @@ export function BookingEditor({
               <ul className="divide-y divide-[var(--border)]">
                 {facts.segments.map((segment) => (
                   <li key={segment.id} className="flex items-baseline justify-between gap-3 py-2 text-sm text-[var(--admin-navy)]">
-                    <span className="font-semibold">{segment.place}</span>
+                    <span className="min-w-0 break-words font-semibold">{segment.place}</span>
                     <span className="shrink-0 text-muted">{segment.when}</span>
                   </li>
                 ))}

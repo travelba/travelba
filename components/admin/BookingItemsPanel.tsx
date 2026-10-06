@@ -142,7 +142,7 @@ function stepSubtitle(item: CrmBookingItem) {
 const flatBtn =
   "admin-tap inline-flex h-8 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-white px-3 text-xs font-semibold text-[var(--admin-navy)] disabled:opacity-40";
 const flatIconBtn =
-  "admin-tap inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-white text-sm font-bold text-[var(--admin-navy)]";
+  "admin-tap inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-white text-sm font-bold text-[var(--admin-navy)] lg:h-8 lg:w-8";
 
 /**
  * Une étape déplaçable : seule la poignée (icône grip) démarre le glisser, le reste de la carte
@@ -167,7 +167,7 @@ function ReorderStep({
       dragControls={controls}
       onDragEnd={onDragEnd}
       whileDrag={{ zIndex: 30, background: "#ffffff" }}
-      className="relative mt-2"
+      className="relative mt-2 w-full min-w-0"
     >
       {children({
         onPointerDown: (event) => {
@@ -176,6 +176,70 @@ function ReorderStep({
         },
       })}
     </Reorder.Item>
+  );
+}
+
+function StepOverflowMenu({
+  title,
+  retired,
+  visible,
+  busy,
+  position,
+  count,
+  onToggleVisible,
+  onMove,
+  onRemove,
+  className,
+}: {
+  title: string;
+  retired: boolean;
+  visible: boolean;
+  busy: boolean;
+  position: number;
+  count: number;
+  onToggleVisible: () => void;
+  onMove: (delta: -1 | 1) => void;
+  onRemove: () => void;
+  className: string;
+}) {
+  return (
+    <div className={className}>
+      {!retired ? (
+        <button type="button" className={flatBtn} disabled={busy} onClick={onToggleVisible}>
+          {visible ? "Cacher" : "Montrer"}
+        </button>
+      ) : null}
+      <div className="flex gap-1">
+        <button
+          type="button"
+          className={`${flatBtn} flex-1 gap-1`}
+          disabled={busy || position <= 0}
+          onClick={() => onMove(-1)}
+        >
+          <Icon name="arrow_up" className="h-3.5 w-3.5" />
+          Monter
+        </button>
+        <button
+          type="button"
+          className={`${flatBtn} flex-1 gap-1`}
+          disabled={busy || position < 0 || position >= count - 1}
+          onClick={() => onMove(1)}
+        >
+          <Icon name="arrow_down" className="h-3.5 w-3.5" />
+          Descendre
+        </button>
+      </div>
+      <ConfirmAction
+        size="sm"
+        tone="danger"
+        label="Retirer"
+        confirmLabel="Retirer l’étape"
+        ariaLabel={`Retirer ${title}`}
+        question="L’étape quitte la liste. Elle quitte le voyage à l’enregistrement du séjour. Le fichier reste dans le dossier."
+        disabled={busy}
+        onConfirm={onRemove}
+      />
+    </div>
   );
 }
 
@@ -519,10 +583,10 @@ export function BookingItemsPanel({
   }
 
   return (
-    <section className="admin-af-card rounded-3xl p-5">
-      <div className="flex items-center justify-between gap-2">
+    <section className="admin-af-card rounded-3xl p-4 lg:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Étapes du voyage</h2>
-        <button type="button" className="admin-af-btn rounded-full px-4 py-2 text-sm" onClick={startNew}>
+        <button type="button" className="admin-af-btn admin-tap shrink-0 rounded-full px-4 py-2 text-sm" onClick={startNew}>
           Ajouter une étape
         </button>
       </div>
@@ -580,6 +644,23 @@ export function BookingItemsPanel({
             .filter(Boolean)
             .join(" · ");
           const position = cardRows.findIndex((row) => row.id === item.id);
+          const hasHotelMail =
+            item.kind === "hotel" && hotelRequests.some((row) => row.booking_item_id === item.id);
+          const hotelLabel = deskFor === item.id ? "Fermer l’hôtel" : "Écrire à l’hôtel";
+          const overflowMenu = (
+            <StepOverflowMenu
+              title={stepTitle(item)}
+              retired={retired}
+              visible={Boolean(item.visible_to_client)}
+              busy={busy}
+              position={position}
+              count={cardRows.length}
+              onToggleVisible={() => void setCardVisible(item, !item.visible_to_client)}
+              onMove={(delta) => moveCard(item, delta)}
+              onRemove={() => removeItem(item.id)}
+              className="flex w-full basis-full flex-col gap-2 rounded-2xl border border-[var(--border)] bg-white p-2 lg:absolute lg:right-0 lg:top-9 lg:z-20 lg:w-60 lg:basis-auto"
+            />
+          );
           return (
           <ReorderStep key={item.id} item={item} locked={locked} onDragEnd={finishCardDrag}>
             {(handle) => (
@@ -627,13 +708,14 @@ export function BookingItemsPanel({
               </div>
             ) : (
               <>
-              <div className="flex items-start gap-3">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
+                <div className="flex min-w-0 flex-1 items-start gap-1 lg:gap-3">
                 <button
                   type="button"
                   aria-label={`Déplacer ${stepTitle(item)}`}
                   disabled={locked}
                   onPointerDown={handle.onPointerDown}
-                  className="-ml-1 mt-0.5 inline-flex h-6 w-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-muted active:cursor-grabbing disabled:opacity-30"
+                  className="-ml-1 inline-flex h-11 w-11 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-muted active:cursor-grabbing disabled:opacity-30 lg:mt-0.5 lg:h-6 lg:w-6"
                 >
                   <Icon name="grip" className="h-4 w-4" />
                 </button>
@@ -642,8 +724,38 @@ export function BookingItemsPanel({
                   type="button"
                   aria-expanded={openStep === item.id}
                   onClick={() => setOpenStep(openStep === item.id ? null : item.id)}
-                  className="flex w-full items-start gap-3 rounded-xl text-left"
+                  className="w-full rounded-xl text-left"
                 >
+                  <span data-step-layout="phone" className="flex items-start gap-2 lg:hidden">
+                    <Icon name={kindIcon(item.kind)} className="mt-0.5 h-4 w-4 shrink-0 text-[var(--admin-navy)]" />
+                    <span className="min-w-0 flex-1">
+                      <span className={`block break-words text-sm font-semibold leading-snug ${cancelled ? "text-muted line-through" : "text-[var(--admin-navy)]"}`}>
+                        {stepTitle(item)}
+                      </span>
+                      {cancelled ? (
+                        <span className="mt-1 inline-flex rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--admin-navy)] ring-1 ring-[var(--border)]">
+                          Annulée
+                        </span>
+                      ) : null}
+                      {ticketNames.length ? (
+                        <span className="mt-0.5 block break-words text-sm font-semibold text-[var(--admin-navy)]">{ticketNames.join(", ")}</span>
+                      ) : null}
+                      <span className="mt-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                        <span className="text-xs font-semibold text-muted">{when || "Sans date"}</span>
+                        {price ? <span className="text-sm font-semibold text-[var(--admin-navy)]">{price}</span> : null}
+                      </span>
+                      {airport ? <span className="mt-0.5 block break-words text-xs text-muted">{airport}</span> : null}
+                      {quiet ? <span className="mt-0.5 block break-words text-xs leading-relaxed text-muted">{quiet}</span> : null}
+                      {unshown ? (
+                        <span className="mt-1 block text-xs font-semibold text-[var(--admin-gold-dark)]">Pas encore montré au client</span>
+                      ) : null}
+                    </span>
+                    <Icon
+                      name="expand_more"
+                      className={`mt-0.5 h-4 w-4 shrink-0 text-muted transition ${openStep === item.id ? "rotate-180" : ""}`}
+                    />
+                  </span>
+                  <span data-step-layout="desk" className="hidden w-full items-start gap-3 lg:flex">
                   <span className="w-16 shrink-0 pt-0.5 text-xs font-semibold text-muted">{when || "Sans date"}</span>
                   <Icon name={kindIcon(item.kind)} className="mt-0.5 h-4 w-4 shrink-0 text-[var(--admin-navy)]" />
                   <span className="min-w-0 flex-1">
@@ -669,9 +781,15 @@ export function BookingItemsPanel({
                     name="expand_more"
                     className={`mt-0.5 h-4 w-4 shrink-0 text-muted transition ${openStep === item.id ? "rotate-180" : ""}`}
                   />
+                  </span>
                 </button>
-                {item.kind === "hotel" && hotelRequests.some((row) => row.booking_item_id === item.id) ? (
-                  <div className="mt-2 flex gap-3">
+                {hasHotelMail && deskFor !== item.id ? (
+                  <div className="pl-6 lg:hidden">
+                    <HotelChecklistGlance itemId={item.id} requests={hotelRequests} />
+                  </div>
+                ) : null}
+                {hasHotelMail ? (
+                  <div className="mt-2 hidden gap-3 lg:flex">
                     <span className="w-16 shrink-0" />
                     <span className="w-4 shrink-0" />
                     <div className="min-w-0 flex-1">
@@ -681,32 +799,23 @@ export function BookingItemsPanel({
                       className={flatBtn}
                       onClick={() => setDeskFor(deskFor === item.id ? null : item.id)}
                     >
-                      {deskFor === item.id ? "Fermer l’hôtel" : "Écrire à l’hôtel"}
+                      {hotelLabel}
                     </button>
-                    {deskFor === item.id ? (
-                      <HotelDesk
-                        bookingId={bookingId}
-                        item={item}
-                        requests={hotelRequests}
-                        today={today}
-                        travelers={travelers}
-                        identityDocs={identityDocs}
-                        holder={holder}
-                        cardLast4={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.card_last4 || null}
-                        clientCardName={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.client_card_name || null}
-                        hasCardCode={hasCardCode}
-                        cardViews={cardViews.filter((line) => line.itemId === item.id)}
-                        messages={hotelMessages}
-                        thread={hotelThreadMessages}
-                        attached={attachedEmails}
-                        focusReply={openHotelItemId === item.id}
-                      />
-                    ) : null}
                     </div>
                   </div>
                 ) : null}
                 </div>
-                <div className="relative flex shrink-0 items-center gap-2">
+                </div>
+                <div className="relative flex flex-wrap items-center gap-2 lg:shrink-0">
+                  {hasHotelMail ? (
+                    <button
+                      type="button"
+                      className={`${flatBtn} lg:hidden`}
+                      onClick={() => setDeskFor(deskFor === item.id ? null : item.id)}
+                    >
+                      {hotelLabel}
+                    </button>
+                  ) : null}
                   <button type="button" className={flatBtn} onClick={() => startEdit(item)}>
                     Modifier
                   </button>
@@ -718,52 +827,30 @@ export function BookingItemsPanel({
                   >
                     …
                   </button>
-                  {menuFor === item.id ? (
-                    <div className="absolute right-0 top-9 z-20 flex w-60 flex-col gap-2 rounded-2xl border border-[var(--border)] bg-white p-2">
-                      {!retired ? (
-                      <button
-                        type="button"
-                        className={flatBtn}
-                        disabled={busy}
-                        onClick={() => void setCardVisible(item, !item.visible_to_client)}
-                      >
-                        {item.visible_to_client ? "Cacher" : "Montrer"}
-                      </button>
-                      ) : null}
-                      <div className="flex gap-1">
-                        <button
-                          type="button"
-                          className={`${flatBtn} flex-1 gap-1`}
-                          disabled={busy || position <= 0}
-                          onClick={() => moveCard(item, -1)}
-                        >
-                          <Icon name="arrow_up" className="h-3.5 w-3.5" />
-                          Monter
-                        </button>
-                        <button
-                          type="button"
-                          className={`${flatBtn} flex-1 gap-1`}
-                          disabled={busy || position < 0 || position >= cardRows.length - 1}
-                          onClick={() => moveCard(item, 1)}
-                        >
-                          <Icon name="arrow_down" className="h-3.5 w-3.5" />
-                          Descendre
-                        </button>
-                      </div>
-                      <ConfirmAction
-                        size="sm"
-                        tone="danger"
-                        label="Retirer"
-                        confirmLabel="Retirer l’étape"
-                        ariaLabel={`Retirer ${stepTitle(item)}`}
-                        question="L’étape quitte la liste. Elle quitte le voyage à l’enregistrement du séjour. Le fichier reste dans le dossier."
-                        disabled={busy}
-                        onConfirm={() => removeItem(item.id)}
-                      />
-                    </div>
-                  ) : null}
-                  </div>
+                  {menuFor === item.id ? overflowMenu : null}
+                </div>
               </div>
+              {hasHotelMail && deskFor === item.id ? (
+                <div className="mt-3 lg:pl-24">
+                  <HotelDesk
+                    bookingId={bookingId}
+                    item={item}
+                    requests={hotelRequests}
+                    today={today}
+                    travelers={travelers}
+                    identityDocs={identityDocs}
+                    holder={holder}
+                    cardLast4={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.card_last4 || null}
+                    clientCardName={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.client_card_name || null}
+                    hasCardCode={hasCardCode}
+                    cardViews={cardViews.filter((line) => line.itemId === item.id)}
+                    messages={hotelMessages}
+                    thread={hotelThreadMessages}
+                    attached={attachedEmails}
+                    focusReply={openHotelItemId === item.id}
+                  />
+                </div>
+              ) : null}
               {openStep === item.id ? (
                 <div className="mt-3 border-t border-[var(--border)] pt-3">
                   <ItemAttachments
