@@ -202,6 +202,7 @@ export function BookingItemsPanel({
   openHotelItemId = null,
   reference = null,
   onLiveItems,
+  onStepsPending,
 }: {
   bookingId: string;
   items: CrmBookingItem[];
@@ -235,6 +236,8 @@ export function BookingItemsPanel({
   reference?: string | null;
   /** Cartes en cours, prix compris, pour que le montant du séjour suive sans attendre l’enregistrement. */
   onLiveItems?: (items: CrmBookingItem[]) => void;
+  /** Une étape retirée ou modifiée attend l’enregistrement du séjour. */
+  onStepsPending?: (pending: boolean) => void;
 }) {
   const router = useRouter();
   const pendingRef = useRef(false);
@@ -253,6 +256,13 @@ export function BookingItemsPanel({
     if (pending) return;
     baselineRef.current = stayCards(rows);
   }, [pending, rows]);
+  const onStepsPendingRef = useRef(onStepsPending);
+  useEffect(() => {
+    onStepsPendingRef.current = onStepsPending;
+  });
+  useEffect(() => {
+    onStepsPendingRef.current?.(pending);
+  }, [pending]);
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
   const [draft, setDraft] = useState<ItemDraft>(emptyDraft());
   const [busy, setBusy] = useState(false);

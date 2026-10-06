@@ -126,7 +126,8 @@ Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Co
 |------|-----|
 | flight | `flight_number` + jour, sinon PNR + jour |
 | hotel | recouvrement des réf. `;`, sinon nom + jour |
-| car / transfer / activity / rail / insurance | réf. sinon titre + jour |
+| rail | n° de train + jour, sinon réf. + jour, sinon titre + jour. Un autre jour = une carte nouvelle. Deux billets du même train le même jour = une carte |
+| car / transfer / activity / insurance | réf. sinon titre + jour |
 
 Réimport même clé = **remplace** la carte. Dans un même extract, 10 duplicatas → 1 item (`mergeExtractItems`). Aller et retour (n° ou jours différents) → 2 items.
 

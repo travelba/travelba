@@ -298,6 +298,7 @@ export function BookingEditor({
   const [clientPick, setClientPick] = useMirror<PickableCustomer | null>(customer);
   const [payerPick, setPayerPick] = useMirror<PickableCustomer | null>(serverPayerPick);
   const serverPayerPickId = serverPayerPick?.id || null;
+  const [stepsPending, setStepsPending] = useState(false);
   const dirty =
     titleDraft !== booking.title ||
     statusDraft !== booking.status ||
@@ -314,6 +315,7 @@ export function BookingEditor({
     notesClient !== (booking.notes_client || "") ||
     (clientPick?.id || null) !== (customer?.id || null) ||
     (payerPick?.id || null) !== serverPayerPickId;
+  const unsaved = dirty || stepsPending;
   // `replaceState(null, …)` : Next recopie lui-même ses internes et prévient le routeur, donc
   // `useSearchParams()` suit sans rejouer le GET du dossier. Avec `history.state`, l’appel serait ignoré.
   const setTab = useCallback(
@@ -348,20 +350,20 @@ export function BookingEditor({
   }, [tab]);
 
   useEffect(() => {
-    if (!dirty) return;
+    if (!unsaved) return;
     function guard(event: BeforeUnloadEvent) {
       event.preventDefault();
       event.returnValue = "";
     }
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
-  }, [dirty]);
+  }, [unsaved]);
 
   const busyRef = useRef(busy);
-  const dirtyRef = useRef(dirty);
+  const dirtyRef = useRef(unsaved);
   useEffect(() => {
     busyRef.current = busy;
-    dirtyRef.current = dirty;
+    dirtyRef.current = unsaved;
   });
   useEffect(() => {
     function onKey(event: globalThis.KeyboardEvent) {
@@ -485,6 +487,13 @@ export function BookingEditor({
       if (publishIssues.length) {
         setIssues(publishIssues);
         setFlash(null);
+        return;
+      }
+    }
+    if (saveOpenCard.current) {
+      const cardOk = await saveOpenCard.current().catch(() => false);
+      if (!cardOk) {
+        setFlash("Les étapes n’ont pas été enregistrées. Le séjour n’a pas changé.");
         return;
       }
     }
@@ -768,7 +777,7 @@ export function BookingEditor({
     <button
       type="submit"
       form="booking-meta"
-      disabled={busy !== "idle" || !dirty}
+      disabled={busy !== "idle" || !unsaved}
       aria-keyshortcuts="Control+S Meta+S"
       title="⌘S / Ctrl+S"
       className="admin-tap rounded-full border border-[var(--admin-navy)] bg-white px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:border-[var(--border)] disabled:opacity-50"
@@ -877,7 +886,7 @@ export function BookingEditor({
                   <span className="h-1.5 w-1.5 rounded-full bg-[var(--admin-gold)]" aria-hidden />
                   {staffStayLabel(booking)}
                 </span>
-                {dirty ? <span>· Modifications non enregistrées</span> : null}
+                {unsaved ? <span>· Modifications non enregistrées</span> : null}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -988,7 +997,7 @@ export function BookingEditor({
           })}
         </div>
         <BusyBar active={busy !== "idle"} label={busy === "publish" ? "Envoi au client…" : "Enregistrement…"} />
-        {dirty && busy === "idle" ? (
+        {unsaved && busy === "idle" ? (
           <p role="status" className="text-sm font-semibold text-[var(--admin-gold-dark)]">
             Modifications non enregistrées · ⌘S ou Ctrl+S pour enregistrer
           </p>
@@ -1038,7 +1047,7 @@ export function BookingEditor({
           ) : (
             <p className="text-sm text-muted">Le client ne verra plus ce séjour.</p>
           )}
-          {dirty ? (
+          {unsaved ? (
             <p className="text-sm font-semibold text-[var(--admin-gold-dark)]">
               Vos modifications sont enregistrées en même temps.
             </p>
@@ -1490,6 +1499,7 @@ export function BookingEditor({
         onBindDraftSave={(save) => {
           saveOpenCard.current = save;
         }}
+        onStepsPending={setStepsPending}
       />
       </div>
       <section className="order-3 admin-af-card space-y-3 rounded-3xl p-5">

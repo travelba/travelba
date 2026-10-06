@@ -35,6 +35,88 @@ export function hotelRefTokens(ref: string | null | undefined) {
     .filter((token) => token.length >= 5);
 }
 
+const LE_ROOM_REF = /^(\d{4,})SH\d+$/;
+const LE_BOOKING_REF = /^(\d{4,})$/;
+
+/** Réservation Little Emperors : `64570`, ou chambre `64570SH046795`. */
+export function hotelBookingStem(ref: string | null | undefined): string | null {
+  for (const token of hotelRefTokens(ref)) {
+    const room = token.match(LE_ROOM_REF);
+    if (room) return room[1];
+    const booking = token.match(LE_BOOKING_REF);
+    if (booking) return booking[1];
+  }
+  return null;
+}
+
+/** Même réservation, y compris le numéro court et une autre chambre. Deux numéros sans `SH` ne se rejoignent pas. */
+export function hotelRefsShareBooking(a: string | null | undefined, b: string | null | undefined) {
+  const stemA = hotelBookingStem(a);
+  const stemB = hotelBookingStem(b);
+  if (!stemA || stemA !== stemB) return false;
+  return [...hotelRefTokens(a), ...hotelRefTokens(b)].some((token) => LE_ROOM_REF.test(token));
+}
+
+/**
+ * Une seule carte active porte cette réservation. Deux chambres actives : aucun choix,
+ * l’agence désigne la carte.
+ */
+export function findHotelBookingCard<T extends MatchableItem>(
+  existing: T[],
+  incoming: MatchableItem
+): T | null {
+  if ((incoming.kind || "") !== "hotel") return null;
+  if (!hotelBookingStem(incoming.confirmation_ref)) return null;
+  const hits = existing.filter(
+    (row) => (row.kind || "") === "hotel" && hotelRefsShareBooking(incoming.confirmation_ref, row.confirmation_ref)
+  );
+  return hits.length === 1 ? hits[0] : null;
+}
+
+function filled(value: string | null | undefined) {
+  return (value || "").trim();
+}
+
+/**
+ * Le mail complète la carte déjà là. Le nom, la référence complète et les dates restent.
+ * Les avantages nouveaux s’ajoutent.
+ */
+export function keptHotelStayFields(
+  current: {
+    title?: string | null;
+    confirmation_ref?: string | null;
+    supplier?: string | null;
+    start_at?: string | null;
+    end_at?: string | null;
+    details?: Record<string, unknown> | null;
+  },
+  incoming: {
+    title?: string | null;
+    confirmation_ref?: string | null;
+    supplier?: string | null;
+    start_at?: string | null;
+    end_at?: string | null;
+    details?: Record<string, unknown> | null;
+  }
+) {
+  const details: Record<string, unknown> = { ...(current.details || {}) };
+  const included = [
+    ...(Array.isArray(details.included) ? details.included : []),
+    ...(Array.isArray(incoming.details?.included) ? incoming.details.included : []),
+  ]
+    .map((row) => String(row).trim())
+    .filter(Boolean);
+  if (included.length) details.included = [...new Set(included)];
+  return {
+    title: filled(current.title) || filled(incoming.title),
+    confirmation_ref: filled(current.confirmation_ref) || filled(incoming.confirmation_ref) || null,
+    supplier: filled(current.supplier) || filled(incoming.supplier) || null,
+    start_at: filled(current.start_at) || filled(incoming.start_at) || null,
+    end_at: filled(current.end_at) || filled(incoming.end_at) || null,
+    details,
+  };
+}
+
 /** Clé de fusion à l’import. `null` = toujours insérer (pas de replace). */
 export function itemMatchKey(item: MatchableItem): string | null {
   const kind = (item.kind || "fee") as BookingItemKind | string;
@@ -57,14 +139,17 @@ export function itemMatchKey(item: MatchableItem): string | null {
     return null;
   }
 
-  if (
-    kind === "transfer" ||
-    kind === "rail" ||
-    kind === "car" ||
-    kind === "cruise" ||
-    kind === "activity" ||
-    kind === "insurance"
-  ) {
+  if (kind === "rail") {
+    const train = norm(detail(item, "train_number"));
+    if (train && start) return `rail:${train}:${start}`;
+    if (ref && start) return `rail:${ref}:${start}`;
+    if (ref) return `rail:${ref}`;
+    const title = norm(item.title);
+    if (title && start) return `rail:${title}:${start}`;
+    return null;
+  }
+
+  if (kind === "transfer" || kind === "car" || kind === "cruise" || kind === "activity" || kind === "insurance") {
     if (ref) return `${kind}:${ref}`;
     const title = norm(item.title);
     if (title && start) return `${kind}:${title}:${start}`;
