@@ -11,8 +11,10 @@ import {
 import { countryName, resolveNationality } from "@/lib/crm/countries";
 import {
   SEX_OPTIONS,
+  PASSPORT_VAULT_NOTICE,
   documentExpiryStatus,
   documentExpiryWarning,
+  maskDocumentNumber,
   type ExtractedIdentity,
 } from "@/lib/crm/identity";
 import { formatDateFr } from "@/lib/crm/money";
@@ -27,6 +29,7 @@ import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/Iden
 import { BusyBar } from "@/components/crm/BusyBar";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
+import { PassportSeal } from "@/components/crm/PassportSeal";
 import { identityPreview } from "@/lib/crm/preview-files";
 import { StatusChip } from "@/components/crm/ui";
 
@@ -74,13 +77,14 @@ export function passportDetailRows(source: PassportSource) {
   ] as const;
 }
 
-export function passportCompactLabel(source: PassportSource) {
+export function passportCompactLabel(source: PassportSource, options?: { maskNumber?: boolean }) {
   const type =
     source.doc_type && source.doc_type in DOC_TYPE_LABELS
       ? DOC_TYPE_LABELS[source.doc_type as TravelDocType]
       : source.doc_type || "Passeport";
   const expiry = source.expires_on ? `exp. ${formatDateFr(source.expires_on)}` : null;
-  const parts = [type, source.number, expiry].filter(Boolean);
+  const number = options?.maskNumber ? maskDocumentNumber(source.number) : source.number;
+  const parts = [type, number, expiry].filter(Boolean);
   return parts.join(" · ") || "Pièce d’identité";
 }
 
@@ -276,6 +280,9 @@ export function PersonPassportCard({
       <p className="font-display text-sm font-bold text-[var(--admin-navy)]">
         Pièces d’identité
       </p>
+      {variant === "client" ? (
+        <p className="text-xs leading-relaxed text-muted">{PASSPORT_VAULT_NOTICE}</p>
+      ) : null}
       {expired ? (
         <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
           {documentExpiryWarning(expired.expires_on)}
@@ -287,6 +294,16 @@ export function PersonPassportCard({
         const open = openId === current.id;
         return (
           <div key={current.id} className="space-y-2 rounded-xl bg-white/80 p-3">
+            {variant === "client" && !open ? (
+              <PassportSeal onOpen={() => setOpenId(current.id)}>
+                <div className="flex min-h-16 items-center justify-between gap-3 py-2">
+                  <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
+                    {passportCompactLabel(current, { maskNumber: true })}
+                  </p>
+                  <StatusChip tone={status.tone}>{status.label}</StatusChip>
+                </div>
+              </PassportSeal>
+            ) : (
             <button
               type="button"
               onClick={() => setOpenId(open ? null : current.id)}
@@ -295,7 +312,7 @@ export function PersonPassportCard({
             >
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
-                  {passportCompactLabel(current)}
+                  {passportCompactLabel(current, { maskNumber: variant === "client" })}
                 </p>
               </div>
               <span className="flex shrink-0 items-center gap-2">
@@ -305,6 +322,7 @@ export function PersonPassportCard({
                 />
               </span>
             </button>
+            )}
             {open ? (
               <>
                 <PassportDetails source={current} />
@@ -383,7 +401,9 @@ export function PersonPassportCard({
                 className="flex w-full items-center justify-between gap-2 text-left text-sm font-semibold text-[var(--admin-navy)]"
                 aria-expanded={pending ? true : scanOpen}
               >
-                <span className="truncate">{passportCompactLabel(identity)}</span>
+                <span className="truncate">
+                  {passportCompactLabel(identity, { maskNumber: variant === "client" })}
+                </span>
                 <ChevronDown className={`h-4 w-4 shrink-0 transition ${pending || scanOpen ? "rotate-180" : ""}`} />
               </button>
               {pending || scanOpen ? (

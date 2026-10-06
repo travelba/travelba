@@ -5,7 +5,9 @@ import {
   givenNameTokens,
   greetingGivenName,
   humanizeMrzName,
+  maskDocumentNumber,
   normalizeGivenNames,
+  PASSPORT_VAULT_NOTICE,
 } from "./identity";
 
 test("tous les prénoms restent dans l’ordre imprimé", () => {
@@ -54,6 +56,18 @@ test("l’ordre latin prime, l’hébreu ne retourne pas les prénoms", () => {
   assert.equal(completeGivenNames("Benolt", "Nationalité Benoit"), "Benoit");
   assert.equal(completeGivenNames("Gaspar", "Gaspa"), "Gaspar");
   assert.equal(completeGivenNames("Helie", "Heliec"), "Helie");
+});
+
+test("le numéro fermé ne montre que les quatre derniers caractères", () => {
+  assert.equal(maskDocumentNumber("12AB34567"), "···· 4567");
+  assert.equal(maskDocumentNumber("  12AB34567  "), "···· 4567");
+  assert.equal(maskDocumentNumber("AB12"), "····");
+  assert.equal(maskDocumentNumber("1"), "····");
+  assert.equal(maskDocumentNumber(null), null);
+  assert.equal(maskDocumentNumber(""), null);
+  assert.equal(maskDocumentNumber("   "), null);
+  assert.equal(PASSPORT_VAULT_NOTICE.includes("lien de partage"), true);
+  assert.equal(/chiffr|bout en bout|ne quitte jamais|retirer/i.test(PASSPORT_VAULT_NOTICE), false);
 });
 
 test("l’accueil ne garde que le premier prénom", () => {

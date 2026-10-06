@@ -6,7 +6,7 @@ import { Plus } from "lucide-react";
 import type { CrmCompanion, CrmTravelDocument } from "@/lib/crm/types";
 import { deleteJson, postJson, sendForm } from "@/lib/crm/client-fetch";
 import { nationalityFromIdentity } from "@/lib/crm/document-identity";
-import { identityOverwriteWarning, RELATIONSHIP_OPTIONS } from "@/lib/crm/identity";
+import { identityOverwriteWarning, maskDocumentNumber, RELATIONSHIP_OPTIONS } from "@/lib/crm/identity";
 import { appendPassportForm, appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-extract";
 import { documentsForPerson, primaryIdentityDoc } from "@/lib/crm/trip-documents";
 import {
@@ -216,7 +216,8 @@ export function CompanionsManager({
         {companions.map((c) => {
           const doc = primaryIdentityDoc(documentsForPerson(documents, c.id));
           const expanded = expandedId === c.id;
-          const piece = doc?.number ? `n° ${doc.number}` : "Pièce à joindre";
+          const masked = maskDocumentNumber(doc?.number);
+          const piece = masked ? `n° ${masked}` : "Pièce à joindre";
           const pieces = documentsForPerson(documents, c.id).length;
           return (
             <li key={c.id} className="admin-af-card rounded-2xl px-4 py-3">

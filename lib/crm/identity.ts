@@ -338,6 +338,21 @@ export function emptyToNull(value: unknown) {
   return text === "" ? null : text;
 }
 
+/** Phrase client : qui voit la pièce. Rien sur un chiffrement qui n’existe pas. */
+export const PASSPORT_VAULT_NOTICE =
+  "Ces pièces ne s’ouvrent que dans votre espace, une fois connecté, et pour l’agence quand une formalité l’exige. Elles n’apparaissent pas sur le lien de partage du voyage.";
+
+/**
+ * Ligne fermée : quatre derniers caractères. Un numéro trop court pour les cacher
+ * entièrement, ou vide, ne révèle aucun chiffre.
+ */
+export function maskDocumentNumber(number: string | null | undefined): string | null {
+  const text = emptyToNull(number);
+  if (!text) return null;
+  if (text.length <= 4) return "····";
+  return `···· ${text.slice(-4)}`;
+}
+
 export function identityOverwriteWarning(
   current: { first_name?: string | null; last_name?: string | null },
   incoming: { first_name?: string | null; last_name?: string | null }

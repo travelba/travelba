@@ -12,7 +12,7 @@ import {
   nationalityFromIdentity,
   preselectDocumentTarget,
 } from "@/lib/crm/document-identity";
-import { documentExpiryStatus, documentExpiryWarning } from "@/lib/crm/identity";
+import { PASSPORT_VAULT_NOTICE, documentExpiryStatus, documentExpiryWarning, maskDocumentNumber } from "@/lib/crm/identity";
 import { formatDateFr } from "@/lib/crm/money";
 import { appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-extract";
 import { isVaultDocument } from "@/lib/crm/trip-documents";
@@ -28,6 +28,7 @@ import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/Iden
 import { BusyBar } from "@/components/crm/BusyBar";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
+import { PassportSeal } from "@/components/crm/PassportSeal";
 import { identityPreview } from "@/lib/crm/preview-files";
 
 export function DocumentsManager({
@@ -210,22 +211,28 @@ export function DocumentsManager({
 
   return (
     <div className="space-y-4">
+      <p className="text-xs leading-relaxed text-muted">{PASSPORT_VAULT_NOTICE}</p>
       <ul className="space-y-3">
         {vault.map((d) => {
           const status = documentExpiryStatus(d.expires_on);
           const open = openId === d.id;
           const holderName = documentHolderName(d, holder, companions);
-          const line = [DOC_TYPE_LABELS[d.doc_type], d.number, d.expires_on ? `exp. ${formatDateFr(d.expires_on)}` : null]
+          const line = [
+            DOC_TYPE_LABELS[d.doc_type],
+            maskDocumentNumber(d.number),
+            d.expires_on ? `exp. ${formatDateFr(d.expires_on)}` : null,
+          ]
             .filter(Boolean)
             .join(" · ");
           return (
             <li key={d.id} className="admin-af-card rounded-2xl px-4 py-3">
               <div className="flex flex-wrap items-start gap-2">
+                {open ? (
                 <button
                   type="button"
-                  onClick={() => setOpenId(open ? null : d.id)}
+                  onClick={() => setOpenId(null)}
                   className="flex min-w-0 flex-1 items-start justify-between gap-2 text-left"
-                  aria-expanded={open}
+                  aria-expanded
                 >
                   <span className="min-w-0">
                     <span className="block text-sm font-semibold leading-snug text-[var(--admin-navy)]">
@@ -235,6 +242,23 @@ export function DocumentsManager({
                   </span>
                   <StatusChip tone={status.tone}>{status.label}</StatusChip>
                 </button>
+                ) : (
+                  <PassportSeal
+                    className="min-w-0 flex-1"
+                    onOpen={() => setOpenId(d.id)}
+                    label={`Afficher le passeport de ${holderName || "cette personne"}`}
+                  >
+                    <div className="flex min-h-16 min-w-0 flex-1 items-center justify-between gap-2 py-2">
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold leading-snug text-[var(--admin-navy)]">
+                          {holderName || "Titulaire à renseigner"}
+                        </span>
+                        <span className="mt-0.5 block truncate text-xs text-muted">{line}</span>
+                      </span>
+                      <StatusChip tone={status.tone}>{status.label}</StatusChip>
+                    </div>
+                  </PassportSeal>
+                )}
                 <ConfirmAction
                   label="Retirer"
                   question="Retirer cette pièce ?"
@@ -247,6 +271,9 @@ export function DocumentsManager({
               </div>
               {open ? (
                 <div className="mt-2 space-y-2">
+                  {d.number ? (
+                    <p className="text-sm font-medium text-[var(--admin-navy)]">N° {d.number}</p>
+                  ) : null}
                   <p className="text-xs text-muted">
                     {[
                       d.issued_on ? `délivré ${formatDateFr(d.issued_on)}` : null,
