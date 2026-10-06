@@ -1,3 +1,4 @@
+import { stepChronoKey } from "@/lib/crm/item-order";
 import { countsAsCarnetCard, isActiveItem, type BookingStatus } from "@/lib/crm/types";
 import { CITY_ALIASES, cityLabel, cityPlaceKey, foldCityName } from "@/lib/crm/city-names";
 import {
@@ -129,22 +130,12 @@ function pushPlace(found: string[], value: string) {
   found.push(label);
 }
 
-/** Jour calendaire, puis l’heure. Un hôtel sans horaire passe après le vol du même jour. */
-function stepSortKey(item: Step) {
-  const day = isoDay(item.start_at) || "9999-99-99";
-  const raw = item.start_at || "";
-  const clock = raw.includes("T") ? raw.slice(11, 16) : "";
-  if (clock) return `${day}T${clock}`;
-  const late = item.kind === "flight" || item.kind === "rail" ? "00:00" : "23:59";
-  return `${day}T${late}`;
-}
-
 function carnetSteps(items: Step[]) {
   return items
     .filter((item) => countsAsCarnetCard(item.kind) && isActiveItem(item))
     .slice()
     .sort((a, b) => {
-      const byDate = stepSortKey(a).localeCompare(stepSortKey(b));
+      const byDate = stepChronoKey(a).localeCompare(stepChronoKey(b));
       if (byDate) return byDate;
       return (a.sort_order || 0) - (b.sort_order || 0);
     });

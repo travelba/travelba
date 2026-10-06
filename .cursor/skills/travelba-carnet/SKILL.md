@@ -50,7 +50,7 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 - Clic carte = détail + **Voir la confirmation** (PDF `source_document_id`) + **Ajouter à l’agenda**.
 - **Téléphone** : le bouton crée un événement, pas un abonnement. iPhone → fichier `.ics` d’un seul vol (l’app Calendrier propose de l’ajouter). Android → Google Agenda, événement prêt à enregistrer. Bureau → le même fichier. Pas de lien `webcal`.
 - En-tête itinéraire : **Ajouter tout le séjour** (`GET /api/client/bookings/[reference]/calendrier`). Horaires seulement s’ils existent ; hôtel = journée entière. Sur téléphone, ce sont des événements ajoutés, pas un flux.
-- Ordre : `sort_order` agent (déplacer la carte, sans flèches), défaut **chrono**. PATCH `{ order: [ids] }` sur `/api/admin/bookings/[id]/items`.
+- Ordre : défaut **chrono** (`stepChronoKey` : heure réelle ; minuit sur un hôtel = fin de journée). Une carte nouvelle se glisse à sa date. Un glisser-déposer qui ne suit plus les dates pose `items_order_custom` : les cartes déjà rangées ne bougent plus, la suivante s’insère devant la première plus tardive. Dépenses hors de cette liste.
 - Kinds : `flight` `hotel` `transfer` `activity` `rail` `car` `cruise` `insurance` `fee`. Train / voiture / bateau = cartes métier, pas un jour par escale bateau.
 - **Dépense libre** (`expense`) : hors timeline, hors calendrier, hors publication du carnet. Sur `/mon-compte/reservations/[reference]`, section **Dépenses** (libellé + montant), sous le montant du séjour. Elle vit aussi dans les transactions (skill `travelba-money`).
 

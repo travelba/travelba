@@ -232,25 +232,25 @@ test("lieu et dates n’imprime qu’une fois le même séjour et le même traje
   assert.deepEqual(
     facts.segments.map((segment) => segment.place),
     [
-      "Four Seasons Hotel Milan",
       "Paris → Milan",
-      "Casa Monti",
+      "Four Seasons Hotel Milan",
       "Milano → Roma",
       "Milan → Paris",
+      "Casa Monti",
       "Rome → Paris",
     ]
   );
   assert.deepEqual(
     facts.segments.map((segment) => segment.id),
-    ["fs-milan", "paris-milan-early", "casa", "train", "milan-paris", "rome-paris"]
+    ["paris-milan-early", "fs-milan", "train", "milan-paris", "casa", "rome-paris"]
   );
-  assert.match(facts.segments[0]?.when || "", /8/);
-  assert.match(facts.segments[1]?.when || "", /^4 /);
-  assert.match(facts.segments[2]?.when || "", /13/);
+  assert.match(facts.segments[0]?.when || "", /^4 /);
+  assert.match(facts.segments[1]?.when || "", /8/);
+  assert.match(facts.segments[2]?.when || "", /^8 /);
   assert.match(facts.segments[3]?.when || "", /^8 /);
-  assert.match(facts.segments[4]?.when || "", /^8 /);
+  assert.match(facts.segments[4]?.when || "", /13/);
   assert.match(facts.segments[5]?.when || "", /^13 /);
-  assert.deepEqual(facts.cities, ["Milan", "Paris", "Rome"]);
-  assert.equal(facts.placeLine, "Milan · Paris · Rome");
+  assert.deepEqual(facts.cities, ["Paris", "Milan", "Rome"]);
+  assert.equal(facts.placeLine, "Paris · Milan · Rome");
   assert.equal(facts.nights, 9);
 });

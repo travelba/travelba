@@ -244,6 +244,8 @@ export type CrmBooking = {
   payer_kind?: "company" | "personal" | null;
   /** false : frais d’agence et dépenses portent l’autre mention que le séjour. */
   fees_follow_stay?: boolean;
+  /** True : l’agence a rangé les cartes autrement que par les dates. */
+  items_order_custom?: boolean;
   reference: string;
   title: string;
   destination: string | null;

@@ -45,6 +45,7 @@ import {
 } from "@/lib/crm/email-detach";
 import { activeCardDateRange, cancellationApplyPlan, cardStaysShown, replacementPlan } from "@/lib/crm/item-lifecycle";
 import { findMatchingItem } from "@/lib/crm/item-match";
+import { persistBookingCardOrder } from "@/lib/crm/item-order";
 import { inferAirlineIata } from "@/lib/crm/brand-marks";
 import {
   BookingIssuesError,
@@ -282,6 +283,7 @@ async function upsertItemsAndTravelers(
   }
 ) {
   const remaining = [...existingItems];
+  const createdIds: string[] = [];
   let sort = existingItems.reduce((max, row) => Math.max(max, row.sort_order || 0), -1) + 1;
   const ordered = sortItemsByOrder(extract.items || []);
   let saved = 0;
@@ -393,6 +395,7 @@ async function upsertItemsAndTravelers(
           .single();
         if (error) throw dbFailure(error, "Carte non enregistrée.");
         if (inserted?.id) {
+          createdIds.push(inserted.id);
           if (replacing) {
             const { error: retireError } = await supabase
               .from("crm_booking_items")
@@ -473,6 +476,13 @@ async function upsertItemsAndTravelers(
   }
 
   await reconcileCustomerParty(customer.id, supabase);
+  if (saved) {
+    try {
+      await persistBookingCardOrder(supabase, bookingId, { createdIds });
+    } catch (error) {
+      throw dbFailure(error as { message?: string; code?: string }, "Ordre des cartes non enregistré.");
+    }
+  }
 }
 
 export async function persistNewBookingFromExtract(opts: {

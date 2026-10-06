@@ -12,6 +12,7 @@ import {
 import { parseItemDetails } from "@/lib/crm/ingest-types";
 import { linkedPliantTransactionIds, pliantExpenseTransactionId } from "@/lib/crm/pliant-booking";
 import { parseMoney } from "@/lib/crm/money";
+import { persistBookingCardOrder } from "@/lib/crm/item-order";
 import { BOOKING_ITEM_KINDS, isActiveItem, isLedgerExpenseKind, type BookingItemKind } from "@/lib/crm/types";
 
 function knownKind(value: unknown) {
@@ -212,14 +213,13 @@ async function commitStaySteps(
     if ("error" in inserted) return inserted.error;
     idMap.set(String(row.client_id || ""), inserted.id);
   }
-  for (let index = 0; index < order.length; index += 1) {
-    const id = idMap.get(order[index]) || order[index];
-    const { error } = await supabase
-      .from("crm_booking_items")
-      .update({ sort_order: index })
-      .eq("id", id)
-      .eq("booking_id", bookingId);
-    if (error) return dbError(error, 400);
+  try {
+    await persistBookingCardOrder(supabase, bookingId, {
+      createdIds: [...idMap.values()],
+      submittedIds: order.length ? order.map((id) => idMap.get(id) || id) : null,
+    });
+  } catch (error) {
+    return dbError(error as { message?: string; code?: string }, 400);
   }
   await touchEsta(bookingId);
   return NextResponse.json({
@@ -284,6 +284,13 @@ export async function POST(request: Request, ctx: Ctx) {
     .select("*")
     .single();
   if (error) return dbError(error, 400);
+  if (!isLedgerExpenseKind(kind)) {
+    try {
+      await persistBookingCardOrder(auth.supabase, id, { createdIds: [String(data.id)] });
+    } catch (orderError) {
+      return dbError(orderError as { message?: string; code?: string }, 400);
+    }
+  }
   await touchEsta(id);
   return NextResponse.json({ item: data, ...(await ledgerAfterItemWrite(auth.supabase, id, "Ajout enregistré")) });
 }
@@ -296,18 +303,24 @@ export async function PATCH(request: Request, ctx: Ctx) {
   if (Array.isArray(body?.order)) {
     const order = body.order.map((value: unknown) => String(value || "")).filter(Boolean);
     if (order.length > MAX_SORT_ORDER + 1) return jsonError(SORT_ORDER_ERROR);
-    for (let index = 0; index < order.length; index += 1) {
-      const { error } = await auth.supabase
-        .from("crm_booking_items")
-        .update({ sort_order: index })
-        .eq("id", order[index])
-        .eq("booking_id", bookingId);
-      if (error) return dbError(error, 400);
+    try {
+      await persistBookingCardOrder(auth.supabase, bookingId, { submittedIds: order });
+    } catch (error) {
+      return dbError(error as { message?: string; code?: string }, 400);
     }
     return NextResponse.json({ ok: true });
   }
   const updated = await updateBookingItem(auth.supabase, bookingId, body || {});
   if ("error" in updated) return updated.error;
+  const moved =
+    body?.start_at !== undefined || body?.kind !== undefined;
+  if (moved) {
+    try {
+      await persistBookingCardOrder(auth.supabase, bookingId);
+    } catch (error) {
+      return dbError(error as { message?: string; code?: string }, 400);
+    }
+  }
   await touchEsta(bookingId);
   return NextResponse.json({
     item: updated.item,
