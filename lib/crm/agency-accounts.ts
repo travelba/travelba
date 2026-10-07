@@ -1,6 +1,11 @@
 import "server-only";
 
-import { pliantBalancePocket, type AccountPocket } from "@/lib/crm/account-balances";
+import {
+  dashboardRevolutPocket,
+  dashboardStripePocket,
+  pliantBalancePocket,
+  type AccountPocket,
+} from "@/lib/crm/account-balances";
 import { loadPliantAccountBalance } from "@/lib/crm/pliant";
 import { loadRevolutAccountBalances } from "@/lib/crm/revolut";
 import { loadStripeAccountBalance } from "@/lib/crm/stripe";
@@ -34,7 +39,7 @@ function bounded<T>(promise: Promise<T>, fallback: T): Promise<T> {
   });
 }
 
-/** Revolut, Stripe et Pliant. Un appel trop long ou un compte fermé devient indisponible. */
+/** Revolut Main euros, Stripe en attente, Pliant. Un appel trop long ou un compte fermé devient indisponible. */
 export async function loadAgencyAccounts(): Promise<AgencyAccount[]> {
   const [revolut, stripe, pliant] = await Promise.all([
     bounded(loadRevolutAccountBalances(), null),
@@ -42,8 +47,8 @@ export async function loadAgencyAccounts(): Promise<AgencyAccount[]> {
     bounded(loadPliantAccountBalance(), null),
   ]);
   return [
-    { id: "revolut", label: "Revolut", href: "/admin/revolut", pockets: revolut?.length ? revolut : unavailable() },
-    { id: "stripe", label: "Stripe", href: "/admin/stripe", pockets: stripe?.length ? stripe : unavailable() },
+    { id: "revolut", label: "Revolut", href: "/admin/revolut", pockets: dashboardRevolutPocket(revolut) },
+    { id: "stripe", label: "Stripe", href: "/admin/stripe", pockets: dashboardStripePocket(stripe) },
     {
       id: "pliant",
       label: "Pliant",

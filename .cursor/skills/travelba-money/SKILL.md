@@ -92,8 +92,8 @@ Flux : API Business → `crm_revolut_transactions` (`unmatched`, **crédits seul
 
 Le tableau de bord (`/admin`, bloc **Comptes**) et la page de chaque compte montrent le solde, comme Pliant (« Solde du compte »).
 
-- **Revolut** : comptes actifs, solde déjà en unité majeure (`GET /accounts`). Un seul compte : le chiffre. Plusieurs poches : euros d’abord, Main en tête, chacune avec son nom. Inactif ignoré. Pas d’IBAN sur cette carte. Non connecté : la carte n’est pas affichée.
-- **Stripe** : disponible en grand (`balance.retrieve`, centimes → euros). « En attente » si l’argent n’est pas encore versé. Pas de body brut.
+- **Revolut** : le tableau de bord ne montre que le compte actif nommé **Main**, en euros. Les autres poches (devises, comptes nommés) restent sur `/admin/revolut`, euros d’abord, Main en tête. Inactif ignoré. Pas d’IBAN. Non connecté : la carte n’est pas affichée.
+- **Stripe** : le tableau de bord montre le montant **en attente** de versement (`balance.pending`, centimes → euros). Le disponible reste sur `/admin/stripe`, en grand, avec l’attente en dessous. Pas de body brut.
 - **Pliant** : `availableLimit` de l’organisation, déjà sur la page Pliant, repris sur le tableau de bord.
 
 Compte non ouvert : pas de carte. Appel en échec ou trop long : **Indisponible**. Le zéro est un solde réel.

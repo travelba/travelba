@@ -8,6 +8,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { AccountBalanceCard, AgencyAccountBalances } from "../../components/admin/AccountBalance";
 import { formatMoney } from "./money";
 import {
+  dashboardRevolutPocket,
+  dashboardStripePocket,
   pliantBalancePocket,
   revolutBalancePockets,
   stripeBalancePockets,
@@ -81,6 +83,35 @@ describe("soldes des comptes", () => {
     assert.equal(pocket.amount, 0);
   });
 
+  it("le tableau de bord ne garde que Revolut Main en euros", () => {
+    const pockets = revolutBalancePockets([
+      { name: "Main", currency: "EUR", state: "active", balance: 1315.11 },
+      { name: "EUR", currency: "EUR", state: "active", balance: 0 },
+      { name: "MYKONOS BB", currency: "EUR", state: "active", balance: 1054.38 },
+      { name: "Main", currency: "GBP", state: "active", balance: 0 },
+      { name: "Main", currency: "USD", state: "active", balance: 0 },
+    ]);
+    assert.deepEqual(
+      dashboardRevolutPocket(pockets).map((pocket) => [pocket.name, pocket.amount, pocket.currency]),
+      [["Main", 1315.11, "EUR"]]
+    );
+    const only = revolutBalancePockets([{ name: "Main", currency: "EUR", state: "active", balance: 12 }]);
+    assert.equal(dashboardRevolutPocket(only)[0].name, "Main");
+    assert.equal(dashboardRevolutPocket(null)[0].amount, null);
+  });
+
+  it("le tableau de bord Stripe montre le montant en attente", () => {
+    const pockets = stripeBalancePockets({
+      available: [{ amount: 0, currency: "eur" }],
+      pending: [{ amount: 4976449, currency: "eur" }],
+    });
+    const [card] = dashboardStripePocket(pockets);
+    assert.equal(card.name, "En attente");
+    assert.equal(card.amount, 49764.49);
+    assert.equal(card.pending, null);
+    assert.equal(dashboardStripePocket(null)[0].amount, null);
+  });
+
   it("Pliant reprend le disponible en euros", () => {
     assert.equal(pliantBalancePocket({ availableCents: 150000, currency: "EUR" })[0].amount, 1500);
     assert.equal(pliantBalancePocket({ availableCents: null, currency: "EUR" })[0].amount, null);
@@ -98,6 +129,47 @@ describe("soldes des comptes", () => {
     assert.match(html, /En attente/);
     assert.ok(html.includes(formatMoney(80)));
     assert.equal(html.includes("payer_email"), false);
+  });
+
+  it("le tableau de bord n’affiche que Main, l’attente Stripe et Pliant", () => {
+    const html = renderToStaticMarkup(
+      createElement(AgencyAccountBalances, {
+        accounts: [
+          {
+            label: "Revolut",
+            href: "/admin/revolut",
+            pockets: dashboardRevolutPocket(
+              revolutBalancePockets([
+                { name: "Main", currency: "EUR", state: "active", balance: 1315.11 },
+                { name: "MYKONOS BB", currency: "EUR", state: "active", balance: 1054.38 },
+              ])
+            ),
+          },
+          {
+            label: "Stripe",
+            href: "/admin/stripe",
+            pockets: dashboardStripePocket(
+              stripeBalancePockets({
+                available: [{ amount: 0, currency: "eur" }],
+                pending: [{ amount: 4976449, currency: "eur" }],
+              })
+            ),
+          },
+          {
+            label: "Pliant",
+            href: "/admin/pliant",
+            pockets: pliantBalancePocket({ availableCents: 226142, currency: "EUR" }),
+          },
+        ],
+      })
+    );
+    assert.equal((html.match(/href=/g) || []).length, 3);
+    assert.match(html, /Main/);
+    assert.match(html, /En attente/);
+    assert.equal(html.includes("MYKONOS"), false);
+    assert.ok(html.includes(formatMoney(1315.11)));
+    assert.ok(html.includes(formatMoney(49764.49)));
+    assert.ok(html.includes(formatMoney(2261.42)));
   });
 
   it("le tableau de bord relie Revolut, Stripe et Pliant", () => {

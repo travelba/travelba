@@ -114,6 +114,34 @@ export function revolutBalancePockets(accounts: RevolutPocketInput[]): AccountPo
   return pockets.map((pocket) => ({ ...pocket, name: pocket.name || pocket.currency }));
 }
 
+/** Tableau de bord : le compte Revolut nommé Main, en euros. Les autres poches restent sur la page Revolut. */
+export function dashboardRevolutPocket(pockets: AccountPocket[] | null): AccountPocket[] {
+  if (!pockets?.length) return unavailable();
+  if (pockets.length === 1 && pockets[0].amount == null) return pockets;
+  const main = pockets.find(
+    (pocket) => pocket.currency === "EUR" && (pocket.name || "").trim().toLowerCase() === "main"
+  );
+  if (main) return [{ ...main, name: "Main" }];
+  if (pockets.length === 1 && pockets[0].currency === "EUR") return [{ ...pockets[0], name: "Main" }];
+  return unavailable();
+}
+
+/** Tableau de bord : l’argent Stripe pas encore versé. Le disponible reste sur la page Stripe. */
+export function dashboardStripePocket(pockets: AccountPocket[] | null): AccountPocket[] {
+  if (!pockets?.length) return unavailable();
+  const failed = pockets.length === 1 && pockets[0].amount == null && pockets[0].pending == null;
+  if (failed) return pockets;
+  const eur = pockets.find((pocket) => pocket.currency === "EUR") ?? pockets[0];
+  return [
+    {
+      name: "En attente",
+      amount: eur.pending ?? 0,
+      currency: eur.currency || "EUR",
+      pending: null,
+    },
+  ];
+}
+
 /** Plafond disponible Pliant, en centimes. */
 export function pliantBalancePocket(account: { availableCents: number | null; currency: string } | null): AccountPocket[] {
   if (!account || account.availableCents == null) return unavailable();
