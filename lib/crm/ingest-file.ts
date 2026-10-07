@@ -58,7 +58,8 @@ Règles d’honnêteté :
 - Inclus (petit-déj, spa, taxes) UNIQUEMENT si une phrase l’écrit. Sinon included = [].
 - Traduire en français les libellés de chambre / inclus. Garder les noms propres.
 - Horaires ISO 8601 seulement s’ils sont imprimés (heures locales du lieu).
-- Devise : $ = USD, € = EUR, £ = GBP, CHF = CHF.
+- currency du séjour : toujours EUR. Le prix vendu est en euros.
+- £ = GBP, $ = USD, CHF = CHF, € = EUR, uniquement dans details.document_currency.
 - Montant imprimé : 5,920.33 (virgule = milliers, format US/UK) = 5920.33, pas 920.33. 5.920,33 = 5920.33.
 - kind : flight | hotel | transfer | activity | rail | car | cruise | insurance | fee.
 - Un PDF peut produire PLUSIEURS cartes.
