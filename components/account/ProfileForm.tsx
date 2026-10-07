@@ -2,7 +2,6 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown } from "lucide-react";
 import type { CrmCustomer, CrmTravelDocument } from "@/lib/crm/types";
 import { resolveCountryCode } from "@/lib/crm/countries";
 import { identityNationalityFromSources, nationalityFromIdentity } from "@/lib/crm/document-identity";
@@ -24,38 +23,7 @@ import {
 import { PersonPassportCard } from "@/components/crm/PersonPassportCard";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { LoyaltyFields } from "@/components/crm/LoyaltyFields";
-
-function Fold({
-  title,
-  summary,
-  open,
-  onToggle,
-  children,
-}: {
-  title: string;
-  summary: string;
-  open: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="border-t border-[#e5e3dc] py-3">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center justify-between gap-3 text-left"
-        aria-expanded={open}
-      >
-        <span className="min-w-0">
-          <span className="block text-sm font-semibold text-[var(--admin-navy)]">{title}</span>
-          {open ? null : <span className="block truncate text-xs text-muted">{summary}</span>}
-        </span>
-        <ChevronDown className={`h-4 w-4 shrink-0 transition ${open ? "rotate-180" : ""}`} />
-      </button>
-      {open ? <div className="mt-3 grid gap-4">{children}</div> : null}
-    </div>
-  );
-}
+import { SectionFold } from "@/components/crm/SectionFold";
 
 export function ProfileForm({
   customer,
@@ -167,7 +135,7 @@ export function ProfileForm({
 
   return (
     <form onSubmit={onSubmit} className="rounded-xl border border-[#e3e2e0]/70 bg-white px-4">
-      <Fold
+      <SectionFold
         title="Identité"
         summary={identitySummary || "À compléter"}
         open={openIdentity}
@@ -215,9 +183,9 @@ export function ProfileForm({
         <Field label="Nationalité">
           <CountrySelect name="nationality" value={nationality} onChange={setNationality} />
         </Field>
-      </Fold>
+      </SectionFold>
 
-      <Fold
+      <SectionFold
         title="Téléphone"
         summary={phone || "À renseigner"}
         open={openPhone}
@@ -225,9 +193,9 @@ export function ProfileForm({
       >
         <PhoneField name="phone" value={phone} onChange={setPhone} required />
         <OptionalSecondPhone value={phoneSecondary} onChange={setPhoneSecondary} />
-      </Fold>
+      </SectionFold>
 
-      <Fold
+      <SectionFold
         title="Adresse"
         summary={addressSummary || "Ajouter"}
         open={openAddress}
@@ -243,16 +211,16 @@ export function ProfileForm({
           onPostalChange={setPostalCode}
           onCityChange={setCity}
         />
-      </Fold>
+      </SectionFold>
 
-      <Fold
+      <SectionFold
         title="Fidélité"
         summary={loyaltyCount ? `${loyaltyCount} programme${loyaltyCount > 1 ? "s" : ""}` : "Ajouter"}
         open={openLoyalty}
         onToggle={() => setOpenLoyalty((value) => !value)}
       >
         <LoyaltyFields values={loyalty} onChange={setLoyalty} onlyFilled />
-      </Fold>
+      </SectionFold>
 
       <div className="border-t border-[#e5e3dc] py-3">
         <PersonPassportCard

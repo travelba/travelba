@@ -78,12 +78,15 @@ export function BillingCompaniesTabs({
   onChange,
   profileAddress,
   confirmRemove = false,
+  heading = true,
 }: {
   drafts: BillingCompanyDraft[];
   onChange: (next: BillingCompanyDraft[]) => void;
   profileAddress: ProfileAddress;
   /** Espace client : « Retirer cette société ? » avant de retirer l’onglet. L’admin garde le geste direct. */
   confirmRemove?: boolean;
+  /** Faux quand un repli porte déjà le titre. */
+  heading?: boolean;
 }) {
   const [active, setActive] = useState(0);
   const index = drafts.length ? Math.min(active, drafts.length - 1) : 0;
@@ -117,8 +120,10 @@ export function BillingCompaniesTabs({
   return (
     <section className="space-y-4">
       <div>
-        <p className="font-display text-base font-bold text-[var(--admin-navy)]">Sociétés de facturation</p>
-        <p className="mt-1 text-sm text-muted">
+        {heading ? (
+          <p className="font-display text-base font-bold text-[var(--admin-navy)]">Sociétés de facturation</p>
+        ) : null}
+        <p className={`text-sm text-muted ${heading ? "mt-1" : ""}`}>
           Plusieurs sociétés peuvent figurer sur ce compte. L’encours reste global.
         </p>
       </div>

@@ -47,8 +47,9 @@ import { reviewIdentityPieces } from "@/lib/crm/trip-documents";
 import { stayHeadline } from "@/lib/crm/carnet";
 import { loadStayMaps } from "@/lib/crm/carnet-query";
 import { StatusChip } from "@/components/crm/ui";
+import { Icon } from "@/components/crm/icons";
 import { BookingHero } from "@/components/crm/BookingHero";
-import { FilePreviewTile } from "@/components/crm/FilePreview";
+import { FilePreviewLink } from "@/components/crm/FilePreview";
 import { identityPreview } from "@/lib/crm/preview-files";
 import { clientLedgerAdminHref } from "@/lib/crm/client-ledger";
 import { ficheBookingTravelerLine, ficheTravelerCaption, mergeFicheBookings } from "@/lib/crm/fiche-bookings";
@@ -196,6 +197,20 @@ export default async function AdminClientDetailPage({ params }: Props) {
     }
   }
   const identityPieces = reviewIdentityPieces((documents || []) as CrmTravelDocument[]);
+  const piecesToCheck = identityPieces.filter((doc) => {
+    const tone = documentExpiryStatus(doc.expires_on).tone;
+    return tone === "red" || tone === "amber";
+  }).length;
+  const piecesSummary = identityPieces.length
+    ? `${identityPieces.length} pièce${identityPieces.length > 1 ? "s" : ""}${
+        piecesToCheck ? ` · ${piecesToCheck} à vérifier` : " · valides"
+      }`
+    : "Aucune pièce au coffre.";
+  const receipts = filterAgencyReceipts((txs || []) as CrmTransaction[]);
+  const balanceRows = (balances || []) as CrmBalance[];
+  const travelerCount = 1 + ((companions || []) as CrmCompanion[]).length;
+  const lastVisit = formatCustomerLoginAt(logins[0]?.created_at || portal.lastSignInAt) || "Jamais";
+  const contactLine = [c.email, c.phone].filter(Boolean).join(" · ");
   const places = await loadStayMaps(
     supabase,
     bookingRows.map((row) => row.id)
@@ -215,110 +230,72 @@ export default async function AdminClientDetailPage({ params }: Props) {
     row: { ...item.row, payer_email: null, raw: {} },
   }));
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <h1 className="min-w-0 break-words font-display text-3xl font-extrabold text-[var(--admin-navy)]">
-          {customerFullName(c)}
-        </h1>
-        <div className="flex flex-wrap items-center gap-2">
+    <div className="space-y-5">
+      <header className="admin-af-hero-band overflow-hidden rounded-3xl">
+        <div className="flex flex-wrap items-end justify-between gap-5 px-6 py-6 sm:px-8">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--admin-gold)]">Fiche client</p>
+            <h1 className="mt-2 font-display text-4xl font-extrabold tracking-tight text-[#faf9f6]">
+              {customerFullName(c)}
+              {c.on_hold ? (
+                <span className="ml-3 align-middle rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+                  En veille
+                </span>
+              ) : null}
+            </h1>
+            <p className="mt-2 max-w-xl truncate text-sm text-white/70">
+              {[contactLine, `Dernière visite · ${lastVisit}`].filter(Boolean).join("  ·  ")}
+            </p>
+          </div>
           <Link
             href={clientLedgerAdminHref(c.id)}
-            className="admin-af-btn inline-flex rounded-xl px-4 py-2.5 text-sm"
+            className="admin-af-btn-accent inline-flex rounded-full px-5 py-2.5 text-sm"
           >
-            Transactions du client
+            Transactions
           </Link>
-          {staff.role === "admin" ? <DeleteCustomerButton customerId={c.id} name={customerFullName(c)} /> : null}
         </div>
-      </div>
-      <InviteCustomerPanel customerId={c.id} initial={portal} />
-      <CustomerLoginLog logins={logins} activity={activity} />
-      <WhatsappThread
-        messages={threadMessages}
-        requests={whatsappRequests.error ? [] : whatsappRequests.data || []}
-        bookings={activeBookings.map((booking) => ({ id: booking.id, reference: booking.reference }))}
-      />
-      <div className="flex flex-wrap gap-3">
-        {((balances || []) as CrmBalance[]).map((b) => {
-          const value = Number(b.balance);
-          return (
-            <Link
-              key={b.currency}
-              href={clientLedgerAdminHref(c.id)}
-              className="admin-af-card block rounded-2xl px-4 py-3 transition hover:border-[var(--admin-gold)]"
-            >
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">
-                {value > 0 ? `Crédit disponible ${b.currency}` : `Encours ${b.currency}`}
-              </p>
-              <p className="font-display text-xl font-bold text-[var(--admin-navy)]">
-                {value > 0 ? formatCreditDisponible(value, b.currency) : formatMoney(value, b.currency)}
-              </p>
-              <p className="mt-2 text-xs font-semibold text-[var(--admin-navy)]">Voir les transactions</p>
-            </Link>
-          );
-        })}
-        <div className="admin-af-card rounded-2xl px-4 py-3">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Dossiers</p>
-          <p className="font-display text-xl font-bold text-[var(--admin-navy)]">{activeBookings.length}</p>
-        </div>
-        <div className="admin-af-card rounded-2xl px-4 py-3">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Dernière connexion</p>
-          <p className="mt-1 font-display text-base font-bold text-[var(--admin-navy)] first-letter:uppercase">
-            {formatCustomerLoginAt(logins[0]?.created_at || portal.lastSignInAt) || "Jamais"}
-          </p>
-        </div>
-        <div className="admin-af-card rounded-2xl px-4 py-3">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Voyageurs</p>
-          <p className="font-display text-xl font-bold text-[var(--admin-navy)]">
-            {1 + ((companions || []) as CrmCompanion[]).length}
-          </p>
-        </div>
-        <div className="admin-af-card rounded-2xl px-4 py-3">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Pièces</p>
-          <p className="font-display text-xl font-bold text-[var(--admin-navy)]">
-            {identityPieces.length}
-          </p>
-        </div>
-      </div>
-      <section className="admin-af-card overflow-hidden rounded-3xl">
-        <div className="border-b border-[var(--border)] px-5 py-4">
-          <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Validation des pièces</h2>
-        </div>
-        <ul className="divide-y divide-border text-sm">
-          {identityPieces.map((doc) => {
-            const expiry = documentExpiryStatus(doc.expires_on);
-            return (
-              <li key={doc.id} className="flex min-w-0 flex-wrap items-center justify-between gap-3 px-5 py-3">
-                {doc.storage_path ? (
-                  <FilePreviewTile
-                    file={
-                      identityPreview(
-                        doc,
-                        [doc.first_name, doc.last_name].filter(Boolean).join(" ") ||
-                          DOC_TYPE_LABELS[doc.doc_type] ||
-                          "Pièce"
-                      )!
-                    }
-                  />
-                ) : null}
-                <span className="min-w-0 flex-1">
-                  <span className="block break-words font-medium text-[var(--admin-navy)]">
-                    {DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type}
-                    {doc.number ? ` · ${doc.number}` : ""}
-                  </span>
-                  <span className="text-xs text-muted">
-                    {[doc.first_name, doc.last_name].filter(Boolean).join(" ") || "Titulaire"}
-                    {doc.expires_on ? ` · expire le ${formatDateFr(doc.expires_on)}` : ""}
-                  </span>
+        <div className="grid grid-cols-2 border-t border-white/10 sm:grid-cols-4 sm:divide-x sm:divide-white/10">
+          <Link href={clientLedgerAdminHref(c.id)} className="block px-6 py-4 transition hover:bg-white/5 sm:px-8">
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">
+              {balanceRows.some((row) => Number(row.balance) > 0) ? "Crédit" : "Encours"}
+            </p>
+            <p className="mt-1 font-display text-xl font-bold text-[#faf9f6]">
+              {balanceRows.length
+                ? balanceRows
+                    .map((row) => {
+                      const value = Number(row.balance);
+                      return value > 0
+                        ? formatCreditDisponible(value, row.currency)
+                        : formatMoney(value, row.currency);
+                    })
+                    .join(" · ")
+                : "—"}
+            </p>
+          </Link>
+          <div className="border-l border-white/10 px-6 py-4 sm:border-0 sm:px-8">
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">Dossiers</p>
+            <p className="mt-1 font-display text-xl font-bold text-[#faf9f6]">{activeBookings.length}</p>
+          </div>
+          <div className="px-6 py-4 sm:px-8">
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">Voyageurs</p>
+            <p className="mt-1 font-display text-xl font-bold text-[#faf9f6]">{travelerCount}</p>
+          </div>
+          <div className="border-l border-white/10 px-6 py-4 sm:border-0 sm:px-8">
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">Pièces</p>
+            <p className="mt-1 font-display text-xl font-bold text-[#faf9f6]">
+              {identityPieces.length}
+              {piecesToCheck ? (
+                <span className="ml-2 align-middle text-xs font-semibold tracking-normal text-[var(--admin-gold)]">
+                  {piecesToCheck} à vérifier
                 </span>
-                <StatusChip tone={expiry.tone}>{expiry.label}</StatusChip>
-              </li>
-            );
-          })}
-          {!identityPieces.length ? (
-            <li className="px-5 py-8 text-center text-muted">Aucune pièce au coffre.</li>
-          ) : null}
-        </ul>
-      </section>
+              ) : null}
+            </p>
+          </div>
+        </div>
+      </header>
+
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="min-w-0 space-y-5">
       <CustomerEditor
         key={c.updated_at}
         customer={c}
@@ -339,9 +316,12 @@ export default async function AdminClientDetailPage({ params }: Props) {
         }
       />
       <ClientStripeSuggestions suggestions={stripeSuggestions} />
-      <section className="admin-af-card rounded-3xl p-5">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="font-display text-lg font-bold">Réservations</h2>
+      <section className="admin-af-card rounded-3xl px-5 py-4">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--admin-gold-dark)]">Séjours</p>
+            <h2 className="mt-1 font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">Dossiers</h2>
+          </div>
           <Link
             href="/admin/reservations/nouveau"
             className="text-xs font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline"
@@ -350,28 +330,29 @@ export default async function AdminClientDetailPage({ params }: Props) {
           </Link>
         </div>
         {activeBookings.some((row) => row.customer_id !== id) ? (
-          <p className="mt-1 text-xs text-muted">
+          <p className="mt-2 text-xs text-muted">
             Les séjours facturés sur ce compte figurent ici, avec le nom du voyageur.
           </p>
         ) : null}
         {activeBookings.length ? (
-          <ul className="mt-2 divide-y divide-border text-sm">
+          <ul className="mt-3 divide-y divide-border text-sm">
             {activeBookings.map((b) => {
               const travelerLine = ficheBookingTravelerLine(b, id, travelerNames);
               return (
-                <li key={b.id} className="flex min-w-0 flex-wrap items-center justify-between gap-3 py-2">
+                <li key={b.id} className="flex min-w-0 items-center justify-between gap-3 py-3">
                   <Link
                     href={`/admin/reservations/${b.id}`}
-                    className="flex min-w-0 items-center gap-3 text-[var(--admin-navy)] underline-offset-2 hover:underline"
+                    className="flex min-w-0 items-center gap-3 text-[var(--admin-navy)]"
                   >
-                    <BookingHero booking={b} places={places.arrival[b.id]} plain className="h-12 w-20 shrink-0 rounded-lg" />
+                    <BookingHero booking={b} places={places.arrival[b.id]} plain className="h-14 w-24 shrink-0 rounded-xl" />
                     <span className="min-w-0">
-                      <span className="block truncate">
-                        {b.reference} · {stayHeadline(b.title, b.destination, places.route[b.id])} · {formatDateFr(b.start_date)}
+                      <span className="block truncate font-medium">
+                        {stayHeadline(b.title, b.destination, places.route[b.id])}
                       </span>
-                      {travelerLine ? (
-                        <span className="block truncate text-xs text-muted">{travelerLine}</span>
-                      ) : null}
+                      <span className="block truncate text-xs text-muted">
+                        {b.reference} · {formatDateFr(b.start_date)}
+                        {travelerLine ? ` · ${travelerLine}` : ""}
+                      </span>
                     </span>
                   </Link>
                   <div className="flex shrink-0 items-center gap-1">
@@ -388,19 +369,19 @@ export default async function AdminClientDetailPage({ params }: Props) {
             })}
           </ul>
         ) : (
-          <p className="mt-2 text-sm text-muted">
+          <p className="mt-3 text-sm text-muted">
             Aucun dossier pour ce client. Importez ses confirmations depuis Nouveau dossier.
           </p>
         )}
         {archivedBookings.length ? (
-          <div className="mt-4">
-            <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Archivées</h3>
-            <ul className="mt-2 divide-y divide-border text-sm">
+          <div className="mt-4 border-t border-[var(--border)] pt-3">
+            <h3 className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted">Archivées</h3>
+            <ul className="mt-1 divide-y divide-border text-sm">
               {archivedBookings.map((b) => (
-                <li key={b.id} className="flex min-w-0 flex-wrap items-center justify-between gap-3 py-2">
+                <li key={b.id} className="flex min-w-0 items-center justify-between gap-3 py-2">
                   <Link
                     href={`/admin/reservations/${b.id}`}
-                    className="min-w-0 text-[var(--admin-navy)] underline-offset-2 hover:underline"
+                    className="min-w-0 truncate text-[var(--admin-navy)]"
                   >
                     {b.reference} · {stayHeadline(b.title, b.destination, places.route[b.id])}
                   </Link>
@@ -411,32 +392,105 @@ export default async function AdminClientDetailPage({ params }: Props) {
           </div>
         ) : null}
       </section>
-      <section className="admin-af-card rounded-3xl p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-display text-lg font-bold">Encaissements</h2>
-          <Link
-            href={clientLedgerAdminHref(c.id)}
-            className="text-xs font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline"
-          >
-            Voir comme le client
-          </Link>
+      <CustomerLoginLog logins={logins} activity={activity} />
+      <WhatsappThread
+        messages={threadMessages}
+        requests={whatsappRequests.error ? [] : whatsappRequests.data || []}
+        bookings={activeBookings.map((booking) => ({ id: booking.id, reference: booking.reference }))}
+      />
         </div>
-        {!(txs || []).length ? (
-          <p className="mt-2 text-sm text-muted">
-            Aucun encaissement. Ils apparaissent après rapprochement Revolut, Stripe ou saisie manuelle.
+
+        <aside className="space-y-3">
+      <InviteCustomerPanel customerId={c.id} initial={portal} stacked />
+      <details className="admin-af-card group rounded-3xl">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 [&::-webkit-details-marker]:hidden [&::marker]:content-none">
+          <span className="min-w-0">
+            <span className="block font-display text-lg font-bold text-[var(--admin-navy)]">Validation des pièces</span>
+            <span className="mt-0.5 block truncate text-sm text-muted">{piecesSummary}</span>
+          </span>
+          <Icon name="expand_more" className="h-4 w-4 shrink-0 text-[var(--admin-navy)] transition-transform group-open:rotate-180" />
+        </summary>
+        {identityPieces.length ? (
+          <ul className="divide-y divide-border border-t border-[var(--border)] px-5 text-sm">
+            {identityPieces.map((doc) => {
+              const expiry = documentExpiryStatus(doc.expires_on);
+              const preview = identityPreview(
+                doc,
+                [doc.first_name, doc.last_name].filter(Boolean).join(" ") ||
+                  DOC_TYPE_LABELS[doc.doc_type] ||
+                  "Pièce"
+              );
+              const who = [doc.first_name, doc.last_name].filter(Boolean).join(" ") || "Titulaire";
+              return (
+                <li key={doc.id} className="flex min-w-0 items-center justify-between gap-3 py-2">
+                  <span className="min-w-0 truncate text-[var(--admin-navy)]">
+                    <span className="font-medium">
+                      {DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type}
+                      {doc.number ? ` · ${doc.number}` : ""}
+                    </span>
+                    <span className="text-muted">
+                      {` · ${who}`}
+                      {doc.expires_on ? ` · expire le ${formatDateFr(doc.expires_on)}` : ""}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-3">
+                    {preview ? <FilePreviewLink file={preview} /> : null}
+                    <StatusChip tone={expiry.tone}>{expiry.label}</StatusChip>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="border-t border-[var(--border)] px-5 py-4 text-sm text-muted">
+            Les passeports et cartes d’identité du foyer apparaîtront ici.
           </p>
-        ) : null}
-        <ul className="mt-2 divide-y divide-border text-sm">
-          {filterAgencyReceipts((txs || []) as CrmTransaction[]).map((t) => (
-            <li key={t.id} className="flex min-w-0 flex-wrap items-baseline justify-between gap-2 py-2">
-              <span className="min-w-0 break-words">
-                {t.label} · {formatDateFr(t.occurred_on)}
-              </span>
-              <span>+{formatMoney(Number(t.amount), t.currency)}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
+        )}
+      </details>
+      <details className="admin-af-card group rounded-3xl">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 [&::-webkit-details-marker]:hidden [&::marker]:content-none">
+          <span className="min-w-0">
+            <span className="block font-display text-lg font-bold text-[var(--admin-navy)]">Encaissements</span>
+            <span className="mt-0.5 block truncate text-sm text-muted">
+              {receipts.length
+                ? `${receipts.length} versement${receipts.length > 1 ? "s" : ""}`
+                : "Aucun encaissement."}
+            </span>
+          </span>
+          <Icon name="expand_more" className="h-4 w-4 shrink-0 text-[var(--admin-navy)] transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="border-t border-[var(--border)] px-5 py-3">
+          <div className="mb-2 text-right">
+            <Link
+              href={clientLedgerAdminHref(c.id)}
+              className="text-xs font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline"
+            >
+              Voir comme le client
+            </Link>
+          </div>
+          {receipts.length ? (
+            <ul className="divide-y divide-border text-sm">
+              {receipts.map((t) => (
+                <li key={t.id} className="flex min-w-0 items-baseline justify-between gap-2 py-2">
+                  <span className="min-w-0 truncate">
+                    {t.label} · {formatDateFr(t.occurred_on)}
+                  </span>
+                  <span className="shrink-0 font-medium text-[var(--admin-navy)]">
+                    +{formatMoney(Number(t.amount), t.currency)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted">
+              Ils apparaissent après rapprochement Revolut, Stripe ou saisie manuelle.
+            </p>
+          )}
+        </div>
+      </details>
+      {staff.role === "admin" ? <DeleteCustomerButton customerId={c.id} name={customerFullName(c)} /> : null}
+        </aside>
+      </div>
     </div>
   );
 }

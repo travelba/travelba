@@ -97,6 +97,30 @@ export function FilePreviewTile({
   );
 }
 
+/** Lien texte : la vignette s’ouvre au clic, sans l’afficher dans la liste. */
+export function FilePreviewLink({
+  file,
+  label = "Voir",
+}: {
+  file: FilePreviewModel;
+  label?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-xs font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline"
+        aria-label={`Aperçu de ${file.label}`}
+      >
+        {label}
+      </button>
+      {open ? <FilePreviewDialog file={file} onClose={() => setOpen(false)} /> : null}
+    </>
+  );
+}
+
 export function FilePreviewGrid({
   files,
   onRemove,

@@ -68,9 +68,16 @@ export function WhatsappThread({
   const reference = new Map(bookings.map((booking) => [booking.id, booking.reference]));
   const earlier = !expanded && messages.length > VISIBLE_MESSAGES ? messages.slice(0, -VISIBLE_MESSAGES) : [];
   const recent = earlier.length ? messages.slice(-VISIBLE_MESSAGES) : messages;
-  return (
-    <section className="admin-af-card rounded-3xl p-5">
-      <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">WhatsApp</h2>
+  const last = messages[messages.length - 1];
+  const pending = requests[0];
+  const pendingStay = pending?.booking_id ? reference.get(pending.booking_id) : null;
+  const summary = pending
+    ? `${requests.length > 1 ? `${requests.length} demandes · ` : ""}Demande à traiter · ${kindLabel(pending.kind)}${pendingStay ? ` · ${pendingStay}` : ""}`
+    : last
+      ? `${last.direction === "outbound" ? "Le Concierge" : "Client"} · ${last.body.replace(/\s+/g, " ").trim()}`
+      : "Aucun échange WhatsApp.";
+  const thread = (
+    <div className="max-w-md space-y-3">
       {requests.length ? (
         <ul className="mt-4 space-y-3">
           {requests.map((request) => {
@@ -99,10 +106,10 @@ export function WhatsappThread({
       {messages.length ? (
         <div className="mt-4 space-y-3">
           {earlier.length ? (
-            <details className="group">
+            <details className="group/earlier">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl border border-[var(--border)] px-4 py-3 text-sm font-semibold text-[var(--admin-navy)] [&::-webkit-details-marker]:hidden [&::marker]:content-none">
                 <span>{earlierLabel(earlier.length)}</span>
-                <Icon name="expand_more" className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180" />
+                <Icon name="expand_more" className="h-4 w-4 shrink-0 transition-transform group-open/earlier:rotate-180" />
               </summary>
               <ol className="mt-3 space-y-3">
                 {earlier.map((message) => (
@@ -118,8 +125,28 @@ export function WhatsappThread({
           </ol>
         </div>
       ) : (
-        <p className="mt-2 text-sm text-muted">Aucun échange WhatsApp.</p>
+        <p className="text-sm text-muted">Aucun échange WhatsApp.</p>
       )}
-    </section>
+    </div>
+  );
+  if (expanded) {
+    return (
+      <section className="admin-af-card rounded-3xl p-5">
+        <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">WhatsApp</h2>
+        <div className="mt-4">{thread}</div>
+      </section>
+    );
+  }
+  return (
+    <details className="admin-af-card group h-full rounded-3xl">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 [&::-webkit-details-marker]:hidden [&::marker]:content-none">
+        <span className="min-w-0">
+          <span className="block font-display text-lg font-bold text-[var(--admin-navy)]">WhatsApp</span>
+          <span className="mt-0.5 block truncate text-sm text-muted">{summary}</span>
+        </span>
+        <Icon name="expand_more" className="h-4 w-4 shrink-0 text-[var(--admin-navy)] transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="border-t border-[var(--border)] px-5 py-4">{thread}</div>
+    </details>
   );
 }

@@ -2,14 +2,17 @@
 
 import { FormEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { ChevronDown, Plus } from "lucide-react";
 import type { CrmBillingCompany, CrmCompanion, CrmCustomer, CrmTravelDocument, CompanyRole } from "@/lib/crm/types";
-import { resolveCountryCode } from "@/lib/crm/countries";
+import { countryName, resolveCountryCode } from "@/lib/crm/countries";
 import { identityNationalityFromSources, nationalityFromIdentity } from "@/lib/crm/document-identity";
-import { identityOverwriteWarning, type ExtractedIdentity } from "@/lib/crm/identity";
+import { identityOverwriteWarning, RELATIONSHIP_OPTIONS, type ExtractedIdentity } from "@/lib/crm/identity";
 import { appendPassportForm, appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-extract";
 import { formatIbanInput, ibanError, normalizeIban } from "@/lib/crm/billing";
 import { loyaltyFromCustomer, type LoyaltyMap } from "@/lib/crm/loyalty";
+import { companyRoleLabel } from "@/lib/crm/company-role";
+import { billingCompanyTabLabel } from "@/lib/crm/billing-companies";
+import { formatDateFr } from "@/lib/crm/money";
 import { LoyaltyFields } from "@/components/crm/LoyaltyFields";
 import {
   AddressFields,
@@ -28,12 +31,13 @@ import {
   BillingCompaniesTabs,
 } from "@/components/crm/BillingCompaniesTabs";
 import { CompanyRoleFields } from "@/components/crm/CompanyRoleFields";
-import { PersonPassportCard } from "@/components/crm/PersonPassportCard";
+import { passportCompactLabel, PersonPassportCard } from "@/components/crm/PersonPassportCard";
+import { SectionFold } from "@/components/crm/SectionFold";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { adminAction } from "@/lib/crm/admin-action";
 import { type ScanResult } from "@/components/crm/IdentityScan";
-import { vaultDocumentsForPerson } from "@/lib/crm/trip-documents";
+import { primaryIdentityDoc, vaultDocumentsForPerson } from "@/lib/crm/trip-documents";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
 
 function applyIdentityState(
@@ -54,6 +58,53 @@ function applyIdentityState(
   if (id.sex) setters.setSex(id.sex);
   const nationalityIso = nationalityFromIdentity(id);
   if (nationalityIso) setters.setNationality(nationalityIso);
+}
+
+function relationshipLabel(value: string | null | undefined) {
+  return RELATIONSHIP_OPTIONS.find((option) => option.value === value)?.label || value || "";
+}
+
+function loyaltySummary(loyalty: LoyaltyMap) {
+  const count = Object.values(loyalty).filter(Boolean).length;
+  if (!count) return "Aucun";
+  return count > 1 ? `${count} programmes` : "1 programme";
+}
+
+function identitySummary(firstName: string, lastName: string, birthDate: string, nationality: string) {
+  const name = [firstName, lastName].filter(Boolean).join(" ");
+  const birth = birthDate ? formatDateFr(birthDate) : "";
+  const nation = countryName(nationality);
+  return [name, birth, nation].filter(Boolean).join(" · ") || "À compléter";
+}
+
+function pieceSummary(documents: CrmTravelDocument[], companionId: string | null) {
+  const doc = primaryIdentityDoc(vaultDocumentsForPerson(documents, companionId));
+  return doc ? passportCompactLabel(doc) : "Pièce à joindre";
+}
+
+function ficheSnapshot(values: {
+  firstName: string;
+  lastName: string;
+  usageName: string;
+  email: string;
+  phone: string;
+  phoneSecondary: string;
+  birthDate: string;
+  sex: string;
+  nationality: string;
+  country: string;
+  addressLine: string;
+  postalCode: string;
+  city: string;
+  loyalty: LoyaltyMap;
+  iban: string;
+  companyRole: CompanyRole | null;
+  billingParentId: string;
+  spendingAllowance: string;
+  onHold: boolean;
+  companyDrafts: unknown;
+}) {
+  return JSON.stringify(values);
 }
 
 export function CustomerEditor({
@@ -105,6 +156,16 @@ export function CustomerEditor({
   const [saving, setSaving] = useState(false);
   const savingLock = useRef(false);
   const [onHold, setOnHold] = useState(Boolean(customer.on_hold));
+  const hasPassport = vaultDocumentsForPerson(documents, null).length > 0;
+  const [openIdentity, setOpenIdentity] = useState(!customer.first_name && !hasPassport);
+  const [openContact, setOpenContact] = useState(!customer.phone);
+  const [openLoyalty, setOpenLoyalty] = useState(false);
+  const [openAddress, setOpenAddress] = useState(false);
+  const [openCompany, setOpenCompany] = useState(false);
+  const [openBilling, setOpenBilling] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [addingCompanion, setAddingCompanion] = useState(false);
+  const holderOpen = expandedId === "holder";
 
   const profileAddress = {
     country,
@@ -112,13 +173,51 @@ export function CustomerEditor({
     postal: postalCode,
     city,
   };
+  const snapshot = ficheSnapshot({
+    firstName,
+    lastName,
+    usageName,
+    email,
+    phone,
+    phoneSecondary,
+    birthDate,
+    sex,
+    nationality,
+    country,
+    addressLine,
+    postalCode,
+    city,
+    loyalty,
+    iban,
+    companyRole,
+    billingParentId,
+    spendingAllowance,
+    onHold,
+    companyDrafts,
+  });
+  const [initial, setInitial] = useState(snapshot);
+  /** La barre Enregistrer ne se fixe en bas que lorsqu’il y a quelque chose à enregistrer. */
+  const dirty = snapshot !== initial;
+  const addressLineSummary = [addressLine, postalCode, city].filter(Boolean).join(", ") || "Aucune";
+  const billingLine = companyDrafts.length
+    ? companyDrafts
+        .map((draft, index) => billingCompanyTabLabel(draft.values.companyName, index, companyDrafts.length))
+        .join(", ")
+    : "Aucune société";
+  const companyLine = [companyRoleLabel(companyRole), iban || null].filter(Boolean).join(" · ");
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (savingLock.current) return;
     const normalizedIban = normalizeIban(iban);
     const err = ibanError(normalizedIban);
+    if (!email.trim()) {
+      setOpenContact(true);
+      setSaveError("L’e-mail est obligatoire.");
+      return;
+    }
     if (err) {
+      setOpenCompany(true);
       setSaveError(err);
       return;
     }
@@ -158,9 +257,34 @@ export function CustomerEditor({
         setSaveError(json.error || "Enregistrement impossible");
         return;
       }
-      if (Array.isArray(json.billing_companies)) {
-        setCompanyDrafts(billingCompanyDrafts(json.billing_companies, customer, profileAddress));
-      }
+      const nextDrafts = Array.isArray(json.billing_companies)
+        ? billingCompanyDrafts(json.billing_companies, customer, profileAddress)
+        : companyDrafts;
+      if (Array.isArray(json.billing_companies)) setCompanyDrafts(nextDrafts);
+      setInitial(
+        ficheSnapshot({
+          firstName,
+          lastName,
+          usageName,
+          email,
+          phone,
+          phoneSecondary,
+          birthDate,
+          sex,
+          nationality,
+          country,
+          addressLine,
+          postalCode,
+          city,
+          loyalty,
+          iban,
+          companyRole,
+          billingParentId,
+          spendingAllowance,
+          onHold,
+          companyDrafts: nextDrafts,
+        })
+      );
       router.refresh();
     } finally {
       savingLock.current = false;
@@ -168,20 +292,50 @@ export function CustomerEditor({
     }
   }
 
+  const holderLine = [
+    "Voyageur principal",
+    birthDate ? formatDateFr(birthDate) : "",
+    pieceSummary(documents, null),
+    onHold ? "En veille" : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
-    <div className="space-y-6">
-      <form onSubmit={save} className="admin-af-card space-y-6 rounded-3xl p-5">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
-            Fiche client
-          </p>
-          <h2 className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">
-            Voyageur principal
-          </h2>
-          <p className="mt-1 text-sm text-muted">
-            Uploadez sa pièce : l’identité se remplit, puis les coordonnées et la facturation société.
-          </p>
-        </div>
+    <section id="accompagnateurs" className="space-y-4">
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--admin-gold-dark)]">Le foyer</p>
+        <h2 className="mt-1 font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">Voyageurs</h2>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <form
+        onSubmit={save}
+        className={`admin-af-card h-full rounded-3xl px-5 py-4 ${holderOpen ? "space-y-6 sm:col-span-2" : ""}`}
+      >
+        <button
+          type="button"
+          onClick={() => setExpandedId((current) => (current === "holder" ? null : "holder"))}
+          className="flex w-full items-center gap-3 text-left"
+          aria-expanded={holderOpen}
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-display text-base font-bold text-[var(--admin-navy)]">
+              {firstName} {lastName}
+            </span>
+            <span className="block truncate text-xs text-muted">{holderLine}</span>
+          </span>
+          <ChevronDown className={`h-4 w-4 shrink-0 transition ${holderOpen ? "rotate-180" : ""}`} />
+        </button>
+
+        {holderOpen ? (
+        <div className="space-y-6">
+        <label className="flex items-start gap-2 text-sm text-[var(--admin-navy)]">
+          <input type="checkbox" className="mt-1" checked={onHold} onChange={(e) => setOnHold(e.target.checked)} />
+          <span>
+            <span className="font-semibold">Compte en veille</span>
+            <span className="mt-0.5 block text-xs text-muted">Badge interne. Aucun changement pour le client.</span>
+          </span>
+        </label>
 
         <PersonPassportCard
           variant="admin"
@@ -189,6 +343,8 @@ export function CustomerEditor({
           documents={documents}
           person={{ first_name: firstName, last_name: lastName }}
           onIdentity={(id) => {
+            setExpandedId("holder");
+            setOpenIdentity(true);
             setNameWarn(identityOverwriteWarning({ first_name: firstName, last_name: lastName }, id));
             applyIdentityState(id, {
               setFirstName,
@@ -206,138 +362,174 @@ export function CustomerEditor({
           </p>
         ) : null}
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <p className="sm:col-span-2 font-display text-base font-bold text-[var(--admin-navy)]">
-            Identité
-          </p>
-          <label className="flex items-start gap-2 text-sm text-[var(--admin-navy)] sm:col-span-2">
-            <input type="checkbox" className="mt-1" checked={onHold} onChange={(e) => setOnHold(e.target.checked)} />
-            <span>
-              <span className="font-semibold">Compte en veille</span>
-              <span className="mt-0.5 block text-xs text-muted">Badge interne. Aucun changement pour le client.</span>
-            </span>
-          </label>
-          <Field label="Prénom(s)" hint="Tous les prénoms, dans l’ordre du passeport">
-            <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
-          </Field>
-          <Field label="Nom" hint="Nom de naissance, comme sur la pièce">
-            <input value={lastName} onChange={(e) => setLastName(e.target.value)} className={fieldControlClass} />
-          </Field>
-          <Field label="Nom d'épouse" hint="Nom d'usage s'il est imprimé sur le passeport ou la CNI" className="sm:col-span-2">
-            <input value={usageName} onChange={(e) => setUsageName(e.target.value)} className={fieldControlClass} />
-          </Field>
-          <Field label="Naissance">
-            <DateFrInput
-              value={birthDate}
-              onChange={setBirthDate}
-              max={new Date().toISOString().slice(0, 10)}
-              autoComplete="bday"
-            />
-          </Field>
-          <Field label="Sexe">
-            <SexSelect name="sex" value={sex} onChange={setSex} />
-          </Field>
-          <Field label="Nationalité" className="sm:col-span-2">
-            <CountrySelect name="nationality" value={nationality} onChange={setNationality} />
-          </Field>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <p className="sm:col-span-2 font-display text-base font-bold text-[var(--admin-navy)]">
-            Coordonnées
-          </p>
-          <Field
-            label="E-mail"
-            hint="Adresse de connexion. L’invitation et l’accès suivent ce changement."
-            className="sm:col-span-2"
+        <div>
+          <SectionFold
+            title="Identité"
+            summary={identitySummary(firstName, lastName, birthDate, nationality)}
+            open={openIdentity}
+            onToggle={() => setOpenIdentity((value) => !value)}
           >
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="off"
-              className={`${fieldControlClass} admin-tap`}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Prénom(s)" hint="Tous les prénoms, dans l’ordre du passeport">
+                <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className={fieldControlClass} />
+              </Field>
+              <Field label="Nom" hint="Nom de naissance, comme sur la pièce">
+                <input value={lastName} onChange={(e) => setLastName(e.target.value)} className={fieldControlClass} />
+              </Field>
+              <Field label="Nom d'épouse" hint="Nom d'usage s'il est imprimé sur le passeport ou la CNI" className="sm:col-span-2">
+                <input value={usageName} onChange={(e) => setUsageName(e.target.value)} className={fieldControlClass} />
+              </Field>
+              <Field label="Naissance">
+                <DateFrInput
+                  value={birthDate}
+                  onChange={setBirthDate}
+                  max={new Date().toISOString().slice(0, 10)}
+                  autoComplete="bday"
+                />
+              </Field>
+              <Field label="Sexe">
+                <SexSelect name="sex" value={sex} onChange={setSex} />
+              </Field>
+              <Field label="Nationalité" className="sm:col-span-2">
+                <CountrySelect name="nationality" value={nationality} onChange={setNationality} />
+              </Field>
+            </div>
+          </SectionFold>
+
+          <SectionFold
+            title="Coordonnées"
+            summary={[email, phone].filter(Boolean).join(" · ") || "À compléter"}
+            open={openContact}
+            onToggle={() => setOpenContact((value) => !value)}
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field
+                label="E-mail"
+                hint="Adresse de connexion. L’invitation et l’accès suivent ce changement."
+                className="sm:col-span-2"
+              >
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="off"
+                  className={`${fieldControlClass} admin-tap`}
+                />
+              </Field>
+              <PhoneField name="phone" value={phone} onChange={setPhone} />
+              <OptionalSecondPhone value={phoneSecondary} onChange={setPhoneSecondary} />
+            </div>
+          </SectionFold>
+
+          <SectionFold
+            title="Fidélité"
+            summary={loyaltySummary(loyalty)}
+            open={openLoyalty}
+            onToggle={() => setOpenLoyalty((value) => !value)}
+          >
+            <LoyaltyFields values={loyalty} onChange={setLoyalty} onlyFilled />
+          </SectionFold>
+
+          <SectionFold
+            title="Adresse"
+            summary={addressLineSummary}
+            open={openAddress}
+            onToggle={() => setOpenAddress((value) => !value)}
+          >
+            <AddressFields
+              country={country}
+              onCountryChange={setCountry}
+              line={addressLine}
+              postal={postalCode}
+              city={city}
+              onLineChange={setAddressLine}
+              onPostalChange={setPostalCode}
+              onCityChange={setCity}
             />
-          </Field>
-          <PhoneField name="phone" value={phone} onChange={setPhone} />
-          <OptionalSecondPhone value={phoneSecondary} onChange={setPhoneSecondary} />
+          </SectionFold>
+
+          <SectionFold
+            title="Société et paiement"
+            summary={companyLine}
+            open={openCompany}
+            onToggle={() => setOpenCompany((value) => !value)}
+          >
+            <Field label="IBAN" hint="Compte français, 27 caractères" error={ibanError(normalizeIban(iban))}>
+              <input
+                value={iban}
+                onChange={(e) => setIban(formatIbanInput(e.target.value))}
+                autoComplete="off"
+                spellCheck={false}
+                className={fieldControlClass}
+                placeholder="FR76 XXXX XXXX XXXX XXXX XXXX XXX"
+              />
+            </Field>
+            <CompanyRoleFields
+              heading={false}
+              role={companyRole}
+              onRoleChange={(role) => {
+                setCompanyRole(role);
+                if (role !== "member") setBillingParentId("");
+              }}
+              billingParentId={billingParentId}
+              onBillingParentChange={setBillingParentId}
+              companyAdmins={companyAdmins}
+              selfId={customer.id}
+              spendingAllowance={spendingAllowance}
+              onSpendingAllowanceChange={setSpendingAllowance}
+            />
+          </SectionFold>
+
+          <SectionFold
+            title="Facturation"
+            summary={billingLine}
+            open={openBilling}
+            onToggle={() => setOpenBilling((value) => !value)}
+          >
+            <BillingCompaniesTabs
+              heading={false}
+              drafts={companyDrafts}
+              onChange={setCompanyDrafts}
+              profileAddress={profileAddress}
+            />
+          </SectionFold>
         </div>
-
-        <LoyaltyFields values={loyalty} onChange={setLoyalty} />
-
-        <Field label="IBAN" hint="Compte français, 27 caractères" error={ibanError(normalizeIban(iban))}>
-          <input
-            value={iban}
-            onChange={(e) => setIban(formatIbanInput(e.target.value))}
-            autoComplete="off"
-            spellCheck={false}
-            className={fieldControlClass}
-            placeholder="FR76 XXXX XXXX XXXX XXXX XXXX XXX"
-          />
-        </Field>
-
-        <section>
-          <p className="mb-4 font-display text-base font-bold text-[var(--admin-navy)]">Adresse</p>
-          <AddressFields
-            country={country}
-            onCountryChange={setCountry}
-            line={addressLine}
-            postal={postalCode}
-            city={city}
-            onLineChange={setAddressLine}
-            onPostalChange={setPostalCode}
-            onCityChange={setCity}
-          />
-        </section>
-
-        <CompanyRoleFields
-          role={companyRole}
-          onRoleChange={(role) => {
-            setCompanyRole(role);
-            if (role !== "member") setBillingParentId("");
-          }}
-          billingParentId={billingParentId}
-          onBillingParentChange={setBillingParentId}
-          companyAdmins={companyAdmins}
-          selfId={customer.id}
-          spendingAllowance={spendingAllowance}
-          onSpendingAllowanceChange={setSpendingAllowance}
-        />
-
-        <BillingCompaniesTabs
-          drafts={companyDrafts}
-          onChange={setCompanyDrafts}
-          profileAddress={profileAddress}
-        />
 
         {saveError ? <p className="text-sm text-accent">{saveError}</p> : null}
-        <div className="sticky bottom-4 z-20 -mx-1 rounded-2xl border border-[#e5e3dc] bg-white/95 p-3 shadow-lg backdrop-blur">
+        <div
+          className={
+            dirty
+              ? "sticky bottom-4 z-20 -mx-1 rounded-2xl border border-[#e5e3dc] bg-white/95 p-3 shadow-lg backdrop-blur"
+              : "border-t border-[#e5e3dc] pt-3"
+          }
+        >
           <BusyBar active={saving} label="Enregistrement…" />
           <button className="admin-af-btn admin-tap w-full rounded-full px-4 py-2 text-sm" disabled={saving}>
             {saving ? "Enregistrement…" : "Enregistrer"}
           </button>
         </div>
+        </div>
+        ) : null}
       </form>
 
-      <section id="accompagnateurs" className="space-y-4">
-        <div>
-          <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Accompagnateurs</h2>
-          <p className="mt-1 text-sm text-muted">
-            Même principe : une pièce par personne, qui remplit son identité.
-          </p>
-        </div>
         {companions.map((companion) => (
           <CompanionCard
             key={companion.id}
             customerId={customer.id}
             companion={companion}
             documents={documents}
+            expanded={expandedId === companion.id}
+            onToggle={() =>
+              setExpandedId((current) => (current === companion.id ? null : companion.id))
+            }
           />
         ))}
-        <AddCompanionForm customerId={customer.id} />
-      </section>
-    </div>
+        <div className={addingCompanion ? "sm:col-span-2" : ""}>
+          <AddCompanionForm customerId={customer.id} onOpenChange={setAddingCompanion} />
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -345,10 +537,14 @@ function CompanionCard({
   customerId,
   companion,
   documents,
+  expanded,
+  onToggle,
 }: {
   customerId: string;
   companion: CrmCompanion;
   documents: CrmTravelDocument[];
+  expanded: boolean;
+  onToggle: () => void;
 }) {
   const router = useRouter();
   const [firstName, setFirstName] = useState(companion.first_name);
@@ -369,6 +565,9 @@ function CompanionCard({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [nameWarn, setNameWarn] = useState<string | null>(null);
+  const [openIdentity, setOpenIdentity] = useState(!companion.first_name);
+  const [openPhone, setOpenPhone] = useState(!companion.phone);
+  const [openLoyalty, setOpenLoyalty] = useState(false);
 
   function edit<T>(setter: (value: T) => void) {
     return (value: T) => {
@@ -417,104 +616,158 @@ function CompanionCard({
     return undefined;
   }
 
+  const closedLine = [
+    relationshipLabel(relationship),
+    birthDate ? formatDateFr(birthDate) : "",
+    pieceSummary(documents, companion.id),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
-    <article className="admin-af-card space-y-4 rounded-3xl p-5">
+    <article className={`admin-af-card rounded-3xl px-5 py-4 ${expanded ? "sm:col-span-2" : "h-full"}`}>
       <div className="flex items-start justify-between gap-3">
-        <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">
-          {companion.first_name} {companion.last_name}
-        </h3>
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+          aria-expanded={expanded}
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-display text-base font-bold text-[var(--admin-navy)]">
+              {firstName} {lastName}
+            </span>
+            {closedLine ? <span className="block truncate text-xs text-muted">{closedLine}</span> : null}
+          </span>
+          <ChevronDown className={`h-4 w-4 shrink-0 transition ${expanded ? "rotate-180" : ""}`} />
+        </button>
         <ConfirmAction
           size="sm"
           tone="danger"
           label="Retirer"
           confirmLabel="Retirer l’accompagnateur"
-          ariaLabel={`Retirer ${companion.first_name} ${companion.last_name}`}
+          ariaLabel={`Retirer ${firstName} ${lastName}`}
           question="L’accompagnateur et ses pièces d’identité sont supprimés du compte. Les séjours passés restent."
           align="end"
           onConfirm={remove}
         />
       </div>
-      <PersonPassportCard
-        variant="admin"
-        customerId={customerId}
-        companionId={companion.id}
-        documents={documents}
-        person={{ first_name: firstName, last_name: lastName }}
-        onIdentity={(id) => {
-          setSaved(false);
-          setNameWarn(identityOverwriteWarning({ first_name: firstName, last_name: lastName }, id));
-          applyIdentityState(id, {
-            setFirstName,
-            setLastName,
-            setUsageName,
-            setBirthDate,
-            setSex,
-            setNationality,
-          });
-        }}
-      />
-      {nameWarn ? (
-        <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
-          {nameWarn}
-        </p>
-      ) : null}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Prénom(s)" hint="Tous les prénoms, dans l’ordre du passeport">
-          <input value={firstName} onChange={(e) => edit(setFirstName)(e.target.value)} className={fieldControlClass} />
-        </Field>
-        <Field label="Nom" hint="Nom de naissance, comme sur la pièce">
-          <input value={lastName} onChange={(e) => edit(setLastName)(e.target.value)} className={fieldControlClass} />
-        </Field>
-        <Field label="Nom d'épouse" hint="Nom d'usage s'il est imprimé" className="sm:col-span-2">
-          <input value={usageName} onChange={(e) => edit(setUsageName)(e.target.value)} className={fieldControlClass} />
-        </Field>
-        <Field label="Lien">
-          <RelationshipSelect name="relationship" value={relationship} onChange={edit(setRelationship)} />
-        </Field>
-        <Field label="Nationalité">
-          <CountrySelect name="nationality" value={nationality} onChange={edit(setNationality)} />
-        </Field>
-        <Field label="Naissance">
-          <DateFrInput
-            value={birthDate}
-            onChange={edit(setBirthDate)}
-            max={new Date().toISOString().slice(0, 10)}
+      {expanded ? (
+        <div className="mt-4 space-y-4">
+          <PersonPassportCard
+            variant="admin"
+            customerId={customerId}
+            companionId={companion.id}
+            documents={documents}
+            person={{ first_name: firstName, last_name: lastName }}
+            onIdentity={(id) => {
+              setSaved(false);
+              setOpenIdentity(true);
+              setNameWarn(identityOverwriteWarning({ first_name: firstName, last_name: lastName }, id));
+              applyIdentityState(id, {
+                setFirstName,
+                setLastName,
+                setUsageName,
+                setBirthDate,
+                setSex,
+                setNationality,
+              });
+            }}
           />
-        </Field>
-        <Field label="Sexe">
-          <SexSelect name="sex" value={sex} onChange={edit(setSex)} />
-        </Field>
-        <div className="sm:col-span-2">
-          <PhoneField name={`companion-phone-${companion.id}`} label="Téléphone" value={phone} onChange={edit(setPhone)} />
+          {nameWarn ? (
+            <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
+              {nameWarn}
+            </p>
+          ) : null}
+          <div>
+            <SectionFold
+              title="Identité"
+              summary={identitySummary(firstName, lastName, birthDate, nationality)}
+              open={openIdentity}
+              onToggle={() => setOpenIdentity((value) => !value)}
+            >
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Prénom(s)" hint="Tous les prénoms, dans l’ordre du passeport">
+                  <input value={firstName} onChange={(e) => edit(setFirstName)(e.target.value)} className={fieldControlClass} />
+                </Field>
+                <Field label="Nom" hint="Nom de naissance, comme sur la pièce">
+                  <input value={lastName} onChange={(e) => edit(setLastName)(e.target.value)} className={fieldControlClass} />
+                </Field>
+                <Field label="Nom d'épouse" hint="Nom d'usage s'il est imprimé" className="sm:col-span-2">
+                  <input value={usageName} onChange={(e) => edit(setUsageName)(e.target.value)} className={fieldControlClass} />
+                </Field>
+                <Field label="Lien">
+                  <RelationshipSelect name="relationship" value={relationship} onChange={edit(setRelationship)} />
+                </Field>
+                <Field label="Nationalité">
+                  <CountrySelect name="nationality" value={nationality} onChange={edit(setNationality)} />
+                </Field>
+                <Field label="Naissance">
+                  <DateFrInput
+                    value={birthDate}
+                    onChange={edit(setBirthDate)}
+                    max={new Date().toISOString().slice(0, 10)}
+                  />
+                </Field>
+                <Field label="Sexe">
+                  <SexSelect name="sex" value={sex} onChange={edit(setSex)} />
+                </Field>
+              </div>
+            </SectionFold>
+            <SectionFold
+              title="Téléphone"
+              summary={phone || "Aucun"}
+              open={openPhone}
+              onToggle={() => setOpenPhone((value) => !value)}
+            >
+              <PhoneField
+                name={`companion-phone-${companion.id}`}
+                label="Téléphone"
+                value={phone}
+                onChange={edit(setPhone)}
+              />
+            </SectionFold>
+            <SectionFold
+              title="Fidélité"
+              summary={loyaltySummary(loyalty)}
+              open={openLoyalty}
+              onToggle={() => setOpenLoyalty((value) => !value)}
+            >
+              <LoyaltyFields values={loyalty} onChange={edit(setLoyalty)} onlyFilled />
+            </SectionFold>
+          </div>
+          <BusyBar active={saving} label="Enregistrement…" />
+          {saveError ? (
+            <p role="alert" className="text-sm text-[var(--admin-red)]">
+              {saveError}
+            </p>
+          ) : null}
+          {saved ? (
+            <p role="status" className="rounded-xl bg-[#fbf7ec] px-3 py-2 text-sm font-semibold text-[var(--admin-navy)]">
+              Enregistré.
+            </p>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void save()}
+            className="admin-af-btn rounded-full px-4 py-2 text-sm"
+            disabled={saving}
+          >
+            {saving ? "Enregistrement…" : "Enregistrer l’accompagnateur"}
+          </button>
         </div>
-        <div className="sm:col-span-2">
-          <LoyaltyFields values={loyalty} onChange={edit(setLoyalty)} />
-        </div>
-      </div>
-      <BusyBar active={saving} label="Enregistrement…" />
-      {saveError ? (
-        <p role="alert" className="text-sm text-[var(--admin-red)]">
-          {saveError}
-        </p>
       ) : null}
-      {saved ? (
-        <p role="status" className="rounded-xl bg-[#fbf7ec] px-3 py-2 text-sm font-semibold text-[var(--admin-navy)]">
-          Enregistré.
-        </p>
-      ) : null}
-      <button
-        type="button"
-        onClick={() => void save()}
-        className="admin-af-btn rounded-full px-4 py-2 text-sm"
-        disabled={saving}
-      >
-        {saving ? "Enregistrement…" : "Enregistrer l’accompagnateur"}
-      </button>
     </article>
   );
 }
 
-function AddCompanionForm({ customerId }: { customerId: string }) {
+function AddCompanionForm({
+  customerId,
+  onOpenChange,
+}: {
+  customerId: string;
+  onOpenChange?: (open: boolean) => void;
+}) {
   const router = useRouter();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -532,6 +785,7 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
 
   function closeForm() {
     setOpen(false);
+    onOpenChange?.(false);
     setFirstName("");
     setLastName("");
     setUsageName("");
@@ -620,8 +874,11 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
     return (
       <button
         type="button"
-        onClick={() => setOpen(true)}
-        className="admin-af-btn inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm"
+        onClick={() => {
+          setOpen(true);
+          onOpenChange?.(true);
+        }}
+        className="admin-af-card flex h-full min-h-[4.5rem] w-full items-center justify-center gap-2 rounded-3xl border border-dashed border-[var(--admin-gold)] px-5 py-4 text-sm font-semibold text-[var(--admin-navy)]"
       >
         <Plus className="h-4 w-4" />
         Ajouter un accompagnateur

@@ -25,9 +25,12 @@ const STATUS_COPY: Record<PortalAccess["status"], { label: string; hint: string 
 export function InviteCustomerPanel({
   customerId,
   initial,
+  stacked = false,
 }: {
   customerId: string;
   initial: PortalAccess;
+  /** Colonne étroite : les actions passent sous le statut. */
+  stacked?: boolean;
 }) {
   const router = useRouter();
   const [status, setStatus] = useState(initial.status);
@@ -127,7 +130,9 @@ export function InviteCustomerPanel({
   }
 
   return (
-    <section className="admin-af-card flex flex-col gap-3 rounded-3xl p-5 sm:flex-row sm:items-center sm:justify-between">
+    <section
+      className={`admin-af-card flex flex-col gap-3 rounded-3xl p-5 ${stacked ? "" : "sm:flex-row sm:items-center sm:justify-between"}`}
+    >
       <div className="min-w-0">
         <p className="font-label text-[10px] font-bold uppercase tracking-[0.12em] text-muted">
           Espace voyageur
@@ -176,7 +181,7 @@ export function InviteCustomerPanel({
         ) : null}
       </div>
       <BusyBar active={loading || sendingAccess || deskBusy} label={deskBusy ? "Préparation du lien…" : "Envoi…"} />
-      <div className="flex shrink-0 flex-col items-end gap-2">
+      <div className={`flex shrink-0 flex-col gap-2 ${stacked ? "items-start" : "items-end"}`}>
         <div className="flex flex-wrap justify-end gap-2">
           {link ? (
             <button

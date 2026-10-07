@@ -15,6 +15,7 @@ export function CompanyRoleFields({
   selfId,
   spendingAllowance,
   onSpendingAllowanceChange,
+  heading = true,
 }: {
   role: CompanyRole | null;
   onRoleChange: (role: CompanyRole | null) => void;
@@ -24,14 +25,18 @@ export function CompanyRoleFields({
   selfId: string;
   spendingAllowance: string;
   onSpendingAllowanceChange: (value: string) => void;
+  /** Faux quand un repli porte déjà le titre. */
+  heading?: boolean;
 }) {
   return (
     <section className="space-y-3 rounded-2xl border border-[#e5e3dc] bg-[#faf9f6] p-4">
       <div>
-        <p className="font-display text-base font-bold text-[var(--admin-navy)]">
-          Société et paiement
-        </p>
-        <p className="mt-1 text-sm text-muted">
+        {heading ? (
+          <p className="font-display text-base font-bold text-[var(--admin-navy)]">
+            Société et paiement
+          </p>
+        ) : null}
+        <p className={`text-sm text-muted ${heading ? "mt-1" : ""}`}>
           Un voyageur peut être payé par une société. L’admin voit le grand livre. Le collaborateur
           voit son droit de dépense et les frais de ses voyages, pas les versements de la société.
         </p>
