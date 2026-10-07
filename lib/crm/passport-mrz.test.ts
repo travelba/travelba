@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { emptyIdentity } from "./passport-extract";
 import { icaoCheckDigit, identitiesFromPassportOcr } from "./passport-mrz";
-import { readDomicile, readIssueDate } from "./passport-visual";
+import { readAuthority, readDomicile, readIssueDate, readPlaceOfBirth } from "./passport-visual";
 
 function td3Line(doc: string, nat: string, birth: string, sex: string, exp: string, personal: string) {
   const docField = doc.padEnd(9, "<").slice(0, 9);
@@ -101,4 +101,38 @@ test("French MRZ fragments keep printed given-name order and accents", () => {
   assert.equal(rows[0].nationality, "FR");
   assert.equal(rows[0].birth_date, "2008-05-22");
   assert.equal(rows[0].expires_on, "2034-11-26");
+});
+
+test("un passeport français à deux adresses garde le domicile, le prénom court et la ville de naissance", () => {
+  const visual = [
+    "Prénoms",
+    "Zoé,Lina,Noa",
+    "Nationalité Française",
+    "23 04 2010 LEVALLOIS-PERRET",
+    "Préfecture des Hauts-de-",
+    "Seine NANTERRE",
+    "18 RUE DU BOIS DE LA FONTAINE",
+    "92200 NEUILLY-SUR-SEINE",
+    "FRANCE",
+    "9 RUE DES TILLEULS",
+    "92300 LEVALLOIS-PERRET",
+    "FRANCE",
+  ].join("\n");
+  const domicile = readDomicile(visual);
+  assert.equal(domicile.address_line, "18 RUE DU BOIS DE LA FONTAINE");
+  assert.equal(domicile.postal_code, "92200");
+  assert.equal(domicile.city, "NEUILLY-SUR-SEINE");
+  assert.equal(readPlaceOfBirth(visual, "FR", "2010-04-23"), "LEVALLOIS-PERRET");
+  assert.equal(readAuthority(visual), "Préfecture des Hauts-de-Seine Nanterre");
+  const rows = identitiesFromPassportOcr(
+    ["P<FRADUPONT<<ZOE<LINA<NOA<<<<<<<<<<<<<<<<<<<<", td3Line("12AB34567", "FRA", "100423", "F", "300423", "")].join("\n"),
+    visual
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].first_name, "Zoé Lina Noa");
+  assert.equal(rows[0].address_line, "18 RUE DU BOIS DE LA FONTAINE");
+  assert.equal(rows[0].postal_code, "92200");
+  assert.equal(rows[0].city, "NEUILLY-SUR-SEINE");
+  assert.equal(rows[0].place_of_birth, "LEVALLOIS-PERRET");
+  assert.equal(rows[0].authority, "Préfecture des Hauts-de-Seine Nanterre");
 });

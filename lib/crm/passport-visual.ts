@@ -31,18 +31,26 @@ function latinNameTokens(chunk: string) {
     });
 }
 
+const NEXT_FIELD =
+  /nationalit|sexe|\bsex\b|taille|height|couleur|eyes|date de|lieu de|domicile|autorit|passeport|r[eé]publique|code du pays/i;
+
 export function readPrintedGivenNames(text: string) {
   const lines = text.split(/\n/).map((line) => line.trim()).filter(Boolean);
   const windows: string[] = [];
   for (let i = 0; i < lines.length; i += 1) {
     if (!/pr[eé]noms|given names?/i.test(lines[i])) continue;
     const same = lines[i].replace(/.*(?:pr[eé]noms|given names?)/i, " ");
-    windows.push([same, ...lines.slice(i + 1, i + 6)].join(" "));
+    const follow: string[] = [];
+    for (const line of lines.slice(i + 1, i + 4)) {
+      if (NEXT_FIELD.test(line)) break;
+      follow.push(line);
+    }
+    windows.push([same, ...follow].join(" "));
   }
   if (windows.length) {
     const tokens = latinNameTokens(windows.join(" "));
-    const solid = tokens.filter((token) => token.replace(/[^\p{L}]/gu, "").length >= 4);
-    const picked = (solid.length ? solid : tokens).slice(0, 8);
+    const named = tokens.filter((token) => token.replace(/[^\p{L}]/gu, "").length >= 3);
+    const picked = (named.length ? named : tokens).slice(0, 6);
     if (picked.length) return picked.join(" ");
   }
   const comma = text.match(/[A-ZÀ-ÖØ-öø-ÿ][\p{L}'’-]+(?:\s*,\s*[A-ZÀ-ÖØ-öø-ÿ][\p{L}'’-]+){1,4}/u);
@@ -53,8 +61,25 @@ export function readPrintedGivenNames(text: string) {
   return null;
 }
 
-export function readPlaceOfBirth(text: string, issuingCountry: string | null) {
-  const flat = text.replace(/\s+/g, " ");
+const PLACE_NOISE =
+  /^(FRANCE|ISRAEL|ISRAËL|NATIONALITE|SEXE|DOMICILE|AUTORITE|PREFECTURE|PASSEPORT|MARRON|BLEU|VERT|NOIR|NOISETTE|GIVEN|NAMES|SURNAME|RUE|AVENUE|BOULEVARD)$/i;
+
+function flatText(text: string) {
+  return text.replace(/-\s+/g, "-").replace(/\s+/g, " ");
+}
+
+function cityToken(raw: string) {
+  const city = raw
+    .toUpperCase()
+    .replace(/[^A-Z-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  if (city.replace(/-/g, "").length < 3 || PLACE_NOISE.test(city)) return null;
+  return city;
+}
+
+export function readPlaceOfBirth(text: string, issuingCountry: string | null, birthDate?: string | null) {
+  const flat = flatText(text);
   const arr = flat.match(/(?:PARIS\s+)?(\d{1,2})\s*E\s+ARRONDISSEMENT/i);
   if (arr) return `PARIS ${arr[1]}E ARRONDISSEMENT`;
   const paris = flat.match(/PARIS\s+\d{1,2}\s*E\b/i);
@@ -63,18 +88,49 @@ export function readPlaceOfBirth(text: string, issuingCountry: string | null) {
     return `${head} ARRONDISSEMENT`;
   }
   if (issuingCountry === "IL" && /\bFRANCE\b/i.test(flat) && !/CONSULAT/i.test(flat)) return "FRANCE";
-  return null;
+  const beside = (day: string, month: string, year: string) => {
+    const hit = flat.match(new RegExp(`${day}\\s+${month}\\s+${year}\\s+([A-Z][A-Z-]{2,})`, "i"));
+    return hit ? cityToken(hit[1]) : null;
+  };
+  if (birthDate && /^\d{4}-\d{2}-\d{2}$/.test(birthDate)) {
+    const [year, month, day] = birthDate.split("-");
+    const city = beside(day, month, year);
+    if (city) return city;
+  }
+  const loose = flat.match(/(?:^|\D)(\d{2})\s+(\d{2})\s+(\d{4})\s+([A-Z][A-Z-]{2,})/);
+  return loose ? cityToken(loose[4]) : null;
 }
 
 export function readAuthority(text: string) {
-  const flat = text.replace(/\s+/g, " ");
+  const flat = flatText(text);
   if (/TEL\s*AVIV/i.test(flat) && /CONSULAT/i.test(flat)) {
     const general = flat.match(/G[ÉE]N[ÉE]RAL/i);
     const word = general ? general[0].toLocaleUpperCase("fr") : "GENERAL";
     return `TEL AVIV - CONSULAT ${word} DE FRANCE`;
   }
   if (/J[ÉE]RUSALEM/i.test(flat)) return "JERUSALEM";
-  return null;
+  const start = flat.search(/pr[eé]fecture\b/i);
+  if (start < 0) return null;
+  const tokens = flat.slice(start).split(/\s+/);
+  const kept: string[] = [];
+  for (const token of tokens) {
+    if (
+      kept.length &&
+      (/^(?:date|domicile)$/i.test(token) ||
+        /^\d{1,4}$/.test(token) ||
+        /^(?:rue|avenue|boulevard|chemin|impasse|place|route|allee|allée)$/i.test(token))
+    ) {
+      break;
+    }
+    kept.push(token);
+    if (kept.length > 8) break;
+  }
+  const body = kept.join(" ");
+  const small = new Set(["de", "des", "du", "la", "le", "les", "d"]);
+  return body
+    .toLocaleLowerCase("fr")
+    .replace(/(^|[\s-])(\p{L})/gu, (chunk) => chunk.toLocaleUpperCase("fr"))
+    .replace(/\b(De|Des|Du|La|Le|Les|D)\b/g, (word) => (small.has(word.toLocaleLowerCase("fr")) ? word.toLocaleLowerCase("fr") : word));
 }
 
 function collectDates(text: string) {
@@ -134,12 +190,24 @@ export function readIssueDate(text: string, identity: ExtractedIdentity) {
 }
 
 export function readDomicile(text: string) {
-  const flat = text.replace(/\s+/g, " ");
+  const flat = flatText(text);
+  const addressBlock =
+    /\b(\d{1,4}\s+(?:RUE|AVENUE|BOULEVARD|CHEMIN|IMPASSE|ALL[ÉE]E|PLACE|ROUTE)\s+(?:[A-Z][A-Z'’]{1,}\s+){0,6}[A-Z][A-Z'’]{1,})\s+(\d{5}|\d{7})\s+([A-Z][A-Z'’]{1,}(?:-[A-Z][A-Z'’]{1,})*)/gi;
+  const blocks = [...flat.matchAll(addressBlock)];
+  if (blocks.length) {
+    const [street, postal, city] = [blocks[0][1], blocks[0][2], blocks[0][3]];
+    return {
+      address_line: street.replace(/\s+/g, " ").trim().toUpperCase().replace(/\bMOC(?:EER|KER|HER)\b/g, "MOCHER"),
+      postal_code: postal,
+      city: city.toUpperCase(),
+      country: postal.length === 5 ? "FR" : /\bISRA[EË]L\b/i.test(flat) ? "IL" : null,
+    };
+  }
   const streets = [
     ...flat.matchAll(
-      /\b(\d{1,4}\s+(?:RUE|AVENUE|BOULEVARD|CHEMIN|IMPASSE|ALL[ÉE]E)\s+(?:[A-Z]{2,}\s+){0,2}[A-Z]{2,})/gi
+      /\b(\d{1,4}\s+(?:RUE|AVENUE|BOULEVARD|CHEMIN|IMPASSE|ALL[ÉE]E)\s+(?:[A-Z]{2,}\s+){0,6}[A-Z]{2,})/gi
     ),
-  ].sort((a, b) => b[1].length - a[1].length);
+  ];
   const street = streets[0];
   if (!street) {
     const lone = [...flat.matchAll(/\b(\d{7})\s+(HERZ[A-Z]*)\b/gi)][0];
@@ -210,7 +278,7 @@ export function enrichPassportVisual(identity: ExtractedIdentity, visual: string
     ...identity,
     last_name: printedSurname(identity.last_name, visual),
     first_name: completeGivenNames(identity.first_name, given),
-    place_of_birth: identity.place_of_birth || readPlaceOfBirth(visual, identity.issuing_country),
+    place_of_birth: identity.place_of_birth || readPlaceOfBirth(visual, identity.issuing_country, identity.birth_date),
     authority: identity.authority || readAuthority(visual),
     issued_on: identity.issued_on || readIssueDate(visual, identity),
     address_line: identity.address_line || address.address_line,

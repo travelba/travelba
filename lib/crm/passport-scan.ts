@@ -444,7 +444,7 @@ async function scanPage(page: PageImage, dateSheet: PageImage | null): Promise<E
         "11"
       );
       const portrait = height / width >= 1.2;
-      const visual = portrait ? `${visualMain}\n${place}` : `${visualMain}\n${dates}\n${place}`;
+      const visual = `${visualMain}\n${dates}\n${place}`;
       const found = identitiesFromPassportOcr(`${mrz}\n${digits}`, visual).filter(
         (identity) => identity.valid && identity.number
       );
