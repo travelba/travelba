@@ -42,6 +42,46 @@ export function fundingPocketLabel(funding: FundingKind, name: string | null | u
   return trimmed ? `Crédit · ${trimmed}` : "Crédit";
 }
 
+/** Nomme la société qui règle. Vide tant qu’il n’y en a pas deux. */
+export function payingCompanyLabels(companies: FundingCompany[]): Map<string, string> {
+  const labels = new Map<string, string>();
+  if (companies.length < 2) return labels;
+  companies.forEach((company, index) => {
+    const fallback = (company.company_name || "").trim() || `Société ${index + 1}`;
+    const label = fundingCompanyOptionLabel(company.company_name, company.funding, fallback);
+    if (label.trim()) labels.set(company.id, label);
+  });
+  return labels;
+}
+
+/** Ligne Règlement : la société choisie, ou Particulier. */
+export function payingCompanyCaption(
+  kind: "company" | "personal",
+  companies: FundingCompany[],
+  selectedId: string | null | undefined
+): string {
+  if (kind !== "company") return "Particulier";
+  if (!companies.length) return "Société";
+  const index = Math.max(
+    0,
+    companies.findIndex((company) => company.id === selectedId)
+  );
+  const company = companies[index] || companies[0];
+  const fallback = (company.company_name || "").trim() || (companies.length <= 1 ? "Société" : `Société ${index + 1}`);
+  return fundingCompanyOptionLabel(company.company_name, company.funding, fallback);
+}
+
+/** Liste des dossiers : la société qui règle, seulement s’il y en a deux. */
+export function bookingPayerLabel(
+  booking: { billing_company_id?: string | null; payer_kind?: string | null },
+  companies: FundingCompany[]
+): string | null {
+  if (companies.length < 2) return null;
+  if (booking.payer_kind === "personal") return "Particulier";
+  if (!booking.billing_company_id) return null;
+  return payingCompanyLabels(companies).get(booking.billing_company_id) || null;
+}
+
 /** Libellé du choix de société sur un dossier. */
 export function fundingCompanyOptionLabel(
   name: string | null | undefined,

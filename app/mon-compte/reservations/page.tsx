@@ -1,3 +1,4 @@
+import { bookingPayerLabel, type FundingCompany } from "@/lib/crm/funding-wallet";
 import { toPublicBooking } from "@/lib/crm/public-booking";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -41,6 +42,19 @@ export default async function ReservationsPage({
     displayedAmounts = await loadDisplayedStayAmounts(createServiceClient(), all);
   } catch {
     displayedAmounts = new Map();
+  }
+  const walletIds = [...new Set(all.map((row) => row.billing_customer_id || row.customer_id))];
+  const { data: payerCompanies } = walletIds.length
+    ? await supabase
+        .from("crm_billing_companies")
+        .select("id, customer_id, company_name, funding, sort_order")
+        .in("customer_id", walletIds)
+    : { data: [] as (FundingCompany & { customer_id: string })[] };
+  const companiesByWallet = new Map<string, FundingCompany[]>();
+  for (const company of (payerCompanies || []) as (FundingCompany & { customer_id: string })[]) {
+    const list = companiesByWallet.get(company.customer_id) || [];
+    list.push(company);
+    companiesByWallet.set(company.customer_id, list);
   }
   const places = await loadStayMaps(
     supabase,
@@ -122,6 +136,10 @@ export default async function ReservationsPage({
           const displayed = displayedAmounts.get(b.id);
           const amountLabel =
             b.prices_visible === false ? HIDDEN_PRICE_LABEL : displayed == null ? "—" : formatMoney(displayed, b.currency);
+          const payerLabel = bookingPayerLabel(
+            b,
+            companiesByWallet.get(b.billing_customer_id || b.customer_id) || []
+          );
           return (
             <li key={b.id}>
               <article className="relative overflow-hidden rounded-xl border border-[#c5c6cd]/35 bg-white shadow-sm">
@@ -163,6 +181,9 @@ export default async function ReservationsPage({
                       <span className="text-[16px] font-bold tabular-nums text-[var(--admin-navy)]">{amountLabel}</span>
                     </div>
                   </div>
+                  {payerLabel ? (
+                    <p className="text-[13px] font-semibold text-[var(--admin-navy)]">Réglé par {payerLabel}</p>
+                  ) : null}
                   <Link
                     href={`/mon-compte/reservations/${b.reference}`}
                     className="inline-flex h-11 w-full items-center justify-center rounded-full bg-[var(--admin-navy)] px-3 text-sm font-semibold text-white"

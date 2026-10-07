@@ -9,6 +9,7 @@ import { customerFullName, type CrmBooking } from "@/lib/crm/types";
 import { todayIsoDate } from "@/lib/crm/money";
 import type { CustomerNameRow } from "@/lib/crm/customer-search";
 import { bookingListSearchText } from "@/lib/crm/booking-search";
+import { bookingPayerLabel, type FundingCompany } from "@/lib/crm/funding-wallet";
 import { smartSearchMatch } from "@/lib/crm/smart-search";
 import {
   ADMIN_PAGE_SIZE,
@@ -106,13 +107,22 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
   }
   const pool = q ? [...listResult.scanned, ...listResult.archived] : listResult.scanned;
   const customerIds = [...new Set(pool.map((row) => row.customer_id).filter(Boolean))];
-  const [{ data: customerRows }, maps, displayed] = await Promise.all([
+  const walletIds = [
+    ...new Set(pool.flatMap((row) => [row.billing_customer_id, row.customer_id].filter(Boolean))),
+  ];
+  const [{ data: customerRows }, { data: companyRows }, maps, displayed] = await Promise.all([
     customerIds.length
       ? supabase
           .from("crm_customers")
           .select("id, first_name, last_name, company_name, email, phone")
           .in("id", customerIds)
       : Promise.resolve({ data: [] as ListCustomer[] }),
+    walletIds.length
+      ? supabase
+          .from("crm_billing_companies")
+          .select("id, customer_id, company_name, funding, sort_order")
+          .in("customer_id", walletIds)
+      : Promise.resolve({ data: [] as (FundingCompany & { customer_id: string })[] }),
     loadStayMaps(
       supabase,
       pool.map((row) => row.id)
@@ -120,6 +130,20 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
     loadDisplayedStayAmounts(supabase, pool),
   ]);
   const customersById = new Map(((customerRows || []) as ListCustomer[]).map((row) => [row.id, row]));
+  const companiesByCustomer = new Map<string, (FundingCompany & { customer_id: string })[]>();
+  for (const company of (companyRows || []) as (FundingCompany & { customer_id: string })[]) {
+    const list = companiesByCustomer.get(company.customer_id) || [];
+    list.push(company);
+    companiesByCustomer.set(company.customer_id, list);
+  }
+  const payerLabels: Record<string, string> = {};
+  for (const row of pool) {
+    const label = bookingPayerLabel(
+      row,
+      companiesByCustomer.get(row.billing_customer_id || row.customer_id) || []
+    );
+    if (label) payerLabels[row.id] = label;
+  }
   const searchText = new Map<string, string>();
   for (const row of pool) {
     const customer = customersById.get(row.customer_id);
@@ -136,7 +160,7 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
         visible_to_client: row.visible_to_client,
         currency: row.currency,
         customer: customer ? customerFullName(customer) : "",
-        company: customer?.company_name,
+        company: [customer?.company_name, payerLabels[row.id]].filter(Boolean).join(" "),
         email: customer?.email,
         phone: customer?.phone,
         places: maps.arrival[row.id],
@@ -186,6 +210,7 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
         routes={pickRecord(maps.route, rowIds)}
         displayAmounts={displayAmounts}
         searchText={visibleSearch}
+        payerLabels={payerLabels}
         page={page}
         pageSize={ADMIN_PAGE_SIZE}
         total={total}

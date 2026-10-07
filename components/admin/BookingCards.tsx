@@ -27,11 +27,14 @@ export function BookingCards({
   cards,
   firstName,
   lastName,
+  quietEmpty = false,
 }: {
   bookingId: string;
   cards: CrmBookingCard[];
   firstName: string;
   lastName: string;
+  /** Le récap Pliant liste déjà une carte : ne pas dire qu’il n’y en a aucune. */
+  quietEmpty?: boolean;
 }) {
   const router = useRouter();
   const [amount, setAmount] = useState("");
@@ -259,7 +262,9 @@ export function BookingCards({
           ))}
         </ul>
       ) : (
-        <p className="text-sm text-[var(--admin-navy)]/70">Aucune carte sur ce dossier.</p>
+        quietEmpty ? null : (
+          <p className="text-sm text-[var(--admin-navy)]/70">Aucune carte sur ce dossier.</p>
+        )
       )}
       {error ? <p className="text-sm text-[#8a3b2b]">{error}</p> : null}
     </div>

@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizeSiret, normalizeVat, siretError } from "./billing";
 import { resolveCountryCode } from "./countries";
 import { dbErrorMessage, type DbErrorLike } from "./db-error";
+import { fundingCompanyOptionLabel } from "./funding-wallet";
 import { emptyToNull } from "./identity";
 
 export const DUPLICATE_SIRET_ERROR = "Ce SIRET est déjà indiqué sur une autre société.";
@@ -58,13 +59,18 @@ export function transactionCompanyLabel(
 
 export function companyLabelForTransaction(
   tx: { customer_id: string; billing_company_id?: string | null },
-  companies: Pick<BillingCompanyRow, "id" | "customer_id" | "company_name">[]
+  companies: (Pick<BillingCompanyRow, "id" | "customer_id" | "company_name"> & {
+    funding?: string | null;
+  })[]
 ) {
   const owned = companies.filter((company) => company.customer_id === tx.customer_id);
   const match = tx.billing_company_id
     ? owned.find((company) => company.id === tx.billing_company_id)
     : undefined;
-  return transactionCompanyLabel(owned.length, match?.company_name);
+  const name = match
+    ? fundingCompanyOptionLabel(match.company_name, match.funding, (match.company_name || "").trim())
+    : null;
+  return transactionCompanyLabel(owned.length, name);
 }
 
 /** Société de la ligne : la dépense si elle en a une, sinon celle du séjour. */

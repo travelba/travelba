@@ -39,6 +39,7 @@ export function BookingsTable({
   filters = { q: "", etat: null, tri: "depart" },
   hiddenArchiveHits = 0,
   searchText = {},
+  payerLabels = {},
 }: {
   bookings: CrmBooking[];
   customers: CustomerNameRow[];
@@ -52,6 +53,8 @@ export function BookingsTable({
   hiddenArchiveHits?: number;
   /** Texte déjà composé pour la recherche (ville, client, date, montant). */
   searchText?: Record<string, string>;
+  /** Société qui règle, quand le client en a plusieurs. */
+  payerLabels?: Record<string, string>;
 }) {
   const byId = new Map(customers.map((c) => [c.id, customerFullName(c)]));
   const urlFilters = {
@@ -103,6 +106,9 @@ export function BookingsTable({
                     {byId.get(b.customer_id) || "Client"} · {formatDateFr(b.start_date)} →{" "}
                     {formatDateFr(b.end_date)}
                   </p>
+                  {payerLabels[b.id] ? (
+                    <p className="text-xs font-semibold text-[var(--admin-navy)]">{payerLabels[b.id]}</p>
+                  ) : null}
                 </div>
               </div>
               <div className="flex min-w-0 flex-wrap items-center gap-3">

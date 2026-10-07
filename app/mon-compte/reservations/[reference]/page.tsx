@@ -54,6 +54,7 @@ import { loadClientLedger } from "@/lib/crm/client-ledger";
 import { stripePublishableKey } from "@/lib/crm/stripe";
 import { StayExpenses } from "@/components/account/StayExpenses";
 import { isActiveItem, isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
+import { bookingPayerLabel, type FundingCompany } from "@/lib/crm/funding-wallet";
 import { toPublicBooking } from "@/lib/crm/public-booking";
 
 type Props = { params: Promise<{ reference: string }> };
@@ -254,6 +255,12 @@ export default async function ReservationDetailPage({ params }: Props) {
   } catch {
     settled = [];
   }
+  const { data: payerCompanies } = await supabase
+    .from("crm_billing_companies")
+    .select("id, company_name, funding, sort_order")
+    .eq("customer_id", b.billing_customer_id || b.customer_id)
+    .order("sort_order");
+  const payerLabel = bookingPayerLabel(b, (payerCompanies || []) as FundingCompany[]);
   const ledger = await ledgerPromise;
   const encoursPay =
     ledger.member ||
@@ -401,6 +408,9 @@ export default async function ReservationDetailPage({ params }: Props) {
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
             Montant du séjour
           </p>
+          {payerLabel ? (
+            <p className="text-sm font-semibold text-[var(--admin-navy)]">Réglé par {payerLabel}</p>
+          ) : null}
           <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
             {clientStayPriceLabel({
               stayTotal: Number(b.total_amount),

@@ -30,6 +30,16 @@ export function SpendingBookings({ cards }: { cards: SpendingCard[] }) {
                 {card.reference ? (
                   <span className="mt-0.5 block text-[13px] leading-snug text-muted">{card.reference}</span>
                 ) : null}
+                {card.payerLabel ? (
+                  <>
+                    <span className="mt-2 block text-[10px] font-semibold uppercase tracking-wider text-[#9c7c4e]">
+                      Société qui règle
+                    </span>
+                    <span className="mt-0.5 block text-[13px] font-semibold text-[var(--admin-navy)]">
+                      {card.payerLabel}
+                    </span>
+                  </>
+                ) : null}
                 <span className="mt-2 block text-[10px] font-semibold uppercase tracking-wider text-[#9c7c4e]">
                   Compte de rattachement
                 </span>

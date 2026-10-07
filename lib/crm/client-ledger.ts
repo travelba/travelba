@@ -23,7 +23,7 @@ import {
   type SpendingDesk,
 } from "@/lib/crm/spending-desk";
 import { createServiceClient } from "@/lib/supabase/admin";
-import { fundingPockets, type FundingCompany, type FundingPocket } from "@/lib/crm/funding-wallet";
+import { fundingPockets, payingCompanyLabels, type FundingCompany, type FundingPocket } from "@/lib/crm/funding-wallet";
 import { fitPayerOwed, owedByPayer } from "@/lib/crm/payer";
 import {
   TX_KIND_LABELS,
@@ -138,6 +138,17 @@ export function shapeClientLedger(input: {
   });
   const shown = visibleLedgerRows(scoped);
   const bookingById = new Map(input.bookings.map((booking) => [booking.id, booking]));
+  const fundingLabels = payingCompanyLabels(input.fundingCompanies || []);
+  const companyLabels = fundingLabels.size
+    ? fundingLabels
+    : (input.billingCompanyCount || 0) >= 2
+      ? new Map(
+          [...(input.companyNames || [])].flatMap(([id, name]) => {
+            const label = (name || "").trim();
+            return label ? ([[id, label]] as [string, string][]) : [];
+          })
+        )
+      : new Map<string, string>();
   const movements = shown.map((row) => {
     const credit = row.direction === "credit";
     const booking = row.booking_id ? bookingById.get(row.booking_id) : undefined;
@@ -150,9 +161,7 @@ export function shapeClientLedger(input: {
     const reference = visibleBooking?.reference || null;
     const rawTitle = ledgerMovementTitle(row, TX_KIND_LABELS[row.kind] || row.kind);
     const carnet = carnetLink(booking, input.audience, input.viewerId);
-    const companyName = row.billing_company_id
-      ? input.companyNames?.get(row.billing_company_id)
-      : null;
+    const companyName = row.billing_company_id ? companyLabels.get(row.billing_company_id) : null;
     return {
       id: row.id,
       credit,
@@ -228,6 +237,7 @@ export function shapeClientLedger(input: {
           unlimitedCompanyIds: (input.fundingCompanies || [])
             .filter((company) => company.funding === "pro")
             .map((company) => company.id),
+          companyLabels,
         })
       : null,
   };

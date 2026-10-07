@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  bookingPayerLabel,
   fundingCompanyOptionLabel,
+  payingCompanyCaption,
   fundingPockets,
   resolveWireAccount,
   wireAccountChoices,
@@ -75,6 +77,18 @@ test("un virement reçu attend le compte choisi", () => {
   assert.equal("error" in resolveWireAccount(companies, null), true);
   assert.deepEqual(resolveWireAccount(companies, "pro"), { billingCompanyId: "pro" });
   assert.deepEqual(resolveWireAccount([companies[0]], null), { billingCompanyId: null });
+});
+
+test("la réservation et le séjour nomment la société qui règle", () => {
+  const companies = [
+    { id: "rba", company_name: "RB&A", funding: "advance" },
+    { id: "pro", company_name: "Pro", funding: "pro" },
+  ];
+  assert.equal(payingCompanyCaption("company", companies, "pro"), "Pro");
+  assert.equal(payingCompanyCaption("company", companies, "rba"), "RB&A · Crédit");
+  assert.equal(payingCompanyCaption("personal", companies, "rba"), "Particulier");
+  assert.equal(bookingPayerLabel({ billing_company_id: "pro", payer_kind: "company" }, companies), "Pro");
+  assert.equal(bookingPayerLabel({ billing_company_id: "rba", payer_kind: "company" }, [companies[0]]), null);
 });
 
 test("le choix de société nomme le compte", () => {

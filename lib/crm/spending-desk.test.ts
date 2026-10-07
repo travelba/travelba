@@ -272,9 +272,13 @@ test("la limite ne compte que les dépenses du crédit, pas Pro", () => {
   assert.equal(view.spending?.accounts[0]?.remaining, 27600);
   const bordeaux = view.spending?.cards.find((card) => card.id === "b-bordeaux");
   assert.equal(bordeaux?.remainingLabel, null);
+  assert.equal(bordeaux?.payerLabel, "Pro");
   const rome = view.spending?.cards.find((card) => card.id === "b-rome");
+  assert.equal(rome?.payerLabel, "RB&A · Crédit");
   assert.equal(rome?.remainingLabel, `Reste ${formatMoney(27600, "EUR")}`);
   const html = renderToStaticMarkup(createElement(ClientTransactionsPanel, { view }));
+  assert.match(html, /Société qui règle/);
+  assert.match(html, /RB&amp;A · Crédit|RB&A · Crédit/);
   const credit = html.indexOf("Crédit");
   const rights = html.indexOf("Droits de dépense");
   const pro = html.indexOf(">Pro<");

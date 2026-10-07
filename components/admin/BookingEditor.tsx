@@ -98,7 +98,7 @@ import {
 import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
 import { StayBillingChoice } from "@/components/crm/StayBillingChoice";
 import { billingCompanyTabLabel } from "@/lib/crm/billing-companies";
-import { fundingCompanyOptionLabel } from "@/lib/crm/funding-wallet";
+import { fundingCompanyOptionLabel, payingCompanyCaption } from "@/lib/crm/funding-wallet";
 import { defaultBillingCompany } from "@/lib/crm/payer";
 import {
   BOOKING_TAB_IDS,
@@ -811,12 +811,7 @@ export function BookingEditor({
       : `${travelers.length} voyageurs`
     : "Aucun voyageur";
   const mailGroups = groupAttachedEmails(attachedEmails);
-  const payerCaption =
-    payerKind === "company"
-      ? payerCompanies.length === 1
-        ? payerCompanies[0].company_name?.trim() || "Société"
-        : "Société"
-      : "Particulier";
+  const payerCaption = payingCompanyCaption(payerKind, payerCompanies, payerCompanyId);
   const stayAmount = stayPriceWithExpenses({
     stayTotal: bookingTotalFromItems(pricedItems),
     agencyCommission: booking.agency_commission === true,
@@ -1782,6 +1777,7 @@ export function BookingEditor({
             cards={bookingCards}
             firstName={stayGuest.firstName}
             lastName={stayGuest.lastName}
+            quietEmpty={pliantRecap.length > 0}
           />
           {pliantRecap.length ? (
             <PliantBookingTab

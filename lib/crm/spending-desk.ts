@@ -37,6 +37,8 @@ export type SpendingCard = {
   reference: string | null;
   amountLabel: string;
   accountName: string;
+  /** Société qui règle, quand la fiche en a plusieurs. */
+  payerLabel: string | null;
   remainingLabel: string | null;
   movements: LedgerMovementRow[];
 };
@@ -137,6 +139,8 @@ export function shapeSpendingDesk(input: {
   rows: SpendRow[];
   /** Sociétés Pro : leurs dépenses ne consomment pas le droit. */
   unlimitedCompanyIds?: string[];
+  /** Société qui règle, déjà filtrée (au moins deux sociétés). */
+  companyLabels?: Map<string, string>;
 }): SpendingDesk | null {
   const granted = input.accounts.filter((account) => hasSpendingAllowance(account.allowance));
   if (!granted.length) return null;
@@ -201,6 +205,10 @@ export function shapeSpendingDesk(input: {
       unlimited.size > 0 &&
       ((booking?.billing_company_id && unlimited.has(booking.billing_company_id)) ||
         (stayDebits.length > 0 && stayDebits.every((row) => onUnlimitedAccount(row, unlimited))));
+    const companyId =
+      booking?.billing_company_id ||
+      stayDebits.find((row) => row.billing_company_id)?.billing_company_id ||
+      null;
     const displayed = booking?.displayed_amount;
     const amount =
       displayed != null && Number.isFinite(Number(displayed))
@@ -217,6 +225,7 @@ export function shapeSpendingDesk(input: {
       reference: booking?.reference || movements[0]?.reference || null,
       amountLabel: formatMoney(amount, input.currency),
       accountName: (booking?.owner_name || "").trim() || account?.name || "Compte",
+      payerLabel: companyId ? input.companyLabels?.get(companyId) || null : null,
       remainingLabel:
         posted && !unlimitedStay ? spendingRemainLabel(posted.remaining, input.currency) : null,
       movements,
