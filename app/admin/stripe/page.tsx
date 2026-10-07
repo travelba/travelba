@@ -1,7 +1,8 @@
 import { requireStaffPage } from "@/lib/crm/auth";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { StripeInbox } from "@/components/admin/StripeInbox";
-import { stripeConfigured } from "@/lib/crm/stripe";
+import { AccountBalanceCard } from "@/components/admin/AccountBalance";
+import { loadStripeAccountBalance, stripeConfigured } from "@/lib/crm/stripe";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
 import {
   scoreStripeMatches,
@@ -50,6 +51,8 @@ export default async function AdminStripePage() {
     suggestions[row.id] = scoreStripeMatches(row, index).candidates;
   }
 
+  const balance = stripeConfigured() ? await loadStripeAccountBalance() : null;
+
   return (
     <div>
       <PageEyebrow>Espace agence</PageEyebrow>
@@ -57,7 +60,8 @@ export default async function AdminStripePage() {
         title="Rapprochement Stripe"
         subtitle="Paiements reçus : payeur et référence. Proposition pré-sélectionnée seulement si elle est certaine : Valider, choisir ou Refuser."
       />
-      <div className="mt-6">
+      <div className="mt-6 space-y-4">
+        {balance ? <AccountBalanceCard pockets={balance} /> : null}
         <StripeInbox
           rows={rows.map((row) => ({ ...row, payer_email: null, raw: {} }))}
           customers={customers}

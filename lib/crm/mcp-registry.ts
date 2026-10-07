@@ -86,7 +86,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "tableau_de_bord",
     description:
-      "À faire aujourd’hui : virements, mails, Little Emperors, formalités, services, départs, pièces. Lecture seule.",
+      "À faire aujourd’hui : virements, mails, Little Emperors, formalités, services, départs, pièces, soldes Revolut, Stripe et Pliant. Lecture seule.",
     run: () => readTableauDeBord(),
   },
   {

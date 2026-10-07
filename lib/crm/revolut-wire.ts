@@ -5,7 +5,36 @@ export type RevolutAccountRow = {
   name?: string;
   currency?: string;
   state?: string;
+  /** Solde déjà en unité majeure (euros), tel que Revolut le renvoie. */
+  balance?: number | string;
 };
+
+const ACCOUNT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isRevolutAccountId(value: string) {
+  return ACCOUNT_ID.test(value);
+}
+
+/** Comptes Revolut Business. Le solde reste ; l’IBAN n’est pas dans cette réponse. */
+export function parseRevolutAccounts(data: unknown): RevolutAccountRow[] {
+  if (!Array.isArray(data)) return [];
+  return data.flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const rec = row as Record<string, unknown>;
+    if (typeof rec.id !== "string" || !ACCOUNT_ID.test(rec.id)) return [];
+    const balance =
+      typeof rec.balance === "number" || typeof rec.balance === "string" ? rec.balance : undefined;
+    return [
+      {
+        id: rec.id,
+        name: typeof rec.name === "string" ? rec.name : undefined,
+        currency: typeof rec.currency === "string" ? rec.currency : undefined,
+        state: typeof rec.state === "string" ? rec.state : undefined,
+        balance,
+      },
+    ];
+  });
+}
 
 export type RevolutBankDetailRow = {
   iban?: string;

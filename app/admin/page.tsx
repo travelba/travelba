@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { requireStaffPage } from "@/lib/crm/auth";
 import {
   BOOKING_STATUS_LABELS,
@@ -14,6 +15,8 @@ import {
   jMinusLabel,
   todayIsoDate,
 } from "@/lib/crm/money";
+import { loadAgencyAccounts } from "@/lib/crm/agency-accounts";
+import { AgencyAccountBalances } from "@/components/admin/AccountBalance";
 import { revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
 import { stripeConfigured, stripeWebhookConfigured } from "@/lib/crm/stripe";
 import { buildLaunchItems } from "@/lib/crm/launch-status";
@@ -319,6 +322,10 @@ export default async function AdminHomePage() {
         ))}
       </section>
 
+      <Suspense fallback={<AccountBalancesPending />}>
+        <DashboardAccounts />
+      </Suspense>
+
       <div className="grid items-start gap-6 lg:grid-cols-12">
       <div className="space-y-6 lg:col-span-8">
       <section className="space-y-3">
@@ -446,5 +453,28 @@ export default async function AdminHomePage() {
       </aside>
       </div>
     </div>
+  );
+}
+
+async function DashboardAccounts() {
+  const accounts = await loadAgencyAccounts();
+  return <AgencyAccountBalances accounts={accounts} />;
+}
+
+function AccountBalancesPending() {
+  return (
+    <section aria-busy="true" aria-labelledby="comptes-titre" className="space-y-3">
+      <h2 id="comptes-titre" className="font-display text-lg font-bold text-[var(--admin-navy)]">
+        Comptes
+      </h2>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {["Revolut", "Stripe", "Pliant"].map((label) => (
+          <div key={label} className="admin-af-card rounded-2xl px-5 py-4">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">{label}</p>
+            <p className="mt-2 font-display text-3xl font-extrabold text-muted">…</p>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }

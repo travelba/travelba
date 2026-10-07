@@ -325,6 +325,7 @@ export async function fetchPliantAccountBalance() {
   const token = await accessToken();
   const res = await fetch(`${endpoints().api}/organizations/${encodeURIComponent(organizationId)}`, {
     headers: { authorization: `Bearer ${token}`, "Pliant-API-Version": "2.1.0" },
+    signal: AbortSignal.timeout(8_000),
   });
   if (!res.ok) throw new Error("Pliant n’a pas renvoyé le solde du compte.");
   const money = pliantAvailableLimit(await res.json());

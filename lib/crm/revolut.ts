@@ -6,7 +6,8 @@ import {
   senderFromRevolutPayload,
   shouldIngestRevolutForRapprochement,
 } from "@/lib/crm/revolut-inbox";
-import { pickEurSepaWire, type AgencyWire } from "@/lib/crm/revolut-wire";
+import { revolutBalancePockets } from "@/lib/crm/account-balances";
+import { isRevolutAccountId, parseRevolutAccounts, pickEurSepaWire, type AgencyWire } from "@/lib/crm/revolut-wire";
 
 const PROVIDER = "revolut";
 const REVOLUT_TIMEOUT_MS = 15_000;
@@ -285,11 +286,11 @@ export class RevolutHttpError extends Error {
   }
 }
 
-async function revolutGet(path: string): Promise<unknown> {
+async function revolutGet(path: string, timeoutMs = REVOLUT_TIMEOUT_MS): Promise<unknown> {
   const token = await getRevolutAccessToken();
   const res = await fetch(`${apiBase()}${path}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-    signal: AbortSignal.timeout(REVOLUT_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) {
     await res.arrayBuffer().catch(() => undefined);
@@ -298,28 +299,23 @@ async function revolutGet(path: string): Promise<unknown> {
   return res.json();
 }
 
-const ACCOUNT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export async function fetchRevolutAccounts(timeoutMs = REVOLUT_TIMEOUT_MS) {
+  return parseRevolutAccounts(await revolutGet("/api/1.0/accounts", timeoutMs));
+}
 
-export async function fetchRevolutAccounts() {
-  const data = await revolutGet("/api/1.0/accounts");
-  if (!Array.isArray(data)) return [];
-  return data.flatMap((row) => {
-    if (!row || typeof row !== "object") return [];
-    const rec = row as Record<string, unknown>;
-    if (typeof rec.id !== "string" || !ACCOUNT_ID.test(rec.id)) return [];
-    return [
-      {
-        id: rec.id,
-        name: typeof rec.name === "string" ? rec.name : undefined,
-        currency: typeof rec.currency === "string" ? rec.currency : undefined,
-        state: typeof rec.state === "string" ? rec.state : undefined,
-      },
-    ];
-  });
+/** Soldes des comptes actifs. Null si Revolut n’est pas ouvert. Échec : montant indisponible. */
+export async function loadRevolutAccountBalances() {
+  try {
+    if (!revolutConfigured() || !(await revolutConnected())) return null;
+    return revolutBalancePockets(await fetchRevolutAccounts(8_000));
+  } catch (err) {
+    console.error("[revolut] solde", err instanceof Error ? err.message : "échec");
+    return revolutBalancePockets([]);
+  }
 }
 
 export async function fetchRevolutAccountBankDetails(accountId: string) {
-  if (!ACCOUNT_ID.test(accountId)) throw new RevolutHttpError(400);
+  if (!isRevolutAccountId(accountId)) throw new RevolutHttpError(400);
   const data = await revolutGet(`/api/1.0/accounts/${accountId}/bank-details`);
   const list = Array.isArray(data) ? data : data && typeof data === "object" ? [data] : [];
   return list.flatMap((row) => {

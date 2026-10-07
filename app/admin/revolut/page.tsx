@@ -1,7 +1,8 @@
 import { requireStaffPage } from "@/lib/crm/auth";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { RevolutInbox } from "@/components/admin/RevolutInbox";
-import { revolutClientId, revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
+import { AccountBalanceCard } from "@/components/admin/AccountBalance";
+import { loadRevolutAccountBalances, revolutClientId, revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
 import {
   REVOLUT_MATCH_SELECT,
@@ -61,6 +62,8 @@ export default async function AdminRevolutPage({
   }
 
   const hasClientId = Boolean(revolutClientId());
+  const connected = await revolutConnected();
+  const balance = connected ? await loadRevolutAccountBalances() : null;
 
   return (
     <div>
@@ -69,13 +72,14 @@ export default async function AdminRevolutPage({
         title="Rapprochement Revolut"
         subtitle="Virements reçus : expéditeur et désignation. Proposition pré-sélectionnée seulement si elle est certaine : Valider, choisir ou Refuser."
       />
-      <div className="mt-6">
+      <div className="mt-6 space-y-4">
+        {balance ? <AccountBalanceCard pockets={balance} /> : null}
         <RevolutInbox
           rows={rows}
           customers={customers}
           suggestions={suggestions}
           configured={revolutConfigured()}
-          connected={await revolutConnected()}
+          connected={connected}
           hasClientId={hasClientId}
           initialMessage={initialMessage}
         />

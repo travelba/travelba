@@ -87,6 +87,16 @@ Flux : API Business → `crm_revolut_transactions` (`unmatched`, **crédits seul
 
 **Ne pas** imputer si plusieurs clients matchent ou score partiel — laisser `unmatched` pour Valider/Refuser.
 
+## Soldes des comptes
+
+Le tableau de bord (`/admin`, bloc **Comptes**) et la page de chaque compte montrent le solde, comme Pliant (« Solde du compte »).
+
+- **Revolut** : comptes actifs, solde déjà en unité majeure (`GET /accounts`). Un seul compte : le chiffre. Plusieurs poches : euros d’abord, Main en tête, chacune avec son nom. Inactif ignoré. Pas d’IBAN sur cette carte. Non connecté : la carte n’est pas affichée.
+- **Stripe** : disponible en grand (`balance.retrieve`, centimes → euros). « En attente » si l’argent n’est pas encore versé. Pas de body brut.
+- **Pliant** : `availableLimit` de l’organisation, déjà sur la page Pliant, repris sur le tableau de bord.
+
+Compte non ouvert : pas de carte. Appel en échec ou trop long : **Indisponible**. Le zéro est un solde réel.
+
 ## Saisie manuelle
 
 Admin `/admin/transactions` (et fiche client) : **encaissements** `direction=credit` et `kind` `transfer` ou `card_payment` (Revolut, Stripe, saisie). Pas de débits résa, frais billeterie ni commission 10 % dans cette liste — ils restent sur le dossier et `/mon-compte/transactions`. Saisie manuelle = virement crédit seulement. Pas de SQL collé dans l’UI.

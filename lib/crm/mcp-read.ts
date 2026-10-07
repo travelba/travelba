@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
+import { loadAgencyAccounts } from "@/lib/crm/agency-accounts";
 import { adminBadges } from "@/lib/crm/admin-badges";
 import {
   BOOKING_SORTS,
@@ -196,6 +197,7 @@ export async function readTableauDeBord() {
   const [
     badges,
     balances,
+    comptes,
     bookingCount,
     departSoon,
     departTomorrow,
@@ -204,6 +206,7 @@ export async function readTableauDeBord() {
   ] = await Promise.all([
     adminBadges(),
     admin.from("crm_customer_balances").select("balance, currency"),
+    loadAgencyAccounts(),
     admin.from("crm_bookings").select("id", { count: "exact", head: true }).is("archived_at", null),
     admin
       .from("crm_bookings")
@@ -251,6 +254,16 @@ export async function readTableauDeBord() {
       expiring: badges.pieces,
     }),
     encours_a_encaisser: formatMoney(remaining),
+    comptes: comptes.map((account) => ({
+      nom: account.label,
+      lien: account.href,
+      poches: account.pockets.map((pocket) => ({
+        nom: pocket.name,
+        solde: pocket.amount == null ? null : formatMoney(pocket.amount, pocket.currency),
+        en_attente:
+          pocket.pending == null || pocket.pending === 0 ? null : formatMoney(pocket.pending, pocket.currency),
+      })),
+    })),
     departs_sous_7_jours: departSoon.count ?? 0,
     dossiers_actifs: bookingCount.count ?? 0,
   };
