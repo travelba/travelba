@@ -1,4 +1,5 @@
 import { Ledger } from "@/components/admin/Ledger";
+import { TransactionsPanels } from "@/components/admin/TransactionsPanels";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { companyLabelForTransaction } from "@/lib/crm/billing-companies";
@@ -47,28 +48,28 @@ export default async function AdminTransactionsPage() {
   const names = new Map(nameRows.map((customer) => [customer.id, customerFullName(customer)]));
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
         title="Transactions"
         subtitle="Virements Revolut, règlements Stripe et saisie manuelle. Le nom d’un client ouvre les transactions qu’il voit dans son espace."
       />
-      <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="admin-af-card rounded-2xl px-4 py-3">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Encaissements</p>
-          <p className="mt-1 font-display text-xl font-bold text-[var(--admin-navy)]">{posted.length}</p>
+      <div className="mt-5 grid grid-cols-2 gap-2 sm:mt-6 sm:gap-3 xl:grid-cols-4">
+        <div className="admin-af-card min-w-0 rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#9e7e51] sm:tracking-[0.14em]">Encaissements</p>
+          <p className="mt-1 font-display text-lg font-bold leading-tight text-[var(--admin-navy)] sm:text-xl">{posted.length}</p>
         </div>
-        <div className="rounded-2xl border border-[var(--admin-gold)]/40 bg-[#f8f4ed] px-4 py-3">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Total reçu</p>
-          <p className="mt-1 font-display text-xl font-bold text-[var(--admin-navy)]">{formatMoney(credits)}</p>
+        <div className="min-w-0 rounded-2xl border border-[var(--admin-gold)]/40 bg-[#f8f4ed] px-3 py-2.5 sm:px-4 sm:py-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#9e7e51] sm:tracking-[0.14em]">Total reçu</p>
+          <p className="mt-1 break-words font-display text-lg font-bold leading-tight text-[var(--admin-navy)] sm:text-xl">{formatMoney(credits)}</p>
         </div>
-        <div className="admin-af-card rounded-2xl px-4 py-3">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Dépenses</p>
-          <p className="mt-1 font-display text-xl font-bold text-[var(--admin-navy)]">{expenseRows.length}</p>
+        <div className="admin-af-card min-w-0 rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#9e7e51] sm:tracking-[0.14em]">Dépenses</p>
+          <p className="mt-1 font-display text-lg font-bold leading-tight text-[var(--admin-navy)] sm:text-xl">{expenseRows.length}</p>
         </div>
-        <div className="rounded-2xl bg-[var(--admin-navy)] px-4 py-3 text-white">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">Total dépensé</p>
-          <p className="mt-1 font-display text-xl font-bold">{formatMoney(debits)}</p>
+        <div className="min-w-0 rounded-2xl bg-[var(--admin-navy)] px-3 py-2.5 text-white sm:px-4 sm:py-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--admin-gold)] sm:tracking-[0.14em]">Total dépensé</p>
+          <p className="mt-1 break-words font-display text-lg font-bold leading-tight sm:text-xl">{formatMoney(debits)}</p>
         </div>
       </div>
       {!stripeReady ? (
@@ -76,38 +77,46 @@ export default async function AdminTransactionsPage() {
           Cartes Stripe non ouvertes. Le rapprochement Revolut et la saisie d’un virement suffisent.
         </p>
       ) : null}
-      <div className="mt-6 grid items-start gap-6 xl:grid-cols-2">
-        <section>
-          <h2 className="mb-3 font-display text-lg font-bold text-[var(--admin-navy)]">Encaissements</h2>
-          <Ledger transactions={rows} names={nameRows} billingCompanies={companies} />
-        </section>
-        <section className="admin-af-card overflow-hidden rounded-2xl">
-          <div className="border-b border-[var(--border)] px-5 py-4">
-            <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Dépenses des dossiers</h2>
-          </div>
-          <ul className="divide-y divide-border text-sm">
-            {expenseRows.map((row) => (
-              <li key={row.id} className="flex items-start justify-between gap-3 px-5 py-3">
-                <span>
-                  <span className="block font-medium text-[var(--admin-navy)]">{visibleServiceCopy(row.label || "")}</span>
-                  <span className="text-xs text-muted">
-                    {names.get(row.customer_id) || "Client"} · {formatDateFr(row.occurred_on)}
-                    {companyLabelForTransaction(row, companies)
-                      ? ` · ${companyLabelForTransaction(row, companies)}`
-                      : ""}
+      <TransactionsPanels
+        receipts={
+          <>
+            <h2 className="mb-3 hidden font-display text-lg font-bold text-[var(--admin-navy)] xl:block">
+              Encaissements
+            </h2>
+            <Ledger transactions={rows} names={nameRows} billingCompanies={companies} />
+          </>
+        }
+        expenses={
+          <section className="admin-af-card min-w-0 overflow-hidden rounded-2xl">
+            <div className="border-b border-[var(--border)] px-4 py-3 xl:px-5 xl:py-4">
+              <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Dépenses des dossiers</h2>
+            </div>
+            <ul className="divide-y divide-border text-sm">
+              {expenseRows.map((row) => (
+                <li key={row.id} className="flex min-w-0 flex-col gap-1 px-4 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-3 xl:px-5">
+                  <span className="min-w-0">
+                    <span className="block break-words font-medium text-[var(--admin-navy)]">
+                      {visibleServiceCopy(row.label || "")}
+                    </span>
+                    <span className="block break-words text-xs text-muted">
+                      {names.get(row.customer_id) || "Client"} · {formatDateFr(row.occurred_on)}
+                      {companyLabelForTransaction(row, companies)
+                        ? ` · ${companyLabelForTransaction(row, companies)}`
+                        : ""}
+                    </span>
                   </span>
-                </span>
-                <span className="shrink-0 font-semibold text-[var(--admin-navy)]">
-                  {formatMoney(Number(row.amount), row.currency)}
-                </span>
-              </li>
-            ))}
-            {!expenseRows.length ? (
-              <li className="px-5 py-8 text-center text-muted">Aucune dépense postée.</li>
-            ) : null}
-          </ul>
-        </section>
-      </div>
+                  <span className="shrink-0 self-end font-semibold tabular-nums text-[var(--admin-navy)] sm:self-start">
+                    {formatMoney(Number(row.amount), row.currency)}
+                  </span>
+                </li>
+              ))}
+              {!expenseRows.length ? (
+                <li className="px-4 py-8 text-center text-muted">Aucune dépense postée.</li>
+              ) : null}
+            </ul>
+          </section>
+        }
+      />
     </div>
   );
 }

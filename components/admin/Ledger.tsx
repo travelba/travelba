@@ -38,6 +38,7 @@ export function Ledger({
   const [to, setTo] = useState("");
   const [status, setStatus] = useState("all");
   const [saving, setSaving] = useState(false);
+  const [entryOpen, setEntryOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -92,87 +93,113 @@ export function Ledger({
   const fieldClass = "rounded-xl border border-border bg-white px-3 py-2.5";
   const labelClass = "flex flex-col gap-1 text-xs font-semibold text-muted";
 
-  return (
-    <div className="space-y-6">
-      <form onSubmit={onSubmit} className="admin-af-card grid gap-3 rounded-3xl p-5 sm:grid-cols-3">
-        <CustomerPickField
-          name="customer_id"
-          label="Client"
-          title="Client crédité"
-          selected={null}
-          controlClass={`${fieldClass} w-full`}
-        />
-        <label className={labelClass}>
-          Montant (€)
-          <MoneyInput
-            name="amount"
-            required
-            disabled={saving}
-            aria-label="Montant"
-            className={fieldClass}
-          />
-        </label>
-        <label className={labelClass}>
-          Libellé
-          <input
-            name="label"
-            disabled={saving}
-            placeholder="Ex. Acompte virement reçu"
-            className={fieldClass}
-          />
-        </label>
-        <div className="sm:col-span-3">
-          <BusyBar active={saving} label="Enregistrement…" />
-        </div>
-        <button
-          type="submit"
-          disabled={saving}
-          className="admin-af-btn h-[54px] rounded-full px-4 text-sm sm:col-span-3"
-        >
-          {saving ? "Enregistrement…" : "Saisir un virement"}
-        </button>
-        {error ? <p className="text-sm text-accent sm:col-span-3">{error}</p> : null}
-        {notice ? <p className="text-sm text-muted sm:col-span-3">{notice}</p> : null}
-      </form>
+  const spanClass = "min-w-0 sm:col-span-2 xl:col-span-3";
 
-      <div className="flex flex-col gap-2 lg:flex-row">
-        <CustomerPickField
-          name="filter_customer_id"
-          label="Filtrer par client"
-          title="Filtrer par client"
-          selected={filterCustomer}
-          placeholder="Tous les clients"
-          onPick={setFilterCustomer}
-          onClear={() => setFilterCustomer(null)}
-          controlClass="rounded-xl border border-border bg-white px-3 py-2.5 text-sm"
-        />
-        <DateFrInput
-          value={from}
-          onChange={setFrom}
-          aria-label="Du (jj/mm/aaaa)"
-          className="rounded-xl border border-border bg-white px-3 py-2.5 text-sm"
-        />
-        <DateFrInput
-          value={to}
-          onChange={setTo}
-          aria-label="Au (jj/mm/aaaa)"
-          className="rounded-xl border border-border bg-white px-3 py-2.5 text-sm"
-        />
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-          aria-label="Filtrer par statut"
-          className="rounded-xl border border-border bg-white px-3 py-2.5 text-sm"
+  return (
+    <div className="min-w-0 space-y-4 sm:space-y-6">
+      <div>
+        <button
+          type="button"
+          aria-expanded={entryOpen}
+          onClick={() => setEntryOpen((open) => !open)}
+          className="admin-af-btn admin-tap mb-3 w-full rounded-full px-4 text-sm lg:hidden"
         >
-          <option value="all">Tous les statuts</option>
-          <option value="posted">Comptabilisé</option>
-          <option value="pending">En attente</option>
-          <option value="void">Annulé</option>
-        </select>
+          {entryOpen ? "Fermer la saisie" : "Saisir un virement"}
+        </button>
+        <form
+          onSubmit={onSubmit}
+          className={`${entryOpen ? "grid" : "hidden"} admin-af-card min-w-0 gap-3 rounded-3xl p-4 sm:grid-cols-2 sm:p-5 lg:grid xl:grid-cols-3`}
+        >
+          <CustomerPickField
+            name="customer_id"
+            label="Client"
+            title="Client crédité"
+            selected={null}
+            controlClass={`${fieldClass} w-full min-w-0`}
+          />
+          <label className={labelClass}>
+            Montant (€)
+            <MoneyInput
+              name="amount"
+              required
+              disabled={saving}
+              aria-label="Montant"
+              className={`${fieldClass} w-full min-w-0`}
+            />
+          </label>
+          <label className={`${labelClass} sm:col-span-2 xl:col-span-1`}>
+            Libellé
+            <input
+              name="label"
+              disabled={saving}
+              placeholder="Ex. Acompte virement reçu"
+              className={`${fieldClass} w-full min-w-0`}
+            />
+          </label>
+          <div className={spanClass}>
+            <BusyBar active={saving} label="Enregistrement…" />
+          </div>
+          <button
+            type="submit"
+            disabled={saving}
+            className={`admin-af-btn admin-tap h-12 rounded-full px-4 text-sm ${spanClass}`}
+          >
+            {saving ? "Enregistrement…" : "Enregistrer le virement"}
+          </button>
+          {error ? <p className={`text-sm text-accent ${spanClass}`}>{error}</p> : null}
+          {notice ? <p className={`text-sm text-muted ${spanClass}`}>{notice}</p> : null}
+        </form>
+      </div>
+
+      <div className="grid min-w-0 grid-cols-2 gap-2 lg:flex lg:flex-row lg:items-end">
+        <div className="col-span-2 min-w-0 lg:min-w-48 lg:flex-1">
+          <CustomerPickField
+            name="filter_customer_id"
+            label="Filtrer par client"
+            title="Filtrer par client"
+            selected={filterCustomer}
+            placeholder="Tous les clients"
+            onPick={setFilterCustomer}
+            onClear={() => setFilterCustomer(null)}
+            controlClass="w-full min-w-0 rounded-xl border border-border bg-white px-3 py-2.5 text-sm"
+          />
+        </div>
+        <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold text-muted [&>div]:min-w-0 [&>div]:w-full">
+          Du
+          <DateFrInput
+            value={from}
+            onChange={setFrom}
+            aria-label="Du (jj/mm/aaaa)"
+            className="w-full min-w-0 rounded-xl border border-border bg-white px-3 py-2.5 text-sm"
+          />
+        </label>
+        <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold text-muted [&>div]:min-w-0 [&>div]:w-full">
+          Au
+          <DateFrInput
+            value={to}
+            onChange={setTo}
+            aria-label="Au (jj/mm/aaaa)"
+            className="w-full min-w-0 rounded-xl border border-border bg-white px-3 py-2.5 text-sm"
+          />
+        </label>
+        <label className="col-span-2 flex min-w-0 flex-col gap-1 text-xs font-semibold text-muted lg:col-auto">
+          Statut
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            aria-label="Filtrer par statut"
+            className="w-full min-w-0 rounded-xl border border-border bg-white px-3 py-2.5 text-sm lg:w-auto"
+          >
+            <option value="all">Tous les statuts</option>
+            <option value="posted">Comptabilisé</option>
+            <option value="pending">En attente</option>
+            <option value="void">Annulé</option>
+          </select>
+        </label>
         {customerId ? (
           <Link
             href={clientLedgerAdminHref(customerId)}
-            className="inline-flex items-center justify-center rounded-xl border border-[var(--admin-gold)]/40 bg-[#f8f4ed] px-4 py-2.5 text-sm font-semibold text-[var(--admin-navy)]"
+            className="admin-tap col-span-2 inline-flex items-center justify-center rounded-xl border border-[var(--admin-gold)]/40 bg-[#f8f4ed] px-4 py-2.5 text-sm font-semibold text-[var(--admin-navy)] lg:col-auto"
           >
             Vue client
           </Link>
@@ -182,21 +209,21 @@ export function Ledger({
       <div className="admin-af-card overflow-hidden rounded-2xl">
         <ul className="divide-y divide-border lg:hidden">
           {filtered.map((t) => (
-            <li key={t.id} className="space-y-1 px-4 py-4 text-sm">
-              <div className="flex flex-wrap items-start justify-between gap-2">
+            <li key={t.id} className="min-w-0 space-y-1 px-3.5 py-3.5 text-sm sm:px-4 sm:py-4">
+              <div className="flex min-w-0 items-start justify-between gap-3">
                 <Link
                   href={clientLedgerAdminHref(t.customer_id)}
-                  className="min-w-0 font-medium text-[var(--admin-navy)] underline-offset-2 hover:underline"
+                  className="min-w-0 break-words font-medium text-[var(--admin-navy)] underline-offset-2 hover:underline"
                   title="Transactions vues par ce client"
                 >
                   {byId.get(t.customer_id) || "—"}
                 </Link>
-                <span className="font-semibold text-[var(--admin-navy)]">
+                <span className="shrink-0 whitespace-nowrap font-semibold tabular-nums text-[var(--admin-navy)]">
                   {formatMoney(Number(t.amount), t.currency)}
                 </span>
               </div>
               <p className="break-words font-medium text-[var(--admin-navy)]">{t.label}</p>
-              <p className="text-xs text-muted">
+              <p className="break-words text-xs text-muted">
                 {formatDateFr(t.occurred_on)} · {TX_KIND_LABELS[t.kind]}
                 {companyLabelForTransaction(t, billingCompanies)
                   ? ` · ${companyLabelForTransaction(t, billingCompanies)}`

@@ -17,7 +17,7 @@ function MailFrame({ html, title }: { html: string; title: string }) {
       title={title}
       sandbox=""
       srcDoc={html}
-      className="h-[640px] w-full border-0 bg-[#FAF9F6]"
+      className="h-80 w-full border-0 bg-[#FAF9F6] sm:h-[22rem]"
     />
   );
 }
@@ -103,18 +103,18 @@ export function ClientMailCatalog({ groups }: { groups: ClientMailGroup[] }) {
                 {group.title}
               </h2>
               <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted">{group.intro}</p>
-              <div className="mt-4 flex flex-col gap-4">
+              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {group.mails.map((mail) => (
-                  <article key={mail.id} className="admin-af-card overflow-hidden rounded-2xl">
+                  <article key={mail.id} className="admin-af-card flex min-w-0 flex-col overflow-hidden rounded-2xl">
                     <header className="px-4 py-3.5">
                       <h3 className="font-display text-lg font-bold text-[var(--admin-navy)]">{mail.title}</h3>
-                      <p className="mt-1 text-sm leading-relaxed text-muted">{mail.when}</p>
-                      <p className="mt-3 text-sm text-[var(--admin-navy)]">
+                      <p className="mt-1 line-clamp-3 text-sm leading-relaxed text-muted">{mail.when}</p>
+                      <p className="mt-3 line-clamp-2 text-sm text-[var(--admin-navy)]">
                         <span className="text-muted">Objet · </span>
                         {mail.subject}
                       </p>
                     </header>
-                    <div className="border-t border-[var(--border)] bg-[#FAF9F6]">
+                    <div className="mt-auto border-t border-[var(--border)] bg-[#FAF9F6]">
                       <MailFrame html={mail.html} title={`Aperçu : ${mail.title}`} />
                     </div>
                   </article>

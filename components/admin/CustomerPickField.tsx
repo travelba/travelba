@@ -67,11 +67,11 @@ export function CustomerPickField({
     <label className="flex flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
       {label}
       <input type="hidden" name={name} value={value?.id || ""} />
-      <span className="flex items-center gap-2">
+      <span className="flex w-full min-w-0 items-center gap-2">
         <button
           type="button"
           onClick={() => void openPicker()}
-          className={`${controlClass} flex items-center justify-between gap-3 text-left text-sm font-semibold normal-case tracking-normal text-[var(--admin-navy)]`}
+          className={`${controlClass} flex min-w-0 flex-1 items-center justify-between gap-3 text-left text-sm font-semibold normal-case tracking-normal text-[var(--admin-navy)]`}
         >
           <span className="min-w-0 truncate">{value ? formatLabel(value) : placeholder}</span>
           <Icon name="search" className="h-4 w-4 shrink-0 text-muted" />
