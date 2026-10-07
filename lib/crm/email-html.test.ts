@@ -22,6 +22,20 @@ describe("agencyEmailHtml", () => {
     assert.match(html, /Travel Business Agency/);
   });
 
+  it("uses the circular TBA mark, not a square monogram", () => {
+    assert.match(html, /src="https:\/\/travelba\.fr\/brand\/logo-tba\.png"/);
+    assert.doesNotMatch(html, /border-radius:8px[^>]*>TBA</);
+  });
+
+  it("omits the button when there is nothing to propose", () => {
+    const quiet = agencyEmailHtml({
+      title: "Votre ESTA",
+      bodyHtml: "<p>Votre ESTA est valable jusqu’au 29/08/2027.</p>",
+    });
+    assert.doesNotMatch(quiet, /Faire l’ESTA/);
+    assert.match(quiet, /valable jusqu’au 29\/08\/2027/);
+  });
+
   it("forces muted color on phone and email", () => {
     assert.match(html, /href="tel:\+33756841315"[^>]*color:#5C6570/);
     assert.match(html, /href="mailto:contact@travelba\.fr"[^>]*color:#5C6570/);

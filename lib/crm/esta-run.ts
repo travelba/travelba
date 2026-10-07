@@ -6,6 +6,7 @@ import {
   estaAlerts,
   estaClientAutoSend,
   estaClientDraft,
+  estaShouldOfferApply,
   estaDispatchDue,
   estaTravelerLine,
   estaWebhookBody,
@@ -585,7 +586,9 @@ export async function sendEstaToClient(
   });
   if (!draft) return { ok: false as const, error: "Rien à envoyer pour ce voyageur." };
   const numbers = passport?.number ? [passport.number] : [];
-  const mail = estaClientMail(draft, ESTA_APPLY_URL, numbers);
+  const mail = estaClientMail(draft, ESTA_APPLY_URL, numbers, {
+    offerApply: estaShouldOfferApply(status, alerts),
+  });
   const claimed = await admin
     .from("crm_esta_checks")
     .update({ client_message_sent_at: new Date().toISOString() })

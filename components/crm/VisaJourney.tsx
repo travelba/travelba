@@ -6,6 +6,7 @@ import { CLIENT_PREVIEW_NOTE, useClientPreview } from "@/components/account/clie
 import { FileOpenLink } from "@/components/crm/FileOpen";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { ReceivedVisasFold } from "@/components/crm/TripVisaUploads";
+import { todayIsoDate } from "@/lib/crm/money";
 import { travelerDisplayName } from "@/lib/crm/trip-documents";
 import type { VisaCorridor } from "@/lib/crm/visa-fees";
 import {
@@ -45,6 +46,12 @@ function isCorridor(iso: string): iso is VisaCorridor {
 
 function piecePaths(documents: CrmTravelDocument[], iso: string) {
   return documents.filter((doc) => doc.doc_type === "visa" && doc.issuing_country === iso && doc.storage_path);
+}
+
+/** Pièce de visa encore valable : on ne propose plus de la faire. */
+function visaAlreadyValid(documents: CrmTravelDocument[], iso: string) {
+  const today = todayIsoDate();
+  return piecePaths(documents, iso).some((doc) => !doc.expires_on || doc.expires_on >= today);
 }
 
 async function readError(res: Response) {
@@ -129,6 +136,7 @@ export function VisaJourney({
   pliantReady = false,
   showReceived = true,
   proposed = false,
+  settled = [],
 }: {
   variant?: "admin" | "client";
   bookingId: string;
@@ -143,6 +151,8 @@ export function VisaJourney({
   showReceived?: boolean;
   /** Vrai : l’agence propose la formalité. Sinon seule une demande déjà acceptée reste. */
   proposed?: boolean;
+  /** Pays dont l’ESTA ou l’ETA couvre déjà tout le séjour. */
+  settled?: string[];
 }) {
   const router = useRouter();
   const preview = useClientPreview();
@@ -226,7 +236,8 @@ export function VisaJourney({
         const country = entry.iso as VisaCorridor;
         const request = requests.find((row) => row.country === country);
         const started = journeyStarted(request);
-        const offerCard = variant !== "admin" && proposed && !started;
+        const alreadyValid = visaAlreadyValid(documents, country) || settled.includes(country);
+        const offerCard = variant !== "admin" && proposed && !started && !alreadyValid;
         if (!started && !offerCard) return null;
         const step = (
           started && !canReturnToOffer(request)
@@ -357,7 +368,9 @@ export function VisaJourney({
       })}
 
       {(variant === "admin" || proposed) &&
-        others.map((entry) => (
+        others
+          .filter((entry) => variant === "admin" || (!visaAlreadyValid(documents, entry.iso) && !settled.includes(entry.iso)))
+          .map((entry) => (
         <div key={entry.iso} className="rounded-[1.35rem] bg-white px-4 py-4 text-sm text-[var(--admin-navy)]">
           <p>
             <span className="font-semibold">{entry.name}</span>

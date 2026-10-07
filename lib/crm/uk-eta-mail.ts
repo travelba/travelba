@@ -13,7 +13,7 @@ type Draft = {
   intro?: string;
 };
 
-export function buildUkEtaHtml(input: { title: string; paragraphs: string[]; href: string; cta: string }) {
+export function buildUkEtaHtml(input: { title: string; paragraphs: string[]; href?: string; cta?: string }) {
   const bodyHtml = input.paragraphs
     .filter(Boolean)
     .map(
@@ -25,8 +25,7 @@ export function buildUkEtaHtml(input: { title: string; paragraphs: string[]; hre
     title: input.title,
     preheader: input.paragraphs[0] || input.title,
     bodyHtml,
-    ctaLabel: input.cta,
-    ctaHref: input.href,
+    ...(input.cta && input.href ? { ctaLabel: input.cta, ctaHref: input.href } : {}),
     footnote: "Message ETA Royaume-Uni. Aucun numéro de passeport en clair.",
   });
 }
@@ -50,18 +49,23 @@ export function ukEtaAgencyMail(
   };
 }
 
-export function ukEtaClientMail(draft: Draft, href: string, passportNumbers: string[] = []) {
+export function ukEtaClientMail(
+  draft: Draft,
+  href: string,
+  passportNumbers: string[] = [],
+  options?: { offerApply?: boolean }
+) {
   const subject = maskPassportInText(draft.subject, passportNumbers);
   const text = maskPassportInText(draft.text, passportNumbers);
   const paragraphs = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const offerApply = options?.offerApply !== false;
   return {
     subject,
     text,
     html: buildUkEtaHtml({
       title: "Votre ETA Royaume-Uni",
       paragraphs,
-      href,
-      cta: "Faire l’ETA",
+      ...(offerApply ? { href, cta: "Faire l’ETA" } : {}),
     }),
   };
 }

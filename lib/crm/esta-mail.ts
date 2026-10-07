@@ -13,7 +13,7 @@ type Draft = {
   intro?: string;
 };
 
-export function buildEstaHtml(input: { title: string; paragraphs: string[]; href: string; cta: string }) {
+export function buildEstaHtml(input: { title: string; paragraphs: string[]; href?: string; cta?: string }) {
   const bodyHtml = input.paragraphs
     .filter(Boolean)
     .map(
@@ -25,8 +25,7 @@ export function buildEstaHtml(input: { title: string; paragraphs: string[]; href
     title: input.title,
     preheader: input.paragraphs[0] || input.title,
     bodyHtml,
-    ctaLabel: input.cta,
-    ctaHref: input.href,
+    ...(input.cta && input.href ? { ctaLabel: input.cta, ctaHref: input.href } : {}),
     footnote: "Message ESTA. Aucun numéro de passeport en clair.",
   });
 }
@@ -50,18 +49,23 @@ export function estaAgencyMail(
   };
 }
 
-export function estaClientMail(draft: Draft, href: string, passportNumbers: string[] = []) {
+export function estaClientMail(
+  draft: Draft,
+  href: string,
+  passportNumbers: string[] = [],
+  options?: { offerApply?: boolean }
+) {
   const subject = maskPassportInText(draft.subject, passportNumbers);
   const text = maskPassportInText(draft.text, passportNumbers);
   const paragraphs = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const offerApply = options?.offerApply !== false;
   return {
     subject,
     text,
     html: buildEstaHtml({
       title: "Votre ESTA",
       paragraphs,
-      href,
-      cta: "Faire l’ESTA",
+      ...(offerApply ? { href, cta: "Faire l’ESTA" } : {}),
     }),
   };
 }

@@ -14,6 +14,7 @@ import {
   ukEtaClientAutoSend,
   ukEtaClientDraft,
   ukEtaCoversTrip,
+  ukEtaShouldOfferApply,
   pickUkEtaCronBookings,
   ukEtaCronDeparture,
   ukEtaDispatchDue,
@@ -235,6 +236,9 @@ test("libellés, validité et masquage", () => {
     passportLast3: "567",
   });
   assert.equal(ukEtaCoversTrip("approuve", alerts), true);
+  assert.equal(ukEtaShouldOfferApply("approuve", alerts), false);
+  assert.equal(ukEtaShouldOfferApply("introuvable", []), true);
+  assert.equal(ukEtaShouldOfferApply("approuve", ["ancien_passeport"]), true);
   assert.equal(ukEtaBadge({ status: "approuve", validUntil: "2028-03-26", alerts }).label, "Valable jusqu’au 26/03/2028");
   assert.equal(ukEtaBadge({ status: "introuvable", alerts: [] }).label, "Introuvable");
   assert.equal(ukEtaBadge({ status: "refuse", alerts: [] }).label, "Refusé");

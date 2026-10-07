@@ -1,5 +1,5 @@
 import { inviteClientMail, magicLinkClientMail, resetPasswordClientMail } from "@/lib/crm/client-mails";
-import { ESTA_APPLY_URL, estaClientDraft, type EstaAlert, type EstaStatus } from "@/lib/crm/esta";
+import { ESTA_APPLY_URL, estaClientDraft, estaShouldOfferApply, type EstaAlert, type EstaStatus } from "@/lib/crm/esta";
 import { estaClientMail } from "@/lib/crm/esta-mail";
 import { siteConfig } from "@/lib/site";
 
@@ -41,7 +41,9 @@ function estaPreview(input: {
     passportExpires: input.passportExpires,
   });
   if (!draft) throw new Error(`modèle ESTA absent: ${input.id}`);
-  const mail = estaClientMail(draft, ESTA_APPLY_URL);
+  const mail = estaClientMail(draft, ESTA_APPLY_URL, [], {
+    offerApply: estaShouldOfferApply(input.status, input.alerts),
+  });
   return {
     id: input.id,
     title: input.title,

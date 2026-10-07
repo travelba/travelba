@@ -23,6 +23,7 @@ Deux gestes, pour Israël, les États-Unis et le Royaume-Uni, même règle clien
 - **Avant validation** — carte avec le nom de la formalité, le lien officiel, et le bouton « L’agence s’en charge ». Pas de pourcentage, pas de rail, pas de « Nous nous en occupons ». Le prix n’est pas affiché : il apparaît dans la confirmation, au clic (`VISA_EUR`, frais d’État de `VISA_OFFICIAL`). États-Unis et Royaume-Uni : les questions sont obligatoires avant d’activer le bouton. Israël n’a pas de questions.
 - **Confirmation** — un bouton, puis le prix, tous les voyageurs cochés (on peut en retirer). Rien ne démarre avant cette confirmation. Une carte déjà à 45 % (ou toute étape) sans `accepted_at` revient à cette carte.
 - **Après confirmation** — le parcours et le remplissage en arrière-plan (ETA-IL) partent ensemble. Le lien officiel disparaît. Le client n’a pas de retour arrière. L’agence a **Recommencer** : la demande repart de zéro, et le client revoit la carte de départ. Sans Pliant, le parcours s’arrête au paiement. Pendant le clic, le bouton dit « Demande en cours… ».
+- **Déjà valable** — si le visa est encore valable, ou si l’ESTA / l’ETA couvre tout le séjour, on ne propose pas de le faire : pas de carte « L’agence s’en charge », pas de lien officiel comme appel à déposer, pas de bouton « Faire l’ESTA » ou « Faire l’ETA » dans l’e-mail. Un ESTA ou une ETA qui expire avant le retour, ou lié à un ancien passeport, reste à refaire.
 
 WhatsApp seulement quand la pièce est dans l’espace, pas à la validation.
 

@@ -13,6 +13,7 @@ import {
 import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
 import { VisaSection } from "@/components/crm/VisaSection";
 import { findVisaExtra, serviceRefusalFromRow, visaProposed, type ServiceRefusal } from "@/lib/crm/extras";
+import { settledFormalityCountries } from "@/lib/crm/visa-cover";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { visaRequestShown, type ClientVisaStep } from "@/lib/crm/visa-flow";
 import { pliantConfigured } from "@/lib/crm/pliant";
@@ -239,6 +240,22 @@ export default async function ReservationDetailPage({ params }: Props) {
   });
 
   const identity = (identityDocs || []) as CrmTravelDocument[];
+  let settled: string[] = [];
+  try {
+    settled = await settledFormalityCountries(createServiceClient(), {
+      bookingId: b.id,
+      returnOn: b.end_date,
+      travelers: party,
+      documents: identity,
+      holder: {
+        first_name: customer.first_name,
+        last_name: customer.last_name,
+        usage_name: customer.usage_name,
+      },
+    });
+  } catch {
+    settled = [];
+  }
   const ledger = await ledgerPromise;
   const encoursPay =
     ledger.member || ledger.owed.total <= 0 ? null : (
@@ -346,6 +363,7 @@ export default async function ReservationDetailPage({ params }: Props) {
             pliantReady={pliantConfigured()}
             showReceived={false}
             proposed={visaProposed(b)}
+            settled={settled}
           />
         ) : null
       }

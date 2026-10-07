@@ -14,6 +14,7 @@ import {
   estaCheckedLabel,
   estaClientDraft,
   estaCoversTrip,
+  estaShouldOfferApply,
   estaDispatchDue,
   estaEligibility,
   estaNoteCaption,
@@ -196,6 +197,9 @@ test("ESTA approuvé jusqu’au 29/08/2027", () => {
     estaPassportLast3: "567",
   });
   assert.equal(estaCoversTrip("approuve", alerts), true);
+  assert.equal(estaShouldOfferApply("approuve", alerts), false);
+  assert.equal(estaShouldOfferApply("inacheve", []), true);
+  assert.equal(estaShouldOfferApply("approuve", ["expire_avant_retour"]), true);
   assert.equal(estaBadge({ status: "approuve", validUntil: "2027-08-29", alerts }).label, "Approuvé jusqu’au 29/08/2027");
   const draft = estaClientDraft({ status: "approuve", validUntil: "2027-08-29", alerts, reference: "TB-2026-0042" });
   assert.match(draft?.text || "", /valable jusqu’au 29\/08\/2027/);

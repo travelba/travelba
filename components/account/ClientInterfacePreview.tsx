@@ -91,6 +91,7 @@ export function ClientInterfacePreview({
   shareCompanions,
   ledger = null,
   initialScreen = "stay",
+  settled = [],
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -113,6 +114,8 @@ export function ClientInterfacePreview({
   /** Même lecture que /mon-compte/transactions. */
   ledger?: ClientLedgerView | null;
   initialScreen?: ClientPreviewScreen;
+  /** Pays dont l’ESTA ou l’ETA couvre déjà le séjour. */
+  settled?: string[];
 }) {
   const [screen, setScreen] = useState<ClientPreviewScreen>(initialScreen);
   const items = withoutHotelRosterItems(sourceItems);
@@ -166,6 +169,7 @@ export function ClientInterfacePreview({
           onScreen={setScreen}
           ledger={ledger}
           showStay={hasCarnet}
+          settled={settled}
         />
       )}
     </section>
@@ -230,6 +234,7 @@ function ClientScreen({
   onScreen,
   ledger,
   showStay,
+  settled = [],
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -255,6 +260,7 @@ function ClientScreen({
   onScreen: (screen: ClientPreviewScreen) => void;
   ledger: ClientLedgerView | null;
   showStay: boolean;
+  settled?: string[];
 }) {
   const insurances = items.filter((item) => item.kind === "insurance");
   const coverage = tripDocCoverage(travelers, identityDocs);
@@ -413,6 +419,7 @@ function ClientScreen({
                   pliantReady={pliantReady}
                   showReceived={false}
                   proposed={visaProposed(booking)}
+                  settled={settled}
                 />
               ) : null
             }

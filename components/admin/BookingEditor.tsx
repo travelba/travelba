@@ -28,6 +28,7 @@ import { EstaOnBooking } from "@/components/admin/EstaOnBooking";
 import { UkEtaOnBooking } from "@/components/admin/UkEtaOnBooking";
 import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
 import type { EstaTravelerLine } from "@/lib/crm/esta-status";
+import { settledAuthorizationCountries } from "@/lib/crm/visa-cover";
 import type { UkEtaTravelerLine } from "@/lib/crm/uk-eta-ui";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
@@ -1911,6 +1912,11 @@ export function BookingEditor({
           shareUrl={shareUrl}
           shareCompanions={shareCompanions}
           ledger={ledger}
+          settled={settledAuthorizationCountries({
+            travelerIds: travelers.map((traveler) => traveler.id),
+            estaTones: estaLines,
+            ukEtaTones: ukEtaLines,
+          })}
         />
       ) : null}
       </div>

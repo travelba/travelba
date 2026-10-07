@@ -27,6 +27,7 @@ export function VisaSection({
   pliantReady = false,
   showReceived = true,
   proposed = false,
+  settled = [],
 }: {
   variant: "admin" | "client";
   bookingId: string;
@@ -41,6 +42,8 @@ export function VisaSection({
   showReceived?: boolean;
   /** Vrai : l’agence a activé Visa dans Services proposés. */
   proposed?: boolean;
+  /** Pays dont l’autorisation couvre déjà le séjour. */
+  settled?: string[];
 }) {
   if (!trip.hasFlight) return null;
   return (
@@ -81,6 +84,7 @@ export function VisaSection({
         pliantReady={pliantReady}
         showReceived={showReceived}
         proposed={proposed}
+        settled={settled}
       />
     </div>
   );

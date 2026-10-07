@@ -287,6 +287,15 @@ export function ukEtaCoversTrip(status: UkEtaStatus, alerts: UkEtaAlert[]) {
   );
 }
 
+/** Bouton « Faire l’ETA » seulement si elle manque, expire avant le retour, ou suit un ancien passeport. */
+export function ukEtaShouldOfferApply(status: UkEtaStatus, alerts: UkEtaAlert[]) {
+  if (status === "non_concerne" || status === "erreur" || status === "en_attente" || status === "a_verifier") {
+    return false;
+  }
+  if (status !== "approuve") return true;
+  return alerts.includes("expire_avant_retour") || alerts.includes("ancien_passeport");
+}
+
 const BADGE: Record<UkEtaStatus, string> = {
   a_verifier: "À vérifier",
   approuve: "Valable",

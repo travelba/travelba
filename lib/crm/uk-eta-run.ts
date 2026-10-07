@@ -12,6 +12,7 @@ import {
   ukEtaAlerts,
   ukEtaClientAutoSend,
   ukEtaClientDraft,
+  ukEtaShouldOfferApply,
   ukEtaDispatchDue,
   ukEtaTravelerLine,
   ukEtaWebhookBody,
@@ -480,7 +481,9 @@ export async function sendUkEtaToClient(
   });
   if (!draft) return { ok: false as const, error: "Rien à envoyer pour ce voyageur." };
   const numbers = passport?.number ? [passport.number] : [];
-  const mail = ukEtaClientMail(draft, UK_ETA_APPLY_URL, numbers);
+  const mail = ukEtaClientMail(draft, UK_ETA_APPLY_URL, numbers, {
+    offerApply: ukEtaShouldOfferApply(status, alerts),
+  });
   const claimed = await admin
     .from("crm_uk_eta_checks")
     .update({ client_message_sent_at: new Date().toISOString() })

@@ -312,6 +312,13 @@ export function estaCoversTrip(status: EstaStatus, alerts: EstaAlert[]) {
   );
 }
 
+/** Bouton « Faire l’ESTA » seulement s’il manque, s’il expire avant le retour, ou s’il est sur un ancien passeport. */
+export function estaShouldOfferApply(status: EstaStatus, alerts: EstaAlert[]) {
+  if (status === "non_concerne" || status === "erreur" || status === "en_attente") return false;
+  if (status !== "approuve") return true;
+  return alerts.includes("expire_avant_retour") || alerts.includes("ancien_passeport");
+}
+
 const BADGE: Record<EstaStatus, string> = {
   a_verifier: "À vérifier",
   approuve: "Valable",
