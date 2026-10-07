@@ -5,7 +5,7 @@ import { BookingEditor } from "@/components/admin/BookingEditor";
 import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { readEstaAnswers, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
-import { loadPliantAccountBalance, pliantConfigured } from "@/lib/crm/pliant";
+import { pliantConfigured } from "@/lib/crm/pliant";
 import { pliantCardForBooking, pliantSpendsForCards, showPliantLast4 } from "@/lib/crm/pliant-card-run";
 import { pliantBookingCards, pliantCardRecaps } from "@/lib/crm/pliant-booking";
 import { hotelDisplayName } from "@/lib/crm/carnet";
@@ -31,6 +31,8 @@ import type {
   CrmBookingTraveler,
   CrmCompanion,
   CrmCustomer,
+  CrmCustomerActivity,
+  CrmCustomerLogin,
   CrmHotelArrival,
   CrmHotelMessage,
   CrmHotelRequest,
@@ -69,6 +71,11 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     { data: leRows },
     { data: billingCompanies },
     { data: attachedMails },
+    { data: loginRows },
+    { data: activityRows },
+    whatsappMessages,
+    whatsappRequests,
+    { data: stayRefs },
   ] = await Promise.all([
     supabase.from("crm_booking_items").select("*").eq("booking_id", id).order("sort_order"),
     supabase.from("crm_booking_travelers").select("*").eq("booking_id", id),
@@ -96,7 +103,41 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
       .eq("status", "attached")
       .eq("created_booking_id", id)
       .order("received_at", { ascending: false, nullsFirst: false }),
+    supabase
+      .from("crm_customer_logins")
+      .select("id, customer_id, auth_user_id, method, created_at")
+      .eq("customer_id", b.customer_id)
+      .order("created_at", { ascending: false })
+      .limit(80),
+    supabase
+      .from("crm_customer_activity")
+      .select("id, customer_id, auth_user_id, action, summary, detail, path, booking_id, created_at")
+      .eq("customer_id", b.customer_id)
+      .order("created_at", { ascending: false })
+      .limit(200),
+    supabase
+      .from("crm_whatsapp_messages")
+      .select("id, direction, body, status, created_at, booking_id")
+      .eq("customer_id", b.customer_id)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("crm_whatsapp_requests")
+      .select("id, kind, body, booking_id, created_at")
+      .eq("customer_id", b.customer_id)
+      .order("created_at", { ascending: false }),
+    supabase.from("crm_bookings").select("id, reference").eq("customer_id", b.customer_id),
   ]);
+  const customerLogins = (loginRows || []) as CrmCustomerLogin[];
+  const customerActivity = (activityRows || []) as CrmCustomerActivity[];
+  const threadMessages = whatsappMessages.error
+    ? (
+        await supabase
+          .from("crm_whatsapp_messages")
+          .select("id, direction, body, status, created_at")
+          .eq("customer_id", b.customer_id)
+          .order("created_at", { ascending: true })
+      ).data || []
+    : whatsappMessages.data || [];
   const party = (relatedCustomers || []) as CrmCustomer[];
   const customer = party.find((row) => row.id === b.customer_id) || null;
   const billingCustomer =
@@ -162,17 +203,10 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     hotelRequests = [];
   }
   let pliantCard: PliantCardDraft | null = null;
-  let pliantSpends: PliantSpendLine[] = [];
   let pliantTabSpends: PliantSpendLine[] = [];
-  let pliantAccount: { availableCents: number | null; currency: string } | null = null;
   try {
     const cardAdmin = createServiceClient();
     pliantCard = await pliantCardForBooking(cardAdmin, id);
-    const cardIds = [
-      pliantCard?.pliant_card_id || "",
-      ...arrivals.map((row) => row.pliant_card_id || ""),
-    ];
-    pliantSpends = await pliantSpendsForCards(cardAdmin, cardIds);
     pliantTabSpends = await pliantSpendsForCards(
       cardAdmin,
       [
@@ -182,7 +216,6 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
       ],
       { limit: null }
     );
-    pliantAccount = await loadPliantAccountBalance();
     try {
       await showPliantLast4(cardAdmin, { bookingCards, arrivals, registry: pliantCard });
     } catch {
@@ -190,7 +223,6 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     }
   } catch {
     pliantCard = null;
-    pliantSpends = [];
     pliantTabSpends = [];
   }
   const hotelNames: Record<string, string> = {};
@@ -289,9 +321,6 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           shareUrl={shareUrl}
           shareCompanions={shareCompanions}
           arrivals={arrivals}
-          pliantCard={pliantCard}
-          pliantSpends={pliantSpends}
-          pliantAccount={pliantAccount}
           hotelRequests={hotelRequests}
           hotelMessages={hotelMessages}
           hotelThreadMessages={hotelThreadMessages}
@@ -324,6 +353,11 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           pliantRecap={pliantRecap}
           estaLines={estaLines}
           ukEtaLines={ukEtaLines}
+          whatsappMessages={threadMessages}
+          whatsappRequests={whatsappRequests.error ? [] : whatsappRequests.data || []}
+          whatsappBookings={(stayRefs || []) as { id: string; reference: string }[]}
+          customerLogins={customerLogins}
+          customerActivity={customerActivity}
         />
   );
 }

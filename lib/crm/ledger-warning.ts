@@ -11,4 +11,4 @@ export function readLedgerWarning(json: unknown): string | null {
 
 /** Ce que l’agent fait ensuite : ne pas rejouer l’action, contrôler les écritures avant de réclamer un solde. */
 export const LEDGER_WARNING_HINT =
-  "L’action est bien faite, ne la refaites pas. Contrôlez les écritures dans l’onglet Argent avant de réclamer un solde au client.";
+  "L’action est bien faite, ne la refaites pas. Contrôlez les écritures dans l’onglet Règlement avant de réclamer un solde au client.";

@@ -18,7 +18,7 @@ Thème **Sovereign Horizon** : marine `#0B192C` (`--admin-navy`), champagne `#C5
 
 **Interdit** : feuille Stitch « Travelba CRM », Aura Voyages émeraude, Material Symbols CDN.
 
-Espace client : colonne ~480px (`AccountChrome`). Admin : sidebar `AdminNav`.
+Espace client : colonne ~480px (`AccountChrome`). En-tête : marque, barre de recherche (ville, hôtel, référence du séjour), WhatsApp, avatar. Admin : sidebar `AdminNav`.
 
 ## Typo / icons / images
 
@@ -32,11 +32,11 @@ Espace client : colonne ~480px (`AccountChrome`). Admin : sidebar `AdminNav`.
 Même langage sur **toutes** les réservations, pas un dossier d’exemple.
 
 - État : pastille **En préparation**, **Visible** ou **Archivée**. Pas de liste de statuts commerciaux. Bouton principal **Montrer au client** ou **Mettre à jour**. **Archiver**, pas Supprimer.
-- En-tête : retour Réservations, titre (toutes les villes du voyage, sans répéter la même), référence, dates et villes lues sur les étapes, voyageurs, statut. Un nom choisi (« 40 ans ») reste. Chips de ce qui manque (passeport, courriers hôtel encore ouverts, montant non montré). Onglets sur une ligne ; À faire reste, avec le compte.
+- En-tête : retour Réservations, titre (toutes les villes du voyage, sans répéter la même), référence, dates et villes lues sur les étapes, voyageurs, statut. Un nom choisi (« 40 ans ») reste. Chips de ce qui manque (passeport, courriers hôtel encore ouverts, montant non montré). Onglets sur une ligne, dans cet ordre : **Client** (journal Activité en bas), **WhatsApp** (fil du client, déplié), **Le voyage**, **À faire** (compteur), **Carte** (émission et dépenses), **Règlement** (prix du séjour, puis compte du client). **Interface client** est à droite, en champagne, pastille pêche quand il est ouvert. Pliant et Transactions ne sont plus des onglets : `?tab=pliant` ouvre Carte, `?tab=argent` et `?tab=transactions` ouvrent Règlement.
 - Lieu et dates **en haut** : une ligne par séjour et une ligne par trajet. Le même hôtel aux mêmes dates, ou le même trajet le même jour, n’apparaît qu’une fois (Milano = Milan, Roma = Rome). Un autre hôtel et l’autre sens restent. Pas un seul champ Lieu + un seul départ/retour quand des étapes existent. Ne pas réécrire `destination` / dates du dossier pour coller à l’affichage.
 - Cartes datées. Vol : villes en titre, code aéroport dessous, n° de vol, classe, horaire et référence dans le détail. Le document lié reste replié : un clic sur la ligne le déroule en vignette, même format que Pièces jointes, avec Retirer. Étape pas encore montrée : surbrillance, pas une bannière qui ne fait que compter. Retirer, modifier, ajouter, réordonner ou montrer une étape attend le bouton Enregistrer du séjour : il s’allume, et le bandeau « Modifications non enregistrées » apparaît. Un Enregistrer qui reste gris après ce geste est un bug. Le montant du séjour suit le prix saisi sur la carte tout de suite, avant cet enregistrement.
 - Pas de roster hôtel (rôle, nom, e-mail) sur la carte. Un libellé court (le nom de l’hôtel) suffit. Le formulaire d’envoi (fil et courrier) coche les destinataires.
-- Argent : un bloc (qui paie, montant, grand livre). Les mails ne sont pas des lignes d’étape.
+- Règlement : sur Le voyage, une ligne (qui paie, montant, grand livre) qui ouvre l’onglet. Le prix, la société ou le particulier et le compte du client sont dans Règlement. Les mails ne sont pas des lignes d’étape.
 - Doublons proposés : repliés sur toutes les fiches. Fermé, le bandeau dit qu’il y en a et combien. Ouvert, les cartes grisées et **Écarter**. Le fichier reste dans le dossier.
 
 ## Copy

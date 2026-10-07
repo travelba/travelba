@@ -1,35 +1,42 @@
 /** Onglets de la fiche dossier : l’onglet courant vit dans l’URL (`?tab=`). */
-export const BOOKING_TAB_IDS = ["voyage", "cartes", "pliant", "todo", "argent", "transactions", "client", "interface"] as const;
+export const BOOKING_TAB_IDS = ["client", "whatsapp", "voyage", "todo", "cartes", "argent", "interface"] as const;
 
 export type BookingTabId = (typeof BOOKING_TAB_IDS)[number];
 
 /** Valeur lisible dans l’URL pour chaque onglet. */
 export const BOOKING_TAB_SLUGS: Record<BookingTabId, string> = {
-  voyage: "voyage",
-  cartes: "carte",
-  pliant: "pliant",
-  todo: "a-faire",
-  argent: "argent",
-  transactions: "transactions",
   client: "client",
+  whatsapp: "whatsapp",
+  voyage: "voyage",
+  todo: "a-faire",
+  cartes: "carte",
+  argent: "reglement",
   interface: "interface",
 };
 
 export const BOOKING_TAB_LABELS: Record<BookingTabId, string> = {
+  client: "Client",
+  whatsapp: "WhatsApp",
   voyage: "Le voyage",
-  cartes: "Carte",
-  pliant: "Pliant",
   todo: "À faire",
-  argent: "L’argent",
-  transactions: "Transactions",
-  client: "Le client",
+  cartes: "Carte",
+  argent: "Règlement",
   interface: "Interface client",
+};
+
+/** Anciens slugs : Pliant est la carte, Transactions et Argent sont le règlement. */
+const BOOKING_TAB_ALIASES: Record<string, BookingTabId> = {
+  pliant: "cartes",
+  transactions: "argent",
+  argent: "argent",
 };
 
 /** `?tab=a-faire` → `todo`. Inconnu ou absent → `voyage`. L’ancien id interne est accepté. */
 export function bookingTabFromParam(value: string | null | undefined): BookingTabId {
   if (!value) return "voyage";
   const slug = value.trim().toLowerCase();
+  const alias = BOOKING_TAB_ALIASES[slug];
+  if (alias) return alias;
   for (const id of BOOKING_TAB_IDS) {
     if (BOOKING_TAB_SLUGS[id] === slug || id === slug) return id;
   }

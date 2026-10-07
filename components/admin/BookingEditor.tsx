@@ -18,6 +18,8 @@ import {
   type CrmHotelRequest,
   type CrmCompanion,
   type CrmCustomer,
+  type CrmCustomerActivity,
+  type CrmCustomerLogin,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { BusyBar } from "@/components/crm/BusyBar";
@@ -45,11 +47,11 @@ import { unsplashKeywordMatch } from "@/lib/crm/covers";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
 import { BookingCards } from "@/components/admin/BookingCards";
+import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
 import { PliantBookingTab } from "@/components/admin/PliantBookingTab";
-import { PliantCardDesk } from "@/components/admin/PliantCardDesk";
-import { principalGuest, stayCardFace } from "@/lib/crm/hotel-arrival";
-import type { PliantCardDraft, PliantSpendLine } from "@/lib/crm/pliant-cards";
+import { principalGuest } from "@/lib/crm/hotel-arrival";
 import type { PliantCardRecap } from "@/lib/crm/pliant-booking";
+import { WhatsappThread, type WhatsappThreadMessage, type WhatsappThreadRequest } from "@/components/admin/WhatsappThread";
 import { BookingExpensesPanel, type ExpenseWrite } from "@/components/admin/BookingExpensesPanel";
 import { ClientTransactionsPanel } from "@/components/account/ClientTransactionsPanel";
 import { ServiceOfferToggles } from "@/components/admin/ServiceOfferToggles";
@@ -199,9 +201,6 @@ export function BookingEditor({
   shareUrl = null,
   shareCompanions = [],
   arrivals = [],
-  pliantCard = null,
-  pliantSpends = [],
-  pliantAccount = null,
   hotelRequests = [],
   hasCardCode = false,
   cardViews = [],
@@ -218,6 +217,11 @@ export function BookingEditor({
   pliantRecap = [],
   estaLines = [],
   ukEtaLines = [],
+  whatsappMessages = [],
+  whatsappRequests = [],
+  whatsappBookings = [],
+  customerLogins = [],
+  customerActivity = [],
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -242,9 +246,6 @@ export function BookingEditor({
   shareUrl?: string | null;
   shareCompanions?: ShareCompanion[];
   arrivals?: CrmHotelArrival[];
-  pliantCard?: PliantCardDraft | null;
-  pliantSpends?: PliantSpendLine[];
-  pliantAccount?: { availableCents: number | null; currency: string } | null;
   hotelRequests?: CrmHotelRequest[];
   hasCardCode?: boolean;
   cardViews?: CardViewLine[];
@@ -277,6 +278,11 @@ export function BookingEditor({
   pliantRecap?: PliantCardRecap[];
   estaLines?: EstaTravelerLine[];
   ukEtaLines?: UkEtaTravelerLine[];
+  whatsappMessages?: WhatsappThreadMessage[];
+  whatsappRequests?: WhatsappThreadRequest[];
+  whatsappBookings?: { id: string; reference: string }[];
+  customerLogins?: CrmCustomerLogin[];
+  customerActivity?: CrmCustomerActivity[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -774,7 +780,6 @@ export function BookingEditor({
       reusableDocumentsForTraveler(identityDocs, traveler, holderProfile).length === 0
   );
   const hotelLetters = hotelTripChecklist(hotelRequests);
-  const hasHotel = items.some((item) => item.kind === "hotel");
   const hasFlight = bookingHasFlight(items);
   const leOpen =
     Boolean(littleEmperors) &&
@@ -1019,7 +1024,7 @@ export function BookingEditor({
             ))}
           </ul>
         ) : null}
-        <div className="flex gap-6 overflow-x-auto border-b border-[var(--border)]" role="tablist" aria-label="Parties du dossier">
+        <div className="flex items-end gap-6 overflow-x-auto border-b border-[var(--border)]" role="tablist" aria-label="Parties du dossier">
           {tabs.map((id) => {
             const selected = tab === id;
             return (
@@ -1036,11 +1041,19 @@ export function BookingEditor({
                 tabIndex={selected ? 0 : -1}
                 onClick={() => setTab(id)}
                 onKeyDown={onTabKey}
-                className={`-mb-px shrink-0 whitespace-nowrap border-b-2 pb-3 font-display text-sm font-semibold ${
-                  selected
-                    ? "border-[var(--admin-gold)] text-[var(--admin-navy)]"
-                    : "border-transparent text-muted hover:text-[var(--admin-navy)]"
-                }`}
+                className={
+                  id === "interface"
+                    ? `ml-auto mb-2 shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 font-display text-sm font-semibold ${
+                        selected
+                          ? "bg-[var(--admin-peach)] text-[var(--admin-navy)]"
+                          : "text-[#9e7e51] hover:text-[var(--admin-navy)]"
+                      }`
+                    : `-mb-px shrink-0 whitespace-nowrap border-b-2 pb-3 font-display text-sm font-semibold ${
+                        selected
+                          ? "border-[var(--admin-gold)] text-[var(--admin-navy)]"
+                          : "border-transparent text-muted hover:text-[var(--admin-navy)]"
+                      }`
+                }
               >
                 {BOOKING_TAB_LABELS[id]}
                 {id === "todo" && blockers.length > 0 ? (
@@ -1558,25 +1571,18 @@ export function BookingEditor({
         onStepsPending={setStepsPending}
       />
       </div>
-      <section className="order-3 admin-af-card space-y-3 rounded-3xl p-5">
-        <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">L’argent</h2>
-        <dl className="divide-y divide-[var(--border)] text-sm">
-          <div className="flex items-center justify-between gap-3 py-2">
-            <dt className="text-muted">Qui paie</dt>
-            <dd className="font-semibold text-[var(--admin-navy)]">{payerCaption}</dd>
-          </div>
-          <div className="flex items-center justify-between gap-3 py-2">
-            <dt className="text-muted">Montant</dt>
-            <dd className="font-semibold text-[var(--admin-navy)]">
-              {formatMoney(stayAmount, stayCurrency(booking.currency))}
-            </dd>
-          </div>
-          <div className="flex items-center justify-between gap-3 py-2">
-            <dt className="text-muted">Grand livre</dt>
-            <dd className="font-semibold text-[var(--admin-navy)]">{staffLedgerCaption(booking)}</dd>
-          </div>
-        </dl>
-      </section>
+      <button
+        type="button"
+        onClick={() => setTab("argent")}
+        className="order-3 admin-af-card flex w-full flex-wrap items-baseline justify-between gap-x-4 gap-y-1 rounded-3xl px-5 py-4 text-left"
+      >
+        <span className="font-display text-lg font-bold text-[var(--admin-navy)]">Règlement</span>
+        <span className="text-sm text-muted">{payerCaption}</span>
+        <span className="text-sm font-semibold text-[var(--admin-navy)]">
+          {formatMoney(stayAmount, stayCurrency(booking.currency))}
+        </span>
+        <span className="text-sm font-semibold text-[var(--admin-navy)]">{staffLedgerCaption(booking)}</span>
+      </button>
       <div className="order-4 space-y-3">
       <ReservationFiles
         variant="admin"
@@ -1696,7 +1702,17 @@ export function BookingEditor({
         />
         </div>
       ) : null}
+      <CustomerLoginLog logins={customerLogins} activity={customerActivity} />
         </>
+      ) : null}
+
+      {tab === "whatsapp" ? (
+        <WhatsappThread
+          expanded
+          messages={whatsappMessages}
+          requests={whatsappRequests}
+          bookings={whatsappBookings}
+        />
       ) : null}
 
       {tab === "argent" ? (
@@ -1716,29 +1732,6 @@ export function BookingEditor({
         ) : null}
       </section>
 
-      {!hasHotel && pliantCard ? (
-        <section className="order-2 admin-af-card rounded-3xl px-5 py-5">
-          <PliantCardDesk
-            mode="booking"
-            bookingId={booking.id}
-            cardId={pliantCard.pliant_card_id}
-            face={stayCardFace({
-              itemId: booking.id,
-              hotel: "",
-              holder: `${stayGuest.firstName} ${stayGuest.lastName}`.trim() || "Voyageur",
-              last4: pliantCard.last4,
-              closed: false,
-            })}
-            ceilingCents={pliantCard.limit_cents}
-            currency={pliantCard.currency}
-            locked={pliantCard.status === "locked"}
-            revealUrl=""
-            account={pliantAccount}
-            spends={pliantSpends}
-          />
-        </section>
-      ) : null}
-
       <div className="order-3">
       <BookingExpensesPanel
         bookingId={booking.id}
@@ -1749,42 +1742,41 @@ export function BookingEditor({
         onExpenseWrite={onExpenseWrite}
       />
       </div>
+      <section className="max-w-[480px] space-y-3">
+        <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Compte du client</h2>
+        <p className="text-sm text-muted">Même lecture que l’espace du client.</p>
+        {liveLedger ? (
+          <ClientTransactionsPanel
+            view={liveLedger}
+            statementEndpoint={
+              statementCustomer ? `/api/admin/clients/${statementCustomer.id}/releve` : null
+            }
+            statementAudience="staff"
+          />
+        ) : (
+          <p className="text-sm text-muted">Le grand livre n’est pas lisible pour le moment.</p>
+        )}
+      </section>
         </>
       ) : null}
 
-      {tab === "transactions" ? (
-        <div className="max-w-[480px]">
-          <p className="mb-3 text-sm text-muted">Même lecture que l’espace du client.</p>
-          {liveLedger ? (
-            <ClientTransactionsPanel
-              view={liveLedger}
-              statementEndpoint={
-                statementCustomer ? `/api/admin/clients/${statementCustomer.id}/releve` : null
-              }
-              statementAudience="staff"
-            />
-          ) : (
-            <p className="text-sm text-muted">Le grand livre n’est pas lisible pour le moment.</p>
-          )}
-        </div>
-      ) : null}
-
       {tab === "cartes" ? (
-        <BookingCards
-          bookingId={booking.id}
-          cards={bookingCards}
-          firstName={stayGuest.firstName}
-          lastName={stayGuest.lastName}
-        />
-      ) : null}
-
-      {tab === "pliant" ? (
-        <PliantBookingTab
-          bookingId={booking.id}
-          currency={booking.currency}
-          cards={pliantRecap}
-          items={items}
-        />
+        <div className="space-y-6">
+          <BookingCards
+            bookingId={booking.id}
+            cards={bookingCards}
+            firstName={stayGuest.firstName}
+            lastName={stayGuest.lastName}
+          />
+          {pliantRecap.length ? (
+            <PliantBookingTab
+              bookingId={booking.id}
+              currency={booking.currency}
+              cards={pliantRecap}
+              items={items}
+            />
+          ) : null}
+        </div>
       ) : null}
 
       {tab === "todo" ? (

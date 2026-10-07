@@ -57,13 +57,16 @@ export function WhatsappThread({
   messages,
   requests,
   bookings,
+  expanded = false,
 }: {
   messages: WhatsappThreadMessage[];
   requests: WhatsappThreadRequest[];
   bookings: { id: string; reference: string }[];
+  /** Dossier : toute la conversation. La fiche client garde le repli aux trois derniers messages. */
+  expanded?: boolean;
 }) {
   const reference = new Map(bookings.map((booking) => [booking.id, booking.reference]));
-  const earlier = messages.length > VISIBLE_MESSAGES ? messages.slice(0, -VISIBLE_MESSAGES) : [];
+  const earlier = !expanded && messages.length > VISIBLE_MESSAGES ? messages.slice(0, -VISIBLE_MESSAGES) : [];
   const recent = earlier.length ? messages.slice(-VISIBLE_MESSAGES) : messages;
   return (
     <section className="admin-af-card rounded-3xl p-5">

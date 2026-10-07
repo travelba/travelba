@@ -228,7 +228,7 @@ export async function issueCustomerPliantCard(
   return { cardId: issued.cardId, created: true as const };
 }
 
-/** Plafond historique du bureau carte. L’onglet Pliant du dossier passe `limit: null`. */
+/** Plafond historique du bureau carte. L’onglet Carte du dossier passe `limit: null`. */
 export async function pliantSpendsForCards(
   admin: Admin,
   cardIds: string[],
