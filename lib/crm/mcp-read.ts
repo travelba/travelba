@@ -243,8 +243,6 @@ export async function readTableauDeBord() {
   );
   return {
     a_faire: adminTodoLines({
-      revolut: badges.revolut,
-      stripe: badges.stripe,
       emails: badges.emails,
       le: badges.le,
       formalities: desk.open.length,

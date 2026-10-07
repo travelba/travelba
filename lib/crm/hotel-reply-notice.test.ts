@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   hotelReplyHref,
   hotelReplyNotices,
+  recentHotelReplies,
   replyExcerpt,
   shouldSyncHotelReplies,
   type HotelReplyNoticeRow,
@@ -81,6 +82,27 @@ test("le moment de la réponse reste court", () => {
   assert.equal(replyMoment("2026-10-02T10:00:00.000Z", now), "Il y a 4 min");
   assert.equal(replyMoment("2026-10-02T08:04:00.000Z", now), "Il y a 2 h");
   assert.equal(replyMoment("pas une date", now), "");
+});
+
+test("les derniers retours suivent les courriers envoyés, du plus récent au plus ancien", () => {
+  const lines = recentHotelReplies(
+    [
+      row({ id: "old", receivedAt: "2026-10-01T09:00:00.000Z", subject: "Re: Lien de paiement — Casa Monti" }),
+      row({ id: "auto", countsAsReply: false, receivedAt: "2026-10-03T09:00:00.000Z", body: "Je suis absent du bureau." }),
+      row({ id: "new", receivedAt: "2026-10-02T18:00:00.000Z", body: "contact@hotel.test a confirmé. " + "x".repeat(200) }),
+    ],
+    { [bookingId]: "TB-1042" },
+    8
+  );
+  assert.deepEqual(
+    lines.map((line) => line.id),
+    ["new", "old"]
+  );
+  assert.equal(lines[0]?.reference, "TB-1042");
+  assert.equal(lines[0]?.excerpt.includes("@"), false);
+  assert.equal(lines[0]?.excerpt.length, 140);
+  assert.equal(lines[1]?.subject, "Lien de paiement — Casa Monti");
+  assert.equal(lines[1]?.href, `/admin/reservations/${bookingId}?hotel=${itemId}`);
 });
 
 test("la synchro légère attend deux minutes", () => {

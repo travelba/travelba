@@ -110,12 +110,35 @@ describe("soldes des comptes", () => {
         ],
       })
     );
-    assert.match(html, /Comptes/);
+    assert.match(html, /Soldes des comptes/);
     assert.match(html, /href="\/admin\/revolut"/);
     assert.match(html, /href="\/admin\/stripe"/);
     assert.match(html, /href="\/admin\/pliant"/);
     assert.match(html, /Indisponible/);
     assert.ok(html.includes(formatMoney(10)));
+  });
+
+  it("chaque compte a sa carte et son solde", () => {
+    const html = renderToStaticMarkup(
+      createElement(AgencyAccountBalances, {
+        bare: true,
+        accounts: [
+          {
+            label: "Revolut",
+            href: "/admin/revolut",
+            pockets: [
+              { name: "Main", amount: 1234.5, currency: "EUR", pending: null },
+              { name: "Dollar", amount: 40, currency: "USD", pending: null },
+            ],
+          },
+        ],
+      })
+    );
+    assert.equal((html.match(/href="\/admin\/revolut"/g) || []).length, 2);
+    assert.match(html, /Main/);
+    assert.match(html, /Dollar/);
+    assert.ok(html.includes(formatMoney(1234.5)));
+    assert.ok(html.includes(formatMoney(40, "USD")));
   });
 
   it("l’accueil et les pages argent affichent ces soldes", () => {

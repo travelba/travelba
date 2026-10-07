@@ -6,12 +6,10 @@ function plural(count: number, one: string, many: string) {
 
 /**
  * « À faire aujourd’hui » du tableau de bord : une seule liste, dans l’ordre du travail de l’agence
- * (argent reçu, mails à relire, Little Emperors, formalités, services, départs demain, pièces).
+ * (mails à relire, Little Emperors, formalités, services, départs demain, pièces).
  * Les compteurs à zéro n’apparaissent pas.
  */
 export function adminTodoLines(input: {
-  revolut: number;
-  stripe: number;
   emails: number;
   le: number;
   formalities: number;
@@ -20,18 +18,6 @@ export function adminTodoLines(input: {
   expiring: number;
 }): AdminTodoLine[] {
   const lines: AdminTodoLine[] = [
-    {
-      id: "revolut",
-      count: input.revolut,
-      label: `${plural(input.revolut, "virement Revolut", "virements Revolut")} à rapprocher`,
-      href: "/admin/revolut",
-    },
-    {
-      id: "stripe",
-      count: input.stripe,
-      label: `${plural(input.stripe, "paiement Stripe", "paiements Stripe")} à rapprocher`,
-      href: "/admin/stripe",
-    },
     {
       id: "emails",
       count: input.emails,
@@ -48,13 +34,13 @@ export function adminTodoLines(input: {
       id: "formalities",
       count: input.formalities,
       label: `${plural(input.formalities, "formalité ouverte", "formalités ouvertes")}`,
-      href: "#formalites",
+      href: "/admin/formalites",
     },
     {
       id: "services",
       count: input.services,
       label: `${plural(input.services, "service", "services")} à confirmer`,
-      href: "#services",
+      href: "/admin/services",
     },
     {
       id: "depart-tomorrow",

@@ -212,24 +212,6 @@ export function AdminNav({
           />
         </form>
         <div className="ml-6 flex items-center gap-4">
-          {unmatchedCount > 0 ? (
-            <Link
-              href="/admin/revolut"
-              className="inline-flex items-center gap-2 rounded-full border border-[var(--admin-gold)]/40 bg-[var(--admin-gold-soft)]/40 px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)]"
-            >
-              <Icon name="sync_alt" className="h-4 w-4" />
-              {unmatchedCount} virement{unmatchedCount > 1 ? "s" : ""} à rapprocher
-            </Link>
-          ) : null}
-          {stripeCount > 0 ? (
-            <Link
-              href="/admin/stripe"
-              className="inline-flex items-center gap-2 rounded-full border border-[var(--admin-gold)]/40 bg-[var(--admin-gold-soft)]/40 px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)]"
-            >
-              <Icon name="credit_card" className="h-4 w-4" />
-              {stripeCount} paiement{stripeCount > 1 ? "s" : ""} Stripe à rapprocher
-            </Link>
-          ) : null}
           <UserMenu name={staffName} role={staffRole} onSignOut={signOut} />
         </div>
       </header>

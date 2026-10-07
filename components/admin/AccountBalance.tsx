@@ -10,17 +10,23 @@ function money(amount: number, currency: string) {
   }
 }
 
-function PocketFigures({ pocket, large }: { pocket: AccountPocket; large: boolean }) {
+function PocketFigures({ pocket, large, onDark = false }: { pocket: AccountPocket; large: boolean; onDark?: boolean }) {
   return (
     <p>
       {pocket.name ? (
-        <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted">{pocket.name}</span>
+        <span className={`text-[10px] font-bold uppercase tracking-[0.12em] ${onDark ? "text-white/70" : "text-muted"}`}>
+          {pocket.name}
+        </span>
       ) : null}
-      <span className={`block font-display font-extrabold tabular-nums ${large ? "text-3xl" : "text-2xl"}`}>
+      <span
+        className={`block font-display font-extrabold tabular-nums ${onDark ? "text-white" : "text-[var(--admin-navy)]"} ${
+          large ? "text-3xl" : "text-2xl"
+        }`}
+      >
         {pocket.amount == null ? "Indisponible" : money(pocket.amount, pocket.currency)}
       </span>
       {pocket.pending != null && pocket.pending !== 0 ? (
-        <span className="mt-0.5 block text-xs font-medium text-muted">
+        <span className={`mt-0.5 block text-xs font-medium ${onDark ? "text-white/70" : "text-muted"}`}>
           En attente {money(pocket.pending, pocket.currency)}
         </span>
       ) : null}
@@ -45,40 +51,38 @@ export function AccountBalanceCard({ pockets }: { pockets: AccountPocket[] }) {
 
 export function AgencyAccountBalances({
   accounts,
+  bare = false,
 }: {
   accounts: { label: string; href: string; pockets: AccountPocket[] }[];
+  /** Cartes seules, pour les poser dans une rangée déjà titrée. */
+  bare?: boolean;
 }) {
   if (!accounts.length) return null;
+  const cards = accounts.flatMap((account) => {
+    const shown = account.pockets.length
+      ? account.pockets
+      : [{ name: null, amount: null, currency: "EUR", pending: null }];
+    return shown.map((pocket, index) => (
+      <Link
+        key={`${account.href}-${index}-${pocket.name || "compte"}-${pocket.currency}`}
+        href={account.href}
+        className="rounded-2xl bg-[var(--admin-navy)] px-5 py-4 text-white shadow-sm transition hover:ring-1 hover:ring-[var(--admin-gold)]"
+      >
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">{account.label}</p>
+        {pocket.name ? <p className="mt-1 text-sm font-semibold text-white">{pocket.name}</p> : null}
+        <div className="mt-2">
+          <PocketFigures pocket={{ ...pocket, name: null }} large onDark />
+        </div>
+      </Link>
+    ));
+  });
+  if (bare) return <>{cards}</>;
   return (
     <section aria-labelledby="comptes-titre" className="space-y-3">
       <h2 id="comptes-titre" className="font-display text-lg font-bold text-[var(--admin-navy)]">
-        Comptes
+        Soldes des comptes
       </h2>
-      <div className="grid gap-3 sm:grid-cols-3">
-        {accounts.map((account) => {
-          const shown = account.pockets.length
-            ? account.pockets
-            : [{ name: null, amount: null, currency: "EUR", pending: null }];
-          return (
-            <Link
-              key={account.href}
-              href={account.href}
-              className="admin-af-card rounded-2xl px-5 py-4 text-[var(--admin-navy)] transition hover:border-[var(--admin-gold)]"
-            >
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">{account.label}</p>
-              <div className="mt-2 space-y-3">
-                {shown.map((pocket) => (
-                  <PocketFigures
-                    key={`${account.href}-${pocket.name || "compte"}-${pocket.currency}`}
-                    pocket={pocket}
-                    large={shown.length === 1}
-                  />
-                ))}
-              </div>
-            </Link>
-          );
-        })}
-      </div>
+      <div className="grid gap-3 sm:grid-cols-3">{cards}</div>
     </section>
   );
 }

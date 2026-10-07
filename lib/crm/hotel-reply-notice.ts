@@ -20,6 +20,7 @@ export type HotelReplyNoticeRow = {
   countsAsReply: boolean;
   hotelName?: string | null;
   title?: string | null;
+  subject?: string | null;
 };
 
 const EMAIL = /[^\s<>]+@[^\s<>]+/g;
@@ -63,6 +64,31 @@ export function hotelReplyNotices(rows: HotelReplyNoticeRow[], sinceIso: string 
       excerpt: replyExcerpt(row.body),
       receivedAt: row.receivedAt,
       href: hotelReplyHref(row.bookingId, row.itemId),
+    }));
+}
+
+export type RecentHotelReply = HotelReplyNotice & { reference: string; subject: string };
+
+/** Dernières vraies réponses aux courriers envoyés, les plus récentes en premier. */
+export function recentHotelReplies(
+  rows: HotelReplyNoticeRow[],
+  references: Record<string, string>,
+  limit = 8
+): RecentHotelReply[] {
+  return rows
+    .filter((row) => row.countsAsReply && row.receivedAt)
+    .sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt) || b.id.localeCompare(a.id))
+    .slice(0, Math.max(0, limit))
+    .map((row) => ({
+      id: row.id,
+      bookingId: row.bookingId,
+      itemId: row.itemId,
+      hotel: noticeHotelName(row),
+      excerpt: replyExcerpt(row.body),
+      receivedAt: row.receivedAt,
+      href: hotelReplyHref(row.bookingId, row.itemId),
+      reference: references[row.bookingId] || "",
+      subject: (row.subject || "").replace(/^\s*(re|fw|tr)\s*:\s*/i, "").trim(),
     }));
 }
 

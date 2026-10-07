@@ -1,7 +1,7 @@
 import "server-only";
 
 import { pliantBalancePocket, type AccountPocket } from "@/lib/crm/account-balances";
-import { loadPliantAccountBalance, pliantConfigured } from "@/lib/crm/pliant";
+import { loadPliantAccountBalance } from "@/lib/crm/pliant";
 import { loadRevolutAccountBalances } from "@/lib/crm/revolut";
 import { loadStripeAccountBalance } from "@/lib/crm/stripe";
 
@@ -34,20 +34,21 @@ function bounded<T>(promise: Promise<T>, fallback: T): Promise<T> {
   });
 }
 
-/** Revolut, Stripe, Pliant. Un compte fermé n’apparaît pas. Un appel trop long devient indisponible. */
+/** Revolut, Stripe et Pliant. Un appel trop long ou un compte fermé devient indisponible. */
 export async function loadAgencyAccounts(): Promise<AgencyAccount[]> {
   const [revolut, stripe, pliant] = await Promise.all([
-    bounded(loadRevolutAccountBalances(), unavailable()),
-    bounded(loadStripeAccountBalance(), unavailable()),
-    pliantConfigured()
-      ? bounded(loadPliantAccountBalance(), { availableCents: null as number | null, currency: "EUR" })
-      : Promise.resolve(null),
+    bounded(loadRevolutAccountBalances(), null),
+    bounded(loadStripeAccountBalance(), null),
+    bounded(loadPliantAccountBalance(), null),
   ]);
-  const accounts: AgencyAccount[] = [];
-  if (revolut) accounts.push({ id: "revolut", label: "Revolut", href: "/admin/revolut", pockets: revolut });
-  if (stripe) accounts.push({ id: "stripe", label: "Stripe", href: "/admin/stripe", pockets: stripe });
-  if (pliant) {
-    accounts.push({ id: "pliant", label: "Pliant", href: "/admin/pliant", pockets: pliantBalancePocket(pliant) });
-  }
-  return accounts;
+  return [
+    { id: "revolut", label: "Revolut", href: "/admin/revolut", pockets: revolut?.length ? revolut : unavailable() },
+    { id: "stripe", label: "Stripe", href: "/admin/stripe", pockets: stripe?.length ? stripe : unavailable() },
+    {
+      id: "pliant",
+      label: "Pliant",
+      href: "/admin/pliant",
+      pockets: pliant ? pliantBalancePocket(pliant) : unavailable(),
+    },
+  ];
 }

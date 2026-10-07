@@ -1,90 +1,67 @@
 import Link from "next/link";
-import { Suspense } from "react";
 import { requireStaffPage } from "@/lib/crm/auth";
-import {
-  customerFullName,
-  type CrmBalance,
-  type CrmBooking,
-  type CrmTravelDocument,
-} from "@/lib/crm/types";
-import {
-  formatDateFr,
-  formatMoney,
-  isoDateInDays,
-  jMinusLabel,
-  todayIsoDate,
-} from "@/lib/crm/money";
+import { customerFullName, type CrmBalance, type CrmBooking } from "@/lib/crm/types";
+import { formatDateFr, formatMoney } from "@/lib/crm/money";
+import { addIsoDays } from "@/lib/crm/dates";
+import { stayToday } from "@/lib/crm/stay-moment";
 import { loadAgencyAccounts } from "@/lib/crm/agency-accounts";
+import { loadDashboardMails } from "@/lib/crm/dashboard-mails";
 import { AgencyAccountBalances } from "@/components/admin/AccountBalance";
+import { RecentMails } from "@/components/admin/RecentMails";
 import { revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
 import { stripeConfigured, stripeWebhookConfigured } from "@/lib/crm/stripe";
 import { buildLaunchItems } from "@/lib/crm/launch-status";
-import { stayHeadline } from "@/lib/crm/carnet";
-import { staffStayLabel } from "@/lib/crm/staff-stay";
 import { AdminLaunchStatus } from "@/components/admin/AdminLaunchStatus";
-import { ServiceDesk } from "@/components/admin/ServiceDesk";
-import { EstaNoticeList } from "@/components/admin/EstaNoticeList";
-import { UkEtaNoticeList } from "@/components/admin/UkEtaNoticeList";
-import { VisaDesk } from "@/components/admin/VisaDesk";
-import { loadOpenEstaNotices } from "@/lib/crm/esta-run";
-import { loadOpenUkEtaNotices } from "@/lib/crm/uk-eta-run";
-import { deskView, type DeskTask } from "@/lib/crm/visa-desk";
-import { BookingHero } from "@/components/crm/BookingHero";
+import { DashboardWeek } from "@/components/admin/DashboardWeek";
+import { dashboardWeek } from "@/lib/crm/dashboard-week";
 import { loadStayMaps } from "@/lib/crm/carnet-query";
 import { loadDisplayedStayAmounts } from "@/lib/crm/displayed-stay";
-import { reviewIdentityPieces } from "@/lib/crm/trip-documents";
-import {
-  EmptyState,
-  PageEyebrow,
-  PageTitle,
-  BookingStatusBadge,
-} from "@/components/crm/ui";
-import { staffRoleLabel } from "@/lib/crm/staff-team";
-import { serviceDeskLines, type ServiceDeskItem } from "@/lib/crm/service-desk";
+import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { adminBadges } from "@/lib/crm/admin-badges";
 import { adminTodoLines } from "@/lib/crm/admin-todo";
+import { loadAgencyServiceDesk } from "@/lib/crm/service-desk-load";
 import { CUSTOMER_NAME_SELECT, type CustomerNameRow } from "@/lib/crm/customer-search";
-
-const SERVICE_KINDS = ["chauffeur", "greeter", "checkin"] as const;
 
 export default async function AdminHomePage() {
   const { supabase, staff } = await requireStaffPage();
 
-  const today = todayIsoDate();
-  const soon = isoDateInDays(90);
-  const weekAgo = isoDateInDays(-7);
+  const today = stayToday();
+  const tomorrow = addIsoDays(today, 1);
+  const horizon = addIsoDays(today, 7);
 
   const [
-    { data: bookings },
-    { data: docs },
+    { data: travellingRows },
+    { data: upcomingRows },
     { count: bookingCount },
     { count: publishedCount },
     { count: customerCount },
     { count: withPhoneCount },
     { data: balances },
-    { count: departSoonCount },
     { count: departTomorrowCount },
-    { data: taskRows },
-    { data: activeBookings },
+    { count: openFormalities },
     revolutIsConnected,
     badges,
-    estaNotices,
-    ukEtaNotices,
+    serviceLines,
+    agencyAccounts,
+    recentMails,
   ] = await Promise.all([
     supabase
       .from("crm_bookings")
       .select("*")
+      .lt("start_date", today)
+      .neq("status", "cancelled")
+      .is("archived_at", null)
+      .or(`end_date.gte.${today},end_date.is.null`)
+      .order("end_date", { ascending: true, nullsFirst: false })
+      .limit(40),
+    supabase
+      .from("crm_bookings")
+      .select("*")
       .gte("start_date", today)
+      .lte("start_date", horizon)
       .neq("status", "cancelled")
       .is("archived_at", null)
       .order("start_date")
-      .limit(10),
-    supabase
-      .from("crm_travel_documents")
-      .select("*")
-      .not("expires_on", "is", null)
-      .lte("expires_on", soon)
-      .order("expires_on")
       .limit(40),
     supabase.from("crm_bookings").select("id", { count: "exact", head: true }).is("archived_at", null),
     supabase
@@ -102,36 +79,15 @@ export default async function AdminHomePage() {
     supabase
       .from("crm_bookings")
       .select("id", { count: "exact", head: true })
-      .gte("start_date", today)
-      .lte("start_date", isoDateInDays(7))
+      .eq("start_date", tomorrow)
       .neq("status", "cancelled")
       .is("archived_at", null),
-    supabase
-      .from("crm_bookings")
-      .select("id", { count: "exact", head: true })
-      .eq("start_date", isoDateInDays(1))
-      .neq("status", "cancelled")
-      .is("archived_at", null),
-    // Formalités ouvertes, ou faites depuis moins de 7 jours : le reste n’intéresse plus le bureau (A-24).
-    supabase
-      .from("crm_visa_tasks")
-      .select("booking_id, holder_name, reference, reasons, done_at, created_at")
-      .or(`done_at.is.null,done_at.gte.${weekAgo}`)
-      .order("created_at", { ascending: false })
-      .limit(100),
-    // Dossiers vivants (ni annulés, ni archivés, pas terminés) : périmètre des services à confirmer.
-    supabase
-      .from("crm_bookings")
-      .select("id, reference, status, customer_id")
-      .neq("status", "cancelled")
-      .is("archived_at", null)
-      .or(`end_date.is.null,end_date.gte.${isoDateInDays(-1)}`)
-      .order("start_date", { ascending: true, nullsFirst: false })
-      .limit(300),
+    supabase.from("crm_visa_tasks").select("id", { count: "exact", head: true }).is("done_at", null),
     revolutConnected(),
     adminBadges(),
-    loadOpenEstaNotices(supabase).catch(() => []),
-    loadOpenUkEtaNotices(supabase).catch(() => []),
+    loadAgencyServiceDesk(supabase),
+    loadAgencyAccounts(),
+    loadDashboardMails(supabase),
   ]);
   const customersTotal = customerCount ?? 0;
   const launchItems = buildLaunchItems({
@@ -148,331 +104,86 @@ export default async function AdminHomePage() {
     (sum, row) => sum + Math.max(0, -Number(row.balance) || 0),
     0
   );
-  const upcoming = (bookings || []) as CrmBooking[];
-  const desk = deskView(
-    ((taskRows || []) as {
-      booking_id: string;
-      holder_name: string;
-      reference: string;
-      reasons: DeskTask["reasons"];
-      done_at: string | null;
-      created_at: string;
-    }[]).map((row) => ({
-      bookingId: row.booking_id,
-      holderName: row.holder_name,
-      reference: row.reference,
-      reasons: row.reasons || [],
-      doneAt: row.done_at,
-      createdAt: row.created_at,
-    })),
-    today
-  );
-  const serviceBookings = (activeBookings || []) as {
-    id: string;
-    reference: string;
-    status: string;
-    customer_id: string;
-  }[];
-  const serviceBookingIds = serviceBookings.map((row) => row.id);
-  const { data: serviceRows } = serviceBookingIds.length
-    ? await supabase
-        .from("crm_booking_items")
-        .select("id, booking_id, kind, title, start_at, end_at, details")
-        .in("booking_id", serviceBookingIds)
-        .in("kind", [...SERVICE_KINDS])
-    : { data: [] as ServiceDeskItem[] };
-  const serviceItems = (serviceRows || []) as ServiceDeskItem[];
-  const withServices = [...new Set(serviceItems.map((row) => row.booking_id))];
-  const { data: serviceFlights } = withServices.length
-    ? await supabase
-        .from("crm_booking_items")
-        .select("id, booking_id, kind, title, start_at, end_at, details")
-        .in("booking_id", withServices)
-        .eq("kind", "flight")
-    : { data: [] as ServiceDeskItem[] };
-  const expiringPieces = reviewIdentityPieces((docs || []) as CrmTravelDocument[]).slice(0, 8);
-
-  // Noms des seuls clients affichés (prochains dossiers, services, pièces) : pas toute la table (A-24).
-  const nameIds = [
-    ...new Set(
-      [
-        ...upcoming.map((row) => row.customer_id),
-        ...serviceBookings.filter((row) => withServices.includes(row.id)).map((row) => row.customer_id),
-        ...expiringPieces.map((doc) => doc.customer_id),
-      ].filter(Boolean)
-    ),
-  ];
+  const weekBookings = [...((travellingRows || []) as CrmBooking[]), ...((upcomingRows || []) as CrmBooking[])];
+  const week = dashboardWeek(weekBookings, today);
+  const shown = [...week.travelling, ...week.soon, ...week.week].map((entry) => entry.booking);
+  const nameIds = [...new Set(shown.map((row) => row.customer_id).filter(Boolean))];
   const [{ data: customers }, displayedStayAmounts, places] = await Promise.all([
     nameIds.length
       ? supabase.from("crm_customers").select(CUSTOMER_NAME_SELECT).in("id", nameIds)
       : Promise.resolve({ data: [] as CustomerNameRow[] }),
-    loadDisplayedStayAmounts(supabase, upcoming),
+    loadDisplayedStayAmounts(supabase, shown),
     loadStayMaps(
       supabase,
-      upcoming.map((row) => row.id)
+      shown.map((row) => row.id)
     ),
   ]);
-  const byId = new Map(((customers || []) as CustomerNameRow[]).map((c) => [c.id, customerFullName(c)]));
-  const services = serviceDeskLines({
-    now: new Date(),
-    names: Object.fromEntries(byId),
-    bookings: serviceBookings.filter((row) => withServices.includes(row.id)),
-    items: [...serviceItems, ...((serviceFlights || []) as ServiceDeskItem[])],
-  });
+  const byId = new Map(((customers || []) as CustomerNameRow[]).map((row) => [row.id, customerFullName(row)]));
   const todo = adminTodoLines({
-    revolut: badges.revolut,
-    stripe: badges.stripe,
     emails: badges.emails,
     le: badges.le,
-    formalities: desk.open.length,
-    services: services.length,
+    formalities: openFormalities ?? 0,
+    services: serviceLines.length,
     departTomorrow: departTomorrowCount ?? 0,
     expiring: badges.pieces,
   });
   const staffFirst = (staff.full_name || "l’agence").split(" ")[0];
-  const featured = upcoming[0];
-  const rest = upcoming.slice(1);
-  const kpis = [
-    {
-      label: "Encours à encaisser",
-      value: formatMoney(remainingDue),
-      hint: "Encours négatifs · voir les transactions",
-      href: "/admin/transactions",
-      tone: "gold" as const,
-    },
-    {
-      label: "Départs sous 7 jours",
-      value: String(departSoonCount ?? 0),
-      hint: `${bookingCount ?? 0} dossier${(bookingCount ?? 0) > 1 ? "s" : ""} au portefeuille`,
-      href: "/admin/reservations?etat=a-venir&tri=depart-asc",
-      tone: "navy" as const,
-    },
-  ];
 
   return (
     <div className="space-y-6">
       <div>
         <PageEyebrow>Espace agence</PageEyebrow>
-        <PageTitle
-          title={`Bonjour ${staffFirst}`}
-          subtitle={`${staff.full_name || "Agent"} · ${staffRoleLabel(staff.role)} · ${formatDateFr(today)}`}
-        />
+        <PageTitle title={`Bonjour ${staffFirst}`} subtitle={formatDateFr(today)} />
       </div>
 
-      <section id="a-faire" className="admin-af-card rounded-2xl p-5" aria-labelledby="a-faire-titre">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 id="a-faire-titre" className="font-display text-lg font-bold text-[var(--admin-navy)]">
-            À faire aujourd’hui
-          </h2>
-          {todo.length ? (
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#9e7e51]">
-              {todo.length} point{todo.length > 1 ? "s" : ""}
-            </p>
-          ) : null}
-        </div>
+      <AgencyAccountBalances accounts={agencyAccounts} />
+
+      <section aria-labelledby="a-faire-titre">
+        <h2 id="a-faire-titre" className="font-display text-lg font-bold text-[var(--admin-navy)]">
+          À faire aujourd’hui
+        </h2>
         {todo.length ? (
-          <ol className="mt-3 divide-y divide-border text-sm">
+          <ul className="mt-3 flex gap-3 overflow-x-auto py-1 lg:flex-wrap lg:overflow-visible">
             {todo.map((row) => (
-              <li key={row.id}>
-                <Link href={row.href} className="flex items-center justify-between gap-3 py-2.5 font-semibold text-[var(--admin-navy)]">
-                  <span>{row.label}</span>
-                  <span aria-hidden>→</span>
-                </Link>
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <p className="mt-2 text-sm text-muted">Rien en attente. Bonne journée.</p>
-        )}
-        <div className="mt-4 space-y-4">
-          <div id="formalites">
-            <VisaDesk open={desk.open} grey={desk.grey} />
-            <EstaNoticeList notices={estaNotices} />
-            <UkEtaNoticeList notices={ukEtaNotices} />
-          </div>
-          <ServiceDesk lines={services} />
-        </div>
-      </section>
-
-      <section className="grid gap-3 sm:grid-cols-2">
-        {kpis.map((kpi) => (
-          <Link
-            key={kpi.label}
-            href={kpi.href}
-            className={`rounded-2xl px-5 py-4 transition ${
-              kpi.tone === "navy"
-                ? "bg-[var(--admin-navy)] text-white shadow-sm"
-                : "border border-[var(--admin-gold)]/40 bg-[#f8f4ed] text-[var(--admin-navy)]"
-            }`}
-          >
-            <p
-              className={`text-[10px] font-bold uppercase tracking-[0.14em] ${
-                kpi.tone === "navy" ? "text-[var(--admin-gold)]" : "text-[#9e7e51]"
-              }`}
-            >
-              {kpi.label}
-            </p>
-            <p className="mt-2 font-display text-3xl font-bold">{kpi.value}</p>
-            <p className={`mt-1 text-xs ${kpi.tone === "navy" ? "text-white/70" : "text-muted"}`}>
-              {kpi.hint}
-            </p>
-          </Link>
-        ))}
-      </section>
-
-      <Suspense fallback={<AccountBalancesPending />}>
-        <DashboardAccounts />
-      </Suspense>
-
-      <div className="grid items-start gap-6 lg:grid-cols-12">
-      <div className="space-y-6 lg:col-span-8">
-      <section className="space-y-3">
-        <div className="flex items-center justify-between px-1">
-          <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">
-            Prochaines réservations
-          </h2>
-          <Link href="/admin/reservations" className="text-sm font-semibold text-[var(--admin-navy)]">
-            Tout voir →
-          </Link>
-        </div>
-
-        {featured ? (
-          <Link
-            href={`/admin/reservations/${featured.id}`}
-            className="admin-af-card relative block overflow-hidden rounded-2xl"
-          >
-            <BookingHero booking={featured} places={places.arrival[featured.id]} priority>
-              <div className="absolute inset-0 flex flex-col justify-between p-5 text-white">
-                <div className="flex items-start justify-between gap-3">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">
-                    {featured.reference}
-                    {jMinusLabel(featured.start_date)
-                      ? ` · ${jMinusLabel(featured.start_date)}`
-                      : ""}
-                  </p>
-                  <BookingStatusBadge label={staffStayLabel(featured)} />
-                </div>
-                <div>
-                  <h3 className="font-display text-2xl font-bold leading-tight">
-                    {stayHeadline(featured.title, featured.destination, places.route[featured.id])}
-                  </h3>
-                  <p className="mt-1 text-sm text-white/80">
-                    {byId.get(featured.customer_id) || "Client"} ·{" "}
-                    {formatDateFr(featured.start_date)}
-                  </p>
-                  <p className="mt-2 text-sm font-semibold text-[var(--admin-gold)]">
-                    {formatMoney(displayedStayAmounts.get(featured.id) ?? Number(featured.total_amount), featured.currency)}
-                  </p>
-                </div>
-              </div>
-            </BookingHero>
-          </Link>
-        ) : (
-          <EmptyState
-            title="Aucune réservation à venir"
-            description="Importez les PDF d’un vrai dossier, Enregistrer, puis Montrer au client. Le carnet n’apparaît côté client qu’après ce geste."
-            action={
-              <Link
-                href="/admin/reservations/nouveau"
-                className="admin-af-btn inline-flex rounded-xl px-4 py-2.5 text-sm"
-              >
-                Nouveau dossier
-              </Link>
-            }
-          />
-        )}
-
-        {rest.length ? (
-          <ul className="admin-af-card divide-y divide-border overflow-hidden rounded-2xl">
-            {rest.map((b) => (
-              <li key={b.id}>
+              <li key={row.id} className="shrink-0">
                 <Link
-                  href={`/admin/reservations/${b.id}`}
-                  className="flex flex-col gap-2 px-5 py-3.5 transition hover:bg-[var(--admin-sky)]/40 sm:flex-row sm:items-center sm:justify-between"
+                  href={row.href}
+                  className="flex min-w-[12.5rem] items-center gap-3 rounded-2xl border border-[var(--admin-gold)]/30 bg-[#f8f4ed] px-4 py-3 text-[var(--admin-navy)] transition hover:border-[var(--admin-gold)]"
                 >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <BookingHero booking={b} places={places.arrival[b.id]} plain className="h-14 w-24 shrink-0 rounded-xl" />
-                    <div className="min-w-0">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9e7e51]">
-                      {b.reference}
-                      {jMinusLabel(b.start_date) ? ` · ${jMinusLabel(b.start_date)}` : ""}
-                    </p>
-                    <p className="font-semibold text-[var(--admin-navy)]">
-                      {stayHeadline(b.title, b.destination, places.route[b.id])}
-                    </p>
-                    <p className="text-xs text-muted">
-                      {byId.get(b.customer_id) || "Client"} · {formatDateFr(b.start_date)}
-                    </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">
-                      {staffStayLabel(b)}
-                    </span>
-                    <span className="text-sm font-semibold">
-                      {formatMoney(displayedStayAmounts.get(b.id) ?? Number(b.total_amount), b.currency)}
-                    </span>
-                  </div>
+                  <span className="font-display text-2xl font-bold tabular-nums text-[var(--admin-gold)]">{row.count}</span>
+                  <span className="max-w-[11rem] text-sm font-semibold leading-snug">{todoCaption(row.label)}</span>
                 </Link>
               </li>
             ))}
           </ul>
-        ) : null}
+        ) : (
+          <p className="mt-2 text-sm text-muted">Rien en attente. Bonne journée.</p>
+        )}
       </section>
-      </div>
 
-      <aside className="space-y-4 lg:col-span-4">
-      <AdminLaunchStatus items={launchItems} />
-      <section className="admin-af-card overflow-hidden rounded-2xl">
-        <div className="border-b border-[var(--border)] px-5 py-4">
-          <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">
-            Documents bientôt expirés
-          </h2>
-        </div>
-        <ul className="divide-y divide-border text-sm">
-          {expiringPieces.map((d) => (
-            <li key={d.id} className="flex flex-col gap-1 px-5 py-3 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
-              <Link
-                href={d.booking_id ? `/admin/reservations/${d.booking_id}` : `/admin/clients/${d.customer_id}`}
-                className="min-w-0 break-words font-medium text-[var(--admin-navy)] hover:underline"
-              >
-                {d.doc_type} {d.number || ""} · {byId.get(d.customer_id) || "Client"}
-              </Link>
-              <span className="shrink-0 font-semibold text-[var(--admin-red)]">
-                {formatDateFr(d.expires_on)}
-              </span>
-            </li>
-          ))}
-          {!expiringPieces.length ? (
-            <li className="px-5 py-8 text-center text-muted">Aucun document bientôt expiré.</li>
-          ) : null}
-        </ul>
+      <RecentMails mails={recentMails} />
+
+      <section aria-labelledby="argent-titre" className="space-y-3">
+        <h2 id="argent-titre" className="font-display text-lg font-bold text-[var(--admin-navy)]">
+          Argent
+        </h2>
+        <Link
+          href="/admin/transactions"
+          className="block max-w-sm rounded-2xl border border-[var(--admin-gold)]/40 bg-[#f8f4ed] px-5 py-4 text-[var(--admin-navy)] transition hover:border-[var(--admin-gold)]"
+        >
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Encours à encaisser</p>
+          <p className="mt-2 font-display text-3xl font-bold tabular-nums">{formatMoney(remainingDue)}</p>
+          <p className="mt-1 text-xs text-muted">Encours négatifs · voir les transactions</p>
+        </Link>
       </section>
-      </aside>
-      </div>
+
+      <DashboardWeek groups={week} names={byId} places={places} amounts={displayedStayAmounts} />
+
+      <AdminLaunchStatus items={launchItems} />
     </div>
   );
 }
 
-async function DashboardAccounts() {
-  const accounts = await loadAgencyAccounts();
-  return <AgencyAccountBalances accounts={accounts} />;
-}
-
-function AccountBalancesPending() {
-  return (
-    <section aria-busy="true" aria-labelledby="comptes-titre" className="space-y-3">
-      <h2 id="comptes-titre" className="font-display text-lg font-bold text-[var(--admin-navy)]">
-        Comptes
-      </h2>
-      <div className="grid gap-3 sm:grid-cols-3">
-        {["Revolut", "Stripe", "Pliant"].map((label) => (
-          <div key={label} className="admin-af-card rounded-2xl px-5 py-4">
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">{label}</p>
-            <p className="mt-2 font-display text-3xl font-extrabold text-muted">…</p>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
+function todoCaption(label: string) {
+  return label.replace(/^\d+\s+/, "");
 }

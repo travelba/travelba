@@ -43,8 +43,8 @@ export function adminNavGroups(input: { role?: "admin" | "agent" | ""; showExamp
       label: "Dossiers",
       items: [
         { href: "/admin/reservations", label: "Réservations", icon: "luggage" },
-        { href: "/admin#formalites", label: "Formalités", icon: "shield_check" },
-        { href: "/admin#services", label: "Services à confirmer", icon: "headset" },
+        { href: "/admin/formalites", label: "Formalités", icon: "shield_check" },
+        { href: "/admin/services", label: "Services à confirmer", icon: "headset" },
       ],
     },
     {
@@ -52,8 +52,8 @@ export function adminNavGroups(input: { role?: "admin" | "agent" | ""; showExamp
       label: "Argent",
       items: [
         { href: "/admin/transactions", label: "Transactions", icon: "landmark" },
-        { href: "/admin/revolut", label: "Revolut", icon: "sync_alt", badge: "revolut" },
-        { href: "/admin/stripe", label: "Stripe", icon: "credit_card", badge: "stripe" },
+        { href: "/admin/revolut", label: "Revolut", icon: "sync_alt" },
+        { href: "/admin/stripe", label: "Stripe", icon: "credit_card" },
         { href: "/admin/pliant", label: "Pliant", icon: "credit_card" },
       ],
     },
@@ -96,7 +96,7 @@ function splitHref(href: string) {
 
 /**
  * L’entrée active : le chemin le plus long qui préfixe la page, la requête (`?pieces=echeance`) l’emportant
- * sur l’entrée sans requête. Les ancres (`/admin#formalites`) ne s’allument jamais. Null hors menu.
+ * sur l’entrée sans requête. Une ancre ne s’allume jamais. Null hors menu.
  */
 export function activeAdminNavHref(groups: AdminNavGroup[], pathname: string, search = ""): string | null {
   const current = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
@@ -159,14 +159,21 @@ export type AdminMobileTab = {
 export const ADMIN_MOBILE_TABS: AdminMobileTab[] = [
   { id: "accueil", label: "Accueil", icon: "home", href: "/admin", paths: ["/admin"], badges: [] },
   { id: "clients", label: "Clients", icon: "group", href: "/admin/clients", paths: ["/admin/clients"], badges: [] },
-  { id: "dossiers", label: "Dossiers", icon: "luggage", href: "/admin/reservations", paths: ["/admin/reservations"], badges: [] },
+  {
+    id: "dossiers",
+    label: "Dossiers",
+    icon: "luggage",
+    href: "/admin/reservations",
+    paths: ["/admin/reservations", "/admin/formalites", "/admin/services"],
+    badges: [],
+  },
   {
     id: "argent",
     label: "Argent",
     icon: "landmark",
     href: "/admin/transactions",
     paths: ["/admin/transactions", "/admin/revolut", "/admin/stripe", "/admin/pliant"],
-    badges: ["revolut", "stripe"],
+    badges: [],
   },
   {
     id: "plus",

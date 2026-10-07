@@ -29,7 +29,7 @@ test("la sidebar rend les groupes, l’entrée active et les badges", () => {
   assert.match(html, /aria-expanded="false"[^>]*aria-controls="admin-nav-outils"/);
   assert.match(html, /id="admin-nav-outils" hidden/);
   assert.doesNotMatch(html, /Sortir/);
-  assert.match(html, />3</);
+  assert.doesNotMatch(html, />3</);
   assert.match(html, />2</);
 });
 
@@ -44,7 +44,7 @@ test("le menu utilisateur reste fermé au rendu, avec l’avatar en initiales", 
   assert.doesNotMatch(html, /Déconnexion/);
 });
 
-test("la barre basse a cinq entrées, aria-current et les badges Argent / Plus", () => {
+test("la barre basse a cinq entrées, aria-current et le badge Plus", () => {
   const html = renderToStaticMarkup(
     createElement(MobileTabBar, { pathname: "/admin/revolut", counts, moreOpen: false, onMore: () => {} })
   );
@@ -52,6 +52,6 @@ test("la barre basse a cinq entrées, aria-current et les badges Argent / Plus",
   assert.equal((html.match(/aria-current="page"/g) || []).length, 1);
   assert.match(html, /safe-area-inset-bottom/);
   assert.match(html, /aria-controls="admin-more-sheet"/);
-  assert.match(html, />3</);
+  assert.doesNotMatch(html, />3</);
   assert.match(html, />2</);
 });

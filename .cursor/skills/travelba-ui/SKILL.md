@@ -53,9 +53,10 @@ Même langage sur **toutes** les réservations, pas un dossier d’exemple.
 Client bas / header : **Accueil / Réservations / Transactions / Mon compte**.  
 Profil : **Vous / Pièces / Voyageurs / Facturation**. Pas « Cartes », pas WhatsApp champ.
 
-Admin (`AdminNav`, modèle dans `lib/crm/admin-nav.ts`) : sidebar en groupes repliables (état `localStorage`) — **Activité** (Tableau de bord) · **Clients** (Clients, Pièces à échéance [badge]) · **Dossiers** (Réservations, Formalités, Services à confirmer) · **Argent** (Transactions, Revolut [badge], Pliant) · **Boîtes de réception** (E-mails [badge], Little Emperors [badge]) · **Outils** (Messages types WhatsApp, E-mails au client, Diagnostic Gmail, Aperçu espace client hors prod) · **Équipe** (admins).
+Admin (`AdminNav`, modèle dans `lib/crm/admin-nav.ts`) : sidebar en groupes repliables (état `localStorage`) — **Activité** (Tableau de bord) · **Clients** (Clients, Pièces à échéance [badge]) · **Dossiers** (Réservations, Formalités `/admin/formalites`, Services à confirmer `/admin/services`) · **Argent** (Transactions, Revolut, Stripe, Pliant) · **Boîtes de réception** (E-mails [badge], Little Emperors [badge]) · **Outils** (Messages types WhatsApp, E-mails au client, Diagnostic Gmail, Aperçu espace client hors prod) · **Équipe** (admins).
+Le tableau de bord est le briefing : pastilles À faire, derniers mails (réponses d’hôtel aux courriers envoyés par le CRM : upgrade, lien de paiement, pré-check-in), rangée Argent (encours + comptes), semaine (En voyage, Aujourd’hui et demain, Sous 7 jours). Formalités et Services ne sont plus des ancres de l’accueil.
 Un seul CTA **Nouveau dossier** → `/admin/reservations/nouveau`. L’avatar ouvre le menu utilisateur (nom, rôle, WhatsApp agence, Déconnexion) : pas de « Sortir » épars.
-Téléphone (< 1024) : en-tête 56 px (logo, titre court, loupe → recherche en overlay, avatar) et barre basse fixe **Accueil / Clients / Dossiers / Argent / Plus** (badges Argent = Revolut, Plus = E-mails + LE) ; « Plus » ouvre une feuille basse (Boîtes, Outils, Équipe, utilisateur).
+Téléphone (< 1024) : en-tête 56 px (logo, titre court, loupe → recherche en overlay, avatar) et barre basse fixe **Accueil / Clients / Dossiers / Argent / Plus** (Plus = E-mails + Little Emperors) ; « Plus » ouvre une feuille basse (Boîtes, Outils, Équipe, utilisateur).
 `aria-current="page"` sur l’entrée active ; `/admin/recherche` allume l’omnibar. Rapprochement : popup recherche client (`CustomerPickDialog`), pas un select natif.
 
 ## Perf perçue
