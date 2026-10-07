@@ -5,7 +5,15 @@ import { loyaltyFromCustomer, normalizeLoyaltyMap, normalizeLoyaltyNumber } from
 import { encoursCaption, formatEncours, formatMoney, jMinusLabel, postedLedgerTotals } from "./money";
 import { unsplashKeywordMatch, bookingCoverPlan, bookingCoverUrl } from "./covers";
 import { stayArrivalPlaces } from "./carnet";
-import { countriesWithPhoto, COUNTRY_CODES } from "./cover-catalog";
+import {
+  catalogCitiesWithoutPhoto,
+  cityGeneratedCoverId,
+  countryCodeForPlace,
+  countryCoverPhoto,
+  countriesWithPhoto,
+  COUNTRY_CODES,
+  lookupCoverPhoto,
+} from "./cover-catalog";
 import { vaultDocumentsForPerson } from "./trip-documents";
 import { filterAgencyReceipts, filterCreditTransfers, isAgencyReceipt, isCreditTransfer, type CrmTravelDocument } from "./types";
 
@@ -113,9 +121,17 @@ test("cover catalogue matches the arrival place only", () => {
     unsplashKeywordMatch({ destination: "Tel Aviv", title: "Tel Aviv" }),
     "photo-1528791075103-b149f525eb22"
   );
-  assert.equal(unsplashKeywordMatch({ destination: "Provence", title: "Séjour" }), paris);
+  assert.equal(unsplashKeywordMatch({ destination: "Provence", title: "Séjour" }), "photo-city-provence");
+  assert.notEqual(unsplashKeywordMatch({ destination: "Provence", title: "Séjour" }), paris);
+  assert.equal(unsplashKeywordMatch({ destination: "Bordeaux", title: "Séjour" }), "photo-city-bordeaux");
+  assert.notEqual(unsplashKeywordMatch({ destination: "Bordeaux", title: "Séjour" }), paris);
+  assert.equal(unsplashKeywordMatch({ destination: "France", title: "Séjour" }), paris);
   assert.equal(unsplashKeywordMatch({ destination: "Italie", title: "Voyage" }), "photo-1552832230-c0197dd311b5");
   assert.equal(
+    unsplashKeywordMatch({ destination: "Florence", title: "Séjour" }),
+    "photo-city-florence"
+  );
+  assert.notEqual(
     unsplashKeywordMatch({ destination: "Florence", title: "Séjour" }),
     unsplashKeywordMatch({ destination: "Italie", title: "Voyage" })
   );
@@ -134,8 +150,29 @@ test("cover catalogue matches the arrival place only", () => {
   assert.equal(unsplashKeywordMatch({ destination: "Alpes", title: "Ski" }), null);
   assert.equal(
     unsplashKeywordMatch({ destination: "Lago di Como", title: "Lac" }),
-    unsplashKeywordMatch({ destination: "Italie", title: "Voyage" })
+    "photo-city-lago-di-como"
   );
+  const bordeauxStay = bookingCoverPlan(
+    { destination: "Bordeaux", title: "Séjour", cover_image_path: null },
+    {
+      items: [
+        { kind: "flight", details: { city_from: "Paris", city_to: "Bordeaux" } },
+        { kind: "hotel", details: { city: "Bordeaux" } },
+      ],
+    }
+  );
+  assert.equal(bordeauxStay.mode, "single");
+  if (bordeauxStay.mode === "single") {
+    assert.match(bordeauxStay.src, /photo-city-bordeaux/);
+    assert.doesNotMatch(bordeauxStay.src, /photo-1502602898657/);
+  }
+  for (const key of catalogCitiesWithoutPhoto()) {
+    const id = lookupCoverPhoto(key);
+    assert.equal(id, cityGeneratedCoverId(key));
+    const country = countryCodeForPlace(key);
+    const countryPhoto = country ? countryCoverPhoto(country) : null;
+    if (countryPhoto) assert.notEqual(id, countryPhoto);
+  }
   assert.notEqual(
     unsplashKeywordMatch({ destination: "Miami", title: "Miami" }),
     unsplashKeywordMatch({ destination: "Panama City", title: "Panama" })
@@ -259,7 +296,7 @@ test("cover catalogue matches the arrival place only", () => {
   assert.ok(countriesWithPhoto() >= 30);
 });
 
-test("plusieurs villes d’un pays prennent la photo du pays, deux pays se coupent", () => {
+test("deux villes ont chacune leur image, deux pays se coupent", () => {
   const miami = unsplashKeywordMatch({ destination: "Miami Beach", title: "Miami Beach" });
   assert.equal(miami, "photo-1533106497176-45ae19e68ba2");
   const both = bookingCoverPlan({
@@ -284,9 +321,10 @@ test("plusieurs villes d’un pays prennent la photo du pays, deux pays se coupe
     title: "Séjour",
     cover_image_path: null,
   });
-  assert.equal(morocco.mode, "single");
-  if (morocco.mode !== "single") return;
-  assert.match(morocco.src, /photo-1489749798305-4fea3ae63d43/);
+  assert.equal(morocco.mode, "split");
+  if (morocco.mode !== "split") return;
+  assert.match(morocco.src, /photo-1677837488142-a85ffbffe408/);
+  assert.match(morocco.srcB, /photo-city-essaouira/);
 
   const split = bookingCoverPlan({
     destination: "Marrakech",

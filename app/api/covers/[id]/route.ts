@@ -1,10 +1,14 @@
 import { readFile } from "node:fs/promises";
 import { NextResponse } from "next/server";
+import { ensureCityCover } from "@/lib/crm/cover-generate";
+import { generatedCityCoverSpec } from "@/lib/crm/cover-catalog";
 import { catalogCachePath, isCatalogPhotoId } from "@/lib/crm/cover-retouch";
 import { downloadCrmFile } from "@/lib/crm/files";
 import { publicCoverPath } from "@/lib/crm/cover-file";
 
 type Ctx = { params: Promise<{ id: string }> };
+
+export const maxDuration = 120;
 
 export async function GET(_request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
@@ -23,6 +27,9 @@ export async function GET(_request: Request, ctx: Ctx) {
     } catch {
       bytes = null;
     }
+  }
+  if (!bytes?.byteLength && generatedCityCoverSpec(id)) {
+    bytes = await ensureCityCover(id);
   }
   if (!bytes?.byteLength) return new NextResponse(null, { status: 404 });
 

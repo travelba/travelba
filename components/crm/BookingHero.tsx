@@ -31,7 +31,7 @@ export function BookingHero({
   frameClassName?: string;
   /** Lien public : la couverture importée passe par /api/files. */
   partage?: string | null;
-  /** Cartes du séjour : deux villes avec photo → diagonale, sinon photo du pays. */
+  /** Cartes du séjour : deux villes → diagonale de leurs images. */
   items?: CoverPlaceItem[];
   places?: string[];
   children?: ReactNode;

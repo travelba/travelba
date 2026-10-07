@@ -206,7 +206,7 @@ const COUNTRIES: Array<[code: string, photo: string | null, names: string[]]> = 
   ["pf", null, ["polynesie francaise", "french polynesia"]],
 ];
 
-/** Ville, station ou région : photo propre, sinon celle du pays. */
+/** Ville, station ou région : photo propre, sinon une image générée de ce lieu. */
 const CITIES: Array<[name: string, country: string, photo?: string]> = [
   ["avoriaz", "fr", "photo-1674043613875-eabfa5a45425"],
   ["morzine", "fr", "photo-1674043613875-eabfa5a45425"],
@@ -556,14 +556,62 @@ for (const [name, city] of NEARBY) {
   if (cities.has(city)) nearbyCity.set(name, city);
 }
 
+/** Identifiant stable d’une image générée pour une ville sans photo propre. */
+export function cityGeneratedCoverId(key: string) {
+  const slug = key.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  if (!slug) return null;
+  const id = `photo-city-${slug}`;
+  return /^photo-[A-Za-z0-9_-]{6,80}$/.test(id) ? id : null;
+}
+
+function titlePlace(key: string) {
+  return key
+    .split(" ")
+    .map((word) => (word.length <= 2 ? word : word.charAt(0).toUpperCase() + word.slice(1)))
+    .join(" ");
+}
+
+const countryLabel = new Map<string, string>();
+for (const [code, , names] of COUNTRIES) {
+  countryLabel.set(code, titlePlace(names[0] || code));
+}
+
+const generatedSpec = new Map<string, { place: string; country: string }>();
+for (const [key, city] of cities) {
+  if (city.photo) continue;
+  const id = cityGeneratedCoverId(key);
+  if (!id || generatedSpec.has(id)) continue;
+  generatedSpec.set(id, {
+    place: titlePlace(key),
+    country: countryLabel.get(city.country) || city.country.toUpperCase(),
+  });
+}
+
+/** Lieu d’une image générée. Absent si l’identifiant n’est pas une ville du catalogue. */
+export function generatedCityCoverSpec(photoId: string) {
+  return generatedSpec.get(photoId) ?? null;
+}
+
+/** Villes du catalogue sans photo propre : une image à générer par identifiant. */
+export function generatedCityCoverJobs() {
+  return [...generatedSpec.entries()]
+    .map(([id, spec]) => ({ id, place: spec.place, country: spec.country }))
+    .sort((a, b) => a.place.localeCompare(b.place, "fr"));
+}
+
+export function catalogCitiesWithoutPhoto() {
+  return [...cities.entries()].filter(([, city]) => !city.photo).map(([key]) => key);
+}
+
 function photoForCityKey(key: string, seen = new Set<string>()): string | null {
   if (seen.has(key)) return null;
   seen.add(key);
   const city = cities.get(key);
   if (city?.photo) return city.photo;
-  if (city) return countryPhoto.get(city.country) ?? null;
+  if (city) return cityGeneratedCoverId(key);
   const parent = nearbyCity.get(key);
-  return parent ? photoForCityKey(parent, seen) : null;
+  if (!parent) return null;
+  return photoForCityKey(parent, seen);
 }
 
 export const COUNTRY_CODES = [...countryPhoto.keys()];
@@ -584,7 +632,7 @@ export function catalogRetouchJobs() {
   return [...jobs.entries()].map(([id, label]) => ({ id, label }));
 }
 
-/** Ville d’abord, sinon la ville proche, sinon le pays du lieu, sinon le pays nommé tel quel. */
+/** Ville d’abord (photo propre ou image générée), sinon la ville proche, sinon le pays nommé tel quel. */
 export function lookupCoverPhoto(key: string) {
   const fromCity = photoForCityKey(key);
   if (fromCity) return fromCity;
@@ -605,12 +653,12 @@ export function coverSearchHits(): CoverSearchHit[] {
     if (photo) rows.push({ key, photo, rank });
   };
   for (const [key, city] of cities) {
-    push(key, city.photo ?? countryPhoto.get(city.country) ?? null, city.photo ? 3 : 2);
+    push(key, city.photo ?? cityGeneratedCoverId(key), 3);
   }
   for (const [key, parent] of nearbyCity) {
     const city = cities.get(parent);
     if (!city) continue;
-    push(key, city.photo ?? countryPhoto.get(city.country) ?? null, city.photo ? 3 : 2);
+    push(key, city.photo ?? cityGeneratedCoverId(parent), 3);
   }
   for (const [key, code] of countryAlias) {
     push(key, countryPhoto.get(code) ?? null, 1);
@@ -623,6 +671,11 @@ export function coverSearchHits(): CoverSearchHit[] {
 /** Photo propre de la ville. Le repli pays n’est pas une photo de cette ville. */
 export function cityOwnCoverPhoto(key: string) {
   return cities.get(key)?.photo ?? null;
+}
+
+/** Photo de cette ville : fichier du catalogue, image générée, ou celle de la ville proche. */
+export function cityCoverPhoto(key: string) {
+  return photoForCityKey(key);
 }
 
 export function countryCodeForPlace(key: string) {

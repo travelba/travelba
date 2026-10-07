@@ -103,7 +103,7 @@ OIDC Vercel : `aiGatewayConfigured()` peut être vrai sur Vercel sans `sk-`. L�
 
 - Bucket `crm-files` **privé**.
 - Ingest : `unpdf` + `gpt-4o`. Plafond 30 fichiers / 25 Mo.
-- Couverture : photo de la ville, sinon photo vérifiée du pays (`lib/crm/cover-catalog.ts`). Jamais Paris/CDG comme destination. Pas de génération automatique. Import agence : `bookings/{id}/cover.webp`. Skill `travelba-carnet`.
+- Couverture : photo de la ville. Sans photo propre, image générée de cette ville (`npm run covers:generate`, fichier `public/covers`). Jamais Paris/CDG comme destination. Import agence : `bookings/{id}/cover.webp`. Skill `travelba-carnet`.
 
 ## Interdits prod
 

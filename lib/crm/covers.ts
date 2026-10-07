@@ -1,7 +1,7 @@
 import type { CrmBooking } from "@/lib/crm/types";
 import { coverQuery, isOriginHub, stayArrivalPlaces } from "@/lib/crm/carnet";
 import {
-  cityOwnCoverPhoto,
+  cityCoverPhoto,
   countryCodeForPlace,
   countryCoverPhoto,
   coverSearchHits,
@@ -142,7 +142,7 @@ function arrivalPlaces(
   return stayArrivalPlaces(booking.destination, booking.title);
 }
 
-/** Une ville : sa photo. Deux villes qui ont chacune la leur : diagonale. Sinon le pays. */
+/** Une ville : sa photo, ou une image générée de cette ville. Deux villes : diagonale. */
 export function bookingCoverPlan(
   booking: CoverBooking,
   options?: { items?: CoverPlaceItem[]; places?: string[]; partage?: string | null }
@@ -169,14 +169,15 @@ export function bookingCoverPlan(
     if (!countries.includes(code)) countries.push(code);
   }
   if (coverPlaces.length >= 2 && countries.length === 1) {
-    const own: string[] = [];
+    const photos: string[] = [];
     for (const place of coverPlaces) {
-      const photo = cityOwnCoverPhoto(placeKey(place));
-      if (photo && !own.includes(photo)) own.push(photo);
+      const photo = cityCoverPhoto(placeKey(place));
+      if (photo && !photos.includes(photo)) photos.push(photo);
     }
-    if (own.length >= 2) {
-      return { mode: "split", src: catalogUrl(own[0]), srcB: catalogUrl(own[1]) };
+    if (photos.length >= 2) {
+      return { mode: "split", src: catalogUrl(photos[0]), srcB: catalogUrl(photos[1]) };
     }
+    if (photos.length === 1) return { mode: "single", src: catalogUrl(photos[0]), fallback: null };
     const photo = countryCoverPhoto(countries[0]);
     if (photo) return { mode: "single", src: catalogUrl(photo), fallback: null };
   }
