@@ -68,7 +68,13 @@ function walletOf(customer: PickableCustomer | null) {
 function ManualNewBookingForm({
   companies,
 }: {
-  companies: { id: string; customer_id: string; company_name: string | null; sort_order: number }[];
+  companies: {
+    id: string;
+    customer_id: string;
+    company_name: string | null;
+    sort_order: number;
+    funding?: string | null;
+  }[];
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
