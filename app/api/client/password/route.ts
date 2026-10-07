@@ -79,7 +79,7 @@ export async function POST(request: Request) {
   await supabase.auth.refreshSession();
   if (!staff && customer?.id && user.email) {
     try {
-      // L’invitation vient souvent d’envoyer le même « Enchanté ». On saute alors.
+      // Premier WhatsApp « Enchanté », lien magique : l’invitation n’en envoie plus (e-mail seul).
       await sendSpaceAccessWhatsapp({
         customerId: customer.id,
         email: user.email,
