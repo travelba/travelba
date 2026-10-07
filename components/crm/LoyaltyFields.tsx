@@ -58,7 +58,7 @@ export function LoyaltyFields({
               <option value="">Choisir</option>
               {hidden.map((program) => (
                 <option key={program.key} value={program.key}>
-                  {program.label}
+                  {program.label} — {program.hint}
                 </option>
               ))}
             </select>

@@ -5,6 +5,7 @@ import { emptyToNull } from "@/lib/crm/identity";
 import { storedCompanionPhone } from "@/lib/crm/trip-share";
 import { deleteTravelDocuments } from "@/lib/crm/travel-document-write";
 import { companionActivityDetail, companionActivitySummary, recordCustomerActivity } from "@/lib/crm/customer-activity";
+import { loyaltyPatchFromBody, normalizeLoyaltyMap } from "@/lib/crm/loyalty";
 
 function phonePatch(body: Record<string, unknown> | null) {
   if (!body || !Object.prototype.hasOwnProperty.call(body, "phone")) return {};
@@ -46,6 +47,7 @@ export async function POST(request: Request) {
       nationality: resolveNationality(String(body?.nationality || "")),
       relationship: emptyToNull(body?.relationship),
       ...phone,
+      ...loyaltyPatchFromBody(body || {}),
     })
     .select("*")
     .single();
@@ -60,6 +62,7 @@ export async function POST(request: Request) {
       birthDate: emptyToNull(body?.birth_date),
       nationality: resolveNationality(String(body?.nationality || "")),
       phone: "phone" in phone ? phone.phone : null,
+      loyalty: normalizeLoyaltyMap(body?.loyalty),
     }),
   });
   return NextResponse.json({ companion: data });
@@ -85,6 +88,7 @@ export async function PATCH(request: Request) {
       nationality: resolveNationality(String(body.nationality || "")),
       relationship: emptyToNull(body.relationship),
       ...phone,
+      ...loyaltyPatchFromBody(body),
     })
     .eq("id", id)
     .eq("customer_id", auth.customer.id)
@@ -104,6 +108,7 @@ export async function PATCH(request: Request) {
       birthDate: emptyToNull(data.birth_date),
       nationality: emptyToNull(data.nationality),
       phone: emptyToNull(data.phone),
+      loyalty: normalizeLoyaltyMap(data.loyalty),
     }),
   });
   return NextResponse.json({ companion: data });

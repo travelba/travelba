@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { resolveNationality } from "@/lib/crm/countries";
 import { emptyToNull } from "@/lib/crm/identity";
+import { loyaltyPatchFromBody } from "@/lib/crm/loyalty";
 import { storedCompanionPhone } from "@/lib/crm/trip-share";
 import { deleteTravelDocuments } from "@/lib/crm/travel-document-write";
 
@@ -52,6 +53,7 @@ export async function POST(request: Request) {
     .insert({
       customer_id: customerId,
       ...patch,
+      ...loyaltyPatchFromBody(body || {}),
     })
     .select("*")
     .single();
@@ -70,7 +72,7 @@ export async function PATCH(request: Request) {
   if (!id || !customerId || !patch.first_name || !patch.last_name) return jsonError("Champs requis");
   const { data, error } = await auth.supabase
     .from("crm_travel_companions")
-    .update(patch)
+    .update({ ...patch, ...loyaltyPatchFromBody(body || {}) })
     .eq("id", id)
     .eq("customer_id", customerId)
     .select("*")

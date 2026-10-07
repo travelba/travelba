@@ -5,6 +5,8 @@ export const LOYALTY_PROGRAMS = [
   { key: "skywards", label: "Skywards", hint: "Emirates" },
   { key: "bonvoy", label: "Marriott Bonvoy", hint: "Hôtels Marriott" },
   { key: "all_accor", label: "ALL Accor", hint: "Accor Live Limitless" },
+  { key: "grand_voyageur", label: "Grand Voyageur", hint: "SNCF" },
+  { key: "great_members", label: "Great Members", hint: "Club Med" },
 ] as const;
 
 export type LoyaltyKey = (typeof LOYALTY_PROGRAMS)[number]["key"];
@@ -20,14 +22,26 @@ export function loyaltyFromCustomer(customer: {
   loyalty?: LoyaltyMap | null;
 }): LoyaltyMap {
   const stored = customer.loyalty && typeof customer.loyalty === "object" ? customer.loyalty : {};
-  return {
-    flying_blue: customer.flying_blue || stored.flying_blue || null,
-    miles_more: stored.miles_more || null,
-    executive_club: stored.executive_club || null,
-    skywards: stored.skywards || null,
-    bonvoy: stored.bonvoy || null,
-    all_accor: stored.all_accor || null,
-  };
+  const next: LoyaltyMap = {};
+  for (const program of LOYALTY_PROGRAMS) {
+    const fromColumn = program.key === "flying_blue" ? customer.flying_blue : null;
+    next[program.key] = fromColumn || stored[program.key] || null;
+  }
+  return next;
+}
+
+/** Libellés des programmes qui ont un numéro. */
+export function filledLoyaltyLabels(loyalty: LoyaltyMap | null | undefined) {
+  if (!loyalty || typeof loyalty !== "object") return [];
+  return LOYALTY_PROGRAMS.filter((program) => normalizeLoyaltyNumber(loyalty[program.key])).map(
+    (program) => program.label
+  );
+}
+
+/** Colonne `loyalty` seulement si le corps l’envoie. */
+export function loyaltyPatchFromBody(body: Record<string, unknown>) {
+  if (!Object.prototype.hasOwnProperty.call(body, "loyalty")) return {};
+  return { loyalty: normalizeLoyaltyMap(body.loyalty) };
 }
 
 export function normalizeLoyaltyMap(input: unknown): LoyaltyMap {

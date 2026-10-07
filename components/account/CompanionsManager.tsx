@@ -7,6 +7,7 @@ import type { CrmCompanion, CrmTravelDocument } from "@/lib/crm/types";
 import { deleteJson, postJson, sendForm } from "@/lib/crm/client-fetch";
 import { nationalityFromIdentity } from "@/lib/crm/document-identity";
 import { identityOverwriteWarning, maskDocumentNumber, RELATIONSHIP_OPTIONS } from "@/lib/crm/identity";
+import { loyaltyFromCustomer, type LoyaltyMap } from "@/lib/crm/loyalty";
 import { appendPassportForm, appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-extract";
 import { documentsForPerson, primaryIdentityDoc } from "@/lib/crm/trip-documents";
 import {
@@ -19,6 +20,7 @@ import {
   SexSelect,
 } from "@/components/crm/fields";
 import { type ScanResult } from "@/components/crm/IdentityScan";
+import { LoyaltyFields } from "@/components/crm/LoyaltyFields";
 import { PersonPassportCard } from "@/components/crm/PersonPassportCard";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
@@ -26,6 +28,7 @@ import { ConfirmAction } from "@/components/crm/ConfirmAction";
 function CompanionPhoneEditor({ companion }: { companion: CrmCompanion }) {
   const router = useRouter();
   const [phone, setPhone] = useState(companion.phone || "");
+  const [loyalty, setLoyalty] = useState<LoyaltyMap>(() => loyaltyFromCustomer({ loyalty: companion.loyalty }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,6 +49,7 @@ function CompanionPhoneEditor({ companion }: { companion: CrmCompanion }) {
           nationality: companion.nationality,
           relationship: companion.relationship,
           phone,
+          loyalty,
         },
         { method: "PATCH" }
       );
@@ -62,6 +66,10 @@ function CompanionPhoneEditor({ companion }: { companion: CrmCompanion }) {
   return (
     <div className="space-y-2">
       <PhoneField name={`phone-${companion.id}`} label="Téléphone" value={phone} onChange={setPhone} />
+      <div className="space-y-3">
+        <p className="text-sm font-semibold text-[var(--admin-navy)]">Programmes de fidélité</p>
+        <LoyaltyFields values={loyalty} onChange={setLoyalty} onlyFilled />
+      </div>
       {error ? <p className="text-sm text-accent">{error}</p> : null}
       <BusyBar active={saving} label="Enregistrement…" />
       <button
@@ -70,7 +78,7 @@ function CompanionPhoneEditor({ companion }: { companion: CrmCompanion }) {
         disabled={saving}
         className="text-sm font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline"
       >
-        Enregistrer le téléphone
+        Enregistrer
       </button>
     </div>
   );
@@ -98,6 +106,7 @@ export function CompanionsManager({
   const [birthDate, setBirthDate] = useState("");
   const [sex, setSex] = useState("");
   const [phone, setPhone] = useState("");
+  const [loyalty, setLoyalty] = useState<LoyaltyMap>(() => loyaltyFromCustomer({}));
   const [scan, setScan] = useState<ScanResult | null>(null);
   /** La carte passeport importe déjà (plusieurs livrets) : « Ajouter » attend, pour ne pas importer deux fois. */
   const [cardBusy, setCardBusy] = useState(false);
@@ -115,6 +124,7 @@ export function CompanionsManager({
     setBirthDate("");
     setSex("");
     setPhone("");
+    setLoyalty(loyaltyFromCustomer({}));
     setScan(null);
     setError(null);
   }
@@ -170,6 +180,7 @@ export function CompanionsManager({
       birth_date: birthDate,
       sex,
       phone,
+      loyalty,
     });
     if (!created.ok || !created.data?.companion?.id) {
       setError(created.error || "Impossible d’ajouter ce voyageur. Réessayez ou écrivez à l’agence.");
@@ -341,6 +352,10 @@ export function CompanionsManager({
           <div className="sm:col-span-2">
             <PhoneField name="phone" label="Téléphone" value={phone} onChange={setPhone} />
             <p className="mt-1 text-xs text-muted">Pour lui envoyer la page du voyage par WhatsApp.</p>
+          </div>
+          <div className="space-y-3 sm:col-span-2">
+            <p className="text-sm font-semibold text-[var(--admin-navy)]">Programmes de fidélité</p>
+            <LoyaltyFields values={loyalty} onChange={setLoyalty} onlyFilled />
           </div>
         </div>
         {nameWarn ? (

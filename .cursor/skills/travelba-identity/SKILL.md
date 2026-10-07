@@ -42,9 +42,11 @@ description: >-
 
 UI : bloc pièce **replié** par défaut (passeport). Copy courte, pas « Uploadez le passeport du titulaire pour préremplir » en hint permanent.
 
-## Flying Blue / facturation
+## Fidélité / facturation
 
-- `flying_blue` normalisé (majuscules, sans espaces).
+- Carte `loyalty` (jsonb) sur le **titulaire** et sur **chaque accompagnateur**. Numéro normalisé (majuscules, sans espaces).
+- Programmes : Flying Blue, Miles & More, Executive Club, Skywards, Marriott Bonvoy, ALL Accor, Grand Voyageur (SNCF), Great Members (Club Med).
+- `flying_blue` du titulaire reste recopié depuis la carte (colonne historique).
 - Société : `crm_billing_companies` (plusieurs par client, onglets Facturation). La première est recopiée sur `company_name`, `siret`, `vat_number`, `billing_email`, `billing_address_line`, `billing_postal_code`, `billing_city`, `billing_country` pour la recherche. L’encours reste global, sauf crédit / Pro (`funding`) : skill `travelba-money`.
 - Recherche annuaire (`recherche-entreprises.api.gouv.fr`) : chaque ligne montre de quoi reconnaître la société — raison sociale, enseigne si elle diffère, forme (SAS, SARL…), activité NAF, adresse complète, SIRET, siège ou établissement (et la ville du siège si ce n’est pas le même), année de création, nombre d’établissements, dirigeant. Une société cessée est marquée.
 - Adresse perso ≠ adresse de facturation. Les deux peuvent exister.

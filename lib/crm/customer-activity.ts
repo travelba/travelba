@@ -1,5 +1,6 @@
 import { countryName } from "./countries";
 import { formatDateFr } from "./dates";
+import { filledLoyaltyLabels, type LoyaltyMap } from "./loyalty";
 import { formatDateRangeShort, formatMoney } from "./money";
 import type { TravelDocType } from "./types";
 
@@ -233,12 +234,15 @@ export function companionActivityDetail(input: {
   birthDate?: string | null;
   nationality?: string | null;
   phone?: string | null;
+  loyalty?: LoyaltyMap | null;
 }) {
+  const programs = filledLoyaltyLabels(input.loyalty);
   const parts = [
     input.relationship ? RELATION_LABELS[input.relationship] || "" : "",
     input.birthDate ? `né(e) le ${formatDateFr(input.birthDate)}` : "",
     input.nationality ? countryName(input.nationality) : "",
     tidyName(input.phone),
+    programs.length ? programs.join(", ") : "",
   ].filter(Boolean);
   return parts.length ? parts.join(" · ").slice(0, 400) : null;
 }

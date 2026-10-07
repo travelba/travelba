@@ -28,14 +28,20 @@ test("identity overwrite warns only when names differ", () => {
   );
 });
 
-test("loyalty map keeps six programs", () => {
+test("loyalty map keeps every program", () => {
   assert.equal(normalizeLoyaltyNumber(" ab 12 "), "AB12");
   const mapped = normalizeLoyaltyMap({ flying_blue: "x", unknown: "nope" });
   assert.equal(mapped.flying_blue, "X");
+  assert.equal(mapped.grand_voyageur, null);
+  assert.equal(mapped.great_members, null);
   assert.equal("unknown" in mapped, false);
   const fromCustomer = loyaltyFromCustomer({ flying_blue: "FB1", loyalty: { miles_more: "MM" } });
   assert.equal(fromCustomer.flying_blue, "FB1");
   assert.equal(fromCustomer.miles_more, "MM");
+  assert.equal(fromCustomer.grand_voyageur, null);
+  const sncf = normalizeLoyaltyMap({ grand_voyageur: "gv 12", great_members: "cm 9" });
+  assert.equal(sncf.grand_voyageur, "GV12");
+  assert.equal(sncf.great_members, "CM9");
 });
 
 test("encours shows the signed amount", () => {

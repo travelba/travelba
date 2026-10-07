@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   cleanClientPath,
   clientPathSummary,
+  companionActivityDetail,
   companionActivitySummary,
   documentActivitySummary,
   formalitiesActivitySummary,
@@ -64,6 +65,10 @@ test("les pièces et les voyageurs se lisent sans numéro de document", () => {
     false
   );
   assert.equal(documentActivitySummary("remove"), "A retiré une pièce");
+  assert.equal(
+    companionActivityDetail({ relationship: "conjoint", loyalty: { grand_voyageur: "GV1", great_members: "CM1" } }),
+    "conjoint(e) · Grand Voyageur, Great Members"
+  );
   assert.equal(companionActivitySummary("add", "Marie Martin"), "A ajouté le voyageur Marie Martin");
   assert.equal(companionActivitySummary("remove", ""), "A retiré un voyageur");
 });

@@ -51,6 +51,7 @@ Avant d’écrire du SQL : lister les tables (`crm_*`), lire la **dernière** mi
 | `20261005183000_customer_email_nullable.sql` | `crm_customers.email` nullable : fiche créée depuis un mail sans adresse voyageur |
 | `20261007095000_booking_status_four.sql` | statut dossier : `draft`, `quoted`, `confirmed`, `cancelled`. En voyage et Terminée se lisent sur les dates |
 | `20261007101500_booking_visible_debit.sql` | débit séjour du trigger : séjour visible, pas annulé, pas archivé |
+| `20261007183000_companion_loyalty.sql` | `crm_travel_companions.loyalty` jsonb — mêmes programmes que la fiche titulaire |
 
 Toute évolution = **nouveau fichier** `supabase/migrations/YYYYMMDDHHMMSS_slug.sql` (idempotent : `if not exists`, `drop policy if exists`). Appliquer via MCP `apply_migration` ou SQL Editor. Ne pas éditer une migration déjà poussée en prod.
 

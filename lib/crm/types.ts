@@ -197,6 +197,8 @@ export type CrmCompanion = {
   relationship: string | null;
   /** E.164. Absent : le lien du voyage reste copiable, WhatsApp ne part pas. */
   phone?: string | null;
+  /** Numéros de programmes (Flying Blue, Grand Voyageur, Great Members, …). */
+  loyalty?: Record<string, string | null> | null;
   created_at: string;
   updated_at: string;
 };

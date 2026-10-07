@@ -27,6 +27,7 @@ import {
   type ServiceRefusal,
 } from "./extras";
 import { exampleLedgerView, exampleSession, EXAMPLE_REFERENCE } from "./example-session";
+import { normalizeLoyaltyMap, type LoyaltyMap } from "./loyalty";
 import type { CrmBookingItem, CrmCompanion, CrmTransaction, CrmTravelDocument } from "./types";
 import { confirmAllowed, type ClientVisaStep, type EstaAnswers } from "./visa-flow";
 
@@ -197,6 +198,8 @@ export function saveExampleCompanion(input: {
   sex: string | null;
   nationality: string | null;
   relationship: string | null;
+  phone?: string | null;
+  loyalty?: LoyaltyMap | null;
 }) {
   const state = box();
   const row: CrmCompanion = {
@@ -209,10 +212,43 @@ export function saveExampleCompanion(input: {
     sex: input.sex,
     nationality: input.nationality,
     relationship: input.relationship,
+    phone: input.phone ?? null,
+    loyalty: input.loyalty ?? null,
     created_at: stamp(),
     updated_at: stamp(),
   };
   state.companions.push(row);
+  publish(state);
+  return row;
+}
+
+export function updateExampleCompanion(
+  id: string,
+  input: {
+    firstName: string;
+    lastName: string;
+    usageName: string | null;
+    birthDate: string | null;
+    sex: string | null;
+    nationality: string | null;
+    relationship: string | null;
+    phone?: string | null;
+    loyalty?: LoyaltyMap | null;
+  }
+) {
+  const state = box();
+  const row = state.companions.find((companion) => companion.id === id);
+  if (!row) return null;
+  row.first_name = input.firstName;
+  row.last_name = input.lastName;
+  row.usage_name = input.usageName;
+  row.birth_date = input.birthDate;
+  row.sex = input.sex;
+  row.nationality = input.nationality;
+  row.relationship = input.relationship;
+  if (input.phone !== undefined) row.phone = input.phone;
+  if (input.loyalty !== undefined) row.loyalty = normalizeLoyaltyMap(input.loyalty);
+  row.updated_at = stamp();
   publish(state);
   return row;
 }
@@ -483,6 +519,11 @@ export function patchExampleCustomer(patch: Record<string, unknown>) {
   assign("billing_postal_code", text("billing_postal_code"));
   assign("billing_city", text("billing_city"));
   assign("billing_country", text("billing_country"));
+  if ("loyalty" in patch) {
+    const loyalty = normalizeLoyaltyMap(patch.loyalty);
+    state.customer.loyalty = loyalty;
+    state.customer.flying_blue = loyalty.flying_blue ?? null;
+  }
   if ("iban" in patch) state.customer.iban = null;
   if ("siret" in patch) state.customer.siret = null;
   if ("vat_number" in patch) state.customer.vat_number = null;

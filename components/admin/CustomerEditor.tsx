@@ -364,6 +364,7 @@ function CompanionCard({
   const [birthDate, setBirthDate] = useState(companion.birth_date || "");
   const [sex, setSex] = useState(companion.sex || "");
   const [phone, setPhone] = useState(companion.phone || "");
+  const [loyalty, setLoyalty] = useState<LoyaltyMap>(() => loyaltyFromCustomer({ loyalty: companion.loyalty }));
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -394,6 +395,7 @@ function CompanionCard({
         birth_date: birthDate,
         sex,
         phone,
+        loyalty,
       },
     });
     setSaving(false);
@@ -485,6 +487,9 @@ function CompanionCard({
         <div className="sm:col-span-2">
           <PhoneField name={`companion-phone-${companion.id}`} label="Téléphone" value={phone} onChange={edit(setPhone)} />
         </div>
+        <div className="sm:col-span-2">
+          <LoyaltyFields values={loyalty} onChange={edit(setLoyalty)} />
+        </div>
       </div>
       <BusyBar active={saving} label="Enregistrement…" />
       {saveError ? (
@@ -519,6 +524,7 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
   const [birthDate, setBirthDate] = useState("");
   const [sex, setSex] = useState("");
   const [phone, setPhone] = useState("");
+  const [loyalty, setLoyalty] = useState<LoyaltyMap>(() => loyaltyFromCustomer({}));
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -534,6 +540,7 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
     setBirthDate("");
     setSex("");
     setPhone("");
+    setLoyalty(loyaltyFromCustomer({}));
     setScan(null);
     setError(null);
   }
@@ -587,6 +594,7 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
         birth_date: birthDate,
         sex,
         phone,
+        loyalty,
       }),
     });
     const json = await res.json().catch(() => ({}));
@@ -685,6 +693,9 @@ function AddCompanionForm({ customerId }: { customerId: string }) {
         </Field>
         <div className="sm:col-span-2">
           <PhoneField name="companion-phone" label="Téléphone" value={phone} onChange={setPhone} />
+        </div>
+        <div className="sm:col-span-2">
+          <LoyaltyFields values={loyalty} onChange={setLoyalty} />
         </div>
       </div>
       {error ? <p className="text-sm text-accent">{error}</p> : null}
