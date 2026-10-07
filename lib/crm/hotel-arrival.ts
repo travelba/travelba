@@ -661,6 +661,29 @@ export function hotelMailFrame(lang: "fr" | "en", relance?: boolean) {
   };
 }
 
+export function paymentLinkAsk(lang: "fr" | "en") {
+  return lang === "fr"
+    ? "Nous vous serions reconnaissants de nous adresser le lien de paiement de la réservation de notre client."
+    : "We would be grateful if you could send us the payment link for our guest's reservation.";
+}
+
+export function paymentLinkCharge(lang: "fr" | "en") {
+  return lang === "fr"
+    ? "Nous vous prions de prélever le montant de cette réservation sur la carte ouverte par le lien sécurisé ci-dessous."
+    : "We would be grateful if you could charge this reservation to the card opened from the secure link below.";
+}
+
+/** Remplace la phrase du lien de paiement. Le reste du courrier reste. */
+export function applyPaymentLinkChoice(text: string, charge: boolean, lang: "fr" | "en") {
+  const ask = paymentLinkAsk(lang);
+  const take = paymentLinkCharge(lang);
+  const next = charge ? take : ask;
+  const previous = charge ? ask : take;
+  if (text.includes(previous)) return text.replace(previous, next);
+  if (text.includes(next)) return text;
+  return `${next}\n\n${text}`;
+}
+
 export function linkRequestMail(input: {
   lang: "fr" | "en";
   hotel: string;
@@ -669,15 +692,17 @@ export function linkRequestMail(input: {
   checkOut: string;
   amount: string | null;
   relance?: boolean;
+  charge?: boolean;
 }): ArrivalMail {
   const stay = `${formatStayDate(input.checkIn, input.lang)} – ${formatStayDate(input.checkOut, input.lang)}`;
   const ref = input.reference || "—";
   const frame = hotelMailFrame(input.lang, input.relance);
+  const request = input.charge ? paymentLinkCharge(input.lang) : paymentLinkAsk(input.lang);
   if (input.lang === "fr") {
     const lines = [
       ...frame.open,
       "",
-      "Nous vous serions reconnaissants de nous adresser le lien de paiement de la réservation de notre client.",
+      request,
       "",
       `Séjour à ${input.hotel}, du ${stay}.`,
       `Référence de confirmation : ${ref}.`,
@@ -692,7 +717,7 @@ export function linkRequestMail(input: {
   const lines = [
     ...frame.open,
     "",
-    "We would be grateful if you could send us the payment link for our guest's reservation.",
+    request,
     "",
     `Stay at ${input.hotel}, ${stay}.`,
     `Confirmation: ${ref}.`,

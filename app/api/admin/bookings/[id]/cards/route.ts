@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { issueBookingCard, setBookingCardLocked, terminateBookingCard } from "@/lib/crm/booking-cards";
+import { ownedBookingPliantCard } from "@/lib/crm/pliant-booking";
 import { pliantConfigured, pliantPciWidget } from "@/lib/crm/pliant";
 import { createServiceClient } from "@/lib/supabase/admin";
 
@@ -22,6 +23,7 @@ export async function POST(request: Request, ctx: Ctx) {
         transactionAmount?: string;
         transactionCount?: string;
         itemId?: string;
+        pliantCardId?: string;
       }
     | null;
   const action = body?.action;
@@ -59,6 +61,52 @@ export async function POST(request: Request, ctx: Ctx) {
   }
 
   if (action === "card") {
+    const requestedPliantId = (body?.pliantCardId || "").trim();
+    if (requestedPliantId) {
+      const [cardRows, arrivalRows, registryRows] = await Promise.all([
+        admin.from("crm_booking_cards").select("pliant_card_id, status").eq("booking_id", id),
+        admin
+          .from("crm_hotel_arrivals")
+          .select("booking_item_id, pliant_card_id, card_closed_at")
+          .eq("booking_id", id),
+        admin.from("crm_pliant_cards").select("pliant_card_id, status").eq("booking_id", id),
+      ]);
+      if (cardRows.error || arrivalRows.error || registryRows.error) {
+        return jsonError("La carte n’a pas pu être lue.", 500);
+      }
+      const owned = ownedBookingPliantCard({
+        pliantCardId: requestedPliantId,
+        bookingCards: (cardRows.data || []) as { pliant_card_id: string; status: string | null }[],
+        arrivals: (arrivalRows.data || []) as {
+          booking_item_id: string;
+          pliant_card_id: string | null;
+          card_closed_at: string | null;
+        }[],
+        registry: (registryRows.data || []) as { pliant_card_id: string; status: string | null }[],
+      });
+      if (!owned) return jsonError("Carte introuvable.", 404);
+      if ("closed" in owned) return jsonError("Cette carte est clôturée.", 400);
+      if (!pliantConfigured()) return jsonError("Pliant n’est pas branché.", 400);
+      try {
+        const frameKey = requestedPliantId.replace(/[^\w-]/g, "").slice(0, 40);
+        const widget = await pliantPciWidget(requestedPliantId, `carte-${frameKey}`);
+        const { error: viewError } = await admin.from("crm_card_views").insert({
+          staff_id: auth.staff.id,
+          booking_id: id,
+          booking_item_id: owned.itemId,
+          source: "pliant",
+          viewer: "staff",
+        });
+        if (viewError) return jsonError("La consultation n’a pas pu être notée.", 500);
+        return NextResponse.json(
+          { widgetUrl: widget.src, frameId: widget.frameId },
+          { headers: { "Cache-Control": "private, no-store" } }
+        );
+      } catch {
+        return jsonError("La carte n’a pas pu être lue.", 502);
+      }
+    }
+
     const cardId = (body?.itemId || "").trim();
     if (!cardId) return jsonError("Carte introuvable.", 404);
     const { data } = await admin

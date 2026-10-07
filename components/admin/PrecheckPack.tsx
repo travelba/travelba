@@ -1,10 +1,8 @@
 "use client";
 
-import { AgencyCardPeek } from "@/components/admin/AgencyCardPeek";
 import { StayCard } from "@/components/crm/StayCard";
 import { stayCardFace } from "@/lib/crm/hotel-arrival";
 import type { PrecheckTraveler } from "@/lib/crm/hotel-precheck";
-import type { CardViewLine } from "@/lib/crm/types";
 
 function pieceWord(label: string) {
   return label === "Carte d'identité" ? "Identité" : label;
@@ -15,41 +13,27 @@ export function PrecheckPack({
   itemId,
   party,
   selectedIds,
-  cardChoice,
   last4,
   holder = "",
   hotel = "",
-  clientFileName,
-  cardViews = [],
   disabled,
   generating,
   onToggle,
-  onCardChoice,
   onGenerate,
-  onClientFile,
-  onCodeReady,
 }: {
   bookingId: string;
   itemId: string;
   party: PrecheckTraveler[];
   selectedIds: string[];
-  cardChoice: "pliant" | "client";
   last4: string | null;
   holder?: string;
   hotel?: string;
-  clientFileName: string | null;
-  hasCardCode?: boolean;
-  cardViews?: CardViewLine[];
   disabled: boolean;
   generating: boolean;
   onToggle: (id: string) => void;
-  onCardChoice: (choice: "pliant" | "client") => void;
   onGenerate: () => void;
-  onClientFile: (file: File | null) => void;
-  onCodeReady?: () => void;
 }) {
   const chosen = new Set(selectedIds);
-  const cardReady = cardChoice === "pliant" ? Boolean(last4) : Boolean(clientFileName);
   return (
     <div className="space-y-1 text-xs text-[#0B192C]">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
@@ -80,70 +64,15 @@ export function PrecheckPack({
           <span className="text-[#9e7e51]">Aucun voyageur</span>
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-        <button
-          type="button"
-          className={cardChoice === "pliant" ? "font-semibold" : "text-[#9e7e51]"}
-          aria-pressed={cardChoice === "pliant"}
-          disabled={disabled}
-          onClick={() => onCardChoice("pliant")}
-        >
-          Pliant
+      {last4 ? null : (
+        <button type="button" className="text-[#9e7e51] underline disabled:opacity-50" disabled={disabled} onClick={onGenerate}>
+          {generating ? "…" : "Générer la carte"}
         </button>
-        <span className="text-[#e5e3dc]">/</span>
-        <button
-          type="button"
-          className={cardChoice === "client" ? "font-semibold" : "text-[#9e7e51]"}
-          aria-pressed={cardChoice === "client"}
-          disabled={disabled}
-          onClick={() => onCardChoice("client")}
-        >
-          Client
-        </button>
-        {cardChoice === "pliant" ? (
-          last4 ? null : (
-            <button type="button" className="text-[#9e7e51] underline disabled:opacity-50" disabled={disabled} onClick={onGenerate}>
-              {generating ? "…" : "Générer"}
-            </button>
-          )
-        ) : (
-          <>
-            <label className="cursor-pointer text-[#9e7e51] underline">
-              {clientFileName || "Déposer"}
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp,application/pdf"
-                className="sr-only"
-                disabled={disabled}
-                onChange={(event) => {
-                  const file = event.target.files?.[0] || null;
-                  event.target.value = "";
-                  onClientFile(file);
-                }}
-              />
-            </label>
-            {clientFileName ? (
-              <button type="button" className="text-[#9e7e51]" disabled={disabled} aria-label="Retirer la carte" onClick={() => onClientFile(null)}>
-                ×
-              </button>
-            ) : null}
-          </>
-        )}
-        {cardReady && cardChoice === "client" ? (
-          <AgencyCardPeek
-            bookingId={bookingId}
-            itemId={itemId}
-            source="client"
-            views={cardViews}
-            onReady={onCodeReady}
-          />
-        ) : null}
-      </div>
+      )}
       <p className="text-[11px] text-[#9e7e51]">
-        La carte part par lien sécurisé, jamais en pièce jointe : 3 ouvertures, jusqu’à 3 jours après le départ.
-        Un nouvel envoi coupe l’ancien lien.
+        La carte de l’hôtel part par lien sécurisé, jamais en pièce jointe : 3 ouvertures, jusqu’à 3 jours après le départ.
       </p>
-      {cardChoice === "pliant" && last4 ? (
+      {last4 ? (
         <StayCard
           personal
           revealUrl={`/api/admin/bookings/${bookingId}/hotel-arrival`}

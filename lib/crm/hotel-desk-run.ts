@@ -1,13 +1,14 @@
 import "server-only";
 
 import { Resend } from "resend";
-import { pliantCardNomination } from "./eta-il-fee";
+import { pliantCardNomination, pliantDesignation } from "./eta-il-fee";
 import { downloadCrmFile, removeCrmFiles, uploadCrmFile } from "./files";
 import { agencyCardObjectPath, agencyCardSiblingPaths, clientCardMime, isAgencyCardPath, isSafeCrmPath } from "./files-access";
 import { getThread, gmailConfigured, searchInbox } from "./gmail";
 import { attachLittleEmperorsCatalog } from "./hotel-catalog-load";
 import { holidaysFor } from "./holidays";
 import { hotelContact } from "./hotel-contact";
+import { hotelDisplayName } from "./carnet";
 import {
   CHECKIN_CARD_CENTS,
   CHECKIN_CARD_CURRENCY,
@@ -558,7 +559,7 @@ export async function saveHotelRequest(
       subject: input.subject.trim(),
       body: input.body,
       recipients,
-      card_choice: input.kind === "precheckin" ? input.cardChoice || "pliant" : null,
+      card_choice: storedCardChoice(input.kind, input.cardChoice),
       ...(input.kind === "precheckin" && input.identityDocumentIds
         ? { identity_document_ids: input.identityDocumentIds, identity_picked: true, attach_passports: input.identityDocumentIds.length > 0 }
         : {}),
@@ -609,45 +610,31 @@ export async function sendHotelRequest(
   // La carte ne part jamais en pièce jointe (B-04) : un lien /k/CODE, quelques ouvertures journalisées.
   let cardLinkId: string | null = null;
   const attachments: { filename: string; content: Buffer }[] = [];
-  if (input.kind === "precheckin") {
-    const choice = input.cardChoice || row.card_choice || "pliant";
-    const pieceIds = input.identityDocumentIds ?? (row.identity_picked ? row.identity_document_ids || [] : null);
-    attachments.push(...(await identityFiles(admin, input.bookingId, pieceIds)));
+  const chargePayment = input.kind === "payment_link" && (input.cardChoice || row.card_choice) === "pliant";
+  if (input.kind === "precheckin" || chargePayment) {
     const today = parisIsoDate(new Date());
     const expiresAt = cardLinkExpiresAt(cardCloseDate((item.end_at || item.start_at || today).slice(0, 10)));
-    if (choice === "pliant") {
-      const card = await ensurePliantCheckinCard(admin, input.bookingId, item);
-      const link = await createCardLink(admin, {
-        origin: input.origin,
-        bookingId: input.bookingId,
-        itemId: input.itemId,
-        requestId: row.id,
-        source: "pliant",
-        pliantCardId: card.cardId,
-        staffId: input.staffId,
-        expiresAt,
-      });
-      note = cardLinkNote({ choice: "pliant", lang, url: link.url, expiresAt: link.expiresAt });
-      cardLinkId = link.id;
-    } else {
-      const fresh = input.clientCard?.content?.length ? input.clientCard : null;
-      const path = fresh
-        ? (await storeClientStayCard(admin, input.bookingId, item, fresh)).path
-        : await storedClientCardPath(admin, input.bookingId, input.itemId);
-      if (!path) throw new Error("Déposez la carte du client.");
-      const link = await createCardLink(admin, {
-        origin: input.origin,
-        bookingId: input.bookingId,
-        itemId: input.itemId,
-        requestId: row.id,
-        source: "client",
-        clientCardPath: path,
-        staffId: input.staffId,
-        expiresAt,
-      });
-      note = cardLinkNote({ choice: "client", lang, url: link.url, expiresAt: link.expiresAt });
-      cardLinkId = link.id;
+    const cardId =
+      input.kind === "precheckin"
+        ? (await ensurePliantCheckinCard(admin, input.bookingId, item)).cardId
+        : await stayPliantCardId(admin, input.bookingId, input.itemId);
+    if (!cardId) throw new Error("Cette réservation n’a pas encore de carte.");
+    if (input.kind === "precheckin") {
+      const pieceIds = input.identityDocumentIds ?? (row.identity_picked ? row.identity_document_ids || [] : null);
+      attachments.push(...(await identityFiles(admin, input.bookingId, pieceIds)));
     }
+    const link = await createCardLink(admin, {
+      origin: input.origin,
+      bookingId: input.bookingId,
+      itemId: input.itemId,
+      requestId: row.id,
+      source: "pliant",
+      pliantCardId: cardId,
+      staffId: input.staffId,
+      expiresAt,
+    });
+    note = cardLinkNote({ choice: "pliant", lang, url: link.url, expiresAt: link.expiresAt });
+    cardLinkId = link.id;
   }
   const text = outboundHotelLetter(input.body, note);
   try {
@@ -673,7 +660,7 @@ export async function sendHotelRequest(
       body: input.body,
       recipients,
       sent_subjects: appendSentSubject(row.sent_subjects, subject),
-      card_choice: input.kind === "precheckin" ? input.cardChoice || "pliant" : row.card_choice,
+      card_choice: storedCardChoice(input.kind, input.cardChoice || row.card_choice),
       ...(input.kind === "precheckin" && input.identityDocumentIds
         ? { identity_document_ids: input.identityDocumentIds, identity_picked: true, attach_passports: input.identityDocumentIds.length > 0 }
         : {}),
@@ -886,19 +873,6 @@ async function storeClientStayCard(
   return { name, path };
 }
 
-/** Chemin de la carte du client déjà déposée pour ce séjour, ou null. */
-async function storedClientCardPath(admin: Admin, bookingId: string, itemId: string) {
-  const { data } = await admin
-    .from("crm_hotel_arrivals")
-    .select("client_card_path")
-    .eq("booking_id", bookingId)
-    .eq("booking_item_id", itemId)
-    .maybeSingle();
-  const path = (data as { client_card_path: string | null } | null)?.client_card_path || "";
-  if (!path || !isSafeCrmPath(path) || !isAgencyCardPath(path)) return null;
-  return path;
-}
-
 export async function issueHotelCheckinCard(admin: Admin, bookingId: string, itemId: string) {
   const item = await loadItem(admin, bookingId, itemId);
   const card = await ensurePliantCheckinCard(admin, bookingId, item);
@@ -942,7 +916,25 @@ async function identityFiles(admin: Admin, bookingId: string, ids: string[] | nu
   return attachments;
 }
 
-/** Carte Pliant du séjour : celle de l’hôtel, sinon une du dossier, sinon une carte de 500 € émise. */
+function storedCardChoice(kind: HotelDeskKind, choice: "pliant" | "client" | null) {
+  if (kind === "precheckin") return "pliant" as const;
+  if (kind === "payment_link") return choice === "pliant" ? ("pliant" as const) : null;
+  return null;
+}
+
+async function stayPliantCardId(admin: Admin, bookingId: string, itemId: string) {
+  const { data } = await admin
+    .from("crm_hotel_arrivals")
+    .select("pliant_card_id, card_closed_at")
+    .eq("booking_id", bookingId)
+    .eq("booking_item_id", itemId)
+    .maybeSingle();
+  const row = data as { pliant_card_id: string | null; card_closed_at: string | null } | null;
+  if (!row?.pliant_card_id || row.card_closed_at) return null;
+  return row.pliant_card_id;
+}
+
+/** Carte Pliant de cet hôtel. Sans carte, une carte au nom de l’hôtel. Pas de carte partagée. */
 async function ensurePliantCheckinCard(admin: Admin, bookingId: string, item: CrmBookingItem) {
   const { data } = await admin
     .from("crm_hotel_arrivals")
@@ -953,16 +945,7 @@ async function ensurePliantCheckinCard(admin: Admin, bookingId: string, item: Cr
   const arrival = data as { id: string; pliant_card_id: string | null } | null;
   let cardId = arrival?.pliant_card_id || "";
   if (!cardId) {
-    const { data: siblings } = await admin
-      .from("crm_hotel_arrivals")
-      .select("pliant_card_id")
-      .eq("booking_id", bookingId);
-    cardId =
-      ((siblings || []) as { pliant_card_id?: string | null }[]).find((row) => row.pliant_card_id)?.pliant_card_id ||
-      "";
-  }
-  if (!cardId) {
-    if (!pliantConfigured()) throw new Error("Pliant n'est pas branché. Choisissez la carte du client, ou ouvrez le dossier pour créer la carte hôtel.");
+    if (!pliantConfigured()) throw new Error("Pliant n'est pas branché.");
     const { data: booking } = await admin.from("crm_bookings").select("customer_id").eq("id", bookingId).maybeSingle();
     const customerId = (booking as { customer_id?: string } | null)?.customer_id || "";
     const [{ data: travelers }, { data: customer }] = await Promise.all([
@@ -982,7 +965,7 @@ async function ensurePliantCheckinCard(admin: Admin, bookingId: string, item: Cr
     const issued = await issuePliantCard(process.env.PLIANT_CARDHOLDER_ID || "", {
       organizationId: process.env.PLIANT_ORGANIZATION_ID || "",
       cardConfig: "PLIANT_VIRTUAL_TRAVEL",
-      label: name.label,
+      label: pliantDesignation(hotelDisplayName(item)) || name.label,
       customFirstName: name.customFirstName,
       customLastName: name.customLastName,
       limit: money,

@@ -8,6 +8,8 @@ import { HotelThread } from "@/components/admin/HotelThread";
 import { PrecheckPack } from "@/components/admin/PrecheckPack";
 import { hotelDisplayName } from "@/lib/crm/carnet";
 import { hotelSendDefaults, hotelSendPeople, hotelStayChecklist, hotelTripChecklist, type HotelMailPiece } from "@/lib/crm/hotel-desk";
+import { applyPaymentLinkChoice, hotelLanguage } from "@/lib/crm/hotel-arrival";
+import { hotelContact } from "@/lib/crm/hotel-contact";
 import { precheckParty } from "@/lib/crm/hotel-precheck";
 import { HOTEL_DESK_KINDS, type CardViewLine, type CrmBookingItem, type CrmBookingTraveler, type CrmHotelMessage, type CrmHotelRequest, type CrmHotelThreadMessage, type CrmTravelDocument, type HotelDeskKind } from "@/lib/crm/types";
 
@@ -50,9 +52,9 @@ export function HotelDesk({
   identityDocs = [],
   holder = null,
   cardLast4 = null,
-  clientCardName = null,
-  hasCardCode = false,
-  cardViews = [],
+  clientCardName: _clientCardName = null,
+  hasCardCode: _hasCardCode = false,
+  cardViews: _cardViews = [],
   messages = [],
   thread = [],
   attached = [],
@@ -168,9 +170,6 @@ export function HotelDesk({
           identityDocs={identityDocs}
           holder={holder}
           cardLast4={cardLast4}
-          clientCardName={clientCardName}
-          hasCardCode={hasCardCode}
-          cardViews={cardViews}
           onClose={() => setOpen(null)}
         />
       ) : null}
@@ -195,9 +194,6 @@ function HotelDeskEditor({
   identityDocs,
   holder,
   cardLast4,
-  clientCardName,
-  hasCardCode,
-  cardViews,
   onClose,
 }: {
   bookingId: string;
@@ -207,9 +203,6 @@ function HotelDeskEditor({
   identityDocs: CrmTravelDocument[];
   holder: { first_name: string; last_name: string } | null;
   cardLast4: string | null;
-  clientCardName: string | null;
-  hasCardCode: boolean;
-  cardViews: CardViewLine[];
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -220,32 +213,26 @@ function HotelDeskEditor({
   const people = hotelSendPeople(item, row ? [row] : []);
   const [picked, setPicked] = useState<string[] | null>(null);
   const recipients = picked ?? (row ? hotelSendDefaults(item, [row]) : []);
-  const [cardChoice, setCardChoice] = useState<"pliant" | "client">(row?.card_choice === "client" ? "client" : "pliant");
+  const [chargeCard, setChargeCard] = useState(row?.card_choice === "pliant");
   const [pieceIds, setPieceIds] = useState<string[]>(() =>
     row?.identity_picked ? (row.identity_document_ids || []).filter((id) => availableIds.includes(id)) : availableIds
   );
   const [last4, setLast4] = useState(cardLast4);
-  const [clientFile, setClientFile] = useState<File | null>(null);
-  const [storedName, setStoredName] = useState(clientCardName);
-  const [codeReady, setCodeReady] = useState(hasCardCode);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   if (!row) return null;
+  const letterLang = hotelLanguage(hotelContact(item).country);
+  const cardChoice = row.kind === "payment_link" ? (chargeCard ? "pliant" : null) : "pliant";
 
   async function run(action: "save" | "send" | "skip", next = recipients, pieces = pieceIds) {
-    if (action === "send" && row!.kind === "precheckin" && cardChoice === "client" && !clientFile && !storedName) {
-      setError("Déposez la carte du client.");
-      return false;
-    }
     setBusy(action);
     setError(null);
     const result = await post(bookingId, row!, action, {
       subject,
       body,
       recipients: next,
-      cardChoice: row!.kind === "precheckin" ? cardChoice : null,
+      cardChoice,
       identityDocumentIds: row!.kind === "precheckin" ? pieces : undefined,
-      clientCard: action === "send" && row!.kind === "precheckin" && cardChoice === "client" ? clientFile : null,
     });
     setBusy(null);
     if (!result.ok) {
@@ -277,51 +264,6 @@ function HotelDeskEditor({
     if (result.last4) setLast4(result.last4);
   }
 
-  async function pickClientCard(file: File | null) {
-    if (!file) {
-      setBusy("card");
-      setError(null);
-      const cleared = await post(bookingId, row!, "clear-client-card", {
-        subject,
-        body,
-        recipients,
-        cardChoice: "client",
-        identityDocumentIds: pieceIds,
-      });
-      setBusy(null);
-      if (!cleared.ok) {
-        setError(cleared.error || "La carte n'a pas pu être retirée.");
-        return;
-      }
-      setClientFile(null);
-      setStoredName(null);
-      return;
-    }
-    try {
-      const light = await lightCard(file);
-      setBusy("card");
-      setError(null);
-      const saved = await post(bookingId, row!, "save-client-card", {
-        subject,
-        body,
-        recipients,
-        cardChoice: "client",
-        identityDocumentIds: pieceIds,
-        clientCard: light,
-      });
-      setBusy(null);
-      if (!saved.ok) {
-        setError(saved.error || "La carte n'a pas pu être enregistrée.");
-        return;
-      }
-      setClientFile(light);
-      setStoredName(saved.name || light.name);
-    } catch (err) {
-      setBusy(null);
-      setError(err instanceof Error ? err.message : "Carte illisible.");
-    }
-  }
-
   return (
     <div className="space-y-2 rounded-2xl border border-[#e5e0d4] bg-white p-3 text-[#0B192C]">
       {row.kind === "precheckin" ? (
@@ -330,13 +272,9 @@ function HotelDeskEditor({
           itemId={item.id}
           party={party}
           selectedIds={pieceIds}
-          cardChoice={cardChoice}
           last4={last4}
           holder={[holder?.first_name, holder?.last_name].filter(Boolean).join(" ")}
           hotel={hotelDisplayName(item) || item.title}
-          clientFileName={storedName || clientFile?.name || null}
-          hasCardCode={codeReady}
-          cardViews={cardViews}
           disabled={Boolean(busy)}
           generating={busy === "card"}
           onToggle={(id) => {
@@ -344,14 +282,24 @@ function HotelDeskEditor({
             setPieceIds(next);
             void run("save", recipients, next);
           }}
-          onCardChoice={(choice) => {
-            setCardChoice(choice);
-            if (choice === "pliant") setClientFile(null);
-          }}
           onGenerate={() => void generateCard()}
-          onClientFile={(file) => void pickClientCard(file)}
-          onCodeReady={() => setCodeReady(true)}
         />
+      ) : null}
+      {row.kind === "payment_link" ? (
+        <label className="flex items-center gap-2 text-sm text-[#0B192C]">
+          <input
+            type="checkbox"
+            className="accent-[#0B192C]"
+            checked={chargeCard}
+            disabled={Boolean(busy)}
+            onChange={(event) => {
+              const next = event.target.checked;
+              setChargeCard(next);
+              setBody(applyPaymentLinkChoice(body, next, letterLang));
+            }}
+          />
+          Prélever sur la carte
+        </label>
       ) : null}
       <label className="block text-xs font-semibold text-[#0B192C]">
         Objet
@@ -385,27 +333,6 @@ function HotelDeskEditor({
       </div>
     </div>
   );
-}
-
-async function lightCard(file: File) {
-  if (file.type === "application/pdf") {
-    if (file.size > 4_000_000) throw new Error("Le PDF dépasse 4 Mo.");
-    return file;
-  }
-  if (!/^image\/(jpeg|png|webp)$/.test(file.type)) throw new Error("Déposez un JPEG, un PNG ou un PDF.");
-  if (file.size <= 1_500_000) return file;
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, 1400 / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return file;
-  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82));
-  bitmap.close();
-  if (!blob || blob.size > 4_000_000) throw new Error("La photo est trop lourde.");
-  return new File([blob], "carte-client.jpg", { type: "image/jpeg" });
 }
 
 async function post(

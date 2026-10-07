@@ -17,6 +17,9 @@ import {
   hotelLanguage,
   leStayAmount,
   linkRequestMail,
+  applyPaymentLinkChoice,
+  paymentLinkAsk,
+  paymentLinkCharge,
   nagerHolidayUrl,
   nextBusinessDay,
   parisIsoDate,
@@ -227,6 +230,19 @@ test("mails : lien avec montant et référence, VIP avec attentions, carte seule
   assert.match(link.text, /HB-9/);
   assert.match(link.text, /4 novembre 2026/);
   assert.match(link.text, /lien de paiement/);
+  const charge = linkRequestMail({ ...{
+    lang: "fr" as const,
+    hotel: "Le Bristol",
+    reference: "HB-9",
+    checkIn: "2026-11-04",
+    checkOut: "2026-11-08",
+    amount: "2400,00 EUR",
+    charge: true,
+  } });
+  assert.match(charge.text, /prélever le montant/);
+  assert.doesNotMatch(charge.text, /4242/);
+  assert.equal(applyPaymentLinkChoice(link.text, true, "fr").includes(paymentLinkCharge("fr")), true);
+  assert.equal(applyPaymentLinkChoice(charge.text, false, "fr").includes(paymentLinkAsk("fr")), true);
   const vip = vipMail({
     lang: "en",
     hotel: "The Leela",

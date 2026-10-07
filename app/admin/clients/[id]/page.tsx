@@ -26,11 +26,6 @@ import {
   type StripeMatchCustomer,
 } from "@/lib/crm/stripe-match";
 import { createServiceClient } from "@/lib/supabase/admin";
-import { PliantCardDesk } from "@/components/admin/PliantCardDesk";
-import { stayCardFace } from "@/lib/crm/hotel-arrival";
-import { loadPliantAccountBalance } from "@/lib/crm/pliant";
-import { pliantCardForCustomer, pliantSpendsForCards, showPliantLast4 } from "@/lib/crm/pliant-card-run";
-import type { PliantSpendLine } from "@/lib/crm/pliant-cards";
 import {
   customerFullName,
   type CrmBalance,
@@ -219,19 +214,6 @@ export default async function AdminClientDetailPage({ params }: Props) {
     ...item,
     row: { ...item.row, payer_email: null, raw: {} },
   }));
-  let customerCard: Awaited<ReturnType<typeof pliantCardForCustomer>> = null;
-  let customerSpends: PliantSpendLine[] = [];
-  let pliantAccount: { availableCents: number | null; currency: string } | null = null;
-  try {
-    const cardAdmin = createServiceClient();
-    customerCard = await pliantCardForCustomer(cardAdmin, c.id);
-    await showPliantLast4(cardAdmin, { registry: customerCard });
-    customerSpends = await pliantSpendsForCards(cardAdmin, [customerCard?.pliant_card_id || ""]);
-    pliantAccount = await loadPliantAccountBalance();
-  } catch {
-    customerCard = null;
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -357,35 +339,6 @@ export default async function AdminClientDetailPage({ params }: Props) {
         }
       />
       <ClientStripeSuggestions suggestions={stripeSuggestions} />
-      <section className="admin-af-card rounded-3xl px-5 py-5">
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Pliant</p>
-        <h2 className="font-display text-xl font-extrabold text-[var(--admin-navy)]">Carte du compte</h2>
-        <p className="mt-1 max-w-md text-sm text-[var(--admin-navy)]/70">
-          Une carte générée ici alimente les transactions générales, sans dossier.
-        </p>
-        <div className="mt-4">
-          <PliantCardDesk
-            mode="customer"
-            customerId={c.id}
-            cardId={customerCard?.pliant_card_id || null}
-            face={stayCardFace({
-              itemId: c.id,
-              hotel: "",
-              holder: customerFullName(c),
-              last4: customerCard?.last4 || null,
-              closed: false,
-            })}
-            ceilingCents={customerCard?.limit_cents ?? null}
-            currency={customerCard?.currency || "EUR"}
-            locked={customerCard?.status === "locked"}
-            designation={customerCard?.label}
-            transactionCount={customerCard?.max_transaction_count}
-            transactionLimitCents={customerCard?.transaction_limit_cents}
-            account={pliantAccount}
-            spends={customerSpends}
-          />
-        </div>
-      </section>
       <section className="admin-af-card rounded-3xl p-5">
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-display text-lg font-bold">Réservations</h2>

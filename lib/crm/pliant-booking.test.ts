@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   linkedPliantTransactionIds,
+  ownedBookingPliantCard,
   pliantBookingCards,
   pliantCardRecaps,
   pliantExpenseTitle,
@@ -109,6 +110,48 @@ test("le récap groupe les dépenses par carte et additionne les achats", () => 
   assert.equal(recap[0]?.spentCents, 12800);
   assert.equal(pliantExpenseTitle("  Café  du  port  "), "Café du port");
   assert.equal(pliantExpenseTitle("   "), "Dépense");
+});
+
+test("le numéro s’ouvre seulement si la carte appartient au dossier et reste ouverte", () => {
+  const base = {
+    bookingCards: [] as { pliant_card_id: string; status: string | null }[],
+    arrivals: [] as { booking_item_id: string; pliant_card_id: string | null; card_closed_at: string | null }[],
+    registry: [] as { pliant_card_id: string; status: string | null }[],
+  };
+  assert.equal(ownedBookingPliantCard({ ...base, pliantCardId: "card-hotel" }), null);
+  assert.deepEqual(
+    ownedBookingPliantCard({
+      ...base,
+      pliantCardId: "card-hotel",
+      arrivals: [{ booking_item_id: "stay-1", pliant_card_id: "card-hotel", card_closed_at: null }],
+    }),
+    { itemId: "stay-1" }
+  );
+  assert.deepEqual(
+    ownedBookingPliantCard({
+      ...base,
+      pliantCardId: "card-hotel",
+      arrivals: [{ booking_item_id: "stay-1", pliant_card_id: "card-hotel", card_closed_at: "2026-10-01" }],
+      bookingCards: [{ pliant_card_id: "card-hotel", status: "active" }],
+    }),
+    { itemId: null }
+  );
+  assert.deepEqual(
+    ownedBookingPliantCard({
+      ...base,
+      pliantCardId: "card-hotel",
+      arrivals: [{ booking_item_id: "stay-1", pliant_card_id: "card-hotel", card_closed_at: "2026-10-01" }],
+    }),
+    { closed: true }
+  );
+  assert.deepEqual(
+    ownedBookingPliantCard({
+      ...base,
+      pliantCardId: " card-compte ",
+      registry: [{ pliant_card_id: "card-compte", status: "locked" }],
+    }),
+    { itemId: null }
+  );
 });
 
 test("une dépense annulée ne bloque pas une nouvelle copie", () => {

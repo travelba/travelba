@@ -1,6 +1,6 @@
 import "server-only";
 
-import { pliantCardNomination } from "./eta-il-fee";
+import { pliantCardNomination, pliantDesignation } from "./eta-il-fee";
 import { gmailConfigured, searchInbox } from "./gmail";
 import { hotelContact, leHotelIdFromItem } from "./hotel-contact";
 import { hotelDisplayName } from "./carnet";
@@ -30,7 +30,6 @@ import { stayDatesOpen } from "./stay-moment";
 import {
   MANUAL_CARD_NOTE,
   manualStayCardDraft,
-  stayCardCanBeShared,
   stayCardIsManual,
 } from "./manual-stay-card";
 import { manualPliantCardIds, rememberPliantCard, setRememberedCardLimit } from "./pliant-card-run";
@@ -106,6 +105,7 @@ function hotelEmails(item: CrmBookingItem) {
 function cardBody(input: {
   firstName: string;
   lastName: string;
+  designation: string;
   limitCents: number;
   currency: string;
   validFrom: string;
@@ -118,7 +118,7 @@ function cardBody(input: {
     body: {
       organizationId: process.env.PLIANT_ORGANIZATION_ID || "",
       cardConfig: "PLIANT_VIRTUAL_TRAVEL",
-      label: name.label,
+      label: pliantDesignation(input.designation) || name.label,
       customFirstName: name.customFirstName,
       customLastName: name.customLastName,
       limit: money,
@@ -268,7 +268,6 @@ async function alignStayCard(input: {
   le: { cents: number; currency: string } | null;
   parisToday: string;
   deps: ArrivalDeps;
-  reuseCardId?: string | null;
   limitManual?: boolean;
 }) {
   const channel = channelOf(input.item);
@@ -303,14 +302,10 @@ async function alignStayCard(input: {
     return { ...row, ...basePatch };
   }
   if (!row.pliant_card_id) {
-    if (input.reuseCardId) {
-      const cleared = row.task_note?.startsWith("Pliant") ? { task_open: false, task_note: null } : {};
-      await save(input.admin, row.id, { ...basePatch, pliant_card_id: input.reuseCardId, ...cleared });
-      return { ...row, ...basePatch, pliant_card_id: input.reuseCardId, ...cleared };
-    }
     const ready = await ensureCard({
       admin: input.admin,
       row,
+      item: input.item,
       travelers: input.travelers,
       holder: input.holder,
       limitCents: provision.ceilingCents,
@@ -392,7 +387,6 @@ export async function syncStayCards(
     admin,
     rows.map((row) => row.pliant_card_id || "")
   );
-  let sharedCardId = rows.find((row) => stayCardCanBeShared(row))?.pliant_card_id || null;
   for (const item of hotels) {
     const row = rows.find((entry) => entry.booking_item_id === item.id);
     if (!row) continue;
@@ -410,13 +404,8 @@ export async function syncStayCards(
       le,
       parisToday,
       deps,
-      reuseCardId: sharedCardId,
       limitManual: Boolean(row.pliant_card_id && manualCards.has(row.pliant_card_id)),
     });
-    const issued = rows[index];
-    if (stayCardCanBeShared(issued) && !sharedCardId) {
-      sharedCardId = issued.pliant_card_id;
-    }
   }
   await raiseSharedStayLimit(admin, rows, deps, manualCards);
   return rows;
@@ -642,14 +631,6 @@ async function stepArrival(input: {
     netCents: input.arrival.net_cents,
     bookingCurrency: input.booking.currency,
   });
-  const { data: siblings } = await input.admin
-    .from("crm_hotel_arrivals")
-    .select("pliant_card_id, card_closed_at, status, task_note")
-    .eq("booking_id", input.booking.id);
-  const reuseCardId =
-    ((siblings || []) as Pick<CrmHotelArrival, "pliant_card_id" | "card_closed_at" | "status" | "task_note">[]).find(
-      (row) => stayCardCanBeShared(row)
-    )?.pliant_card_id || null;
   const arrivalManual = await manualPliantCardIds(input.admin, [input.arrival.pliant_card_id || ""]);
   let row = await alignStayCard({
     admin: input.admin,
@@ -663,7 +644,6 @@ async function stepArrival(input: {
     le,
     parisToday: input.parisToday,
     deps: input.deps,
-    reuseCardId,
     limitManual: Boolean(input.arrival.pliant_card_id && arrivalManual.has(input.arrival.pliant_card_id)),
   });
   const { data: limitRows } = await input.admin
@@ -757,6 +737,7 @@ async function stepArrival(input: {
       const ready = await ensureCard({
         admin: input.admin,
         row,
+        item: input.item,
         travelers: input.travelers,
         holder: input.holder,
         limitCents,
@@ -856,6 +837,7 @@ function guestName(
 async function ensureCard(input: {
   admin: Admin;
   row: CrmHotelArrival;
+  item: CrmBookingItem;
   travelers: CrmBookingTraveler[];
   holder: { first_name: string | null; last_name: string | null } | null;
   limitCents: number;
@@ -870,6 +852,7 @@ async function ensureCard(input: {
   const spec = cardBody({
     firstName: guest.firstName,
     lastName: guest.lastName,
+    designation: hotelDisplayName(input.item),
     limitCents: input.limitCents,
     currency: input.currency,
     validFrom: input.parisToday,

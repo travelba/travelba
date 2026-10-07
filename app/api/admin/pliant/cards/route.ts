@@ -4,7 +4,6 @@ import { parseEurosToCents } from "@/lib/crm/hotel-arrival";
 import { syncStayCards } from "@/lib/crm/hotel-arrival-run";
 import {
   changePliantCardLimit,
-  issueCustomerPliantCard,
   rememberPliantCard,
   setPliantCardLocked,
 } from "@/lib/crm/pliant-card-run";
@@ -52,28 +51,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, cardId, limitCents: cents });
     }
     if (body?.customerId) {
-      const customerId = cleanId(body.customerId);
-      const cents = eurosToCents(body.limit);
-      if (!customerId) return jsonError("Client introuvable.", 400);
-      if (cents == null) return jsonError("Indiquez un plafond en euros.", 400);
-      const { data: customer } = await admin
-        .from("crm_customers")
-        .select("first_name, last_name")
-        .eq("id", customerId)
-        .maybeSingle();
-      if (!customer) return jsonError("Client introuvable.", 404);
-      const person = customer as { first_name: string | null; last_name: string | null };
-      const issued = await issueCustomerPliantCard(admin, {
-        customerId,
-        firstName: person.first_name || "Client",
-        lastName: person.last_name || "Travelba",
-        limitCents: cents,
-        currency: "EUR",
-        designation: typeof body.designation === "string" ? body.designation : "",
-        transactionAmount: typeof body.transactionAmount === "string" ? body.transactionAmount : "",
-        transactionCount: typeof body.transactionCount === "string" ? body.transactionCount : "",
-      });
-      return NextResponse.json({ ok: true, ...issued });
+      return jsonError("Les cartes se créent sur la réservation.", 400);
     }
     const bookingId = cleanId(body?.bookingId);
     if (!bookingId) return jsonError("Dossier introuvable.", 400);

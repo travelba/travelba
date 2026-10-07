@@ -15,6 +15,34 @@ export type PliantCardRecap = PliantBookingCard & {
   spentCents: number;
 };
 
+export type OwnedPliantCard = { itemId: string | null } | { closed: true };
+
+/**
+ * La carte appartient au dossier : carte générée, carte d’hôtel, ou registre.
+ * Une carte clôturée ou supprimée ne s’ouvre pas.
+ */
+export function ownedBookingPliantCard(input: {
+  pliantCardId: string;
+  bookingCards: { pliant_card_id: string; status: string | null }[];
+  arrivals: {
+    booking_item_id: string;
+    pliant_card_id: string | null;
+    card_closed_at: string | null;
+  }[];
+  registry: { pliant_card_id: string; status: string | null }[];
+}): OwnedPliantCard | null {
+  const id = input.pliantCardId.trim();
+  if (!id) return null;
+  const arrival = input.arrivals.find((row) => row.pliant_card_id === id) || null;
+  const booking = input.bookingCards.find((row) => row.pliant_card_id === id) || null;
+  const registry = input.registry.find((row) => row.pliant_card_id === id) || null;
+  if (!arrival && !booking && !registry) return null;
+  if (arrival && !arrival.card_closed_at) return { itemId: arrival.booking_item_id };
+  if (booking && booking.status !== "terminated") return { itemId: null };
+  if (registry && registry.status !== "terminated") return { itemId: null };
+  return { closed: true };
+}
+
 const NO_COPY_STATUS = new Set(["DECLINED", "REVERSED"]);
 const NO_COPY_TYPE = new Set(["REFUND", "CHARGEBACK", "RECHARGE", "STATUS_INQUIRY"]);
 
