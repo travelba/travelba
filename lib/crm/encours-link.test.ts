@@ -22,8 +22,8 @@ test("accueil client : le bloc Encours ouvre les transactions", () => {
 
 test("accueil agence : les encours négatifs ouvrent les transactions", () => {
   const src = source("app/admin/page.tsx");
-  assert.match(src, /hint: "Encours négatifs · voir les transactions"/);
-  assert.match(src, /href: "\/admin\/transactions"/);
+  assert.match(src, /Encours négatifs · voir les transactions/);
+  assert.match(src, /href="\/admin\/transactions"/);
   assert.match(src, /Math\.max\(0, -Number\(row\.balance\)/);
 });
 

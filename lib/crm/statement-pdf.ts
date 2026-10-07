@@ -1,5 +1,6 @@
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 import { siteConfig } from "@/lib/site";
+import { loadBrandLogoPng } from "./brand-logo";
 import type { StatementModel, StatementRow, StatementSection, StatementStay, StatementSummary } from "./statement";
 
 const PAGE_W = 595.28;
@@ -78,6 +79,8 @@ type Draw = {
   regular: PDFFont;
   bold: PDFFont;
   title: string;
+  /** Badge TBA ; absent, l’en-tête retombe sur le monogramme tracé. */
+  logo: PDFImage | null;
 };
 
 function contentBottom() {
@@ -114,23 +117,27 @@ function paintHeader(draw: Draw, continued: boolean) {
   if (!continued) {
     page.drawRectangle({ x: 0, y: PAGE_H - 108, width: PAGE_W, height: 108, color: NAVY });
     page.drawRectangle({ x: 0, y: PAGE_H - 112, width: PAGE_W, height: 4, color: GOLD });
-    page.drawRectangle({
-      x: MARGIN,
-      y: PAGE_H - 78,
-      width: 36,
-      height: 36,
-      borderColor: GOLD,
-      borderWidth: 1,
-    });
-    const mark = "TBA";
-    const markWidth = bold.widthOfTextAtSize(mark, 9);
-    page.drawText(mark, {
-      x: MARGIN + (36 - markWidth) / 2,
-      y: PAGE_H - 62,
-      size: 9,
-      font: bold,
-      color: GOLD,
-    });
+    if (draw.logo) {
+      page.drawImage(draw.logo, { x: MARGIN - 2, y: PAGE_H - 80, width: 40, height: 40 });
+    } else {
+      page.drawRectangle({
+        x: MARGIN,
+        y: PAGE_H - 78,
+        width: 36,
+        height: 36,
+        borderColor: GOLD,
+        borderWidth: 1,
+      });
+      const mark = "TBA";
+      const markWidth = bold.widthOfTextAtSize(mark, 9);
+      page.drawText(mark, {
+        x: MARGIN + (36 - markWidth) / 2,
+        y: PAGE_H - 62,
+        size: 9,
+        font: bold,
+        color: GOLD,
+      });
+    }
     drawTracked(page, bold, "TRAVEL BUSINESS AGENCY", MARGIN + 48, PAGE_H - 58, 9, 0.6, GOLD);
     page.drawText("Agence de voyage", {
       x: MARGIN + 48,
@@ -394,7 +401,9 @@ export async function renderStatementPdf(model: StatementModel) {
   doc.setSubject(model.number);
   const regular = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-  const draw: Draw = { doc, page: null as unknown as PDFPage, pages: [], y: 0, regular, bold, title: model.title };
+  const logoPng = await loadBrandLogoPng();
+  const logo = logoPng ? await doc.embedPng(logoPng) : null;
+  const draw: Draw = { doc, page: null as unknown as PDFPage, pages: [], y: 0, regular, bold, title: model.title, logo };
   openPage(draw, false);
   drawIdentity(draw, model);
   drawSummaries(draw, model.summaries);

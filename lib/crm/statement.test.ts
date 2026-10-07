@@ -165,6 +165,8 @@ test("le PDF porte l’agence, le titulaire et les mouvements", async () => {
   });
   const bytes = await renderStatementPdf(model);
   assert.equal(Buffer.from(bytes.subarray(0, 5)).toString("utf8"), "%PDF-");
+  // Le badge TBA est embarqué en image dans l’en-tête, pas un carré tracé.
+  assert.match(Buffer.from(bytes).toString("latin1"), /\/Subtype \/Image/);
   const { text, pages } = await pdfPlainText(bytes);
   assert.equal(pages, 1);
   assert.match(text, /TRAVEL BUSINESS AGENCY/);
