@@ -78,6 +78,7 @@ Fiche client › « Ouvrir l’espace client » → `POST /api/admin/clients/[id
 - `requireStaff` / `requireStaffPage`. Premier user si table vide → admin.
 - Ajouter un agent = Auth user + insert `crm_staff`. Ne pas recycler un client.
 - `ensureStaff` d’un client déjà en `crm_customers` ne doit **pas** le promouvoir.
+- **Une fiche client ne porte jamais l’e-mail ni le user Auth d’un compte de l’agence** (incident 07/10 : fiche sur l’e-mail d’un admin → l’invitation WhatsApp a ouvert `/admin`). `lib/crm/client-account.ts` : `clientLinkToken()` génère **tout** jeton client (invitation, lien magique, Concierge, carte, formalité, vol) et refuse un compte agence (`isStaffAccount` : ligne `crm_staff` ou `crm_role` admin/agent) ; `staffEmailBlock()` (RPC `crm_is_staff_email`) refuse l’e-mail à la création et au changement d’e-mail ; `ensureCustomerForUser` ne rattache ni ne rend une fiche à un staff ; `openEntry` referme la session si un lien client (`next_path` hors `/admin`) a ouvert un compte agence (`entryStaffDecision`). Migration `staff_customer_overlap` : triggers des deux côtés. Ne pas appeler `generateLink` directement pour un client.
 - Suppression client (`deleteCustomerById`) : ne **pas** `auth.admin.deleteUser` si le même `auth_user_id` est staff.
 
 ## Client : pas de self-delete
