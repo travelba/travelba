@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { stripeBalancePockets } from "@/lib/crm/account-balances";
 
 export function isLiveStripeSecret(secret: string) {
   return secret.startsWith("sk_live_") || secret.startsWith("rk_live_");
@@ -35,6 +36,19 @@ export function stripeConfigured() {
 
 export function stripeWebhookConfigured() {
   return Boolean(process.env.STRIPE_WEBHOOK_SECRET?.trim());
+}
+
+/** Disponible du compte Stripe, plus l’attente de versement. Null si Stripe n’est pas ouvert. */
+export async function loadStripeAccountBalance() {
+  const stripe = getStripe();
+  if (!stripe) return null;
+  try {
+    const balance = await stripe.balance.retrieve({}, { timeout: 8_000 });
+    return stripeBalancePockets(balance);
+  } catch (err) {
+    console.error("[stripe] solde", err instanceof Error ? err.message : "échec");
+    return stripeBalancePockets(null);
+  }
 }
 
 export function stripePublishableKey() {

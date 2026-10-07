@@ -5,10 +5,21 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { StayPayment } from "../../components/account/StayPayment";
 import { WireInstructions } from "../../components/account/WireInstructions";
-import { groupIban, pickEurSepaWire } from "./revolut-wire";
+import { groupIban, parseRevolutAccounts, pickEurSepaWire } from "./revolut-wire";
 
 const FR = "FR7630006000011234567890189";
 const GB = "GB29REVO00996912345678";
+
+test("le parse Revolut garde le solde et refuse un id invalide", () => {
+  const rows = parseRevolutAccounts([
+    { id: "not-a-uuid", name: "Main", currency: "EUR", balance: 10 },
+    { id: "b8f3c0a1-1111-4111-8111-111111111111", name: "Main", currency: "EUR", state: "active", balance: 1234.5 },
+    null,
+  ]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].balance, 1234.5);
+  assert.equal(rows[0].name, "Main");
+});
 
 test("le virement retient l’IBAN SEPA français du compte euros", () => {
   const wire = pickEurSepaWire(
