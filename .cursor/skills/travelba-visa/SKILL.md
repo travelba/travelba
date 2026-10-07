@@ -43,7 +43,7 @@ Le client voit ces cinq étapes sur son séjour : Préparation, Remplissage, Val
 
 ## Plafond
 
-30 % au-dessus de la dépense officielle, au cours BCE. 25 ILS, 40,27 USD, 20 GBP. Une carte par dossier, au nom du titulaire. Pas de PAN stocké.
+30 % au-dessus de la dépense officielle, au cours BCE. 25 ILS, 40,27 USD, 20 GBP. Une carte par dossier, au nom du titulaire. Pas de PAN stocké. La carte du compte (fiche client, sans dossier) prend le plafond, le montant par transaction et le nombre saisis — pas le prix de l’hôtel.
 
 ## Jeton Pliant
 

@@ -7,11 +7,9 @@ import { StayExpenses } from "@/components/account/StayExpenses";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { ExtrasPanel } from "@/components/crm/ExtrasPanel";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
-import { BookingStatusBadge } from "@/components/crm/ui";
 import { VisaSection } from "@/components/crm/VisaSection";
 import {
   carnetVisible,
-  clientBookingStatusLabel,
   clientVisibleItems,
   insuranceLineLabel,
   itemPriceLabel,
@@ -103,8 +101,7 @@ export default async function ExampleReservationPage({ params }: Props) {
 
           <BookingHero booking={pub} items={withoutHotelRosterItems(session.items)} priority className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]">
             <div className="absolute inset-0 flex flex-col justify-between p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <BookingStatusBadge label={clientBookingStatusLabel(b.status)} />
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 <span className="rounded-full bg-black/35 px-3 py-1 text-[11px] font-bold backdrop-blur">
                   {b.reference}
                 </span>

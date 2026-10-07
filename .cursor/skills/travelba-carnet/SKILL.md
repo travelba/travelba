@@ -17,12 +17,12 @@ Code : `lib/crm/carnet.ts`, `lib/crm/bookings.ts`, `components/admin/BookingEdit
 
 ## Enregistrer ≠ Montrer au client
 
-Un seul état que l’agence peut croire : **En préparation** (`visible_to_client=false`), **Montré au client**, ou **Archivée**. « Brouillon » n’est pas le nom de « pas encore visible » quand le statut est déjà Confirmée. Le bouton dit **Montrer au client** ou **Mettre à jour**, pas Publier. Archiver dit **Archiver** (la route archive déjà).
+Un seul état que l’agence peut croire : **En préparation** (`visible_to_client=false`), **Visible**, ou **Archivée**. Pas de pastille À l’étude, Devis, Confirmée, En voyage ou Terminée. Le bouton dit **Montrer au client** ou **Mettre à jour**, pas Publier. Archiver dit **Archiver** (la route archive déjà).
 
 | Geste | Effet |
 |-------|--------|
 | **Enregistrer** | sauve le dossier ; ne le montre pas et ne débite pas un séjour encore caché. Il s’allume dès qu’une étape est retirée, ajoutée, modifiée ou réordonnée |
-| **Montrer au client** | le client voit ; items + PDFs du dossier passent visibles. Un confirmé entre au grand livre. Un devis montré ne débite pas |
+| **Montrer au client** | le client voit ; items + PDFs du dossier passent visibles. La pastille devient **Visible**. Le séjour entre au grand livre |
 
 Un seul interrupteur séjour (plus de case fichier séparée). Guard serveur `canPublishCarnet` : au moins **une** carte `kind !== "fee"`.
 
@@ -62,8 +62,8 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 - **Montant du séjour affiché** = somme des prix vendus des cartes, plus les frais d’agence et les dépenses libres. `booking.total_amount` reste la somme des cartes (skill `travelba-money`).
 - `item.amount` extrait = **null** (jamais le net fournisseur sur la carte client).
 - Montant PDF → `details.document_amount` (relecture agent). `sanitizeExtractedPrices` **préremplit** `total_amount` = somme **un montant par fichier**. Un extract à 0 ne masque pas cette somme.
-- **Enregistrer** un extract `document_status=confirmed` : écrit `booking.total_amount` et passe le dossier en **confirmé**, toujours `visible_to_client=false`. Le débit part seulement au geste **Montrer au client**. Un devis montré ne débite pas.
-- Devis (`quote`) : montant proposé, statut `quoted`, **pas** de débit.
+- **Enregistrer** un extract `document_status=confirmed` : écrit `booking.total_amount` et peut passer le dossier en `confirmed`, toujours `visible_to_client=false`. Le débit part seulement au geste **Montrer au client**.
+- Devis (`quote`) : montant proposé, statut stocké `quoted`, caché tant qu’il n’est pas montré. Montré, il débite comme les autres.
 - Inclus (`details.included`) **seulement si la phrase est écrite**. Pas de petit-déj inventé. Sinon pas de bloc Inclus. Little Emperors : **toutes** les lignes du bloc « Little Emperors Benefits » / « LE Benefits » (surclassement, petit-déjeuner, crédit, early check-in, late check-out, nuit offerte), en français — pas seulement le petit-déjeuner. Skill `travelba-document-ingest`.
 - N’extraire **pas** annulation / barème / conditions : le PDF suffit.
 

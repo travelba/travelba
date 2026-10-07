@@ -58,20 +58,19 @@ test("showing a carnet keeps the agency guards", () => {
   assert.throws(() => publishBlock({ visible_to_client: false }, [{ kind: "fee" }]), /au moins une carte/);
 });
 
-test("a booking update only accepts status, notes and dates", () => {
+test("a booking update only accepts notes and dates", () => {
   const next = prepareBookingUpdate({
     id: BOOKING,
-    statut: "Confirmée",
     notes_internes: "À rappeler",
     date_depart: "2026-11-02",
     date_retour: "",
   });
-  assert.equal(next.patch.status, "confirmed");
   assert.equal(next.patch.notes_internal, "À rappeler");
   assert.equal(next.patch.start_date, "2026-11-02");
   assert.equal(next.patch.end_date, null);
+  assert.equal("status" in next.patch, false);
   assert.equal("destination" in next.patch, false);
-  assert.throws(() => prepareBookingUpdate({ id: BOOKING, statut: "payé" }), /Statut de dossier inconnu/);
+  assert.throws(() => prepareBookingUpdate({ id: BOOKING, statut: "Confirmée" }), /Rien à modifier/);
   assert.throws(() => prepareBookingUpdate({ id: BOOKING, date_depart: "hier" }), /Date de départ/);
   assert.throws(() => prepareBookingUpdate({ reference: "TB-1" }), /Rien à modifier/);
 });

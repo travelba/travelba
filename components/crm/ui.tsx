@@ -189,8 +189,6 @@ export function bookingStatusTone(
 ): "sky" | "green" | "amber" | "red" | "navy" | "gold" {
   switch (status) {
     case "confirmed":
-    case "travelling":
-    case "completed":
       return "gold";
     case "quoted":
     case "draft":

@@ -49,6 +49,8 @@ Avant d’écrire du SQL : lister les tables (`crm_*`), lire la **dernière** mi
 | `20261005100000_card_links.sql` | `crm_card_links` (lien carte /k/CODE envoyé à l’hôtel, empreinte seulement) ; `crm_card_views.viewer` / `card_link_id`, `staff_id` nullable — additive, avant le déploiement |
 | `20261005160000_booking_item_lifecycle.sql` | `crm_booking_items.lifecycle` (`active` / `superseded` / `cancelled`) et `superseded_by` |
 | `20261005183000_customer_email_nullable.sql` | `crm_customers.email` nullable : fiche créée depuis un mail sans adresse voyageur |
+| `20261007095000_booking_status_four.sql` | statut dossier : `draft`, `quoted`, `confirmed`, `cancelled`. En voyage et Terminée se lisent sur les dates |
+| `20261007101500_booking_visible_debit.sql` | débit séjour du trigger : séjour visible, pas annulé, pas archivé |
 
 Toute évolution = **nouveau fichier** `supabase/migrations/YYYYMMDDHHMMSS_slug.sql` (idempotent : `if not exists`, `drop policy if exists`). Appliquer via MCP `apply_migration` ou SQL Editor. Ne pas éditer une migration déjà poussée en prod.
 

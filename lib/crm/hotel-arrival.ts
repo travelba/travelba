@@ -1,5 +1,6 @@
 import { addIsoDays } from "./dates";
 import { centsToAmount } from "./money";
+import { stayDatesOpen } from "./stay-moment";
 import type { HotelArrivalChannel, HotelArrivalStatus } from "./types";
 
 export { addIsoDays };
@@ -8,7 +9,6 @@ export { addIsoDays };
 export const CHECKIN_CARD_CENTS = 50_000;
 export const CHECKIN_CARD_CURRENCY = "EUR";
 const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
-const ACTIVE_BOOKING = new Set(["confirmed", "travelling"]);
 
 export const ARRIVAL_STATUS_LABELS: Record<HotelArrivalStatus, string> = {
   pending: "En attente",
@@ -185,6 +185,8 @@ export type ArrivalTick = {
   lastRelanceAtMs: number | null;
   paymentUrl: string | null;
   bookingStatus: string;
+  /** Absent : le séjour est encore ouvert. Passé : le cron n’enchaîne plus. */
+  bookingEndDate?: string | null;
   cardId: string | null;
   cardClosed: boolean;
   blockedReason: string | null;
@@ -817,7 +819,8 @@ export function planHotelArrival(tick: ArrivalTick): ArrivalPlan {
   const stayOver = Boolean(closeOn && tick.parisToday >= closeOn);
   if (tick.cardId && !tick.cardClosed && (stayOver || tick.bookingStatus === "cancelled")) return { action: "close" };
   if (tick.status === "closed") return { action: "wait" };
-  if (!ACTIVE_BOOKING.has(tick.bookingStatus)) return { action: "wait" };
+  if (tick.bookingStatus !== "confirmed") return { action: "wait" };
+  if (tick.bookingEndDate && !stayDatesOpen(tick.bookingEndDate, tick.parisToday)) return { action: "wait" };
   if (tick.status === "vip_sent") return { action: "wait" };
   if (tick.status === "blocked" && tick.blockedReason === "no_email" && tick.emails.length > 0) {
     return planHotelArrival({ ...tick, status: "pending", blockedReason: null });

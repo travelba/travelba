@@ -109,7 +109,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "chercher_dossiers",
     description:
-      "Dossiers. etat : a-venir, preparation, montre, archive. Sans filtre : les prochains départs. État : En préparation, Montré au client, ou Archivée.",
+      "Dossiers. etat : a-venir, preparation, montre, archive. Sans filtre : les prochains départs. État : En préparation, Visible, ou Archivée.",
     input: {
       q,
       etat: z
@@ -228,11 +228,10 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "mettre_a_jour_dossier",
     write: true,
     description:
-      "Met à jour le statut, les notes ou les dates d’un dossier, puis le grand livre. statut : draft, quoted, confirmed, travelling, completed, cancelled.",
+      "Met à jour les notes ou les dates d’un dossier, puis le grand livre. L’état du dossier est En préparation, Visible ou Archivée.",
     input: {
       id: z.string().trim().optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
-      statut: z.string().trim().max(40).optional().describe("Statut métier du dossier"),
       notes_client: z.string().max(5000).optional().describe("Note visible par le client"),
       notes_internes: z.string().max(5000).optional().describe("Note interne à l’agence"),
       date_depart: z.string().max(40).optional().describe("Date de départ, AAAA-MM-JJ, vide pour effacer"),

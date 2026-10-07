@@ -1,22 +1,6 @@
-export const BOOKING_STATUSES = [
-  "draft",
-  "quoted",
-  "confirmed",
-  "travelling",
-  "completed",
-  "cancelled",
-] as const;
+export const BOOKING_STATUSES = ["draft", "quoted", "confirmed", "cancelled"] as const;
 
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
-
-export const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
-  draft: "À l’étude",
-  quoted: "Devis",
-  confirmed: "Confirmée",
-  travelling: "En voyage",
-  completed: "Terminée",
-  cancelled: "Annulée",
-};
 
 /** Kinds que l’import peut produire. La dépense libre n’en fait pas partie. */
 export const INGEST_ITEM_KINDS = [

@@ -2,7 +2,6 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { requireStaffPage } from "@/lib/crm/auth";
 import {
-  BOOKING_STATUS_LABELS,
   customerFullName,
   type CrmBalance,
   type CrmBooking,
@@ -21,6 +20,7 @@ import { revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
 import { stripeConfigured, stripeWebhookConfigured } from "@/lib/crm/stripe";
 import { buildLaunchItems } from "@/lib/crm/launch-status";
 import { stayHeadline } from "@/lib/crm/carnet";
+import { staffStayLabel } from "@/lib/crm/staff-stay";
 import { AdminLaunchStatus } from "@/components/admin/AdminLaunchStatus";
 import { ServiceDesk } from "@/components/admin/ServiceDesk";
 import { EstaNoticeList } from "@/components/admin/EstaNoticeList";
@@ -38,8 +38,6 @@ import {
   PageEyebrow,
   PageTitle,
   BookingStatusBadge,
-  StatusChip,
-  bookingStatusTone,
 } from "@/components/crm/ui";
 import { staffRoleLabel } from "@/lib/crm/staff-team";
 import { serviceDeskLines, type ServiceDeskItem } from "@/lib/crm/service-desk";
@@ -352,7 +350,7 @@ export default async function AdminHomePage() {
                       ? ` · ${jMinusLabel(featured.start_date)}`
                       : ""}
                   </p>
-                  <BookingStatusBadge label={BOOKING_STATUS_LABELS[featured.status]} />
+                  <BookingStatusBadge label={staffStayLabel(featured)} />
                 </div>
                 <div>
                   <h3 className="font-display text-2xl font-bold leading-tight">
@@ -408,9 +406,9 @@ export default async function AdminHomePage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <StatusChip tone={bookingStatusTone(b.status)}>
-                      {BOOKING_STATUS_LABELS[b.status]}
-                    </StatusChip>
+                    <span className="rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">
+                      {staffStayLabel(b)}
+                    </span>
                     <span className="text-sm font-semibold">
                       {formatMoney(displayedStayAmounts.get(b.id) ?? Number(b.total_amount), b.currency)}
                     </span>

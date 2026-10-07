@@ -1,14 +1,9 @@
 import Link from "next/link";
-import {
-  BOOKING_STATUS_LABELS,
-  type BookingStatus,
-  type CrmBooking,
-} from "@/lib/crm/types";
-import { customerFullName } from "@/lib/crm/types";
+import { BookingsFilters } from "@/components/admin/BookingsFilters";
+import { customerFullName, type CrmBooking } from "@/lib/crm/types";
 import type { CustomerNameRow } from "@/lib/crm/customer-search";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { BookingHero } from "@/components/crm/BookingHero";
-import { StatusChip, bookingStatusTone } from "@/components/crm/ui";
 import { bookingsListEmptyMessage } from "@/lib/crm/launch-status";
 import { stayHeadline } from "@/lib/crm/carnet";
 import {
@@ -20,27 +15,18 @@ import { staffStayLabel } from "@/lib/crm/staff-stay";
 import { Pagination } from "@/components/admin/Pagination";
 import {
   ADMIN_PAGE_SIZE,
-  BOOKING_SORTS,
   listHref,
   type BookingSort,
   type BookingStateFilter,
 } from "@/lib/crm/admin-list";
 
-const STATE_LABELS: Record<BookingStateFilter, string> = {
-  "a-venir": "À venir",
-  preparation: "En préparation",
-  montre: "Montrés au client",
-  archive: "Archivés",
-};
-
 export type BookingsListFilters = {
   q: string;
   etat: BookingStateFilter | null;
-  statut: BookingStatus | null;
   tri: BookingSort;
 };
 
-/** Liste paginée côté serveur : les filtres vivent dans l’URL (formulaire GET). */
+/** Liste paginée côté serveur : la recherche met l’URL à jour pendant la saisie. */
 export function BookingsTable({
   bookings,
   customers,
@@ -50,8 +36,9 @@ export function BookingsTable({
   page = 1,
   pageSize = ADMIN_PAGE_SIZE,
   total = bookings.length,
-  filters = { q: "", etat: null, statut: null, tri: "depart" },
+  filters = { q: "", etat: null, tri: "depart" },
   hiddenArchiveHits = 0,
+  searchText = {},
 }: {
   bookings: CrmBooking[];
   customers: CustomerNameRow[];
@@ -63,65 +50,26 @@ export function BookingsTable({
   total?: number;
   filters?: BookingsListFilters;
   hiddenArchiveHits?: number;
+  /** Texte déjà composé pour la recherche (ville, client, date, montant). */
+  searchText?: Record<string, string>;
 }) {
   const byId = new Map(customers.map((c) => [c.id, customerFullName(c)]));
   const urlFilters = {
     q: filters.q,
     etat: filters.etat,
-    statut: filters.statut,
     tri: filters.tri === "depart" ? null : filters.tri,
   };
-  const filtering = Boolean(filters.q || filters.etat || filters.statut);
+  const filtering = Boolean(filters.q || filters.etat);
   const archivedOnly = filters.etat === "archive";
 
   return (
     <div className="mt-6 space-y-3">
-      <form method="get" action="/admin/reservations" className="flex flex-col gap-2 sm:flex-row sm:flex-wrap" role="search">
-        <input
-          type="search"
-          name="q"
-          defaultValue={filters.q}
-          placeholder="Référence, destination, titre, client…"
-          aria-label="Rechercher un dossier"
-          className="admin-af-input w-full text-sm sm:flex-1"
-        />
-        <select name="etat" defaultValue={filters.etat || ""} aria-label="État du dossier" className="admin-af-input text-sm sm:w-48">
-          <option value="">Tous les états</option>
-          {(Object.keys(STATE_LABELS) as BookingStateFilter[]).map((state) => (
-            <option key={state} value={state}>
-              {STATE_LABELS[state]}
-            </option>
-          ))}
-        </select>
-        <select name="statut" defaultValue={filters.statut || ""} aria-label="Statut métier" className="admin-af-input text-sm sm:w-48">
-          <option value="">Tous les statuts</option>
-          {(Object.keys(BOOKING_STATUS_LABELS) as BookingStatus[]).map((s) => (
-            <option key={s} value={s}>
-              {BOOKING_STATUS_LABELS[s]}
-            </option>
-          ))}
-        </select>
-        <select name="tri" defaultValue={filters.tri} aria-label="Tri" className="admin-af-input text-sm sm:w-56">
-          {(Object.keys(BOOKING_SORTS) as BookingSort[]).map((sort) => (
-            <option key={sort} value={sort}>
-              {BOOKING_SORTS[sort].label}
-            </option>
-          ))}
-        </select>
-        <div className="flex gap-2">
-          <button type="submit" className="admin-af-btn admin-tap rounded-lg px-4 text-sm">
-            Filtrer
-          </button>
-          {filtering || filters.tri !== "depart" ? (
-            <Link
-              href="/admin/reservations"
-              className="admin-tap inline-flex items-center rounded-lg border border-[var(--border)] bg-white px-4 text-sm font-semibold text-[var(--admin-navy)]"
-            >
-              Effacer
-            </Link>
-          ) : null}
-        </div>
-      </form>
+      <BookingsFilters
+        q={filters.q}
+        etat={filters.etat}
+        tri={filters.tri}
+        revision={bookings.map((b) => b.id).join(",")}
+      />
       <Pagination
         page={page}
         pageSize={pageSize}
@@ -129,9 +77,13 @@ export function BookingsTable({
         label={total > 1 ? "dossiers" : "dossier"}
         hrefFor={(next) => listHref("/admin/reservations", urlFilters, next)}
       />
-      <ul className="admin-af-card divide-y divide-border overflow-hidden rounded-2xl">
+      <ul id="dossiers-liste" className="admin-af-card divide-y divide-border overflow-hidden rounded-2xl">
         {bookings.map((b) => (
-          <li key={b.id} className="flex flex-col gap-2 px-5 py-4 transition hover:bg-[var(--admin-sky)]/40 sm:flex-row sm:items-center sm:justify-between">
+          <li
+            key={b.id}
+            data-search={searchText[b.id] || ""}
+            className="flex flex-col gap-3 px-5 py-4 transition hover:bg-[var(--admin-sky)]/40 sm:flex-row sm:items-center sm:justify-between"
+          >
             <Link
               href={`/admin/reservations/${b.id}`}
               className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
@@ -157,21 +109,18 @@ export function BookingsTable({
                 <span className="rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">
                   {staffStayLabel(b)}
                 </span>
-                <StatusChip tone={bookingStatusTone(b.status)}>
-                  {BOOKING_STATUS_LABELS[b.status]}
-                </StatusChip>
                 <span className="text-sm font-semibold">
                   {formatMoney(displayAmounts[b.id] ?? Number(b.total_amount), b.currency)}
                 </span>
               </div>
             </Link>
-            <div className="flex flex-col items-end gap-1">
-              <DuplicateBookingButton compact bookingId={b.id} />
+            <div className="flex shrink-0 items-center gap-1 self-end sm:self-center">
+              <DuplicateBookingButton iconOnly bookingId={b.id} label={`${b.reference} — ${b.title}`} />
               {b.archived_at ? (
-                <RestoreBookingButton compact bookingId={b.id} />
+                <RestoreBookingButton iconOnly bookingId={b.id} />
               ) : (
                 <ArchiveBookingButton
-                  compact
+                  iconOnly
                   redirectTo={null}
                   bookingId={b.id}
                   label={`${b.reference} — ${b.title}`}
@@ -180,6 +129,9 @@ export function BookingsTable({
             </div>
           </li>
         ))}
+        <li data-search-empty hidden className="px-5 py-8 text-center text-sm text-muted">
+          Aucune réservation trouvée.
+        </li>
         {!bookings.length ? (
           <li className="px-5 py-8 text-center text-sm text-muted">
             {archivedOnly

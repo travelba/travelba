@@ -1,4 +1,4 @@
-import { findMatchingItem } from "@/lib/crm/item-match";
+import { findHotelBookingCard, findMatchingItem } from "@/lib/crm/item-match";
 import { countsAsCarnetCard, isActiveItem } from "@/lib/crm/types";
 
 export type LifecycleCard = {
@@ -120,8 +120,10 @@ function choiceRow(row: LifecycleCard) {
 }
 
 /**
- * Même référence : mettre à jour la carte. Autre référence : remplacer la carte
- * du même type, ou demander laquelle s’il y en a plusieurs.
+ * Même référence, ou même réservation Little Emperors : mettre à jour la carte.
+ * Une autre référence, seule de son type : la remplacer. Plusieurs cartes du même
+ * type pour une seule carte nouvelle : demander laquelle. Plusieurs cartes
+ * nouvelles rejoignent le séjour, sans choix impossible.
  */
 export function replacementPlan(
   incoming: IncomingCard[],
@@ -131,25 +133,34 @@ export function replacementPlan(
   const active = existing.filter((row) => isActiveItem(row));
   const retired = existing.filter((row) => !isActiveItem(row));
   const pool = [...active];
+  const matched: LifecycleCard[] = [];
   const updates: { itemId: string }[] = [];
   const unmatched: IncomingCard[] = [];
   for (const item of incoming) {
     const kind = item.kind || "";
     if (!countsAsCarnetCard(kind) || !(item.title || "").trim()) continue;
-    const hit = findMatchingItem(pool, {
+    const probe = {
       kind,
       confirmation_ref: item.confirmation_ref,
       start_at: item.start_at,
       title: item.title,
       details: item.details || null,
-    });
+    };
+    const hit =
+      findMatchingItem(pool, probe) ||
+      findMatchingItem(matched, probe) ||
+      findHotelBookingCard(pool, probe) ||
+      findHotelBookingCard(matched, probe);
     if (!hit) {
       unmatched.push(item);
       continue;
     }
-    updates.push({ itemId: hit.id });
+    if (!updates.some((row) => row.itemId === hit.id)) updates.push({ itemId: hit.id });
     const idx = pool.findIndex((row) => row.id === hit.id);
-    if (idx >= 0) pool.splice(idx, 1);
+    if (idx >= 0) {
+      matched.push(pool[idx]);
+      pool.splice(idx, 1);
+    }
   }
 
   const replacements: ReplacementPlan["replacements"] = [];
@@ -180,7 +191,12 @@ export function replacementPlan(
       });
       continue;
     }
-    if (chosenId && group.length === 1 && targets.some((row) => row.id === chosenId)) {
+    // Plusieurs cartes nouvelles rejoignent le séjour. Le choix n’existe que pour une seule.
+    if (group.length !== 1) {
+      adds += group.length;
+      continue;
+    }
+    if (chosenId && targets.some((row) => row.id === chosenId)) {
       const target = targets.find((row) => row.id === chosenId)!;
       replacements.push({
         itemId: target.id,
@@ -209,6 +225,8 @@ export type InboxStayAction = {
 
 const REPLACE_HINT =
   "Le prix vendu reste celui déjà saisi. Le client voit la nouvelle carte quand vous montrez le séjour.";
+const UPDATE_STAY_HINT =
+  "Les cartes déjà là sont complétées. Le prix vendu ne change pas. Une carte nouvelle reste cachée.";
 const CANCEL_CARD_HINT = "Seule cette carte sort du total et du carnet. L’argent déjà reçu reste.";
 const CANCEL_STAY_HINT = "Le séjour est annulé. Le débit disparaît. L’argent déjà reçu reste un avoir.";
 
@@ -293,12 +311,13 @@ export function inboxStayAction(input: {
     };
   }
   if (plan.updates.length) {
+    const stay = plan.updates.length + plan.adds > 1;
     return {
       action: "attach",
-      label: "Mettre à jour la carte",
+      label: stay ? "Mettre à jour le séjour" : "Mettre à jour la carte",
       itemId: null,
       choices: [],
-      hint: REPLACE_HINT,
+      hint: stay ? UPDATE_STAY_HINT : REPLACE_HINT,
     };
   }
   return {

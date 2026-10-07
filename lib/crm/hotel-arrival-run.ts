@@ -26,6 +26,7 @@ import {
   type StayProvision,
 } from "./hotel-arrival";
 import { passportPreviewsForStay } from "./preview-files";
+import { stayDatesOpen } from "./stay-moment";
 import {
   MANUAL_CARD_NOTE,
   manualStayCardDraft,
@@ -62,11 +63,10 @@ type BookingRow = {
   currency: string | null;
   reference: string | null;
   customer_id: string;
+  end_date?: string | null;
 };
 
 type ItemRow = CrmBookingItem & { booking?: BookingRow | BookingRow[] | null };
-
-const ACTIVE = new Set(["confirmed", "travelling"]);
 
 function embeddedBooking(item: ItemRow): BookingRow | null {
   const booking = item.booking;
@@ -261,6 +261,7 @@ async function alignStayCard(input: {
   row: CrmHotelArrival;
   item: CrmBookingItem;
   bookingStatus: string;
+  bookingEndDate: string | null;
   bookingCurrency: string | null;
   travelers: CrmBookingTraveler[];
   holder: { first_name: string | null; last_name: string | null } | null;
@@ -291,7 +292,7 @@ async function alignStayCard(input: {
     currency: provision.currency,
     card_limit_cents: provision.ceilingCents,
   };
-  const open = ACTIVE.has(input.bookingStatus);
+  const open = input.bookingStatus === "confirmed" && stayDatesOpen(input.bookingEndDate, input.parisToday);
   const aligned =
     row.amount_cents === provision.baseCents &&
     row.card_limit_cents === provision.ceilingCents &&
@@ -360,6 +361,7 @@ export async function syncStayCards(
   input: {
     bookingId: string;
     bookingStatus: string;
+    bookingEndDate: string | null;
     currency: string | null;
     items: CrmBookingItem[];
     travelers: CrmBookingTraveler[];
@@ -401,6 +403,7 @@ export async function syncStayCards(
       row,
       item,
       bookingStatus: input.bookingStatus,
+      bookingEndDate: input.bookingEndDate,
       bookingCurrency: input.currency,
       travelers: input.travelers,
       holder: input.holder,
@@ -501,7 +504,7 @@ export async function runHotelArrivals(admin: Admin, deps: ArrivalDeps = {}, onl
   const windowEnd = addIsoDays(parisToday, 45);
   const { data: upcoming } = await admin
     .from("crm_booking_items")
-    .select("*, booking:crm_bookings!inner(id, status, currency, reference, customer_id)")
+    .select("*, booking:crm_bookings!inner(id, status, currency, reference, customer_id, end_date)")
     .eq("kind", "hotel")
     .gte("start_at", windowStart)
     .lte("start_at", `${windowEnd}T23:59:59.999Z`);
@@ -511,14 +514,14 @@ export async function runHotelArrivals(admin: Admin, deps: ArrivalDeps = {}, onl
   if (missing.length) {
     const { data: extra } = await admin
       .from("crm_booking_items")
-      .select("*, booking:crm_bookings!inner(id, status, currency, reference, customer_id)")
+      .select("*, booking:crm_bookings!inner(id, status, currency, reference, customer_id, end_date)")
       .in("id", missing);
     for (const row of (extra || []) as ItemRow[]) items.set(row.id, row);
   }
   const arrivals = new Map(open.map((row) => [row.booking_item_id, row]));
   for (const item of items.values()) {
     const booking = embeddedBooking(item);
-    if (!booking || !ACTIVE.has(booking.status)) continue;
+    if (!booking || booking.status !== "confirmed" || !stayDatesOpen(booking.end_date, parisToday)) continue;
     if (arrivals.has(item.id)) continue;
     const channel = channelOf(item);
     const { data: inserted } = await admin
@@ -653,6 +656,7 @@ async function stepArrival(input: {
     row: input.arrival,
     item: input.item,
     bookingStatus: input.booking.status,
+    bookingEndDate: input.booking.end_date || null,
     bookingCurrency: input.booking.currency,
     travelers: input.travelers,
     holder: input.holder,
@@ -714,6 +718,7 @@ async function stepArrival(input: {
       lastRelanceAtMs: row.last_relance_at ? Date.parse(row.last_relance_at) : null,
       paymentUrl: row.payment_url,
       bookingStatus: input.booking.status,
+      bookingEndDate: input.booking.end_date || null,
       cardId: row.pliant_card_id,
       cardClosed: Boolean(row.card_closed_at),
       blockedReason: row.blocked_reason,

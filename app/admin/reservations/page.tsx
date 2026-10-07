@@ -5,24 +5,21 @@ import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { loadStayMaps } from "@/lib/crm/carnet-query";
 import { loadDisplayedStayAmounts } from "@/lib/crm/displayed-stay";
-import type { CrmBooking } from "@/lib/crm/types";
+import { customerFullName, type CrmBooking } from "@/lib/crm/types";
 import { todayIsoDate } from "@/lib/crm/money";
-import { CUSTOMER_NAME_SELECT, type CustomerNameRow } from "@/lib/crm/customer-search";
+import type { CustomerNameRow } from "@/lib/crm/customer-search";
+import { bookingListSearchText } from "@/lib/crm/booking-search";
+import { smartSearchMatch } from "@/lib/crm/smart-search";
 import {
   ADMIN_PAGE_SIZE,
   BOOKING_SORTS,
   firstParam,
-  joinOrFilters,
   listHref,
-  orSearchFilter,
   pageOverflow,
   pageRange,
-  phoneSearchFilter,
   parseBookingSort,
   parseBookingState,
-  parseBookingStatus,
   parsePage,
-  searchPattern,
   type FilterableQuery,
   type SearchParamValue,
 } from "@/lib/crm/admin-list";
@@ -31,26 +28,27 @@ type Props = {
   searchParams: Promise<Record<string, SearchParamValue>>;
 };
 
+type ListCustomer = CustomerNameRow & {
+  company_name: string | null;
+  email: string | null;
+  phone: string | null;
+};
+
+function pickRecord<T>(source: Record<string, T>, ids: Set<string>) {
+  const out: Record<string, T> = {};
+  for (const id of ids) {
+    if (source[id] != null) out[id] = source[id];
+  }
+  return out;
+}
+
 export default async function AdminReservationsPage({ searchParams }: Props) {
   const params = await searchParams;
   const page = parsePage(params.page);
   const q = (firstParam(params.q) || "").trim();
   const state = parseBookingState(params.etat);
-  const status = parseBookingStatus(params.statut);
   const sort = parseBookingSort(params.tri);
-  const pattern = searchPattern(q);
   const { supabase } = await requireStaffPage();
-
-  // Les dossiers d’un client cherché par son nom : quelques ids, pas la table.
-  let matchedCustomerIds: string[] = [];
-  if (pattern) {
-    const { data: matched } = await supabase
-      .from("crm_customers")
-      .select("id")
-      .or(joinOrFilters(orSearchFilter(pattern, ["first_name", "last_name", "company_name"]), phoneSearchFilter(q)))
-      .limit(50);
-    matchedCustomerIds = ((matched || []) as { id: string }[]).map((row) => row.id);
-  }
 
   function applyFilters(query: FilterableQuery, archivedOnly: boolean) {
     let next = query;
@@ -61,48 +59,113 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
     if (!archivedOnly && state === "a-venir") {
       next = next.gte("start_date", todayIsoDate()).neq("status", "cancelled");
     }
-    if (status) next = next.eq("status", status);
-    if (pattern) {
-      next = next.or(orSearchFilter(pattern, ["reference", "title", "destination"], "customer_id", matchedCustomerIds));
-    }
     return next;
   }
 
   const { from, to } = pageRange(page);
   const order = BOOKING_SORTS[sort];
   const listQuery = supabase.from("crm_bookings").select("*", { count: "exact" });
-  const archivedCountQuery = supabase.from("crm_bookings").select("id", { count: "exact", head: true });
-  const [{ data: bookings, count, error: listError }, hiddenArchived] = await Promise.all([
-    (applyFilters(listQuery as unknown as FilterableQuery, state === "archive") as unknown as typeof listQuery)
+  // Au-delà, la recherche reste sur le tri demandé. Une agence tient largement en dessous.
+  const SEARCH_SCAN = 400;
+
+  function ordered(archivedOnly: boolean, withCount: boolean) {
+    const query = withCount ? listQuery : supabase.from("crm_bookings").select("*");
+    return (applyFilters(query as unknown as FilterableQuery, archivedOnly) as unknown as typeof listQuery)
       .order(order.column, { ascending: order.ascending, nullsFirst: false })
-      .order("created_at", { ascending: false })
-      .range(from, to),
-    pattern && state !== "archive"
-      ? (applyFilters(archivedCountQuery as unknown as FilterableQuery, true) as unknown as typeof archivedCountQuery)
-      : Promise.resolve({ count: 0 }),
-  ]);
+      .order("created_at", { ascending: false });
+  }
+
+  const listResult = q
+    ? await (async () => {
+        const [main, archived] = await Promise.all([
+          ordered(state === "archive", false).limit(SEARCH_SCAN),
+          state === "archive"
+            ? Promise.resolve({ data: [] as CrmBooking[] | null, error: null })
+            : ordered(true, false).limit(SEARCH_SCAN),
+        ]);
+        return {
+          scanned: (main.data || []) as CrmBooking[],
+          archived: (archived.data || []) as CrmBooking[],
+          count: null as number | null,
+          error: main.error || archived.error,
+        };
+      })()
+    : await (async () => {
+        const main = await ordered(state === "archive", true).range(from, to);
+        return {
+          scanned: (main.data || []) as CrmBooking[],
+          archived: [] as CrmBooking[],
+          count: main.count,
+          error: main.error,
+        };
+      })();
   // Lecture en échec : la page d’erreur (« Réessayer ») plutôt qu’un faux « Aucune réservation trouvée ».
-  if (listError) {
-    console.error("[admin/reservations]", listError.code ?? "?", listError.message ?? "");
+  if (listResult.error) {
+    console.error("[admin/reservations]", listResult.error.code ?? "?", listResult.error.message ?? "");
     throw new Error("Réservations indisponibles");
   }
-  // `?page=999` : on renvoie sur la dernière page plutôt qu’un résumé « 301-312 » au-dessus d’une liste vide.
-  const lastPage = pageOverflow(page, count);
-  if (lastPage != null) {
-    redirect(listHref("/admin/reservations", { q, etat: state, statut: status, tri: sort === "depart" ? null : sort }, lastPage));
-  }
-  const rows = (bookings || []) as CrmBooking[];
-  const customerIds = [...new Set(rows.map((row) => row.customer_id).filter(Boolean))];
-  const [{ data: customers }, maps, displayed] = await Promise.all([
+  const pool = q ? [...listResult.scanned, ...listResult.archived] : listResult.scanned;
+  const customerIds = [...new Set(pool.map((row) => row.customer_id).filter(Boolean))];
+  const [{ data: customerRows }, maps, displayed] = await Promise.all([
     customerIds.length
-      ? supabase.from("crm_customers").select(CUSTOMER_NAME_SELECT).in("id", customerIds)
-      : Promise.resolve({ data: [] as CustomerNameRow[] }),
+      ? supabase
+          .from("crm_customers")
+          .select("id, first_name, last_name, company_name, email, phone")
+          .in("id", customerIds)
+      : Promise.resolve({ data: [] as ListCustomer[] }),
     loadStayMaps(
       supabase,
-      rows.map((row) => row.id)
+      pool.map((row) => row.id)
     ),
-    loadDisplayedStayAmounts(supabase, rows),
+    loadDisplayedStayAmounts(supabase, pool),
   ]);
+  const customersById = new Map(((customerRows || []) as ListCustomer[]).map((row) => [row.id, row]));
+  const searchText = new Map<string, string>();
+  for (const row of pool) {
+    const customer = customersById.get(row.customer_id);
+    searchText.set(
+      row.id,
+      bookingListSearchText({
+        reference: row.reference,
+        title: row.title,
+        destination: row.destination,
+        status: row.status,
+        start_date: row.start_date,
+        end_date: row.end_date,
+        archived_at: row.archived_at,
+        visible_to_client: row.visible_to_client,
+        currency: row.currency,
+        customer: customer ? customerFullName(customer) : "",
+        company: customer?.company_name,
+        email: customer?.email,
+        phone: customer?.phone,
+        places: maps.arrival[row.id],
+        routes: maps.route[row.id],
+        amount: displayed.get(row.id) ?? Number(row.total_amount),
+      })
+    );
+  }
+  const matched = q ? listResult.scanned.filter((row) => smartSearchMatch(q, searchText.get(row.id))) : listResult.scanned;
+  const total = q ? matched.length : (listResult.count ?? matched.length);
+  // `?page=999` : on renvoie sur la dernière page plutôt qu’un résumé « 301-312 » au-dessus d’une liste vide.
+  const lastPage = pageOverflow(page, total);
+  if (lastPage != null) {
+    redirect(listHref("/admin/reservations", { q, etat: state, tri: sort === "depart" ? null : sort }, lastPage));
+  }
+  const rows = q ? matched.slice(from, to + 1) : matched;
+  const hiddenArchiveHits =
+    q && state !== "archive"
+      ? listResult.archived.filter((row) => smartSearchMatch(q, searchText.get(row.id))).length
+      : 0;
+  const rowIds = new Set(rows.map((row) => row.id));
+  const customers = [...customersById.values()].filter((row) => rows.some((booking) => booking.customer_id === row.id));
+  const visibleSearch: Record<string, string> = {};
+  const displayAmounts: Record<string, number> = {};
+  for (const id of rowIds) {
+    visibleSearch[id] = searchText.get(id) || "";
+    const amount = displayed.get(id);
+    if (amount != null) displayAmounts[id] = amount;
+  }
 
   return (
     <div>
@@ -118,15 +181,16 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
       />
       <BookingsTable
         bookings={rows}
-        customers={(customers || []) as CustomerNameRow[]}
-        places={maps.arrival}
-        routes={maps.route}
-        displayAmounts={Object.fromEntries(displayed)}
+        customers={customers.map((row) => ({ id: row.id, first_name: row.first_name, last_name: row.last_name }))}
+        places={pickRecord(maps.arrival, rowIds)}
+        routes={pickRecord(maps.route, rowIds)}
+        displayAmounts={displayAmounts}
+        searchText={visibleSearch}
         page={page}
         pageSize={ADMIN_PAGE_SIZE}
-        total={count ?? rows.length}
-        filters={{ q, etat: state, statut: status, tri: sort }}
-        hiddenArchiveHits={hiddenArchived.count ?? 0}
+        total={total}
+        filters={{ q, etat: state, tri: sort }}
+        hiddenArchiveHits={hiddenArchiveHits}
       />
     </div>
   );

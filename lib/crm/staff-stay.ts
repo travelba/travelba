@@ -14,11 +14,11 @@ export type StaffStayVisibility = "preparing" | "shown" | "archived";
 
 const LABELS: Record<StaffStayVisibility, string> = {
   preparing: "En préparation",
-  shown: "Montré au client",
+  shown: "Visible",
   archived: "Archivée",
 };
 
-/** Un seul état visible : préparé, montré, ou archivé. Le statut métier reste à part. */
+/** Un seul état : en préparation, visible, ou archivée. */
 export function staffStayVisibility(booking: {
   archived_at?: string | null;
   visible_to_client?: boolean | null;
@@ -61,20 +61,18 @@ export function staffBlockingChips(input: {
   return chips;
 }
 
-/** Le grand livre suit le geste « montrer », pas le statut seul. */
+/** Le grand livre suit la visibilité. Une annulation retire le débit. */
 export function staffLedgerCaption(booking: {
-  status: BookingStatus | string;
+  status?: BookingStatus | string | null;
   visible_to_client?: boolean | null;
   archived_at?: string | null;
   include_in_ledger?: boolean | null;
   client_settles_stay?: boolean | null;
 }) {
-  if (booking.archived_at) return "Archivé";
+  if (booking.archived_at) return "Archivée";
   if (booking.client_settles_stay) return "Hors agence";
   if (booking.include_in_ledger === false) return "Hors grand livre";
-  if (booking.status === "quoted" || booking.status === "draft" || booking.status === "cancelled") {
-    return "Pas de débit";
-  }
+  if (booking.status === "cancelled") return "Pas de débit";
   if (!booking.visible_to_client) return "Pas encore";
   return "Au grand livre";
 }

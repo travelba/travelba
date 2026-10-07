@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BrandMark, BookingStatusBadge } from "@/components/crm/ui";
+import { BrandMark } from "@/components/crm/ui";
 import { Icon } from "@/components/crm/icons";
 import { BusyBar } from "@/components/crm/BusyBar";
 import {
@@ -126,7 +126,6 @@ function CarnetPreview() {
               <Icon name="timer" className="h-[14px] w-[14px] text-[#b89768]" />
               À venir
             </span>
-            <BookingStatusBadge label="Confirmée" />
           </div>
           <div className="absolute bottom-3 left-3 right-3 text-white">
             <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--admin-gold)]">

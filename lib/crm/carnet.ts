@@ -1,7 +1,6 @@
-import type { BookingStatus, CrmBooking, CrmBookingDocument, CrmBookingItem } from "@/lib/crm/types";
+import type { CrmBooking, CrmBookingDocument, CrmBookingItem } from "@/lib/crm/types";
 import {
   BOOKING_ITEM_LABELS,
-  BOOKING_STATUS_LABELS,
   countsAsCarnetCard,
   isActiveItem,
   isLedgerExpenseKind,
@@ -358,12 +357,6 @@ export function itemPriceLabel(
 
 export function clientVisibleItems<T extends { visible_to_client?: boolean | null }>(items: T[]) {
   return items.filter((item) => item.visible_to_client !== false);
-}
-
-/** Le client qui voit le carnet ne lit jamais « Brouillon ». */
-export function clientBookingStatusLabel(status: BookingStatus) {
-  if (status === "draft") return "Séjour";
-  return BOOKING_STATUS_LABELS[status];
 }
 
 export function keptHiddenFromClient(details: Record<string, unknown> | null | undefined) {

@@ -22,7 +22,6 @@ import { serviceDeskLines, type ServiceDeskItem } from "@/lib/crm/service-desk";
 import { staffLedgerCaption, staffStayLabel } from "@/lib/crm/staff-stay";
 import { reviewIdentityPieces } from "@/lib/crm/trip-documents";
 import {
-  BOOKING_STATUS_LABELS,
   DOC_TYPE_LABELS,
   EMAIL_INBOX_QUEUE_STATUSES,
   customerFullName,
@@ -102,7 +101,7 @@ function bookingLine(row: BookingRow, names: Map<string, string>, amounts: Map<s
     destination: row.destination,
     dates: [row.start_date, row.end_date].filter(Boolean).join(" → ") || null,
     etat: staffStayLabel(row),
-    statut: BOOKING_STATUS_LABELS[row.status] || row.status,
+    statut: staffStayLabel(row),
     client: names.get(row.customer_id) || null,
     montant: amount == null ? null : formatMoney(amount, row.currency || "EUR"),
     grand_livre: staffLedgerCaption(row),

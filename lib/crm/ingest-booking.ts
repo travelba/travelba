@@ -44,7 +44,7 @@ import {
   IMPORT_QUOTE_NOTE,
 } from "@/lib/crm/email-detach";
 import { activeCardDateRange, cancellationApplyPlan, cardStaysShown, replacementPlan } from "@/lib/crm/item-lifecycle";
-import { findMatchingItem } from "@/lib/crm/item-match";
+import { findHotelBookingCard, findMatchingItem, keptHotelStayFields } from "@/lib/crm/item-match";
 import { persistBookingCardOrder } from "@/lib/crm/item-order";
 import { inferAirlineIata } from "@/lib/crm/brand-marks";
 import {
@@ -323,13 +323,19 @@ async function upsertItemsAndTravelers(
       );
     }
     const pool = opts?.keepSellingPrice ? remaining.filter((row) => isActiveItem(row)) : remaining;
-    const match = findMatchingItem(pool, {
+    const probe = {
       kind,
       confirmation_ref: emptyToNull(item.confirmation_ref),
       start_at: emptyToNull(item.start_at),
       title,
       details,
-    });
+    };
+    let match = findMatchingItem(pool, probe);
+    let sameBooking = false;
+    if (!match && opts?.keepSellingPrice) {
+      match = findHotelBookingCard(pool, probe);
+      sameBooking = Boolean(match);
+    }
     const incomingAmount = parseMoney(item.amount);
     const replacing =
       !match && opts?.replacements
@@ -347,15 +353,23 @@ async function upsertItemsAndTravelers(
         : match
           ? parseMoney(match.amount)
           : null;
-    const payload = {
-      kind,
+    const kept = sameBooking && match ? keptHotelStayFields(match, {
       title,
-      supplier: emptyToNull(item.supplier),
       confirmation_ref: emptyToNull(item.confirmation_ref),
+      supplier: emptyToNull(item.supplier),
       start_at: emptyToNull(item.start_at),
       end_at: emptyToNull(item.end_at),
-      amount,
       details,
+    }) : null;
+    const payload = {
+      kind,
+      title: kept?.title || title,
+      supplier: kept ? kept.supplier : emptyToNull(item.supplier),
+      confirmation_ref: kept ? kept.confirmation_ref : emptyToNull(item.confirmation_ref),
+      start_at: kept ? kept.start_at : emptyToNull(item.start_at),
+      end_at: kept ? kept.end_at : emptyToNull(item.end_at),
+      amount,
+      details: kept?.details || details,
       visible_to_client: cardStaysShown(match, Boolean(opts?.keepSellingPrice)),
       source_document_id: sourceDocId(details, docs),
       ...(replacing

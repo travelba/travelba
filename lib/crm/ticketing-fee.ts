@@ -20,9 +20,9 @@ export function ticketingFeeAmount(input: { hasFlight: boolean; travelerCount?: 
   return ticketingTicketCount(input) * TICKETING_FEE_EUR;
 }
 
-/** Même règle que le débit : 25 € par passager, dossier confirmé avec un vol. */
+/** Même règle que le débit séjour : 25 € par passager tant que le séjour n’est pas annulé. */
 export function collectableTicketingFee(input: { status: string; hasFlight: boolean; travelerCount?: number }) {
-  if (input.status !== "confirmed" && input.status !== "travelling" && input.status !== "completed") return 0;
+  if (input.status === "cancelled") return 0;
   return ticketingFeeAmount(input);
 }
 

@@ -129,5 +129,7 @@ test("supprimer depuis l’agence archive le dossier et le bouton dit Archiver",
   const button = readFileSync(join(root, "components/admin/ArchiveBookingButton.tsx"), "utf8");
   assert.match(button, /ArchiveBookingButton/);
   assert.match(button, /label="Archiver"/);
+  assert.match(button, /Archiver le dossier/);
+  assert.match(button, /Dupliquer le dossier/);
   assert.doesNotMatch(button, /Supprimer/);
 });

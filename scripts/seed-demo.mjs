@@ -122,7 +122,7 @@ const CUSTOMERS = [
         reference: "TB-SEED-0002",
         title: "New York — salon professionnel",
         destination: "New York, États-Unis",
-        status: "travelling",
+        status: "confirmed",
         start_date: "2026-09-14",
         end_date: "2026-09-19",
         total_amount: 5620,
@@ -246,7 +246,7 @@ const CUSTOMERS = [
         reference: "TB-SEED-0004",
         title: "Dubaï — mission Q1",
         destination: "Dubaï, Émirats arabes unis",
-        status: "completed",
+        status: "confirmed",
         start_date: "2026-03-02",
         end_date: "2026-03-07",
         total_amount: 4200,
@@ -420,8 +420,8 @@ async function upsertAuthUser({ email, password, fullName, role }) {
   return data.user;
 }
 
-function debitStatuses(status) {
-  return status === "confirmed" || status === "travelling" || status === "completed";
+function stayDebits(booking) {
+  return booking.visible_to_client === true && booking.status !== "cancelled";
 }
 
 async function upsertCompanion(customerId, companion) {
@@ -519,7 +519,7 @@ async function upsertBooking(customer, booking) {
     if (error) throw error;
   }
 
-  if (debitStatuses(booking.status) && booking.total_amount > 0) {
+  if (stayDebits(booking) && booking.total_amount > 0) {
     const { data: debit } = await supabase
       .from("crm_transactions")
       .select("id")

@@ -8,7 +8,6 @@ import {
   stayHeadline,
   tripHeadline,
   tripPlaceLine,
-  clientBookingStatusLabel,
   clientVisibleItems,
   flightCardSubtitle,
   flightCardTitle,
@@ -365,8 +364,6 @@ describe("carnet", () => {
     assert.equal(nextFlightPass([hidden, next], "2026-08-20")?.number, "CM 123");
     assert.equal(nextTimelineFlight([item({ kind: "hotel", start_at: "2026-08-02", visible_to_client: true }), next], "2026-08-01"), null);
     assert.equal(nextTimelineFlight([next], "2026-08-01")?.airline, "Copa");
-    assert.equal(clientBookingStatusLabel("draft"), "Séjour");
-    assert.equal(clientBookingStatusLabel("confirmed"), "Confirmée");
     assert.equal(clientVisibleItems([hidden, next]).map((row) => row.id).join(","), "next");
   });
 

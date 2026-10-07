@@ -18,10 +18,8 @@ import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { visaRequestShown, type ClientVisaStep } from "@/lib/crm/visa-flow";
 import { pliantConfigured } from "@/lib/crm/pliant";
 import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
-import { BookingStatusBadge } from "@/components/crm/ui";
 import {
   carnetVisible,
-  clientBookingStatusLabel,
   clientVisibleItems,
   insuranceLineLabel,
   itemPriceLabel,
@@ -294,8 +292,7 @@ export default async function ReservationDetailPage({ params }: Props) {
             className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]"
           >
             <div className="absolute inset-0 flex flex-col justify-between p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <BookingStatusBadge label={clientBookingStatusLabel(b.status)} />
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 <span className="rounded-full bg-black/35 px-3 py-1 text-[11px] font-bold backdrop-blur">
                   {b.reference}
                 </span>

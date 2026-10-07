@@ -151,11 +151,7 @@ export function bookingDebitIntent(input: {
   if (input.status === "cancelled") return "clear";
   if (input.includeInLedger === false) return input.hasOpenDebit ? "void" : "noop";
   const shown = input.visibleToClient !== false;
-  const shouldDebit =
-    shown &&
-    (input.status === "confirmed" ||
-      input.status === "travelling" ||
-      input.status === "completed");
+  const shouldDebit = shown;
   if (!shouldDebit) return input.hasOpenDebit ? "void" : "noop";
   if (!input.hasOpenDebit) return input.amount > 0 ? "insert" : "noop";
   if (input.amount <= 0) return "void";
@@ -349,12 +345,7 @@ export function agencyCommissionAmount(input: {
   base: number;
   visibleToClient?: boolean | null;
 }) {
-  const active =
-    input.enabled &&
-    input.visibleToClient !== false &&
-    (input.status === "confirmed" ||
-      input.status === "travelling" ||
-      input.status === "completed");
+  const active = input.enabled && input.visibleToClient !== false && input.status !== "cancelled";
   if (!active) return 0;
   return agencyFeeFromGross(input.base);
 }

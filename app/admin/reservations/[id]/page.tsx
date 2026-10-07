@@ -130,6 +130,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     arrivals = await syncStayCards(arrivalAdmin, {
       bookingId: id,
       bookingStatus: b.status,
+      bookingEndDate: b.end_date || null,
       currency: b.currency,
       items: bookingItems,
       travelers: bookingTravelers,

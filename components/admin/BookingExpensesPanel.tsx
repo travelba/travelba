@@ -13,12 +13,11 @@ import {
   AGENCY_FEE_LABEL,
   isLedgerExpenseKind,
   visibleServiceCopy,
-  type BookingStatus,
   type CrmBookingItem,
 } from "@/lib/crm/types";
 
-function postsNow(status: BookingStatus) {
-  return status === "confirmed" || status === "travelling" || status === "completed";
+function postsNow(visible: boolean) {
+  return visible;
 }
 
 export type ExpenseWrite = {
@@ -33,14 +32,14 @@ export type ExpenseWrite = {
 export function BookingExpensesPanel({
   bookingId,
   items,
-  status,
+  visible = false,
   currency = "EUR",
   agencyCommission = false,
   onExpenseWrite,
 }: {
   bookingId: string;
   items: CrmBookingItem[];
-  status: BookingStatus;
+  visible?: boolean;
   currency?: string;
   agencyCommission?: boolean;
   /** Le prix dans Transactions suit tout de suite, sans recharger la page. */
@@ -234,9 +233,9 @@ export function BookingExpensesPanel({
         </button>
       </div>
       <p className="mt-1 text-xs text-muted">
-        {postsNow(status)
+        {postsNow(visible)
           ? "Les frais de billeterie se créent ici dès qu’il y a un vol. Modifier ou retirer une ligne met à jour la transaction."
-          : "Les frais de billeterie se créent ici dès qu’il y a un vol. Le débit part à la confirmation du dossier."}
+          : "Les frais de billeterie se créent ici dès qu’il y a un vol. Le débit part quand le séjour est visible."}
       </p>
       <label className="mt-3 flex items-start gap-2 text-sm font-semibold text-[var(--admin-navy)]">
         <input
@@ -269,7 +268,7 @@ export function BookingExpensesPanel({
               {formatMoney(commissionAmount, currency)}
               {" · "}
               Calculée sur les étapes et les dépenses
-              {postsNow(status) ? "" : " · débit à la confirmation"}
+              {postsNow(visible) ? "" : " · débit quand le séjour est visible"}
             </p>
           </div>
         </div>

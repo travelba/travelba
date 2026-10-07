@@ -105,7 +105,7 @@ async function issueBookingCard(admin: ReturnType<typeof createServiceClient>, b
 
   const { data: booking } = await admin
     .from("crm_bookings")
-    .select("id, status, currency, customer_id, billing_customer_id")
+    .select("id, status, currency, customer_id, billing_customer_id, end_date")
     .eq("id", bookingId)
     .maybeSingle();
   if (!booking) return { error: "Dossier introuvable.", status: 404 as const };
@@ -114,6 +114,7 @@ async function issueBookingCard(admin: ReturnType<typeof createServiceClient>, b
     currency: string | null;
     customer_id: string;
     billing_customer_id: string | null;
+    end_date: string | null;
   };
   const [{ data: items }, { data: travelers }, { data: holder }] = await Promise.all([
     admin.from("crm_booking_items").select("*").eq("booking_id", bookingId),
@@ -123,6 +124,7 @@ async function issueBookingCard(admin: ReturnType<typeof createServiceClient>, b
   const rows = await syncStayCards(admin, {
     bookingId,
     bookingStatus: stay.status,
+    bookingEndDate: stay.end_date,
     currency: stay.currency,
     items: (items || []) as CrmBookingItem[],
     travelers: (travelers || []) as CrmBookingTraveler[],

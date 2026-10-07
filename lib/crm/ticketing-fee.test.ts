@@ -30,9 +30,10 @@ test("vol sans voyageur nommé → 25 €", () => {
   assert.equal(ticketingFeeLabel(1), "Frais de billeterie (1 billet)");
 });
 
-test("le règlement reprend 25 € par billet seulement si le dossier est confirmé", () => {
+test("le règlement reprend 25 € par billet tant que le séjour n’est pas annulé", () => {
   assert.equal(collectableTicketingFee({ status: "confirmed", hasFlight: true, travelerCount: 4 }), 100);
-  assert.equal(collectableTicketingFee({ status: "quoted", hasFlight: true, travelerCount: 4 }), 0);
+  assert.equal(collectableTicketingFee({ status: "draft", hasFlight: true, travelerCount: 4 }), 100);
+  assert.equal(collectableTicketingFee({ status: "cancelled", hasFlight: true, travelerCount: 4 }), 0);
   assert.equal(collectableTicketingFee({ status: "confirmed", hasFlight: false, travelerCount: 4 }), 0);
 });
 

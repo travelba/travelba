@@ -58,6 +58,72 @@ describe("replacementPlan", () => {
     assert.equal(chosen.replacements[0].amount, 800);
   });
 
+  it("met à jour la réservation Little Emperors et ajoute le trajet manquant", () => {
+    const items = [
+      hotel({ id: "milan", title: "Four Seasons Hotel Milan", confirmation_ref: "64570SH046795" }),
+      hotel({
+        id: "old",
+        title: "Four Seasons Hotel Milano",
+        confirmation_ref: "64570SH046734",
+        lifecycle: "cancelled",
+      }),
+      hotel({ id: "rome", title: "Casa Monti", confirmation_ref: "45609SH011085" }),
+      { id: "rail", kind: "rail", title: "Milano · Roma", confirmation_ref: "FEFZ75" },
+    ];
+    const incoming = [
+      { kind: "hotel", title: "Hotel Milan", confirmation_ref: "64570SH046734" },
+      { kind: "hotel", title: "Four Seasons Hotel Milan", confirmation_ref: "64570" },
+      { kind: "hotel", title: "Hotel Rome", confirmation_ref: "45609SH010994" },
+      { kind: "hotel", title: "Casa Monti", confirmation_ref: "45609" },
+      { kind: "rail", title: "Milano · Roma", confirmation_ref: "FEFZ75" },
+      { kind: "transfer", title: "Milan Rome", confirmation_ref: "TR-1" },
+    ];
+    const plan = replacementPlan(incoming, items);
+    assert.deepEqual(
+      plan.updates.map((row) => row.itemId).sort(),
+      ["milan", "rail", "rome"]
+    );
+    assert.equal(plan.replacements.length, 0);
+    assert.equal(plan.choices.length, 0);
+    assert.equal(plan.adds, 1);
+    const gesture = inboxStayAction({
+      documentStatus: "confirmed",
+      incoming,
+      bookingStatus: "confirmed",
+      items,
+    });
+    assert.equal(gesture.label, "Mettre à jour le séjour");
+    assert.equal(gesture.action, "attach");
+    assert.equal(gesture.choices.length, 0);
+  });
+
+  it("demande la chambre quand deux cartes actives partagent la réservation", () => {
+    const plan = replacementPlan(
+      [{ kind: "hotel", title: "Four Seasons", confirmation_ref: "64570" }],
+      [
+        hotel({ id: "a", confirmation_ref: "64570SH046734" }),
+        hotel({ id: "b", confirmation_ref: "64570SH046795" }),
+      ]
+    );
+    assert.deepEqual(
+      plan.choices.map((row) => row.id),
+      ["a", "b"]
+    );
+  });
+
+  it("ajoute plusieurs hôtels nouveaux sans demander une carte", () => {
+    const plan = replacementPlan(
+      [
+        { kind: "hotel", title: "Un", confirmation_ref: "11111SH000001" },
+        { kind: "hotel", title: "Deux", confirmation_ref: "22222SH000002" },
+      ],
+      [hotel(), hotel({ id: "h2", confirmation_ref: "97620188" })]
+    );
+    assert.equal(plan.choices.length, 0);
+    assert.equal(plan.adds, 2);
+    assert.equal(plan.replacements.length, 0);
+  });
+
   it("recopie le prix d’une carte déjà annulée pour rouvrir le séjour", () => {
     const plan = replacementPlan(
       [{ kind: "hotel", title: "Hotel Eden", confirmation_ref: "97620173" }],

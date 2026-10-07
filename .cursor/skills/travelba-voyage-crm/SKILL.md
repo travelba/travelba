@@ -19,11 +19,11 @@ Ne pas ré-ouvrir le QCM produit : les règles sont déjà ancrées dans les ski
 
 ## Dossier agence (toutes les réservations)
 
-Un seul état honnête : **En préparation**, **Montré au client**, ou **Archivée**. Le statut métier (Confirmée, Devis…) ne remplace pas cet état. Le bouton archive dit **Archiver**, jamais Supprimer.
+Un seul état honnête : **En préparation**, **Visible**, ou **Archivée**. L’écran n’affiche pas de statut commercial (À l’étude, Devis, Confirmée). Le bouton dit **Montrer au client** ; la pastille dit **Visible**. Archiver dit **Archiver**, jamais Supprimer.
 
 L’en-tête (le titre compris) et le bloc Lieu et dates sont en haut et suivent **toutes** les étapes (plusieurs villes, plusieurs dates, sans répéter la même ville, le même séjour ni le même trajet). On n’affiche pas un seul lieu ni un seul aller-retour figé du dossier, et on ne réécrit pas la destination ni les dates en base pour les aligner.
 
-Carte vol : **villes en titre** (`Rome → Paris`), code aéroport en dessous (`FCO → CDG`). Une étape non montrée est en surbrillance, pas un compteur. Pas de liste nom + e-mail des contacts hôtel sur la carte. Le formulaire d’envoi laisse cocher les destinataires. Un mail remplit une carte puis vit avec les pièces : pas d’étape e-mail ; les doublons proposés sont repliés (le nombre reste visible) puis s’écartent. Little Emperors : `64570` et `64570SH046795` sont la même carte, le mail met le séjour à jour, et le choix d’une carte n’apparaît que pour une seule carte nouvelle. Train : même code, autre jour = une carte nouvelle ; retirer une étape allume Enregistrer. L’onglet À faire reste visible. Dupliquer copie visas, refus et courriers. Montrer un séjour confirmé inscrit le grand livre ; un devis montré ne débite pas. Détail : skills carnet, e-mail, UI, argent.
+Carte vol : **villes en titre** (`Rome → Paris`), code aéroport en dessous (`FCO → CDG`). Une étape non montrée est en surbrillance, pas un compteur. Pas de liste nom + e-mail des contacts hôtel sur la carte. Le formulaire d’envoi laisse cocher les destinataires. Un mail remplit une carte puis vit avec les pièces : pas d’étape e-mail ; les doublons proposés sont repliés (le nombre reste visible) puis s’écartent. Little Emperors : `64570` et `64570SH046795` sont la même carte, le mail met le séjour à jour, et le choix d’une carte n’apparaît que pour une seule carte nouvelle. Train : même code, autre jour = une carte nouvelle ; retirer une étape allume Enregistrer. L’onglet À faire reste visible. Dupliquer copie visas, refus et courriers. Montrer un séjour l’inscrit au grand livre, quel que soit le statut stocké. Le cacher retire le débit ouvert. Une annulation retire les débits. Détail : skills carnet, e-mail, UI, argent.
 
 ## Quel skill charger
 
@@ -41,6 +41,7 @@ Carte vol : **villes en titre** (`Rome → Paris`), code aéroport en dessous (`
 | Fiche, passeports, compagnons, facturation | `.cursor/skills/travelba-identity/SKILL.md` |
 | Formalité ETA-IL / ESTA / Royaume-Uni, Astra, étapes client | `.cursor/skills/travelba-visa/SKILL.md` |
 | Tests, build, verif navigateur, ne pas casser prod | `.cursor/skills/travelba-verify/SKILL.md` |
+| MCP Grok Bot, nouvelle option CRM | ce fichier, section « MCP Grok Bot » |
 
 Règle always-on : `.cursor/rules/travelba-core.mdc`.
 
@@ -72,6 +73,10 @@ IDs prod :
 - Supabase `fsmfozxgujskluxakeoq`
 - Vercel projet `prj_NAEfKYyndp7T68G2wKOguSCgtPUr`, team `team_bTvGnpMBL2dVrz8vXQ6vb3eZ`
 
+## MCP Grok Bot
+
+Lecture du CRM pour Grok Bot : `https://travelba.fr/api/mcp`, jeton `TRAVELBA_MCP_TOKEN` (vide en preview). Chaque option admin nouvelle ajoute **un outil** dans `lib/crm/mcp-registry.ts`, dans le même changement, en réutilisant `lib/crm`. Plafond 40. Pas de passeport, MRZ, PAN, jeton ni URL signée. Une écriture n’entre qu’avec la garde produit déjà en place (Revolut unique, mail ambigu qui attend le clic, séjour caché qui ne débite pas).
+
 ## Interdits globaux
 
 - Secrets dans git (seulement `.env.local` / Vercel env)
@@ -100,6 +105,7 @@ IDs prod :
 | Identité | `lib/crm/ocr-document.ts` |
 | Fichiers | `lib/crm/files.ts` + `app/api/files/route.ts` |
 | Argent | `lib/crm/money.ts`, `lib/crm/bookings.ts` (`syncBookingDebit`) |
+| MCP Grok Bot | `app/api/mcp/route.ts`, `lib/crm/mcp-registry.ts` |
 | Site / WhatsApp | `lib/site.ts` (`whatsappNumber` `33756841315`) |
 | Proxy session | `proxy.ts` (pas `middleware.ts`) |
 | Schema | `supabase/migrations/` |

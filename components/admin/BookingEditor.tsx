@@ -4,8 +4,6 @@ import { FormEvent, KeyboardEvent, useCallback, useEffect, useRef, useState } fr
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
-  BOOKING_STATUSES,
-  BOOKING_STATUS_LABELS,
   isActiveItem,
   isLedgerExpenseKind,
   type CrmBooking,
@@ -358,7 +356,6 @@ export function BookingEditor({
   const [clientSettles, setClientSettles] = useMirror(serverSettles);
   const [startDraft, setStartDraft] = useMirror(booking.start_date || "");
   const [endDraft, setEndDraft] = useMirror(booking.end_date || "");
-  const [statusDraft, setStatusDraft] = useMirror(booking.status);
   const [destinationDraft, setDestinationDraft] = useMirror(booking.destination || "");
   const serverCurrency = stayCurrency(booking.currency);
   const [currencyDraft, setCurrencyDraft] = useMirror(serverCurrency);
@@ -374,7 +371,6 @@ export function BookingEditor({
   const [stepsPending, setStepsPending] = useState(false);
   const dirty =
     titleDraft !== booking.title ||
-    statusDraft !== booking.status ||
     startDraft !== (booking.start_date || "") ||
     endDraft !== (booking.end_date || "") ||
     destinationDraft !== (booking.destination || "") ||
@@ -880,7 +876,7 @@ export function BookingEditor({
   const moreMenu = (
     <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl bg-[var(--admin-sky)] px-4 py-3">
       <div className="flex flex-wrap gap-3">
-        <DuplicateBookingButton bookingId={booking.id} />
+        <DuplicateBookingButton bookingId={booking.id} label={`${booking.reference} — ${titleShown || booking.title}`} />
         <button
           type="button"
           className="text-sm font-semibold text-[var(--admin-navy)]"
@@ -1006,21 +1002,6 @@ export function BookingEditor({
           <span>{facts.dates || "Dates à confirmer"}</span>
           {facts.placeLine ? <span>· {facts.placeLine}</span> : null}
           <span>· {travelerLabel}</span>
-          <span>·</span>
-          <select
-            name="status"
-            form="booking-meta"
-            value={statusDraft}
-            aria-label="Où en est le dossier"
-            onChange={(event) => setStatusDraft(event.target.value as typeof statusDraft)}
-            className="bg-transparent font-semibold text-[var(--admin-navy)] outline-none"
-          >
-            {BOOKING_STATUSES.map((status) => (
-              <option key={status} value={status}>
-                {BOOKING_STATUS_LABELS[status]}
-              </option>
-            ))}
-          </select>
         </p>
         {stateChip}
         {blockers.length ? (
@@ -1592,7 +1573,7 @@ export function BookingEditor({
           </div>
           <div className="flex items-center justify-between gap-3 py-2">
             <dt className="text-muted">Grand livre</dt>
-            <dd className="font-semibold text-[var(--admin-navy)]">{staffLedgerCaption({ ...booking, status: statusDraft })}</dd>
+            <dd className="font-semibold text-[var(--admin-navy)]">{staffLedgerCaption(booking)}</dd>
           </div>
         </dl>
       </section>
@@ -1762,7 +1743,7 @@ export function BookingEditor({
       <BookingExpensesPanel
         bookingId={booking.id}
         items={pricedItems}
-        status={booking.status}
+        visible={booking.visible_to_client}
         currency={booking.currency}
         agencyCommission={booking.agency_commission === true}
         onExpenseWrite={onExpenseWrite}

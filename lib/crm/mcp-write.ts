@@ -15,7 +15,6 @@ import { extraMomentOf, extraPlaceOf, extraServiceLeg } from "@/lib/crm/extras";
 import { applyRevolutToCustomer } from "@/lib/crm/revolut-match";
 import { applyStripeToCustomer } from "@/lib/crm/stripe-match";
 import {
-  BOOKING_STATUSES,
   EMAIL_INBOX_QUEUE_STATUSES,
   customerFullName,
   type BookingStatus,
@@ -26,24 +25,10 @@ import {
   type CrmRevolutTransaction,
   type CrmStripeTransaction,
 } from "@/lib/crm/types";
+import { staffStayLabel } from "@/lib/crm/staff-stay";
 import { createServiceClient } from "@/lib/supabase/admin";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-const STATUS_FOLDED: Record<string, BookingStatus> = {
-  draft: "draft",
-  quoted: "quoted",
-  confirmed: "confirmed",
-  travelling: "travelling",
-  completed: "completed",
-  cancelled: "cancelled",
-  "a l'etude": "draft",
-  devis: "quoted",
-  confirmee: "confirmed",
-  "en voyage": "travelling",
-  terminee: "completed",
-  annulee: "cancelled",
-};
 
 /** Refus métier renvoyé tel quel à Grok. Le détail technique reste dans les logs. */
 export class McpWriteError extends Error {
@@ -82,14 +67,6 @@ function uuid(value: unknown, label: string) {
   const id = typeof value === "string" ? value.trim() : "";
   if (!UUID.test(id)) throw new McpWriteError(`${label} invalide.`);
   return id;
-}
-
-function fold(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "");
 }
 
 function text(value: unknown, label: string, max: number) {
@@ -160,13 +137,6 @@ export function publishBlock(
 export function prepareBookingUpdate(input: Record<string, unknown>) {
   const target = prepareCarnetTarget(input);
   const body: Record<string, unknown> = {};
-  if ("statut" in input && input.statut != null && String(input.statut).trim()) {
-    const status = STATUS_FOLDED[fold(String(input.statut))];
-    if (!status || !(BOOKING_STATUSES as readonly string[]).includes(status)) {
-      throw new McpWriteError("Statut de dossier inconnu.");
-    }
-    body.status = status;
-  }
   if ("notes_client" in input) body.notes_client = text(input.notes_client, "Notes client", 5000);
   if ("notes_internes" in input) body.notes_internal = text(input.notes_internes, "Notes internes", 5000);
   if ("date_depart" in input) {
@@ -444,14 +414,14 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
     console.error("[mcp] livre", err instanceof Error ? err.message : "error");
     throw new McpWriteError("Le dossier est enregistré, mais le grand livre n’a pas pu être mis à jour.");
   }
-  const saved = (await db.from("crm_bookings").select("id, reference, status, start_date, end_date, notes_client, notes_internal").eq("id", booking.id).maybeSingle()).data as
-    | Pick<CrmBooking, "id" | "reference" | "status" | "start_date" | "end_date" | "notes_client" | "notes_internal">
+  const saved = (await db.from("crm_bookings").select("id, reference, status, visible_to_client, archived_at, start_date, end_date, notes_client, notes_internal").eq("id", booking.id).maybeSingle()).data as
+    | Pick<CrmBooking, "id" | "reference" | "status" | "visible_to_client" | "archived_at" | "start_date" | "end_date" | "notes_client" | "notes_internal">
     | null;
   const row = saved || booking;
   return {
     id: row.id,
     reference: row.reference,
-    statut: row.status,
+    statut: staffStayLabel(row),
     date_depart: row.start_date,
     date_retour: row.end_date,
     notes_client: row.notes_client,

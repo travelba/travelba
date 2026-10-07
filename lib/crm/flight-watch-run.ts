@@ -27,6 +27,7 @@ import {
 import { siteConfig } from "../site";
 import { sendContentTemplate } from "./whatsapp";
 import { proactiveWhatsappAllowed } from "./whatsapp-concierge";
+import { stayDatesOpen, stayToday } from "./stay-moment";
 
 type Admin = SupabaseClient;
 
@@ -37,6 +38,7 @@ type BookingRow = {
   visible_to_client: boolean;
   customer_id: string;
   archived_at?: string | null;
+  end_date?: string | null;
 };
 
 type CustomerRow = {
@@ -53,7 +55,7 @@ type ItemRow = FlightCard & {
   kind: string;
 };
 
-const ACTIVE = new Set(["draft", "quoted", "confirmed", "travelling"]);
+const WATCH = new Set(["draft", "quoted", "confirmed"]);
 const REFERENCE = /^[A-Za-z0-9-]{4,40}$/;
 
 function quiet(error: unknown) {
@@ -192,7 +194,7 @@ export async function runFlightWatch(
   if (bookingIds.length) {
     const { data } = await admin
       .from("crm_bookings")
-      .select("id, status, reference, visible_to_client, customer_id, archived_at")
+      .select("id, status, reference, visible_to_client, customer_id, archived_at, end_date")
       .in("id", bookingIds);
     for (const row of (data || []) as BookingRow[]) bookings.set(row.id, row);
   }
@@ -206,9 +208,12 @@ export async function runFlightWatch(
     for (const row of (data || []) as CustomerRow[]) customers.set(row.id, row);
   }
 
+  const today = stayToday(now);
   const active = items.filter((item) => {
     const booking = bookings.get(item.booking_id);
-    return Boolean(booking && !booking.archived_at && ACTIVE.has(booking.status));
+    return Boolean(
+      booking && !booking.archived_at && WATCH.has(booking.status) && stayDatesOpen(booking.end_date, today)
+    );
   });
   const agencyCheckin = new Set<string>();
   if (bookingIds.length) {

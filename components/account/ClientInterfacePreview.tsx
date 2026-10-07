@@ -14,12 +14,10 @@ import { Icon } from "@/components/crm/icons";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
 import { ReceivedVisasFold } from "@/components/crm/TripVisaUploads";
-import { BookingStatusBadge } from "@/components/crm/ui";
 import { VisaSection } from "@/components/crm/VisaSection";
 import { withoutHotelRosterItems } from "@/lib/crm/hotel-contact";
 import {
   carnetVisible,
-  clientBookingStatusLabel,
   clientVisibleItems,
   insuranceLineLabel,
   itemPriceLabel,
@@ -352,8 +350,7 @@ function ClientScreen({
                   className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]"
                 >
                   <div className="absolute inset-0 flex flex-col justify-between p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <BookingStatusBadge label={clientBookingStatusLabel(booking.status)} />
+                    <div className="flex flex-wrap items-center justify-end gap-2">
                       <span className="rounded-full bg-black/35 px-3 py-1 text-[11px] font-bold backdrop-blur">
                         {booking.reference}
                       </span>

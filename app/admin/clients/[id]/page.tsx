@@ -410,10 +410,10 @@ export default async function AdminClientDetailPage({ params }: Props) {
                       ) : null}
                     </span>
                   </Link>
-                  <div className="flex flex-col items-end gap-1">
-                    <DuplicateBookingButton compact bookingId={b.id} />
+                  <div className="flex shrink-0 items-center gap-1">
+                    <DuplicateBookingButton iconOnly bookingId={b.id} label={`${b.reference} — ${b.title}`} />
                     <ArchiveBookingButton
-                      compact
+                      iconOnly
                       redirectTo={null}
                       bookingId={b.id}
                       label={`${b.reference} — ${b.title}`}
@@ -440,7 +440,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
                   >
                     {b.reference} · {stayHeadline(b.title, b.destination, places.route[b.id])}
                   </Link>
-                  <RestoreBookingButton compact bookingId={b.id} />
+                  <RestoreBookingButton iconOnly bookingId={b.id} />
                 </li>
               ))}
             </ul>

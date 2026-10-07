@@ -59,7 +59,6 @@ import type { Db } from "../supabase/db";
 
 type Admin = Db;
 
-const OPEN_BOOKING = ["confirmed", "travelling"];
 const LIVE = ["waiting", "due", "draft", "sent", "follow_up"];
 
 export async function ensureHotelRequests(
@@ -146,7 +145,8 @@ export async function refreshHotelDesk(admin: Admin, deps: { now?: Date; fetchIm
   const { data: bookings } = await admin
     .from("crm_bookings")
     .select("id, reference, currency, customer_id")
-    .in("status", OPEN_BOOKING);
+    .eq("status", "confirmed")
+    .or(`end_date.is.null,end_date.gte.${parisToday}`);
   const stays = (bookings || []) as { id: string; reference: string | null; currency: string | null; customer_id: string }[];
   if (!stays.length) return { marked: 0, replied: 0 };
   const ids = stays.map((row) => row.id);
@@ -229,7 +229,7 @@ type GmailHit = {
 const HOTEL_REPLY_SYNC_PROVIDER = "gmail-hotel-replies";
 
 /**
- * Une synchro Gmail légère des dossiers confirmés ou en voyage,
+ * Une synchro Gmail légère des dossiers confirmés dont le retour n’est pas passé,
  * au plus une fois toutes les deux minutes, quel que soit le nombre d’onglets.
  */
 export async function syncRecentHotelReplies(admin: Admin, nowMs = Date.now()) {
@@ -246,10 +246,12 @@ export async function syncRecentHotelReplies(admin: Admin, nowMs = Date.now()) {
     { onConflict: "provider" }
   );
   if (error) return false;
+  const parisToday = parisIsoDate(new Date(nowMs));
   const { data: bookings } = await admin
     .from("crm_bookings")
     .select("id")
-    .in("status", ["confirmed", "travelling"]);
+    .eq("status", "confirmed")
+    .or(`end_date.is.null,end_date.gte.${parisToday}`);
   const ids = ((bookings || []) as { id: string }[]).map((row) => row.id);
   await syncOpenHotelThreads(admin, ids, 12);
   return true;

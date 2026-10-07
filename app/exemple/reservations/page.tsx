@@ -2,7 +2,7 @@ import { toPublicBooking } from "@/lib/crm/public-booking";
 import Link from "next/link";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { Icon } from "@/components/crm/icons";
-import { BookingStatusBadge, EmptyState } from "@/components/crm/ui";
+import { EmptyState } from "@/components/crm/ui";
 import { EXAMPLE_BASE } from "@/lib/crm/example-session";
 import { readExample } from "@/lib/crm/example-store";
 
@@ -13,7 +13,7 @@ import {
   jMinusLabel,
   tripDurationDays,
 } from "@/lib/crm/money";
-import { clientBookingStatusLabel, clientVisibleItems, HIDDEN_PRICE_LABEL } from "@/lib/crm/carnet";
+import { clientVisibleItems, HIDDEN_PRICE_LABEL } from "@/lib/crm/carnet";
 import { stayTitleFromItems } from "@/lib/crm/staff-stay";
 import { displayedStayAmount } from "@/lib/crm/displayed-stay";
 import { formatMoney } from "@/lib/crm/money";
@@ -117,7 +117,6 @@ export default async function ExampleReservationsPage({
                     ) : (
                       <span />
                     )}
-                    <BookingStatusBadge label={clientBookingStatusLabel(b.status)} />
                   </div>
                   <div className="absolute bottom-3 left-3 right-3 text-white">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--admin-gold)]">

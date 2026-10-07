@@ -182,8 +182,7 @@ est annulé) :
 - les dates du dossier suivent les cartes actives ;
 - le mail appliqué seul sort de la file (`attached`), note « Itinéraire mis à jour depuis le mail. » ;
 - la nouvelle carte d’un remplacement reste cachée jusqu’au clic Montrer ;
-- un dossier annulé redevient Confirmée, sans être montré : pas de débit tant
-  que le séjour n’est pas montré ;
+- un dossier annulé redevient actif, sans être montré : pas de débit tant que le séjour n’est pas Visible ;
 - le montant lu dans le mail n’est jamais écrit comme prix vendu.
 
 « Créer un dossier » reste un clic, pour un vrai second voyage.

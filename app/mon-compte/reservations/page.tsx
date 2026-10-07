@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
-import { clientBookingStatusLabel, HIDDEN_PRICE_LABEL, stayHeadline } from "@/lib/crm/carnet";
+import { HIDDEN_PRICE_LABEL, stayHeadline } from "@/lib/crm/carnet";
 import { loadDisplayedStayAmounts } from "@/lib/crm/displayed-stay";
 import { isClientPastStay, isClientUpcomingStay } from "@/lib/crm/client-stays";
 import {
@@ -13,7 +13,7 @@ import {
   tripDurationDays,
 } from "@/lib/crm/money";
 import { createServiceClient } from "@/lib/supabase/admin";
-import { BookingStatusBadge, EmptyState } from "@/components/crm/ui";
+import { EmptyState } from "@/components/crm/ui";
 import { loadStayMaps, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { Icon } from "@/components/crm/icons";
@@ -135,7 +135,6 @@ export default async function ReservationsPage({
                     ) : (
                       <span />
                     )}
-                    <BookingStatusBadge label={clientBookingStatusLabel(b.status)} />
                   </div>
                   <div className="absolute bottom-3 left-3 right-3 text-white">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--admin-gold)]">

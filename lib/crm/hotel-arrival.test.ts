@@ -292,6 +292,7 @@ test("la page de paiement interactive revient à l'agent", () => {
 test("échéancier : attente, tâche agence, Expedia sans lien, relances, paiement, clôture", () => {
   assert.equal(planHotelArrival(tick({ parisToday: "2026-10-30" })).action, "wait");
   assert.equal(planHotelArrival(tick({ bookingStatus: "quoted" })).action, "wait");
+  assert.equal(planHotelArrival(tick({ bookingEndDate: "2026-11-01" })).action, "wait");
   const expedia = planHotelArrival(tick({ channel: "expedia", amountCents: null }));
   assert.equal(expedia.action, "task");
   if (expedia.action === "task") {

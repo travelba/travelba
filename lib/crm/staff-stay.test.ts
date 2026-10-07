@@ -8,13 +8,13 @@ import {
   stayTitleFromItems,
 } from "./staff-stay";
 
-test("l’état visible est préparation, montré ou archivé", () => {
+test("l’état visible est préparation, visible ou archivée", () => {
   assert.equal(staffStayLabel({ visible_to_client: false, archived_at: null }), "En préparation");
   assert.equal(
     staffStayLabel({ visible_to_client: false, status: "confirmed" } as { visible_to_client: boolean }),
     "En préparation"
   );
-  assert.equal(staffStayLabel({ visible_to_client: true }), "Montré au client");
+  assert.equal(staffStayLabel({ visible_to_client: true }), "Visible");
   assert.equal(
     staffStayLabel({ visible_to_client: true, archived_at: "2026-10-01T00:00:00.000Z" }),
     "Archivée"
@@ -37,17 +37,17 @@ test("les manques comptent passeport, courriers hôtel et montant caché", () =>
   );
 });
 
-test("le grand livre attend que le confirmé soit montré, un devis ne débite pas", () => {
+test("le grand livre suit la visibilité, une annulation ne débite pas", () => {
   assert.equal(
-    staffLedgerCaption({ status: "confirmed", visible_to_client: false, include_in_ledger: true }),
+    staffLedgerCaption({ status: "draft", visible_to_client: false, include_in_ledger: true }),
     "Pas encore"
   );
   assert.equal(
-    staffLedgerCaption({ status: "confirmed", visible_to_client: true, include_in_ledger: true }),
+    staffLedgerCaption({ status: "draft", visible_to_client: true, include_in_ledger: true }),
     "Au grand livre"
   );
   assert.equal(
-    staffLedgerCaption({ status: "quoted", visible_to_client: true, include_in_ledger: true }),
+    staffLedgerCaption({ status: "cancelled", visible_to_client: true, include_in_ledger: true }),
     "Pas de débit"
   );
 });

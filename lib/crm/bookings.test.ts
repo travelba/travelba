@@ -17,10 +17,10 @@ import {
 } from "./bookings";
 import { ticketingFeeAmount } from "./ticketing-fee";
 
-test("un confirmé caché ne débite pas, un devis montré non plus", () => {
+test("un séjour caché ne débite pas, un séjour visible débite", () => {
   assert.equal(
     bookingDebitIntent({
-      status: "confirmed",
+      status: "draft",
       amount: 1200,
       hasOpenDebit: false,
       visibleToClient: false,
@@ -29,7 +29,7 @@ test("un confirmé caché ne débite pas, un devis montré non plus", () => {
   );
   assert.equal(
     bookingDebitIntent({
-      status: "confirmed",
+      status: "draft",
       amount: 1200,
       hasOpenDebit: true,
       visibleToClient: false,
@@ -43,7 +43,7 @@ test("un confirmé caché ne débite pas, un devis montré non plus", () => {
       hasOpenDebit: false,
       visibleToClient: true,
     }),
-    "noop"
+    "insert"
   );
   assert.equal(
     bookingDebitIntent({
@@ -52,7 +52,7 @@ test("un confirmé caché ne débite pas, un devis montré non plus", () => {
       hasOpenDebit: true,
       visibleToClient: true,
     }),
-    "void"
+    "update"
   );
   assert.equal(
     bookingDebitIntent({
@@ -74,17 +74,17 @@ test("un confirmé caché ne débite pas, un devis montré non plus", () => {
   );
 });
 
-test("debit insert only when confirmed with a positive amount", () => {
+test("le débit part quand le séjour est visible et le montant est positif", () => {
   assert.equal(
-    bookingDebitIntent({ status: "confirmed", amount: 1200, hasOpenDebit: false }),
+    bookingDebitIntent({ status: "draft", amount: 1200, hasOpenDebit: false, visibleToClient: true }),
     "insert"
   );
   assert.equal(
-    bookingDebitIntent({ status: "quoted", amount: 1200, hasOpenDebit: false }),
+    bookingDebitIntent({ status: "draft", amount: 1200, hasOpenDebit: false, visibleToClient: false }),
     "noop"
   );
   assert.equal(
-    bookingDebitIntent({ status: "confirmed", amount: 0, hasOpenDebit: false }),
+    bookingDebitIntent({ status: "confirmed", amount: 0, hasOpenDebit: false, visibleToClient: true }),
     "noop"
   );
 });
@@ -106,7 +106,7 @@ test("existing debit is voided when the selling price drops to zero", () => {
     "void"
   );
   assert.equal(
-    bookingDebitIntent({ status: "travelling", amount: 900, hasOpenDebit: true }),
+    bookingDebitIntent({ status: "confirmed", amount: 900, hasOpenDebit: true }),
     "update"
   );
 });
@@ -141,7 +141,7 @@ test("booking debit is skipped when the stay is not included in the ledger", () 
   );
 });
 
-test("item debit posts only when flagged on a confirmed stay", () => {
+test("item debit posts when the stay is visible and the card is included", () => {
   assert.equal(
     bookingDebitIntent({
       status: "confirmed",
@@ -166,6 +166,17 @@ test("item debit posts only when flagged on a confirmed stay", () => {
       amount: 800,
       hasOpenDebit: false,
       includeInLedger: true,
+      visibleToClient: true,
+    }),
+    "insert"
+  );
+  assert.equal(
+    bookingDebitIntent({
+      status: "quoted",
+      amount: 800,
+      hasOpenDebit: false,
+      includeInLedger: true,
+      visibleToClient: false,
     }),
     "noop"
   );
@@ -234,31 +245,19 @@ test("la commission est 10 % de l’assiette seulement quand le voyage l’activ
     100
   );
   assert.equal(
-    agencyCommissionAmount({ enabled: true, status: "travelling", base: 1700 }),
-    170
-  );
-  assert.equal(
-    agencyCommissionAmount({ enabled: true, status: "completed", base: 80.5 }),
-    8.05
-  );
-  assert.equal(
     agencyCommissionAmount({ enabled: false, status: "confirmed", base: 1000 }),
     0
   );
   assert.equal(
     agencyCommissionAmount({ enabled: true, status: "draft", base: 1000 }),
-    0
+    100
   );
   assert.equal(
     agencyCommissionAmount({ enabled: true, status: "quoted", base: 1000 }),
-    0
+    100
   );
   assert.equal(
     agencyCommissionAmount({ enabled: true, status: "cancelled", base: 1000 }),
-    0
-  );
-  assert.equal(
-    agencyCommissionAmount({ enabled: true, status: "completed", base: 0 }),
     0
   );
   assert.equal(bookingMetaPatch({ agency_commission: "on" }).agency_commission, true);

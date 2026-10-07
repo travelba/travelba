@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
-import { BOOKING_STATUS_LABELS, type BookingStatus, type CrmBooking } from "@/lib/crm/types";
+import { staffStayLabel } from "@/lib/crm/staff-stay";
+import { type CrmBooking } from "@/lib/crm/types";
 
 export const runtime = "nodejs";
 
@@ -12,7 +13,7 @@ export async function GET(request: Request) {
 
   const { data, error } = await auth.supabase
     .from("crm_bookings")
-    .select("id, reference, title, destination, status, start_date")
+    .select("id, reference, title, destination, status, start_date, end_date, visible_to_client, archived_at")
     .eq("customer_id", customerId)
     .order("start_date", { ascending: false, nullsFirst: false });
   // Une lecture en échec n’est pas « aucun voyage » : l’écran propose de réessayer.
@@ -23,7 +24,7 @@ export async function GET(request: Request) {
 
   const rows = (data || []) as Pick<
     CrmBooking,
-    "id" | "reference" | "title" | "destination" | "status" | "start_date"
+    "id" | "reference" | "title" | "destination" | "status" | "start_date" | "end_date" | "visible_to_client" | "archived_at"
   >[];
   const ids = rows.map((row) => row.id);
   const itemsByBooking = new Map<
@@ -65,8 +66,8 @@ export async function GET(request: Request) {
     id: b.id,
     reference: b.reference,
     label: `${b.reference} — ${(b.title || b.destination || "Voyage").trim()}`,
-    status: BOOKING_STATUS_LABELS[b.status] || b.status,
-    statusKey: b.status as BookingStatus,
+    status: staffStayLabel(b),
+    statusKey: b.status,
     items: itemsByBooking.get(b.id) || [],
   }));
   return NextResponse.json({ bookings });

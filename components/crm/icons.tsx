@@ -1,6 +1,8 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
+  Archive,
+  ArchiveRestore,
   ArrowDown,
   ArrowDownLeft,
   ArrowLeftRight,
@@ -21,6 +23,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Compass,
+  Copy,
   Download,
   Ellipsis,
   Eye,
@@ -152,6 +155,9 @@ const ICONS: Record<string, LucideIcon> = {
   arrow_up: ArrowUp,
   arrow_down: ArrowDown,
   grip: GripVertical,
+  content_copy: Copy,
+  archive: Archive,
+  unarchive: ArchiveRestore,
 };
 
 export function Icon({
