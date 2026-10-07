@@ -74,6 +74,28 @@ export function entryReopenDecision(input: {
   return input.tokenValid ? "open" : "regenerate";
 }
 
+export type EntryStaffDecision = "allow" | "busy" | "refuse";
+
+/** Lien d’un collègue (`staff-directory`) : il mène à /admin. Tout autre lien court est un lien client. */
+export function isColleagueEntryPath(nextPath: string | null | undefined) {
+  const path = safeNextPath(nextPath).split("?")[0];
+  return path === "/admin" || path.startsWith("/admin/");
+}
+
+/**
+ * Un lien client n’ouvre jamais un compte de l’agence.
+ * - la session de l’agent était déjà ouverte ici : on ne la ferme pas, le lien ne s’ouvre pas ;
+ * - le jeton vient de poser la session d’un agent : on la referme et on refuse.
+ */
+export function entryStaffDecision(input: {
+  staff: boolean;
+  nextPath: string | null | undefined;
+  hadSession: boolean;
+}): EntryStaffDecision {
+  if (!input.staff || isColleagueEntryPath(input.nextPath)) return "allow";
+  return input.hadSession ? "busy" : "refuse";
+}
+
 /** Un lien parti par WhatsApp et ouvert par un client vaut consentement aux messages du Concierge. */
 export function entryOptInFromLink(input: { channel: string | null | undefined; staff: boolean }) {
   return input.channel === "whatsapp" && !input.staff;

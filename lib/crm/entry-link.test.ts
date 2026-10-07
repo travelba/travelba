@@ -13,6 +13,8 @@ import {
   entryOpenRequested,
   entryOptInFromLink,
   entryReopenDecision,
+  entryStaffDecision,
+  isColleagueEntryPath,
   isMissingColumnError,
   isPreviewBot,
   shouldOpenFromGet,
@@ -313,4 +315,33 @@ test("desk is an entry channel, other strings are not", () => {
   assert.equal(isEntryChannel("whatsapp"), true);
   assert.equal(isEntryChannel("sms"), false);
   assert.equal(isEntryChannel(null), false);
+});
+
+test("un lien client n’ouvre jamais un compte de l’agence", () => {
+  // Incident 07/10 : fiche client sur l’e-mail d’un admin, lien recovery par WhatsApp → session admin.
+  assert.equal(
+    entryStaffDecision({ staff: true, nextPath: "/connexion/mot-de-passe", hadSession: false }),
+    "refuse"
+  );
+  assert.equal(
+    entryStaffDecision({ staff: true, nextPath: "/mon-compte/reservations/TB-2026-0044", hadSession: false }),
+    "refuse"
+  );
+  // L’agent déjà connecté ouvre un lien client dans son navigateur : sa session reste, le lien ne s’ouvre pas.
+  assert.equal(entryStaffDecision({ staff: true, nextPath: "/mon-compte", hadSession: true }), "busy");
+  // Un client ouvre son lien : rien ne change.
+  assert.equal(entryStaffDecision({ staff: false, nextPath: "/mon-compte", hadSession: false }), "allow");
+  assert.equal(entryStaffDecision({ staff: false, nextPath: "/connexion/mot-de-passe", hadSession: true }), "allow");
+  // L’invitation d’un collègue mène à /admin : c’est le seul lien court qu’un compte de l’agence ouvre.
+  assert.equal(entryStaffDecision({ staff: true, nextPath: "/admin", hadSession: false }), "allow");
+  assert.equal(entryStaffDecision({ staff: true, nextPath: "/admin/clients", hadSession: true }), "allow");
+});
+
+test("seul /admin est un lien de collègue", () => {
+  assert.equal(isColleagueEntryPath("/admin"), true);
+  assert.equal(isColleagueEntryPath("/admin/equipe?x=1"), true);
+  assert.equal(isColleagueEntryPath("/administration"), false);
+  assert.equal(isColleagueEntryPath("/mon-compte"), false);
+  assert.equal(isColleagueEntryPath(null), false);
+  assert.equal(isColleagueEntryPath("https://evil.example/admin"), false);
 });
