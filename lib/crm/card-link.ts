@@ -88,18 +88,18 @@ export function cardLinkNote(input: {
     const lines = [
       `${what} s’ouvre par ce lien sécurisé (valable jusqu’au ${frenchDay(input.expiresAt)}, ${opens} ouvertures au plus) :`,
       input.url,
-      "Pour votre sécurité, le numéro de carte n’est jamais envoyé par e-mail.",
+      "Par mesure de sécurité, le numéro de carte n’est jamais envoyé par e-mail.",
     ];
-    if (input.choice === "client") lines.push("Merci de ne pas encaisser le séjour sur une autre carte.");
+    if (input.choice === "client") lines.push("Nous vous remercions de ne pas encaisser le séjour sur une autre carte.");
     return lines.join("\n");
   }
   const what = input.choice === "client" ? "The guest’s card" : "The check-in card";
   const lines = [
     `${what} opens from this secure link (valid until ${englishDay(input.expiresAt)}, up to ${opens} views):`,
     input.url,
-    "For your security, card numbers are never sent by e-mail.",
+    "As a matter of security, card numbers are never sent by e-mail.",
   ];
-  if (input.choice === "client") lines.push("Please do not charge the stay to another card.");
+  if (input.choice === "client") lines.push("Kindly do not charge the stay to another card.");
   return lines.join("\n");
 }
 

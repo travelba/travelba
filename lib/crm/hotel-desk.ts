@@ -486,18 +486,18 @@ function frenchLetter(input: {
   cues: { arrival: string; departure: string };
 }) {
   const frame = hotelMailFrame("fr", input.relance);
-  const stayLine = `Notre client ${input.guest} séjourne à ${input.hotel} du ${input.stay} (confirmation ${input.ref}).`;
+  const stayLine = `Notre client ${input.guest} séjourne à ${input.hotel}, du ${input.stay} (confirmation ${input.ref}).`;
   if (input.kind === "upgrade") {
     return {
       subject: `${input.relance ? "Relance — " : ""}Accueil VIP — ${input.hotel} — ${input.ref}`,
       text: [
         ...frame.open,
         "",
-        "Pourriez-vous signaler cette réservation à votre équipe sur place ?",
+        "Nous vous serions reconnaissants de signaler cette arrivée à vos équipes.",
         "",
         stayLine,
         "",
-        "Pourriez-vous demander à votre équipe de préparer un bel accueil VIP dans la chambre, avec quelques attentions ? Le surclassement dépend des disponibilités au moment de l'arrivée, et s'il est possible, ce serait formidable.",
+        "Nous vous prions de préparer un accueil VIP dans la chambre. Un surclassement, s'il peut être envisagé à l'arrivée selon les disponibilités de la maison, serait très apprécié.",
         "",
         ...frame.close,
       ].join("\n"),
@@ -509,9 +509,9 @@ function frenchLetter(input: {
       text: [
         ...frame.open,
         "",
-        `Pourriez-vous préparer l'enregistrement de ${input.guest} à ${input.hotel}, du ${input.stay} (confirmation ${input.ref}) ?`,
+        `Nous vous prions de préparer l'enregistrement de ${input.guest} à ${input.hotel}, du ${input.stay} (confirmation ${input.ref}).`,
         "",
-        "Les documents d'identité sont joints, pour que la chambre soit prête dès l'arrivée.",
+        "Les documents d'identité sont joints, afin que la chambre soit prête dès l'arrivée.",
         "",
         ...frame.close,
       ].join("\n"),
@@ -529,7 +529,7 @@ function frenchLetter(input: {
         "",
         `${stayLine} Le séjour est déjà réglé par l'agence.`,
         "",
-        `Pourriez-vous prendre en charge les dépenses d'hôtel (restauration, spa), à hauteur de 500 € par nuit${total} ? Un lien de paiement ou une pré-autorisation pour ce plafond serait parfait. La chambre elle-même n'est pas à encaisser de nouveau.`,
+        `Nous vous prions de prendre en charge les notes de notre client (restaurant, spa), à hauteur de 500 € par nuit${total}. Un lien de paiement ou une pré-autorisation à ce plafond conviendrait. La chambre n'est pas à encaisser une seconde fois.`,
         "",
         ...frame.close,
       ].join("\n"),
@@ -541,7 +541,7 @@ function frenchLetter(input: {
       text: [
         ...frame.open,
         "",
-        `Pourriez-vous organiser un transfert pour ${input.guest} à ${input.hotel}, du ${input.stay} (confirmation ${input.ref}) ?`,
+        `Nous vous serions reconnaissants d'organiser le transfert de ${input.guest}, en séjour à ${input.hotel}, du ${input.stay} (confirmation ${input.ref}).`,
         "",
         `Arrivée : ${input.cues.arrival}`,
         `Départ : ${input.cues.departure}`,
@@ -555,7 +555,7 @@ function frenchLetter(input: {
     text: [
       ...frame.open,
       "",
-      `Pourriez-vous nous aider pour une demande concernant ${input.guest} à ${input.hotel}, du ${input.stay} (confirmation ${input.ref}) ?`,
+      `Nous nous permettons de vous soumettre une demande pour ${input.guest}, en séjour à ${input.hotel}, du ${input.stay} (confirmation ${input.ref}).`,
       "",
       "Demande :",
       "…",
@@ -584,11 +584,11 @@ function englishLetter(input: {
       text: [
         ...frame.open,
         "",
-        "Could you please flag this booking to your team on property?",
+        "We would be most grateful if you could note this arrival with your team on property.",
         "",
         stayLine,
         "",
-        "Could you please ask your team to arrange some nice VIP welcome amenities in the room? This is subject to availability at the time of check-in, but if an upgrade is possible, it would be amazing.",
+        "Kindly arrange VIP welcome amenities in the room. An upgrade, should one be available upon arrival, would be greatly appreciated.",
         "",
         ...frame.close,
       ].join("\n"),
@@ -600,9 +600,9 @@ function englishLetter(input: {
       text: [
         ...frame.open,
         "",
-        `Could you please arrange the pre-check-in for ${input.guest} at ${input.hotel}, ${input.stay} (confirmation ${input.ref})?`,
+        `We would be grateful if you could prepare the registration of ${input.guest} at ${input.hotel}, ${input.stay} (confirmation ${input.ref}).`,
         "",
-        "Identity documents are attached, so the room can be ready when they arrive.",
+        "Identity documents are attached, so the room may be ready upon arrival.",
         "",
         ...frame.close,
       ].join("\n"),
@@ -620,7 +620,7 @@ function englishLetter(input: {
         "",
         `${stayLine} The stay has already been settled by the agency.`,
         "",
-        `Could you please cover the guest's hotel extras (dining, spa) at 500 EUR per night${total}? A payment link or a pre-authorisation for this ceiling would be perfect. The room itself should not be charged again.`,
+        `We would be grateful if you could extend house credit for dining and the spa, at 500 EUR per night${total}. A payment link or a pre-authorisation for this amount would be welcome. Kindly do not charge the room again.`,
         "",
         ...frame.close,
       ].join("\n"),
@@ -632,7 +632,7 @@ function englishLetter(input: {
       text: [
         ...frame.open,
         "",
-        `Could you please arrange a transfer for ${input.guest} at ${input.hotel}, ${input.stay} (confirmation ${input.ref})?`,
+        `We would be grateful if you could arrange a transfer for ${input.guest}, staying at ${input.hotel}, ${input.stay} (confirmation ${input.ref}).`,
         "",
         `Arrival: ${input.cues.arrival}`,
         `Departure: ${input.cues.departure}`,
@@ -646,7 +646,7 @@ function englishLetter(input: {
     text: [
       ...frame.open,
       "",
-      `Could you please help us with a request for ${input.guest} at ${input.hotel}, ${input.stay} (confirmation ${input.ref})?`,
+      `We would be grateful for your assistance with a request concerning ${input.guest}, staying at ${input.hotel}, ${input.stay} (confirmation ${input.ref}).`,
       "",
       "Request:",
       "…",

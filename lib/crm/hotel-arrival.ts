@@ -626,7 +626,7 @@ export type ArrivalMail = {
   text: string;
 };
 
-/** Entrée et sortie des courriers hôtel : chaleureux, une demande, un remerciement. */
+/** Entrée et sortie des courriers hôtel : la maison, brève, une demande, un remerciement. */
 export function hotelMailFrame(lang: "fr" | "en", relance?: boolean) {
   if (lang === "fr") {
     return {
@@ -634,16 +634,17 @@ export function hotelMailFrame(lang: "fr" | "en", relance?: boolean) {
         ? [
             "Chère équipe,",
             "",
-            "Je vous adresse à nouveau le bonjour de Travel Business Agency.",
+            "Nous nous permettons de revenir vers vous, de la part de Travel Business Agency.",
             "",
-            "Nous n'avons pas encore eu de retour, et votre aide nous serait précieuse.",
+            "Nous n'avons pas encore reçu votre retour, et nous nous permettons cette relance.",
           ]
-        : [
-            "Chère équipe,",
-            "",
-            "Je vous adresse le bonjour de Travel Business Agency, j'espère que ce message vous trouve en pleine forme.",
-          ],
-      close: ["Au plaisir de vous lire, et merci beaucoup pour votre aide.", "", "Bien à vous,", "Travel Business Agency"],
+        : ["Chère équipe,", "", "Nous avons le plaisir de vous écrire de la part de Travel Business Agency."],
+      close: [
+        "Nous vous remercions de l'attention que vous porterez à ce séjour.",
+        "",
+        "Bien à vous,",
+        "Travel Business Agency",
+      ],
     };
   }
   return {
@@ -651,21 +652,12 @@ export function hotelMailFrame(lang: "fr" | "en", relance?: boolean) {
       ? [
           "Dear team,",
           "",
-          "Warm greetings again from Travel Business Agency.",
+          "We are writing once more, from Travel Business Agency.",
           "",
-          "We have not yet heard back, and we would be grateful for your help.",
+          "We have not yet received your reply, and would be most grateful if you could come back to us.",
         ]
-      : [
-          "Dear team,",
-          "",
-          "Warm greetings to you from Travel Business Agency, I hope this email finds you well.",
-        ],
-    close: [
-      "We look forward to hearing from you, and many thanks for your help.",
-      "",
-      "Best regards,",
-      "Travel Business Agency",
-    ],
+      : ["Dear team,", "", "We are pleased to write to you from Travel Business Agency."],
+    close: ["With our thanks for the welcome you will extend to our guest.", "", "Best regards,", "Travel Business Agency"],
   };
 }
 
@@ -685,7 +677,7 @@ export function linkRequestMail(input: {
     const lines = [
       ...frame.open,
       "",
-      `Pourriez-vous nous envoyer le lien de paiement de la réservation de notre client chez vous ?`,
+      "Nous vous serions reconnaissants de nous adresser le lien de paiement de la réservation de notre client.",
       "",
       `Séjour à ${input.hotel}, du ${stay}.`,
       `Référence de confirmation : ${ref}.`,
@@ -700,7 +692,7 @@ export function linkRequestMail(input: {
   const lines = [
     ...frame.open,
     "",
-    "Could you please send us the payment link for our guest's booking with you?",
+    "We would be grateful if you could send us the payment link for our guest's reservation.",
     "",
     `Stay at ${input.hotel}, ${stay}.`,
     `Confirmation: ${ref}.`,
@@ -740,13 +732,13 @@ export function vipMail(input: {
       text: [
         ...frame.open,
         "",
-        "Pourriez-vous signaler cette réservation à votre équipe sur place ?",
+        "Nous vous serions reconnaissants de signaler cette arrivée à vos équipes.",
         "",
-        `Notre client séjourne à ${input.hotel} du ${stay} (confirmation ${ref}).`,
+        `Notre client séjourne à ${input.hotel}, du ${stay} (confirmation ${ref}).`,
         "",
-        "Pourriez-vous demander à votre équipe de préparer un bel accueil VIP dans la chambre, avec quelques attentions ? Le surclassement dépend des disponibilités au moment de l'arrivée, et s'il est possible, ce serait formidable.",
+        "Nous vous prions de préparer un accueil VIP dans la chambre. Un surclassement, s'il peut être envisagé à l'arrivée selon les disponibilités de la maison, serait très apprécié.",
         "",
-        "Les documents d'identité sont joints, pour que la chambre soit prête dès l'arrivée.",
+        "Les documents d'identité sont joints, afin que la chambre soit prête dès l'arrivée.",
         ...card,
         "",
         ...frame.close,
@@ -768,13 +760,13 @@ export function vipMail(input: {
     text: [
       ...frame.open,
       "",
-      "Could you please flag this booking to your team on property?",
+      "We would be most grateful if you could note this arrival with your team on property.",
       "",
       `Our guest is staying at ${input.hotel}, ${stay} (confirmation ${ref}).`,
       "",
-      "Could you please ask your team to arrange some nice VIP welcome amenities in the room? This is subject to availability at the time of check-in, but if an upgrade is possible, it would be amazing.",
+      "Kindly arrange VIP welcome amenities in the room. An upgrade, should one be available upon arrival, would be greatly appreciated.",
       "",
-      "Identity documents are attached, so the room can be ready when they arrive.",
+      "Identity documents are attached, so the room may be ready upon arrival.",
       ...card,
       "",
       ...frame.close,
