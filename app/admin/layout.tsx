@@ -23,6 +23,7 @@ export default async function AdminLayout({
     <div className="admin-af min-h-screen">
       <AdminNav
         unmatchedCount={badges.revolut}
+        stripeCount={badges.stripe}
         emailCount={badges.emails}
         leCount={badges.le}
         pieceCount={badges.pieces}

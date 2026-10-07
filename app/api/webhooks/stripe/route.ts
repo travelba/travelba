@@ -3,6 +3,8 @@ import Stripe from "stripe";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { getStripe } from "@/lib/crm/stripe";
 import { stripeCreditFromIntent } from "@/lib/crm/stripe-pay";
+import { autoMatchUnmatchedStripe } from "@/lib/crm/stripe-match";
+import { snapshotFromPaymentIntent, upsertStripeInbox } from "@/lib/crm/stripe-sync";
 
 export const runtime = "nodejs";
 
@@ -76,6 +78,13 @@ export async function POST(request: Request) {
         console.error("[stripe] crédit", error.code || "insert");
         return NextResponse.json({ error: "crédit" }, { status: 500 });
       }
+    }
+    try {
+      await upsertStripeInbox(admin, [snapshotFromPaymentIntent(intent)]);
+      await autoMatchUnmatchedStripe();
+    } catch (err) {
+      console.error("[stripe] file", err instanceof Error ? err.message : "file");
+      return NextResponse.json({ error: "file" }, { status: 500 });
     }
   }
 

@@ -8,6 +8,7 @@ import {
   RestoreBookingButton,
 } from "@/components/admin/ArchiveBookingButton";
 import { ClientRevolutSuggestions } from "@/components/admin/ClientRevolutSuggestions";
+import { ClientStripeSuggestions } from "@/components/admin/ClientStripeSuggestions";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import { InviteCustomerPanel } from "@/components/admin/InviteCustomerPanel";
 import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
@@ -18,6 +19,11 @@ import {
   suggestionsForCustomer,
   type RevolutMatchCustomer,
 } from "@/lib/crm/revolut-match";
+import {
+  STRIPE_MATCH_SELECT,
+  suggestionsForStripeCustomer,
+  type StripeMatchCustomer,
+} from "@/lib/crm/stripe-match";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { PliantCardDesk } from "@/components/admin/PliantCardDesk";
 import { stayCardFace } from "@/lib/crm/hotel-arrival";
@@ -31,13 +37,14 @@ import {
   type CrmCompanion,
   type CrmCustomer,
   type CrmRevolutTransaction,
+  type CrmStripeTransaction,
   type CrmTransaction,
   type CrmBillingCompany,
   type CrmCustomerActivity,
   type CrmCustomerLogin,
   type CrmTravelDocument,
   DOC_TYPE_LABELS,
-  filterCreditTransfers,
+  filterAgencyReceipts,
 } from "@/lib/crm/types";
 import { documentExpiryStatus } from "@/lib/crm/identity";
 import { reviewIdentityPieces } from "@/lib/crm/trip-documents";
@@ -77,6 +84,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
     { data: billingCompanies },
     portal,
     revolut,
+    stripe,
     whatsappMessages,
     whatsappRequests,
     { data: loginRows, error: loginError },
@@ -94,7 +102,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
       .from("crm_transactions")
       .select("*")
       .eq("customer_id", id)
-      .eq("kind", "transfer")
+      .in("kind", ["transfer", "card_payment"])
       .eq("direction", "credit")
       .order("occurred_on", { ascending: false }),
     supabase.from("crm_customer_balances").select("*").eq("customer_id", id),
@@ -124,6 +132,27 @@ export default async function AdminClientDetailPage({ params }: Props) {
         };
       } catch {
         return { rows: [] as CrmRevolutTransaction[], people: [] as RevolutMatchCustomer[] };
+      }
+    })(),
+    (async () => {
+      try {
+        const admin = createServiceClient();
+        const [{ data }, { data: people }] = await Promise.all([
+          admin
+            .from("crm_stripe_transactions")
+            .select("*")
+            .eq("status", "unmatched")
+            .eq("direction", "credit")
+            .order("booked_at", { ascending: false, nullsFirst: false })
+            .limit(100),
+          admin.from("crm_customers").select(STRIPE_MATCH_SELECT),
+        ]);
+        return {
+          rows: (data || []) as CrmStripeTransaction[],
+          people: (people || []) as StripeMatchCustomer[],
+        };
+      } catch {
+        return { rows: [] as CrmStripeTransaction[], people: [] as StripeMatchCustomer[] };
       }
     })(),
     supabase
@@ -185,6 +214,10 @@ export default async function AdminClientDetailPage({ params }: Props) {
       ).data || []
     : whatsappMessages.data || [];
   const revolutSuggestions = suggestionsForCustomer(c, revolut.rows, revolut.people);
+  const stripeSuggestions = suggestionsForStripeCustomer(c, stripe.rows, stripe.people).map((item) => ({
+    ...item,
+    row: { ...item.row, payer_email: null, raw: {} },
+  }));
   let customerCard: Awaited<ReturnType<typeof pliantCardForCustomer>> = null;
   let customerSpends: PliantSpendLine[] = [];
   let pliantAccount: { availableCents: number | null; currency: string } | null = null;
@@ -312,6 +345,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         billingCompanies={(billingCompanies || []) as CrmBillingCompany[]}
       />
       <ClientRevolutSuggestions suggestions={revolutSuggestions} />
+      <ClientStripeSuggestions suggestions={stripeSuggestions} />
       <section className="admin-af-card rounded-3xl px-5 py-5">
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Pliant</p>
         <h2 className="font-display text-xl font-extrabold text-[var(--admin-navy)]">Carte du compte</h2>
@@ -415,7 +449,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
       </section>
       <section className="admin-af-card rounded-3xl p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-display text-lg font-bold">Virements crédit</h2>
+          <h2 className="font-display text-lg font-bold">Encaissements</h2>
           <Link
             href={clientLedgerAdminHref(c.id)}
             className="text-xs font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline"
@@ -425,11 +459,11 @@ export default async function AdminClientDetailPage({ params }: Props) {
         </div>
         {!(txs || []).length ? (
           <p className="mt-2 text-sm text-muted">
-            Aucun virement crédit. Ils apparaissent après rapprochement Revolut ou saisie manuelle.
+            Aucun encaissement. Ils apparaissent après rapprochement Revolut, Stripe ou saisie manuelle.
           </p>
         ) : null}
         <ul className="mt-2 divide-y divide-border text-sm">
-          {filterCreditTransfers((txs || []) as CrmTransaction[]).map((t) => (
+          {filterAgencyReceipts((txs || []) as CrmTransaction[]).map((t) => (
             <li key={t.id} className="flex min-w-0 flex-wrap items-baseline justify-between gap-2 py-2">
               <span className="min-w-0 break-words">
                 {t.label} · {formatDateFr(t.occurred_on)}

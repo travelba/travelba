@@ -13,6 +13,7 @@ import { customerPatchFromBody } from "@/lib/crm/customer-patch";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
 import { extraMomentOf, extraPlaceOf, extraServiceLeg } from "@/lib/crm/extras";
 import { applyRevolutToCustomer } from "@/lib/crm/revolut-match";
+import { applyStripeToCustomer } from "@/lib/crm/stripe-match";
 import {
   BOOKING_STATUSES,
   EMAIL_INBOX_QUEUE_STATUSES,
@@ -23,6 +24,7 @@ import {
   type CrmCustomer,
   type CrmEmailIngest,
   type CrmRevolutTransaction,
+  type CrmStripeTransaction,
 } from "@/lib/crm/types";
 import { createServiceClient } from "@/lib/supabase/admin";
 
@@ -122,6 +124,13 @@ export function prepareManualCredit(input: Record<string, unknown>) {
 export function prepareRevolutCredit(input: Record<string, unknown>) {
   return {
     virementId: uuid(input.virement_id, "Virement"),
+    clientId: uuid(input.client_id, "Client"),
+  };
+}
+
+export function prepareStripeCredit(input: Record<string, unknown>) {
+  return {
+    paiementId: uuid(input.paiement_id, "Paiement"),
     clientId: uuid(input.client_id, "Client"),
   };
 }
@@ -327,6 +336,49 @@ export async function creditRevolutTransfer(input: Record<string, unknown>, admi
       montant: posted.amount ?? null,
       devise: posted.currency ?? movement.currency,
       source: "revolut",
+    },
+  };
+}
+
+export async function creditStripePayment(input: Record<string, unknown>, admin?: McpAdmin) {
+  const { paiementId, clientId } = prepareStripeCredit(input);
+  const db = client(admin);
+  const { data: customer, error: customerError } = await db
+    .from("crm_customers")
+    .select("id")
+    .eq("id", clientId)
+    .maybeSingle();
+  if (customerError) failDb(customerError, "Client introuvable.");
+  if (!customer) throw new McpWriteError("Client introuvable.");
+  const { data: row, error } = await db
+    .from("crm_stripe_transactions")
+    .select("*")
+    .eq("id", paiementId)
+    .maybeSingle();
+  if (error) failDb(error, "Paiement introuvable.");
+  if (!row) throw new McpWriteError("Paiement introuvable.");
+  const movement = row as CrmStripeTransaction;
+  const result = await applyStripeToCustomer(db, movement, clientId);
+  if (!result.ok) {
+    if (result.error === "already_matched") throw new McpWriteError("Déjà rapproché.");
+    if (result.error === "not_a_credit") {
+      throw new McpWriteError("Le rapprochement ne porte que sur les crédits reçus.");
+    }
+    if (result.error === "already_credited") {
+      throw new McpWriteError("Ce paiement est déjà crédité à un autre client.");
+    }
+    console.error("[mcp] stripe");
+    throw new McpWriteError("Rapprochement impossible.");
+  }
+  const posted = result.transaction as { id?: string; amount?: number; currency?: string };
+  return {
+    mouvement: {
+      id: posted.id ?? null,
+      client_id: clientId,
+      paiement_id: paiementId,
+      montant: posted.amount ?? null,
+      devise: posted.currency ?? movement.currency,
+      source: "stripe",
     },
   };
 }

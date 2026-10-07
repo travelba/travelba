@@ -87,7 +87,7 @@ test("la suppression exige le nom complet, casse, espaces et accents indifféren
   assert.equal(DELETE_CUSTOMER_CONFIRM_ERROR, "Saisissez le nom du client pour confirmer");
 });
 
-test("les mouvements Revolut et Pliant reviennent à l’inbox avant toute suppression, puis les fichiers partent", async () => {
+test("les mouvements Revolut, Stripe et Pliant reviennent à l’inbox avant toute suppression, puis les fichiers partent", async () => {
   const { admin, writes } = fakeAdmin(ROWS);
   const removed: string[][] = [];
   const listed: string[] = [];
@@ -106,6 +106,7 @@ test("les mouvements Revolut et Pliant reviennent à l’inbox avant toute suppr
     writes.map((w) => `${w.table}:${w.op}`),
     [
       "crm_revolut_transactions:update",
+      "crm_stripe_transactions:update",
       "crm_pliant_transactions:update",
       "crm_bookings:delete",
       "crm_transactions:delete",
@@ -114,13 +115,15 @@ test("les mouvements Revolut et Pliant reviennent à l’inbox avant toute suppr
   );
   assert.deepEqual(writes[0].payload, { status: "unmatched", matched_customer_id: null, matched_transaction_id: null });
   assert.deepEqual(writes[0].filters, [{ method: "eq", args: ["matched_customer_id", CUSTOMER_ID] }]);
-  assert.deepEqual(writes[1].payload, {
+  assert.deepEqual(writes[1].payload, { status: "unmatched", matched_customer_id: null, matched_transaction_id: null });
+  assert.deepEqual(writes[1].filters, [{ method: "eq", args: ["matched_customer_id", CUSTOMER_ID] }]);
+  assert.deepEqual(writes[2].payload, {
     match_status: "unmatched",
     matched_customer_id: null,
     matched_transaction_id: null,
     customer_id: null,
   });
-  assert.deepEqual(writes[1].filters, [{ method: "eq", args: ["matched_customer_id", CUSTOMER_ID] }]);
+  assert.deepEqual(writes[2].filters, [{ method: "eq", args: ["matched_customer_id", CUSTOMER_ID] }]);
   assert.deepEqual(listed, [`customers/${CUSTOMER_ID}`, `bookings/${BOOKING_ID}`, `agency-cards/${BOOKING_ID}`]);
   assert.deepEqual(removed, [
     [

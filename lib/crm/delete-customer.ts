@@ -13,7 +13,7 @@ export class CustomerDeleteError extends Error {
 }
 
 /**
- * Les mouvements Revolut / Pliant rapprochés à ce client reviennent dans l’inbox (`unmatched`)
+ * Les mouvements Revolut, Stripe et Pliant rapprochés à ce client reviennent dans l’inbox (`unmatched`)
  * avant la suppression de ses crédits : sans cela ils resteraient `matched` vers des pointeurs nuls.
  */
 async function releaseBankMatches(admin: SupabaseClient, customerId: string) {
@@ -22,6 +22,11 @@ async function releaseBankMatches(admin: SupabaseClient, customerId: string) {
     .update({ status: "unmatched", matched_customer_id: null, matched_transaction_id: null })
     .eq("matched_customer_id", customerId);
   if (revolutError) throw new CustomerDeleteError(revolutError.message);
+  const { error: stripeError } = await admin
+    .from("crm_stripe_transactions")
+    .update({ status: "unmatched", matched_customer_id: null, matched_transaction_id: null })
+    .eq("matched_customer_id", customerId);
+  if (stripeError) throw new CustomerDeleteError(stripeError.message);
   const { error: pliantError } = await admin
     .from("crm_pliant_transactions")
     .update({ match_status: "unmatched", matched_customer_id: null, matched_transaction_id: null, customer_id: null })

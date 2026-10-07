@@ -51,6 +51,7 @@ function writeCollapsed(next: string[]) {
 
 export function AdminNav({
   unmatchedCount = 0,
+  stripeCount = 0,
   emailCount = 0,
   leCount = 0,
   pieceCount = 0,
@@ -60,6 +61,7 @@ export function AdminNav({
   children,
 }: {
   unmatchedCount?: number;
+  stripeCount?: number;
   emailCount?: number;
   leCount?: number;
   pieceCount?: number;
@@ -72,8 +74,8 @@ export function AdminNav({
   const searchParams = useSearchParams();
   const router = useRouter();
   const counts: AdminNavCounts = useMemo(
-    () => ({ revolut: unmatchedCount, emails: emailCount, le: leCount, pieces: pieceCount }),
-    [unmatchedCount, emailCount, leCount, pieceCount]
+    () => ({ revolut: unmatchedCount, stripe: stripeCount, emails: emailCount, le: leCount, pieces: pieceCount }),
+    [unmatchedCount, stripeCount, emailCount, leCount, pieceCount]
   );
   const groups = useMemo(() => adminNavGroups({ role: staffRole, showExample }), [staffRole, showExample]);
   const search = searchParams.toString();
@@ -217,6 +219,15 @@ export function AdminNav({
             >
               <Icon name="sync_alt" className="h-4 w-4" />
               {unmatchedCount} virement{unmatchedCount > 1 ? "s" : ""} à rapprocher
+            </Link>
+          ) : null}
+          {stripeCount > 0 ? (
+            <Link
+              href="/admin/stripe"
+              className="inline-flex items-center gap-2 rounded-full border border-[var(--admin-gold)]/40 bg-[var(--admin-gold-soft)]/40 px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)]"
+            >
+              <Icon name="credit_card" className="h-4 w-4" />
+              {stripeCount} paiement{stripeCount > 1 ? "s" : ""} Stripe à rapprocher
             </Link>
           ) : null}
           <UserMenu name={staffName} role={staffRole} onSignOut={signOut} />

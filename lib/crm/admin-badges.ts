@@ -6,6 +6,8 @@ import { isoDateInDays } from "@/lib/crm/money";
 export type AdminBadges = {
   /** Virements Revolut reçus, pas encore rapprochés. */
   revolut: number;
+  /** Paiements Stripe reçus, pas encore rapprochés. */
+  stripe: number;
   /** Mails fournisseurs dans la file de relecture. */
   emails: number;
   /** Réservations Little Emperors sans dossier. */
@@ -14,7 +16,7 @@ export type AdminBadges = {
   pieces: number;
 };
 
-export const EMPTY_ADMIN_BADGES: AdminBadges = { revolut: 0, emails: 0, le: 0, pieces: 0 };
+export const EMPTY_ADMIN_BADGES: AdminBadges = { revolut: 0, stripe: 0, emails: 0, le: 0, pieces: 0 };
 
 /**
  * Les compteurs du menu et du tableau de bord, comptés une fois par requête
@@ -23,9 +25,14 @@ export const EMPTY_ADMIN_BADGES: AdminBadges = { revolut: 0, emails: 0, le: 0, p
 export const adminBadges = cache(async (): Promise<AdminBadges> => {
   try {
     const admin = createServiceClient();
-    const [revolut, emails, le, pieces] = await Promise.all([
+    const [revolut, stripe, emails, le, pieces] = await Promise.all([
       admin
         .from("crm_revolut_transactions")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "unmatched")
+        .eq("direction", "credit"),
+      admin
+        .from("crm_stripe_transactions")
         .select("id", { count: "exact", head: true })
         .eq("status", "unmatched")
         .eq("direction", "credit"),
@@ -42,6 +49,7 @@ export const adminBadges = cache(async (): Promise<AdminBadges> => {
     ]);
     return {
       revolut: revolut.error ? 0 : revolut.count ?? 0,
+      stripe: stripe.error ? 0 : stripe.count ?? 0,
       emails: emails.error ? 0 : emails.count ?? 0,
       le: le.error ? 0 : le.count ?? 0,
       pieces: pieces.error ? 0 : pieces.count ?? 0,
