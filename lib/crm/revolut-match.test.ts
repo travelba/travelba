@@ -298,6 +298,21 @@ describe("revolut-match", () => {
           update() {
             return { eq: async () => ({ error: null }) };
           },
+          select() {
+            const chain = {
+              eq() {
+                return chain;
+              },
+              limit() {
+                return chain;
+              },
+              maybeSingle: async () => ({ data: null, error: null }),
+              then(resolve: (value: { data: unknown; error: null }) => void) {
+                resolve({ data: [], error: null });
+              },
+            };
+            return chain;
+          },
         };
       },
     };
@@ -319,5 +334,48 @@ describe("revolut-match", () => {
       inserts.some((entry) => String(entry.row.external_id || "").includes("agency-fee")),
       false
     );
+    assert.equal(inserts[0]?.row.billing_company_id, undefined);
+  });
+
+  it("deux comptes : le virement attend le choix, puis se pose sur le compte indiqué", async () => {
+    const inserts: { table: string; row: Record<string, unknown> }[] = [];
+    const companies = [
+      { id: "rba", funding: "advance" },
+      { id: "pro", funding: "pro" },
+    ];
+    const admin = {
+      from(table: string) {
+        return {
+          insert(payload: Record<string, unknown>) {
+            inserts.push({ table, row: payload });
+            const result = { data: { id: "tx-2", ...payload }, error: null };
+            return { select() { return { single: async () => result }; } };
+          },
+          update() {
+            return { eq: async () => ({ error: null }) };
+          },
+          select() {
+            const chain = {
+              eq() {
+                return chain;
+              },
+              then(resolve: (value: { data: unknown; error: null }) => void) {
+                resolve({ data: table === "crm_billing_companies" ? companies : [], error: null });
+              },
+            };
+            return chain;
+          },
+        };
+      },
+    };
+    const credit = row({ id: "inbox-2", revolut_transaction_id: "rev-2000", amount: 500 });
+    const waiting = await applyRevolutToCustomer(admin, credit, "customer-1");
+    assert.equal(waiting.ok, false);
+    if (!waiting.ok) assert.equal(waiting.error, "account_required");
+    assert.equal(inserts.length, 0);
+    const posted = await applyRevolutToCustomer(admin, credit, "customer-1", "pro");
+    assert.equal(posted.ok, true);
+    assert.equal(inserts[0]?.row.billing_company_id, "pro");
+    assert.equal(inserts[0]?.row.payer_kind, "company");
   });
 });

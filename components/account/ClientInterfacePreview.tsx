@@ -312,6 +312,7 @@ function ClientScreen({
         currency={ledger.currency}
         soleCompanyName={ledger.soleCompanyName}
         stripeKey={stripePublishableKey()}
+        pockets={ledger.pockets}
       />
     ) : null;
   const title = screen === "transactions" ? "Transactions" : "Réservations";

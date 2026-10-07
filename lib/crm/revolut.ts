@@ -2,10 +2,7 @@ import { createPrivateKey, createSign, createHmac } from "crypto";
 import { secretEquals } from "./secret-equals";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 import { createServiceClient } from "@/lib/supabase/admin";
-import {
-  senderFromRevolutPayload,
-  shouldIngestRevolutForRapprochement,
-} from "@/lib/crm/revolut-inbox";
+import { revolutInboxDraft } from "@/lib/crm/revolut-inbox";
 import { revolutBalancePockets } from "@/lib/crm/account-balances";
 import { isRevolutAccountId, parseRevolutAccounts, pickEurSepaWire, type AgencyWire } from "@/lib/crm/revolut-wire";
 
@@ -173,6 +170,7 @@ export type RevolutTx = {
   updated_at?: string;
   completed_at?: string | null;
   reference?: string;
+  merchant?: { name?: string; city?: string } | null;
   legs?: Array<{
     amount: number;
     currency: string;
@@ -227,52 +225,39 @@ export async function upsertRevolutInbox(txs: RevolutTx[]) {
   const supabase = createServiceClient();
   let inserted = 0;
   for (const tx of txs) {
-    const txType = (tx.type || "").toLowerCase();
-    const leg = tx.legs?.[0];
-    if (!tx.id || !leg) continue;
-    const signed = Number(leg.amount || 0);
-    if (
-      !shouldIngestRevolutForRapprochement({
-        type: txType,
-        signedAmount: signed,
-        reference: tx.reference,
-      })
-    ) {
-      continue;
-    }
-
-    const amount = Math.abs(signed);
-    const reference = (tx.reference || "").trim();
-    const counterpartyName = senderFromRevolutPayload({
-      description: leg.description,
-      counterpartyName: leg.counterparty?.name,
-    });
+    const draft = revolutInboxDraft(tx);
+    if (!draft) continue;
     const fields = {
-      amount,
-      currency: leg.currency || "EUR",
-      direction: "credit" as const,
-      counterparty_name: counterpartyName,
-      counterparty_iban: leg.counterparty?.iban || leg.counterparty?.account_no || null,
-      reference: reference || null,
-      booked_at: tx.completed_at || tx.created_at || null,
+      amount: draft.amount,
+      currency: draft.currency,
+      direction: draft.direction,
+      counterparty_name: draft.counterparty_name,
+      counterparty_iban: draft.counterparty_iban,
+      reference: draft.reference,
+      booked_at: draft.booked_at,
       raw: tx,
     };
+    // Un débit ne doit jamais rester « à rapprocher » : le statut ignored le sort de la file.
+    const patch =
+      draft.direction === "debit" ? { ...fields, status: "ignored" as const } : fields;
     const { error, data } = await supabase
       .from("crm_revolut_transactions")
       .upsert(
         {
           revolut_transaction_id: tx.id,
-          ...fields,
+          ...patch,
         },
         { onConflict: "revolut_transaction_id", ignoreDuplicates: true }
       )
       .select("id");
     if (!error && data?.length) inserted += data.length;
     else {
+      // Ne pas retourner un crédit déjà rangé en débit, ni l’inverse.
       await supabase
         .from("crm_revolut_transactions")
-        .update(fields)
-        .eq("revolut_transaction_id", tx.id);
+        .update(patch)
+        .eq("revolut_transaction_id", tx.id)
+        .eq("direction", draft.direction);
     }
   }
   return inserted;

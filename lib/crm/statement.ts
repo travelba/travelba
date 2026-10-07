@@ -238,6 +238,34 @@ export function buildStatement(input: {
         hint: "Votre société règle ces voyages.",
       },
     ];
+  } else if (view.pockets?.length) {
+    summaries = view.pockets.flatMap((pocket) => {
+      const wallet: ClientLedgerWallet = {
+        currency: view.currency,
+        balanceValue: pocket.balance,
+        debits: pocket.debits,
+        remaining: pocket.due,
+        remainingPct: pocket.funding === "advance" && pocket.balance > 0 ? null : pocket.remainingPct,
+        creditCount: pocket.creditCount,
+      };
+      return [
+        {
+          label: pocket.label,
+          value: formatStatementMoney(pocket.balance, view.currency),
+          hint: pocket.funding === "advance" && pocket.balance > 0 ? "Crédit à dépenser" : encoursHint(wallet),
+        },
+        {
+          label: `Dépenses · ${pocket.label}`,
+          value: formatStatementMoney(pocket.debits, view.currency),
+          hint: null,
+        },
+        {
+          label: `Règlements · ${pocket.label}`,
+          value: formatStatementMoney(roundMoney(pocket.balance + pocket.debits), view.currency),
+          hint: null,
+        },
+      ];
+    });
   } else {
     summaries = walletSummaries(wallets, wallets.length > 1);
   }

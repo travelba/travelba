@@ -11,6 +11,8 @@ export type SpendingBooking = {
   customer_id?: string | null;
   owner_name?: string | null;
   displayed_amount?: number | null;
+  /** Société de facturation du séjour. Pro : pas de plafond. */
+  billing_company_id?: string | null;
 };
 
 export type SpendingAccountInput = {
@@ -56,6 +58,7 @@ type SpendRow = {
   direction: "debit" | "credit";
   amount: number | string;
   currency: string;
+  billing_company_id?: string | null;
 };
 
 function roundMoney(amount: number) {
@@ -83,10 +86,20 @@ export function spendingUsedPct(allowance: number, spent: number) {
   return Math.min(100, Math.max(0, Math.round((spent / allowance) * 100)));
 }
 
-function engagedByOwner(rows: SpendRow[], ownerByBooking: Map<string, string>, currency: string) {
+function onUnlimitedAccount(row: SpendRow, unlimited: Set<string>) {
+  return Boolean(row.billing_company_id && unlimited.has(row.billing_company_id));
+}
+
+function engagedByOwner(
+  rows: SpendRow[],
+  ownerByBooking: Map<string, string>,
+  currency: string,
+  unlimited: Set<string>
+) {
   const spent = new Map<string, number>();
   for (const row of rows) {
     if ((row.currency || "EUR") !== currency || !row.booking_id) continue;
+    if (onUnlimitedAccount(row, unlimited)) continue;
     const owner = ownerByBooking.get(row.booking_id);
     if (!owner) continue;
     const amount = Number(row.amount);
@@ -122,18 +135,21 @@ export function shapeSpendingDesk(input: {
   movements: LedgerMovementRow[];
   /** Lignes visibles (séjour masqué dès qu’une carte le couvre). */
   rows: SpendRow[];
+  /** Sociétés Pro : leurs dépenses ne consomment pas le droit. */
+  unlimitedCompanyIds?: string[];
 }): SpendingDesk | null {
   const granted = input.accounts.filter((account) => hasSpendingAllowance(account.allowance));
   if (!granted.length) return null;
   if (input.member && !granted.some((account) => account.id === input.viewerId)) return null;
 
+  const unlimited = new Set(input.unlimitedCompanyIds || []);
   const bookingById = new Map(input.bookings.map((booking) => [booking.id, booking]));
   const ownerByBooking = new Map<string, string>();
   for (const booking of input.bookings) {
     if (booking.customer_id) ownerByBooking.set(booking.id, booking.customer_id);
     else if (input.member) ownerByBooking.set(booking.id, input.viewerId);
   }
-  const spentByOwner = engagedByOwner(input.rows, ownerByBooking, input.currency);
+  const spentByOwner = engagedByOwner(input.rows, ownerByBooking, input.currency, unlimited);
   const accountById = new Map(input.accounts.map((account) => [account.id, account]));
 
   const toAccount = (account: SpendingAccountInput): SpendingAccount => {
@@ -178,6 +194,13 @@ export function shapeSpendingDesk(input: {
     const ownerId = booking?.customer_id || (input.member ? input.viewerId : null);
     const account = ownerId ? accountById.get(ownerId) : undefined;
     const posted = ownerId ? accounts.find((row) => row.id === ownerId) : undefined;
+    const stayDebits = input.rows.filter(
+      (row) => row.booking_id === bookingId && row.direction === "debit" && (row.currency || "EUR") === input.currency
+    );
+    const unlimitedStay =
+      unlimited.size > 0 &&
+      ((booking?.billing_company_id && unlimited.has(booking.billing_company_id)) ||
+        (stayDebits.length > 0 && stayDebits.every((row) => onUnlimitedAccount(row, unlimited))));
     const displayed = booking?.displayed_amount;
     const amount =
       displayed != null && Number.isFinite(Number(displayed))
@@ -194,7 +217,8 @@ export function shapeSpendingDesk(input: {
       reference: booking?.reference || movements[0]?.reference || null,
       amountLabel: formatMoney(amount, input.currency),
       accountName: (booking?.owner_name || "").trim() || account?.name || "Compte",
-      remainingLabel: posted ? spendingRemainLabel(posted.remaining, input.currency) : null,
+      remainingLabel:
+        posted && !unlimitedStay ? spendingRemainLabel(posted.remaining, input.currency) : null,
       movements,
     });
   }

@@ -10,6 +10,8 @@ import {
   type RevolutMatchCandidate,
   type RevolutMatchCustomer,
 } from "@/lib/crm/revolut-match";
+import { wireAccountChoices } from "@/lib/crm/funding-wallet";
+import { revolutDebitLine } from "@/lib/crm/revolut-inbox";
 import type { CrmRevolutTransaction } from "@/lib/crm/types";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 
@@ -43,16 +45,27 @@ export default async function AdminRevolutPage({
   }));
 
   let rows: CrmRevolutTransaction[] = [];
+  let debits: ReturnType<typeof revolutDebitLine>[] = [];
   try {
-    const { data } = await admin
-      .from("crm_revolut_transactions")
-      .select("*")
-      .eq("direction", "credit")
-      .order("booked_at", { ascending: false, nullsFirst: false })
-      .limit(200);
-    rows = (data || []) as CrmRevolutTransaction[];
+    const [credits, outs] = await Promise.all([
+      admin
+        .from("crm_revolut_transactions")
+        .select("*")
+        .eq("direction", "credit")
+        .order("booked_at", { ascending: false, nullsFirst: false })
+        .limit(200),
+      admin
+        .from("crm_revolut_transactions")
+        .select("id, amount, currency, counterparty_name, reference, booked_at, raw")
+        .eq("direction", "debit")
+        .order("booked_at", { ascending: false, nullsFirst: false })
+        .limit(200),
+    ]);
+    rows = (credits.data || []) as CrmRevolutTransaction[];
+    debits = ((outs.data || []) as CrmRevolutTransaction[]).map(revolutDebitLine);
   } catch {
     rows = [];
+    debits = [];
   }
 
   const suggestions: Record<string, RevolutMatchCandidate[]> = {};
@@ -60,6 +73,20 @@ export default async function AdminRevolutPage({
     if (row.status !== "unmatched") continue;
     suggestions[row.id] = scoreRevolutMatches(row, index).candidates;
   }
+
+  const { data: fundingCompanies } = await admin
+    .from("crm_billing_companies")
+    .select("id, customer_id, company_name, funding, sort_order")
+    .in("funding", ["advance", "pro"]);
+  const accounts = wireAccountChoices(
+    (fundingCompanies || []) as {
+      id: string;
+      customer_id: string;
+      company_name: string | null;
+      funding: string | null;
+      sort_order: number;
+    }[]
+  );
 
   const hasClientId = Boolean(revolutClientId());
   const connected = await revolutConnected();
@@ -70,14 +97,16 @@ export default async function AdminRevolutPage({
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
         title="Rapprochement Revolut"
-        subtitle="Virements reçus : expéditeur et désignation. Proposition pré-sélectionnée seulement si elle est certaine : Valider, choisir ou Refuser."
+        subtitle="Virements reçus à rapprocher. Les sorties du compte sont dans l’onglet Débits : elles ne créditent pas un client."
       />
       <div className="mt-6 space-y-4">
         {balance ? <AccountBalanceCard pockets={balance} /> : null}
         <RevolutInbox
           rows={rows}
+          debits={debits}
           customers={customers}
           suggestions={suggestions}
+          accounts={accounts}
           configured={revolutConfigured()}
           connected={connected}
           hasClientId={hasClientId}

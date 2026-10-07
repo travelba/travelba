@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createTransactionSchema, parseBody } from "@/lib/crm/admin-schemas";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
+import { resolveWireAccount } from "@/lib/crm/funding-wallet";
 
 export async function GET() {
   const auth = await requireStaff();
@@ -41,6 +42,12 @@ export async function POST(request: Request) {
       .maybeSingle();
     if (!booking) return jsonError("Dossier introuvable", 404);
   }
+  const { data: companies } = await auth.supabase
+    .from("crm_billing_companies")
+    .select("id, funding")
+    .eq("customer_id", body.customer_id);
+  const account = resolveWireAccount(companies || [], body.billing_company_id);
+  if ("error" in account) return jsonError(account.error);
   const { data, error } = await auth.supabase
     .from("crm_transactions")
     .insert({
@@ -54,6 +61,9 @@ export async function POST(request: Request) {
       label: body.label || "Virement manuel",
       source: "manual",
       status: "posted",
+      ...(account.billingCompanyId
+        ? { billing_company_id: account.billingCompanyId, payer_kind: "company" as const }
+        : {}),
     })
     .select("*")
     .single();

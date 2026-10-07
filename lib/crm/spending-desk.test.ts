@@ -206,6 +206,81 @@ test("un crédit sur le dossier de Gaelle rend une partie de son droit", () => {
   assert.equal(view.spending?.cards[0].movements[0].carnetHref, "/admin/reservations/b-gaelle");
 });
 
+test("la limite ne compte que les dépenses du crédit, pas Pro", () => {
+  const view = shapeClientLedger({
+    companyRole: "admin",
+    viewerId: "raphael",
+    travelerBookingIds: ["b-rome", "b-bordeaux"],
+    walletBalance: 5800,
+    currency: "EUR",
+    audience: "client",
+    spendAccounts: [raphael],
+    fundingCompanies: [
+      { id: "rba", company_name: "RB&A", funding: "advance", sort_order: 0 },
+      { id: "pro", company_name: "Pro", funding: "pro", sort_order: 1 },
+    ],
+    bookings: [
+      {
+        id: "b-rome",
+        title: "Rome",
+        destination: "Rome",
+        reference: "TB-R",
+        start_date: "2026-09-01",
+        end_date: "2026-09-05",
+        visible_to_client: true,
+        customer_id: "raphael",
+        owner_name: "Raphael Benilouche",
+        displayed_amount: 2400,
+        billing_company_id: "rba",
+      },
+      {
+        id: "b-bordeaux",
+        title: "Bordeaux",
+        destination: "Bordeaux",
+        reference: "TB-B",
+        start_date: "2026-10-01",
+        end_date: "2026-10-03",
+        visible_to_client: true,
+        customer_id: "raphael",
+        owner_name: "Raphael Benilouche",
+        displayed_amount: 268.66,
+        billing_company_id: "pro",
+      },
+    ],
+    rows: [
+      tx({
+        id: "rome",
+        direction: "debit",
+        kind: "booking",
+        amount: 2400,
+        booking_id: "b-rome",
+        billing_company_id: "rba",
+        label: "Hôtel Rome",
+      }),
+      tx({
+        id: "bordeaux",
+        direction: "debit",
+        kind: "booking",
+        amount: 268.66,
+        booking_id: "b-bordeaux",
+        billing_company_id: "pro",
+        label: "Mondrian",
+      }),
+    ],
+  });
+  assert.equal(view.spending?.accounts[0]?.spent, 2400);
+  assert.equal(view.spending?.accounts[0]?.remaining, 27600);
+  const bordeaux = view.spending?.cards.find((card) => card.id === "b-bordeaux");
+  assert.equal(bordeaux?.remainingLabel, null);
+  const rome = view.spending?.cards.find((card) => card.id === "b-rome");
+  assert.equal(rome?.remainingLabel, `Reste ${formatMoney(27600, "EUR")}`);
+  const html = renderToStaticMarkup(createElement(ClientTransactionsPanel, { view }));
+  const credit = html.indexOf("Crédit");
+  const rights = html.indexOf("Droits de dépense");
+  const pro = html.indexOf(">Pro<");
+  assert.ok(credit >= 0 && rights > credit && pro > rights);
+});
+
 test("le droit de dépense se lit en euros et disparaît pour un particulier", () => {
   const parsed = customerPatchFromBody({
     company_role: "member",

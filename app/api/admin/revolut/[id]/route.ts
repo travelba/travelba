@@ -32,11 +32,15 @@ export async function POST(request: Request, ctx: Ctx) {
 
   const customerId = String(body?.customer_id || "");
   if (!customerId) return jsonError("Client requis");
-  const result = await applyRevolutToCustomer(admin, movement, customerId);
+  const billingCompanyId = typeof body?.billing_company_id === "string" ? body.billing_company_id : null;
+  const result = await applyRevolutToCustomer(admin, movement, customerId, billingCompanyId);
   if (!result.ok) {
     if (result.error === "already_matched") return jsonError("Déjà rapprochée");
     if (result.error === "not_a_credit") {
       return jsonError("Le rapprochement ne porte que sur les crédits reçus.");
+    }
+    if (result.error === "account_required") {
+      return jsonError("Choisissez le compte : crédit ou Pro.");
     }
     return jsonError(result.error || "Rapprochement impossible", 400);
   }

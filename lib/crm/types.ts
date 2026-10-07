@@ -528,6 +528,8 @@ export type CrmBillingCompany = {
   billing_city: string | null;
   billing_country: string | null;
   sort_order: number;
+  /** advance = crédit d’avance. pro = réglé par carte ou Apple Pay. null = encours unique. */
+  funding?: "advance" | "pro" | null;
   created_at: string;
   updated_at: string;
 };

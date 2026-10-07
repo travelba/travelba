@@ -14,6 +14,7 @@ import { CLIENT_PREVIEW_NOTE, useClientPreview } from "@/components/account/clie
 import { WireInstructions } from "@/components/account/WireInstructions";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { postJson } from "@/lib/crm/client-fetch";
+import type { FundingKind } from "@/lib/crm/funding-wallet";
 import type { PayerKind } from "@/lib/crm/payer";
 import { STAY_PAY_LABELS, type StayPayMethod } from "@/lib/crm/stripe-pay";
 
@@ -53,14 +54,23 @@ type TransferView = {
 };
 
 export type ClientPayPart = {
+  /** Distingue deux parts société (crédit et Pro). */
+  id?: string;
   kind: PayerKind;
+  funding?: FundingKind;
+  companyId?: string | null;
   mention: string;
+  hint?: string;
   amountLabel: string | null;
   payable: boolean;
   canPay: boolean;
   methods: StayPayMethod[];
   companyName: string | null;
 };
+
+function partKey(part: ClientPayPart) {
+  return part.id || part.kind;
+}
 
 export function StayPayment({
   parts,
@@ -75,7 +85,7 @@ export function StayPayment({
   /** Deux parts dues : chaque bloc nomme la sienne, pour ne pas confondre les virements. */
   named?: boolean;
 }) {
-  const [openKind, setOpenKind] = useState<PayerKind | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
   const [method, setMethod] = useState<StayPayMethod | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,7 +105,7 @@ export function StayPayment({
 
   async function choose(part: ClientPayPart, next: StayPayMethod) {
     if (busy) return;
-    setOpenKind(part.kind);
+    setOpenId(partKey(part));
     setMethod(next);
     setError(null);
     setClientSecret(null);
@@ -109,12 +119,18 @@ export function StayPayment({
     }
     if (next !== "revolut" && !stripeKey) return;
     // Le nonce entre dans la clé d’idempotence côté serveur ; il ne change qu’avec la pastille ou après un règlement.
-    const currentNonce = nonceFor(`${part.kind}:${next}`);
+    const currentNonce = nonceFor(`${partKey(part)}:${next}`);
     setBusy(true);
     try {
       const result = await postJson<{ alreadyPaid?: boolean; transfer?: TransferView; clientSecret?: string }>(
         "/api/client/ledger/pay",
-        { method: next, payerKind: part.kind, nonce: currentNonce }
+        {
+          method: next,
+          payerKind: part.kind,
+          funding: part.funding || null,
+          companyId: part.companyId || null,
+          nonce: currentNonce,
+        }
       );
       const json = result.data || {};
       if (!result.ok) {
@@ -147,11 +163,11 @@ export function StayPayment({
     <div className="space-y-3">
       {parts.map((part) => {
         const company = part.kind === "company";
-        const open = openKind === part.kind;
+        const open = openId === partKey(part);
         const society = part.companyName?.trim() || "votre société";
         return (
           <section
-            key={part.kind}
+            key={partKey(part)}
             className={
               named
                 ? "space-y-2 rounded-2xl border border-[#e5e3dc] bg-[#f7f6f3] px-3 py-3"
@@ -171,9 +187,11 @@ export function StayPayment({
                   ) : null}
                 </div>
                 <p className="text-xs leading-snug text-[#3d4654]">
-                  {company
-                    ? "Carte, Apple Pay, prélèvement ou virement."
-                    : "À régler par carte, Apple Pay ou virement."}
+                  {part.hint
+                    ? part.hint
+                    : company
+                      ? "Carte, Apple Pay, prélèvement ou virement."
+                      : "À régler par carte, Apple Pay ou virement."}
                 </p>
               </div>
             ) : compact ? null : (

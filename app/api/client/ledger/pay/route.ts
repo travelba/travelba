@@ -6,7 +6,8 @@ import { customerFullName, type CrmTransaction } from "@/lib/crm/types";
 import { amountToCents, anchorBillingCompanyId, encoursPartLabel, payerKindOf } from "@/lib/crm/payer";
 import { RevolutHttpError, loadAgencyEurWire } from "@/lib/crm/revolut";
 import { ensureStripeCustomer, getStripe, stripeConfigured } from "@/lib/crm/stripe";
-import { excludedStripeTypes, stayPayMethodOf, stayPayMethods } from "@/lib/crm/stripe-pay";
+import { fundingKindOf } from "@/lib/crm/funding-wallet";
+import { excludedStripeTypes, pocketPayMethods, stayPayMethodOf, stayPayMethods } from "@/lib/crm/stripe-pay";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { payActivityDetail, payActivitySummary, recordCustomerActivity } from "@/lib/crm/customer-activity";
 
@@ -27,11 +28,33 @@ export async function POST(request: Request) {
   if (!payer) return jsonError("Choisissez la part société ou la part particulier.");
 
   const view = await loadClientLedger(auth.supabase, auth.customer, "client");
-  const amount = payer === "company" ? view.owed.company : view.owed.personal;
-  if (amount < 0.5) return jsonError("Il n’y a pas de montant à régler.");
-  if (!stayPayMethods(payer, view.currency).includes(method)) {
+  const funding = fundingKindOf(body?.funding);
+  const requestedCompany = typeof body?.companyId === "string" ? body.companyId : "";
+  let amount = payer === "company" ? view.owed.company : view.owed.personal;
+  let companyId: string | null = null;
+  let mention = encoursPartLabel(payer, payer === "company" ? view.soleCompanyName : null);
+
+  if (view.pockets?.length && (funding || payer === "company")) {
+    if (!funding) return jsonError("Choisissez le compte à régler.");
+    const pocket = view.pockets.find(
+      (item) => item.funding === funding && (!requestedCompany || item.companyId === requestedCompany)
+    );
+    if (!pocket) return jsonError("Ce compte n’est pas ouvert.");
+    if (!pocketPayMethods(funding, view.currency).includes(method)) {
+      return jsonError(
+        funding === "pro"
+          ? "Ce compte se règle par carte ou Apple Pay."
+          : "Ce compte se règle par virement."
+      );
+    }
+    amount = pocket.due;
+    companyId = pocket.companyId;
+    mention = pocket.label;
+  } else if (!stayPayMethods(payer, view.currency).includes(method)) {
     return jsonError("Ce moyen n’est pas ouvert pour cette part.");
   }
+
+  if (amount < 0.5) return jsonError("Il n’y a pas de montant à régler.");
 
   const { data: txs, error: txError } = await auth.supabase
     .from("crm_transactions")
@@ -39,9 +62,9 @@ export async function POST(request: Request) {
     .eq("customer_id", auth.customer.id)
     .eq("status", "posted");
   if (txError) return dbError(txError, 500);
-  const companyId =
-    payer === "company" ? anchorBillingCompanyId((txs || []) as CrmTransaction[], view.currency) : null;
-  const mention = encoursPartLabel(payer, payer === "company" ? view.soleCompanyName : null);
+  if (!companyId && payer === "company") {
+    companyId = anchorBillingCompanyId((txs || []) as CrmTransaction[], view.currency);
+  }
   const reference = customerFullName(auth.customer) || "Encours";
   const cents = amountToCents(amount);
 
@@ -101,7 +124,7 @@ export async function POST(request: Request) {
           reference,
         },
       },
-      { idempotencyKey: `ledger-${auth.customer.id}-${payer}-${method}-${cents}${nonce ? `-${nonce}` : ""}` }
+      { idempotencyKey: `ledger-${auth.customer.id}-${companyId || payer}-${method}-${cents}${nonce ? `-${nonce}` : ""}` }
     );
 
     if (intent.status === "succeeded") {

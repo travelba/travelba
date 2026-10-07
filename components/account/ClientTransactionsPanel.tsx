@@ -7,7 +7,7 @@ import { Icon } from "@/components/crm/icons";
 import { StatementRequest } from "@/components/account/StatementRequest";
 import type { ClientLedgerView, ClientLedgerWallet } from "@/lib/crm/client-ledger";
 import { formatMoney } from "@/lib/crm/money";
-import { spendingUsedPct, type SpendingAccount } from "@/lib/crm/spending-desk";
+import { spendingUsedPct, type SpendingAccount, type SpendingDesk } from "@/lib/crm/spending-desk";
 import { siteConfig } from "@/lib/site";
 
 function AllowanceBar({ account, currency }: { account: SpendingAccount; currency: string }) {
@@ -31,14 +31,46 @@ function AllowanceBar({ account, currency }: { account: SpendingAccount; currenc
   );
 }
 
-function WalletBlock({ wallet, label }: { wallet: ClientLedgerWallet; label: string }) {
+function SpendingRights({ spending }: { spending: SpendingDesk | null }) {
+  if (!spending?.accounts.length) return null;
+  return (
+    <div className="mt-4 space-y-2">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9c7c4e]">Droits de dépense</p>
+      <ul className="m-0 list-none space-y-2 p-0">
+        {spending.accounts.map((account) => (
+          <li key={account.id} className="rounded-lg bg-[#faf9f6] px-3 py-3">
+            <span className="block truncate text-[13px] font-semibold text-[var(--admin-navy)]">{account.name}</span>
+            <span className="mt-1 block font-display text-lg font-bold tracking-tight text-[var(--admin-navy)]">
+              {formatMoney(account.remaining, spending.currency)}
+            </span>
+            <span className="mt-2 block border-t border-[#e9e8e5] pt-2 text-[10px] font-semibold uppercase tracking-wider text-[#9c7c4e]">
+              Droit de dépense
+            </span>
+            <span className="mt-0.5 block text-[13px] text-muted">{formatMoney(account.allowance, spending.currency)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function WalletBlock({
+  wallet,
+  label,
+  caption,
+}: {
+  wallet: ClientLedgerWallet;
+  label: string;
+  caption?: string | null;
+}) {
   return (
     <div className="mt-3">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9c7c4e]">{label}</p>
       <p className="font-display text-[1.75rem] font-bold tracking-tight text-[var(--admin-navy)]">
         {formatMoney(wallet.balanceValue, wallet.currency)}
       </p>
-      {wallet.remainingPct != null ? (
+      {caption ? <p className="mt-1.5 text-[12px] text-muted">{caption}</p> : null}
+      {!caption && wallet.remainingPct != null ? (
         <div className="mt-3">
           <div className="h-2.5 overflow-hidden rounded-full bg-[#e9e8e5]">
             <div
@@ -69,7 +101,7 @@ export function ClientTransactionsPanel({
   statementEndpoint?: string | null;
   statementAudience?: "client" | "staff";
 }) {
-  const { member, currency, remaining, remainingPct, debits, creditCount, movements, spending } = view;
+  const { member, currency, remaining, remainingPct, debits, creditCount, movements, spending, pockets } = view;
   const wallets: ClientLedgerWallet[] = view.wallets?.length
     ? view.wallets
     : [{ currency, balanceValue: view.balanceValue, debits, remaining, remainingPct, creditCount }];
@@ -114,13 +146,32 @@ export function ClientTransactionsPanel({
           )
         ) : (
           <>
-            {wallets.map((wallet) => (
-              <WalletBlock
-                key={wallet.currency}
-                wallet={wallet}
-                label={several ? `Encours ${wallet.currency.toUpperCase()}` : "Encours"}
-              />
-            ))}
+            {pockets?.length
+              ? pockets.map((pocket) => (
+                  <div key={pocket.companyId}>
+                    <WalletBlock
+                      wallet={{
+                        currency,
+                        balanceValue: pocket.balance,
+                        debits: pocket.debits,
+                        remaining: pocket.due,
+                        remainingPct:
+                          pocket.funding === "advance" && pocket.balance > 0 ? null : pocket.remainingPct,
+                        creditCount: pocket.creditCount,
+                      }}
+                      label={pocket.label}
+                      caption={pocket.funding === "advance" && pocket.balance > 0 ? "Crédit à dépenser" : null}
+                    />
+                    {pocket.funding === "advance" ? <SpendingRights spending={spending} /> : null}
+                  </div>
+                ))
+              : wallets.map((wallet) => (
+                  <WalletBlock
+                    key={wallet.currency}
+                    wallet={wallet}
+                    label={several ? `Encours ${wallet.currency.toUpperCase()}` : "Encours"}
+                  />
+                ))}
             {payments ? <div className="mt-3">{payments}</div> : null}
             {billingHref ? (
               <Link
@@ -132,31 +183,7 @@ export function ClientTransactionsPanel({
               </Link>
             ) : null}
             <StatementRequest endpoint={statementEndpoint} audience={statementAudience} />
-            {spending?.accounts.length ? (
-              <div className="mt-4 space-y-2">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9c7c4e]">
-                  Droits de dépense
-                </p>
-                <ul className="m-0 list-none space-y-2 p-0">
-                  {spending.accounts.map((account) => (
-                    <li key={account.id} className="rounded-lg bg-[#faf9f6] px-3 py-3">
-                      <span className="block truncate text-[13px] font-semibold text-[var(--admin-navy)]">
-                        {account.name}
-                      </span>
-                      <span className="mt-1 block font-display text-lg font-bold tracking-tight text-[var(--admin-navy)]">
-                        {formatMoney(account.remaining, spending.currency)}
-                      </span>
-                      <span className="mt-2 block border-t border-[#e9e8e5] pt-2 text-[10px] font-semibold uppercase tracking-wider text-[#9c7c4e]">
-                        Droit de dépense
-                      </span>
-                      <span className="mt-0.5 block text-[13px] text-muted">
-                        {formatMoney(account.allowance, spending.currency)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
+            {pockets?.length ? null : <SpendingRights spending={spending} />}
           </>
         )}
 

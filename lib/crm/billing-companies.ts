@@ -272,13 +272,15 @@ export async function saveCustomerBillingCompanies(
   if ("error" in normalized) return normalized;
   const { data: existing, error: readError } = await supabase
     .from("crm_billing_companies")
-    .select("id, siret")
+    .select("id, siret, funding")
     .eq("customer_id", customerId);
   if (readError) return billingWriteError(readError);
-  const plan = planBillingCompanyWrites(
-    (existing || []) as { id: string; siret: string | null }[],
-    normalized.companies
+  const stored = (existing || []) as { id: string; siret: string | null; funding?: string | null }[];
+  const plan = planBillingCompanyWrites(stored, normalized.companies);
+  const protectedIds = new Set(
+    stored.filter((row) => row.funding === "advance" || row.funding === "pro").map((row) => row.id)
   );
+  plan.releaseIds = plan.releaseIds.filter((id) => !protectedIds.has(id));
 
   if (plan.clearSiretIds.length) {
     const { error } = await supabase

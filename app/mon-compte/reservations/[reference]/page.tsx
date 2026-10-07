@@ -256,7 +256,8 @@ export default async function ReservationDetailPage({ params }: Props) {
   }
   const ledger = await ledgerPromise;
   const encoursPay =
-    ledger.member || ledger.owed.total <= 0 ? null : (
+    ledger.member ||
+    (ledger.owed.total <= 0 && !ledger.pockets?.some((pocket) => pocket.due >= 0.5)) ? null : (
       <section id="reglement" className="rounded-xl border border-[#e9e8e5]/60 bg-white p-4 shadow-sm">
         <EncoursPayment
           company={ledger.owed.company}
@@ -264,6 +265,7 @@ export default async function ReservationDetailPage({ params }: Props) {
           currency={ledger.currency}
           soleCompanyName={ledger.soleCompanyName}
           stripeKey={stripePublishableKey()}
+          pockets={ledger.pockets}
         />
       </section>
     );

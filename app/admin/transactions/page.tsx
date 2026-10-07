@@ -3,6 +3,7 @@ import { TransactionsPanels } from "@/components/admin/TransactionsPanels";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { companyLabelForTransaction } from "@/lib/crm/billing-companies";
+import { wireAccountChoices } from "@/lib/crm/funding-wallet";
 import type { CrmBillingCompany } from "@/lib/crm/types";
 import { stripeConfigured, stripeWebhookConfigured } from "@/lib/crm/stripe";
 import { formatDateFr, formatMoney, postedLedgerTotals } from "@/lib/crm/money";
@@ -27,11 +28,11 @@ export default async function AdminTransactionsPage() {
       .eq("status", "posted")
       .order("occurred_on", { ascending: false })
       .limit(80),
-    supabase.from("crm_billing_companies").select("id, customer_id, company_name"),
+    supabase.from("crm_billing_companies").select("id, customer_id, company_name, funding, sort_order"),
   ]);
   const companies = (billingCompanies || []) as Pick<
     CrmBillingCompany,
-    "id" | "customer_id" | "company_name"
+    "id" | "customer_id" | "company_name" | "funding" | "sort_order"
   >[];
   const stripeReady = stripeConfigured() && stripeWebhookConfigured();
   const rows = (transactions || []) as CrmTransaction[];
@@ -83,7 +84,12 @@ export default async function AdminTransactionsPage() {
             <h2 className="mb-3 hidden font-display text-lg font-bold text-[var(--admin-navy)] xl:block">
               Encaissements
             </h2>
-            <Ledger transactions={rows} names={nameRows} billingCompanies={companies} />
+            <Ledger
+              transactions={rows}
+              names={nameRows}
+              billingCompanies={companies}
+              accounts={wireAccountChoices(companies)}
+            />
           </>
         }
         expenses={

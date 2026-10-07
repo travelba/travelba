@@ -25,11 +25,14 @@ export function Ledger({
   transactions,
   names,
   billingCompanies = [],
+  accounts = {},
 }: {
   transactions: CrmTransaction[];
   /** Seulement les clients des lignes affichées : nom, pas la fiche. */
   names: CustomerNameRow[];
   billingCompanies?: Pick<CrmBillingCompany, "id" | "customer_id" | "company_name">[];
+  /** Clients avec crédit et Pro : la saisie d’un virement demande le compte. */
+  accounts?: Record<string, { id: string; label: string }[]>;
 }) {
   const router = useRouter();
   const [filterCustomer, setFilterCustomer] = useState<PickableCustomer | null>(null);
@@ -39,6 +42,9 @@ export function Ledger({
   const [status, setStatus] = useState("all");
   const [saving, setSaving] = useState(false);
   const [entryOpen, setEntryOpen] = useState(false);
+  const [entryCustomer, setEntryCustomer] = useState<PickableCustomer | null>(null);
+  const [entryAccount, setEntryAccount] = useState("");
+  const [entryKey, setEntryKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -81,6 +87,9 @@ export function Ledger({
         return;
       }
       form.reset();
+      setEntryCustomer(null);
+      setEntryAccount("");
+      setEntryKey((key) => key + 1);
       setNotice("Virement enregistré.");
       router.refresh();
     } catch {
@@ -111,12 +120,38 @@ export function Ledger({
           className={`${entryOpen ? "grid" : "hidden"} admin-af-card min-w-0 gap-3 rounded-3xl p-4 sm:grid-cols-2 sm:p-5 lg:grid xl:grid-cols-3`}
         >
           <CustomerPickField
+            key={entryKey}
             name="customer_id"
             label="Client"
             title="Client crédité"
-            selected={null}
+            selected={entryCustomer}
+            onPick={(customer) => {
+              setEntryCustomer(customer);
+              setEntryAccount("");
+            }}
             controlClass={`${fieldClass} w-full min-w-0`}
           />
+          {(entryCustomer && (accounts[entryCustomer.id] || []).length > 1) ? (
+            <label className={labelClass}>
+              Compte
+              <select
+                name="billing_company_id"
+                required
+                value={entryAccount}
+                disabled={saving}
+                onChange={(event) => setEntryAccount(event.target.value)}
+                aria-label="Compte qui reçoit le virement"
+                className={`${fieldClass} w-full min-w-0`}
+              >
+                <option value="">Choisir…</option>
+                {(accounts[entryCustomer.id] || []).map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <label className={labelClass}>
             Montant (€)
             <MoneyInput

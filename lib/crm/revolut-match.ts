@@ -1,3 +1,4 @@
+import { resolveWireAccount } from "./funding-wallet";
 import { isRevolutCredit, revolutSenderName } from "./revolut-inbox";
 import type { CrmCustomer, CrmRevolutTransaction } from "./types";
 
@@ -198,10 +199,18 @@ export function suggestionsForCustomer(
     .sort((a, b) => b.candidate.score - a.candidate.score);
 }
 
+async function customerFundingCompanies(admin: RevolutAdmin, customerId: string) {
+  const query = admin.from("crm_billing_companies");
+  if (!query || typeof query.select !== "function") return [];
+  const { data } = await query.select("id, company_name, funding").eq("customer_id", customerId);
+  return (Array.isArray(data) ? data : []) as { id: string; funding?: string | null }[];
+}
+
 export async function applyRevolutToCustomer(
   admin: RevolutAdmin,
   row: CrmRevolutTransaction,
-  customerId: string
+  customerId: string,
+  billingCompanyId?: string | null
 ) {
   if (row.status === "matched") {
     return { ok: false as const, error: "already_matched" };
@@ -213,6 +222,8 @@ export async function applyRevolutToCustomer(
   const designation = (row.reference || "").trim();
   const labelBase = [sender, designation].filter(Boolean).join(" — ") || row.revolut_transaction_id;
   const label = `Virement Revolut ${labelBase}`.trim();
+  const account = resolveWireAccount(await customerFundingCompanies(admin, customerId), billingCompanyId);
+  if ("error" in account) return { ok: false as const, error: "account_required" as const };
 
   const { data: tx, error } = await admin
     .from("crm_transactions")
@@ -227,6 +238,9 @@ export async function applyRevolutToCustomer(
       source: "revolut",
       external_id: row.revolut_transaction_id,
       status: "posted",
+      ...(account.billingCompanyId
+        ? { billing_company_id: account.billingCompanyId, payer_kind: "company" }
+        : {}),
     })
     .select("*")
     .single();

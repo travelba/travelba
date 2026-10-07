@@ -9,7 +9,7 @@ export default async function NewBookingPage() {
   const { supabase } = await requireStaffPage();
   const { data: companies } = await supabase
     .from("crm_billing_companies")
-    .select("id, customer_id, company_name, sort_order")
+    .select("id, customer_id, company_name, sort_order, funding")
     .order("sort_order");
 
   return (
@@ -31,6 +31,7 @@ export default async function NewBookingPage() {
             customer_id: string;
             company_name: string | null;
             sort_order: number;
+            funding?: string | null;
           }[]}
           aiConfigured={aiGatewayConfigured()}
         />

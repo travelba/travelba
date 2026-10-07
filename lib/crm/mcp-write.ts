@@ -291,6 +291,9 @@ export async function creditRevolutTransfer(input: Record<string, unknown>, admi
   const result = await applyRevolutToCustomer(db, movement, clientId);
   if (!result.ok) {
     if (result.error === "already_matched") throw new McpWriteError("Déjà rapprochée.");
+    if (result.error === "account_required") {
+      throw new McpWriteError("Choisissez le compte : crédit ou Pro.");
+    }
     if (result.error === "not_a_credit") {
       throw new McpWriteError("Le rapprochement ne porte que sur les crédits reçus.");
     }

@@ -18,6 +18,7 @@ import { loadOpenEstaNotices } from "@/lib/crm/esta-run";
 import { clientLedgerAdminHref, loadClientLedger } from "@/lib/crm/client-ledger";
 import { CUSTOMER_LIST_SELECT, CUSTOMER_NAME_SELECT, type CustomerListRow, type CustomerNameRow } from "@/lib/crm/customer-search";
 import { formatDateFr, formatMoney, isoDateInDays, todayIsoDate } from "@/lib/crm/money";
+import { revolutDebitLine } from "@/lib/crm/revolut-inbox";
 import { serviceDeskLines, type ServiceDeskItem } from "@/lib/crm/service-desk";
 import { staffLedgerCaption, staffStayLabel } from "@/lib/crm/staff-stay";
 import { reviewIdentityPieces } from "@/lib/crm/trip-documents";
@@ -657,6 +658,31 @@ export async function readRevolutEnAttente() {
       expediteur: row.counterparty_name,
       libelle: row.reference,
       date: row.booked_at ? formatDateFr(row.booked_at) : null,
+    })),
+  };
+}
+
+export async function readRevolutDebits() {
+  const admin = db();
+  const { data, error } = await admin
+    .from("crm_revolut_transactions")
+    .select("id, amount, currency, counterparty_name, reference, booked_at, raw, direction")
+    .eq("direction", "debit")
+    .order("booked_at", { ascending: false, nullsFirst: false })
+    .limit(INBOX_LIMIT);
+  if (error) {
+    logRead("revolut-debits", error);
+    throw new Error("Lecture impossible.");
+  }
+  const lines = ((data || []) as CrmRevolutTransaction[]).map(revolutDebitLine);
+  return {
+    lien: "/admin/revolut",
+    debits: lines.map((line) => ({
+      beneficiaire: line.party,
+      montant: formatMoney(-line.amount, line.currency),
+      nature: line.kind,
+      libelle: line.reference || null,
+      date: line.bookedAt ? formatDateFr(line.bookedAt) : null,
     })),
   };
 }

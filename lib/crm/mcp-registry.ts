@@ -10,6 +10,7 @@ import {
   readFormalites,
   readGrandLivre,
   readLittleEmperorsEnAttente,
+  readRevolutDebits,
   readRevolutEnAttente,
   readStripeEnAttente,
   readServicesAConfirmer,
@@ -156,6 +157,12 @@ export const MCP_TOOLS: ToolDef[] = [
     description:
       "Virements Revolut reçus, pas encore rapprochés. L’identifiant sert à crediter_revolut, avec le client désigné.",
     run: () => readRevolutEnAttente(),
+  },
+  {
+    name: "revolut_debits",
+    description:
+      "Sorties du compte Revolut (virements, cartes, frais). Lecture seule : ne crédite pas un client.",
+    run: () => readRevolutDebits(),
   },
   {
     name: "stripe_en_attente",

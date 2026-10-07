@@ -33,7 +33,8 @@ export default async function TransactionsPage() {
         billingHref="/mon-compte/profil/facturation"
         statementEndpoint="/api/client/ledger/releve"
         payments={
-          view.member || view.owed.total <= 0 ? null : (
+          view.member ||
+          (view.owed.total <= 0 && !view.pockets?.some((pocket) => pocket.due >= 0.5)) ? null : (
             <EncoursPayment
               compact
               company={view.owed.company}
@@ -41,6 +42,7 @@ export default async function TransactionsPage() {
               currency={view.currency}
               soleCompanyName={view.soleCompanyName}
               stripeKey={stripePublishableKey()}
+              pockets={view.pockets}
             />
           )
         }

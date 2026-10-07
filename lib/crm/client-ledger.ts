@@ -23,6 +23,7 @@ import {
   type SpendingDesk,
 } from "@/lib/crm/spending-desk";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { fundingPockets, type FundingCompany, type FundingPocket } from "@/lib/crm/funding-wallet";
 import { fitPayerOwed, owedByPayer } from "@/lib/crm/payer";
 import {
   TX_KIND_LABELS,
@@ -51,6 +52,7 @@ export type ClientLedgerBooking = {
   owner_name?: string | null;
   /** Prix affiché du séjour. Absent : la carte reprend les débits postés. */
   displayed_amount?: number | null;
+  billing_company_id?: string | null;
   status?: string | null;
   total_amount?: number | string | null;
   agency_commission?: boolean | null;
@@ -78,6 +80,8 @@ export type ClientLedgerView = {
   wallets: ClientLedgerWallet[];
   /** Somme due, puis part société et part particulier. */
   owed: { total: number; company: number; personal: number };
+  /** Crédit et Pro. Null : un seul encours. */
+  pockets: FundingPocket[] | null;
   soleCompanyName: string | null;
   movements: LedgerMovementRow[];
   /** Null tant qu’aucun droit de dépense n’est fixé : le grand livre actuel reste. */
@@ -123,6 +127,7 @@ export function shapeClientLedger(input: {
   companyNames?: Map<string, string | null>;
   /** Tous les soldes du compte (une ligne par devise). Absent : le seul walletBalance / currency. */
   wallets?: { currency: string; balance: number }[];
+  fundingCompanies?: FundingCompany[];
   viewerId?: string;
   spendAccounts?: SpendingAccountInput[];
 }): ClientLedgerView {
@@ -178,6 +183,9 @@ export function shapeClientLedger(input: {
   );
   const split = owedByPayer(scoped, payerByBooking, currency);
   const owed = fitPayerOwed(split.company, split.personal, remaining);
+  const pockets = member
+    ? null
+    : fundingPockets(input.fundingCompanies || [], scoped, currency);
   const soleCompanyName =
     (input.billingCompanyCount || 0) === 1
       ? [...(input.companyNames?.values() || [])][0] || null
@@ -199,6 +207,7 @@ export function shapeClientLedger(input: {
     creditCount: shown.filter((row) => row.direction === "credit").length,
     wallets,
     owed,
+    pockets,
     soleCompanyName,
     movements,
     spending: input.spendAccounts?.length
@@ -214,7 +223,11 @@ export function shapeClientLedger(input: {
             direction: row.direction,
             amount: row.amount,
             currency: row.currency,
+            billing_company_id: row.billing_company_id,
           })),
+          unlimitedCompanyIds: (input.fundingCompanies || [])
+            .filter((company) => company.funding === "pro")
+            .map((company) => company.id),
         })
       : null,
   };
@@ -264,7 +277,7 @@ function serviceClientOrNull() {
 }
 
 const SPEND_BOOKING_SELECT =
-  "id, title, destination, reference, start_date, end_date, visible_to_client, payer_kind, customer_id, status, total_amount, agency_commission";
+  "id, title, destination, reference, start_date, end_date, visible_to_client, payer_kind, customer_id, billing_company_id, status, total_amount, agency_commission";
 
 async function enrichSpendBookings(
   reader: SupabaseClient,
@@ -350,10 +363,13 @@ export async function loadClientLedger(
 
   const { data: companyRows } = await supabase
     .from("crm_billing_companies")
-    .select("id, company_name")
+    .select("id, company_name, funding, sort_order")
     .eq("customer_id", customer.id)
     .order("sort_order");
-  const billingCompanies = (companyRows || []) as Pick<CrmBillingCompany, "id" | "company_name">[];
+  const billingCompanies = (companyRows || []) as Pick<
+    CrmBillingCompany,
+    "id" | "company_name" | "funding" | "sort_order"
+  >[];
   const companyNames = new Map(billingCompanies.map((company) => [company.id, company.company_name]));
   const contextIds = [...new Set(rows.map((row) => row.booking_id).filter(Boolean))] as string[];
   let bookings: ClientLedgerBooking[] = [];
@@ -378,6 +394,7 @@ export async function loadClientLedger(
     audience,
     billingCompanyCount: billingCompanies.length,
     companyNames,
+    fundingCompanies: billingCompanies,
     wallets,
     viewerId: customer.id,
     spendAccounts: spend.accounts,

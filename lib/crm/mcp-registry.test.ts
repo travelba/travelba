@@ -12,6 +12,7 @@ const EXPECTED = [
   "services_a_confirmer",
   "grand_livre",
   "revolut_en_attente",
+  "revolut_debits",
   "stripe_en_attente",
   "emails_en_attente",
   "little_emperors_en_attente",

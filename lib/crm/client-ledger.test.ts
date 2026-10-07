@@ -3,6 +3,7 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ClientTransactionsPanel } from "../../components/account/ClientTransactionsPanel";
+import { EncoursPayment } from "../../components/account/EncoursPayment";
 import { applyExpenseLedgerChange, shapeClientLedger } from "./client-ledger";
 import { formatMoney } from "./money";
 import type { CrmTransaction } from "./types";
@@ -458,4 +459,44 @@ test("sans liste de soldes, la vue garde un seul encours", () => {
   const html = renderToStaticMarkup(createElement(ClientTransactionsPanel, { view }));
   assert.equal(html.includes("Encours EUR"), false);
   assert.match(html, /Encours/);
+});
+
+test("crédit et Pro s’affichent à part, même si le solde global est positif", () => {
+  const view = shapeClientLedger({
+    companyRole: "admin",
+    travelerBookingIds: [],
+    walletBalance: 5800,
+    currency: "EUR",
+    audience: "client",
+    bookings: [],
+    fundingCompanies: [
+      { id: "rba", company_name: "RB&A", funding: "advance", sort_order: 0 },
+      { id: "pro", company_name: "Pro", funding: "pro", sort_order: 1 },
+    ],
+    rows: [
+      tx({ id: "wire", direction: "credit", kind: "transfer", amount: 10000, billing_company_id: "rba" }),
+      tx({ id: "rome", direction: "debit", kind: "booking", amount: 2400, billing_company_id: "rba" }),
+      tx({ id: "milan", direction: "debit", kind: "booking", amount: 1800, billing_company_id: "pro" }),
+    ],
+  });
+  assert.equal(view.pockets?.[0]?.balance, 7600);
+  assert.equal(view.pockets?.[1]?.balance, -1800);
+  assert.equal(view.pockets?.[1]?.due, 1800);
+  const html = renderToStaticMarkup(createElement(ClientTransactionsPanel, { view }));
+  assert.match(html, /Crédit · RB&amp;A|Crédit · RB&A/);
+  assert.match(html, /Crédit à dépenser/);
+  assert.match(html, />Pro</);
+  const pay = renderToStaticMarkup(
+    createElement(EncoursPayment, {
+      company: view.owed.company,
+      personal: view.owed.personal,
+      currency: view.currency,
+      soleCompanyName: view.soleCompanyName,
+      stripeKey: null,
+      pockets: view.pockets,
+    })
+  );
+  assert.match(pay, /Carte bancaire/);
+  assert.match(pay, /Apple Pay/);
+  assert.equal(pay.includes("Virement"), false);
 });

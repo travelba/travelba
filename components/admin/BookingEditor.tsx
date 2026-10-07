@@ -98,6 +98,7 @@ import {
 import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
 import { StayBillingChoice } from "@/components/crm/StayBillingChoice";
 import { billingCompanyTabLabel } from "@/lib/crm/billing-companies";
+import { fundingCompanyOptionLabel } from "@/lib/crm/funding-wallet";
 import { defaultBillingCompany } from "@/lib/crm/payer";
 import {
   BOOKING_TAB_IDS,
@@ -261,7 +262,12 @@ export function BookingEditor({
   hotelMessages?: CrmHotelMessage[];
   hotelThreadMessages?: CrmHotelThreadMessage[];
   openHotelItemId?: string | null;
-  billingCompanies?: { id: string; company_name: string | null; sort_order: number }[];
+  billingCompanies?: {
+    id: string;
+    company_name: string | null;
+    sort_order: number;
+    funding?: string | null;
+  }[];
   littleEmperors?: {
     id: string;
     hotel_name: string | null;
@@ -1322,7 +1328,12 @@ export function BookingEditor({
             ) : null}
             {payerKind === "company" && payerCompanies.length === 1 ? (
               <p className="rounded-2xl bg-white/70 px-4 py-3 text-sm text-[var(--admin-navy)]">
-                Société : {billingCompanyTabLabel(payerCompanies[0].company_name, 0, 1)}
+                Société :{" "}
+                {fundingCompanyOptionLabel(
+                  payerCompanies[0].company_name,
+                  payerCompanies[0].funding,
+                  billingCompanyTabLabel(payerCompanies[0].company_name, 0, 1)
+                )}
               </p>
             ) : null}
             {payerKind === "company" && payerCompanies.length > 1 ? (
@@ -1336,7 +1347,11 @@ export function BookingEditor({
                 >
                   {payerCompanies.map((company, index) => (
                     <option key={company.id} value={company.id}>
-                      {billingCompanyTabLabel(company.company_name, index, payerCompanies.length)}
+                      {fundingCompanyOptionLabel(
+                        company.company_name,
+                        company.funding,
+                        billingCompanyTabLabel(company.company_name, index, payerCompanies.length)
+                      )}
                     </option>
                   ))}
                 </select>

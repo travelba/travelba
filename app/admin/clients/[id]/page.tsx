@@ -8,6 +8,7 @@ import {
   RestoreBookingButton,
 } from "@/components/admin/ArchiveBookingButton";
 import { ClientRevolutSuggestions } from "@/components/admin/ClientRevolutSuggestions";
+import { wireAccountChoices } from "@/lib/crm/funding-wallet";
 import { ClientStripeSuggestions } from "@/components/admin/ClientStripeSuggestions";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import { InviteCustomerPanel } from "@/components/admin/InviteCustomerPanel";
@@ -344,7 +345,17 @@ export default async function AdminClientDetailPage({ params }: Props) {
         companyAdmins={(companyAdmins || []) as PickableCustomer[]}
         billingCompanies={(billingCompanies || []) as CrmBillingCompany[]}
       />
-      <ClientRevolutSuggestions suggestions={revolutSuggestions} />
+      <ClientRevolutSuggestions
+        suggestions={revolutSuggestions}
+        accounts={
+          wireAccountChoices(
+            ((billingCompanies || []) as CrmBillingCompany[]).map((company) => ({
+              ...company,
+              customer_id: c.id,
+            }))
+          )[c.id] || []
+        }
+      />
       <ClientStripeSuggestions suggestions={stripeSuggestions} />
       <section className="admin-af-card rounded-3xl px-5 py-5">
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Pliant</p>

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   STAY_PAY_LABELS,
   excludedStripeTypes,
+  pocketPayMethods,
   stayPayMethodOf,
   stayPayMethods,
   stripeCreditFromIntent,
@@ -22,6 +23,13 @@ test("société : carte, Apple Pay, prélèvement et virement en euros ; carte e
   assert.deepEqual(stayPayMethods("company", "EUR"), ["card", "apple_pay", "sepa_debit", "revolut"]);
   assert.deepEqual(stayPayMethods("company", "USD"), ["card", "apple_pay"]);
   assert.equal(stayPayMethods("personal", "EUR").includes("sepa_debit"), false);
+});
+
+test("crédit : virement seulement. Pro : carte et Apple Pay", () => {
+  assert.deepEqual(pocketPayMethods("advance", "EUR"), ["revolut"]);
+  assert.deepEqual(pocketPayMethods("advance", "USD"), []);
+  assert.deepEqual(pocketPayMethods("pro", "EUR"), ["card", "apple_pay"]);
+  assert.deepEqual(pocketPayMethods("pro", "USD"), ["card", "apple_pay"]);
 });
 
 test("Apple Pay est un portefeuille de la carte Stripe ; le SEPA garde son type", () => {

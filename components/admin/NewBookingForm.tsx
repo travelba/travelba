@@ -8,6 +8,7 @@ import { customerTravelerPickLabel } from "@/lib/crm/customer-search";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { CustomerPickField } from "@/components/admin/CustomerPickField";
 import { billingCompanyTabLabel } from "@/lib/crm/billing-companies";
+import { fundingCompanyOptionLabel } from "@/lib/crm/funding-wallet";
 import { defaultBillingCompany } from "@/lib/crm/payer";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { fieldControlClass, DateFrInput } from "@/components/crm/fields";
@@ -22,7 +23,13 @@ export function NewBookingForm({
   companies = [],
   aiConfigured,
 }: {
-  companies?: { id: string; customer_id: string; company_name: string | null; sort_order: number }[];
+  companies?: {
+    id: string;
+    customer_id: string;
+    company_name: string | null;
+    sort_order: number;
+    funding?: string | null;
+  }[];
   aiConfigured: boolean;
 }) {
   const [manual, setManual] = useState(false);
@@ -201,7 +208,11 @@ function ManualNewBookingForm({
           >
             {walletCompanies.map((company, index) => (
               <option key={company.id} value={company.id}>
-                {billingCompanyTabLabel(company.company_name, index, walletCompanies.length)}
+                {fundingCompanyOptionLabel(
+                  company.company_name,
+                  company.funding,
+                  billingCompanyTabLabel(company.company_name, index, walletCompanies.length)
+                )}
               </option>
             ))}
           </select>
@@ -209,7 +220,12 @@ function ManualNewBookingForm({
       ) : null}
       {payerKind === "company" && walletCompanies.length === 1 ? (
         <p className="text-sm text-[var(--admin-navy)] sm:col-span-3">
-          Société : {billingCompanyTabLabel(walletCompanies[0].company_name, 0, 1)}
+          Société :{" "}
+          {fundingCompanyOptionLabel(
+            walletCompanies[0].company_name,
+            walletCompanies[0].funding,
+            billingCompanyTabLabel(walletCompanies[0].company_name, 0, 1)
+          )}
         </p>
       ) : null}
       <p className="text-xs text-muted sm:col-span-3">

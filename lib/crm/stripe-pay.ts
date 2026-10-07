@@ -71,6 +71,12 @@ export function stayPayMethodOf(value: unknown): StayPayMethod | null {
   return (STAY_PAY_METHODS as readonly string[]).includes(value) ? (value as StayPayMethod) : null;
 }
 
+/** Crédit d’avance : virement seulement. Pro : carte et Apple Pay, sans recharger l’avance. */
+export function pocketPayMethods(funding: "advance" | "pro", currency: string): StayPayMethod[] {
+  if (funding === "pro") return ["card", "apple_pay"];
+  return currency.toUpperCase() === "EUR" ? ["revolut"] : [];
+}
+
 /** Société : carte, Apple Pay, prélèvement SEPA et virement. Particulier : carte, Apple Pay, virement. Hors euros : carte et Apple Pay. */
 export function stayPayMethods(payer: PayerKind, currency: string): StayPayMethod[] {
   const eur = currency.toUpperCase() === "EUR";

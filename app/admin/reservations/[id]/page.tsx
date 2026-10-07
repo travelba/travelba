@@ -94,7 +94,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
       .limit(1),
     supabase
       .from("crm_billing_companies")
-      .select("id, company_name, sort_order, customer_id")
+      .select("id, company_name, sort_order, customer_id, funding")
       .eq("customer_id", b.billing_customer_id || b.customer_id)
       .order("sort_order"),
     supabase

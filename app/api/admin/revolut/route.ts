@@ -26,6 +26,7 @@ export async function GET() {
   const { data, error } = await admin
     .from("crm_revolut_transactions")
     .select("*")
+    .eq("direction", "credit")
     .order("booked_at", { ascending: false, nullsFirst: false })
     .limit(200);
   if (error) return dbError(error, 500);

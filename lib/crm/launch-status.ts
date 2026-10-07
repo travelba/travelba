@@ -37,7 +37,7 @@ export function buildLaunchItems(snapshot: LaunchSnapshot): LaunchItem[] {
   let revolutDescription: string;
   if (snapshot.revolutConnected) {
     revolutDescription =
-      "Compte connecté. Les crédits reçus arrivent toutes les 15 min. Rapprochement automatique seulement s’il n’y a aucun doute ; sinon proposition dans l’inbox ou sur la fiche client.";
+      "Compte connecté. Les crédits reçus arrivent toutes les 15 min, les sorties dans l’onglet Débits. Rapprochement automatique seulement s’il n’y a aucun doute ; sinon proposition dans l’inbox ou sur la fiche client.";
   } else if (snapshot.revolutConfigured) {
     revolutDescription =
       "Clés app présentes. Cliquez sur Connecter Revolut (authentification Business). Le cron toutes les 15 min remplira ensuite l’inbox.";
@@ -124,6 +124,19 @@ export function revolutInboxEmptyMessage(opts: {
     return "Aucun virement tant que Revolut n’est pas connecté. Cliquez sur Connecter Revolut (authentification Business). Les virements reçus arriveront ensuite ici, toutes les 15 min.";
   }
   return "Aucun virement importé. Synchronisez ou attendez le cron (toutes les 15 min). Les crédits sans ambiguïté sont rapprochés automatiquement.";
+}
+
+export function revolutDebitEmptyMessage(opts: {
+  configured: boolean;
+  connected: boolean;
+}): string {
+  if (!opts.configured) {
+    return "Intégration Revolut non installée côté serveur. Une fois les clés posées, connectez le compte Business ici.";
+  }
+  if (!opts.connected) {
+    return "Aucune sortie tant que Revolut n’est pas connecté. Cliquez sur Connecter Revolut.";
+  }
+  return "Aucune sortie importée. Synchronisez pour charger les débits des 30 derniers jours. Un débit ne crédite pas un client.";
 }
 
 export function bookingsListEmptyMessage(hasAnyBookings: boolean): string {

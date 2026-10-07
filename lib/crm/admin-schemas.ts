@@ -101,6 +101,7 @@ export const createTransactionSchema = z.object({
     z.string({ error: "Choisissez un client." }).pipe(uuidSchema("Client"))
   ),
   booking_id: z.preprocess(blankToUndefined, uuidSchema("Dossier").nullable().optional()),
+  billing_company_id: z.preprocess(blankToUndefined, uuidSchema("Compte").nullable().optional()),
   amount: positiveMoney,
   currency: z.preprocess(
     (value) => (typeof value === "string" ? value.trim().toUpperCase() : value) || undefined,
