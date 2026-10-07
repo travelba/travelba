@@ -14,7 +14,10 @@ import {
   entryOptInFromLink,
   entryReopenDecision,
   entryStaffDecision,
+  entryPasswordDecision,
+  connexionDestination,
   isColleagueEntryPath,
+  isConnexionEntry,
   isMissingColumnError,
   isPreviewBot,
   shouldOpenFromGet,
@@ -344,4 +347,28 @@ test("seul /admin est un lien de collègue", () => {
   assert.equal(isColleagueEntryPath("/mon-compte"), false);
   assert.equal(isColleagueEntryPath(null), false);
   assert.equal(isColleagueEntryPath("https://evil.example/admin"), false);
+});
+
+test("un lien magique sans mot de passe choisi mène à /connexion ; invitation et réinitialisation passent", () => {
+  assert.equal(entryPasswordDecision({ otpType: "magiclink", staff: false, hasPassword: false }), "connexion");
+  assert.equal(entryPasswordDecision({ otpType: "magiclink", staff: false, hasPassword: true }), "allow");
+  assert.equal(entryPasswordDecision({ otpType: "invite", staff: false, hasPassword: false }), "allow");
+  assert.equal(entryPasswordDecision({ otpType: "recovery", staff: false, hasPassword: false }), "allow");
+  // Lien de collègue : le mot de passe de l’agent suit son propre circuit.
+  assert.equal(entryPasswordDecision({ otpType: "magiclink", staff: true, hasPassword: false }), "allow");
+  // Type inconnu = lien magique.
+  assert.equal(entryPasswordDecision({ otpType: null, staff: false, hasPassword: false }), "connexion");
+});
+
+test("le lien connexion n’a pas de jeton et renvoie vers la page de connexion avec le retour", () => {
+  assert.equal(isConnexionEntry({ token_hash: null, otp_type: "connexion" }), true);
+  assert.equal(isConnexionEntry({ token_hash: null, otp_type: "magiclink" }), true);
+  assert.equal(isConnexionEntry({ token_hash: "abc", otp_type: "magiclink" }), false);
+  assert.equal(connexionDestination("/mon-compte"), "/connexion");
+  assert.equal(connexionDestination(null), "/connexion");
+  assert.equal(
+    connexionDestination("/mon-compte/reservations/TB-2026-0044"),
+    "/connexion?next=%2Fmon-compte%2Freservations%2FTB-2026-0044"
+  );
+  assert.equal(connexionDestination("https://evil.example/x"), "/connexion");
 });

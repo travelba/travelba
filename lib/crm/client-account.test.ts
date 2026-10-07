@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  NO_PASSWORD_BLOCK,
   STAFF_ACCOUNT_BLOCK,
   clientLinkToken,
+  magicLinkAllowed,
   isStaffAccount,
   staffAccountDecision,
   staffEmailBlock,
@@ -158,7 +160,7 @@ test("une erreur Supabase remonte telle quelle (déjà inscrit → recovery côt
 test("une lecture crm_staff en échec refuse le lien plutôt que d’ouvrir", async () => {
   const admin = fakeAdmin({
     staffReadError: true,
-    users: [{ id: "client-1", email: "simon@example.com", app_metadata: { crm_role: "client" } }],
+    users: [{ id: "client-1", email: "simon@example.com", app_metadata: { crm_role: "client", password_set_at: "2026-09-22T08:00:00.000Z" } }],
   });
   const result = await clientLinkToken(admin as never, { type: "magiclink", email: "simon@example.com" });
   assert.equal(result.ok, false);
@@ -186,4 +188,41 @@ test("staffEmailBlock : RPC vraie → refus, fausse → rien, fonction absente �
   assert.equal(await staffEmailBlock(broken as never, "simon@example.com"), STAFF_ACCOUNT_BLOCK);
 
   assert.equal(await staffEmailBlock(yes as never, ""), null);
+});
+
+test("un lien magique exige un mot de passe déjà choisi ; l’invitation et la réinitialisation non", async () => {
+  // Invité, jamais connecté : must_set_password posé, pas de password_set_at.
+  const invited = { id: "inv-1", email: "nina@example.com", app_metadata: { crm_role: "client", must_set_password: true } };
+  // Compte ouvert par l’agence (desk) : confirmé, sans mot de passe, sans drapeau.
+  const desk = { id: "desk-1", email: "olga@example.com", app_metadata: { crm_role: "client" } };
+  // Mot de passe enregistré dans l’espace.
+  const ready = {
+    id: "ok-1",
+    email: "simon@example.com",
+    app_metadata: { crm_role: "client", must_set_password: false, password_set_at: "2026-09-22T08:01:35.674Z" },
+  };
+  const admin = fakeAdmin({ users: [invited, desk, ready] });
+
+  for (const user of [invited, desk]) {
+    const magic = await clientLinkToken(admin as never, { type: "magiclink", email: user.email });
+    assert.equal(magic.ok, false);
+    if (!magic.ok) {
+      assert.equal(magic.reason, "no_password");
+      assert.equal(magic.message, NO_PASSWORD_BLOCK);
+    }
+    const recovery = await clientLinkToken(admin as never, { type: "recovery", email: user.email });
+    assert.equal(recovery.ok, true);
+  }
+  const magic = await clientLinkToken(admin as never, { type: "magiclink", email: ready.email });
+  assert.equal(magic.ok, true);
+
+  assert.equal(magicLinkAllowed(invited), false);
+  assert.equal(magicLinkAllowed(desk), false);
+  assert.equal(magicLinkAllowed(ready), true);
+  // Le drapeau resté à tort ne compte pas : le mot de passe a bien été choisi.
+  assert.equal(
+    magicLinkAllowed({ app_metadata: { must_set_password: true, password_set_at: "2026-09-22T08:01:35.674Z" } }),
+    true
+  );
+  assert.equal(magicLinkAllowed(null), false);
 });

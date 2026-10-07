@@ -17,9 +17,8 @@ import {
   liveConciergeImage,
   type ConciergeTemplate,
 } from "./concierge-notices";
-import { clientLinkToken } from "./client-account";
-import { createEntryLink, entryButtonSuffix, entryCodeFromLink } from "./entry-link";
 import { sendContentTemplate } from "./whatsapp";
+import { whatsappEntryLink } from "./whatsapp-entry";
 
 type Admin = SupabaseClient;
 
@@ -28,20 +27,11 @@ export function authorizationDedupeKey(kind: AuthorizationKind, bookingId: strin
 }
 
 async function entrySuffix(admin: Admin, email: string, reference: string) {
-  const cleanEmail = email.trim().toLowerCase();
-  if (!cleanEmail) return null;
-  const generated = await clientLinkToken(admin, { type: "magiclink", email: cleanEmail });
-  if (!generated.ok) return null;
-  const link = await createEntryLink(admin, siteConfig.url, {
-    tokenHash: generated.hashedToken,
-    otpType: "magiclink",
+  const entry = await whatsappEntryLink(admin, siteConfig.url, {
+    email,
     nextPath: `/mon-compte/reservations/${reference}`,
-    email: cleanEmail,
-    channel: "whatsapp",
   });
-  const code = entryCodeFromLink(link);
-  if (!code) return null;
-  return entryButtonSuffix(code);
+  return entry?.suffix ?? null;
 }
 
 /**

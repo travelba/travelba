@@ -688,7 +688,11 @@ test("le lien d’accès est un magic link", async () => {
           assert.equal(args.email, "simon@example.com");
           return {
             data: {
-              user: { id: "user-simon", email: args.email, app_metadata: { crm_role: "client" } },
+              user: {
+                id: "user-simon",
+                email: args.email,
+                app_metadata: { crm_role: "client", password_set_at: "2026-09-22T08:01:35.674Z" },
+              },
               properties: { hashed_token: "hash" },
             },
             error: null,

@@ -1,5 +1,5 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
-import { isStaffRole } from "./session";
+import { hasChosenPassword, isStaffRole } from "./session";
 
 /**
  * Un compte de l’agence (ligne `crm_staff` ou rôle Auth `admin` / `agent`) ne reçoit jamais
@@ -7,6 +7,18 @@ import { isStaffRole } from "./session";
  * Le jeton ouvrirait la session de l’agent, et le middleware l’enverrait sur /admin.
  */
 export const STAFF_ACCOUNT_BLOCK = "Réservé à un client : cet e-mail est un compte de l’agence.";
+
+/**
+ * Un lien magique ne part que vers un client qui a déjà enregistré son mot de passe
+ * (`password_set_at`, posé par /api/client/password). Avant, le lien WhatsApp mène à /connexion
+ * sans jeton : personne n’entre dans l’espace sans avoir choisi son mot de passe.
+ */
+export const NO_PASSWORD_BLOCK = "Le mot de passe n’est pas encore défini : le lien ne peut pas ouvrir l’espace.";
+
+/** Le client a déjà choisi son mot de passe : un lien magique peut ouvrir sa session. */
+export function magicLinkAllowed(user: { app_metadata?: Record<string, unknown> | null } | null | undefined) {
+  return hasChosenPassword(user);
+}
 
 type AuthRole = { app_metadata?: Record<string, unknown> | null };
 
@@ -41,11 +53,12 @@ export type ClientLinkType = "magiclink" | "invite" | "recovery";
 
 export type ClientLinkToken =
   | { ok: true; user: User; hashedToken: string }
-  | { ok: false; reason: "staff" | "error"; message: string };
+  | { ok: false; reason: "staff" | "no_password" | "error"; message: string };
 
 /**
  * Jeton Supabase pour un lien client. Le compte derrière l’e-mail est vérifié après génération :
- * un compte de l’agence ne reçoit rien, le jeton n’est ni stocké ni envoyé.
+ * un compte de l’agence ne reçoit rien, et un lien magique exige un mot de passe déjà choisi.
+ * Dans les deux cas le jeton n’est ni stocké ni envoyé.
  */
 export async function clientLinkToken(
   admin: SupabaseClient,
@@ -66,6 +79,9 @@ export async function clientLinkToken(
   if (!user?.id) return { ok: false, reason: "error", message: "Compte introuvable" };
   if (await isStaffAccount(admin, user.id, user)) {
     return { ok: false, reason: "staff", message: STAFF_ACCOUNT_BLOCK };
+  }
+  if (input.type === "magiclink" && !magicLinkAllowed(user)) {
+    return { ok: false, reason: "no_password", message: NO_PASSWORD_BLOCK };
   }
   return { ok: true, user, hashedToken };
 }

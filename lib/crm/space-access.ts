@@ -67,6 +67,8 @@ export async function sendSpaceAccessWhatsapp(input: {
   const generated = await clientLinkToken(admin, { type: SPACE_ACCESS_OTP, email });
   if (!generated.ok) {
     if (generated.reason === "staff") console.error("[acces] compte de l’agence : lien non envoyé");
+    // Pas de mot de passe choisi : le message « Enchanté » attend l’enregistrement du mot de passe.
+    if (generated.reason === "no_password") return "skipped";
     return "failed";
   }
 
