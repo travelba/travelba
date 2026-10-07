@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { parseBody, patchCustomerSchema } from "@/lib/crm/admin-schemas";
 import { dbError, jsonError, requireAdmin, requireStaff } from "@/lib/crm/auth";
 import { saveCustomerBillingCompanies } from "@/lib/crm/billing-companies";
+import { staffEmailBlock } from "@/lib/crm/client-account";
 import { CUSTOMER_EMAIL_COPY, otherCustomerEmailBlock } from "@/lib/crm/customer-email";
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
 import { customerDeleteConfirmed, DELETE_CUSTOMER_CONFIRM_ERROR } from "@/lib/crm/delete-confirm";
@@ -54,6 +55,10 @@ export async function PATCH(request: Request, ctx: Ctx) {
       matches: (matches || []) as { id: string }[],
     });
     if (taken) return jsonError(taken);
+    if (current.email !== email) {
+      const staffBlock = await staffEmailBlock(admin, email);
+      if (staffBlock) return jsonError(staffBlock, 409);
+    }
     if (current.auth_user_id && current.email !== email) {
       const { error: authError } = await admin.auth.admin.updateUserById(current.auth_user_id, {
         email,

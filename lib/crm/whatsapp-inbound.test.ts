@@ -686,11 +686,25 @@ test("le lien d’accès est un magic link", async () => {
         generateLink: async (args: { type: string; email: string }) => {
           otp = args.type;
           assert.equal(args.email, "simon@example.com");
-          return { data: { properties: { hashed_token: "hash" } }, error: null };
+          return {
+            data: {
+              user: { id: "user-simon", email: args.email, app_metadata: { crm_role: "client" } },
+              properties: { hashed_token: "hash" },
+            },
+            error: null,
+          };
         },
       },
     },
     from(table: string) {
+      if (table === "crm_staff") {
+        const query = {
+          select: () => query,
+          eq: () => query,
+          maybeSingle: async () => ({ data: null, error: null }),
+        };
+        return query;
+      }
       assert.equal(table, "crm_entry_links");
       return {
         insert: async (row: { otp_type: string; next_path: string; email: string; show_cover: boolean }) => {

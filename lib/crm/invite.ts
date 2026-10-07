@@ -12,6 +12,7 @@ import {
   type WhatsappSendResult,
 } from "@/lib/crm/whatsapp";
 import { createEntryLink, setEntryLinkChannel } from "@/lib/crm/entry-link";
+import { STAFF_ACCOUNT_BLOCK, clientLinkToken, isStaffAccount } from "@/lib/crm/client-account";
 import { tokenMailCc } from "@/lib/crm/outbound-mail";
 import { sendAgencyAccessNotice } from "@/lib/crm/access-notice";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
@@ -107,27 +108,27 @@ export async function inviteCustomer(
     full_name: customerFullName(customer),
   };
 
+  // Une fiche déjà rattachée à un compte de l’agence n’est jamais invitée : le lien ouvrirait /admin.
+  if (customer.auth_user_id && (await isStaffAccount(admin, customer.auth_user_id))) {
+    throw new Error(STAFF_ACCOUNT_BLOCK);
+  }
+
   let linkType: "invite" | "recovery" = "invite";
-  let generated = await admin.auth.admin.generateLink({
-    type: "invite",
-    email,
-    options: { data: metadata },
-  });
+  let generated = await clientLinkToken(admin, { type: "invite", email, data: metadata });
 
-  if (generated.error && isAlreadyRegistered(generated.error.message)) {
+  if (!generated.ok && generated.reason === "error" && isAlreadyRegistered(generated.message)) {
     linkType = "recovery";
-    generated = await admin.auth.admin.generateLink({
-      type: "recovery",
-      email,
-    });
+    generated = await clientLinkToken(admin, { type: "recovery", email });
   }
 
-  if (generated.error || !generated.data?.user || !generated.data.properties?.hashed_token) {
-    throw new Error(generated.error?.message || "Impossible de générer l’invitation");
+  if (!generated.ok) {
+    throw new Error(
+      generated.reason === "staff" ? STAFF_ACCOUNT_BLOCK : generated.message || "Impossible de générer l’invitation"
+    );
   }
 
-  const authUser = generated.data.user;
-  const hashedToken = generated.data.properties.hashed_token;
+  const authUser = generated.user;
+  const hashedToken = generated.hashedToken;
   const { data: fresh } = await admin.auth.admin.getUserById(authUser.id);
   const currentMeta = fresh.user?.app_metadata || authUser.app_metadata || {};
 

@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
+import { clientLinkToken } from "./client-account";
 import { createEntryLink, entryButtonSuffix, entryCodeFromLink } from "./entry-link";
 import { tripDocCoverage } from "./trip-documents";
 import { entryForFrenchPassport } from "./visa-fr";
@@ -66,14 +67,10 @@ function quiet(err: unknown) {
 /** Lien court du message. Le code sert aussi de preuve d’accès à la couverture (`?e=CODE`). */
 async function entryButton(admin: Admin, email: string, path: string, showCover = false) {
   const cleanEmail = email.trim().toLowerCase();
-  const generated = await admin.auth.admin.generateLink({
-    type: "magiclink",
-    email: cleanEmail,
-  });
-  const tokenHash = generated.data?.properties?.hashed_token;
-  if (generated.error || !tokenHash) return null;
+  const generated = await clientLinkToken(admin, { type: "magiclink", email: cleanEmail });
+  if (!generated.ok) return null;
   const link = await createEntryLink(admin, siteConfig.url, {
-    tokenHash,
+    tokenHash: generated.hashedToken,
     otpType: "magiclink",
     nextPath: path,
     email: cleanEmail,

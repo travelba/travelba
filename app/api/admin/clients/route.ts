@@ -5,8 +5,10 @@ import {
   CUSTOMER_PICK_SELECT,
   type PickableCustomer,
 } from "@/lib/crm/customer-search";
+import { staffEmailBlock } from "@/lib/crm/client-account";
 import { appOrigin, inviteCustomer } from "@/lib/crm/invite";
 import type { CrmCustomer } from "@/lib/crm/types";
+import { createServiceClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
@@ -43,6 +45,8 @@ export async function POST(request: Request) {
   const lastName = String(body?.last_name || "").trim();
   if (!email) return jsonError("Email requis");
   if (!firstName || !lastName) return jsonError("Prénom et nom requis");
+  const staffBlock = await staffEmailBlock(createServiceClient(), email);
+  if (staffBlock) return jsonError(staffBlock, 409);
   const { data, error } = await auth.supabase
     .from("crm_customers")
     .insert({

@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { clientLinkToken } from "./client-account";
 import { createEntryLink, entryButtonSuffix, entryCodeFromLink } from "./entry-link";
 import { countryForIata } from "./airports";
 import { countryName } from "./countries";
@@ -66,11 +67,10 @@ function quiet(error: unknown) {
 async function reservationSuffix(admin: Admin, email: string, reference: string) {
   if (!REFERENCE.test(reference)) return null;
   const cleanEmail = email.trim().toLowerCase();
-  const generated = await admin.auth.admin.generateLink({ type: "magiclink", email: cleanEmail });
-  const tokenHash = generated.data?.properties?.hashed_token;
-  if (generated.error || !tokenHash) return null;
+  const generated = await clientLinkToken(admin, { type: "magiclink", email: cleanEmail });
+  if (!generated.ok) return null;
   const link = await createEntryLink(admin, siteConfig.url, {
-    tokenHash,
+    tokenHash: generated.hashedToken,
     otpType: "magiclink",
     nextPath: `/mon-compte/reservations/${reference}`,
     email: cleanEmail,
