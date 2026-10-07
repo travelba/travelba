@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ClientsFilters } from "@/components/admin/ClientsFilters";
 import { Pagination } from "@/components/admin/Pagination";
 import type { CrmBalance } from "@/lib/crm/types";
 import { customerFullName } from "@/lib/crm/types";
@@ -8,11 +9,20 @@ import { formatCreditDisponible, formatMoney } from "@/lib/crm/money";
 import { formatPhoneDisplay } from "@/lib/crm/phone";
 import { ADMIN_PAGE_SIZE, listHref, type ClientFilter } from "@/lib/crm/admin-list";
 
+function clientSearchText(c: CustomerListRow) {
+  const phone = c.phone || "";
+  const digits = phone.replace(/\D/g, "");
+  const national = digits.startsWith("33") && digits.length > 2 ? `0${digits.slice(2)}` : "";
+  return [customerFullName(c), c.usage_name, c.company_name, c.email, phone, digits, national]
+    .filter(Boolean)
+    .join(" ");
+}
+
 function initials(c: CustomerListRow) {
   return [c.first_name?.[0], c.last_name?.[0]].filter(Boolean).join("").toUpperCase() || "?";
 }
 
-/** Liste paginée côté serveur : recherche et filtre passent par l’URL (formulaire GET). */
+/** Liste paginée côté serveur : la recherche met l’URL à jour pendant la saisie. */
 export function ClientsTable({
   customers,
   balances,
@@ -42,45 +52,16 @@ export function ClientsTable({
 
   return (
     <div className="mt-6 space-y-3">
-      <form method="get" action="/admin/clients" role="search" className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <input
-          type="search"
-          name="q"
-          defaultValue={query}
-          placeholder="Rechercher un client (nom, société, e-mail, téléphone)…"
-          aria-label="Rechercher un client"
-          className="admin-af-input w-full text-sm"
-        />
-        <select
-          name="filtre"
-          defaultValue={filter || ""}
-          className="admin-af-input w-full text-sm sm:w-auto"
-          aria-label="Filtrer les clients"
-        >
-          <option value="">Tous</option>
-          <option value="veille">En veille</option>
-        </select>
-        <button type="submit" className="admin-af-btn admin-tap rounded-lg px-4 text-sm">
-          Filtrer
-        </button>
-        {query || filter ? (
-          <Link
-            href="/admin/clients"
-            className="admin-tap inline-flex items-center rounded-lg border border-[var(--border)] bg-white px-4 text-sm font-semibold text-[var(--admin-navy)]"
-          >
-            Effacer
-          </Link>
-        ) : null}
-      </form>
+      <ClientsFilters q={query} filtre={filter} revision={customers.map((c) => c.id).join(",")} />
       <Pagination page={page} pageSize={pageSize} total={total} label={total > 1 ? "clients" : "client"} hrefFor={hrefFor} />
-      <div className="admin-af-card max-w-full overflow-hidden rounded-2xl">
+      <div id="clients-liste" className="admin-af-card max-w-full overflow-hidden rounded-2xl">
         <ul className="divide-y divide-border lg:hidden">
           {filtered.map((c) => {
             const rows = bal.get(c.id) || [];
             const amount = rows[0];
             const value = amount ? Number(amount.balance) : 0;
             return (
-              <li key={c.id} className="space-y-2 px-4 py-4">
+              <li key={c.id} data-search={clientSearchText(c)} className="space-y-2 px-4 py-4">
                 <Link href={`/admin/clients/${c.id}`} className="flex min-w-0 items-center gap-3">
                   <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[11px] font-bold text-[#f8f6f0]">
                     {initials(c)}
@@ -115,6 +96,9 @@ export function ClientsTable({
               </li>
             );
           })}
+          <li data-search-empty hidden className="px-4 py-8 text-center text-sm text-muted">
+            Aucun client trouvé.
+          </li>
           {!filtered.length ? (
             <li className="px-4 py-8 text-center text-sm text-muted">
               {total === 0 && !query && !filter
@@ -139,7 +123,7 @@ export function ClientsTable({
                 const amount = rows[0];
                 const value = amount ? Number(amount.balance) : 0;
                 return (
-                  <tr key={c.id} className="transition hover:bg-[var(--admin-sky)]/40">
+                  <tr key={c.id} data-search={clientSearchText(c)} className="transition hover:bg-[var(--admin-sky)]/40">
                     <td className="px-5 py-3">
                       <Link href={`/admin/clients/${c.id}`} className="flex items-center gap-3">
                         <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--admin-navy)] text-[11px] font-bold text-[#f8f6f0]">
@@ -188,6 +172,11 @@ export function ClientsTable({
                   </tr>
                 );
               })}
+              <tr data-search-empty hidden>
+                <td colSpan={4} className="px-5 py-8 text-center text-muted">
+                  Aucun client trouvé.
+                </td>
+              </tr>
               {!filtered.length ? (
                 <tr>
                   <td colSpan={4} className="px-5 py-8 text-center text-muted">
