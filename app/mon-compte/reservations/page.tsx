@@ -16,6 +16,7 @@ import {
 import { createServiceClient } from "@/lib/supabase/admin";
 import { EmptyState } from "@/components/crm/ui";
 import { loadStayMaps, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
+import { clientTripOwnerIds } from "@/lib/crm/company-peers";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { Icon } from "@/components/crm/icons";
 import { siteConfig } from "@/lib/site";
@@ -36,7 +37,7 @@ export default async function ReservationsPage({
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");
 
-  const all = await loadVisibleCarnets(supabase, customer.id);
+  const all = await loadVisibleCarnets(supabase, customer.id, await clientTripOwnerIds(customer));
   let displayedAmounts = new Map<string, number>();
   try {
     displayedAmounts = await loadDisplayedStayAmounts(createServiceClient(), all);

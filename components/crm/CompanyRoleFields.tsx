@@ -37,8 +37,9 @@ export function CompanyRoleFields({
           </p>
         ) : null}
         <p className={`text-sm text-muted ${heading ? "mt-1" : ""}`}>
-          Un voyageur peut être payé par une société. L’admin voit le grand livre. Le collaborateur
-          voit son droit de dépense et les frais de ses voyages, pas les versements de la société.
+          Un voyageur peut être payé par une société. Les admins associés partagent le wallet et
+          voient les voyages les uns des autres. Le collaborateur voit son droit de dépense et les
+          frais de ses voyages, pas les versements de la société.
         </p>
       </div>
       <Field label="Rôle">
@@ -55,20 +56,26 @@ export function CompanyRoleFields({
           <option value="member">{companyRoleLabel("member")}</option>
         </select>
       </Field>
-      {role === "member" ? (
+      {role === "admin" || role === "member" ? (
         <Field
-          label="Facturé par (admin société)"
-          hint="Wallet qui reçoit les virements et les débits des dossiers"
+          label={role === "admin" ? "Associé de" : "Facturé par (admin société)"}
+          hint={
+            role === "admin"
+              ? "Même wallet. Les admins associés voient les voyages les uns des autres. Vide : ce client est le wallet."
+              : "Wallet qui reçoit les virements et les débits des dossiers"
+          }
         >
           <select
             value={billingParentId}
             onChange={(e) => onBillingParentChange(e.target.value)}
-            required
+            required={role === "member"}
             className={fieldControlClass}
           >
-            <option value="">Choisir l’admin société…</option>
+            <option value="">
+              {role === "admin" ? "Ce client est le wallet" : "Choisir l’admin société…"}
+            </option>
             {companyAdmins
-              .filter((c) => c.id !== selfId)
+              .filter((c) => c.id !== selfId && !c.billing_parent_id)
               .map((c) => (
                 <option key={c.id} value={c.id}>
                   {customerFullName(c)}
@@ -92,9 +99,14 @@ export function CompanyRoleFields({
           />
         </Field>
       ) : null}
-      {role === "admin" ? (
+      {role === "admin" && !billingParentId ? (
         <p className="text-xs text-[#9e7e51]">
           Ce client est le wallet société : rapprochements Revolut et encours global ici.
+        </p>
+      ) : null}
+      {role === "admin" && billingParentId ? (
+        <p className="text-xs text-[#9e7e51]">
+          Cet admin partage le wallet choisi et voit les voyages des autres admins de la société.
         </p>
       ) : null}
     </section>

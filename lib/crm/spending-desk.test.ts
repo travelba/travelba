@@ -157,6 +157,26 @@ test("Raphael voit l’encours société, les trois droits et le compte de chaqu
   assert.equal(gaelleCard?.accountName, "Gaelle Zerbib");
   assert.equal(gaelleCard?.remainingLabel, `Reste ${formatMoney(7600, "EUR")}`);
   assert.equal(gaelleCard?.movements[0].carnetHref, null);
+  const shared = shapeClientLedger({
+    companyRole: "admin",
+    viewerId: "raphael",
+    travelerBookingIds: ["b-raphael"],
+    walletBalance: 35600,
+    currency: "EUR",
+    audience: "client",
+    bookings,
+    spendAccounts: [raphael, gaelle],
+    rows,
+    openCarnetOwnerIds: ["raphael", "gaelle"],
+  });
+  assert.equal(
+    shared.movements.find((row) => row.bookingId === "b-gaelle")?.carnetHref,
+    "/mon-compte/reservations/TB-G"
+  );
+  assert.equal(
+    shared.movements.find((row) => row.bookingId === "b-raphael")?.carnetHref,
+    "/mon-compte/reservations/TB-R"
+  );
   assert.equal(view.spending?.otherMovements[0].title, "Virement cabinet");
   const html = renderToStaticMarkup(createElement(ClientTransactionsPanel, { view }));
   assert.match(html, /Encours/);

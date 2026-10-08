@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireCustomer } from "@/lib/crm/auth";
-import { isCompanyMember } from "@/lib/crm/company-role";
+import { adminLedgerCustomerId, isCompanyMember } from "@/lib/crm/company-role";
 import { loadClientLedger } from "@/lib/crm/client-ledger";
 import { customerFullName, type CrmTransaction } from "@/lib/crm/types";
 import { amountToCents, anchorBillingCompanyId, encoursPartLabel, payerKindOf } from "@/lib/crm/payer";
@@ -56,10 +56,11 @@ export async function POST(request: Request) {
 
   if (amount < 0.5) return jsonError("Il n’y a pas de montant à régler.");
 
+  const ledgerCustomerId = adminLedgerCustomerId(auth.customer);
   const { data: txs, error: txError } = await auth.supabase
     .from("crm_transactions")
     .select("direction, amount, status, currency, billing_company_id")
-    .eq("customer_id", auth.customer.id)
+    .eq("customer_id", ledgerCustomerId)
     .eq("status", "posted");
   if (txError) return dbError(txError, 500);
   if (!companyId && payer === "company") {
@@ -116,7 +117,7 @@ export async function POST(request: Request) {
         excluded_payment_method_types: excludedStripeTypes(method),
         description: `Encours ${mention}`,
         metadata: {
-          crm_customer_id: auth.customer.id,
+          crm_customer_id: ledgerCustomerId,
           payer_kind: payer,
           billing_company_id: companyId || "",
           pay_method: method,

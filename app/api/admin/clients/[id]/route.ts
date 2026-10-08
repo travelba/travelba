@@ -3,10 +3,11 @@ import { parseBody, patchCustomerSchema } from "@/lib/crm/admin-schemas";
 import { dbError, jsonError, requireAdmin, requireStaff } from "@/lib/crm/auth";
 import { saveCustomerBillingCompanies } from "@/lib/crm/billing-companies";
 import { CUSTOMER_EMAIL_COPY, otherCustomerEmailBlock } from "@/lib/crm/customer-email";
+import { companyLinkError } from "@/lib/crm/company-role";
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
 import { customerDeleteConfirmed, DELETE_CUSTOMER_CONFIRM_ERROR } from "@/lib/crm/delete-confirm";
 import { CustomerDeleteError, deleteCustomerById } from "@/lib/crm/delete-customer";
-import { customerFullName } from "@/lib/crm/types";
+import { customerFullName, type CompanyRole } from "@/lib/crm/types";
 import { createServiceClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -76,22 +77,29 @@ export async function PATCH(request: Request, ctx: Ctx) {
       : current.billing_parent_id;
   if (nextRole == null) patch.spending_allowance = null;
 
-  if (nextRole === "member") {
-    if (!nextParent) {
-      return jsonError("Choisissez l’admin société qui paie pour ce collaborateur.");
-    }
-    if (nextParent === id) {
-      return jsonError("Le payeur ne peut pas être le collaborateur lui-même.");
-    }
-    const { data: parent } = await auth.supabase
-      .from("crm_customers")
-      .select("id, company_role")
-      .eq("id", nextParent)
-      .maybeSingle();
-    if (!parent) return jsonError("Admin société introuvable.");
-    if (parent.company_role !== "admin") {
-      return jsonError("Le payeur doit être un client en rôle « Admin société ».");
-    }
+  if (nextRole === "member" || (nextRole === "admin" && nextParent)) {
+    const { data: parent } = nextParent
+      ? await auth.supabase
+          .from("crm_customers")
+          .select("id, company_role, billing_parent_id")
+          .eq("id", nextParent)
+          .maybeSingle()
+      : { data: null };
+    const { count } =
+      nextRole === "admin" && nextParent
+        ? await auth.supabase
+            .from("crm_customers")
+            .select("id", { count: "exact", head: true })
+            .eq("billing_parent_id", id)
+        : { count: 0 };
+    const linkError = companyLinkError({
+      selfId: id,
+      role: nextRole === "admin" || nextRole === "member" ? (nextRole as CompanyRole) : null,
+      parentId: nextParent,
+      parent,
+      childCount: count || 0,
+    });
+    if (linkError) return jsonError(linkError);
   }
 
   // email, iban, company_role, billing_parent_id, spending_allowance, on_hold : hors des grants par colonne

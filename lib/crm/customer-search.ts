@@ -49,6 +49,7 @@ export function customerPickLabel(c: PickableCustomer) {
 
 export function customerRoleSuffix(c: PickableCustomer) {
   if (c.company_role === "member") return " · rattaché";
+  if (c.company_role === "admin" && c.billing_parent_id) return " · admin associé";
   if (c.company_role === "admin") return " · admin société";
   return "";
 }

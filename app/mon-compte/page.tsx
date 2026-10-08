@@ -7,7 +7,8 @@ import { chosenCalendarHref, googleCalendarHref, itemCalendarHref } from "@/lib/
 import type { CrmBalance } from "@/lib/crm/types";
 import { isClientUpcomingStay } from "@/lib/crm/client-stays";
 import { encoursCaption, formatDateRangeShort, formatMoney, jMinusLabel } from "@/lib/crm/money";
-import { isCompanyMember } from "@/lib/crm/company-role";
+import { adminLedgerCustomerId, isCompanyMember } from "@/lib/crm/company-role";
+import { clientTripOwnerIds } from "@/lib/crm/company-peers";
 import { loadStayArrivalPlaces, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
 import { clientVisibleItems, nextTimelineFlight, tripPlaceLine, type FlightPass } from "@/lib/crm/carnet";
 import { stayTitleFromItems } from "@/lib/crm/staff-stay";
@@ -25,11 +26,15 @@ export default async function AccountHomePage() {
   if (!customer) redirect("/connexion");
 
   const member = isCompanyMember(customer);
+  const ownerIds = await clientTripOwnerIds(customer);
   const [{ data: balances }, bookings] = await Promise.all([
     member
       ? Promise.resolve({ data: [] as CrmBalance[] })
-      : supabase.from("crm_customer_balances").select("*").eq("customer_id", customer.id),
-    loadVisibleCarnets(supabase, customer.id),
+      : supabase
+          .from("crm_customer_balances")
+          .select("*")
+          .eq("customer_id", adminLedgerCustomerId(customer)),
+    loadVisibleCarnets(supabase, customer.id, ownerIds),
   ]);
 
   const nextTrip =

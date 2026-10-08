@@ -204,7 +204,12 @@ export function CustomerEditor({
         .map((draft, index) => billingCompanyTabLabel(draft.values.companyName, index, companyDrafts.length))
         .join(", ")
     : "Aucune société";
-  const companyLine = [companyRoleLabel(companyRole), iban || null].filter(Boolean).join(" · ");
+  const companyLine = [
+    companyRole === "admin" && billingParentId ? "Admin associé" : companyRoleLabel(companyRole),
+    iban || null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -246,7 +251,8 @@ export function CustomerEditor({
           flying_blue: loyalty.flying_blue,
           iban: normalizedIban,
           company_role: companyRole,
-          billing_parent_id: companyRole === "member" ? billingParentId || null : null,
+          billing_parent_id:
+            companyRole === "member" || companyRole === "admin" ? billingParentId || null : null,
           spending_allowance: companyRole ? spendingAllowance : null,
           on_hold: onHold,
           billing_companies: billingCompaniesPayload(companyDrafts, profileAddress),

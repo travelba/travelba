@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { filterClientLedgerRows, isCompanyMember } from "@/lib/crm/company-role";
+import { adminLedgerCustomerId, filterClientLedgerRows, isCompanyMember } from "@/lib/crm/company-role";
+import { loadAdminTripOwnerIds } from "@/lib/crm/company-peers";
 import {
   ledgerMovementTitle,
   ledgerPlace,
@@ -130,6 +131,8 @@ export function shapeClientLedger(input: {
   fundingCompanies?: FundingCompany[];
   viewerId?: string;
   spendAccounts?: SpendingAccountInput[];
+  /** Admins du même wallet : leur carnet s’ouvre. Les collaborateurs restent fermés. */
+  openCarnetOwnerIds?: string[];
 }): ClientLedgerView {
   const member = isCompanyMember({ company_role: input.companyRole ?? null });
   const scoped = filterClientLedgerRows(input.rows, {
@@ -160,7 +163,12 @@ export function shapeClientLedger(input: {
     const place = ledgerPlace(visibleBooking);
     const reference = visibleBooking?.reference || null;
     const rawTitle = ledgerMovementTitle(row, TX_KIND_LABELS[row.kind] || row.kind);
-    const carnet = carnetLink(booking, input.audience, input.viewerId);
+    const carnet = carnetLink(
+      booking,
+      input.audience,
+      input.viewerId,
+      input.openCarnetOwnerIds
+    );
     const companyName = row.billing_company_id ? companyLabels.get(row.billing_company_id) : null;
     return {
       id: row.id,
@@ -246,14 +254,15 @@ export function shapeClientLedger(input: {
 function carnetLink(
   booking: ClientLedgerBooking | undefined,
   audience: ClientLedgerAudience,
-  viewerId?: string
+  viewerId?: string,
+  openCarnetOwnerIds?: string[]
 ): { href: string | null; label: string | null } {
   if (!booking) return { href: null, label: null };
   if (audience === "staff") {
     return { href: `/admin/reservations/${booking.id}`, label: "Ouvrir le dossier" };
   }
   if (booking.customer_id && viewerId && booking.customer_id !== viewerId) {
-    return { href: null, label: null };
+    if (!openCarnetOwnerIds?.includes(booking.customer_id)) return { href: null, label: null };
   }
   if (booking.visible_to_client && booking.reference) {
     return {
@@ -324,10 +333,11 @@ async function enrichSpendBookings(
 export async function loadClientLedger(
   supabase: SupabaseClient,
   customer: Pick<CrmCustomer, "id" | "company_role"> &
-    Partial<Pick<CrmCustomer, "first_name" | "last_name" | "spending_allowance">>,
+    Partial<Pick<CrmCustomer, "first_name" | "last_name" | "spending_allowance" | "billing_parent_id">>,
   audience: ClientLedgerAudience
 ): Promise<ClientLedgerView> {
   const member = isCompanyMember(customer);
+  const ledgerCustomerId = adminLedgerCustomerId(customer);
   const { data: myBookings } = await supabase
     .from("crm_bookings")
     .select("id")
@@ -355,10 +365,10 @@ export async function loadClientLedger(
       supabase
         .from("crm_transactions")
         .select("*")
-        .eq("customer_id", customer.id)
+        .eq("customer_id", ledgerCustomerId)
         .eq("status", "posted")
         .order("occurred_on", { ascending: false }),
-      supabase.from("crm_customer_balances").select("*").eq("customer_id", customer.id),
+      supabase.from("crm_customer_balances").select("*").eq("customer_id", ledgerCustomerId),
     ]);
     rows = (txs || []) as CrmTransaction[];
     // Un solde par devise : l’euro reste la devise principale (règlement), les autres ont leur bloc.
@@ -374,7 +384,7 @@ export async function loadClientLedger(
   const { data: companyRows } = await supabase
     .from("crm_billing_companies")
     .select("id, company_name, funding, sort_order")
-    .eq("customer_id", customer.id)
+    .eq("customer_id", ledgerCustomerId)
     .order("sort_order");
   const billingCompanies = (companyRows || []) as Pick<
     CrmBillingCompany,
@@ -408,6 +418,7 @@ export async function loadClientLedger(
     wallets,
     viewerId: customer.id,
     spendAccounts: spend.accounts,
+    openCarnetOwnerIds: spend.openCarnetOwnerIds,
   });
 }
 
@@ -534,10 +545,14 @@ export function applyExpenseLedgerChange(
 async function loadSpendAccounts(
   supabase: SupabaseClient,
   customer: Pick<CrmCustomer, "id" | "company_role"> &
-    Partial<Pick<CrmCustomer, "first_name" | "last_name" | "spending_allowance">>,
+    Partial<Pick<CrmCustomer, "first_name" | "last_name" | "spending_allowance" | "billing_parent_id">>,
   bookings: ClientLedgerBooking[],
   contextIds: string[]
-): Promise<{ bookings: ClientLedgerBooking[]; accounts: SpendingAccountInput[] }> {
+): Promise<{
+  bookings: ClientLedgerBooking[];
+  accounts: SpendingAccountInput[];
+  openCarnetOwnerIds: string[];
+}> {
   let allowance = customer.spending_allowance;
   let firstName = customer.first_name;
   let lastName = customer.last_name;
@@ -564,15 +579,31 @@ async function loadSpendAccounts(
   });
 
   const member = isCompanyMember(customer);
+  const openCarnetOwnerIds = new Set<string>([customer.id]);
   if (!member && customer.company_role === "admin") {
     const admin = serviceClientOrNull();
     if (admin) {
+      const walletId = adminLedgerCustomerId(customer);
       const { data: members } = await admin
         .from("crm_customers")
         .select("id, first_name, last_name, spending_allowance")
-        .eq("billing_parent_id", customer.id)
+        .eq("billing_parent_id", walletId)
         .eq("company_role", "member");
       for (const row of (members || []) as SpendPerson[]) people.set(row.id, row);
+      const peers = await loadAdminTripOwnerIds(admin, {
+        id: customer.id,
+        company_role: "admin",
+        billing_parent_id: customer.billing_parent_id ?? null,
+      });
+      for (const peerId of peers) openCarnetOwnerIds.add(peerId);
+      const peerIds = peers.filter((peerId) => peerId !== customer.id);
+      if (peerIds.length) {
+        const { data: peerRows } = await admin
+          .from("crm_customers")
+          .select("id, first_name, last_name, spending_allowance")
+          .in("id", peerIds);
+        for (const row of (peerRows || []) as SpendPerson[]) people.set(row.id, row);
+      }
 
       if (contextIds.length) {
         const { data: linked } = await admin.from("crm_bookings").select(SPEND_BOOKING_SELECT).in("id", contextIds);
@@ -591,10 +622,15 @@ async function loadSpendAccounts(
     name: spendPersonName(person),
     allowance: person.spending_allowance == null ? null : Number(person.spending_allowance),
   }));
+  const owners = [...openCarnetOwnerIds];
   if (!accounts.some((account) => hasSpendingAllowance(account.allowance))) {
-    return { bookings, accounts: [] };
+    return { bookings, accounts: [], openCarnetOwnerIds: owners };
   }
 
   const reader = !member && customer.company_role === "admin" ? serviceClientOrNull() || supabase : supabase;
-  return { bookings: await enrichSpendBookings(reader, bookings, people), accounts };
+  return {
+    bookings: await enrichSpendBookings(reader, bookings, people),
+    accounts,
+    openCarnetOwnerIds: owners,
+  };
 }

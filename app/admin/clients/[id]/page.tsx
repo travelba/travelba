@@ -52,6 +52,7 @@ import { BookingHero } from "@/components/crm/BookingHero";
 import { FilePreviewLink } from "@/components/crm/FilePreview";
 import { identityPreview } from "@/lib/crm/preview-files";
 import { clientLedgerAdminHref } from "@/lib/crm/client-ledger";
+import { loadAdminTripOwnerIds } from "@/lib/crm/company-peers";
 import { ficheBookingTravelerLine, ficheTravelerCaption, mergeFicheBookings } from "@/lib/crm/fiche-bookings";
 import { formatDateFr, formatMoney, formatCreditDisponible } from "@/lib/crm/money";
 import { CUSTOMER_PICK_SELECT, type PickableCustomer } from "@/lib/crm/customer-search";
@@ -69,12 +70,17 @@ export default async function AdminClientDetailPage({ params }: Props) {
     .maybeSingle();
   if (!customer) notFound();
   const c = customer as CrmCustomer;
+  const otherAdminIds =
+    c.company_role === "admin"
+      ? (await loadAdminTripOwnerIds(supabase, c)).filter((ownerId) => ownerId !== id)
+      : [];
 
   const [
     { data: companions },
     { data: documents },
     { data: bookings },
     { data: billedBookings },
+    { data: peerBookings },
     { data: txs },
     { data: balances },
     { data: companyAdmins },
@@ -95,6 +101,9 @@ export default async function AdminClientDetailPage({ params }: Props) {
       .select("*")
       .eq("billing_customer_id", id)
       .order("start_date", { ascending: false }),
+    otherAdminIds.length
+      ? supabase.from("crm_bookings").select("*").in("customer_id", otherAdminIds)
+      : Promise.resolve({ data: [] as CrmBooking[] }),
     supabase
       .from("crm_transactions")
       .select("*")
@@ -179,7 +188,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
   const activity = activityError ? [] : ((activityRows || []) as CrmCustomerActivity[]);
   const bookingRows = mergeFicheBookings(
     (bookings || []) as CrmBooking[],
-    (billedBookings || []) as CrmBooking[]
+    [...((billedBookings || []) as CrmBooking[]), ...((peerBookings || []) as CrmBooking[])]
   );
   const activeBookings = bookingRows.filter((row) => !row.archived_at);
   const archivedBookings = bookingRows.filter((row) => row.archived_at);

@@ -3,13 +3,19 @@ import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
 import { carnetVisible, stayArrivalPlaces } from "@/lib/crm/carnet";
 import { stayCitiesFromSteps } from "@/lib/crm/staff-stay";
 
-export async function loadVisibleCarnets(supabase: SupabaseClient, customerId: string) {
-  const { data } = await supabase
+export async function loadVisibleCarnets(
+  supabase: SupabaseClient,
+  customerId: string,
+  ownerIds?: string[]
+) {
+  const ids = [...new Set((ownerIds?.length ? ownerIds : [customerId]).filter(Boolean))];
+  let query = supabase
     .from("crm_bookings")
     .select("*")
-    .eq("customer_id", customerId)
     .is("archived_at", null)
     .order("start_date", { ascending: false, nullsFirst: false });
+  query = ids.length === 1 ? query.eq("customer_id", ids[0]) : query.in("customer_id", ids);
+  const { data } = await query;
   const all = (data || []) as CrmBooking[];
   if (!all.length) return [] as CrmBooking[];
   const { data: itemRows } = await supabase

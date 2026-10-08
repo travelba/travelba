@@ -20,6 +20,8 @@ import {
 } from "./whatsapp-concierge";
 import { planConciergeConversation, type ConciergeGenerator, type ConciergeHistoryTurn } from "./whatsapp-conversation";
 import { sessionAddress } from "./whatsapp-session";
+import { adminLedgerCustomerId } from "./company-role";
+import { loadAdminTripOwnerIds } from "./company-peers";
 
 export type WhatsappMessageInsert = {
   customer_id: string | null;
@@ -385,12 +387,20 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
       return [...map.values()];
     },
     async loadDossier(customerId) {
+      const { data: holder, error: holderError } = await admin
+        .from("crm_customers")
+        .select("id, company_role, billing_parent_id")
+        .eq("id", customerId)
+        .maybeSingle();
+      if (holderError) throw holderError;
+      const ownerIds = holder ? await loadAdminTripOwnerIds(admin, holder) : [customerId];
+      const ledgerCustomerId = holder ? adminLedgerCustomerId(holder) : customerId;
       const { data: bookings, error: bookingError } = await admin
         .from("crm_bookings")
         .select(
           "id, reference, title, destination, start_date, end_date, currency, total_amount, notes_client, visible_to_client, prices_visible, cover_image_path, share_code"
         )
-        .eq("customer_id", customerId)
+        .in("customer_id", ownerIds)
         .is("archived_at", null);
       if (bookingError) throw bookingError;
       // La photo du séjour exige le code de partage : on le crée pour un séjour publié qui en a une.
@@ -425,11 +435,11 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
         admin
           .from("crm_transactions")
           .select("booking_id, direction, kind, amount, currency, occurred_on, label, status")
-          .eq("customer_id", customerId)
+          .eq("customer_id", ledgerCustomerId)
           .eq("status", "posted")
           .order("occurred_on", { ascending: false })
           .limit(12),
-        admin.from("crm_customer_balances").select("currency, balance").eq("customer_id", customerId),
+        admin.from("crm_customer_balances").select("currency, balance").eq("customer_id", ledgerCustomerId),
         admin
           .from("crm_travel_documents")
           .select("doc_type, first_name, last_name, expires_on")
