@@ -28,6 +28,7 @@ const LEGACY_DUPLICATE_VERSIONS = new Set([
   "20260930235000", // booking_archive_client_read / transaction_payer_kind
   "20261005100000", // card_links / crm_pliant_cards
   "20261006153000", // booking_items_order_custom / esta_checks
+  "20261007183000", // billing_company_funding / companion_loyalty
 ]);
 
 const files = readdirSync(DIR).filter((name) => !name.startsWith("."));

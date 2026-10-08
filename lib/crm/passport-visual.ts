@@ -1,5 +1,5 @@
 import { completeGivenNames, type ExtractedIdentity } from "./identity";
-import { isoDate } from "./passport-extract";
+import { isoDate, parseSpouseLine, spouseFamilyNames } from "./passport-extract";
 
 const EYE_OR_NOISE =
   /^(marron|brown|bleu|blue|vert|green|noir|noisette|hazel|gris|grey|gray|prénoms|prenoms|given|names|name|nom|surname|sex|sexe|male|female|nationalité|nationality|française|francais|français|israeli|israélien|israélienne|israelien|israelienne)$/i;
@@ -17,9 +17,12 @@ export function passportNumberHints(text: string) {
 function latinNameTokens(chunk: string) {
   return chunk
     .replace(/\(.*?\)/g, " ")
+    .replace(/(\p{Ll})(\p{Lu})/gu, "$1 $2")
     .split(/[\s,;/|]+/)
     .map((token) => token.replace(/^[^\p{L}]+|[^\p{L}'’-]+$/gu, "").trim())
     .filter((token) => /^[\p{L}][\p{L}'’-]*$/u.test(token))
+    .filter((token) => /^\p{Lu}/u.test(token))
+    .filter((token) => !/^\p{Lu}\p{Ll}*\p{Lu}/u.test(token))
     .filter((token) => !EYE_OR_NOISE.test(token))
     .filter((token) => !/[\u0590-\u05FF]/.test(token))
     .filter((token) => {
@@ -88,17 +91,55 @@ export function readPlaceOfBirth(text: string, issuingCountry: string | null, bi
     return `${head} ARRONDISSEMENT`;
   }
   if (issuingCountry === "IL" && /\bFRANCE\b/i.test(flat) && !/CONSULAT/i.test(flat)) return "FRANCE";
-  const beside = (day: string, month: string, year: string) => {
-    const hit = flat.match(new RegExp(`${day}\\s+${month}\\s+${year}\\s+([A-Z][A-Z-]{2,})`, "i"));
-    return hit ? cityToken(hit[1]) : null;
-  };
   if (birthDate && /^\d{4}-\d{2}-\d{2}$/.test(birthDate)) {
     const [year, month, day] = birthDate.split("-");
-    const city = beside(day, month, year);
-    if (city) return city;
+    return cityBesideDate(flat, day, month, year);
   }
-  const loose = flat.match(/(?:^|\D)(\d{2})\s+(\d{2})\s+(\d{4})\s+([A-Z][A-Z-]{2,})/);
+  const loose = flat.match(/(?:^|\D)(\d{2})\s+(\d{2})\s+(\d{4})\s+([A-Z][A-Z-]{3,})/);
   return loose ? cityToken(loose[4]) : null;
+}
+
+const CITY_ARTICLE = /^(?:LE|LA|LES)$/;
+
+/** Un bout du nom de naissance (« BIB » dans un nom plus long) n’est pas une ville. */
+function placeIsSurnameFragment(place: string | null, last: string | null) {
+  if (!place || !last || /\s/.test(place)) return false;
+  const city = place.toUpperCase().replace(/[^A-Z]/g, "");
+  const name = last.toUpperCase().replace(/[^A-Z]/g, "");
+  return city.length >= 3 && city.length < name.length && name.endsWith(city);
+}
+
+function cityBesideDate(flat: string, day: string, month: string, year: string) {
+  const found: string[] = [];
+  const re = new RegExp(`${day}\\s*${month}\\s*${year}`, "ig");
+  for (const match of flat.matchAll(re)) {
+    const tail = flat.slice((match.index || 0) + match[0].length);
+    const city: string[] = [];
+    for (const raw of tail.split(/\s+/).slice(0, 8)) {
+      const word = raw
+        .toUpperCase()
+        .replace(/[^A-Z-]/g, "")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+      if (!word) {
+        if (city.length) break;
+        continue;
+      }
+      if (word.length === 1) continue;
+      if (PLACE_NOISE.test(word)) break;
+      const letters = word.replace(/-/g, "");
+      if (!CITY_ARTICLE.test(word) && letters.length < 4) {
+        if (!city.length) continue;
+        break;
+      }
+      city.push(word);
+      if (CITY_ARTICLE.test(city[0]) ? city.length >= 2 : letters.length >= 4) break;
+    }
+    const joined = city.join(" ");
+    if (joined.replace(/[^A-Z]/g, "").length >= 4) found.push(joined);
+  }
+  if (!found.length) return null;
+  return found.sort((a, b) => b.replace(/[^A-Z]/g, "").length - a.replace(/[^A-Z]/g, "").length)[0];
 }
 
 export function readAuthority(text: string) {
@@ -109,28 +150,89 @@ export function readAuthority(text: string) {
     return `TEL AVIV - CONSULAT ${word} DE FRANCE`;
   }
   if (/J[ÉE]RUSALEM/i.test(flat)) return "JERUSALEM";
-  const start = flat.search(/pr[eé]fecture\b/i);
-  if (start < 0) return null;
-  const tokens = flat.slice(start).split(/\s+/);
+  const candidates: string[][] = [];
+  for (const match of flat.matchAll(/pr[eé]fecture\b/gi)) {
+    const tokens = authorityTokens(flat.slice(match.index || 0));
+    if (tokens.length >= 3) candidates.push(tokens);
+  }
+  if (!candidates.length) return null;
+  const best = candidates
+    .slice()
+    .sort((a, b) => authorityScore(b, flat) - authorityScore(a, flat))[0];
+  return titleAuthority(best.join(" "));
+}
+
+function authorityComplete(kept: string[]) {
+  const words = kept.filter((token) => !/^(?:de|des|du|la|le|les|d|pr[eé]fecture)$/i.test(token));
+  const department = words.some((token) => token.split("-").filter(Boolean).length >= 3);
+  return department && words.length >= 2;
+}
+
+function authorityWord(token: string) {
+  const parts = token.split("-").filter(Boolean);
+  if (!parts.length || parts.length > 4) return false;
+  return parts.every((part) => {
+    if (part.length > 12) return false;
+    if (part.length >= 4 && !/[AEIOUYÀÂÄÉÈÊËÎÏÔÖÙÛÜŸ]/i.test(part)) return false;
+    return true;
+  });
+}
+
+function authorityScore(tokens: string[], flat: string) {
+  const upper = flat.toUpperCase();
+  return tokens.reduce((score, token) => {
+    return (
+      score +
+      token
+        .toUpperCase()
+        .split("-")
+        .reduce((sum, part) => {
+          if (part.length < 3) return sum + 1;
+          return sum + Math.min(upper.split(part).length - 1, 4) * Math.min(part.length, 10);
+        }, 0)
+    );
+  }, 0);
+}
+
+function authorityTokens(slice: string) {
   const kept: string[] = [];
-  for (const token of tokens) {
+  let pendingGlue = false;
+  for (const raw of slice.split(/\s+/)) {
+    let token = raw.replace(/[^\p{L}-]/gu, "").replace(/-+/g, "-");
+    token = token.replace(/selne/gi, "Seine").replace(/denls/gi, "Denis");
+    const dangling = /-$/.test(token);
+    const shortTail = /-(?!de$|des$|du$|la$|le$|les$|d$)[A-Za-z]{1,3}$/i.test(token);
+    if (shortTail) token = token.replace(/-[A-Za-z]{1,3}$/i, "");
+    token = token.replace(/^-+|-+$/g, "");
+    const continues = dangling || shortTail;
+    if (!token) continue;
     if (
       kept.length &&
-      (/^(?:date|domicile)$/i.test(token) ||
-        /^\d{1,4}$/.test(token) ||
+      (/^(?:date|domicile|france)$/i.test(token) ||
         /^(?:rue|avenue|boulevard|chemin|impasse|place|route|allee|allée)$/i.test(token))
     ) {
       break;
     }
-    kept.push(token);
+    if (token.length <= 2 && !/^(?:de|des|du|la|le|les|d)$/i.test(token)) continue;
+    if (!authorityWord(token)) break;
+    if (pendingGlue && kept.length && token.length <= 3) continue;
+    if (authorityComplete(kept)) break;
+    if (pendingGlue && kept.length) kept[kept.length - 1] = `${kept[kept.length - 1]}-${token}`;
+    else kept.push(token);
+    pendingGlue = continues;
     if (kept.length > 8) break;
   }
-  const body = kept.join(" ");
+  return kept;
+}
+
+function titleAuthority(body: string) {
   const small = new Set(["de", "des", "du", "la", "le", "les", "d"]);
   return body
     .toLocaleLowerCase("fr")
     .replace(/(^|[\s-])(\p{L})/gu, (chunk) => chunk.toLocaleUpperCase("fr"))
-    .replace(/\b(De|Des|Du|La|Le|Les|D)\b/g, (word) => (small.has(word.toLocaleLowerCase("fr")) ? word.toLocaleLowerCase("fr") : word));
+    .replace(/\b(De|Des|Du|La|Le|Les|D)\b/g, (word) =>
+      small.has(word.toLocaleLowerCase("fr")) ? word.toLocaleLowerCase("fr") : word
+    );
 }
 
 function collectDates(text: string) {
@@ -189,23 +291,30 @@ export function readIssueDate(text: string, identity: ExtractedIdentity) {
   return ranked[0]?.date || null;
 }
 
+function trimStreet(street: string) {
+  const parts = street
+    .toUpperCase()
+    .replace(/[^A-Z0-9'’\s-]/g, " ")
+    .replace(/\bMOC(?:EER|KER|HER)\b/g, "MOCHER")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length < 2) return parts.join(" ");
+  const particle = /^(?:DU|DE|DES|LA|LE|LES|AU|AUX|D|L)$/;
+  const kept = [parts[0], parts[1]];
+  for (const word of parts.slice(2)) {
+    const clean = word.replace(/[^A-Z'’]/g, "");
+    if (particle.test(clean) || clean.length >= 3) kept.push(clean || word);
+    else break;
+  }
+  while (kept.length > 2 && particle.test(kept[kept.length - 1])) kept.pop();
+  return kept.join(" ");
+}
+
 export function readDomicile(text: string) {
   const flat = flatText(text);
-  const addressBlock =
-    /\b(\d{1,4}\s+(?:RUE|AVENUE|BOULEVARD|CHEMIN|IMPASSE|ALL[ÉE]E|PLACE|ROUTE)\s+(?:[A-Z][A-Z'’]{1,}\s+){0,6}[A-Z][A-Z'’]{1,})\s+(\d{5}|\d{7})\s+([A-Z][A-Z'’]{1,}(?:-[A-Z][A-Z'’]{1,})*)/gi;
-  const blocks = [...flat.matchAll(addressBlock)];
-  if (blocks.length) {
-    const [street, postal, city] = [blocks[0][1], blocks[0][2], blocks[0][3]];
-    return {
-      address_line: street.replace(/\s+/g, " ").trim().toUpperCase().replace(/\bMOC(?:EER|KER|HER)\b/g, "MOCHER"),
-      postal_code: postal,
-      city: city.toUpperCase(),
-      country: postal.length === 5 ? "FR" : /\bISRA[EË]L\b/i.test(flat) ? "IL" : null,
-    };
-  }
   const streets = [
     ...flat.matchAll(
-      /\b(\d{1,4}\s+(?:RUE|AVENUE|BOULEVARD|CHEMIN|IMPASSE|ALL[ÉE]E)\s+(?:[A-Z]{2,}\s+){0,6}[A-Z]{2,})/gi
+      /\b(\d{1,4}\s+(?:RUE|AVENUE|BOULEVARD|CHEMIN|IMPASSE|ALL[ÉE]E|PLACE|ROUTE)\s+(?:[A-Z]{2,}\s+){0,6}[A-Z]{2,})/gi
     ),
   ];
   const street = streets[0];
@@ -219,7 +328,7 @@ export function readDomicile(text: string) {
       country: /\bISRA[EË]L\b/i.test(flat) ? "IL" : null,
     };
   }
-  const postals = [...flat.matchAll(/\b(\d{5}|\d{7})\s+([A-Z]{2,24})\b/g)];
+  const postals = [...flat.matchAll(/\b(\d{5}|\d{7})\s+([A-Z]{2,}(?:-[A-Z]{2,})*)\b/gi)];
   const herz = postals.filter((item) => /HERZ/i.test(item[2]));
   const pool = herz.length ? herz : postals;
   const streetEnd = (street.index ?? 0) + street[1].length;
@@ -229,11 +338,7 @@ export function readDomicile(text: string) {
   )[0];
   const country = /\bISRA[EË]L\b/i.test(flat) ? "IL" : postal && postal[1].length === 5 ? "FR" : null;
   return {
-    address_line: street[1]
-      .replace(/\s+/g, " ")
-      .trim()
-      .toUpperCase()
-      .replace(/\bMOC(?:EER|KER|HER)\b/g, "MOCHER"),
+    address_line: trimStreet(street[1]),
     postal_code: postal?.[1] || null,
     city: postal?.[2].toUpperCase() || null,
     country,
@@ -271,14 +376,78 @@ function printedSurname(mrzLast: string | null, visual: string) {
   return titleSurname(one);
 }
 
+function voteUsage(hits: string[]) {
+  if (!hits.length) return null;
+  const counts = new Map<string, number>();
+  for (const hit of hits) counts.set(hit, (counts.get(hit) || 0) + 1);
+  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length);
+  const top = ranked[0][1];
+  const tied = ranked.filter((item) => item[1] === top).map((item) => item[0]);
+  const repeats = (word: string) => (word.match(/(.)\1/g) || []).length;
+  tied.sort((a, b) => repeats(b) - repeats(a) || b.length - a.length);
+  const voted = tied[0];
+  if (/^[A-Z]{5,}EE$/.test(voted)) return `${voted[0]}${voted.slice(1, -2).toLowerCase()}ée`;
+  return voted;
+}
+
+/** « ép. » devient souvent « 6p, » ou « 66, » à l’OCR. Le second nom de la ligne reste le nom d’épouse. */
+function plausibleUsage(value: string) {
+  const words = value.split(/\s+/).filter(Boolean);
+  if (!words.length || words.length > 3) return false;
+  return words.every((word) => /^[\p{L}'’-]+$/u.test(word)) && words.some((word) => word.replace(/[^\p{L}]/gu, "").length >= 4);
+}
+
+export function readUsageName(text: string, birthName: string | null, given: string | null) {
+  for (const line of text.split(/\n/)) {
+    const parsed = parseSpouseLine(line);
+    if (parsed?.usage && plausibleUsage(parsed.usage)) return parsed.usage;
+  }
+  const birth = (birthName || "").toUpperCase().replace(/[^A-Z]/g, "");
+  if (birth.length < 4) return null;
+  const givenFolds = new Set(
+    (given || "")
+      .toUpperCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .split(/\s+/)
+      .filter((token) => token.length >= 3)
+  );
+  const hits: string[] = [];
+  for (const line of text.split(/\n/)) {
+    const upper = line.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const at = upper.indexOf(birth);
+    if (at < 0) continue;
+    const before = at > 0 ? upper[at - 1] : "";
+    if (before && /[A-Z]/.test(before)) continue;
+    const tokens = upper.slice(at + birth.length).match(/[A-Z]{4,16}/g) || [];
+    for (const token of tokens.slice(0, 3)) {
+      if (givenFolds.has(token)) continue;
+      if ([...givenFolds].some((name) => name.length >= 4 && (token.endsWith(name) || name.endsWith(token)))) continue;
+      if (PLACE_NOISE.test(token)) continue;
+      if (token.includes(birth) || birth.endsWith(token)) continue;
+      hits.push(token);
+      break;
+    }
+  }
+  return voteUsage(hits);
+}
+
 export function enrichPassportVisual(identity: ExtractedIdentity, visual: string): ExtractedIdentity {
   const given = readPrintedGivenNames(visual);
+  const usage = identity.usage_name || readUsageName(visual, identity.last_name, given || identity.first_name);
+  const names = spouseFamilyNames({
+    birthName: printedSurname(identity.last_name, visual),
+    usageName: usage,
+    givenNames: given || identity.first_name,
+  });
   const address = readDomicile(visual);
+  const place = identity.place_of_birth || readPlaceOfBirth(visual, identity.issuing_country, identity.birth_date);
   return {
     ...identity,
-    last_name: printedSurname(identity.last_name, visual),
+    last_name: names.last_name,
+    usage_name: names.usage_name,
     first_name: completeGivenNames(identity.first_name, given),
-    place_of_birth: identity.place_of_birth || readPlaceOfBirth(visual, identity.issuing_country, identity.birth_date),
+    place_of_birth: placeIsSurnameFragment(place, names.last_name) ? null : place,
     authority: identity.authority || readAuthority(visual),
     issued_on: identity.issued_on || readIssueDate(visual, identity),
     address_line: identity.address_line || address.address_line,

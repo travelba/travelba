@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { scanAwaitsConfirmation, scanWouldPersist } from "./passport-confirm";
+import { passportConfirmCopy, scanAwaitsConfirmation, scanWouldPersist } from "./passport-confirm";
 
 test("le scan n’écrit rien sans fichier, sans identité, ni en admin sans client", () => {
   assert.equal(scanWouldPersist({ variant: "client", persist: true, hasFile: false, identityCount: 1 }), false);
@@ -12,16 +12,35 @@ test("le scan n’écrit rien sans fichier, sans identité, ni en admin sans cli
   );
 });
 
-test("côté client, la confirmation précède tout ce qui s’enregistre", () => {
-  // Vous / fiche compagnon : la pièce lue est enregistrée → confirmation.
+test("rien ne s’enregistre avant relecture, agence comprise", () => {
   assert.equal(scanAwaitsConfirmation({ variant: "client", persist: true, hasFile: true, identityCount: 1 }), true);
-  // Formulaire « Ajouter un accompagnateur » avec un seul passeport : le parent remplit ses champs, rien ne part.
   assert.equal(scanAwaitsConfirmation({ variant: "client", persist: false, hasFile: true, identityCount: 1 }), false);
-  // Plusieurs passeports : import immédiat des inconnus → confirmation d’abord.
   assert.equal(scanAwaitsConfirmation({ variant: "client", persist: false, hasFile: true, identityCount: 2 }), true);
-  // L’admin garde le geste direct.
   assert.equal(
     scanAwaitsConfirmation({ variant: "admin", persist: true, hasFile: true, identityCount: 1, customerId: "c1" }),
+    true
+  );
+  assert.equal(
+    scanAwaitsConfirmation({ variant: "admin", persist: false, hasFile: true, identityCount: 1, customerId: "c1" }),
     false
+  );
+});
+
+test("l’agence relit la pièce, le client confirme la sienne", () => {
+  const agency = passportConfirmCopy({ variant: "admin", identityCount: 1, companion: false });
+  assert.equal(agency.question, "Enregistrer cette pièce ?");
+  assert.equal(agency.confirm, "Enregistrer");
+  assert.match(agency.hint || "", /Rien n’est écrit avant/);
+  assert.equal(
+    passportConfirmCopy({ variant: "admin", identityCount: 2, companion: false }).question,
+    "Enregistrer ces 2 passeports ?"
+  );
+  assert.equal(
+    passportConfirmCopy({ variant: "client", identityCount: 1, companion: false }).question,
+    "C’est bien votre pièce ?"
+  );
+  assert.equal(
+    passportConfirmCopy({ variant: "client", identityCount: 1, companion: true, firstName: "Camille" }).confirm,
+    "Confirmer"
   );
 });
