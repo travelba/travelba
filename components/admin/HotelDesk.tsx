@@ -103,7 +103,7 @@ export function HotelDesk({
   return (
     <div id={`hotel-desk-${item.id}`} className="mt-3 scroll-mt-24 space-y-3">
       <section className="overflow-hidden rounded-2xl border border-[#e5e0d4] bg-[#faf9f6]" aria-label={`Courriers pour ${hotelDisplayName(item) || item.title}`}>
-        <p className="border-b border-[#e5e0d4] px-3 py-2 text-xs font-medium text-[#0B192C]">{stay.summary}</p>
+        <p className="break-words border-b border-[#e5e0d4] px-3 py-2 text-xs font-medium leading-relaxed text-[#0B192C]">{stay.summary}</p>
         {marking ? (
           <div className="px-3 py-2">
             <BusyBar label="Mise à jour du courrier…" />
@@ -130,8 +130,8 @@ export function HotelDesk({
                     className={`h-1.5 w-1.5 shrink-0 rounded-full ${line.mark === "open" ? "bg-[#C5A880]" : "bg-[#0B192C]/20"}`}
                     aria-hidden
                   />
-                  <span className="truncate text-sm font-semibold text-[#0B192C]">{line.title}</span>
-                  <span className={`ml-auto shrink-0 text-xs font-medium ${line.mark === "unneeded" ? "text-[#3d4654]" : "text-[#0B192C]"}`}>
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[#0B192C]">{line.title}</span>
+                  <span className={`shrink-0 text-xs font-medium ${line.mark === "unneeded" ? "text-[#3d4654]" : "text-[#0B192C]"}`}>
                     {line.caption}
                   </span>
                 </button>
