@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
@@ -30,6 +31,19 @@ function tesseractInstalled() {
 }
 
 const tesseractAvailable = tesseractInstalled();
+
+test("a turned passport is read from the ink lines before the bottom strip", () => {
+  const source = readFileSync(new URL("./passport-scan.ts", import.meta.url), "utf8");
+  const body = source.slice(source.indexOf("async function readOriented"), source.indexOf("async function scanPage"));
+  const located = body.indexOf("ocrLocatedMrz");
+  const bottom = body.indexOf("bottomRect");
+  assert.ok(located >= 0);
+  assert.ok(bottom > located);
+  const vision = readFileSync(new URL("./ocr-document.ts", import.meta.url), "utf8");
+  const expand = vision.slice(vision.indexOf("async function expandPassportViews"), vision.indexOf("async function splitWidePages"));
+  assert.match(expand, /\[\.\.\.pages\]/);
+  assert.ok(expand.indexOf("[...pages]") < expand.indexOf("multiPassportCrops"));
+});
 
 test("the MRZ band sits above the page-edge shadow, not on the table", () => {
   const width = 800;

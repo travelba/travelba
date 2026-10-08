@@ -33,8 +33,8 @@ Pays émetteur : même règle ISO 2.
 sex : M, F ou X. Sur un passeport israélien, נ = F et ז = M.
 doc_type : passport | id_card | visa | insurance | other.
 first_name : TOUS les prénoms, dans l’ordre de la ligne latine « Prénoms » / « Given name » et de la MRZ (gauche à droite). Maelle Louise Rosalie, jamais l’ordre inverse. Ne pas prendre l’ordre visuel du bloc hébreu (droite à gauche). Ne pas retourner les prénoms latins. Accents gardés (Hélie).
-Livret ouvert en portrait : seule la page du bas est une personne. Le haut (armoiries, « page réservée aux autorités ») n’en est pas une.
-Page tournée : lire après rotation. Un chiffre de reflet ne remplace pas une MRZ dont les contrôles sont valides.
+Livret ouvert en portrait, page déjà droite : seule la page du bas est une personne. Le haut (armoiries, « page réservée aux autorités ») n’en est pas une.
+Photo tournée (livret ouvert, table visible) : tourner d’abord pour que la MRZ soit horizontale. Ce sont les deux lignes d’encre au-dessus de l’ombre du bord, pas le bas du cadre et pas la table. Un chiffre de reflet ne remplace pas une MRZ dont les contrôles sont valides.
 Deux livrets de pays différents pour la même personne = deux pièces, pas une seconde personne.
 Taille et couleur des yeux ne sont pas des champs. Le domicile imprimé n’est pas le lieu de naissance. Le n° personnel israélien garde ses tirets.
 last_name : nom de naissance (ligne « Nom » / Surname). Pas le nom d’usage.
@@ -49,7 +49,7 @@ address_line : voie du domicile, seulement si elle est imprimée (carte d’iden
 postal_code : code postal du domicile, s’il est imprimé. Sinon null.
 city : ville du domicile, s’il est imprimé. Sinon null. Pas le lieu de naissance.
 country : pays du domicile en ISO 2, s’il est imprimé. Sinon null.
-mrz_text : recopie EXACTEMENT la bande MRZ de CETTE personne (lignes du bas, caractères A-Z 0-9 <), une ligne par ligne, si elle est lisible. Sinon null.`;
+mrz_text : recopie EXACTEMENT la bande MRZ de CETTE personne (les deux lignes d’encre au bas de la page d’identité une fois la photo tournée, caractères A-Z 0-9 <), une ligne par ligne, si elle est lisible. Sinon null.`;
 
 function identityModel() {
   const key = openaiApiKey();
@@ -127,6 +127,8 @@ async function cropPage(
 async function expandPassportViews(pages: RasterPage[]): Promise<RasterPage[]> {
   const sharp = await trySharp();
   if (!sharp) return pages;
+  // Le cadre entier reste en tête. Le bas d’un portrait est une vue en plus :
+  // une photo tournée a la MRZ sur le côté, pas dans cette bande.
   const views: RasterPage[] = [...pages];
   for (const page of pages) {
     try {
