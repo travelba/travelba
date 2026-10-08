@@ -7,6 +7,7 @@ import type { CrmCustomer, CrmStaff } from "@/lib/crm/types";
 import { STAFF_COPY } from "@/lib/crm/staff-team";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
 import { issuesSummary, type BookingIssue } from "@/lib/crm/booking-issues";
+import { isStaffAccount } from "@/lib/crm/client-account";
 
 /** Mémo request-scoped (pas Cache Components) : layout + requireStaffPage partagent getUser. */
 export const getSessionUser = cache(async () => {
@@ -137,12 +138,17 @@ async function stampStaffRole(user: User, role: CrmStaff["role"]) {
   }
 }
 
+/**
+ * Fiche du titulaire connecté. Un compte de l’agence n’a jamais de fiche : ni rattachée par
+ * e-mail, ni retournée si une ligne existe déjà (le lien client ouvrirait /admin).
+ */
 export const ensureCustomerForUser = cache(async (user: User): Promise<CrmCustomer | null> => {
   const email = (user.email || "").trim().toLowerCase();
   if (!email) return null;
 
   try {
     const admin = createServiceClient();
+    if (await isStaffAccount(admin, user.id, user)) return null;
     const { data: byAuth } = await admin
       .from("crm_customers")
       .select("*")

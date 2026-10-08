@@ -4,14 +4,8 @@ import { siteConfig } from "@/lib/site";
 import { customerFullName, type CrmCustomer } from "@/lib/crm/types";
 import { SET_PASSWORD_PATH, mustSetPassword } from "@/lib/crm/session";
 import { inviteClientMail } from "@/lib/crm/client-mails";
-import {
-  connexionMessage,
-  greetingForWhatsapp,
-  inviteWhatsappNotice,
-  sendConnexionWhatsapp,
-  type WhatsappSendResult,
-} from "@/lib/crm/whatsapp";
-import { createEntryLink, setEntryLinkChannel } from "@/lib/crm/entry-link";
+import { createEntryLink } from "@/lib/crm/entry-link";
+import { STAFF_ACCOUNT_BLOCK, clientLinkToken, isStaffAccount } from "@/lib/crm/client-account";
 import { tokenMailCc } from "@/lib/crm/outbound-mail";
 import { sendAgencyAccessNotice } from "@/lib/crm/access-notice";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
@@ -25,9 +19,18 @@ export type InviteResult = {
   customer: CrmCustomer;
   delivered: boolean;
   link: string;
-  whatsapp: WhatsappSendResult;
   notice: string;
 };
+
+export const INVITE_NOTICE = {
+  sent: "Invitation envoyée par e-mail. Le WhatsApp « Enchanté » partira dès que le mot de passe sera enregistré.",
+  copy: "E-mail non envoyé : copiez le lien ci-dessous. Le WhatsApp partira une fois le mot de passe enregistré.",
+} as const;
+
+/** Copie affichée après « Inviter ». Jamais de WhatsApp à ce stade : le lien crée le mot de passe. */
+export function inviteNotice(delivered: boolean) {
+  return delivered ? INVITE_NOTICE.sent : INVITE_NOTICE.copy;
+}
 
 export function appOrigin(request: Request) {
   const env = (process.env.NEXT_PUBLIC_SITE_URL || "").trim().replace(/\/$/, "");
@@ -107,27 +110,27 @@ export async function inviteCustomer(
     full_name: customerFullName(customer),
   };
 
+  // Une fiche déjà rattachée à un compte de l’agence n’est jamais invitée : le lien ouvrirait /admin.
+  if (customer.auth_user_id && (await isStaffAccount(admin, customer.auth_user_id))) {
+    throw new Error(STAFF_ACCOUNT_BLOCK);
+  }
+
   let linkType: "invite" | "recovery" = "invite";
-  let generated = await admin.auth.admin.generateLink({
-    type: "invite",
-    email,
-    options: { data: metadata },
-  });
+  let generated = await clientLinkToken(admin, { type: "invite", email, data: metadata });
 
-  if (generated.error && isAlreadyRegistered(generated.error.message)) {
+  if (!generated.ok && generated.reason === "error" && isAlreadyRegistered(generated.message)) {
     linkType = "recovery";
-    generated = await admin.auth.admin.generateLink({
-      type: "recovery",
-      email,
-    });
+    generated = await clientLinkToken(admin, { type: "recovery", email });
   }
 
-  if (generated.error || !generated.data?.user || !generated.data.properties?.hashed_token) {
-    throw new Error(generated.error?.message || "Impossible de générer l’invitation");
+  if (!generated.ok) {
+    throw new Error(
+      generated.reason === "staff" ? STAFF_ACCOUNT_BLOCK : generated.message || "Impossible de générer l’invitation"
+    );
   }
 
-  const authUser = generated.data.user;
-  const hashedToken = generated.data.properties.hashed_token;
+  const authUser = generated.user;
+  const hashedToken = generated.hashedToken;
   const { data: fresh } = await admin.auth.admin.getUserById(authUser.id);
   const currentMeta = fresh.user?.app_metadata || authUser.app_metadata || {};
 
@@ -156,38 +159,16 @@ export async function inviteCustomer(
     email,
     channel: "email",
   });
-  let whatsapp: WhatsappSendResult = { ok: false, reason: "rejected" };
+  // L’invitation (définir le mot de passe) part par e-mail seulement. Le WhatsApp « Enchanté »,
+  // avec un lien magique, part de /api/client/password une fois le mot de passe enregistré.
   try {
     await admin
       .from("crm_customers")
       .update({ whatsapp_opt_in_at: new Date().toISOString() })
       .eq("id", linked.id)
       .is("whatsapp_opt_in_at", null);
-    whatsapp = await sendConnexionWhatsapp({
-      phone: linked.phone,
-      firstName: linked.first_name,
-      link,
-    });
-    // Parti par WhatsApp : l’ouverture du lien vaudra opt-in (le client a bien reçu le message).
-    if (whatsapp.ok) await setEntryLinkChannel(admin, link, "whatsapp");
-    if (!whatsapp.ok && whatsapp.reason === "not_configured") {
-      console.info("[invite] TWILIO_CONTENT_CONNEXION absente — WhatsApp non envoyé");
-    }
-    if (whatsapp.ok || (!whatsapp.ok && whatsapp.reason === "rejected")) {
-      const { error: logError } = await admin.from("crm_whatsapp_messages").insert({
-        customer_id: linked.id,
-        direction: "outbound",
-        template_key: "connexion",
-        body: connexionMessage(greetingForWhatsapp(linked.first_name) || ""),
-        twilio_sid: whatsapp.ok ? whatsapp.sid : null,
-        status: whatsapp.ok ? "sent" : "failed",
-        error: whatsapp.ok ? null : whatsapp.detail || whatsapp.reason,
-      });
-      if (logError) console.error("[invite] journal WhatsApp:", logError.message);
-    }
   } catch (err) {
-    console.error("[invite] WhatsApp:", err instanceof Error ? err.message : "échec");
-    whatsapp = { ok: false, reason: "rejected" };
+    console.error("[invite] opt-in WhatsApp:", err instanceof Error ? err.message : "échec");
   }
   let delivered = false;
   try {
@@ -199,7 +180,6 @@ export async function inviteCustomer(
     customer: linked,
     delivered,
     link,
-    whatsapp,
-    notice: inviteWhatsappNotice(whatsapp),
+    notice: inviteNotice(delivered),
   };
 }

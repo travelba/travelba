@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
-import { createEntryLink, entryButtonSuffix, entryCodeFromLink } from "./entry-link";
+import { whatsappEntryLink } from "./whatsapp-entry";
 import { tripDocCoverage } from "./trip-documents";
 import { entryForFrenchPassport } from "./visa-fr";
 import { frenchPassportTrip } from "./visa-trip";
@@ -65,24 +65,9 @@ function quiet(err: unknown) {
 
 /** Lien court du message. Le code sert aussi de preuve d’accès à la couverture (`?e=CODE`). */
 async function entryButton(admin: Admin, email: string, path: string, showCover = false) {
-  const cleanEmail = email.trim().toLowerCase();
-  const generated = await admin.auth.admin.generateLink({
-    type: "magiclink",
-    email: cleanEmail,
-  });
-  const tokenHash = generated.data?.properties?.hashed_token;
-  if (generated.error || !tokenHash) return null;
-  const link = await createEntryLink(admin, siteConfig.url, {
-    tokenHash,
-    otpType: "magiclink",
-    nextPath: path,
-    email: cleanEmail,
-    showCover,
-    channel: "whatsapp",
-  });
-  const code = entryCodeFromLink(link);
-  if (!code) return null;
-  return { suffix: entryButtonSuffix(code), code };
+  const entry = await whatsappEntryLink(admin, siteConfig.url, { email, nextPath: path, showCover });
+  if (!entry) return null;
+  return { suffix: entry.suffix, code: entry.code };
 }
 
 async function loadBooking(admin: Admin, bookingId: string) {

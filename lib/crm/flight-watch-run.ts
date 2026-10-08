@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createEntryLink, entryButtonSuffix, entryCodeFromLink } from "./entry-link";
+import { whatsappEntryLink } from "./whatsapp-entry";
 import { countryForIata } from "./airports";
 import { countryName } from "./countries";
 import { ensureFlightNoticeSids, sendApprovedFlightSamples } from "./flight-notice-arm";
@@ -65,20 +65,11 @@ function quiet(error: unknown) {
 
 async function reservationSuffix(admin: Admin, email: string, reference: string) {
   if (!REFERENCE.test(reference)) return null;
-  const cleanEmail = email.trim().toLowerCase();
-  const generated = await admin.auth.admin.generateLink({ type: "magiclink", email: cleanEmail });
-  const tokenHash = generated.data?.properties?.hashed_token;
-  if (generated.error || !tokenHash) return null;
-  const link = await createEntryLink(admin, siteConfig.url, {
-    tokenHash,
-    otpType: "magiclink",
+  const entry = await whatsappEntryLink(admin, siteConfig.url, {
+    email,
     nextPath: `/mon-compte/reservations/${reference}`,
-    email: cleanEmail,
-    channel: "whatsapp",
   });
-  const code = entryCodeFromLink(link);
-  if (!code) return null;
-  return entryButtonSuffix(code);
+  return entry?.suffix ?? null;
 }
 
 async function takeBudget(admin: Admin, now: Date) {

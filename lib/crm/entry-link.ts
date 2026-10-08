@@ -10,6 +10,38 @@ export const ENTRY_CODE_LENGTH = 8;
 
 const OTP_TYPES = new Set(["magiclink", "invite", "recovery"]);
 
+/**
+ * Lien court sans jeton (`token_hash` null) : le client n’a pas encore choisi son mot de passe.
+ * L’aperçu est le même, le bouton mène à /connexion avec `next`. Aucune session n’est posée.
+ */
+export const ENTRY_CONNEXION_TYPE = "connexion";
+
+export function isConnexionEntry(link: { token_hash?: string | null; otp_type?: string | null }) {
+  return !link.token_hash || link.otp_type === ENTRY_CONNEXION_TYPE;
+}
+
+/** Page de connexion, avec le retour vers la page visée. */
+export function connexionDestination(nextPath: string | null | undefined) {
+  const next = safeNextPath(nextPath);
+  if (next === "/mon-compte") return "/connexion";
+  return `/connexion?next=${encodeURIComponent(next)}`;
+}
+
+export type EntryPasswordDecision = "allow" | "connexion";
+
+/**
+ * Un lien magique ouvert par un client sans mot de passe choisi ne pose pas de session :
+ * il mène à /connexion. L’invitation et la réinitialisation, elles, servent à le choisir.
+ */
+export function entryPasswordDecision(input: {
+  otpType: string | null | undefined;
+  staff: boolean;
+  hasPassword: boolean;
+}): EntryPasswordDecision {
+  if (input.staff || input.hasPassword) return "allow";
+  return safeOtpType(input.otpType) === "magiclink" ? "connexion" : "allow";
+}
+
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
@@ -72,6 +104,28 @@ export function entryReopenDecision(input: {
   if (input.now.getTime() > input.expiresAt.getTime()) return "refuse";
   if ((input.openCount ?? 0) >= MAX_ENTRY_OPENS) return "refuse";
   return input.tokenValid ? "open" : "regenerate";
+}
+
+export type EntryStaffDecision = "allow" | "busy" | "refuse";
+
+/** Lien d’un collègue (`staff-directory`) : il mène à /admin. Tout autre lien court est un lien client. */
+export function isColleagueEntryPath(nextPath: string | null | undefined) {
+  const path = safeNextPath(nextPath).split("?")[0];
+  return path === "/admin" || path.startsWith("/admin/");
+}
+
+/**
+ * Un lien client n’ouvre jamais un compte de l’agence.
+ * - la session de l’agent était déjà ouverte ici : on ne la ferme pas, le lien ne s’ouvre pas ;
+ * - le jeton vient de poser la session d’un agent : on la referme et on refuse.
+ */
+export function entryStaffDecision(input: {
+  staff: boolean;
+  nextPath: string | null | undefined;
+  hadSession: boolean;
+}): EntryStaffDecision {
+  if (!input.staff || isColleagueEntryPath(input.nextPath)) return "allow";
+  return input.hadSession ? "busy" : "refuse";
 }
 
 /** Un lien parti par WhatsApp et ouvert par un client vaut consentement aux messages du Concierge. */
@@ -473,7 +527,8 @@ export async function createEntryLink(
   supabase: SupabaseClient,
   origin: string,
   input: {
-    tokenHash: string;
+    /** Null : lien « connexion » sans session, vers /connexion (mot de passe pas encore choisi). */
+    tokenHash: string | null;
     otpType: string;
     nextPath: string;
     email?: string | null;
@@ -486,7 +541,8 @@ export async function createEntryLink(
     createdByStaffId?: string | null;
   }
 ) {
-  const otpType = safeOtpType(input.otpType);
+  const connexion = !input.tokenHash;
+  const otpType = connexion ? ENTRY_CONNEXION_TYPE : safeOtpType(input.otpType);
   const nextPath = safeNextPath(input.nextPath);
   const email = storedEntryEmail(input.email);
   const ttlMs =
@@ -496,14 +552,15 @@ export async function createEntryLink(
   const expiresAt = new Date(Date.now() + ttlMs).toISOString();
   const channel = isEntryChannel(input.channel) ? input.channel : null;
   // Un lien desk sans sa date, son canal ou son agent deviendrait un lien ordinaire de 30 jours : jamais.
-  const strict = channel === "desk";
+  // Un lien connexion sans jeton exige la migration `entry_links_connexion` : pas de repli.
+  const strict = channel === "desk" || connexion;
   let withExtras = true;
   let attempts = 0;
   while (attempts < 5) {
     const code = entryCode();
     const row: Record<string, unknown> = {
       code,
-      token_hash: input.tokenHash,
+      token_hash: input.tokenHash || null,
       otp_type: otpType,
       next_path: nextPath,
       email,

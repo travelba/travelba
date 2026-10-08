@@ -5,21 +5,26 @@ import { cookies } from "next/headers";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { AUTH_COOKIE_OPTIONS } from "@/lib/supabase/cookie-options";
 import { publicSupabaseEnv } from "@/lib/supabase/env";
-import { ensureCustomerForUser, ensureStaff } from "@/lib/crm/auth";
+import { ensureCustomerForUser } from "@/lib/crm/auth";
 import { recordCustomerLogin } from "@/lib/crm/customer-login";
-import { PASSWORD_SETUP_COOKIE, mustSetPassword } from "@/lib/crm/session";
+import { PASSWORD_SETUP_COOKIE, hasChosenPassword, mustSetPassword } from "@/lib/crm/session";
 import { deskOpenDecision, deskSetCookie } from "@/lib/crm/desk-mode";
-import { isStaffAccount } from "@/lib/crm/desk-open";
+import { isStaffAccount } from "@/lib/crm/client-account";
 import { stayHasPublishedCover, stayPlaceName } from "./concierge-notices";
 import {
+  connexionDestination,
   entryDestination,
   entryLinkExpiresAt,
   entryOptInFromLink,
+  entryPasswordDecision,
   entryPreviewHtml,
   entryReopenDecision,
+  entryStaffDecision,
+  isConnexionEntry,
   isEntryCode,
   isMissingColumnError,
   referenceFromNextPath,
+  safeNextPath,
   safeOtpType,
   stayPreviewCopy,
   storedEntryEmail,
@@ -92,8 +97,8 @@ export async function openEntry(origin: string, code: string) {
     ? await admin.from("crm_entry_links").select("*").eq("code", safe).maybeSingle()
     : { data: null };
   const link = data as LinkRow | null;
-  if (!link?.token_hash) return entryPreviewResponse(origin, safe, false);
-  if (link.channel === "desk") return openDeskEntry(origin, safe, link);
+  if (!link) return entryPreviewResponse(origin, safe, false);
+  if (link.channel === "desk" && link.token_hash) return openDeskEntry(origin, safe, link);
 
   const now = new Date();
   const expiresAt = entryLinkExpiresAt(link);
@@ -110,10 +115,27 @@ export async function openEntry(origin: string, code: string) {
   const gate = entryReopenDecision({ ...base, tokenValid: true });
   if (gate === "refuse") return entryPreviewResponse(origin, safe, false);
 
+  // Lien « connexion » : pas de jeton, le mot de passe n’était pas choisi à l’envoi.
+  // Une session déjà ouverte ici passe ; sinon la page de connexion, avec le retour.
+  if (isConnexionEntry(link)) {
+    if (!existing) {
+      response.headers.set("Location", new URL(connexionDestination(link.next_path), origin).toString());
+      response.headers.set("Cache-Control", "private, no-store");
+      return response;
+    }
+    const existingStaff = await isStaffAccount(admin, existing.id, existing);
+    if (entryStaffDecision({ staff: existingStaff, nextPath: link.next_path, hadSession: true }) === "busy") {
+      return entryBusyResponse();
+    }
+    response.headers.set("Location", new URL(safeNextPath(link.next_path), origin).toString());
+    response.headers.set("Cache-Control", "private, no-store");
+    return response;
+  }
+
   const otpType = safeOtpType(link.otp_type);
   let user: User | null = gate === "session" ? existing : null;
   if (!user) {
-    user = await verifyOn(supabase, link.token_hash, otpType);
+    user = await verifyOn(supabase, link.token_hash || "", otpType);
     if (!user && entryReopenDecision({ ...base, tokenValid: false }) === "regenerate") {
       const email = storedEntryEmail(link.email);
       const fresh = email ? await freshMagicHash(email) : null;
@@ -123,23 +145,46 @@ export async function openEntry(origin: string, code: string) {
     await markEntryOpened(safe, link, now);
   }
 
-  await ensureCustomerForUser(user);
-  const staff = await ensureStaff(user);
+  // Service role : la session vient d’être posée sur la réponse, pas sur la requête (RLS).
+  const staff = await isStaffAccount(admin, user.id, user);
+  const guard = entryStaffDecision({ staff, nextPath: link.next_path, hadSession: gate === "session" });
+  if (guard === "busy") return entryBusyResponse();
+  if (guard === "refuse") {
+    // Un lien client a ouvert un compte de l’agence : on referme la session tout juste posée.
+    console.error("[entry] lien client ouvert par un compte de l’agence : refusé");
+    await supabase.auth.signOut({ scope: "local" });
+    const refusal = await entryPreviewResponse(origin, safe, false);
+    for (const cookie of response.cookies.getAll()) refusal.cookies.set(cookie);
+    return refusal;
+  }
+  if (
+    gate !== "session" &&
+    entryPasswordDecision({ otpType, staff, hasPassword: hasChosenPassword(user) }) === "connexion"
+  ) {
+    // Lien magique d’avant la règle, ou mot de passe jamais choisi : pas de session, la page de connexion.
+    await supabase.auth.signOut({ scope: "local" });
+    const toLogin = NextResponse.redirect(new URL(connexionDestination(link.next_path), origin));
+    for (const cookie of response.cookies.getAll()) toLogin.cookies.set(cookie);
+    toLogin.headers.set("Cache-Control", "private, no-store");
+    return toLogin;
+  }
+
+  if (!staff) await ensureCustomerForUser(user);
   if (gate !== "session") {
     if (!staff) await recordCustomerLogin(user.id, "entry");
-    if (entryOptInFromLink({ channel: link.channel, staff: Boolean(staff) })) {
+    if (entryOptInFromLink({ channel: link.channel, staff })) {
       await stampWhatsappOptIn(user.id, now);
     }
   }
   const dest = entryDestination({
     nextPath: link.next_path,
     otpType,
-    staff: Boolean(staff),
+    staff,
     mustSetPassword: mustSetPassword(user),
   });
   response.headers.set("Location", new URL(dest, origin).toString());
   if (dest === "/connexion/mot-de-passe") {
-    await stampMustSetPassword(user.id);
+    if (!staff) await stampMustSetPassword(user.id);
     response.cookies.set(PASSWORD_SETUP_COOKIE, "1", {
       path: "/",
       sameSite: "lax",
@@ -181,13 +226,13 @@ async function openDeskEntry(origin: string, code: string, link: LinkRow) {
   if (decision === "refuse") return entryPreviewResponse(origin, code, false);
   if (decision === "other-session") return deskBusyResponse();
   if (decision === "same-session") return response;
+  const admin = createServiceClient();
 
   const user = await verifyOn(supabase, link.token_hash || "", "magiclink");
   if (!user) return entryPreviewResponse(origin, code, false);
   await markEntryOpened(code, link, now);
 
-  const admin = createServiceClient();
-  if (await isStaffAccount(admin, user.id)) {
+  if (await isStaffAccount(admin, user.id, user)) {
     // Ne doit pas arriver (refusé à la création) : on referme la session tout juste posée.
     await supabase.auth.signOut({ scope: "local" });
     const refusal = await entryPreviewResponse(origin, code, false);
@@ -210,6 +255,17 @@ async function openDeskEntry(origin: string, code: string, link: LinkRow) {
 
 /** Une session est déjà ouverte dans ce navigateur : le lien desk reste intact pour une fenêtre privée. */
 function deskBusyResponse() {
+  return busyResponse(
+    "Ouvrez-le dans une fenêtre privée ou sur le téléphone du client. Il reste valable 10 minutes, pour une seule ouverture."
+  );
+}
+
+/** La session de l’agence est ouverte ici : un lien client ne la remplace pas et ne s’ouvre pas. */
+function entryBusyResponse() {
+  return busyResponse("Ce lien est destiné au client. Ouvrez-le sur son téléphone ou dans une fenêtre privée.");
+}
+
+function busyResponse(hint: string) {
   const html = `<!doctype html>
 <html lang="fr">
 <head>
@@ -222,7 +278,7 @@ function deskBusyResponse() {
 <main style="max-width:420px;margin:12vh auto;padding:0 20px">
 <h1 style="font-size:20px;margin:0 0 12px">Une session est déjà ouverte ici</h1>
 <p style="font-size:15px;line-height:1.5;margin:0 0 12px">Ce navigateur est connecté à un autre compte. Pour ne pas le fermer, ce lien ne s’ouvre pas ici.</p>
-<p style="font-size:15px;line-height:1.5;margin:0">Ouvrez-le dans une fenêtre privée ou sur le téléphone du client. Il reste valable 10 minutes, pour une seule ouverture.</p>
+<p style="font-size:15px;line-height:1.5;margin:0">${hint}</p>
 </main>
 </body>
 </html>`;

@@ -8,6 +8,7 @@ import {
   syncBookingLedger,
   syncBookingTotalFromItems,
 } from "@/lib/crm/bookings";
+import { staffEmailBlock } from "@/lib/crm/client-account";
 import { customerEmailError, normalizeCustomerEmail, otherCustomerEmailBlock, CUSTOMER_EMAIL_COPY } from "@/lib/crm/customer-email";
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
@@ -531,6 +532,8 @@ export async function settleEmail(input: Record<string, unknown>, admin?: McpAdm
 export async function createClient(input: Record<string, unknown>, admin?: McpAdmin) {
   const draft = prepareClientCreate(input);
   const db = client(admin);
+  const staffBlock = await staffEmailBlock(db, draft.email);
+  if (staffBlock) throw new McpWriteError(staffBlock);
   const { data, error } = await db
     .from("crm_customers")
     .insert({
@@ -575,6 +578,10 @@ export async function updateClient(input: Record<string, unknown>, admin?: McpAd
       matches: (matches || []) as { id: string }[],
     });
     if (taken) throw new McpWriteError(taken);
+    if (holder.email !== email) {
+      const staffBlock = await staffEmailBlock(db, email);
+      if (staffBlock) throw new McpWriteError(staffBlock);
+    }
     if (holder.auth_user_id && holder.email !== email) {
       const { error: authError } = await db.auth.admin.updateUserById(holder.auth_user_id, {
         email,

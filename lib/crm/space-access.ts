@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/admin";
+import { clientLinkToken } from "./client-account";
 import { createEntryLink } from "./entry-link";
 import { pathAfterPassword } from "./session";
 import { connexionMessage, greetingForWhatsapp, sendConnexionWhatsapp } from "./whatsapp";
@@ -63,15 +64,16 @@ export async function sendSpaceAccessWhatsapp(input: {
   if (!input.repeat && (await connexionAlreadySent(input.customerId))) return "skipped";
 
   const admin = createServiceClient();
-  const generated = await admin.auth.admin.generateLink({
-    type: "magiclink",
-    email,
-  });
-  const tokenHash = generated.data?.properties?.hashed_token;
-  if (generated.error || !tokenHash) return "failed";
+  const generated = await clientLinkToken(admin, { type: SPACE_ACCESS_OTP, email });
+  if (!generated.ok) {
+    if (generated.reason === "staff") console.error("[acces] compte de l’agence : lien non envoyé");
+    // Pas de mot de passe choisi : le message « Enchanté » attend l’enregistrement du mot de passe.
+    if (generated.reason === "no_password") return "skipped";
+    return "failed";
+  }
 
   const link = await createEntryLink(admin, input.origin, {
-    tokenHash,
+    tokenHash: generated.hashedToken,
     otpType: SPACE_ACCESS_OTP,
     nextPath: spaceAccessNextPath(phone),
     email,

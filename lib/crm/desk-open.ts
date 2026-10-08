@@ -1,24 +1,12 @@
 import "server-only";
 
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { createEntryLink } from "./entry-link";
 import { DESK_LINK_TTL_MS, confirmedClientUser, linkCustomerAuth } from "./desk-mode";
-import { isStaffRole } from "./session";
+import { isStaffAccount } from "./client-account";
 
 /** Compte de l’agence (table crm_staff ou rôle Auth) : jamais ouvert en mode desk. */
-export async function isStaffAccount(admin: SupabaseClient, authUserId: string) {
-  const { data: staffRow, error } = await admin
-    .from("crm_staff")
-    .select("id")
-    .eq("auth_user_id", authUserId)
-    .maybeSingle();
-  // Lecture en échec : on refuse plutôt que d’ouvrir un compte peut-être de l’agence.
-  if (error || staffRow) return true;
-  const { data, error: userError } = await admin.auth.admin.getUserById(authUserId);
-  if (userError || !data.user) return true;
-  return isStaffRole(data.user);
-}
+export { isStaffAccount };
 
 export type DeskLinkResult =
   | { ok: true; url: string; expiresAt: string }
