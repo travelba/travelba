@@ -116,6 +116,18 @@ export function parseSpouseLine(value: string | null | undefined): {
  * Le nom de naissance reste le nom. Le nom d’épouse / d’usage est enregistré à part.
  * La MRZ ne contient que le nom de naissance : s’il diffère du nom imprimé, l’autre est le nom d’épouse.
  */
+function usageIsGivenName(usage: string, given: Set<string>) {
+  const fold = foldName(usage).replace(/\s+/g, "");
+  if (!fold) return false;
+  for (const name of given) {
+    const token = name.replace(/\s+/g, "");
+    if (!token) continue;
+    if (fold === token) return true;
+    if (token.length >= 4 && fold.startsWith(token) && fold.length === token.length + 1) return true;
+  }
+  return false;
+}
+
 export function spouseFamilyNames(input: {
   birthName?: string | null;
   printedName?: string | null;
@@ -136,6 +148,7 @@ export function spouseFamilyNames(input: {
   }
   const last = birth || printedPlain || tidyName(input.printedName);
   if (usage && last && lastNamesMatch(usage, last)) usage = null;
+  if (usage && usageIsGivenName(usage, givenFold)) usage = null;
   return { last_name: last, usage_name: usage };
 }
 

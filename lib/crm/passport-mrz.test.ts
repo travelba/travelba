@@ -85,6 +85,44 @@ test("the postal code next to the street wins over a glare digit", () => {
   assert.equal(postalOnly.address_line, null);
 });
 
+test("a street fragment is not rebuilt as a french passport number", () => {
+  const doc = "12AB34567";
+  const birth = "900402";
+  const exp = "280312";
+  const rows = identitiesFromPassportOcr(
+    [
+      "P<FRADUPONT<<ZOE<<<<<<<<<<<<<<<<<<<<<<<<<<<<",
+      `XX${birth}${icaoCheckDigit(birth)}F${exp}${icaoCheckDigit(exp)}<<<<`,
+      "48RU92309 LEVALLOIS",
+    ].join("\n"),
+    `Passeport n° ${doc}`
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].number, doc);
+});
+
+test("a printed french number and a broken date tail rebuild the MRZ line", () => {
+  const doc = "12AB34567";
+  const birth = "900402";
+  const exp = "280312";
+  const rows = identitiesFromPassportOcr(
+    [
+      "P<FRADUPONT<<ZOE<LINA<<<<<<<<<<<<<<<<<<<<",
+      `XX${birth}${icaoCheckDigit(birth)}F${exp}${icaoCheckDigit(exp)}<<<<`,
+    ].join("\n"),
+    `Passeport n° ${doc}\nPrénoms Zoé, Lina`
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].valid, true);
+  assert.equal(rows[0].number, doc);
+  assert.equal(rows[0].last_name, "Dupont");
+  assert.equal(rows[0].first_name, "Zoé Lina");
+  assert.equal(rows[0].birth_date, "1990-04-02");
+  assert.equal(rows[0].expires_on, "2028-03-12");
+  assert.equal(rows[0].sex, "F");
+  assert.equal(rows[0].nationality, "FR");
+});
+
 test("French MRZ fragments keep printed given-name order and accents", () => {
   const rows = identitiesFromPassportOcr(
     [
@@ -186,6 +224,18 @@ test("un passeport français relu par l’OCR garde le nom d’épouse, le lieu 
   assert.equal(rows[0].expires_on, "2028-11-19");
 });
 
+test("un prénom relu comme nom d’usage reste un prénom, et une lettre collée devant le nom saute", () => {
+  const visual = ["Nom", "DUPONT", "Prénoms", "Zoé", "P<FRAADUPONT<<ZOE"].join("\n");
+  const rows = identitiesFromPassportOcr(
+    ["P<FRAADUPONT<<ZOE<LINA<<<<<<<<<<<<<<<<<<<<", td3Line("12AB34567", "FRA", "900402", "F", "280312", "")].join("\n"),
+    visual
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].last_name, "Dupont");
+  assert.equal(rows[0].usage_name, null);
+  assert.equal(rows[0].first_name, "Zoé Lina");
+});
+
 test("un fragment du nom de naissance n’est pas un lieu", () => {
   const base = emptyIdentity();
   const fragment = enrichPassportVisual(
@@ -198,4 +248,76 @@ test("un fragment du nom de naissance n’est pas un lieu", () => {
     ""
   );
   assert.equal(city.place_of_birth, "LE BLANC-MESNIL");
+});
+
+test("a french number glued to a digit or a misread letter still rebuilds the line", () => {
+  const doc = "12AB34567";
+  const check = icaoCheckDigit(doc);
+  const birth = "900402";
+  const exp = "280312";
+  const tail = `${birth}${icaoCheckDigit(birth)}F${exp}${icaoCheckDigit(exp)}<`;
+  const glued = identitiesFromPassportOcr(
+    [`P<FRADUPONT<<ZOE<LINA<<<<<<<<<<<<<<<<<<<<`, `9${doc}${check}FRA${tail}`].join("\n"),
+    "Prénoms Zoé, Lina"
+  );
+  assert.equal(glued.length, 1);
+  assert.equal(glued[0].number, doc);
+  assert.equal(glued[0].first_name, "Zoé Lina");
+  const misread = identitiesFromPassportOcr(
+    [`P<FRADUPONT<<ZOE<LINA<<<<<<<<<<<<<<<<<<<<`, `124834567${check}FRA${tail}`].join("\n"),
+    "Prénoms Zoé, Lina"
+  );
+  assert.equal(misread.length, 1);
+  assert.equal(misread[0].number, doc);
+  const repeated = "12AA34567";
+  const repeatedCheck = icaoCheckDigit(repeated);
+  const missing = identitiesFromPassportOcr(
+    [`P<FRADUPONT<<ZOE<LINA<<<<<<<<<<<<<<<<<<<<`, `12A34567${repeatedCheck}FRA${tail}`].join("\n"),
+    "Prénoms Zoé, Lina"
+  );
+  assert.equal(missing.length, 1);
+  assert.equal(missing[0].number, repeated);
+});
+
+test("deux prénoms collés par un reflet se séparent, et une lettre devant le nom ne reste pas", () => {
+  const rows = identitiesFromPassportOcr(
+    [
+      "P<FRADUPONT<<ZOESLINAS<<<<<<<<<<<<<<<<<<<<",
+      "DUPONT<<ZOE<",
+      "ILINA<<<<<<<<",
+      "P<FRAFDUPONT<<ZOE<LINA<<<<<<<<<<<<<<<<<<<<",
+      "P<FRADUPONX<<ZOECLINA<ECECE<<<<<<<<<<<<<<<<",
+      td3Line("12AB34567", "FRA", "900402", "F", "280312", ""),
+    ].join("\n"),
+    "Nom\nDUPONT\nPrénoms\nZoé, Lina"
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].last_name, "Dupont");
+  assert.equal(rows[0].usage_name, null);
+  assert.equal(rows[0].first_name, "Zoé Lina");
+});
+
+test("le bruit entre le trait d’union et la ville ne coupe pas la préfecture, et la ville tronquée se complète", () => {
+  const visual = [
+    "Préfecture des Hauts-de- SSS XX Seine NANTERRE",
+    "18 RUE DES LILAS",
+    "92200 NEUILLY-SUR-SEI",
+    "SEINE",
+  ].join("\n");
+  assert.equal(readAuthority(visual), "Préfecture des Hauts-de-Seine Nanterre");
+  const domicile = readDomicile(visual);
+  assert.equal(domicile.city, "NEUILLY-SUR-SEINE");
+  assert.equal(domicile.postal_code, "92200");
+  assert.equal(
+    readAuthority("Préfecture de Seine-Saint-Denis Bobigny Era"),
+    "Préfecture de Seine-Saint-Denis Bobigny"
+  );
+  assert.equal(
+    readAuthority("Préfecture de Seine-Saint la Denis Bobigny"),
+    "Préfecture de Seine-Saint-Denis Bobigny"
+  );
+  assert.equal(
+    readPlaceOfBirth("04 07 1988 de délivrance\n0407 1988 AMIENS", "FR", "1988-07-04"),
+    "AMIENS"
+  );
 });
