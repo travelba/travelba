@@ -33,8 +33,14 @@ function isPdf(type: string, name: string) {
   return type === "application/pdf" || name.toLowerCase().endsWith(".pdf");
 }
 
-async function runTesseract(file: string, lang: string, whitelist: string | null, psm = "6") {
-  const args = [file, "stdout", "-l", lang, "--psm", psm];
+async function runTesseract(
+  file: string,
+  lang: string,
+  whitelist: string | null,
+  psm = "6",
+  extra: string[] = []
+) {
+  const args = [file, "stdout", "-l", lang, "--psm", psm, ...extra];
   if (whitelist) args.push("-c", `tessedit_char_whitelist=${whitelist}`);
   try {
     const { stdout } = await execFileAsync("tesseract", args, {
@@ -242,7 +248,7 @@ function bandRect(width: number, height: number, topFrac: number, bottomFrac: nu
   return { left: 0, top, width, height: Math.max(1, bottom - top) };
 }
 
-function chooseStreet(lines: Array<string | null>, corpus: string) {
+export function chooseStreet(lines: Array<string | null>, corpus: string) {
   const usable = lines.filter((line): line is string => Boolean(line));
   if (!usable.length) return null;
   const upper = corpus.toUpperCase();
@@ -250,7 +256,15 @@ function chooseStreet(lines: Array<string | null>, corpus: string) {
     const token = line.trim().split(/\s+/).at(-1)?.toUpperCase() || "";
     return token ? upper.split(token).length - 1 : 0;
   };
-  return [...usable].sort((a, b) => score(b) - score(a) || b.length - a.length)[0];
+  return [...usable].sort((a, b) => {
+    const diff = score(b) - score(a);
+    if (diff) return diff;
+    const aExtends = a.startsWith(b) && a.length > b.length;
+    const bExtends = b.startsWith(a) && b.length > a.length;
+    if (aExtends) return 1;
+    if (bExtends) return -1;
+    return b.length - a.length;
+  })[0];
 }
 
 function visualRect(width: number, height: number) {
@@ -364,6 +378,169 @@ async function ocrLandscapeName(image: Buffer, width: number, height: number, di
   return parts.join("\n");
 }
 
+export type MrzBand = { left: number; top: number; width: number; height: number; angle: number };
+
+function smoothScores(values: number[], radius: number) {
+  return values.map((_, index) => {
+    let sum = 0;
+    let count = 0;
+    for (let offset = -radius; offset <= radius; offset += 1) {
+      const value = values[index + offset];
+      if (value == null) continue;
+      sum += value;
+      count += 1;
+    }
+    return count ? sum / count : 0;
+  });
+}
+
+/**
+ * Deux lignes d’encre au-dessus du bord de page. Le bas du cadre est souvent la table :
+ * l’ombre du livret n’est pas la MRZ.
+ */
+export function locateMrzBand(gray: Uint8Array, width: number, height: number): MrzBand | null {
+  if (width < 80 || height < 80) return null;
+  const x0 = Math.round(width * 0.22);
+  const x1 = Math.round(width * 0.78);
+  const span = Math.max(1, x1 - x0);
+  const raw: number[] = [];
+  for (let y = 0; y < height; y += 1) {
+    let dark = 0;
+    const row = y * width;
+    for (let x = x0; x < x1; x += 1) if (gray[row + x] < 90) dark += 1;
+    raw.push(dark / span);
+  }
+  const score = smoothScores(raw, 2);
+  const yStart = Math.round(height * 0.5);
+  const yEnd = Math.round(height * 0.97);
+  const lines: { y: number; s: number }[] = [];
+  for (let y = yStart + 8; y < yEnd - 8; y += 1) {
+    if (score[y] < 0.08) continue;
+    if (score[y] < score[y - 1] || score[y] < score[y + 1]) continue;
+    let local = true;
+    for (let offset = 2; offset <= 8; offset += 1) {
+      if (score[y] < score[y - offset] || score[y] < score[y + offset]) local = false;
+    }
+    if (!local) continue;
+    const half = score[y] * 0.55;
+    let left = y;
+    let right = y;
+    while (left > yStart && score[left - 1] >= half) left -= 1;
+    while (right < yEnd - 1 && score[right + 1] >= half) right += 1;
+    const wide = right - left > height * 0.042 || score[y] > 0.58;
+    if (!wide) lines.push({ y, s: score[y] });
+  }
+  let best: { a: number; b: number; s: number } | null = null;
+  const minGap = height * 0.038;
+  const maxGap = height * 0.085;
+  for (let i = 0; i < lines.length; i += 1) {
+    for (let j = i + 1; j < lines.length; j += 1) {
+      const gap = lines[j].y - lines[i].y;
+      if (gap < minGap || gap > maxGap) continue;
+      const strength = Math.min(lines[i].s, lines[j].s);
+      if (!best || strength > best.s) best = { a: lines[i].y, b: lines[j].y, s: strength };
+    }
+  }
+  if (!best) return null;
+  const yAt = (from: number, to: number, guess: number) => {
+    let peak = 0;
+    let at = guess;
+    const start = Math.max(0, guess - 28);
+    const end = Math.min(height - 1, guess + 28);
+    for (let y = start; y <= end; y += 1) {
+      let dark = 0;
+      const row = y * width;
+      for (let x = from; x < to; x += 1) if (gray[row + x] < 90) dark += 1;
+      if (dark > peak) {
+        peak = dark;
+        at = y;
+      }
+    }
+    return at;
+  };
+  const yLeft = yAt(Math.round(width * 0.18), Math.round(width * 0.38), best.a);
+  const yRight = yAt(Math.round(width * 0.62), Math.round(width * 0.82), best.a);
+  const angle = (Math.atan2(yRight - yLeft, width * 0.44) * 180) / Math.PI;
+  const inkTop = Math.max(0, best.a - 16);
+  const inkBottom = Math.min(height - 1, best.b + 16);
+  const ink = new Array<boolean>(width).fill(false);
+  for (let x = 0; x < width; x += 1) {
+    let dark = 0;
+    for (let y = inkTop; y <= inkBottom; y += 1) if (gray[y * width + x] < 80) dark += 1;
+    if (dark <= 2) continue;
+    const from = Math.max(0, x - 8);
+    const to = Math.min(width - 1, x + 8);
+    for (let i = from; i <= to; i += 1) ink[i] = true;
+  }
+  let runStart = -1;
+  let bestRun = { start: 0, end: width - 1, length: 0 };
+  for (let x = 0; x <= width; x += 1) {
+    if (ink[x] && runStart < 0) runStart = x;
+    if (!ink[x] && runStart >= 0) {
+      const length = x - runStart;
+      if (length > bestRun.length) bestRun = { start: runStart, end: x - 1, length };
+      runStart = -1;
+    }
+  }
+  let left = bestRun.length > width * 0.35 ? bestRun.start : Math.round(width * 0.03);
+  let right = bestRun.length > width * 0.35 ? bestRun.end : Math.round(width * 0.97);
+  const padX = Math.round(width * 0.015);
+  left = Math.max(0, left - padX);
+  right = Math.min(width - 1, right + padX);
+  const top = Math.max(0, best.a - Math.round(height * 0.045));
+  const bottom = Math.min(height, best.b + Math.round(height * 0.05));
+  return {
+    left,
+    top,
+    width: Math.max(40, right - left + 1),
+    height: Math.max(40, bottom - top),
+    angle: Math.abs(angle) <= 8 ? angle : 0,
+  };
+}
+
+async function ocrLocatedMrz(image: Buffer, dir: string, angle: number) {
+  const sharp = await loadSharp();
+  const { data, info } = await sharp(image, { failOn: "none" })
+    .greyscale()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  if (!info.width || !info.height) return "";
+  const band = locateMrzBand(data, info.width, info.height);
+  if (!band) return "";
+  const rect = {
+    left: Math.min(band.left, info.width - 40),
+    top: Math.min(band.top, info.height - 40),
+    width: Math.min(band.width, info.width),
+    height: Math.min(band.height, info.height),
+  };
+  rect.width = Math.min(rect.width, info.width - rect.left);
+  rect.height = Math.min(rect.height, info.height - rect.top);
+  if (rect.width < 40 || rect.height < 40) return "";
+  let pipeline = sharp(image, { failOn: "none" }).extract(rect);
+  if (Math.abs(band.angle) >= 0.45) {
+    pipeline = pipeline.rotate(-band.angle, { background: "#ffffff" });
+  }
+  const file = join(dir, `mrz-loc-${angle}.png`);
+  await pipeline.greyscale().normalize().resize({ width: 2400 }).png().toFile(file);
+  const block = await runTesseract(file, "eng", MRZ_WHITELIST, "6", [
+    "--dpi",
+    "300",
+    "-c",
+    "load_system_dawg=0",
+    "-c",
+    "load_freq_dawg=0",
+  ]);
+  const sparse = await runTesseract(file, "eng", MRZ_WHITELIST, "11", [
+    "--dpi",
+    "300",
+    "-c",
+    "load_system_dawg=0",
+    "-c",
+    "load_freq_dawg=0",
+  ]);
+  return `${block}\n${sparse}`;
+}
+
 async function readOriented(
   image: Buffer,
   width: number,
@@ -371,6 +548,7 @@ async function readOriented(
   dir: string,
   angle: number
 ) {
+  const located = await ocrLocatedMrz(image, dir, angle);
   const mrzA = await ocrCrop(image, bottomRect(width, height, 0.16), dir, `mrz-${angle}-a`, "eng", MRZ_WHITELIST, "mrz");
   const mrzB = await ocrCrop(image, bottomRect(width, height, 0.12), dir, `mrz-${angle}-b`, "eng", MRZ_WHITELIST, "mrz");
   const headTop = Math.round(height * 0.9);
@@ -384,7 +562,7 @@ async function readOriented(
     "mrz",
     "7"
   );
-  return `${head}\n${mrzA}\n${mrzB}`;
+  return `${located}\n${head}\n${mrzA}\n${mrzB}`;
 }
 
 async function scanPage(page: PageImage, dateSheet: PageImage | null): Promise<ExtractedIdentity[]> {
@@ -486,7 +664,11 @@ async function scanPage(page: PageImage, dateSheet: PageImage | null): Promise<E
         const postalHit = readDomicile(postalText);
         for (const identity of found) {
           if (identity.issuing_country !== "FR") continue;
-          const voted = chooseStreet([readDomicile(streetText).address_line, readDomicile(streetWide).address_line], `${streetText}\n${streetWide}`);
+          const streetCorpus = `${streetText}\n${streetWide}`;
+          const voted = chooseStreet(
+            [identity.address_line, readDomicile(streetText).address_line, readDomicile(streetWide).address_line],
+            streetCorpus
+          );
           if (voted) identity.address_line = voted;
           if (postalHit.postal_code) {
             identity.postal_code = postalHit.postal_code;

@@ -1,10 +1,24 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import type { ExtractedIdentity } from "./identity";
-import { scanPassportBytes } from "./passport-scan";
+import { chooseStreet, locateMrzBand, scanPassportBytes } from "./passport-scan";
+
+test("a glare word after the street loses to the same street without it", () => {
+  const street = chooseStreet(
+    ["8 RUE DES OLIVIERS", "8 RUE DES OLIVIERS ABAES"],
+    "8 RUE DES OLIVIERS\n8 RUE DES OLIVIERS ABAES"
+  );
+  assert.equal(street, "8 RUE DES OLIVIERS");
+  const full = chooseStreet(
+    ["18 RUE DU BOIS", "18 RUE DU BOIS DE LA FONTAINE"],
+    "FONTAINE\nFONTAINE\n18 RUE DU BOIS DE LA FONTAINE"
+  );
+  assert.equal(full, "18 RUE DU BOIS DE LA FONTAINE");
+});
 
 /** Binaire système requis : le test est sauté explicitement, jamais en silence. */
 function tesseractInstalled() {
@@ -17,6 +31,41 @@ function tesseractInstalled() {
 }
 
 const tesseractAvailable = tesseractInstalled();
+
+test("a turned passport is read from the ink lines before the bottom strip", () => {
+  const source = readFileSync(new URL("./passport-scan.ts", import.meta.url), "utf8");
+  const body = source.slice(source.indexOf("async function readOriented"), source.indexOf("async function scanPage"));
+  const located = body.indexOf("ocrLocatedMrz");
+  const bottom = body.indexOf("bottomRect");
+  assert.ok(located >= 0);
+  assert.ok(bottom > located);
+  const vision = readFileSync(new URL("./ocr-document.ts", import.meta.url), "utf8");
+  const expand = vision.slice(vision.indexOf("async function expandPassportViews"), vision.indexOf("async function splitWidePages"));
+  assert.match(expand, /\[\.\.\.pages\]/);
+  assert.ok(expand.indexOf("[...pages]") < expand.indexOf("multiPassportCrops"));
+});
+
+test("the MRZ band sits above the page-edge shadow, not on the table", () => {
+  const width = 800;
+  const height = 600;
+  const gray = new Uint8Array(width * height);
+  gray.fill(210);
+  const stroke = (y: number, x0: number, x1: number, thick: number, value: number) => {
+    for (let row = y; row < y + thick && row < height; row += 1) {
+      for (let x = x0; x < x1; x += 1) gray[row * width + x] = value;
+    }
+  };
+  for (let x = 90; x < 700; x += 18) stroke(450, x, x + 8, 10, 25);
+  for (let x = 90; x < 700; x += 18) stroke(495, x, x + 8, 10, 25);
+  stroke(560, 40, 760, 36, 10);
+  const band = locateMrzBand(gray, width, height);
+  assert.ok(band);
+  assert.ok(band.top < 450);
+  assert.ok(band.top + band.height > 505);
+  assert.ok(band.top + band.height < 560);
+  assert.ok(band.left < 90);
+  assert.ok(band.left + band.width > 700);
+});
 
 /**
  * Vrais passeports scannés : jamais dans le dépôt, ni les PDF ni les valeurs attendues.

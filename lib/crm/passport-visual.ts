@@ -8,7 +8,7 @@ export function passportNumberHints(text: string) {
   const raw = text.toUpperCase();
   const found = new Set<string>();
   for (const match of raw.matchAll(/\d{4,8}/g)) found.add(match[0]);
-  for (const match of raw.matchAll(/\b\d{2}\s*[A-Z]{2}\s*\d{1,5}\b/g)) {
+  for (const match of raw.matchAll(/\b\d{2}\s*[A-Z]{2}\s*\d{1,5}(?!\s*[A-Z])/g)) {
     found.add(match[0].replace(/\s+/g, ""));
   }
   return [...found];
@@ -126,7 +126,10 @@ function cityBesideDate(flat: string, day: string, month: string, year: string) 
         continue;
       }
       if (word.length === 1) continue;
-      if (PLACE_NOISE.test(word)) break;
+      if (PLACE_NOISE.test(word) || /DLIVR|DELIV|EXPIR|NAISS|DOMICIL|AUTORIT|ISSUE|RESIDE|PREFECT/.test(word)) {
+        if (city.length) break;
+        continue;
+      }
       const letters = word.replace(/-/g, "");
       if (!CITY_ARTICLE.test(word) && letters.length < 4) {
         if (!city.length) continue;
@@ -139,7 +142,9 @@ function cityBesideDate(flat: string, day: string, month: string, year: string) 
     if (joined.replace(/[^A-Z]/g, "").length >= 4) found.push(joined);
   }
   if (!found.length) return null;
-  return found.sort((a, b) => b.replace(/[^A-Z]/g, "").length - a.replace(/[^A-Z]/g, "").length)[0];
+  const upper = flat.toUpperCase();
+  const seen = (city: string) => upper.split(city).length - 1;
+  return found.sort((a, b) => seen(b) - seen(a) || b.length - a.length)[0];
 }
 
 export function readAuthority(text: string) {
@@ -197,6 +202,7 @@ function authorityScore(tokens: string[], flat: string) {
 function authorityTokens(slice: string) {
   const kept: string[] = [];
   let pendingGlue = false;
+  let skipped = 0;
   for (const raw of slice.split(/\s+/)) {
     let token = raw.replace(/[^\p{L}-]/gu, "").replace(/-+/g, "-");
     token = token.replace(/selne/gi, "Seine").replace(/denls/gi, "Denis");
@@ -206,6 +212,7 @@ function authorityTokens(slice: string) {
     token = token.replace(/^-+|-+$/g, "");
     const continues = dangling || shortTail;
     if (!token) continue;
+    const particle = /^(?:de|des|du|la|le|les|d)$/i.test(token);
     if (
       kept.length &&
       (/^(?:date|domicile|france)$/i.test(token) ||
@@ -213,7 +220,24 @@ function authorityTokens(slice: string) {
     ) {
       break;
     }
-    if (token.length <= 2 && !/^(?:de|des|du|la|le|les|d)$/i.test(token)) continue;
+    if (pendingGlue && kept.length && ((token.length <= 3 && !particle) || !authorityWord(token))) {
+      skipped += 1;
+      if (skipped > 8) break;
+      continue;
+    }
+    skipped = 0;
+    if (/^(?:la|le|les)$/i.test(token) && !pendingGlue) continue;
+    if (
+      kept.length &&
+      /saint$/i.test(kept[kept.length - 1] || "") &&
+      /^[A-Za-z]{4,}$/.test(token) &&
+      !pendingGlue
+    ) {
+      kept[kept.length - 1] = `${kept[kept.length - 1]}-${token}`;
+      continue;
+    }
+    if (token.length <= 2 && !particle) continue;
+    if (kept.length >= 3 && token.length <= 3 && !particle) break;
     if (!authorityWord(token)) break;
     if (pendingGlue && kept.length && token.length <= 3) continue;
     if (authorityComplete(kept)) break;
@@ -232,7 +256,8 @@ function titleAuthority(body: string) {
     .replace(/(^|[\s-])(\p{L})/gu, (chunk) => chunk.toLocaleUpperCase("fr"))
     .replace(/\b(De|Des|Du|La|Le|Les|D)\b/g, (word) =>
       small.has(word.toLocaleLowerCase("fr")) ? word.toLocaleLowerCase("fr") : word
-    );
+    )
+    .replace(/\bPrefecture\b/g, "Préfecture");
 }
 
 function collectDates(text: string) {
@@ -333,16 +358,34 @@ export function readDomicile(text: string) {
   const pool = herz.length ? herz : postals;
   const streetEnd = (street.index ?? 0) + street[1].length;
   const afterStreet = pool.filter((item) => (item.index ?? 0) >= streetEnd - 2);
-  const postal = [...(afterStreet.length ? afterStreet : pool)].sort(
-    (a, b) => Math.abs((a.index ?? 0) - streetEnd) - Math.abs((b.index ?? 0) - streetEnd)
-  )[0];
+  const postal = [...(afterStreet.length ? afterStreet : pool)].sort((a, b) => {
+    const left = Math.abs((a.index ?? 0) - streetEnd);
+    const right = Math.abs((b.index ?? 0) - streetEnd);
+    if (a[1] === b[1] && Math.abs(left - right) < 24) return b[2].length - a[2].length;
+    return left - right;
+  })[0];
   const country = /\bISRA[EË]L\b/i.test(flat) ? "IL" : postal && postal[1].length === 5 ? "FR" : null;
   return {
     address_line: trimStreet(street[1]),
     postal_code: postal?.[1] || null,
-    city: postal?.[2].toUpperCase() || null,
+    city: completeCity(postal?.[2].toUpperCase() || null, flat),
     country,
   };
+}
+
+/** « LEVALLOIS-PERR » + « PERRET » ailleurs sur la page → la ville entière. */
+function completeCity(city: string | null, flat: string) {
+  if (!city || !city.includes("-")) return city;
+  const parts = city.split("-");
+  const last = parts[parts.length - 1] || "";
+  if (last.length < 3 || last.length > 8) return city;
+  const matches = [...flat.toUpperCase().matchAll(new RegExp(`\\b${last}[A-Z]{1,4}\\b`, "g"))].map((match) => match[0]);
+  if (!matches.length) return city;
+  const counts = new Map<string, number>();
+  for (const match of matches) counts.set(match, (counts.get(match) || 0) + 1);
+  const best = [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)[0][0];
+  parts[parts.length - 1] = best;
+  return parts.join("-");
 }
 
 function titleSurname(word: string) {
@@ -354,6 +397,33 @@ function titleSurname(word: string) {
 function bareSurname(word: string) {
   const stripped = word.match(/^(?:P+|[A-Z]{1,2})?(?:FRA|ISR)([A-Z]{4,})$/);
   return stripped ? stripped[1] : word.replace(/^P+/, "");
+}
+
+/** Une ou deux lettres collées devant le nom : on les retire si le nom est aussi lu sans elles. */
+function ungluedSurname(last: string | null, visual: string) {
+  if (!last) return null;
+  let fold = last
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z]/g, "");
+  const flat = visual
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  const words = flat.match(/[A-Z]{4,}/g) || [];
+  let peeled = false;
+  for (let step = 0; step < 3 && fold.length >= 6; step += 1) {
+    const tail = fold.slice(1);
+    const hit = words.some((word) => {
+      const bare = word.replace(/^(?:P+)?(?:FRA|ISR)/, "");
+      return word === tail || bare === tail;
+    });
+    if (!hit) break;
+    fold = tail;
+    peeled = true;
+  }
+  return peeled ? titleSurname(fold) : last;
 }
 
 function printedSurname(mrzLast: string | null, visual: string) {
@@ -371,7 +441,10 @@ function printedSurname(mrzLast: string | null, visual: string) {
     .sort((a, b) => b.length - a.length)[0];
   if (chevron) return titleSurname(chevron);
   const words = visual.toUpperCase().match(/[A-Z]{4,12}/g) || [];
-  const one = words.find((word) => word !== fold && word.endsWith(fold) && word.length - fold.length === 1);
+  const one =
+    fold.length <= 5
+      ? words.find((word) => word !== fold && word.endsWith(fold) && word.length - fold.length === 1)
+      : undefined;
   if (!one) return mrzLast;
   return titleSurname(one);
 }
@@ -436,9 +509,9 @@ export function enrichPassportVisual(identity: ExtractedIdentity, visual: string
   const given = readPrintedGivenNames(visual);
   const usage = identity.usage_name || readUsageName(visual, identity.last_name, given || identity.first_name);
   const names = spouseFamilyNames({
-    birthName: printedSurname(identity.last_name, visual),
+    birthName: printedSurname(ungluedSurname(identity.last_name, visual), visual),
     usageName: usage,
-    givenNames: given || identity.first_name,
+    givenNames: [identity.first_name, given].filter(Boolean).join(" "),
   });
   const address = readDomicile(visual);
   const place = identity.place_of_birth || readPlaceOfBirth(visual, identity.issuing_country, identity.birth_date);

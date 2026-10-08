@@ -1,6 +1,6 @@
-import type { ExtractedIdentity } from "./identity";
+import { completeGivenNames, type ExtractedIdentity } from "./identity";
 import { identityFromMrzLines } from "./mrz-parse";
-import { enrichPassportVisual, passportNumberHints } from "./passport-visual";
+import { enrichPassportVisual, passportNumberHints, readPrintedGivenNames } from "./passport-visual";
 
 const WEIGHTS = [7, 3, 1];
 
@@ -201,16 +201,95 @@ function preferToken(options: string[]) {
   return pool.reduce((best, item) => {
     const itemExtends = item.startsWith(best) && item.length > best.length;
     const bestExtends = best.startsWith(item) && best.length > item.length;
-    if (itemExtends) return item;
-    if (bestExtends) return best;
+    if (itemExtends || bestExtends) {
+      const short = itemExtends ? best : item;
+      const long = itemExtends ? item : best;
+      return (counts.get(long) || 0) >= (counts.get(short) || 0) ? long : short;
+    }
     if (Math.abs(item.length - best.length) > 2) return best.length < item.length ? best : item;
     return (counts.get(item) || 0) > (counts.get(best) || 0) ? item : best;
   });
 }
 
-function mergeNameBodies(bodies: NameBody[]): NameBody[] {
+function attestedNameStems(corpus: string) {
+  const upper = corpus.toUpperCase();
+  const stems = new Set<string>();
+  for (const match of upper.matchAll(/<([A-Z]{3,12})</g)) stems.add(match[1]);
+  for (const match of upper.matchAll(/(?:^|[^A-Z])([A-Z]{4,12})<{2,}/g)) {
+    stems.add(match[1]);
+    const glare = match[1].match(/^[CGKISX]([A-Z]{4,11})$/);
+    if (glare) stems.add(glare[1]);
+  }
+  return stems;
+}
+
+/** Un `<` lu S, C, K ou X colle deux prénoms. On les sépare si les deux sont déjà lus. */
+function splitGluedGiven(token: string, stems: Set<string>): [string, string] | null {
+  if (token.length < 7) return null;
+  const heads = [...stems]
+    .filter((stem) => stem.length >= 3 && stem.length <= token.length - 5 && token.startsWith(stem))
+    .sort((a, b) => b.length - a.length);
+  for (const head of heads) {
+    let rest = token.slice(head.length);
+    if (!/^[CGKSX]/.test(rest)) continue;
+    rest = rest.slice(1);
+    if (rest.length < 4) continue;
+    let best: string | null = null;
+    let bestDist = 2;
+    for (const stem of stems) {
+      if (stem === token || stem.length < 4 || Math.abs(stem.length - rest.length) > 1) continue;
+      const dist = editDistance(stem, rest);
+      if (dist < bestDist) {
+        best = stem;
+        bestDist = dist;
+      }
+    }
+    if (best) return [head, best];
+  }
+  return null;
+}
+
+function expandGiven(given: string[], stems: Set<string>) {
+  return given.flatMap((token) => splitGluedGiven(token, stems) || [token]);
+}
+
+function repairGluedGiven(name: string | null, corpus: string) {
+  if (!name) return name;
+  const stems = attestedNameStems(corpus);
+  let changed = false;
+  const out: string[] = [];
+  for (const token of name.split(/\s+/)) {
+    const fold = token
+      .toUpperCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^A-Z]/g, "");
+    const split = splitGluedGiven(fold, stems);
+    if (!split) {
+      out.push(token);
+      continue;
+    }
+    changed = true;
+    for (const part of split) out.push(part[0] + part.slice(1).toLowerCase());
+  }
+  return changed ? out.join(" ") : name;
+}
+
+function chooseSurname(group: NameBody[]) {
+  const counts = new Map<string, number>();
+  for (const body of group) counts.set(body.surname, (counts.get(body.surname) || 0) + 1);
+  return [...counts.entries()].sort((a, b) => {
+    if (b[1] !== a[1]) return b[1] - a[1];
+    if (surnamesCompatible(a[0], b[0]) && a[0].length !== b[0].length) return b[0].length - a[0].length;
+    return a[0].localeCompare(b[0]);
+  })[0][0];
+}
+
+function mergeNameBodies(bodies: NameBody[], corpus: string): NameBody[] {
+  const stems = attestedNameStems(corpus);
+  const prepared = bodies.map((body) => ({ ...body, given: expandGiven(body.given, stems) }));
   const groups: NameBody[][] = [];
-  for (const body of bodies) {
+  for (const body of prepared) {
     const group = groups.find((members) =>
       members.some(
         (member) =>
@@ -223,12 +302,11 @@ function mergeNameBodies(bodies: NameBody[]): NameBody[] {
   }
   const merged: NameBody[] = [];
   for (const group of groups) {
-    const surname = group.map((body) => body.surname).reduce((best, candidate) => {
-      if (surnamesCompatible(best, candidate) && candidate.length > best.length) return candidate;
-      return best;
-    });
+    const surname = chooseSurname(group);
     if (surname.length < 4) continue;
-    const width = Math.max(...group.map((body) => body.given.length));
+    const lengths = group.map((body) => body.given.length);
+    const supported = lengths.filter((n) => lengths.filter((c) => c >= n).length * 2 >= group.length);
+    const width = Math.max(...supported, 1);
     const given: string[] = [];
     for (let i = 0; i < width; i += 1) {
       const options = group.map((body) => body.given[i]).filter((token): token is string => Boolean(token));
@@ -244,7 +322,7 @@ function lineFromBody(body: NameBody, state: "FRA" | "ISR") {
   return fit44(`${prefix}${body.surname}<<${body.given.join("<")}`);
 }
 
-function nameLineCandidates(lines: string[]) {
+function nameLineCandidates(lines: string[], corpus = "") {
   const out = new Set<string>();
   const push = (raw: string | null | undefined) => {
     if (!raw) return;
@@ -268,7 +346,7 @@ function nameLineCandidates(lines: string[]) {
     }
   };
   for (const line of lines) push(line);
-  for (const body of mergeNameBodies(lines.flatMap((line) => bodiesInLine(line)))) {
+  for (const body of mergeNameBodies(lines.flatMap((line) => bodiesInLine(line)), corpus)) {
     out.add(lineFromBody(body, "FRA"));
     out.add(lineFromBody(body, "ISR"));
   }
@@ -545,6 +623,10 @@ function pairLines(names: string[], numbers: string[], visualText: string, corpu
       if (last.length < 4) continue;
       if (corpus && !surnameAttested(last, corpus)) continue;
       const enriched = enrichPassportVisual(identity, corpus);
+      const repaired = repairGluedGiven(enriched.first_name, corpus);
+      if (repaired !== enriched.first_name) {
+        enriched.first_name = completeGivenNames(repaired, readPrintedGivenNames(corpus)) || repaired;
+      }
       const score = pairScore(enriched, corpus) + (enriched.place_of_birth ? 1 : 0);
       const prev = found.get(identity.number);
       const fold = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -610,12 +692,168 @@ function preferCollidingDocNumber(rows: ExtractedIdentity[], corpus: string) {
   });
 }
 
+function calendarDate(value: string) {
+  if (!/^\d{6}$/.test(value)) return false;
+  const month = Number(value.slice(2, 4));
+  const day = Number(value.slice(4, 6));
+  return month >= 1 && month <= 12 && day >= 1 && day <= 31;
+}
+
+function fixDateChars(value: string) {
+  return value.replace(/[A-Z<]/g, (char) => DIGIT_FIX[char] || char);
+}
+
+/** Naissance + sexe + expiration, même si FRA et les `<` de remplissage ont sauté. */
+function dateTails(text: string): Array<Pick<MrzTail, "birth" | "bCheck" | "sex" | "exp" | "eCheck">> {
+  const source = text.toUpperCase().replace(/[^A-Z0-9<]/g, "");
+  const found = new Map<string, Pick<MrzTail, "birth" | "bCheck" | "sex" | "exp" | "eCheck">>();
+  for (let i = 0; i + 15 <= source.length; i += 1) {
+    const birth = fixDateChars(source.slice(i, i + 6));
+    const bCheck = fixDateChars(source[i + 6] || "");
+    let sex = source[i + 7] || "";
+    if (sex === "N") sex = "M";
+    const exp = fixDateChars(source.slice(i + 8, i + 14));
+    const eCheck = fixDateChars(source[i + 14] || "");
+    if (!/[MF<]/.test(sex)) continue;
+    if (!calendarDate(birth) || icaoCheckDigit(birth) !== bCheck) continue;
+    if (!calendarDate(exp) || icaoCheckDigit(exp) !== eCheck) continue;
+    found.set(`${birth}${sex}${exp}`, { birth, bCheck, sex, exp, eCheck });
+  }
+  return [...found.values()];
+}
+
+const LETTER_OCR: Record<string, string> = {
+  "0": "CODQ",
+  "1": "IL",
+  "2": "Z",
+  "4": "A",
+  "5": "S",
+  "6": "GC",
+  "8": "B",
+};
+
+function letterChoices(char: string) {
+  if (/[A-Z]/.test(char)) return [char];
+  return (LETTER_OCR[char] || "").split("");
+}
+
+function pushFrenchDoc(found: Map<string, number>, doc: string, edits: number) {
+  const prev = found.get(doc);
+  if (prev == null || edits < prev) found.set(doc, edits);
+}
+
+/** Une lettre a sauté juste avant FRA. On ne garde l’insertion que si un seul numéro tient. */
+function insertFrenchDoc(chunk: string, found: Map<string, number>) {
+  if (chunk.length !== 9) return;
+  const body = chunk.slice(0, 8);
+  const readCheck = chunk[8] || "";
+  const accepted: string[] = [];
+  for (const slot of [2, 3]) {
+    for (const letter of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
+      const doc = `${body.slice(0, slot)}${letter}${body.slice(slot)}`;
+      if (!/^\d{2}[A-Z]{2}\d{5}$/.test(doc)) continue;
+      if (icaoCheckDigit(doc) !== readCheck) continue;
+      accepted.push(doc);
+    }
+  }
+  const unique = [...new Set(accepted)];
+  if (unique.length === 1) {
+    pushFrenchDoc(found, unique[0], 2);
+    return;
+  }
+  const doubled = unique.filter((doc) => doc[2] === doc[3]);
+  if (doubled.length === 1) pushFrenchDoc(found, doubled[0], 2);
+}
+
+/** Numéro français (2 chiffres, 2 lettres, 5 chiffres), même collé à son contrôle ou à FRA. */
+function frenchDocNumbers(text: string) {
+  const found = new Map<string, number>();
+  const pattern = /(\d{2})([A-Z0-9]{2})(\d{5})(\d)?(?=$|[^A-Z0-9]|FRA|<)/g;
+  for (const line of text.toUpperCase().split(/\r?\n/)) {
+    const onTitle = /PASSE?PORT/.test(line);
+    for (const match of line.matchAll(pattern)) {
+      const index = match.index ?? 0;
+      const before = index > 0 ? line[index - 1] || "" : "";
+      const after = line.slice(index + match[0].length).replace(/^[^A-Z0-9<]+/, "");
+      const besideMrz = after.startsWith("FRA") || after.startsWith("<");
+      const slots = [letterChoices(match[2][0] || ""), letterChoices(match[2][1] || "")];
+      if (slots.some((slot) => !slot.length)) continue;
+      const lettersAreClean = /^[A-Z]{2}$/.test(match[2]);
+      for (const left of slots[0]) {
+        for (const right of slots[1]) {
+          const doc = `${match[1]}${left}${right}${match[3]}`;
+          if (!/^\d{2}[A-Z]{2}\d{5}$/.test(doc)) continue;
+          const check = icaoCheckDigit(doc);
+          if (!check) continue;
+          const checkMatches = match[4] === check;
+          if (match[4] && !checkMatches) continue;
+          if (!lettersAreClean && !checkMatches) continue;
+          if (checkMatches && !besideMrz && after.length > 0) continue;
+          if (!checkMatches && !besideMrz && !onTitle) continue;
+          if (before && /[A-Z0-9]/.test(before) && !(checkMatches && besideMrz)) continue;
+          pushFrenchDoc(found, doc, lettersAreClean ? 0 : 1);
+        }
+      }
+    }
+    if ([...found.values()].some((edits) => edits === 0)) continue;
+    for (const match of line.matchAll(/([A-Z0-9]{9})(?=FRA)/g)) insertFrenchDoc(match[1], found);
+  }
+  const ranked = [...found.entries()].sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]));
+  const bestEdit = ranked[0]?.[1] ?? 9;
+  return ranked.filter((item) => item[1] === bestEdit).map((item) => item[0]).slice(0, 4);
+}
+
+function frenchLine2(
+  doc: string,
+  tail: Pick<MrzTail, "birth" | "bCheck" | "sex" | "exp" | "eCheck">
+) {
+  const personal = "<".repeat(14);
+  const pCheck = icaoCheckDigit(personal);
+  if (!pCheck) return null;
+  const line43 =
+    doc +
+    (icaoCheckDigit(doc) || "") +
+    "FRA" +
+    tail.birth +
+    tail.bCheck +
+    tail.sex +
+    tail.exp +
+    tail.eCheck +
+    personal +
+    pCheck;
+  if (line43.length !== 43) return null;
+  const compositeSource =
+    line43.slice(0, 10) + line43.slice(13, 20) + line43.slice(21, 28) + line43.slice(28, 43);
+  const composite = icaoCheckDigit(compositeSource);
+  if (!composite) return null;
+  return line43 + composite;
+}
+
+function assembledFrenchLines(mrzText: string, corpus: string) {
+  const tails = dateTails(mrzText);
+  const docs = frenchDocNumbers(corpus);
+  const lines = new Set<string>();
+  for (const doc of docs) {
+    for (const tail of tails) {
+      const line = frenchLine2(doc, tail);
+      if (line) lines.add(line);
+    }
+  }
+  return [...lines];
+}
+
 export function identitiesFromPassportOcr(mrzText: string, visualText: string): ExtractedIdentity[] {
   const corpus = `${mrzText}\n${visualText}`;
   const lines = mrzLines(corpus);
   const hints = passportNumberHints(corpus);
-  const names = nameLineCandidates(lines);
+  const names = nameLineCandidates(lines, corpus);
   const direct = pairLines(names, directNumberLines(lines), visualText, corpus);
-  const rows = direct.length ? direct : pairLines(names, recoveredNumberLines(lines, hints), visualText, corpus);
+  const recoveredLines = recoveredNumberLines(lines, hints);
+  const recovered = direct.length
+    ? direct
+    : pairLines(names, recoveredLines, visualText, corpus);
+  const rows = recovered.length
+    ? recovered
+    : pairLines(names, assembledFrenchLines(mrzText, corpus), visualText, corpus);
   return preferCollidingDocNumber(rows, corpus);
 }
