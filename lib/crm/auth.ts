@@ -4,7 +4,7 @@ import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmCustomer, CrmStaff } from "@/lib/crm/types";
-import { STAFF_COPY } from "@/lib/crm/staff-team";
+import { jwtStaffRole, STAFF_COPY } from "@/lib/crm/staff-team";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
 import { issuesSummary, type BookingIssue } from "@/lib/crm/booking-issues";
 
@@ -48,6 +48,32 @@ export async function requireAdmin(): Promise<
 }
 
 export async function requireStaff(): Promise<
+  | {
+      user: User;
+      supabase: Awaited<ReturnType<typeof createClient>>;
+      staff: CrmStaff;
+    }
+  | NextResponse
+> {
+  const opened = await openStaffSession();
+  if (opened instanceof NextResponse) return opened;
+  if (opened.staff.role === "partner") return jsonError("Accès réservé à l’agence", 403);
+  return opened;
+}
+
+/** Little Emperors : l’agence, et le partenaire pour la lecture et l’actualisation. */
+export async function requireLittleEmperorsActor(): Promise<
+  | {
+      user: User;
+      supabase: Awaited<ReturnType<typeof createClient>>;
+      staff: CrmStaff;
+    }
+  | NextResponse
+> {
+  return openStaffSession();
+}
+
+async function openStaffSession(): Promise<
   | {
       user: User;
       supabase: Awaited<ReturnType<typeof createClient>>;
@@ -122,7 +148,7 @@ export async function ensureStaff(user: User): Promise<CrmStaff | null> {
 }
 
 async function stampStaffRole(user: User, role: CrmStaff["role"]) {
-  const crmRole = role === "agent" ? "agent" : "admin";
+  const crmRole = jwtStaffRole(role);
   if (user.app_metadata?.crm_role === crmRole) return;
   try {
     const admin = createServiceClient();
@@ -200,6 +226,7 @@ export async function requireStaffPage(): Promise<{
 export async function requireAdminPage() {
   const { redirect } = await import("next/navigation");
   const ctx = await requireStaffPage();
+  if (ctx.staff.role === "partner") redirect("/admin/little-emperors");
   if (ctx.staff.role !== "admin") redirect("/admin");
   return ctx;
 }

@@ -12,6 +12,7 @@ import {
   colleagueInviteBlock,
   colleagueNameError,
   normalizeColleagueEmail,
+  jwtStaffRole,
   parseStaffRole,
   removalAuthPlan,
   removalBlockReason,
@@ -130,8 +131,10 @@ export async function listColleagues(): Promise<Colleague[]> {
       } satisfies Colleague;
     })
   );
+  const rank: Record<string, number> = { admin: 0, agent: 1, partner: 2 };
   colleagues.sort((a, b) => {
-    if (a.role !== b.role) return a.role === "admin" ? -1 : 1;
+    const byRole = (rank[a.role] ?? 9) - (rank[b.role] ?? 9);
+    if (byRole !== 0) return byRole;
     return a.fullName.localeCompare(b.fullName, "fr", { sensitivity: "base" });
   });
   return colleagues;
@@ -229,7 +232,7 @@ export async function addColleague(
     await writeAppMetadata(
       admin,
       authUser.id,
-      { ...previousMeta, must_set_password: true, crm_role: role },
+      { ...previousMeta, must_set_password: true, crm_role: jwtStaffRole(role) },
       { ...previousUserMeta, full_name: fullName }
     );
   } catch (err) {
@@ -242,7 +245,7 @@ export async function addColleague(
     link = await createEntryLink(admin, origin, {
       tokenHash: hashedToken,
       otpType: linkType,
-      nextPath: "/admin",
+      nextPath: role === "partner" ? "/admin/little-emperors" : "/admin",
       email,
       channel: "email",
     });
@@ -291,7 +294,7 @@ export async function setColleagueRole(staffId: string, nextRole: StaffRole) {
   if (error) throw new StaffTeamError(STAFF_COPY.roleSave, 502);
   if (!updated) throw new StaffTeamError(STAFF_COPY.changed, 409);
 
-  if (role === "agent") {
+  if (role !== "admin") {
     const { count } = await admin
       .from("crm_staff")
       .select("id", { count: "exact", head: true })
@@ -305,7 +308,7 @@ export async function setColleagueRole(staffId: string, nextRole: StaffRole) {
   const { data: fresh } = await admin.auth.admin.getUserById(target.auth_user_id);
   const meta = { ...(fresh.user?.app_metadata || {}) };
   try {
-    await writeAppMetadata(admin, target.auth_user_id, { ...meta, crm_role: role });
+    await writeAppMetadata(admin, target.auth_user_id, { ...meta, crm_role: jwtStaffRole(role) });
   } catch (err) {
     await admin.from("crm_staff").update({ role: target.role }).eq("id", staffId);
     throw err;

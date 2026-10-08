@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { BookingIssuesError } from "@/lib/crm/booking-issues";
-import { dbError, jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
-import { LittleEmperorsError, requestLittleEmperorsSso } from "@/lib/crm/little-emperors";
+import { dbError, jsonError, jsonIssues, requireLittleEmperorsActor } from "@/lib/crm/auth";
+import { LittleEmperorsError, littleEmperorsActionAllowed } from "@/lib/crm/little-emperors";
 import {
   attachLittleEmperorsBooking,
   cancelLittleEmperorsFromCrm,
@@ -19,21 +19,17 @@ function failure(err: unknown) {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireStaff();
+  const auth = await requireLittleEmperorsActor();
   if (auth instanceof NextResponse) return auth;
   const body = await request.json().catch(() => ({}));
   const action = String(body?.action || "");
+  if (!littleEmperorsActionAllowed(auth.staff.role, action)) {
+    return jsonError("Accès réservé à l’agence", 403);
+  }
   try {
     if (action === "sync") {
       const result = await syncLittleEmperorsBookings();
       if (!result.ok) return jsonError(result.message || "Lecture impossible.", result.status || 502);
-      return NextResponse.json(result);
-    }
-    if (action === "init") {
-      const result = await requestLittleEmperorsSso({
-        email: String(body.email || ""),
-        name: String(body.name || ""),
-      });
       return NextResponse.json(result);
     }
     if (action === "attach") {

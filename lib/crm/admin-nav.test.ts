@@ -25,6 +25,11 @@ test("le menu est groupé par domaine, Équipe pour les admins, aperçu hors pro
   assert.ok(agent.find((g) => g.id === "outils")?.items.some((item) => item.href === "/admin/outils/mails"));
   const admin = adminNavGroups({ role: "admin", showExample: true });
   assert.equal(admin.at(-1)?.label, "Équipe");
+  const partner = adminNavGroups({ role: "partner", showExample: true });
+  assert.deepEqual(
+    partner.flatMap((group) => group.items.map((item) => item.href)),
+    ["/admin/little-emperors"]
+  );
   assert.ok(admin.find((g) => g.id === "outils")?.items.some((item) => item.href === "/exemple" && item.newTab));
 });
 

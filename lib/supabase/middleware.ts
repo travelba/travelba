@@ -15,6 +15,7 @@ import {
   destinationForConnexionVisit,
   hasChosenPassword,
   isStaffRole,
+  partnerAdminDestination,
   mayShowPasswordSetup,
   mustSetPassword,
   needsClientOnboarding,
@@ -63,13 +64,17 @@ export async function updateSession(request: NextRequest) {
   const desk = Boolean(user && deskBypass(request.cookies.get(DESK_COOKIE)?.value, user.id));
   const hasPassword = hasChosenPassword(user);
   const setupCookie = request.cookies.get(PASSWORD_SETUP_COOKIE)?.value === "1";
+  const deskAccess = user
+    ? await userDeskAccess(supabase, user)
+    : { staff: false, partner: false };
   const access = accessWhileDesk({
     desk,
     mustSetPassword: user ? mustSetPassword(user) : false,
     needsOnboarding: user ? needsClientOnboarding(user) : false,
-    staff: user ? await userIsStaff(supabase, user) : false,
+    staff: deskAccess.staff || deskAccess.partner,
   });
   const staff = access.staff;
+  const partner = Boolean(deskAccess.partner && staff);
   const showPasswordSetup = mayShowPasswordSetup({
     mustSetPassword: access.mustSetPassword,
     hasPassword,
@@ -86,6 +91,15 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (isAdmin) {
+    if (user && partner) {
+      const dest = partnerAdminDestination(pathname);
+      if (dest) {
+        const url = request.nextUrl.clone();
+        url.pathname = dest;
+        url.search = "";
+        return NextResponse.redirect(url);
+      }
+    }
     if (!user && !isAdminLogin) {
       const url = request.nextUrl.clone();
       url.pathname = "/admin/login";
@@ -121,7 +135,9 @@ export async function updateSession(request: NextRequest) {
     }
     if (!showPasswordSetup) {
       const url = request.nextUrl.clone();
-      url.pathname = staff
+      url.pathname = partner
+        ? partnerAdminDestination("/admin") || "/admin/little-emperors"
+        : staff
         ? "/admin"
         : desk
           ? "/mon-compte"
@@ -178,15 +194,19 @@ export async function updateSession(request: NextRequest) {
   return seal(supabaseResponse);
 }
 
-async function userIsStaff(
+async function userDeskAccess(
   supabase: ReturnType<typeof createServerClient>,
   user: { id: string; app_metadata?: Record<string, unknown> | null }
 ) {
-  if (isStaffRole(user)) return true;
+  const jwt = user.app_metadata?.crm_role;
+  if (jwt === "partner") return { staff: false, partner: true };
+  if (isStaffRole(user)) return { staff: true, partner: false };
   const { data } = await supabase
     .from("crm_staff")
-    .select("id")
+    .select("role")
     .eq("auth_user_id", user.id)
     .maybeSingle();
-  return Boolean(data);
+  if (data?.role === "partner") return { staff: false, partner: true };
+  if (data?.role === "admin" || data?.role === "agent") return { staff: true, partner: false };
+  return { staff: false, partner: false };
 }

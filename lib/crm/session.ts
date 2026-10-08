@@ -153,3 +153,11 @@ export function isStaffRole(user: {
   const role = user.app_metadata?.crm_role;
   return role === "admin" || role === "agent";
 }
+
+export const PARTNER_ADMIN_HOME = "/admin/little-emperors";
+
+/** Hors de la page Little Emperors, le partenaire y est renvoyé. Null = la page est la sienne. */
+export function partnerAdminDestination(pathname: string): string | null {
+  if (pathname === PARTNER_ADMIN_HOME || pathname.startsWith(`${PARTNER_ADMIN_HOME}/`)) return null;
+  return PARTNER_ADMIN_HOME;
+}

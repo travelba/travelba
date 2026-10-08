@@ -9,6 +9,7 @@ import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { adminAction } from "@/lib/crm/admin-action";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
 import { formatDateFr } from "@/lib/crm/money";
+import { MYLER_SHEET } from "@/lib/crm/myler-sheet";
 import type { CrmLeBooking } from "@/lib/crm/types";
 
 function isCancelledState(state: string | null) {
@@ -37,6 +38,7 @@ export function LittleEmperorsInbox({
   storageReady,
   configured,
   productionBlocked,
+  agency,
   probe,
 }: {
   rows: CrmLeBooking[];
@@ -44,14 +46,12 @@ export function LittleEmperorsInbox({
   storageReady: boolean;
   configured: boolean;
   productionBlocked: boolean;
+  agency: boolean;
   probe: { last_status: number | null; last_error: string | null; last_ok_at: string | null };
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
-  const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
   const [attachId, setAttachId] = useState<string | null>(null);
 
   async function post(body: Record<string, string>) {
@@ -76,14 +76,6 @@ export function LittleEmperorsInbox({
     router.refresh();
   }
 
-  async function init() {
-    setBusy("init");
-    setRedirectUrl(null);
-    const json = await post({ action: "init", email, name });
-    setBusy(null);
-    if (json?.redirect_url) setRedirectUrl(String(json.redirect_url));
-  }
-
   /** Confirmé sur la ligne : renvoie l’erreur pour l’afficher sous le bouton. */
   async function cancel(id: string) {
     const result = await adminAction("/api/admin/little-emperors", { method: "POST", body: { action: "cancel", id } });
@@ -106,16 +98,36 @@ export function LittleEmperorsInbox({
     <div className="space-y-4">
       {busy ? <BusyBar label="Little Emperors" /> : null}
       <section className="rounded-2xl border border-[#e5e3dc] bg-white p-4">
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Environnement de test</p>
-        <p className="mt-1 text-sm text-[var(--admin-navy)]">
-          api-staging.littleemperors.com — la clé de test n’est pas celle du compte de production.
-        </p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">{MYLER_SHEET.title}</p>
+        <h2 className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">{MYLER_SHEET.host}</h2>
+        <p className="mt-2 text-sm text-[var(--admin-navy)]">{MYLER_SHEET.keyNote}</p>
         {productionBlocked ? (
           <p className="mt-2 text-sm text-[#8a5a2a]">Cet environnement n’appelle pas Little Emperors.</p>
         ) : null}
-        {!configured && !productionBlocked ? (
-          <p className="mt-2 text-sm text-[#8a5a2a]">La clé de test n’est pas configurée sur cet environnement.</p>
-        ) : null}
+        <dl className="mt-4 space-y-3 text-sm">
+          <div>
+            <dt className="font-medium text-[var(--admin-navy)]">Authentification</dt>
+            <dd className="text-muted">
+              {MYLER_SHEET.auth} {configured && !productionBlocked ? MYLER_SHEET.keyOn : MYLER_SHEET.keyOff}
+            </dd>
+            <dd className="mt-1 text-[var(--admin-navy)]">{MYLER_SHEET.sso}</dd>
+          </div>
+          <div>
+            <dt className="font-medium text-[var(--admin-navy)]">Routes</dt>
+            <dd>
+              <ul className="mt-1 space-y-1 font-mono text-xs text-[var(--admin-navy)]">
+                {MYLER_SHEET.routes.map((route) => (
+                  <li key={route}>{route}</li>
+                ))}
+              </ul>
+            </dd>
+          </div>
+          <div>
+            <dt className="font-medium text-[var(--admin-navy)]">Webhook</dt>
+            <dd className="break-all text-[var(--admin-navy)]">{MYLER_SHEET.webhook}</dd>
+            <dd className="text-muted">En-tête {MYLER_SHEET.webhookHeader}</dd>
+          </div>
+        </dl>
         {probe.last_error ? (
           <p className="mt-3 rounded-xl bg-[#f8f4ee] px-3 py-2 text-sm text-[var(--admin-navy)]">{probe.last_error}</p>
         ) : probe.last_ok_at ? (
@@ -136,49 +148,6 @@ export function LittleEmperorsInbox({
             Actualiser les réservations
           </button>
         </div>
-      </section>
-
-      <section className="rounded-2xl border border-[#e5e3dc] bg-white p-4">
-        <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Initialisation</h2>
-        <p className="mt-1 text-sm text-muted">
-          Little Emperors demande un appel sur l’API de test avec l’e-mail et le nom, puis l’ouverture du lien de
-          consentement. Cela ne touche pas le compte de production.
-        </p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <label className="text-sm">
-            <span className="mb-1 block font-medium">E-mail</span>
-            <input
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              className="w-full rounded-lg border border-[#e5e3dc] px-3 py-2"
-              autoComplete="off"
-            />
-          </label>
-          <label className="text-sm">
-            <span className="mb-1 block font-medium">Nom</span>
-            <input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              className="w-full rounded-lg border border-[#e5e3dc] px-3 py-2"
-              autoComplete="off"
-            />
-          </label>
-        </div>
-        <button
-          type="button"
-          onClick={init}
-          disabled={Boolean(busy) || !configured}
-          className="mt-3 rounded-md border border-[var(--admin-navy)] px-3 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
-        >
-          Demander le lien de test
-        </button>
-        {redirectUrl ? (
-          <p className="mt-3 text-sm">
-            <a href={redirectUrl} className="font-semibold text-[var(--admin-navy)] underline" target="_blank" rel="noreferrer">
-              Ouvrir le consentement Little Emperors
-            </a>
-          </p>
-        ) : null}
       </section>
 
       {error ? <p className="rounded-xl bg-[#f8f4ee] px-3 py-2 text-sm">{error}</p> : null}
@@ -264,6 +233,7 @@ export function LittleEmperorsInbox({
                 </div>
               ) : null}
               {row.last_error ? <p className="mt-2 text-sm text-[#8a5a2a]">{row.last_error}</p> : null}
+              {agency ? (
               <div className="mt-3 flex flex-wrap gap-2">
                 {row.crm_booking_id ? (
                   <Link
@@ -292,12 +262,14 @@ export function LittleEmperorsInbox({
                   />
                 ) : null}
               </div>
+              ) : null}
               {!cancelled && row.is_cancellable === false ? <p className="mt-2 text-sm text-muted">{LATE_CANCEL}</p> : null}
             </li>
           );
         })}
       </ul>
 
+      {agency ? (
       <CustomerPickDialog
         open={Boolean(attachId)}
         customers={customers}
@@ -305,6 +277,7 @@ export function LittleEmperorsInbox({
         onClose={() => setAttachId(null)}
         onSelect={attach}
       />
+      ) : null}
     </div>
   );
 }

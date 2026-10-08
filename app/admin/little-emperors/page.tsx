@@ -6,31 +6,37 @@ import { littleEmperorsConfigured, littleEmperorsProductionBlocked } from "@/lib
 import type { CrmLeBooking } from "@/lib/crm/types";
 
 export default async function AdminLittleEmperorsPage() {
-  const { supabase } = await requireStaffPage();
-  const [{ data: rows, error: rowsError }, { data: customers }, { data: probe }] = await Promise.all([
-    supabase.from("crm_le_bookings").select("*").order("check_in", { ascending: false, nullsFirst: false }),
-    supabase
-      .from("crm_customers")
-      .select(CUSTOMER_PICK_SELECT)
-      .order("last_name")
-      .limit(CUSTOMER_PICK_LIMIT),
-    supabase.from("crm_le_sync").select("last_status, last_error, last_ok_at").eq("provider", "little_emperors").maybeSingle(),
+  const { supabase, staff } = await requireStaffPage();
+  const agency = staff.role !== "partner";
+  const bookingsTable = agency ? "crm_le_bookings" : "crm_le_bookings_partner";
+  const syncTable = agency ? "crm_le_sync" : "crm_le_sync_partner";
+  const [{ data: rows, error: rowsError }, customersResult, { data: probe }] = await Promise.all([
+    supabase.from(bookingsTable).select("*").order("check_in", { ascending: false, nullsFirst: false }),
+    agency
+      ? supabase.from("crm_customers").select(CUSTOMER_PICK_SELECT).order("last_name").limit(CUSTOMER_PICK_LIMIT)
+      : Promise.resolve({ data: [] as PickableCustomer[] }),
+    supabase.from(syncTable).select("last_status, last_error, last_ok_at").eq("provider", "little_emperors").maybeSingle(),
   ]);
 
   return (
     <div>
-      <PageEyebrow>Espace agence</PageEyebrow>
+      <PageEyebrow>{agency ? "Espace agence" : "Intégration"}</PageEyebrow>
       <PageTitle
         title="Little Emperors"
-        subtitle="Réservations hôtel lues sur l’environnement de test. Le carnet reste fermé tant qu’il n’est pas publié."
+        subtitle={
+          agency
+            ? "Réservations hôtel lues sur l’environnement de test. Le carnet reste fermé tant qu’il n’est pas publié."
+            : "Réglage MyLER et réservations lues sur l’environnement de test."
+        }
       />
       <div className="mt-6">
         <LittleEmperorsInbox
           rows={rowsError ? [] : ((rows || []) as CrmLeBooking[])}
-          customers={(customers || []) as PickableCustomer[]}
+          customers={(customersResult.data || []) as PickableCustomer[]}
           storageReady={!rowsError}
           configured={littleEmperorsConfigured()}
           productionBlocked={littleEmperorsProductionBlocked()}
+          agency={agency}
           probe={{
             last_status: probe?.last_status ?? null,
             last_error: probe?.last_error ?? null,

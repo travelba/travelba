@@ -8,6 +8,7 @@ import {
   hotelPublicFields,
   isLeCancelled,
   leDateOnly,
+  littleEmperorsActionAllowed,
   listLittleEmperorsBookings,
   littleEmperorsOrigin,
   littleEmperorsWebhookAuthorized,
@@ -198,6 +199,15 @@ describe("little emperors staging client", () => {
     assert.equal(canRemoteCancel({ is_cancellable: null }), false);
     assert.equal(splitGuestName("Nico Santos")?.last_name, "Santos");
     assert.equal(splitGuestName("Madonna"), null);
+  });
+
+  it("laisse le partenaire actualiser, pas rattacher ni annuler", () => {
+    assert.equal(littleEmperorsActionAllowed("partner", "sync"), true);
+    assert.equal(littleEmperorsActionAllowed("partner", "attach"), false);
+    assert.equal(littleEmperorsActionAllowed("partner", "cancel"), false);
+    assert.equal(littleEmperorsActionAllowed("partner", "init"), false);
+    assert.equal(littleEmperorsActionAllowed("agent", "attach"), true);
+    assert.equal(littleEmperorsActionAllowed("admin", "cancel"), true);
   });
 
   it("lit le webhook d’annulation sans inventer de contact", () => {
