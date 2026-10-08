@@ -26,8 +26,31 @@ export const STAFF_COPY = {
 
 export function staffRoleLabel(role: StaffRole) {
   if (role === "admin") return "Administrateur";
-  if (role === "partner") return "Partenaire";
+  if (role === "partner") return "Partenaire MyLER";
   return "Agent";
+}
+
+/** Texte de l’e-mail d’accès. Le partenaire n’entend pas « espace agence ». */
+export function colleagueAccessCopy(role: StaffRole) {
+  if (role === "partner") {
+    return {
+      subject: "Votre accès Little Emperors",
+      title: "Votre accès Little Emperors",
+      preheader: "Définissez votre mot de passe — le lien reste valable 30 jours.",
+      intro: "L’agence vous ouvre l’intégration MyLER.",
+      detail:
+        "Définissez votre mot de passe pour y accéder — le lien reste valable 30 jours. Vous n’ouvrez que Little Emperors. Le SSO POST /v1/login n’est pas utilisé.",
+      cta: "Définir le mot de passe",
+    };
+  }
+  return {
+    subject: "Votre accès à l’espace agence",
+    title: "Votre accès à l’espace agence",
+    preheader: "Définissez votre mot de passe — le lien reste valable 30 jours.",
+    intro: "L’agence vous ouvre l’espace agence.",
+    detail: "Définissez votre mot de passe pour y accéder — le lien reste valable 30 jours.",
+    cta: "Ouvrir l’espace agence",
+  };
 }
 
 export function parseStaffRole(value: unknown): StaffRole | null {
@@ -96,7 +119,7 @@ export function roleChangeBlockReason(input: {
 export function roleActionLabel(current: StaffRole, next: StaffRole) {
   if (current === next) return null;
   if (next === "admin") return "Passer administrateur";
-  if (next === "partner") return "Limiter à partenaire";
+  if (next === "partner") return "Limiter à partenaire MyLER";
   if (current === "partner") return "Passer agent";
   return "Limiter à agent";
 }

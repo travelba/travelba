@@ -61,9 +61,10 @@ export async function POST(request: Request) {
       .select("id, phone, first_name")
       .eq("auth_user_id", user.id)
       .maybeSingle(),
-    admin.from("crm_staff").select("id").eq("auth_user_id", user.id).maybeSingle(),
+    admin.from("crm_staff").select("id, role").eq("auth_user_id", user.id).maybeSingle(),
   ]);
   const staff = Boolean(staffRow);
+  const partner = staffRow?.role === "partner";
   const meta = fresh.user?.app_metadata || user.app_metadata || {};
   const stamped = {
     ...meta,
@@ -92,7 +93,7 @@ export async function POST(request: Request) {
       console.error("[client/password] whatsapp:", message.replace(/https?:\/\/\S+/g, ""));
     }
   }
-  const home = pathAfterPassword(customer?.phone, staff ? "staff" : "client");
+  const home = pathAfterPassword(customer?.phone, partner ? "partner" : staff ? "staff" : "client");
   const next = staff ? home : destinationAfterPassword(appMeta, customer?.phone);
   const response = NextResponse.json({
     ok: true,

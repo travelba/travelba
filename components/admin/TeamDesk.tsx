@@ -120,7 +120,7 @@ export function TeamDesk({
           >
             <option value="agent">Agent</option>
             <option value="admin">Administrateur</option>
-            <option value="partner">Partenaire</option>
+            <option value="partner">Partenaire MyLER</option>
           </select>
         </label>
         <div className="flex items-end">
@@ -133,8 +133,8 @@ export function TeamDesk({
           </button>
         </div>
         <p className="text-sm text-muted lg:col-span-4">
-          L’agent ouvre l’espace agence. L’administrateur fait de même, et gère les collègues. Le partenaire
-          n’ouvre que Little Emperors.
+          L’agent ouvre l’espace agence. L’administrateur fait de même, et gère les collègues. Partenaire MyLER
+          n’ouvre que Little Emperors : la clé de test, Actualiser, les routes v2. Pas le reste de l’agence.
         </p>
         <div className="lg:col-span-4">
           <BusyBar active={saving} label="Ajout du collègue…" />
@@ -289,7 +289,7 @@ function ColleagueRow({
           Agent
         </option>
         <option value="partner" disabled={lastAdmin}>
-          Partenaire
+          Partenaire MyLER
         </option>
         <option value="admin">Administrateur</option>
       </select>

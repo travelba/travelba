@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { BrandMark } from "@/components/crm/ui";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { MYLER_SHEET } from "@/lib/crm/myler-sheet";
 
 function LoginForm() {
   const router = useRouter();
@@ -39,7 +40,7 @@ function LoginForm() {
     const { data: staff } = user
       ? await supabase
           .from("crm_staff")
-          .select("id")
+          .select("id, role")
           .eq("auth_user_id", user.id)
           .maybeSingle()
       : { data: null };
@@ -54,9 +55,11 @@ function LoginForm() {
     setLoading(false);
     const next = searchParams.get("next");
     const destination =
-      next && next.startsWith("/admin") && !next.startsWith("/admin/login")
-        ? next
-        : "/admin";
+      staff.role === "partner"
+        ? "/admin/little-emperors"
+        : next && next.startsWith("/admin") && !next.startsWith("/admin/login")
+          ? next
+          : "/admin";
     router.push(destination);
     router.refresh();
   }
@@ -65,7 +68,7 @@ function LoginForm() {
     <form onSubmit={onSubmit} className="mt-6 space-y-4">
       <label className="block space-y-1.5 text-sm">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted">
-          Email agent
+          E-mail
         </span>
         <input
           type="email"
@@ -108,13 +111,13 @@ export default function AdminLoginPage() {
       </div>
       <div className="admin-af-card rounded-[1.5rem] p-8 sm:p-10">
         <p className="font-label text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--admin-gold)]">
-          Accès agent
+          Connexion
         </p>
         <h1 className="mt-2 font-display text-3xl font-bold tracking-tight text-[var(--admin-navy)]">
           Espace agence
         </h1>
         <p className="mt-2 text-sm text-muted">
-          Réservé à l’équipe Travel Business Agency.
+          Équipe Travel Business Agency, ou partenaire MyLER. {MYLER_SHEET.sso}
         </p>
         <Suspense fallback={<p className="mt-8 text-sm text-muted">Chargement…</p>}>
           <LoginForm />

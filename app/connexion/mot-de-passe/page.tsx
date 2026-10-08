@@ -29,13 +29,14 @@ export default async function SetPasswordPage() {
     setupCookie: jar.get(PASSWORD_SETUP_COOKIE)?.value === "1",
   });
   if (!allowed) {
+    if (staff?.role === "partner") redirect("/admin/little-emperors");
     if (staff) redirect("/admin");
     if (!mustSetPassword(user) || hasChosenPassword(user)) {
       redirect(needsClientOnboarding(user) ? ONBOARDING_PATH : "/mon-compte");
     }
     redirect("/connexion");
   }
-  return <SetPasswordForm desk={staff ? "agence" : "client"} />;
+  return <SetPasswordForm desk={staff?.role === "partner" ? "partner" : staff ? "agence" : "client"} />;
 }
 
 async function clearStalePasswordFlag(userId: string) {

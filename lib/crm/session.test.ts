@@ -60,6 +60,7 @@ test("après le mot de passe, l’accueil s’ouvre même sans téléphone", () 
 test("un collègue arrive dans l’espace agence", () => {
   assert.equal(pathAfterPassword(null, "staff"), "/admin");
   assert.equal(pathAfterPassword("+33600000000", "staff"), "/admin");
+  assert.equal(pathAfterPassword(null, "partner"), "/admin/little-emperors");
 });
 
 test("onboarding lives only in app_metadata and only until it is dismissed", () => {
@@ -269,6 +270,24 @@ test("la page de définition n’est là que pendant le lien, pas avec un mot de
       hasPassword: true,
       staff: false,
       setupCookie: true,
+    }),
+    false
+  );
+  assert.equal(
+    mayShowPasswordSetup({
+      mustSetPassword: true,
+      hasPassword: false,
+      staff: true,
+      setupCookie: true,
+    }),
+    true
+  );
+  assert.equal(
+    mayShowPasswordSetup({
+      mustSetPassword: true,
+      hasPassword: false,
+      staff: true,
+      setupCookie: false,
     }),
     false
   );

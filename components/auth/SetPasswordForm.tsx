@@ -12,14 +12,15 @@ import { postJson } from "@/lib/crm/client-fetch";
 const fieldClass =
   "w-full rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-3 text-[var(--admin-navy)] outline-none focus:border-[var(--admin-gold)] focus:bg-white focus:ring-2 focus:ring-[var(--admin-gold)]/30";
 
-export function SetPasswordForm({ desk = "client" }: { desk?: "client" | "agence" }) {
+export function SetPasswordForm({ desk = "client" }: { desk?: "client" | "agence" | "partner" }) {
   const router = useRouter();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [expired, setExpired] = useState(false);
   const [loading, setLoading] = useState(false);
-  const agence = desk === "agence";
+  const agence = desk === "agence" || desk === "partner";
+  const partner = desk === "partner";
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -52,7 +53,10 @@ export function SetPasswordForm({ desk = "client" }: { desk?: "client" | "agence
     <div className="account-app admin-af min-h-screen">
       <div className="mx-auto flex min-h-screen max-w-[420px] flex-col justify-center px-4 py-10">
         <div className="mb-8 flex items-center justify-between">
-          <BrandMark href={agence ? "/admin" : "/"} subtitle={agence ? "Espace agence" : "Espace client"} />
+          <BrandMark
+            href={partner ? "/admin/little-emperors" : agence ? "/admin" : "/"}
+            subtitle={partner ? "Little Emperors" : agence ? "Espace agence" : "Espace client"}
+          />
           <span className="rounded-full bg-white px-3 py-1 text-[10px] font-semibold text-muted ring-1 ring-[var(--border)]">
             Sécurisé
           </span>
@@ -66,9 +70,11 @@ export function SetPasswordForm({ desk = "client" }: { desk?: "client" | "agence
           </h1>
           <p className="mt-2 text-sm text-muted">
             Choisissez un mot de passe d’au moins {MIN_PASSWORD_LENGTH} caractères.{" "}
-            {agence
-              ? "Vous arriverez ensuite dans l’espace agence."
-              : "Vous resterez ensuite connecté sur cet appareil."}
+            {partner
+              ? "Vous arriverez ensuite sur Little Emperors. Le SSO POST /v1/login n’est pas utilisé."
+              : agence
+                ? "Vous arriverez ensuite dans l’espace agence."
+                : "Vous resterez ensuite connecté sur cet appareil."}
           </p>
           <div className="mt-4 h-1 w-12 rounded-full bg-[var(--admin-gold)]" />
           <form onSubmit={onSubmit} className="mt-6 space-y-5">
@@ -114,7 +120,7 @@ export function SetPasswordForm({ desk = "client" }: { desk?: "client" | "agence
                 href={agence ? "/admin/login" : "/connexion"}
                 className="block w-full text-center text-sm font-semibold text-[var(--admin-navy)]"
               >
-                {agence ? "Retour à l’espace agence" : "Retour à la connexion"}
+                {partner ? "Retour à Little Emperors" : agence ? "Retour à l’espace agence" : "Retour à la connexion"}
               </Link>
             ) : null}
           </form>

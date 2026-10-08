@@ -101,6 +101,11 @@ export function webhookKeyMatches(given: string, expected: string) {
   return secretEquals(given, expected);
 }
 
+/** Présent ou absent. Ne renvoie jamais la valeur. */
+export function littleEmperorsWebhookConfigured() {
+  return Boolean((process.env.LITTLE_EMPERORS_WEBHOOK_KEY || "").trim());
+}
+
 export function littleEmperorsWebhookAuthorized(headers: Headers) {
   const expected = (process.env.LITTLE_EMPERORS_WEBHOOK_KEY || "").trim();
   if (!expected) return false;

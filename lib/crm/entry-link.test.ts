@@ -207,6 +207,15 @@ test("l’e-mail du lien est celui du titulaire, et l’entrée n’ouvre pas la
     }),
     "/connexion/mot-de-passe"
   );
+  assert.equal(
+    entryDestination({
+      nextPath: "/admin/little-emperors",
+      otpType: "invite",
+      staff: true,
+      mustSetPassword: true,
+    }),
+    "/connexion/mot-de-passe"
+  );
   const held = entryPreviewHtml("https://travelba.fr", "K7MQ2PX4", null, false);
   assert.equal(held.includes("<script"), false);
   assert.equal(held.includes("Ouvrir mon espace"), false);

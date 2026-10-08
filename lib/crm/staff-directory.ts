@@ -8,6 +8,7 @@ import { agencyEmailHtml, escapeHtml } from "@/lib/crm/email-html";
 import { createEntryLink } from "@/lib/crm/entry-link";
 import type { CrmStaff } from "@/lib/crm/types";
 import {
+  colleagueAccessCopy,
   colleagueEmailError,
   colleagueInviteBlock,
   colleagueNameError,
@@ -46,28 +47,29 @@ function givenName(fullName: string) {
   return fullName.trim().split(/\s+/)[0] || "";
 }
 
-function colleagueEmailHtml(fullName: string, link: string) {
+function colleagueEmailHtml(fullName: string, link: string, role: StaffRole) {
+  const copy = colleagueAccessCopy(role);
   const who = givenName(fullName);
   const hello = who ? `Bonjour ${escapeHtml(who)},` : "Bonjour,";
   return agencyEmailHtml({
-    title: "Votre accès à l’espace agence",
-    preheader: "Définissez votre mot de passe — le lien reste valable 30 jours.",
+    title: copy.title,
+    preheader: copy.preheader,
     bodyHtml: `
       <p style="margin:0 0 16px;line-height:1.5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#0B192C">${hello}</p>
       <p style="margin:0;line-height:1.5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#0B192C">
-        L’agence vous ouvre l’espace agence.
-        Définissez votre mot de passe pour y accéder — le lien reste valable 30&nbsp;jours.
+        ${escapeHtml(copy.intro)} ${escapeHtml(copy.detail)}
       </p>
     `,
-    ctaLabel: "Ouvrir l’espace agence",
+    ctaLabel: copy.cta,
     ctaHref: link,
     footnote: "Si vous n’attendiez pas cet accès, ignorez cet e-mail.",
   });
 }
 
-async function sendColleagueEmail(email: string, fullName: string, link: string, origin: string) {
+async function sendColleagueEmail(email: string, fullName: string, link: string, origin: string, role: StaffRole) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return false;
+  const copy = colleagueAccessCopy(role);
   const from = process.env.CONTACT_FROM_EMAIL || "onboarding@resend.dev";
   const resend = new Resend(apiKey);
   // Jamais de copie agence : l’e-mail ouvre une session staff (B-02).
@@ -76,8 +78,8 @@ async function sendColleagueEmail(email: string, fullName: string, link: string,
     to: [email],
     cc: tokenMailCc(),
     replyTo: siteConfig.contactEmail,
-    subject: "Votre accès à l’espace agence",
-    html: colleagueEmailHtml(fullName, link),
+    subject: copy.subject,
+    html: colleagueEmailHtml(fullName, link, role),
   });
   if (error) {
     console.error("[equipe] e-mail non envoyé");
@@ -255,7 +257,7 @@ export async function addColleague(
     throw err instanceof StaffTeamError ? err : new StaffTeamError(STAFF_COPY.prepare, 502);
   }
 
-  const delivered = await sendColleagueEmail(email, fullName, link, origin);
+  const delivered = await sendColleagueEmail(email, fullName, link, origin, role);
   return {
     delivered,
     link,

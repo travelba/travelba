@@ -2,7 +2,11 @@ import { LittleEmperorsInbox } from "@/components/admin/LittleEmperorsInbox";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { CUSTOMER_PICK_LIMIT, CUSTOMER_PICK_SELECT, type PickableCustomer } from "@/lib/crm/customer-search";
-import { littleEmperorsConfigured, littleEmperorsProductionBlocked } from "@/lib/crm/little-emperors";
+import {
+  littleEmperorsConfigured,
+  littleEmperorsProductionBlocked,
+  littleEmperorsWebhookConfigured,
+} from "@/lib/crm/little-emperors";
 import type { CrmLeBooking } from "@/lib/crm/types";
 
 export default async function AdminLittleEmperorsPage() {
@@ -36,6 +40,7 @@ export default async function AdminLittleEmperorsPage() {
           storageReady={!rowsError}
           configured={littleEmperorsConfigured()}
           productionBlocked={littleEmperorsProductionBlocked()}
+          webhookConfigured={littleEmperorsWebhookConfigured()}
           agency={agency}
           probe={{
             last_status: probe?.last_status ?? null,

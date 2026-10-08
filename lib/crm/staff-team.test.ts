@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  colleagueAccessCopy,
   colleagueEmailError,
   colleagueInviteBlock,
   colleagueNameError,
@@ -18,7 +19,7 @@ import {
 test("libellés de rôle", () => {
   assert.equal(staffRoleLabel("admin"), "Administrateur");
   assert.equal(staffRoleLabel("agent"), "Agent");
-  assert.equal(staffRoleLabel("partner"), "Partenaire");
+  assert.equal(staffRoleLabel("partner"), "Partenaire MyLER");
   assert.equal(parseStaffRole("agent"), "agent");
   assert.equal(parseStaffRole("admin"), "admin");
   assert.equal(parseStaffRole("partner"), "partner");
@@ -91,11 +92,22 @@ test("limiter le rôle, sans laisser l’agence sans administrateur", () => {
   );
   assert.equal(roleActionLabel("admin", "agent"), "Limiter à agent");
   assert.equal(roleActionLabel("agent", "admin"), "Passer administrateur");
-  assert.equal(roleActionLabel("agent", "partner"), "Limiter à partenaire");
+  assert.equal(roleActionLabel("agent", "partner"), "Limiter à partenaire MyLER");
   assert.equal(roleActionLabel("partner", "agent"), "Passer agent");
   assert.equal(roleActionLabel("agent", "agent"), null);
   assert.equal(jwtStaffRole("partner"), "partner");
   assert.equal(jwtStaffRole("agent"), "agent");
   assert.equal(jwtStaffRole("admin"), "admin");
   assert.equal(removalBlockReason({ actorId: "a", targetId: "b", targetRole: "partner" }), null);
+});
+
+test("l’invitation partenaire parle de MyLER, pas de l’espace agence", () => {
+  const partner = colleagueAccessCopy("partner");
+  assert.match(partner.subject, /Little Emperors/);
+  assert.match(partner.detail, /\/v1\/login/);
+  assert.match(partner.detail, /n’est pas utilisé/);
+  assert.equal(partner.detail.includes("espace agence"), false);
+  const agent = colleagueAccessCopy("agent");
+  assert.match(agent.subject, /espace agence/);
+  assert.equal(agent.detail.includes("/v1/login"), false);
 });

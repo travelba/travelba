@@ -9,7 +9,7 @@ import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { adminAction } from "@/lib/crm/admin-action";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
 import { formatDateFr } from "@/lib/crm/money";
-import { MYLER_SHEET } from "@/lib/crm/myler-sheet";
+import { MYLER_SHEET, mylerRefreshNotice } from "@/lib/crm/myler-sheet";
 import type { CrmLeBooking } from "@/lib/crm/types";
 
 function isCancelledState(state: string | null) {
@@ -38,6 +38,7 @@ export function LittleEmperorsInbox({
   storageReady,
   configured,
   productionBlocked,
+  webhookConfigured,
   agency,
   probe,
 }: {
@@ -46,12 +47,14 @@ export function LittleEmperorsInbox({
   storageReady: boolean;
   configured: boolean;
   productionBlocked: boolean;
+  webhookConfigured: boolean;
   agency: boolean;
   probe: { last_status: number | null; last_error: string | null; last_ok_at: string | null };
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [attachId, setAttachId] = useState<string | null>(null);
 
   async function post(body: Record<string, string>) {
@@ -71,8 +74,10 @@ export function LittleEmperorsInbox({
 
   async function sync() {
     setBusy("sync");
-    await post({ action: "sync" });
+    setNotice(null);
+    const json = await post({ action: "sync" });
     setBusy(null);
+    if (json?.ok) setNotice(mylerRefreshNotice(Number(json.fetched) || 0));
     router.refresh();
   }
 
@@ -100,20 +105,21 @@ export function LittleEmperorsInbox({
       <section className="rounded-2xl border border-[#e5e3dc] bg-white p-4">
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">{MYLER_SHEET.title}</p>
         <h2 className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">{MYLER_SHEET.host}</h2>
+        <p className="mt-3 text-sm font-semibold text-[var(--admin-navy)]">
+          {configured && !productionBlocked ? MYLER_SHEET.keyOn : MYLER_SHEET.keyOff}
+        </p>
         <p className="mt-2 text-sm text-[var(--admin-navy)]">{MYLER_SHEET.keyNote}</p>
+        <p className="mt-3 rounded-xl bg-[#f8f4ee] px-3 py-2 text-sm text-[var(--admin-navy)]">{MYLER_SHEET.sso}</p>
         {productionBlocked ? (
           <p className="mt-2 text-sm text-[#8a5a2a]">Cet environnement n’appelle pas Little Emperors.</p>
         ) : null}
         <dl className="mt-4 space-y-3 text-sm">
           <div>
             <dt className="font-medium text-[var(--admin-navy)]">Authentification</dt>
-            <dd className="text-muted">
-              {MYLER_SHEET.auth} {configured && !productionBlocked ? MYLER_SHEET.keyOn : MYLER_SHEET.keyOff}
-            </dd>
-            <dd className="mt-1 text-[var(--admin-navy)]">{MYLER_SHEET.sso}</dd>
+            <dd className="text-muted">{MYLER_SHEET.auth}</dd>
           </div>
           <div>
-            <dt className="font-medium text-[var(--admin-navy)]">Routes</dt>
+            <dt className="font-medium text-[var(--admin-navy)]">Routes v2</dt>
             <dd>
               <ul className="mt-1 space-y-1 font-mono text-xs text-[var(--admin-navy)]">
                 {MYLER_SHEET.routes.map((route) => (
@@ -123,20 +129,28 @@ export function LittleEmperorsInbox({
             </dd>
           </div>
           <div>
+            <dt className="font-medium text-[var(--admin-navy)]">Lecture</dt>
+            <dd className="text-muted">{MYLER_SHEET.sync}</dd>
+          </div>
+          <div>
             <dt className="font-medium text-[var(--admin-navy)]">Webhook</dt>
             <dd className="break-all text-[var(--admin-navy)]">{MYLER_SHEET.webhook}</dd>
             <dd className="text-muted">En-tête {MYLER_SHEET.webhookHeader}</dd>
+            <dd className="text-[var(--admin-navy)]">
+              {webhookConfigured ? MYLER_SHEET.webhookOn : MYLER_SHEET.webhookOff}
+            </dd>
           </div>
         </dl>
-        {probe.last_error ? (
+        {notice ? (
+          <p className="mt-3 rounded-xl bg-[#f8f4ee] px-3 py-2 text-sm text-[var(--admin-navy)]">{notice}</p>
+        ) : probe.last_error ? (
           <p className="mt-3 rounded-xl bg-[#f8f4ee] px-3 py-2 text-sm text-[var(--admin-navy)]">{probe.last_error}</p>
         ) : probe.last_ok_at ? (
-          <p className="mt-3 text-sm text-muted">
-            Dernière lecture réussie · {formatDateFr(probe.last_ok_at)} · {rows.length} réservation
-            {rows.length > 1 ? "s" : ""}.
+          <p className="mt-3 text-sm text-[var(--admin-navy)]">
+            {mylerRefreshNotice(rows.length)} Dernière lecture · {formatDateFr(probe.last_ok_at)}.
           </p>
         ) : (
-          <p className="mt-3 text-sm text-muted">Aucune lecture pour l’instant.</p>
+          <p className="mt-3 text-sm text-muted">{MYLER_SHEET.idle}</p>
         )}
         <div className="mt-3">
           <button
@@ -145,7 +159,7 @@ export function LittleEmperorsInbox({
             disabled={Boolean(busy) || !configured}
             className="admin-af-btn-accent rounded-md px-3 py-2 text-sm disabled:opacity-50"
           >
-            Actualiser les réservations
+            Actualiser
           </button>
         </div>
       </section>
@@ -155,7 +169,11 @@ export function LittleEmperorsInbox({
         <p className="text-sm text-muted">La table des réservations Little Emperors n’est pas encore en place.</p>
       ) : null}
       {storageReady && rows.length === 0 ? (
-        <p className="text-sm text-muted">Aucune réservation Little Emperors pour le moment.</p>
+        <p className="text-sm text-muted">
+          {probe.last_ok_at && !probe.last_error
+            ? "Aucune réservation à afficher. L’environnement de test a répondu."
+            : "Aucune réservation Little Emperors pour le moment."}
+        </p>
       ) : null}
 
       <ul className="space-y-3">

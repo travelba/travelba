@@ -12,6 +12,7 @@ import {
   listLittleEmperorsBookings,
   littleEmperorsOrigin,
   littleEmperorsWebhookAuthorized,
+  littleEmperorsWebhookConfigured,
   parseLeBooking,
   parseLeWebhook,
   splitGuestName,
@@ -220,10 +221,12 @@ describe("little emperors staging client", () => {
     const headers = new Headers({ "x-access-key": "secret" });
     const previous = process.env.LITTLE_EMPERORS_WEBHOOK_KEY;
     process.env.LITTLE_EMPERORS_WEBHOOK_KEY = "secret";
+    assert.equal(littleEmperorsWebhookConfigured(), true);
     assert.equal(littleEmperorsWebhookAuthorized(headers), true);
     process.env.LITTLE_EMPERORS_WEBHOOK_KEY = "autre";
     assert.equal(littleEmperorsWebhookAuthorized(headers), false);
     if (previous === undefined) delete process.env.LITTLE_EMPERORS_WEBHOOK_KEY;
     else process.env.LITTLE_EMPERORS_WEBHOOK_KEY = previous;
+    assert.equal(littleEmperorsWebhookConfigured(), Boolean(previous && previous.trim()));
   });
 });
