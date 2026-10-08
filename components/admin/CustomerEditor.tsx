@@ -205,7 +205,7 @@ export function CustomerEditor({
         .join(", ")
     : "Aucune société";
   const companyLine = [
-    companyRole === "admin" && billingParentId ? "Admin associé" : companyRoleLabel(companyRole),
+    companyRoleLabel(companyRole),
     iban || null,
   ]
     .filter(Boolean)
@@ -251,8 +251,7 @@ export function CustomerEditor({
           flying_blue: loyalty.flying_blue,
           iban: normalizedIban,
           company_role: companyRole,
-          billing_parent_id:
-            companyRole === "member" || companyRole === "admin" ? billingParentId || null : null,
+          billing_parent_id: companyRole === "member" ? billingParentId || null : null,
           spending_allowance: companyRole ? spendingAllowance : null,
           on_hold: onHold,
           billing_companies: billingCompaniesPayload(companyDrafts, profileAddress),

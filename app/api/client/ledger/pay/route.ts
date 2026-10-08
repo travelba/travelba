@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, requireCustomer } from "@/lib/crm/auth";
-import { adminLedgerCustomerId, isCompanyMember } from "@/lib/crm/company-role";
+import { isCompanyMember } from "@/lib/crm/company-role";
 import { loadClientLedger } from "@/lib/crm/client-ledger";
 import { customerFullName, type CrmTransaction } from "@/lib/crm/types";
 import { amountToCents, anchorBillingCompanyId, encoursPartLabel, payerKindOf } from "@/lib/crm/payer";
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
 
   if (amount < 0.5) return jsonError("Il n’y a pas de montant à régler.");
 
-  const ledgerCustomerId = adminLedgerCustomerId(auth.customer);
+  const ledgerCustomerId = auth.customer.id;
   const { data: txs, error: txError } = await auth.supabase
     .from("crm_transactions")
     .select("direction, amount, status, currency, billing_company_id")

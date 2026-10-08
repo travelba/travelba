@@ -20,8 +20,7 @@ import {
 } from "./whatsapp-concierge";
 import { planConciergeConversation, type ConciergeGenerator, type ConciergeHistoryTurn } from "./whatsapp-conversation";
 import { sessionAddress } from "./whatsapp-session";
-import { adminLedgerCustomerId } from "./company-role";
-import { loadAdminTripOwnerIds } from "./company-peers";
+import { loadCollaboratorTripOwnerIds } from "./company-peers";
 
 export type WhatsappMessageInsert = {
   customer_id: string | null;
@@ -393,8 +392,7 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
         .eq("id", customerId)
         .maybeSingle();
       if (holderError) throw holderError;
-      const ownerIds = holder ? await loadAdminTripOwnerIds(admin, holder) : [customerId];
-      const ledgerCustomerId = holder ? adminLedgerCustomerId(holder) : customerId;
+      const ownerIds = holder ? await loadCollaboratorTripOwnerIds(admin, holder) : [customerId];
       const { data: bookings, error: bookingError } = await admin
         .from("crm_bookings")
         .select(
@@ -435,11 +433,11 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
         admin
           .from("crm_transactions")
           .select("booking_id, direction, kind, amount, currency, occurred_on, label, status")
-          .eq("customer_id", ledgerCustomerId)
+          .eq("customer_id", customerId)
           .eq("status", "posted")
           .order("occurred_on", { ascending: false })
           .limit(12),
-        admin.from("crm_customer_balances").select("currency, balance").eq("customer_id", ledgerCustomerId),
+        admin.from("crm_customer_balances").select("currency, balance").eq("customer_id", customerId),
         admin
           .from("crm_travel_documents")
           .select("doc_type, first_name, last_name, expires_on")

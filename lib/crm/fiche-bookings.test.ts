@@ -60,7 +60,7 @@ test("le nom du voyageur n’apparaît que pour un collaborateur", () => {
 test("la fiche client agence charge les dossiers facturés sur le compte", () => {
   const src = readFileSync(join(root, "app/admin/clients/[id]/page.tsx"), "utf8");
   assert.match(src, /\.eq\("billing_customer_id", id\)/);
-  assert.match(src, /otherAdminIds/);
+  assert.equal(src.includes("otherAdminIds"), false);
   assert.match(src, /mergeFicheBookings/);
   assert.match(src, /ficheBookingTravelerLine/);
 });

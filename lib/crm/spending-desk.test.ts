@@ -177,6 +177,43 @@ test("Raphael voit l’encours société, les trois droits et le compte de chaqu
     shared.movements.find((row) => row.bookingId === "b-raphael")?.carnetHref,
     "/mon-compte/reservations/TB-R"
   );
+  const otherAdmin = shapeClientLedger({
+    companyRole: "admin",
+    viewerId: "raphael",
+    travelerBookingIds: ["b-raphael"],
+    walletBalance: 35600,
+    currency: "EUR",
+    audience: "client",
+    bookings: [
+      ...bookings,
+      {
+        id: "b-julie",
+        title: "Lyon",
+        destination: "Lyon",
+        reference: "TB-J",
+        start_date: "2026-10-01",
+        end_date: "2026-10-03",
+        visible_to_client: true,
+        customer_id: "julie",
+        owner_name: "Julie Martin",
+        displayed_amount: 4000,
+      },
+    ],
+    spendAccounts: [raphael, gaelle],
+    rows: [
+      ...rows,
+      tx({
+        id: "julie-stay",
+        direction: "debit",
+        kind: "booking",
+        amount: 4000,
+        booking_id: "b-julie",
+        label: "Hôtel Lyon",
+      }),
+    ],
+    openCarnetOwnerIds: ["raphael", "gaelle"],
+  });
+  assert.equal(otherAdmin.movements.find((row) => row.bookingId === "b-julie")?.carnetHref, null);
   assert.equal(view.spending?.otherMovements[0].title, "Virement cabinet");
   const html = renderToStaticMarkup(createElement(ClientTransactionsPanel, { view }));
   assert.match(html, /Encours/);

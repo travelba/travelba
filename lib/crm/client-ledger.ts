@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { adminLedgerCustomerId, filterClientLedgerRows, isCompanyMember } from "@/lib/crm/company-role";
-import { loadAdminTripOwnerIds } from "@/lib/crm/company-peers";
+import { filterClientLedgerRows, isCompanyMember } from "@/lib/crm/company-role";
 import {
   ledgerMovementTitle,
   ledgerPlace,
@@ -131,7 +130,7 @@ export function shapeClientLedger(input: {
   fundingCompanies?: FundingCompany[];
   viewerId?: string;
   spendAccounts?: SpendingAccountInput[];
-  /** Admins du même wallet : leur carnet s’ouvre. Les collaborateurs restent fermés. */
+  /** Collaborateurs dont le carnet s’ouvre. Un autre admin reste fermé. */
   openCarnetOwnerIds?: string[];
 }): ClientLedgerView {
   const member = isCompanyMember({ company_role: input.companyRole ?? null });
@@ -337,7 +336,6 @@ export async function loadClientLedger(
   audience: ClientLedgerAudience
 ): Promise<ClientLedgerView> {
   const member = isCompanyMember(customer);
-  const ledgerCustomerId = adminLedgerCustomerId(customer);
   const { data: myBookings } = await supabase
     .from("crm_bookings")
     .select("id")
@@ -365,10 +363,10 @@ export async function loadClientLedger(
       supabase
         .from("crm_transactions")
         .select("*")
-        .eq("customer_id", ledgerCustomerId)
+        .eq("customer_id", customer.id)
         .eq("status", "posted")
         .order("occurred_on", { ascending: false }),
-      supabase.from("crm_customer_balances").select("*").eq("customer_id", ledgerCustomerId),
+      supabase.from("crm_customer_balances").select("*").eq("customer_id", customer.id),
     ]);
     rows = (txs || []) as CrmTransaction[];
     // Un solde par devise : l’euro reste la devise principale (règlement), les autres ont leur bloc.
@@ -384,7 +382,7 @@ export async function loadClientLedger(
   const { data: companyRows } = await supabase
     .from("crm_billing_companies")
     .select("id, company_name, funding, sort_order")
-    .eq("customer_id", ledgerCustomerId)
+    .eq("customer_id", customer.id)
     .order("sort_order");
   const billingCompanies = (companyRows || []) as Pick<
     CrmBillingCompany,
@@ -583,26 +581,14 @@ async function loadSpendAccounts(
   if (!member && customer.company_role === "admin") {
     const admin = serviceClientOrNull();
     if (admin) {
-      const walletId = adminLedgerCustomerId(customer);
       const { data: members } = await admin
         .from("crm_customers")
         .select("id, first_name, last_name, spending_allowance")
-        .eq("billing_parent_id", walletId)
+        .eq("billing_parent_id", customer.id)
         .eq("company_role", "member");
-      for (const row of (members || []) as SpendPerson[]) people.set(row.id, row);
-      const peers = await loadAdminTripOwnerIds(admin, {
-        id: customer.id,
-        company_role: "admin",
-        billing_parent_id: customer.billing_parent_id ?? null,
-      });
-      for (const peerId of peers) openCarnetOwnerIds.add(peerId);
-      const peerIds = peers.filter((peerId) => peerId !== customer.id);
-      if (peerIds.length) {
-        const { data: peerRows } = await admin
-          .from("crm_customers")
-          .select("id, first_name, last_name, spending_allowance")
-          .in("id", peerIds);
-        for (const row of (peerRows || []) as SpendPerson[]) people.set(row.id, row);
+      for (const row of (members || []) as SpendPerson[]) {
+        people.set(row.id, row);
+        openCarnetOwnerIds.add(row.id);
       }
 
       if (contextIds.length) {

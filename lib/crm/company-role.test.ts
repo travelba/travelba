@@ -5,12 +5,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { CompanyRoleFields } from "../../components/crm/CompanyRoleFields";
 import { customerPatchFromBody } from "./customer-patch";
 import {
-  adminLedgerCustomerId,
-  adminTripOwnerIds,
-  companyLinkError,
+  collaboratorTripOwnerIds,
   companyRoleLabel,
   filterClientLedgerRows,
-  isAssociatedAdmin,
   parseCompanyRole,
   resolveBillingCustomerId,
 } from "./company-role";
@@ -39,7 +36,7 @@ test("resolveBillingCustomerId uses parent for members", () => {
       company_role: "admin",
       billing_parent_id: "raphael",
     }),
-    "raphael"
+    "gaelle"
   );
   assert.equal(
     resolveBillingCustomerId({
@@ -95,111 +92,93 @@ test("member ledger hides company credits", () => {
   assert.equal(full.length, 4);
 });
 
-test("les admins associés partagent le wallet et les voyages, pas ceux des collaborateurs", () => {
+test("un admin voit ses collaborateurs, pas les autres admins", () => {
   const raphael = { id: "raphael", company_role: "admin" as const, billing_parent_id: null };
-  const gaelle = { id: "gaelle", company_role: "admin" as const, billing_parent_id: "raphael" };
-  const louis = { id: "louis", company_role: "member" as const, billing_parent_id: "raphael" };
-  assert.equal(adminLedgerCustomerId(gaelle), "raphael");
-  assert.equal(adminLedgerCustomerId(raphael), "raphael");
-  assert.equal(isAssociatedAdmin(gaelle), true);
-  assert.equal(isAssociatedAdmin(raphael), false);
-  const rows = [raphael, gaelle, louis];
-  assert.deepEqual(adminTripOwnerIds(raphael, rows).sort(), ["gaelle", "raphael"]);
-  assert.deepEqual(adminTripOwnerIds(gaelle, rows).sort(), ["gaelle", "raphael"]);
-  assert.deepEqual(adminTripOwnerIds(louis, rows), ["louis"]);
+  const gaelle = { id: "gaelle", company_role: "member" as const, billing_parent_id: "raphael" };
+  const otherAdmin = { id: "julie", company_role: "admin" as const, billing_parent_id: "raphael" };
+  const rows = [raphael, gaelle, otherAdmin];
+  assert.deepEqual(collaboratorTripOwnerIds(raphael, rows).sort(), ["gaelle", "raphael"]);
+  assert.deepEqual(collaboratorTripOwnerIds(gaelle, rows), ["gaelle"]);
+  assert.deepEqual(collaboratorTripOwnerIds(otherAdmin, rows), ["julie"]);
 });
 
-test("un admin associé se rattache au wallet, pas à un autre associé", () => {
-  const wallet = { company_role: "admin" as const, billing_parent_id: null };
-  const peer = { company_role: "admin" as const, billing_parent_id: "raphael" };
-  assert.equal(
-    companyLinkError({
-      selfId: "gaelle",
-      role: "admin",
-      parentId: "raphael",
-      parent: wallet,
-      childCount: 0,
-    }),
-    null
-  );
-  assert.match(
-    companyLinkError({
-      selfId: "julie",
-      role: "admin",
-      parentId: "gaelle",
-      parent: peer,
-      childCount: 0,
-    }) || "",
-    /wallet/
-  );
-  assert.match(
-    companyLinkError({
-      selfId: "raphael",
-      role: "admin",
-      parentId: "autre",
-      parent: wallet,
-      childCount: 2,
-    }) || "",
-    /porte déjà le wallet/
-  );
-});
-
-test("la fiche garde le wallet d’un admin associé", () => {
+test("la fiche n’attache un admin à aucun wallet", () => {
   const linked = customerPatchFromBody({
     company_role: "admin",
     billing_parent_id: "raphael",
   });
   assert.equal(linked.patch.company_role, "admin");
-  assert.equal(linked.patch.billing_parent_id, "raphael");
+  assert.equal(linked.patch.billing_parent_id, null);
 
-  const wallet = customerPatchFromBody({ company_role: "admin" });
-  assert.equal(wallet.patch.billing_parent_id, null);
+  const member = customerPatchFromBody({
+    company_role: "member",
+    billing_parent_id: "raphael",
+  });
+  assert.equal(member.patch.billing_parent_id, "raphael");
 
   const cleared = customerPatchFromBody({
     company_role: null,
     billing_parent_id: "raphael",
   });
   assert.equal(cleared.patch.billing_parent_id, null);
+  assert.equal(cleared.patch.spending_allowance, null);
 });
 
-test("le formulaire propose Associé de pour un admin, sans les autres associés", () => {
-  const html = renderToStaticMarkup(
+test("le formulaire facture un collaborateur par l’admin, sans associé", () => {
+  const admins = [
+    {
+      id: "raphael",
+      first_name: "Raphael",
+      last_name: "Benillouche",
+      company_name: "RB&A",
+      email: "rb@example.com",
+      phone: "",
+      company_role: "admin" as const,
+      billing_parent_id: null,
+    },
+    {
+      id: "julie",
+      first_name: "Julie",
+      last_name: "Martin",
+      company_name: "RB&A",
+      email: "jm@example.com",
+      phone: "",
+      company_role: "admin" as const,
+      billing_parent_id: "raphael",
+    },
+  ];
+  const memberHtml = renderToStaticMarkup(
     createElement(CompanyRoleFields, {
-      role: "admin",
+      role: "member",
       onRoleChange: () => {},
       billingParentId: "raphael",
       onBillingParentChange: () => {},
-      companyAdmins: [
-        {
-          id: "raphael",
-          first_name: "Raphael",
-          last_name: "Benillouche",
-          company_name: "RB&A",
-          email: "rb@example.com",
-          phone: "",
-          company_role: "admin",
-          billing_parent_id: null,
-        },
-        {
-          id: "gaelle",
-          first_name: "Gaëlle",
-          last_name: "Zerbib",
-          company_name: "RB&A",
-          email: "gz@example.com",
-          phone: "",
-          company_role: "admin",
-          billing_parent_id: "raphael",
-        },
-      ],
+      companyAdmins: admins,
       selfId: "gaelle",
       spendingAllowance: "",
       onSpendingAllowanceChange: () => {},
     })
   );
-  assert.match(html, /Associé de/);
-  assert.match(html, /Raphael Benillouche/);
-  assert.match(html, /Cet admin partage le wallet/);
-  assert.equal(html.includes("Gaëlle"), false);
+  assert.match(memberHtml, /Facturé par/);
+  assert.match(memberHtml, /Raphael Benillouche/);
+  assert.equal(memberHtml.includes("Associé de"), false);
+  assert.equal(memberHtml.includes("Julie"), false);
+
+  const adminHtml = renderToStaticMarkup(
+    createElement(CompanyRoleFields, {
+      role: "admin",
+      onRoleChange: () => {},
+      billingParentId: "",
+      onBillingParentChange: () => {},
+      companyAdmins: admins,
+      selfId: "raphael",
+      spendingAllowance: "",
+      onSpendingAllowanceChange: () => {},
+    })
+  );
+  assert.match(adminHtml, /voyages publiés de ses collaborateurs/);
+  assert.equal(adminHtml.includes("Associé de"), false);
+  assert.equal(adminHtml.includes("Facturé par"), false);
 });
 
 test("company role labels and parse", () => {

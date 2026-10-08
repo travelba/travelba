@@ -7,7 +7,7 @@ import { chosenCalendarHref, googleCalendarHref, itemCalendarHref } from "@/lib/
 import type { CrmBalance } from "@/lib/crm/types";
 import { isClientUpcomingStay } from "@/lib/crm/client-stays";
 import { encoursCaption, formatDateRangeShort, formatMoney, jMinusLabel } from "@/lib/crm/money";
-import { adminLedgerCustomerId, isCompanyMember } from "@/lib/crm/company-role";
+import { isCompanyMember } from "@/lib/crm/company-role";
 import { clientTripOwnerIds } from "@/lib/crm/company-peers";
 import { loadStayArrivalPlaces, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
 import { clientVisibleItems, nextTimelineFlight, tripPlaceLine, type FlightPass } from "@/lib/crm/carnet";
@@ -33,7 +33,7 @@ export default async function AccountHomePage() {
       : supabase
           .from("crm_customer_balances")
           .select("*")
-          .eq("customer_id", adminLedgerCustomerId(customer)),
+          .eq("customer_id", customer.id),
     loadVisibleCarnets(supabase, customer.id, ownerIds),
   ]);
 

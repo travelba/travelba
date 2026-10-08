@@ -136,11 +136,9 @@ export function customerPatchFromBody(
     }
     patch[key] = emptyToNull(body[key]);
   }
-  if ("company_role" in patch && patch.company_role == null) {
+  if ("company_role" in patch && patch.company_role !== "member") {
     patch.billing_parent_id = null;
-    patch.spending_allowance = null;
-  } else if ("company_role" in patch && !("billing_parent_id" in body)) {
-    patch.billing_parent_id = null;
+    if (patch.company_role == null) patch.spending_allowance = null;
   }
   // Un PATCH partiel (ex. facturation) ne touche pas au téléphone ; on refuse seulement de l’effacer.
   if (opts.requirePhone && "phone" in body) {
