@@ -136,3 +136,52 @@ test("un passeport français à deux adresses garde le domicile, le prénom cour
   assert.equal(rows[0].place_of_birth, "LEVALLOIS-PERRET");
   assert.equal(rows[0].authority, "Préfecture des Hauts-de-Seine Nanterre");
 });
+
+test("un passeport français relu par l’OCR garde le nom d’épouse, le lieu et la ville entière", () => {
+  const visual = [
+    "ep. ne sr",
+    "DUPONT 6p, MARTINEE",
+    "DUPONT 66, MARTINEE",
+    "DUPONT 6p, MATRINEE",
+    "Prénoms",
+    "Zoé, Lina",
+    "Nationalité Française",
+    "04 071988 LE BLANC-MESNIL",
+    "19 11 2028",
+    "BIB<<ZOE<LINA",
+    "Préfecture de Selne-Saint-",
+    "“ee Denis BOBIGNY |",
+    "Nee Cob",
+    "18 RUE DU BOIS DE LA FONTAINE 7s",
+    "92200 NEUILLY-SUR-SEINE",
+    "FRANCE",
+    "9 RUE DES TILLEULS aa pes",
+    "92300 LEVALLOIS-PERRET",
+  ].join("\n");
+  assert.equal(readPlaceOfBirth(visual, "FR", "1988-07-04"), "LE BLANC-MESNIL");
+  assert.equal(readAuthority(visual), "Préfecture de Seine-Saint-Denis Bobigny");
+  const domicile = readDomicile(visual);
+  assert.equal(domicile.address_line, "18 RUE DU BOIS DE LA FONTAINE");
+  assert.equal(domicile.postal_code, "92200");
+  assert.equal(domicile.city, "NEUILLY-SUR-SEINE");
+  const rows = identitiesFromPassportOcr(
+    [
+      "P<FRADUPONT<<ZOE<LINA<NOEMIE<<<<<<<<<<<<<<<<",
+      "P<FRADUPONT<<ZOE<LINAS<SNOEMIE<<<<<<<<<<<<<<<<<",
+      "P<FRADUPONT<<ZOE<LINA<XNOEMIE<<<<<<<<<<<<<<<<<<",
+      "P<FRADUPONT<<ZOE<LINA<KNOEMIE<<<<<<<<<<<<<<<<<<",
+      td3Line("12AB34567", "FRA", "880704", "F", "281119", ""),
+    ].join("\n"),
+    visual
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].last_name, "Dupont");
+  assert.equal(rows[0].usage_name, "Martinée");
+  assert.equal(rows[0].first_name, "Zoé Lina Noemie");
+  assert.equal(rows[0].place_of_birth, "LE BLANC-MESNIL");
+  assert.equal(rows[0].address_line, "18 RUE DU BOIS DE LA FONTAINE");
+  assert.equal(rows[0].city, "NEUILLY-SUR-SEINE");
+  assert.equal(rows[0].authority, "Préfecture de Seine-Saint-Denis Bobigny");
+  assert.equal(rows[0].birth_date, "1988-07-04");
+  assert.equal(rows[0].expires_on, "2028-11-19");
+});

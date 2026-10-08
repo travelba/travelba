@@ -142,10 +142,63 @@ function surnamesCompatible(left: string, right: string) {
   return short.length >= 3 && long.endsWith(short) && long.length - short.length <= 6;
 }
 
-function preferToken(options: string[]) {
+const GLARE_LETTER = new Set(["C", "G", "K", "S", "X"]);
+
+function commonSuffix(words: string[]) {
+  let stem = words[0] || "";
+  for (const word of words.slice(1)) {
+    let index = 0;
+    while (
+      index < stem.length &&
+      index < word.length &&
+      stem[stem.length - 1 - index] === word[word.length - 1 - index]
+    ) {
+      index += 1;
+    }
+    stem = stem.slice(stem.length - index);
+  }
+  return stem;
+}
+
+/** Un « < » lu S, K ou X rallonge un prénom. On ne garde cette lettre que si elle est stable. */
+function unglaredStem(options: string[]) {
   const counts = new Map<string, number>();
   for (const item of options) counts.set(item, (counts.get(item) || 0) + 1);
-  return options.reduce((best, item) => {
+  const unique = [...counts.keys()];
+  if (unique.length < 2) return null;
+  const suffix = commonSuffix(unique);
+  if (suffix.length >= 4) {
+    const prefixes = new Set<string>();
+    const leading = unique.every((token) => {
+      if (token === suffix) return true;
+      if (token.length !== suffix.length + 1 || !token.endsWith(suffix)) return false;
+      const extra = token[0] || "";
+      if (!GLARE_LETTER.has(extra)) return false;
+      prefixes.add(extra);
+      return true;
+    });
+    if (leading && (prefixes.size >= 2 || counts.has(suffix))) return suffix;
+  }
+  for (const short of unique) {
+    const longs = unique.filter(
+      (token) =>
+        token.startsWith(short) &&
+        token.length === short.length + 1 &&
+        GLARE_LETTER.has(token[token.length - 1] || "")
+    );
+    if (!longs.length) continue;
+    const longCount = longs.reduce((sum, token) => sum + (counts.get(token) || 0), 0);
+    if ((counts.get(short) || 0) >= longCount) return short;
+  }
+  return null;
+}
+
+function preferToken(options: string[]) {
+  const stem = unglaredStem(options);
+  const pool = stem ? options.map(() => stem) : options;
+  const counts = new Map<string, number>();
+  for (const item of pool) counts.set(item, (counts.get(item) || 0) + 1);
+  return pool.reduce((best, item) => {
     const itemExtends = item.startsWith(best) && item.length > best.length;
     const bestExtends = best.startsWith(item) && best.length > item.length;
     if (itemExtends) return item;
@@ -506,6 +559,15 @@ function pairLines(names: string[], numbers: string[], visualText: string, corpu
             if (a === fold(a) && b !== fold(b)) return true;
             continue;
           }
+          const glareLonger = (long: string, short: string) => {
+            const bare = fold(short);
+            const extra = fold(long);
+            if (bare.length < 4 || extra.length !== bare.length + 1) return false;
+            const letter = extra.startsWith(bare) ? extra[extra.length - 1] : extra.endsWith(bare) ? extra[0] : "";
+            return Boolean(letter && GLARE_LETTER.has(letter.toUpperCase()));
+          };
+          if (glareLonger(b, a)) return false;
+          if (glareLonger(a, b)) return true;
           if (fold(b).startsWith(fold(a)) && b.length > a.length) return true;
           if (fold(a).startsWith(fold(b)) && a.length > b.length) return false;
           if (Math.abs(a.length - b.length) === 1) return b.length < a.length;
