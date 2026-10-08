@@ -101,6 +101,14 @@ export function readPlaceOfBirth(text: string, issuingCountry: string | null, bi
 
 const CITY_ARTICLE = /^(?:LE|LA|LES)$/;
 
+/** Un bout du nom de naissance (« BIB » dans un nom plus long) n’est pas une ville. */
+function placeIsSurnameFragment(place: string | null, last: string | null) {
+  if (!place || !last || /\s/.test(place)) return false;
+  const city = place.toUpperCase().replace(/[^A-Z]/g, "");
+  const name = last.toUpperCase().replace(/[^A-Z]/g, "");
+  return city.length >= 3 && city.length < name.length && name.endsWith(city);
+}
+
 function cityBesideDate(flat: string, day: string, month: string, year: string) {
   const found: string[] = [];
   const re = new RegExp(`${day}\\s*${month}\\s*${year}`, "ig");
@@ -433,12 +441,13 @@ export function enrichPassportVisual(identity: ExtractedIdentity, visual: string
     givenNames: given || identity.first_name,
   });
   const address = readDomicile(visual);
+  const place = identity.place_of_birth || readPlaceOfBirth(visual, identity.issuing_country, identity.birth_date);
   return {
     ...identity,
     last_name: names.last_name,
     usage_name: names.usage_name,
     first_name: completeGivenNames(identity.first_name, given),
-    place_of_birth: identity.place_of_birth || readPlaceOfBirth(visual, identity.issuing_country, identity.birth_date),
+    place_of_birth: placeIsSurnameFragment(place, names.last_name) ? null : place,
     authority: identity.authority || readAuthority(visual),
     issued_on: identity.issued_on || readIssueDate(visual, identity),
     address_line: identity.address_line || address.address_line,

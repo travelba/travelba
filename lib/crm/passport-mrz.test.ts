@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { emptyIdentity } from "./passport-extract";
 import { icaoCheckDigit, identitiesFromPassportOcr } from "./passport-mrz";
-import { readAuthority, readDomicile, readIssueDate, readPlaceOfBirth } from "./passport-visual";
+import { enrichPassportVisual, readAuthority, readDomicile, readIssueDate, readPlaceOfBirth } from "./passport-visual";
 
 function td3Line(doc: string, nat: string, birth: string, sex: string, exp: string, personal: string) {
   const docField = doc.padEnd(9, "<").slice(0, 9);
@@ -184,4 +184,18 @@ test("un passeport français relu par l’OCR garde le nom d’épouse, le lieu 
   assert.equal(rows[0].authority, "Préfecture de Seine-Saint-Denis Bobigny");
   assert.equal(rows[0].birth_date, "1988-07-04");
   assert.equal(rows[0].expires_on, "2028-11-19");
+});
+
+test("un fragment du nom de naissance n’est pas un lieu", () => {
+  const base = emptyIdentity();
+  const fragment = enrichPassportVisual(
+    { ...base, last_name: "Dupont", place_of_birth: "PONT", valid: true },
+    ""
+  );
+  assert.equal(fragment.place_of_birth, null);
+  const city = enrichPassportVisual(
+    { ...base, last_name: "Dupont", place_of_birth: "LE BLANC-MESNIL", valid: true },
+    ""
+  );
+  assert.equal(city.place_of_birth, "LE BLANC-MESNIL");
 });

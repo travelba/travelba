@@ -21,7 +21,7 @@ import { formatDateFr } from "@/lib/crm/money";
 import { appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-extract";
 import { identityForPerson } from "@/lib/crm/passport-assign";
 import { documentNameNotice } from "@/lib/crm/document-identity";
-import { scanAwaitsConfirmation, scanWouldPersist } from "@/lib/crm/passport-confirm";
+import { passportConfirmCopy, scanAwaitsConfirmation, scanWouldPersist } from "@/lib/crm/passport-confirm";
 import { sendForm } from "@/lib/crm/client-fetch";
 import type { PersonName } from "@/lib/crm/person-match";
 import { vaultDocumentsForPerson } from "@/lib/crm/trip-documents";
@@ -48,6 +48,9 @@ type PassportSource = {
   sex?: string | null;
   authority?: string | null;
   personal_number?: string | null;
+  address_line?: string | null;
+  postal_code?: string | null;
+  city?: string | null;
 };
 
 function sexLabel(value: string | null | undefined) {
@@ -74,7 +77,14 @@ export function passportDetailRows(source: PassportSource) {
     ["Expire le", source.expires_on ? formatDateFr(source.expires_on) : null],
     ["Autorité", source.authority],
     ["N° personnel", source.personal_number],
+    ["Domicile", domicileLine(source)],
   ] as const;
+}
+
+function domicileLine(source: PassportSource) {
+  const city = [source.postal_code, source.city].filter(Boolean).join(" ");
+  const line = [source.address_line, city].filter(Boolean).join(", ");
+  return line || null;
 }
 
 export function passportCompactLabel(source: PassportSource, options?: { maskNumber?: boolean }) {
@@ -123,7 +133,7 @@ export function PersonPassportCard({
   persist?: boolean;
   person?: PersonName | null;
   onIdentity?: (identity: ExtractedIdentity) => void;
-  /** Client : reçu seulement à « Confirmer » (ou tout de suite quand rien ne s’enregistre). */
+  /** Reçu seulement à « Enregistrer » / « Confirmer » (ou tout de suite quand rien ne s’enregistre). */
   onScan?: (result: ScanResult) => void;
   /** Client : « Annuler » sur la pièce lue, le parent oublie le scan. */
   onCancel?: () => void;
@@ -134,7 +144,7 @@ export function PersonPassportCard({
   const router = useRouter();
   const vault = vaultDocumentsForPerson(documents, companionId);
   const [scan, setScan] = useState<ScanResult | null>(null);
-  /** Client : la pièce lue attend « Confirmer » avant d’être enregistrée et appliquée au profil. */
+  /** La pièce lue attend la relecture avant d’être enregistrée et appliquée au profil. */
   const [pending, setPending] = useState<ScanResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -213,7 +223,6 @@ export function PersonPassportCard({
     setScan(result);
     setPending(null);
     if (scanAwaitsConfirmation(flowInput(result))) {
-      // Rien n’est écrit, et le parent ne reçoit rien, tant que le client n’a pas confirmé.
       setPending(result);
       return;
     }
@@ -246,12 +255,14 @@ export function PersonPassportCard({
           isHolder: !companionId,
         })
       : null;
-  const pendingQuestion =
-    pendingIdentities.length > 1
-      ? `Importer ces ${pendingIdentities.length} passeports ?`
-      : companionId
-        ? `C’est bien la pièce de ${person?.first_name || "ce voyageur"} ?`
-        : "C’est bien votre pièce ?";
+  const confirmCopy = pending
+    ? passportConfirmCopy({
+        variant,
+        identityCount: pendingIdentities.length,
+        companion: Boolean(companionId),
+        firstName: person?.first_name,
+      })
+    : null;
 
   async function remove(id: string) {
     setBusy(true);
@@ -417,9 +428,10 @@ export function PersonPassportCard({
             <div
               className="space-y-3 rounded-xl border border-[var(--admin-gold)]/50 bg-white/90 p-3"
               role="group"
-              aria-label={pendingQuestion}
+              aria-label={confirmCopy?.question}
             >
-              <p className="text-sm font-semibold text-[var(--admin-navy)]">{pendingQuestion}</p>
+              <p className="text-sm font-semibold text-[var(--admin-navy)]">{confirmCopy?.question}</p>
+              {confirmCopy?.hint ? <p className="text-xs text-muted">{confirmCopy.hint}</p> : null}
               {pendingIdentities.length > 1 ? (
                 <p className="text-xs text-muted">Chaque personne inconnue du foyer devient un accompagnateur.</p>
               ) : null}
@@ -435,7 +447,7 @@ export function PersonPassportCard({
                   disabled={busy}
                   className="admin-af-btn inline-flex min-h-11 flex-1 items-center justify-center rounded-full px-4 text-sm"
                 >
-                  Confirmer
+                  {confirmCopy?.confirm}
                 </button>
                 <button
                   type="button"

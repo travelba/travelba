@@ -15,9 +15,39 @@ export function scanWouldPersist(input: ScanFlowInput) {
 }
 
 /**
- * Côté client, rien ne part avant « Confirmer » : le parent ne reçoit le scan (onScan)
- * qu’à la confirmation, et « Annuler » doit lui dire d’oublier la pièce (onCancel).
+ * Rien n’est écrit tant que la pièce n’est pas relue.
+ * Le parent ne reçoit le scan qu’à ce moment-là ; « Annuler » oublie la pièce.
+ * Le formulaire d’un nouvel accompagnateur (un seul passeport, pas encore enregistré)
+ * remplit ses champs tout de suite : ce n’est pas une écriture.
  */
 export function scanAwaitsConfirmation(input: ScanFlowInput) {
-  return input.variant === "client" && scanWouldPersist(input);
+  return scanWouldPersist(input);
+}
+
+export function passportConfirmCopy(input: {
+  variant: "admin" | "client";
+  identityCount: number;
+  companion: boolean;
+  firstName?: string | null;
+}) {
+  if (input.variant === "admin") {
+    return {
+      question:
+        input.identityCount > 1
+          ? `Enregistrer ces ${input.identityCount} passeports ?`
+          : "Enregistrer cette pièce ?",
+      confirm: "Enregistrer",
+      hint: "Relisez chaque champ. Rien n’est écrit avant.",
+    };
+  }
+  return {
+    question:
+      input.identityCount > 1
+        ? `Importer ces ${input.identityCount} passeports ?`
+        : input.companion
+          ? `C’est bien la pièce de ${input.firstName || "ce voyageur"} ?`
+          : "C’est bien votre pièce ?",
+    confirm: "Confirmer",
+    hint: null as string | null,
+  };
 }
