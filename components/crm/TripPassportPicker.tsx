@@ -14,6 +14,9 @@ import {
 import { formatDateFr } from "@/lib/crm/money";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
+import { FilePreviewLink } from "@/components/crm/FilePreview";
+import type { FilePreviewModel } from "@/lib/crm/preview-files";
+import type { PassportVaultRow } from "@/lib/crm/passport-vault";
 
 function passportLabel(doc: CrmTravelDocument) {
   return [DOC_TYPE_LABELS[doc.doc_type], doc.number, doc.expires_on ? `exp. ${formatDateFr(doc.expires_on)}` : null]
@@ -29,6 +32,9 @@ export function TripPassportPicker({
   documents,
   holder = null,
   embedded = false,
+  mosaic = false,
+  badges = [],
+  scans = [],
   onRemove,
 }: {
   variant: "admin" | "client";
@@ -38,6 +44,10 @@ export function TripPassportPicker({
   documents: CrmTravelDocument[];
   holder?: PersonName | null;
   embedded?: boolean;
+  /** Deux voyageurs par ligne, chacun sur une carte. */
+  mosaic?: boolean;
+  badges?: PassportVaultRow[];
+  scans?: FilePreviewModel[];
   /** Renvoie une phrase d’erreur pour l’afficher sous le bouton. */
   onRemove?: (travelerId: string) => void | string | null | undefined | Promise<void | string | null | undefined>;
 }) {
@@ -119,7 +129,7 @@ export function TripPassportPicker({
       {warn ? <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm">{warn}</p> : null}
       {error ? <p className="text-sm text-accent">{error}</p> : null}
       <BusyBar active={busyId != null} label="Enregistrement…" />
-      <ul className="space-y-3">
+      <ul className={mosaic ? "grid gap-3 sm:grid-cols-2" : "space-y-3"}>
         {travelers.map((traveler) => {
           const tripDocs = tripDocumentsForTraveler(documents, traveler);
           const attached = tripDocs[0] || null;
@@ -183,16 +193,32 @@ export function TripPassportPicker({
             );
           }
 
+          const badge = badges.find((row) => row.travelerId === traveler.id);
+          const scan = scans.find((file) => file.label === name);
+          const badgeTone =
+            badge?.tone === "ok"
+              ? "bg-[#0B192C] text-[#C5A880]"
+              : badge?.tone === "soon"
+                ? "bg-[#C5A880]/25 text-[#0B192C]"
+                : "bg-[#f3e6e2] text-[#0B192C]";
           return (
-            <li key={traveler.id} className="space-y-1">
+            <li key={traveler.id} className={mosaic ? "space-y-1 rounded-2xl bg-[#faf9f6] px-3 py-3" : "space-y-1"}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
                     {name}
                     {holderMark}
                   </p>
+                  {badge ? (
+                    <p className="mt-1 flex flex-wrap items-center gap-2">
+                      <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${badgeTone}`}>
+                        {badge.label}
+                      </span>
+                      {scan ? <FilePreviewLink file={scan} /> : null}
+                    </p>
+                  ) : null}
                   {choices.length === 0 && !attached ? (
-                    <p className="text-xs text-muted">Passeport manquant</p>
+                    badge ? null : <p className="text-xs text-muted">Passeport manquant</p>
                   ) : choices.length <= 1 ? (
                     <p className="text-xs text-muted">{passportLabel(attached || single!)}</p>
                   ) : null}

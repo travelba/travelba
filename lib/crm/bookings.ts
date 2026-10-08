@@ -428,6 +428,11 @@ export async function syncBookingDebit(
     return;
   }
 
+  // Une carte du dossier tient déjà le livre : le total du séjour ne s’ajoute pas.
+  if ((intent === "insert" || intent === "update") && (await dropCoveredStayRollup(supabase, booking.id))) {
+    return;
+  }
+
   const companyId = debitBillingCompanyId(booking);
 
   if (intent === "insert") {
@@ -731,8 +736,12 @@ export async function syncBookingItemDebits(supabase: SupabaseClient, booking: C
   }
 }
 
-/** Le montant global du séjour quitte le livre dès qu’une carte ou un frais du dossier est posté. Une dépense libre ou la commission 10 % ne le retire pas. */
-export async function dropCoveredStayRollup(supabase: SupabaseClient, bookingId: string) {
+/**
+ * Le montant global du séjour quitte le livre dès qu’une carte du dossier est postée.
+ * Une dépense libre, la commission 10 % ou la billeterie ne le retire pas.
+ * Vrai quand une carte couvre le séjour : l’appelant ne doit pas le réécrire.
+ */
+export async function dropCoveredStayRollup(supabase: SupabaseClient, bookingId: string): Promise<boolean> {
   const data = must(
     await supabase
       .from("crm_transactions")
@@ -743,10 +752,12 @@ export async function dropCoveredStayRollup(supabase: SupabaseClient, bookingId:
     "Montant global du séjour"
   );
   const rows = (data || []) as Pick<CrmTransaction, "id" | "direction" | "kind" | "external_id" | "status" | "source">[];
-  if (!rows.some((row) => coversStayRollup({ ...row, booking_id: bookingId }))) return;
+  if (!rows.some((row) => coversStayRollup({ ...row, booking_id: bookingId }))) return false;
   const rollupIds = rows.filter((row) => isStayRollupDebit(row)).map((row) => row.id);
-  if (!rollupIds.length) return;
-  must(await supabase.from("crm_transactions").delete().in("id", rollupIds), "Montant global du séjour");
+  if (rollupIds.length) {
+    must(await supabase.from("crm_transactions").delete().in("id", rollupIds), "Montant global du séjour");
+  }
+  return true;
 }
 
 export async function syncBookingLedger(
@@ -758,11 +769,14 @@ export async function syncBookingLedger(
     await clearBookingCharges(supabase, booking.id);
     return;
   }
-  await syncBookingDebit(supabase, booking, previousStatus);
-  await syncTicketingFee(supabase, booking);
-  await syncBookingItemDebits(supabase, booking);
-  await syncAgencyCommission(supabase, booking);
-  await dropCoveredStayRollup(supabase, booking.id);
+  try {
+    await syncBookingDebit(supabase, booking, previousStatus);
+    await syncTicketingFee(supabase, booking);
+    await syncBookingItemDebits(supabase, booking);
+    await syncAgencyCommission(supabase, booking);
+  } finally {
+    await dropCoveredStayRollup(supabase, booking.id);
+  }
 }
 
 /** Le titre suit les villes des étapes, sauf un nom choisi (« 40 ans »). */

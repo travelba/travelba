@@ -26,7 +26,7 @@ import { BusyBar } from "@/components/crm/BusyBar";
 import { formatMoney, jMinusLabel, todayIsoDate } from "@/lib/crm/money";
 import { EstaOnBooking } from "@/components/admin/EstaOnBooking";
 import { UkEtaOnBooking } from "@/components/admin/UkEtaOnBooking";
-import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
+import { Icon } from "@/components/crm/icons";
 import type { EstaTravelerLine } from "@/lib/crm/esta-status";
 import { settledAuthorizationCountries } from "@/lib/crm/visa-cover";
 import type { UkEtaTravelerLine } from "@/lib/crm/uk-eta-ui";
@@ -1149,7 +1149,16 @@ export function BookingEditor({
       <div role="tabpanel" id="booking-panel" aria-labelledby={tabButtonId(tab)} className="flex flex-col gap-6">
       <form id="booking-meta" onSubmit={save} className="contents">
         <div className="contents">
-          <section className={`order-2 admin-af-card space-y-3 rounded-3xl p-5 ${tab === "client" ? "" : "hidden"}`}>
+          <section className={`order-1 admin-af-card space-y-4 rounded-3xl p-5 ${tab === "client" ? "" : "hidden"}`}>
+            <div className="flex items-center justify-between gap-3">
+              <CoverMark>Le client</CoverMark>
+              <Link
+                href={`/admin/clients/${clientPick?.id || booking.customer_id}`}
+                className="shrink-0 text-sm font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline"
+              >
+                Ouvrir la fiche
+              </Link>
+            </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <CustomerPickField
                 name="customer_id"
@@ -1170,11 +1179,59 @@ export function BookingEditor({
                 controlClass={coverField}
               />
             </div>
-            {clientPick && payerPick && clientPick.id === payerPick.id ? (
-              <p className="inline-flex rounded-full bg-[var(--admin-peach)] px-3 py-1 text-sm font-semibold text-[var(--admin-navy)]">
-                {clientPick.first_name} paie ce séjour
+            {clientPick && payerPick && clientPick.id !== payerPick.id ? (
+              <p className="text-sm text-muted">
+                Réglé par {payerPick.first_name} {payerPick.last_name}
               </p>
             ) : null}
+            <details className="group rounded-2xl bg-[#faf9f6]">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden [&::marker]:content-none">
+                <span className="min-w-0">
+                  <span className="block text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold-dark)]">
+                    Notes
+                  </span>
+                  <span className="mt-0.5 block truncate text-sm text-muted">
+                    {[notesInternal, notesClient].map((note) => note.trim()).filter(Boolean)[0]?.replace(/\s+/g, " ") ||
+                      "Aucune note"}
+                  </span>
+                </span>
+                <Icon name="expand_more" className="h-4 w-4 shrink-0 text-[var(--admin-navy)] transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="grid gap-3 border-t border-[var(--border)] px-4 py-3">
+                <label className="flex flex-col gap-1.5 text-sm font-semibold text-[var(--admin-navy)]">
+                  <span className="flex flex-wrap items-baseline justify-between gap-2">
+                    Pour l’agence
+                    <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold-dark)]">
+                      Invisible au client
+                    </span>
+                  </span>
+                  <textarea
+                    name="notes_internal"
+                    value={notesInternal}
+                    onChange={(event) => setNotesInternal(event.target.value)}
+                    rows={2}
+                    placeholder="Mémo pour l’agence"
+                    className={`${coverField} min-h-16 font-normal`}
+                  />
+                </label>
+                <label className="flex flex-col gap-1.5 text-sm font-semibold text-[var(--admin-navy)]">
+                  <span className="flex flex-wrap items-baseline justify-between gap-2">
+                    Pour le client
+                    <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold-dark)]">
+                      Visible sur son séjour
+                    </span>
+                  </span>
+                  <textarea
+                    name="notes_client"
+                    value={notesClient}
+                    onChange={(event) => setNotesClient(event.target.value)}
+                    rows={2}
+                    placeholder="Un mot que le client lira"
+                    className={`${coverField} min-h-16 font-normal`}
+                  />
+                </label>
+              </div>
+            </details>
           </section>
 
           <section className={`order-1 admin-af-card space-y-3 rounded-3xl p-5 ${tab === "voyage" ? "" : "hidden"}`}>
@@ -1486,40 +1543,6 @@ export function BookingEditor({
             )}
           </section>
 
-          <section className={`order-3 admin-af-card space-y-3 rounded-3xl p-5 ${tab === "client" ? "" : "hidden"}`}>
-            <label className="flex flex-col gap-2 rounded-3xl bg-[var(--admin-peach)] p-5 text-sm font-semibold text-[var(--admin-navy)] shadow-[inset_0_0_0_1px_rgba(197,168,128,0.45)]">
-              <span className="flex flex-wrap items-baseline justify-between gap-2">
-                Notes pour l’agence
-                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold-dark)]">
-                  Le client ne voit pas ça
-                </span>
-              </span>
-              <textarea
-                name="notes_internal"
-                value={notesInternal}
-                onChange={(event) => setNotesInternal(event.target.value)}
-                rows={3}
-                placeholder="Mémo pour l’agence"
-                className={`${coverField} min-h-24 font-normal`}
-              />
-            </label>
-            <label className="flex flex-col gap-2 rounded-3xl bg-white p-5 text-sm font-semibold text-[var(--admin-navy)] shadow-[inset_0_0_0_1px_var(--border)]">
-              <span className="flex flex-wrap items-baseline justify-between gap-2">
-                Note pour le client
-                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold-dark)]">
-                  Visible sur son séjour
-                </span>
-              </span>
-              <textarea
-                name="notes_client"
-                value={notesClient}
-                onChange={(event) => setNotesClient(event.target.value)}
-                rows={3}
-                placeholder="Un mot que le client lira"
-                className={`${coverField} min-h-24 font-normal`}
-              />
-            </label>
-          </section>
 
         </div>
       </form>
@@ -1615,18 +1638,8 @@ export function BookingEditor({
 
       {tab === "client" ? (
         <>
-      <section className="order-1 admin-af-card space-y-4 rounded-3xl p-5">
-        <div className="space-y-3">
-          <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Voyageurs</h2>
-          <TripPassportGroup
-            embedded
-            rows={passportVaultRows(travelers, identityDocs, todayIsoDate(), holderProfile)}
-            hrefFor={() => `/admin/clients/${booking.customer_id}`}
-            passports={passportPreviewsForStay(travelers, identityDocs, holderName, booking.reference)}
-          />
-          <EstaOnBooking bookingId={booking.id} rows={estaLines} />
-          <UkEtaOnBooking bookingId={booking.id} rows={ukEtaLines} />
-        </div>
+      <section className="order-2 admin-af-card space-y-4 rounded-3xl p-5">
+        <CoverMark>Voyageurs</CoverMark>
         {!travelers.length ? (
           <button
             type="button"
@@ -1640,11 +1653,14 @@ export function BookingEditor({
           <TripPassportPicker
             variant="admin"
             embedded
+            mosaic
             customerId={booking.customer_id}
             bookingId={booking.id}
             travelers={travelers}
             documents={identityDocs}
             holder={holderProfile}
+            badges={passportVaultRows(travelers, identityDocs, todayIsoDate(), holderProfile)}
+            scans={passportPreviewsForStay(travelers, identityDocs, holderName, booking.reference)}
             onRemove={(id) => removeTraveler(id)}
           />
         )}
@@ -1700,10 +1716,14 @@ export function BookingEditor({
             ) : null}
           </div>
         </form>
+        <div className={estaLines.length && ukEtaLines.length ? "grid gap-4 lg:grid-cols-2" : "space-y-4"}>
+          <EstaOnBooking bookingId={booking.id} rows={estaLines} />
+          <UkEtaOnBooking bookingId={booking.id} rows={ukEtaLines} />
+        </div>
       </section>
 
       {shareUrl ? (
-        <div className="order-4">
+        <div className="order-3">
         <TripSharePanel
           bookingId={booking.id}
           shareUrl={shareUrl}
@@ -1712,7 +1732,9 @@ export function BookingEditor({
         />
         </div>
       ) : null}
-      <CustomerLoginLog logins={customerLogins} activity={customerActivity} />
+      <div className="order-4">
+        <CustomerLoginLog logins={customerLogins} activity={customerActivity} />
+      </div>
         </>
       ) : null}
 
