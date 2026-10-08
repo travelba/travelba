@@ -135,6 +135,7 @@ export function TeamDesk({
         <p className="text-sm text-muted lg:col-span-4">
           L’agent ouvre l’espace agence. L’administrateur fait de même, et gère les collègues. Partenaire MyLER
           n’ouvre que Little Emperors : la clé de test, Actualiser, les routes v2. Pas le reste de l’agence.
+          S’il est déjà dans la liste, Renvoyer le lien sur sa ligne.
         </p>
         <div className="lg:col-span-4">
           <BusyBar active={saving} label="Ajout du collègue…" />
@@ -222,6 +223,9 @@ function ColleagueRow({
   const [role, setRole] = useState<StaffRole>(member.role);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [accessLink, setAccessLink] = useState<string | null>(null);
+  const [accessNotice, setAccessNotice] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const action = roleActionLabel(member.role, role);
   const lastAdmin = member.role === "admin" && adminCount <= 1;
   const canRemove = member.role !== "admin" && !current;
@@ -248,6 +252,40 @@ function ColleagueRow({
       setRole(member.role);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function resend() {
+    setBusy(true);
+    setError(null);
+    setCopied(false);
+    try {
+      const res = await fetch(`/api/admin/equipe/${member.id}`, { method: "POST" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(json.error || "Envoi impossible. Réessayez.");
+        return;
+      }
+      setAccessLink(typeof json.link === "string" ? json.link : null);
+      setAccessNotice(
+        json.delivered
+          ? "Lien renvoyé. Il reste valable 30 jours."
+          : "L’e-mail n’est pas parti : copiez le lien. Il reste valable 30 jours."
+      );
+    } catch {
+      setError("Connexion interrompue. Réessayez.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copyAccessLink() {
+    if (!accessLink) return;
+    try {
+      await navigator.clipboard.writeText(accessLink);
+      setCopied(true);
+    } catch {
+      setError("Copie impossible — sélectionnez le lien manuellement.");
     }
   }
 
@@ -316,7 +354,11 @@ function ColleagueRow({
           confirmLabel="Retirer l’accès"
           busyLabel="Retrait…"
           ariaLabel={`Retirer ${member.fullName}`}
-          question={`Retirer ${member.fullName} coupe l’accès à l’espace agence. Les dossiers restent.`}
+          question={
+            member.role === "partner"
+              ? `Retirer ${member.fullName} coupe l’accès à Little Emperors.`
+              : `Retirer ${member.fullName} coupe l’accès à l’espace agence. Les dossiers restent.`
+          }
           align={layout === "card" ? "start" : "end"}
           disabled={busy}
           wrapperClassName="mt-2"
@@ -325,6 +367,26 @@ function ColleagueRow({
       ) : (
         <p className="text-xs text-muted">{member.role === "admin" ? "Non retiré" : "Votre accès"}</p>
       )}
+      {member.role === "partner" && !current ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void resend()}
+          className="mt-2 rounded-full border border-[var(--admin-navy)] px-3 py-1.5 text-xs font-semibold text-[var(--admin-navy)] disabled:opacity-60"
+        >
+          Renvoyer le lien
+        </button>
+      ) : null}
+      {accessNotice ? (
+        <div className="mt-2 space-y-2 text-xs text-[var(--admin-navy)]">
+          <p>{accessNotice}</p>
+          {accessLink ? (
+            <button type="button" onClick={() => void copyAccessLink()} className="font-semibold underline">
+              {copied ? "Lien copié" : "Copier le lien"}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {error ? <p className="mt-2 text-xs text-[var(--admin-red)]">{error}</p> : null}
     </>
   );

@@ -270,6 +270,50 @@ export async function addColleague(
   };
 }
 
+/** Lien de mot de passe pour un collègue déjà créé. Le partenaire ouvre Little Emperors. */
+export async function resendColleagueAccess(staffId: string, origin: string) {
+  const admin = createServiceClient();
+  const { data: row, error } = await admin
+    .from("crm_staff")
+    .select("id, role, auth_user_id, full_name")
+    .eq("id", staffId)
+    .maybeSingle();
+  if (error || !row) throw new StaffTeamError(STAFF_COPY.notFound, 404);
+  const role = parseStaffRole(row.role);
+  if (!role) throw new StaffTeamError(STAFF_COPY.role);
+
+  const { data: userData, error: userError } = await admin.auth.admin.getUserById(row.auth_user_id);
+  const email = userData.user?.email?.trim().toLowerCase() || "";
+  if (userError || !email) throw new StaffTeamError(STAFF_COPY.prepare, 502);
+  const fullName = row.full_name?.trim() || "Collègue";
+
+  let generated = await admin.auth.admin.generateLink({ type: "recovery", email });
+  if (generated.error) {
+    await admin.auth.admin.updateUserById(row.auth_user_id, { email_confirm: true });
+    generated = await admin.auth.admin.generateLink({ type: "recovery", email });
+  }
+  if (generated.error || !generated.data?.properties?.hashed_token) {
+    throw new StaffTeamError(STAFF_COPY.prepare, 502);
+  }
+
+  const previousMeta = { ...(userData.user?.app_metadata || {}) };
+  await writeAppMetadata(admin, row.auth_user_id, {
+    ...previousMeta,
+    must_set_password: true,
+    crm_role: jwtStaffRole(role),
+  });
+
+  const link = await createEntryLink(admin, origin, {
+    tokenHash: generated.data.properties.hashed_token,
+    otpType: "recovery",
+    nextPath: role === "partner" ? "/admin/little-emperors" : "/admin",
+    email,
+    channel: "email",
+  });
+  const delivered = await sendColleagueEmail(email, fullName, link, origin, role);
+  return { delivered, link };
+}
+
 export async function setColleagueRole(staffId: string, nextRole: StaffRole) {
   const role = parseStaffRole(nextRole);
   if (!role) throw new StaffTeamError(STAFF_COPY.role);

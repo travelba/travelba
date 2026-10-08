@@ -12,7 +12,7 @@ export const STAFF_COPY = {
   removeSelf: "Vous ne pouvez pas retirer votre propre accès.",
   lastAdmin: "L’agence garde au moins un administrateur.",
   customer: "Cette adresse appartient à un client. L’agence n’en fait pas un collègue.",
-  already: "Ce collègue fait déjà partie de l’équipe.",
+  already: "Ce collègue fait déjà partie de l’équipe. Renvoyez le lien sur sa ligne.",
   email: "Indiquez une adresse e-mail valide.",
   name: "Indiquez le nom du collègue.",
   nameLong: "Le nom est trop long.",

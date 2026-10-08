@@ -14,7 +14,7 @@ Hello Nico,
 
 Staging review for the MyLER integration. About ten minutes. No production API key is in use, and we are not asking for one until you say this looks complete.
 
-1. You will receive a Travelba invite for nico@littleemperors.com (role Partenaire MyLER). Open it and set a password. The link lasts 30 days. That password is the Travelba login. It is not Little Emperors SSO.
+1. You will receive a Travelba link for nico@littleemperors.com (role Partenaire MyLER). Open it and set a password. The link lasts 30 days. That password is the Travelba login. It is not Little Emperors SSO.
 2. Open the Preview link in this email (not https://travelba.fr). If Vercel asks you to sign in, use the Share link from the same email.
 3. Go to `/admin/login`. Sign in with nico@littleemperors.com and the password you just set. You should land only on Little Emperors. There is no client list and no ledger.
 4. On the page, under **Intégration MyLER**, check:
@@ -32,10 +32,13 @@ If that matches what you see, the production API key is the next step on our sid
 
 ## Invite (Benjamin, admin)
 
+Nico is already **Partenaire MyLER**. **Ajouter** again says he is already on the team. He has not set a password yet.
+
 On `https://travelba.fr` (same accounts as Preview):
 
 1. `/admin/login`
 2. **Équipe**
-3. Nom `Nico Santos`, e-mail `nico@littleemperors.com`, rôle **Partenaire MyLER**, **Ajouter**
+3. On Nico Santos’s row, **Renvoyer le lien**
 4. The email asks him to set a password and says he only opens Little Emperors. Copy the link if the email does not arrive. It is valid for 30 days.
-5. Send him the Preview Share link plus the English block above. Ask him to judge the key on Preview, not on travelba.fr.
+5. A new partner uses the same form: nom, e-mail, rôle **Partenaire MyLER**, **Ajouter**
+6. Send him the Preview Share link plus the English block above. Ask him to judge the key on Preview, not on travelba.fr.
