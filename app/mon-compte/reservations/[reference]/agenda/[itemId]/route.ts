@@ -4,6 +4,7 @@ import { ensureCustomerForUser } from "@/lib/crm/auth";
 import { calendarHttpResponse } from "@/lib/crm/calendar-http";
 import { calendarItemIdFromSegment } from "@/lib/crm/calendar-ics";
 import { carnetVisible, clientVisibleItems } from "@/lib/crm/carnet";
+import { clientTripOwnerIds } from "@/lib/crm/company-peers";
 import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
 
 type Ctx = { params: Promise<{ reference: string; itemId: string }> };
@@ -23,7 +24,7 @@ export async function GET(request: Request, ctx: Ctx) {
   const { data: booking } = await supabase
     .from("crm_bookings")
     .select("*")
-    .eq("customer_id", customer.id)
+    .in("customer_id", await clientTripOwnerIds(customer))
     .eq("reference", reference)
     .maybeSingle();
   if (!booking) return new NextResponse("Introuvable", { status: 404 });

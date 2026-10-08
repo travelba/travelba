@@ -55,6 +55,7 @@ import { stripePublishableKey } from "@/lib/crm/stripe";
 import { StayExpenses } from "@/components/account/StayExpenses";
 import { isActiveItem, isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
 import { bookingPayerLabel, type FundingCompany } from "@/lib/crm/funding-wallet";
+import { clientTripOwnerIds } from "@/lib/crm/company-peers";
 import { toPublicBooking } from "@/lib/crm/public-booking";
 
 type Props = { params: Promise<{ reference: string }> };
@@ -73,7 +74,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { data } = await supabase
     .from("crm_bookings")
     .select("title, destination, reference, visible_to_client, archived_at")
-    .eq("customer_id", customer.id)
+    .in("customer_id", await clientTripOwnerIds(customer))
     .eq("reference", reference)
     .maybeSingle();
   const stay =
@@ -107,11 +108,12 @@ export default async function ReservationDetailPage({ params }: Props) {
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");
   const ledgerPromise = loadClientLedger(supabase, customer, "client");
+  const ownerIds = await clientTripOwnerIds(customer);
 
   const { data: booking } = await supabase
     .from("crm_bookings")
     .select("*")
-    .eq("customer_id", customer.id)
+    .in("customer_id", ownerIds)
     .eq("reference", reference)
     .maybeSingle();
   if (!booking) {

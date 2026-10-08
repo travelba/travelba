@@ -52,10 +52,10 @@ UI : bloc pièce **replié** par défaut (passeport). Copy courte, pas « Upload
 - Adresse perso ≠ adresse de facturation. Les deux peuvent exister.
 - **Rôle société** (`company_role`) :
   - `null` = particulier (comportement historique)
-  - `admin` = admin société : wallet / grand livre (Revolut, crédit disponible)
-  - `member` = collaborateur rattaché via `billing_parent_id` → ne voit **que** les débits de **ses** dossiers, pas les revenus société. `spending_allowance` (fiche, agence seulement) est son droit sur ce wallet ; null = pas de plafond, l’écran Transactions reste la liste des frais
+  - `admin` = wallet société : grand livre (Revolut, crédit disponible). Il voit les carnets **publiés** de ses collaborateurs (`member` dont `billing_parent_id` est lui). Il ne voit pas le carnet d’un autre admin.
+  - `member` = collaborateur rattaché via `billing_parent_id` → ne voit **que** les débits de **ses** dossiers, pas les revenus société, pas le carnet de l’admin. `spending_allowance` (fiche, agence seulement) est son droit sur ce wallet ; null = pas de plafond, l’écran Transactions reste la liste des frais
 - Dossier : `crm_bookings.billing_customer_id` = qui paie (`syncBookingDebit` poste sur ce wallet). Défaut = `billing_parent_id` si member, sinon titulaire.
-- Fiche agence du payeur : les dossiers facturés sur ce compte sont listés avec le nom du voyageur (rapprochement). L’espace client du payeur ne montre pas le carnet du collaborateur.
+- Fiche agence du payeur : les dossiers facturés sur ce compte sont listés avec le nom du voyageur. L’espace client de l’admin montre le carnet publié du collaborateur. Il ne montre pas le carnet d’un autre admin. Chacun garde son propre carnet.
 
 ## OCR
 

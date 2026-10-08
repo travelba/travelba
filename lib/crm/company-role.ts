@@ -1,6 +1,6 @@
 import type { CrmCustomer, CrmTransaction, CompanyRole } from "@/lib/crm/types";
 
-/** Wallet facturé pour un voyageur (admin société ou lui-même). */
+/** Wallet facturé : collaborateur → l’admin société ; sinon lui-même. */
 export function resolveBillingCustomerId(
   traveler: Pick<CrmCustomer, "id" | "company_role" | "billing_parent_id">
 ) {
@@ -8,6 +8,22 @@ export function resolveBillingCustomerId(
     return traveler.billing_parent_id;
   }
   return traveler.id;
+}
+
+/**
+ * Carnets lisibles : les siens, plus ceux des collaborateurs rattachés si c’est un admin.
+ * Jamais le carnet d’un autre admin.
+ */
+export function collaboratorTripOwnerIds(
+  self: Pick<CrmCustomer, "id" | "company_role">,
+  rows: Pick<CrmCustomer, "id" | "company_role" | "billing_parent_id">[]
+) {
+  const ids = new Set<string>([self.id]);
+  if (self.company_role !== "admin") return [self.id];
+  for (const row of rows) {
+    if (row.company_role === "member" && row.billing_parent_id === self.id) ids.add(row.id);
+  }
+  return [...ids];
 }
 
 export function companyRoleLabel(role: CompanyRole | null | undefined) {

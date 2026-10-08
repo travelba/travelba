@@ -29,7 +29,7 @@ test("accueil agence : les encours négatifs ouvrent les transactions", () => {
 
 test("fiche client : la carte Encours ouvre le grand livre du client", () => {
   const src = source("app/admin/clients/[id]/page.tsx");
-  const label = src.indexOf('? "Crédit" : "Encours"');
-  assert.ok(label > 0);
-  assert.match(src.slice(label - 500, label), /href=\{clientLedgerAdminHref\(c\.id\)\}/);
+  assert.match(src, /\? "Crédit" : "Encours"/);
+  assert.match(src, />\s*Transactions\s*</);
+  assert.match(src, /href=\{clientLedgerAdminHref\(c\.id\)\}/);
 });

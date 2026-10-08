@@ -37,8 +37,9 @@ export function CompanyRoleFields({
           </p>
         ) : null}
         <p className={`text-sm text-muted ${heading ? "mt-1" : ""}`}>
-          Un voyageur peut être payé par une société. L’admin voit le grand livre. Le collaborateur
-          voit son droit de dépense et les frais de ses voyages, pas les versements de la société.
+          Un voyageur peut être payé par une société. L’admin voit les voyages publiés de ses
+          collaborateurs, pas ceux des autres admins. Le collaborateur voit son droit de dépense et
+          les frais de ses voyages, pas les versements de la société.
         </p>
       </div>
       <Field label="Rôle">
@@ -58,7 +59,7 @@ export function CompanyRoleFields({
       {role === "member" ? (
         <Field
           label="Facturé par (admin société)"
-          hint="Wallet qui reçoit les virements et les débits des dossiers"
+          hint="Wallet qui reçoit les virements et les débits des dossiers. Cet admin voit le carnet publié."
         >
           <select
             value={billingParentId}
@@ -68,7 +69,7 @@ export function CompanyRoleFields({
           >
             <option value="">Choisir l’admin société…</option>
             {companyAdmins
-              .filter((c) => c.id !== selfId)
+              .filter((c) => c.id !== selfId && c.company_role === "admin" && !c.billing_parent_id)
               .map((c) => (
                 <option key={c.id} value={c.id}>
                   {customerFullName(c)}
@@ -94,7 +95,8 @@ export function CompanyRoleFields({
       ) : null}
       {role === "admin" ? (
         <p className="text-xs text-[#9e7e51]">
-          Ce client est le wallet société : rapprochements Revolut et encours global ici.
+          Ce client est le wallet société : rapprochements Revolut et encours global ici. Il voit
+          les voyages publiés de ses collaborateurs.
         </p>
       ) : null}
     </section>

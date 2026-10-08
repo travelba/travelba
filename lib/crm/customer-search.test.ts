@@ -54,6 +54,12 @@ describe("customer-search", () => {
     });
     assert.equal(customerTravelerPickLabel(member), "Marie Dupont — marie@example.com · rattaché");
     assert.equal(customerBillingPickLabel(admin), "Marie Dupont · TBA SAS · admin société");
+    const peer = customer({
+      company_role: "admin",
+      billing_parent_id: "wallet",
+      email: "dir@tba.fr",
+    });
+    assert.equal(customerTravelerPickLabel(peer), "Marie Dupont — dir@tba.fr · admin société");
   });
 
   it("place les propositions en tête de liste", () => {
