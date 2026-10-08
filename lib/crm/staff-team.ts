@@ -1,4 +1,4 @@
-export type StaffRole = "admin" | "agent";
+export type StaffRole = "admin" | "agent" | "partner";
 
 export type Colleague = {
   id: string;
@@ -25,12 +25,21 @@ export const STAFF_COPY = {
 } as const;
 
 export function staffRoleLabel(role: StaffRole) {
-  return role === "admin" ? "Administrateur" : "Agent";
+  if (role === "admin") return "Administrateur";
+  if (role === "partner") return "Partenaire";
+  return "Agent";
 }
 
 export function parseStaffRole(value: unknown): StaffRole | null {
-  if (value === "admin" || value === "agent") return value;
+  if (value === "admin" || value === "agent" || value === "partner") return value;
   return null;
+}
+
+/** Rôle écrit dans le JWT. Un partenaire ne devient jamais administrateur. */
+export function jwtStaffRole(role: StaffRole): StaffRole {
+  if (role === "partner") return "partner";
+  if (role === "agent") return "agent";
+  return "admin";
 }
 
 export function normalizeColleagueEmail(value: string) {
@@ -78,7 +87,7 @@ export function roleChangeBlockReason(input: {
   adminCount: number;
 }) {
   if (input.targetRole === input.nextRole) return null;
-  if (input.targetRole === "admin" && input.nextRole === "agent" && input.adminCount <= 1) {
+  if (input.targetRole === "admin" && input.nextRole !== "admin" && input.adminCount <= 1) {
     return STAFF_COPY.lastAdmin;
   }
   return null;
@@ -86,6 +95,8 @@ export function roleChangeBlockReason(input: {
 
 export function roleActionLabel(current: StaffRole, next: StaffRole) {
   if (current === next) return null;
-  if (next === "agent") return "Limiter à agent";
-  return "Passer administrateur";
+  if (next === "admin") return "Passer administrateur";
+  if (next === "partner") return "Limiter à partenaire";
+  if (current === "partner") return "Passer agent";
+  return "Limiter à agent";
 }

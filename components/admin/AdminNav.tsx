@@ -66,7 +66,7 @@ export function AdminNav({
   leCount?: number;
   pieceCount?: number;
   staffName?: string;
-  staffRole?: "admin" | "agent" | "";
+  staffRole?: "admin" | "agent" | "partner" | "";
   showExample?: boolean;
   children?: React.ReactNode;
 }) {
@@ -78,6 +78,8 @@ export function AdminNav({
     [unmatchedCount, stripeCount, emailCount, leCount, pieceCount]
   );
   const groups = useMemo(() => adminNavGroups({ role: staffRole, showExample }), [staffRole, showExample]);
+  const partner = staffRole === "partner";
+  const home = partner ? "/admin/little-emperors" : "/admin";
   const search = searchParams.toString();
   const activeHref = activeAdminNavHref(groups, pathname, search);
   const searching = pathname === "/admin/recherche";
@@ -133,7 +135,7 @@ export function AdminNav({
       <header className="sticky top-0 z-50 w-full max-w-full overflow-hidden bg-[var(--admin-navy)] pt-[env(safe-area-inset-top)] text-white lg:hidden">
         <div className="flex h-14 items-center justify-between gap-2 px-3">
           <div className="flex min-w-0 items-center gap-2">
-            <Link href="/admin" aria-label="Tableau de bord" className="shrink-0">
+            <Link href={home} aria-label={partner ? "Little Emperors" : "Tableau de bord"} className="shrink-0">
               <AgencyLogo className="h-9 w-9" />
             </Link>
             <p className="truncate font-display text-sm font-semibold" aria-live="polite">
@@ -141,6 +143,7 @@ export function AdminNav({
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            {partner ? null : (
             <button
               type="button"
               aria-label="Rechercher"
@@ -150,6 +153,7 @@ export function AdminNav({
             >
               <Icon name="search" className="h-5 w-5" />
             </button>
+            )}
             <UserMenu name={staffName} role={staffRole} onSignOut={signOut} variant="dark" />
           </div>
         </div>
@@ -172,7 +176,7 @@ export function AdminNav({
         aria-label="Barre latérale agence"
         className="z-50 hidden w-72 flex-col bg-[var(--admin-navy)] px-5 py-6 text-white lg:fixed lg:left-0 lg:top-0 lg:flex lg:h-full lg:shrink-0"
       >
-        <Link href="/admin" className="flex items-center gap-3 px-1">
+        <Link href={home} className="flex items-center gap-3 px-1">
           <AgencyLogo className="h-10 w-10" />
           <span className="flex flex-col leading-tight">
             <span className="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">
@@ -181,7 +185,7 @@ export function AdminNav({
             <span className="text-sm font-medium text-[#dbe5f6]">Espace agence</span>
           </span>
         </Link>
-        <div className="mt-5">{newBooking}</div>
+        {partner ? null : <div className="mt-5">{newBooking}</div>}
         <div className="mt-5 min-h-0 flex-1 overflow-y-auto pr-1">
           <SidebarGroups
             groups={groups}
@@ -194,6 +198,9 @@ export function AdminNav({
       </aside>
 
       <header className="sticky top-0 z-40 hidden h-20 items-center justify-between border-b border-[var(--border)] bg-[rgba(250,249,246,0.9)] px-8 shadow-[0_1px_8px_rgba(11,25,44,0.04)] backdrop-blur-xl lg:flex lg:pl-[calc(18rem+2rem)]">
+        {partner ? (
+          <p className="font-display text-lg font-bold text-[var(--admin-navy)]">Little Emperors</p>
+        ) : (
         <form onSubmit={onSearch} className="relative w-full max-w-xl" role="search">
           <Icon
             name="search"
@@ -208,18 +215,21 @@ export function AdminNav({
             }`}
             placeholder="Client, référence TB-, hôtel, confirmation…"
             aria-label="Rechercher un client ou un dossier"
-            type="search"
-          />
+          type="search"
+        />
         </form>
+        )}
         <div className="ml-6 flex items-center gap-4">
           <UserMenu name={staffName} role={staffRole} onSignOut={signOut} />
         </div>
       </header>
-      <main className="min-w-0 max-w-full px-4 pt-6 pb-[calc(5rem+env(safe-area-inset-bottom))] sm:px-6 sm:pt-8 lg:pt-8 lg:pb-8 lg:pl-[calc(18rem+2rem)] lg:pr-8">
+      <main className={`min-w-0 max-w-full px-4 pt-6 sm:px-6 sm:pt-8 lg:pt-8 lg:pb-8 lg:pl-[calc(18rem+2rem)] lg:pr-8 ${partner ? "pb-8" : "pb-[calc(5rem+env(safe-area-inset-bottom))]"}`}>
         {children}
       </main>
-      <MobileTabBar pathname={pathname} counts={counts} moreOpen={moreOpen} onMore={() => setMoreOpen((open) => !open)} />
-      <HotelReplyToasts />
+      {partner ? null : (
+        <MobileTabBar pathname={pathname} counts={counts} moreOpen={moreOpen} onMore={() => setMoreOpen((open) => !open)} />
+      )}
+      {partner ? null : <HotelReplyToasts />}
     </>
   );
 }

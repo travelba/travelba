@@ -7,10 +7,12 @@ import {
   destinationAfterPassword,
   destinationForConnexionVisit,
   hasChosenPassword,
+  isStaffRole,
   mayShowPasswordSetup,
   mustSetPassword,
   needsClientOnboarding,
   pathAfterPassword,
+  partnerAdminDestination,
   pathAfterKnownPassword,
   signedInClientDestination,
   shouldForcePasswordSetup,
@@ -18,6 +20,15 @@ import {
   withOnboardingDone,
   withOnboardingPending,
 } from "./session";
+
+test("le partenaire reste sur Little Emperors", () => {
+  assert.equal(partnerAdminDestination("/admin/little-emperors"), null);
+  assert.equal(partnerAdminDestination("/admin"), "/admin/little-emperors");
+  assert.equal(partnerAdminDestination("/admin/login"), "/admin/little-emperors");
+  assert.equal(partnerAdminDestination("/admin/clients"), "/admin/little-emperors");
+  assert.equal(isStaffRole({ app_metadata: { crm_role: "partner" } }), false);
+  assert.equal(isStaffRole({ app_metadata: { crm_role: "agent" } }), true);
+});
 
 test("must_set_password only from app_metadata", () => {
   assert.equal(mustSetPassword({ app_metadata: { must_set_password: true } }), true);

@@ -23,7 +23,16 @@ export type AdminNavGroup = {
   items: AdminNavItem[];
 };
 
-export function adminNavGroups(input: { role?: "admin" | "agent" | ""; showExample?: boolean }): AdminNavGroup[] {
+export function adminNavGroups(input: { role?: "admin" | "agent" | "partner" | ""; showExample?: boolean }): AdminNavGroup[] {
+  if (input.role === "partner") {
+    return [
+      {
+        id: "boites",
+        label: "Little Emperors",
+        items: [{ href: "/admin/little-emperors", label: "Little Emperors", icon: "hotel", exact: true }],
+      },
+    ];
+  }
   const groups: AdminNavGroup[] = [
     {
       id: "activite",

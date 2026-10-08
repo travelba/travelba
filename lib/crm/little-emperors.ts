@@ -306,37 +306,11 @@ export async function cancelLittleEmperorsBooking(bookingId: number, fetchImpl?:
   await leJson(`/v2/hotels/bookings/${bookingId}`, { method: "DELETE" }, fetchImpl);
 }
 
-/** Procédure d’initialisation staging : POST /v1/login, puis ouverture du lien de consentement. */
-export async function requestLittleEmperorsSso(
-  input: { email: string; name: string },
-  fetchImpl?: typeof fetch
-) {
-  const email = input.email.trim();
-  const name = input.name.trim();
-  if (!email.includes("@") || name.length < 2) {
-    throw new LittleEmperorsError(
-      "Indiquez l’e-mail et le nom pour l’initialisation de test.",
-      400,
-      "sso_input"
-    );
-  }
-  const payload = await leJson(
-    "/v1/login",
-    { method: "POST", body: JSON.stringify({ email, name }) },
-    fetchImpl
-  );
-  const redirect =
-    payload && typeof payload === "object" && "redirect_url" in payload
-      ? text((payload as { redirect_url?: unknown }).redirect_url)
-      : null;
-  if (!redirect || !redirect.startsWith("https://")) {
-    throw new LittleEmperorsError(
-      "Little Emperors n’a pas renvoyé de lien d’initialisation.",
-      502,
-      "sso_redirect"
-    );
-  }
-  return { redirect_url: redirect };
+/** Actualiser : agence et partenaire. Rattacher et annuler : agence seulement. */
+export function littleEmperorsActionAllowed(role: "admin" | "agent" | "partner", action: string) {
+  if (action === "sync") return true;
+  if (role === "partner") return false;
+  return action === "attach" || action === "cancel";
 }
 
 export function parseLeWebhook(body: unknown): { event: string; booking: LeBooking | null } | null {

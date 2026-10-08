@@ -5,6 +5,7 @@ import {
   colleagueInviteBlock,
   colleagueNameError,
   normalizeColleagueEmail,
+  jwtStaffRole,
   parseStaffRole,
   removalAuthPlan,
   removalBlockReason,
@@ -17,8 +18,10 @@ import {
 test("libellés de rôle", () => {
   assert.equal(staffRoleLabel("admin"), "Administrateur");
   assert.equal(staffRoleLabel("agent"), "Agent");
+  assert.equal(staffRoleLabel("partner"), "Partenaire");
   assert.equal(parseStaffRole("agent"), "agent");
   assert.equal(parseStaffRole("admin"), "admin");
+  assert.equal(parseStaffRole("partner"), "partner");
   assert.equal(parseStaffRole("client"), null);
   assert.equal(parseStaffRole(""), null);
 });
@@ -82,7 +85,17 @@ test("limiter le rôle, sans laisser l’agence sans administrateur", () => {
     roleChangeBlockReason({ targetRole: "agent", nextRole: "agent", adminCount: 1 }),
     null
   );
+  assert.equal(
+    roleChangeBlockReason({ targetRole: "admin", nextRole: "partner", adminCount: 1 }),
+    STAFF_COPY.lastAdmin
+  );
   assert.equal(roleActionLabel("admin", "agent"), "Limiter à agent");
   assert.equal(roleActionLabel("agent", "admin"), "Passer administrateur");
+  assert.equal(roleActionLabel("agent", "partner"), "Limiter à partenaire");
+  assert.equal(roleActionLabel("partner", "agent"), "Passer agent");
   assert.equal(roleActionLabel("agent", "agent"), null);
+  assert.equal(jwtStaffRole("partner"), "partner");
+  assert.equal(jwtStaffRole("agent"), "agent");
+  assert.equal(jwtStaffRole("admin"), "admin");
+  assert.equal(removalBlockReason({ actorId: "a", targetId: "b", targetRole: "partner" }), null);
 });

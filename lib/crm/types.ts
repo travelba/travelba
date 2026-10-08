@@ -135,7 +135,7 @@ export const AGENCY_FEE_LABEL = "Frais d’agence 10 %";
 export type CrmStaff = {
   id: string;
   auth_user_id: string;
-  role: "admin" | "agent";
+  role: "admin" | "agent" | "partner";
   full_name: string;
   created_at: string;
   updated_at: string;

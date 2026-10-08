@@ -120,6 +120,7 @@ export function TeamDesk({
           >
             <option value="agent">Agent</option>
             <option value="admin">Administrateur</option>
+            <option value="partner">Partenaire</option>
           </select>
         </label>
         <div className="flex items-end">
@@ -132,7 +133,8 @@ export function TeamDesk({
           </button>
         </div>
         <p className="text-sm text-muted lg:col-span-4">
-          L’agent ouvre l’espace agence. L’administrateur fait de même, et gère les collègues.
+          L’agent ouvre l’espace agence. L’administrateur fait de même, et gère les collègues. Le partenaire
+          n’ouvre que Little Emperors.
         </p>
         <div className="lg:col-span-4">
           <BusyBar active={saving} label="Ajout du collègue…" />
@@ -222,7 +224,7 @@ function ColleagueRow({
   const [error, setError] = useState<string | null>(null);
   const action = roleActionLabel(member.role, role);
   const lastAdmin = member.role === "admin" && adminCount <= 1;
-  const canRemove = member.role === "agent" && !current;
+  const canRemove = member.role !== "admin" && !current;
 
   async function saveRole() {
     if (!action) return;
@@ -285,6 +287,9 @@ function ColleagueRow({
       >
         <option value="agent" disabled={lastAdmin}>
           Agent
+        </option>
+        <option value="partner" disabled={lastAdmin}>
+          Partenaire
         </option>
         <option value="admin">Administrateur</option>
       </select>
