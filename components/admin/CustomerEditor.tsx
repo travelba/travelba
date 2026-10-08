@@ -204,7 +204,12 @@ export function CustomerEditor({
         .map((draft, index) => billingCompanyTabLabel(draft.values.companyName, index, companyDrafts.length))
         .join(", ")
     : "Aucune société";
-  const companyLine = [companyRoleLabel(companyRole), iban || null].filter(Boolean).join(" · ");
+  const companyLine = [
+    companyRoleLabel(companyRole),
+    iban || null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

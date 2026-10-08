@@ -77,12 +77,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
   if (nextRole == null) patch.spending_allowance = null;
 
   if (nextRole === "member") {
-    if (!nextParent) {
-      return jsonError("Choisissez l’admin société qui paie pour ce collaborateur.");
-    }
-    if (nextParent === id) {
-      return jsonError("Le payeur ne peut pas être le collaborateur lui-même.");
-    }
+    if (!nextParent) return jsonError("Choisissez l’admin société qui paie pour ce collaborateur.");
+    if (nextParent === id) return jsonError("Le payeur ne peut pas être le collaborateur lui-même.");
     const { data: parent } = await auth.supabase
       .from("crm_customers")
       .select("id, company_role")

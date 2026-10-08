@@ -20,6 +20,7 @@ import {
 } from "./whatsapp-concierge";
 import { planConciergeConversation, type ConciergeGenerator, type ConciergeHistoryTurn } from "./whatsapp-conversation";
 import { sessionAddress } from "./whatsapp-session";
+import { loadCollaboratorTripOwnerIds } from "./company-peers";
 
 export type WhatsappMessageInsert = {
   customer_id: string | null;
@@ -385,12 +386,19 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
       return [...map.values()];
     },
     async loadDossier(customerId) {
+      const { data: holder, error: holderError } = await admin
+        .from("crm_customers")
+        .select("id, company_role, billing_parent_id")
+        .eq("id", customerId)
+        .maybeSingle();
+      if (holderError) throw holderError;
+      const ownerIds = holder ? await loadCollaboratorTripOwnerIds(admin, holder) : [customerId];
       const { data: bookings, error: bookingError } = await admin
         .from("crm_bookings")
         .select(
           "id, reference, title, destination, start_date, end_date, currency, total_amount, notes_client, visible_to_client, prices_visible, cover_image_path, share_code"
         )
-        .eq("customer_id", customerId)
+        .in("customer_id", ownerIds)
         .is("archived_at", null);
       if (bookingError) throw bookingError;
       // La photo du séjour exige le code de partage : on le crée pour un séjour publié qui en a une.
