@@ -275,6 +275,9 @@ export const BOOKING_CANCELLATION_LABEL = "booking-cancellation";
 /** Label Gmail des réservations agence (`label:reservations-tba`). « Reservations TBA » compte aussi. */
 export const RESERVATIONS_TBA_LABEL = "reservations-tba";
 
+/** Label Gmail `label:cdsgroupe.com`. La casse ne compte pas. */
+export const CDSGROUPE_LABEL = "cdsgroupe.com";
+
 /** Labels suivis si `GMAIL_LABELS` est vide. */
 export const DEFAULT_GMAIL_LABELS = [
   "little-emperors",
@@ -283,6 +286,7 @@ export const DEFAULT_GMAIL_LABELS = [
   BOOKING_CANCELLATION_LABEL,
   CRM_ALIAS_LABEL,
   RESERVATIONS_TBA_LABEL,
+  CDSGROUPE_LABEL,
 ];
 
 /**
@@ -306,8 +310,8 @@ function splitGmailLabelList(raw: string | undefined | null): string[] {
 
 /**
  * Labels à suivre. L'env est prioritaire (noms affichés Gmail), puis les
- * défauts manquants — dont `billet-avion`, `booking-cancellation`, `crm` et
- * `reservations-tba` — sont ajoutés.
+ * défauts manquants — dont `billet-avion`, `booking-cancellation`, `crm`,
+ * `reservations-tba` et `cdsgroupe.com` — sont ajoutés.
  */
 export function mergeGmailLabelNames(raw: string | undefined | null): string[] {
   const used = new Set<string>();

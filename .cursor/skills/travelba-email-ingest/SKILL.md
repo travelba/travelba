@@ -1,7 +1,7 @@
 ---
 name: travelba-email-ingest
 description: >-
-  Travelba Gmail labels (little-emperors, expedia-taap, billet-avion, booking-cancellation, crm, reservations-tba) → crm_email_ingest →
+  Travelba Gmail labels (little-emperors, expedia-taap, billet-avion, booking-cancellation, crm, reservations-tba, cdsgroupe.com) → crm_email_ingest →
   parse → suggestions. Création automatique du dossier (et de la fiche s’il
   n’existe pas) sur une confirmation sans voyage reconnu. Un match unique
   (un client, un séjour, une carte) met à jour l’itinéraire seul. Le reste
@@ -14,7 +14,7 @@ description: >-
 # Travelba — e-mails fournisseur (Gmail)
 
 Push Gmail (labels **little-emperors**, **expedia-taap**, **billet-avion**, **booking-cancellation**,
-**crm**, **reservations-tba**) → ligne
+**crm**, **reservations-tba**, **cdsgroupe.com**) → ligne
 `crm_email_ingest` → parse extract → suggestions (client / voyage).
 **Rattachement autonome seulement si le match est unique** : un client déjà
 reconnu, un seul séjour (référence forte, ou une seule destination, y compris
@@ -50,7 +50,7 @@ Identité / MRZ : skill `travelba-identity`.
 ## Pipeline (contrat)
 
 ```
-Gmail label (little-emperors | expedia-taap | billet-avion | booking-cancellation | crm | reservations-tba)
+Gmail label (little-emperors | expedia-taap | billet-avion | booking-cancellation | crm | reservations-tba | cdsgroupe.com)
   → webhook / cron capture → crm_email_ingest status=received
   → parse extract (pièces + corps ; mêmes parseurs / LLM que l’import)
   → suggestCustomerFromExtract
@@ -108,6 +108,15 @@ compte aussi. Il est toujours suivi, même si `GMAIL_LABELS` ne le cite pas. Le
 cron `gmail-ingest` appelle `backfillReservationsTbaMessages` (curseur
 `gmail-reservations-tba`). C’est une confirmation : le parse et la création
 automatique sont les mêmes que pour Little Emperors ou `crm`. Ce n’est pas une
+annulation.
+
+## Label cdsgroupe.com
+
+Label Gmail **`cdsgroupe.com`** (`label:cdsgroupe.com`). « CDSGroupe.com » compte
+aussi. Il est toujours suivi, même si `GMAIL_LABELS` ne le cite pas. Le cron
+`gmail-ingest` appelle `backfillCdsgroupeMessages` (curseur
+`gmail-cdsgroupe.com`). C’est une confirmation : le parse et la création
+automatique sont les mêmes que pour `reservations-tba`. Ce n’est pas une
 annulation.
 
 ## Match voyage

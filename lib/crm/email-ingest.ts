@@ -17,6 +17,7 @@ import {
   BILLET_BACKFILL_DONE,
   BOOKING_CANCELLATION_LABEL,
   CRM_ALIAS_LABEL,
+  CDSGROUPE_LABEL,
   RESERVATIONS_TBA_LABEL,
   gmailLabelMatchKey,
   isBookingCancellationLabel,
@@ -291,6 +292,13 @@ const RESERVATIONS_TBA_BACKFILL_PROVIDER = "gmail-reservations-tba";
 /** Importe les messages déjà sous `label:reservations-tba`. */
 export function backfillReservationsTbaMessages() {
   return backfillLabeledMessages(RESERVATIONS_TBA_BACKFILL_PROVIDER, RESERVATIONS_TBA_LABEL);
+}
+
+const CDSGROUPE_BACKFILL_PROVIDER = "gmail-cdsgroupe.com";
+
+/** Importe les messages déjà sous `label:cdsgroupe.com`. */
+export function backfillCdsgroupeMessages() {
+  return backfillLabeledMessages(CDSGROUPE_BACKFILL_PROVIDER, CDSGROUPE_LABEL);
 }
 
 async function computeSuggestions(admin: Admin, extract: BookingExtract) {

@@ -4,6 +4,7 @@ import {
   backfillBilletAvionMessages,
   backfillBookingCancellationMessages,
   backfillCrmMessages,
+  backfillCdsgroupeMessages,
   backfillReservationsTbaMessages,
   backfillQueuedEmailBodies,
   catchUpGmailHistory,
@@ -79,6 +80,15 @@ export async function GET(request: Request) {
         err instanceof Error ? err.message : err
       );
     }
+    let cdsgroupeBackfill = { captured: 0, scanned: 0 };
+    try {
+      cdsgroupeBackfill = await backfillCdsgroupeMessages();
+    } catch (err) {
+      console.error(
+        "[cron/gmail-ingest] cdsgroupe.com",
+        err instanceof Error ? err.message : err
+      );
+    }
     const result = await processReceivedEmailIngest(10);
     let rematch = { scanned: 0, rematched: 0, failed: 0 };
     try {
@@ -105,6 +115,7 @@ export async function GET(request: Request) {
       cancellationBackfill,
       crmBackfill,
       reservationsTbaBackfill,
+      cdsgroupeBackfill,
       ...result,
       rematch,
       bodies,

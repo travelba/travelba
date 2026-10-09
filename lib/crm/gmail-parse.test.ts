@@ -4,6 +4,7 @@ import {
   BILLET_AVION_LABEL,
   BILLET_BACKFILL_DONE,
   BOOKING_CANCELLATION_LABEL,
+  CDSGROUPE_LABEL,
   CRM_ALIAS_ADDRESS,
   CRM_ALIAS_LABEL,
   RESERVATIONS_TBA_LABEL,
@@ -232,6 +233,7 @@ describe("labels Gmail billet-avion", () => {
       BOOKING_CANCELLATION_LABEL,
       CRM_ALIAS_LABEL,
       RESERVATIONS_TBA_LABEL,
+      CDSGROUPE_LABEL,
     ]);
   });
 
@@ -243,6 +245,7 @@ describe("labels Gmail billet-avion", () => {
       BOOKING_CANCELLATION_LABEL,
       CRM_ALIAS_LABEL,
       RESERVATIONS_TBA_LABEL,
+      CDSGROUPE_LABEL,
     ]);
   });
 
@@ -254,6 +257,7 @@ describe("labels Gmail billet-avion", () => {
       BOOKING_CANCELLATION_LABEL,
       CRM_ALIAS_LABEL,
       RESERVATIONS_TBA_LABEL,
+      CDSGROUPE_LABEL,
     ]);
   });
 
@@ -272,6 +276,16 @@ describe("labels Gmail billet-avion", () => {
     assert.equal(gmailLabelMatchKey("Booking cancellation"), BOOKING_CANCELLATION_LABEL);
     assert.equal(isBookingCancellationLabel("booking-cancellation"), true);
     assert.equal(isBookingCancellationLabel("Little Emperors"), false);
+  });
+
+  it("rapproche CDSGroupe.com de label:cdsgroupe.com", () => {
+    assert.equal(gmailLabelMatchKey("CDSGroupe.com"), CDSGROUPE_LABEL);
+    assert.equal(gmailLabelMatchKey("cdsgroupe.com"), CDSGROUPE_LABEL);
+    const map = matchGmailLabelIds(
+      ["cdsgroupe.com"],
+      [{ id: "Label_CDS", name: "CDSGroupe.com" }]
+    );
+    assert.equal(map.get("cdsgroupe.com"), "Label_CDS");
   });
 
   it("rapproche Reservations TBA de label:reservations-tba", () => {

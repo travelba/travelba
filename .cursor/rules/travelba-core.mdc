@@ -24,7 +24,7 @@ Produit FR pour agence de voyage : back-office `/admin` (clients, réservations,
 | Invite, magique, sessions | `travelba-auth` |
 | Carnet / publier / timeline | `travelba-carnet` |
 | **Import PDF/photos** (dropzone, relecture humaine) | `travelba-document-ingest` |
-| **Gmail / `crm_email_ingest`** (Little Emperors, Expedia TAAP, billet-avion, booking-cancellation, labels `crm` et `reservations-tba`, création auto, rattachement manuel) | `travelba-email-ingest` |
+| **Gmail / `crm_email_ingest`** (Little Emperors, Expedia TAAP, billet-avion, booking-cancellation, labels `crm`, `reservations-tba` et `cdsgroupe.com`, création auto, rattachement manuel) | `travelba-email-ingest` |
 | Ledger / Stripe / Revolut | `travelba-money` |
 | Cursor Design / fichiers | `travelba-ui` |
 | Fiche / passeports | `travelba-identity` |
