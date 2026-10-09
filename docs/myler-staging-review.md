@@ -6,9 +6,9 @@ Preview (this branch, key is on every Vercel Preview):
 
 `https://travelba-git-cursor-myler-staging-review-025e-travelba.vercel.app`
 
-Share link, valid until 2026-10-16 02:21:38 UTC. It opens Travelba sign-in without a Vercel login:
+Share link, valid until 2026-10-16 11:09:49 UTC. It opens Travelba sign-in without a Vercel login. The previous share token is revoked.
 
-`https://travelba-git-cursor-myler-staging-review-025e-travelba.vercel.app/admin/login?espace=myler&_vercel_share=WCZdupI4JpEyXWLzT1UDRmto9w4rERxf`
+`https://travelba-git-cursor-myler-staging-review-025e-travelba.vercel.app/admin/login?espace=myler&_vercel_share=HjnW4YLyQAhKWU8d0JSloUQaALZkTX3Q`
 
 ---
 
@@ -16,8 +16,8 @@ Hello Nico,
 
 Staging review for the MyLER integration. About ten minutes. No production API key is in use, and we are not asking for one until you say this looks complete.
 
-1. You will receive a Travelba email, “Your Little Emperors access”, for nico@littleemperors.com. Open **Set your password**. The link lasts 30 days. That password is the Travelba sign-in. SSO POST /v1/login is not used.
-2. Open the Preview Share link above (not https://travelba.fr). It is valid until 2026-10-16 02:21:38 UTC. If Vercel asks you to sign in, use that Share link.
+1. Open the Preview Share link above first (not https://travelba.fr). It is valid until 2026-10-16 11:09:49 UTC. If Vercel asks you to sign in, use that Share link.
+2. Open the Travelba email “Your Little Emperors access” and click **Set your password**. The link lasts 30 days. That password is the Travelba sign-in. SSO POST /v1/login is not used. If that button asks for a Vercel login, open the Share link above, then use the button again.
 3. Go to `/admin/login?espace=myler`. The page is titled **Travelba sign-in**. Sign in with nico@littleemperors.com and the password you just set. You land only on Little Emperors. The sidebar reads **MyLER partner**. There is no client list and no ledger.
 4. The page title is Little Emperors. The line under it names the test key, **Refresh**, the v2 routes, and the webhook. Under **MyLER integration**, check:
    - Host `api-staging.littleemperors.com`
