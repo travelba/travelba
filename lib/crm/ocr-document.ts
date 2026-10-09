@@ -15,6 +15,7 @@ import { identitiesExtractSchema } from "./ocr-schema";
 import { trySharp } from "./sharp";
 import { inspectPdf, type RasterPage } from "./pdf-raster";
 import { scanPassportBytes } from "./passport-scan";
+import { ocrRequestFailure } from "./ocr-failure";
 import { multiPassportCrops, type CropRect } from "./passport-split";
 
 const MAX_BYTES = 12 * 1024 * 1024;
@@ -366,7 +367,7 @@ export async function scanTravelDocument(file: File): Promise<{
     ) {
       throw err;
     }
-    if (APICallError.isInstance(err) && err.statusCode === 400) {
+    if (APICallError.isInstance(err)) {
       const detail =
         typeof err.data === "object" &&
         err.data &&
@@ -374,8 +375,9 @@ export async function scanTravelDocument(file: File): Promise<{
         typeof (err.data as { error?: { message?: string } }).error?.message === "string"
           ? (err.data as { error: { message: string } }).error.message
           : err.message;
-      console.error("[ocr-document] openai_schema_or_request", detail);
-      throw new Error("Lecture automatique indisponible temporairement. Réessayez dans un instant.");
+      console.error("[ocr-document] openai_schema_or_request", err.statusCode ?? "?", detail);
+      const failure = ocrRequestFailure(err.statusCode, isPdf);
+      if (failure) throw new Error(failure);
     }
     if (isPdf || isPdfEngineError(err)) {
       throw new Error(

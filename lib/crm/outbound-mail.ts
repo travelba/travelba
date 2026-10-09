@@ -46,7 +46,7 @@ export type AccessNoticeKind = "client" | "collegue";
 export function accessNoticeCopy(input: { kind: AccessNoticeKind; firstName: string | null | undefined }) {
   const who = (input.firstName || "").trim() || (input.kind === "collegue" ? "un collègue" : "un client");
   const subject = `Invitation envoyée à ${who}`;
-  const where = input.kind === "collegue" ? "l’espace agence" : "son espace voyageur";
+  const where = input.kind === "collegue" ? "l’espace agence" : "son espace client";
   const body = `L’invitation à ${where} vient de partir. Le lien n’est pas recopié ici : il n’appartient qu’au destinataire.`;
   return { subject, body };
 }

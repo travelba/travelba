@@ -137,6 +137,7 @@ export function IdentityScan({
           ref={inputRef}
           type="file"
           accept="image/*,application/pdf,.pdf"
+          aria-label="Passeport ou pièce d’identité"
           className="hidden"
           onChange={(event) => {
             const file = event.target.files?.[0];

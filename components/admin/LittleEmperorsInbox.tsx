@@ -115,7 +115,7 @@ export function LittleEmperorsInbox({
         </p>
         <p className="mt-2 text-sm text-[var(--admin-navy)]">{copy.keyNote}</p>
         <p className="mt-3 rounded-xl bg-[#f8f4ee] px-3 py-2 text-sm text-[var(--admin-navy)]">{copy.sso}</p>
-        {productionBlocked ? <p className="mt-2 text-sm text-[#8a5a2a]">{copy.blocked}</p> : null}
+        {agency ? null : (
         <dl className="mt-4 space-y-3 text-sm">
           <div>
             <dt className="font-medium text-[var(--admin-navy)]">{copy.authLabel}</dt>
@@ -144,6 +144,7 @@ export function LittleEmperorsInbox({
             <dd className="text-[var(--admin-navy)]">{webhookConfigured ? copy.webhookOn : copy.webhookOff}</dd>
           </div>
         </dl>
+        )}
         {notice ? (
           <p className="mt-3 rounded-xl bg-[#f8f4ee] px-3 py-2 text-sm text-[var(--admin-navy)]">{notice}</p>
         ) : !live ? (

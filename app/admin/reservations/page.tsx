@@ -43,6 +43,8 @@ function pickRecord<T>(source: Record<string, T>, ids: Set<string>) {
   return out;
 }
 
+export const metadata = { title: "Réservations" };
+
 export default async function AdminReservationsPage({ searchParams }: Props) {
   const params = await searchParams;
   const page = parsePage(params.page);

@@ -252,7 +252,7 @@ function LoginForm() {
     <form onSubmit={loginWithPassword} className="mt-6 space-y-5">
       {noAccount ? (
         <p className="text-sm text-[var(--admin-red)]">
-          Aucun espace voyageur n’est associé à ce compte. Contactez l’agence
+          Aucun espace client n’est associé à ce compte. Contactez l’agence
           pour recevoir une invitation.
         </p>
       ) : null}

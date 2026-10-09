@@ -5,7 +5,10 @@ import { adminBadges, EMPTY_ADMIN_BADGES } from "@/lib/crm/admin-badges";
 import { exampleSessionEnabled } from "@/lib/crm/example-session";
 
 export const metadata = {
-  title: `Admin — ${siteConfig.shortName}`,
+  title: {
+    default: `Tableau de bord — ${siteConfig.shortName}`,
+    template: `%s — ${siteConfig.shortName}`,
+  },
   robots: { index: false, follow: false },
 };
 

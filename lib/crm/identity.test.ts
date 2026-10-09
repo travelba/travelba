@@ -7,7 +7,9 @@ import {
   humanizeMrzName,
   maskDocumentNumber,
   normalizeGivenNames,
+  allCapsNameNote,
   PASSPORT_VAULT_NOTICE,
+  recordedNameIsAllCaps,
 } from "./identity";
 
 test("tous les prénoms restent dans l’ordre imprimé", () => {
@@ -76,4 +78,12 @@ test("l’accueil ne garde que le premier prénom", () => {
   assert.equal(greetingGivenName("JEAN-PIERRE Marie"), "Jean-Pierre");
   assert.equal(greetingGivenName("  "), null);
   assert.equal(greetingGivenName(null), null);
+});
+
+test("un nom tout en capitales se signale sans être réécrit", () => {
+  assert.equal(recordedNameIsAllCaps("MARTIN"), true);
+  assert.equal(recordedNameIsAllCaps("Martin"), false);
+  assert.equal(recordedNameIsAllCaps("Jean-Pierre"), false);
+  assert.match(allCapsNameNote("CAMILLE", "Martin") || "", /capitales/);
+  assert.equal(allCapsNameNote("Camille", "Martin"), null);
 });

@@ -5,7 +5,7 @@ import { siteConfig } from "@/lib/site";
 
 /** Lien d’aperçu : la page de connexion, jamais un jeton réel. */
 const SAMPLE_LINK = `${siteConfig.url}/connexion`;
-const REFERENCE = "TB-2026-0028";
+const REFERENCE = "TB-EXEMPLE";
 const VALID_UNTIL = "2027-08-29";
 const PASSPORT_EXPIRES = "2026-11-02";
 
@@ -62,7 +62,7 @@ export function clientMailCatalog(): ClientMailGroup[] {
     {
       id: "acces",
       title: "Accès",
-      intro: "Les e-mails qui ouvrent l’espace voyageur. Le bouton du vrai envoi porte un lien personnel. Ici, il ouvre la page de connexion.",
+      intro: "Les e-mails qui ouvrent l’espace client. Le bouton du vrai envoi porte un lien personnel. Ici, il ouvre la page de connexion.",
       mails: [
         {
           id: "invitation",

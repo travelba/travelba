@@ -113,7 +113,7 @@ export function BookingCards({
           <p className="mt-1 max-w-xl text-sm leading-relaxed text-[var(--admin-navy)]/70">
             Autant de cartes que le dossier en a besoin. Le plafond, chaque transaction, le nom de la carte et le
             titulaire sont ceux saisis ici. Pliant ne bloque ni les catégories (sauf le transfert d’argent), ni les
-            devises, ni les pays. La carte est rattachée à Benjamin Boukris.
+            devises, ni les pays. La carte est émise sur le compte Pliant de l’agence.
           </p>
         </div>
         <form className="space-y-3" onSubmit={submit}>

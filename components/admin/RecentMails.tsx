@@ -7,7 +7,7 @@ export function RecentMails({ mails }: { mails: DashboardMail[] }) {
   return (
     <section aria-labelledby="mails-titre">
       <h2 id="mails-titre" className="font-display text-lg font-bold text-[var(--admin-navy)]">
-        Derniers mails
+        Réponses d’hôtel
       </h2>
       <p className="mt-1 text-sm text-muted">Réponses des hôtels aux courriers envoyés.</p>
       {mails.length ? (

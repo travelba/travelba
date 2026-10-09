@@ -13,6 +13,8 @@ import {
 import type { CrmStripeTransaction } from "@/lib/crm/types";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 
+export const metadata = { title: "Stripe" };
+
 export default async function AdminStripePage() {
   await requireStaffPage();
   const admin = createServiceClient();

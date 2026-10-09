@@ -5,6 +5,8 @@ import { requireStaffPage } from "@/lib/crm/auth";
 import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 
 /** Cible unique du bouton « Nouveau dossier » : dropzone PDF / photos, puis saisie manuelle (D-11). */
+export const metadata = { title: "Nouveau dossier" };
+
 export default async function NewBookingPage() {
   const { supabase } = await requireStaffPage();
   const { data: companies } = await supabase

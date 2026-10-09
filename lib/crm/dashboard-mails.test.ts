@@ -40,7 +40,7 @@ test("le tableau de bord ne garde que les réponses aux courriers du CRM", () =>
 
 test("la liste nomme l’hôtel et le courrier", () => {
   const html = renderToStaticMarkup(createElement(RecentMails, { mails: dashboardMailLines([reply()]) }));
-  assert.match(html, /Derniers mails/);
+  assert.match(html, /Réponses d’hôtel/);
   assert.match(html, /Réponses des hôtels aux courriers envoyés/);
   assert.match(html, /Casa Monti/);
   assert.match(html, /Upgrade et accueil/);

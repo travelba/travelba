@@ -700,6 +700,7 @@ export function BookingIngest({
             type="file"
             multiple
             accept="application/pdf,image/*"
+            aria-label="Confirmation PDF ou photo"
             className="hidden"
             onChange={(event) => {
               addFiles(event.target.files);

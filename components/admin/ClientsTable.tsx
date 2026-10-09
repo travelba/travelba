@@ -78,6 +78,7 @@ export function ClientsTable({
                 <p className="break-all text-sm text-muted">{c.email}</p>
                 <p className="text-sm text-muted">{c.phone ? formatPhoneDisplay(c.phone) : "—"}</p>
                 <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted">Encours</span>
                   {rows.length ? (
                     <Link
                       href={clientLedgerAdminHref(c.id)}
@@ -114,7 +115,12 @@ export function ClientsTable({
                 <th className="px-5 py-3">Client</th>
                 <th className="px-5 py-3">E-mail</th>
                 <th className="px-5 py-3">Téléphone</th>
-                <th className="px-5 py-3 text-right">Crédit dispo. / encours</th>
+                <th className="px-5 py-3 text-right">
+                  Encours
+                  <span className="mt-1 block font-sans text-[10px] font-medium normal-case tracking-normal text-muted">
+                    positif : avoir · négatif : reste à payer
+                  </span>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">

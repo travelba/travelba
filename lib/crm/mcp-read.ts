@@ -295,6 +295,7 @@ export async function readChercherClients(input: { q?: string; echeance?: boolea
       .from("crm_travel_documents")
       .select("id, customer_id, doc_type, expires_on, first_name, last_name, number, companion_id, booking_id, traveler_id")
       .not("expires_on", "is", null)
+      .gte("expires_on", isoDateInDays(0))
       .lte("expires_on", isoDateInDays(90))
       .order("expires_on")
       .limit(40);
@@ -357,6 +358,7 @@ export async function readFicheClient(input: { id?: string; q?: string }) {
       .select("id, customer_id, doc_type, expires_on, first_name, last_name, number, companion_id, booking_id, traveler_id")
       .eq("customer_id", customer.id)
       .not("expires_on", "is", null)
+      .gte("expires_on", isoDateInDays(0))
       .lte("expires_on", isoDateInDays(90))
       .order("expires_on")
       .limit(20),

@@ -10,7 +10,7 @@ import { adminAction } from "@/lib/crm/admin-action";
 const STATUS_COPY: Record<PortalAccess["status"], { label: string; hint: string }> = {
   none: {
     label: "Non invité",
-    hint: "Aucun accès à l’espace voyageur pour le moment.",
+    hint: "Aucun accès à l’espace client pour le moment.",
   },
   invited: {
     label: "Invitation envoyée",
@@ -135,7 +135,7 @@ export function InviteCustomerPanel({
     >
       <div className="min-w-0">
         <p className="font-label text-[10px] font-bold uppercase tracking-[0.12em] text-muted">
-          Espace voyageur
+          Espace client
         </p>
         <p className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">
           {copy.label}

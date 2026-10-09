@@ -967,6 +967,16 @@ export function BookingEditor({
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              {travelers.length === 0 ? (
+                <button
+                  type="button"
+                  disabled={partyBusy}
+                  onClick={() => void addHolder()}
+                  className="admin-tap rounded-full border border-[var(--admin-navy)] px-3 py-2 text-xs font-semibold text-[var(--admin-navy)] disabled:opacity-50"
+                >
+                  Ajouter le titulaire
+                </button>
+              ) : null}
               {saveButton}
               {primaryAction}
               {moreButton}
@@ -999,6 +1009,16 @@ export function BookingEditor({
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end">
+            {travelers.length === 0 ? (
+              <button
+                type="button"
+                disabled={partyBusy}
+                onClick={() => void addHolder()}
+                className="admin-tap rounded-full border border-[var(--admin-navy)] px-3 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
+              >
+                Ajouter le titulaire
+              </button>
+            ) : null}
             {saveButton}
             {primaryAction}
             {moreButton}
@@ -1058,7 +1078,8 @@ export function BookingEditor({
               >
                 {BOOKING_TAB_LABELS[id]}
                 {id === "todo" && blockers.length > 0 ? (
-                  <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--admin-gold)] px-1 text-[10px] font-bold text-[var(--admin-navy)]">
+                  <span className="ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--admin-gold)] px-1 text-[10px] font-bold text-[var(--admin-navy)]">
+                    {" "}
                     {blockers.length}
                   </span>
                 ) : null}
@@ -1562,7 +1583,7 @@ export function BookingEditor({
       </div>
       <form onSubmit={addDoc} className="admin-af-card order-6 flex flex-wrap items-center gap-3 rounded-3xl p-5">
         <p className="text-sm font-semibold text-[var(--admin-navy)]">Ou joindre une pièce sans la lire</p>
-        <input name="file" type="file" required disabled={docBusy} className="text-sm" />
+        <input name="file" type="file" required disabled={docBusy} aria-label="Confirmation PDF ou photo" className="text-sm" />
         <button disabled={docBusy} className="admin-af-btn admin-tap rounded-full px-3 py-2 text-sm disabled:opacity-50">
           {docBusy ? "Envoi…" : "Joindre"}
         </button>

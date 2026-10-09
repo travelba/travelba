@@ -63,7 +63,9 @@ export function DashboardWeek({
             <section key={group.id} className="admin-af-card overflow-hidden rounded-2xl" aria-labelledby={`semaine-${group.id}`}>
               <h3 id={`semaine-${group.id}`} className="border-b border-[var(--border)] px-5 py-4 font-display text-base font-bold text-[var(--admin-navy)]">
                 {group.title}
-                {rows.length ? <span className="ml-2 text-sm font-semibold text-[#9e7e51]">{rows.length}</span> : null}
+                {rows.length ? (
+                  <span className="ml-2 text-sm font-semibold text-[#9e7e51]"> {rows.length}</span>
+                ) : null}
               </h3>
               {rows.length ? (
                 <ul className="divide-y divide-border">

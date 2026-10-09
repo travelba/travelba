@@ -4,12 +4,15 @@ import { requireStaffPage } from "@/lib/crm/auth";
 import { rankAdminSearch, type AdminSearchBooking, type AdminSearchCustomer } from "@/lib/crm/admin-search";
 import { stayHeadline } from "@/lib/crm/carnet";
 import { loadStayMaps } from "@/lib/crm/carnet-query";
+import { AdminSearchField } from "@/components/admin/AdminSearchField";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { customerFullName } from "@/lib/crm/types";
 
 function pattern(value: string) {
   return `%${value.replace(/[%_]/g, "").trim()}%`;
 }
+
+export const metadata = { title: "Recherche" };
 
 export default async function AdminSearchPage({
   searchParams,
@@ -24,6 +27,7 @@ export default async function AdminSearchPage({
       <div>
         <PageEyebrow>Espace agence</PageEyebrow>
         <PageTitle title="Recherche" subtitle="Un nom ouvre une fiche. Une référence, un hôtel ou une confirmation ouvre le dossier." />
+        <AdminSearchField />
       </div>
     );
   }
@@ -88,6 +92,7 @@ export default async function AdminSearchPage({
     <div>
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle title="Recherche" subtitle={`« ${query} »`} />
+      <AdminSearchField initial={query} />
       <div className="mt-6 space-y-6">
         {hit.bookings.length ? (
           <section className="admin-af-card overflow-hidden rounded-2xl">

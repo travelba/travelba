@@ -21,6 +21,10 @@ import { adminBadges } from "@/lib/crm/admin-badges";
 import { adminTodoLines } from "@/lib/crm/admin-todo";
 import { loadAgencyServiceDesk } from "@/lib/crm/service-desk-load";
 import { CUSTOMER_NAME_SELECT, type CustomerNameRow } from "@/lib/crm/customer-search";
+import { siteConfig } from "@/lib/site";
+
+/** Même segment que le layout : le modèle de titre ne s’applique pas ici. */
+export const metadata = { title: { absolute: `Tableau de bord — ${siteConfig.shortName}` } };
 
 export default async function AdminHomePage() {
   const { supabase, staff } = await requireStaffPage();
@@ -171,9 +175,9 @@ export default async function AdminHomePage() {
           href="/admin/transactions"
           className="block max-w-sm rounded-2xl border border-[var(--admin-gold)]/40 bg-[#f8f4ed] px-5 py-4 text-[var(--admin-navy)] transition hover:border-[var(--admin-gold)]"
         >
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Encours à encaisser</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Reste à encaisser</p>
           <p className="mt-2 font-display text-3xl font-bold tabular-nums">{formatMoney(remainingDue)}</p>
-          <p className="mt-1 text-xs text-muted">Encours négatifs · voir les transactions</p>
+          <p className="mt-1 text-xs text-muted">Somme des comptes débiteurs</p>
         </Link>
       </section>
 

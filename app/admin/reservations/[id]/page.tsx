@@ -45,6 +45,18 @@ type Props = {
   searchParams: Promise<{ hotel?: string | string[] }>;
 };
 
+export async function generateMetadata({ params }: Props) {
+  const { id } = await params;
+  try {
+    const { supabase } = await requireStaffPage();
+    const { data } = await supabase.from("crm_bookings").select("reference").eq("id", id).maybeSingle();
+    const reference = (data as { reference?: string } | null)?.reference;
+    return { title: reference ? `Dossier ${reference}` : "Dossier" };
+  } catch {
+    return { title: "Dossier" };
+  }
+}
+
 export default async function AdminBookingPage({ params, searchParams }: Props) {
   const { id } = await params;
   const hotelQuery = (await searchParams).hotel;

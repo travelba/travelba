@@ -9,6 +9,8 @@ import { stayToday } from "@/lib/crm/stay-moment";
 import { loadOpenUkEtaNotices } from "@/lib/crm/uk-eta-run";
 import { deskView, type DeskTask } from "@/lib/crm/visa-desk";
 
+export const metadata = { title: "Formalités" };
+
 export default async function AdminFormalitesPage() {
   const { supabase } = await requireStaffPage();
   const today = stayToday();
@@ -52,7 +54,11 @@ export default async function AdminFormalitesPage() {
           subtitle="Refus et messages qui n’ont pas abouti, ESTA et ETA encore ouverts."
         />
       </div>
-      <VisaDesk open={desk.open} grey={desk.grey} />
+      <VisaDesk
+        open={desk.open}
+        grey={desk.grey}
+        showEmpty={estaNotices.length === 0 && ukEtaNotices.length === 0}
+      />
       <EstaNoticeList notices={estaNotices} />
       <UkEtaNoticeList notices={ukEtaNotices} />
     </div>

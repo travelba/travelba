@@ -15,6 +15,8 @@ import { parseLoadMore, type SearchParamValue } from "@/lib/crm/admin-list";
 const PLIANT_PAGE = 500;
 const PLIANT_MAX = 4000;
 
+export const metadata = { title: "Pliant" };
+
 export default async function AdminPliantPage({
   searchParams,
 }: {

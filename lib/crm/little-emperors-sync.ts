@@ -369,7 +369,7 @@ export async function attachLittleEmperorsBooking(opts: {
   await admin
     .from("crm_bookings")
     .update({
-      notes_internal: "Réservation importée depuis Little Emperors (environnement de test).",
+      notes_internal: "Réservation importée depuis Little Emperors.",
     })
     .eq("id", created.id);
   if (booking.website || booking.hotel_id != null) {

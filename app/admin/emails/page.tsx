@@ -5,6 +5,8 @@ import { sanitizeEmailHtml } from "@/lib/crm/email-source";
 import { EMAIL_INBOX_QUEUE_STATUSES, type CrmEmailIngest } from "@/lib/crm/types";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
 
+export const metadata = { title: "E-mails" };
+
 export default async function AdminEmailsPage() {
   const { supabase } = await requireStaffPage();
   const [{ data: rows }, { data: customers }] = await Promise.all([
@@ -29,7 +31,7 @@ export default async function AdminEmailsPage() {
     <div>
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
-        title="E-mails à rattacher"
+        title="E-mails"
         subtitle="Mails fournisseurs lus sur la boîte agence. Rien n’est rattaché seul : choisissez le client ou le voyage. Le carnet reste invisible tant qu’il n’est pas publié."
       />
       <div className="mt-6">

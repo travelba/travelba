@@ -12,7 +12,7 @@ export type AdminBadges = {
   emails: number;
   /** Réservations Little Emperors sans dossier. */
   le: number;
-  /** Pièces d’identité qui expirent dans les 90 jours. */
+  /** Pièces d’identité qui expirent entre aujourd’hui et 90 jours. Les déjà expirées n’entrent pas. */
   pieces: number;
 };
 
@@ -45,6 +45,7 @@ export const adminBadges = cache(async (): Promise<AdminBadges> => {
         .from("crm_travel_documents")
         .select("id", { count: "exact", head: true })
         .not("expires_on", "is", null)
+        .gte("expires_on", isoDateInDays(0))
         .lte("expires_on", isoDateInDays(90)),
     ]);
     return {

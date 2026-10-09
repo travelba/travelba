@@ -10,6 +10,8 @@ import { formatDateFr, formatMoney, postedLedgerTotals } from "@/lib/crm/money";
 import { customerFullName, visibleServiceCopy, type CrmTransaction } from "@/lib/crm/types";
 import { CUSTOMER_NAME_SELECT, type CustomerNameRow } from "@/lib/crm/customer-search";
 
+export const metadata = { title: "Transactions" };
+
 export default async function AdminTransactionsPage() {
   const { supabase } = await requireStaffPage();
   const [{ data: transactions }, { data: expenses }, { data: billingCompanies }] =
