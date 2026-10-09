@@ -74,7 +74,6 @@ export function PrecheckPack({
       </p>
       {last4 ? (
         <StayCard
-          personal
           revealUrl={`/api/admin/bookings/${bookingId}/hotel-arrival`}
           face={stayCardFace({ itemId, hotel, holder, last4, closed: false })}
         />
