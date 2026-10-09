@@ -4,6 +4,7 @@ import {
   backfillBilletAvionMessages,
   backfillBookingCancellationMessages,
   backfillCrmMessages,
+  backfillReservationsTbaMessages,
   backfillQueuedEmailBodies,
   catchUpGmailHistory,
   emailParsingReady,
@@ -69,6 +70,15 @@ export async function GET(request: Request) {
         err instanceof Error ? err.message : err
       );
     }
+    let reservationsTbaBackfill = { captured: 0, scanned: 0 };
+    try {
+      reservationsTbaBackfill = await backfillReservationsTbaMessages();
+    } catch (err) {
+      console.error(
+        "[cron/gmail-ingest] reservations-tba",
+        err instanceof Error ? err.message : err
+      );
+    }
     const result = await processReceivedEmailIngest(10);
     let rematch = { scanned: 0, rematched: 0, failed: 0 };
     try {
@@ -94,6 +104,7 @@ export async function GET(request: Request) {
       backfill,
       cancellationBackfill,
       crmBackfill,
+      reservationsTbaBackfill,
       ...result,
       rematch,
       bodies,

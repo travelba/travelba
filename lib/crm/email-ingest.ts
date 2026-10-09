@@ -17,6 +17,7 @@ import {
   BILLET_BACKFILL_DONE,
   BOOKING_CANCELLATION_LABEL,
   CRM_ALIAS_LABEL,
+  RESERVATIONS_TBA_LABEL,
   gmailLabelMatchKey,
   isBookingCancellationLabel,
   nextBilletBackfillCursor,
@@ -283,6 +284,13 @@ const CRM_BACKFILL_PROVIDER = "gmail-crm";
 /** Importe les messages déjà sous `label:crm`. */
 export function backfillCrmMessages() {
   return backfillLabeledMessages(CRM_BACKFILL_PROVIDER, CRM_ALIAS_LABEL);
+}
+
+const RESERVATIONS_TBA_BACKFILL_PROVIDER = "gmail-reservations-tba";
+
+/** Importe les messages déjà sous `label:reservations-tba`. */
+export function backfillReservationsTbaMessages() {
+  return backfillLabeledMessages(RESERVATIONS_TBA_BACKFILL_PROVIDER, RESERVATIONS_TBA_LABEL);
 }
 
 async function computeSuggestions(admin: Admin, extract: BookingExtract) {

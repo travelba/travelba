@@ -6,6 +6,7 @@ import {
   BOOKING_CANCELLATION_LABEL,
   CRM_ALIAS_ADDRESS,
   CRM_ALIAS_LABEL,
+  RESERVATIONS_TBA_LABEL,
   isBookingCancellationLabel,
   buildGmailHistorySearchParams,
   collectAttachments,
@@ -230,6 +231,7 @@ describe("labels Gmail billet-avion", () => {
       BILLET_AVION_LABEL,
       BOOKING_CANCELLATION_LABEL,
       CRM_ALIAS_LABEL,
+      RESERVATIONS_TBA_LABEL,
     ]);
   });
 
@@ -240,6 +242,7 @@ describe("labels Gmail billet-avion", () => {
       "expedia-taap",
       BOOKING_CANCELLATION_LABEL,
       CRM_ALIAS_LABEL,
+      RESERVATIONS_TBA_LABEL,
     ]);
   });
 
@@ -250,6 +253,7 @@ describe("labels Gmail billet-avion", () => {
       BILLET_AVION_LABEL,
       BOOKING_CANCELLATION_LABEL,
       CRM_ALIAS_LABEL,
+      RESERVATIONS_TBA_LABEL,
     ]);
   });
 
@@ -268,6 +272,16 @@ describe("labels Gmail billet-avion", () => {
     assert.equal(gmailLabelMatchKey("Booking cancellation"), BOOKING_CANCELLATION_LABEL);
     assert.equal(isBookingCancellationLabel("booking-cancellation"), true);
     assert.equal(isBookingCancellationLabel("Little Emperors"), false);
+  });
+
+  it("rapproche Reservations TBA de label:reservations-tba", () => {
+    assert.equal(gmailLabelMatchKey("Reservations TBA"), RESERVATIONS_TBA_LABEL);
+    assert.equal(gmailLabelMatchKey("reservations_tba"), RESERVATIONS_TBA_LABEL);
+    const map = matchGmailLabelIds(
+      ["reservations-tba"],
+      [{ id: "Label_RTBA", name: "Reservations TBA" }]
+    );
+    assert.equal(map.get("reservations-tba"), "Label_RTBA");
   });
 
   it("rapproche Billet avion de label:billet-avion", () => {
