@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   applyRevolutToCustomer,
+  autoMatchUnmatchedRevolut,
+  revolutAutoCreditPlan,
   ibanMatchKey,
   matchReasonLabel,
   matchTokens,
@@ -63,7 +65,8 @@ describe("revolut-match", () => {
       { counterparty_name: "BENJAMIN BOUKRIS", reference: null },
       customers
     );
-    assert.equal(result.autoCustomerId, "1");
+    assert.equal(result.autoCustomerId, null);
+    assert.equal(suggestedCustomerId(result.candidates), "1");
     assert.equal(result.candidates[0]?.reason, "full_name");
   });
 
@@ -76,7 +79,8 @@ describe("revolut-match", () => {
       { counterparty_name: "BOUKRIS", reference: "VIR SEPA" },
       customers
     );
-    assert.equal(result.autoCustomerId, "1");
+    assert.equal(result.autoCustomerId, null);
+    assert.equal(suggestedCustomerId(result.candidates), "1");
     assert.equal(result.candidates[0]?.reason, "unique_last_name");
   });
 
@@ -108,7 +112,8 @@ describe("revolut-match", () => {
       { counterparty_name: "BOUKRIS SAS", reference: null },
       customers
     );
-    assert.equal(result.autoCustomerId, "1");
+    assert.equal(result.autoCustomerId, null);
+    assert.equal(suggestedCustomerId(result.candidates), "1");
     assert.equal(result.candidates[0]?.reason, "company_name");
   });
 
@@ -148,7 +153,8 @@ describe("revolut-match", () => {
       },
       customers
     );
-    assert.equal(result.autoCustomerId, "1");
+    assert.equal(result.autoCustomerId, null);
+    assert.equal(suggestedCustomerId(result.candidates), "1");
     assert.equal(result.candidates[0]?.reason, "company_name");
   });
 
@@ -180,7 +186,8 @@ describe("revolut-match", () => {
     assert.equal(result.autoCustomerId, null);
     assert.equal(result.candidates.length, 0);
     const exact = scoreRevolutMatches({ counterparty_name: "JEAN MARTIN", reference: null }, customers);
-    assert.equal(exact.autoCustomerId, "1");
+    assert.equal(exact.autoCustomerId, null);
+    assert.equal(suggestedCustomerId(exact.candidates), "1");
     assert.equal(exact.candidates[0]?.reason, "full_name");
   });
 
@@ -198,7 +205,8 @@ describe("revolut-match", () => {
       { counterparty_name: "LE ROY", reference: null },
       [customer({ id: "3", first_name: "Paul", last_name: "Le Roy" }), customers[1]]
     );
-    assert.equal(spaced.autoCustomerId, "3");
+    assert.equal(spaced.autoCustomerId, null);
+    assert.equal(suggestedCustomerId(spaced.candidates), "3");
     assert.equal(spaced.candidates[0]?.reason, "unique_last_name");
   });
 
@@ -208,10 +216,12 @@ describe("revolut-match", () => {
       customer({ id: "2", first_name: "Alice", last_name: "Martin" }),
     ];
     const result = scoreRevolutMatches({ counterparty_name: null, reference: "DUPONT2026" }, customers);
-    assert.equal(result.autoCustomerId, "1");
+    assert.equal(result.autoCustomerId, null);
+    assert.equal(suggestedCustomerId(result.candidates), "1");
     assert.equal(result.candidates[0]?.reason, "unique_last_name");
     const full = scoreRevolutMatches({ counterparty_name: "ALICE MARTIN123", reference: null }, customers);
-    assert.equal(full.autoCustomerId, "2");
+    assert.equal(full.autoCustomerId, null);
+    assert.equal(suggestedCustomerId(full.candidates), "2");
     assert.equal(full.candidates[0]?.reason, "full_name");
   });
 
@@ -253,14 +263,16 @@ describe("revolut-match", () => {
       { counterparty_name: "DUPONT", reference: "Acompte", counterparty_iban: "fr7630006000011234567890189" },
       customers
     );
-    assert.equal(result.autoCustomerId, "1");
+    assert.equal(result.autoCustomerId, null);
+    assert.equal(suggestedCustomerId(result.candidates), "1");
     assert.equal(result.candidates[0]?.reason, "iban");
     assert.equal(result.candidates[0]?.score, 100);
     const noName = scoreRevolutMatches(
       { counterparty_name: null, reference: null, counterparty_iban: "FR7630006000011234567890189" },
       customers
     );
-    assert.equal(noName.autoCustomerId, "1");
+    assert.equal(noName.autoCustomerId, null);
+    assert.equal(suggestedCustomerId(noName.candidates), "1");
     const otherIban = scoreRevolutMatches(
       { counterparty_name: "DUPONT", reference: null, counterparty_iban: "FR7630006000011234567890999" },
       customers
@@ -377,5 +389,48 @@ describe("revolut-match", () => {
     assert.equal(posted.ok, true);
     assert.equal(inserts[0]?.row.billing_company_id, "pro");
     assert.equal(inserts[0]?.row.payer_kind, "company");
+  });
+
+  it("aucun crédit n’est écrit sans validation, quel que soit le score", async () => {
+    const people = [
+      customer({ id: "client", first_name: "Camille", last_name: "Client" }),
+      customer({
+        id: "nom",
+        first_name: "Camille",
+        last_name: "Martin",
+        company_name: "Atelier Exemple",
+        iban: "FR76 3000 6000 0112 3456 7890 189",
+      }),
+    ];
+    const rows = [
+      { counterparty_name: "Stripe", reference: "ENCAISSEMENT CLIENT" },
+      { counterparty_name: "CAMILLE MARTIN", reference: null },
+      { counterparty_name: "ATELIER EXEMPLE", reference: null },
+      { counterparty_name: null, reference: null, counterparty_iban: "FR7630006000011234567890189" },
+    ];
+    const inserts: string[] = [];
+    const admin = {
+      from() {
+        return {
+          insert() {
+            inserts.push("crm_transactions");
+            throw new Error("écriture interdite");
+          },
+        };
+      },
+    };
+    for (const partial of rows) {
+      const scored = scoreRevolutMatches(partial, people);
+      assert.equal(scored.autoCustomerId, null);
+      assert.ok(scored.candidates.length >= 1);
+      if (scored.autoCustomerId) {
+        await applyRevolutToCustomer(admin, row({ id: "inbox", ...partial }), scored.autoCustomerId);
+      }
+    }
+    assert.deepEqual(revolutAutoCreditPlan(rows, people), []);
+    assert.equal(inserts.length, 0);
+    const auto = await autoMatchUnmatchedRevolut();
+    assert.equal(auto.matched, 0);
+    assert.equal(auto.scanned, 0);
   });
 });

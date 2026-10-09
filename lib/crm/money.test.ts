@@ -31,6 +31,10 @@ test("formatMoney parle français par défaut et anglais sur demande", () => {
   assert.equal(formatMoney(1234.5, "USD", { lang: "en" }), "US$1,234.50");
   assert.equal(formatMoney(1234.5, "EUR", { lang: "en" }), "€1,234.50");
   assert.equal(formatMoney(12, "", { lang: "fr" }).replace(/\s/g, " "), "12,00 €");
+  assert.equal(formatMoney(0, "GBP").replace(/\s/g, " "), "0,00 £");
+  assert.equal(formatMoney(0, "USD").replace(/\s/g, " "), "0,00 $");
+  assert.equal(formatMoney(0, "GBP").includes("£GB"), false);
+  assert.equal(formatMoney(0, "USD").includes("$US"), false);
 });
 
 test("centimes et montants se convertissent sans dérive flottante", () => {
