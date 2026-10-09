@@ -1078,10 +1078,12 @@ export function BookingEditor({
               >
                 {BOOKING_TAB_LABELS[id]}
                 {id === "todo" && blockers.length > 0 ? (
-                  <span className="ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--admin-gold)] px-1 text-[10px] font-bold text-[var(--admin-navy)]">
+                  <>
                     {" "}
-                    {blockers.length}
-                  </span>
+                    <span className="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--admin-gold)] px-1 text-[10px] font-bold text-[var(--admin-navy)]">
+                      {blockers.length}
+                    </span>
+                  </>
                 ) : null}
               </button>
             );
