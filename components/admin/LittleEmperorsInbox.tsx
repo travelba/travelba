@@ -56,6 +56,7 @@ export function LittleEmperorsInbox({
 }) {
   const router = useRouter();
   const copy = mylerSheet(!agency);
+  const live = configured && !productionBlocked;
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -110,7 +111,7 @@ export function LittleEmperorsInbox({
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">{copy.title}</p>
         <h2 className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">{copy.host}</h2>
         <p className="mt-3 text-sm font-semibold text-[var(--admin-navy)]">
-          {configured && !productionBlocked ? copy.keyOn : copy.keyOff}
+          {live ? copy.keyOn : copy.keyOff}
         </p>
         <p className="mt-2 text-sm text-[var(--admin-navy)]">{copy.keyNote}</p>
         <p className="mt-3 rounded-xl bg-[#f8f4ee] px-3 py-2 text-sm text-[var(--admin-navy)]">{copy.sso}</p>
@@ -145,6 +146,8 @@ export function LittleEmperorsInbox({
         </dl>
         {notice ? (
           <p className="mt-3 rounded-xl bg-[#f8f4ee] px-3 py-2 text-sm text-[var(--admin-navy)]">{notice}</p>
+        ) : !live ? (
+          <p className="mt-3 text-sm text-muted">{copy.blocked}</p>
         ) : probe.last_error ? (
           <p className="mt-3 rounded-xl bg-[#f8f4ee] px-3 py-2 text-sm text-[var(--admin-navy)]">
             {agency ? probe.last_error : partnerVisibleProbeError(probe.last_error)}
@@ -160,7 +163,7 @@ export function LittleEmperorsInbox({
           <button
             type="button"
             onClick={sync}
-            disabled={Boolean(busy) || !configured}
+            disabled={Boolean(busy) || !live}
             className="admin-af-btn-accent rounded-md px-3 py-2 text-sm disabled:opacity-50"
           >
             {copy.refresh}
@@ -171,7 +174,9 @@ export function LittleEmperorsInbox({
       {error ? <p className="rounded-xl bg-[#f8f4ee] px-3 py-2 text-sm">{error}</p> : null}
       {!storageReady ? <p className="text-sm text-muted">{copy.storage}</p> : null}
       {storageReady && rows.length === 0 ? (
-        <p className="text-sm text-muted">{probe.last_ok_at && !probe.last_error ? copy.emptyOk : copy.emptyIdle}</p>
+        <p className="text-sm text-muted">
+          {live && probe.last_ok_at && !probe.last_error ? copy.emptyOk : copy.emptyIdle}
+        </p>
       ) : null}
 
       <ul className="space-y-3">
