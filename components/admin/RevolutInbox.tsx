@@ -168,14 +168,20 @@ export function RevolutInbox({
       ) : null}
       <BusyBar active={busy} label="Synchronisation…" />
       <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={connect}
-          disabled={!configured}
-          className="rounded-full bg-[var(--admin-sky)] px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
-        >
-          Connecter Revolut
-        </button>
+        {connected ? (
+          <p className="rounded-full bg-[var(--admin-sky)] px-4 py-2 text-sm font-semibold text-[var(--admin-navy)]">
+            Compte relié
+          </p>
+        ) : (
+          <button
+            type="button"
+            onClick={connect}
+            disabled={!configured}
+            className="rounded-full bg-[var(--admin-sky)] px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
+          >
+            Connecter Revolut
+          </button>
+        )}
         <button
           type="button"
           onClick={sync}
@@ -187,7 +193,7 @@ export function RevolutInbox({
         {configured && connected ? (
           <p className="text-sm text-muted">
             {view === "credits"
-              ? "Crédits reçus — Valider ou Refuser. Auto si aucun doute."
+              ? "Crédits reçus — Valider ou Refuser. Rien n’est crédité sans ce clic."
               : "Sorties du compte. Un débit ne crédite pas un client."}
           </p>
         ) : null}
