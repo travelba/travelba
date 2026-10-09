@@ -19,6 +19,7 @@ import {
   webhookKeyMatches,
   LittleEmperorsError,
 } from "./little-emperors";
+import { createServiceClient } from "../supabase/admin";
 
 const sample = {
   id: 88,
@@ -200,6 +201,23 @@ describe("little emperors staging client", () => {
     assert.equal(canRemoteCancel({ is_cancellable: null }), false);
     assert.equal(splitGuestName("Nico Santos")?.last_name, "Santos");
     assert.equal(splitGuestName("Madonna"), null);
+  });
+
+  it("la preview enregistre la lecture MyLER, pas les autres secrets", () => {
+    const previousEnv = process.env.VERCEL_ENV;
+    const previousKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const previousUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    process.env.VERCEL_ENV = "preview";
+    process.env.NEXT_PUBLIC_SUPABASE_URL = previousUrl || "https://example.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "preview-service-role";
+    assert.throws(() => createServiceClient(), /SUPABASE_SERVICE_ROLE_KEY manquant/);
+    assert.doesNotThrow(() => createServiceClient({ allowPreview: true }));
+    if (previousEnv === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = previousEnv;
+    if (previousKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = previousKey;
+    if (previousUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    else process.env.NEXT_PUBLIC_SUPABASE_URL = previousUrl;
   });
 
   it("laisse le partenaire actualiser, pas rattacher ni annuler", () => {
