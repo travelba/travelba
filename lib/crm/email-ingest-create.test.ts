@@ -5,8 +5,10 @@ import {
   AUTO_CREATE_HOLDS,
   autoCreatePlan,
   clientEmailForAutoCreate,
+  hasObsoleteEmailHold,
   isSupplierCustomerEmail,
   runEmailAutoCreate,
+  withoutObsoleteEmailHold,
   type AutoCreateHandlers,
 } from "./email-ingest-create";
 import { SAME_DESTINATION_CANCELLED_REASON, SAME_DESTINATION_REASON, decideEmailIngestAction } from "./email-match";
@@ -476,6 +478,27 @@ describe("autoCreatePlan", () => {
       lastName: "Bernard",
       email: null,
     });
+  });
+
+  it("reconnaît l’ancien arrêt « pas d’e-mail » pour le rejouer", () => {
+    const held = [{ file: "création", message: AUTO_CREATE_HOLDS.missing_email }];
+    assert.equal(hasObsoleteEmailHold(held), true);
+    assert.equal(hasObsoleteEmailHold([{ message: AUTO_CREATE_HOLDS.supplier_email }]), true);
+    assert.equal(hasObsoleteEmailHold([{ message: AUTO_CREATE_HOLDS.missing_name }]), false);
+    assert.deepEqual(withoutObsoleteEmailHold(held), []);
+    const nameless = stay({
+      customer_first_name: " ",
+      customer_last_name: " ",
+      customer_email: "",
+      travelers: [{ first_name: " ", last_name: " ", companion_id: null, is_account_holder: null }],
+    });
+    const decision = decideEmailIngestAction({
+      extract: nameless,
+      suggestedCustomerId: null,
+      suggestedBookingId: null,
+      candidates: [],
+    });
+    assert.equal(decision.kind, "review");
   });
 });
 

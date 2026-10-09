@@ -211,6 +211,7 @@ Sans re-télécharger Gmail (ne pas remettre `received`) et **sans rattacher** :
 
 - Cron : `rematchStoredEmailIngest` rafraîchit les suggestions sur `parsed` / `matched`
 - Staff : `POST /api/admin/email-ingest/[id]` `{ "action": "rematch" }`
+- Cron : `retryObsoleteEmailHolds` reprend un mail encore en file tenu par l’ancien motif « pas d’e-mail client ». La fiche part du nom imprimé, le dossier reste un brouillon caché, sans invitation. Le rematch ne crée toujours pas.
 
 ## Fichiers
 
@@ -237,7 +238,7 @@ npx tsc --noEmit
 ```
 
 Couvrir : réf. exacte, dates+dest+nom flou, deux voyages égaux, *Albilla* / *Albilila*.
-`lib/crm/email-ingest-policy.test.ts` interdit apply, annulation et invitation dans le parse et le rematch. Seul `email-ingest-create-run.ts` applique un séjour unique. La création auto n’est appelée qu’une fois, après le parse d’un reçu.
+`lib/crm/email-ingest-policy.test.ts` interdit apply, annulation et invitation dans le parse et le rematch. Seul `email-ingest-create-run.ts` applique un séjour unique. La création auto part après le parse d’un reçu, et le cron reprend un mail tenu par l’ancien motif « pas d’e-mail client ».
 Ne pas rejouer un vrai mail prod. Echo PII interdit dans PR / logs.
 
 ## Hôtel Little Emperors
