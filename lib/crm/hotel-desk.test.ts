@@ -17,6 +17,9 @@ import {
   hotelReplySearchQueries,
   deskNeedsAttention,
   hotelDeskDraft,
+  ensureHotelMailIdentity,
+  ensureHotelMailSubject,
+  hotelIdentitySeed,
   deskRoster,
   hotelDeskRecipients,
   mergeDeskContacts,
@@ -84,8 +87,11 @@ test("lien et full credit non proposés pour Expedia", () => {
 
 test("brouillon français : lien, full credit sans numéro, tous les contacts", () => {
   const link = hotelDeskDraft({ ...base, kind: "payment_link", item: hotel() });
+  assert.match(link.subject, /Camille Martin/);
   assert.match(link.subject, /HB-9/);
   assert.match(link.body, /lien de paiement/);
+  assert.match(link.body, /Camille Martin/);
+  assert.match(link.body, /HB-9/);
   assert.equal(link.dueOn, "2026-11-02");
   assert.equal(link.status, "waiting");
   const credit = hotelDeskDraft({ ...base, kind: "full_credit", item: hotel() });
@@ -491,6 +497,25 @@ function note(patch: Partial<CrmHotelMessage> = {}): CrmHotelMessage {
     ...patch,
   };
 }
+
+test("chaque envoi porte le voyageur et la réservation, une relance garde son objet", () => {
+  const bare = "Chère équipe,\n\nPouvez-vous confirmer la chambre ?\n\nBien à vous,\nTravel Business Agency";
+  const stamped = ensureHotelMailIdentity(bare, { lang: "fr", guest: "Camille Martin", ref: "HB-9" });
+  assert.match(stamped, /Voyageur : Camille Martin/);
+  assert.match(stamped, /Réservation : HB-9/);
+  assert.ok(stamped.indexOf("Voyageur") < stamped.indexOf("Bien à vous"));
+  const already = ensureHotelMailIdentity(
+    "Notre client Camille Martin séjourne à l'hôtel (confirmation HB-9).",
+    { lang: "fr", guest: "Camille Martin", ref: "HB-9" }
+  );
+  assert.equal(already.includes("Voyageur"), false);
+  assert.match(hotelIdentitySeed({ lang: "en", guest: "Camille Martin", ref: "HB-9" }), /Guest: Camille Martin/);
+  assert.equal(ensureHotelMailSubject("Re: Lien de paiement — Le Bristol — HB-9", { guest: "Camille Martin", ref: "HB-9" }), "Re: Lien de paiement — Le Bristol — HB-9");
+  assert.equal(ensureHotelMailSubject("La chambre", { guest: "Camille Martin", ref: "HB-9" }), "Camille Martin — La chambre — HB-9");
+  const stayNamed = hotelStayContext(hotel({ confirmation_ref: "" }), { guest: "Camille Martin", reference: "TBA-1" });
+  assert.match(stayNamed.subject, /Camille Martin/);
+  assert.match(stayNamed.subject, /TBA-1/);
+});
 
 test("le fil montre le séjour, les envois et les réponses, sans liste de contacts", () => {
   const stay = hotelStayContext(hotel());

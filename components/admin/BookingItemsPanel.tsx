@@ -699,6 +699,7 @@ export function BookingItemsPanel({
                         messages={hotelMessages}
                         thread={hotelThreadMessages}
                         attached={attachedEmails}
+                        reference={reference || ""}
                         focusReply={openHotelItemId === item.id}
                       />
                     ) : null}

@@ -8,7 +8,7 @@ import { HotelThread } from "@/components/admin/HotelThread";
 import { PrecheckPack } from "@/components/admin/PrecheckPack";
 import { hotelDisplayName } from "@/lib/crm/carnet";
 import { hotelSendDefaults, hotelSendPeople, hotelStayChecklist, hotelTripChecklist, type HotelMailPiece } from "@/lib/crm/hotel-desk";
-import { applyPaymentLinkChoice, hotelLanguage } from "@/lib/crm/hotel-arrival";
+import { applyPaymentLinkChoice, hotelLanguage, principalGuest } from "@/lib/crm/hotel-arrival";
 import { hotelContact } from "@/lib/crm/hotel-contact";
 import { precheckParty } from "@/lib/crm/hotel-precheck";
 import { HOTEL_DESK_KINDS, type CardViewLine, type CrmBookingItem, type CrmBookingTraveler, type CrmHotelMessage, type CrmHotelRequest, type CrmHotelThreadMessage, type CrmTravelDocument, type HotelDeskKind } from "@/lib/crm/types";
@@ -58,6 +58,7 @@ export function HotelDesk({
   messages = [],
   thread = [],
   attached = [],
+  reference = "",
   focusReply = false,
 }: {
   bookingId: string;
@@ -74,6 +75,7 @@ export function HotelDesk({
   messages?: CrmHotelMessage[];
   thread?: CrmHotelThreadMessage[];
   attached?: HotelMailPiece[];
+  reference?: string;
   focusReply?: boolean;
 }) {
   const rows = HOTEL_DESK_KINDS.map((kind) => requests.find((row) => row.booking_item_id === item.id && row.kind === kind)).filter(
@@ -85,6 +87,8 @@ export function HotelDesk({
   const [markError, setMarkError] = useState<string | null>(null);
   if (!rows.length) return null;
   const stay = hotelStayChecklist(item.id, rows);
+  const lead = principalGuest({ travelers, holder });
+  const guestName = `${lead.firstName} ${lead.lastName}`.trim();
 
   async function mark(row: CrmHotelRequest, action: "skip" | "restore") {
     if (marking) return;
@@ -180,6 +184,8 @@ export function HotelDesk({
         messages={messages}
         thread={thread}
         attached={attached}
+        guest={guestName}
+        reference={reference}
         focusReply={focusReply}
       />
     </div>

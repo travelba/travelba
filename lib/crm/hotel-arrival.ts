@@ -691,11 +691,13 @@ export function linkRequestMail(input: {
   checkIn: string;
   checkOut: string;
   amount: string | null;
+  guest?: string;
   relance?: boolean;
   charge?: boolean;
 }): ArrivalMail {
   const stay = `${formatStayDate(input.checkIn, input.lang)} – ${formatStayDate(input.checkOut, input.lang)}`;
   const ref = input.reference || "—";
+  const guest = showGuestName(input.guest);
   const frame = hotelMailFrame(input.lang, input.relance);
   const request = input.charge ? paymentLinkCharge(input.lang) : paymentLinkAsk(input.lang);
   if (input.lang === "fr") {
@@ -704,13 +706,13 @@ export function linkRequestMail(input: {
       "",
       request,
       "",
-      `Séjour à ${input.hotel}, du ${stay}.`,
+      guest ? `Séjour de ${guest} à ${input.hotel}, du ${stay}.` : `Séjour à ${input.hotel}, du ${stay}.`,
       `Référence de confirmation : ${ref}.`,
     ];
     if (input.amount) lines.push(`Montant à régler : ${input.amount}.`);
     lines.push("", ...frame.close);
     return {
-      subject: `${input.relance ? "Relance — " : ""}Lien de paiement — ${input.hotel} — ${ref}`,
+      subject: mailSubject(input.relance ? "Relance — Lien de paiement" : "Lien de paiement", guest, input.hotel, ref),
       text: lines.join("\n"),
     };
   }
@@ -719,15 +721,25 @@ export function linkRequestMail(input: {
     "",
     request,
     "",
-    `Stay at ${input.hotel}, ${stay}.`,
+    guest ? `Stay of ${guest} at ${input.hotel}, ${stay}.` : `Stay at ${input.hotel}, ${stay}.`,
     `Confirmation: ${ref}.`,
   ];
   if (input.amount) lines.push(`Amount due: ${input.amount}.`);
   lines.push("", ...frame.close);
   return {
-    subject: `${input.relance ? "Follow-up — " : ""}Payment link — ${input.hotel} — ${ref}`,
+    subject: mailSubject(input.relance ? "Follow-up — Payment link" : "Payment link", guest, input.hotel, ref),
     text: lines.join("\n"),
   };
+}
+
+function showGuestName(guest: string | null | undefined) {
+  const value = (guest || "").trim();
+  if (!value || /^(notre client|our guest)$/i.test(value)) return "";
+  return value;
+}
+
+function mailSubject(label: string, guest: string, hotel: string, ref: string) {
+  return [label, guest, hotel, ref].filter(Boolean).join(" — ");
 }
 
 export function vipMail(input: {

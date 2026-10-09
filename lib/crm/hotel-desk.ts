@@ -436,7 +436,7 @@ export function hotelDeskDraft(input: HotelDeskDraftInput) {
   return {
     kind: input.kind,
     subject: letter.subject,
-    body: letter.text,
+    body: ensureHotelMailIdentity(letter.text, { lang, guest: input.guest, ref }),
     recipients: hotelDeskRecipients(contact, input.kind),
     dueOn: due,
     status: (hotelDeskSuggested(input.kind, channel) ? "waiting" : "skipped") as HotelDeskStatus,
@@ -465,6 +465,7 @@ function letterFor(input: {
       lang: input.lang,
       hotel: input.hotel,
       reference: input.ref,
+      guest: input.guest,
       checkIn: isoDate(input.item.start_at),
       checkOut: isoDate(input.item.end_at) || isoDate(input.item.start_at),
       amount: input.amount,
@@ -489,7 +490,7 @@ function frenchLetter(input: {
   const stayLine = `Notre client ${input.guest} séjourne à ${input.hotel}, du ${input.stay} (confirmation ${input.ref}).`;
   if (input.kind === "upgrade") {
     return {
-      subject: `${input.relance ? "Relance — " : ""}Accueil VIP — ${input.hotel} — ${input.ref}`,
+      subject: deskSubject("Accueil VIP", input.guest, input.hotel, input.ref, input.relance, "fr"),
       text: [
         ...frame.open,
         "",
@@ -505,7 +506,7 @@ function frenchLetter(input: {
   }
   if (input.kind === "precheckin") {
     return {
-      subject: `${input.relance ? "Relance — " : ""}Pré-enregistrement — ${input.hotel} — ${input.ref}`,
+      subject: deskSubject("Pré-enregistrement", input.guest, input.hotel, input.ref, input.relance, "fr"),
       text: [
         ...frame.open,
         "",
@@ -523,7 +524,7 @@ function frenchLetter(input: {
         ? ` soit ${formatArrivalAmount(input.nights * FULL_CREDIT_NIGHT_CENTS, "EUR")} pour ${input.nights} nuit${input.nights > 1 ? "s" : ""}`
         : "";
     return {
-      subject: `${input.relance ? "Relance — " : ""}Full credit — ${input.hotel} — ${input.ref}`,
+      subject: deskSubject("Full credit", input.guest, input.hotel, input.ref, input.relance, "fr"),
       text: [
         ...frame.open,
         "",
@@ -537,7 +538,7 @@ function frenchLetter(input: {
   }
   if (input.kind === "transfer") {
     return {
-      subject: `${input.relance ? "Relance — " : ""}Transfert — ${input.hotel} — ${input.ref}`,
+      subject: deskSubject("Transfert", input.guest, input.hotel, input.ref, input.relance, "fr"),
       text: [
         ...frame.open,
         "",
@@ -551,7 +552,7 @@ function frenchLetter(input: {
     };
   }
   return {
-    subject: `${input.relance ? "Relance — " : ""}Concierge — ${input.hotel} — ${input.ref}`,
+    subject: deskSubject("Concierge", input.guest, input.hotel, input.ref, input.relance, "fr"),
     text: [
       ...frame.open,
       "",
@@ -576,11 +577,10 @@ function englishLetter(input: {
   cues: { arrival: string; departure: string };
 }) {
   const frame = hotelMailFrame("en", input.relance);
-  const prefix = input.relance ? "Follow-up — " : "";
   const stayLine = `Our guest ${input.guest} is staying at ${input.hotel}, ${input.stay} (confirmation ${input.ref}).`;
   if (input.kind === "upgrade") {
     return {
-      subject: `${prefix}VIP welcome — ${input.hotel} — ${input.ref}`,
+      subject: deskSubject("VIP welcome", input.guest, input.hotel, input.ref, input.relance, "en"),
       text: [
         ...frame.open,
         "",
@@ -596,7 +596,7 @@ function englishLetter(input: {
   }
   if (input.kind === "precheckin") {
     return {
-      subject: `${prefix}Pre-check-in — ${input.hotel} — ${input.ref}`,
+      subject: deskSubject("Pre-check-in", input.guest, input.hotel, input.ref, input.relance, "en"),
       text: [
         ...frame.open,
         "",
@@ -614,7 +614,7 @@ function englishLetter(input: {
         ? `, ${formatArrivalAmount(input.nights * FULL_CREDIT_NIGHT_CENTS, "EUR")} for ${input.nights} night${input.nights > 1 ? "s" : ""}`
         : "";
     return {
-      subject: `${prefix}Full credit — ${input.hotel} — ${input.ref}`,
+      subject: deskSubject("Full credit", input.guest, input.hotel, input.ref, input.relance, "en"),
       text: [
         ...frame.open,
         "",
@@ -628,7 +628,7 @@ function englishLetter(input: {
   }
   if (input.kind === "transfer") {
     return {
-      subject: `${prefix}Transfer — ${input.hotel} — ${input.ref}`,
+      subject: deskSubject("Transfer", input.guest, input.hotel, input.ref, input.relance, "en"),
       text: [
         ...frame.open,
         "",
@@ -642,7 +642,7 @@ function englishLetter(input: {
     };
   }
   return {
-    subject: `${prefix}Concierge — ${input.hotel} — ${input.ref}`,
+    subject: deskSubject("Concierge", input.guest, input.hotel, input.ref, input.relance, "en"),
     text: [
       ...frame.open,
       "",
@@ -848,8 +848,73 @@ export function hotelSendDefaults(
   return checked.length ? checked : people.map((person) => person.email);
 }
 
-/** Hôtel, ville, dates et confirmation : le contexte du message. */
-export function hotelStayContext(item: CrmBookingItem) {
+/** Prénom et nom, jamais le repli « notre client ». */
+export function showGuestName(guest: string | null | undefined) {
+  const value = (guest || "").trim();
+  if (!value || /^(notre client|our guest)$/i.test(value)) return "";
+  return value;
+}
+
+/** Numéro de confirmation hôtel, sinon la référence du dossier. Un tiret vide ne compte pas. */
+export function bookingToken(ref: string | null | undefined) {
+  const value = (ref || "").trim();
+  if (!value || value === "—") return "";
+  return value;
+}
+
+function deskSubject(label: string, guest: string, hotel: string, ref: string, relance?: boolean, lang: "fr" | "en" = "fr") {
+  const head = relance ? `${lang === "fr" ? "Relance" : "Follow-up"} — ${label}` : label;
+  return [head, showGuestName(guest), hotel, bookingToken(ref) || ref].filter(Boolean).join(" — ");
+}
+
+/** Lignes à poser sur un message libre : voyageur, puis réservation. */
+export function hotelIdentitySeed(input: { lang: "fr" | "en"; guest: string; ref: string }) {
+  const lines = missingIdentityLines("", input);
+  if (!lines.length) return "";
+  return `${lines.join("\n")}\n\n`;
+}
+
+/**
+ * Chaque envoi porte le prénom, le nom et le numéro de réservation.
+ * Une relance qui les a déjà ne les répète pas. La ligne se glisse avant la signature.
+ */
+export function ensureHotelMailIdentity(text: string, input: { lang: "fr" | "en"; guest: string; ref: string }) {
+  const lines = missingIdentityLines(text, input);
+  if (!lines.length) return text.trim();
+  const block = lines.join("\n");
+  const marker = input.lang === "fr" ? "Bien à vous," : "Best regards,";
+  const idx = text.lastIndexOf(marker);
+  if (idx >= 0) return `${text.slice(0, idx).trimEnd()}\n\n${block}\n\n${text.slice(idx).trimEnd()}`;
+  return `${text.trimEnd()}\n\n${block}`;
+}
+
+/** Objet d’un message libre. Un « Re: » reste tel quel, pour garder le fil. */
+export function ensureHotelMailSubject(subject: string, input: { guest: string; ref: string }) {
+  let next = subject.trim();
+  if (/^(re|fw|fwd|tr)\s*:/i.test(next)) return next.slice(0, 300);
+  const guest = showGuestName(input.guest);
+  const ref = bookingToken(input.ref);
+  if (ref && !next.includes(ref)) next = next ? `${next} — ${ref}` : ref;
+  if (guest && !next.toLocaleLowerCase("fr").includes(guest.toLocaleLowerCase("fr"))) next = next ? `${guest} — ${next}` : guest;
+  return next.slice(0, 300);
+}
+
+function missingIdentityLines(text: string, input: { lang: "fr" | "en"; guest: string; ref: string }) {
+  const guest = showGuestName(input.guest);
+  const ref = bookingToken(input.ref);
+  const hay = text.toLocaleLowerCase("fr");
+  const lines: string[] = [];
+  if (guest && !hay.includes(guest.toLocaleLowerCase("fr"))) {
+    lines.push(input.lang === "fr" ? `Voyageur : ${guest}.` : `Guest: ${guest}.`);
+  }
+  if (ref && !text.includes(ref)) {
+    lines.push(input.lang === "fr" ? `Réservation : ${ref}.` : `Reservation: ${ref}.`);
+  }
+  return lines;
+}
+
+/** Hôtel, ville, dates, voyageur et confirmation : le contexte du message. */
+export function hotelStayContext(item: CrmBookingItem, extra?: { guest?: string; reference?: string }) {
   const hotel = hotelDisplayName(item) || "Hôtel";
   const city = hotelCityLine(item);
   const checkIn = isoDate(item.start_at);
@@ -860,11 +925,12 @@ export function hotelStayContext(item: CrmBookingItem) {
       : checkIn
         ? formatStayDate(checkIn, "fr")
         : "";
-  const ref = (item.confirmation_ref || "").trim();
+  const ref = bookingToken(item.confirmation_ref) || bookingToken(extra?.reference);
+  const guest = showGuestName(extra?.guest);
   return {
     hotel,
     subtitle: [city, stay, ref ? `confirmation ${ref}` : ""].filter(Boolean).join(" · "),
-    subject: [hotel, ref || "", stay].filter(Boolean).join(" — "),
+    subject: [guest, hotel, ref, stay].filter(Boolean).join(" — "),
   };
 }
 

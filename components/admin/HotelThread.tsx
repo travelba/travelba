@@ -4,7 +4,10 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { HotelMailTo } from "@/components/admin/HotelMailTo";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { hotelLanguage } from "@/lib/crm/hotel-arrival";
+import { hotelContact } from "@/lib/crm/hotel-contact";
 import {
+  hotelIdentitySeed,
   hotelSendDefaults,
   hotelSendPeople,
   hotelStayContext,
@@ -24,6 +27,8 @@ export function HotelThread({
   messages,
   thread = [],
   attached,
+  guest = "",
+  reference = "",
   focusReply = false,
 }: {
   bookingId: string;
@@ -32,14 +37,21 @@ export function HotelThread({
   messages: CrmHotelMessage[];
   thread?: CrmHotelThreadMessage[];
   attached: HotelMailPiece[];
+  guest?: string;
+  reference?: string;
   focusReply?: boolean;
 }) {
   const router = useRouter();
   const logRef = useRef<HTMLOListElement>(null);
   const messageRef = useRef<HTMLTextAreaElement>(null);
-  const context = hotelStayContext(item);
+  const context = hotelStayContext(item, { guest, reference });
+  const seed = hotelIdentitySeed({
+    lang: hotelLanguage(hotelContact(item).country),
+    guest,
+    ref: (item.confirmation_ref || "").trim() || reference.trim(),
+  });
   const [subject, setSubject] = useState(context.subject);
-  const [body, setBody] = useState("");
+  const [body, setBody] = useState(seed);
   const [picked, setPicked] = useState<string[] | null>(null);
   const [sent, setSent] = useState<CrmHotelMessage[]>([]);
   const [syncedMessages, setSyncedMessages] = useState(messages);
@@ -99,7 +111,7 @@ export function HotelThread({
         updated_at: new Date().toISOString(),
       },
     ]);
-    setBody("");
+    setBody(seed);
     router.refresh();
   }
 

@@ -37,6 +37,8 @@ import {
   nextDeskMark,
   nextLetterStatus,
   outboundHotelLetter,
+  ensureHotelMailIdentity,
+  ensureHotelMailSubject,
   replyWindowStartMs,
   subjectsToFollow,
 } from "./hotel-desk";
@@ -636,11 +638,15 @@ export async function sendHotelRequest(
     note = cardLinkNote({ choice: "pliant", lang, url: link.url, expiresAt: link.expiresAt });
     cardLinkId = link.id;
   }
-  const text = outboundHotelLetter(input.body, note);
+  const identity = await loadMailIdentity(admin, input.bookingId, item);
+  const followUp = row.status === "follow_up";
+  const subject = (followUp ? input.subject.trim() : ensureHotelMailSubject(input.subject, identity)).slice(0, 300);
+  const stampedBody = ensureHotelMailIdentity(input.body, identity);
+  const text = outboundHotelLetter(stampedBody, note);
   try {
     await deliverHotelMail({
       to: recipients,
-      subject: input.subject.trim(),
+      subject,
       text,
       attachments,
       carriesCardLink: Boolean(cardLinkId),
@@ -651,13 +657,11 @@ export async function sendHotelRequest(
   }
   if (cardLinkId) await settleCardLinks(admin, { linkId: cardLinkId, requestId: row.id, sent: true });
   const now = new Date().toISOString();
-  const followUp = row.status === "follow_up";
-  const subject = input.subject.trim();
   await admin
     .from("crm_hotel_requests")
     .update({
       subject,
-      body: input.body,
+      body: stampedBody,
       recipients,
       sent_subjects: appendSentSubject(row.sent_subjects, subject),
       card_choice: storedCardChoice(input.kind, input.cardChoice || row.card_choice),
@@ -687,13 +691,14 @@ export async function sendHotelMessage(
   admin: Admin,
   input: { bookingId: string; itemId: string; subject: string; body: string; recipients?: string[] }
 ) {
-  const subject = input.subject.trim().slice(0, 300);
-  const text = input.body.trim().slice(0, 8000);
-  if (!subject || !text) throw new Error("Écrivez l'objet et le message.");
+  const item = await loadItem(admin, input.bookingId, input.itemId);
+  const identity = await loadMailIdentity(admin, input.bookingId, item);
+  const subject = ensureHotelMailSubject(input.subject, identity);
+  const text = ensureHotelMailIdentity(input.body, identity).slice(0, 8000);
+  if (!subject || !text.trim()) throw new Error("Écrivez l'objet et le message.");
   if (containsCardNumber(subject) || containsCardNumber(text)) {
     throw new Error("Le message ne peut pas contenir un numéro de carte.");
   }
-  const item = await loadItem(admin, input.bookingId, input.itemId);
   const chosen = Array.isArray(input.recipients) ? cleanRecipients(input.recipients) : null;
   let recipients = chosen;
   if (!recipients) {
@@ -744,6 +749,33 @@ async function loadRequest(admin: Admin, bookingId: string, itemId: string, kind
     .maybeSingle();
   if (!data) throw new Error("Étape introuvable.");
   return data as CrmHotelRequest;
+}
+
+async function loadMailIdentity(admin: Admin, bookingId: string, item: CrmBookingItem) {
+  const [{ data: booking }, { data: travelers }] = await Promise.all([
+    admin.from("crm_bookings").select("reference, customer_id").eq("id", bookingId).maybeSingle(),
+    admin.from("crm_booking_travelers").select("first_name, last_name, is_account_holder").eq("booking_id", bookingId),
+  ]);
+  const stay = booking as { reference: string | null; customer_id: string | null } | null;
+  let holder: { first_name: string; last_name: string } | null = null;
+  if (stay?.customer_id) {
+    const { data: customer } = await admin
+      .from("crm_customers")
+      .select("first_name, last_name")
+      .eq("id", stay.customer_id)
+      .maybeSingle();
+    const row = customer as { first_name: string | null; last_name: string | null } | null;
+    if (row) holder = { first_name: row.first_name || "", last_name: row.last_name || "" };
+  }
+  const guest = principalGuest({
+    travelers: (travelers || []) as { first_name: string | null; last_name: string | null; is_account_holder: boolean }[],
+    holder,
+  });
+  return {
+    lang: hotelLanguage(hotelContact(item).country),
+    guest: `${guest.firstName} ${guest.lastName}`.trim(),
+    ref: (item.confirmation_ref || stay?.reference || "").trim(),
+  };
 }
 
 async function loadItem(admin: Admin, bookingId: string, itemId: string) {
