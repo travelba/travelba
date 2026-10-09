@@ -29,6 +29,12 @@ export async function POST(request: Request) {
   try {
     if (action === "sync") {
       const result = await syncLittleEmperorsBookings();
+      const { error: probeError } = await auth.supabase.rpc("crm_record_le_probe", {
+        p_status: result.ok ? 200 : result.status || 502,
+        p_error: result.ok ? null : result.message || "Lecture impossible.",
+        p_ok_at: result.ok ? new Date().toISOString() : null,
+      });
+      if (probeError) console.error("[little-emperors] probe", probeError.code || "error");
       if (!result.ok) return jsonError(result.message || "Lecture impossible.", result.status || 502);
       return NextResponse.json(result);
     }
