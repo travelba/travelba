@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { EmailOtpType, SupabaseClient, User } from "@supabase/supabase-js";
+import { createClient, type EmailOtpType, type SupabaseClient, type User } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -47,17 +47,39 @@ function entryAdmin() {
   return createServiceClient({ allowPreview: true });
 }
 
+function entryReader() {
+  const { url, anonKey } = publicSupabaseEnv();
+  return createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
+}
+
+/** Rôle de service, sinon la fonction qui lit par le code (preview). */
+async function readEntryRow(code: string): Promise<LinkRow | null> {
+  try {
+    const admin = entryAdmin();
+    const { data, error } = await admin.from("crm_entry_links").select("*").eq("code", code).maybeSingle();
+    if (!error && data) return data as LinkRow;
+  } catch {
+    /* Rôle de service absent sur la preview. */
+  }
+  try {
+    const { data, error } = await entryReader().rpc("crm_read_entry_link", { p_code: code });
+    if (error || !data || typeof data !== "object") return null;
+    return data as LinkRow;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Carte d’aperçu. Un GET anonyme ne crée rien : la couverture se sert par le code du lien
  * lui-même (`?e=CODE`), jamais par le code de partage /v/. Un lien mort n’a pas de photo.
  */
 async function stayBehindCode(origin: string, code: string): Promise<{ stay: EntryPreview | null; nextPath: string | null }> {
   try {
-    const admin = entryAdmin();
-    const { data } = await admin.from("crm_entry_links").select("*").eq("code", code).maybeSingle();
-    const link = data as LinkRow | null;
+    const link = await readEntryRow(code);
     const reference = referenceFromNextPath(link?.next_path);
     if (!link || !reference) return { stay: null, nextPath: link?.next_path ?? null };
+    const admin = entryAdmin();
     const { data: booking } = await admin
       .from("crm_bookings")
       .select("reference, destination, title, cover_image_path, visible_to_client, archived_at")
@@ -96,11 +118,7 @@ export async function entryPreviewResponse(origin: string, code: string, enter =
  */
 export async function openEntry(origin: string, code: string) {
   const safe = isEntryCode(code) ? code : "";
-  const admin = entryAdmin();
-  const { data } = safe
-    ? await admin.from("crm_entry_links").select("*").eq("code", safe).maybeSingle()
-    : { data: null };
-  const link = data as LinkRow | null;
+  const link = safe ? await readEntryRow(safe) : null;
   if (!link?.token_hash) return entryPreviewResponse(origin, safe, false);
   if (link.channel === "desk") return openDeskEntry(origin, safe, link);
 
@@ -285,13 +303,19 @@ async function verifyOn(supabase: SupabaseClient, tokenHash: string, type: strin
 async function markEntryOpened(code: string, link: LinkRow, now: Date) {
   try {
     const admin = entryAdmin();
-    const { error } = await admin
+    const { data, error } = await admin
       .from("crm_entry_links")
       .update({ used_at: link.used_at || now.toISOString(), open_count: (link.open_count ?? 0) + 1 })
-      .eq("code", code);
-    if (error && !isMissingColumnError(error, "used_at") && !isMissingColumnError(error, "open_count")) {
-      console.error("[entry] ouverture non comptée");
-    }
+      .eq("code", code)
+      .select("code");
+    if (!error && data && data.length > 0) return;
+    if (error && (isMissingColumnError(error, "used_at") || isMissingColumnError(error, "open_count"))) return;
+  } catch {
+    /* La preview compte via la fonction. */
+  }
+  try {
+    const { error } = await entryReader().rpc("crm_mark_entry_opened", { p_code: code });
+    if (error) console.error("[entry] ouverture non comptée");
   } catch {
     console.error("[entry] ouverture non comptée");
   }

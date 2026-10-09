@@ -87,8 +87,17 @@ export async function POST(request: Request) {
     app_metadata: appMeta,
   });
   if (metaError) {
-    if (partner) return jsonError("The password could not be saved. Try again.", 400);
-    return dbError(metaError, 400);
+    if (staff) {
+      const { error: stampError } = await supabase.rpc("crm_finish_staff_password");
+      if (stampError) {
+        return jsonError(
+          partner ? "The password could not be saved. Try again." : "Impossible d’enregistrer le mot de passe. Réessayez.",
+          400
+        );
+      }
+    } else {
+      return dbError(metaError, 400);
+    }
   }
 
   await supabase.auth.refreshSession();
