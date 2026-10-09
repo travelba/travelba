@@ -331,6 +331,11 @@ export function CustomerEditor({
           </span>
           <ChevronDown className={`h-4 w-4 shrink-0 transition ${holderOpen ? "rotate-180" : ""}`} />
         </button>
+        {allCapsNameNote(firstName, lastName) ? (
+          <p className="mt-3 rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
+            {allCapsNameNote(firstName, lastName)}
+          </p>
+        ) : null}
 
         {holderOpen ? (
         <div className="space-y-6">
@@ -364,11 +369,6 @@ export function CustomerEditor({
         {nameWarn ? (
           <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
             {nameWarn}
-          </p>
-        ) : null}
-        {allCapsNameNote(firstName, lastName) ? (
-          <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
-            {allCapsNameNote(firstName, lastName)}
           </p>
         ) : null}
 
@@ -662,6 +662,11 @@ function CompanionCard({
           onConfirm={remove}
         />
       </div>
+      {allCapsNameNote(firstName, lastName) ? (
+        <p className="mt-3 rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
+          {allCapsNameNote(firstName, lastName)}
+        </p>
+      ) : null}
       {expanded ? (
         <div className="mt-4 space-y-4">
           <PersonPassportCard
@@ -687,11 +692,6 @@ function CompanionCard({
           {nameWarn ? (
             <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
               {nameWarn}
-            </p>
-          ) : null}
-          {allCapsNameNote(firstName, lastName) ? (
-            <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
-              {allCapsNameNote(firstName, lastName)}
             </p>
           ) : null}
           <div>
