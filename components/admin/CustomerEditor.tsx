@@ -366,6 +366,11 @@ export function CustomerEditor({
             {nameWarn}
           </p>
         ) : null}
+        {allCapsNameNote(firstName, lastName) ? (
+          <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
+            {allCapsNameNote(firstName, lastName)}
+          </p>
+        ) : null}
 
         <div>
           <SectionFold
@@ -399,11 +404,6 @@ export function CustomerEditor({
                 <CountrySelect name="nationality" value={nationality} onChange={setNationality} />
               </Field>
             </div>
-            {allCapsNameNote(firstName, lastName) ? (
-              <p className="mt-3 rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
-                {allCapsNameNote(firstName, lastName)}
-              </p>
-            ) : null}
           </SectionFold>
 
           <SectionFold
@@ -689,6 +689,11 @@ function CompanionCard({
               {nameWarn}
             </p>
           ) : null}
+          {allCapsNameNote(firstName, lastName) ? (
+            <p className="rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
+              {allCapsNameNote(firstName, lastName)}
+            </p>
+          ) : null}
           <div>
             <SectionFold
               title="Identité"
@@ -723,11 +728,6 @@ function CompanionCard({
                   <SexSelect name="sex" value={sex} onChange={edit(setSex)} />
                 </Field>
               </div>
-              {allCapsNameNote(firstName, lastName) ? (
-                <p className="mt-3 rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
-                  {allCapsNameNote(firstName, lastName)}
-                </p>
-              ) : null}
             </SectionFold>
             <SectionFold
               title="Téléphone"
