@@ -28,13 +28,13 @@ export async function POST(request: Request) {
   const confirm = String(body?.confirm || "");
   /** Changement depuis Mon compte › Sécurité : ni bienvenue, ni WhatsApp d’accès, ni cookie de première fois. */
   const change = body?.change === true;
-  const admin = createServiceClient({ allowPreview: true });
-  const { data: staffEarly } = await admin
+  const { data: staffEarly } = await supabase
     .from("crm_staff")
     .select("role")
     .eq("auth_user_id", user.id)
     .maybeSingle();
-  const partner = staffEarly?.role === "partner";
+  const partner = staffEarly?.role === "partner" || user.app_metadata?.crm_role === "partner";
+  const admin = createServiceClient({ allowPreview: true });
   if (password.length < MIN_PASSWORD_LENGTH) {
     return jsonError(
       partner

@@ -100,7 +100,7 @@ export function AdminNav({
   async function signOut() {
     const supabase = createClient();
     await supabase.auth.signOut();
-    router.push("/admin/login");
+    router.push(partner ? "/admin/login?espace=myler" : "/admin/login");
     router.refresh();
   }
 

@@ -9,6 +9,7 @@ test("auth password errors are explained in French", () => {
   );
   assert.match(passwordErrorMessage({ code: "weak_password" }), /trop simple/);
   assert.match(passwordErrorMessage({ code: "session_expired" }), /nouveau lien/);
+  assert.match(passwordErrorMessage({ code: "current_password_required" }, "en"), /already set/);
   const out = passwordErrorMessage({ code: "unexpected_failure", message: "pg: boom" });
   assert.equal(out.includes("boom"), false);
 });

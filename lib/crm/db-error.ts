@@ -20,6 +20,10 @@ export function passwordErrorMessage(error: DbErrorLike, lang: "fr" | "en" = "fr
         : "Session expirée. Demandez un nouveau lien de connexion.";
     case "over_request_rate_limit":
       return english ? "Too many attempts. Try again in a few minutes." : "Trop de tentatives. Réessayez dans quelques minutes.";
+    case "current_password_required":
+      return english
+        ? "A password is already set. Sign in with it."
+        : "Un mot de passe est déjà défini. Connectez-vous avec.";
     default:
       return english ? "The password could not be saved. Try again." : "Enregistrement du mot de passe impossible. Réessayez.";
   }
