@@ -9,6 +9,8 @@ import {
 } from "@/lib/crm/little-emperors";
 import type { CrmLeBooking } from "@/lib/crm/types";
 
+export const metadata = { title: "Little Emperors" };
+
 export default async function AdminLittleEmperorsPage() {
   const { supabase, staff } = await requireStaffPage();
   const agency = staff.role !== "partner";
@@ -29,7 +31,7 @@ export default async function AdminLittleEmperorsPage() {
         title="Little Emperors"
         subtitle={
           agency
-            ? "Réservations hôtel lues sur l’environnement de test. Le carnet reste fermé tant qu’il n’est pas publié."
+            ? "Réservations hôtel du compte de production. Le carnet reste fermé tant qu’il n’est pas publié."
             : "Test key, Refresh, v2 routes, and the webhook. Nothing else is open."
         }
       />

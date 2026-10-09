@@ -375,3 +375,17 @@ export function identityAppliedNotice(
   if (cur.toLocaleLowerCase("fr") === next.toLocaleLowerCase("fr")) return null;
   return `Le passeport indique ${next}. Les noms du profil (${cur}) sont mis à jour.`;
 }
+
+/** Vrai si le nom enregistré est tout en capitales. On ne le réécrit pas : l’agent corrige une fois. */
+export function recordedNameIsAllCaps(value: string | null | undefined) {
+  const letters = (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z]/g, "");
+  return letters.length >= 2 && letters === letters.toUpperCase();
+}
+
+export function allCapsNameNote(first: string | null | undefined, last: string | null | undefined) {
+  if (!recordedNameIsAllCaps(first) && !recordedNameIsAllCaps(last)) return null;
+  return "Ce nom est enregistré tout en capitales. Corrigez la casse une fois : c’est elle qui s’affiche.";
+}

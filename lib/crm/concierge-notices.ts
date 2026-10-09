@@ -549,7 +549,7 @@ function contentDraft(input: {
  * elle ne sert plus d’exemple.
  */
 const SAMPLE_COVER = `${siteConfig.url}/whatsapp/hotel.jpg`;
-const SAMPLE_STAY = "Avoriaz, réservation TB-2026-0028,";
+const SAMPLE_STAY = "Avoriaz, réservation TB-EXEMPLE,";
 const SAMPLE_CODE = "c/23456789";
 
 function signed(body: string) {
@@ -738,7 +738,7 @@ export function conciergeContentDrafts() {
       friendlyName: "pieces_reservation_photo",
       create: contentDraft({
         friendlyName: "pieces_reservation_photo",
-        variables: { "1": "billets, réservation TB-2026-0028, séjour à Avoriaz,", "2": whatsappTypeImageUrl("pieces"), "3": code },
+        variables: { "1": "billets, réservation TB-EXEMPLE, séjour à Avoriaz,", "2": whatsappTypeImageUrl("pieces"), "3": code },
         types: mediaTemplate(
           `Vos {{1}} sont dans la réservation.${signature}`,
           "Ouvrir la réservation",
@@ -768,7 +768,7 @@ export function conciergeContentDrafts() {
       create: contentDraft({
         friendlyName: "piece_reservation_photo",
         variables: {
-          "1": "confirmation d'hôtel, réservation TB-2026-0028, séjour à Avoriaz,",
+          "1": "confirmation d'hôtel, réservation TB-EXEMPLE, séjour à Avoriaz,",
           "2": whatsappTypeImageUrl("document"),
           "3": code,
         },
@@ -801,7 +801,7 @@ export function conciergeContentDrafts() {
       create: contentDraft({
         friendlyName: "pieces_composees_photo",
         variables: {
-          "1": "confirmation d'hôtel et le transfert, réservation TB-2026-0028, séjour à Avoriaz,",
+          "1": "confirmation d'hôtel et le transfert, réservation TB-EXEMPLE, séjour à Avoriaz,",
           "2": whatsappTypeImageUrl("pieces"),
           "3": code,
         },

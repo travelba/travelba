@@ -15,6 +15,8 @@ import { revolutDebitLine } from "@/lib/crm/revolut-inbox";
 import type { CrmRevolutTransaction } from "@/lib/crm/types";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 
+export const metadata = { title: "Revolut" };
+
 export default async function AdminRevolutPage({
   searchParams,
 }: {

@@ -32,7 +32,7 @@ test("les textes qui partent reprennent les fonctions d’envoi", () => {
   assert.equal(connexion?.bubble.body.includes("http"), false);
 
   const stay = byId.get("sejour-photo");
-  assert.match(stay?.bubble.body || "", /Votre séjour à Avoriaz, réservation TB-2026-0028, est dans votre espace\./);
+  assert.match(stay?.bubble.body || "", /Votre séjour à Avoriaz, réservation TB-EXEMPLE, est dans votre espace\./);
   assert.equal(stay?.bubble.photo, true);
   assert.equal(stay?.bubble.button, "Voir le séjour");
 
@@ -55,7 +55,7 @@ test("les textes qui partent reprennent les fonctions d’envoi", () => {
   assert.match(byId.get("sejour-photo")?.bubble.image || "", /\/whatsapp\/hotel\.jpg$/);
   assert.match(hotel?.fallback?.body || "", /confirmation d'hôtel pour le séjour à Avoriaz/);
   assert.equal(hotel?.fallback?.photo, false);
-  assert.match(hotel?.earlier?.body || "", /Votre confirmation d'hôtel, réservation TB-2026-0028/);
+  assert.match(hotel?.earlier?.body || "", /Votre confirmation d'hôtel, réservation TB-EXEMPLE/);
   const hello = byId.get("reponse-Bonjour");
   assert.match(hello?.bubble.image || "", /\/whatsapp\/hotel\.jpg$/);
   assert.equal(byId.get("numero-inconnu")?.bubble.image, null);

@@ -886,7 +886,7 @@ function ItemAttachments({
       {filesOnly ? null : (
       <form onSubmit={upload} className="flex flex-wrap items-center gap-2">
         <BusyBar active={busy} label="Envoi…" />
-        <input name="file" type="file" required disabled={busy} className="text-xs" />
+        <input name="file" type="file" required disabled={busy} aria-label="Confirmation PDF ou photo" className="text-xs" />
         <button type="submit" disabled={busy} className={flatBtn}>
           {busy ? "Envoi…" : "Joindre"}
         </button>

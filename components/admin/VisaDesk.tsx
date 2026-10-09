@@ -1,11 +1,19 @@
 import Link from "next/link";
 import { reasonLabel, type DeskTask } from "@/lib/crm/visa-desk";
 
-export function VisaDesk({ open, grey }: { open: DeskTask[]; grey: DeskTask[] }) {
+export function VisaDesk({
+  open,
+  grey,
+  showEmpty = true,
+}: {
+  open: DeskTask[];
+  grey: DeskTask[];
+  showEmpty?: boolean;
+}) {
   return (
     <section className="rounded-2xl border border-[var(--border)] bg-white/70 p-4">
       <h3 className="font-display text-base font-bold text-[var(--admin-navy)]">Formalités</h3>
-      {open.length === 0 ? <p className="mt-2 text-sm text-muted">Aucune formalité ouverte.</p> : null}
+      {showEmpty && open.length === 0 ? <p className="mt-2 text-sm text-muted">Aucune formalité ouverte.</p> : null}
       <ul className="mt-2 divide-y divide-border text-sm">
         {open.map((task) => (
           <li key={task.bookingId} className="flex flex-col items-start gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">

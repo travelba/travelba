@@ -9,12 +9,12 @@ function bodyParagraph(html: string, margin = "0") {
   return `<p style="margin:${margin};line-height:1.5;font-family:${FONT};color:${NAVY}">${html}</p>`;
 }
 
-/** Invitation à l’espace voyageur. Le lien reste valable 30 jours. */
+/** Invitation à l’espace client. Le lien reste valable 30 jours. */
 export function inviteClientMail(input: { firstName?: string | null; link: string }) {
   const who = greetingGivenName(input.firstName);
   const hello = who ? `Bonjour ${escapeHtml(who)},` : "Bonjour,";
   return {
-    subject: "Votre espace voyageur est prêt",
+    subject: "Votre espace client est prêt",
     html: agencyEmailHtml({
       title: "Votre espace est prêt",
       preheader: "Définissez votre mot de passe — le lien reste valable 30 jours.",

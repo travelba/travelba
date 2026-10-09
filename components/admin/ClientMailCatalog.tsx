@@ -53,7 +53,7 @@ export function ClientMailCatalog({ groups }: { groups: ClientMailGroup[] }) {
     <div className="mt-6">
       <p className="max-w-3xl text-sm leading-relaxed text-muted">
         Chaque carte montre l’e-mail tel que le client le reçoit. Les prénoms, références et dates sont
-        l’exemple Camille, séjour TB-2026-0028.
+        l’exemple Camille, séjour TB-EXEMPLE.
       </p>
 
       <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

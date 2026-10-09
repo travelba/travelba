@@ -6,7 +6,7 @@ import { ChevronDown, Plus } from "lucide-react";
 import type { CrmBillingCompany, CrmCompanion, CrmCustomer, CrmTravelDocument, CompanyRole } from "@/lib/crm/types";
 import { countryName, resolveCountryCode } from "@/lib/crm/countries";
 import { identityNationalityFromSources, nationalityFromIdentity } from "@/lib/crm/document-identity";
-import { identityOverwriteWarning, RELATIONSHIP_OPTIONS, type ExtractedIdentity } from "@/lib/crm/identity";
+import { allCapsNameNote, identityOverwriteWarning, RELATIONSHIP_OPTIONS, type ExtractedIdentity } from "@/lib/crm/identity";
 import { appendPassportForm, appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-extract";
 import { formatIbanInput, ibanError, normalizeIban } from "@/lib/crm/billing";
 import { loyaltyFromCustomer, type LoyaltyMap } from "@/lib/crm/loyalty";
@@ -331,6 +331,11 @@ export function CustomerEditor({
           </span>
           <ChevronDown className={`h-4 w-4 shrink-0 transition ${holderOpen ? "rotate-180" : ""}`} />
         </button>
+        {allCapsNameNote(firstName, lastName) ? (
+          <p className="mt-3 rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
+            {allCapsNameNote(firstName, lastName)}
+          </p>
+        ) : null}
 
         {holderOpen ? (
         <div className="space-y-6">
@@ -657,6 +662,11 @@ function CompanionCard({
           onConfirm={remove}
         />
       </div>
+      {allCapsNameNote(firstName, lastName) ? (
+        <p className="mt-3 rounded-xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
+          {allCapsNameNote(firstName, lastName)}
+        </p>
+      ) : null}
       {expanded ? (
         <div className="mt-4 space-y-4">
           <PersonPassportCard

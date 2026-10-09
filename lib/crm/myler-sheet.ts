@@ -3,35 +3,34 @@ import { siteConfig } from "@/lib/site";
 const ROUTES = ["GET /v2/hotels/bookings", "GET /v2/hotels/{id}", "DELETE /v2/hotels/bookings/{id}"] as const;
 const WEBHOOK = `${siteConfig.url}/api/webhooks/little-emperors`;
 
-/** Notice agence sur /admin/little-emperors. Aucun secret. */
+/** Notice agence sur /admin/little-emperors. Production, sans secret ni hôte de test. */
 export const MYLER_SHEET = {
-  title: "Intégration MyLER",
-  host: "api-staging.littleemperors.com",
+  title: "Little Emperors",
+  host: "Compte de production",
   keyNote:
-    "La clé de test n’est pas celle du compte de production Little Emperors. travelba.fr n’appelle pas cette API.",
-  auth: "Clé API, en-tête Authorization: Bearer.",
-  authLabel: "Authentification",
-  keyOn: "Clé de test : présente.",
-  keyOff: "Clé de test : absente.",
-  sso: "Le SSO POST /v1/login n’est pas utilisé pour MyLER. La connexion est le compte Travelba.",
-  routesLabel: "Routes v2",
+    "Les réservations hôtel se lisent sur le compte de production. Sans clé, la lecture n’est pas branchée. Rien n’est publié au client.",
+  auth: "Clé du compte de production.",
+  authLabel: "Clé",
+  keyOn: "Clé de production : présente. La valeur n’est pas affichée.",
+  keyOff: "Clé absente. La lecture n’est pas branchée.",
+  sso: "La connexion est le compte de l’agence.",
+  routesLabel: "Lecture",
   routes: ROUTES,
   syncLabel: "Lecture",
-  sync: "Actualiser appelle GET /v2/hotels/bookings sur l’environnement de test et affiche la liste ici. Une liste vide est une réponse réussie. Rien n’est publié au client.",
-  idle: "Aucune lecture pour l’instant. Actualiser interroge l’environnement de test.",
+  sync: "Actualiser lit les réservations et les affiche ici. Une liste vide est une réponse réussie. Rien n’est publié au client.",
+  idle: "Aucune lecture pour l’instant.",
   webhookLabel: "Webhook",
   webhook: WEBHOOK,
   headerLabel: "En-tête",
   webhookHeader: "X-Access-Key",
   webhookOn: "Secret webhook : présent. La valeur n’est pas affichée.",
-  webhookOff: "Secret webhook : absent sur cet environnement. Actualiser lit les réservations sans webhook.",
+  webhookOff: "Secret webhook : absent. La valeur n’est pas affichée.",
   refresh: "Actualiser",
   lastRead: "Dernière lecture",
-  refreshEmpty:
-    "L’environnement de test a répondu. Aucune réservation : c’est normal, le staging n’en a pas encore.",
-  blocked: "Cet environnement n’appelle pas Little Emperors.",
+  refreshEmpty: "Lecture réussie. Aucune réservation à afficher.",
+  blocked: "La lecture du compte de production n’est pas branchée.",
   storage: "La table des réservations Little Emperors n’est pas encore en place.",
-  emptyOk: "Aucune réservation à afficher. L’environnement de test a répondu.",
+  emptyOk: "Aucune réservation à afficher.",
   emptyIdle: "Aucune réservation Little Emperors pour le moment.",
   failed: "Opération impossible.",
   hotelUnknown: "Hôtel non indiqué",
@@ -109,7 +108,7 @@ export function mylerRefreshNotice(fetched: number, partner = false) {
     return `The test environment answered. ${count} ${word}.`;
   }
   const word = count > 1 ? "réservations" : "réservation";
-  return `L’environnement de test a répondu. ${count} ${word}.`;
+  return `Lecture du compte de production. ${count} ${word}.`;
 }
 
 /** A stored probe line must not show French to a partner, and never a secret. */

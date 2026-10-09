@@ -204,6 +204,7 @@ export function mobileTabBadge(tab: AdminMobileTab, counts: AdminNavCounts) {
 
 /** Titre court de l’en-tête téléphone : l’entrée du menu, sinon la page connue, sinon « Espace agence ». */
 export function adminPageTitle(groups: AdminNavGroup[], pathname: string, search = "") {
+  if (pathname === "/admin/outils") return "Outils";
   if (pathname === "/admin/reservations/nouveau") return "Nouveau dossier";
   if (/^\/admin\/reservations\/[^/]+/.test(pathname)) return "Dossier";
   if (/^\/admin\/clients\/[^/]+/.test(pathname)) return "Fiche client";

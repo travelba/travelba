@@ -29,8 +29,8 @@ import {
 } from "./whatsapp";
 
 const PLACE = "Avoriaz";
-const REFERENCE = "TB-2026-0028";
-const OTHER_REFERENCE = "TB-2026-0042";
+const REFERENCE = "TB-EXEMPLE";
+const OTHER_REFERENCE = "TB-EXEMPLE-B";
 const SUFFIX = "c/23456789";
 const FIRST_NAME = "Camille";
 /** Code de partage fictif de l’exemple : l’aperçu ne charge pas cette adresse. */

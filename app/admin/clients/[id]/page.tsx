@@ -59,6 +59,8 @@ import { WhatsappThread } from "@/components/admin/WhatsappThread";
 
 type Props = { params: Promise<{ id: string }> };
 
+export const metadata = { title: "Fiche client" };
+
 export default async function AdminClientDetailPage({ params }: Props) {
   const { id } = await params;
   const { supabase, staff } = await requireStaffPage();

@@ -8,6 +8,8 @@ import { customerFullName, type CrmCustomer } from "@/lib/crm/types";
 
 type Props = { params: Promise<{ id: string }> };
 
+export const metadata = { title: "Transactions" };
+
 export default async function AdminClientTransactionsPage({ params }: Props) {
   const { id } = await params;
   const { supabase } = await requireStaffPage();

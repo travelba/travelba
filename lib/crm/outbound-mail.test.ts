@@ -34,7 +34,7 @@ test("l’agence reçoit un avis d’invitation sans le lien", () => {
   const client = accessNoticeCopy({ kind: "client", firstName: "Marie" });
   assert.equal(client.subject, "Invitation envoyée à Marie");
   assert.equal(client.body.includes("/e/"), false);
-  assert.match(client.body, /espace voyageur/);
+  assert.match(client.body, /espace client/);
   const colleague = accessNoticeCopy({ kind: "collegue", firstName: "" });
   assert.equal(colleague.subject, "Invitation envoyée à un collègue");
   assert.match(colleague.body, /espace agence/);

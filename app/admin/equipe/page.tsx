@@ -3,8 +3,18 @@ import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireAdminPage } from "@/lib/crm/auth";
 import { listColleagues } from "@/lib/crm/staff-directory";
 
+export const metadata = { title: "Équipe" };
+
 export default async function AdminTeamPage() {
   const { staff } = await requireAdminPage();
+  if (staff.role !== "admin") {
+    return (
+      <div>
+        <PageEyebrow>Espace agence</PageEyebrow>
+        <PageTitle title="Équipe" subtitle="Réservé aux administrateurs." />
+      </div>
+    );
+  }
   let colleagues = null;
   try {
     colleagues = await listColleagues();

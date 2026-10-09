@@ -24,7 +24,7 @@ test("le catalogue reprend les e-mails d’accès et toutes les situations ESTA"
     assert.doesNotMatch(mail.html, /token_hash/);
   }
 
-  const missing = estaClientDraft({ status: "inacheve", alerts: [], reference: "TB-2026-0028" });
+  const missing = estaClientDraft({ status: "inacheve", alerts: [], reference: "TB-EXEMPLE" });
   assert.match(byId.get("esta-manquant")?.html || "", /manquant ou inachevé/);
   assert.equal(byId.get("esta-manquant")?.subject, missing?.subject);
   assert.match(byId.get("esta-valable")?.html || "", /valable jusqu’au 29\/08\/2027/);

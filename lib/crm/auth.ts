@@ -222,11 +222,10 @@ export async function requireStaffPage(): Promise<{
   return { supabase, user: authedUser, staff: staff as CrmStaff };
 }
 
-/** Écran d’équipe : les agents ouvrent l’espace, seuls les administrateurs gèrent les collègues. */
+/** Écran d’équipe : un agent voit l’explication, seul un administrateur gère les collègues. */
 export async function requireAdminPage() {
   const { redirect } = await import("next/navigation");
   const ctx = await requireStaffPage();
   if (ctx.staff.role === "partner") redirect("/admin/little-emperors");
-  if (ctx.staff.role !== "admin") redirect("/admin");
   return ctx;
 }

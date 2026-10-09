@@ -22,6 +22,15 @@ import {
   type SearchParamValue,
 } from "@/lib/crm/admin-list";
 
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, SearchParamValue>>;
+}) {
+  const params = await searchParams;
+  return { title: firstParam(params.pieces) === "echeance" ? "Pièces à échéance" : "Clients" };
+}
+
 export default async function AdminClientsPage({
   searchParams,
 }: {
@@ -42,8 +51,11 @@ export default async function AdminClientsPage({
       .lte("expires_on", isoDateInDays(90))
       .order("expires_on")
       .limit(200);
-    const expiring = (data || []) as CrmTravelDocument[];
-    const ownerIds = [...new Set(expiring.map((doc) => doc.customer_id).filter(Boolean))];
+    const listed = (data || []) as CrmTravelDocument[];
+    const today = isoDateInDays(0);
+    const upcoming = listed.filter((doc) => (doc.expires_on || "") >= today);
+    const expired = listed.filter((doc) => (doc.expires_on || "") < today);
+    const ownerIds = [...new Set(listed.map((doc) => doc.customer_id).filter(Boolean))];
     const { data: owners } = ownerIds.length
       ? await supabase.from("crm_customers").select(CUSTOMER_NAME_SELECT).in("id", ownerIds)
       : { data: [] as CustomerNameRow[] };
@@ -53,7 +65,7 @@ export default async function AdminClientsPage({
         <PageEyebrow>Espace agence</PageEyebrow>
         <PageTitle
           title="Pièces à échéance"
-          subtitle="Passeports et pièces qui expirent dans les 90 jours. Le nom ouvre la fiche."
+          subtitle="Déjà expirées, puis celles qui expirent dans les 90 jours. Le nom ouvre la fiche."
           actions={
             <Link href="/admin/clients" className="text-sm font-semibold text-[var(--admin-navy)] underline">
               Tous les clients
@@ -62,7 +74,10 @@ export default async function AdminClientsPage({
         />
         <section className="admin-af-card mt-6 overflow-hidden rounded-2xl">
           <ul className="divide-y divide-border text-sm">
-            {expiring.map((doc) => {
+            <li className="bg-[var(--admin-sky)]/50 px-5 py-2 font-label text-[10px] font-bold uppercase tracking-[0.12em] text-muted">
+              Déjà expirées
+            </li>
+            {expired.map((doc) => {
               const owner = ownerById.get(doc.customer_id);
               return (
                 <li key={doc.id} className="flex items-center justify-between gap-3 px-5 py-3">
@@ -73,7 +88,22 @@ export default async function AdminClientsPage({
                 </li>
               );
             })}
-            {!expiring.length ? <li className="px-5 py-8 text-center text-muted">Aucune pièce dans les 90 jours.</li> : null}
+            {!expired.length ? <li className="px-5 py-4 text-muted">Aucune pièce déjà expirée.</li> : null}
+            <li className="bg-[var(--admin-sky)]/50 px-5 py-2 font-label text-[10px] font-bold uppercase tracking-[0.12em] text-muted">
+              Dans les 90 jours
+            </li>
+            {upcoming.map((doc) => {
+              const owner = ownerById.get(doc.customer_id);
+              return (
+                <li key={doc.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                  <Link href={`/admin/clients/${doc.customer_id}`} className="font-semibold text-[var(--admin-navy)]">
+                    {doc.doc_type} · {owner ? customerFullName(owner) : "Client"}
+                  </Link>
+                  <span className="font-semibold text-[var(--admin-red)]">{formatDateFr(doc.expires_on)}</span>
+                </li>
+              );
+            })}
+            {!upcoming.length ? <li className="px-5 py-4 text-muted">Aucune pièce dans les 90 jours.</li> : null}
           </ul>
         </section>
       </div>

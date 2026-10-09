@@ -20,6 +20,7 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<"login" | "forgot" | "sent">("login");
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -74,10 +75,27 @@ function LoginForm() {
     router.refresh();
   }
 
+  async function onForgot(event: FormEvent) {
+    event.preventDefault();
+    setLoading(true);
+    setError(null);
+    const response = await fetch("/api/admin/password", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: email.trim() }),
+    });
+    setLoading(false);
+    if (!response.ok) {
+      setError("Envoi impossible. Réessayez.");
+      return;
+    }
+    setMode("sent");
+  }
+
   return (
     <>
       <div className="mb-6">
-        <BrandMark href="/" subtitle={english ? "MyLER" : "Espace agence"} />
+        <BrandMark href="/" subtitle={english ? "MyLER" : undefined} />
       </div>
       <div className="admin-af-card rounded-[1.5rem] p-8 sm:p-10">
         <p className="font-label text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--admin-gold)]">
@@ -91,6 +109,50 @@ function LoginForm() {
             ? `MyLER partners sign in here with their Travelba account. You then open only Little Emperors. ${MYLER_PARTNER.sso}`
             : `Équipe Travel Business Agency. ${MYLER_SHEET.sso}`}
         </p>
+        {mode === "sent" ? (
+          <div className="mt-6 space-y-4">
+            <p className="text-sm text-[var(--admin-navy)]">
+              Si cette adresse est celle d’un membre de l’équipe, un lien vient d’être envoyé. Il ne crée pas de compte.
+            </p>
+            <button
+              type="button"
+              className="text-sm font-semibold text-[var(--admin-navy)] underline"
+              onClick={() => setMode("login")}
+            >
+              Retour à la connexion
+            </button>
+          </div>
+        ) : mode === "forgot" ? (
+          <form onSubmit={onForgot} className="mt-6 space-y-4">
+            <label className="block space-y-1.5 text-sm">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted">E-mail</span>
+              <input
+                type="email"
+                required
+                autoComplete="username"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="admin-af-input w-full"
+              />
+            </label>
+            {error ? <p className="text-sm text-[var(--admin-red)]">{error}</p> : null}
+            <BusyBar active={loading} label="Envoi…" />
+            <button
+              type="submit"
+              disabled={loading}
+              className="admin-af-btn w-full rounded-full px-4 py-3.5 text-sm disabled:opacity-60"
+            >
+              {loading ? "Envoi…" : "Envoyer le lien"}
+            </button>
+            <button
+              type="button"
+              className="text-sm font-semibold text-[var(--admin-navy)] underline"
+              onClick={() => setMode("login")}
+            >
+              Retour à la connexion
+            </button>
+          </form>
+        ) : (
         <form onSubmit={onSubmit} className="mt-6 space-y-4">
           <label className="block space-y-1.5 text-sm">
             <span className="text-xs font-semibold uppercase tracking-wider text-muted">
@@ -118,6 +180,18 @@ function LoginForm() {
               className="admin-af-input w-full"
             />
           </label>
+          {english || mode !== "login" ? null : (
+            <button
+              type="button"
+              className="text-sm font-semibold text-[var(--admin-navy)] underline"
+              onClick={() => {
+                setError(null);
+                setMode("forgot");
+              }}
+            >
+              Mot de passe oublié
+            </button>
+          )}
           {error ? <p className="text-sm text-[var(--admin-red)]">{error}</p> : null}
           <BusyBar active={loading} label={english ? "Signing in…" : "Connexion…"} />
           <button
@@ -128,6 +202,7 @@ function LoginForm() {
             {loading ? (english ? "Signing in…" : "Connexion…") : english ? "Sign in" : "Se connecter"}
           </button>
         </form>
+        )}
       </div>
     </>
   );
