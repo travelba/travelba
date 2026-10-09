@@ -17,7 +17,10 @@ import {
   isPreviewBot,
   shouldOpenFromGet,
   entryDestination,
+  entryDoorForPath,
   entryPreviewHtml,
+  entryRequestOrigin,
+  ENTRY_DOOR_PARTNER,
   isLinkCrawler,
   referenceFromNextPath,
   safeNextPath,
@@ -207,6 +210,15 @@ test("l’e-mail du lien est celui du titulaire, et l’entrée n’ouvre pas la
     }),
     "/connexion/mot-de-passe"
   );
+  assert.equal(
+    entryDestination({
+      nextPath: "/admin/little-emperors",
+      otpType: "invite",
+      staff: true,
+      mustSetPassword: true,
+    }),
+    "/connexion/mot-de-passe"
+  );
   const held = entryPreviewHtml("https://travelba.fr", "K7MQ2PX4", null, false);
   assert.equal(held.includes("<script"), false);
   assert.equal(held.includes("Ouvrir mon espace"), false);
@@ -214,6 +226,35 @@ test("l’e-mail du lien est celui du titulaire, et l’entrée n’ouvre pas la
   assert.match(held, /Demandez-en un nouveau à l'agence/);
   // Lien mort : on propose la connexion ordinaire, sans rien d’autre.
   assert.match(held, /<a class="login" href="https:\/\/travelba\.fr\/connexion">Se connecter<\/a>/);
+  const partner = entryPreviewHtml("https://review.vercel.app", "K7MQ2PX4", null, true, ENTRY_DOOR_PARTNER);
+  assert.equal(entryDoorForPath("/admin/little-emperors"), ENTRY_DOOR_PARTNER);
+  assert.equal(entryDoorForPath("/mon-compte"), entryDoorForPath(null));
+  assert.match(partner, /<html lang="en">/);
+  assert.match(partner, /<title>Little Emperors<\/title>/);
+  assert.match(partner, /Set your password/);
+  assert.match(partner, /og:locale" content="en_GB"/);
+  assert.equal(partner.includes("Ouvrir mon espace"), false);
+  assert.equal(partner.includes("Le Concierge"), false);
+  assert.equal(partner.includes("Votre espace"), false);
+  assert.equal(/[àâäéèêëïîôùûüçœ]/i.test(partner), false);
+  const partnerHeld = entryPreviewHtml("https://review.vercel.app", "K7MQ2PX4", null, false, ENTRY_DOOR_PARTNER);
+  assert.match(partnerHeld, /This link no longer opens/);
+  assert.match(partnerHeld, /href="https:\/\/review\.vercel\.app\/admin\/login\?espace=myler"/);
+  assert.equal(partnerHeld.includes("/connexion"), false);
+  const previewHost = new Request("https://travelba.fr/e/c/K7MQ2PX4", {
+    headers: {
+      "x-forwarded-host": "travelba-git-cursor-myler-staging-review-025e-travelba.vercel.app",
+      "x-forwarded-proto": "https",
+    },
+  });
+  assert.equal(
+    entryRequestOrigin(previewHost, "https://travelba.fr"),
+    "https://travelba-git-cursor-myler-staging-review-025e-travelba.vercel.app"
+  );
+  const otherHost = new Request("https://travelba.fr/e/c/K7MQ2PX4", {
+    headers: { "x-forwarded-host": "evil.example", "x-forwarded-proto": "https" },
+  });
+  assert.equal(entryRequestOrigin(otherHost, "https://travelba.fr"), "https://travelba.fr");
 });
 
 test("le lien court vit 24 h en magique, 30 jours en invitation ou réinitialisation", () => {

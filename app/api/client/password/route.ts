@@ -28,17 +28,29 @@ export async function POST(request: Request) {
   const confirm = String(body?.confirm || "");
   /** Changement depuis Mon compte › Sécurité : ni bienvenue, ni WhatsApp d’accès, ni cookie de première fois. */
   const change = body?.change === true;
+  const { data: staffEarly } = await supabase
+    .from("crm_staff")
+    .select("role")
+    .eq("auth_user_id", user.id)
+    .maybeSingle();
+  const partner = staffEarly?.role === "partner" || user.app_metadata?.crm_role === "partner";
+  const admin = createServiceClient({ allowPreview: true });
   if (password.length < MIN_PASSWORD_LENGTH) {
-    return jsonError(`Le mot de passe doit contenir au moins ${MIN_PASSWORD_LENGTH} caractères`);
+    return jsonError(
+      partner
+        ? `Use at least ${MIN_PASSWORD_LENGTH} characters.`
+        : `Le mot de passe doit contenir au moins ${MIN_PASSWORD_LENGTH} caractères`
+    );
   }
-  if (password !== confirm) return jsonError("Les mots de passe ne correspondent pas");
+  if (password !== confirm) {
+    return jsonError(partner ? "The two passwords do not match." : "Les mots de passe ne correspondent pas");
+  }
 
   const { error } = await supabase.auth.updateUser({ password });
   if (error) {
     console.error("[client/password]", error.code ?? "?", error.message);
-    return jsonError(passwordErrorMessage(error), 400);
+    return jsonError(passwordErrorMessage(error, partner ? "en" : "fr"), 400);
   }
-  const admin = createServiceClient();
   const { data: customerRow } = await admin
     .from("crm_customers")
     .select("id")
@@ -61,7 +73,7 @@ export async function POST(request: Request) {
       .select("id, phone, first_name")
       .eq("auth_user_id", user.id)
       .maybeSingle(),
-    admin.from("crm_staff").select("id").eq("auth_user_id", user.id).maybeSingle(),
+    admin.from("crm_staff").select("id, role").eq("auth_user_id", user.id).maybeSingle(),
   ]);
   const staff = Boolean(staffRow);
   const meta = fresh.user?.app_metadata || user.app_metadata || {};
@@ -74,7 +86,19 @@ export async function POST(request: Request) {
   const { error: metaError } = await admin.auth.admin.updateUserById(user.id, {
     app_metadata: appMeta,
   });
-  if (metaError) return dbError(metaError, 400);
+  if (metaError) {
+    if (staff) {
+      const { error: stampError } = await supabase.rpc("crm_finish_staff_password");
+      if (stampError) {
+        return jsonError(
+          partner ? "The password could not be saved. Try again." : "Impossible d’enregistrer le mot de passe. Réessayez.",
+          400
+        );
+      }
+    } else {
+      return dbError(metaError, 400);
+    }
+  }
 
   await supabase.auth.refreshSession();
   if (!staff && customer?.id && user.email) {
@@ -92,7 +116,7 @@ export async function POST(request: Request) {
       console.error("[client/password] whatsapp:", message.replace(/https?:\/\/\S+/g, ""));
     }
   }
-  const home = pathAfterPassword(customer?.phone, staff ? "staff" : "client");
+  const home = pathAfterPassword(customer?.phone, partner ? "partner" : staff ? "staff" : "client");
   const next = staff ? home : destinationAfterPassword(appMeta, customer?.phone);
   const response = NextResponse.json({
     ok: true,

@@ -12,7 +12,7 @@ export const STAFF_COPY = {
   removeSelf: "Vous ne pouvez pas retirer votre propre accès.",
   lastAdmin: "L’agence garde au moins un administrateur.",
   customer: "Cette adresse appartient à un client. L’agence n’en fait pas un collègue.",
-  already: "Ce collègue fait déjà partie de l’équipe.",
+  already: "Ce collègue fait déjà partie de l’équipe. Renvoyez le lien sur sa ligne.",
   email: "Indiquez une adresse e-mail valide.",
   name: "Indiquez le nom du collègue.",
   nameLong: "Le nom est trop long.",
@@ -26,8 +26,68 @@ export const STAFF_COPY = {
 
 export function staffRoleLabel(role: StaffRole) {
   if (role === "admin") return "Administrateur";
-  if (role === "partner") return "Partenaire";
+  if (role === "partner") return "Partenaire MyLER";
   return "Agent";
+}
+
+/**
+ * Lien d’e-mail partenaire sur une preview : le jeton de partage ouvre sans mur Vercel.
+ * Absent du dépôt. Ignoré pour l’agence et pour travelba.fr.
+ */
+export function colleagueAccessLink(link: string, role: StaffRole, shareToken: string | null | undefined) {
+  if (role !== "partner") return link;
+  const token = (shareToken || "").trim();
+  if (!/^[A-Za-z0-9_-]{8,200}$/.test(token)) return link;
+  let url: URL;
+  try {
+    url = new URL(link);
+  } catch {
+    return link;
+  }
+  if (!url.hostname.endsWith(".vercel.app")) return link;
+  url.searchParams.set("_vercel_share", token);
+  return url.toString();
+}
+
+/** Texte de l’e-mail d’accès. Le partenaire est entièrement en anglais. */
+export function colleagueAccessCopy(role: StaffRole) {
+  if (role === "partner") {
+    return {
+      subject: "Your Little Emperors access",
+      title: "Your Little Emperors access",
+      preheader: "Set your password. The link stays valid for 30 days.",
+      intro: "Travelba has opened the MyLER integration for you.",
+      detail:
+        "Set your password to open it. The link stays valid for 30 days. You only open Little Emperors. SSO POST /v1/login is not used.",
+      cta: "Set your password",
+    };
+  }
+  return {
+    subject: "Votre accès à l’espace agence",
+    title: "Votre accès à l’espace agence",
+    preheader: "Définissez votre mot de passe — le lien reste valable 30 jours.",
+    intro: "L’agence vous ouvre l’espace agence.",
+    detail: "Définissez votre mot de passe pour y accéder — le lien reste valable 30 jours.",
+    cta: "Ouvrir l’espace agence",
+  };
+}
+
+/** Salutation et pied de l’e-mail. Le partenaire ne reçoit pas de français. */
+export function colleagueEmailFrame(role: StaffRole, fullName: string) {
+  const partner = role === "partner";
+  const who = fullName.trim().split(/\s+/)[0] || "";
+  if (partner) {
+    return {
+      lang: "en" as const,
+      hello: who ? `Hello ${who},` : "Hello,",
+      footnote: "If you were not expecting this access, you can ignore this email.",
+    };
+  }
+  return {
+    lang: "fr" as const,
+    hello: who ? `Bonjour ${who},` : "Bonjour,",
+    footnote: "Si vous n’attendiez pas cet accès, ignorez cet e-mail.",
+  };
 }
 
 export function parseStaffRole(value: unknown): StaffRole | null {
@@ -96,7 +156,7 @@ export function roleChangeBlockReason(input: {
 export function roleActionLabel(current: StaffRole, next: StaffRole) {
   if (current === next) return null;
   if (next === "admin") return "Passer administrateur";
-  if (next === "partner") return "Limiter à partenaire";
+  if (next === "partner") return "Limiter à partenaire MyLER";
   if (current === "partner") return "Passer agent";
   return "Limiter à agent";
 }

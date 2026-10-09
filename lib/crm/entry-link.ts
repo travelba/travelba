@@ -260,6 +260,64 @@ export function safeNextPath(value: string | null | undefined) {
 export const ENTRY_PREVIEW_TITLE = "Le Concierge";
 export const ENTRY_PREVIEW_DESCRIPTION = "Votre espace personnel vous attend.";
 
+export type EntryDoor = {
+  lang: "fr" | "en";
+  locale: string;
+  title: string;
+  description: string;
+  button: string;
+  expired: string;
+  loginLabel: string;
+  loginPath: string;
+};
+
+/** Porte voyageur. L’agence ne la montre pas au partenaire. */
+export const ENTRY_DOOR_CLIENT: EntryDoor = {
+  lang: "fr",
+  locale: "fr_FR",
+  title: ENTRY_PREVIEW_TITLE,
+  description: ENTRY_PREVIEW_DESCRIPTION,
+  button: "Ouvrir mon espace",
+  expired: "Ce lien ne s'ouvre plus. Demandez-en un nouveau à l'agence.",
+  loginLabel: "Se connecter",
+  loginPath: "/connexion",
+};
+
+/** Porte du partenaire MyLER. Aucune phrase d’agence. */
+export const ENTRY_DOOR_PARTNER: EntryDoor = {
+  lang: "en",
+  locale: "en_GB",
+  title: "Little Emperors",
+  description: "Set your password to open the test environment.",
+  button: "Set your password",
+  expired: "This link no longer opens. Ask Travelba for a new one.",
+  loginLabel: "Sign in",
+  loginPath: "/admin/login?espace=myler",
+};
+
+/** Le partenaire arrive sur Little Emperors. Le voyageur garde Le Concierge. */
+export function entryDoorForPath(nextPath: string | null | undefined): EntryDoor {
+  const path = (nextPath || "").split("?")[0];
+  if (path === "/admin/little-emperors" || path.startsWith("/admin/little-emperors/")) {
+    return ENTRY_DOOR_PARTNER;
+  }
+  return ENTRY_DOOR_CLIENT;
+}
+
+/**
+ * Origine réelle de la requête. Sur une preview, la session reste sur l’alias
+ * que le partenaire a ouvert. Ailleurs, l’adresse canonique.
+ */
+export function entryRequestOrigin(request: Request, fallback: string) {
+  const forwarded = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() || "";
+  const host = (forwarded || new URL(request.url).host).toLowerCase();
+  if (/^[a-z0-9-]+\.vercel\.app$/.test(host)) {
+    const proto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || "https";
+    if (proto === "https" || proto === "http") return `${proto}://${host}`;
+  }
+  return fallback.replace(/\/$/, "");
+}
+
 export type EntryPreview = {
   title: string;
   description: string;
@@ -316,12 +374,13 @@ export function entryPreviewHtml(
   origin: string,
   code: string,
   stay?: EntryPreview | null,
-  enter = true
+  enter = true,
+  door: EntryDoor = ENTRY_DOOR_CLIENT
 ) {
   const base = origin.replace(/\/$/, "");
   const page = entryLinkUrl(base, code);
-  const rawTitle = (stay?.title || ENTRY_PREVIEW_TITLE).trim();
-  const rawDescription = (stay?.description || ENTRY_PREVIEW_DESCRIPTION).trim();
+  const rawTitle = (stay?.title || door.title).trim();
+  const rawDescription = (stay?.description || door.description).trim();
   const title = escapeHtml(rawTitle);
   const description = escapeHtml(rawDescription);
   const lead = escapeHtml(rawDescription.replace(/\s·\sTravel Business Agency$/, ""));
@@ -342,23 +401,23 @@ export function entryPreviewHtml(
   const hero = image
     ? `<div class="hero"><img src="${imageUrl}" alt="" onerror="this.closest('main').className='door plain';this.parentElement.remove()"></div>`
     : "";
-  const login = escapeHtml(`${base}/connexion`);
-  const door = enter
+  const login = escapeHtml(`${base}${door.loginPath}`);
+  const doorHtml = enter
     ? `<form method="post" action="${action}">
 <input type="hidden" name="ouvrir" value="1">
-<button type="submit">Ouvrir mon espace</button>
+<button type="submit">${escapeHtml(door.button)}</button>
 </form>`
-    : `<p class="note">Ce lien ne s'ouvre plus. Demandez-en un nouveau à l'agence.</p>
-<p class="note"><a class="login" href="${login}">Se connecter</a></p>`;
+    : `<p class="note">${escapeHtml(door.expired)}</p>
+<p class="note"><a class="login" href="${login}">${escapeHtml(door.loginLabel)}</a></p>`;
   return `<!DOCTYPE html>
-<html lang="fr">
+<html lang="${door.lang}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0B192C">
 <title>${title}</title>
 <meta name="description" content="${description}">
-<meta property="og:locale" content="fr_FR">
+<meta property="og:locale" content="${door.locale}">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Travel Business Agency">
 <meta property="og:title" content="${title}">
@@ -461,7 +520,7 @@ ${hero}
 <p class="mark">Travel Business Agency</p>
 <h1>${title}</h1>
 <p class="lead">${lead}</p>
-${door}
+${doorHtml}
 </div>
 </main>
 ${enter ? `<script>location.replace(location.pathname+"?ouvrir=1")</script>` : ""}

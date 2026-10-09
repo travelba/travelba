@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { EmailOtpType, SupabaseClient, User } from "@supabase/supabase-js";
+import { createClient, type EmailOtpType, type SupabaseClient, type User } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -13,6 +13,7 @@ import { isStaffAccount } from "@/lib/crm/desk-open";
 import { stayHasPublishedCover, stayPlaceName } from "./concierge-notices";
 import {
   entryDestination,
+  entryDoorForPath,
   entryLinkExpiresAt,
   entryOptInFromLink,
   entryPreviewHtml,
@@ -41,38 +42,68 @@ type LinkRow = {
   created_by_staff_id?: string | null;
 };
 
-/**
- * Carte d’aperçu. Un GET anonyme ne crée rien : la couverture se sert par le code du lien
- * lui-même (`?e=CODE`), jamais par le code de partage /v/. Un lien mort n’a pas de photo.
- */
-async function stayBehindCode(origin: string, code: string): Promise<EntryPreview | null> {
+/** Lecture du lien court. Sur la preview, la clé de service MyLER est autorisée. */
+function entryAdmin() {
+  return createServiceClient({ allowPreview: true });
+}
+
+function entryReader() {
+  const { url, anonKey } = publicSupabaseEnv();
+  return createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
+}
+
+/** Rôle de service, sinon la fonction qui lit par le code (preview). */
+async function readEntryRow(code: string): Promise<LinkRow | null> {
   try {
-    const admin = createServiceClient();
-    const { data } = await admin.from("crm_entry_links").select("*").eq("code", code).maybeSingle();
-    const link = data as LinkRow | null;
-    const reference = referenceFromNextPath(link?.next_path);
-    if (!link || !reference) return null;
-    const { data: booking } = await admin
-      .from("crm_bookings")
-      .select("reference, destination, title, cover_image_path, visible_to_client, archived_at")
-      .eq("reference", reference)
-      .maybeSingle();
-    if (!booking?.reference || booking.archived_at) return null;
-    const now = new Date();
-    const alive = !link.revoked_at && now.getTime() <= entryLinkExpiresAt(link).getTime();
-    const place = stayPlaceName(booking.destination, booking.title);
-    const hasCover =
-      alive && link.show_cover === true && Boolean(booking.visible_to_client) && stayHasPublishedCover(booking);
-    return stayPreviewCopy({ origin, reference: booking.reference, place, hasCover, entryCode: code });
+    const admin = entryAdmin();
+    const { data, error } = await admin.from("crm_entry_links").select("*").eq("code", code).maybeSingle();
+    if (!error && data) return data as LinkRow;
+  } catch {
+    /* Rôle de service absent sur la preview. */
+  }
+  try {
+    const { data, error } = await entryReader().rpc("crm_read_entry_link", { p_code: code });
+    if (error || !data || typeof data !== "object") return null;
+    return data as LinkRow;
   } catch {
     return null;
   }
 }
 
+/**
+ * Carte d’aperçu. Un GET anonyme ne crée rien : la couverture se sert par le code du lien
+ * lui-même (`?e=CODE`), jamais par le code de partage /v/. Un lien mort n’a pas de photo.
+ */
+async function stayBehindCode(origin: string, code: string): Promise<{ stay: EntryPreview | null; nextPath: string | null }> {
+  try {
+    const link = await readEntryRow(code);
+    const reference = referenceFromNextPath(link?.next_path);
+    if (!link || !reference) return { stay: null, nextPath: link?.next_path ?? null };
+    const admin = entryAdmin();
+    const { data: booking } = await admin
+      .from("crm_bookings")
+      .select("reference, destination, title, cover_image_path, visible_to_client, archived_at")
+      .eq("reference", reference)
+      .maybeSingle();
+    if (!booking?.reference || booking.archived_at) return { stay: null, nextPath: link.next_path };
+    const now = new Date();
+    const alive = !link.revoked_at && now.getTime() <= entryLinkExpiresAt(link).getTime();
+    const place = stayPlaceName(booking.destination, booking.title);
+    const hasCover =
+      alive && link.show_cover === true && Boolean(booking.visible_to_client) && stayHasPublishedCover(booking);
+    return {
+      stay: stayPreviewCopy({ origin, reference: booking.reference, place, hasCover, entryCode: code }),
+      nextPath: link.next_path,
+    };
+  } catch {
+    return { stay: null, nextPath: null };
+  }
+}
+
 export async function entryPreviewResponse(origin: string, code: string, enter = true) {
   const safe = isEntryCode(code) ? code : "00000000";
-  const stay = isEntryCode(code) ? await stayBehindCode(origin, safe) : null;
-  return new NextResponse(entryPreviewHtml(origin, safe, stay, enter), {
+  const preview = isEntryCode(code) ? await stayBehindCode(origin, safe) : { stay: null, nextPath: null };
+  return new NextResponse(entryPreviewHtml(origin, safe, preview.stay, enter, entryDoorForPath(preview.nextPath)), {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "private, no-store",
@@ -87,11 +118,7 @@ export async function entryPreviewResponse(origin: string, code: string, enter =
  */
 export async function openEntry(origin: string, code: string) {
   const safe = isEntryCode(code) ? code : "";
-  const admin = createServiceClient();
-  const { data } = safe
-    ? await admin.from("crm_entry_links").select("*").eq("code", safe).maybeSingle()
-    : { data: null };
-  const link = data as LinkRow | null;
+  const link = safe ? await readEntryRow(safe) : null;
   if (!link?.token_hash) return entryPreviewResponse(origin, safe, false);
   if (link.channel === "desk") return openDeskEntry(origin, safe, link);
 
@@ -186,7 +213,7 @@ async function openDeskEntry(origin: string, code: string, link: LinkRow) {
   if (!user) return entryPreviewResponse(origin, code, false);
   await markEntryOpened(code, link, now);
 
-  const admin = createServiceClient();
+  const admin = entryAdmin();
   if (await isStaffAccount(admin, user.id)) {
     // Ne doit pas arriver (refusé à la création) : on referme la session tout juste posée.
     await supabase.auth.signOut({ scope: "local" });
@@ -275,14 +302,20 @@ async function verifyOn(supabase: SupabaseClient, tokenHash: string, type: strin
 /** Une ouverture de plus, et la première date. Sans la migration, les colonnes manquent : on continue. */
 async function markEntryOpened(code: string, link: LinkRow, now: Date) {
   try {
-    const admin = createServiceClient();
-    const { error } = await admin
+    const admin = entryAdmin();
+    const { data, error } = await admin
       .from("crm_entry_links")
       .update({ used_at: link.used_at || now.toISOString(), open_count: (link.open_count ?? 0) + 1 })
-      .eq("code", code);
-    if (error && !isMissingColumnError(error, "used_at") && !isMissingColumnError(error, "open_count")) {
-      console.error("[entry] ouverture non comptée");
-    }
+      .eq("code", code)
+      .select("code");
+    if (!error && data && data.length > 0) return;
+    if (error && (isMissingColumnError(error, "used_at") || isMissingColumnError(error, "open_count"))) return;
+  } catch {
+    /* La preview compte via la fonction. */
+  }
+  try {
+    const { error } = await entryReader().rpc("crm_mark_entry_opened", { p_code: code });
+    if (error) console.error("[entry] ouverture non comptée");
   } catch {
     console.error("[entry] ouverture non comptée");
   }
@@ -291,7 +324,7 @@ async function markEntryOpened(code: string, link: LinkRow, now: Date) {
 /** Le client a reçu et ouvert un message WhatsApp : consentement posé s’il manquait. */
 async function stampWhatsappOptIn(userId: string, now: Date) {
   try {
-    const admin = createServiceClient();
+    const admin = entryAdmin();
     const { error } = await admin
       .from("crm_customers")
       .update({ whatsapp_opt_in_at: now.toISOString() })
@@ -305,7 +338,7 @@ async function stampWhatsappOptIn(userId: string, now: Date) {
 
 async function freshMagicHash(email: string) {
   try {
-    const admin = createServiceClient();
+    const admin = entryAdmin();
     const generated = await admin.auth.admin.generateLink({ type: "magiclink", email });
     return generated.data?.properties?.hashed_token || null;
   } catch {
@@ -315,7 +348,7 @@ async function freshMagicHash(email: string) {
 
 async function stampMustSetPassword(userId: string) {
   try {
-    const admin = createServiceClient();
+    const admin = entryAdmin();
     const { data } = await admin.auth.admin.getUserById(userId);
     const meta = data.user?.app_metadata || {};
     if (meta.must_set_password === true) return;

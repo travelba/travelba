@@ -23,6 +23,7 @@ export function agencyEmailHtml(opts: {
   ctaHref?: string;
   footnote?: string;
   preheader?: string;
+  lang?: "fr" | "en";
 }) {
   const title = escapeHtml(opts.title);
   const ctaLabel = opts.ctaLabel ? escapeHtml(opts.ctaLabel) : "";
@@ -48,7 +49,7 @@ export function agencyEmailHtml(opts: {
     : "";
 
   return `<!DOCTYPE html>
-<html lang="fr">
+<html lang="${opts.lang === "en" ? "en" : "fr"}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

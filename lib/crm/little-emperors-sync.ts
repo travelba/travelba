@@ -19,6 +19,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 const PROVIDER = "little_emperors";
 
+/** La preview porte la clé de test : elle doit pouvoir écrire la lecture. */
+function leAdmin() {
+  return createServiceClient({ allowPreview: true });
+}
+
 const LATE_CANCEL =
   "La date limite d’annulation est passée. Écrivez à bookings@littleemperors.com : la politique d’annulation s’applique.";
 
@@ -164,7 +169,7 @@ async function reflectCancellation(admin: SupabaseClient, crmBookingId: string, 
 }
 
 export async function syncLittleEmperorsBookings(fetchImpl?: typeof fetch): Promise<LeSyncResult> {
-  const admin = createServiceClient();
+  const admin = leAdmin();
   let fetched: LeBooking[];
   try {
     fetched = await enrich(await listLittleEmperorsBookings(fetchImpl), fetchImpl);
@@ -238,7 +243,7 @@ export async function syncLittleEmperorsBookings(fetchImpl?: typeof fetch): Prom
 }
 
 export async function upsertLittleEmperorsWebhook(event: string, booking: LeBooking) {
-  const admin = createServiceClient();
+  const admin = leAdmin();
   const cancelledRemote = isLeCancelled(booking.state, event);
   const { data: existing } = await admin
     .from("crm_le_bookings")
@@ -318,7 +323,7 @@ export async function attachLittleEmperorsBooking(opts: {
   customerId: string;
   referenceClient?: SupabaseClient;
 }) {
-  const admin = createServiceClient();
+  const admin = leAdmin();
   const { data: row } = await admin.from("crm_le_bookings").select("*").eq("id", opts.id).maybeSingle();
   if (!row) throw new LittleEmperorsError("Réservation Little Emperors introuvable.", 404, "not_found");
   if (row.crm_booking_id) {
@@ -396,7 +401,7 @@ export async function attachLittleEmperorsBooking(opts: {
 }
 
 export async function cancelLittleEmperorsFromCrm(id: string) {
-  const admin = createServiceClient();
+  const admin = leAdmin();
   const { data: row } = await admin.from("crm_le_bookings").select("*").eq("id", id).maybeSingle();
   if (!row) throw new LittleEmperorsError("Réservation Little Emperors introuvable.", 404, "not_found");
   if (row.is_cancellable !== true) {

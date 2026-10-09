@@ -17,7 +17,7 @@ export default async function AdminTeamPage() {
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
         title="Équipe"
-        subtitle="Ajoutez un collègue, limitez son rôle entre agent et administrateur, ou retirez un agent. Les administrateurs en place ne sont pas retirés."
+        subtitle="Ajoutez un collègue ou un partenaire MyLER. Le partenaire n’ouvre que Little Emperors. Les administrateurs en place ne sont pas retirés."
       />
       {colleagues ? (
         <TeamDesk colleagues={colleagues} currentId={staff.id} />

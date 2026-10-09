@@ -8,6 +8,9 @@ import { agencyEmailHtml, escapeHtml } from "@/lib/crm/email-html";
 import { createEntryLink } from "@/lib/crm/entry-link";
 import type { CrmStaff } from "@/lib/crm/types";
 import {
+  colleagueAccessCopy,
+  colleagueAccessLink,
+  colleagueEmailFrame,
   colleagueEmailError,
   colleagueInviteBlock,
   colleagueNameError,
@@ -46,28 +49,37 @@ function givenName(fullName: string) {
   return fullName.trim().split(/\s+/)[0] || "";
 }
 
-function colleagueEmailHtml(fullName: string, link: string) {
-  const who = givenName(fullName);
-  const hello = who ? `Bonjour ${escapeHtml(who)},` : "Bonjour,";
+function mailedColleagueLink(link: string, role: StaffRole) {
+  return colleagueAccessLink(link, role, process.env.PREVIEW_SHARE_TOKEN);
+}
+
+export function renderColleagueAccessEmail(fullName: string, link: string, role: StaffRole) {
+  return colleagueEmailHtml(fullName, link, role);
+}
+
+function colleagueEmailHtml(fullName: string, link: string, role: StaffRole) {
+  const copy = colleagueAccessCopy(role);
+  const frame = colleagueEmailFrame(role, fullName);
   return agencyEmailHtml({
-    title: "Votre accès à l’espace agence",
-    preheader: "Définissez votre mot de passe — le lien reste valable 30 jours.",
+    lang: frame.lang,
+    title: copy.title,
+    preheader: copy.preheader,
     bodyHtml: `
-      <p style="margin:0 0 16px;line-height:1.5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#0B192C">${hello}</p>
+      <p style="margin:0 0 16px;line-height:1.5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#0B192C">${escapeHtml(frame.hello)}</p>
       <p style="margin:0;line-height:1.5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#0B192C">
-        L’agence vous ouvre l’espace agence.
-        Définissez votre mot de passe pour y accéder — le lien reste valable 30&nbsp;jours.
+        ${escapeHtml(copy.intro)} ${escapeHtml(copy.detail)}
       </p>
     `,
-    ctaLabel: "Ouvrir l’espace agence",
+    ctaLabel: copy.cta,
     ctaHref: link,
-    footnote: "Si vous n’attendiez pas cet accès, ignorez cet e-mail.",
+    footnote: frame.footnote,
   });
 }
 
-async function sendColleagueEmail(email: string, fullName: string, link: string, origin: string) {
+async function sendColleagueEmail(email: string, fullName: string, link: string, origin: string, role: StaffRole) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return false;
+  const copy = colleagueAccessCopy(role);
   const from = process.env.CONTACT_FROM_EMAIL || "onboarding@resend.dev";
   const resend = new Resend(apiKey);
   // Jamais de copie agence : l’e-mail ouvre une session staff (B-02).
@@ -76,8 +88,8 @@ async function sendColleagueEmail(email: string, fullName: string, link: string,
     to: [email],
     cc: tokenMailCc(),
     replyTo: siteConfig.contactEmail,
-    subject: "Votre accès à l’espace agence",
-    html: colleagueEmailHtml(fullName, link),
+    subject: copy.subject,
+    html: colleagueEmailHtml(fullName, link, role),
   });
   if (error) {
     console.error("[equipe] e-mail non envoyé");
@@ -255,10 +267,11 @@ export async function addColleague(
     throw err instanceof StaffTeamError ? err : new StaffTeamError(STAFF_COPY.prepare, 502);
   }
 
-  const delivered = await sendColleagueEmail(email, fullName, link, origin);
+  const mailed = mailedColleagueLink(link, role);
+  const delivered = await sendColleagueEmail(email, fullName, mailed, origin, role);
   return {
     delivered,
-    link,
+    link: mailed,
     colleague: {
       id: created.id as string,
       fullName,
@@ -266,6 +279,53 @@ export async function addColleague(
       role,
     } satisfies Colleague,
   };
+}
+
+/** Lien de mot de passe pour un collègue déjà créé. Le partenaire ouvre Little Emperors. */
+export async function resendColleagueAccess(staffId: string, origin: string) {
+  const admin = createServiceClient({ allowPreview: true });
+  const { data: row, error } = await admin
+    .from("crm_staff")
+    .select("id, role, auth_user_id, full_name")
+    .eq("id", staffId)
+    .maybeSingle();
+  if (error || !row) throw new StaffTeamError(STAFF_COPY.notFound, 404);
+  const role = parseStaffRole(row.role);
+  if (!role) throw new StaffTeamError(STAFF_COPY.role);
+
+  const { data: userData, error: userError } = await admin.auth.admin.getUserById(row.auth_user_id);
+  const email = userData.user?.email?.trim().toLowerCase() || "";
+  if (userError || !email) throw new StaffTeamError(STAFF_COPY.prepare, 502);
+  const fullName = row.full_name?.trim() || (role === "partner" ? "" : "Collègue");
+
+  let generated = await admin.auth.admin.generateLink({ type: "recovery", email });
+  if (generated.error) {
+    await admin.auth.admin.updateUserById(row.auth_user_id, { email_confirm: true });
+    generated = await admin.auth.admin.generateLink({ type: "recovery", email });
+  }
+  if (generated.error || !generated.data?.properties?.hashed_token) {
+    throw new StaffTeamError(STAFF_COPY.prepare, 502);
+  }
+
+  const previousMeta = { ...(userData.user?.app_metadata || {}) };
+  await writeAppMetadata(admin, row.auth_user_id, {
+    ...previousMeta,
+    must_set_password: true,
+    crm_role: jwtStaffRole(role),
+  });
+
+  const link = mailedColleagueLink(
+    await createEntryLink(admin, origin, {
+      tokenHash: generated.data.properties.hashed_token,
+      otpType: "recovery",
+      nextPath: role === "partner" ? "/admin/little-emperors" : "/admin",
+      email,
+      channel: "email",
+    }),
+    role
+  );
+  const delivered = await sendColleagueEmail(email, fullName, link, origin, role);
+  return { delivered, link };
 }
 
 export async function setColleagueRole(staffId: string, nextRole: StaffRole) {

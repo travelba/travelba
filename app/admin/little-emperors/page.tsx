@@ -2,7 +2,11 @@ import { LittleEmperorsInbox } from "@/components/admin/LittleEmperorsInbox";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { CUSTOMER_PICK_LIMIT, CUSTOMER_PICK_SELECT, type PickableCustomer } from "@/lib/crm/customer-search";
-import { littleEmperorsConfigured, littleEmperorsProductionBlocked } from "@/lib/crm/little-emperors";
+import {
+  littleEmperorsConfigured,
+  littleEmperorsProductionBlocked,
+  littleEmperorsWebhookConfigured,
+} from "@/lib/crm/little-emperors";
 import type { CrmLeBooking } from "@/lib/crm/types";
 
 export default async function AdminLittleEmperorsPage() {
@@ -20,13 +24,13 @@ export default async function AdminLittleEmperorsPage() {
 
   return (
     <div>
-      <PageEyebrow>{agency ? "Espace agence" : "Intégration"}</PageEyebrow>
+      <PageEyebrow>{agency ? "Espace agence" : "MyLER partner"}</PageEyebrow>
       <PageTitle
         title="Little Emperors"
         subtitle={
           agency
             ? "Réservations hôtel lues sur l’environnement de test. Le carnet reste fermé tant qu’il n’est pas publié."
-            : "Réglage MyLER et réservations lues sur l’environnement de test."
+            : "Test key, Refresh, v2 routes, and the webhook. Nothing else is open."
         }
       />
       <div className="mt-6">
@@ -36,6 +40,7 @@ export default async function AdminLittleEmperorsPage() {
           storageReady={!rowsError}
           configured={littleEmperorsConfigured()}
           productionBlocked={littleEmperorsProductionBlocked()}
+          webhookConfigured={littleEmperorsWebhookConfigured()}
           agency={agency}
           probe={{
             last_status: probe?.last_status ?? null,

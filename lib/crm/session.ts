@@ -75,21 +75,28 @@ export function destinationForConnexionVisit(opts: {
   });
 }
 
-/** La page de définition n’est ouverte que pendant le lien, et pas si le mot de passe existe déjà. */
+/**
+ * Ouverte pendant le lien d’invitation (cookie), y compris pour un partenaire MyLER,
+ * tant que le mot de passe n’est pas choisi. `staff` reste dans l’appel : le cookie décide.
+ */
 export function mayShowPasswordSetup(opts: {
   mustSetPassword: boolean;
   hasPassword: boolean;
   staff: boolean;
   setupCookie: boolean;
 }) {
-  if (opts.staff || opts.hasPassword || !opts.mustSetPassword) return false;
+  void opts.staff;
+  if (opts.hasPassword || !opts.mustSetPassword) return false;
   return opts.setupCookie;
 }
 
+export const PARTNER_ADMIN_HOME = "/admin/little-emperors";
+
 export function pathAfterPassword(
   _phone: string | null | undefined,
-  audience: "client" | "staff" = "client"
+  audience: "client" | "staff" | "partner" = "client"
 ) {
+  if (audience === "partner") return PARTNER_ADMIN_HOME;
   if (audience === "staff") return "/admin";
   return "/mon-compte";
 }
@@ -153,8 +160,6 @@ export function isStaffRole(user: {
   const role = user.app_metadata?.crm_role;
   return role === "admin" || role === "agent";
 }
-
-export const PARTNER_ADMIN_HOME = "/admin/little-emperors";
 
 /** Hors de la page Little Emperors, le partenaire y est renvoyé. Null = la page est la sienne. */
 export function partnerAdminDestination(pathname: string): string | null {

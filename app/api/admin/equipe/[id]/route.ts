@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireAdmin } from "@/lib/crm/auth";
-import { removeColleague, setColleagueRole, StaffTeamError } from "@/lib/crm/staff-directory";
+import { appOrigin } from "@/lib/crm/invite";
+import { removeColleague, resendColleagueAccess, setColleagueRole, StaffTeamError } from "@/lib/crm/staff-directory";
 import { isUuid } from "@/lib/crm/ids";
 import { parseStaffRole, STAFF_COPY } from "@/lib/crm/staff-team";
 
@@ -12,6 +13,19 @@ function teamError(err: unknown) {
   if (err instanceof StaffTeamError) return jsonError(err.message, err.status);
   console.error("[equipe] échec");
   return jsonError("Opération impossible. Réessayez.", 500);
+}
+
+export async function POST(request: Request, ctx: Ctx) {
+  const auth = await requireAdmin();
+  if (auth instanceof NextResponse) return auth;
+  const { id } = await ctx.params;
+  if (!isUuid(id)) return jsonError(STAFF_COPY.notFound, 404);
+  try {
+    const result = await resendColleagueAccess(id, appOrigin(request));
+    return NextResponse.json({ ok: true, delivered: result.delivered, link: result.link });
+  } catch (err) {
+    return teamError(err);
+  }
 }
 
 export async function PATCH(request: Request, ctx: Ctx) {

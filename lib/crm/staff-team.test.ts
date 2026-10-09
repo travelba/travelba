@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  colleagueAccessCopy,
+  colleagueAccessLink,
+  colleagueEmailFrame,
   colleagueEmailError,
   colleagueInviteBlock,
   colleagueNameError,
@@ -18,7 +21,7 @@ import {
 test("libellés de rôle", () => {
   assert.equal(staffRoleLabel("admin"), "Administrateur");
   assert.equal(staffRoleLabel("agent"), "Agent");
-  assert.equal(staffRoleLabel("partner"), "Partenaire");
+  assert.equal(staffRoleLabel("partner"), "Partenaire MyLER");
   assert.equal(parseStaffRole("agent"), "agent");
   assert.equal(parseStaffRole("admin"), "admin");
   assert.equal(parseStaffRole("partner"), "partner");
@@ -91,11 +94,35 @@ test("limiter le rôle, sans laisser l’agence sans administrateur", () => {
   );
   assert.equal(roleActionLabel("admin", "agent"), "Limiter à agent");
   assert.equal(roleActionLabel("agent", "admin"), "Passer administrateur");
-  assert.equal(roleActionLabel("agent", "partner"), "Limiter à partenaire");
+  assert.equal(roleActionLabel("agent", "partner"), "Limiter à partenaire MyLER");
   assert.equal(roleActionLabel("partner", "agent"), "Passer agent");
   assert.equal(roleActionLabel("agent", "agent"), null);
   assert.equal(jwtStaffRole("partner"), "partner");
   assert.equal(jwtStaffRole("agent"), "agent");
   assert.equal(jwtStaffRole("admin"), "admin");
   assert.equal(removalBlockReason({ actorId: "a", targetId: "b", targetRole: "partner" }), null);
+});
+
+test("l’invitation partenaire est en anglais, sans espace agence", () => {
+  const partner = colleagueAccessCopy("partner");
+  const frame = colleagueEmailFrame("partner", "Nico Santos");
+  const blob = JSON.stringify({ ...partner, ...frame });
+  assert.match(partner.subject, /Little Emperors/);
+  assert.match(partner.detail, /\/v1\/login/);
+  assert.match(partner.detail, /is not used/);
+  assert.equal(partner.detail.includes("espace agence"), false);
+  assert.equal(frame.hello, "Hello Nico,");
+  assert.equal(frame.lang, "en");
+  assert.equal(/[àâäéèêëïîôùûüçœ]/i.test(blob), false);
+  assert.equal(/\b(bonjour|définissez|votre|n’est)\b/i.test(blob), false);
+  const agent = colleagueAccessCopy("agent");
+  assert.match(agent.subject, /espace agence/);
+  assert.equal(agent.detail.includes("/v1/login"), false);
+  assert.equal(colleagueEmailFrame("agent", "Ada").hello, "Bonjour Ada,");
+  const preview = "https://travelba-preview.vercel.app/e/c/K7MQ2PX4";
+  const shared = colleagueAccessLink(preview, "partner", "previewsharetoken01");
+  assert.match(shared, /_vercel_share=previewsharetoken01/);
+  assert.equal(colleagueAccessLink("https://travelba.fr/e/c/K7MQ2PX4", "partner", "previewsharetoken01"), "https://travelba.fr/e/c/K7MQ2PX4");
+  assert.equal(colleagueAccessLink(preview, "agent", "previewsharetoken01"), preview);
+  assert.equal(colleagueAccessLink(preview, "partner", ""), preview);
 });
