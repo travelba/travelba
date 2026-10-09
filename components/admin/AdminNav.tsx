@@ -173,7 +173,7 @@ export function AdminNav({
       />
 
       <aside
-        aria-label="Barre latérale agence"
+        aria-label={partner ? "Little Emperors" : "Barre latérale agence"}
         className="z-50 hidden w-72 flex-col bg-[var(--admin-navy)] px-5 py-6 text-white lg:fixed lg:left-0 lg:top-0 lg:flex lg:h-full lg:shrink-0"
       >
         <Link href={home} className="flex items-center gap-3 px-1">
@@ -182,7 +182,7 @@ export function AdminNav({
             <span className="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">
               Travel Business
             </span>
-            <span className="text-sm font-medium text-[#dbe5f6]">Espace agence</span>
+            <span className="text-sm font-medium text-[#dbe5f6]">{partner ? "Partenaire MyLER" : "Espace agence"}</span>
           </span>
         </Link>
         {partner ? null : <div className="mt-5">{newBooking}</div>}

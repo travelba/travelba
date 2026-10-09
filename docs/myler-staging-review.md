@@ -16,8 +16,8 @@ Staging review for the MyLER integration. About ten minutes. No production API k
 
 1. You will receive a Travelba link for nico@littleemperors.com (role Partenaire MyLER). Open it and set a password. The link lasts 30 days. That password is the Travelba login. It is not Little Emperors SSO.
 2. Open the Preview link in this email (not https://travelba.fr). If Vercel asks you to sign in, use the Share link from the same email.
-3. Go to `/admin/login`. Sign in with nico@littleemperors.com and the password you just set. You should land only on Little Emperors. There is no client list and no ledger.
-4. On the page, under **Intégration MyLER**, check:
+3. Go to `/admin/login`. The page is titled **Connexion Travelba** and says a MyLER partner signs in here. Sign in with nico@littleemperors.com and the password you just set. You land only on Little Emperors. The sidebar reads **Partenaire MyLER**. There is no client list and no ledger.
+4. The page title is Little Emperors. The line under it names the key, **Actualiser**, the v2 routes, and the webhook. Under **Intégration MyLER**, check:
    - Host `api-staging.littleemperors.com`
    - **Clé de test : présente.**
    - **Routes v2:** `GET /v2/hotels/bookings`, `GET /v2/hotels/{id}`, `DELETE /v2/hotels/bookings/{id}`

@@ -136,7 +136,7 @@ export function UserMenu({
   const id = useId();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const firstItemRef = useRef<HTMLAnchorElement>(null);
+  const firstItemRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -186,11 +186,16 @@ export function UserMenu({
           }`}
         >
           <div className="border-b border-[var(--border)] px-4 py-3">
-            <p className="truncate font-display text-sm font-bold">{name || "Agent connecté"}</p>
+            <p className="truncate font-display text-sm font-bold">
+              {name || (role === "partner" ? "Partenaire MyLER" : "Agent connecté")}
+            </p>
             {role ? <p className="text-xs text-muted">{staffRoleLabel(role)}</p> : null}
           </div>
+          {role === "partner" ? null : (
           <a
-            ref={firstItemRef}
+            ref={(node) => {
+              firstItemRef.current = node;
+            }}
             role="menuitem"
             href={`https://wa.me/${siteConfig.whatsappNumber}`}
             target="_blank"
@@ -201,9 +206,17 @@ export function UserMenu({
             <Icon name="support_agent" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
             WhatsApp agence
           </a>
+          )}
           <button
             type="button"
             role="menuitem"
+            ref={
+              role === "partner"
+                ? (node) => {
+                    firstItemRef.current = node;
+                  }
+                : undefined
+            }
             onClick={() => {
               setOpen(false);
               void onSignOut();

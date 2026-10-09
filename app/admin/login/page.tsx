@@ -48,7 +48,7 @@ function LoginForm() {
     if (!staff) {
       await supabase.auth.signOut();
       setLoading(false);
-      setError("Accès réservé à l’équipe agence. Utilisez /connexion pour l’espace client.");
+      setError("Accès réservé à l’équipe ou au partenaire MyLER. L’espace client est sur /connexion.");
       return;
     }
 
@@ -107,17 +107,17 @@ export default function AdminLoginPage() {
   return (
     <div className="mx-auto flex min-h-[80vh] max-w-md flex-col justify-center">
       <div className="mb-6">
-        <BrandMark href="/" subtitle="Espace agence" />
+        <BrandMark href="/" subtitle="MyLER et agence" />
       </div>
       <div className="admin-af-card rounded-[1.5rem] p-8 sm:p-10">
         <p className="font-label text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--admin-gold)]">
           Connexion
         </p>
         <h1 className="mt-2 font-display text-3xl font-bold tracking-tight text-[var(--admin-navy)]">
-          Espace agence
+          Connexion Travelba
         </h1>
         <p className="mt-2 text-sm text-muted">
-          Équipe Travel Business Agency, ou partenaire MyLER. {MYLER_SHEET.sso}
+          Partenaire MyLER : connectez-vous ici avec le compte Travelba. Vous n’ouvrez ensuite que Little Emperors. {MYLER_SHEET.sso}
         </p>
         <Suspense fallback={<p className="mt-8 text-sm text-muted">Chargement…</p>}>
           <LoginForm />
