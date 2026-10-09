@@ -4,8 +4,8 @@ import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 /**
  * Service-role client — webhooks / jobs / bootstrap (bypass RLS).
  * Never import this into client components.
- * `allowPreview` : seulement la lecture MyLER. Les autres secrets de production
- * restent vides sur une preview (`productionOnlySecret`).
+ * `allowPreview` : lecture MyLER et ouverture du lien partenaire sur la preview.
+ * Les autres secrets de production restent vides (`productionOnlySecret`).
  */
 export function createServiceClient(opts?: { allowPreview?: boolean }): SupabaseClient {
   const url = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim();

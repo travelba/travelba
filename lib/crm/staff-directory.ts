@@ -9,6 +9,7 @@ import { createEntryLink } from "@/lib/crm/entry-link";
 import type { CrmStaff } from "@/lib/crm/types";
 import {
   colleagueAccessCopy,
+  colleagueAccessLink,
   colleagueEmailFrame,
   colleagueEmailError,
   colleagueInviteBlock,
@@ -46,6 +47,14 @@ function isAlreadyRegistered(message: string) {
 
 function givenName(fullName: string) {
   return fullName.trim().split(/\s+/)[0] || "";
+}
+
+function mailedColleagueLink(link: string, role: StaffRole) {
+  return colleagueAccessLink(link, role, process.env.PREVIEW_SHARE_TOKEN);
+}
+
+export function renderColleagueAccessEmail(fullName: string, link: string, role: StaffRole) {
+  return colleagueEmailHtml(fullName, link, role);
 }
 
 function colleagueEmailHtml(fullName: string, link: string, role: StaffRole) {
@@ -258,10 +267,11 @@ export async function addColleague(
     throw err instanceof StaffTeamError ? err : new StaffTeamError(STAFF_COPY.prepare, 502);
   }
 
-  const delivered = await sendColleagueEmail(email, fullName, link, origin, role);
+  const mailed = mailedColleagueLink(link, role);
+  const delivered = await sendColleagueEmail(email, fullName, mailed, origin, role);
   return {
     delivered,
-    link,
+    link: mailed,
     colleague: {
       id: created.id as string,
       fullName,
@@ -273,7 +283,7 @@ export async function addColleague(
 
 /** Lien de mot de passe pour un collègue déjà créé. Le partenaire ouvre Little Emperors. */
 export async function resendColleagueAccess(staffId: string, origin: string) {
-  const admin = createServiceClient();
+  const admin = createServiceClient({ allowPreview: true });
   const { data: row, error } = await admin
     .from("crm_staff")
     .select("id, role, auth_user_id, full_name")
@@ -304,13 +314,16 @@ export async function resendColleagueAccess(staffId: string, origin: string) {
     crm_role: jwtStaffRole(role),
   });
 
-  const link = await createEntryLink(admin, origin, {
-    tokenHash: generated.data.properties.hashed_token,
-    otpType: "recovery",
-    nextPath: role === "partner" ? "/admin/little-emperors" : "/admin",
-    email,
-    channel: "email",
-  });
+  const link = mailedColleagueLink(
+    await createEntryLink(admin, origin, {
+      tokenHash: generated.data.properties.hashed_token,
+      otpType: "recovery",
+      nextPath: role === "partner" ? "/admin/little-emperors" : "/admin",
+      email,
+      channel: "email",
+    }),
+    role
+  );
   const delivered = await sendColleagueEmail(email, fullName, link, origin, role);
   return { delivered, link };
 }

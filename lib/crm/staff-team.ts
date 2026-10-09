@@ -30,6 +30,25 @@ export function staffRoleLabel(role: StaffRole) {
   return "Agent";
 }
 
+/**
+ * Lien d’e-mail partenaire sur une preview : le jeton de partage ouvre sans mur Vercel.
+ * Absent du dépôt. Ignoré pour l’agence et pour travelba.fr.
+ */
+export function colleagueAccessLink(link: string, role: StaffRole, shareToken: string | null | undefined) {
+  if (role !== "partner") return link;
+  const token = (shareToken || "").trim();
+  if (!/^[A-Za-z0-9_-]{8,200}$/.test(token)) return link;
+  let url: URL;
+  try {
+    url = new URL(link);
+  } catch {
+    return link;
+  }
+  if (!url.hostname.endsWith(".vercel.app")) return link;
+  url.searchParams.set("_vercel_share", token);
+  return url.toString();
+}
+
 /** Texte de l’e-mail d’accès. Le partenaire est entièrement en anglais. */
 export function colleagueAccessCopy(role: StaffRole) {
   if (role === "partner") {

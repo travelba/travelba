@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   colleagueAccessCopy,
+  colleagueAccessLink,
   colleagueEmailFrame,
   colleagueEmailError,
   colleagueInviteBlock,
@@ -118,4 +119,10 @@ test("l’invitation partenaire est en anglais, sans espace agence", () => {
   assert.match(agent.subject, /espace agence/);
   assert.equal(agent.detail.includes("/v1/login"), false);
   assert.equal(colleagueEmailFrame("agent", "Ada").hello, "Bonjour Ada,");
+  const preview = "https://travelba-preview.vercel.app/e/c/K7MQ2PX4";
+  const shared = colleagueAccessLink(preview, "partner", "previewsharetoken01");
+  assert.match(shared, /_vercel_share=previewsharetoken01/);
+  assert.equal(colleagueAccessLink("https://travelba.fr/e/c/K7MQ2PX4", "partner", "previewsharetoken01"), "https://travelba.fr/e/c/K7MQ2PX4");
+  assert.equal(colleagueAccessLink(preview, "agent", "previewsharetoken01"), preview);
+  assert.equal(colleagueAccessLink(preview, "partner", ""), preview);
 });
