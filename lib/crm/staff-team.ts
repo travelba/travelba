@@ -45,6 +45,8 @@ export function colleagueAccessLink(link: string, role: StaffRole, shareToken: s
     return link;
   }
   if (!url.hostname.endsWith(".vercel.app")) return link;
+  // `share` survit au 307 Vercel, qui retire `_vercel_share` de l’adresse.
+  url.searchParams.set("share", token);
   url.searchParams.set("_vercel_share", token);
   return url.toString();
 }

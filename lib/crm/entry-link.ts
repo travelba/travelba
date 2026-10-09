@@ -206,6 +206,23 @@ export function entryOpenRequested(search: string) {
   return new URLSearchParams(search).get("ouvrir") === "1";
 }
 
+/** Jeton de partage Preview. `_vercel_share` est retiré par Vercel ; `share` reste. */
+export function entryShareToken(search: string) {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const token = (params.get("share") || params.get("_vercel_share") || "").trim();
+  if (!/^[A-Za-z0-9_-]{8,200}$/.test(token)) return "";
+  return token;
+}
+
+/** Garde le jeton sur la page suivante, pour que l’adresse elle-même passe le mur. */
+export function withEntryShare(destination: URL, search: string) {
+  const token = entryShareToken(search);
+  if (!token) return destination.toString();
+  destination.searchParams.set("share", token);
+  destination.searchParams.set("_vercel_share", token);
+  return destination.toString();
+}
+
 /** Le robot d’aperçu. Pas le navigateur intégré, dont l’agent contient « WhatsApp » plus loin. */
 export function isPreviewBot(userAgent: string | null) {
   const ua = (userAgent || "").trim();
@@ -375,7 +392,8 @@ export function entryPreviewHtml(
   code: string,
   stay?: EntryPreview | null,
   enter = true,
-  door: EntryDoor = ENTRY_DOOR_CLIENT
+  door: EntryDoor = ENTRY_DOOR_CLIENT,
+  search = ""
 ) {
   const base = origin.replace(/\/$/, "");
   const page = entryLinkUrl(base, code);
@@ -398,12 +416,14 @@ export function entryPreviewHtml(
     : `<meta name="twitter:card" content="summary">`;
   const icon = escapeHtml(`${base}/favicon.ico`);
   const action = escapeHtml(page);
+  const share = entryShareToken(search);
+  const formAction = escapeHtml(share ? `${page}?share=${encodeURIComponent(share)}` : page);
   const hero = image
     ? `<div class="hero"><img src="${imageUrl}" alt="" onerror="this.closest('main').className='door plain';this.parentElement.remove()"></div>`
     : "";
   const login = escapeHtml(`${base}${door.loginPath}`);
   const doorHtml = enter
-    ? `<form method="post" action="${action}">
+    ? `<form method="post" action="${formAction}">
 <input type="hidden" name="ouvrir" value="1">
 <button type="submit">${escapeHtml(door.button)}</button>
 </form>`
@@ -523,7 +543,7 @@ ${hero}
 ${doorHtml}
 </div>
 </main>
-${enter ? `<script>location.replace(location.pathname+"?ouvrir=1")</script>` : ""}
+${enter ? `<script>(function(){var u=new URL(location.href);u.searchParams.set("ouvrir","1");location.replace(u.pathname+u.search);})()</script>` : ""}
 </body>
 </html>`;
 }

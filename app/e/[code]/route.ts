@@ -19,11 +19,12 @@ function normalizeCode(code: string) {
 export async function GET(request: Request, ctx: Ctx) {
   const { code } = await ctx.params;
   const safe = normalizeCode(code);
-  if (shouldOpenFromRequest(request.url, request.headers)) return openEntry(originOf(request), safe);
-  return entryPreviewResponse(originOf(request), safe);
+  const search = new URL(request.url).search;
+  if (shouldOpenFromRequest(request.url, request.headers)) return openEntry(originOf(request), safe, search);
+  return entryPreviewResponse(originOf(request), safe, true, search);
 }
 
 export async function POST(request: Request, ctx: Ctx) {
   const { code } = await ctx.params;
-  return openEntry(originOf(request), normalizeCode(code));
+  return openEntry(originOf(request), normalizeCode(code), new URL(request.url).search);
 }

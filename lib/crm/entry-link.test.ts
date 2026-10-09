@@ -20,6 +20,8 @@ import {
   entryDoorForPath,
   entryPreviewHtml,
   entryRequestOrigin,
+  entryShareToken,
+  withEntryShare,
   ENTRY_DOOR_PARTNER,
   isLinkCrawler,
   referenceFromNextPath,
@@ -136,7 +138,8 @@ test("WhatsApp reçoit le titre sans consommer le jeton", () => {
   assert.match(html, /method="post"/);
   assert.match(html, /name="ouvrir"/);
   assert.match(html, /value="1"/);
-  assert.match(html, /<script>location\.replace\(location\.pathname\+"\?ouvrir=1"\)<\/script>/);
+  assert.match(html, /searchParams\.set\("ouvrir","1"\)/);
+  assert.match(html, /location\.replace\(u\.pathname\+u\.search\)/);
   assert.equal(html.includes("forms[0].submit"), false);
   assert.match(html, /name="viewport" content="width=device-width, initial-scale=1"/);
   assert.match(html, /<img src="https:\/\/travelba\.fr\/api\/covers\/sejour\/TB-2026-0004\?e=K7MQ2PX4"/);
@@ -255,6 +258,17 @@ test("l’e-mail du lien est celui du titulaire, et l’entrée n’ouvre pas la
     headers: { "x-forwarded-host": "evil.example", "x-forwarded-proto": "https" },
   });
   assert.equal(entryRequestOrigin(otherHost, "https://travelba.fr"), "https://travelba.fr");
+  assert.equal(entryShareToken("?share=previewsharetoken01"), "previewsharetoken01");
+  assert.equal(entryShareToken("?_vercel_share=previewsharetoken01"), "previewsharetoken01");
+  assert.equal(entryShareToken("?share=bad token"), "");
+  const next = withEntryShare(new URL("https://review.vercel.app/connexion/mot-de-passe"), "?share=previewsharetoken01");
+  assert.match(next, /\/connexion\/mot-de-passe\?/);
+  assert.match(next, /share=previewsharetoken01/);
+  assert.match(next, /_vercel_share=previewsharetoken01/);
+  assert.match(
+    entryPreviewHtml("https://review.vercel.app", "K7MQ2PX4", null, true, ENTRY_DOOR_PARTNER, "?share=previewsharetoken01"),
+    /action="https:\/\/review\.vercel\.app\/e\/c\/K7MQ2PX4\?share=previewsharetoken01"/
+  );
 });
 
 test("le lien court vit 24 h en magique, 30 jours en invitation ou réinitialisation", () => {
