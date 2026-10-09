@@ -446,6 +446,43 @@ describe("parseDocumentMoney", () => {
     assert.equal(cleaned.total_amount, 0);
     assert.equal(cleaned.items[0].amount, null);
     assert.equal(cleaned.items[0].details?.document_amount, 858.8);
+    assert.equal(cleaned.currency, "EUR");
+  });
+
+  it("laisse le prix du séjour en euros quand le document est en livres", () => {
+    const cleaned = sanitizeExtractedPrices({
+      document_status: "confirmed",
+      title: "Londres",
+      destination: "Londres",
+      start_date: "2026-10-30",
+      end_date: "2026-11-03",
+      currency: "GBP",
+      total_amount: 1785,
+      notes_client: null,
+      customer_email: null,
+      customer_first_name: null,
+      customer_last_name: null,
+      items: [
+        {
+          kind: "hotel",
+          title: "NoMad London",
+          supplier: null,
+          confirmation_ref: "3105358205",
+          start_at: "2026-10-30",
+          end_at: "2026-11-03",
+          amount: 1785,
+          details: { document_amount: 1785, document_currency: "GBP" },
+        },
+      ],
+      travelers: [],
+    });
+    assert.equal(cleaned.currency, "EUR");
+    assert.equal(cleaned.total_amount, 0);
+    assert.equal(cleaned.items[0].amount, null);
+    assert.equal(cleaned.items[0].details?.document_amount, 1785);
+    assert.equal(cleaned.items[0].details?.document_currency, "GBP");
+    const chosen = keepAgentPrices({ ...cleaned, currency: "GBP", items: [{ ...cleaned.items[0], amount: 1785 }] });
+    assert.equal(chosen.currency, "GBP");
   });
 
   it("lit le tarif transfert USD", () => {

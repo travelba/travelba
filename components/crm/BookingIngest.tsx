@@ -197,6 +197,7 @@ function mergeRetryExtract(
   });
   return {
     ...merged,
+    currency: stayCurrency(previous.currency),
     total_amount: previous.total_amount,
     items: merged.items.map((item) => {
       const prev = findMatchingItem(kept, item);

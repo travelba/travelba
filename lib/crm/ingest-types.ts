@@ -423,7 +423,8 @@ export function sanitizeExtractedPrices(extract: BookingExtract): BookingExtract
   };
   const next: BookingExtract = {
     ...extract,
-    currency: stayCurrency(extract.currency),
+    // Le prix du séjour est en euros. La monnaie imprimée reste sur la carte.
+    currency: "EUR",
     total_amount: sellingTotalFromExtract(priced),
     items: sortItemsByOrder(merged),
   };
