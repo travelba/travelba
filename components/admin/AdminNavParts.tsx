@@ -187,9 +187,9 @@ export function UserMenu({
         >
           <div className="border-b border-[var(--border)] px-4 py-3">
             <p className="truncate font-display text-sm font-bold">
-              {name || (role === "partner" ? "Partenaire MyLER" : "Agent connecté")}
+              {name || (role === "partner" ? "MyLER partner" : "Agent connecté")}
             </p>
-            {role ? <p className="text-xs text-muted">{staffRoleLabel(role)}</p> : null}
+            {role ? <p className="text-xs text-muted">{role === "partner" ? "MyLER partner" : staffRoleLabel(role)}</p> : null}
           </div>
           {role === "partner" ? null : (
           <a
@@ -224,7 +224,7 @@ export function UserMenu({
             className="admin-tap flex w-full items-center gap-2 px-4 py-3 text-left text-sm font-medium hover:bg-[var(--surface-2)]"
           >
             <Icon name="logout" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
-            Déconnexion
+            {role === "partner" ? "Sign out" : "Déconnexion"}
           </button>
         </div>
       ) : null}

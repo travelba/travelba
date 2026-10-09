@@ -9,7 +9,7 @@ import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { adminAction } from "@/lib/crm/admin-action";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
 import { formatDateFr } from "@/lib/crm/money";
-import { MYLER_SHEET, mylerRefreshNotice } from "@/lib/crm/myler-sheet";
+import { mylerRefreshNotice, mylerSheet, partnerVisibleProbeError } from "@/lib/crm/myler-sheet";
 import type { CrmLeBooking } from "@/lib/crm/types";
 
 function isCancelledState(state: string | null) {
@@ -17,14 +17,17 @@ function isCancelledState(state: string | null) {
   return value === "cancelled" || value === "canceled";
 }
 
-const LATE_CANCEL =
-  "La date limite d’annulation est passée. Écrivez à bookings@littleemperors.com : la politique d’annulation s’applique.";
-
-function stateLabel(state: string | null) {
-  const value = (state || "").trim().toLowerCase();
-  if (value === "booked") return "Réservée";
-  if (value === "cancelled" || value === "canceled") return "Annulée";
-  return state || "État non indiqué";
+function formatWhen(value: string | null | undefined, partner: boolean) {
+  if (!partner) return formatDateFr(value);
+  if (!value) return "—";
+  const date = new Date(value.length === 10 ? `${value}T12:00:00` : value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: value.length === 10 ? undefined : "Europe/Paris",
+  });
 }
 
 function websiteHref(value: string | null) {
@@ -52,6 +55,7 @@ export function LittleEmperorsInbox({
   probe: { last_status: number | null; last_error: string | null; last_ok_at: string | null };
 }) {
   const router = useRouter();
+  const copy = mylerSheet(!agency);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -66,7 +70,7 @@ export function LittleEmperorsInbox({
     });
     const json = await response.json().catch(() => ({}));
     if (!response.ok) {
-      setError(json.error || "Opération impossible.");
+      setError(json.error || mylerSheet(!agency).failed);
       return null;
     }
     return json;
@@ -77,7 +81,7 @@ export function LittleEmperorsInbox({
     setNotice(null);
     const json = await post({ action: "sync" });
     setBusy(null);
-    if (json?.ok) setNotice(mylerRefreshNotice(Number(json.fetched) || 0));
+    if (json?.ok) setNotice(mylerRefreshNotice(Number(json.fetched) || 0, !agency));
     router.refresh();
   }
 
@@ -103,54 +107,54 @@ export function LittleEmperorsInbox({
     <div className="space-y-4">
       {busy ? <BusyBar label="Little Emperors" /> : null}
       <section className="rounded-2xl border border-[#e5e3dc] bg-white p-4">
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">{MYLER_SHEET.title}</p>
-        <h2 className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">{MYLER_SHEET.host}</h2>
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">{copy.title}</p>
+        <h2 className="mt-1 font-display text-lg font-bold text-[var(--admin-navy)]">{copy.host}</h2>
         <p className="mt-3 text-sm font-semibold text-[var(--admin-navy)]">
-          {configured && !productionBlocked ? MYLER_SHEET.keyOn : MYLER_SHEET.keyOff}
+          {configured && !productionBlocked ? copy.keyOn : copy.keyOff}
         </p>
-        <p className="mt-2 text-sm text-[var(--admin-navy)]">{MYLER_SHEET.keyNote}</p>
-        <p className="mt-3 rounded-xl bg-[#f8f4ee] px-3 py-2 text-sm text-[var(--admin-navy)]">{MYLER_SHEET.sso}</p>
-        {productionBlocked ? (
-          <p className="mt-2 text-sm text-[#8a5a2a]">Cet environnement n’appelle pas Little Emperors.</p>
-        ) : null}
+        <p className="mt-2 text-sm text-[var(--admin-navy)]">{copy.keyNote}</p>
+        <p className="mt-3 rounded-xl bg-[#f8f4ee] px-3 py-2 text-sm text-[var(--admin-navy)]">{copy.sso}</p>
+        {productionBlocked ? <p className="mt-2 text-sm text-[#8a5a2a]">{copy.blocked}</p> : null}
         <dl className="mt-4 space-y-3 text-sm">
           <div>
-            <dt className="font-medium text-[var(--admin-navy)]">Authentification</dt>
-            <dd className="text-muted">{MYLER_SHEET.auth}</dd>
+            <dt className="font-medium text-[var(--admin-navy)]">{copy.authLabel}</dt>
+            <dd className="text-muted">{copy.auth}</dd>
           </div>
           <div>
-            <dt className="font-medium text-[var(--admin-navy)]">Routes v2</dt>
+            <dt className="font-medium text-[var(--admin-navy)]">{copy.routesLabel}</dt>
             <dd>
               <ul className="mt-1 space-y-1 font-mono text-xs text-[var(--admin-navy)]">
-                {MYLER_SHEET.routes.map((route) => (
+                {copy.routes.map((route) => (
                   <li key={route}>{route}</li>
                 ))}
               </ul>
             </dd>
           </div>
           <div>
-            <dt className="font-medium text-[var(--admin-navy)]">Lecture</dt>
-            <dd className="text-muted">{MYLER_SHEET.sync}</dd>
+            <dt className="font-medium text-[var(--admin-navy)]">{copy.syncLabel}</dt>
+            <dd className="text-muted">{copy.sync}</dd>
           </div>
           <div>
-            <dt className="font-medium text-[var(--admin-navy)]">Webhook</dt>
-            <dd className="break-all text-[var(--admin-navy)]">{MYLER_SHEET.webhook}</dd>
-            <dd className="text-muted">En-tête {MYLER_SHEET.webhookHeader}</dd>
-            <dd className="text-[var(--admin-navy)]">
-              {webhookConfigured ? MYLER_SHEET.webhookOn : MYLER_SHEET.webhookOff}
+            <dt className="font-medium text-[var(--admin-navy)]">{copy.webhookLabel}</dt>
+            <dd className="break-all text-[var(--admin-navy)]">{copy.webhook}</dd>
+            <dd className="text-muted">
+              {copy.headerLabel} {copy.webhookHeader}
             </dd>
+            <dd className="text-[var(--admin-navy)]">{webhookConfigured ? copy.webhookOn : copy.webhookOff}</dd>
           </div>
         </dl>
         {notice ? (
           <p className="mt-3 rounded-xl bg-[#f8f4ee] px-3 py-2 text-sm text-[var(--admin-navy)]">{notice}</p>
         ) : probe.last_error ? (
-          <p className="mt-3 rounded-xl bg-[#f8f4ee] px-3 py-2 text-sm text-[var(--admin-navy)]">{probe.last_error}</p>
+          <p className="mt-3 rounded-xl bg-[#f8f4ee] px-3 py-2 text-sm text-[var(--admin-navy)]">
+            {agency ? probe.last_error : partnerVisibleProbeError(probe.last_error)}
+          </p>
         ) : probe.last_ok_at ? (
           <p className="mt-3 text-sm text-[var(--admin-navy)]">
-            {mylerRefreshNotice(rows.length)} Dernière lecture · {formatDateFr(probe.last_ok_at)}.
+            {mylerRefreshNotice(rows.length, !agency)} {copy.lastRead} · {formatWhen(probe.last_ok_at, !agency)}.
           </p>
         ) : (
-          <p className="mt-3 text-sm text-muted">{MYLER_SHEET.idle}</p>
+          <p className="mt-3 text-sm text-muted">{copy.idle}</p>
         )}
         <div className="mt-3">
           <button
@@ -159,21 +163,15 @@ export function LittleEmperorsInbox({
             disabled={Boolean(busy) || !configured}
             className="admin-af-btn-accent rounded-md px-3 py-2 text-sm disabled:opacity-50"
           >
-            Actualiser
+            {copy.refresh}
           </button>
         </div>
       </section>
 
       {error ? <p className="rounded-xl bg-[#f8f4ee] px-3 py-2 text-sm">{error}</p> : null}
-      {!storageReady ? (
-        <p className="text-sm text-muted">La table des réservations Little Emperors n’est pas encore en place.</p>
-      ) : null}
+      {!storageReady ? <p className="text-sm text-muted">{copy.storage}</p> : null}
       {storageReady && rows.length === 0 ? (
-        <p className="text-sm text-muted">
-          {probe.last_ok_at && !probe.last_error
-            ? "Aucune réservation à afficher. L’environnement de test a répondu."
-            : "Aucune réservation Little Emperors pour le moment."}
-        </p>
+        <p className="text-sm text-muted">{probe.last_ok_at && !probe.last_error ? copy.emptyOk : copy.emptyIdle}</p>
       ) : null}
 
       <ul className="space-y-3">
@@ -184,8 +182,14 @@ export function LittleEmperorsInbox({
             <li key={row.id} className="rounded-2xl border border-[#e5e3dc] bg-white p-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
-                  <p className="font-semibold text-[var(--admin-navy)]">{row.hotel_name || "Hôtel non indiqué"}</p>
-                  <p className="text-sm text-muted">{stateLabel(row.state)}</p>
+                  <p className="font-semibold text-[var(--admin-navy)]">{row.hotel_name || copy.hotelUnknown}</p>
+                  <p className="text-sm text-muted">
+                    {(row.state || "").trim().toLowerCase() === "booked"
+                      ? copy.stateBooked
+                      : isCancelledState(row.state)
+                        ? copy.stateCancelled
+                        : row.state || copy.stateMissing}
+                  </p>
                 </div>
                 {row.confirmation_number ? (
                   <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#9e7e51]">{row.confirmation_number}</p>
@@ -194,19 +198,19 @@ export function LittleEmperorsInbox({
               <dl className="mt-3 grid gap-1 text-sm">
                 {row.address ? (
                   <div>
-                    <dt className="inline font-medium">Adresse · </dt>
+                    <dt className="inline font-medium">{copy.address} · </dt>
                     <dd className="inline">{row.address}</dd>
                   </div>
                 ) : null}
                 {row.city ? (
                   <div>
-                    <dt className="inline font-medium">Ville · </dt>
+                    <dt className="inline font-medium">{copy.city} · </dt>
                     <dd className="inline">{row.city}</dd>
                   </div>
                 ) : null}
                 {row.website ? (
                   <div>
-                    <dt className="inline font-medium">Site · </dt>
+                    <dt className="inline font-medium">{copy.site} · </dt>
                     <dd className="inline">
                       {href ? (
                         <a href={href} className="underline" target="_blank" rel="noreferrer">
@@ -220,21 +224,21 @@ export function LittleEmperorsInbox({
                 ) : null}
                 {row.check_in || row.check_out ? (
                   <div>
-                    <dt className="inline font-medium">Séjour · </dt>
+                    <dt className="inline font-medium">{copy.stay} · </dt>
                     <dd className="inline">
-                      {formatDateFr(row.check_in)} — {formatDateFr(row.check_out)}
+                      {formatWhen(row.check_in, !agency)} — {formatWhen(row.check_out, !agency)}
                     </dd>
                   </div>
                 ) : null}
                 {row.guest_names?.length ? (
                   <div>
-                    <dt className="inline font-medium">Voyageurs · </dt>
+                    <dt className="inline font-medium">{copy.guests} · </dt>
                     <dd className="inline">{row.guest_names.join(", ")}</dd>
                   </div>
                 ) : null}
                 {row.total_cost ? (
                   <div>
-                    <dt className="inline font-medium">Total Little Emperors · </dt>
+                    <dt className="inline font-medium">{copy.total} · </dt>
                     <dd className="inline">
                       {row.total_cost}
                       {row.currency ? ` ${row.currency}` : ""}
@@ -247,7 +251,11 @@ export function LittleEmperorsInbox({
                   {row.cancellation_policies.map((policy) => (
                     <p key={policy}>{policy}</p>
                   ))}
-                  {row.cancellation_deadline ? <p>Limite · {row.cancellation_deadline}</p> : null}
+                  {row.cancellation_deadline ? (
+                    <p>
+                      {copy.deadline} · {row.cancellation_deadline}
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
               {row.last_error ? <p className="mt-2 text-sm text-[#8a5a2a]">{row.last_error}</p> : null}
@@ -281,7 +289,7 @@ export function LittleEmperorsInbox({
                 ) : null}
               </div>
               ) : null}
-              {!cancelled && row.is_cancellable === false ? <p className="mt-2 text-sm text-muted">{LATE_CANCEL}</p> : null}
+              {!cancelled && row.is_cancellable === false ? <p className="mt-2 text-sm text-muted">{copy.lateCancel}</p> : null}
             </li>
           );
         })}

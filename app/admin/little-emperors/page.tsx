@@ -24,13 +24,13 @@ export default async function AdminLittleEmperorsPage() {
 
   return (
     <div>
-      <PageEyebrow>{agency ? "Espace agence" : "Partenaire MyLER"}</PageEyebrow>
+      <PageEyebrow>{agency ? "Espace agence" : "MyLER partner"}</PageEyebrow>
       <PageTitle
         title="Little Emperors"
         subtitle={
           agency
             ? "Réservations hôtel lues sur l’environnement de test. Le carnet reste fermé tant qu’il n’est pas publié."
-            : "Clé de test, Actualiser, routes v2 et webhook. Rien d’autre n’est ouvert."
+            : "Test key, Refresh, v2 routes, and the webhook. Nothing else is open."
         }
       />
       <div className="mt-6">

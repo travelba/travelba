@@ -34,11 +34,18 @@ export function SetPasswordForm({ desk = "client" }: { desk?: "client" | "agence
       });
       if (result.status === 401) {
         setExpired(true);
-        setError("Votre session a expiré. Demandez un nouveau lien de connexion.");
+        setError(
+          partner
+            ? "This session has expired. Ask for a new sign-in link."
+            : "Votre session a expiré. Demandez un nouveau lien de connexion."
+        );
         return;
       }
       if (!result.ok) {
-        setError(result.error || "Impossible d’enregistrer le mot de passe. Réessayez.");
+        setError(
+          result.error ||
+            (partner ? "The password could not be saved. Try again." : "Impossible d’enregistrer le mot de passe. Réessayez.")
+        );
         return;
       }
       const json = result.data || {};
@@ -58,29 +65,30 @@ export function SetPasswordForm({ desk = "client" }: { desk?: "client" | "agence
             subtitle={partner ? "Little Emperors" : agence ? "Espace agence" : "Espace client"}
           />
           <span className="rounded-full bg-white px-3 py-1 text-[10px] font-semibold text-muted ring-1 ring-[var(--border)]">
-            Sécurisé
+            {partner ? "Secure" : "Sécurisé"}
           </span>
         </div>
         <div className="aura-card rounded-2xl border-t-[2px] border-t-[var(--admin-gold)] bg-white p-8 sm:p-10">
           <span className="inline-flex rounded-full border border-[var(--admin-gold)]/40 bg-[var(--admin-peach)] px-3 py-1 text-[11px] font-semibold text-[#533e1c]">
-            Première connexion
+            {partner ? "First sign-in" : "Première connexion"}
           </span>
           <h1 className="mt-4 font-display text-3xl font-extrabold tracking-tight text-[var(--admin-navy)]">
-            Définir votre mot de passe
+            {partner ? "Set your password" : "Définir votre mot de passe"}
           </h1>
           <p className="mt-2 text-sm text-muted">
-            Choisissez un mot de passe d’au moins {MIN_PASSWORD_LENGTH} caractères.{" "}
             {partner
-              ? "Vous arriverez ensuite sur Little Emperors. Le SSO POST /v1/login n’est pas utilisé."
-              : agence
-                ? "Vous arriverez ensuite dans l’espace agence."
-                : "Vous resterez ensuite connecté sur cet appareil."}
+              ? `Choose a password of at least ${MIN_PASSWORD_LENGTH} characters. You will then open Little Emperors. SSO POST /v1/login is not used.`
+              : `Choisissez un mot de passe d’au moins ${MIN_PASSWORD_LENGTH} caractères. ${
+                  agence
+                    ? "Vous arriverez ensuite dans l’espace agence."
+                    : "Vous resterez ensuite connecté sur cet appareil."
+                }`}
           </p>
           <div className="mt-4 h-1 w-12 rounded-full bg-[var(--admin-gold)]" />
           <form onSubmit={onSubmit} className="mt-6 space-y-5">
             <label className="block space-y-1.5 text-sm">
               <span className="text-xs font-semibold uppercase tracking-wider text-muted">
-                Mot de passe
+                {partner ? "Password" : "Mot de passe"}
               </span>
               <input
                 type="password"
@@ -94,7 +102,7 @@ export function SetPasswordForm({ desk = "client" }: { desk?: "client" | "agence
             </label>
             <label className="block space-y-1.5 text-sm">
               <span className="text-xs font-semibold uppercase tracking-wider text-muted">
-                Confirmation
+                {partner ? "Confirm" : "Confirmation"}
               </span>
               <input
                 type="password"
@@ -107,26 +115,26 @@ export function SetPasswordForm({ desk = "client" }: { desk?: "client" | "agence
               />
             </label>
             {error ? <p className="text-sm text-[var(--admin-red)]">{error}</p> : null}
-            <BusyBar active={loading} label="Enregistrement…" />
-            <button
-              type="submit"
-              disabled={loading || expired}
-              className="w-full rounded-full bg-[var(--admin-navy)] px-4 py-3.5 text-sm font-bold text-white transition hover:opacity-95 disabled:opacity-60"
+          <BusyBar active={loading} label={partner ? "Saving…" : "Enregistrement…"} />
+          <button
+            type="submit"
+            disabled={loading || expired}
+            className="w-full rounded-full bg-[var(--admin-navy)] px-4 py-3.5 text-sm font-bold text-white transition hover:opacity-95 disabled:opacity-60"
+          >
+            {loading ? (partner ? "Saving…" : "Enregistrement…") : partner ? "Save and continue" : "Enregistrer et continuer"}
+          </button>
+          {expired ? (
+            <Link
+              href={partner ? "/admin/login?espace=myler" : agence ? "/admin/login" : "/connexion"}
+              className="block w-full text-center text-sm font-semibold text-[var(--admin-navy)]"
             >
-              {loading ? "Enregistrement…" : "Enregistrer et continuer"}
-            </button>
-            {expired ? (
-              <Link
-                href={agence ? "/admin/login" : "/connexion"}
-                className="block w-full text-center text-sm font-semibold text-[var(--admin-navy)]"
-              >
-                {partner ? "Retour à Little Emperors" : agence ? "Retour à l’espace agence" : "Retour à la connexion"}
-              </Link>
-            ) : null}
+              {partner ? "Back to Little Emperors" : agence ? "Retour à l’espace agence" : "Retour à la connexion"}
+            </Link>
+          ) : null}
           </form>
         </div>
         <p className="mt-6 text-center text-xs text-muted">
-          Besoin d&apos;aide ? {siteConfig.phoneDisplay} · {siteConfig.contactEmail}
+          {partner ? "Need help?" : "Besoin d'aide ?"} {siteConfig.phoneDisplay} · {siteConfig.contactEmail}
         </p>
       </div>
     </div>

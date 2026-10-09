@@ -9,6 +9,7 @@ import { createEntryLink } from "@/lib/crm/entry-link";
 import type { CrmStaff } from "@/lib/crm/types";
 import {
   colleagueAccessCopy,
+  colleagueEmailFrame,
   colleagueEmailError,
   colleagueInviteBlock,
   colleagueNameError,
@@ -49,20 +50,20 @@ function givenName(fullName: string) {
 
 function colleagueEmailHtml(fullName: string, link: string, role: StaffRole) {
   const copy = colleagueAccessCopy(role);
-  const who = givenName(fullName);
-  const hello = who ? `Bonjour ${escapeHtml(who)},` : "Bonjour,";
+  const frame = colleagueEmailFrame(role, fullName);
   return agencyEmailHtml({
+    lang: frame.lang,
     title: copy.title,
     preheader: copy.preheader,
     bodyHtml: `
-      <p style="margin:0 0 16px;line-height:1.5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#0B192C">${hello}</p>
+      <p style="margin:0 0 16px;line-height:1.5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#0B192C">${escapeHtml(frame.hello)}</p>
       <p style="margin:0;line-height:1.5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#0B192C">
         ${escapeHtml(copy.intro)} ${escapeHtml(copy.detail)}
       </p>
     `,
     ctaLabel: copy.cta,
     ctaHref: link,
-    footnote: "Si vous n’attendiez pas cet accès, ignorez cet e-mail.",
+    footnote: frame.footnote,
   });
 }
 
@@ -285,7 +286,7 @@ export async function resendColleagueAccess(staffId: string, origin: string) {
   const { data: userData, error: userError } = await admin.auth.admin.getUserById(row.auth_user_id);
   const email = userData.user?.email?.trim().toLowerCase() || "";
   if (userError || !email) throw new StaffTeamError(STAFF_COPY.prepare, 502);
-  const fullName = row.full_name?.trim() || "Collègue";
+  const fullName = row.full_name?.trim() || (role === "partner" ? "" : "Collègue");
 
   let generated = await admin.auth.admin.generateLink({ type: "recovery", email });
   if (generated.error) {

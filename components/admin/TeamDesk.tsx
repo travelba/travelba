@@ -134,7 +134,7 @@ export function TeamDesk({
         </div>
         <p className="text-sm text-muted lg:col-span-4">
           L’agent ouvre l’espace agence. L’administrateur fait de même, et gère les collègues. Partenaire MyLER
-          n’ouvre que Little Emperors : la clé de test, Actualiser, les routes v2. Pas le reste de l’agence.
+          n’ouvre que Little Emperors, en anglais : test key, Refresh, routes v2. Pas le reste de l’agence.
           S’il est déjà dans la liste, Renvoyer le lien sur sa ligne.
         </p>
         <div className="lg:col-span-4">

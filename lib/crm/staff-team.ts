@@ -30,17 +30,17 @@ export function staffRoleLabel(role: StaffRole) {
   return "Agent";
 }
 
-/** Texte de l’e-mail d’accès. Le partenaire n’entend pas « espace agence ». */
+/** Texte de l’e-mail d’accès. Le partenaire est entièrement en anglais. */
 export function colleagueAccessCopy(role: StaffRole) {
   if (role === "partner") {
     return {
-      subject: "Votre accès Little Emperors",
-      title: "Votre accès Little Emperors",
-      preheader: "Définissez votre mot de passe — le lien reste valable 30 jours.",
-      intro: "L’agence vous ouvre l’intégration MyLER.",
+      subject: "Your Little Emperors access",
+      title: "Your Little Emperors access",
+      preheader: "Set your password. The link stays valid for 30 days.",
+      intro: "Travelba has opened the MyLER integration for you.",
       detail:
-        "Définissez votre mot de passe pour y accéder — le lien reste valable 30 jours. Vous n’ouvrez que Little Emperors. Le SSO POST /v1/login n’est pas utilisé.",
-      cta: "Définir le mot de passe",
+        "Set your password to open it. The link stays valid for 30 days. You only open Little Emperors. SSO POST /v1/login is not used.",
+      cta: "Set your password",
     };
   }
   return {
@@ -50,6 +50,24 @@ export function colleagueAccessCopy(role: StaffRole) {
     intro: "L’agence vous ouvre l’espace agence.",
     detail: "Définissez votre mot de passe pour y accéder — le lien reste valable 30 jours.",
     cta: "Ouvrir l’espace agence",
+  };
+}
+
+/** Salutation et pied de l’e-mail. Le partenaire ne reçoit pas de français. */
+export function colleagueEmailFrame(role: StaffRole, fullName: string) {
+  const partner = role === "partner";
+  const who = fullName.trim().split(/\s+/)[0] || "";
+  if (partner) {
+    return {
+      lang: "en" as const,
+      hello: who ? `Hello ${who},` : "Hello,",
+      footnote: "If you were not expecting this access, you can ignore this email.",
+    };
+  }
+  return {
+    lang: "fr" as const,
+    hello: who ? `Bonjour ${who},` : "Bonjour,",
+    footnote: "Si vous n’attendiez pas cet accès, ignorez cet e-mail.",
   };
 }
 

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   colleagueAccessCopy,
+  colleagueEmailFrame,
   colleagueEmailError,
   colleagueInviteBlock,
   colleagueNameError,
@@ -101,13 +102,20 @@ test("limiter le rôle, sans laisser l’agence sans administrateur", () => {
   assert.equal(removalBlockReason({ actorId: "a", targetId: "b", targetRole: "partner" }), null);
 });
 
-test("l’invitation partenaire parle de MyLER, pas de l’espace agence", () => {
+test("l’invitation partenaire est en anglais, sans espace agence", () => {
   const partner = colleagueAccessCopy("partner");
+  const frame = colleagueEmailFrame("partner", "Nico Santos");
+  const blob = JSON.stringify({ ...partner, ...frame });
   assert.match(partner.subject, /Little Emperors/);
   assert.match(partner.detail, /\/v1\/login/);
-  assert.match(partner.detail, /n’est pas utilisé/);
+  assert.match(partner.detail, /is not used/);
   assert.equal(partner.detail.includes("espace agence"), false);
+  assert.equal(frame.hello, "Hello Nico,");
+  assert.equal(frame.lang, "en");
+  assert.equal(/[àâäéèêëïîôùûüçœ]/i.test(blob), false);
+  assert.equal(/\b(bonjour|définissez|votre|n’est)\b/i.test(blob), false);
   const agent = colleagueAccessCopy("agent");
   assert.match(agent.subject, /espace agence/);
   assert.equal(agent.detail.includes("/v1/login"), false);
+  assert.equal(colleagueEmailFrame("agent", "Ada").hello, "Bonjour Ada,");
 });

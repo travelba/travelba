@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MYLER_SHEET, mylerRefreshNotice } from "./myler-sheet";
+import { MYLER_PARTNER, MYLER_SHEET, mylerRefreshNotice, partnerVisibleProbeError } from "./myler-sheet";
 
 test("la fiche MyLER nomme la clé, les routes v2 et le webhook, pas un secret", () => {
   assert.equal(MYLER_SHEET.host, "api-staging.littleemperors.com");
@@ -30,4 +30,18 @@ test("la fiche MyLER nomme la clé, les routes v2 et le webhook, pas un secret",
   assert.equal(text.includes("LITTLE_EMPERORS_API_KEY"), false);
   assert.equal(text.includes("LITTLE_EMPERORS_WEBHOOK_KEY"), false);
   assert.equal(text.includes("sk_"), false);
+});
+
+test("la fiche partenaire est en anglais et ne dit pas que le SSO est utilisé", () => {
+  const text = JSON.stringify(MYLER_PARTNER);
+  assert.equal(MYLER_PARTNER.keyOn, "Test key: present.");
+  assert.equal(MYLER_PARTNER.refresh, "Refresh");
+  assert.match(MYLER_PARTNER.sso, /is not used for MyLER/);
+  assert.match(MYLER_PARTNER.sso, /\/v1\/login/);
+  assert.equal(mylerRefreshNotice(0, true), MYLER_PARTNER.refreshEmpty);
+  assert.match(mylerRefreshNotice(2, true), /2 reservations/);
+  assert.equal(/[àâäéèêëïîôùûüçœ]/i.test(text), false);
+  assert.equal(text.includes("LITTLE_EMPERORS"), false);
+  assert.match(partnerVisibleProbeError("La clé est absente."), /Use Refresh/);
+  assert.match(partnerVisibleProbeError("bookings() on null"), /has not attached/);
 });

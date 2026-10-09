@@ -182,7 +182,7 @@ export function AdminNav({
             <span className="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">
               Travel Business
             </span>
-            <span className="text-sm font-medium text-[#dbe5f6]">{partner ? "Partenaire MyLER" : "Espace agence"}</span>
+            <span className="text-sm font-medium text-[#dbe5f6]">{partner ? "MyLER partner" : "Espace agence"}</span>
           </span>
         </Link>
         {partner ? null : <div className="mt-5">{newBooking}</div>}

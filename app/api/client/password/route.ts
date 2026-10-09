@@ -28,17 +28,29 @@ export async function POST(request: Request) {
   const confirm = String(body?.confirm || "");
   /** Changement depuis Mon compte › Sécurité : ni bienvenue, ni WhatsApp d’accès, ni cookie de première fois. */
   const change = body?.change === true;
+  const admin = createServiceClient({ allowPreview: true });
+  const { data: staffEarly } = await admin
+    .from("crm_staff")
+    .select("role")
+    .eq("auth_user_id", user.id)
+    .maybeSingle();
+  const partner = staffEarly?.role === "partner";
   if (password.length < MIN_PASSWORD_LENGTH) {
-    return jsonError(`Le mot de passe doit contenir au moins ${MIN_PASSWORD_LENGTH} caractères`);
+    return jsonError(
+      partner
+        ? `Use at least ${MIN_PASSWORD_LENGTH} characters.`
+        : `Le mot de passe doit contenir au moins ${MIN_PASSWORD_LENGTH} caractères`
+    );
   }
-  if (password !== confirm) return jsonError("Les mots de passe ne correspondent pas");
+  if (password !== confirm) {
+    return jsonError(partner ? "The two passwords do not match." : "Les mots de passe ne correspondent pas");
+  }
 
   const { error } = await supabase.auth.updateUser({ password });
   if (error) {
     console.error("[client/password]", error.code ?? "?", error.message);
-    return jsonError(passwordErrorMessage(error), 400);
+    return jsonError(passwordErrorMessage(error, partner ? "en" : "fr"), 400);
   }
-  const admin = createServiceClient();
   const { data: customerRow } = await admin
     .from("crm_customers")
     .select("id")
@@ -64,7 +76,6 @@ export async function POST(request: Request) {
     admin.from("crm_staff").select("id, role").eq("auth_user_id", user.id).maybeSingle(),
   ]);
   const staff = Boolean(staffRow);
-  const partner = staffRow?.role === "partner";
   const meta = fresh.user?.app_metadata || user.app_metadata || {};
   const stamped = {
     ...meta,
@@ -75,7 +86,10 @@ export async function POST(request: Request) {
   const { error: metaError } = await admin.auth.admin.updateUserById(user.id, {
     app_metadata: appMeta,
   });
-  if (metaError) return dbError(metaError, 400);
+  if (metaError) {
+    if (partner) return jsonError("The password could not be saved. Try again.", 400);
+    return dbError(metaError, 400);
+  }
 
   await supabase.auth.refreshSession();
   if (!staff && customer?.id && user.email) {

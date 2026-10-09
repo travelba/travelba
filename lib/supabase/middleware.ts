@@ -104,6 +104,9 @@ export async function updateSession(request: NextRequest) {
       const url = request.nextUrl.clone();
       url.pathname = "/admin/login";
       url.searchParams.set("next", pathname);
+      if (pathname === "/admin/little-emperors" || pathname.startsWith("/admin/little-emperors/")) {
+        url.searchParams.set("espace", "myler");
+      }
       return seal(NextResponse.redirect(url));
     }
     if (user && isAdminLogin) {

@@ -106,6 +106,26 @@ export function littleEmperorsWebhookConfigured() {
   return Boolean((process.env.LITTLE_EMPERORS_WEBHOOK_KEY || "").trim());
 }
 
+/** Message montré au partenaire. Le texte français de l’agence ne part pas tel quel. */
+export function littleEmperorsPartnerMessage(code: string) {
+  switch (code) {
+    case "vercel_production":
+      return "The Little Emperors test key is not used on Travelba production.";
+    case "not_configured":
+      return "Little Emperors is not configured on this environment.";
+    case "bookings_null":
+      return "Little Emperors has not attached an account to the test key. No reservation was created.";
+    case "unauthorized":
+      return "The test environment refused the key.";
+    case "staging_only":
+    case "production_refused":
+    case "bad_base":
+      return "Only the Little Emperors test environment is called.";
+    default:
+      return "The test environment could not be read.";
+  }
+}
+
 export function littleEmperorsWebhookAuthorized(headers: Headers) {
   const expected = (process.env.LITTLE_EMPERORS_WEBHOOK_KEY || "").trim();
   if (!expected) return false;
