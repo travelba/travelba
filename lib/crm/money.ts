@@ -8,9 +8,11 @@ const MONEY_LOCALES: Record<MoneyLang, string> = { fr: "fr-FR", en: "en-GB" };
 
 /** « 1 234,50 € » en français, « €1,234.50 » en anglais. */
 export function formatMoney(amount: number, currency = "EUR", opts?: { lang?: MoneyLang }) {
-  return amount.toLocaleString(MONEY_LOCALES[opts?.lang || "fr"], {
+  const lang = opts?.lang || "fr";
+  return amount.toLocaleString(MONEY_LOCALES[lang], {
     style: "currency",
     currency: currency || "EUR",
+    currencyDisplay: lang === "fr" ? "narrowSymbol" : "symbol",
   });
 }
 

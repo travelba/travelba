@@ -26,7 +26,7 @@ export default async function AdminRevolutPage({
     params.error === "oauth"
       ? "Connexion Revolut refusée ou expirée. Relancez « Connecter Revolut »."
       : params.connected === "1"
-        ? "Compte Revolut connecté. Les virements sans ambiguïté seront crédités automatiquement."
+        ? "Compte Revolut connecté. Chaque virement reste à rapprocher jusqu’au clic Valider."
         : null;
   const admin = createServiceClient();
   const { data: people } = await admin
@@ -96,7 +96,7 @@ export default async function AdminRevolutPage({
     <div>
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
-        title="Rapprochement Revolut"
+        title="Revolut"
         subtitle="Virements reçus à rapprocher. Les sorties du compte sont dans l’onglet Débits : elles ne créditent pas un client."
       />
       <div className="mt-6 space-y-4">

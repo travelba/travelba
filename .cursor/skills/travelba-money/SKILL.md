@@ -76,17 +76,17 @@ Ajustements / remboursements : lignes manuelles admin `kind=adjustment|refund`.
 
 ## Revolut
 
-Flux : API Business → `crm_revolut_transactions` (`unmatched`, **crédits seulement**) → matching → écriture `crm_transactions` crédit si **un seul** hit certain. Sinon inbox / fiche client : **Valider** (proposition pré-sélectionnée) ou **Refuser**.
+Flux : API Business → `crm_revolut_transactions` (`unmatched`, **crédits seulement**) → matching → **proposition**. Aucun score (IBAN, nom complet, société, nom de famille) n’écrit un crédit. L’inbox et la fiche attendent **Valider** ou **Refuser**.
 
 - `POST /api/admin/revolut/[id]` `{ customer_id }` | `{ action: "ignore"|"refuse" }`
 - Déjà `matched` → 400
 - Sync importe les **crédits** (topups / virements reçus) pour le rapprochement, et les **sorties complétées** (virement, carte, retrait, frais, change) dans l’onglet Débits. Un débit est `direction=debit`, `status=ignored` : pas de rapprochement, pas de crédit client. Une autorisation encore `pending` n’entre pas. Les versements Stripe, le change et les frais ne deviennent pas un virement à rapprocher. `shouldIngestRevolutForRapprochement` / `shouldIngestRevolutDebit`.
-- Cron `/api/cron/revolut-sync` (15 min) + webhook : upsert puis `autoMatchUnmatchedRevolut` (crédits)
+- Cron `/api/cron/revolut-sync` (15 min) + webhook : upsert seulement. `autoMatchUnmatchedRevolut` ne crédite personne (`matched` reste 0).
 - UI `/admin/revolut` : onglet **Crédits** (inbox) et onglet **Débits** (lecture seule, bénéficiaire et montant). Badge = unmatched **credit**. Titre crédit = **expéditeur** (`Payment from …` / contrepartie), ligne suivante = **désignation** (`reference`). Jamais coller la désignation à la place du nom. Pas d’IBAN dans l’onglet Débits.
 - **Choisir un client** ouvre `CustomerPickDialog` (recherche nom / société / e-mail / téléphone, propositions en tête). Ne plus utiliser un `<select>` natif pour le rapprochement.
 - Prod : `REVOLUT_SANDBOX=0`, URL `https://b2b.revolut.com`
 
-**Ne pas** imputer si plusieurs clients matchent ou score partiel — laisser `unmatched` pour Valider/Refuser.
+**Ne pas** imputer sans le clic Valider, quel que soit le score. Un nom de famille seul, même unique, reste une proposition.
 
 ## Soldes des comptes
 

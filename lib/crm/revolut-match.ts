@@ -99,9 +99,10 @@ function customerLabel(c: Pick<CrmCustomer, "first_name" | "last_name" | "compan
 }
 
 /**
- * Rank customers against a Revolut inbox row.
- * Les noms se comparent mot à mot (frontières de mots), jamais par sous-chaîne.
- * Auto-match only when exactly one strong unique hit (IBAN, full name, unique last name, or unique company).
+ * Classe les clients face à une ligne Revolut.
+ * Les noms se comparent mot à mot, jamais par sous-chaîne.
+ * `autoCustomerId` reste vide : aucun score n’écrit un crédit. La proposition
+ * (candidats, présélection) attend le clic Valider.
  */
 export function scoreRevolutMatches(row: RevolutMatchRow, customers: RevolutMatchCustomer[]): RevolutMatchResult {
   const tokens = haystackTokens(row);
@@ -173,7 +174,21 @@ export function scoreRevolutMatches(row: RevolutMatchRow, customers: RevolutMatc
     (a, b) => b.score - a.score || a.label.localeCompare(b.label, "fr")
   );
 
-  return { autoCustomerId: suggestedCustomerId(candidates) || null, candidates };
+  return { autoCustomerId: null, candidates };
+}
+
+/**
+ * Cibles qu’une synchro aurait le droit de créditer seule.
+ * Toujours vide : IBAN, nom complet, société ou nom de famille restent une proposition.
+ */
+export function revolutAutoCreditPlan(
+  rows: RevolutMatchRow[],
+  customers: RevolutMatchCustomer[]
+): { customerId: string }[] {
+  return rows.flatMap((row) => {
+    const { autoCustomerId } = scoreRevolutMatches(row, customers);
+    return autoCustomerId ? [{ customerId: autoCustomerId }] : [];
+  });
 }
 
 /**
@@ -282,32 +297,13 @@ export async function creditRevolutToCustomer(
   return applyRevolutToCustomer(admin, row, customerId);
 }
 
-/** Auto-apply unmatched inbox rows when there is exactly one strong customer hit. */
+/**
+ * Synchro, cron et webhook ne postent aucun crédit.
+ * Le montant part seulement dans `applyRevolutToCustomer`, au clic Valider.
+ */
 export async function autoMatchUnmatchedRevolut(limit = 100) {
-  const { createServiceClient } = await import("@/lib/supabase/admin");
-  const service = createServiceClient();
-  const [{ data: rows }, { data: customers }] = await Promise.all([
-    service
-      .from("crm_revolut_transactions")
-      .select("*")
-      .eq("status", "unmatched")
-      .eq("direction", "credit")
-      .order("booked_at", { ascending: false, nullsFirst: false })
-      .limit(limit),
-    service.from("crm_customers").select(REVOLUT_MATCH_SELECT),
-  ]);
-
-  const list = (rows || []) as CrmRevolutTransaction[];
-  const people = (customers || []) as RevolutMatchCustomer[];
-
-  let matched = 0;
-  for (const row of list) {
-    const { autoCustomerId } = scoreRevolutMatches(row, people);
-    if (!autoCustomerId) continue;
-    const result = await applyRevolutToCustomer(service, row, autoCustomerId);
-    if (result.ok) matched += 1;
-  }
-  return { scanned: list.length, matched };
+  void limit;
+  return { scanned: 0, matched: 0 };
 }
 
 export function matchReasonLabel(reason: RevolutMatchReason) {
