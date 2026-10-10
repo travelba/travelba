@@ -1,5 +1,10 @@
+import { AccountPage } from "@/components/account/AccountPage";
 import { CrmSkeleton } from "@/components/crm/ui";
 
 export default function Loading() {
-  return <CrmSkeleton rows={4} />;
+  return (
+    <AccountPage motion="skeleton">
+      <CrmSkeleton rows={4} />
+    </AccountPage>
+  );
 }

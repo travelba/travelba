@@ -1,6 +1,8 @@
 import { toPublicBooking } from "@/lib/crm/public-booking";
 import Link from "next/link";
+import { AccountPage } from "@/components/account/AccountPage";
 import { BookingHero } from "@/components/crm/BookingHero";
+import { stayTransitionName } from "@/lib/crm/account-motion";
 import { Icon } from "@/components/crm/icons";
 import { EmptyState } from "@/components/crm/ui";
 import { EXAMPLE_BASE } from "@/lib/crm/example-session";
@@ -32,6 +34,7 @@ export default async function ExampleReservationsPage({
   const list = showPast ? past : upcoming;
 
   return (
+    <AccountPage>
     <div className="space-y-4">
       <div>
         <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#b89768]">
@@ -106,8 +109,13 @@ export default async function ExampleReservationsPage({
               : formatMoney(displayedStayAmount(b, stayItems, travelerCount), b.currency);
           return (
             <li key={b.id}>
-              <article className="relative overflow-hidden rounded-xl border border-[#c5c6cd]/35 bg-white shadow-sm">
-                <BookingHero booking={toPublicBooking(b)} items={b.id === session.booking.id ? session.items : undefined} width={800}>
+              <article className="account-press relative overflow-hidden rounded-xl border border-[#c5c6cd]/35 bg-white shadow-sm">
+                <BookingHero
+                  booking={toPublicBooking(b)}
+                  items={b.id === session.booking.id ? session.items : undefined}
+                  width={800}
+                  transitionName={stayTransitionName(b.reference)}
+                >
                   <div className="absolute left-3 right-3 top-3 flex items-center justify-between gap-2">
                     {countdown ? (
                       <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--admin-gold)]/30 bg-[#faf9f6]/95 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--admin-navy)] shadow-sm">
@@ -149,7 +157,8 @@ export default async function ExampleReservationsPage({
                   </div>
                   <Link
                     href={`${EXAMPLE_BASE}/reservations/${b.reference}`}
-                    className="inline-flex h-11 w-full items-center justify-center rounded-full bg-[var(--admin-navy)] px-3 text-sm font-semibold text-white"
+                    transitionTypes={["nav-forward"]}
+                    className="account-press inline-flex h-11 w-full items-center justify-center rounded-full bg-[var(--admin-navy)] px-3 text-sm font-semibold text-white"
                   >
                     Accéder à ma réservation
                   </Link>
@@ -172,5 +181,6 @@ export default async function ExampleReservationsPage({
         ) : null}
       </ul>
     </div>
+    </AccountPage>
   );
 }

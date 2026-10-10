@@ -81,6 +81,105 @@
   letter-spacing: -0.02em;
 }
 
+/* Transitions de l’espace client. Les pseudos ::view-transition vivent sur :root :
+   les classes account-* ne sont posées que par /mon-compte. */
+::view-transition {
+  pointer-events: none;
+}
+
+::view-transition-old(.account-nav-forward) {
+  --slide-offset: -56px;
+  animation:
+    120ms ease-in both account-fade reverse,
+    280ms cubic-bezier(0.2, 0.8, 0.2, 1) both account-slide reverse;
+}
+::view-transition-new(.account-nav-forward) {
+  --slide-offset: 56px;
+  animation:
+    160ms ease-out 80ms both account-fade,
+    280ms cubic-bezier(0.2, 0.8, 0.2, 1) both account-slide;
+}
+::view-transition-old(.account-nav-back) {
+  --slide-offset: 56px;
+  animation:
+    120ms ease-in both account-fade reverse,
+    280ms cubic-bezier(0.2, 0.8, 0.2, 1) both account-slide reverse;
+}
+::view-transition-new(.account-nav-back) {
+  --slide-offset: -56px;
+  animation:
+    160ms ease-out 80ms both account-fade,
+    280ms cubic-bezier(0.2, 0.8, 0.2, 1) both account-slide;
+}
+
+::view-transition-old(.account-nav-fade),
+::view-transition-old(.account-skel-out) {
+  animation: 140ms ease-out both account-fade reverse;
+}
+::view-transition-new(.account-nav-fade) {
+  animation: 180ms ease-out 60ms both account-fade;
+}
+
+::view-transition-group(.account-morph) {
+  animation-duration: 280ms;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+::view-transition-group(account-header),
+::view-transition-group(account-tabbar) {
+  animation: none;
+  z-index: 100;
+}
+::view-transition-old(account-header),
+::view-transition-old(account-tabbar) {
+  display: none;
+}
+::view-transition-new(account-header),
+::view-transition-new(account-tabbar) {
+  animation: none;
+}
+
+@keyframes account-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes account-slide {
+  from {
+    translate: var(--slide-offset);
+  }
+  to {
+    translate: 0;
+  }
+}
+
+.account-tab-mark {
+  transition: transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.account-app .account-press {
+  transition: transform 140ms ease;
+}
+.account-app .account-press:active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(*),
+  ::view-transition-new(*),
+  ::view-transition-group(*) {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+  }
+  .account-tab-mark,
+  .account-app .account-press {
+    transition: none;
+  }
+}
+
 .account-tabbar {
   position: fixed;
   /* Collée au bord : 56 px de barre, puis la zone système (encoche basse) sous le même fond. */

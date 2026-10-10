@@ -1,23 +1,29 @@
+import { Suspense } from "react";
 import { toPublicBooking } from "@/lib/crm/public-booking";
 import Link from "next/link";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { ensureCustomerForUser, getSessionUser } from "@/lib/crm/auth";
-import { chosenCalendarHref, googleCalendarHref, itemCalendarHref } from "@/lib/crm/calendar-ics";
 import type { CrmBalance } from "@/lib/crm/types";
 import { isClientUpcomingStay } from "@/lib/crm/client-stays";
 import { encoursCaption, formatDateRangeShort, formatMoney, jMinusLabel } from "@/lib/crm/money";
 import { isCompanyMember } from "@/lib/crm/company-role";
 import { clientTripOwnerIds } from "@/lib/crm/company-peers";
 import { loadStayArrivalPlaces, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
-import { clientVisibleItems, nextTimelineFlight, tripPlaceLine, type FlightPass } from "@/lib/crm/carnet";
+import { tripPlaceLine } from "@/lib/crm/carnet";
 import { stayTitleFromItems } from "@/lib/crm/staff-stay";
+import { stayTransitionName } from "@/lib/crm/account-motion";
 import { BookingHero } from "@/components/crm/BookingHero";
-import { BoardingPass } from "@/components/account/BoardingPass";
+import { AccountPage } from "@/components/account/AccountPage";
+import {
+  BoardingPassSkeleton,
+  HomeBoardingPass,
+  HomeDepartureWord,
+  HomeTripHeading,
+  HomeWeatherChip,
+  WeatherChipSkeleton,
+} from "@/components/account/HomeTripExtras";
 import { Icon } from "@/components/crm/icons";
-import type { CrmBookingItem } from "@/lib/crm/types";
 import { greetingGivenName } from "@/lib/crm/identity";
-import { destinationWeather } from "@/lib/crm/destination-weather";
 
 export default async function AccountHomePage() {
   const { supabase, user } = await getSessionUser();
@@ -53,38 +59,13 @@ export default async function AccountHomePage() {
   const firstName = greetingGivenName(customer.first_name) || customer.email.split("@")[0];
   const countdown = nextTrip ? jMinusLabel(nextTrip.start_date) : null;
   const tripHref = nextTrip ? `/mon-compte/reservations/${nextTrip.reference}` : "/mon-compte/reservations";
-  const weather = nextTrip
-    ? await destinationWeather(nextTrip.destination, nextTrip.title)
-    : null;
-  let homeFlight: FlightPass | null = null;
-  let flightItem: CrmBookingItem | null = null;
-  let tripName = "";
-  let tripPlace: string | null = null;
-  if (nextTrip) {
-    const { data: tripItems } = await supabase
-      .from("crm_booking_items")
-      .select("*")
-      .eq("booking_id", nextTrip.id)
-      .order("sort_order");
-    const rows = clientVisibleItems((tripItems || []) as CrmBookingItem[]);
-    tripName = stayTitleFromItems(nextTrip.title, nextTrip.destination, rows, "Prochain séjour");
-    tripPlace = tripPlaceLine(tripName, nextTrip.destination);
-    homeFlight = nextTimelineFlight(rows);
-    flightItem = rows.find((row) => row.id === homeFlight?.itemId) || null;
-  }
-  const headerList = await headers();
-  const phone =
-    flightItem && nextTrip ? { google: googleCalendarHref(flightItem, nextTrip) } : null;
-  const calendarHref =
-    homeFlight && nextTrip
-      ? chosenCalendarHref(
-          itemCalendarHref(`/mon-compte/reservations/${nextTrip.reference}/agenda.ics`, homeFlight.itemId),
-          phone,
-          headerList.get("user-agent") || ""
-        )
-      : "";
+  const tripName = nextTrip
+    ? stayTitleFromItems(nextTrip.title, nextTrip.destination, [], "Prochain séjour")
+    : "";
+  const tripPlace = nextTrip ? tripPlaceLine(tripName, nextTrip.destination) : null;
 
   return (
+    <AccountPage>
     <div className="space-y-3">
       <section className="flex flex-col gap-1 pt-1">
         <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9e7e51]">
@@ -98,7 +79,8 @@ export default async function AccountHomePage() {
       {member ? (
         <Link
           href="/mon-compte/transactions"
-          className="flex h-11 items-center justify-between rounded-2xl border border-[var(--admin-gold)]/55 bg-white px-4 text-sm font-semibold text-[var(--admin-navy)] shadow-sm"
+          transitionTypes={["nav-forward"]}
+          className="account-press flex h-11 items-center justify-between rounded-2xl border border-[var(--admin-gold)]/55 bg-white px-4 text-sm font-semibold text-[var(--admin-navy)] shadow-sm"
         >
           Voir les frais de vos voyages
           <Icon name="arrow_forward" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
@@ -106,7 +88,8 @@ export default async function AccountHomePage() {
       ) : owing.length ? (
         <Link
           href="/mon-compte/transactions"
-          className="block rounded-2xl border border-[var(--admin-gold)] bg-[#f8f3eb] p-4 shadow-sm transition hover:border-[var(--admin-gold)]"
+          transitionTypes={["nav-forward"]}
+          className="account-press block rounded-2xl border border-[var(--admin-gold)] bg-[#f8f3eb] p-4 shadow-sm hover:border-[var(--admin-gold)]"
         >
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Encours</p>
           <ul className="mt-2 space-y-2">
@@ -127,7 +110,8 @@ export default async function AccountHomePage() {
       ) : (
         <Link
           href="/mon-compte/transactions"
-          className="inline-flex items-center gap-1 text-sm font-semibold text-[var(--admin-navy)]"
+          transitionTypes={["nav-forward"]}
+          className="account-press inline-flex items-center gap-1 text-sm font-semibold text-[var(--admin-navy)]"
         >
           Voir les transactions
           <Icon name="arrow_forward" className="h-3.5 w-3.5 text-[var(--admin-gold-dark)]" />
@@ -135,8 +119,14 @@ export default async function AccountHomePage() {
       )}
 
       {nextTrip ? (
-        <article className="overflow-hidden rounded-2xl border border-[#e5e3dc] shadow-xl">
-          <BookingHero booking={toPublicBooking(nextTrip)} places={places[nextTrip.id]} priority frameClassName="relative h-[22rem] w-full">
+        <article className="account-press overflow-hidden rounded-2xl border border-[#e5e3dc] shadow-xl">
+          <BookingHero
+            booking={toPublicBooking(nextTrip)}
+            places={places[nextTrip.id]}
+            priority
+            frameClassName="relative h-[22rem] w-full"
+            transitionName={stayTransitionName(nextTrip.reference)}
+          >
             <div className="flex h-full min-w-0 flex-col justify-between gap-3 p-4">
               <div className="flex min-w-0 flex-wrap items-start gap-2">
                 {countdown ? (
@@ -144,19 +134,15 @@ export default async function AccountHomePage() {
                     <Icon name="timer" className="h-[15px] w-[15px] shrink-0 text-[var(--admin-gold)]" />
                     <span className="font-bold">{countdown}</span>
                     {countdown.startsWith("J") ? (
-                      <span className="font-normal text-[#5a5c60]">
-                        {homeFlight ? "avant l’envol" : "avant le départ"}
-                      </span>
+                      <Suspense fallback={<span className="font-normal text-[#5a5c60]">avant le départ</span>}>
+                        <HomeDepartureWord bookingId={nextTrip.id} />
+                      </Suspense>
                     ) : null}
                   </p>
                 ) : null}
-                {weather ? (
-                  <p className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-white/40 bg-white/90 px-3 py-1 text-[12px] font-semibold text-[var(--admin-navy)] shadow-sm">
-                    <Icon name={weather.icon} className="h-[15px] w-[15px] shrink-0 text-[var(--admin-gold)]" />
-                    <span className="font-bold">{weather.tempC}°</span>
-                    <span className="font-normal text-[#5a5c60]">{weather.label}</span>
-                  </p>
-                ) : null}
+                <Suspense fallback={<WeatherChipSkeleton />}>
+                  <HomeWeatherChip destination={nextTrip.destination} title={nextTrip.title} />
+                </Suspense>
               </div>
               <div className="flex min-w-0 flex-col gap-3">
                 <div>
@@ -164,12 +150,25 @@ export default async function AccountHomePage() {
                     <Icon name="flight_takeoff" className="h-3.5 w-3.5" />
                     {formatDateRangeShort(nextTrip.start_date, nextTrip.end_date)}
                   </p>
-                  <h2 className="mt-1 font-display text-2xl font-bold leading-tight text-white">{tripName}</h2>
-                  {tripPlace ? <p className="line-clamp-2 text-[13px] text-white/80">{tripPlace}</p> : null}
+                  <Suspense
+                    fallback={
+                      <>
+                        <h2 className="mt-1 font-display text-2xl font-bold leading-tight text-white">{tripName}</h2>
+                        {tripPlace ? <p className="line-clamp-2 text-[13px] text-white/80">{tripPlace}</p> : null}
+                      </>
+                    }
+                  >
+                    <HomeTripHeading
+                      bookingId={nextTrip.id}
+                      title={nextTrip.title}
+                      destination={nextTrip.destination}
+                    />
+                  </Suspense>
                 </div>
                 <Link
                   href={tripHref}
-                  className="flex h-12 w-full items-center justify-center gap-3 rounded-full bg-white px-5 text-sm font-semibold text-[var(--admin-navy)] shadow-md"
+                  transitionTypes={["nav-forward"]}
+                  className="account-press flex h-12 w-full items-center justify-center gap-3 rounded-full bg-white px-5 text-sm font-semibold text-[var(--admin-navy)] shadow-md"
                 >
                   Accéder à ma réservation
                   <Icon name="arrow_forward" className="h-5 w-5 text-[var(--admin-gold)]" />
@@ -185,13 +184,12 @@ export default async function AccountHomePage() {
         </article>
       )}
 
-      {homeFlight && nextTrip ? (
-        <BoardingPass
-          pass={homeFlight}
-          calendarHref={calendarHref}
-          googleHref={phone?.google}
-        />
+      {nextTrip ? (
+        <Suspense fallback={<BoardingPassSkeleton />}>
+          <HomeBoardingPass booking={nextTrip} />
+        </Suspense>
       ) : null}
     </div>
+    </AccountPage>
   );
 }

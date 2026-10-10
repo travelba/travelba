@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { AccountPage } from "@/components/account/AccountPage";
 import { ClientTransactionsPanel } from "@/components/account/ClientTransactionsPanel";
 import { EncoursPayment } from "@/components/account/EncoursPayment";
 import { createClient } from "@/lib/supabase/server";
@@ -21,6 +22,7 @@ export default async function TransactionsPage() {
   const view = await loadClientLedger(supabase, customer, "client");
 
   return (
+    <AccountPage>
     <div className="space-y-4">
       <div>
         <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#b89768]">Mon espace voyage</p>
@@ -48,5 +50,6 @@ export default async function TransactionsPage() {
         }
       />
     </div>
+    </AccountPage>
   );
 }

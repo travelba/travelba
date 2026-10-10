@@ -26,7 +26,8 @@ export function ProfileSubnav({ basePath = "/mon-compte" }: { basePath?: string 
             key={link.href}
             href={href}
             aria-current={active ? "page" : undefined}
-            className={`flex h-10 min-w-0 flex-1 items-center justify-center rounded-full px-1 text-center text-[12px] leading-none font-semibold tracking-tight transition ${
+            transitionTypes={["nav-fade"]}
+            className={`account-press flex h-10 min-w-0 flex-1 items-center justify-center rounded-full px-1 text-center text-[12px] leading-none font-semibold tracking-tight ${
               active
                 ? "bg-[var(--admin-navy)] text-white shadow-sm"
                 : "text-[#5a5c60] hover:text-[var(--admin-navy)]"

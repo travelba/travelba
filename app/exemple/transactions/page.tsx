@@ -1,3 +1,4 @@
+import { AccountPage } from "@/components/account/AccountPage";
 import { ClientTransactionsPanel } from "@/components/account/ClientTransactionsPanel";
 import { EXAMPLE_BASE } from "@/lib/crm/example-session";
 import { readExample } from "@/lib/crm/example-store";
@@ -7,6 +8,7 @@ export const dynamic = "force-dynamic";
 export default function ExampleTransactionsPage() {
   const { ledger } = readExample();
   return (
+    <AccountPage>
     <div className="space-y-4">
       <div>
         <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#b89768]">Mon espace voyage</p>
@@ -20,5 +22,6 @@ export default function ExampleTransactionsPage() {
         statementEndpoint="/api/exemple/releve"
       />
     </div>
+    </AccountPage>
   );
 }

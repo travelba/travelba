@@ -4,6 +4,7 @@ import { ensureCustomerForUser } from "@/lib/crm/auth";
 import { isCompanyMember } from "@/lib/crm/company-role";
 import { customerFullName, type CrmBillingCompany, type CrmCustomer } from "@/lib/crm/types";
 import { BillingForm } from "@/components/account/BillingForm";
+import { AccountPage } from "@/components/account/AccountPage";
 
 export default async function FacturationPage() {
   const supabase = await createClient();
@@ -32,6 +33,7 @@ export default async function FacturationPage() {
   }
 
   return (
+    <AccountPage motion="fade">
     <div className="space-y-4">
       <div>
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Société</p>
@@ -59,5 +61,6 @@ export default async function FacturationPage() {
         <BillingForm customer={customer} companies={companies} />
       )}
     </div>
+    </AccountPage>
   );
 }

@@ -1,7 +1,9 @@
 import { toPublicBooking } from "@/lib/crm/public-booking";
 import Link from "next/link";
 import { headers } from "next/headers";
+import { AccountPage } from "@/components/account/AccountPage";
 import { BookingHero } from "@/components/crm/BookingHero";
+import { stayTransitionName } from "@/lib/crm/account-motion";
 import { chosenCalendarHref, googleCalendarHref, itemCalendarHref } from "@/lib/crm/calendar-ics";
 import { Icon } from "@/components/crm/icons";
 import { BoardingPass } from "@/components/account/BoardingPass";
@@ -41,6 +43,7 @@ export default async function ExampleHomePage() {
   const calendarHref = chosenCalendarHref(httpsHref, { google: googleHref }, headerList.get("user-agent") || "");
 
   return (
+    <AccountPage>
     <div className="space-y-3">
       <section className="flex flex-col gap-1 pt-1">
         <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9e7e51]">
@@ -54,7 +57,8 @@ export default async function ExampleHomePage() {
       {balance < 0 ? (
         <Link
           href={`${EXAMPLE_BASE}/transactions`}
-          className="block rounded-2xl border border-[var(--admin-gold)] bg-[#f8f3eb] p-4 shadow-sm transition hover:border-[var(--admin-gold)]"
+          transitionTypes={["nav-forward"]}
+          className="account-press block rounded-2xl border border-[var(--admin-gold)] bg-[#f8f3eb] p-4 shadow-sm hover:border-[var(--admin-gold)]"
         >
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Encours</p>
           <p className="mt-2 font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">
@@ -69,15 +73,22 @@ export default async function ExampleHomePage() {
       ) : (
         <Link
           href={`${EXAMPLE_BASE}/transactions`}
-          className="inline-flex items-center gap-1 text-sm font-semibold text-[var(--admin-navy)]"
+          transitionTypes={["nav-forward"]}
+          className="account-press inline-flex items-center gap-1 text-sm font-semibold text-[var(--admin-navy)]"
         >
           Voir les transactions
           <Icon name="arrow_forward" className="h-3.5 w-3.5 text-[var(--admin-gold-dark)]" />
         </Link>
       )}
 
-      <article className="overflow-hidden rounded-2xl border border-[#e5e3dc] shadow-xl">
-        <BookingHero booking={toPublicBooking(nextTrip)} items={session.items} priority frameClassName="relative h-[22rem] w-full">
+      <article className="account-press overflow-hidden rounded-2xl border border-[#e5e3dc] shadow-xl">
+        <BookingHero
+          booking={toPublicBooking(nextTrip)}
+          items={session.items}
+          priority
+          frameClassName="relative h-[22rem] w-full"
+          transitionName={stayTransitionName(nextTrip.reference)}
+        >
           <div className="flex h-full min-w-0 flex-col justify-between gap-3 p-4">
             <div className="flex min-w-0 flex-wrap items-start gap-2">
               {countdown ? (
@@ -110,7 +121,8 @@ export default async function ExampleHomePage() {
               </div>
               <Link
                 href={tripHref}
-                className="flex h-12 w-full items-center justify-center gap-3 rounded-full bg-white px-5 text-sm font-semibold text-[var(--admin-navy)] shadow-md"
+                transitionTypes={["nav-forward"]}
+                className="account-press flex h-12 w-full items-center justify-center gap-3 rounded-full bg-white px-5 text-sm font-semibold text-[var(--admin-navy)] shadow-md"
               >
                 Accéder à ma réservation
                 <Icon name="arrow_forward" className="h-5 w-5 text-[var(--admin-gold)]" />
@@ -124,5 +136,6 @@ export default async function ExampleHomePage() {
         <BoardingPass pass={homeFlight} calendarHref={calendarHref} googleHref={googleHref} />
       ) : null}
     </div>
+    </AccountPage>
   );
 }

@@ -36,6 +36,8 @@ import { ClientTripBody } from "@/components/account/ClientTripBody";
 import { tripDocCoverage } from "@/lib/crm/trip-documents";
 import { siteConfig } from "@/lib/site";
 import { BookingHero } from "@/components/crm/BookingHero";
+import { AccountPage } from "@/components/account/AccountPage";
+import { stayTransitionName } from "@/lib/crm/account-motion";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
@@ -286,12 +288,14 @@ export default async function ReservationDetailPage({ params }: Props) {
   });
 
   return (
+    <AccountPage>
     <ClientTripBody
       intro={
         <>
           <Link
             href="/mon-compte/reservations"
-            className="inline-flex text-sm font-semibold text-[var(--aura-blue)]"
+            transitionTypes={["nav-back"]}
+            className="account-press inline-flex text-sm font-semibold text-[var(--aura-blue)]"
           >
             ← Réservations
           </Link>
@@ -301,6 +305,7 @@ export default async function ReservationDetailPage({ params }: Props) {
             items={withoutHotelRosterItems((items || []) as CrmBookingItem[])}
             priority
             className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]"
+            transitionName={stayTransitionName(b.reference)}
           >
             <div className="absolute inset-0 flex flex-col justify-between p-4">
               <div className="flex flex-wrap items-center justify-end gap-2">
@@ -456,5 +461,6 @@ export default async function ReservationDetailPage({ params }: Props) {
         </>
       }
     />
+    </AccountPage>
   );
 }

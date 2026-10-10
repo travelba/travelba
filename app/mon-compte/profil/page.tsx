@@ -8,6 +8,7 @@ import { PasswordChangeForm } from "@/components/account/PasswordChangeForm";
 import { ProfileForm } from "@/components/account/ProfileForm";
 import { PhoneWallBanner } from "@/components/crm/ui";
 import { SignOutButton } from "@/components/account/SignOutButton";
+import { AccountPage } from "@/components/account/AccountPage";
 
 export default async function ProfilPage() {
   const supabase = await createClient();
@@ -28,6 +29,7 @@ export default async function ProfilPage() {
   const desk = deskBypass(jar.get(DESK_COOKIE)?.value, user.id);
 
   return (
+    <AccountPage motion="fade">
     <div className="space-y-4">
       {!customer.phone && !desk ? <PhoneWallBanner /> : null}
 
@@ -37,5 +39,6 @@ export default async function ProfilPage() {
 
       <SignOutButton />
     </div>
+    </AccountPage>
   );
 }
