@@ -1,3 +1,4 @@
+import { AccountPage } from "@/components/account/AccountPage";
 import { PasswordChangeForm } from "@/components/account/PasswordChangeForm";
 import { ProfileForm } from "@/components/account/ProfileForm";
 import { readExample } from "@/lib/crm/example-store";
@@ -8,9 +9,11 @@ export default function ExampleProfilPage() {
   const session = readExample();
 
   return (
+    <AccountPage motion="fade">
     <div className="space-y-4">
       <ProfileForm customer={session.customer} documents={session.holderDocuments} />
       <PasswordChangeForm />
     </div>
+    </AccountPage>
   );
 }

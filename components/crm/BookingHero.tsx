@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { ViewTransition, useEffect, useState, type ReactNode } from "react";
 import { coverQuery } from "@/lib/crm/carnet";
 import {
   bookingCoverPlan,
@@ -20,6 +20,7 @@ export function BookingHero({
   partage = null,
   items,
   places,
+  transitionName,
   children,
 }: {
   booking: CoverBooking;
@@ -34,6 +35,7 @@ export function BookingHero({
   /** Cartes du séjour : deux villes → diagonale de leurs images. */
   items?: CoverPlaceItem[];
   places?: string[];
+  transitionName?: string;
   children?: ReactNode;
 }) {
   const plan = bookingCoverPlan(booking, {
@@ -72,7 +74,7 @@ export function BookingHero({
   const showPlaceName = !src && !children;
   const alt = booking.destination || booking.title || label;
 
-  return (
+  const frame = (
     <div className={`relative overflow-hidden bg-[var(--admin-navy)] text-white ${className}`}>
       <div className={plain ? "relative h-full w-full" : frameClassName}>
         {src ? (
@@ -107,5 +109,13 @@ export function BookingHero({
         {children ? <div className="absolute inset-0">{children}</div> : null}
       </div>
     </div>
+  );
+
+  if (!transitionName) return frame;
+
+  return (
+    <ViewTransition name={transitionName} share="account-morph" default="none">
+      {frame}
+    </ViewTransition>
   );
 }

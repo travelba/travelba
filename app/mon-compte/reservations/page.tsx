@@ -2,8 +2,9 @@ import { bookingPayerLabel, type FundingCompany } from "@/lib/crm/funding-wallet
 import { toPublicBooking } from "@/lib/crm/public-booking";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { ensureCustomerForUser } from "@/lib/crm/auth";
+import { ensureCustomerForUser, getSessionUser } from "@/lib/crm/auth";
+import { stayTransitionName } from "@/lib/crm/account-motion";
+import { AccountPage } from "@/components/account/AccountPage";
 import { HIDDEN_PRICE_LABEL, stayHeadline } from "@/lib/crm/carnet";
 import { loadDisplayedStayAmounts } from "@/lib/crm/displayed-stay";
 import { isClientPastStay, isClientUpcomingStay } from "@/lib/crm/client-stays";
@@ -29,45 +30,41 @@ export default async function ReservationsPage({
   searchParams: Promise<{ tab?: string }>;
 }) {
   const { tab } = await searchParams;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getSessionUser();
   if (!user) redirect("/connexion");
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");
 
   const all = await loadVisibleCarnets(supabase, customer.id, await clientTripOwnerIds(customer));
-  let displayedAmounts = new Map<string, number>();
-  try {
-    displayedAmounts = await loadDisplayedStayAmounts(createServiceClient(), all);
-  } catch {
-    displayedAmounts = new Map();
-  }
   const walletIds = [...new Set(all.map((row) => row.billing_customer_id || row.customer_id))];
-  const { data: payerCompanies } = walletIds.length
-    ? await supabase
-        .from("crm_billing_companies")
-        .select("id, customer_id, company_name, funding, sort_order")
-        .in("customer_id", walletIds)
-    : { data: [] as (FundingCompany & { customer_id: string })[] };
+  const [displayedAmounts, payerResult, places] = await Promise.all([
+    loadDisplayedStayAmounts(createServiceClient(), all).catch(() => new Map<string, number>()),
+    walletIds.length
+      ? supabase
+          .from("crm_billing_companies")
+          .select("id, customer_id, company_name, funding, sort_order")
+          .in("customer_id", walletIds)
+      : Promise.resolve({ data: [] as (FundingCompany & { customer_id: string })[] }),
+    loadStayMaps(
+      supabase,
+      all.map((row) => row.id),
+      { visibleOnly: true }
+    ),
+  ]);
+  const payerCompanies = payerResult.data;
   const companiesByWallet = new Map<string, FundingCompany[]>();
   for (const company of (payerCompanies || []) as (FundingCompany & { customer_id: string })[]) {
     const list = companiesByWallet.get(company.customer_id) || [];
     list.push(company);
     companiesByWallet.set(company.customer_id, list);
   }
-  const places = await loadStayMaps(
-    supabase,
-    all.map((row) => row.id),
-    { visibleOnly: true }
-  );
   const upcoming = sortBookingsByStart(all.filter((b) => isClientUpcomingStay(b)), "asc");
   const past = sortBookingsByStart(all.filter((b) => isClientPastStay(b)), "desc");
   const showPast = tab === "passes";
   const list = showPast ? past : upcoming;
 
   return (
+    <AccountPage>
     <div className="space-y-4">
       <div>
         <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#b89768]">
@@ -143,8 +140,13 @@ export default async function ReservationsPage({
           );
           return (
             <li key={b.id}>
-              <article className="relative overflow-hidden rounded-xl border border-[#c5c6cd]/35 bg-white shadow-sm">
-                <BookingHero booking={toPublicBooking(b)} places={places.arrival[b.id]} width={800}>
+              <article className="account-press relative overflow-hidden rounded-xl border border-[#c5c6cd]/35 bg-white shadow-sm">
+                <BookingHero
+                  booking={toPublicBooking(b)}
+                  places={places.arrival[b.id]}
+                  width={800}
+                  transitionName={stayTransitionName(b.reference)}
+                >
                   <div className="absolute left-3 right-3 top-3 flex items-center justify-between gap-2">
                     {countdown ? (
                       <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--admin-gold)]/30 bg-[#faf9f6]/95 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--admin-navy)] shadow-sm">
@@ -187,7 +189,8 @@ export default async function ReservationsPage({
                   ) : null}
                   <Link
                     href={`/mon-compte/reservations/${b.reference}`}
-                    className="inline-flex h-11 w-full items-center justify-center rounded-full bg-[var(--admin-navy)] px-3 text-sm font-semibold text-white"
+                    transitionTypes={["nav-forward"]}
+                    className="account-press inline-flex h-11 w-full items-center justify-center rounded-full bg-[var(--admin-navy)] px-3 text-sm font-semibold text-white"
                   >
                     Accéder à ma réservation
                   </Link>
@@ -210,6 +213,7 @@ export default async function ReservationsPage({
         ) : null}
       </ul>
     </div>
+    </AccountPage>
   );
 }
 

@@ -1,3 +1,4 @@
+import { AccountPage } from "@/components/account/AccountPage";
 import { DocumentsManager } from "@/components/account/DocumentsManager";
 import { readExample } from "@/lib/crm/example-store";
 
@@ -6,6 +7,7 @@ export const dynamic = "force-dynamic";
 export default function ExampleDocumentsPage() {
   const session = readExample();
   return (
+    <AccountPage motion="fade">
     <div className="space-y-4">
       <div>
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Coffre</p>
@@ -17,5 +19,6 @@ export default function ExampleDocumentsPage() {
         holder={{ first_name: session.customer.first_name, last_name: session.customer.last_name }}
       />
     </div>
+    </AccountPage>
   );
 }

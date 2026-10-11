@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
 import { CompanionsManager } from "@/components/account/CompanionsManager";
+import { AccountPage } from "@/components/account/AccountPage";
 import type { CrmCompanion, CrmTravelDocument } from "@/lib/crm/types";
 
 export default async function CompanionsPage() {
@@ -22,6 +23,7 @@ export default async function CompanionsPage() {
   ]);
 
   return (
+    <AccountPage motion="fade">
     <div className="space-y-4">
       <div>
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Foyer</p>
@@ -32,5 +34,6 @@ export default async function CompanionsPage() {
         documents={(documents || []) as CrmTravelDocument[]}
       />
     </div>
+    </AccountPage>
   );
 }

@@ -1,3 +1,4 @@
+import { AccountPage } from "@/components/account/AccountPage";
 import { CompanionsManager } from "@/components/account/CompanionsManager";
 import { readExample } from "@/lib/crm/example-store";
 
@@ -6,6 +7,7 @@ export const dynamic = "force-dynamic";
 export default function ExampleCompanionsPage() {
   const session = readExample();
   return (
+    <AccountPage motion="fade">
     <div className="space-y-4">
       <div>
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Foyer</p>
@@ -13,5 +15,6 @@ export default function ExampleCompanionsPage() {
       </div>
       <CompanionsManager companions={session.companions} documents={session.documents.filter((doc) => !doc.booking_id)} />
     </div>
+    </AccountPage>
   );
 }
