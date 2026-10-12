@@ -1,11 +1,11 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { createClient, type EmailOtpType, type SupabaseClient, type User } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { AUTH_COOKIE_OPTIONS } from "@/lib/supabase/cookie-options";
 import { publicSupabaseEnv } from "@/lib/supabase/env";
-import { ensureCustomerForUser, ensureStaff } from "@/lib/crm/auth";
+import { ensureCustomerForUser, getStaffForUser } from "@/lib/crm/auth";
 import { recordCustomerLogin } from "@/lib/crm/customer-login";
 import { PASSWORD_SETUP_COOKIE, mustSetPassword } from "@/lib/crm/session";
 import { deskOpenDecision, deskSetCookie } from "@/lib/crm/desk-mode";
@@ -14,14 +14,18 @@ import { stayHasPublishedCover, stayPlaceName } from "./concierge-notices";
 import {
   entryDestination,
   entryDoorForPath,
+  entryInstantHtml,
   entryLinkExpiresAt,
   entryOptInFromLink,
   entryPreviewHtml,
   entryReopenDecision,
+  hasAuthSessionCookie,
   isEntryCode,
   isMissingColumnError,
+  isPreviewBot,
   referenceFromNextPath,
   safeOtpType,
+  shouldOpenFromRequest,
   stayPreviewCopy,
   storedEntryEmail,
   type EntryPreview,
@@ -100,6 +104,28 @@ async function stayBehindCode(origin: string, code: string): Promise<{ stay: Ent
   }
 }
 
+/** Porte humaine : aucun appel base, aucune photo. Le robot garde l’aperçu riche. */
+export function entryInstantResponse(origin: string, code: string) {
+  const safe = isEntryCode(code) ? code : "00000000";
+  return new NextResponse(entryInstantHtml(origin, safe), {
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "private, no-store",
+    },
+  });
+}
+
+/**
+ * GET du lien court. Un appui ou `?ouvrir=1` ouvre la session.
+ * Le robot reçoit la carte (titre, couverture). Un humain sans `Sec-Fetch-User`
+ * (Safari, iPhone) reçoit la porte immédiate : le script relance l’ouverture.
+ */
+export async function serveEntryGet(request: Request, origin: string, code: string) {
+  if (shouldOpenFromRequest(request.url, request.headers)) return openEntry(origin, code);
+  if (isPreviewBot(request.headers.get("user-agent"))) return entryPreviewResponse(origin, code);
+  return entryInstantResponse(origin, code);
+}
+
 export async function entryPreviewResponse(origin: string, code: string, enter = true) {
   const safe = isEntryCode(code) ? code : "00000000";
   const preview = isEntryCode(code) ? await stayBehindCode(origin, safe) : { stay: null, nextPath: null };
@@ -126,7 +152,10 @@ export async function openEntry(origin: string, code: string) {
   const expiresAt = entryLinkExpiresAt(link);
   const response = NextResponse.redirect(new URL("/mon-compte", origin));
   const supabase = await cookieClient(response);
-  const existing = await currentUser(supabase);
+  const jar = await cookies();
+  const existing = hasAuthSessionCookie(jar.getAll().map((cookie) => cookie.name))
+    ? await currentUser(supabase)
+    : null;
   const base = {
     now,
     expiresAt,
@@ -147,16 +176,22 @@ export async function openEntry(origin: string, code: string) {
       if (fresh) user = await verifyOn(supabase, fresh, "magiclink");
     }
     if (!user) return entryPreviewResponse(origin, safe, false);
-    await markEntryOpened(safe, link, now);
   }
 
-  await ensureCustomerForUser(user);
-  const staff = await ensureStaff(user);
+  const [, staff] = await Promise.all([ensureCustomerForUser(user), getStaffForUser(user.id)]);
   if (gate !== "session") {
-    if (!staff) await recordCustomerLogin(user.id, "entry");
-    if (entryOptInFromLink({ channel: link.channel, staff: Boolean(staff) })) {
-      await stampWhatsappOptIn(user.id, now);
-    }
+    const userId = user.id;
+    const staffMember = Boolean(staff);
+    const channel = link.channel;
+    after(async () => {
+      await Promise.all([
+        markEntryOpened(safe, link, now),
+        staffMember ? Promise.resolve() : recordCustomerLogin(userId, "entry"),
+        entryOptInFromLink({ channel, staff: staffMember })
+          ? stampWhatsappOptIn(userId, now)
+          : Promise.resolve(),
+      ]);
+    });
   }
   const dest = entryDestination({
     nextPath: link.next_path,
@@ -295,8 +330,10 @@ async function verifyOn(supabase: SupabaseClient, tokenHash: string, type: strin
     type: safeOtpType(type) as EmailOtpType,
   });
   if (verified.error) return null;
+  if (verified.data.user) return verified.data.user;
+  if (!verified.data.session) return null;
   const { data } = await supabase.auth.getUser();
-  return data.user;
+  return data.user ?? null;
 }
 
 /** Une ouverture de plus, et la première date. Sans la migration, les colonnes manquent : on continue. */

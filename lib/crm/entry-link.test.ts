@@ -15,6 +15,8 @@ import {
   entryReopenDecision,
   isMissingColumnError,
   isPreviewBot,
+  hasAuthSessionCookie,
+  entryInstantHtml,
   shouldOpenFromGet,
   entryDestination,
   entryDoorForPath,
@@ -169,6 +171,25 @@ test("WhatsApp reçoit le titre sans consommer le jeton", () => {
   assert.match(noCover, /class="door plain"/);
   assert.match(bare, /class="door plain"/);
   assert.match(bare, /Votre espace personnel vous attend/);
+});
+
+test("la porte humaine n’attend ni le dossier ni la photo", () => {
+  assert.equal(hasAuthSessionCookie(["sb-fsmfozxgujskluxakeoq-auth-token"]), true);
+  assert.equal(hasAuthSessionCookie(["sb-fsmfozxgujskluxakeoq-auth-token.0"]), true);
+  assert.equal(hasAuthSessionCookie(["sb-fsmfozxgujskluxakeoq-auth-token-code-verifier"]), false);
+  assert.equal(hasAuthSessionCookie(["tb_desk"]), false);
+  const html = entryInstantHtml("https://travelba.fr", "K7MQ2PX4");
+  assert.match(html, /<title>Le Concierge<\/title>/);
+  assert.match(html, /Ouvrir mon espace/);
+  assert.match(html, /method="post"/);
+  assert.match(html, /name="ouvrir"/);
+  assert.match(html, /<script>location\.replace\(location\.pathname\+"\?ouvrir=1"\)<\/script>/);
+  assert.equal(html.includes("<img"), false);
+  assert.equal(html.includes("/api/covers"), false);
+  assert.equal(html.includes("og:image"), false);
+  assert.equal(html.includes("token"), false);
+  assert.equal(html.includes("hashed"), false);
+  assert.equal(/location\.replace\("https?:/.test(html), false);
 });
 
 test("le chemin de retour reste interne", () => {

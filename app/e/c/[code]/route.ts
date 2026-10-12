@@ -1,5 +1,5 @@
-import { entryPreviewResponse, openEntry } from "@/lib/crm/entry-open";
-import { entryRequestOrigin, shouldOpenFromRequest } from "@/lib/crm/entry-link";
+import { openEntry, serveEntryGet } from "@/lib/crm/entry-open";
+import { entryRequestOrigin } from "@/lib/crm/entry-link";
 import { siteConfig } from "@/lib/site";
 
 export const runtime = "nodejs";
@@ -15,12 +15,10 @@ function normalizeCode(code: string) {
   return code.trim().toUpperCase();
 }
 
-/** Aperçu pour le robot. Un appui humain entre dans l’espace. */
+/** Robot : carte du séjour. Humain : porte immédiate, puis la session. */
 export async function GET(request: Request, ctx: Ctx) {
   const { code } = await ctx.params;
-  const safe = normalizeCode(code);
-  if (shouldOpenFromRequest(request.url, request.headers)) return openEntry(originOf(request), safe);
-  return entryPreviewResponse(originOf(request), safe);
+  return serveEntryGet(request, originOf(request), normalizeCode(code));
 }
 
 /** Vérifie le jeton, pose la session, ouvre la réservation. Jamais /connexion. */
