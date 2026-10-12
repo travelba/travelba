@@ -6,8 +6,8 @@ import { aiGatewayConfigured } from "@/lib/crm/ingest-types";
 import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { readEstaAnswers, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import { pliantConfigured } from "@/lib/crm/pliant";
-import { pliantCardForBooking, pliantSpendsForCards, showPliantLast4 } from "@/lib/crm/pliant-card-run";
-import { pliantBookingCards, pliantCardRecaps } from "@/lib/crm/pliant-booking";
+import { pliantCardForBooking, pliantSpendsForCards, showPliantLast4, withPliantSpendBookings } from "@/lib/crm/pliant-card-run";
+import { pliantBookingCards, pliantCardRecaps, pliantSettlementStays, type PliantSettlementStay } from "@/lib/crm/pliant-booking";
 import { hotelDisplayName } from "@/lib/crm/carnet";
 import type { PliantCardDraft, PliantSpendLine } from "@/lib/crm/pliant-cards";
 import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
@@ -245,6 +245,11 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
       { limit: null }
     );
     try {
+      pliantTabSpends = await withPliantSpendBookings(cardAdmin, pliantTabSpends);
+    } catch {
+      // Le lien vers la réservation manque ; les transactions restent lisibles.
+    }
+    try {
       await showPliantLast4(cardAdmin, { bookingCards, arrivals, registry: pliantCard });
     } catch {
       // Les quatre derniers chiffres manquent ; le récap des dépenses reste lisible.
@@ -266,6 +271,61 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     }),
     pliantTabSpends
   );
+  let settlementStays: PliantSettlementStay[] = pliantSettlementStays(
+    [
+      {
+        id: b.id,
+        reference: b.reference,
+        title: b.title,
+        destination: b.destination,
+        start_date: b.start_date,
+        status: b.status,
+      },
+    ],
+    b.id
+  );
+  try {
+    const stayAdmin = createServiceClient();
+    const payerId = b.billing_customer_id || b.customer_id;
+    const columns = "id, reference, title, destination, start_date, status";
+    const [payerRows, travelerRows] = await Promise.all([
+      payerId
+        ? stayAdmin
+            .from("crm_bookings")
+            .select(columns)
+            .eq("billing_customer_id", payerId)
+            .order("start_date", { ascending: false, nullsFirst: false })
+            .limit(80)
+        : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+      stayAdmin
+        .from("crm_bookings")
+        .select(columns)
+        .eq("customer_id", b.customer_id)
+        .order("start_date", { ascending: false, nullsFirst: false })
+        .limit(80),
+    ]);
+    const currentStay = {
+      id: b.id,
+      reference: b.reference,
+      title: b.title,
+      destination: b.destination,
+      start_date: b.start_date,
+      status: b.status,
+    };
+    settlementStays = pliantSettlementStays(
+      [currentStay, ...(payerRows.data || []), ...(travelerRows.data || [])] as {
+        id: string;
+        reference: string | null;
+        title: string | null;
+        destination: string | null;
+        start_date: string | null;
+        status: string | null;
+      }[],
+      b.id
+    );
+  } catch {
+    // Le séjour ouvert reste le seul choix.
+  }
   const shareCompanions = companionsForShare(bookingTravelers, (companions || []) as CrmCompanion[]);
   let shareUrl: string | null = null;
   if (b.visible_to_client) {
@@ -380,6 +440,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           accountLedger={accountLedger}
           bookingCards={bookingCards}
           pliantRecap={pliantRecap}
+          settlementStays={settlementStays}
           estaLines={estaLines}
           ukEtaLines={ukEtaLines}
           whatsappMessages={threadMessages}

@@ -238,7 +238,9 @@ export async function pliantSpendsForCards(
   if (!ids.length) return [] as PliantSpendLine[];
   let query = admin
     .from("crm_pliant_transactions")
-    .select("id, merchant, status, type, billing_cents, billing_currency, booked_at, card_id")
+    .select(
+      "id, merchant, status, type, billing_cents, billing_currency, transaction_cents, transaction_currency, booked_at, card_id, category, comment, holder_name, match_status, matched_transaction_id"
+    )
     .in("card_id", ids)
     .order("booked_at", { ascending: false, nullsFirst: false });
   const cap = options?.limit === undefined ? 30 : options.limit;
@@ -252,7 +254,14 @@ export async function pliantSpendsForCards(
     type: string | null;
     billing_cents: number | null;
     billing_currency: string | null;
+    transaction_cents: number | null;
+    transaction_currency: string | null;
     booked_at: string | null;
+    category: string | null;
+    comment: string | null;
+    holder_name: string | null;
+    match_status: PliantSpendLine["matchStatus"];
+    matched_transaction_id: string | null;
   }[]).map((row) => ({
     id: row.id,
     cardId: row.card_id,
@@ -262,7 +271,50 @@ export async function pliantSpendsForCards(
     billingCents: row.billing_cents,
     currency: row.billing_currency,
     bookedAt: row.booked_at,
+    transactionCents: row.transaction_cents,
+    transactionCurrency: row.transaction_currency,
+    category: row.category,
+    comment: row.comment,
+    holderName: row.holder_name,
+    matchStatus: row.match_status || "unmatched",
+    matchedTransactionId: row.matched_transaction_id,
   }));
+}
+
+/** Relie chaque dépense déjà rapprochée à la réservation écrite au grand livre. */
+export async function withPliantSpendBookings(admin: Admin, spends: PliantSpendLine[]) {
+  const ids = [
+    ...new Set(spends.map((row) => row.matchedTransactionId).filter((id): id is string => Boolean(id))),
+  ];
+  if (!ids.length) return spends;
+  const txRows: { id: string; booking_id: string | null }[] = [];
+  for (let index = 0; index < ids.length; index += 100) {
+    const { data } = await admin
+      .from("crm_transactions")
+      .select("id, booking_id")
+      .in("id", ids.slice(index, index + 100));
+    txRows.push(...((data || []) as { id: string; booking_id: string | null }[]));
+  }
+  const bookingIds = [...new Set(txRows.map((row) => row.booking_id).filter((id): id is string => Boolean(id)))];
+  const references = new Map<string, string | null>();
+  for (let index = 0; index < bookingIds.length; index += 100) {
+    const { data } = await admin
+      .from("crm_bookings")
+      .select("id, reference")
+      .in("id", bookingIds.slice(index, index + 100));
+    for (const row of (data || []) as { id: string; reference: string | null }[]) {
+      references.set(row.id, row.reference);
+    }
+  }
+  const byTx = new Map(txRows.map((row) => [row.id, row.booking_id]));
+  return spends.map((spend) => {
+    const bookingId = spend.matchedTransactionId ? byTx.get(spend.matchedTransactionId) || null : null;
+    return {
+      ...spend,
+      matchedBookingId: bookingId,
+      matchedReference: bookingId ? references.get(bookingId) || null : null,
+    };
+  });
 }
 
 export async function pliantCardForBooking(admin: Admin, bookingId: string) {

@@ -11,6 +11,7 @@ import {
   prepareClientUpdate,
   prepareEmailAction,
   prepareManualCredit,
+  preparePliantReconcile,
   prepareRevolutCredit,
   prepareStripeCredit,
   publishBlock,
@@ -37,6 +38,15 @@ test("a manual credit stays a posted transfer and refuses a debit", () => {
   assert.throws(() => prepareManualCredit({ client_id: "cyril", montant: 10 }), /Client invalide/);
   assert.throws(() => prepareManualCredit({ montant: 10 }), /Choisissez un client/);
   assert.throws(() => prepareManualCredit({ client_id: CLIENT, montant: 0 }), /supérieur à zéro/);
+});
+
+test("pliant reconcile names the movement and the reservation", () => {
+  assert.deepEqual(preparePliantReconcile({ mouvement_id: WIRE, dossier_id: BOOKING }), {
+    mouvementId: WIRE,
+    dossierId: BOOKING,
+  });
+  assert.throws(() => preparePliantReconcile({ mouvement_id: WIRE }), /Dossier invalide/);
+  assert.throws(() => preparePliantReconcile({ dossier_id: BOOKING, mouvement_id: "la dépense" }), /Dépense invalide/);
 });
 
 test("revolut credit names the transfer and the client", () => {

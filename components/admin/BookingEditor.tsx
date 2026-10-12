@@ -52,8 +52,9 @@ import { BookingCards } from "@/components/admin/BookingCards";
 import { CustomerEditor } from "@/components/admin/CustomerEditor";
 import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
 import { PliantBookingTab } from "@/components/admin/PliantBookingTab";
+import { PliantSettlement } from "@/components/admin/PliantSettlement";
 import { principalGuest } from "@/lib/crm/hotel-arrival";
-import type { PliantCardRecap } from "@/lib/crm/pliant-booking";
+import type { PliantCardRecap, PliantSettlementStay } from "@/lib/crm/pliant-booking";
 import { WhatsappThread, type WhatsappThreadMessage, type WhatsappThreadRequest } from "@/components/admin/WhatsappThread";
 import { BookingExpensesPanel, type ExpenseWrite } from "@/components/admin/BookingExpensesPanel";
 import { ClientTransactionsPanel } from "@/components/account/ClientTransactionsPanel";
@@ -222,6 +223,7 @@ export function BookingEditor({
   accountLedger = null,
   bookingCards = [],
   pliantRecap = [],
+  settlementStays = [],
   estaLines = [],
   ukEtaLines = [],
   whatsappMessages = [],
@@ -292,6 +294,7 @@ export function BookingEditor({
   accountLedger?: ClientLedgerView | null;
   bookingCards?: CrmBookingCard[];
   pliantRecap?: PliantCardRecap[];
+  settlementStays?: PliantSettlementStay[];
   estaLines?: EstaTravelerLine[];
   ukEtaLines?: UkEtaTravelerLine[];
   whatsappMessages?: WhatsappThreadMessage[];
@@ -1817,6 +1820,13 @@ export function BookingEditor({
         ) : null}
       </section>
 
+      <PliantSettlement
+        bookingId={booking.id}
+        currency={booking.currency}
+        cards={pliantRecap}
+        stays={settlementStays}
+      />
+
       <div className="order-3">
       <BookingExpensesPanel
         bookingId={booking.id}
@@ -1855,12 +1865,7 @@ export function BookingEditor({
             quietEmpty={pliantRecap.length > 0}
           />
           {pliantRecap.length ? (
-            <PliantBookingTab
-              bookingId={booking.id}
-              currency={booking.currency}
-              cards={pliantRecap}
-              items={items}
-            />
+            <PliantBookingTab bookingId={booking.id} cards={pliantRecap} />
           ) : null}
         </div>
       ) : null}
