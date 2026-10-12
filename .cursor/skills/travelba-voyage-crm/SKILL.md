@@ -19,6 +19,8 @@ Ne pas ré-ouvrir le QCM produit : les règles sont déjà ancrées dans les ski
 
 ## Dossier agence (toutes les réservations)
 
+Liste `/admin/reservations` : du plus proche au plus loin (séjour en cours, puis prochains départs, puis passés du plus récent). « Départ, du plus lointain » reste un tri du menu.
+
 Un seul état honnête : **En préparation**, **Visible**, ou **Archivée**. L’écran n’affiche pas de statut commercial (À l’étude, Devis, Confirmée). Le bouton dit **Montrer au client** ; la pastille dit **Visible**. Archiver dit **Archiver**, jamais Supprimer.
 
 L’en-tête (le titre compris) et le bloc Lieu et dates sont en haut et suivent **toutes** les étapes (plusieurs villes, plusieurs dates, sans répéter la même ville, le même séjour ni le même trajet). On n’affiche pas un seul lieu ni un seul aller-retour figé du dossier, et on ne réécrit pas la destination ni les dates en base pour les aligner.

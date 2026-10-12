@@ -15,6 +15,8 @@ import { staffStayLabel } from "@/lib/crm/staff-stay";
 import { Pagination } from "@/components/admin/Pagination";
 import {
   ADMIN_PAGE_SIZE,
+  bookingSortParam,
+  DEFAULT_BOOKING_SORT,
   listHref,
   type BookingSort,
   type BookingStateFilter,
@@ -36,7 +38,7 @@ export function BookingsTable({
   page = 1,
   pageSize = ADMIN_PAGE_SIZE,
   total = bookings.length,
-  filters = { q: "", etat: null, tri: "depart" },
+  filters = { q: "", etat: null, tri: DEFAULT_BOOKING_SORT },
   hiddenArchiveHits = 0,
   searchText = {},
   payerLabels = {},
@@ -60,7 +62,7 @@ export function BookingsTable({
   const urlFilters = {
     q: filters.q,
     etat: filters.etat,
-    tri: filters.tri === "depart" ? null : filters.tri,
+    tri: bookingSortParam(filters.tri),
   };
   const filtering = Boolean(filters.q || filters.etat);
   const archivedOnly = filters.etat === "archive";

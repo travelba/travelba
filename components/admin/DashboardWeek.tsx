@@ -52,7 +52,7 @@ export function DashboardWeek({
         <h2 id="semaine-titre" className="font-display text-lg font-bold text-[var(--admin-navy)]">
           La semaine
         </h2>
-        <Link href="/admin/reservations?etat=a-venir&tri=depart-asc" className="text-sm font-semibold text-[var(--admin-navy)]">
+        <Link href="/admin/reservations?etat=a-venir" className="text-sm font-semibold text-[var(--admin-navy)]">
           Tout voir →
         </Link>
       </div>

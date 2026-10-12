@@ -14,6 +14,7 @@ import { smartSearchMatch } from "@/lib/crm/smart-search";
 import {
   ADMIN_PAGE_SIZE,
   BOOKING_SORTS,
+  bookingSortParam,
   firstParam,
   listHref,
   pageOverflow,
@@ -21,9 +22,11 @@ import {
   parseBookingSort,
   parseBookingState,
   parsePage,
+  sortBookingsByProximity,
   type FilterableQuery,
   type SearchParamValue,
 } from "@/lib/crm/admin-list";
+import { stayToday } from "@/lib/crm/stay-moment";
 
 type Props = {
   searchParams: Promise<Record<string, SearchParamValue>>;
@@ -67,15 +70,51 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
 
   const { from, to } = pageRange(page);
   const order = BOOKING_SORTS[sort];
+  const today = stayToday();
   const listQuery = supabase.from("crm_bookings").select("*", { count: "exact" });
   // Au-delà, la recherche reste sur le tri demandé. Une agence tient largement en dessous.
   const SEARCH_SCAN = 400;
+  const PROXIMITY_PAGE = 1000;
+
+  function filtered(archivedOnly: boolean, withCount: boolean) {
+    const query = withCount ? listQuery : supabase.from("crm_bookings").select("*");
+    return applyFilters(query as unknown as FilterableQuery, archivedOnly) as unknown as typeof listQuery;
+  }
 
   function ordered(archivedOnly: boolean, withCount: boolean) {
-    const query = withCount ? listQuery : supabase.from("crm_bookings").select("*");
-    return (applyFilters(query as unknown as FilterableQuery, archivedOnly) as unknown as typeof listQuery)
+    const query = filtered(archivedOnly, withCount);
+    if (order.proximity) {
+      // Les plus anciennes dates sortent du plafond : elles sont en bas du tri proche.
+      return query.order("start_date", { ascending: false, nullsFirst: false });
+    }
+    return query
       .order(order.column, { ascending: order.ascending, nullsFirst: false })
       .order("created_at", { ascending: false });
+  }
+
+  async function loadByProximity(archivedOnly: boolean) {
+    const rows: CrmBooking[] = [];
+    let count: number | null = null;
+    let error: { code?: string; message?: string } | null = null;
+    for (let offset = 0; offset < 10000; offset += PROXIMITY_PAGE) {
+      const pageResult = await filtered(archivedOnly, offset === 0)
+        .order("id", { ascending: true })
+        .range(offset, offset + PROXIMITY_PAGE - 1);
+      if (pageResult.error) {
+        error = pageResult.error;
+        break;
+      }
+      if (offset === 0) count = pageResult.count;
+      const batch = (pageResult.data || []) as CrmBooking[];
+      rows.push(...batch);
+      if (batch.length < PROXIMITY_PAGE) break;
+    }
+    return {
+      scanned: sortBookingsByProximity(rows, today),
+      archived: [] as CrmBooking[],
+      count: count ?? rows.length,
+      error,
+    };
   }
 
   const listResult = q
@@ -93,15 +132,17 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
           error: main.error || archived.error,
         };
       })()
-    : await (async () => {
-        const main = await ordered(state === "archive", true).range(from, to);
-        return {
-          scanned: (main.data || []) as CrmBooking[],
-          archived: [] as CrmBooking[],
-          count: main.count,
-          error: main.error,
-        };
-      })();
+    : order.proximity
+      ? await loadByProximity(state === "archive")
+      : await (async () => {
+          const main = await ordered(state === "archive", true).range(from, to);
+          return {
+            scanned: (main.data || []) as CrmBooking[],
+            archived: [] as CrmBooking[],
+            count: main.count,
+            error: main.error,
+          };
+        })();
   // Lecture en échec : la page d’erreur (« Réessayer ») plutôt qu’un faux « Aucune réservation trouvée ».
   if (listResult.error) {
     console.error("[admin/reservations]", listResult.error.code ?? "?", listResult.error.message ?? "");
@@ -171,14 +212,17 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
       })
     );
   }
-  const matched = q ? listResult.scanned.filter((row) => smartSearchMatch(q, searchText.get(row.id))) : listResult.scanned;
+  const matchedRaw = q
+    ? listResult.scanned.filter((row) => smartSearchMatch(q, searchText.get(row.id)))
+    : listResult.scanned;
+  const matched = q && order.proximity ? sortBookingsByProximity(matchedRaw, today) : matchedRaw;
   const total = q ? matched.length : (listResult.count ?? matched.length);
   // `?page=999` : on renvoie sur la dernière page plutôt qu’un résumé « 301-312 » au-dessus d’une liste vide.
   const lastPage = pageOverflow(page, total);
   if (lastPage != null) {
-    redirect(listHref("/admin/reservations", { q, etat: state, tri: sort === "depart" ? null : sort }, lastPage));
+    redirect(listHref("/admin/reservations", { q, etat: state, tri: bookingSortParam(sort) }, lastPage));
   }
-  const rows = q ? matched.slice(from, to + 1) : matched;
+  const rows = q || order.proximity ? matched.slice(from, to + 1) : matched;
   const hiddenArchiveHits =
     q && state !== "archive"
       ? listResult.archived.filter((row) => smartSearchMatch(q, searchText.get(row.id))).length

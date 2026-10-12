@@ -46,7 +46,7 @@ export function adminTodoLines(input: {
       id: "depart-tomorrow",
       count: input.departTomorrow,
       label: `${plural(input.departTomorrow, "départ", "départs")} demain`,
-      href: "/admin/reservations?etat=a-venir&tri=depart-asc",
+      href: "/admin/reservations?etat=a-venir",
     },
     {
       id: "expiring",

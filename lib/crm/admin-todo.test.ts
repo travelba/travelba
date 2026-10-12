@@ -20,7 +20,7 @@ test("la liste À faire suit l’ordre du travail et cache les zéros", () => {
   assert.equal(lines[1].href, "/admin/formalites");
   assert.equal(lines[2].label, "1 service à confirmer");
   assert.equal(lines[2].href, "/admin/services");
-  assert.equal(lines[3].href, "/admin/reservations?etat=a-venir&tri=depart-asc");
+  assert.equal(lines[3].href, "/admin/reservations?etat=a-venir");
   assert.equal(adminTodoTotal(lines), 7);
 });
 
