@@ -8,7 +8,7 @@ import { HotelThread } from "@/components/admin/HotelThread";
 import { PrecheckPack } from "@/components/admin/PrecheckPack";
 import { hotelDisplayName } from "@/lib/crm/carnet";
 import { shownPersonName } from "@/lib/crm/identity";
-import { hotelSendDefaults, hotelSendPeople, hotelStayChecklist, hotelTripChecklist, type HotelMailPiece } from "@/lib/crm/hotel-desk";
+import { applyHotelSalutation, hotelSendDefaults, hotelSendPeople, hotelStayChecklist, hotelTripChecklist, signHotelLetter, type HotelMailPiece } from "@/lib/crm/hotel-desk";
 import { applyPaymentLinkChoice, hotelLanguage, principalGuest } from "@/lib/crm/hotel-arrival";
 import { hotelContact } from "@/lib/crm/hotel-contact";
 import { precheckParty } from "@/lib/crm/hotel-precheck";
@@ -60,6 +60,7 @@ export function HotelDesk({
   thread = [],
   attached = [],
   reference = "",
+  signatory = "",
   focusReply = false,
 }: {
   bookingId: string;
@@ -77,6 +78,7 @@ export function HotelDesk({
   thread?: CrmHotelThreadMessage[];
   attached?: HotelMailPiece[];
   reference?: string;
+  signatory?: string;
   focusReply?: boolean;
 }) {
   const rows = HOTEL_DESK_KINDS.map((kind) => requests.find((row) => row.booking_item_id === item.id && row.kind === kind)).filter(
@@ -175,6 +177,7 @@ export function HotelDesk({
           identityDocs={identityDocs}
           holder={holder}
           cardLast4={cardLast4}
+          signatory={signatory}
           onClose={() => setOpen(null)}
         />
       ) : null}
@@ -201,6 +204,7 @@ function HotelDeskEditor({
   identityDocs,
   holder,
   cardLast4,
+  signatory,
   onClose,
 }: {
   bookingId: string;
@@ -210,16 +214,21 @@ function HotelDeskEditor({
   identityDocs: CrmTravelDocument[];
   holder: { first_name: string; last_name: string } | null;
   cardLast4: string | null;
+  signatory: string;
   onClose: () => void;
 }) {
   const router = useRouter();
   const party = precheckParty(travelers, identityDocs, holder);
   const availableIds = party.flatMap((traveler) => traveler.pieces.map((piece) => piece.id));
-  const [subject, setSubject] = useState(row?.subject || "");
-  const [body, setBody] = useState(row?.body || "");
   const people = hotelSendPeople(item, row ? [row] : []);
+  const letterLang = hotelLanguage(hotelContact(item).country);
+  const initialRecipients = row ? hotelSendDefaults(item, [row]) : [];
+  const [subject, setSubject] = useState(row?.subject || "");
+  const [body, setBody] = useState(() =>
+    signHotelLetter(applyHotelSalutation(row?.body || "", letterLang, people, initialRecipients), signatory)
+  );
   const [picked, setPicked] = useState<string[] | null>(null);
-  const recipients = picked ?? (row ? hotelSendDefaults(item, [row]) : []);
+  const recipients = picked ?? initialRecipients;
   const [chargeCard, setChargeCard] = useState(row?.card_choice === "pliant");
   const [pieceIds, setPieceIds] = useState<string[]>(() =>
     row?.identity_picked ? (row.identity_document_ids || []).filter((id) => availableIds.includes(id)) : availableIds
@@ -228,7 +237,6 @@ function HotelDeskEditor({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   if (!row) return null;
-  const letterLang = hotelLanguage(hotelContact(item).country);
   const cardChoice = row.kind === "payment_link" ? (chargeCard ? "pliant" : null) : "pliant";
 
   async function run(action: "save" | "send" | "skip", next = recipients, pieces = pieceIds) {
@@ -308,7 +316,15 @@ function HotelDeskEditor({
           Prélever sur la carte
         </label>
       ) : null}
-      <HotelMailTo people={people} selected={recipients} onChange={setPicked} fieldClassName={letterFieldClass} />
+      <HotelMailTo
+        people={people}
+        selected={recipients}
+        onChange={(next) => {
+          setPicked(next);
+          setBody((current) => applyHotelSalutation(current, letterLang, people, next));
+        }}
+        fieldClassName={letterFieldClass}
+      />
       <label className="block text-xs font-semibold text-[#0B192C]">
         Objet
         <input className={`${letterFieldClass} mt-1`} value={subject} onChange={(event) => setSubject(event.target.value)} />

@@ -1,5 +1,5 @@
 import { redactCardLinks } from "./card-link-text";
-import { hotelCityLine, hotelDisplayName, itemClock, nightsBetween } from "./carnet";
+import { detailList, hotelCityLine, hotelDisplayName, hotelRooms, itemClock, nightsBetween } from "./carnet";
 import { hotelContact, leHotelIdFromItem, type HotelContact } from "./hotel-contact";
 import {
   businessDaysBefore,
@@ -8,13 +8,18 @@ import {
   formatStayDate,
   hotelChannel,
   hotelLanguage,
+  hotelLetterSubject,
   hotelMailFrame,
+  hotelSalutation,
   isoDate,
   linkRequestMail,
   nextBusinessDay,
   parisIsoDate,
   paymentUrlFromText,
+  welcomeRequest,
 } from "./hotel-arrival";
+import { greetingGivenName } from "./identity";
+import { isPlaceholderTraveler } from "./person-match";
 import type { CrmBookingItem, CrmHotelMessage, CrmHotelRequest, CrmHotelThreadMessage, HotelDeskKind, HotelDeskStatus } from "./types";
 import { HOTEL_DESK_KINDS } from "./types";
 
@@ -25,7 +30,7 @@ export const HOTEL_DESK_LABELS: Record<HotelDeskKind, string> = {
   payment_link: "Lien de paiement",
   upgrade: "Upgrade et accueil",
   precheckin: "Pré-check-in",
-  full_credit: "Full credit",
+  full_credit: "Note de la maison",
   transfer: "Transfert",
   concierge: "Concierge",
 };
@@ -379,7 +384,7 @@ function flightLine(item: CrmBookingItem, lang: "fr" | "en") {
   return [number, route, [date, clock].filter(Boolean).join(" ")].filter(Boolean).join(" · ");
 }
 
-export function transferCues(items: CrmBookingItem[], hotel: CrmBookingItem, lang: "fr" | "en") {
+function stayFlights(items: CrmBookingItem[], hotel: CrmBookingItem) {
   const checkIn = isoDate(hotel.start_at);
   const checkOut = isoDate(hotel.end_at) || checkIn;
   const flights = items.filter((item) => item.kind === "flight" && item.start_at);
@@ -389,10 +394,14 @@ export function transferCues(items: CrmBookingItem[], hotel: CrmBookingItem, lan
   const departure = flights
     .filter((item) => checkOut && isoDate(item.start_at) >= checkOut)
     .sort((a, b) => (a.start_at || "").localeCompare(b.start_at || ""))[0];
-  const missing = lang === "fr" ? "à préciser" : "to be confirmed";
+  return { arrival, departure };
+}
+
+export function transferCues(items: CrmBookingItem[], hotel: CrmBookingItem, lang: "fr" | "en") {
+  const { arrival, departure } = stayFlights(items, hotel);
   return {
-    arrival: arrival ? flightLine(arrival, lang) : missing,
-    departure: departure ? flightLine(departure, lang) : missing,
+    arrival: arrival ? flightLine(arrival, lang) : "",
+    departure: departure ? flightLine(departure, lang) : "",
   };
 }
 
@@ -402,10 +411,105 @@ export type HotelDeskDraftInput = {
   items: CrmBookingItem[];
   reference: string;
   guest: string;
+  companions?: string[];
+  /** Nom complet de l'agent : seul le prénom est signé. */
+  signatory?: string;
   currency: string;
   holidays: string[];
   relance?: boolean;
 };
+
+/** Les autres voyageurs nommés. Le titulaire et les « Adulte 1 » n'y sont pas. */
+export function companionNames(
+  travelers: { first_name: string | null; last_name: string | null }[],
+  guest: string
+) {
+  const lead = guest.trim().toLocaleLowerCase("fr");
+  const names: string[] = [];
+  for (const row of travelers) {
+    if (isPlaceholderTraveler(row.first_name, row.last_name)) continue;
+    const name = [row.first_name, row.last_name]
+      .map((part) => (part || "").trim())
+      .filter(Boolean)
+      .join(" ");
+    if (!name) continue;
+    const key = name.toLocaleLowerCase("fr");
+    if (lead && key === lead) continue;
+    if (names.some((existing) => existing.toLocaleLowerCase("fr") === key)) continue;
+    names.push(name);
+  }
+  return names;
+}
+
+const LETTER_PURPOSE: Record<HotelDeskKind, { fr: string; en: string }> = {
+  payment_link: { fr: "Lien de paiement", en: "Payment link" },
+  upgrade: { fr: "Accueil", en: "Arrival" },
+  precheckin: { fr: "Pré-enregistrement", en: "Pre-check-in" },
+  full_credit: { fr: "Note de la maison", en: "House account" },
+  transfer: { fr: "Transfert", en: "Transfer" },
+  concierge: { fr: "Concierge", en: "Concierge" },
+};
+
+/** Le nom, seulement quand une seule adresse est retenue et qu'on le connaît. */
+export function hotelLetterAddressee(people: DeskRosterPerson[], selected: string[]) {
+  const emails = recipientEmails(selected);
+  if (emails.length !== 1) return "";
+  const person = people.find((row) => row.email === emails[0]);
+  if (!person) return "";
+  return [person.firstName, person.lastName].filter(Boolean).join(" ").trim();
+}
+
+function rosterName(person: DeskRosterPerson) {
+  return [person.firstName, person.lastName].filter(Boolean).join(" ").trim();
+}
+
+function isTemplateSalutation(line: string, people: DeskRosterPerson[]) {
+  if (line === "Chère équipe," || line === "Dear team,") return true;
+  return people.some((person) => {
+    const name = rosterName(person);
+    return Boolean(name) && (line === `Bonjour ${name},` || line === `Dear ${name},`);
+  });
+}
+
+/** Prénom signé : le premier mot du nom de l'agent. Jean-Pierre reste entier. */
+export function hotelSignatoryName(fullName: string | null | undefined) {
+  return greetingGivenName(fullName) || "";
+}
+
+function isSignatoryLine(line: string) {
+  return /^[\p{L}][\p{L}'’-]*$/u.test(line.trim());
+}
+
+/** Pose le prénom de l'agent au-dessus de Travel Business Agency. Une formule réécrite reste. */
+export function signHotelLetter(text: string, fullName: string | null | undefined) {
+  const name = hotelSignatoryName(fullName);
+  if (!name) return text;
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const at = lines.lastIndexOf("Travel Business Agency");
+  if (at < 0) return text;
+  const previous = (lines[at - 1] || "").trim();
+  if (previous === name) return lines.join("\n");
+  if (isSignatoryLine(previous)) {
+    lines[at - 1] = name;
+    return lines.join("\n");
+  }
+  if (!previous) {
+    lines.splice(at, 0, name);
+    return lines.join("\n");
+  }
+  return text;
+}
+
+/** La première ligne suit les cases cochées, tant qu'elle est encore celle du modèle. */
+export function applyHotelSalutation(body: string, lang: "fr" | "en", people: DeskRosterPerson[], selected: string[]) {
+  const lines = body.split("\n");
+  const first = lines[0]?.trim() || "";
+  if (!isTemplateSalutation(first, people)) return body;
+  const next = hotelSalutation(lang, hotelLetterAddressee(people, selected));
+  if (first === next) return body;
+  lines[0] = next;
+  return lines.join("\n");
+}
 
 export function hotelDeskDraft(input: HotelDeskDraftInput) {
   const contact = hotelContact(input.item);
@@ -430,7 +534,9 @@ export function hotelDeskDraft(input: HotelDeskDraftInput) {
     guest,
     amount,
     nights,
-    cues: transferCues(input.items, input.item, lang),
+    addressee: hotelLetterAddressee(deskRoster(contact), hotelDeskRecipients(contact, input.kind)),
+    companions: input.companions || [],
+    signatory: greetingGivenName(input.signatory) || "",
   });
   const due = checkIn ? businessDaysBefore(checkIn, 2, new Set(input.holidays)) : null;
   return {
@@ -455,10 +561,13 @@ function letterFor(input: {
   guest: string;
   amount: string | null;
   nights: number | null;
+  addressee: string;
+  companions: string[];
+  signatory: string;
   checkIn?: string;
   relance?: boolean;
   item: CrmBookingItem;
-  cues: { arrival: string; departure: string };
+  items: CrmBookingItem[];
 }) {
   if (input.kind === "payment_link") {
     return linkRequestMail({
@@ -470,189 +579,187 @@ function letterFor(input: {
       checkOut: isoDate(input.item.end_at) || isoDate(input.item.start_at),
       amount: input.amount,
       relance: input.relance,
+      addressee: input.addressee,
+      signatory: input.signatory,
     });
   }
-  if (input.lang === "fr") return frenchLetter(input);
-  return englishLetter(input);
+  return houseLetter(input);
 }
 
-function frenchLetter(input: {
-  kind: HotelDeskKind;
+function englishJoin(labels: string[]) {
+  if (labels.length <= 1) return labels[0] || "";
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
+  return `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`;
+}
+
+function roomClause(item: CrmBookingItem, lang: "fr" | "en") {
+  const rooms = [...new Set(hotelRooms(item).map((row) => row.room).filter(Boolean))];
+  if (!rooms.length) return "";
+  if (lang === "fr") {
+    const bits = rooms.map((room) => (/^chambres?\b/i.test(room) ? room : `chambre ${room}`));
+    return `, en ${frenchJoin(bits)}`;
+  }
+  const bits = rooms.map((room) => (/^rooms?\b/i.test(room) ? room : `${room} room`));
+  return bits.length === 1 ? `, in a ${bits[0]}` : `, in the ${englishJoin(bits)}`;
+}
+
+function guestArrivalLine(input: {
+  lang: "fr" | "en";
+  guest: string;
   hotel: string;
-  stay: string;
+  from: string;
+  to: string;
+  ref: string;
+  room: string;
+  companions: string[];
+}) {
+  const guest = showGuestName(input.guest);
+  const ref = bookingToken(input.ref);
+  const withWhom = input.lang === "fr" ? frenchJoin(input.companions) : englishJoin(input.companions);
+  const party = withWhom ? (input.lang === "fr" ? `, avec ${withWhom}` : `, with ${withWhom}`) : "";
+  const refBit = ref ? ` (confirmation ${ref})` : "";
+  const who =
+    input.lang === "fr"
+      ? guest
+        ? `${guest}, qui compte parmi nos clients VIP,`
+        : "Notre invité, qui compte parmi nos clients VIP,"
+      : guest
+        ? `${guest}, one of our VIP clients,`
+        : "Our guest, one of our VIP clients,";
+  if (input.lang === "fr") {
+    const dates =
+      input.from && input.to && input.from !== input.to
+        ? `le ${input.from}, jusqu'au ${input.to}`
+        : input.from
+          ? `le ${input.from}`
+          : "";
+    return `${who} séjournera à ${input.hotel}${dates ? ` ${dates}` : ""}${refBit}${input.room}${party}.`;
+  }
+  const dates =
+    input.from && input.to && input.from !== input.to
+      ? `on ${input.from}, until ${input.to}`
+      : input.from
+        ? `on ${input.from}`
+        : "";
+  return `${who} will be staying at ${input.hotel}${dates ? ` ${dates}` : ""}${refBit}${input.room}${party}.`;
+}
+
+function flightMoment(item: CrmBookingItem, which: "start" | "end", lang: "fr" | "en") {
+  const iso = which === "end" ? item.end_at : item.start_at;
+  const day = isoDate(iso);
+  const clock = itemClock(iso);
+  const date = day ? formatStayDate(day, lang) : "";
+  if (!date && !clock) return "";
+  if (!clock) return date;
+  return lang === "fr" ? `${date} à ${clock}` : `${date} at ${clock}`;
+}
+
+/** Heure d'arrivée seulement si le vol la porte. Jamais l'heure de décollage à la place. */
+function describeFlight(item: CrmBookingItem | undefined, lang: "fr" | "en", role: "arrival" | "departure") {
+  if (!item) return "";
+  const number = detail(item, "flight_number");
+  const place = role === "arrival" ? detail(item, "to") : detail(item, "from");
+  const when = flightMoment(item, role === "arrival" ? "end" : "start", lang);
+  const bits = [number, place, when].filter(Boolean);
+  if (!bits.length) return "";
+  if (lang === "fr") return `${role === "arrival" ? "Vol d'arrivée" : "Vol de départ"} : ${bits.join(", ")}.`;
+  return `${role === "arrival" ? "Arrival flight" : "Departure flight"}: ${bits.join(", ")}.`;
+}
+
+function confirmedAttentions(item: CrmBookingItem, lang: "fr" | "en") {
+  const lines = detailList(item, "included").slice(0, 8);
+  if (!lines.length) return "";
+  return lang === "fr" ? `Les attentions déjà confirmées : ${lines.join(" · ")}.` : `Already confirmed: ${lines.join(" · ")}.`;
+}
+
+function houseLetter(input: {
+  kind: HotelDeskKind;
+  lang: "fr" | "en";
+  hotel: string;
   ref: string;
   guest: string;
   nights: number | null;
+  addressee: string;
+  companions: string[];
+  signatory: string;
   relance?: boolean;
-  cues: { arrival: string; departure: string };
+  item: CrmBookingItem;
+  items: CrmBookingItem[];
 }) {
-  const frame = hotelMailFrame("fr", input.relance);
-  const stayLine = `Notre client ${input.guest} séjourne à ${input.hotel}, du ${input.stay} (confirmation ${input.ref}).`;
+  const lang = input.lang;
+  const frame = hotelMailFrame(lang, input.relance, input.addressee, input.signatory);
+  const checkIn = isoDate(input.item.start_at);
+  const checkOut = isoDate(input.item.end_at) || checkIn;
+  const from = checkIn ? formatStayDate(checkIn, lang) : "";
+  const to = checkOut ? formatStayDate(checkOut, lang) : from;
+  const flights = stayFlights(input.items, input.item);
+  const arrival = guestArrivalLine({
+    lang,
+    guest: input.guest,
+    hotel: input.hotel,
+    from,
+    to,
+    ref: input.ref,
+    room: roomClause(input.item, lang),
+    companions: input.companions,
+  });
+  const lines = [...frame.open, "", arrival];
+  const inbound = describeFlight(flights.arrival, lang, "arrival");
+  if (input.kind !== "transfer" && inbound) lines.push(inbound);
+  lines.push("");
   if (input.kind === "upgrade") {
-    return {
-      subject: deskSubject("Accueil VIP", input.guest, input.hotel, input.ref, input.relance, "fr"),
-      text: [
-        ...frame.open,
-        "",
-        "Nous vous serions reconnaissants de signaler cette arrivée à vos équipes.",
-        "",
-        stayLine,
-        "",
-        "Nous vous prions de préparer un accueil VIP dans la chambre. Un surclassement, s'il peut être envisagé à l'arrivée selon les disponibilités de la maison, serait très apprécié.",
-        "",
-        ...frame.close,
-      ].join("\n"),
-    };
-  }
-  if (input.kind === "precheckin") {
-    return {
-      subject: deskSubject("Pré-enregistrement", input.guest, input.hotel, input.ref, input.relance, "fr"),
-      text: [
-        ...frame.open,
-        "",
-        `Nous vous prions de préparer l'enregistrement de ${input.guest} à ${input.hotel}, du ${input.stay} (confirmation ${input.ref}).`,
-        "",
-        "Les documents d'identité sont joints, afin que la chambre soit prête dès l'arrivée.",
-        "",
-        ...frame.close,
-      ].join("\n"),
-    };
-  }
-  if (input.kind === "full_credit") {
+    lines.push(welcomeRequest(lang));
+    const known = confirmedAttentions(input.item, lang);
+    if (known) lines.push("", known);
+  } else if (input.kind === "precheckin") {
+    lines.push(
+      lang === "fr"
+        ? "Si l'enregistrement pouvait être préparé à l'avance, afin que la chambre soit prête dès l'arrivée, ce serait une grande attention."
+        : "If the registration could be prepared ahead of time, so the room may be ready upon arrival, it would be a great kindness."
+    );
+    lines.push("", lang === "fr" ? "Vous trouverez les documents d'identité en pièce jointe." : "You will find the identity documents attached.");
+  } else if (input.kind === "full_credit") {
     const total =
       input.nights != null
-        ? ` soit ${formatArrivalAmount(input.nights * FULL_CREDIT_NIGHT_CENTS, "EUR")} pour ${input.nights} nuit${input.nights > 1 ? "s" : ""}`
+        ? lang === "fr"
+          ? `, soit ${formatArrivalAmount(input.nights * FULL_CREDIT_NIGHT_CENTS, "EUR")} pour ${input.nights} nuit${input.nights > 1 ? "s" : ""}`
+          : `, ${formatArrivalAmount(input.nights * FULL_CREDIT_NIGHT_CENTS, "EUR")} for ${input.nights} night${input.nights > 1 ? "s" : ""}`
         : "";
-    return {
-      subject: deskSubject("Full credit", input.guest, input.hotel, input.ref, input.relance, "fr"),
-      text: [
-        ...frame.open,
-        "",
-        `${stayLine} Le séjour est déjà réglé par l'agence.`,
-        "",
-        `Nous vous prions de prendre en charge les notes de notre client (restaurant, spa), à hauteur de 500 € par nuit${total}. Un lien de paiement ou une pré-autorisation à ce plafond conviendrait. La chambre n'est pas à encaisser une seconde fois.`,
-        "",
-        ...frame.close,
-      ].join("\n"),
-    };
+    lines.push(lang === "fr" ? "Le séjour est déjà réglé par l'agence." : "The stay has already been settled by the agency.");
+    lines.push(
+      "",
+      lang === "fr"
+        ? `Si la maison pouvait prendre en charge les notes (restaurant, spa), à hauteur de 500 € par nuit${total}, nous vous en serions très reconnaissants. Un lien de paiement ou une pré-autorisation à ce plafond nous irait parfaitement. Il ne serait pas nécessaire d'encaisser la chambre une seconde fois.`
+        : `If the house could look after the charges for dining and the spa, at 500 EUR per night${total}, we would be most grateful. A payment link or a pre-authorisation for this amount would suit us very well. There would be no need to charge the room a second time.`
+    );
+  } else if (input.kind === "transfer") {
+    lines.push(
+      lang === "fr"
+        ? "Si la maison pouvait organiser le transfert, nous vous en serions très reconnaissants."
+        : "If the house could arrange the transfer, we would be most grateful."
+    );
+    const outbound = describeFlight(flights.departure, lang, "departure");
+    if (inbound || outbound) lines.push("");
+    if (inbound) lines.push(inbound);
+    if (outbound) lines.push(outbound);
+  } else {
+    lines.push(
+      lang === "fr" ? "Nous nous permettons de vous demander :" : "We would be grateful for your help with the following:",
+      "…"
+    );
   }
-  if (input.kind === "transfer") {
-    return {
-      subject: deskSubject("Transfert", input.guest, input.hotel, input.ref, input.relance, "fr"),
-      text: [
-        ...frame.open,
-        "",
-        `Nous vous serions reconnaissants d'organiser le transfert de ${input.guest}, en séjour à ${input.hotel}, du ${input.stay} (confirmation ${input.ref}).`,
-        "",
-        `Arrivée : ${input.cues.arrival}`,
-        `Départ : ${input.cues.departure}`,
-        "",
-        ...frame.close,
-      ].join("\n"),
-    };
-  }
+  lines.push("", ...frame.close);
   return {
-    subject: deskSubject("Concierge", input.guest, input.hotel, input.ref, input.relance, "fr"),
-    text: [
-      ...frame.open,
-      "",
-      `Nous nous permettons de vous soumettre une demande pour ${input.guest}, en séjour à ${input.hotel}, du ${input.stay} (confirmation ${input.ref}).`,
-      "",
-      "Demande :",
-      "…",
-      "",
-      ...frame.close,
-    ].join("\n"),
-  };
-}
-
-function englishLetter(input: {
-  kind: HotelDeskKind;
-  hotel: string;
-  stay: string;
-  ref: string;
-  guest: string;
-  nights: number | null;
-  relance?: boolean;
-  cues: { arrival: string; departure: string };
-}) {
-  const frame = hotelMailFrame("en", input.relance);
-  const stayLine = `Our guest ${input.guest} is staying at ${input.hotel}, ${input.stay} (confirmation ${input.ref}).`;
-  if (input.kind === "upgrade") {
-    return {
-      subject: deskSubject("VIP welcome", input.guest, input.hotel, input.ref, input.relance, "en"),
-      text: [
-        ...frame.open,
-        "",
-        "We would be most grateful if you could note this arrival with your team on property.",
-        "",
-        stayLine,
-        "",
-        "Kindly arrange VIP welcome amenities in the room. An upgrade, should one be available upon arrival, would be greatly appreciated.",
-        "",
-        ...frame.close,
-      ].join("\n"),
-    };
-  }
-  if (input.kind === "precheckin") {
-    return {
-      subject: deskSubject("Pre-check-in", input.guest, input.hotel, input.ref, input.relance, "en"),
-      text: [
-        ...frame.open,
-        "",
-        `We would be grateful if you could prepare the registration of ${input.guest} at ${input.hotel}, ${input.stay} (confirmation ${input.ref}).`,
-        "",
-        "Identity documents are attached, so the room may be ready upon arrival.",
-        "",
-        ...frame.close,
-      ].join("\n"),
-    };
-  }
-  if (input.kind === "full_credit") {
-    const total =
-      input.nights != null
-        ? `, ${formatArrivalAmount(input.nights * FULL_CREDIT_NIGHT_CENTS, "EUR")} for ${input.nights} night${input.nights > 1 ? "s" : ""}`
-        : "";
-    return {
-      subject: deskSubject("Full credit", input.guest, input.hotel, input.ref, input.relance, "en"),
-      text: [
-        ...frame.open,
-        "",
-        `${stayLine} The stay has already been settled by the agency.`,
-        "",
-        `We would be grateful if you could extend house credit for dining and the spa, at 500 EUR per night${total}. A payment link or a pre-authorisation for this amount would be welcome. Kindly do not charge the room again.`,
-        "",
-        ...frame.close,
-      ].join("\n"),
-    };
-  }
-  if (input.kind === "transfer") {
-    return {
-      subject: deskSubject("Transfer", input.guest, input.hotel, input.ref, input.relance, "en"),
-      text: [
-        ...frame.open,
-        "",
-        `We would be grateful if you could arrange a transfer for ${input.guest}, staying at ${input.hotel}, ${input.stay} (confirmation ${input.ref}).`,
-        "",
-        `Arrival: ${input.cues.arrival}`,
-        `Departure: ${input.cues.departure}`,
-        "",
-        ...frame.close,
-      ].join("\n"),
-    };
-  }
-  return {
-    subject: deskSubject("Concierge", input.guest, input.hotel, input.ref, input.relance, "en"),
-    text: [
-      ...frame.open,
-      "",
-      `We would be grateful for your assistance with a request concerning ${input.guest}, staying at ${input.hotel}, ${input.stay} (confirmation ${input.ref}).`,
-      "",
-      "Request:",
-      "…",
-      "",
-      ...frame.close,
-    ].join("\n"),
+    subject: hotelLetterSubject({
+      lang,
+      label: LETTER_PURPOSE[input.kind][lang],
+      guest: input.guest,
+      hotel: input.hotel,
+      when: from,
+      ref: input.ref,
+      relance: input.relance,
+    }),
+    text: lines.join("\n"),
   };
 }
 
@@ -862,11 +969,6 @@ export function bookingToken(ref: string | null | undefined) {
   return value;
 }
 
-function deskSubject(label: string, guest: string, hotel: string, ref: string, relance?: boolean, lang: "fr" | "en" = "fr") {
-  const head = relance ? `${lang === "fr" ? "Relance" : "Follow-up"} — ${label}` : label;
-  return [head, showGuestName(guest), hotel, bookingToken(ref) || ref].filter(Boolean).join(" — ");
-}
-
 /** Lignes à poser sur un message libre : voyageur, puis réservation. */
 export function hotelIdentitySeed(input: { lang: "fr" | "en"; guest: string; ref: string }) {
   const lines = missingIdentityLines("", input);
@@ -882,8 +984,8 @@ export function ensureHotelMailIdentity(text: string, input: { lang: "fr" | "en"
   const lines = missingIdentityLines(text, input);
   if (!lines.length) return text.trim();
   const block = lines.join("\n");
-  const marker = input.lang === "fr" ? "Bien à vous," : "Best regards,";
-  const idx = text.lastIndexOf(marker);
+  const markers = input.lang === "fr" ? ["Avec nos remerciements,", "Bien à vous,"] : ["With our thanks,", "Best regards,"];
+  const idx = markers.reduce((at, marker) => Math.max(at, text.lastIndexOf(marker)), -1);
   if (idx >= 0) return `${text.slice(0, idx).trimEnd()}\n\n${block}\n\n${text.slice(idx).trimEnd()}`;
   return `${text.trimEnd()}\n\n${block}`;
 }

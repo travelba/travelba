@@ -252,9 +252,9 @@ test("mails : lien avec montant et référence, VIP avec attentions, carte seule
     checkOut: "2026-11-08",
     card: null,
   });
-  assert.match(vip.text, /VIP/);
-  assert.match(vip.text, /amenities/i);
+  assert.match(vip.text, /welcome note/);
   assert.match(vip.text, /upgrade/i);
+  assert.match(vip.text, /Travel Business Agency/);
   assert.doesNotMatch(vip.text, /4242/);
   const withCard = vipMail({ ...{
     lang: "fr" as const,
@@ -266,7 +266,8 @@ test("mails : lien avec montant et référence, VIP avec attentions, carte seule
   } });
   assert.match(withCard.text, /4242424242424242/);
   assert.match(withCard.text, /surclassement/);
-  assert.match(withCard.text, /accueil VIP/);
+  assert.match(withCard.text, /mot de bienvenue/);
+  assert.match(withCard.text, /Travel Business Agency/);
 });
 
 test("lien de paiement extrait de la réponse hôtel", () => {

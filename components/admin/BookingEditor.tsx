@@ -204,6 +204,7 @@ export function BookingEditor({
   shareCompanions = [],
   arrivals = [],
   hotelRequests = [],
+  hotelSignatory = "",
   hasCardCode = false,
   cardViews = [],
   attachedEmails = [],
@@ -249,6 +250,7 @@ export function BookingEditor({
   shareCompanions?: ShareCompanion[];
   arrivals?: CrmHotelArrival[];
   hotelRequests?: CrmHotelRequest[];
+  hotelSignatory?: string;
   hasCardCode?: boolean;
   cardViews?: CardViewLine[];
   attachedEmails?: {
@@ -1607,6 +1609,7 @@ export function BookingEditor({
         household={householdMembers(account || holderName, companions)}
         currency={booking.currency}
         hotelRequests={hotelRequests}
+        hotelSignatory={hotelSignatory}
         today={todayIsoDate()}
         travelers={travelers}
         identityDocs={identityDocs}

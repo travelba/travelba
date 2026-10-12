@@ -188,6 +188,7 @@ export function BookingItemsPanel({
   clientSettlesStay = false,
   onBindDraftSave,
   hotelRequests = [],
+  hotelSignatory = "",
   today = "",
   travelers = [],
   identityDocs = [],
@@ -208,6 +209,7 @@ export function BookingItemsPanel({
   items: CrmBookingItem[];
   stayVisible?: boolean;
   hotelRequests?: CrmHotelRequest[];
+  hotelSignatory?: string;
   today?: string;
   travelers?: CrmBookingTraveler[];
   identityDocs?: CrmTravelDocument[];
@@ -700,6 +702,7 @@ export function BookingItemsPanel({
                         thread={hotelThreadMessages}
                         attached={attachedEmails}
                         reference={reference || ""}
+                        signatory={hotelSignatory}
                         focusReply={openHotelItemId === item.id}
                       />
                     ) : null}
