@@ -15,6 +15,7 @@ import {
   entryDestination,
   entryDoorForPath,
   entryLinkExpiresAt,
+  withEntryShare,
   entryOptInFromLink,
   entryPreviewHtml,
   entryReopenDecision,
@@ -100,10 +101,12 @@ async function stayBehindCode(origin: string, code: string): Promise<{ stay: Ent
   }
 }
 
-export async function entryPreviewResponse(origin: string, code: string, enter = true) {
+export async function entryPreviewResponse(origin: string, code: string, enter = true, search = "") {
   const safe = isEntryCode(code) ? code : "00000000";
   const preview = isEntryCode(code) ? await stayBehindCode(origin, safe) : { stay: null, nextPath: null };
-  return new NextResponse(entryPreviewHtml(origin, safe, preview.stay, enter, entryDoorForPath(preview.nextPath)), {
+  return new NextResponse(
+    entryPreviewHtml(origin, safe, preview.stay, enter, entryDoorForPath(preview.nextPath), search),
+    {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "private, no-store",
@@ -116,7 +119,7 @@ export async function entryPreviewResponse(origin: string, code: string, enter =
  * Une session déjà ouverte passe sans consommer le jeton. Un lien révoqué, expiré ou ouvert
  * cinq fois n’ouvre rien. Dans son délai, un jeton consommé (aperçu, scanner d’e-mail) est régénéré.
  */
-export async function openEntry(origin: string, code: string) {
+export async function openEntry(origin: string, code: string, search = "") {
   const safe = isEntryCode(code) ? code : "";
   const link = safe ? await readEntryRow(safe) : null;
   if (!link?.token_hash) return entryPreviewResponse(origin, safe, false);
@@ -164,7 +167,7 @@ export async function openEntry(origin: string, code: string) {
     staff: Boolean(staff),
     mustSetPassword: mustSetPassword(user),
   });
-  response.headers.set("Location", new URL(dest, origin).toString());
+  response.headers.set("Location", withEntryShare(new URL(dest, origin), search));
   if (dest === "/connexion/mot-de-passe") {
     await stampMustSetPassword(user.id);
     response.cookies.set(PASSWORD_SETUP_COOKIE, "1", {
