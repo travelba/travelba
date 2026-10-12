@@ -634,18 +634,25 @@ export function hotelSalutation(lang: "fr" | "en", name?: string) {
   return lang === "fr" ? "Chère équipe," : "Dear team,";
 }
 
-/** Entrée et sortie : l'invité d'abord, une relance en une phrase, la signature Benjamin. */
-export function hotelMailFrame(lang: "fr" | "en", relance?: boolean, addressee?: string) {
+/** Entrée et sortie : l'invité d'abord, une relance en une phrase, le prénom de l'agent. */
+export function hotelMailFrame(lang: "fr" | "en", relance?: boolean, addressee?: string, signatory?: string) {
   const hello = hotelSalutation(lang, addressee);
+  const name = (signatory || "").trim();
+  const close = [
+    lang === "fr" ? "Avec nos remerciements," : "With our thanks,",
+    "",
+    ...(name ? [name] : []),
+    "Travel Business Agency",
+  ];
   if (lang === "fr") {
     return {
       open: relance ? [hello, "", "Nous n'avons pas encore reçu votre retour."] : [hello],
-      close: ["Avec nos remerciements,", "", "Benjamin", "Travel Business Agency"],
+      close,
     };
   }
   return {
     open: relance ? [hello, "", "We have not yet received your reply."] : [hello],
-    close: ["With our thanks,", "", "Benjamin", "Travel Business Agency"],
+    close,
   };
 }
 
@@ -707,12 +714,13 @@ export function linkRequestMail(input: {
   relance?: boolean;
   charge?: boolean;
   addressee?: string;
+  signatory?: string;
 }): ArrivalMail {
   const from = formatStayDate(input.checkIn, input.lang);
   const to = formatStayDate(input.checkOut, input.lang);
   const ref = input.reference || "—";
   const guest = showGuestName(input.guest);
-  const frame = hotelMailFrame(input.lang, input.relance, input.addressee);
+  const frame = hotelMailFrame(input.lang, input.relance, input.addressee, input.signatory);
   const request = input.charge ? paymentLinkCharge(input.lang) : paymentLinkAsk(input.lang);
   const label = input.lang === "fr" ? "Lien de paiement" : "Payment link";
   const subject = hotelLetterSubject({

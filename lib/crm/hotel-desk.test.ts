@@ -18,6 +18,8 @@ import {
   deskNeedsAttention,
   applyHotelSalutation,
   companionNames,
+  hotelSignatoryName,
+  signHotelLetter,
   hotelDeskDraft,
   ensureHotelMailIdentity,
   ensureHotelMailSubject,
@@ -152,7 +154,8 @@ test("anglais hors de France, transfert repris sur les vols", () => {
   const upgrade = hotelDeskDraft({ ...base, kind: "upgrade", item });
   assert.match(upgrade.body, /^Dear team,/);
   assert.match(upgrade.body, /welcome note/);
-  assert.match(upgrade.body, /Benjamin/);
+  assert.match(upgrade.body, /Travel Business Agency$/);
+  assert.doesNotMatch(upgrade.body, /Benjamin/);
   assert.match(upgrade.subject, /^Camille Martin — Arrival — The Leela/);
   assert.equal(upgrade.lang, "en");
   const flights: CrmBookingItem[] = [
@@ -220,7 +223,8 @@ test("l'accueil nomme la personne, la chambre, le vol et signe Benjamin", () => 
   assert.doesNotMatch(upgrade.body, /09h40/);
   assert.match(upgrade.body, /mot de bienvenue/);
   assert.match(upgrade.body, /Petit-déjeuner offert/);
-  assert.match(upgrade.body, /Benjamin\nTravel Business Agency$/);
+  assert.match(upgrade.body, /\nTravel Business Agency$/);
+  assert.doesNotMatch(upgrade.body, /Benjamin/);
   assert.match(upgrade.subject, /^Camille Martin — Accueil — Le Bristol — 4 novembre 2026 — HB-9$/);
   const plain = hotelDeskDraft({ ...base, kind: "upgrade", item: hotel() });
   assert.match(plain.body, /^Chère équipe,/);
@@ -243,6 +247,19 @@ test("l'accueil nomme la personne, la chambre, le vol et signe Benjamin", () => 
   assert.match(followUp.body, /Nous n'avons pas encore reçu votre retour\./);
   assert.doesNotMatch(followUp.body, /Travel Business Agency\.\n/);
   assert.match(followUp.subject, /^Relance — Camille Martin — Accueil/);
+});
+
+test("la signature est le prénom de l'agent qui envoie", () => {
+  const named = hotelDeskDraft({ ...base, kind: "upgrade", item: hotel(), signatory: "Camille Rossi" });
+  assert.match(named.body, /Camille\nTravel Business Agency$/);
+  assert.doesNotMatch(named.body, /Rossi/);
+  const swapped = signHotelLetter(named.body, "Jean-Pierre Martin");
+  assert.match(swapped, /Jean-Pierre\nTravel Business Agency$/);
+  assert.doesNotMatch(swapped, /Camille\nTravel Business Agency/);
+  const kept = signHotelLetter("Chère équipe,\n\nBien à vous,\nTravel Business Agency", "Camille Rossi");
+  assert.equal(kept, "Chère équipe,\n\nBien à vous,\nTravel Business Agency");
+  assert.equal(hotelSignatoryName("  Benjamin Boukris "), "Benjamin");
+  assert.equal(hotelSignatoryName(""), "");
 });
 
 test("une modification agence n'est pas écrasée", () => {

@@ -114,6 +114,7 @@ export async function POST(request: Request, ctx: Ctx) {
         recipients: Array.isArray(body?.recipients)
           ? body.recipients.filter((value): value is string => typeof value === "string")
           : undefined,
+        staffId: auth.staff.id,
       });
       return NextResponse.json({ ok: true });
     } catch (error) {

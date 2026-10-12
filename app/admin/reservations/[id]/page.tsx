@@ -20,7 +20,7 @@ import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import { isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
 import { loadClientLedger, type ClientLedgerView } from "@/lib/crm/client-ledger";
 import { syncStayCards } from "@/lib/crm/hotel-arrival-run";
-import { companionNames } from "@/lib/crm/hotel-desk";
+import { companionNames, hotelSignatoryName } from "@/lib/crm/hotel-desk";
 import { ensureHotelRequests, loadHotelThread, syncHotelDeskThreads, syncHotelMessages } from "@/lib/crm/hotel-desk-run";
 import { principalGuest } from "@/lib/crm/hotel-arrival";
 import { loadHotelContacts } from "@/lib/crm/hotel-contact-load";
@@ -63,7 +63,8 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
   const hotelQuery = (await searchParams).hotel;
   const hotel = Array.isArray(hotelQuery) ? hotelQuery[0] : hotelQuery;
   const openHotelItemId = hotel && /^[0-9a-f-]{36}$/i.test(hotel) ? hotel : null;
-  const { supabase } = await requireStaffPage();
+  const { supabase, staff } = await requireStaffPage();
+  const signatory = hotelSignatoryName(staff.full_name);
   const { data: booking } = await supabase.from("crm_bookings").select("*").eq("id", id).maybeSingle();
   if (!booking) notFound();
   const b = booking as CrmBooking;
@@ -197,6 +198,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
       currency: b.currency,
       guest: guestName,
       companions: companionNames(bookingTravelers, guestName),
+      signatory,
       items: bookingItems,
     });
     hotelMessages = await syncHotelMessages(arrivalAdmin, id);
@@ -337,6 +339,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           shareCompanions={shareCompanions}
           arrivals={arrivals}
           hotelRequests={hotelRequests}
+          hotelSignatory={signatory}
           hotelMessages={hotelMessages}
           hotelThreadMessages={hotelThreadMessages}
           openHotelItemId={openHotelItemId}

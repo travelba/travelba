@@ -7,7 +7,7 @@ import { HotelMailTo } from "@/components/admin/HotelMailTo";
 import { HotelThread } from "@/components/admin/HotelThread";
 import { PrecheckPack } from "@/components/admin/PrecheckPack";
 import { hotelDisplayName } from "@/lib/crm/carnet";
-import { applyHotelSalutation, hotelSendDefaults, hotelSendPeople, hotelStayChecklist, hotelTripChecklist, type HotelMailPiece } from "@/lib/crm/hotel-desk";
+import { applyHotelSalutation, hotelSendDefaults, hotelSendPeople, hotelStayChecklist, hotelTripChecklist, signHotelLetter, type HotelMailPiece } from "@/lib/crm/hotel-desk";
 import { applyPaymentLinkChoice, hotelLanguage, principalGuest } from "@/lib/crm/hotel-arrival";
 import { hotelContact } from "@/lib/crm/hotel-contact";
 import { precheckParty } from "@/lib/crm/hotel-precheck";
@@ -59,6 +59,7 @@ export function HotelDesk({
   thread = [],
   attached = [],
   reference = "",
+  signatory = "",
   focusReply = false,
 }: {
   bookingId: string;
@@ -76,6 +77,7 @@ export function HotelDesk({
   thread?: CrmHotelThreadMessage[];
   attached?: HotelMailPiece[];
   reference?: string;
+  signatory?: string;
   focusReply?: boolean;
 }) {
   const rows = HOTEL_DESK_KINDS.map((kind) => requests.find((row) => row.booking_item_id === item.id && row.kind === kind)).filter(
@@ -174,6 +176,7 @@ export function HotelDesk({
           identityDocs={identityDocs}
           holder={holder}
           cardLast4={cardLast4}
+          signatory={signatory}
           onClose={() => setOpen(null)}
         />
       ) : null}
@@ -200,6 +203,7 @@ function HotelDeskEditor({
   identityDocs,
   holder,
   cardLast4,
+  signatory,
   onClose,
 }: {
   bookingId: string;
@@ -209,6 +213,7 @@ function HotelDeskEditor({
   identityDocs: CrmTravelDocument[];
   holder: { first_name: string; last_name: string } | null;
   cardLast4: string | null;
+  signatory: string;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -218,7 +223,9 @@ function HotelDeskEditor({
   const letterLang = hotelLanguage(hotelContact(item).country);
   const initialRecipients = row ? hotelSendDefaults(item, [row]) : [];
   const [subject, setSubject] = useState(row?.subject || "");
-  const [body, setBody] = useState(() => applyHotelSalutation(row?.body || "", letterLang, people, initialRecipients));
+  const [body, setBody] = useState(() =>
+    signHotelLetter(applyHotelSalutation(row?.body || "", letterLang, people, initialRecipients), signatory)
+  );
   const [picked, setPicked] = useState<string[] | null>(null);
   const recipients = picked ?? initialRecipients;
   const [chargeCard, setChargeCard] = useState(row?.card_choice === "pliant");

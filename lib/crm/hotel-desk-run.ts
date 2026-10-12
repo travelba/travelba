@@ -40,6 +40,7 @@ import {
   outboundHotelLetter,
   ensureHotelMailIdentity,
   ensureHotelMailSubject,
+  signHotelLetter,
   replyWindowStartMs,
   subjectsToFollow,
 } from "./hotel-desk";
@@ -73,6 +74,7 @@ export async function ensureHotelRequests(
     currency: string;
     guest: string;
     companions?: string[];
+    signatory?: string;
     items: CrmBookingItem[];
     fetchImpl?: typeof fetch;
   }
@@ -98,6 +100,7 @@ export async function ensureHotelRequests(
         reference: input.reference,
         guest: input.guest,
         companions: input.companions,
+        signatory: input.signatory,
         currency: input.currency || "EUR",
         holidays,
       });
@@ -645,7 +648,7 @@ export async function sendHotelRequest(
   const identity = await loadMailIdentity(admin, input.bookingId, item);
   const followUp = row.status === "follow_up";
   const subject = (followUp ? input.subject.trim() : ensureHotelMailSubject(input.subject, identity)).slice(0, 300);
-  const stampedBody = ensureHotelMailIdentity(input.body, identity);
+  const stampedBody = signHotelLetter(ensureHotelMailIdentity(input.body, identity), await staffFullName(admin, input.staffId));
   const text = outboundHotelLetter(stampedBody, note);
   try {
     await deliverHotelMail({
@@ -691,14 +694,20 @@ export async function sendHotelRequest(
   });
 }
 
+async function staffFullName(admin: Admin, staffId?: string | null) {
+  if (!staffId) return "";
+  const { data } = await admin.from("crm_staff").select("full_name").eq("id", staffId).maybeSingle();
+  return ((data as { full_name?: string | null } | null)?.full_name || "").trim();
+}
+
 export async function sendHotelMessage(
   admin: Admin,
-  input: { bookingId: string; itemId: string; subject: string; body: string; recipients?: string[] }
+  input: { bookingId: string; itemId: string; subject: string; body: string; recipients?: string[]; staffId?: string | null }
 ) {
   const item = await loadItem(admin, input.bookingId, input.itemId);
   const identity = await loadMailIdentity(admin, input.bookingId, item);
   const subject = ensureHotelMailSubject(input.subject, identity);
-  const text = ensureHotelMailIdentity(input.body, identity).slice(0, 8000);
+  const text = signHotelLetter(ensureHotelMailIdentity(input.body, identity), await staffFullName(admin, input.staffId)).slice(0, 8000);
   if (!subject || !text.trim()) throw new Error("Écrivez l'objet et le message.");
   if (containsCardNumber(subject) || containsCardNumber(text)) {
     throw new Error("Le message ne peut pas contenir un numéro de carte.");

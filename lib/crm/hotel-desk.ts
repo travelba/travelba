@@ -18,6 +18,7 @@ import {
   paymentUrlFromText,
   welcomeRequest,
 } from "./hotel-arrival";
+import { greetingGivenName } from "./identity";
 import { isPlaceholderTraveler } from "./person-match";
 import type { CrmBookingItem, CrmHotelMessage, CrmHotelRequest, CrmHotelThreadMessage, HotelDeskKind, HotelDeskStatus } from "./types";
 import { HOTEL_DESK_KINDS } from "./types";
@@ -411,6 +412,8 @@ export type HotelDeskDraftInput = {
   reference: string;
   guest: string;
   companions?: string[];
+  /** Nom complet de l'agent : seul le prénom est signé. */
+  signatory?: string;
   currency: string;
   holidays: string[];
   relance?: boolean;
@@ -468,6 +471,35 @@ function isTemplateSalutation(line: string, people: DeskRosterPerson[]) {
   });
 }
 
+/** Prénom signé : le premier mot du nom de l'agent. Jean-Pierre reste entier. */
+export function hotelSignatoryName(fullName: string | null | undefined) {
+  return greetingGivenName(fullName) || "";
+}
+
+function isSignatoryLine(line: string) {
+  return /^[\p{L}][\p{L}'’-]*$/u.test(line.trim());
+}
+
+/** Pose le prénom de l'agent au-dessus de Travel Business Agency. Une formule réécrite reste. */
+export function signHotelLetter(text: string, fullName: string | null | undefined) {
+  const name = hotelSignatoryName(fullName);
+  if (!name) return text;
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const at = lines.lastIndexOf("Travel Business Agency");
+  if (at < 0) return text;
+  const previous = (lines[at - 1] || "").trim();
+  if (previous === name) return lines.join("\n");
+  if (isSignatoryLine(previous)) {
+    lines[at - 1] = name;
+    return lines.join("\n");
+  }
+  if (!previous) {
+    lines.splice(at, 0, name);
+    return lines.join("\n");
+  }
+  return text;
+}
+
 /** La première ligne suit les cases cochées, tant qu'elle est encore celle du modèle. */
 export function applyHotelSalutation(body: string, lang: "fr" | "en", people: DeskRosterPerson[], selected: string[]) {
   const lines = body.split("\n");
@@ -504,6 +536,7 @@ export function hotelDeskDraft(input: HotelDeskDraftInput) {
     nights,
     addressee: hotelLetterAddressee(deskRoster(contact), hotelDeskRecipients(contact, input.kind)),
     companions: input.companions || [],
+    signatory: greetingGivenName(input.signatory) || "",
   });
   const due = checkIn ? businessDaysBefore(checkIn, 2, new Set(input.holidays)) : null;
   return {
@@ -530,6 +563,7 @@ function letterFor(input: {
   nights: number | null;
   addressee: string;
   companions: string[];
+  signatory: string;
   checkIn?: string;
   relance?: boolean;
   item: CrmBookingItem;
@@ -638,12 +672,13 @@ function houseLetter(input: {
   nights: number | null;
   addressee: string;
   companions: string[];
+  signatory: string;
   relance?: boolean;
   item: CrmBookingItem;
   items: CrmBookingItem[];
 }) {
   const lang = input.lang;
-  const frame = hotelMailFrame(lang, input.relance, input.addressee);
+  const frame = hotelMailFrame(lang, input.relance, input.addressee, input.signatory);
   const checkIn = isoDate(input.item.start_at);
   const checkOut = isoDate(input.item.end_at) || checkIn;
   const from = checkIn ? formatStayDate(checkIn, lang) : "";
