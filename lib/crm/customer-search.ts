@@ -41,6 +41,13 @@ function nationalPhoneDigits(value: string) {
   return d;
 }
 
+/** Annuaire : nom de famille d’abord, pour que la liste se lise de A à Z. */
+export function customerDirectoryName(c: Pick<CrmCustomer, "first_name" | "last_name">) {
+  const last = (c.last_name || "").trim();
+  const first = (c.first_name || "").trim();
+  return [last, first].filter(Boolean).join(" ") || "Client";
+}
+
 export function customerPickLabel(c: PickableCustomer) {
   const name = customerFullName(c);
   const company = c.company_name?.trim();
