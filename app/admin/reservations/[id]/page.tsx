@@ -17,6 +17,8 @@ import { markUkEtaNoticesSeen, syncUkEtaForBookingId } from "@/lib/crm/uk-eta-ru
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
+import { formatDateFr, formatMoney } from "@/lib/crm/money";
+import { revolutDebitLine } from "@/lib/crm/revolut-inbox";
 import { isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
 import { loadClientLedger, type ClientLedgerView } from "@/lib/crm/client-ledger";
 import { syncStayCards } from "@/lib/crm/hotel-arrival-run";
@@ -37,6 +39,7 @@ import type {
   CrmHotelMessage,
   CrmHotelRequest,
   CrmHotelThreadMessage,
+  CrmRevolutTransaction,
   CrmTravelDocument,
 } from "@/lib/crm/types";
 
@@ -303,6 +306,30 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     state: string | null;
   } | null;
 
+  let revolutExpenses: { id: string; label: string; amount: string }[] = [];
+  try {
+    const { data: outs, error: outsError } = await createServiceClient()
+      .from("crm_revolut_transactions")
+      .select("id, amount, currency, counterparty_name, reference, booked_at, raw, status, direction")
+      .eq("matched_booking_id", id)
+      .eq("direction", "debit")
+      .eq("status", "matched")
+      .order("booked_at", { ascending: false, nullsFirst: false });
+    if (!outsError) {
+      revolutExpenses = ((outs || []) as CrmRevolutTransaction[]).map((row) => {
+        const line = revolutDebitLine(row);
+        const when = line.bookedAt ? formatDateFr(line.bookedAt) : "";
+        return {
+          id: line.id,
+          label: [line.party, line.kind, when].filter(Boolean).join(" · "),
+          amount: `−${formatMoney(line.amount, line.currency)}`,
+        };
+      });
+    }
+  } catch {
+    revolutExpenses = [];
+  }
+
   return (
     <BookingEditor
           booking={b}
@@ -342,6 +369,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
             company_name: string | null;
             sort_order: number;
           }[]}
+          revolutExpenses={revolutExpenses}
           expenseBilling={bookingItems
             .filter((item) => isLedgerExpenseKind(item.kind))
             .map((item) => ({

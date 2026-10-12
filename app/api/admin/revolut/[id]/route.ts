@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
+import { isUuid } from "@/lib/crm/ids";
+import { applyRevolutExpense, revolutExpenseError } from "@/lib/crm/revolut-debit";
 import { applyRevolutToCustomer } from "@/lib/crm/revolut-match";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmRevolutTransaction } from "@/lib/crm/types";
@@ -17,20 +19,30 @@ export async function POST(request: Request, ctx: Ctx) {
     .select("*")
     .eq("id", id)
     .maybeSingle();
-  if (!row) return jsonError("Virement introuvable", 404);
+  if (!row) return jsonError("Mouvement introuvable", 404);
   const movement = row as CrmRevolutTransaction;
 
   if (body?.action === "ignore" || body?.action === "refuse") {
     if (movement.status === "matched") return jsonError("Déjà rapprochée");
-    const { error } = await admin
-      .from("crm_revolut_transactions")
-      .update({ status: "ignored" })
-      .eq("id", id);
+    const patch =
+      movement.direction === "debit"
+        ? { status: "ignored", settled_at: new Date().toISOString() }
+        : { status: "ignored" };
+    const { error } = await admin.from("crm_revolut_transactions").update(patch).eq("id", id);
     if (error) return jsonError("Impossible de refuser ce mouvement.", 400);
     return NextResponse.json({ ok: true });
   }
 
   const customerId = String(body?.customer_id || "");
+  if (movement.direction === "debit") {
+    const bookingId = String(body?.booking_id || "");
+    if (!isUuid(customerId) || !isUuid(bookingId)) {
+      return jsonError("Choisissez le client et la réservation.");
+    }
+    const result = await applyRevolutExpense(admin, movement, customerId, bookingId);
+    if (!result.ok) return jsonError(revolutExpenseError(result.error));
+    return NextResponse.json({ ok: true, reference: result.reference });
+  }
   if (!customerId) return jsonError("Client requis");
   const billingCompanyId = typeof body?.billing_company_id === "string" ? body.billing_company_id : null;
   const result = await applyRevolutToCustomer(admin, movement, customerId, billingCompanyId);

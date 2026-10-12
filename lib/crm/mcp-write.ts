@@ -12,6 +12,7 @@ import { customerEmailError, normalizeCustomerEmail, otherCustomerEmailBlock, CU
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
 import { extraMomentOf, extraPlaceOf, extraServiceLeg } from "@/lib/crm/extras";
+import { applyRevolutExpense, revolutExpenseError } from "@/lib/crm/revolut-debit";
 import { applyRevolutToCustomer } from "@/lib/crm/revolut-match";
 import { applyStripeToCustomer } from "@/lib/crm/stripe-match";
 import {
@@ -102,6 +103,14 @@ export function prepareRevolutCredit(input: Record<string, unknown>) {
   return {
     virementId: uuid(input.virement_id, "Virement"),
     clientId: uuid(input.client_id, "Client"),
+  };
+}
+
+export function prepareRevolutExpense(input: Record<string, unknown>) {
+  return {
+    depenseId: uuid(input.depense_id, "Dépense"),
+    clientId: uuid(input.client_id, "Client"),
+    dossierId: uuid(input.dossier_id, "Dossier"),
   };
 }
 
@@ -309,6 +318,28 @@ export async function creditRevolutTransfer(input: Record<string, unknown>, admi
       montant: posted.amount ?? null,
       devise: posted.currency ?? movement.currency,
       source: "revolut",
+    },
+  };
+}
+
+export async function matchRevolutExpense(input: Record<string, unknown>, admin?: McpAdmin) {
+  const { depenseId, clientId, dossierId } = prepareRevolutExpense(input);
+  const db = client(admin);
+  const { data: row, error } = await db
+    .from("crm_revolut_transactions")
+    .select("*")
+    .eq("id", depenseId)
+    .maybeSingle();
+  if (error) failDb(error, "Dépense introuvable.");
+  if (!row) throw new McpWriteError("Dépense introuvable.");
+  const result = await applyRevolutExpense(db, row as CrmRevolutTransaction, clientId, dossierId);
+  if (!result.ok) throw new McpWriteError(revolutExpenseError(result.error));
+  return {
+    depense: {
+      id: depenseId,
+      client_id: clientId,
+      dossier_id: dossierId,
+      reference: result.reference,
     },
   };
 }

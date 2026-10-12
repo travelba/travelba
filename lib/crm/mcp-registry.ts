@@ -22,6 +22,7 @@ import {
   creditManualTransfer,
   creditRevolutTransfer,
   creditStripePayment,
+  matchRevolutExpense,
   McpWriteError,
   publishCarnet,
   settleEmail,
@@ -161,7 +162,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "revolut_debits",
     description:
-      "Sorties du compte Revolut (virements, cartes, frais). Lecture seule : ne crédite pas un client.",
+      "Sorties du compte Revolut. Celles à rapprocher ont un id pour rapprocher_depense_revolut. Ne crédite pas un client.",
     run: () => readRevolutDebits(),
   },
   {
@@ -208,6 +209,18 @@ export const MCP_TOOLS: ToolDef[] = [
       client_id: z.string().trim().describe("Identifiant du client à créditer"),
     },
     run: (args) => creditRevolutTransfer(args),
+  },
+  {
+    name: "rapprocher_depense_revolut",
+    write: true,
+    description:
+      "Rattache une sortie Revolut au client et au dossier désignés. Les trois identifiants sont obligatoires. Ne crédite pas le client et n’écrit pas le montant dans son encours. Ne choisit pas à la place de l’agence.",
+    input: {
+      depense_id: z.string().trim().describe("Identifiant de la sortie Revolut"),
+      client_id: z.string().trim().describe("Identifiant du client"),
+      dossier_id: z.string().trim().describe("Identifiant de la réservation de ce client"),
+    },
+    run: (args) => matchRevolutExpense(args),
   },
   {
     name: "crediter_stripe",

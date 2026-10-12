@@ -19,7 +19,13 @@ export class CustomerDeleteError extends Error {
 async function releaseBankMatches(admin: SupabaseClient, customerId: string) {
   const { error: revolutError } = await admin
     .from("crm_revolut_transactions")
-    .update({ status: "unmatched", matched_customer_id: null, matched_transaction_id: null })
+    .update({
+      status: "unmatched",
+      matched_customer_id: null,
+      matched_transaction_id: null,
+      matched_booking_id: null,
+      settled_at: null,
+    })
     .eq("matched_customer_id", customerId);
   if (revolutError) throw new CustomerDeleteError(revolutError.message);
   const { error: stripeError } = await admin

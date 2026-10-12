@@ -8,7 +8,9 @@ import { revolutDebitEmptyMessage, revolutInboxEmptyMessage } from "@/lib/crm/la
 import { revolutInboxCopy, type RevolutDebitLine } from "@/lib/crm/revolut-inbox";
 import { StatusChip } from "@/components/crm/ui";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { BookingPickDialog, type RevolutBookingChoice } from "@/components/admin/BookingPickDialog";
 import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
+import Link from "next/link";
 import { Icon } from "@/components/crm/icons";
 import {
   customerPickLabel,
@@ -57,9 +59,17 @@ export function RevolutInbox({
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [accountFor, setAccountFor] = useState<Record<string, string>>({});
   const [pickerRow, setPickerRow] = useState<string | null>(null);
+  const [pickerKind, setPickerKind] = useState<"credit" | "debit">("credit");
+  const [bookingRow, setBookingRow] = useState<string | null>(null);
+  const [debitCustomer, setDebitCustomer] = useState<Record<string, string>>({});
+  const [debitBooking, setDebitBooking] = useState<Record<string, RevolutBookingChoice>>({});
   const [scope, setScope] = useState<"unmatched" | "all">("unmatched");
+  const [debitScope, setDebitScope] = useState<"unmatched" | "all">("unmatched");
   const [view, setView] = useState<"credits" | "debits">("credits");
   const shown = scope === "unmatched" ? rows.filter((row) => row.status === "unmatched") : rows;
+  const shownDebits =
+    debitScope === "unmatched" ? debits.filter((line) => line.status === "unmatched") : debits;
+  const openDebits = debits.filter((line) => line.status === "unmatched").length;
 
   const byId = useMemo(
     () => new Map(customers.map((c) => [c.id, c])),
@@ -156,6 +166,28 @@ export function RevolutInbox({
     setMessage(`Crédit enregistré : ${formatMoney(gross, currency)}.`);
   }
 
+  async function matchDebit(id: string) {
+    const customerId = debitCustomer[id] || "";
+    const booking = debitBooking[id];
+    if (!customerId || !booking) {
+      setError("Choisissez le client et la réservation.");
+      if (!customerId) {
+        setPickerKind("debit");
+        setPickerRow(id);
+      } else {
+        setBookingRow(id);
+      }
+      return;
+    }
+    const ok = await post(
+      id,
+      { customer_id: customerId, booking_id: booking.id },
+      "Rapprochement impossible. Réessayez."
+    );
+    if (!ok) return;
+    setMessage(`Dépense rattachée à ${booking.reference}.`);
+  }
+
   return (
     <div className="space-y-4">
       {!hasClientId ? (
@@ -194,18 +226,26 @@ export function RevolutInbox({
           <p className="text-sm text-muted">
             {view === "credits"
               ? "Crédits reçus — Valider ou Refuser. Rien n’est crédité sans ce clic."
-              : "Sorties du compte. Un débit ne crédite pas un client."}
+              : "Sorties — client et réservation, puis Valider. Le montant ne crédite pas le client."}
           </p>
         ) : null}
-        {view === "credits" ? (
-          <button
-            type="button"
-            onClick={() => setScope((current) => (current === "unmatched" ? "all" : "unmatched"))}
-            className="rounded-full border border-border px-4 py-2 text-sm font-semibold text-[var(--admin-navy)]"
-          >
-            {scope === "unmatched" ? "Voir tous les crédits" : "Seulement à rapprocher"}
-          </button>
-        ) : null}
+        <button
+          type="button"
+          onClick={() =>
+            view === "credits"
+              ? setScope((current) => (current === "unmatched" ? "all" : "unmatched"))
+              : setDebitScope((current) => (current === "unmatched" ? "all" : "unmatched"))
+          }
+          className="rounded-full border border-border px-4 py-2 text-sm font-semibold text-[var(--admin-navy)]"
+        >
+          {view === "credits"
+            ? scope === "unmatched"
+              ? "Voir tous les crédits"
+              : "Seulement à rapprocher"
+            : debitScope === "unmatched"
+              ? "Voir toutes les sorties"
+              : "Seulement à rapprocher"}
+        </button>
       </div>
       <div
         className="grid grid-cols-2 gap-1 rounded-full bg-[#e9e8e5] p-1"
@@ -214,10 +254,10 @@ export function RevolutInbox({
       >
         {(
           [
-            ["credits", "Crédits"],
-            ["debits", "Débits"],
-          ] as const
-        ).map(([id, label]) => {
+            { id: "credits" as const, label: "Crédits" },
+            { id: "debits" as const, label: openDebits ? `Débits (${openDebits})` : "Débits" },
+          ]
+        ).map(({ id, label }) => {
           const selected = view === id;
           return (
             <button
@@ -246,21 +286,105 @@ export function RevolutInbox({
         hidden={view !== "debits"}
         className="admin-af-card divide-y divide-border rounded-3xl"
       >
-          {debits.map((line) => (
-            <li key={line.id} className="px-5 py-4">
-              <p className="font-medium">
-                {line.party} · −{formatMoney(line.amount, line.currency)}
-              </p>
-              <p className="text-xs text-muted">
-                {formatDateFr(line.bookedAt)}
-                {` · ${line.kind}`}
-                {line.reference ? ` · ${line.reference}` : ""}
-              </p>
-            </li>
-          ))}
-          {!debits.length ? (
+          {shownDebits.map((line) => {
+            const customerId = debitCustomer[line.id] || "";
+            const customer = customerId ? byId.get(customerId) : undefined;
+            const booking = debitBooking[line.id];
+            return (
+              <li key={line.id} className="px-5 py-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <p className="font-medium">
+                      {line.party} · −{formatMoney(line.amount, line.currency)}
+                    </p>
+                    <p className="text-xs text-muted">
+                      {formatDateFr(line.bookedAt)}
+                      {` · ${line.kind}`}
+                      {line.reference ? ` · ${line.reference}` : ""}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusChip tone={revolutStatusTone(line.status)}>
+                        {revolutStatusLabel(line.status)}
+                      </StatusChip>
+                      {line.status === "matched" && line.bookingId ? (
+                        <Link
+                          href={`/admin/reservations/${line.bookingId}`}
+                          className="text-xs font-semibold text-[#9e7e51]"
+                        >
+                          {[line.customerLabel, line.bookingLabel].filter(Boolean).join(" · ")}
+                        </Link>
+                      ) : line.status === "matched" ? (
+                        <span className="text-xs font-semibold text-[#9e7e51]">
+                          {line.customerLabel || "Client"} · Dossier retiré
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                  {line.status === "unmatched" ? (
+                    <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+                      <div className="w-full">
+                        <BusyBar active={rowBusy === line.id} label="Rapprochement…" />
+                      </div>
+                      <button
+                        type="button"
+                        disabled={rowBusy === line.id}
+                        onClick={() => {
+                          setPickerKind("debit");
+                          setPickerRow(line.id);
+                        }}
+                        aria-haspopup="dialog"
+                        aria-expanded={pickerRow === line.id && pickerKind === "debit"}
+                        aria-label="Choisir le client de la dépense"
+                        className="inline-flex w-full items-center justify-between gap-2 rounded-xl border border-border bg-white px-3 py-2 text-left text-sm text-[var(--admin-navy)] sm:min-w-[12rem] sm:max-w-xs sm:w-auto"
+                      >
+                        <span className="min-w-0 truncate">
+                          {customer ? customerPickLabel(customer) : "Choisir un client…"}
+                        </span>
+                        <Icon name="search" className="h-4 w-4 shrink-0 text-muted" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={rowBusy === line.id || !customerId}
+                        onClick={() => setBookingRow(line.id)}
+                        aria-haspopup="dialog"
+                        aria-expanded={bookingRow === line.id}
+                        aria-label="Choisir la réservation"
+                        className="inline-flex w-full items-center justify-between gap-2 rounded-xl border border-border bg-white px-3 py-2 text-left text-sm text-[var(--admin-navy)] disabled:opacity-50 sm:min-w-[12rem] sm:max-w-xs sm:w-auto"
+                      >
+                        <span className="min-w-0 truncate">
+                          {booking ? booking.label : "Choisir une réservation…"}
+                        </span>
+                        <Icon name="search" className="h-4 w-4 shrink-0 text-muted" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={rowBusy === line.id}
+                        className="admin-af-btn rounded-full px-3 py-1 text-sm"
+                        onClick={() => void matchDebit(line.id)}
+                      >
+                        {rowBusy === line.id ? "En cours…" : "Valider"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={rowBusy === line.id}
+                        className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-muted"
+                        onClick={() =>
+                          void post(line.id, { action: "refuse" }, "Impossible de refuser cette sortie.")
+                        }
+                      >
+                        Refuser
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
+          {!shownDebits.length ? (
             <li className="px-5 py-8 text-center text-sm text-muted">
-              {revolutDebitEmptyMessage({ configured, connected })}
+              {debits.length && debitScope === "unmatched"
+                ? "Aucune sortie à rapprocher."
+                : revolutDebitEmptyMessage({ configured, connected })}
             </li>
           ) : null}
       </ul>
@@ -309,7 +433,10 @@ export function RevolutInbox({
                     <button
                       type="button"
                       disabled={rowBusy === r.id}
-                      onClick={() => setPickerRow(r.id)}
+                      onClick={() => {
+                        setPickerKind("credit");
+                        setPickerRow(r.id);
+                      }}
                       aria-haspopup="dialog"
                       aria-expanded={pickerRow === r.id}
                       aria-label="Choisir le client à rapprocher"
@@ -392,15 +519,42 @@ export function RevolutInbox({
         open={Boolean(pickerRow)}
         customers={customers}
         suggestedIds={pickerRow ? (suggestions.get(pickerRow) || []).map((c) => c.customer_id) : []}
-        selectedId={pickerRow ? chosenFor(pickerRow) : ""}
-        title="Rapprocher vers un client"
+        selectedId={
+          pickerRow
+            ? pickerKind === "debit"
+              ? debitCustomer[pickerRow] || ""
+              : chosenFor(pickerRow)
+            : ""
+        }
+        title={pickerKind === "debit" ? "Choisir le client de la dépense" : "Rapprocher vers un client"}
         onSelect={(customer) => {
           if (!pickerRow) return;
-          setPicked((current) => ({ ...current, [pickerRow]: customer.id }));
-          setAccountFor((current) => ({ ...current, [pickerRow]: "" }));
+          if (pickerKind === "debit") {
+            setDebitCustomer((current) => ({ ...current, [pickerRow]: customer.id }));
+            setDebitBooking((current) => {
+              if (!current[pickerRow]) return current;
+              const next = { ...current };
+              delete next[pickerRow];
+              return next;
+            });
+          } else {
+            setPicked((current) => ({ ...current, [pickerRow]: customer.id }));
+            setAccountFor((current) => ({ ...current, [pickerRow]: "" }));
+          }
           setError(null);
         }}
         onClose={() => setPickerRow(null)}
+      />
+      <BookingPickDialog
+        open={Boolean(bookingRow)}
+        customerId={bookingRow ? debitCustomer[bookingRow] || "" : ""}
+        selectedId={bookingRow ? debitBooking[bookingRow]?.id || "" : ""}
+        onSelect={(booking) => {
+          if (!bookingRow) return;
+          setDebitBooking((current) => ({ ...current, [bookingRow]: booking }));
+          setError(null);
+        }}
+        onClose={() => setBookingRow(null)}
       />
     </div>
   );

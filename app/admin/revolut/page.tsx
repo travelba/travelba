@@ -3,7 +3,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { RevolutInbox } from "@/components/admin/RevolutInbox";
 import { AccountBalanceCard } from "@/components/admin/AccountBalance";
 import { loadRevolutAccountBalances, revolutClientId, revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
-import type { PickableCustomer } from "@/lib/crm/customer-search";
+import { customerPickLabel, type PickableCustomer } from "@/lib/crm/customer-search";
 import {
   REVOLUT_MATCH_SELECT,
   scoreRevolutMatches,
@@ -11,6 +11,7 @@ import {
   type RevolutMatchCustomer,
 } from "@/lib/crm/revolut-match";
 import { wireAccountChoices } from "@/lib/crm/funding-wallet";
+import { repairRevolutDebitQueue, revolutBookingPickLabel } from "@/lib/crm/revolut-debit";
 import { revolutDebitLine } from "@/lib/crm/revolut-inbox";
 import type { CrmRevolutTransaction } from "@/lib/crm/types";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
@@ -49,6 +50,7 @@ export default async function AdminRevolutPage({
   let rows: CrmRevolutTransaction[] = [];
   let debits: ReturnType<typeof revolutDebitLine>[] = [];
   try {
+    await repairRevolutDebitQueue(admin);
     const [credits, outs] = await Promise.all([
       admin
         .from("crm_revolut_transactions")
@@ -58,13 +60,50 @@ export default async function AdminRevolutPage({
         .limit(200),
       admin
         .from("crm_revolut_transactions")
-        .select("id, amount, currency, counterparty_name, reference, booked_at, raw")
+        .select(
+          "id, amount, currency, counterparty_name, reference, booked_at, raw, status, matched_customer_id, matched_booking_id"
+        )
         .eq("direction", "debit")
         .order("booked_at", { ascending: false, nullsFirst: false })
         .limit(200),
     ]);
     rows = (credits.data || []) as CrmRevolutTransaction[];
-    debits = ((outs.data || []) as CrmRevolutTransaction[]).map(revolutDebitLine);
+    const rawDebits = (outs.data || []) as (CrmRevolutTransaction & {
+      matched_customer_id: string | null;
+      matched_booking_id: string | null;
+    })[];
+    const bookingIds = [
+      ...new Set(rawDebits.map((row) => row.matched_booking_id).filter((id): id is string => Boolean(id))),
+    ];
+    const bookingLabels = new Map<string, string>();
+    if (bookingIds.length) {
+      const { data: stays } = await admin
+        .from("crm_bookings")
+        .select("id, reference, title, destination, start_date, visible_to_client, archived_at")
+        .in("id", bookingIds);
+      for (const stay of (stays || []) as {
+        id: string;
+        reference: string;
+        title: string | null;
+        destination: string | null;
+        start_date: string | null;
+        visible_to_client: boolean | null;
+        archived_at: string | null;
+      }[]) {
+        bookingLabels.set(stay.id, revolutBookingPickLabel(stay));
+      }
+    }
+    const names = new Map(customers.map((customer) => [customer.id, customerPickLabel(customer)]));
+    debits = rawDebits.map((row) =>
+      revolutDebitLine({
+        ...row,
+        customerLabel: row.matched_customer_id ? names.get(row.matched_customer_id) || "Client" : "",
+        bookingId: row.matched_booking_id,
+        bookingLabel: row.matched_booking_id
+          ? bookingLabels.get(row.matched_booking_id) || "Dossier retiré"
+          : "",
+      })
+    );
   } catch {
     rows = [];
     debits = [];
@@ -99,7 +138,7 @@ export default async function AdminRevolutPage({
       <PageEyebrow>Espace agence</PageEyebrow>
       <PageTitle
         title="Revolut"
-        subtitle="Virements reçus à rapprocher. Les sorties du compte sont dans l’onglet Débits : elles ne créditent pas un client."
+        subtitle="Virements reçus à rapprocher. Les sorties se rattachent à un client et une réservation : elles ne créditent pas le client."
       />
       <div className="mt-6 space-y-4">
         {balance ? <AccountBalanceCard pockets={balance} /> : null}

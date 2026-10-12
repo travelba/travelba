@@ -664,28 +664,67 @@ export async function readRevolutEnAttente() {
   };
 }
 
+const DEBIT_STATE: Record<string, string> = {
+  unmatched: "à rapprocher",
+  matched: "rapprochée",
+  ignored: "refusée",
+};
+
 export async function readRevolutDebits() {
   const admin = db();
   const { data, error } = await admin
     .from("crm_revolut_transactions")
-    .select("id, amount, currency, counterparty_name, reference, booked_at, raw, direction")
+    .select(
+      "id, amount, currency, counterparty_name, reference, booked_at, raw, direction, status, matched_customer_id, matched_booking_id"
+    )
     .eq("direction", "debit")
+    .order("status", { ascending: false })
     .order("booked_at", { ascending: false, nullsFirst: false })
     .limit(INBOX_LIMIT);
   if (error) {
     logRead("revolut-debits", error);
     throw new Error("Lecture impossible.");
   }
-  const lines = ((data || []) as CrmRevolutTransaction[]).map(revolutDebitLine);
+  const rows = (data || []) as CrmRevolutTransaction[];
+  const customerIds = [
+    ...new Set(rows.map((row) => row.matched_customer_id).filter((id): id is string => Boolean(id))),
+  ];
+  const bookingIds = [
+    ...new Set(rows.map((row) => row.matched_booking_id).filter((id): id is string => Boolean(id))),
+  ];
+  const [people, stays] = await Promise.all([
+    customerIds.length
+      ? admin.from("crm_customers").select("id, first_name, last_name").in("id", customerIds)
+      : Promise.resolve({ data: [] as { id: string; first_name: string | null; last_name: string | null }[] }),
+    bookingIds.length
+      ? admin.from("crm_bookings").select("id, reference").in("id", bookingIds)
+      : Promise.resolve({ data: [] as { id: string; reference: string }[] }),
+  ]);
+  const names = new Map(
+    ((people.data || []) as { id: string; first_name: string | null; last_name: string | null }[]).map((row) => [
+      row.id,
+      customerFullName({ first_name: row.first_name || "", last_name: row.last_name || "" }),
+    ])
+  );
+  const references = new Map(
+    ((stays.data || []) as { id: string; reference: string }[]).map((row) => [row.id, row.reference])
+  );
   return {
     lien: "/admin/revolut",
-    debits: lines.map((line) => ({
-      beneficiaire: line.party,
-      montant: formatMoney(-line.amount, line.currency),
-      nature: line.kind,
-      libelle: line.reference || null,
-      date: line.bookedAt ? formatDateFr(line.bookedAt) : null,
-    })),
+    debits: rows.map((row) => {
+      const line = revolutDebitLine(row);
+      return {
+        id: line.id,
+        beneficiaire: line.party,
+        montant: formatMoney(-line.amount, line.currency),
+        nature: line.kind,
+        libelle: line.reference || null,
+        date: line.bookedAt ? formatDateFr(line.bookedAt) : null,
+        etat: DEBIT_STATE[line.status] || "à rapprocher",
+        client: row.matched_customer_id ? names.get(row.matched_customer_id) || null : null,
+        dossier: row.matched_booking_id ? references.get(row.matched_booking_id) || null : null,
+      };
+    }),
   };
 }
 

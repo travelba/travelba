@@ -212,6 +212,7 @@ export function BookingEditor({
   billingCompanies = [],
   littleEmperors = null,
   expenseBilling = [],
+  revolutExpenses = [],
   ledger = null,
   accountLedger = null,
   bookingCards = [],
@@ -277,6 +278,8 @@ export function BookingEditor({
     state: string | null;
   } | null;
   expenseBilling?: { id: string; title: string; billing_company_id: string | null }[];
+  /** Sorties Revolut rattachées. Hors encours. */
+  revolutExpenses?: { id: string; label: string; amount: string }[];
   ledger?: ClientLedgerView | null;
   /** Grand livre du compte, même lecture que Transactions du client. */
   accountLedger?: ClientLedgerView | null;
@@ -1321,6 +1324,20 @@ export function BookingEditor({
 
           <section className={`order-2 admin-af-card space-y-3 rounded-3xl p-5 ${tab === "argent" ? "" : "hidden"}`}>
             <CoverMark>Règlement</CoverMark>
+            {revolutExpenses.length ? (
+              <div className="space-y-2 rounded-2xl bg-[var(--admin-sky)] px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Dépenses Revolut</p>
+                <ul className="space-y-1">
+                  {revolutExpenses.map((row) => (
+                    <li key={row.id} className="flex items-baseline justify-between gap-3 text-sm">
+                      <span className="min-w-0 truncate">{row.label}</span>
+                      <span className="shrink-0 font-semibold tabular-nums">{row.amount}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xs text-muted">Rattachées au dossier. Elles ne changent pas l’encours du client.</p>
+              </div>
+            ) : null}
             <label className="flex max-w-[11rem] flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
               Devise
               <select

@@ -1,4 +1,4 @@
-/** Inbox rapprochement : uniquement les crédits clients (virements reçus). */
+/** Un crédit client se rapproche au grand livre. Une sortie se rattache à un dossier, sans crédit. */
 export function isRevolutCredit(direction: string | null | undefined) {
   return direction !== "debit";
 }
@@ -148,6 +148,10 @@ export type RevolutDebitLine = {
   reference: string;
   bookedAt: string | null;
   kind: string;
+  status: "unmatched" | "matched" | "ignored";
+  customerLabel: string;
+  bookingId: string | null;
+  bookingLabel: string;
 };
 
 type RevolutLeg = {
@@ -170,7 +174,7 @@ export type RevolutIngestInput = {
 
 export type RevolutInboxDraft = {
   direction: "credit" | "debit";
-  /** Un débit ne reste pas « à rapprocher ». */
+  /** Une sortie neuve attend le clic. Refuser la pose ensuite en ignored. */
   status: "unmatched" | "ignored";
   amount: number;
   currency: string;
@@ -180,7 +184,7 @@ export type RevolutInboxDraft = {
   booked_at: string | null;
 };
 
-/** Crédit à rapprocher, ou débit en lecture seule. Null = hors des deux onglets. */
+/** Crédit à rapprocher, ou sortie à rattacher. Null = hors des deux onglets. */
 export function revolutInboxDraft(tx: RevolutIngestInput): RevolutInboxDraft | null {
   const leg = tx.legs?.[0];
   if (!tx.id || !leg) return null;
@@ -210,7 +214,7 @@ export function revolutInboxDraft(tx: RevolutIngestInput): RevolutInboxDraft | n
       });
   return {
     direction: credit ? "credit" : "debit",
-    status: credit ? "unmatched" : "ignored",
+    status: "unmatched",
     amount: Math.abs(movementSigned),
     currency: movement.currency || "EUR",
     counterparty_name: counterpartyName,
@@ -228,6 +232,10 @@ export function revolutDebitLine(row: {
   reference: string | null;
   booked_at: string | null;
   raw?: unknown;
+  status?: string | null;
+  customerLabel?: string | null;
+  bookingId?: string | null;
+  bookingLabel?: string | null;
 }): RevolutDebitLine {
   const root = asRecord(row.raw);
   const leg = firstLeg(row.raw);
@@ -244,6 +252,8 @@ export function revolutDebitLine(row: {
     "Bénéficiaire inconnu";
   const reference = (row.reference || "").trim();
   const type = typeof root?.type === "string" ? root.type : null;
+  const status =
+    row.status === "matched" || row.status === "ignored" ? row.status : "unmatched";
   return {
     id: row.id,
     amount: Math.abs(Number(row.amount) || 0),
@@ -252,5 +262,26 @@ export function revolutDebitLine(row: {
     reference: reference && !sameLabel(reference, party) ? reference : "",
     bookedAt: row.booked_at,
     kind: revolutDebitKindLabel(type),
+    status,
+    customerLabel: (row.customerLabel || "").trim(),
+    bookingId: (row.bookingId || "").trim() || null,
+    bookingLabel: (row.bookingLabel || "").trim(),
+  };
+}
+
+/** Insert pose le statut. L’update d’une ligne déjà connue ne le réécrit pas. */
+export function revolutSyncPayload(txId: string, draft: RevolutInboxDraft) {
+  const fields = {
+    amount: draft.amount,
+    currency: draft.currency,
+    direction: draft.direction,
+    counterparty_name: draft.counterparty_name,
+    counterparty_iban: draft.counterparty_iban,
+    reference: draft.reference,
+    booked_at: draft.booked_at,
+  };
+  return {
+    insert: { revolut_transaction_id: txId, ...fields, status: draft.status },
+    update: fields,
   };
 }
