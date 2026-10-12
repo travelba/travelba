@@ -141,7 +141,7 @@ function isFillerToken(token: string) {
   return letters.length >= 10 && (max + (sorted[1] || 0)) / letters.length >= 0.75;
 }
 
-/** Prénoms du passeport : tous les mots latins, dans l’ordre imprimé. L’hébreu ne réordonne pas la fiche. */
+/** Prénoms du passeport : tous les mots latins, dans l’ordre écrit de gauche à droite. */
 export function givenNameTokens(value: string | null | undefined): string[] {
   if (value == null) return [];
   return String(value)
@@ -268,9 +268,10 @@ function withPrintedAccents(base: string[], printed: string[]) {
 }
 
 /**
- * Garde tous les prénoms, dans l’ordre latin du document (MRZ, gauche à droite).
+ * Garde tous les prénoms, dans l’ordre écrit de gauche à droite (ligne latine et MRZ).
+ * Passeport israélien : même sens. On n’échange pas le nom et les prénoms, on ne retourne pas la ligne.
  * La MRZ tronque souvent : on prend la liste la plus complète si l’ordre est le même.
- * On ne retourne jamais la ligne pour imiter l’hébreu. Les accents viennent de la ligne imprimée.
+ * Les accents viennent de la ligne imprimée.
  */
 export function completeGivenNames(
   mrzName: string | null | undefined,
