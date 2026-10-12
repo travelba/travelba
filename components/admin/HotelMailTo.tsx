@@ -54,31 +54,28 @@ export function HotelMailTo({
     <fieldset className="space-y-2">
       <legend className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#6f552c]">Destinataires</legend>
       {shown.length ? (
-        <ul className="space-y-1.5">
+        <ul className="overflow-hidden rounded-xl border border-[#e5e0d4]">
           {shown.map((person) => {
             const on = selected.includes(person.email);
             const name = personName(person);
             return (
-              <li key={person.email}>
+              <li key={person.email} className="border-t border-[#e5e0d4] first:border-t-0">
                 <label
-                  className={
-                    on
-                      ? "flex cursor-pointer items-start gap-2.5 rounded-2xl border border-[#e5e0d4] border-l-4 border-l-[#C5A880] bg-[#faf9f6] px-3 py-2.5 text-[#0B192C] shadow-[0_1px_2px_rgba(11,25,44,0.06)]"
-                      : "flex cursor-pointer items-start gap-2.5 rounded-2xl border border-[#e5e0d4] bg-white px-3 py-2.5 text-[#0B192C]"
-                  }
+                  title={person.email}
+                  className={`flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-[#0B192C] ${
+                    on ? "bg-[#faf9f6] shadow-[inset_3px_0_0_#C5A880]" : "bg-white hover:bg-[#faf9f6]"
+                  }`}
                 >
-                  <input
-                    type="checkbox"
-                    className="mt-1 accent-[#0B192C]"
-                    checked={on}
-                    onChange={() => toggle(person.email)}
-                  />
-                  <span className="min-w-0">
-                    {person.role ? (
-                      <span className="block text-[10px] font-bold uppercase tracking-[0.14em] text-[#6f552c]">{person.role}</span>
-                    ) : null}
-                    <span className="block break-all text-sm font-semibold">{name || person.email}</span>
-                    {name ? <span className="block break-all text-xs font-medium text-[#3d4654]">{person.email}</span> : null}
+                  <input type="checkbox" className="h-4 w-4 shrink-0 accent-[#0B192C]" checked={on} onChange={() => toggle(person.email)} />
+                  {person.role ? (
+                    <span className="w-[7.5rem] shrink-0 truncate text-[10px] font-bold uppercase tracking-[0.12em] text-[#6f552c]">
+                      {person.role}
+                    </span>
+                  ) : null}
+                  <span className="min-w-0 flex-1 truncate text-sm">
+                    {name ? <span className="font-semibold">{name}</span> : null}
+                    {name ? <span className="font-medium text-[#3d4654]"> · </span> : null}
+                    <span className={name ? "text-xs font-medium text-[#3d4654]" : "font-semibold"}>{person.email}</span>
                   </span>
                 </label>
               </li>
