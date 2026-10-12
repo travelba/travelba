@@ -1,7 +1,8 @@
 import { addIsoDays } from "./dates";
+import { findHotelSameStay, type MatchableItem } from "./item-match";
 import { centsToAmount } from "./money";
 import { stayDatesOpen } from "./stay-moment";
-import type { HotelArrivalChannel, HotelArrivalStatus } from "./types";
+import { isActiveItem, type HotelArrivalChannel, type HotelArrivalStatus } from "./types";
 
 export { addIsoDays };
 
@@ -895,4 +896,49 @@ function relancePlan(tick: ArrivalTick, holidays: ReadonlySet<string>): ArrivalP
     return { action: "wait" };
   }
   return { action: "task", note: "L'hôtel n'a pas renvoyé de lien de paiement.", reason: "no_reply" };
+}
+
+export type StayCardSlot = {
+  id: string;
+  booking_item_id: string;
+  pliant_card_id?: string | null;
+  card_last4?: string | null;
+  card_closed_at?: string | null;
+  status?: string | null;
+};
+
+type StayCardItem = {
+  id: string;
+  kind?: string | null;
+  title?: string | null;
+  confirmation_ref?: string | null;
+  start_at?: string | null;
+  end_at?: string | null;
+  lifecycle?: string | null;
+  details?: Record<string, unknown> | null;
+};
+
+function toMatchable(item: StayCardItem): MatchableItem {
+  return { ...item, kind: item.kind || "" };
+}
+
+/** Même hôtel, nuits qui se croisent : la carte déjà ouverte suffit. Pas une seconde CB. */
+export function stayCardDonor(item: StayCardItem, items: StayCardItem[], arrivals: StayCardSlot[]) {
+  if ((item.kind || "") !== "hotel" || !isActiveItem(item)) return null;
+  const open = arrivals.filter(
+    (row) =>
+      row.booking_item_id !== item.id &&
+      row.pliant_card_id &&
+      !row.card_closed_at &&
+      row.status !== "closed"
+  );
+  const donors = items.filter((other) => open.some((row) => row.booking_item_id === other.id));
+  const hits = donors.filter((other) =>
+    findHotelSameStay([toMatchable(other)], toMatchable(item))
+  );
+  const chosen = hits.find((other) => !isActiveItem(other)) || hits[0];
+  if (!chosen) return null;
+  const row = open.find((entry) => entry.booking_item_id === chosen.id);
+  if (!row?.pliant_card_id) return null;
+  return { arrivalId: row.id, cardId: row.pliant_card_id, last4: row.card_last4 || null };
 }

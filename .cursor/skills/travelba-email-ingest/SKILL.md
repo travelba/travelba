@@ -190,7 +190,8 @@ est annulé) :
 - même hôtel, nuits qui se croisent, carte sans référence (ou un seul côté
   a un numéro) : mettre à jour cette carte et y écrire la référence manquante.
   « Mondrian Bordeaux » et « Mondrian Bordeaux Les Carmes » sont le même hôtel.
-  On n’ouvre pas une seconde carte. Deux cartes au même nom : l’agence choisit ;
+  On n’ouvre pas une seconde carte, ni une seconde carte bancaire : la CB déjà
+  ouverte sur ce séjour est reprise. Deux cartes au même nom : l’agence choisit ;
 - train : même code, autre jour = une carte nouvelle. On ne réécrit pas le trajet déjà là. Deux billets du même train le même jour restent une carte ;
 - réservation Little Emperors : `64570` et `64570SH046795` sont la même carte
   (`hotelRefsShareBooking`). Le numéro court ou une ancienne chambre complète
