@@ -87,6 +87,8 @@ test("lien et full credit non proposés pour Expedia", () => {
   assert.equal(hotelDeskSuggested("full_credit", "expedia"), false);
   assert.equal(hotelDeskSuggested("upgrade", "expedia"), true);
   assert.equal(hotelDeskSuggested("payment_link", "direct"), true);
+  assert.equal(hotelDeskSuggested("other", "direct"), false);
+  assert.equal(hotelDeskSuggested("other", "expedia"), false);
 });
 
 test("brouillon français : lien, full credit sans numéro, tous les contacts", () => {
@@ -249,6 +251,25 @@ test("l'accueil nomme la personne, la chambre, le vol et signe Benjamin", () => 
   assert.match(followUp.body, /n'ayant pas encore eu le plaisir de votre retour/);
   assert.doesNotMatch(followUp.body, /Travel Business Agency\.\n/);
   assert.match(followUp.subject, /^Relance — Camille Martin — Accueil/);
+  const other = hotelDeskDraft({ ...base, kind: "other", item: hotel() });
+  assert.equal(other.status, "skipped");
+  assert.match(other.subject, /^Camille Martin — Autre demande — Le Bristol — 4 novembre 2026 — HB-9$/);
+  assert.match(other.body, /^Chère équipe,/);
+  assert.match(other.body, /Camille Martin, qui compte parmi nos clients VIP/);
+  assert.match(other.body, /confirmation HB-9/);
+  assert.match(other.body, /demande suivante/);
+  assert.match(other.body, /\n…\n/);
+  assert.match(other.body, /Travel Business Agency$/);
+  assert.doesNotMatch(other.body, /^Guest:/m);
+  const otherEn = hotelDeskDraft({
+    ...base,
+    kind: "other",
+    item: hotel({ details: { hotel_name: "The NoMad Hotel, London", country: "United Kingdom", email: "reservations.london@thenomadhotel.com" } }),
+  });
+  assert.equal(otherEn.lang, "en");
+  assert.match(otherEn.subject, /Other request/);
+  assert.match(otherEn.body, /^Dear team,/);
+  assert.match(otherEn.body, /following request/);
 });
 
 test("la signature est le prénom de l'agent qui envoie", () => {
@@ -722,10 +743,9 @@ test("écrire à l'hôtel n'ajoute pas d'étape et coche les destinataires à l'
   assert.doesNotMatch(desk, /RecipientRoster/);
   const thread = readFileSync(join(process.cwd(), "components/admin/HotelThread.tsx"), "utf8");
   assert.match(thread, /Avec l’hôtel/);
-  assert.match(thread, /HotelMailTo/);
-  assert.ok(thread.indexOf("<HotelMailTo") < thread.search(/\n\s*Objet\n/), "destinataires avant l’objet");
-  assert.match(thread, /recipients: selected/);
-  assert.doesNotMatch(thread, /RecipientRoster/);
+  assert.doesNotMatch(thread, /HotelMailTo/);
+  assert.doesNotMatch(thread, /send-message/);
+  assert.match(desk, /Autre demande|other/);
   const carnet = readFileSync(join(process.cwd(), "components/account/CarnetItinerary.tsx"), "utf8");
   assert.doesNotMatch(carnet, /HotelMailTo/);
 });
@@ -907,7 +927,7 @@ test("le fil garde chaque réponse et replie la copie Gmail de l'envoi", () => {
   assert.equal(turns[3]?.link, "https://secure.hotel.test/authorizations/stay-1");
 });
 
-test("le fil hôtel coche le destinataire prévu et laisse décocher les autres", async () => {
+test("Autre demande suit Concierge et coche le destinataire prévu", async () => {
   const nodeRequire = createRequire(import.meta.url);
   const Module = nodeRequire("module") as { _load: (...args: unknown[]) => unknown };
   const load = Module._load;
@@ -916,6 +936,7 @@ test("le fil hôtel coche le destinataire prévu et laisse décocher les autres"
     return load.call(this, request, parent, isMain);
   };
   try {
+    const { HotelDesk } = await import("../../components/admin/HotelDesk");
     const { HotelThread } = await import("../../components/admin/HotelThread");
     const item = hotel({
       details: {
@@ -928,21 +949,51 @@ test("le fil hôtel coche le destinataire prévu et laisse décocher les autres"
         ],
       },
     });
-    const html = renderToStaticMarkup(
-      createElement(HotelThread, {
+    const requests = [
+      letter({ kind: "concierge", status: "waiting", subject: "Concierge — Le Bristol" }),
+      letter({
+        id: "req-other",
+        kind: "other",
+        status: "skipped",
+        subject: "Camille Martin — Autre demande — Le Bristol — HB-9",
+        body: "Chère équipe,\n\nSi la maison pouvait donner suite à la demande suivante, nous vous en serions très reconnaissants.\n\n…\n\nTravel Business Agency",
+        recipients: ["reservations@bristol.test"],
+        sent_at: null,
+        reply_body: "",
+        replied_at: null,
+      }),
+    ];
+    const list = renderToStaticMarkup(
+      createElement(HotelDesk, {
         bookingId: "b1",
         item,
-        requests: [
-          {
-            ...letter(),
-            recipients: ["reservations@bristol.test"],
-            sent_at: null,
-            reply_body: "",
-            replied_at: null,
-          },
-        ],
+        requests,
+        today: "2026-10-12",
         messages: [],
         attached: [],
+      })
+    );
+    assert.ok(list.indexOf("Concierge") < list.indexOf("Autre demande"), "Autre demande après Concierge");
+    assert.match(list, /Pas besoin/);
+    const thread = renderToStaticMarkup(
+      createElement(HotelThread, {
+        item,
+        requests,
+        messages: [],
+        attached: [],
+      })
+    );
+    assert.equal(thread.includes("Destinataires"), false);
+    assert.equal(thread.includes("Envoyer"), false);
+    const html = renderToStaticMarkup(
+      createElement(HotelDesk, {
+        bookingId: "b1",
+        item,
+        requests,
+        today: "2026-10-12",
+        messages: [],
+        attached: [],
+        focusReply: true,
       })
     );
     assert.match(html, /Destinataires/);
@@ -954,6 +1005,7 @@ test("le fil hôtel coche le destinataire prévu et laisse décocher les autres"
     assert.match(html, /reservations@bristol\.test/);
     assert.match(html, /shadow-\[inset_3px_0_0_#C5A880\]/);
     assert.match(html, /Le message part seulement vers les adresses cochées/);
+    assert.match(html, /Autre demande — Le Bristol/);
     const boxes = html.match(/<input[^>]*type="checkbox"[^>]*>/g) || [];
     assert.equal(boxes.length, 3);
     assert.equal(boxes.filter((box) => box.includes("checked")).length, 1);

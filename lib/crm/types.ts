@@ -389,6 +389,7 @@ export const HOTEL_DESK_KINDS = [
   "full_credit",
   "transfer",
   "concierge",
+  "other",
 ] as const;
 
 export type HotelDeskKind = (typeof HOTEL_DESK_KINDS)[number];

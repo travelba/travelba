@@ -1,119 +1,32 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { HotelMailTo } from "@/components/admin/HotelMailTo";
-import { BusyBar } from "@/components/crm/BusyBar";
-import { hotelLanguage } from "@/lib/crm/hotel-arrival";
-import { hotelContact } from "@/lib/crm/hotel-contact";
-import {
-  hotelIdentitySeed,
-  hotelSendDefaults,
-  hotelSendPeople,
-  hotelStayContext,
-  hotelThread,
-  type HotelMailPiece,
-} from "@/lib/crm/hotel-desk";
+import { useEffect, useRef } from "react";
+import { hotelThread, hotelStayContext, type HotelMailPiece } from "@/lib/crm/hotel-desk";
 import { formatDateTimeFr } from "@/lib/crm/money";
 import type { CrmBookingItem, CrmHotelMessage, CrmHotelRequest, CrmHotelThreadMessage } from "@/lib/crm/types";
 
-const threadFieldClass =
-  "w-full rounded-xl border border-[#d9d1c3] bg-white px-3 py-2.5 text-sm text-[#0B192C] outline-none transition placeholder:text-[#3d4654] focus:border-[#0B192C]";
-
+/** Fil des échanges avec l’hôtel. L’envoi se fait depuis un courrier, dont Autre demande. */
 export function HotelThread({
-  bookingId,
   item,
   requests,
   messages,
   thread = [],
   attached,
-  guest = "",
-  reference = "",
-  focusReply = false,
 }: {
-  bookingId: string;
   item: CrmBookingItem;
   requests: CrmHotelRequest[];
   messages: CrmHotelMessage[];
   thread?: CrmHotelThreadMessage[];
   attached: HotelMailPiece[];
-  guest?: string;
-  reference?: string;
-  focusReply?: boolean;
 }) {
-  const router = useRouter();
   const logRef = useRef<HTMLOListElement>(null);
-  const messageRef = useRef<HTMLTextAreaElement>(null);
-  const context = hotelStayContext(item, { guest, reference });
-  const seed = hotelIdentitySeed({
-    lang: hotelLanguage(hotelContact(item).country),
-    guest,
-    ref: (item.confirmation_ref || "").trim() || reference.trim(),
-  });
-  const [subject, setSubject] = useState(context.subject);
-  const [body, setBody] = useState(seed);
-  const [picked, setPicked] = useState<string[] | null>(null);
-  const [sent, setSent] = useState<CrmHotelMessage[]>([]);
-  const [syncedMessages, setSyncedMessages] = useState(messages);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  if (messages !== syncedMessages) {
-    setSyncedMessages(messages);
-    setSent([]);
-  }
-  const turns = hotelThread({ item, requests, messages: [...messages, ...sent], attached, thread });
-  const mailbox = [...syncedMessages, ...sent];
-  const people = hotelSendPeople(item, requests, mailbox);
-  const selected = picked ?? hotelSendDefaults(item, requests, mailbox);
+  const context = hotelStayContext(item);
+  const turns = hotelThread({ item, requests, messages, attached, thread });
 
   useEffect(() => {
     const node = logRef.current;
     if (node) node.scrollTop = node.scrollHeight;
   }, [turns.length]);
-
-  useEffect(() => {
-    if (!focusReply) return;
-    messageRef.current?.focus();
-  }, [focusReply]);
-
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    if (!selected.length) return;
-    setBusy(true);
-    setError(null);
-    const res = await fetch(`/api/admin/bookings/${bookingId}/hotel-desk`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "send-message", itemId: item.id, subject, body, recipients: selected }),
-    });
-    const json = (await res.json().catch(() => null)) as { error?: string } | null;
-    setBusy(false);
-    if (!res.ok) {
-      setError(json?.error || "L'envoi a échoué.");
-      return;
-    }
-    setSent((current) => [
-      ...current,
-      {
-        id: `local-${current.length}`,
-        booking_id: bookingId,
-        booking_item_id: item.id,
-        subject: subject.trim(),
-        body: body.trim(),
-        recipients: selected,
-        sent_at: new Date().toISOString(),
-        reply_from: "",
-        reply_subject: "",
-        reply_body: "",
-        reply_message_id: null,
-        replied_at: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-    ]);
-    setBody(seed);
-    router.refresh();
-  }
 
   return (
     <section className="rounded-2xl border border-[#e5e0d4] bg-[#faf9f6]" aria-label={`Échanges avec ${context.hotel}`}>
@@ -167,36 +80,6 @@ export function HotelThread({
       ) : (
         <p className="px-3 py-4 text-sm text-[#3d4654]">Aucun échange avec cet hôtel pour l’instant.</p>
       )}
-      <form onSubmit={(event) => void onSubmit(event)} className="space-y-2 border-t border-[#e5e0d4] bg-white px-3 py-3">
-        <HotelMailTo people={people} selected={selected} onChange={setPicked} fieldClassName={threadFieldClass} />
-        <label className="block text-xs font-semibold text-[#0B192C]">
-          Objet
-          <input
-            className={`${threadFieldClass} mt-1`}
-            value={subject}
-            autoComplete="off"
-            onChange={(event) => setSubject(event.target.value)}
-          />
-        </label>
-        <label className="block text-xs font-semibold text-[#0B192C]">
-          Message
-          <textarea
-            ref={messageRef}
-            className={`${threadFieldClass} mt-1 min-h-28`}
-            value={body}
-            onChange={(event) => setBody(event.target.value)}
-          />
-        </label>
-        {busy ? <BusyBar label="Envoi du message" /> : null}
-        {error ? <p className="text-sm text-red-700">{error}</p> : null}
-        <button
-          type="submit"
-          className="admin-af-btn rounded-full bg-[#0B192C] px-3 py-2 text-sm text-[#faf9f6]"
-          disabled={busy || !subject.trim() || !body.trim() || selected.length === 0}
-        >
-          {busy ? "Envoi…" : "Envoyer"}
-        </button>
-      </form>
     </section>
   );
 }

@@ -33,6 +33,7 @@ export const HOTEL_DESK_LABELS: Record<HotelDeskKind, string> = {
   full_credit: "Note de la maison",
   transfer: "Transfert",
   concierge: "Concierge",
+  other: "Autre demande",
 };
 
 const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
@@ -49,6 +50,7 @@ export function hotelDeskChannel(item: CrmBookingItem) {
 
 /** Expedia est déjà réglé : pas de lien ni de full credit à proposer. */
 export function hotelDeskSuggested(kind: HotelDeskKind, channel: ReturnType<typeof hotelDeskChannel>) {
+  if (kind === "other") return false;
   if (channel === "expedia" && (kind === "payment_link" || kind === "full_credit")) return false;
   return true;
 }
@@ -448,6 +450,7 @@ const LETTER_PURPOSE: Record<HotelDeskKind, { fr: string; en: string }> = {
   full_credit: { fr: "Note de la maison", en: "House account" },
   transfer: { fr: "Transfert", en: "Transfer" },
   concierge: { fr: "Concierge", en: "Concierge" },
+  other: { fr: "Autre demande", en: "Other request" },
 };
 
 /** Le nom, seulement quand une seule adresse est retenue et qu'on le connaît. */
@@ -742,6 +745,13 @@ function houseLetter(input: {
     if (inbound || outbound) lines.push("");
     if (inbound) lines.push(inbound);
     if (outbound) lines.push(outbound);
+  } else if (input.kind === "other") {
+    lines.push(
+      lang === "fr"
+        ? "Si la maison pouvait donner suite à la demande suivante, nous vous en serions très reconnaissants."
+        : "If the house could see to the following request, we would be most grateful."
+    );
+    lines.push("", "…");
   } else {
     lines.push(
       lang === "fr" ? "Nous nous permettons de vous demander :" : "We would be grateful for your help with the following:",

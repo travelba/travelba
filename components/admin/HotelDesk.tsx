@@ -9,7 +9,7 @@ import { PrecheckPack } from "@/components/admin/PrecheckPack";
 import { hotelDisplayName } from "@/lib/crm/carnet";
 import { shownPersonName } from "@/lib/crm/identity";
 import { applyHotelSalutation, hotelSendDefaults, hotelSendPeople, hotelStayChecklist, hotelTripChecklist, signHotelLetter, type HotelMailPiece } from "@/lib/crm/hotel-desk";
-import { applyPaymentLinkChoice, hotelLanguage, principalGuest } from "@/lib/crm/hotel-arrival";
+import { applyPaymentLinkChoice, hotelLanguage } from "@/lib/crm/hotel-arrival";
 import { hotelContact } from "@/lib/crm/hotel-contact";
 import { precheckParty } from "@/lib/crm/hotel-precheck";
 import { HOTEL_DESK_KINDS, type CardViewLine, type CrmBookingItem, type CrmBookingTraveler, type CrmHotelMessage, type CrmHotelRequest, type CrmHotelThreadMessage, type CrmTravelDocument, type HotelDeskKind } from "@/lib/crm/types";
@@ -59,7 +59,6 @@ export function HotelDesk({
   messages = [],
   thread = [],
   attached = [],
-  reference = "",
   signatory = "",
   focusReply = false,
 }: {
@@ -85,13 +84,11 @@ export function HotelDesk({
     (row): row is CrmHotelRequest => Boolean(row)
   );
   const router = useRouter();
-  const [open, setOpen] = useState<HotelDeskKind | null>(null);
+  const [open, setOpen] = useState<HotelDeskKind | null>(focusReply ? "other" : null);
   const [marking, setMarking] = useState<string | null>(null);
   const [markError, setMarkError] = useState<string | null>(null);
   if (!rows.length) return null;
   const stay = hotelStayChecklist(item.id, rows);
-  const lead = principalGuest({ travelers, holder });
-  const guestName = `${lead.firstName} ${lead.lastName}`.trim();
 
   async function mark(row: CrmHotelRequest, action: "skip" | "restore") {
     if (marking) return;
@@ -182,15 +179,11 @@ export function HotelDesk({
         />
       ) : null}
       <HotelThread
-        bookingId={bookingId}
         item={item}
         requests={requests}
         messages={messages}
         thread={thread}
         attached={attached}
-        guest={guestName}
-        reference={reference}
-        focusReply={focusReply}
       />
     </div>
   );
