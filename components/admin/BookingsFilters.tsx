@@ -27,11 +27,14 @@ export function BookingsFilters({
   q,
   etat,
   tri,
+  vue = null,
   revision,
 }: {
   q: string;
   etat: BookingStateFilter | null;
   tri: BookingSort;
+  /** Garde la liste quand l’agence l’a ouverte elle-même. */
+  vue?: "liste" | null;
   /** Change quand la liste serveur est remplacée, pour réappliquer le filtre local. */
   revision: string;
 }) {
@@ -86,6 +89,7 @@ export function BookingsFilters({
       q: query || null,
       etat: stateValue || null,
       tri: bookingSortParam((sortValue || DEFAULT_BOOKING_SORT) as BookingSort),
+      vue: vue === "liste" ? "liste" : null,
     });
     router.replace(href, { scroll: false });
   }

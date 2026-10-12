@@ -26,6 +26,7 @@ export type BookingsListFilters = {
   q: string;
   etat: BookingStateFilter | null;
   tri: BookingSort;
+  vue?: "liste" | null;
 };
 
 /** Liste paginée côté serveur : la recherche met l’URL à jour pendant la saisie. */
@@ -63,16 +64,18 @@ export function BookingsTable({
     q: filters.q,
     etat: filters.etat,
     tri: bookingSortParam(filters.tri),
+    vue: filters.vue === "liste" ? "liste" : null,
   };
   const filtering = Boolean(filters.q || filters.etat);
   const archivedOnly = filters.etat === "archive";
 
   return (
-    <div className="mt-6 space-y-3">
+    <div className="space-y-3">
       <BookingsFilters
         q={filters.q}
         etat={filters.etat}
         tri={filters.tri}
+        vue={filters.vue}
         revision={bookings.map((b) => b.id).join(",")}
       />
       <Pagination

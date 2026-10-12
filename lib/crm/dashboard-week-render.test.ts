@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AdminLaunchStatus } from "../../components/admin/AdminLaunchStatus";
 import { DashboardWeek } from "../../components/admin/DashboardWeek";
-import { dashboardWeek, type DashboardWeekColumn } from "./dashboard-week";
+import type { DashboardWeekEntry } from "./dashboard-week";
 import { buildLaunchItems, visibleLaunchItems } from "./launch-status";
 import type { CrmBooking } from "./types";
 
@@ -31,50 +31,45 @@ function booking(partial: Partial<CrmBooking> & Pick<CrmBooking, "id" | "referen
   } as CrmBooking;
 }
 
-function board(columns: DashboardWeekColumn<CrmBooking>[]) {
-  return renderToStaticMarkup(
+function entry(
+  row: CrmBooking,
+  extra: Partial<DashboardWeekEntry<CrmBooking>> = {}
+): DashboardWeekEntry<CrmBooking> {
+  return { booking: row, group: "soon", mark: null, unseen: false, ...extra };
+}
+
+const empty = { travelling: [], soon: [], week: [] };
+
+test("la semaine montre les trois groupes, le retour et le départ pas encore visible", () => {
+  const html = renderToStaticMarkup(
     createElement(DashboardWeek, {
-      columns,
+      groups: {
+        travelling: [entry(booking({ id: "back", reference: "TB-RETOUR", start_date: "2026-10-01", end_date: "2026-10-07" }), { group: "travelling", mark: "retour" })],
+        soon: [entry(booking({ id: "soon", reference: "TB-DEMAIN", start_date: "2026-10-08", visible_to_client: false }), { unseen: true })],
+        week: [],
+      },
       names: new Map([["client-1", "Camille Martin"]]),
       places: { arrival: {}, route: {} },
       amounts: new Map([["soon", 1500]]),
     })
   );
-}
-
-test("la semaine est un tableau de listes, avec le retour et le départ pas encore visible", () => {
-  const columns = dashboardWeek(
-    [
-      booking({ id: "back", reference: "TB-RETOUR", start_date: "2026-10-01", end_date: "2026-10-07" }),
-      booking({ id: "away", reference: "TB-VOYAGE", start_date: "2026-10-02", end_date: "2026-10-10" }),
-      booking({ id: "soon", reference: "TB-DEMAIN", start_date: "2026-10-08", visible_to_client: false }),
-    ],
-    "2026-10-07"
-  );
-  const html = board(columns as DashboardWeekColumn<CrmBooking>[]);
-  assert.match(html, /Aujourd’hui/);
-  assert.match(html, /Semaine pro/);
-  assert.match(html, /Plus tard/);
-  assert.match(html, /J\+1/);
-  assert.match(html, /overflow-x-auto/);
-  assert.match(html, /w-\[272px\]/);
+  assert.match(html, /En voyage/);
+  assert.match(html, /Aujourd’hui et demain/);
+  assert.match(html, /Sous 7 jours/);
   assert.match(html, /TB-RETOUR/);
   assert.match(html, /Retour/);
-  assert.match(html, /En voyage/);
   assert.match(html, /TB-DEMAIN/);
   assert.match(html, /En préparation/);
   assert.match(html, /border-l-\[var\(--admin-gold\)\]/);
   assert.match(html, /Camille Martin/);
   assert.match(html, /Tout voir/);
-  assert.match(html, /Aucun séjour/);
-  assert.doesNotMatch(html, /Aujourd’hui et demain/);
-  assert.doesNotMatch(html, /Sous 7 jours/);
+  assert.match(html, /Aucun\./);
 });
 
 test("sans séjour, la semaine propose un nouveau dossier", () => {
   const html = renderToStaticMarkup(
     createElement(DashboardWeek, {
-      columns: dashboardWeek([], "2026-10-07") as DashboardWeekColumn<CrmBooking>[],
+      groups: empty,
       names: new Map(),
       places: { arrival: {}, route: {} },
       amounts: new Map(),

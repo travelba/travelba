@@ -31,6 +31,7 @@ export default async function AdminHomePage() {
 
   const today = stayToday();
   const tomorrow = addIsoDays(today, 1);
+  const horizon = addIsoDays(today, 7);
 
   const [
     { data: travellingRows },
@@ -61,10 +62,11 @@ export default async function AdminHomePage() {
       .from("crm_bookings")
       .select("*")
       .gte("start_date", today)
+      .lte("start_date", horizon)
       .neq("status", "cancelled")
       .is("archived_at", null)
       .order("start_date")
-      .limit(100),
+      .limit(40),
     supabase.from("crm_bookings").select("id", { count: "exact", head: true }).is("archived_at", null),
     supabase
       .from("crm_bookings")
@@ -108,7 +110,7 @@ export default async function AdminHomePage() {
   );
   const weekBookings = [...((travellingRows || []) as CrmBooking[]), ...((upcomingRows || []) as CrmBooking[])];
   const week = dashboardWeek(weekBookings, today);
-  const shown = week.flatMap((column) => column.entries.map((entry) => entry.booking));
+  const shown = [...week.travelling, ...week.soon, ...week.week].map((entry) => entry.booking);
   const nameIds = [...new Set(shown.map((row) => row.customer_id).filter(Boolean))];
   const [{ data: customers }, displayedStayAmounts, places] = await Promise.all([
     nameIds.length
@@ -179,7 +181,7 @@ export default async function AdminHomePage() {
         </Link>
       </section>
 
-      <DashboardWeek columns={week} names={byId} places={places} amounts={displayedStayAmounts} />
+      <DashboardWeek groups={week} names={byId} places={places} amounts={displayedStayAmounts} />
 
       <AdminLaunchStatus items={launchItems} />
     </div>

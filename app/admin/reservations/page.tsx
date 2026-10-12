@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { BookingsFilters } from "@/components/admin/BookingsFilters";
 import { BookingsTable } from "@/components/admin/BookingsTable";
+import { ReservationWeek, ReservationsViewToggle } from "@/components/admin/ReservationWeek";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { loadStayMaps } from "@/lib/crm/carnet-query";
@@ -26,6 +28,7 @@ import {
   type FilterableQuery,
   type SearchParamValue,
 } from "@/lib/crm/admin-list";
+import { reservationWeek } from "@/lib/crm/reservation-week";
 import { stayToday } from "@/lib/crm/stay-moment";
 
 type Props = {
@@ -54,7 +57,111 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
   const q = (firstParam(params.q) || "").trim();
   const state = parseBookingState(params.etat);
   const sort = parseBookingSort(params.tri);
+  const vue = firstParam(params.vue) === "liste" ? "liste" : null;
+  const listView = Boolean(q || state || sort !== "proche" || page > 1 || vue);
+  const today = stayToday();
   const { supabase } = await requireStaffPage();
+  const listeHref = listHref(
+    "/admin/reservations",
+    {
+      q: q || null,
+      etat: state,
+      tri: bookingSortParam(sort),
+      vue: "liste",
+    },
+    page
+  );
+
+  if (!listView) {
+    const [{ data: travellingRows, error: travelError }, { data: upcomingRows, error: upcomingError }] = await Promise.all([
+      supabase
+        .from("crm_bookings")
+        .select("*")
+        .lt("start_date", today)
+        .neq("status", "cancelled")
+        .is("archived_at", null)
+        .or(`end_date.gte.${today},end_date.is.null`)
+        .order("end_date", { ascending: true, nullsFirst: false })
+        .limit(200),
+      supabase
+        .from("crm_bookings")
+        .select("*")
+        .gte("start_date", today)
+        .neq("status", "cancelled")
+        .is("archived_at", null)
+        .order("start_date", { ascending: true })
+        .limit(400),
+    ]);
+    const boardError = travelError || upcomingError;
+    if (boardError) {
+      console.error("[admin/reservations]", boardError.code ?? "?", boardError.message ?? "");
+      throw new Error("Réservations indisponibles");
+    }
+    const pool = [...((travellingRows || []) as CrmBooking[]), ...((upcomingRows || []) as CrmBooking[])];
+    const columns = reservationWeek(pool, today);
+    const shown = columns.flatMap((column) => column.entries.map((entry) => entry.booking));
+    const customerIds = [...new Set(shown.map((row) => row.customer_id).filter(Boolean))];
+    const walletIds = [
+      ...new Set(shown.flatMap((row) => [row.billing_customer_id, row.customer_id].filter(Boolean))),
+    ];
+    const [{ data: customerRows }, { data: companyRows }, maps, displayed] = await Promise.all([
+      customerIds.length
+        ? supabase.from("crm_customers").select("id, first_name, last_name, company_name, email, phone").in("id", customerIds)
+        : Promise.resolve({ data: [] as ListCustomer[] }),
+      walletIds.length
+        ? supabase
+            .from("crm_billing_companies")
+            .select("id, customer_id, company_name, funding, sort_order")
+            .in("customer_id", walletIds)
+        : Promise.resolve({ data: [] as (FundingCompany & { customer_id: string })[] }),
+      loadStayMaps(
+        supabase,
+        shown.map((row) => row.id)
+      ),
+      loadDisplayedStayAmounts(supabase, shown),
+    ]);
+    const customersById = new Map(((customerRows || []) as ListCustomer[]).map((row) => [row.id, row]));
+    const companiesByCustomer = new Map<string, (FundingCompany & { customer_id: string })[]>();
+    for (const company of (companyRows || []) as (FundingCompany & { customer_id: string })[]) {
+      const list = companiesByCustomer.get(company.customer_id) || [];
+      list.push(company);
+      companiesByCustomer.set(company.customer_id, list);
+    }
+    const payerLabels: Record<string, string> = {};
+    for (const row of shown) {
+      const label = bookingPayerLabel(row, companiesByCustomer.get(row.billing_customer_id || row.customer_id) || []);
+      if (label) payerLabels[row.id] = label;
+    }
+    const names = new Map(
+      [...customersById.entries()].map(([id, row]) => [id, customerFullName(row)])
+    );
+
+    return (
+      <div>
+        <PageEyebrow>Espace agence</PageEyebrow>
+        <PageTitle
+          title="Réservations"
+          subtitle="Enregistrez le dossier, puis montrez-le au client. Enregistrer ne le rend pas visible."
+          actions={
+            <Link href="/admin/reservations/nouveau" className="admin-af-btn admin-tap inline-flex items-center rounded-xl px-4 py-2.5 text-sm">
+              + Nouveau dossier
+            </Link>
+          }
+        />
+        <div className="mt-6 space-y-3">
+          <ReservationsViewToggle liste={false} listeHref={listeHref} />
+          <BookingsFilters q="" etat={null} tri={sort} revision="semaine" />
+          <ReservationWeek
+            columns={columns}
+            names={names}
+            places={maps}
+            amounts={displayed}
+            payerLabels={payerLabels}
+          />
+        </div>
+      </div>
+    );
+  }
 
   function applyFilters(query: FilterableQuery, archivedOnly: boolean) {
     let next = query;
@@ -70,7 +177,6 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
 
   const { from, to } = pageRange(page);
   const order = BOOKING_SORTS[sort];
-  const today = stayToday();
   const listQuery = supabase.from("crm_bookings").select("*", { count: "exact" });
   // Au-delà, la recherche reste sur le tri demandé. Une agence tient largement en dessous.
   const SEARCH_SCAN = 400;
@@ -249,20 +355,23 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
           </Link>
         }
       />
-      <BookingsTable
-        bookings={rows}
-        customers={customers.map((row) => ({ id: row.id, first_name: row.first_name, last_name: row.last_name }))}
-        places={pickRecord(maps.arrival, rowIds)}
-        routes={pickRecord(maps.route, rowIds)}
-        displayAmounts={displayAmounts}
-        searchText={visibleSearch}
-        payerLabels={payerLabels}
-        page={page}
-        pageSize={ADMIN_PAGE_SIZE}
-        total={total}
-        filters={{ q, etat: state, tri: sort }}
-        hiddenArchiveHits={hiddenArchiveHits}
-      />
+      <div className="mt-6 space-y-3">
+        <ReservationsViewToggle liste listeHref={listeHref} />
+        <BookingsTable
+          bookings={rows}
+          customers={customers.map((row) => ({ id: row.id, first_name: row.first_name, last_name: row.last_name }))}
+          places={pickRecord(maps.arrival, rowIds)}
+          routes={pickRecord(maps.route, rowIds)}
+          displayAmounts={displayAmounts}
+          searchText={visibleSearch}
+          payerLabels={payerLabels}
+          page={page}
+          pageSize={ADMIN_PAGE_SIZE}
+          total={total}
+          filters={{ q, etat: state, tri: sort, vue }}
+          hiddenArchiveHits={hiddenArchiveHits}
+        />
+      </div>
     </div>
   );
 }
