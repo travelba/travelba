@@ -646,12 +646,12 @@ export function hotelMailFrame(lang: "fr" | "en", relance?: boolean, addressee?:
   ];
   if (lang === "fr") {
     return {
-      open: relance ? [hello, "", "Nous n'avons pas encore reçu votre retour."] : [hello],
+      open: relance ? [hello, "", "Nous nous permettons de revenir vers vous, n'ayant pas encore eu le plaisir de votre retour."] : [hello],
       close,
     };
   }
   return {
-    open: relance ? [hello, "", "We have not yet received your reply."] : [hello],
+    open: relance ? [hello, "", "We are writing again, as we have not yet had the pleasure of your reply."] : [hello],
     close,
   };
 }
@@ -676,20 +676,20 @@ export function hotelLetterSubject(input: {
 
 export function welcomeRequest(lang: "fr" | "en") {
   return lang === "fr"
-    ? "Nous vous prions de faire préparer la chambre, avec un mot de bienvenue. Un surclassement, si la maison peut l'offrir à l'arrivée, serait très apprécié."
-    : "We would be grateful if you could have the room prepared, with a welcome note. An upgrade, should the house be able to offer one on arrival, would be greatly appreciated.";
+    ? "Si la maison pouvait préparer la chambre, avec un mot de bienvenue, ce serait une attention dont nous vous serions très reconnaissants. Un surclassement, si cela vous était possible à l'arrivée, toucherait beaucoup notre client."
+    : "If the house could have the room prepared, with a welcome note, we would be most grateful for the attention. An upgrade, should it be possible on arrival, would mean a great deal to our client.";
 }
 
 export function paymentLinkAsk(lang: "fr" | "en") {
   return lang === "fr"
-    ? "Nous vous serions reconnaissants de nous adresser le lien de paiement de cette réservation."
-    : "We would be grateful if you could send us the payment link for this reservation.";
+    ? "Si vous pouviez nous adresser le lien de paiement de cette réservation, nous vous en serions très reconnaissants."
+    : "If you could send us the payment link for this reservation, we would be most grateful.";
 }
 
 export function paymentLinkCharge(lang: "fr" | "en") {
   return lang === "fr"
-    ? "Nous vous prions de prélever le montant de cette réservation sur la carte ouverte par le lien sécurisé ci-dessous."
-    : "We would be grateful if you could charge this reservation to the card opened from the secure link below.";
+    ? "Lorsque cela vous conviendra, vous pourrez prélever le montant de cette réservation sur la carte ouverte par le lien sécurisé ci-dessous."
+    : "Whenever it suits the house, this reservation may be charged to the card opened from the secure link below.";
 }
 
 /** Remplace la phrase du lien de paiement. Le reste du courrier reste. */
@@ -732,16 +732,20 @@ export function linkRequestMail(input: {
     ref,
     relance: input.relance,
   });
-  const stay =
+  const who =
     input.lang === "fr"
       ? guest
-        ? `Séjour de ${guest} à ${input.hotel}, du ${from} au ${to} (confirmation ${ref}).`
-        : `Séjour à ${input.hotel}, du ${from} au ${to} (confirmation ${ref}).`
+        ? `${guest}, qui compte parmi nos clients VIP,`
+        : "Notre invité, qui compte parmi nos clients VIP,"
       : guest
-        ? `Stay of ${guest} at ${input.hotel}, ${from} to ${to} (confirmation ${ref}).`
-        : `Stay at ${input.hotel}, ${from} to ${to} (confirmation ${ref}).`;
+        ? `${guest}, one of our VIP clients,`
+        : "Our guest, one of our VIP clients,";
+  const stay =
+    input.lang === "fr"
+      ? `${who} séjournera à ${input.hotel}, du ${from} au ${to} (confirmation ${ref}).`
+      : `${who} will be staying at ${input.hotel}, from ${from} to ${to} (confirmation ${ref}).`;
   const lines = [...frame.open, "", stay];
-  if (input.amount) lines.push(input.lang === "fr" ? `Montant à régler : ${input.amount}.` : `Amount due: ${input.amount}.`);
+  if (input.amount) lines.push(input.lang === "fr" ? `Le montant du séjour est de ${input.amount}.` : `The stay amounts to ${input.amount}.`);
   lines.push("", request, "", ...frame.close);
   return { subject, text: lines.join("\n") };
 }
@@ -779,11 +783,11 @@ export function vipMail(input: {
       text: [
         ...frame.open,
         "",
-        `L'arrivée à ${input.hotel}, du ${stay} (confirmation ${ref}).`,
+        `Nous avons le plaisir de vous confier l'un de nos clients VIP, pour son arrivée à ${input.hotel}, du ${stay} (confirmation ${ref}).`,
         "",
         welcomeRequest("fr"),
         "",
-        "Les documents d'identité sont joints, afin que la chambre soit prête dès l'arrivée.",
+        "Vous trouverez les documents d'identité en pièce jointe, afin que la chambre puisse être prête dès l'arrivée.",
         ...card,
         "",
         ...frame.close,
@@ -805,11 +809,11 @@ export function vipMail(input: {
     text: [
       ...frame.open,
       "",
-      `The arrival at ${input.hotel}, ${stay} (confirmation ${ref}).`,
+      `We have the pleasure of entrusting you with one of our VIP clients, arriving at ${input.hotel}, ${stay} (confirmation ${ref}).`,
       "",
       welcomeRequest("en"),
       "",
-      "Identity documents are attached, so the room may be ready upon arrival.",
+      "You will find the identity documents attached, so the room may be ready upon arrival.",
       ...card,
       "",
       ...frame.close,

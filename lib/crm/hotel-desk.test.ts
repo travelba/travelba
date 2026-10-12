@@ -93,6 +93,7 @@ test("brouillon français : lien, full credit sans numéro, tous les contacts", 
   const link = hotelDeskDraft({ ...base, kind: "payment_link", item: hotel() });
   assert.match(link.subject, /Camille Martin/);
   assert.match(link.subject, /HB-9/);
+  assert.match(link.body, /clients VIP/);
   assert.match(link.body, /lien de paiement/);
   assert.match(link.body, /Camille Martin/);
   assert.match(link.body, /HB-9/);
@@ -153,6 +154,7 @@ test("anglais hors de France, transfert repris sur les vols", () => {
   });
   const upgrade = hotelDeskDraft({ ...base, kind: "upgrade", item });
   assert.match(upgrade.body, /^Dear team,/);
+  assert.match(upgrade.body, /one of our VIP clients/);
   assert.match(upgrade.body, /welcome note/);
   assert.match(upgrade.body, /Travel Business Agency$/);
   assert.doesNotMatch(upgrade.body, /Benjamin/);
@@ -216,7 +218,7 @@ test("l'accueil nomme la personne, la chambre, le vol et signe Benjamin", () => 
     companions: ["Julien Martin"],
   });
   assert.match(upgrade.body, /^Bonjour Alexandra Rossi,/);
-  assert.match(upgrade.body, /Camille Martin arrive à Le Bristol le 4 novembre 2026/);
+  assert.match(upgrade.body, /Camille Martin, qui compte parmi nos clients VIP, séjournera à Le Bristol le 4 novembre 2026/);
   assert.match(upgrade.body, /en chambre Deluxe/);
   assert.match(upgrade.body, /avec Julien Martin/);
   assert.match(upgrade.body, /18h00/);
@@ -244,7 +246,7 @@ test("l'accueil nomme la personne, la chambre, le vol et signe Benjamin", () => 
   assert.match(kept, /^Madame,/);
   assert.deepEqual(companionNames([{ first_name: "Camille", last_name: "Martin" }, { first_name: "Julien", last_name: "Martin" }, { first_name: "Adulte", last_name: "2" }], "Camille Martin"), ["Julien Martin"]);
   const followUp = hotelDeskDraft({ ...base, kind: "upgrade", item: hotel(), relance: true });
-  assert.match(followUp.body, /Nous n'avons pas encore reçu votre retour\./);
+  assert.match(followUp.body, /n'ayant pas encore eu le plaisir de votre retour/);
   assert.doesNotMatch(followUp.body, /Travel Business Agency\.\n/);
   assert.match(followUp.subject, /^Relance — Camille Martin — Accueil/);
 });

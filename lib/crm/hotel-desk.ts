@@ -580,6 +580,7 @@ function letterFor(input: {
       amount: input.amount,
       relance: input.relance,
       addressee: input.addressee,
+      signatory: input.signatory,
     });
   }
   return houseLetter(input);
@@ -617,6 +618,14 @@ function guestArrivalLine(input: {
   const withWhom = input.lang === "fr" ? frenchJoin(input.companions) : englishJoin(input.companions);
   const party = withWhom ? (input.lang === "fr" ? `, avec ${withWhom}` : `, with ${withWhom}`) : "";
   const refBit = ref ? ` (confirmation ${ref})` : "";
+  const who =
+    input.lang === "fr"
+      ? guest
+        ? `${guest}, qui compte parmi nos clients VIP,`
+        : "Notre invité, qui compte parmi nos clients VIP,"
+      : guest
+        ? `${guest}, one of our VIP clients,`
+        : "Our guest, one of our VIP clients,";
   if (input.lang === "fr") {
     const dates =
       input.from && input.to && input.from !== input.to
@@ -624,7 +633,7 @@ function guestArrivalLine(input: {
         : input.from
           ? `le ${input.from}`
           : "";
-    return `${guest || "Notre invité"} arrive à ${input.hotel}${dates ? ` ${dates}` : ""}${refBit}${input.room}${party}.`;
+    return `${who} séjournera à ${input.hotel}${dates ? ` ${dates}` : ""}${refBit}${input.room}${party}.`;
   }
   const dates =
     input.from && input.to && input.from !== input.to
@@ -632,7 +641,7 @@ function guestArrivalLine(input: {
       : input.from
         ? `on ${input.from}`
         : "";
-  return `${guest || "Our guest"} arrives at ${input.hotel}${dates ? ` ${dates}` : ""}${refBit}${input.room}${party}.`;
+  return `${who} will be staying at ${input.hotel}${dates ? ` ${dates}` : ""}${refBit}${input.room}${party}.`;
 }
 
 function flightMoment(item: CrmBookingItem, which: "start" | "end", lang: "fr" | "en") {
@@ -705,10 +714,10 @@ function houseLetter(input: {
   } else if (input.kind === "precheckin") {
     lines.push(
       lang === "fr"
-        ? "Nous vous prions de préparer l'enregistrement, afin que la chambre soit prête dès l'arrivée."
-        : "We would be grateful if you could prepare the registration, so the room may be ready upon arrival."
+        ? "Si l'enregistrement pouvait être préparé à l'avance, afin que la chambre soit prête dès l'arrivée, ce serait une grande attention."
+        : "If the registration could be prepared ahead of time, so the room may be ready upon arrival, it would be a great kindness."
     );
-    lines.push("", lang === "fr" ? "Les documents d'identité sont joints." : "Identity documents are attached.");
+    lines.push("", lang === "fr" ? "Vous trouverez les documents d'identité en pièce jointe." : "You will find the identity documents attached.");
   } else if (input.kind === "full_credit") {
     const total =
       input.nights != null
@@ -720,21 +729,24 @@ function houseLetter(input: {
     lines.push(
       "",
       lang === "fr"
-        ? `Nous vous prions de prendre en charge les notes (restaurant, spa), à hauteur de 500 € par nuit${total}. Un lien de paiement ou une pré-autorisation à ce plafond conviendrait. La chambre n'est pas à encaisser une seconde fois.`
-        : `We would be grateful if you could extend house credit for dining and the spa, at 500 EUR per night${total}. A payment link or a pre-authorisation for this amount would be welcome. Kindly do not charge the room again.`
+        ? `Si la maison pouvait prendre en charge les notes (restaurant, spa), à hauteur de 500 € par nuit${total}, nous vous en serions très reconnaissants. Un lien de paiement ou une pré-autorisation à ce plafond nous irait parfaitement. Il ne serait pas nécessaire d'encaisser la chambre une seconde fois.`
+        : `If the house could look after the charges for dining and the spa, at 500 EUR per night${total}, we would be most grateful. A payment link or a pre-authorisation for this amount would suit us very well. There would be no need to charge the room a second time.`
     );
   } else if (input.kind === "transfer") {
     lines.push(
       lang === "fr"
-        ? "Nous vous serions reconnaissants d'organiser le transfert."
-        : "We would be grateful if you could arrange the transfer."
+        ? "Si la maison pouvait organiser le transfert, nous vous en serions très reconnaissants."
+        : "If the house could arrange the transfer, we would be most grateful."
     );
     const outbound = describeFlight(flights.departure, lang, "departure");
     if (inbound || outbound) lines.push("");
     if (inbound) lines.push(inbound);
     if (outbound) lines.push(outbound);
   } else {
-    lines.push(lang === "fr" ? "Demande :" : "Request:", "…");
+    lines.push(
+      lang === "fr" ? "Nous nous permettons de vous demander :" : "We would be grateful for your help with the following:",
+      "…"
+    );
   }
   lines.push("", ...frame.close);
   return {
