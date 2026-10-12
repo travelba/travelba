@@ -632,10 +632,12 @@ test("écrire à l'hôtel n'ajoute pas d'étape et coche les destinataires à l'
   assert.doesNotMatch(fn, /crm_booking_items/);
   const desk = readFileSync(join(process.cwd(), "components/admin/HotelDesk.tsx"), "utf8");
   assert.match(desk, /HotelMailTo/);
+  assert.ok(desk.indexOf("<HotelMailTo") < desk.search(/\n\s*Objet\n/), "destinataires avant l’objet");
   assert.doesNotMatch(desk, /RecipientRoster/);
   const thread = readFileSync(join(process.cwd(), "components/admin/HotelThread.tsx"), "utf8");
   assert.match(thread, /Avec l’hôtel/);
   assert.match(thread, /HotelMailTo/);
+  assert.ok(thread.indexOf("<HotelMailTo") < thread.search(/\n\s*Objet\n/), "destinataires avant l’objet");
   assert.match(thread, /recipients: selected/);
   assert.doesNotMatch(thread, /RecipientRoster/);
   const carnet = readFileSync(join(process.cwd(), "components/account/CarnetItinerary.tsx"), "utf8");
@@ -864,12 +866,12 @@ test("le fil hôtel coche le destinataire prévu et laisse décocher les autres"
     assert.match(html, /Concierge/);
     assert.match(html, /concierge@bristol\.test/);
     assert.match(html, /reservations@bristol\.test/);
-    assert.match(html, /border-l-\[#C5A880\]/);
+    assert.match(html, /shadow-\[inset_3px_0_0_#C5A880\]/);
     assert.match(html, /Le message part seulement vers les adresses cochées/);
     const boxes = html.match(/<input[^>]*type="checkbox"[^>]*>/g) || [];
     assert.equal(boxes.length, 3);
     assert.equal(boxes.filter((box) => box.includes("checked")).length, 1);
-    assert.equal((html.match(/border-l-\[#C5A880\]/g) || []).length, 1);
+    assert.equal((html.match(/shadow-\[inset_3px_0_0_#C5A880\]/g) || []).length, 1);
     assert.doesNotMatch(html, /RecipientRoster/);
   } finally {
     Module._load = load;
