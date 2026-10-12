@@ -11,6 +11,7 @@ import {
   stripeInboxCreditLabel,
   type StripeInboxMethod,
 } from "@/lib/crm/stripe-inbox";
+import { shownPersonName } from "@/lib/crm/identity";
 import type { CrmCustomer, CrmStripeTransaction } from "@/lib/crm/types";
 
 export type StripeMatchReason =
@@ -68,7 +69,7 @@ function stripeCustomerId(raw: unknown) {
 }
 
 function customerLabel(c: Pick<CrmCustomer, "first_name" | "last_name" | "company_name">) {
-  const name = [c.first_name, c.last_name].filter(Boolean).join(" ").trim();
+  const name = shownPersonName(c);
   if (c.company_name?.trim()) {
     return name ? `${name} · ${c.company_name.trim()}` : c.company_name.trim();
   }

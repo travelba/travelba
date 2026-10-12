@@ -7,6 +7,7 @@ import { HotelMailTo } from "@/components/admin/HotelMailTo";
 import { HotelThread } from "@/components/admin/HotelThread";
 import { PrecheckPack } from "@/components/admin/PrecheckPack";
 import { hotelDisplayName } from "@/lib/crm/carnet";
+import { shownPersonName } from "@/lib/crm/identity";
 import { applyHotelSalutation, hotelSendDefaults, hotelSendPeople, hotelStayChecklist, hotelTripChecklist, signHotelLetter, type HotelMailPiece } from "@/lib/crm/hotel-desk";
 import { applyPaymentLinkChoice, hotelLanguage, principalGuest } from "@/lib/crm/hotel-arrival";
 import { hotelContact } from "@/lib/crm/hotel-contact";
@@ -287,7 +288,7 @@ function HotelDeskEditor({
           party={party}
           selectedIds={pieceIds}
           last4={last4}
-          holder={[holder?.first_name, holder?.last_name].filter(Boolean).join(" ")}
+          holder={shownPersonName(holder)}
           hotel={hotelDisplayName(item) || item.title}
           disabled={Boolean(busy)}
           generating={busy === "card"}
@@ -315,14 +316,6 @@ function HotelDeskEditor({
           Prélever sur la carte
         </label>
       ) : null}
-      <label className="block text-xs font-semibold text-[#0B192C]">
-        Objet
-        <input className={`${letterFieldClass} mt-1`} value={subject} onChange={(event) => setSubject(event.target.value)} />
-      </label>
-      <label className="block text-xs font-semibold text-[#0B192C]">
-        Message
-        <textarea className={`${letterFieldClass} mt-1 min-h-40`} value={body} onChange={(event) => setBody(event.target.value)} />
-      </label>
       <HotelMailTo
         people={people}
         selected={recipients}
@@ -332,6 +325,14 @@ function HotelDeskEditor({
         }}
         fieldClassName={letterFieldClass}
       />
+      <label className="block text-xs font-semibold text-[#0B192C]">
+        Objet
+        <input className={`${letterFieldClass} mt-1`} value={subject} onChange={(event) => setSubject(event.target.value)} />
+      </label>
+      <label className="block text-xs font-semibold text-[#0B192C]">
+        Message
+        <textarea className={`${letterFieldClass} mt-1 min-h-40`} value={body} onChange={(event) => setBody(event.target.value)} />
+      </label>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       <div className="flex flex-wrap gap-2">
         <button type="button" className="admin-af-btn rounded-full bg-[#0B192C] px-3 py-2 text-sm text-[#faf9f6]" disabled={Boolean(busy) || recipients.length === 0} onClick={() => void run("send")}>

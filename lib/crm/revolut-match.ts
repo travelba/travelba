@@ -1,5 +1,6 @@
 import { resolveWireAccount } from "./funding-wallet";
 import { isRevolutCredit, revolutSenderName } from "./revolut-inbox";
+import { shownPersonName } from "./identity";
 import type { CrmCustomer, CrmRevolutTransaction } from "./types";
 
 export type RevolutMatchReason =
@@ -91,7 +92,7 @@ function haystackTokens(row: RevolutMatchRow) {
 }
 
 function customerLabel(c: Pick<CrmCustomer, "first_name" | "last_name" | "company_name">) {
-  const name = [c.first_name, c.last_name].filter(Boolean).join(" ").trim();
+  const name = shownPersonName(c);
   if (c.company_name?.trim()) {
     return name ? `${name} · ${c.company_name.trim()}` : c.company_name.trim();
   }

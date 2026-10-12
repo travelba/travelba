@@ -3,7 +3,7 @@ import { ClientsFilters } from "@/components/admin/ClientsFilters";
 import { Pagination } from "@/components/admin/Pagination";
 import type { CrmBalance } from "@/lib/crm/types";
 import { customerFullName } from "@/lib/crm/types";
-import type { CustomerListRow } from "@/lib/crm/customer-search";
+import { customerDirectoryName, type CustomerListRow } from "@/lib/crm/customer-search";
 import { clientLedgerAdminHref } from "@/lib/crm/client-ledger";
 import { formatCreditDisponible, formatMoney } from "@/lib/crm/money";
 import { formatPhoneDisplay } from "@/lib/crm/phone";
@@ -13,13 +13,13 @@ function clientSearchText(c: CustomerListRow) {
   const phone = c.phone || "";
   const digits = phone.replace(/\D/g, "");
   const national = digits.startsWith("33") && digits.length > 2 ? `0${digits.slice(2)}` : "";
-  return [customerFullName(c), c.usage_name, c.company_name, c.email, phone, digits, national]
+  return [customerFullName(c), c.first_name, c.usage_name, c.company_name, c.email, phone, digits, national]
     .filter(Boolean)
     .join(" ");
 }
 
 function initials(c: CustomerListRow) {
-  return [c.first_name?.[0], c.last_name?.[0]].filter(Boolean).join("").toUpperCase() || "?";
+  return [c.last_name?.[0], c.first_name?.[0]].filter(Boolean).join("").toUpperCase() || "?";
 }
 
 /** Liste paginée côté serveur : la recherche met l’URL à jour pendant la saisie. */
@@ -67,7 +67,7 @@ export function ClientsTable({
                     {initials(c)}
                   </span>
                   <span className="min-w-0">
-                    <span className="block truncate font-semibold text-[var(--admin-navy)]">{customerFullName(c)}</span>
+                    <span className="block truncate font-semibold text-[var(--admin-navy)]">{customerDirectoryName(c)}</span>
                     {c.on_hold ? (
                       <span className="mt-0.5 inline-flex rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">
                         En veille
@@ -136,7 +136,7 @@ export function ClientsTable({
                           {initials(c)}
                         </span>
                         <span className="flex flex-col">
-                          <span className="font-semibold text-[var(--admin-navy)]">{customerFullName(c)}</span>
+                          <span className="font-semibold text-[var(--admin-navy)]">{customerDirectoryName(c)}</span>
                           <span className="mt-0.5 flex flex-wrap gap-1">
                             {c.on_hold ? (
                               <span className="rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--admin-navy)]">

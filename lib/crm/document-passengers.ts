@@ -1,12 +1,9 @@
+import { shownPersonName } from "./identity";
 import {
   isPlaceholderTraveler,
   sameRecordedTraveler,
   type PersonName,
 } from "./person-match";
-
-function personLine(person: PersonName) {
-  return [person.first_name, person.last_name].filter(Boolean).join(" ").trim();
-}
 
 /** Noms saisis ou extraits : le prénom peut être absent du schéma souple. */
 type LoosePerson = {
@@ -43,7 +40,7 @@ export function passengersFromDetails(
 export function ticketTravelerNames(details: Record<string, unknown> | null | undefined) {
   const names: string[] = [];
   for (const person of passengersFromDetails(details)) {
-    const line = personLine(person);
+    const line = shownPersonName(person);
     if (!line || names.some((row) => row.localeCompare(line, "fr", { sensitivity: "accent" }) === 0)) continue;
     names.push(line);
   }
