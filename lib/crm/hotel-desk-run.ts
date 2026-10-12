@@ -20,6 +20,7 @@ import {
 } from "./hotel-arrival";
 import {
   HOTEL_DESK_KINDS,
+  companionNames,
   cleanRecipients,
   containsCardNumber,
   hotelDeskChannel,
@@ -71,6 +72,7 @@ export async function ensureHotelRequests(
     reference: string;
     currency: string;
     guest: string;
+    companions?: string[];
     items: CrmBookingItem[];
     fetchImpl?: typeof fetch;
   }
@@ -95,6 +97,7 @@ export async function ensureHotelRequests(
         items,
         reference: input.reference,
         guest: input.guest,
+        companions: input.companions,
         currency: input.currency || "EUR",
         holidays,
       });
@@ -163,14 +166,15 @@ export async function refreshHotelDesk(admin: Admin, deps: { now?: Date; fetchIm
   for (const stay of stays) {
     const stayItems = itemRows.filter((item) => item.booking_id === stay.id);
     if (!stayItems.some((item) => item.kind === "hotel")) continue;
-    const guest = principalGuest({
-      travelers: travelerRows.filter((row) => row.booking_id === stay.id),
-    });
+    const stayTravelers = travelerRows.filter((row) => row.booking_id === stay.id);
+    const guest = principalGuest({ travelers: stayTravelers });
+    const guestName = `${guest.firstName} ${guest.lastName}`.trim();
     await ensureHotelRequests(admin, {
       bookingId: stay.id,
       reference: stay.reference || "",
       currency: stay.currency || "EUR",
-      guest: `${guest.firstName} ${guest.lastName}`.trim(),
+      guest: guestName,
+      companions: companionNames(stayTravelers, guestName),
       items: stayItems,
       fetchImpl: deps.fetchImpl,
     });

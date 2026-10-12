@@ -7,7 +7,7 @@ import { HotelMailTo } from "@/components/admin/HotelMailTo";
 import { HotelThread } from "@/components/admin/HotelThread";
 import { PrecheckPack } from "@/components/admin/PrecheckPack";
 import { hotelDisplayName } from "@/lib/crm/carnet";
-import { hotelSendDefaults, hotelSendPeople, hotelStayChecklist, hotelTripChecklist, type HotelMailPiece } from "@/lib/crm/hotel-desk";
+import { applyHotelSalutation, hotelSendDefaults, hotelSendPeople, hotelStayChecklist, hotelTripChecklist, type HotelMailPiece } from "@/lib/crm/hotel-desk";
 import { applyPaymentLinkChoice, hotelLanguage, principalGuest } from "@/lib/crm/hotel-arrival";
 import { hotelContact } from "@/lib/crm/hotel-contact";
 import { precheckParty } from "@/lib/crm/hotel-precheck";
@@ -214,11 +214,13 @@ function HotelDeskEditor({
   const router = useRouter();
   const party = precheckParty(travelers, identityDocs, holder);
   const availableIds = party.flatMap((traveler) => traveler.pieces.map((piece) => piece.id));
-  const [subject, setSubject] = useState(row?.subject || "");
-  const [body, setBody] = useState(row?.body || "");
   const people = hotelSendPeople(item, row ? [row] : []);
+  const letterLang = hotelLanguage(hotelContact(item).country);
+  const initialRecipients = row ? hotelSendDefaults(item, [row]) : [];
+  const [subject, setSubject] = useState(row?.subject || "");
+  const [body, setBody] = useState(() => applyHotelSalutation(row?.body || "", letterLang, people, initialRecipients));
   const [picked, setPicked] = useState<string[] | null>(null);
-  const recipients = picked ?? (row ? hotelSendDefaults(item, [row]) : []);
+  const recipients = picked ?? initialRecipients;
   const [chargeCard, setChargeCard] = useState(row?.card_choice === "pliant");
   const [pieceIds, setPieceIds] = useState<string[]>(() =>
     row?.identity_picked ? (row.identity_document_ids || []).filter((id) => availableIds.includes(id)) : availableIds
@@ -227,7 +229,6 @@ function HotelDeskEditor({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   if (!row) return null;
-  const letterLang = hotelLanguage(hotelContact(item).country);
   const cardChoice = row.kind === "payment_link" ? (chargeCard ? "pliant" : null) : "pliant";
 
   async function run(action: "save" | "send" | "skip", next = recipients, pieces = pieceIds) {
@@ -315,7 +316,15 @@ function HotelDeskEditor({
         Message
         <textarea className={`${letterFieldClass} mt-1 min-h-40`} value={body} onChange={(event) => setBody(event.target.value)} />
       </label>
-      <HotelMailTo people={people} selected={recipients} onChange={setPicked} fieldClassName={letterFieldClass} />
+      <HotelMailTo
+        people={people}
+        selected={recipients}
+        onChange={(next) => {
+          setPicked(next);
+          setBody((current) => applyHotelSalutation(current, letterLang, people, next));
+        }}
+        fieldClassName={letterFieldClass}
+      />
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       <div className="flex flex-wrap gap-2">
         <button type="button" className="admin-af-btn rounded-full bg-[#0B192C] px-3 py-2 text-sm text-[#faf9f6]" disabled={Boolean(busy) || recipients.length === 0} onClick={() => void run("send")}>

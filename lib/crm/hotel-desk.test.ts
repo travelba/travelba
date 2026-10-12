@@ -16,6 +16,8 @@ import {
   hotelReplyLink,
   hotelReplySearchQueries,
   deskNeedsAttention,
+  applyHotelSalutation,
+  companionNames,
   hotelDeskDraft,
   ensureHotelMailIdentity,
   ensureHotelMailSubject,
@@ -148,9 +150,10 @@ test("anglais hors de France, transfert repris sur les vols", () => {
     details: { hotel_name: "The Leela", country: "India", email: "stay@leela.test" },
   });
   const upgrade = hotelDeskDraft({ ...base, kind: "upgrade", item });
-  assert.match(upgrade.body, /Dear team/);
-  assert.match(upgrade.body, /VIP welcome amenities/);
-  assert.match(upgrade.body, /Best regards/);
+  assert.match(upgrade.body, /^Dear team,/);
+  assert.match(upgrade.body, /welcome note/);
+  assert.match(upgrade.body, /Benjamin/);
+  assert.match(upgrade.subject, /^Camille Martin — Arrival — The Leela/);
   assert.equal(upgrade.lang, "en");
   const flights: CrmBookingItem[] = [
     {
@@ -176,6 +179,70 @@ test("anglais hors de France, transfert repris sur les vols", () => {
   assert.match(cues.departure, /AF193/);
   const transfer = hotelDeskDraft({ ...base, kind: "transfer", item: hotel(), items: flights });
   assert.match(transfer.body, /AF192/);
+  assert.doesNotMatch(transfer.body, /à préciser/);
+});
+
+test("l'accueil nomme la personne, la chambre, le vol et signe Benjamin", () => {
+  const item = hotel({
+    details: {
+      hotel_name: "Le Bristol",
+      country: "France",
+      rooms: [{ room: "Deluxe" }],
+      included: ["Petit-déjeuner offert"],
+      hotel_contacts: [
+        { type: "Réservations", first_name: "Alexandra", last_name: "Rossi", email: "alexandra@bristol.test" },
+      ],
+    },
+  });
+  const flights: CrmBookingItem[] = [
+    {
+      ...hotel(),
+      id: "in",
+      kind: "flight",
+      title: "Aller",
+      start_at: "2026-11-04T09:40:00",
+      end_at: "2026-11-04T18:00:00",
+      details: { flight_number: "AF192", from: "CDG", to: "CDG" },
+    },
+  ];
+  const upgrade = hotelDeskDraft({
+    ...base,
+    kind: "upgrade",
+    item,
+    items: flights,
+    companions: ["Julien Martin"],
+  });
+  assert.match(upgrade.body, /^Bonjour Alexandra Rossi,/);
+  assert.match(upgrade.body, /Camille Martin arrive à Le Bristol le 4 novembre 2026/);
+  assert.match(upgrade.body, /en chambre Deluxe/);
+  assert.match(upgrade.body, /avec Julien Martin/);
+  assert.match(upgrade.body, /18h00/);
+  assert.doesNotMatch(upgrade.body, /09h40/);
+  assert.match(upgrade.body, /mot de bienvenue/);
+  assert.match(upgrade.body, /Petit-déjeuner offert/);
+  assert.match(upgrade.body, /Benjamin\nTravel Business Agency$/);
+  assert.match(upgrade.subject, /^Camille Martin — Accueil — Le Bristol — 4 novembre 2026 — HB-9$/);
+  const plain = hotelDeskDraft({ ...base, kind: "upgrade", item: hotel() });
+  assert.match(plain.body, /^Chère équipe,/);
+  assert.doesNotMatch(plain.body, /en chambre/);
+  assert.doesNotMatch(plain.body, /Petit-déjeuner/);
+  const swapped = applyHotelSalutation(
+    plain.body,
+    "fr",
+    [
+      { email: "claire@bristol.test", firstName: "Claire", lastName: "Martin", role: "Directrice" },
+      { email: "desk@bristol.test", firstName: "Paul", lastName: "Bernard", role: "Concierge" },
+    ],
+    ["claire@bristol.test"]
+  );
+  assert.match(swapped, /^Bonjour Claire Martin,/);
+  const kept = applyHotelSalutation("Madame,\n\nLa chambre est prête.", "fr", [], ["claire@bristol.test"]);
+  assert.match(kept, /^Madame,/);
+  assert.deepEqual(companionNames([{ first_name: "Camille", last_name: "Martin" }, { first_name: "Julien", last_name: "Martin" }, { first_name: "Adulte", last_name: "2" }], "Camille Martin"), ["Julien Martin"]);
+  const followUp = hotelDeskDraft({ ...base, kind: "upgrade", item: hotel(), relance: true });
+  assert.match(followUp.body, /Nous n'avons pas encore reçu votre retour\./);
+  assert.doesNotMatch(followUp.body, /Travel Business Agency\.\n/);
+  assert.match(followUp.subject, /^Relance — Camille Martin — Accueil/);
 });
 
 test("une modification agence n'est pas écrasée", () => {
@@ -258,8 +325,8 @@ test("chaque courrier est envoyé, pas besoin, ou encore ouvert", () => {
     row("concierge", "follow_up"),
   ]);
   assert.equal(stay.complete, false);
-  assert.deepEqual(stay.openTitles, ["Lien de paiement", "Full credit"]);
-  assert.equal(stay.summary, "Il reste Lien de paiement et Full credit");
+  assert.deepEqual(stay.openTitles, ["Lien de paiement", "Note de la maison"]);
+  assert.equal(stay.summary, "Il reste Lien de paiement et Note de la maison");
   assert.equal(stay.lines.find((line) => line.kind === "precheckin")?.caption, "Pas besoin");
   assert.equal(stay.lines.find((line) => line.kind === "concierge")?.caption, "Envoyé · à relancer");
   assert.equal(stay.lines.find((line) => line.kind === "transfer")?.mark, "sent");
