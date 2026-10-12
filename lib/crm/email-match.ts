@@ -1,3 +1,4 @@
+import { shownPersonName } from "@/lib/crm/identity";
 import { documentPriceIssues } from "@/lib/crm/booking-issues";
 import { cityPlaceKey } from "@/lib/crm/city-names";
 import { isCancellationExtract, type BookingExtract } from "@/lib/crm/ingest-types";
@@ -9,7 +10,6 @@ import {
 } from "@/lib/crm/person-match";
 import { siteConfig } from "@/lib/site";
 import {
-  customerFullName,
   type CrmBooking,
   type CrmBookingItem,
   type CrmCustomer,
@@ -49,9 +49,10 @@ const AGENCY_INBOXES = new Set(
 );
 
 function customerLabel(c: CustomerLite) {
-  const name = customerFullName(c);
+  const name = shownPersonName(c);
   const company = c.company_name?.trim();
-  return company ? `${name} · ${company}` : name;
+  if (company) return name ? `${name} · ${company}` : company;
+  return name || "Client";
 }
 
 function editDistance(a: string, b: string) {

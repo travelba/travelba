@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { StayCard } from "@/components/crm/StayCard";
 import { stayCardFace } from "@/lib/crm/hotel-arrival";
+import { shownPersonName } from "@/lib/crm/identity";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import type { CrmBookingCard } from "@/lib/crm/types";
 
@@ -224,7 +225,7 @@ export function BookingCards({
                 face={stayCardFace({
                   itemId: card.id,
                   hotel: "",
-                  holder: `${card.first_name} ${card.last_name}`.trim(),
+                  holder: shownPersonName(card),
                   last4: card.last4,
                   closed: false,
                 })}

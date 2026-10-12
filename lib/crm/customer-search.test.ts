@@ -28,6 +28,10 @@ describe("customer-search", () => {
       customerDirectoryName(customer({ first_name: "Alice", last_name: "Martin" })),
       "Martin Alice"
     );
+    assert.equal(
+      customerDirectoryName(customer({ first_name: "Maelle Louise Rosalie", last_name: "Dupont" })),
+      "Dupont Maelle"
+    );
     const rows = [
       customer({ id: "1", first_name: "Zoé", last_name: "Bernard" }),
       customer({ id: "2", first_name: "Alice", last_name: "Martin" }),

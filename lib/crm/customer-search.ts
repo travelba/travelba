@@ -1,3 +1,4 @@
+import { greetingGivenName } from "./identity";
 import { customerFullName, type CrmCustomer } from "./types";
 
 export type PickableCustomer = Pick<
@@ -44,7 +45,7 @@ function nationalPhoneDigits(value: string) {
 /** Annuaire : nom de famille d’abord, pour que la liste se lise de A à Z. */
 export function customerDirectoryName(c: Pick<CrmCustomer, "first_name" | "last_name">) {
   const last = (c.last_name || "").trim();
-  const first = (c.first_name || "").trim();
+  const first = greetingGivenName(c.first_name) || "";
   return [last, first].filter(Boolean).join(" ") || "Client";
 }
 
@@ -74,7 +75,7 @@ export function customerMatchesQuery(c: PickableCustomer, query: string) {
   if (!trimmed) return true;
   const needle = fold(trimmed);
   const hay = fold(
-    `${customerFullName(c)} ${c.company_name || ""} ${c.email || ""} ${c.phone || ""}`
+    `${customerFullName(c)} ${c.first_name || ""} ${c.company_name || ""} ${c.email || ""} ${c.phone || ""}`
   );
   if (hay.includes(needle)) return true;
   const phoneNeedle = digits(trimmed);

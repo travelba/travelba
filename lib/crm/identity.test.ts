@@ -4,6 +4,7 @@ import {
   completeGivenNames,
   givenNameTokens,
   greetingGivenName,
+  shownPersonName,
   humanizeMrzName,
   maskDocumentNumber,
   normalizeGivenNames,
@@ -78,6 +79,8 @@ test("l’accueil ne garde que le premier prénom", () => {
   assert.equal(greetingGivenName("JEAN-PIERRE Marie"), "Jean-Pierre");
   assert.equal(greetingGivenName("  "), null);
   assert.equal(greetingGivenName(null), null);
+  assert.equal(shownPersonName({ first_name: "Maelle Louise Rosalie", last_name: "Dupont" }), "Maelle Dupont");
+  assert.equal(shownPersonName({ first_name: "JEAN-PIERRE Marie", last_name: "Martin" }), "Jean-Pierre Martin");
 });
 
 test("un nom tout en capitales se signale sans être réécrit", () => {

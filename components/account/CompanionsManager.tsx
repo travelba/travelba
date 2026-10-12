@@ -6,7 +6,7 @@ import { Plus } from "lucide-react";
 import type { CrmCompanion, CrmTravelDocument } from "@/lib/crm/types";
 import { deleteJson, postJson, sendForm } from "@/lib/crm/client-fetch";
 import { nationalityFromIdentity } from "@/lib/crm/document-identity";
-import { identityOverwriteWarning, maskDocumentNumber, RELATIONSHIP_OPTIONS } from "@/lib/crm/identity";
+import { greetingGivenName, identityOverwriteWarning, maskDocumentNumber, RELATIONSHIP_OPTIONS, shownPersonName } from "@/lib/crm/identity";
 import { loyaltyFromCustomer, type LoyaltyMap } from "@/lib/crm/loyalty";
 import { appendPassportForm, appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-extract";
 import { documentsForPerson, primaryIdentityDoc } from "@/lib/crm/trip-documents";
@@ -240,7 +240,7 @@ export function CompanionsManager({
                   aria-expanded={expanded}
                 >
                   <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
-                    {c.first_name} {c.last_name}
+                    {shownPersonName(c)}
                   </p>
                   <p className="truncate text-xs text-muted">
                     {[relationshipLabel(c.relationship), piece].filter(Boolean).join(" · ")}
@@ -248,7 +248,7 @@ export function CompanionsManager({
                 </button>
                 <ConfirmAction
                   label="Retirer"
-                  question={`Retirer ${c.first_name || "ce voyageur"} et ses pièces ?`}
+                  question={`Retirer ${greetingGivenName(c.first_name) || "ce voyageur"} et ses pièces ?`}
                   hint={
                     pieces
                       ? `${pieces} pièce${pieces > 1 ? "s" : ""} d’identité ser${pieces > 1 ? "ont" : "a"} supprimée${pieces > 1 ? "s" : ""} avec la fiche.`
