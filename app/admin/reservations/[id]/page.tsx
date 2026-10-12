@@ -17,7 +17,8 @@ import { markUkEtaNoticesSeen, syncUkEtaForBookingId } from "@/lib/crm/uk-eta-ru
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
-import { isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
+import { isLedgerExpenseKind, visibleServiceCopy, type CrmBillingCompany } from "@/lib/crm/types";
+import { CUSTOMER_PICK_SELECT, type PickableCustomer } from "@/lib/crm/customer-search";
 import { loadClientLedger, type ClientLedgerView } from "@/lib/crm/client-ledger";
 import { syncStayCards } from "@/lib/crm/hotel-arrival-run";
 import { companionNames, hotelSignatoryName } from "@/lib/crm/hotel-desk";
@@ -90,6 +91,8 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     whatsappMessages,
     whatsappRequests,
     { data: stayRefs },
+    { data: ficheCompanyRows },
+    { data: companyAdminRows },
   ] = await Promise.all([
     supabase.from("crm_booking_items").select("*").eq("booking_id", id).order("sort_order"),
     supabase.from("crm_booking_travelers").select("*").eq("booking_id", id),
@@ -140,7 +143,15 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
       .eq("customer_id", b.customer_id)
       .order("created_at", { ascending: false }),
     supabase.from("crm_bookings").select("id, reference").eq("customer_id", b.customer_id),
+    supabase.from("crm_billing_companies").select("*").eq("customer_id", b.customer_id).order("sort_order"),
+    supabase.from("crm_customers").select(CUSTOMER_PICK_SELECT).eq("company_role", "admin"),
   ]);
+  const ficheBillingCompanies = (ficheCompanyRows || []) as CrmBillingCompany[];
+  const companyAdmins = ((companyAdminRows || []) as PickableCustomer[]).sort(
+    (a, b) =>
+      (a.last_name || "").localeCompare(b.last_name || "", "fr") ||
+      (a.first_name || "").localeCompare(b.first_name || "", "fr")
+  );
   const customerLogins = (loginRows || []) as CrmCustomerLogin[];
   const customerActivity = (activityRows || []) as CrmCustomerActivity[];
   const threadMessages = whatsappMessages.error
@@ -376,6 +387,8 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           whatsappBookings={(stayRefs || []) as { id: string; reference: string }[]}
           customerLogins={customerLogins}
           customerActivity={customerActivity}
+          ficheBillingCompanies={ficheBillingCompanies}
+          companyAdmins={companyAdmins}
         />
   );
 }

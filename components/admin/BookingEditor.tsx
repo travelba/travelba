@@ -17,6 +17,7 @@ import {
   type CrmHotelMessage,
   type CrmHotelThreadMessage,
   type CrmHotelRequest,
+  type CrmBillingCompany,
   type CrmCompanion,
   type CrmCustomer,
   type CrmCustomerActivity,
@@ -48,6 +49,7 @@ import { unsplashKeywordMatch } from "@/lib/crm/covers";
 import { BookingIngest } from "@/components/crm/BookingIngest";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
 import { BookingCards } from "@/components/admin/BookingCards";
+import { CustomerEditor } from "@/components/admin/CustomerEditor";
 import { CustomerLoginLog } from "@/components/admin/CustomerLoginLog";
 import { PliantBookingTab } from "@/components/admin/PliantBookingTab";
 import { principalGuest } from "@/lib/crm/hotel-arrival";
@@ -212,6 +214,8 @@ export function BookingEditor({
   hotelThreadMessages = [],
   openHotelItemId = null,
   billingCompanies = [],
+  ficheBillingCompanies = [],
+  companyAdmins = [],
   littleEmperors = null,
   expenseBilling = [],
   ledger = null,
@@ -271,6 +275,9 @@ export function BookingEditor({
     sort_order: number;
     funding?: string | null;
   }[];
+  /** Sociétés de la fiche du client du dossier, colonnes complètes. */
+  ficheBillingCompanies?: CrmBillingCompany[];
+  companyAdmins?: PickableCustomer[];
   littleEmperors?: {
     id: string;
     hotel_name: string | null;
@@ -1663,10 +1670,29 @@ export function BookingEditor({
         </>
       ) : null}
 
+      {customer ? (
+        <div className={tab === "client" ? "order-2" : "hidden"}>
+          {clientPick && clientPick.id !== customer.id ? (
+            <p className="mb-4 text-sm text-muted">
+              Enregistrez le dossier pour ouvrir la fiche de{" "}
+              {[clientPick.first_name, clientPick.last_name].filter(Boolean).join(" ") || "ce client"}.
+            </p>
+          ) : null}
+          <CustomerEditor
+            key={customer.updated_at}
+            customer={customer}
+            companions={companions}
+            documents={identityDocs}
+            companyAdmins={companyAdmins}
+            billingCompanies={ficheBillingCompanies}
+          />
+        </div>
+      ) : null}
+
       {tab === "client" ? (
         <>
-      <section className="order-2 admin-af-card space-y-4 rounded-3xl p-5">
-        <CoverMark>Voyageurs</CoverMark>
+      <section className="order-3 admin-af-card space-y-4 rounded-3xl p-5">
+        <CoverMark>Sur ce séjour</CoverMark>
         {!travelers.length ? (
           <button
             type="button"
@@ -1750,7 +1776,7 @@ export function BookingEditor({
       </section>
 
       {shareUrl ? (
-        <div className="order-3">
+        <div className="order-4">
         <TripSharePanel
           bookingId={booking.id}
           shareUrl={shareUrl}
@@ -1759,7 +1785,7 @@ export function BookingEditor({
         />
         </div>
       ) : null}
-      <div className="order-4">
+      <div className="order-5">
         <CustomerLoginLog logins={customerLogins} activity={customerActivity} />
       </div>
         </>
