@@ -188,6 +188,77 @@ function CoverMark({ children }: { children: string }) {
   );
 }
 
+function Mb3mInvoiceAction({
+  bookingId,
+  busy,
+  invoicing,
+  unsaved,
+  blocker,
+  pieceNumber,
+  note,
+  onBusy,
+  onNote,
+  onInvoiced,
+}: {
+  bookingId: string;
+  busy: boolean;
+  invoicing: boolean;
+  unsaved: boolean;
+  blocker: string | null;
+  pieceNumber: string | null;
+  note: string | null;
+  onBusy: (active: boolean) => void;
+  onNote: (note: string | null) => void;
+  onInvoiced: (number: string, note: string) => void;
+}) {
+  const reason = pieceNumber ? null : unsaved ? "Enregistrez le séjour avant de facturer." : blocker;
+  async function facture() {
+    onBusy(true);
+    onNote(null);
+    try {
+      const res = await fetch(`/api/admin/bookings/${bookingId}/mb3m`, { method: "POST" });
+      const json = (await res.json().catch(() => null)) as {
+        error?: string;
+        number?: string;
+        created?: boolean;
+        visibleToClient?: boolean;
+      } | null;
+      if (!res.ok || !json?.number) {
+        onNote(json?.error || "La facture MB3M n’a pas abouti.");
+        return;
+      }
+      const message = json.created
+        ? json.visibleToClient
+          ? `Facture MB3M n° ${json.number} déposée dans les pièces. Le client la voit avec le séjour.`
+          : `Facture MB3M n° ${json.number} déposée dans les pièces. Le client la verra quand le séjour sera montré.`
+        : `Facture MB3M n° ${json.number}. Le PDF est à jour.`;
+      onInvoiced(json.number, message);
+    } catch {
+      onNote("La facture MB3M n’a pas abouti.");
+    } finally {
+      onBusy(false);
+    }
+  }
+  return (
+    <div className="space-y-2 pt-2">
+      <p className="text-sm text-muted">La facture MB3M rejoint les pièces du séjour. Le grand livre ne change pas.</p>
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          disabled={busy || Boolean(reason)}
+          onClick={() => void facture()}
+          className="admin-tap rounded-full border border-[var(--admin-navy)] bg-white px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:border-[var(--border)] disabled:opacity-50"
+        >
+          {invoicing ? "Facturation…" : "Facturer dans MB3M"}
+        </button>
+        {pieceNumber ? <p className="text-sm text-[var(--admin-navy)]">Facture n° {pieceNumber}.</p> : null}
+        {!pieceNumber && reason ? <p className="text-sm text-muted">{reason}</p> : null}
+      </div>
+      {note ? <p className="text-sm text-[var(--admin-navy)]">{note}</p> : null}
+    </div>
+  );
+}
+
 export function BookingEditor({
   booking,
   items,
@@ -232,6 +303,7 @@ export function BookingEditor({
   whatsappBookings = [],
   customerLogins = [],
   customerActivity = [],
+  mb3m,
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -305,6 +377,7 @@ export function BookingEditor({
   whatsappBookings?: { id: string; reference: string }[];
   customerLogins?: CrmCustomerLogin[];
   customerActivity?: CrmCustomerActivity[];
+  mb3m: { blocker: string | null; piece: { number: string } | null };
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -340,7 +413,7 @@ export function BookingEditor({
     [booking.currency, booking.id]
   );
   const needsReview = items.some((item) => item.details?.needs_review === true);
-  const [busy, setBusy] = useState<"idle" | "save" | "publish" | "cover">("idle");
+  const [busy, setBusy] = useState<"idle" | "save" | "publish" | "cover" | "invoice">("idle");
   // Champs du formulaire méta : `useMirror` — un champ touché par l’agent gagne, un champ intact suit
   // le serveur à chaque `router.refresh()` (une étape ajoutée met déjà à jour la ligne du dossier).
   const [titleDraft, setTitleDraft] = useMirror(booking.title);
@@ -353,6 +426,8 @@ export function BookingEditor({
   const arrival = coverQuery(booking.destination, booking.title);
   const coverPlace = arrival === "voyage" ? "" : arrival;
   const [flash, setFlash] = useState<string | null>(null);
+  const [invoicePiece, setInvoicePiece] = useState(mb3m.piece);
+  const [invoiceNote, setInvoiceNote] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<null | "publish" | "unpublish">(null);
   const [issues, setIssues] = useState<BookingIssue[]>([]);
   const [partyBusy, setPartyBusy] = useState(false);
@@ -1107,7 +1182,10 @@ export function BookingEditor({
             );
           })}
         </div>
-        <BusyBar active={busy !== "idle"} label={busy === "publish" ? "Envoi au client…" : "Enregistrement…"} />
+        <BusyBar
+          active={busy !== "idle"}
+          label={busy === "publish" ? "Envoi au client…" : busy === "invoice" ? "Facturation…" : "Enregistrement…"}
+        />
         {unsaved && busy === "idle" ? (
           <p role="status" className="text-sm font-semibold text-[var(--admin-gold-dark)]">
             Modifications non enregistrées · ⌘S ou Ctrl+S pour enregistrer
@@ -1835,6 +1913,22 @@ export function BookingEditor({
         <p className="text-sm text-muted">
           Prix des cartes, des frais d’agence, des frais de billeterie et des dépenses.
         </p>
+        <Mb3mInvoiceAction
+          bookingId={booking.id}
+          busy={busy !== "idle"}
+          invoicing={busy === "invoice"}
+          unsaved={unsaved}
+          blocker={mb3m.blocker}
+          pieceNumber={invoicePiece?.number || mb3m.piece?.number || null}
+          note={invoiceNote}
+          onBusy={(active) => setBusy(active ? "invoice" : "idle")}
+          onNote={setInvoiceNote}
+          onInvoiced={(number, note) => {
+            setInvoicePiece({ number });
+            setInvoiceNote(note);
+            router.refresh();
+          }}
+        />
         {clientSettles ? (
           <p className="text-sm text-muted">Les cartes se règlent hors agence. Les frais et les dépenses restent au grand livre.</p>
         ) : null}

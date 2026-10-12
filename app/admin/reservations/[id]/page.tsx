@@ -14,6 +14,7 @@ import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
 import { markEstaNoticesSeen, syncEstaForBookingId } from "@/lib/crm/esta-run";
 import { markUkEtaNoticesSeen, syncUkEtaForBookingId } from "@/lib/crm/uk-eta-run";
+import { buildMb3mInvoiceContext, mb3mInvoiceBlocker } from "@/lib/crm/mb3m-invoice";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
@@ -114,7 +115,9 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
       .limit(1),
     supabase
       .from("crm_billing_companies")
-      .select("id, company_name, sort_order, customer_id, funding")
+      .select(
+        "id, company_name, sort_order, customer_id, funding, billing_email, billing_address_line, billing_postal_code, billing_city, billing_country"
+      )
       .eq("customer_id", b.billing_customer_id || b.customer_id)
       .order("sort_order"),
     supabase
@@ -406,6 +409,38 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
     revolutExpenses = [];
   }
 
+  const billingCompanyRows = (billingCompanies || []) as {
+    id: string;
+    company_name: string | null;
+    sort_order: number;
+    billing_email?: string | null;
+    billing_address_line?: string | null;
+    billing_postal_code?: string | null;
+    billing_city?: string | null;
+    billing_country?: string | null;
+  }[];
+  const mb3mContext = buildMb3mInvoiceContext({
+    booking: b,
+    items: bookingItems,
+    travelers: bookingTravelers,
+    payer: billingCustomer || customer,
+    companies: billingCompanyRows,
+  });
+  let mb3mPiece: { number: string } | null = null;
+  try {
+    const mb3mAdmin = createServiceClient();
+    const { data: mb3mRow, error: mb3mError } = await mb3mAdmin
+      .from("crm_mb3m_pieces")
+      .select("piece_number")
+      .eq("booking_id", id)
+      .eq("kind", "invoice")
+      .maybeSingle();
+    const number = !mb3mError && mb3mRow?.piece_number ? String(mb3mRow.piece_number).trim() : "";
+    if (number) mb3mPiece = { number };
+  } catch {
+    mb3mPiece = null;
+  }
+
   return (
     <BookingEditor
           booking={b}
@@ -478,6 +513,7 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
           customerActivity={customerActivity}
           ficheBillingCompanies={ficheBillingCompanies}
           companyAdmins={companyAdmins}
+          mb3m={{ blocker: mb3mInvoiceBlocker(mb3mContext), piece: mb3mPiece }}
         />
   );
 }
