@@ -88,6 +88,8 @@ export function cleanPersonalNumber(value: string | null | undefined) {
   // Passeport israélien : les « < » de la MRZ sont les tirets du n° d’identité (3-1234567-8).
   if (/^\d(?: \d+)+$/.test(spaced)) return spaced.replace(/ /g, "-");
   const stripped = spaced.replace(/ /g, "");
+  // Deux chiffres : fin du contrôle d’expiration dans la MRZ, pas un n° personnel.
+  if (/^\d{1,2}$/.test(stripped)) return null;
   return stripped || null;
 }
 
@@ -281,6 +283,10 @@ function numbersLookLikeSameDocument(a: string | null | undefined, b: string | n
   const right = passportNumberKey(b);
   if (!left || !right) return false;
   if (left === right) return true;
+  const short = left.length <= right.length ? left : right;
+  const long = left.length <= right.length ? right : left;
+  // Lecture coupée du même livret : 22AA178 est le début de 22AA17834, pas un second passeport.
+  if (short.length >= 6 && long.length - short.length <= 3 && long.startsWith(short)) return true;
   if (left.length < 8 || right.length < 8) return false;
   if (Math.abs(left.length - right.length) > 1) return false;
   return compactEditDistance(left, right) <= 2;
@@ -337,9 +343,14 @@ export function distinctPassportPeople(identities: ExtractedIdentity[]): Extract
     else groups.push([identity]);
   }
   const best = groups.map((group) =>
-    group.reduce((winner, identity) =>
-      identityQuality(identity) > identityQuality(winner) ? identity : winner
-    )
+    group.reduce((winner, identity) => {
+      const quality = identityQuality(identity) - identityQuality(winner);
+      if (quality !== 0) return quality > 0 ? identity : winner;
+      const winnerNumber = passportNumberKey(winner.number);
+      const nextNumber = passportNumberKey(identity.number);
+      if (nextNumber.startsWith(winnerNumber) && nextNumber.length > winnerNumber.length) return identity;
+      return winner;
+    })
   );
   const named = best.filter(hasPersonName);
   return named.length ? named : best;

@@ -26,6 +26,7 @@ const PROMPT = `Tu lis une photo ou un scan PDF de passeport, carte d’identit�
 Le fichier peut contenir PLUSIEURS passeports (deux livrets ouverts sur la même page, photocopie de couple, PDF de plusieurs pages).
 Si tu vois 2 passeports, identities DOIT contenir 2 objets. Si tu en vois 3, 3 objets. Un objet par personne, jamais fusionnés.
 Plusieurs images peuvent être le même scan découpé (gauche / droite / bas) : dédupe par personne.
+Un numéro tronqué qui est le début du numéro MRZ (sans date de naissance) est le même livret, pas un second passeport. La page du haut d’un livret ouvert n’est pas une personne.
 
 Extrais TOUS les champs visibles. Ne jamais inventer : mettre null si absent ou illisible.
 Dates en YYYY-MM-DD.
