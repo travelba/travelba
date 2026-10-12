@@ -29,6 +29,31 @@ describe("replacementPlan", () => {
     assert.equal(plan.choices.length, 0);
   });
 
+  it("met à jour l’hôtel sans référence quand le nom et les nuits sont les mêmes", () => {
+    const plan = replacementPlan(
+      [
+        {
+          kind: "hotel",
+          title: "Mondrian Bordeaux",
+          confirmation_ref: "B7G5AJC0552",
+          start_at: "2026-10-13",
+          end_at: "2026-10-14",
+        },
+      ],
+      [
+        hotel({
+          title: "Mondrian Bordeaux Les Carmes",
+          confirmation_ref: null,
+          start_at: "2026-10-13",
+          end_at: "2026-10-14",
+        }),
+      ]
+    );
+    assert.deepEqual(plan.updates, [{ itemId: "h1" }]);
+    assert.deepEqual(plan.replacements, []);
+    assert.equal(plan.adds, 0);
+  });
+
   it("remplace l’unique hôtel quand la référence change, au prix vendu", () => {
     const plan = replacementPlan(
       [{ kind: "hotel", title: "Hotel Eden", confirmation_ref: "97620171" }],

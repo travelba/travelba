@@ -44,7 +44,7 @@ import {
   IMPORT_QUOTE_NOTE,
 } from "@/lib/crm/email-detach";
 import { activeCardDateRange, cancellationApplyPlan, cardStaysShown, replacementPlan } from "@/lib/crm/item-lifecycle";
-import { findHotelBookingCard, findMatchingItem, keptHotelStayFields } from "@/lib/crm/item-match";
+import { findHotelBookingCard, findMatchingItem, hotelMatchKeepsStay, keptHotelStayFields } from "@/lib/crm/item-match";
 import { persistBookingCardOrder } from "@/lib/crm/item-order";
 import { inferAirlineIata } from "@/lib/crm/brand-marks";
 import {
@@ -327,11 +327,12 @@ async function upsertItemsAndTravelers(
       kind,
       confirmation_ref: emptyToNull(item.confirmation_ref),
       start_at: emptyToNull(item.start_at),
+      end_at: emptyToNull(item.end_at),
       title,
       details,
     };
     let match = findMatchingItem(pool, probe);
-    let sameBooking = false;
+    let sameBooking = Boolean(match && hotelMatchKeepsStay(match, probe));
     if (!match && opts?.keepSellingPrice) {
       match = findHotelBookingCard(pool, probe);
       sameBooking = Boolean(match);
