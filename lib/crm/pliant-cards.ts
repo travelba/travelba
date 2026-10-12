@@ -7,6 +7,15 @@ export type PliantSpendLine = {
   billingCents: number | null;
   currency: string | null;
   bookedAt: string | null;
+  transactionCents?: number | null;
+  transactionCurrency?: string | null;
+  category?: string | null;
+  comment?: string | null;
+  holderName?: string | null;
+  matchStatus?: "unmatched" | "matched" | "ignored" | null;
+  matchedTransactionId?: string | null;
+  matchedBookingId?: string | null;
+  matchedReference?: string | null;
 };
 
 export type PliantCardStatus = "active" | "locked";

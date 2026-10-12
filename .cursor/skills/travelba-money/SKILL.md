@@ -88,6 +88,10 @@ Flux : API Business → `crm_revolut_transactions` (`unmatched`, **crédits seul
 
 **Ne pas** imputer sans le clic Valider, quel que soit le score. Un nom de famille seul, même unique, reste une proposition.
 
+## Pliant — débit sur une réservation
+
+L’onglet **Règlement** du dossier liste les transactions de chaque carte Pliant du séjour : date, commerçant, type, statut, montant, et le montant d’origine s’il est dans une autre devise. **Rapprocher** poste le débit (ou le remboursement) au compte qui règle la réservation choisie, avec `booking_id`. Le clic est obligatoire. Plusieurs réservations du même compte : la fenêtre demande laquelle. Une ligne déjà rapprochée sur une autre réservation ne bouge pas. Une ligne déjà au compte, sans réservation, se lie sans seconde écriture. **Refuser** sort la ligne de la file, sans écriture. Ce débit ne retire pas le montant du séjour et n’est pas une dépense du carnet.
+
 ## Soldes des comptes
 
 Le tableau de bord (`/admin`, bloc **Comptes**) et la page de chaque compte montrent le solde, comme Pliant (« Solde du compte »).

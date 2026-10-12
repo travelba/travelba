@@ -24,6 +24,7 @@ import {
   creditStripePayment,
   McpWriteError,
   publishCarnet,
+  reconcilePliantDebit,
   settleEmail,
   updateBooking,
   updateClient,
@@ -219,6 +220,17 @@ export const MCP_TOOLS: ToolDef[] = [
       client_id: z.string().trim().describe("Identifiant du client à créditer"),
     },
     run: (args) => creditStripePayment(args),
+  },
+  {
+    name: "rapprocher_pliant",
+    write: true,
+    description:
+      "Rapproche un débit Pliant sur la réservation désignée. Les deux identifiants sont obligatoires. Le compte est celui qui règle le séjour. Ne choisit pas la réservation à la place de l’agence.",
+    input: {
+      mouvement_id: z.string().trim().describe("Identifiant de la dépense Pliant"),
+      dossier_id: z.string().trim().describe("Identifiant de la réservation"),
+    },
+    run: (args) => reconcilePliantDebit(args),
   },
   {
     name: "publier_carnet",

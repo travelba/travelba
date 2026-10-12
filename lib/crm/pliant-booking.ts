@@ -1,4 +1,6 @@
+import { formatDateFr } from "./dates";
 import type { PliantSpendLine } from "./pliant-cards";
+import { pliantLedgerDraft } from "./pliant-match";
 import { isActiveItem, isLedgerExpenseKind } from "./types";
 
 /** Carte rattachée au dossier, prête pour le récap Pliant. */
@@ -191,6 +193,94 @@ export function pliantExpenseTransactionId(details: unknown): string | null {
   const id = raw.trim();
   if (!id || id.length > 128) return null;
   return id;
+}
+
+export type PliantReconcileState = "post" | "attach" | "here" | "elsewhere" | "ignored" | "closed";
+
+/** Ce qu’on peut faire de la ligne sur la réservation ouverte. */
+export function pliantReconcileState(
+  line: {
+    type: string | null;
+    status: string | null;
+    billingCents: number | null;
+    billingCurrency?: string | null;
+    matchStatus?: string | null;
+    matchedBookingId?: string | null;
+  },
+  bookingId: string
+): PliantReconcileState {
+  const status = (line.matchStatus || "unmatched").toLowerCase();
+  if (status === "ignored") return "ignored";
+  const draft = pliantLedgerDraft({
+    pliant_transaction_id: "line",
+    type: line.type,
+    status: line.status,
+    merchant: null,
+    billing_cents: line.billingCents,
+    billing_currency: line.billingCurrency || "EUR",
+    booked_at: null,
+    card_label: null,
+    card_last4: null,
+  });
+  if (status === "matched") {
+    if (!line.matchedBookingId) return draft ? "attach" : "here";
+    return line.matchedBookingId === bookingId ? "here" : "elsewhere";
+  }
+  return draft ? "post" : "closed";
+}
+
+export type PliantSettlementStay = {
+  id: string;
+  reference: string;
+  label: string;
+};
+
+export function pliantSettlementStayLabel(input: {
+  reference: string | null;
+  title: string | null;
+  destination: string | null;
+  startDate: string | null;
+}) {
+  const place = (input.title || "").trim() || (input.destination || "").trim() || "Séjour";
+  const when = input.startDate ? formatDateFr(input.startDate) : "";
+  const ref = (input.reference || "").trim();
+  return [ref, place, when === "—" ? "" : when].filter(Boolean).join(" · ");
+}
+
+/** Réservations du compte, la réservation ouverte en tête. Une annulation autre reste dehors. */
+export function pliantSettlementStays(
+  rows: {
+    id: string;
+    reference: string | null;
+    title: string | null;
+    destination: string | null;
+    start_date: string | null;
+    status: string | null;
+  }[],
+  currentId: string
+): PliantSettlementStay[] {
+  const seen = new Set<string>();
+  const stays = rows.filter((row) => {
+    if (!row.id || seen.has(row.id)) return false;
+    seen.add(row.id);
+    if (row.id === currentId) return true;
+    return (row.status || "").toLowerCase() !== "cancelled";
+  });
+  stays.sort((a, b) => {
+    if (a.id === currentId) return -1;
+    if (b.id === currentId) return 1;
+    return (b.start_date || "").localeCompare(a.start_date || "");
+  });
+  return stays.map((row) => ({
+    id: row.id,
+    reference: (row.reference || "").trim(),
+    label: pliantSettlementStayLabel({
+      reference: row.reference,
+      title: row.title,
+      destination: row.destination,
+      startDate: row.start_date,
+    }),
+  }));
 }
 
 /** Dépenses actives du dossier déjà liées à une transaction Pliant. */

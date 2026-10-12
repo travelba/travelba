@@ -270,4 +270,86 @@ describe("pliant-match", () => {
     assert.equal(again.ok, false);
     if (!again.ok) assert.equal(again.error, "already_matched");
   });
+
+  it("rattache le débit à la réservation choisie, sans relire la carte", async () => {
+    const inserts: Record<string, unknown>[] = [];
+    let lookedUp = false;
+    const admin = {
+      from() {
+        return {
+          select() {
+            lookedUp = true;
+            return { eq: () => ({ maybeSingle: async () => ({ data: { booking_id: "from-card" } }) }) };
+          },
+          insert(payload: Record<string, unknown>) {
+            inserts.push(payload);
+            return {
+              select: () => ({ single: async () => ({ data: { id: "tx-stay", ...payload }, error: null }) }),
+            };
+          },
+          update() {
+            return { eq: async () => ({ error: null }) };
+          },
+        };
+      },
+    };
+    const result = await applyPliantToCustomer(admin, expense({ id: "inbox-3", pliant_transaction_id: "pl-3000" }), "customer-1", {
+      bookingId: "stay-rome",
+      billingCompanyId: "co-1",
+      payerKind: "company",
+    });
+    assert.equal(result.ok, true);
+    assert.equal(lookedUp, false);
+    assert.equal(inserts[0]?.booking_id, "stay-rome");
+    assert.equal(inserts[0]?.billing_company_id, "co-1");
+    assert.equal(inserts[0]?.payer_kind, "company");
+    assert.equal(inserts[0]?.customer_id, "customer-1");
+  });
+
+  it("une dépense déjà au compte se lie à la réservation, et ne change pas de séjour", async () => {
+    const updates: Record<string, unknown>[] = [];
+    function admin(bookingId: string | null, customerId = "customer-1") {
+      return {
+        from() {
+          return {
+            select() {
+              return {
+                eq() {
+                  return {
+                    eq() {
+                      return {
+                        maybeSingle: async () => ({
+                          data: { id: "tx-9", customer_id: customerId, booking_id: bookingId },
+                        }),
+                      };
+                    },
+                  };
+                },
+              };
+            },
+            update(payload: Record<string, unknown>) {
+              updates.push(payload);
+              return { eq: async () => ({ error: null }) };
+            },
+          };
+        },
+      };
+    }
+    const row = expense({ id: "inbox-4", pliant_transaction_id: "pl-4000", match_status: "matched" });
+    const linked = await applyPliantToCustomer(admin(null), row, "customer-1", { bookingId: "stay-1" });
+    assert.equal(linked.ok, true);
+    assert.equal(updates[0]?.booking_id, "stay-1");
+
+    const same = await applyPliantToCustomer(admin("stay-1"), row, "customer-1", { bookingId: "stay-1" });
+    assert.equal(same.ok, true);
+    assert.equal(updates.length, 1);
+
+    const other = await applyPliantToCustomer(admin("stay-2"), row, "customer-1", { bookingId: "stay-1" });
+    assert.equal(other.ok, false);
+    if (!other.ok) assert.equal(other.error, "other_booking");
+
+    const someone = await applyPliantToCustomer(admin(null, "customer-9"), row, "customer-1", { bookingId: "stay-1" });
+    assert.equal(someone.ok, false);
+    if (!someone.ok) assert.equal(someone.error, "already_matched");
+  });
 });
