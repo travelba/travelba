@@ -13,7 +13,7 @@ function clientSearchText(c: CustomerListRow) {
   const phone = c.phone || "";
   const digits = phone.replace(/\D/g, "");
   const national = digits.startsWith("33") && digits.length > 2 ? `0${digits.slice(2)}` : "";
-  return [customerFullName(c), c.usage_name, c.company_name, c.email, phone, digits, national]
+  return [customerFullName(c), c.first_name, c.usage_name, c.company_name, c.email, phone, digits, national]
     .filter(Boolean)
     .join(" ");
 }

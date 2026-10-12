@@ -12,7 +12,7 @@ import {
   nationalityFromIdentity,
   preselectDocumentTarget,
 } from "@/lib/crm/document-identity";
-import { PASSPORT_VAULT_NOTICE, documentExpiryStatus, documentExpiryWarning, maskDocumentNumber } from "@/lib/crm/identity";
+import { PASSPORT_VAULT_NOTICE, documentExpiryStatus, documentExpiryWarning, maskDocumentNumber, shownPersonName } from "@/lib/crm/identity";
 import { formatDateFr } from "@/lib/crm/money";
 import { appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-extract";
 import { isVaultDocument } from "@/lib/crm/trip-documents";
@@ -363,7 +363,7 @@ export function DocumentsManager({
                   <option value="">Moi (titulaire)</option>
                   {companions.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.first_name} {c.last_name}
+                      {shownPersonName(c)}
                     </option>
                   ))}
                 </select>

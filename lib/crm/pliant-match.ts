@@ -1,3 +1,4 @@
+import { shownPersonName } from "./identity";
 import { matchTokens, normalizeMatchText, suggestedCustomerId, tokensSpell } from "./revolut-match";
 
 export { suggestedCustomerId } from "./revolut-match";
@@ -124,7 +125,7 @@ async function bookingIdForCard(admin: PliantAdmin, cardId: string | null | unde
 }
 
 function customerLabel(c: PliantMatchCustomer) {
-  const name = [c.first_name, c.last_name].filter(Boolean).join(" ").trim();
+  const name = shownPersonName(c);
   if (c.company_name?.trim()) {
     return name ? `${name} · ${c.company_name.trim()}` : c.company_name.trim();
   }

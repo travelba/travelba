@@ -1,3 +1,4 @@
+import { greetingGivenName } from "@/lib/crm/identity";
 import { stepChronoKey } from "@/lib/crm/item-order";
 import { countsAsCarnetCard, isActiveItem, type BookingStatus } from "@/lib/crm/types";
 import { CITY_ALIASES, cityLabel, cityPlaceKey, foldCityName } from "@/lib/crm/city-names";
@@ -48,7 +49,7 @@ export function staffBlockingChips(input: {
   const chips: StaffBlocker[] = [];
   for (const traveler of input.travelers) {
     if (!missing.has(traveler.id)) continue;
-    const name = (traveler.first_name || traveler.last_name || "voyageur").trim();
+    const name = greetingGivenName(traveler.first_name) || (traveler.last_name || "").trim() || "voyageur";
     chips.push({ id: `passport-${traveler.id}`, label: `Passeport ${name}` });
   }
   if (input.hotelLettersOpen > 0) {

@@ -159,6 +159,15 @@ export function greetingGivenName(value: string | null | undefined) {
   return givenNameTokens(value)[0] || null;
 }
 
+/** Nom affiché : le premier prénom, puis le nom. Les autres prénoms restent sur la fiche. */
+export function shownPersonName(
+  person: { first_name?: string | null; last_name?: string | null } | null | undefined
+) {
+  const given = greetingGivenName(person?.first_name);
+  const last = (person?.last_name || "").trim();
+  return [given, last].filter(Boolean).join(" ").trim();
+}
+
 export function normalizeGivenNames(value: string | null | undefined): string | null {
   const tokens = givenNameTokens(value);
   return tokens.length ? tokens.join(" ") : null;

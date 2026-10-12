@@ -3,6 +3,7 @@
 import { FormEvent, KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { greetingGivenName, shownPersonName } from "@/lib/crm/identity";
 import {
   isActiveItem,
   isLedgerExpenseKind,
@@ -805,7 +806,7 @@ export function BookingEditor({
   const travelerLabel = travelers.length
     ? travelers.length <= 4
       ? travelers
-          .map((traveler) => (traveler.first_name || traveler.last_name || "").trim())
+          .map((traveler) => greetingGivenName(traveler.first_name) || (traveler.last_name || "").trim())
           .filter(Boolean)
           .join(", ") || `${travelers.length} voyageurs`
       : `${travelers.length} voyageurs`
@@ -1204,7 +1205,7 @@ export function BookingEditor({
             </div>
             {clientPick && payerPick && clientPick.id !== payerPick.id ? (
               <p className="text-sm text-muted">
-                Réglé par {payerPick.first_name} {payerPick.last_name}
+                Réglé par {shownPersonName(payerPick)}
               </p>
             ) : null}
             <details className="group rounded-2xl bg-[#faf9f6]">
@@ -1670,7 +1671,7 @@ export function BookingEditor({
             onClick={() => void addHolder()}
             className="admin-tap rounded-full bg-[var(--admin-peach)] px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
           >
-            {partyBusy ? "Ajout…" : `Ajouter ${holderName.first_name} ${holderName.last_name} (titulaire)`}
+            {partyBusy ? "Ajout…" : `Ajouter ${shownPersonName(holderName)} (titulaire)`}
           </button>
         ) : (
           <TripPassportPicker
@@ -1706,7 +1707,7 @@ export function BookingEditor({
               <optgroup label="Dans les documents">
                 {documentChoices.map((person, index) => (
                   <option key={`doc-${person.first_name}-${person.last_name}`} value={`doc:${index}`}>
-                    {[person.first_name, person.last_name].filter(Boolean).join(" ")}
+                    {shownPersonName(person) || "Sans nom"}
                   </option>
                 ))}
               </optgroup>
@@ -1714,14 +1715,14 @@ export function BookingEditor({
             <optgroup label="Foyer">
               {travelers.some((row) => row.is_account_holder) ? null : (
                 <option value="holder">
-                  {holderName.first_name} {holderName.last_name} (titulaire)
+                  {shownPersonName(holderName)} (titulaire)
                 </option>
               )}
               {companions
                 .filter((companion) => !travelers.some((row) => row.companion_id === companion.id))
                 .map((companion) => (
                   <option key={companion.id} value={`companion:${companion.id}`}>
-                    {companion.first_name} {companion.last_name}
+                    {shownPersonName(companion)}
                   </option>
                 ))}
             </optgroup>
@@ -1843,7 +1844,7 @@ export function BookingEditor({
               <ul className="space-y-1 text-sm text-[var(--admin-navy)]">
                 {passportGap.map((traveler) => (
                   <li key={traveler.id}>
-                    {traveler.first_name} {traveler.last_name}
+                    {shownPersonName(traveler)}
                   </li>
                 ))}
               </ul>

@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { bookingTotalFromItems } from "@/lib/crm/bookings";
+import { shownPersonName } from "@/lib/crm/identity";
 import {
   passengersFromDetails,
   peopleNotOnStay,
@@ -1012,7 +1013,7 @@ export function BookingIngest({
                     <optgroup label="Dans les documents">
                       {documentChoices.map((person, index) => (
                         <option key={`doc-${person.first_name}-${person.last_name}`} value={`doc:${index}`}>
-                          {[person.first_name, person.last_name].filter(Boolean).join(" ")}
+                          {shownPersonName(person) || "Sans nom"}
                         </option>
                       ))}
                     </optgroup>
@@ -1042,7 +1043,7 @@ export function BookingIngest({
               return (
                 <div key={index} className="flex flex-wrap items-center gap-2 rounded-xl border border-border px-3 py-2">
                   <p className="min-w-[10rem] flex-1 text-sm font-medium">
-                    {[traveler.first_name, traveler.last_name].filter(Boolean).join(" ") || "Sans nom"}
+                    {shownPersonName(traveler) || "Sans nom"}
                   </p>
                   <span
                     className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${

@@ -20,6 +20,14 @@ test("identity snapshot prefers the name stored on the document", () => {
     ),
     "Léa Martin"
   );
+  assert.equal(
+    documentHolderName(
+      { first_name: "Léa Rose", last_name: "Martin", companion_id: null },
+      { first_name: "Benjamin Paul", last_name: "Boukris" },
+      []
+    ),
+    "Léa Martin"
+  );
 });
 
 test("form identity drops invalid sex", () => {

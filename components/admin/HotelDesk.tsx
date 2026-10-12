@@ -7,6 +7,7 @@ import { HotelMailTo } from "@/components/admin/HotelMailTo";
 import { HotelThread } from "@/components/admin/HotelThread";
 import { PrecheckPack } from "@/components/admin/PrecheckPack";
 import { hotelDisplayName } from "@/lib/crm/carnet";
+import { shownPersonName } from "@/lib/crm/identity";
 import { hotelSendDefaults, hotelSendPeople, hotelStayChecklist, hotelTripChecklist, type HotelMailPiece } from "@/lib/crm/hotel-desk";
 import { applyPaymentLinkChoice, hotelLanguage, principalGuest } from "@/lib/crm/hotel-arrival";
 import { hotelContact } from "@/lib/crm/hotel-contact";
@@ -279,7 +280,7 @@ function HotelDeskEditor({
           party={party}
           selectedIds={pieceIds}
           last4={last4}
-          holder={[holder?.first_name, holder?.last_name].filter(Boolean).join(" ")}
+          holder={shownPersonName(holder)}
           hotel={hotelDisplayName(item) || item.title}
           disabled={Boolean(busy)}
           generating={busy === "card"}
