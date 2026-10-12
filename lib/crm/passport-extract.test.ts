@@ -359,6 +359,8 @@ test("Israeli personal number keeps the printed hyphens", () => {
   assert.equal(cleanPersonalNumber("3<5207718<6"), "3-5207718-6");
   assert.equal(cleanPersonalNumber("3 5207718 6"), "3-5207718-6");
   assert.equal(cleanPersonalNumber("AB<<<12"), "AB12");
+  assert.equal(cleanPersonalNumber("23"), null);
+  assert.equal(cleanPersonalNumber("3"), null);
 });
 
 test("distinctPassportPeople keeps both nationalities of one person", () => {
@@ -412,6 +414,9 @@ test("distinctPassportPeople drops a truncated number of the same booklet", () =
   assert.equal(people[0].number, "22AA17834");
   assert.equal(people[0].birth_date, "2013-01-19");
   assert.equal(people[0].personal_number, null);
+  const shown = listedIdentities(fragment, [full!, fragment!]);
+  assert.equal(shown.length, 1);
+  assert.equal(shown[0].number, "22AA17834");
 });
 
 test("distinctPassportPeople keeps a different person even if one number starts the other", () => {

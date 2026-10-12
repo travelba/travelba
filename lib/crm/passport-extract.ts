@@ -88,6 +88,8 @@ export function cleanPersonalNumber(value: string | null | undefined) {
   // Passeport israélien : les « < » de la MRZ sont les tirets du n° d’identité (3-1234567-8).
   if (/^\d(?: \d+)+$/.test(spaced)) return spaced.replace(/ /g, "-");
   const stripped = spaced.replace(/ /g, "");
+  // Deux chiffres : fin du contrôle d’expiration dans la MRZ, pas un n° personnel.
+  if (/^\d{1,2}$/.test(stripped)) return null;
   return stripped || null;
 }
 
