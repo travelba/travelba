@@ -1,4 +1,5 @@
 import { completeGivenNames, type ExtractedIdentity } from "./identity";
+import { foldName, nameTokens } from "./person-match";
 import { isoDate, parseSpouseLine, spouseFamilyNames } from "./passport-extract";
 
 const EYE_OR_NOISE =
@@ -35,7 +36,19 @@ function latinNameTokens(chunk: string) {
 }
 
 const NEXT_FIELD =
-  /nationalit|sexe|\bsex\b|taille|height|couleur|eyes|date de|lieu de|domicile|autorit|passeport|r[eé]publique|code du pays/i;
+  /nationalit|sexe|\bsex\b|taille|height|couleur|eyes|date de|lieu de|domicile|autorit|passeport|r[eé]publique|code du pays|\bsurname\b|\bnom\b/i;
+
+/** Le nom de famille collé dans la fenêtre « Given name » n’est pas un prénom. */
+export function omitSurnameFromGiven(given: string | null, last: string | null) {
+  if (!given || !last) return given;
+  const banned = new Set(nameTokens(last));
+  if (!banned.size) return given;
+  const tokens = given.split(/\s+/).filter(Boolean);
+  const kept = tokens.filter((token) => !banned.has(foldName(token)));
+  if (!kept.length) return null;
+  if (kept.length === tokens.length) return given;
+  return kept.join(" ");
+}
 
 export function readPrintedGivenNames(text: string) {
   const lines = text.split(/\n/).map((line) => line.trim()).filter(Boolean);
@@ -506,7 +519,7 @@ export function readUsageName(text: string, birthName: string | null, given: str
 }
 
 export function enrichPassportVisual(identity: ExtractedIdentity, visual: string): ExtractedIdentity {
-  const given = readPrintedGivenNames(visual);
+  const given = omitSurnameFromGiven(readPrintedGivenNames(visual), identity.last_name);
   const usage = identity.usage_name || readUsageName(visual, identity.last_name, given || identity.first_name);
   const names = spouseFamilyNames({
     birthName: printedSurname(ungluedSurname(identity.last_name, visual), visual),
