@@ -217,6 +217,7 @@ export function dayHeading(isoDate: string) {
 
 export function documentLabel(doc: CrmBookingDocument, items: CrmBookingItem[]) {
   const related = items.find((item) => item.source_document_id === doc.id);
+  if (!related && doc.kind === "invoice") return visibleServiceCopy(doc.file_name || "Facture");
   const metier = related
     ? BOOKING_ITEM_LABELS[related.kind]
     : doc.kind === "pdf" || doc.kind === "image"
