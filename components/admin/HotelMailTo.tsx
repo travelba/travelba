@@ -51,10 +51,10 @@ export function HotelMailTo({
   }
 
   return (
-    <fieldset className="space-y-2">
+    <fieldset className="w-full min-w-0 space-y-2">
       <legend className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#6f552c]">Destinataires</legend>
       {shown.length ? (
-        <ul className="overflow-hidden rounded-xl border border-[#e5e0d4]">
+        <ul className="w-full min-w-0 overflow-hidden rounded-xl border border-[#e5e0d4]">
           {shown.map((person) => {
             const on = selected.includes(person.email);
             const name = personName(person);
@@ -62,7 +62,7 @@ export function HotelMailTo({
               <li key={person.email} className="border-t border-[#e5e0d4] first:border-t-0">
                 <label
                   title={person.email}
-                  className={`flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-[#0B192C] ${
+                  className={`flex w-full min-w-0 cursor-pointer items-center gap-2 px-2.5 py-1.5 text-[#0B192C] ${
                     on ? "bg-[#faf9f6] shadow-[inset_3px_0_0_#C5A880]" : "bg-white hover:bg-[#faf9f6]"
                   }`}
                 >
