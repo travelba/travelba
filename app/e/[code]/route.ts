@@ -1,5 +1,5 @@
-import { entryPreviewResponse, openEntry } from "@/lib/crm/entry-open";
-import { entryRequestOrigin, shouldOpenFromRequest } from "@/lib/crm/entry-link";
+import { openEntry, serveEntryGet } from "@/lib/crm/entry-open";
+import { entryRequestOrigin } from "@/lib/crm/entry-link";
 import { siteConfig } from "@/lib/site";
 
 export const runtime = "nodejs";
@@ -18,9 +18,7 @@ function normalizeCode(code: string) {
 /** Même règle que /e/c. */
 export async function GET(request: Request, ctx: Ctx) {
   const { code } = await ctx.params;
-  const safe = normalizeCode(code);
-  if (shouldOpenFromRequest(request.url, request.headers)) return openEntry(originOf(request), safe);
-  return entryPreviewResponse(originOf(request), safe);
+  return serveEntryGet(request, originOf(request), normalizeCode(code));
 }
 
 export async function POST(request: Request, ctx: Ctx) {

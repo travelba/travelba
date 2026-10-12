@@ -248,6 +248,19 @@ export function shouldOpenFromRequest(url: string, headers: Headers) {
   });
 }
 
+/**
+ * Cookie de session Supabase (`sb-…-auth-token`, éventuellement découpé en `.0`).
+ * Le vérificateur PKCE (`-code-verifier`) n’est pas une session.
+ */
+export function hasAuthSessionCookie(names: Iterable<string>) {
+  for (const name of names) {
+    if (!name.startsWith("sb-")) continue;
+    const base = name.split(".")[0];
+    if (base.endsWith("-auth-token")) return true;
+  }
+  return false;
+}
+
 export function safeOtpType(value: string | null | undefined) {
   return value && OTP_TYPES.has(value) ? value : "magiclink";
 }
@@ -368,6 +381,41 @@ function previewImage(image: string | null | undefined) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Porte humaine, sans dossier ni photo. Le script ouvre `?ouvrir=1` ;
+ * sans JavaScript, le bouton poste. Le robot, lui, reçoit l’aperçu riche.
+ */
+export function entryInstantHtml(origin: string, code: string, door: EntryDoor = ENTRY_DOOR_CLIENT) {
+  const base = origin.replace(/\/$/, "");
+  const action = escapeHtml(entryLinkUrl(base, code));
+  const title = escapeHtml(door.title);
+  const description = escapeHtml(door.description);
+  const mark = door.lang === "en" ? "Little Emperors" : "Travel Business Agency";
+  return `<!DOCTYPE html>
+<html lang="${door.lang}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0B192C">
+<title>${title}</title>
+<meta name="description" content="${description}">
+<meta name="robots" content="noindex">
+</head>
+<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0B192C;color:#F3EDE2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+<main style="width:min(100%,420px);padding:28px 22px">
+<p style="margin:0 0 14px;font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#C5A880">${mark}</p>
+<h1 style="margin:0;font-family:Georgia,Palatino,serif;font-size:34px;font-weight:500;line-height:1.12">${title}</h1>
+<p style="margin:12px 0 0;font-size:16px;line-height:1.45;color:#E4D5BE">${description}</p>
+<form method="post" action="${action}" style="margin:28px 0 0">
+<input type="hidden" name="ouvrir" value="1">
+<button type="submit" style="width:100%;min-height:54px;border:0;border-radius:999px;background:#C5A880;color:#0B192C;font:600 16px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;cursor:pointer">${escapeHtml(door.button)}</button>
+</form>
+</main>
+<script>location.replace(location.pathname+"?ouvrir=1")</script>
+</body>
+</html>`;
 }
 
 export function entryPreviewHtml(
