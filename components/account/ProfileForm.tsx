@@ -5,15 +5,14 @@ import { useRouter } from "next/navigation";
 import type { CrmCustomer, CrmTravelDocument } from "@/lib/crm/types";
 import { resolveCountryCode } from "@/lib/crm/countries";
 import { identityNationalityFromSources, nationalityFromIdentity } from "@/lib/crm/document-identity";
-import { identityAppliedNotice, type ExtractedIdentity } from "@/lib/crm/identity";
+import { birthCaption, identityAppliedNotice, type ExtractedIdentity } from "@/lib/crm/identity";
 import { postJson } from "@/lib/crm/client-fetch";
 import { loyaltyFromCustomer, type LoyaltyMap } from "@/lib/crm/loyalty";
-import { formatDateFr } from "@/lib/crm/money";
 import { vaultDocumentsForPerson } from "@/lib/crm/trip-documents";
 import {
   AddressFields,
+  BirthDateField,
   CountrySelect,
-  DateFrInput,
   Field,
   fieldControlClass,
   OptionalSecondPhone,
@@ -127,9 +126,9 @@ export function ProfileForm({
     }
   }
 
-  const identitySummary =
-    [firstName, lastName].filter(Boolean).join(" ") +
-    (birthDate ? ` · ${formatDateFr(birthDate)}` : "");
+  const identitySummary = [[firstName, lastName].filter(Boolean).join(" "), birthCaption(birthDate, sex)]
+    .filter(Boolean)
+    .join(" · ");
   const addressSummary = [addressLine, postalCode, city].filter(Boolean).join(", ");
   const loyaltyCount = Object.values(loyalty).filter(Boolean).length;
 
@@ -169,14 +168,7 @@ export function ProfileForm({
             className={fieldControlClass}
           />
         </Field>
-        <Field label="Date de naissance">
-          <DateFrInput
-            autoComplete="bday"
-            max={new Date().toISOString().slice(0, 10)}
-            value={birthDate}
-            onChange={setBirthDate}
-          />
-        </Field>
+        <BirthDateField label="Date de naissance" value={birthDate} onChange={setBirthDate} sex={sex} autoComplete="bday" />
         <Field label="Sexe">
           <SexSelect name="sex" value={sex} onChange={setSex} />
         </Field>

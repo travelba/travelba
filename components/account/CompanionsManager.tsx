@@ -6,13 +6,13 @@ import { Plus } from "lucide-react";
 import type { CrmCompanion, CrmTravelDocument } from "@/lib/crm/types";
 import { deleteJson, postJson, sendForm } from "@/lib/crm/client-fetch";
 import { nationalityFromIdentity } from "@/lib/crm/document-identity";
-import { greetingGivenName, identityOverwriteWarning, maskDocumentNumber, RELATIONSHIP_OPTIONS, shownPersonName } from "@/lib/crm/identity";
+import { birthCaption, greetingGivenName, identityOverwriteWarning, maskDocumentNumber, RELATIONSHIP_OPTIONS, shownPersonName } from "@/lib/crm/identity";
 import { loyaltyFromCustomer, type LoyaltyMap } from "@/lib/crm/loyalty";
 import { appendPassportForm, appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-extract";
 import { documentsForPerson, primaryIdentityDoc } from "@/lib/crm/trip-documents";
 import {
+  BirthDateField,
   CountrySelect,
-  DateFrInput,
   Field,
   fieldControlClass,
   PhoneField,
@@ -243,7 +243,9 @@ export function CompanionsManager({
                     {shownPersonName(c)}
                   </p>
                   <p className="truncate text-xs text-muted">
-                    {[relationshipLabel(c.relationship), piece].filter(Boolean).join(" · ")}
+                    {[relationshipLabel(c.relationship), birthCaption(c.birth_date, c.sex), piece]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </p>
                 </button>
                 <ConfirmAction
@@ -339,13 +341,7 @@ export function CompanionsManager({
           <Field label="Nationalité">
             <CountrySelect name="nationality" value={nationality} onChange={setNationality} />
           </Field>
-          <Field label="Date de naissance">
-            <DateFrInput
-              max={new Date().toISOString().slice(0, 10)}
-              value={birthDate}
-              onChange={setBirthDate}
-            />
-          </Field>
+          <BirthDateField label="Date de naissance" value={birthDate} onChange={setBirthDate} sex={sex} />
           <Field label="Sexe">
             <SexSelect name="sex" value={sex} onChange={setSex} />
           </Field>

@@ -1,5 +1,6 @@
 import { resolveNationality } from "./countries";
 import {
+  birthCaption,
   completeGivenNames,
   emptyToNull,
   humanizeMrzName,
@@ -440,13 +441,13 @@ export function mergePassportIdentities(
 
 export function identitySummary(id: ExtractedIdentity) {
   const name = [id.last_name, id.first_name].filter(Boolean).join(" ");
+  const born = birthCaption(id.birth_date, id.sex);
   return [
     name || null,
     id.number ? `n° ${id.number}` : null,
-    id.birth_date ? `né(e) ${id.birth_date}` : null,
+    born ? (id.birth_date ? `né(e) le ${born}` : born) : null,
     id.place_of_birth ? `à ${id.place_of_birth}` : null,
     id.usage_name ? `ép. ${id.usage_name}` : null,
-    id.sex,
     id.nationality,
     id.issued_on ? `délivré ${id.issued_on}` : null,
     id.expires_on ? `exp. ${id.expires_on}` : null,

@@ -10,11 +10,13 @@ import {
 } from "@/lib/crm/types";
 import { countryName, resolveNationality } from "@/lib/crm/countries";
 import {
-  SEX_OPTIONS,
   PASSPORT_VAULT_NOTICE,
+  ageAndSexCaption,
+  birthCaption,
   documentExpiryStatus,
   documentExpiryWarning,
   maskDocumentNumber,
+  sexLabel,
   type ExtractedIdentity,
 } from "@/lib/crm/identity";
 import { formatDateFr } from "@/lib/crm/money";
@@ -61,10 +63,6 @@ type PassportSource = {
   city?: string | null;
 };
 
-function sexLabel(value: string | null | undefined) {
-  return SEX_OPTIONS.find((option) => option.value === value)?.label || value || null;
-}
-
 export function passportDetailRows(source: PassportSource) {
   const type =
     source.doc_type && source.doc_type in DOC_TYPE_LABELS
@@ -76,7 +74,7 @@ export function passportDetailRows(source: PassportSource) {
     ["Nom", source.last_name],
     ["Nom d'usage", source.usage_name],
     ["Prénom(s)", source.first_name],
-    ["Date de naissance", source.birth_date ? formatDateFr(source.birth_date) : null],
+    ["Date de naissance", source.birth_date ? birthCaption(source.birth_date, source.sex) : null],
     ["Lieu de naissance", source.place_of_birth],
     ["Sexe", sexLabel(source.sex)],
     ["Nationalité", countryName(resolveNationality(source.nationality, source.issuing_country))],
@@ -531,6 +529,11 @@ export function PersonPassportCard({
                             className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm font-medium normal-case tracking-normal text-[var(--admin-navy)]"
                           />
                         )}
+                        {field === "birth_date" && ageAndSexCaption(misreadDraft.birth_date, misreadDraft.sex) ? (
+                          <span className="mt-1 block text-xs font-semibold normal-case tracking-normal text-[var(--admin-navy)]">
+                            {ageAndSexCaption(misreadDraft.birth_date, misreadDraft.sex)}
+                          </span>
+                        ) : null}
                       </label>
                     ))}
                   </div>

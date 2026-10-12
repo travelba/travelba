@@ -1,3 +1,4 @@
+import { formatDateFr, isValidIsoDate, parisTodayIso } from "./dates";
 import { daysUntil } from "./money";
 import type { TravelDocType } from "./types";
 
@@ -6,6 +7,51 @@ export const SEX_OPTIONS = [
   { value: "M", label: "Homme" },
   { value: "X", label: "Autre" },
 ] as const;
+
+export function sexLabel(value: string | null | undefined) {
+  return SEX_OPTIONS.find((option) => option.value === value)?.label || null;
+}
+
+/** Âge révolu au jour donné (défaut : aujourd’hui à Paris). */
+export function ageYears(birthDate: string | null | undefined, today = parisTodayIso()) {
+  const birth = String(birthDate || "").slice(0, 10);
+  const now = String(today || "").slice(0, 10);
+  if (!isValidIsoDate(birth) || !isValidIsoDate(now)) return null;
+  const [by, bm, bd] = birth.split("-").map(Number);
+  const [ty, tm, td] = now.split("-").map(Number);
+  let age = ty - by;
+  if (tm < bm || (tm === bm && td < bd)) age -= 1;
+  if (age < 0 || age > 130) return null;
+  return age;
+}
+
+/** « 41 ans », « 1 an », « moins d’un an ». */
+export function ageLabel(birthDate: string | null | undefined, today = parisTodayIso()) {
+  const age = ageYears(birthDate, today);
+  if (age == null) return null;
+  if (age < 1) return "moins d’un an";
+  return age === 1 ? "1 an" : `${age} ans`;
+}
+
+/** À côté du champ : âge du jour et sexe, sans répéter la date. */
+export function ageAndSexCaption(
+  birthDate: string | null | undefined,
+  sex?: string | null,
+  today = parisTodayIso()
+) {
+  return [ageLabel(birthDate, today), sexLabel(sex)].filter(Boolean).join(" · ");
+}
+
+/** « 12 oct. 1985 · 41 ans · Femme ». */
+export function birthCaption(
+  birthDate: string | null | undefined,
+  sex?: string | null,
+  today = parisTodayIso()
+) {
+  const iso = String(birthDate || "").slice(0, 10);
+  const date = isValidIsoDate(iso) ? formatDateFr(iso) : "";
+  return [date && date !== "—" ? date : "", ageLabel(iso, today), sexLabel(sex)].filter(Boolean).join(" · ");
+}
 
 export const RELATIONSHIP_OPTIONS = [
   { value: "conjoint", label: "Conjoint(e)" },

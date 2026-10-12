@@ -518,6 +518,8 @@ export function BookingEditor({
     first_name: account?.first_name || holderName.first_name,
     last_name: account?.last_name || holderName.last_name,
     usage_name: account?.usage_name ?? null,
+    birth_date: account?.birth_date ?? null,
+    sex: account?.sex ?? null,
   };
   const stayGuest = principalGuest({ travelers, holder: holderProfile });
   const documentChoices = peopleNotOnStay(
@@ -1715,6 +1717,7 @@ export function BookingEditor({
             travelers={travelers}
             documents={identityDocs}
             holder={holderProfile}
+            companions={companions}
             badges={passportVaultRows(travelers, identityDocs, todayIsoDate(), holderProfile)}
             scans={passportPreviewsForStay(travelers, identityDocs, holderName, booking.reference)}
             onRemove={(id) => removeTraveler(id)}

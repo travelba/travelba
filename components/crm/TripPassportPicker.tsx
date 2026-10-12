@@ -11,12 +11,26 @@ import {
   travelerDisplayName,
   tripDocumentsForTraveler,
 } from "@/lib/crm/trip-documents";
+import { birthCaption } from "@/lib/crm/identity";
 import { formatDateFr } from "@/lib/crm/money";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { FilePreviewLink } from "@/components/crm/FilePreview";
 import type { FilePreviewModel } from "@/lib/crm/preview-files";
 import type { PassportVaultRow } from "@/lib/crm/passport-vault";
+
+function travelerBirthLine(
+  traveler: CrmBookingTraveler,
+  docs: CrmTravelDocument[],
+  holder: { birth_date?: string | null; sex?: string | null } | null,
+  companions: { id: string; birth_date?: string | null; sex?: string | null }[]
+) {
+  const profile = traveler.is_account_holder
+    ? holder
+    : companions.find((row) => row.id === traveler.companion_id) || null;
+  const doc = docs.find((row) => row.birth_date || row.sex);
+  return birthCaption(profile?.birth_date || doc?.birth_date, profile?.sex || doc?.sex);
+}
 
 function passportLabel(doc: CrmTravelDocument) {
   return [DOC_TYPE_LABELS[doc.doc_type], doc.number, doc.expires_on ? `exp. ${formatDateFr(doc.expires_on)}` : null]
@@ -31,6 +45,7 @@ export function TripPassportPicker({
   travelers,
   documents,
   holder = null,
+  companions = [],
   embedded = false,
   mosaic = false,
   badges = [],
@@ -42,7 +57,8 @@ export function TripPassportPicker({
   bookingId: string;
   travelers: CrmBookingTraveler[];
   documents: CrmTravelDocument[];
-  holder?: PersonName | null;
+  holder?: (PersonName & { birth_date?: string | null; sex?: string | null }) | null;
+  companions?: { id: string; birth_date?: string | null; sex?: string | null }[];
   embedded?: boolean;
   /** Deux voyageurs par ligne, chacun sur une carte. */
   mosaic?: boolean;
@@ -135,6 +151,7 @@ export function TripPassportPicker({
           const attached = tripDocs[0] || null;
           const choices = reusableDocumentsForTraveler(documents, traveler, holder);
           const name = travelerDisplayName(traveler);
+          const facts = travelerBirthLine(traveler, [...tripDocs, ...choices], holder, companions);
           const holderMark = traveler.is_account_holder ? " · titulaire" : "";
           const single = choices.length === 1 ? choices[0] : null;
 
@@ -144,15 +161,21 @@ export function TripPassportPicker({
                 {choices.length === 0 ? (
                   attached ? (
                     <div className="flex items-center justify-between gap-3">
-                      <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
-                        {name}
-                        {compact ? "" : holderMark}
-                      </p>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">
+                          {name}
+                          {compact ? "" : holderMark}
+                        </p>
+                        {facts ? <p className="truncate text-xs font-normal text-muted">{facts}</p> : null}
+                      </div>
                       <p className="shrink-0 text-xs text-muted">{passportLabel(attached)}</p>
                     </div>
                   ) : compact ? (
                     <div className="flex items-center justify-between gap-3">
-                      <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">{name}</p>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">{name}</p>
+                        {facts ? <p className="truncate text-xs font-normal text-muted">{facts}</p> : null}
+                      </div>
                       <p className="shrink-0 text-xs text-muted">Aucune pièce</p>
                     </div>
                   ) : (
@@ -161,6 +184,7 @@ export function TripPassportPicker({
                         {name}
                         {holderMark}
                       </p>
+                      {facts ? <p className="text-xs text-muted">{facts}</p> : null}
                       <p className="text-xs text-muted">Aucune pièce dans le coffre pour cette personne.</p>
                     </>
                   )
@@ -181,8 +205,18 @@ export function TripPassportPicker({
                             }
                           }}
                         />
-                        <span className="min-w-0 flex-1 truncate font-semibold text-[var(--admin-navy)]">
-                          {index === 0 ? `${name}${compact ? "" : holderMark}` : ""}
+                        <span className="min-w-0 flex-1">
+                          {index === 0 ? (
+                            <>
+                              <span className="block truncate font-semibold text-[var(--admin-navy)]">
+                                {name}
+                                {compact ? "" : holderMark}
+                              </span>
+                              {facts ? (
+                                <span className="block truncate text-xs font-normal text-muted">{facts}</span>
+                              ) : null}
+                            </>
+                          ) : null}
                         </span>
                         <span className="shrink-0 text-xs text-muted">{passportLabel(doc)}</span>
                       </label>
@@ -209,6 +243,7 @@ export function TripPassportPicker({
                     {name}
                     {holderMark}
                   </p>
+                  {facts ? <p className="truncate text-xs text-muted">{facts}</p> : null}
                   {badge ? (
                     <p className="mt-1 flex flex-wrap items-center gap-2">
                       <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${badgeTone}`}>
