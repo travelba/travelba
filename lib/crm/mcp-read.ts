@@ -3,11 +3,11 @@ import WebSocket from "ws";
 import { loadAgencyAccounts } from "@/lib/crm/agency-accounts";
 import { adminBadges } from "@/lib/crm/admin-badges";
 import {
-  BOOKING_SORTS,
   joinOrFilters,
   orSearchFilter,
   phoneSearchFilter,
   searchPattern,
+  sortBookingsByProximity,
   type BookingStateFilter,
   type FilterableQuery,
 } from "@/lib/crm/admin-list";
@@ -21,6 +21,7 @@ import { formatDateFr, formatMoney, isoDateInDays, todayIsoDate } from "@/lib/cr
 import { revolutDebitLine } from "@/lib/crm/revolut-inbox";
 import { serviceDeskLines, type ServiceDeskItem } from "@/lib/crm/service-desk";
 import { staffLedgerCaption, staffStayLabel } from "@/lib/crm/staff-stay";
+import { stayToday } from "@/lib/crm/stay-moment";
 import { reviewIdentityPieces } from "@/lib/crm/trip-documents";
 import {
   DOC_TYPE_LABELS,
@@ -48,7 +49,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SERVICE_KINDS = ["chauffeur", "greeter", "checkin"] as const;
 
 const BOOKING_COLUMNS =
-  "id, reference, title, destination, status, start_date, end_date, currency, total_amount, agency_commission, visible_to_client, archived_at, customer_id, client_settles_stay, include_in_ledger";
+  "id, reference, title, destination, status, start_date, end_date, created_at, currency, total_amount, agency_commission, visible_to_client, archived_at, customer_id, client_settles_stay, include_in_ledger";
 
 type BookingRow = Pick<
   CrmBooking,
@@ -68,6 +69,7 @@ type BookingRow = Pick<
   archived_at?: string | null;
   client_settles_stay?: boolean | null;
   include_in_ledger?: boolean | null;
+  created_at?: string | null;
 };
 
 function db() {
@@ -408,7 +410,7 @@ export async function readChercherDossiers(input: { q?: string; etat?: BookingSt
   if (pattern) {
     query = query.or(orSearchFilter(pattern, ["reference", "title", "destination"], "customer_id", matchedCustomerIds));
   }
-  const order = etat === "a-venir" || !etat ? BOOKING_SORTS["depart-asc"] : BOOKING_SORTS.depart;
+  const upcomingOnly = etat === "a-venir";
   const { data, error } = await (
     query as unknown as {
       order: (column: string, opts: { ascending: boolean; nullsFirst: boolean }) => {
@@ -416,13 +418,13 @@ export async function readChercherDossiers(input: { q?: string; etat?: BookingSt
       };
     }
   )
-    .order(order.column, { ascending: order.ascending, nullsFirst: false })
-    .limit(LIST_LIMIT);
+    .order("start_date", { ascending: upcomingOnly, nullsFirst: false })
+    .limit(upcomingOnly ? LIST_LIMIT : 400);
   if (error) {
     logRead("dossiers", error);
     throw new Error("Lecture impossible.");
   }
-  const rows = data || [];
+  const rows = sortBookingsByProximity(data || [], stayToday()).slice(0, LIST_LIMIT);
   const [names, amounts] = await Promise.all([
     customerNames(admin, rows.map((row) => row.customer_id)),
     loadDisplayedStayAmounts(admin, rows),
