@@ -19,10 +19,18 @@ import {
 } from "@/lib/crm/identity";
 import { formatDateFr } from "@/lib/crm/money";
 import { appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-extract";
+import {
+  MISREAD_FIELD_LABELS,
+  MISREAD_FIELDS,
+  applyMisreadCorrection,
+  misreadDraftFrom,
+  misreadReading,
+  type MisreadDraft,
+} from "@/lib/crm/passport-misread";
 import { identityForPerson } from "@/lib/crm/passport-assign";
 import { documentNameNotice } from "@/lib/crm/document-identity";
 import { passportConfirmCopy, scanAwaitsConfirmation, scanWouldPersist } from "@/lib/crm/passport-confirm";
-import { sendForm } from "@/lib/crm/client-fetch";
+import { postJson, sendForm } from "@/lib/crm/client-fetch";
 import type { PersonName } from "@/lib/crm/person-match";
 import { vaultDocumentsForPerson } from "@/lib/crm/trip-documents";
 import { IdentityScan, ScanStatus, type ScanResult } from "@/components/crm/IdentityScan";
@@ -152,6 +160,8 @@ export function PersonPassportCard({
   const [adding, setAdding] = useState(vault.length === 0);
   const [openId, setOpenId] = useState<string | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
+  const [misreadOpen, setMisreadOpen] = useState(false);
+  const [misreadDraft, setMisreadDraft] = useState<MisreadDraft | null>(null);
   const endpoint = variant === "admin" ? "/api/admin/travel-documents" : "/api/client/documents";
   const scanEndpoint =
     variant === "admin" ? "/api/admin/travel-documents/scan" : "/api/client/documents/scan";
@@ -222,6 +232,8 @@ export function PersonPassportCard({
   function handleResult(result: ScanResult) {
     setScan(result);
     setPending(null);
+    setMisreadOpen(false);
+    setMisreadDraft(null);
     if (scanAwaitsConfirmation(flowInput(result))) {
       setPending(result);
       return;
@@ -243,7 +255,52 @@ export function PersonPassportCard({
   function cancelPending() {
     setPending(null);
     setScan(null);
+    setMisreadOpen(false);
+    setMisreadDraft(null);
     onCancel?.();
+  }
+
+  function openMisread() {
+    const list = pending ? listedIdentities(pending.identity, pending.identities) : [];
+    const mine = pending ? identityForPerson(list, person) : null;
+    const source = (mine && list.includes(mine) ? mine : list[0]) || null;
+    if (!source) return;
+    setMisreadDraft(misreadDraftFrom(source));
+    setMisreadOpen(true);
+    setError(null);
+  }
+
+  async function sendMisread() {
+    if (!pending || !misreadDraft) return;
+    const list = listedIdentities(pending.identity, pending.identities);
+    const mine = identityForPerson(list, person);
+    const index = mine && list.includes(mine) ? list.indexOf(mine) : 0;
+    const source = list[index];
+    if (!source) return;
+    setBusyShared(true);
+    setError(null);
+    try {
+      const res = await postJson<{ message?: string }>("/api/admin/travel-documents/misread", {
+        customer_id: customerId || null,
+        read: misreadReading(source),
+        corrected: misreadDraft,
+        note: misreadDraft.note,
+      });
+      if (!res.ok) {
+        setError(res.error || "La correction n’a pas pu être notée.");
+        return;
+      }
+      const next = list.map((identity, item) =>
+        item === index ? applyMisreadCorrection(identity, misreadDraft) : identity
+      );
+      const updated = { ...pending, identity: next[0] || pending.identity, identities: next };
+      setPending(updated);
+      setScan(updated);
+      setMisreadOpen(false);
+      setNotice(res.data?.message || "Correction notée. Cursor prépare une mise à jour.");
+    } finally {
+      setBusyShared(false);
+    }
   }
 
   const pendingIdentities = pending ? listedIdentities(pending.identity, pending.identities) : [];
@@ -440,24 +497,102 @@ export function PersonPassportCard({
                   {pendingNotice}
                 </p>
               ) : null}
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={confirmPending}
-                  disabled={busy}
-                  className="admin-af-btn inline-flex min-h-11 flex-1 items-center justify-center rounded-full px-4 text-sm"
-                >
-                  {confirmCopy?.confirm}
-                </button>
-                <button
-                  type="button"
-                  onClick={cancelPending}
-                  disabled={busy}
-                  className="inline-flex min-h-11 flex-1 items-center justify-center rounded-full border border-[var(--border)] bg-white px-4 text-sm font-semibold text-[var(--admin-navy)]"
-                >
-                  Annuler
-                </button>
-              </div>
+              {variant === "admin" && misreadOpen && misreadDraft ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-muted">
+                    Corrigez ce qui est faux. Le numéro et la photo ne partent pas.
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {MISREAD_FIELDS.map((field) => (
+                      <label key={field} className="block text-[10px] font-bold uppercase tracking-wide text-muted">
+                        {MISREAD_FIELD_LABELS[field]}
+                        {field === "sex" ? (
+                          <select
+                            value={misreadDraft.sex}
+                            disabled={busy}
+                            onChange={(event) =>
+                              setMisreadDraft({ ...misreadDraft, sex: event.target.value })
+                            }
+                            className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm font-medium normal-case tracking-normal text-[var(--admin-navy)]"
+                          >
+                            <option value="">—</option>
+                            <option value="F">Femme</option>
+                            <option value="M">Homme</option>
+                            <option value="X">Autre</option>
+                          </select>
+                        ) : (
+                          <input
+                            type={field.endsWith("_date") || field.endsWith("_on") ? "date" : "text"}
+                            value={misreadDraft[field]}
+                            disabled={busy}
+                            onChange={(event) =>
+                              setMisreadDraft({ ...misreadDraft, [field]: event.target.value })
+                            }
+                            className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm font-medium normal-case tracking-normal text-[var(--admin-navy)]"
+                          />
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wide text-muted">
+                    Phrase
+                    <textarea
+                      value={misreadDraft.note}
+                      disabled={busy}
+                      rows={2}
+                      onChange={(event) => setMisreadDraft({ ...misreadDraft, note: event.target.value })}
+                      className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm font-medium normal-case tracking-normal text-[var(--admin-navy)]"
+                    />
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void sendMisread()}
+                      disabled={busy}
+                      className="admin-af-btn inline-flex min-h-11 flex-1 items-center justify-center rounded-full px-4 text-sm"
+                    >
+                      Envoyer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMisreadOpen(false)}
+                      disabled={busy}
+                      className="inline-flex min-h-11 flex-1 items-center justify-center rounded-full border border-[var(--border)] bg-white px-4 text-sm font-semibold text-[var(--admin-navy)]"
+                    >
+                      Retour
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={confirmPending}
+                    disabled={busy}
+                    className="admin-af-btn inline-flex min-h-11 flex-1 items-center justify-center rounded-full px-4 text-sm"
+                  >
+                    {confirmCopy?.confirm}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelPending}
+                    disabled={busy}
+                    className="inline-flex min-h-11 flex-1 items-center justify-center rounded-full border border-[var(--border)] bg-white px-4 text-sm font-semibold text-[var(--admin-navy)]"
+                  >
+                    Annuler
+                  </button>
+                  {variant === "admin" ? (
+                    <button
+                      type="button"
+                      onClick={openMisread}
+                      disabled={busy}
+                      className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-[var(--border)] bg-white px-4 text-sm font-semibold text-[var(--admin-navy)]"
+                    >
+                      Mal lu
+                    </button>
+                  ) : null}
+                </div>
+              )}
             </div>
           ) : null}
           {vault.length && !pending ? (
