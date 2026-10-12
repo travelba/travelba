@@ -123,8 +123,9 @@ export default async function AdminClientsPage({
     );
   }
   const { data: customers, error: customersError, count } = await query
-    .order("last_name")
-    .order("first_name")
+    .order("last_name", { ascending: true, nullsFirst: false })
+    .order("first_name", { ascending: true, nullsFirst: false })
+    .order("id")
     .range(from, to);
   if (customersError) {
     console.error("[admin/clients]", customersError.code ?? "?", customersError.message ?? "");
