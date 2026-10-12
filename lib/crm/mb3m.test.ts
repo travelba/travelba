@@ -2,12 +2,17 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import {
   Mb3mError,
+  mb3mActivityId,
   mb3mAddCreditNote,
   mb3mAddInvoice,
   mb3mAgencyNames,
   mb3mBlockedOnProduction,
   mb3mConfigured,
   mb3mFindPersons,
+  mb3mPartnerCode,
+  mb3mPdfBytes,
+  mb3mRenderPiece,
+  mb3mSaveCompany,
   mb3mSaveFolder,
   mb3mSavePerson,
   mb3mXmlText,
@@ -16,12 +21,14 @@ import {
 const previous = {
   user: process.env.MB3M_API_USER,
   password: process.env.MB3M_API_PASSWORD,
+  activity: process.env.MB3M_ACTIVITY_ID,
   vercel: process.env.VERCEL_ENV,
 };
 
 afterEach(() => {
   restore("MB3M_API_USER", previous.user);
   restore("MB3M_API_PASSWORD", previous.password);
+  restore("MB3M_ACTIVITY_ID", previous.activity);
   restore("VERCEL_ENV", previous.vercel);
 });
 
@@ -40,9 +47,12 @@ describe("client MB3M Partners", () => {
   it("ignore les identifiants de test en production Travelba", () => {
     process.env.MB3M_API_USER = "agent@partner";
     process.env.MB3M_API_PASSWORD = "secret-value";
+    process.env.MB3M_ACTIVITY_ID = "3";
     process.env.VERCEL_ENV = "production";
     assert.equal(mb3mBlockedOnProduction(), true);
     assert.equal(mb3mConfigured(), false);
+    assert.equal(mb3mActivityId(), null);
+    assert.equal(mb3mPartnerCode("11111111-2222-4333-8444-555555555555"), "11111111222243");
   });
 
   it("crée une fiche et lit l’identifiant renvoyé", async () => {
@@ -195,5 +205,84 @@ describe("client MB3M Partners", () => {
     assert.equal(folder.id, "22-AAAAAAA");
     assert.equal(folder.uid, "c9ff46e3-d7f5-49db-aa1a-202610121322");
     assert.equal(mb3mXmlText("<Message>ok</Message>", "Message"), "ok");
+  });
+
+  it("crée une société sans y mettre le SIRET", async () => {
+    arm();
+    let body = "";
+    const saved = await mb3mSaveCompany(
+      {
+        partnerId: "COMPANY0000001",
+        name: "Travelba & Cie",
+        email: "compta@example.invalid",
+        address: {
+          name: "Travelba & Cie",
+          line1: "2 rue de la Facture",
+          postalCode: "75002",
+          city: "Paris",
+          countryCode: "FR",
+        },
+      },
+      async (_url, init) => {
+        body = String(init?.body);
+        return new Response(
+          `<CustomerOperationResponse><ResultCode>1</ResultCode><Id>COMPANY0000001</Id><Uid>company-uid</Uid></CustomerOperationResponse>`
+        );
+      }
+    );
+    assert.equal(saved.uid, "company-uid");
+    assert.ok(body.indexOf("<Company>") < body.indexOf("<Id>COMPANY0000001</Id>"));
+    assert.ok(body.indexOf("<MainAddress>") < body.indexOf("<Name>Travelba &amp; Cie</Name>"));
+    assert.equal(body.toLowerCase().includes("siret"), false);
+    assert.equal(body.includes("secret-value"), false);
+  });
+
+  it("n’envoie que le prénom et le nom des voyageurs", async () => {
+    arm();
+    let body = "";
+    await mb3mAddInvoice(
+      {
+        folderId: "22-0000025",
+        customerUid: "ac53a900-3ab4-4e41-bfce-0af005dfde72",
+        title: "Avoriaz",
+        lines: [{ label: "Avoriaz", quantity: 1, netPriceUnit: 840, netPriceTotal: 840, activityId: 3 }],
+        travelers: [{ firstName: "Ada", name: "Lovelace" }],
+      },
+      async (_url, init) => {
+        body = String(init?.body);
+        return new Response(`<FolderOperationResponse><ResultCode>1</ResultCode><Invoice><Number>4531</Number><Uid>piece-uid</Uid></Invoice></FolderOperationResponse>`);
+      }
+    );
+    assert.ok(body.indexOf("</Lines>") < body.indexOf("<Travelers>"));
+    assert.ok(body.includes("<FirstName>Ada</FirstName>"));
+    assert.ok(body.includes("<Name>Lovelace</Name>"));
+    assert.equal(body.toLowerCase().includes("passport"), false);
+    assert.equal(body.toLowerCase().includes("iban"), false);
+  });
+
+  it("accepte le PDF même quand le code de résultat vaut 0", async () => {
+    arm();
+    let action = "";
+    let body = "";
+    const pdf = Buffer.from("%PDF-1.4\nfacture").toString("base64");
+    const rendered = await mb3mRenderPiece({ number: "4531" }, async (_url, init) => {
+      action = String(new Headers(init?.headers).get("SOAPAction"));
+      body = String(init?.body);
+      return new Response(
+        `<RenderResponse><ResultCode>0</ResultCode><ContentType>application/pdf</ContentType><Payload>${pdf}</Payload><SuggestedFilename>Facture.pdf</SuggestedFilename></RenderResponse>`
+      );
+    });
+    assert.equal(action, '"http://schemas.mb3m.fr/Partners/IRenderService/Piece"');
+    assert.ok(body.indexOf("<Format>Pdf</Format>") < body.indexOf("<Number>4531</Number>"));
+    assert.equal(rendered.bytes.subarray(0, 4).toString("utf8"), "%PDF");
+    assert.equal(rendered.contentType, "application/pdf");
+    assert.throws(
+      () => mb3mPdfBytes(`<RenderResponse><ResultCode>-1</ResultCode><Message>Refus</Message></RenderResponse>`),
+      (error: unknown) => {
+        assert.ok(error instanceof Mb3mError);
+        assert.equal(error.message, "Refus");
+        return true;
+      }
+    );
   });
 });
