@@ -65,6 +65,6 @@ UI : bloc pièce **replié** par défaut (passeport). Copy courte, pas « Upload
 
 ## Admin fiche
 
-L’onglet **Client** d’un dossier est cette fiche (`CustomerEditor`) : mêmes champs, tous les prénoms. Les voyageurs cochés pour le séjour restent en dessous, sous **Sur ce séjour**.
+L’onglet **Client** d’un dossier est cette fiche (`CustomerEditor`) : mêmes champs, tous les prénoms. Les voyageurs cochés pour le séjour restent en dessous, sous **Sur ce séjour**. À côté de chaque date de naissance : l’âge du jour à Paris et le sexe (`12 oct. 1985 · 41 ans · Femme`), sur la fiche, le séjour et la pièce. Le champ Sexe reste le sélecteur.
 
 L’agence change l’e-mail titulaire sur la fiche : `crm_customers.email` et le compte Auth suivent. Une adresse déjà prise par un autre client est refusée. Le client ne change pas son identifiant. Pas de scan dropzone résa sur la fiche client admin. Créer ≠ inviter : skill `travelba-auth`.

@@ -18,6 +18,7 @@ import { appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-e
 import { isVaultDocument } from "@/lib/crm/trip-documents";
 import { StatusChip } from "@/components/crm/ui";
 import {
+  BirthDateField,
   CountrySelect,
   DateFrInput,
   Field,
@@ -424,9 +425,7 @@ export function DocumentsManager({
                 <Field label="Nom d'usage" hint="S'il est imprimé sur la pièce" className="sm:col-span-2">
                   <input value={usageName} onChange={(event) => setUsageName(event.target.value)} className={fieldControlClass} />
                 </Field>
-                <Field label="Naissance">
-                  <DateFrInput value={birthDate} onChange={setBirthDate} />
-                </Field>
+                <BirthDateField value={birthDate} onChange={setBirthDate} sex={sex} />
                 <Field label="Sexe">
                   <SexSelect name="sex" value={sex} onChange={setSex} />
                 </Field>

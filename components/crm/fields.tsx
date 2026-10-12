@@ -12,8 +12,8 @@ import {
   PHONE_COUNTRIES,
   toE164,
 } from "@/lib/crm/phone";
-import { RELATIONSHIP_OPTIONS, SEX_OPTIONS } from "@/lib/crm/identity";
-import { frInputToIso, isoToFrInput, maskFrDate } from "@/lib/crm/dates";
+import { ageAndSexCaption, RELATIONSHIP_OPTIONS, SEX_OPTIONS } from "@/lib/crm/identity";
+import { frInputToIso, isoToFrInput, maskFrDate, parisTodayIso } from "@/lib/crm/dates";
 import { maskMoneyTyping, moneyToInput, parseMoney } from "@/lib/crm/money";
 
 export const fieldControlClass =
@@ -181,6 +181,44 @@ export function DateFrInput({
         onClose={() => setOpen(false)}
       />
     </div>
+  );
+}
+
+/** Date de naissance, avec l’âge du jour et le sexe à côté. */
+export function BirthDateField({
+  label = "Naissance",
+  value,
+  onChange,
+  sex,
+  max,
+  autoComplete,
+  className,
+}: {
+  label?: string;
+  value: string;
+  onChange: (iso: string) => void;
+  sex?: string | null;
+  max?: string;
+  autoComplete?: string;
+  className?: string;
+}) {
+  const aside = ageAndSexCaption(value, sex);
+  return (
+    <Field label={label} className={className}>
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <DateFrInput
+            value={value}
+            onChange={onChange}
+            max={max ?? parisTodayIso()}
+            autoComplete={autoComplete}
+          />
+        </div>
+        {aside ? (
+          <p className="shrink-0 text-sm font-semibold text-[var(--admin-navy)]">{aside}</p>
+        ) : null}
+      </div>
+    </Field>
   );
 }
 

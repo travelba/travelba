@@ -6,18 +6,17 @@ import { ChevronDown, Plus } from "lucide-react";
 import type { CrmBillingCompany, CrmCompanion, CrmCustomer, CrmTravelDocument, CompanyRole } from "@/lib/crm/types";
 import { countryName, resolveCountryCode } from "@/lib/crm/countries";
 import { identityNationalityFromSources, nationalityFromIdentity } from "@/lib/crm/document-identity";
-import { allCapsNameNote, identityOverwriteWarning, RELATIONSHIP_OPTIONS, type ExtractedIdentity } from "@/lib/crm/identity";
+import { allCapsNameNote, birthCaption, identityOverwriteWarning, RELATIONSHIP_OPTIONS, type ExtractedIdentity } from "@/lib/crm/identity";
 import { appendPassportForm, appendPassportImportForm, listedIdentities } from "@/lib/crm/passport-extract";
 import { formatIbanInput, ibanError, normalizeIban } from "@/lib/crm/billing";
 import { loyaltyFromCustomer, type LoyaltyMap } from "@/lib/crm/loyalty";
 import { companyRoleLabel } from "@/lib/crm/company-role";
 import { billingCompanyTabLabel } from "@/lib/crm/billing-companies";
-import { formatDateFr } from "@/lib/crm/money";
 import { LoyaltyFields } from "@/components/crm/LoyaltyFields";
 import {
   AddressFields,
+  BirthDateField,
   CountrySelect,
-  DateFrInput,
   Field,
   fieldControlClass,
   OptionalSecondPhone,
@@ -70,11 +69,10 @@ function loyaltySummary(loyalty: LoyaltyMap) {
   return count > 1 ? `${count} programmes` : "1 programme";
 }
 
-function identitySummary(firstName: string, lastName: string, birthDate: string, nationality: string) {
+function identitySummary(firstName: string, lastName: string, birthDate: string, sex: string, nationality: string) {
   const name = [firstName, lastName].filter(Boolean).join(" ");
-  const birth = birthDate ? formatDateFr(birthDate) : "";
   const nation = countryName(nationality);
-  return [name, birth, nation].filter(Boolean).join(" · ") || "À compléter";
+  return [name, birthCaption(birthDate, sex), nation].filter(Boolean).join(" · ") || "À compléter";
 }
 
 function pieceSummary(documents: CrmTravelDocument[], companionId: string | null) {
@@ -299,7 +297,7 @@ export function CustomerEditor({
 
   const holderLine = [
     "Voyageur principal",
-    birthDate ? formatDateFr(birthDate) : "",
+    birthCaption(birthDate, sex),
     pieceSummary(documents, null),
     onHold ? "En veille" : "",
   ]
@@ -375,7 +373,7 @@ export function CustomerEditor({
         <div>
           <SectionFold
             title="Identité"
-            summary={identitySummary(firstName, lastName, birthDate, nationality)}
+            summary={identitySummary(firstName, lastName, birthDate, sex, nationality)}
             open={openIdentity}
             onToggle={() => setOpenIdentity((value) => !value)}
           >
@@ -389,14 +387,12 @@ export function CustomerEditor({
               <Field label="Nom d'épouse" hint="Nom d'usage s'il est imprimé sur le passeport ou la CNI" className="sm:col-span-2">
                 <input value={usageName} onChange={(e) => setUsageName(e.target.value)} className={fieldControlClass} />
               </Field>
-              <Field label="Naissance">
-                <DateFrInput
-                  value={birthDate}
-                  onChange={setBirthDate}
-                  max={new Date().toISOString().slice(0, 10)}
-                  autoComplete="bday"
-                />
-              </Field>
+              <BirthDateField
+                value={birthDate}
+                onChange={setBirthDate}
+                sex={sex}
+                autoComplete="bday"
+              />
               <Field label="Sexe">
                 <SexSelect name="sex" value={sex} onChange={setSex} />
               </Field>
@@ -628,7 +624,7 @@ function CompanionCard({
 
   const closedLine = [
     relationshipLabel(relationship),
-    birthDate ? formatDateFr(birthDate) : "",
+    birthCaption(birthDate, sex),
     pieceSummary(documents, companion.id),
   ]
     .filter(Boolean)
@@ -697,7 +693,7 @@ function CompanionCard({
           <div>
             <SectionFold
               title="Identité"
-              summary={identitySummary(firstName, lastName, birthDate, nationality)}
+              summary={identitySummary(firstName, lastName, birthDate, sex, nationality)}
               open={openIdentity}
               onToggle={() => setOpenIdentity((value) => !value)}
             >
@@ -717,13 +713,7 @@ function CompanionCard({
                 <Field label="Nationalité">
                   <CountrySelect name="nationality" value={nationality} onChange={edit(setNationality)} />
                 </Field>
-                <Field label="Naissance">
-                  <DateFrInput
-                    value={birthDate}
-                    onChange={edit(setBirthDate)}
-                    max={new Date().toISOString().slice(0, 10)}
-                  />
-                </Field>
+                <BirthDateField value={birthDate} onChange={edit(setBirthDate)} sex={sex} />
                 <Field label="Sexe">
                   <SexSelect name="sex" value={sex} onChange={edit(setSex)} />
                 </Field>
@@ -953,13 +943,7 @@ function AddCompanionForm({
         <Field label="Nationalité">
           <CountrySelect name="nationality" value={nationality} onChange={setNationality} />
         </Field>
-        <Field label="Naissance">
-          <DateFrInput
-            value={birthDate}
-            onChange={setBirthDate}
-            max={new Date().toISOString().slice(0, 10)}
-          />
-        </Field>
+        <BirthDateField value={birthDate} onChange={setBirthDate} sex={sex} />
         <Field label="Sexe">
           <SexSelect name="sex" value={sex} onChange={setSex} />
         </Field>
